@@ -1,0 +1,5 @@
+path: C:\Users\admin\PycharmProjects\JupyterProject\data\triangle_head_dataset
+train: images/train
+val: images/val
+names:
+  0: triangle_head

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+
+# Virtual env
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Runtime / logs / temp
+*.log
+*.pid
+tmp/
+temp/
+
+# Data and model artifacts
+data/uploads/
+models/
+runs/
+*.pt
+*.onnx
+*.h5
+*.pth
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS files
+Thumbs.db
+.DS_Store

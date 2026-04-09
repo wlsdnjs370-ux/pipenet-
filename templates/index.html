@@ -3,148 +3,163 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>PIPENET 검증 프로그램</title>
+    <title>PIPENET 수리계산 검증</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   </head>
   <body>
-    <main class="page">
-      <header class="header card">
-        <div class="header-top">
-          <div>
-            <p class="kicker">PIPE CALC VALIDATION</p>
-            <h1>PIPENET 수리계산 검증</h1>
+    <main class="page app-shell">
+      <aside id="menu-layout" class="menu-sidebar card">
+        <button type="button" class="menu-btn" data-panel="workspace-panel">1. 검증결과</button>
+        <button type="button" class="menu-btn" data-panel="insight-panel">2. 설계 최적화 가이드</button>
+        <button type="button" class="menu-btn" data-panel="tables-panel">3. 결과 데이터 테이블</button>
+        <button type="button" class="menu-btn" data-panel="stats-panel">4. 검진 통계</button>
+        <button type="button" class="menu-btn" data-panel="report-panel">5. 상세리포트</button>
+        <button type="button" class="menu-btn" data-panel="cad-compare-panel">6. CAD-아이소매트릭 배관망 대조 모듈</button>
+      </aside>
+
+      <div class="main-pane">
+        <header class="header card">
+          <div class="header-top">
+            <div>
+              <p class="kicker">PIPE CALC VALIDATION</p>
+              <h1>PIPENET 수리계산 검증</h1>
+            </div>
+            <div class="header-actions">
+              <button id="updates-btn" type="button" class="criteria-btn">업데이트 기록</button>
+              <button id="criteria-btn" type="button" class="criteria-btn">평가 기준</button>
+            </div>
           </div>
-          <button id="criteria-btn" type="button" class="criteria-btn">평가 기준</button>
-        </div>
-        <p>결과서를 표 형태로 확인하고, 기준 위반과 경제성/공학 개선 포인트를 함께 표시합니다.</p>
-      </header>
+          <p>결과서를 표 형태로 확인하고, 기준 위반과 경제성/공학 개선 포인트를 함께 표시합니다.</p>
+        </header>
 
-      <section class="card">
-        <form id="upload-form" class="upload-form">
-          <div class="field">
-            <label for="report-file">결과서 파일 (docx/pdf)</label>
-            <input id="report-file" name="report_file" type="file" accept=".docx,.pdf,application/pdf" required>
+        <section class="card">
+          <form id="upload-form" class="upload-form">
+            <div class="field">
+              <label for="report-file">결과서 파일 (docx)</label>
+              <input id="report-file" name="report_file" type="file" accept=".docx,.pdf,application/pdf" required>
+            </div>
+            <div class="field">
+              <label for="sdf-file">SDF 파일 (선택)</label>
+              <input id="sdf-file" name="sdf_file" type="file" accept=".sdf">
+            </div>
+            <button type="submit">검증 실행</button>
+          </form>
+          <p id="status" class="status">파일을 업로드하고 검증 실행을 눌러주세요.</p>
+        </section>
+
+        <section id="summary" class="card hidden"></section>
+
+        <section id="workspace-panel" class="card hidden menu-panel">
+          <div class="workspace-grid">
+            <div class="workspace-left">
+              <h2>검증 결과</h2>
+              <div class="result-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>구분</th>
+                      <th>내용</th>
+                    </tr>
+                  </thead>
+                  <tbody id="results-body">
+                    <tr>
+                      <td colspan="2" class="empty">검증 결과가 없습니다.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="workspace-right">
+              <div class="network-head">
+                <h2>SDF 아이소매트릭 배관망</h2>
+                <div class="network-tools">
+                  <button id="zoom-in-btn" type="button">+</button>
+                  <button id="zoom-out-btn" type="button">-</button>
+                  <button id="zoom-reset-btn" type="button">초기화</button>
+                </div>
+              </div>
+              <div id="network-wrap" class="network-wrap">
+                <svg id="network-svg" class="network-svg" preserveAspectRatio="xMidYMid meet">
+                  <g id="network-viewport"></g>
+                </svg>
+                <p id="network-empty" class="empty">SDF 파일을 업로드하면 배관망이 표시됩니다.</p>
+              </div>
+              <div class="network-legend">
+                <span class="network-legend-item"><i class="shape-line"></i>배관</span>
+                <span class="network-legend-item"><i class="shape-circle"></i>헤드</span>
+                <span class="network-legend-item"><i class="shape-square"></i>특수설비</span>
+                <span class="network-legend-item"><i class="shape-diamond"></i>감압밸브</span>
+              </div>
+              <p class="section-note">마우스 휠: 줌, 드래그: 화면 이동</p>
+            </div>
           </div>
-          <div class="field">
-            <label for="sdf-file">SDF 파일 (선택)</label>
-            <input id="sdf-file" name="sdf_file" type="file" accept=".sdf">
+        </section>
+
+        <section id="insight-panel" class="card hidden menu-panel">
+          <h2>설계 최적화 가이드</h2>
+          <div class="insight-grid">
+            <article class="insight-box">
+              <h3>공학적 마찰손실 최적화 조치</h3>
+              <ul id="engineering-list" class="guide-list"></ul>
+            </article>
+            <article class="insight-box">
+              <h3>시공사 경제성 확보 방안</h3>
+              <ul id="economy-list" class="guide-list"></ul>
+            </article>
           </div>
-          <button type="submit">검증 실행</button>
-        </form>
-        <p id="status" class="status">파일 업로드 후 검증 실행을 눌러주세요.</p>
-      </section>
+        </section>
 
-      <section id="summary" class="card hidden"></section>
-
-      <section id="menu-layout" class="menu-layout hidden">
-        <aside class="menu-sidebar card">
-          <button type="button" class="menu-btn active" data-panel="workspace-panel">검증결과</button>
-          <button type="button" class="menu-btn" data-panel="insight-panel">설계 최적화 가이드</button>
-          <button type="button" class="menu-btn" data-panel="tables-panel">결과 데이터 테이블</button>
-          <button type="button" class="menu-btn" data-panel="stats-panel">검진 통계</button>
-          <button type="button" class="menu-btn" data-panel="report-panel">상세리포트</button>
-        </aside>
-
-        <div class="menu-content">
-          <section id="workspace-panel" class="card hidden menu-panel">
-            <div class="workspace-grid">
-              <div class="workspace-left">
-                <h2>검증 결과</h2>
-                <div class="result-table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>구분</th>
-                        <th>내용</th>
-                      </tr>
-                    </thead>
-                    <tbody id="results-body">
-                      <tr>
-                        <td colspan="2" class="empty">검증 결과가 없습니다.</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div class="workspace-right">
-                <div class="network-head">
-                  <h2>SDF 아이소매트릭 배관망</h2>
-                  <div class="network-tools">
-                    <button id="zoom-in-btn" type="button">+</button>
-                    <button id="zoom-out-btn" type="button">-</button>
-                    <button id="zoom-reset-btn" type="button">초기화</button>
-                  </div>
-                </div>
-                <div id="network-wrap" class="network-wrap">
-                  <svg id="network-svg" class="network-svg" preserveAspectRatio="xMidYMid meet">
-                    <g id="network-viewport"></g>
-                  </svg>
-                  <p id="network-empty" class="empty">SDF 파일을 업로드하면 배관망이 표시됩니다.</p>
-                </div>
-                <div class="network-legend">
-                  <span class="network-legend-item"><i class="shape-line"></i>배관</span>
-                  <span class="network-legend-item"><i class="shape-circle"></i>헤드</span>
-                  <span class="network-legend-item"><i class="shape-square"></i>특수설비</span>
-                  <span class="network-legend-item"><i class="shape-diamond"></i>감압밸브</span>
-                </div>
-                <p class="section-note">마우스 휠: 줌, 드래그: 화면 이동</p>
-              </div>
+        <section id="tables-panel" class="card hidden menu-panel">
+          <div class="section-head">
+            <div class="section-head-top">
+              <h2>결과 데이터 테이블</h2>
+              <button id="download-csv-btn" type="button" class="csv-btn" disabled>엑셀 파일 다운로드</button>
             </div>
-          </section>
-
-          <section id="insight-panel" class="card hidden menu-panel">
-            <h2>설계 최적화 가이드</h2>
-            <div class="insight-grid">
-              <article class="insight-box">
-                <h3>공학적 마찰손실 최적화 조치</h3>
-                <ul id="engineering-list" class="guide-list"></ul>
-              </article>
-              <article class="insight-box">
-                <h3>시공사 경제성 확보 방안</h3>
-                <ul id="economy-list" class="guide-list"></ul>
-              </article>
+            <p class="table-help">필터링된 열을 클릭하면 사유를 확인할 수 있습니다.</p>
+            <div class="legend-row" aria-label="색상 범례">
+              <span class="legend-item"><i class="legend-box legend-fail"></i>기준 위반</span>
+              <span class="legend-item"><i class="legend-box legend-warn"></i>확인 필요</span>
+              <span class="legend-item"><i class="legend-box legend-eng"></i>공학 최적화 후보</span>
+              <span class="legend-item"><i class="legend-box legend-econ"></i>경제성 검토 후보</span>
             </div>
-          </section>
+          </div>
+          <div class="tab-row">
+            <button type="button" class="tab-btn active" data-tab="pipes">배관 (FLOW IN PIPES)</button>
+            <button type="button" class="tab-btn" data-tab="nozzles">헤드 (FLOW THROUGH NOZZLES)</button>
+            <button type="button" class="tab-btn" data-tab="equipment">특수설비 (SPECIAL EQUIPMENT)</button>
+            <button type="button" class="tab-btn" data-tab="valves">감압밸브 (ELASTOMERIC VALVES)</button>
+          </div>
+          <div id="table-container" class="table-block"></div>
+        </section>
 
-          <section id="tables-panel" class="card hidden menu-panel">
-            <div class="section-head">
-              <div class="section-head-top">
-                <h2>결과 데이터 테이블</h2>
-                <button id="download-csv-btn" type="button" class="csv-btn" disabled>엑셀 파일 다운로드</button>
-              </div>
-              <p class="table-help">필터링된 열을 클릭하면 사유를 확인할 수 있습니다.</p>
-              <div class="legend-row" aria-label="색상 범례">
-                <span class="legend-item"><i class="legend-box legend-fail"></i>기준 위반</span>
-                <span class="legend-item"><i class="legend-box legend-warn"></i>확인 필요</span>
-                <span class="legend-item"><i class="legend-box legend-eng"></i>공학 최적화 후보</span>
-                <span class="legend-item"><i class="legend-box legend-econ"></i>경제성 검토 후보</span>
-              </div>
-            </div>
+        <section id="stats-panel" class="card hidden menu-panel">
+          <h2>검진 통계</h2>
+          <p class="section-note">핵심 지표와 자동 생성 그래프를 함께 확인할 수 있습니다.</p>
+          <div class="stats-layout stats-dashboard">
+            <div id="stats-chart-left" class="stats-slot"></div>
+            <div id="stats-chart-right" class="stats-slot"></div>
+            <div id="stats-output-left" class="stats-slot"></div>
+            <div id="stats-output-right" class="stats-slot"></div>
+          </div>
+        </section>
 
-            <div class="tab-row">
-              <button type="button" class="tab-btn active" data-tab="pipes">배관 (FLOW IN PIPES)</button>
-              <button type="button" class="tab-btn" data-tab="nozzles">헤드 (FLOW THROUGH NOZZLES)</button>
-              <button type="button" class="tab-btn" data-tab="equipment">특수설비 (SPECIAL EQUIPMENT)</button>
-              <button type="button" class="tab-btn" data-tab="valves">감압밸브 (ELASTOMERIC VALVES)</button>
-            </div>
+        <section id="report-panel" class="card hidden menu-panel">
+          <h2>상세리포트</h2>
+          <p class="section-note">결과를 항목별로 빠르게 확인할 수 있도록 정리했습니다.</p>
+          <div id="report-output" class="report-grid"></div>
+        </section>
 
-            <div id="table-container" class="table-block"></div>
-          </section>
-
-          <section id="stats-panel" class="card hidden menu-panel">
-            <h2>검진 통계</h2>
-            <p class="section-note">핵심 지표를 카드 형태로 정리했습니다.</p>
-            <div id="stats-output" class="stats-grid"></div>
-          </section>
-
-          <section id="report-panel" class="card hidden menu-panel">
-            <h2>상세리포트</h2>
-            <p class="section-note">결과를 항목별로 빠르게 확인할 수 있도록 정리했습니다.</p>
-            <div id="report-output" class="report-grid"></div>
-          </section>
-        </div>
-      </section>
+        <section id="cad-compare-panel" class="card hidden menu-panel">
+          <h2>CAD-아이소매트릭 배관망 대조 모듈</h2>
+          <p class="section-note">과거에 사용하던 독립형 듀얼 뷰어 모듈을 그대로 연결했습니다.</p>
+          <iframe
+            id="cad-compare-frame"
+            class="module-iframe"
+            src="{{ url_for('cad_compare_module') }}?v=20260409-2"
+            title="CAD-아이소매트릭 배관망 대조 모듈"
+          ></iframe>
+        </section>
+      </div>
     </main>
 
     <div id="logic-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="logic-modal-title">
@@ -153,7 +168,7 @@
           <h3 id="logic-modal-title">필터 판정 로직</h3>
           <button id="logic-modal-close" type="button" class="modal-close">닫기</button>
         </div>
-        <ul id="logic-modal-body" class="modal-list"></ul>
+        <div id="logic-modal-body" class="logic-grid"></div>
       </div>
     </div>
 
@@ -164,6 +179,16 @@
           <button id="criteria-modal-close" type="button" class="modal-close">닫기</button>
         </div>
         <div id="criteria-modal-body" class="criteria-modal-body"></div>
+      </div>
+    </div>
+
+    <div id="updates-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="updates-modal-title">
+      <div class="modal-card criteria-modal-card">
+        <div class="modal-head">
+          <h3 id="updates-modal-title">업데이트 기록</h3>
+          <button id="updates-modal-close" type="button" class="modal-close">닫기</button>
+        </div>
+        <div id="updates-modal-body" class="criteria-modal-body"></div>
       </div>
     </div>
 

@@ -1,0 +1,554 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>듀얼 뷰어: DXF & SDF</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #0f1115; font-family: 'Segoe UI', sans-serif; }
+    .canvas-container { position: relative; width: 50vw; height: 100vh; overflow: hidden; border-right: 2px solid #374151; }
+    .canvas-container:last-child { border-right: none; }
+    canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #1f2937; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
+  </style>
+</head>
+<body class="text-white flex flex-row w-screen h-screen">
+  <div class="canvas-container" id="dxf-container">
+    <div class="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-md p-5 rounded-2xl shadow-2xl border border-gray-700/50 z-10 w-72">
+      <h1 class="text-xl font-bold mb-4 text-blue-400">DXF 뷰어 (도면)</h1>
+      <label class="flex justify-center items-center w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-colors">
+        DXF 파일 열기
+        <input id="dxf-file" type="file" accept=".dxf" class="hidden" />
+      </label>
+      <div class="mt-4 flex gap-2">
+        <button id="dxf-btn-pan" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-blue-500">이동 모드</button>
+        <button id="dxf-btn-select" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-transparent">영역 선택</button>
+      </div>
+      <button id="dxf-btn-crop" class="mt-2 w-full bg-red-600 text-white text-xs font-semibold py-2 px-4 rounded-lg hidden">선택 영역 외 삭제</button>
+      <div id="dxf-status" class="mt-3 text-xs font-medium text-yellow-400 hidden">처리 중...</div>
+    </div>
+    <canvas id="dxf-canvas"></canvas>
+  </div>
+
+  <div class="canvas-container" id="sdf-container">
+    <div class="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-md p-5 rounded-2xl shadow-2xl border border-gray-700/50 z-10 w-72">
+      <h1 class="text-xl font-bold mb-4 text-emerald-400">SDF 뷰어 (배관망)</h1>
+      <label class="flex justify-center items-center w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-colors">
+        Pipenet SDF 열기
+        <input id="sdf-file" type="file" accept=".sdf" class="hidden" />
+      </label>
+      <div class="mt-4 flex gap-2">
+        <button id="sdf-btn-pan" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-emerald-500">이동 모드</button>
+        <button id="sdf-btn-select" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-transparent">영역 선택</button>
+      </div>
+      <button id="sdf-btn-crop" class="mt-2 w-full bg-red-600 text-white text-xs font-semibold py-2 px-4 rounded-lg hidden">선택 영역 외 삭제</button>
+      <div id="sdf-status" class="mt-3 text-xs font-medium text-yellow-400 hidden">처리 중...</div>
+    </div>
+    <canvas id="sdf-canvas"></canvas>
+  </div>
+
+  <div class="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-40 flex flex-col items-center">
+    <div id="compare-tooltip" class="text-xs text-yellow-400 mb-2 bg-gray-900/80 px-3 py-1 rounded-full border border-gray-700 backdrop-blur-sm shadow-lg">💡 양쪽 화면에서 '영역 선택' 모드로 비교할 범위를 각각 드래그하세요.</div>
+    <button id="btn-compare-analysis" class="bg-gray-600 text-gray-400 px-6 py-3 rounded-full font-bold flex items-center gap-3 border border-gray-500 cursor-not-allowed" disabled>
+      <span id="btn-compare-text">핵심 구성요소 대조 분석</span>
+    </button>
+  </div>
+
+  <div id="analysis-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex justify-center items-center overflow-y-auto pt-10 pb-10">
+    <div class="bg-gray-900 border border-gray-700 p-8 rounded-2xl shadow-2xl w-[750px] max-w-full relative">
+      <button id="btn-close-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white">닫기</button>
+      <h2 class="text-2xl font-bold mb-6 text-center"><span class="text-indigo-400">설비 구성요소 정밀 대조 분석</span></h2>
+      <div class="grid grid-cols-2 gap-4 mb-6">
+        <div class="bg-gray-800 p-4 rounded-xl border border-blue-900/50">
+          <h3 class="text-blue-400 text-sm font-bold mb-3 text-center border-b border-blue-900/50 pb-2">DXF 도면 영역 (추정치)</h3>
+          <ul class="text-[13px] space-y-2 text-gray-300">
+            <li class="flex justify-between"><span>헤드 (원형 객체):</span> <strong id="res-dxf-heads" class="text-white">0 개</strong></li>
+            <li class="flex justify-between"><span>교차배관 (장선분 추정):</span> <strong id="res-dxf-main" class="text-white">0.0 m</strong></li>
+            <li class="flex justify-between"><span>가지배관 (단선분 추정):</span> <strong id="res-dxf-branch" class="text-white">0.0 m</strong></li>
+            <li class="flex justify-between"><span>부속류 (교차 노드 분석):</span> <strong id="res-dxf-fittings" class="text-white">0 개</strong></li>
+            <li class="flex justify-between"><span>밸브 (블록 객체):</span> <strong id="res-dxf-valves" class="text-white">0 개</strong></li>
+          </ul>
+        </div>
+        <div class="bg-gray-800 p-4 rounded-xl border border-emerald-900/50">
+          <h3 class="text-emerald-400 text-sm font-bold mb-3 text-center border-b border-emerald-900/50 pb-2">SDF 배관망 영역 (실데이터)</h3>
+          <ul class="text-[13px] space-y-2 text-gray-300">
+            <li class="flex justify-between"><span>헤드 (Nozzle):</span> <strong id="res-sdf-heads" class="text-white">0 개</strong></li>
+            <li class="flex justify-between"><span>교차배관 (구경 50mm↑):</span> <strong id="res-sdf-main" class="text-white">0.0 m</strong></li>
+            <li class="flex justify-between"><span>가지배관 (구경 40mm↓):</span> <strong id="res-sdf-branch" class="text-white">0.0 m</strong></li>
+            <li class="flex justify-between"><span>부속류 (엘보, 티 등):</span> <strong id="res-sdf-fittings" class="text-white">0 개</strong></li>
+            <li class="flex justify-between"><span>밸브 (인라인 및 펌프):</span> <strong id="res-sdf-valves" class="text-white">0 개</strong></li>
+          </ul>
+        </div>
+      </div>
+      <div class="bg-gray-800 p-5 rounded-xl border border-indigo-500/50 text-center relative overflow-hidden">
+        <div class="text-sm text-gray-300 mb-1 font-semibold">설비 분류별 가중치 통합 매칭율</div>
+        <div class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400" id="res-total-score">0.0%</div>
+        <div class="w-full bg-gray-900 rounded-full h-3 mt-4 overflow-hidden border border-gray-700">
+          <div id="res-progress-bar" class="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 h-3 rounded-full transition-all duration-1000" style="width: 0%"></div>
+        </div>
+        <p id="res-analysis-msg" class="mt-4 text-[13px] font-medium text-yellow-400 leading-relaxed"></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const cadColors = { 1:'#FF0000', 2:'#FFFF00', 3:'#00FF00', 4:'#00FFFF', 5:'#0000FF', 6:'#FF00FF', 7:'#FFFFFF', 8:'#808080', 9:'#C0C0C0' };
+    const sdfLayerColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+
+    class Viewer {
+      constructor(prefix, activeClass) {
+        this.prefix = prefix;
+        this.canvas = document.getElementById(`${prefix}-canvas`);
+        this.ctx = this.canvas.getContext('2d');
+        this.fileInput = document.getElementById(`${prefix}-file`);
+        this.btnPan = document.getElementById(`${prefix}-btn-pan`);
+        this.btnSelect = document.getElementById(`${prefix}-btn-select`);
+        this.btnCrop = document.getElementById(`${prefix}-btn-crop`);
+        this.status = document.getElementById(`${prefix}-status`);
+        this.activeClass = activeClass;
+        this.mode = 'pan';
+        this.dragging = false;
+        this.start = null;
+        this.end = null;
+        this.pan = { x: 0, y: 0 };
+        this.zoom = 1;
+        this.bounds = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
+        this.data = null;
+        this.lastMouse = null;
+        this.bind();
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+      }
+      resize() {
+        const rect = this.canvas.parentElement.getBoundingClientRect();
+        this.canvas.width = rect.width;
+        this.canvas.height = rect.height;
+        this.render();
+      }
+      bind() {
+        this.fileInput.addEventListener('change', (e) => this.load(e));
+        this.btnPan.addEventListener('click', () => this.setMode('pan'));
+        this.btnSelect.addEventListener('click', () => this.setMode('select'));
+        this.btnCrop.addEventListener('click', () => this.crop());
+        this.canvas.addEventListener('mousedown', (e) => this.onDown(e));
+        window.addEventListener('mouseup', () => this.onUp());
+        window.addEventListener('mousemove', (e) => this.onMove(e));
+        this.canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
+      }
+      setMode(mode) {
+        this.mode = mode;
+        this.btnPan.classList.toggle(this.activeClass, mode === 'pan');
+        this.btnSelect.classList.toggle(this.activeClass, mode === 'select');
+        if (mode === 'pan') {
+          this.start = null; this.end = null; this.btnCrop.classList.add('hidden');
+        }
+        this.render();
+        checkGlobalAnalysisReady();
+      }
+      screenToWorld(x, y) {
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const dcx = (this.bounds.minX + this.bounds.maxX) / 2;
+        const dcy = (this.bounds.minY + this.bounds.maxY) / 2;
+        return {
+          x: (x - cx - this.pan.x) / this.zoom + dcx,
+          y: (y - cy - this.pan.y) / -this.zoom + dcy,
+        };
+      }
+      getSelectionBBox() {
+        if (!this.start || !this.end) return null;
+        const a = this.screenToWorld(this.start.x, this.start.y);
+        const b = this.screenToWorld(this.end.x, this.end.y);
+        return { minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y) };
+      }
+      clearSelection() {
+        this.start = null;
+        this.end = null;
+        this.btnCrop.classList.add('hidden');
+        checkGlobalAnalysisReady();
+      }
+      resetFromPoints(points) {
+        if (!points || !points.length) {
+          this.setupView(0, 0, 100, 100);
+          return;
+        }
+        const xs = points.map((p) => p.x);
+        const ys = points.map((p) => p.y);
+        this.setupView(Math.min(...xs, 0), Math.min(...ys, 0), Math.max(...xs, 100), Math.max(...ys, 100));
+      }
+      onDown(e) {
+        const r = this.canvas.getBoundingClientRect();
+        const x = e.clientX - r.left, y = e.clientY - r.top;
+        if (this.mode === 'pan') {
+          this.dragging = true; this.lastMouse = { x: e.clientX, y: e.clientY };
+        } else {
+          this.start = { x, y }; this.end = { x, y }; this.btnCrop.classList.add('hidden');
+        }
+      }
+      onUp() {
+        if (this.mode === 'pan') { this.dragging = false; return; }
+        if (this.start && this.end) {
+          const dx = Math.abs(this.end.x - this.start.x);
+          const dy = Math.abs(this.end.y - this.start.y);
+          if (dx > 5 && dy > 5) this.btnCrop.classList.remove('hidden');
+          checkGlobalAnalysisReady();
+        }
+      }
+      onMove(e) {
+        const r = this.canvas.getBoundingClientRect();
+        const x = e.clientX - r.left, y = e.clientY - r.top;
+        if (this.mode === 'pan' && this.dragging) {
+          this.pan.x += e.clientX - this.lastMouse.x;
+          this.pan.y += e.clientY - this.lastMouse.y;
+          this.lastMouse = { x: e.clientX, y: e.clientY };
+          this.render();
+        } else if (this.mode === 'select' && this.start && e.buttons === 1) {
+          this.end = { x, y }; this.render();
+        }
+      }
+      onWheel(e) {
+        e.preventDefault();
+        const factor = Math.exp(-e.deltaY * 0.0015);
+        this.zoom = Math.max(0.000001, Math.min(this.zoom * factor, 100000));
+        this.render();
+      }
+      setupView(minX, minY, maxX, maxY) {
+        this.bounds = { minX, minY, maxX, maxY };
+        const w = maxX - minX || 1;
+        const h = maxY - minY || 1;
+        this.zoom = Math.min((this.canvas.width * 0.85) / w, (this.canvas.height * 0.85) / h);
+        this.pan = { x: 0, y: 0 };
+      }
+      baseRenderBegin() {
+        this.ctx.fillStyle = '#121212';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        if (!this.data) return false;
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const dcx = (this.bounds.minX + this.bounds.maxX) / 2;
+        const dcy = (this.bounds.minY + this.bounds.maxY) / 2;
+        this.ctx.save();
+        this.ctx.translate(cx + this.pan.x, cy + this.pan.y);
+        this.ctx.scale(this.zoom, -this.zoom);
+        this.ctx.translate(-dcx, -dcy);
+        return true;
+      }
+      drawOverlay() {
+        if (this.mode === 'select' && this.start && this.end) {
+          this.ctx.save();
+          this.ctx.fillStyle = 'rgba(59,130,246,0.15)';
+          this.ctx.strokeStyle = 'rgba(59,130,246,0.8)';
+          this.ctx.setLineDash([5,5]);
+          const x = Math.min(this.start.x, this.end.x), y = Math.min(this.start.y, this.end.y);
+          const w = Math.abs(this.end.x - this.start.x), h = Math.abs(this.end.y - this.start.y);
+          this.ctx.fillRect(x, y, w, h); this.ctx.strokeRect(x, y, w, h);
+          this.ctx.restore();
+        }
+      }
+    }
+
+    class DxfViewer extends Viewer {
+      constructor() { super('dxf', 'border-blue-500'); }
+      async load(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        this.status.classList.remove('hidden');
+        this.status.textContent = 'DXF 서버 파싱 중...';
+        try {
+          const formData = new FormData();
+          formData.append('cad_file', file);
+          const response = await fetch('/api/cad-module/dxf-parse', { method: 'POST', body: formData });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.message || 'DXF parse failed');
+          }
+          this.data = payload.cad_payload || { entities: [], bounds: null };
+          const bounds = this.data.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 };
+          this.setupView(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
+          this.status.classList.add('hidden');
+          this.render();
+        } catch (err) {
+          console.error('DXF parse error:', err);
+          alert(`DXF 파싱 오류: ${err.message || '서버 처리 실패'}`);
+          this.status.classList.add('hidden');
+        }
+      }
+      getEntityStroke(ent) {
+        return ent.color || '#ffffff';
+      }
+      getEntityPoints(ent) {
+        if (ent.type === 'LINE' && ent.start && ent.end) return [ent.start, ent.end];
+        if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points)) return ent.points;
+        if (ent.type === 'TEXT' && ent.insert) return [ent.insert];
+        if ((ent.type === 'CIRCLE' || ent.type === 'ARC') && ent.center) return [ent.center];
+        return [];
+      }
+      getEntityBBox(ent) {
+        if ((ent.type === 'CIRCLE' || ent.type === 'ARC') && ent.center && Number.isFinite(ent.radius)) {
+          return {
+            minX: ent.center.x - ent.radius,
+            minY: ent.center.y - ent.radius,
+            maxX: ent.center.x + ent.radius,
+            maxY: ent.center.y + ent.radius,
+          };
+        }
+        const pts = this.getEntityPoints(ent);
+        if (!pts.length) return null;
+        const xs = pts.map((p) => p.x);
+        const ys = pts.map((p) => p.y);
+        return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+      }
+      bboxInside(bbox, sel) {
+        return bbox && bbox.minX >= sel.minX && bbox.maxX <= sel.maxX && bbox.minY >= sel.minY && bbox.maxY <= sel.maxY;
+      }
+      bboxOverlaps(bbox, sel) {
+        return !!bbox && !(bbox.maxX < sel.minX || bbox.minX > sel.maxX || bbox.maxY < sel.minY || bbox.minY > sel.maxY);
+      }
+      entityHint(ent) {
+        return [
+          ent.layer || '',
+          ent.blockName || '',
+          ent.text || '',
+          ent.parentPath || '',
+          JSON.stringify(ent.blockAttributes || {}),
+        ].join(' ').toLowerCase();
+      }
+      isValveLike(ent) {
+        const hint = this.entityHint(ent);
+        return /(^|[^a-z])(valve|alarm|check|gate|butterfly|av|pv)([^a-z]|$)/.test(hint);
+      }
+      isHeadLike(ent) {
+        if (ent.type === 'CIRCLE' && Number.isFinite(ent.radius) && ent.radius > 0 && ent.radius <= 500) return true;
+        const hint = this.entityHint(ent);
+        return /(head|sprink|nozzle|upright|pendent|sidewall)/.test(hint);
+      }
+      render() {
+        if (!this.baseRenderBegin()) return;
+        (this.data.entities || []).forEach(ent => {
+          this.ctx.beginPath();
+          this.ctx.strokeStyle = this.getEntityStroke(ent);
+          this.ctx.lineWidth = 1.5 / this.zoom;
+          if (ent.type === 'LINE' && ent.start && ent.end) {
+            this.ctx.moveTo(ent.start.x, ent.start.y); this.ctx.lineTo(ent.end.x, ent.end.y);
+          } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points)) {
+            ent.points.forEach((v, i) => i === 0 ? this.ctx.moveTo(v.x, v.y) : this.ctx.lineTo(v.x, v.y));
+            if (ent.closed && ent.points.length > 2) this.ctx.closePath();
+          } else if (ent.type === 'CIRCLE' && ent.center) {
+            this.ctx.arc(ent.center.x, ent.center.y, ent.radius, 0, Math.PI * 2);
+          } else if (ent.type === 'ARC' && ent.center) {
+            this.ctx.arc(ent.center.x, ent.center.y, ent.radius, (ent.startAngle || 0) * Math.PI / 180, (ent.endAngle || 0) * Math.PI / 180, false);
+          } else if (ent.type === 'TEXT' && ent.insert && ent.text) {
+            this.ctx.save();
+            this.ctx.translate(ent.insert.x, ent.insert.y);
+            this.ctx.scale(1, -1);
+            this.ctx.fillStyle = this.getEntityStroke(ent);
+            this.ctx.font = `${Math.max((ent.height || 120) / this.zoom * 0.08, 3)}px sans-serif`;
+            this.ctx.fillText(ent.text, 0, 0);
+            this.ctx.restore();
+            return;
+          } else return;
+          this.ctx.stroke();
+        });
+        this.ctx.restore();
+        this.drawOverlay();
+      }
+      crop() {
+        if (!this.data || !this.data.entities || !this.start || !this.end) return;
+        const sel = this.getSelectionBBox();
+        if (!sel) return;
+        this.data.entities = this.data.entities.filter((ent) => this.bboxOverlaps(this.getEntityBBox(ent), sel));
+        const pts = [];
+        (this.data.entities || []).forEach((ent) => {
+          if (ent.type === 'LINE' && ent.start && ent.end) {
+            pts.push(ent.start, ent.end);
+          } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points)) {
+            pts.push(...ent.points);
+          } else if ((ent.type === 'CIRCLE' || ent.type === 'ARC') && ent.center && Number.isFinite(ent.radius)) {
+            pts.push(
+              { x: ent.center.x - ent.radius, y: ent.center.y - ent.radius },
+              { x: ent.center.x + ent.radius, y: ent.center.y + ent.radius }
+            );
+          } else if (ent.type === 'TEXT' && ent.insert) {
+            pts.push(ent.insert);
+          }
+        });
+        this.resetFromPoints(pts);
+        this.clearSelection();
+        this.render();
+      }
+      analyzeSelection(bbox) {
+        let heads = 0, valves = 0, branchLen = 0, mainLen = 0, fittings = 0;
+        const pointsMap = {};
+        (this.data.entities || []).forEach(ent => {
+          const entBox = this.getEntityBBox(ent);
+          if (!this.bboxInside(entBox, bbox)) return;
+          if (this.isHeadLike(ent)) heads++;
+          if (this.isValveLike(ent)) valves++;
+          if (ent.type === 'LINE' && ent.start && ent.end) {
+            const a = ent.start, b = ent.end;
+            const lenM = Math.hypot(b.x-a.x,b.y-a.y)/1000;
+            if (lenM <= 2.5) branchLen += lenM; else mainLen += lenM;
+            const k1 = `${Math.round(a.x*100)},${Math.round(a.y*100)}`; const k2 = `${Math.round(b.x*100)},${Math.round(b.y*100)}`;
+            pointsMap[k1] = (pointsMap[k1]||0)+1; pointsMap[k2] = (pointsMap[k2]||0)+1;
+          } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points)) {
+            for (let i = 0; i < ent.points.length - 1; i += 1) {
+              const a = ent.points[i], b = ent.points[i + 1];
+              const lenM = Math.hypot(b.x-a.x,b.y-a.y)/1000;
+              if (lenM <= 2.5) branchLen += lenM; else mainLen += lenM;
+              const k1 = `${Math.round(a.x*100)},${Math.round(a.y*100)}`; const k2 = `${Math.round(b.x*100)},${Math.round(b.y*100)}`;
+              pointsMap[k1] = (pointsMap[k1]||0)+1; pointsMap[k2] = (pointsMap[k2]||0)+1;
+            }
+          }
+        });
+        Object.values(pointsMap).forEach(d => { if (d >= 2) fittings++; });
+        return { heads, branchLen, mainLen, fittings, valves };
+      }
+    }
+
+    class SdfViewer extends Viewer {
+      constructor() { super('sdf', 'border-emerald-500'); }
+      load(e) {
+        const file = e.target.files[0]; if (!file) return;
+        this.status.classList.remove('hidden'); this.status.textContent = 'SDF 파싱 중...';
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            this.data = this.parseSDF(ev.target.result);
+            const pts = this.data.elements.map(e => ({ x: e.x, y: e.y }));
+            this.data.pipes.forEach(p => { pts.push(p.in, p.out, ...(p.waypoints || [])); });
+            const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+            this.setupView(Math.min(...xs, 0), Math.min(...ys, 0), Math.max(...xs, 100), Math.max(...ys, 100));
+            this.status.classList.add('hidden');
+            this.render();
+          } catch (err) {
+            console.error(err); alert('SDF 파싱 오류: 올바른 XML 형식이 아닙니다.'); this.status.classList.add('hidden');
+          }
+        };
+        reader.readAsText(file);
+      }
+      parseSDF(xmlStr) {
+        const doc = new DOMParser().parseFromString(xmlStr, 'text/xml');
+        const parsed = { nodes: {}, pipes: [], elements: [] };
+        doc.querySelectorAll('Node').forEach(n => {
+          const label = n.getAttribute('label'); const pos = n.querySelector('Position');
+          if (pos) { parsed.nodes[label] = { id: label, x: parseFloat(pos.getAttribute('x')), y: parseFloat(pos.getAttribute('y')), type: 'Node', layer: 'Nodes/Fittings', label }; parsed.elements.push(parsed.nodes[label]); }
+        });
+        let colorIdx = 0; const layerColorsMap = {};
+        doc.querySelectorAll('Pipe-set').forEach(set => {
+          let pipeLayer = 'Default Pipe'; const tName = set.querySelector('Pipe-type Name'); if (tName) pipeLayer = tName.textContent.trim();
+          if (!layerColorsMap[pipeLayer]) layerColorsMap[pipeLayer] = sdfLayerColors[colorIdx++ % sdfLayerColors.length];
+          set.querySelectorAll('Pipe').forEach(p => {
+            const inNode = p.getAttribute('input'), outNode = p.getAttribute('output');
+            if (parsed.nodes[inNode] && parsed.nodes[outNode]) {
+              const waypoints = []; p.querySelectorAll('Waypoints Position').forEach(wp => waypoints.push({ x: parseFloat(wp.getAttribute('x')), y: parseFloat(wp.getAttribute('y')) }));
+              const fittings = { elbow: 0, tee: 0, cross: 0, valve: 0 };
+              p.querySelectorAll('Fittings Fitting').forEach(f => {
+                const fType = (f.getAttribute('type') || '').toLowerCase(); const count = parseInt(f.getAttribute('count') || '1', 10);
+                if (fType.includes('valve') || fType.includes('gate') || fType.includes('check')) fittings.valve += count;
+                else if (fType.includes('elbow') || fType.includes('bend')) fittings.elbow += count;
+                else if (fType.includes('tee')) fittings.tee += count;
+                else if (fType.includes('cross')) fittings.cross += count;
+              });
+              parsed.pipes.push({ type: 'Pipe', layer: pipeLayer, label: p.getAttribute('label') || '', in: parsed.nodes[inNode], out: parsed.nodes[outNode], waypoints, fittings, color: layerColorsMap[pipeLayer], bore: parseFloat(p.getAttribute('bore') || 0), length: parseFloat(p.getAttribute('length') || 0), cFactor: parseFloat(p.getAttribute('roughness-or-c') || 0) });
+            }
+          });
+        });
+        doc.querySelectorAll('Nozzle').forEach(n => { const node = parsed.nodes[n.getAttribute('input')]; if (node) parsed.elements.push({ type: 'Nozzle', layer: 'Equipment', x: node.x, y: node.y, label: n.getAttribute('label') }); });
+        doc.querySelectorAll('Pump-fan, Elastomeric-valve').forEach(eq => { const node = parsed.nodes[eq.getAttribute('input')]; if (node) parsed.elements.push({ type: eq.tagName === 'Pump-fan' ? 'Pump' : 'Valve', layer: 'Equipment', x: node.x, y: node.y, label: eq.getAttribute('label') }); });
+        return parsed;
+      }
+      getPipeBBox(pipe) {
+        const pts = [pipe.in, ...(pipe.waypoints || []), pipe.out];
+        if (!pts.length) return null;
+        const xs = pts.map((p) => p.x);
+        const ys = pts.map((p) => p.y);
+        return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+      }
+      render() {
+        if (!this.baseRenderBegin()) return;
+        this.data.pipes.forEach(p => {
+          this.ctx.beginPath(); this.ctx.strokeStyle = p.color || '#fff'; this.ctx.lineWidth = 2 / this.zoom; this.ctx.moveTo(p.in.x, p.in.y); (p.waypoints || []).forEach(wp => this.ctx.lineTo(wp.x, wp.y)); this.ctx.lineTo(p.out.x, p.out.y); this.ctx.stroke();
+        });
+        this.data.elements.forEach(e => {
+          if (e.type === 'Node') { this.ctx.beginPath(); this.ctx.fillStyle = '#4b5563'; this.ctx.arc(e.x, e.y, 2 / this.zoom, 0, Math.PI * 2); this.ctx.fill(); }
+          else if (e.type === 'Nozzle') { this.ctx.beginPath(); this.ctx.fillStyle = '#ef4444'; this.ctx.arc(e.x, e.y, 4 / this.zoom, 0, Math.PI * 2); this.ctx.fill(); }
+          else if (e.type === 'Valve' || e.type === 'Pump') { const s = 8 / this.zoom; this.ctx.fillStyle = '#3b82f6'; this.ctx.fillRect(e.x - s/2, e.y - s/2, s, s); }
+        });
+        this.ctx.restore(); this.drawOverlay();
+      }
+      crop() {
+        if (!this.data || !this.start || !this.end) return;
+        const sel = this.getSelectionBBox();
+        if (!sel) return;
+        const pointBox = (x, y) => ({ minX: x, minY: y, maxX: x, maxY: y });
+        this.data.elements = this.data.elements.filter((e) => this.bboxOverlaps(pointBox(e.x, e.y), sel));
+        this.data.pipes = this.data.pipes.filter((p) => this.bboxOverlaps(this.getPipeBBox(p), sel));
+        const pts = [];
+        this.data.elements.forEach((e) => pts.push({ x: e.x, y: e.y }));
+        this.data.pipes.forEach((p) => pts.push(p.in, ...(p.waypoints || []), p.out));
+        this.resetFromPoints(pts);
+        this.clearSelection();
+        this.render();
+      }
+      analyzeSelection(bbox) {
+        let heads = 0, valves = 0, branchLen = 0, mainLen = 0, fittings = 0;
+        const isInside = (x,y) => x >= bbox.minX && x <= bbox.maxX && y >= bbox.minY && y <= bbox.maxY;
+        this.data.elements.forEach(e => { if (isInside(e.x,e.y)) { if (e.type === 'Nozzle') heads++; if (e.type === 'Valve' || e.type === 'Pump') valves++; } });
+        this.data.pipes.forEach(p => {
+          let inside = isInside(p.in.x,p.in.y) && isInside(p.out.x,p.out.y); (p.waypoints || []).forEach(wp => { if (!isInside(wp.x, wp.y)) inside = false; });
+          if (inside) { if (p.bore >= 0.05) mainLen += p.length; else branchLen += p.length; fittings += p.fittings.elbow + p.fittings.tee + p.fittings.cross; valves += p.fittings.valve; }
+        });
+        return { heads, branchLen, mainLen, fittings, valves };
+      }
+    }
+
+    const dxfApp = new DxfViewer();
+    const sdfApp = new SdfViewer();
+    const btnCompare = document.getElementById('btn-compare-analysis');
+    const analysisModal = document.getElementById('analysis-modal');
+    const btnCloseModal = document.getElementById('btn-close-modal');
+
+    function checkGlobalAnalysisReady() {
+      const dBox = dxfApp.getSelectionBBox(); const sBox = sdfApp.getSelectionBBox();
+      const tooltip = document.getElementById('compare-tooltip'); const textSpan = document.getElementById('btn-compare-text');
+      if (dBox && sBox) {
+        btnCompare.disabled = false; btnCompare.classList.remove('bg-gray-600','text-gray-400','border-gray-500','cursor-not-allowed'); btnCompare.classList.add('bg-indigo-600','hover:bg-indigo-500','text-white','border-indigo-400'); textSpan.textContent = '핵심 구성요소 대조 분석'; tooltip.classList.add('opacity-0');
+      } else {
+        btnCompare.disabled = true; btnCompare.classList.add('bg-gray-600','text-gray-400','border-gray-500','cursor-not-allowed'); btnCompare.classList.remove('bg-indigo-600','hover:bg-indigo-500','text-white','border-indigo-400'); textSpan.textContent = '핵심 구성요소 대조 분석 (준비 안됨)'; tooltip.classList.remove('opacity-0');
+      }
+    }
+    checkGlobalAnalysisReady();
+    btnCloseModal.addEventListener('click', () => analysisModal.classList.add('hidden'));
+    btnCompare.addEventListener('click', () => {
+      const dBox = dxfApp.getSelectionBBox(); const sBox = sdfApp.getSelectionBBox(); if (!dBox || !sBox) return;
+      const dxfRes = dxfApp.analyzeSelection(dBox); const sdfRes = sdfApp.analyzeSelection(sBox);
+      document.getElementById('res-dxf-heads').textContent = `${dxfRes.heads} 개`;
+      document.getElementById('res-dxf-main').textContent = `${dxfRes.mainLen.toFixed(1)} m`;
+      document.getElementById('res-dxf-branch').textContent = `${dxfRes.branchLen.toFixed(1)} m`;
+      document.getElementById('res-dxf-fittings').textContent = `${dxfRes.fittings} 개`;
+      document.getElementById('res-dxf-valves').textContent = `${dxfRes.valves} 개`;
+      document.getElementById('res-sdf-heads').textContent = `${sdfRes.heads} 개`;
+      document.getElementById('res-sdf-main').textContent = `${sdfRes.mainLen.toFixed(1)} m`;
+      document.getElementById('res-sdf-branch').textContent = `${sdfRes.branchLen.toFixed(1)} m`;
+      document.getElementById('res-sdf-fittings').textContent = `${sdfRes.fittings} 개`;
+      document.getElementById('res-sdf-valves').textContent = `${sdfRes.valves} 개`;
+      const calcRatio = (a, b) => (a > 0 || b > 0) ? Math.min(a, b) / Math.max(a, b) : 1;
+      const totalScore = (calcRatio(dxfRes.heads, sdfRes.heads) * 0.40 + calcRatio(dxfRes.mainLen, sdfRes.mainLen) * 0.15 + calcRatio(dxfRes.branchLen, sdfRes.branchLen) * 0.15 + calcRatio(dxfRes.fittings, sdfRes.fittings) * 0.20 + calcRatio(dxfRes.valves, sdfRes.valves) * 0.10) * 100;
+      const finalPercent = totalScore.toFixed(1);
+      document.getElementById('res-total-score').textContent = `${finalPercent}%`;
+      document.getElementById('res-progress-bar').style.width = `${finalPercent}%`;
+      const msgEl = document.getElementById('res-analysis-msg');
+      if (finalPercent > 90) { msgEl.innerHTML = '✨ <b>완벽 매칭!</b> 헤드 수량 및 배관/부속품 등의 세부 구성요소 내역이 완벽에 가깝게 일치합니다.'; msgEl.className = 'mt-4 text-[13px] font-medium text-emerald-400 leading-relaxed'; }
+      else if (finalPercent > 65) { msgEl.innerHTML = '⚠️ <b>부분적 일치</b>. 배관의 길이나 부속류(엘보/티) 개수에서 일부 편차가 발견되었습니다. 상세 내역을 점검하세요.'; msgEl.className = 'mt-4 text-[13px] font-medium text-yellow-400 leading-relaxed'; }
+      else { msgEl.innerHTML = '🚨 <b>불일치 심각</b>. 구성요소 산출 데이터의 일치율이 현저히 떨어집니다. 선택 구역의 축척이나 누락된 레이어가 없는지 확인하세요.'; msgEl.className = 'mt-4 text-[13px] font-medium text-red-400 leading-relaxed'; }
+      analysisModal.classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>

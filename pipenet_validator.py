@@ -12,6 +12,104 @@ from pypdf import PdfReader
 
 
 DOCX_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+NUM = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:E[-+]?\d+)?"
+
+
+def normalize_desc(raw: str) -> str:
+    s = raw.strip().upper().replace(" ", "")
+    mapping = {
+        "A/V": "AV",
+        "AV": "AV",
+        "P/V": "PV",
+        "PV": "PV",
+        "FX": "FX",
+        "FLEXIBLE": "FX",
+        "후렉": "FX",
+        "후렉시블": "FX",
+    }
+    return mapping.get(s, s)
+
+
+@dataclass(slots=True)
+class DesignInfo:
+    equation: str
+    pipe_materials: dict[int, str]
+    available_sizes: list[dict]
+
+
+@dataclass(slots=True)
+class PipeConfigRow:
+    label: int
+    input_node: str
+    output_node: str
+    nominal_bore_mm: float
+    length_m: float
+    elevation_m: float
+    c_factor: float
+    fitting_eq_m: float
+
+
+@dataclass(slots=True)
+class DesignedPipeRow:
+    label: int
+    input_node: str
+    output_node: str
+    pipe_type: int
+    flow_lpm: float
+    pipe_type_id: int
+    actual_bore_mm: float
+    nominal_size_mm: float
+
+
+@dataclass(slots=True)
+class HwCheckRow:
+    label: int
+    length_m: float
+    fitting_eq_length_m: float
+    special_eq_length_m: float
+    total_length_m: float
+    c_factor: float
+    actual_bore_mm: float
+    flow_lpm: float
+    reported_friction_loss: float
+    calculated_friction_loss: float
+    abs_diff: float
+    rel_diff: float
+    has_special_equipment: bool
+    hw_ok: bool
+
+
+@dataclass(slots=True)
+class NozzleConfigRow:
+    label: int
+    input_node: str
+    nozzle_type: str
+    k_factor: float
+    req_flow_lpm: float
+    min_press_kgcm2: float
+    max_press_kgcm2: float
+
+
+@dataclass(slots=True)
+class PipeFittingRow:
+    pipe_label: int
+    fitting_type_id: int
+    count: int
+    eq_length_m: float
+
+
+@dataclass(slots=True)
+class FlowAtInletRow:
+    inlet_node: str
+    pressure_kgcm2: float
+    flow_lpm: float
+
+
+@dataclass(slots=True)
+class PumpFlowRow:
+    label: int
+    pump_setting_head_m: float
+    flow_lpm: float
 
 
 @dataclass(slots=True)
@@ -70,6 +168,7 @@ class PipenetGuideValidator:
     VALVE_DROP_TOLERANCE = 0.05
     ECONOMY_V_LOW = 2.0
     FRICTION_SPIKE = 0.05
+    HW_DECLARED_TEXT = "USING THE HAZEN-WILLIAMS EQUATION"
 
     def __init__(self, report_path: Path, sdf_path: Path | None = None):
         self.report_path = Path(report_path)
@@ -77,13 +176,23 @@ class PipenetGuideValidator:
 
     def validate(self) -> dict:
         report_text = self._read_report_text(self.report_path)
+        design_info = self._parse_design_info(report_text)
+        pipe_config_rows = self._parse_pipe_config_rows(report_text)
+        designed_pipe_rows = self._parse_designed_pipe_rows(report_text)
+        nozzle_config_rows = self._parse_nozzle_config_rows(report_text)
+        pipe_fitting_rows = self._parse_pipe_fitting_rows(report_text)
+        inlet_rows = self._parse_flow_at_inlet_rows(report_text)
+        pump_rows = self._parse_pump_flow_rows(report_text)
         pipe_rows = self._parse_pipe_flows(report_text)
         nozzle_rows = self._parse_nozzle_flows(report_text)
         equipment_rows = self._parse_equipment(report_text)
         valve_rows = self._parse_elastomeric_valves(report_text)
-        pipe_lengths = self._parse_pipe_lengths(report_text)
+        pipe_lengths = {row.label: row.length_m for row in pipe_config_rows}
         report_titles = self._parse_report_titles(report_text)
         sdf_info = self._parse_sdf(self.sdf_path) if self.sdf_path else {}
+        hw_declared = self._check_hw_declared(report_text, design_info)
+        hw_checks = self._build_hw_check_rows(pipe_config_rows, designed_pipe_rows, equipment_rows, pipe_rows)
+        hw_fail_ids = {row.label for row in hw_checks if not row.hw_ok}
 
         pipe_fail_ids = self._find_pipe_fail_ids(pipe_rows)
         nozzle_fail_ids = self._find_nozzle_fail_ids(nozzle_rows)
@@ -97,6 +206,7 @@ class PipenetGuideValidator:
         )
 
         results: dict[str, list[str]] = {"PASS": [], "FAIL": [], "WARNING": []}
+        self._build_common_hw_messages(hw_declared, hw_checks, results)
         self._build_nozzle_messages(nozzle_rows, results)
         self._build_pipe_messages(pipe_rows, pipe_fail_ids, results)
         self._build_equipment_messages(equipment_rows, equipment_fail_ids, equipment_warn_ids, results)
@@ -109,13 +219,18 @@ class PipenetGuideValidator:
             results=results,
         )
 
-        stats = self._build_stats(pipe_rows, nozzle_rows, equipment_rows, valve_rows, report_titles, sdf_info)
+        stats = self._build_stats(pipe_rows, nozzle_rows, equipment_rows, valve_rows, report_titles, sdf_info, hw_declared, hw_checks)
         tables = self._build_tables(
             pipe_rows=pipe_rows,
+            pipe_lengths=pipe_lengths,
+            pipe_config_rows=pipe_config_rows,
+            designed_pipe_rows=designed_pipe_rows,
+            hw_checks=hw_checks,
             nozzle_rows=nozzle_rows,
             equipment_rows=equipment_rows,
             valve_rows=valve_rows,
             pipe_fail_ids=pipe_fail_ids,
+            hw_fail_ids=hw_fail_ids,
             nozzle_fail_ids=nozzle_fail_ids,
             equipment_fail_ids=equipment_fail_ids,
             equipment_warn_ids=equipment_warn_ids,
@@ -129,6 +244,11 @@ class PipenetGuideValidator:
             "ok": True,
             "report_name": self.report_path.name,
             "sdf_name": self.sdf_path.name if self.sdf_path else None,
+            "design_info": {
+                "equation": design_info.equation,
+                "pipe_materials": design_info.pipe_materials,
+                "available_sizes": design_info.available_sizes,
+            },
             "summary": {
                 "pass": len(results["PASS"]),
                 "fail": len(results["FAIL"]),
@@ -142,6 +262,16 @@ class PipenetGuideValidator:
             "stats": stats,
             "tables": tables,
             "report": self._build_report(results, insights, stats),
+            "parsed_context": {
+                "pipe_config_count": len(pipe_config_rows),
+                "designed_pipe_count": len(designed_pipe_rows),
+                "nozzle_config_count": len(nozzle_config_rows),
+                "pipe_fitting_count": len(pipe_fitting_rows),
+                "flow_at_inlet_count": len(inlet_rows),
+                "pump_flow_count": len(pump_rows),
+                "flow_in_pipes_count": len(pipe_rows),
+                "special_equipment_count": len(equipment_rows),
+            },
         }
 
     def _read_report_text(self, path: Path) -> str:
@@ -168,13 +298,162 @@ class PipenetGuideValidator:
         for match in pattern.finditer(text):
             yield match.group(1)
 
+    def _section_text(self, text: str, title: str) -> str:
+        return "\n".join(self._extract_sections(text, title))
+
+    def _section_lines(self, text: str, title: str) -> list[str]:
+        return [line.strip() for line in self._section_text(text, title).splitlines() if line.strip()]
+
+    def _parse_design_info(self, text: str) -> DesignInfo:
+        equation_match = re.search(r"(Using the Hazen-Williams Equation)", text, re.I)
+        equation = equation_match.group(1).strip() if equation_match else ""
+
+        pipe_materials: dict[int, str] = {}
+        material_pattern = re.compile(rf"^\s*(\d+)\s+([A-Za-z0-9_.\-/]+)\s*$")
+        for line in self._section_lines(text, "PIPE TYPES"):
+            match = material_pattern.match(line)
+            if match:
+                pipe_materials[int(match.group(1))] = match.group(2)
+
+        available_sizes: list[dict] = []
+        size_pattern = re.compile(rf"^\s*(\d+)\s+({NUM})\s+({NUM})(?:\s+({NUM}))?.*$")
+        for line in self._section_lines(text, "AVAILABLE SIZES"):
+            match = size_pattern.match(line)
+            if not match:
+                continue
+            available_sizes.append(
+                {
+                    "pipe_type_id": int(match.group(1)),
+                    "nominal_size_mm": float(match.group(2)),
+                    "actual_bore_mm": float(match.group(3)),
+                    "wall_thickness_mm": float(match.group(4)) if match.group(4) else None,
+                }
+            )
+
+        return DesignInfo(equation=equation, pipe_materials=pipe_materials, available_sizes=available_sizes)
+
+    def _parse_pipe_config_rows(self, text: str) -> list[PipeConfigRow]:
+        rows: list[PipeConfigRow] = []
+        pattern = re.compile(
+            rf"^(\d+)\s+(\d+)\s+(\d+)\s+({NUM})\s+({NUM})\s+({NUM})\s+({NUM})\s+({NUM})$"
+        )
+        for line in self._section_lines(text, "PIPE CONFIGURATION"):
+            match = pattern.match(line)
+            if not match:
+                continue
+            rows.append(
+                PipeConfigRow(
+                    label=int(match.group(1)),
+                    input_node=match.group(2),
+                    output_node=match.group(3),
+                    nominal_bore_mm=float(match.group(4)),
+                    length_m=float(match.group(5)),
+                    elevation_m=float(match.group(6)),
+                    c_factor=float(match.group(7)),
+                    fitting_eq_m=float(match.group(8)),
+                )
+            )
+        return rows
+
+    def _parse_designed_pipe_rows(self, text: str) -> list[DesignedPipeRow]:
+        rows: list[DesignedPipeRow] = []
+        pattern = re.compile(rf"^(\d+)\s+(\d+)\s+(\d+)\s+({NUM})\s+(\d+)\s+({NUM})\s+({NUM})(?:\s+\S+)?$")
+        section = "DESIGNED DIAMETERS & FLOWRATES"
+        for line in self._section_lines(text, section):
+            match = pattern.match(line)
+            if not match:
+                continue
+            rows.append(
+                DesignedPipeRow(
+                    label=int(match.group(1)),
+                    input_node=match.group(2),
+                    output_node=match.group(3),
+                    flow_lpm=float(match.group(4)),
+                    pipe_type=int(match.group(5)),
+                    pipe_type_id=int(match.group(5)),
+                    actual_bore_mm=float(match.group(6)),
+                    nominal_size_mm=float(match.group(7)),
+                )
+            )
+        return rows
+
+    def _parse_nozzle_config_rows(self, text: str) -> list[NozzleConfigRow]:
+        rows: list[NozzleConfigRow] = []
+        pattern = re.compile(
+            rf"^(\d+)\s+(\d+)\s+([A-Za-z0-9_.\-/]+)\s+({NUM})\s+({NUM})\s+({NUM})\s+({NUM})$"
+        )
+        for line in self._section_lines(text, "NOZZLE CONFIGURATION"):
+            match = pattern.match(line)
+            if not match:
+                continue
+            rows.append(
+                NozzleConfigRow(
+                    label=int(match.group(1)),
+                    input_node=match.group(2),
+                    nozzle_type=match.group(3),
+                    k_factor=float(match.group(4)),
+                    req_flow_lpm=float(match.group(5)),
+                    min_press_kgcm2=float(match.group(6)),
+                    max_press_kgcm2=float(match.group(7)),
+                )
+            )
+        return rows
+
+    def _parse_pipe_fitting_rows(self, text: str) -> list[PipeFittingRow]:
+        rows: list[PipeFittingRow] = []
+        pattern = re.compile(rf"^(\d+)\s+(\d+)\s+(\d+)\s+({NUM})$")
+        for line in self._section_lines(text, "PIPE FITTINGS"):
+            match = pattern.match(line)
+            if not match:
+                continue
+            rows.append(
+                PipeFittingRow(
+                    pipe_label=int(match.group(1)),
+                    fitting_type_id=int(match.group(2)),
+                    count=int(match.group(3)),
+                    eq_length_m=float(match.group(4)),
+                )
+            )
+        return rows
+
+    def _parse_flow_at_inlet_rows(self, text: str) -> list[FlowAtInletRow]:
+        rows: list[FlowAtInletRow] = []
+        pattern = re.compile(rf"^(\d+)\s+({NUM})\s+({NUM})$")
+        for line in self._section_lines(text, "FLOW AT INLET"):
+            match = pattern.match(line)
+            if not match:
+                continue
+            rows.append(
+                FlowAtInletRow(
+                    inlet_node=match.group(1),
+                    pressure_kgcm2=float(match.group(2)),
+                    flow_lpm=float(match.group(3)),
+                )
+            )
+        return rows
+
+    def _parse_pump_flow_rows(self, text: str) -> list[PumpFlowRow]:
+        rows: list[PumpFlowRow] = []
+        pattern = re.compile(rf"^(\d+)\s+({NUM})\s+({NUM})$")
+        for line in self._section_lines(text, "FLOW THROUGH PUMPS"):
+            match = pattern.match(line)
+            if not match:
+                continue
+            rows.append(
+                PumpFlowRow(
+                    label=int(match.group(1)),
+                    pump_setting_head_m=float(match.group(2)),
+                    flow_lpm=float(match.group(3)),
+                )
+            )
+        return rows
+
     def _parse_pipe_flows(self, text: str) -> list[PipeFlowRow]:
         rows: list[PipeFlowRow] = []
-        block_text = "\n".join(self._extract_sections(text, "FLOW IN PIPES"))
         pattern = re.compile(
-            r"^(\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)\s+([-\d.E+]+)\s+([-\d.E+]+)\s+([-\d.E+]+)\s+([-\d.E+]+)\s+([\d.]+)\s+([\d.]+)\s*(E)?$"
+            rf"^(\d+)\s+(\d+)\s+(\d+)\s+({NUM})\s+({NUM})\s+({NUM})\s+({NUM})\s+({NUM})\s+({NUM})\s+({NUM})\s*(E)?$"
         )
-        for line in block_text.splitlines():
+        for line in self._section_lines(text, "FLOW IN PIPES"):
             match = pattern.match(line.strip())
             if not match:
                 continue
@@ -196,25 +475,12 @@ class PipenetGuideValidator:
         return rows
 
     def _parse_pipe_lengths(self, text: str) -> dict[int, float]:
-        lengths: dict[int, float] = {}
-        block_text = "\n".join(self._extract_sections(text, "PIPE CONFIGURATION"))
-        pattern = re.compile(
-            r"^(\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)\s+([\d.]+)\s+([-\d.]+)\s+([\d.]+)\s+([\d.]+)$"
-        )
-        for line in block_text.splitlines():
-            match = pattern.match(line.strip())
-            if not match:
-                continue
-            label = int(match.group(1))
-            length_m = float(match.group(5))
-            lengths[label] = length_m
-        return lengths
+        return {row.label: row.length_m for row in self._parse_pipe_config_rows(text)}
 
     def _parse_nozzle_flows(self, text: str) -> list[NozzleFlowRow]:
         rows: list[NozzleFlowRow] = []
-        block_text = "\n".join(self._extract_sections(text, "FLOW THROUGH NOZZLES"))
-        pattern = re.compile(r"^(\d+)\s+(\d+)\s+([-\d.E+]+)\s+([\d.]+)\s+([\d.]+)\s+([-\d.]+)")
-        for line in block_text.splitlines():
+        pattern = re.compile(rf"^(\d+)\s+(\d+)\s+({NUM})\s+({NUM})\s+({NUM})\s+({NUM})")
+        for line in self._section_lines(text, "FLOW THROUGH NOZZLES"):
             match = pattern.match(line.strip())
             if not match:
                 continue
@@ -232,9 +498,8 @@ class PipenetGuideValidator:
 
     def _parse_equipment(self, text: str) -> list[EquipmentRow]:
         rows: list[EquipmentRow] = []
-        block_text = "\n".join(self._extract_sections(text, "SPECIAL EQUIPMENT"))
-        pattern = re.compile(r"^(\d+)\s+(\d+)\s+([-\d.E+]+)\s+([A-Za-z/]+)$")
-        for line in block_text.splitlines():
+        pattern = re.compile(rf"^(\d+)\s+(\d+)\s+({NUM})\s+(.+?)$")
+        for line in self._section_lines(text, "SPECIAL EQUIPMENT"):
             match = pattern.match(line.strip())
             if not match:
                 continue
@@ -243,16 +508,15 @@ class PipenetGuideValidator:
                     label=int(match.group(1)),
                     pipe_label=int(match.group(2)),
                     equivalent_length_m=float(match.group(3)),
-                    description=match.group(4),
+                    description=normalize_desc(match.group(4)),
                 )
             )
         return rows
 
     def _parse_elastomeric_valves(self, text: str) -> list[ElastomericValveRow]:
         rows: list[ElastomericValveRow] = []
-        block_text = "\n".join(self._extract_sections(text, "FLOW THROUGH ELASTOMERIC VALVES"))
-        pattern = re.compile(r"^(\d+)\s+([-\d.E+]+)\s+([-\d.E+]+)\s+([-\d.E+]+)\s+([-\d.E+]+)")
-        for line in block_text.splitlines():
+        pattern = re.compile(rf"^(\d+)\s+({NUM})\s+({NUM})\s+({NUM})\s+({NUM})")
+        for line in self._section_lines(text, "FLOW THROUGH ELASTOMERIC VALVES"):
             match = pattern.match(line.strip())
             if not match:
                 continue
@@ -266,6 +530,74 @@ class PipenetGuideValidator:
                 )
             )
         return rows
+
+    def _check_hw_declared(self, text: str, design_info: DesignInfo) -> bool:
+        equation_text = (design_info.equation or "").strip().upper()
+        if self.HW_DECLARED_TEXT in equation_text:
+            return True
+        return self.HW_DECLARED_TEXT in text.upper()
+
+    def _build_hw_check_rows(
+        self,
+        pipe_config_rows: list[PipeConfigRow],
+        designed_pipe_rows: list[DesignedPipeRow],
+        equipment_rows: list[EquipmentRow],
+        pipe_rows: list[PipeFlowRow],
+    ) -> list[HwCheckRow]:
+        config_map = {row.label: row for row in pipe_config_rows}
+        designed_map = {row.label: row for row in designed_pipe_rows}
+        special_map: dict[int, float] = {}
+        for item in equipment_rows:
+            special_map[item.pipe_label] = special_map.get(item.pipe_label, 0.0) + item.equivalent_length_m
+
+        checks: list[HwCheckRow] = []
+        for flow_row in pipe_rows:
+            config = config_map.get(flow_row.label)
+            designed = designed_map.get(flow_row.label)
+            if not config or not designed:
+                continue
+            special_eq_length_m = special_map.get(flow_row.label, 0.0)
+            total_length_m = config.length_m + config.fitting_eq_m + special_eq_length_m
+            calculated_friction_loss = self._calc_hw_friction_loss_kgcm2(
+                q_lpm=designed.flow_lpm,
+                total_length_m=total_length_m,
+                c_factor=config.c_factor,
+                actual_bore_mm=designed.actual_bore_mm,
+            )
+            reported_friction_loss = flow_row.friction_loss
+            abs_diff = abs(calculated_friction_loss - reported_friction_loss)
+            rel_diff = abs_diff / max(reported_friction_loss, 1e-9)
+            tolerance = max(0.005, reported_friction_loss * 0.005)
+            checks.append(
+                HwCheckRow(
+                    label=flow_row.label,
+                    length_m=config.length_m,
+                    fitting_eq_length_m=config.fitting_eq_m,
+                    special_eq_length_m=special_eq_length_m,
+                    total_length_m=total_length_m,
+                    c_factor=config.c_factor,
+                    actual_bore_mm=designed.actual_bore_mm,
+                    flow_lpm=designed.flow_lpm,
+                    reported_friction_loss=reported_friction_loss,
+                    calculated_friction_loss=calculated_friction_loss,
+                    abs_diff=abs_diff,
+                    rel_diff=rel_diff,
+                    has_special_equipment=flow_row.has_special_equipment,
+                    hw_ok=abs_diff <= tolerance,
+                )
+            )
+        return checks
+
+    def _calc_hw_friction_loss_kgcm2(
+        self,
+        *,
+        q_lpm: float,
+        total_length_m: float,
+        c_factor: float,
+        actual_bore_mm: float,
+    ) -> float:
+        dp_mpa = 6.174e4 * (q_lpm ** 1.85) * total_length_m / ((c_factor ** 1.85) * (actual_bore_mm ** 4.87))
+        return dp_mpa / 0.1
 
     def _parse_report_titles(self, text: str) -> dict:
         main_match = re.search(r"Results for\s*:\s*(.+)", text)
@@ -296,6 +628,27 @@ class PipenetGuideValidator:
                 fail_ids.add(row.label)
         return fail_ids
 
+    def _build_common_hw_messages(self, hw_declared: bool, hw_checks: list[HwCheckRow], results: dict[str, list[str]]) -> None:
+        if hw_declared:
+            results["PASS"].append("공통-하겐윌리엄 선언 확인: 결과서에 Using the Hazen-Williams Equation 문구가 있습니다.")
+        else:
+            results["FAIL"].append("공통-하겐윌리엄 선언 확인 실패: 결과서에 Using the Hazen-Williams Equation 문구가 없습니다.")
+
+        if not hw_checks:
+            results["FAIL"].append("공통-마찰손실 재계산 실패: HW 재계산에 필요한 배관 데이터가 부족합니다.")
+            return
+
+        failed = [row for row in hw_checks if not row.hw_ok]
+        if failed:
+            labels = ", ".join(f"{row.label}번" for row in failed[:8])
+            results["FAIL"].append(
+                f"공통-마찰손실 재계산 부적합: {len(failed)}개 배관이 허용오차를 벗어났습니다. 주요 배관: {labels}"
+            )
+        else:
+            results["PASS"].append(
+                f"공통-마찰손실 재계산 적합: {len(hw_checks)}/{len(hw_checks)}개 배관이 허용오차 이내입니다."
+            )
+
     def _find_nozzle_fail_ids(self, rows: list[NozzleFlowRow]) -> set[int]:
         fail_ids: set[int] = set()
         for row in rows:
@@ -309,14 +662,14 @@ class PipenetGuideValidator:
         fail_ids: set[int] = set()
         warn_ids: set[int] = set()
         for row in rows:
-            desc = row.description.upper()
+            desc = normalize_desc(row.description)
             if desc == "FX" and not (self.FX_EQ_MIN <= row.equivalent_length_m <= self.FX_EQ_MAX):
                 fail_ids.add(row.label)
-            if desc in {"A/V", "AV"} and abs(row.equivalent_length_m - self.AV_EQ_REF) > 0.1:
+            if desc == "AV" and abs(row.equivalent_length_m - self.AV_EQ_REF) > 0.1:
                 fail_ids.add(row.label)
-            if desc in {"P/V", "PV"} and abs(row.equivalent_length_m - self.PV_EQ_REF) > 0.1:
+            if desc == "PV" and abs(row.equivalent_length_m - self.PV_EQ_REF) > 0.1:
                 fail_ids.add(row.label)
-        if not any(row.description.upper() in {"P/V", "PV"} for row in rows):
+        if not any(normalize_desc(row.description) == "PV" for row in rows):
             warn_ids.add(-1)
         return fail_ids, warn_ids
 
@@ -374,8 +727,8 @@ class PipenetGuideValidator:
             economy_guide.append("가이드: 법적 압력/최소유량을 유지하는 범위에서 구경 축소 가능성을 검토하세요.")
 
         for item in equipment_rows:
-            desc = item.description.upper()
-            if desc not in {"A/V", "AV", "P/V", "PV", "VALVE"}:
+            desc = normalize_desc(item.description)
+            if desc not in {"AV", "PV", "VALVE"}:
                 continue
             linked_pipe = pipe_map.get(item.pipe_label)
             if linked_pipe and linked_pipe.nominal_bore_mm > 100.0:
@@ -451,11 +804,11 @@ class PipenetGuideValidator:
         if not rows:
             results["WARNING"].append("특수설비 데이터를 찾지 못했습니다. SPECIAL EQUIPMENT 섹션을 확인해 주세요.")
             return
-        fx_rows = [item for item in rows if item.description.upper() == "FX"]
-        av_rows = [item for item in rows if item.description.upper() in {"A/V", "AV"}]
-        pv_rows = [item for item in rows if item.description.upper() in {"P/V", "PV"}]
+        fx_rows = [item for item in rows if normalize_desc(item.description) == "FX"]
+        av_rows = [item for item in rows if normalize_desc(item.description) == "AV"]
+        pv_rows = [item for item in rows if normalize_desc(item.description) == "PV"]
 
-        if any(item.label in fail_ids and item.description.upper() == "FX" for item in rows):
+        if any(item.label in fail_ids and normalize_desc(item.description) == "FX" for item in rows):
             bad_values = sorted({item.equivalent_length_m for item in fx_rows if item.label in fail_ids})
             results["FAIL"].append(
                 f"FX 등가길이 부적합: 기준 {self.FX_EQ_MIN:.1f}~{self.FX_EQ_MAX:.1f} m, 현재 {', '.join(f'{v:.2f}' for v in bad_values)} m"
@@ -463,14 +816,14 @@ class PipenetGuideValidator:
         elif fx_rows:
             results["PASS"].append(f"FX 등가길이가 적합합니다. 총 {len(fx_rows)}개 항목을 확인했습니다.")
 
-        if any(item.label in fail_ids and item.description.upper() in {"A/V", "AV"} for item in rows):
-            bad_av = next(item for item in rows if item.label in fail_ids and item.description.upper() in {"A/V", "AV"})
+        if any(item.label in fail_ids and normalize_desc(item.description) == "AV" for item in rows):
+            bad_av = next(item for item in rows if item.label in fail_ids and normalize_desc(item.description) == "AV")
             results["FAIL"].append(f"A/V 등가길이 부적합: 기준 {self.AV_EQ_REF:.1f} m, 현재 {bad_av.equivalent_length_m:.2f} m")
         elif av_rows:
             results["PASS"].append("A/V 등가길이가 적합합니다.")
 
-        if any(item.label in fail_ids and item.description.upper() in {"P/V", "PV"} for item in rows):
-            bad_pv_values = sorted({item.equivalent_length_m for item in rows if item.label in fail_ids and item.description.upper() in {"P/V", "PV"}})
+        if any(item.label in fail_ids and normalize_desc(item.description) == "PV" for item in rows):
+            bad_pv_values = sorted({item.equivalent_length_m for item in rows if item.label in fail_ids and normalize_desc(item.description) == "PV"})
             results["FAIL"].append(f"P/V 등가길이 부적합: 기준 {self.PV_EQ_REF:.1f} m, 현재 {', '.join(f'{v:.2f}' for v in bad_pv_values)} m")
         elif pv_rows:
             results["PASS"].append("P/V 등가길이가 적합합니다.")
@@ -528,8 +881,12 @@ class PipenetGuideValidator:
         valves: list[ElastomericValveRow],
         report_titles: dict,
         sdf_info: dict,
+        hw_declared: bool,
+        hw_checks: list[HwCheckRow],
     ) -> dict:
         min_flow = min((item.actual_flow_lpm for item in nozzles), default=None)
+        hw_failed = [row for row in hw_checks if not row.hw_ok]
+        worst_row = max(hw_checks, key=lambda row: row.abs_diff, default=None)
         return {
             **report_titles,
             "pipe_count_from_report": len(pipes),
@@ -546,16 +903,27 @@ class PipenetGuideValidator:
                 (item.velocity_mps for item in pipes if item.nominal_bore_mm > self.BRANCH_PIPE_LIMIT_MM),
                 default=None,
             ),
+            "hw_declared": hw_declared,
+            "hw_checked_pipe_count": len(hw_checks),
+            "hw_failed_pipe_count": len(hw_failed),
+            "hw_max_abs_diff": max((row.abs_diff for row in hw_checks), default=None),
+            "hw_max_rel_diff": max((row.rel_diff for row in hw_checks), default=None),
+            "hw_worst_pipe_label": worst_row.label if worst_row else None,
             **sdf_info,
         }
 
     def _build_tables(
         self,
         pipe_rows: list[PipeFlowRow],
+        pipe_lengths: dict[int, float],
+        pipe_config_rows: list[PipeConfigRow],
+        designed_pipe_rows: list[DesignedPipeRow],
+        hw_checks: list[HwCheckRow],
         nozzle_rows: list[NozzleFlowRow],
         equipment_rows: list[EquipmentRow],
         valve_rows: list[ElastomericValveRow],
         pipe_fail_ids: set[int],
+        hw_fail_ids: set[int],
         nozzle_fail_ids: set[int],
         equipment_fail_ids: set[int],
         equipment_warn_ids: set[int],
@@ -564,6 +932,9 @@ class PipenetGuideValidator:
         economy_pipe_ids: set[int],
         economy_equipment_ids: set[int],
     ) -> dict:
+        pipe_config_map = {row.label: row for row in pipe_config_rows}
+        designed_map = {row.label: row for row in designed_pipe_rows}
+        hw_map = {row.label: row for row in hw_checks}
         return {
             "nozzles": [
                 {
@@ -573,6 +944,9 @@ class PipenetGuideValidator:
                     "required_flow_lpm": item.required_flow_lpm,
                     "actual_flow_lpm": item.actual_flow_lpm,
                     "deviation_percent": item.deviation_percent,
+                    "min_flow_limit_lpm": self.MIN_HEAD_FLOW,
+                    "min_pressure_limit_kgf_cm2": self.MIN_HEAD_PRESSURE,
+                    "max_pressure_limit_kgf_cm2": self.MAX_HEAD_PRESSURE,
                     "highlight": item.label in nozzle_fail_ids,
                 }
                 for item in nozzle_rows
@@ -583,14 +957,30 @@ class PipenetGuideValidator:
                     "input_node": item.input_node,
                     "output_node": item.output_node,
                     "nominal_bore_mm": item.nominal_bore_mm,
+                    "c_factor": pipe_config_map[item.label].c_factor if item.label in pipe_config_map else None,
+                    "base_length_m": pipe_config_map[item.label].length_m if item.label in pipe_config_map else pipe_lengths.get(item.label),
+                    "fitting_eq_length_m": pipe_config_map[item.label].fitting_eq_m if item.label in pipe_config_map else None,
+                    "special_eq_length_m": hw_map[item.label].special_eq_length_m if item.label in hw_map else 0.0,
+                    "total_length_m": hw_map[item.label].total_length_m if item.label in hw_map else None,
+                    "actual_bore_mm": designed_map[item.label].actual_bore_mm if item.label in designed_map else None,
                     "inlet_pressure": item.inlet_pressure,
                     "outlet_pressure": item.outlet_pressure,
                     "pressure_drop": item.pressure_drop,
                     "friction_loss": item.friction_loss,
+                    "hw_expected_friction_loss": hw_map[item.label].calculated_friction_loss if item.label in hw_map else None,
+                    "hw_abs_diff": hw_map[item.label].abs_diff if item.label in hw_map else None,
+                    "hw_rel_diff": hw_map[item.label].rel_diff if item.label in hw_map else None,
+                    "hw_formula_ok": hw_map[item.label].hw_ok if item.label in hw_map else None,
+                    "hw_fail": item.label in hw_fail_ids,
                     "flow_lpm": item.flow_lpm,
                     "velocity_mps": item.velocity_mps,
+                    "pipe_length_m": pipe_lengths.get(item.label),
+                    "velocity_limit_mps": self.BRANCH_PIPE_V_LIMIT if item.nominal_bore_mm <= self.BRANCH_PIPE_LIMIT_MM else self.MAIN_PIPE_V_LIMIT,
+                    "pipe_type": "branch" if item.nominal_bore_mm <= self.BRANCH_PIPE_LIMIT_MM else "main",
+                    "friction_spike_limit": self.FRICTION_SPIKE,
+                    "economy_velocity_limit": self.ECONOMY_V_LOW,
                     "special_equipment": item.has_special_equipment,
-                    "highlight": item.label in pipe_fail_ids,
+                    "highlight": item.label in pipe_fail_ids or item.label in hw_fail_ids,
                     "engineering_flag": item.label in engineering_pipe_ids,
                     "economy_flag": item.label in economy_pipe_ids,
                 }
@@ -602,8 +992,13 @@ class PipenetGuideValidator:
                     "pipe_label": item.pipe_label,
                     "equivalent_length_m": item.equivalent_length_m,
                     "description": item.description,
+                    "fx_eq_min_m": self.FX_EQ_MIN,
+                    "fx_eq_max_m": self.FX_EQ_MAX,
+                    "av_eq_ref_m": self.AV_EQ_REF,
+                    "pv_eq_ref_m": self.PV_EQ_REF,
+                    "eq_tolerance_m": 0.1,
                     "highlight": item.label in equipment_fail_ids,
-                    "warn": -1 in equipment_warn_ids and item.description.upper() in {"P/V", "PV"},
+                    "warn": -1 in equipment_warn_ids and normalize_desc(item.description) == "PV",
                     "economy_flag": item.label in economy_equipment_ids,
                 }
                 for item in equipment_rows
@@ -615,6 +1010,8 @@ class PipenetGuideValidator:
                     "outlet_pressure_kgf_cm2": item.outlet_pressure_kgf_cm2,
                     "pressure_drop_kgf_cm2": item.pressure_drop_kgf_cm2,
                     "flow_lpm": item.flow_lpm,
+                    "calculated_pressure_drop_kgf_cm2": item.inlet_pressure_kgf_cm2 - item.outlet_pressure_kgf_cm2,
+                    "pressure_drop_tolerance_kgf_cm2": self.VALVE_DROP_TOLERANCE,
                     "highlight": item.label in valve_fail_ids,
                 }
                 for item in valve_rows

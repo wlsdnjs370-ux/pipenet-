@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import base64
+import json
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 import math
 import xml.etree.ElementTree as ET
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, make_response, render_template, request, send_file
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
@@ -18,8 +23,13 @@ from pipenet_validator import PipenetGuideValidator
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+UPDATE_HISTORY_PATH = BASE_DIR / "data" / "update_history.json"
 
 app = Flask(__name__)
+
+# Keep chart text strictly ASCII-safe to prevent tofu/square glyphs on some systems.
+plt.rcParams["font.family"] = ["DejaVu Sans", "Arial", "sans-serif"]
+plt.rcParams["axes.unicode_minus"] = False
 
 
 EXPORT_SCHEMA = {
@@ -78,8 +88,14 @@ def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) ->
             raise ValueError(f"`{field_name}` 파일이 필요합니다.")
         return None
 
-    filename = secure_filename(uploaded.filename)
-    suffix = Path(filename).suffix.lower()
+    original_name = Path(uploaded.filename).name
+    original_suffix = Path(original_name).suffix.lower()
+    filename = secure_filename(original_name)
+    if not filename:
+        filename = f"{field_name}_{int(datetime.now().timestamp())}{original_suffix}"
+    elif Path(filename).suffix == "" and original_suffix:
+        filename = f"{filename}{original_suffix}"
+    suffix = original_suffix or Path(filename).suffix.lower()
     if suffix not in allowed_suffixes:
         allowed = ", ".join(sorted(allowed_suffixes))
         raise ValueError(f"`{field_name}` 파일 형식이 올바르지 않습니다. 허용 형식: {allowed}")
@@ -87,6 +103,109 @@ def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) ->
     saved_path = UPLOAD_DIR / filename
     uploaded.save(saved_path)
     return saved_path
+
+
+def _to_float(v, default: float = 0.0) -> float:
+    try:
+        if v is None or v == "":
+            return default
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _fig_to_data_url(fig) -> str:
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return "data:image/png;base64," + base64.b64encode(buf.read()).decode("ascii")
+
+
+def _load_update_history() -> dict:
+    if not UPDATE_HISTORY_PATH.exists():
+        return {
+            "title": "업데이트 기록",
+            "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "items": [],
+        }
+    with UPDATE_HISTORY_PATH.open("r", encoding="utf-8") as fp:
+        payload = json.load(fp)
+    payload.setdefault("title", "업데이트 기록")
+    payload.setdefault("updated_at", datetime.now().strftime("%Y-%m-%d %H:%M"))
+    payload.setdefault("items", [])
+    payload["items"] = sorted(
+        payload["items"],
+        key=lambda item: str(item.get("timestamp") or item.get("date") or ""),
+        reverse=True,
+    )
+    return payload
+
+
+def _build_visualizations(validation: dict, report_path: Path, sdf_path: Path | None) -> list[dict]:
+    tables = validation.get("tables") or {}
+    visuals: list[dict] = []
+
+    # 1) Pipe velocity vs limit
+    pipe_rows = tables.get("pipes") or []
+    pipe_labels: list[str] = []
+    velocities: list[float] = []
+    limits: list[float] = []
+    for r in pipe_rows:
+        label = str(r.get("label", ""))
+        bore = _to_float(r.get("nominal_bore_mm"), 0.0)
+        vel = _to_float(r.get("velocity_mps"), 0.0)
+        pipe_labels.append(label)
+        velocities.append(vel)
+        limits.append(6.0 if bore <= 50.0 else 10.0)
+    if pipe_labels:
+        fig, ax = plt.subplots(figsize=(10, 3.8))
+        x = list(range(len(pipe_labels)))
+        ax.plot(x, velocities, marker="o", linewidth=1.6, color="#1d4ed8", label="Velocity")
+        ax.plot(x, limits, linestyle="--", linewidth=1.2, color="#dc2626", label="Limit")
+        ax.set_title("Pipe Velocity vs Limit")
+        ax.set_xlabel("Pipe Label")
+        ax.set_ylabel("m/s")
+        if len(pipe_labels) <= 30:
+            ax.set_xticks(x, pipe_labels, rotation=0)
+        else:
+            step = max(1, len(pipe_labels) // 20)
+            ticks = x[::step]
+            ax.set_xticks(ticks, [pipe_labels[i] for i in ticks], rotation=0)
+        ax.grid(alpha=0.25)
+        ax.legend()
+        visuals.append(
+            {
+                "title": "Pipe Velocity Check",
+                "description": "Compares each pipe velocity with size-based limits (<=50A: 6 m/s, >50A: 10 m/s).",
+                "image_data_url": _fig_to_data_url(fig),
+            }
+        )
+
+    # 2) Nozzle pressure-flow scatter
+    noz_rows = tables.get("nozzles") or []
+    pressures = [_to_float(r.get("inlet_pressure_kgf_cm2"), 0.0) for r in noz_rows]
+    flows = [_to_float(r.get("actual_flow_lpm"), 0.0) for r in noz_rows]
+    if pressures and flows:
+        fig, ax = plt.subplots(figsize=(6.2, 4.2))
+        colors = ["#dc2626" if _to_float(r.get("actual_flow_lpm"), 0.0) < 80.0 else "#16a34a" for r in noz_rows]
+        ax.scatter(pressures, flows, c=colors, alpha=0.85)
+        ax.axhline(80.0, color="#dc2626", linestyle="--", linewidth=1.2, label="80 L/min")
+        ax.axvline(1.0, color="#f59e0b", linestyle="--", linewidth=1.2, label="1.0 kg/cm^2G")
+        ax.set_title("Nozzle Pressure-Flow Distribution")
+        ax.set_xlabel("Inlet Pressure (kg/cm^2G)")
+        ax.set_ylabel("Actual Flow (L/min)")
+        ax.grid(alpha=0.25)
+        ax.legend(loc="best")
+        visuals.append(
+            {
+                "title": "Nozzle Pressure-Flow",
+                "description": "Green points pass the flow threshold, red points are below the flow threshold.",
+                "image_data_url": _fig_to_data_url(fig),
+            }
+        )
+
+    return visuals
 
 
 def _point_on_polyline(path: list[tuple[float, float]], ratio: float) -> tuple[float, float] | None:
@@ -243,9 +362,66 @@ def _build_sdf_graph(sdf_path: Path | None, tables: dict | None) -> dict:
     }
 
 
+def _sdf_counts_only(sdf_path: Path | None) -> dict:
+    if sdf_path is None or not sdf_path.exists():
+        return {}
+    root = ET.parse(sdf_path).getroot()
+    return {
+        "pipes": len(root.findall(".//Pipe")),
+        "nozzles": len(root.findall(".//Nozzle")),
+        "equipment": len(root.findall(".//Equipment")),
+    }
+
+
 @app.get("/")
 def index():
     return render_template("index.html")
+
+
+@app.get("/cad-compare-module")
+def cad_compare_module():
+    response = make_response(render_template("cad_compare_module.html"))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+@app.get("/api/update-history")
+def update_history():
+    return jsonify({"ok": True, "history": _load_update_history()})
+
+
+@app.post("/api/cad-module/dxf-parse")
+def cad_module_dxf_parse():
+    try:
+        cad_path = _save_upload("cad_file", {".dxf", ".dwg"}, required=True)
+        if cad_path.suffix.lower() == ".dwg":
+            raise ValueError("현재 6번 모듈은 DXF만 지원합니다. DWG는 DXF로 변환 후 업로드해 주세요.")
+
+        from cad_engine import DXFWorkspace
+
+        workspace = DXFWorkspace(UPLOAD_DIR / "cad_workspace")
+        workspace.load_file(cad_path)
+        payload = workspace.to_payload(include_network_entities=False, include_network_summary=False)
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "message": f"DXF 파싱 중 오류가 발생했습니다: {exc}"}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "DXF 파싱이 완료되었습니다.",
+            "cad_payload": {
+                "filename": payload.get("filename"),
+                "bounds": payload.get("bounds"),
+                "layers": payload.get("layers"),
+                "entities": payload.get("entities") or [],
+                "unsupported": payload.get("unsupported") or {},
+            },
+        }
+    )
 
 
 @app.post("/api/validate")
@@ -255,6 +431,7 @@ def validate_files():
         sdf_path = _save_upload("sdf_file", {".sdf"}, required=False)
         validation = PipenetGuideValidator(report_path=report_path, sdf_path=sdf_path).validate()
         sdf_graph = _build_sdf_graph(sdf_path, validation.get("tables"))
+        visualizations = _build_visualizations(validation, report_path, sdf_path)
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
     except Exception as exc:
@@ -270,9 +447,107 @@ def validate_files():
             "results": validation["results"],
             "insights": validation["insights"],
             "stats": validation["stats"],
+            "visualizations": visualizations,
             "tables": validation["tables"],
             "sdf_graph": sdf_graph,
             "report": validation["report"],
+        }
+    )
+
+
+@app.post("/api/cad-compare")
+def cad_compare():
+    try:
+        cad_path = _save_upload("cad_file", {".dxf", ".dwg"}, required=True)
+        sdf_path = _save_upload("sdf_file", {".sdf"}, required=False)
+        if cad_path.suffix.lower() == ".dwg":
+            raise ValueError("현재 CAD 대조 모듈은 DXF만 지원합니다. DWG는 DXF로 변환 후 업로드해 주세요.")
+
+        from cad_engine import DXFWorkspace
+
+        workspace = DXFWorkspace(UPLOAD_DIR / "cad_workspace")
+        workspace.load_file(cad_path)
+        payload = workspace.to_payload(include_network_entities=True, include_network_summary=True)
+
+        network_layers = set(payload.get("networkLayers") or [])
+        network_entity_ids = set(payload.get("networkEntityIds") or [])
+        entities = payload.get("entities") or []
+        if network_entity_ids:
+            entities = [e for e in entities if e.get("id") in network_entity_ids]
+        if network_layers:
+            entities = [e for e in entities if e.get("layer") in network_layers]
+
+        head_boxes: list[dict] = []
+        detector_mode = "template"
+        use_yolo = str(request.form.get("use_yolo", "")).strip() == "1"
+        try:
+            if use_yolo:
+                from head_detector import TriangleHeadDetector
+
+                model_path = BASE_DIR / "yolo26n.pt"
+                if not model_path.exists():
+                    model_path = BASE_DIR / "yolo11n.pt"
+                detector = TriangleHeadDetector(BASE_DIR / "data" / "head_templates", model_path)
+                head_boxes = detector.detect(entities, payload.get("bounds") or {}, network_layers)
+                detector_mode = "yolo+template" if detector.yolo_detector.available else "template"
+            else:
+                from head_detector import TriangleHeadTemplateDetector
+
+                detector = TriangleHeadTemplateDetector(BASE_DIR / "data" / "head_templates")
+                head_boxes = detector.detect(entities, payload.get("bounds") or {}, network_layers)
+                detector_mode = "template"
+        except Exception:
+            detector_mode = "unavailable"
+            head_boxes = []
+
+        cad_counts = {
+            "entities": len(entities),
+            "network_layers": len(network_layers),
+            "detected_heads": len(head_boxes),
+            "lines": sum(1 for e in entities if e.get("type") in {"LINE", "LWPOLYLINE", "ARC"}),
+            "circles": sum(1 for e in entities if e.get("type") == "CIRCLE"),
+            "texts": sum(1 for e in entities if e.get("type") == "TEXT"),
+        }
+        sdf_counts = _sdf_counts_only(sdf_path)
+        messages: list[str] = []
+        if sdf_counts:
+            sdf_heads = int(sdf_counts.get("nozzles", 0))
+            diff = cad_counts["detected_heads"] - sdf_heads
+            if diff == 0:
+                messages.append(f"헤드 수 일치: CAD 탐지 {cad_counts['detected_heads']} / SDF {sdf_heads}")
+            else:
+                messages.append(
+                    f"헤드 수 차이: CAD 탐지 {cad_counts['detected_heads']} / SDF {sdf_heads} (차이 {diff:+d})"
+                )
+            messages.append(
+                f"SDF 수량: 배관 {sdf_counts.get('pipes', 0)} / 헤드 {sdf_counts.get('nozzles', 0)} / 특수설비 {sdf_counts.get('equipment', 0)}"
+            )
+        else:
+            messages.append("SDF 미업로드 상태입니다. CAD 단독 추출/탐지 결과만 표시합니다.")
+        messages.append(f"탐지 엔진: {detector_mode}")
+
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "message": f"CAD 대조 중 오류가 발생했습니다: {exc}"}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "CAD 대조가 완료되었습니다.",
+            "cad_filename": cad_path.name,
+            "sdf_filename": sdf_path.name if sdf_path else None,
+            "cad_payload": {
+                "filename": payload.get("filename"),
+                "bounds": payload.get("bounds"),
+                "layers": payload.get("layers"),
+                "networkLayers": list(network_layers),
+                "entities": entities,
+            },
+            "detected_heads": head_boxes,
+            "cad_counts": cad_counts,
+            "sdf_counts": sdf_counts,
+            "messages": messages,
         }
     )
 

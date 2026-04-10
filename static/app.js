@@ -10,6 +10,7 @@ const menuButtons = Array.from(document.querySelectorAll(".menu-btn"));
 const menuPanels = Array.from(document.querySelectorAll(".menu-panel"));
 const workspacePanelEl = document.getElementById("workspace-panel");
 const resultsBody = document.getElementById("results-body");
+const pipeRulesBtnEl = document.getElementById("pipe-rules-btn");
 const insightPanelEl = document.getElementById("insight-panel");
 const engineeringListEl = document.getElementById("engineering-list");
 const economyListEl = document.getElementById("economy-list");
@@ -55,8 +56,12 @@ const updatesModalEl = document.getElementById("updates-modal");
 const updatesModalCloseEl = document.getElementById("updates-modal-close");
 const updatesModalBodyEl = document.getElementById("updates-modal-body");
 const updatesModalTitleEl = document.getElementById("updates-modal-title");
+const pipeRulesModalEl = document.getElementById("pipe-rules-modal");
+const pipeRulesModalCloseEl = document.getElementById("pipe-rules-modal-close");
+const pipeRulesModalBodyEl = document.getElementById("pipe-rules-modal-body");
 
 let currentTables = null;
+let currentRules = null;
 let currentTab = "pipes";
 let currentMenuPanel = null;
 let currentGraph = null;
@@ -78,7 +83,17 @@ const statsLabelMap = {
   min_nozzle_flow_lpm: "최소 헤드 유량 (L/min)",
   min_nozzle_pressure_kgf_cm2: "최소 헤드 압력 (kg/cm²G)",
   max_branch_pipe_velocity_mps: "가지배관 최대 유속 (m/s)",
-  max_main_pipe_velocity_mps: "주배관 최대 유속 (m/s)",
+  max_other_pipe_velocity_mps: "그 밖의 배관 최대 유속 (m/s)",
+  velocity_branch_checked_count: "가지배관 판정 수",
+  velocity_other_checked_count: "그 밖의 배관 판정 수",
+  velocity_review_count: "유속 판정 검토 수",
+  velocity_failed_count: "유속 기준 초과 수",
+  worst_velocity_pipe_label: "최대 유속 배관",
+  max_pipe_pressure_kgcm2: "최대 관압 (kg/cm²G)",
+  high_pressure_pipe_count: "12.0kg/cm²G 이상 배관 수",
+  ksd3562_required_pipe_count: "KSD3562 요구 배관 수",
+  c_factor_material_fail_count: "재질-C값 불일치 수",
+  pipe_review_count: "배관 규칙 검토 수",
   sdf_main_title: "SDF 메인 제목",
   sdf_zone_title: "SDF 존",
   pipe_count: "SDF 배관 수",
@@ -89,7 +104,7 @@ const statsLabelMap = {
 const tableConfigs = {
   pipes: {
     title: "배관(FLOW IN PIPES)",
-    columns: [["label", "Pipe"], ["input_node", "입력 노드"], ["output_node", "출력 노드"], ["nominal_bore_mm", "구경(mm)"], ["actual_bore_mm", "실내경(mm)"], ["flow_lpm", "유량(L/min)"], ["velocity_mps", "유속(m/s)"], ["c_factor", "C-Factor"], ["base_length_m", "배관길이(m)"], ["fitting_eq_length_m", "피팅 등가길이(m)"], ["special_eq_length_m", "특수설비 등가길이(m)"], ["total_length_m", "총 등가길이(m)"], ["friction_loss", "결과서 마찰손실"], ["hw_expected_friction_loss", "HW 재계산 마찰손실"], ["hw_abs_diff", "HW 절대오차"], ["hw_rel_diff", "HW 상대오차"], ["hw_formula_ok", "HW 검산 적합"], ["inlet_pressure", "입구압"], ["outlet_pressure", "출구압"], ["special_equipment", "특수설비"], ["hw_fail", "HW 실패"]],
+    columns: [["label", "Pipe"], ["input_node", "입력 노드"], ["output_node", "출력 노드"], ["nominal_bore_mm", "구경(mm)"], ["material_name", "재질"], ["pipe_type_id", "Pipe Type"], ["actual_bore_mm", "실내경(mm)"], ["c_factor", "C-Factor"], ["max_pressure_kgcm2", "최대 관압"], ["pipe_role", "배관 역할"], ["downstream_nozzle_count", "하류 헤드 수"], ["subtree_has_cross_split", "하류 교차분기"], ["velocity_limit_mps", "유속 기준(m/s)"], ["velocity_ok", "유속 적합"], ["rule_high_pressure_ok", "고압재질"], ["rule_cfactor_ok", "C값"], ["rule_unit_internal_cpvc_status", "세대내CPVC"], ["rule_unit_inlet_status", "세대유입65A"], ["rule_headcount_size_status", "헤드수-구경정책"], ["flow_lpm", "유량(L/min)"], ["velocity_mps", "유속(m/s)"], ["base_length_m", "배관길이(m)"], ["fitting_eq_length_m", "피팅 등가길이(m)"], ["special_eq_length_m", "특수설비 등가길이(m)"], ["total_length_m", "총 등가길이(m)"], ["friction_loss", "결과서 마찰손실"], ["hw_expected_friction_loss", "HW 재계산 마찰손실"], ["hw_abs_diff", "HW 절대오차"], ["hw_rel_diff", "HW 상대오차"], ["hw_formula_ok", "HW 검산 적합"], ["inlet_pressure", "입구압"], ["outlet_pressure", "출구압"], ["special_equipment", "특수설비"], ["hw_fail", "HW 실패"], ["role_reason", "판정 사유"]],
   },
   nozzles: {
     title: "헤드(FLOW THROUGH NOZZLES)",
@@ -108,7 +123,8 @@ const tableConfigs = {
 function fmt(v) {
   if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/\.?0+$/, "");
   if (typeof v === "boolean") return v ? "Y" : "N";
-  return v ?? "";
+  if (v === null || v === undefined || v === "") return "-";
+  return v;
 }
 function escapeHtml(s) {
   return String(s).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
@@ -149,6 +165,28 @@ function renderResultRows(results) {
     }
   }
   resultsBody.innerHTML = rows.length ? rows.join("") : '<tr><td colspan="2" class="empty">검증 결과가 없습니다.</td></tr>';
+}
+
+function renderPipeRulesButton(rules) {
+  currentRules = rules || {};
+  const items = Array.isArray(currentRules?.pipe) ? currentRules.pipe.filter((x) => x.subject_type === "meta") : [];
+  if (!pipeRulesBtnEl) return;
+  pipeRulesBtnEl.classList.toggle("hidden", !items.length);
+}
+
+function openPipeRulesModal() {
+  const items = Array.isArray(currentRules?.pipe) ? currentRules.pipe.filter((x) => x.subject_type === "meta") : [];
+  if (!items.length || !pipeRulesModalEl || !pipeRulesModalBodyEl) return;
+  pipeRulesModalBodyEl.innerHTML = items
+    .map((item) => {
+      const cls = item.status === "FAIL" ? "fail" : item.status === "REVIEW" ? "review" : "pass";
+      return `<article class="criteria-section pipe-rule-card ${cls}">
+        <h4><span class="pipe-rule-badge ${cls}">${escapeHtml(item.status)}</span> ${escapeHtml(item.rule_id)}</h4>
+        <p>${escapeHtml(item.message)}</p>
+      </article>`;
+    })
+    .join("");
+  pipeRulesModalEl.classList.remove("hidden");
 }
 
 function renderInsights(insights) {
@@ -352,8 +390,8 @@ function renderSingleTable(tabName) {
   const mainCols = cfg.columns.slice(0, MAX_MAIN_COLUMNS);
   const extraCols = cfg.columns.slice(MAX_MAIN_COLUMNS);
   const extraTitle = tabName === "pipes" ? `HW 검산 상세 열 (${extraCols.length}개)` : `추가 열 (${extraCols.length}개)`;
-  const extra = extraCols.length ? `<div class="extra-columns-panel"><h3>${extraTitle}</h3>${buildTableHtml(extraCols, rows, MAX_MAIN_COLUMNS, "extra-wrap")}</div>` : "";
-  tableContainerEl.innerHTML = `<div class="table-split">${buildTableHtml(mainCols, rows, 0, "main-wrap")}${extra}<p class="table-note">기본 창은 최대 ${MAX_MAIN_COLUMNS}열만 표시됩니다. 나머지는 추가 열 창에서 스크롤로 확인하세요.</p></div>`;
+  const extra = extraCols.length ? `<div class="extra-columns-panel"><h3>${extraTitle}</h3><p class="table-note">우측 패널 테두리를 드래그하면 폭을 조절할 수 있습니다.</p>${buildTableHtml(extraCols, rows, MAX_MAIN_COLUMNS, "extra-wrap")}</div>` : "";
+  tableContainerEl.innerHTML = `<div class="table-split">${buildTableHtml(mainCols, rows, 0, "main-wrap")}${extra}</div><p class="table-note">기본 창은 최대 ${MAX_MAIN_COLUMNS}열만 표시됩니다. 나머지는 추가 열 창에서 스크롤로 확인하세요.</p>`;
 }
 function setActiveTab(tab) {
   currentTab = tab;
@@ -380,21 +418,31 @@ function buildRowLogicExplanation(tab, row) {
     conclusion: [],
   };
   if (tab === "pipes") {
-    const bore = Number(row.nominal_bore_mm || 0);
     const velocity = Number(row.velocity_mps || 0);
-    const limit = Number(row.velocity_limit_mps ?? (bore <= 50 ? 6 : 10));
-    const pipeType = row.pipe_type === "branch" || bore <= 50 ? "가지배관" : "주배관";
-    const over = velocity - limit;
-    cards.criteria.push(`배관 분류: 구경 ${fmtLogicNumber(bore, 0)}A 이므로 ${bore <= 50 ? "50A 이하" : "50A 초과"} 기준을 적용하여 ${pipeType}으로 판정했습니다.`);
-    cards.criteria.push(`허용 유속 기준: ${bore <= 50 ? "6.0" : "10.0"} m/s`);
-    cards.formula.push(`허용 유속식: V_limit = ${bore <= 50 ? "6.0" : "10.0"} m/s`);
-    cards.formula.push(`판정식: V_actual ${row.highlight ? ">" : "<="} V_limit`);
+    const limit = row.velocity_limit_mps == null ? null : Number(row.velocity_limit_mps);
+    const role = String(row.pipe_role || "review");
+    const roleLabel = role === "branch" ? "branch" : role === "other" ? "other" : "review";
+    const over = limit == null ? null : velocity - limit;
+    cards.criteria.push(`Topology 판정: downstream nozzle 수 = ${fmt(row.downstream_nozzle_count)}, subtree cross split = ${fmt(row.subtree_has_cross_split)}`);
+    cards.criteria.push(`최종 분류: ${roleLabel}`);
+    cards.criteria.push(`판정 근거: ${row.role_reason || "-"}`);
+    cards.formula.push("속도 기준: branch -> 6.0 m/s, other -> 10.0 m/s");
+    if (role === "review") cards.formula.push("review -> 자동 기준 미적용, 수동 검토 필요");
+    else cards.formula.push(`적용 기준식: V_actual <= ${fmtLogicNumber(limit, 3)} m/s`);
     cards.values.push(`실제 유속 V_actual = ${fmtLogicNumber(velocity)} m/s`);
-    cards.values.push(`허용 유속 V_limit = ${fmtLogicNumber(limit)} m/s`);
-    if (row.highlight) {
+    cards.values.push(`허용 유속 V_limit = ${limit == null ? "-" : fmtLogicNumber(limit)} m/s`);
+    if (row.velocity_ok === false && limit != null) {
       cards.conclusion.push(`빨강(기준 위반): ${fmtLogicNumber(velocity)} - ${fmtLogicNumber(limit)} = ${fmtLogicNumber(over)} m/s 초과하여 유속 기준을 만족하지 못했습니다.`);
-    } else {
+    } else if (row.velocity_ok === true && limit != null) {
       cards.conclusion.push(`적합 해석: ${fmtLogicNumber(limit)} - ${fmtLogicNumber(velocity)} = ${fmtLogicNumber(limit - velocity)} m/s 여유가 있어 유속 기준을 만족합니다.`);
+    } else {
+      cards.conclusion.push("노랑(확인 필요): topology ambiguity로 branch/other 판정이 확정되지 않아 자동 유속 판정을 보류했습니다.");
+    }
+    if (row.hw_fail) {
+      cards.conclusion.push("추가 참고: 이 배관은 HW 마찰손실 검산도 실패 상태입니다.");
+    }
+    if (row.highlight && row.velocity_ok !== false && limit == null) {
+      cards.conclusion.push("현재 highlight는 유속이 아니라 다른 검증 항목(HW 검산 등)에 의해 표시되었을 수 있습니다.");
     }
     if (row.engineering_flag) {
       const frictionLoss = Number(row.friction_loss || 0);
@@ -410,7 +458,7 @@ function buildRowLogicExplanation(tab, row) {
       const econLimit = Number(row.economy_velocity_limit ?? 2.0);
       cards.criteria.push(`경제성 기준: 유속 < ${fmtLogicNumber(econLimit, 1)} m/s AND 구경 > 25A`);
       cards.formula.push(`경제성 판정식: velocity < ${fmtLogicNumber(econLimit, 1)} AND bore > 25`);
-      cards.values.push(`실제 값 대입: ${fmtLogicNumber(velocity)} < ${fmtLogicNumber(econLimit, 1)}, ${fmtLogicNumber(bore, 0)}A > 25A`);
+      cards.values.push(`실제 값 대입: ${fmtLogicNumber(velocity)} < ${fmtLogicNumber(econLimit, 1)}, ${fmtLogicNumber(Number(row.nominal_bore_mm || 0), 0)}A > 25A`);
       cards.conclusion.push(`초록(경제성 검토 후보): 법적 최소 성능을 유지한다는 전제에서 현재 구간은 저유속 과설계 후보로 분류되며, 자재비 절감을 위한 구경 축소 검토 대상입니다.`);
     }
   } else if (tab === "nozzles") {
@@ -530,9 +578,10 @@ function criteriaGuideHtml() {
       <li><strong>판정 체계</strong>: PASS / FAIL / WARNING</li>
     </ul></section>
     <section class="criteria-section"><h4>2) 배관 유속 기준</h4><ul>
-      <li><strong>50A 이하</strong>: 6.0 m/s 이하</li>
-      <li><strong>50A 초과</strong>: 10.0 m/s 이하</li>
-      <li>기준 초과 시 빨강(기준 위반)으로 표시됩니다.</li>
+      <li><strong>Topology branch</strong>: 50A 이하 배관 중 downstream subtree에 multi-head split node가 없으면 6.0 m/s 이하</li>
+      <li><strong>Topology other</strong>: 50A 초과 배관이거나, 50A 이하라도 downstream subtree에 multi-head split node가 있으면 10.0 m/s 이하</li>
+      <li>배관 역할은 구경만으로 결정하지 않고, PIPE CONFIGURATION + NOZZLE CONFIGURATION 기반 topology 판정 결과로 확정합니다.</li>
+      <li>기준 초과 시 빨강(기준 위반), topology ambiguity 시 노랑(확인 필요)으로 표시됩니다.</li>
     </ul></section>
     <section class="criteria-section"><h4>3) 헤드(노즐) 기준</h4><ul>
       <li><strong>최소 유량</strong>: 80 L/min 이상</li>
@@ -550,23 +599,7 @@ function criteriaGuideHtml() {
       <li>허용 오차: ±0.05</li>
       <li>오차 초과 시 빨강(기준 위반)으로 표시됩니다.</li>
     </ul></section>
-    <section class="criteria-section"><h4>6) 공학 최적화(파랑) 기준</h4><ul>
-      <li>m당 마찰손실 = <code>friction_loss / length</code></li>
-      <li>기준: 0.05 kg/cm²/m 초과 시 공학 최적화 후보</li>
-      <li>대응: 구경 상향, 피팅 축소, 배관 경로 단순화 검토</li>
-    </ul></section>
-    <section class="criteria-section"><h4>7) 경제성 검토(초록) 기준</h4><ul>
-      <li><strong>배관</strong>: 유속 &lt; 2.0 m/s 이고 구경 &gt; 25A 인 경우 과설계 후보</li>
-      <li><strong>밸브 계통</strong>: 연결 배관 구경 &gt; 100A 인 경우 원가 상승 후보</li>
-      <li>대응: 법적/기술 조건 유지 범위 내 구경 최적화 검토</li>
-    </ul></section>
-    <section class="criteria-section"><h4>8) 색상 의미 요약</h4><ul>
-      <li><strong>빨강</strong>: 기준 위반(즉시 수정 대상)</li>
-      <li><strong>노랑</strong>: 확인 필요(보완 검토 대상)</li>
-      <li><strong>파랑</strong>: 공학 최적화 후보(손실 개선 포인트)</li>
-      <li><strong>초록</strong>: 경제성 검토 후보(원가 절감 포인트)</li>
-    </ul></section>
-    <section class="criteria-section"><h4>9) 모형 연동 해석</h4><ul>
+    <section class="criteria-section"><h4>6) 모형 연동 해석</h4><ul>
       <li>좌측 <strong>부적합/적합</strong> 필터를 누르면 우측 배관망이 해당 상태만 강조됩니다.</li>
       <li>초기 상태는 모든 요소가 비활성(회색)이며, 필터 적용 시 상태별 색상이 활성화됩니다.</li>
     </ul></section>
@@ -580,7 +613,8 @@ function updatesHistoryHtml() {
       <li>검증 결과, 통계, 상세리포트, 결과 데이터 테이블 기본 출력 기능 추가</li>
     </ul></section>
     <section class="criteria-section"><h4>2) 검증 로직 고도화</h4><ul>
-      <li>배관 유속 기준 반영: 50A 이하 6.0 m/s, 50A 초과 10.0 m/s</li>
+      <li>배관 유속 기준을 단순 구경 판정에서 topology 기반 branch/other 판정으로 교체</li>
+      <li>downstream nozzle count, subtree cross split 판정으로 40A/50A 교차배관을 other로 분류하도록 보강</li>
       <li>헤드 유량/압력, FX 등가길이, AV/PV 기준값 검증 추가</li>
       <li>헤드 유량편차 과다 평가 항목 제거</li>
     </ul></section>
@@ -932,6 +966,7 @@ setActiveMenuPanel(null);
 setMenuLayoutVisible(true);
 if (updatesBtnEl) updatesBtnEl.textContent = "업데이트 기록";
 if (criteriaBtnEl) criteriaBtnEl.textContent = "평가 기준";
+if (pipeRulesBtnEl) pipeRulesBtnEl.textContent = "배관 규칙 상태 보기";
 if (updatesModalTitleEl) updatesModalTitleEl.textContent = "업데이트 기록";
 if (updatesModalCloseEl) updatesModalCloseEl.textContent = "닫기";
 if (reportFileLabelEl) reportFileLabelEl.textContent = "결과서 파일 (docx)";
@@ -1003,6 +1038,11 @@ if (updatesModalEl) {
     if (e.target === updatesModalEl) updatesModalEl.classList.add("hidden");
   });
 }
+pipeRulesBtnEl?.addEventListener("click", openPipeRulesModal);
+pipeRulesModalCloseEl?.addEventListener("click", () => pipeRulesModalEl?.classList.add("hidden"));
+pipeRulesModalEl?.addEventListener("click", (e) => {
+  if (e.target === pipeRulesModalEl) pipeRulesModalEl.classList.add("hidden");
+});
 downloadExcelBtnEl.addEventListener("click", downloadTablesAsXlsx);
 if (cadRunBtnEl) {
   cadRunBtnEl.addEventListener("click", async () => {
@@ -1040,6 +1080,7 @@ window.addEventListener("keydown", (e) => {
     logicModalEl.classList.add("hidden");
     criteriaModalEl.classList.add("hidden");
     if (updatesModalEl) updatesModalEl.classList.add("hidden");
+    if (pipeRulesModalEl) pipeRulesModalEl.classList.add("hidden");
   }
 });
 
@@ -1080,6 +1121,7 @@ form.addEventListener("submit", async (event) => {
     statusEl.textContent = data.message;
     renderSummary(data.summary || {}, data.filename, data.sdf_filename);
     renderResultRows(data.results || {});
+    renderPipeRulesButton(data.rules || {});
     renderNetworkGraph(data.sdf_graph || null);
     renderInsights(data.insights || {});
     currentTables = data.tables || {};
@@ -1092,6 +1134,7 @@ form.addEventListener("submit", async (event) => {
   } catch (e) {
     statusEl.textContent = e.message;
     resultsBody.innerHTML = '<tr><td colspan="2" class="empty">결과를 불러오지 못했습니다.</td></tr>';
+    renderPipeRulesButton({});
     setMenuLayoutVisible(true);
     setActiveMenuPanel("workspace-panel");
     networkEmptyEl.textContent = "배관망을 불러오지 못했습니다.";

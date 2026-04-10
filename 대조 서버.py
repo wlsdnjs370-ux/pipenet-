@@ -153,11 +153,10 @@ def _build_visualizations(validation: dict, report_path: Path, sdf_path: Path | 
     limits: list[float] = []
     for r in pipe_rows:
         label = str(r.get("label", ""))
-        bore = _to_float(r.get("nominal_bore_mm"), 0.0)
         vel = _to_float(r.get("velocity_mps"), 0.0)
         pipe_labels.append(label)
         velocities.append(vel)
-        limits.append(6.0 if bore <= 50.0 else 10.0)
+        limits.append(_to_float(r.get("velocity_limit_mps"), 0.0))
     if pipe_labels:
         fig, ax = plt.subplots(figsize=(10, 3.8))
         x = list(range(len(pipe_labels)))
@@ -177,7 +176,7 @@ def _build_visualizations(validation: dict, report_path: Path, sdf_path: Path | 
         visuals.append(
             {
                 "title": "Pipe Velocity Check",
-                "description": "Compares each pipe velocity with size-based limits (<=50A: 6 m/s, >50A: 10 m/s).",
+                "description": "Compares each pipe velocity with topology-based branch/other limits from the validator.",
                 "image_data_url": _fig_to_data_url(fig),
             }
         )
@@ -446,6 +445,7 @@ def validate_files():
             "summary": validation["summary"],
             "results": validation["results"],
             "insights": validation["insights"],
+            "rules": validation.get("rules", {}),
             "stats": validation["stats"],
             "visualizations": visualizations,
             "tables": validation["tables"],

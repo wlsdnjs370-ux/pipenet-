@@ -1497,3 +1497,55 @@ class DXFWorkspace:
             "maxX": max_x + padding,
             "maxY": max_y + padding,
         }
+
+
+def build_explicit_pipe_mismatches(
+    cad_path: Path | None,
+    sdf_path: Path | None,
+    *,
+    length_tol_abs_m: float = 0.5,
+    length_tol_ratio: float = 0.05,
+    elevation_tol_m: float = 0.1,
+) -> list[dict[str, Any]]:
+    if cad_path is None or sdf_path is None or not Path(cad_path).exists() or not Path(sdf_path).exists():
+        return []
+
+    mismatches: list[dict[str, Any]] = []
+    workspace = DXFWorkspace(Path(cad_path).parent / "_cad_compare_workspace")
+    workspace.load_file(Path(cad_path))
+    payload = workspace.to_payload(include_network_entities=True, include_network_summary=True)
+    entities = payload.get("entities") or []
+    network_layers = set(payload.get("networkLayers") or [])
+    filtered = [e for e in entities if not network_layers or e.get("layer") in network_layers]
+
+    cad_line_count = sum(1 for e in filtered if e.get("type") in {"LINE", "LWPOLYLINE", "ARC"})
+    cad_circle_count = sum(1 for e in filtered if e.get("type") == "CIRCLE")
+
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(sdf_path).getroot()
+    sdf_pipe_count = len(root.findall(".//Pipe"))
+    sdf_nozzle_count = len(root.findall(".//Nozzle"))
+
+    if cad_circle_count != sdf_nozzle_count:
+        mismatches.append(
+            {
+                "type": "head_count_match",
+                "message": f"head/node count mismatch: drawing {cad_circle_count}, schematic {sdf_nozzle_count}",
+                "drawing_value": cad_circle_count,
+                "schematic_value": sdf_nozzle_count,
+            }
+        )
+    if cad_line_count and abs(cad_line_count - sdf_pipe_count) / max(sdf_pipe_count, 1) > max(length_tol_ratio, 0.01):
+        mismatches.append(
+            {
+                "type": "topology_connectivity_match",
+                "message": f"topology/connectivity mismatch: drawing segments {cad_line_count}, schematic pipes {sdf_pipe_count}",
+                "drawing_value": cad_line_count,
+                "schematic_value": sdf_pipe_count,
+                "length_tol_abs_m": length_tol_abs_m,
+                "length_tol_ratio": length_tol_ratio,
+                "elevation_tol_m": elevation_tol_m,
+            }
+        )
+    return mismatches

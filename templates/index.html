@@ -52,7 +52,10 @@
         <section id="workspace-panel" class="card hidden menu-panel">
           <div class="workspace-grid">
             <div class="workspace-left">
-              <h2>검증 결과</h2>
+              <div class="panel-head">
+                <h2>검증 결과</h2>
+                <button id="pipe-rules-btn" type="button" class="criteria-btn hidden">배관 규칙 상태 보기</button>
+              </div>
               <div class="result-table-wrap">
                 <table>
                   <thead>
@@ -189,6 +192,16 @@
           <button id="updates-modal-close" type="button" class="modal-close">닫기</button>
         </div>
         <div id="updates-modal-body" class="criteria-modal-body"></div>
+      </div>
+    </div>
+
+    <div id="pipe-rules-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pipe-rules-modal-title">
+      <div class="modal-card criteria-modal-card">
+        <div class="modal-head">
+          <h3 id="pipe-rules-modal-title">배관 규칙 상태</h3>
+          <button id="pipe-rules-modal-close" type="button" class="modal-close">닫기</button>
+        </div>
+        <div id="pipe-rules-modal-body" class="criteria-modal-body"></div>
       </div>
     </div>
 

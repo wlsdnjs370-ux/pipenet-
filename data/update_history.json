@@ -1,7 +1,94 @@
 {
   "title": "업데이트 기록",
-  "updated_at": "2026-04-09 14:53",
+  "updated_at": "2026-04-10 11:21",
   "items": [
+    {
+      "timestamp": "2026-04-10 11:21",
+      "date": "2026-04-10",
+      "title": "04월 10일 오전 작업 기준 정리",
+      "summary": "2026-04-10 오전 작업 기록은 오전 11시 22분 이전 변경사항까지만 표시하도록 정리했습니다.",
+      "details": [
+        "2026-04-10 기록은 04월 09일 기록과 분리해 관리",
+        "오전 11시 22분 이전 항목까지만 금일 기록으로 유지",
+        "이후 시각의 금일 항목은 업데이트 기록에서 제외"
+      ]
+    },
+    {
+      "timestamp": "2026-04-09 17:18",
+      "date": "2026-04-09",
+      "title": "배관 대제목 규칙 엔진 구현",
+      "summary": "PIPENET 결과물 검증의 4. 배관 항목을 단순 안내가 아니라 실제 규칙 엔진으로 확장했습니다.",
+      "details": [
+        "PIPE.001 도면-스케매틱 일치, PIPE.002 고압구간 KSD3562, PIPE.003 재질별 C값, PIPE.004 세대내 CPVC, PIPE.005 세대유입 65A, PIPE.006 헤드수별 구경정책 구조 추가",
+        "rules.pipe[] structured result 추가",
+        "tables.pipes에 material_name, pipe_type_id, max_pressure_kgcm2, 각 배관 규칙 상태값 추가",
+        "stats에 max_pipe_pressure_kgcm2, high_pressure_pipe_count, c_factor_material_fail_count, pipe_review_count 추가",
+        "샘플 결과서+SDF 기준 PIPE.002 PASS, PIPE.003 PASS, 나머지 4개 REVIEW 확인"
+      ]
+    },
+    {
+      "timestamp": "2026-04-09 17:14",
+      "date": "2026-04-09",
+      "title": "배관 테이블 열 구성 및 폭 재조정",
+      "summary": "배관 테이블과 HW 검산 상세 열의 가독성을 위해 열 순서와 배치를 재조정했습니다.",
+      "details": [
+        "HW 검산 상세 열 패널을 우측이 아닌 배관 테이블 아래로 이동",
+        "판정 사유 컬럼을 추가 열의 맨 오른쪽으로 이동",
+        "하류 헤드 수, 하류 교차분기, 유속 기준, 유속 적합 헤더를 줄바꿈 없이 가로 표기로 변경",
+        "테이블 셀 패딩과 폰트 크기를 축소해 인터페이스 내부에 더 잘 들어오도록 조정"
+      ]
+    },
+    {
+      "timestamp": "2026-04-09 17:10",
+      "date": "2026-04-09",
+      "title": "배관 테이블 노란색 표시 원인 분석",
+      "summary": "결과 데이터 테이블의 배관 행이 전부 노란색으로 보이던 이유를 REVIEW 규칙 상태 기준으로 확인했습니다.",
+      "details": [
+        "pipes row의 warn 플래그는 pipe_rule_results 내 REVIEW 상태가 하나라도 있으면 활성화됨",
+        "샘플에서는 PIPE.001, PIPE.004, PIPE.005, PIPE.006이 REVIEW라 대부분 배관 행이 노란색으로 표시됨",
+        "원인은 CAD 미입력, unit_internal metadata 없음, unit_inlet metadata 없음, design_policy.json 없음",
+        "즉 노란색은 실패가 아니라 추가 입력 부족으로 인한 판정보류 상태임을 정리"
+      ]
+    },
+    {
+      "timestamp": "2026-04-09 16:55",
+      "date": "2026-04-09",
+      "title": "배관 topology 유속 판정 로직 완전 구현",
+      "summary": "배관 유속 규칙을 단순 구경 기준에서 topology 기반 branch/other 판정 방식으로 교체했습니다.",
+      "details": [
+        "PIPE CONFIGURATION과 NOZZLE CONFIGURATION으로 directed graph 구성",
+        "downstream nozzle count와 subtree cross split 판정 함수 추가",
+        "50A 이하이면서 하류 subtree에 multi-head split node가 없을 때만 branch(6.0 m/s)로 판정",
+        "50A 초과 또는 50A 이하라도 하류 subtree에 multi-head split node가 있으면 other(10.0 m/s)로 판정",
+        "ambiguity 발생 시 review로 분류하고 자동 PASS 처리하지 않도록 방어 로직 추가",
+        "샘플 결과서 기준 Pipe 37, 49, 77, 80, 97, 114 판정이 기대값과 일치함을 검증"
+      ]
+    },
+    {
+      "timestamp": "2026-04-09 16:54",
+      "date": "2026-04-09",
+      "title": "배관 테이블에 topology 판정 열 추가",
+      "summary": "결과 데이터 테이블의 배관 탭에 배관 역할, 하류 헤드 수, 하류 교차분기, 판정 사유를 표시하도록 확장했습니다.",
+      "details": [
+        "pipes 테이블 각 행에 pipe_role, downstream_nozzle_count, subtree_has_cross_split, velocity_ok, role_reason 추가",
+        "pipe_type 의미를 기존 bore 기반이 아니라 topology 기반 pipe_role로 교체",
+        "프론트 설명 카드도 서버가 내려준 pipe_role과 role_reason만 사용하도록 수정",
+        "평가 기준과 업데이트 기록 문구도 topology branch/other 기준에 맞춰 보정"
+      ]
+    },
+    {
+      "timestamp": "2026-04-09 16:53",
+      "date": "2026-04-09",
+      "title": "배관 역할·하류 헤드 수·하류 교차분기 빈칸 원인 수정",
+      "summary": "배관 topology 열이 빈칸 또는 - 로 보이던 문제의 원인을 프론트 포맷터와 구버전 서버 프로세스 중복 실행에서 찾아 수정했습니다.",
+      "details": [
+        "프론트 fmt()가 null/undefined를 공란으로 숨기고 있던 동작을 - 표시로 변경",
+        "로컬 validator 결과와 라이브 /api/validate 응답을 직접 비교해 실제 차이 확인",
+        "5050 포트를 오래된 run_server.py 프로세스가 계속 점유하고 있던 상태 발견",
+        "중복 서버 프로세스를 모두 종료하고 최신 코드 기준으로 단일 서버 재기동",
+        "재기동 후 라이브 /api/validate 응답에서 pipe_role, downstream_nozzle_count, subtree_has_cross_split 정상 포함 확인"
+      ]
+    },
     {
       "timestamp": "2026-04-09 14:53",
       "date": "2026-04-09",

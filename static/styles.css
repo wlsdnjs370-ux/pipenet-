@@ -327,6 +327,18 @@ button:hover {
   font-size: 0.96rem;
 }
 
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.panel-head h2 {
+  margin: 0;
+}
+
 .guide-list {
   margin: 0;
   padding-left: 18px;
@@ -444,12 +456,19 @@ h2 {
 .table-split {
   display: grid;
   gap: 10px;
+  grid-template-columns: 1fr;
+  align-items: start;
 }
 
 .extra-columns-panel {
   border: 1px solid var(--line);
   padding: 10px;
   background: #fff;
+  min-width: 0;
+  width: 100%;
+  resize: none;
+  overflow: auto;
+  justify-self: stretch;
 }
 
 .extra-columns-panel h3 {
@@ -466,15 +485,15 @@ h2 {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 860px;
+  min-width: 680px;
 }
 
 th,
 td {
   border-bottom: 1px solid var(--line);
   border-right: 1px solid var(--line);
-  padding: 8px 10px;
-  font-size: 0.9rem;
+  padding: 6px 7px;
+  font-size: 0.82rem;
   text-align: left;
   white-space: nowrap;
 }
@@ -489,6 +508,16 @@ th {
   position: sticky;
   top: 0;
   z-index: 1;
+  white-space: nowrap;
+  line-height: 1.15;
+}
+
+.main-wrap table {
+  min-width: 620px;
+}
+
+.extra-wrap table {
+  min-width: 620px;
 }
 
 .badge {
@@ -855,6 +884,48 @@ th {
   gap: 10px;
 }
 
+.pipe-rule-card h4 {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pipe-rule-card p {
+  margin: 0;
+  color: #374151;
+}
+
+.pipe-rule-badge {
+  display: inline-block;
+  min-width: 64px;
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+  background: #fff;
+  color: #111827;
+}
+
+.pipe-rule-badge.pass {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.pipe-rule-badge.review {
+  border-color: #d1d5db;
+  background: #ffffff;
+  color: #374151;
+}
+
+.pipe-rule-badge.fail {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
 .criteria-section {
   border: 1px solid var(--line);
   padding: 10px;
@@ -986,6 +1057,10 @@ th {
   .stats-layout {
     grid-template-columns: 1fr;
     grid-template-rows: auto;
+  }
+  .extra-columns-panel {
+    resize: none;
+    justify-self: stretch;
   }
   .menu-sidebar {
     position: static;

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PIPENET 수리계산 검증</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260414-1646">
   </head>
   <body>
     <main class="page app-shell">
@@ -14,11 +14,13 @@
         <button type="button" class="menu-btn" data-panel="tables-panel">3. 결과 데이터 테이블</button>
         <button type="button" class="menu-btn" data-panel="stats-panel">4. 검진 통계</button>
         <button type="button" class="menu-btn" data-panel="report-panel">5. 상세리포트</button>
-        <button type="button" class="menu-btn" data-panel="cad-compare-panel">6. CAD-아이소매트릭 배관망 대조 모듈</button>
+        <button type="button" class="menu-btn" data-panel="cad-compare-panel">CAD-아이소매트릭 배관망 대조 모듈(조치중)</button>
+        <button type="button" class="menu-btn" data-panel="sdf-analysis-panel">7. SDF 스프링클러 배관 분석 모듈</button>
+        <button type="button" class="menu-btn" data-panel="feedback-panel">개선의견 게시판</button>
       </aside>
 
       <div class="main-pane">
-        <header class="header card">
+        <header class="header card app-header">
           <div class="header-top">
             <div>
               <p class="kicker">PIPE CALC VALIDATION</p>
@@ -32,7 +34,7 @@
           <p>결과서를 표 형태로 확인하고, 기준 위반과 경제성/공학 개선 포인트를 함께 표시합니다.</p>
         </header>
 
-        <section class="card">
+        <section class="card validation-upload-card">
           <form id="upload-form" class="upload-form">
             <div class="field">
               <label for="report-file">결과서 파일 (docx)</label>
@@ -103,10 +105,12 @@
           <div class="insight-grid">
             <article class="insight-box">
               <h3>공학적 마찰손실 최적화 조치</h3>
+              <div id="engineering-visuals" class="engineering-visuals"></div>
               <ul id="engineering-list" class="guide-list"></ul>
             </article>
             <article class="insight-box">
               <h3>시공사 경제성 확보 방안</h3>
+              <div id="economy-visuals" class="engineering-visuals"></div>
               <ul id="economy-list" class="guide-list"></ul>
             </article>
           </div>
@@ -153,14 +157,75 @@
         </section>
 
         <section id="cad-compare-panel" class="card hidden menu-panel">
-          <h2>CAD-아이소매트릭 배관망 대조 모듈</h2>
-          <p class="section-note">과거에 사용하던 독립형 듀얼 뷰어 모듈을 그대로 연결했습니다.</p>
+          <h2>CAD-아이소매트릭 배관망 대조 모듈(조치중)</h2>
           <iframe
             id="cad-compare-frame"
             class="module-iframe"
-            src="{{ url_for('cad_compare_module') }}?v=20260409-2"
-            title="CAD-아이소매트릭 배관망 대조 모듈"
+            src="{{ url_for('cad_compare_module') }}?v=20260414-1218"
+            title="CAD-아이소매트릭 배관망 대조 모듈(조치중)"
           ></iframe>
+        </section>
+
+        <section id="sdf-analysis-panel" class="card hidden menu-panel">
+          <div class="section-head">
+            <h2>7. SDF 스프링클러 배관 분석 모듈</h2>
+            <p class="section-note">SDF 파일에서 알람밸브 기준 최원단 헤드 30개, 배관 길이·구경·분기티·엘보 대조 포인트를 자동 추출합니다.</p>
+          </div>
+          <form id="sdf-analysis-form" class="upload-form module-upload-form">
+            <div class="field">
+              <label for="sdf-analysis-file">SDF 파일</label>
+              <input id="sdf-analysis-file" name="sdf_file" type="file" accept=".sdf" required>
+            </div>
+            <div class="field">
+              <label for="sdf-analysis-cad-file">CAD 도면 파일 (DXF, 선택)</label>
+              <input id="sdf-analysis-cad-file" name="cad_file" type="file" accept=".dxf">
+            </div>
+            <button id="sdf-analysis-run-btn" type="submit">SDF 분석 실행</button>
+          </form>
+          <p id="sdf-analysis-status" class="status">SDF 파일을 업로드하면 분석 결과가 표시됩니다.</p>
+          <div id="sdf-analysis-output" class="sdf-analysis-output hidden"></div>
+        </section>
+
+        <section id="feedback-panel" class="card hidden menu-panel feedback-page-panel">
+          <div class="section-head">
+            <h2>개선의견 게시판</h2>
+            <p class="section-note">서버 사용자들이 기능 개선, 오류, 추가 요청사항을 게시글 형태로 남기는 공간입니다.</p>
+          </div>
+          <div class="feedback-layout">
+            <form id="feedback-form" class="feedback-form">
+              <div class="field">
+                <label for="feedback-author">작성자</label>
+                <input id="feedback-author" type="text" maxlength="40" placeholder="작성자명 또는 부서명">
+              </div>
+              <div class="field">
+                <label for="feedback-title">제목</label>
+                <input id="feedback-title" type="text" maxlength="80" placeholder="개선의견 제목">
+              </div>
+              <div class="field">
+                <label for="feedback-body">내용</label>
+                <textarea id="feedback-body" rows="8" maxlength="3000" placeholder="개선이 필요한 화면, 문제 상황, 원하는 동작을 구체적으로 작성해주세요."></textarea>
+              </div>
+              <div class="field">
+                <label for="feedback-attachment">첨부파일 (선택)</label>
+                <input id="feedback-attachment" type="file">
+              </div>
+              <div class="feedback-actions">
+                <button id="feedback-submit-btn" type="submit">게시글 등록</button>
+                <button id="feedback-refresh-btn" type="button">목록 새로고침</button>
+              </div>
+              <p id="feedback-status" class="status">개선의견을 작성하거나 기존 게시글을 확인할 수 있습니다.</p>
+            </form>
+            <div class="feedback-board">
+              <div class="feedback-board-head">
+                <h3>개선의견 목록</h3>
+                <span id="feedback-count">0건</span>
+              </div>
+              <div id="feedback-list" class="feedback-list">
+                <p class="empty">등록된 개선의견이 없습니다.</p>
+              </div>
+            </div>
+          </div>
+          <button id="feedback-write-btn" type="button" class="feedback-write-fab">의견작성</button>
         </section>
       </div>
     </main>
@@ -205,6 +270,16 @@
       </div>
     </div>
 
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <div id="feedback-detail-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="feedback-detail-title">
+      <div class="modal-card feedback-modal-card">
+        <div class="modal-head">
+          <h3 id="feedback-detail-title">개선의견 상세</h3>
+          <button id="feedback-detail-close" type="button" class="modal-close">닫기</button>
+        </div>
+        <div id="feedback-detail-body" class="feedback-detail-body"></div>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260414-1646"></script>
   </body>
 </html>

@@ -12,6 +12,226 @@
     .canvas-container:last-child { border-right: none; }
     canvas { display: block; width: 100%; height: 100%; cursor: grab; }
     canvas:active { cursor: grabbing; }
+    .filter-panel { position: absolute; top: 16px; right: 16px; width: 250px; max-height: calc(100vh - 32px); display: none; flex-direction: column; gap: 10px; z-index: 10; border: 1px solid rgba(75, 85, 99, 0.6); background: rgba(17, 24, 39, 0.92); backdrop-filter: blur(10px); padding: 14px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28); }
+    .filter-panel.is-open { display: flex; }
+    .filter-panel h2 { margin: 0; font-size: 13px; font-weight: 700; color: #e5e7eb; }
+    .filter-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .filter-close-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #111827; background: #fff; color: #111827; font-size: 15px; font-weight: 900; line-height: 1; cursor: pointer; }
+    .filter-close-btn:hover { background: #111827; color: #fff; }
+    .filter-group { border-top: 1px solid rgba(75, 85, 99, 0.45); padding-top: 10px; }
+    .filter-group-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .filter-group-head span { font-size: 11px; font-weight: 700; color: #93c5fd; }
+    .filter-group-head button { border: 0; background: transparent; color: #9ca3af; font-size: 11px; cursor: pointer; }
+    .filter-group-head button:hover { color: #f9fafb; }
+    .filter-list { overflow-y: auto; max-height: 220px; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+    .filter-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #d1d5db; }
+    .filter-item input { width: 13px; height: 13px; }
+    .filter-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .viewer-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(99, 102, 241, 0.35); background: rgba(30, 41, 59, 0.9); color: #e5e7eb; font-size: 11px; font-weight: 600; padding: 7px 10px; }
+    .viewer-chip strong { color: #a5b4fc; }
+    .mode-network { border-color: #f59e0b !important; }
+    .selection-hint { margin-top: 10px; font-size: 11px; line-height: 1.5; color: #d1d5db; }
+    .zoom-toolbar { position: absolute; right: 16px; bottom: 20px; z-index: 12; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.24); background: rgba(255, 255, 255, 0.94); box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18); backdrop-filter: blur(12px); }
+    .zoom-toolbar button { width: 42px; height: 42px; border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 12px; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); color: #0f172a; font-size: 19px; font-weight: 800; cursor: pointer; transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease; }
+    .zoom-toolbar button:hover { transform: translateY(-1px); background: linear-gradient(180deg, #ffffff 0%, #eef2ff 100%); box-shadow: 0 10px 18px rgba(99, 102, 241, 0.16); }
+    .zoom-toolbar button:active { transform: translateY(0); }
+    .zoom-toolbar button.zoom-fit { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
+    .match-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .match-table th, .match-table td { border-bottom: 1px solid rgba(75, 85, 99, 0.65); padding: 8px 9px; text-align: left; vertical-align: top; }
+    .match-table th { color: #cbd5e1; background: rgba(15, 23, 42, 0.72); font-weight: 800; position: sticky; top: 0; }
+    .match-pass { color: #34d399; font-weight: 800; }
+    .match-review { color: #fbbf24; font-weight: 800; }
+    .match-fail { color: #f87171; font-weight: 800; }
+
+    /* Main-site style override: keep the drawing canvas dark, make controls white and angular. */
+    .canvas-container > .absolute.top-4.left-4,
+    .filter-panel,
+    #analysis-modal > div,
+    #pipe-match-modal > div {
+      border-radius: 0 !important;
+      border: 1px solid #d1d5db !important;
+      background: #ffffff !important;
+      color: #111827 !important;
+      box-shadow: 0 10px 26px rgba(17, 24, 39, 0.16) !important;
+      backdrop-filter: none !important;
+    }
+    .canvas-container > .absolute.top-4.left-4 h1,
+    .filter-panel h2,
+    #analysis-modal h2,
+    #pipe-match-modal h2 {
+      color: #111827 !important;
+    }
+    .canvas-container > .absolute.top-4.left-4 label,
+    .canvas-container > .absolute.top-4.left-4 button,
+    .zoom-toolbar button,
+    #btn-compare-analysis,
+    #btn-pipe-match-analysis,
+    #analysis-modal button,
+    #pipe-match-modal button {
+      border-radius: 0 !important;
+      border: 1px solid #111827 !important;
+      background: #ffffff !important;
+      color: #111827 !important;
+      box-shadow: none !important;
+    }
+    .canvas-container > .absolute.top-4.left-4 label:hover,
+    .canvas-container > .absolute.top-4.left-4 button:hover,
+    .zoom-toolbar button:hover,
+    #btn-compare-analysis:not(:disabled):hover,
+    #btn-pipe-match-analysis:not(:disabled):hover,
+    #analysis-modal button:hover,
+    #pipe-match-modal button:hover {
+      background: #111827 !important;
+      color: #ffffff !important;
+      transform: none !important;
+    }
+    .canvas-container > .absolute.top-4.left-4 button.border-blue-500,
+    .canvas-container > .absolute.top-4.left-4 button.border-emerald-500,
+    .canvas-container > .absolute.top-4.left-4 button.mode-network {
+      background: #111827 !important;
+      color: #ffffff !important;
+      border-color: #111827 !important;
+    }
+    .selection-hint,
+    .filter-item,
+    .filter-group-head span,
+    .viewer-chip,
+    #compare-tooltip,
+    #analysis-modal p,
+    #analysis-modal li,
+    #pipe-match-modal p,
+    #pipe-match-summary {
+      color: #4b5563 !important;
+    }
+    .viewer-chip,
+    #compare-tooltip,
+    #pipe-match-summary,
+    #analysis-modal .bg-gray-800,
+    #pipe-match-modal .bg-gray-800 {
+      border-radius: 0 !important;
+      border: 1px solid #d1d5db !important;
+      background: #f9fafb !important;
+      color: #111827 !important;
+    }
+    .filter-group {
+      border-top-color: #d1d5db !important;
+    }
+    .filter-group-head button {
+      color: #111827 !important;
+    }
+    .filter-close-btn {
+      border-radius: 0 !important;
+    }
+    .zoom-toolbar {
+      border-radius: 0 !important;
+      border: 1px solid #d1d5db !important;
+      background: #ffffff !important;
+      box-shadow: 0 10px 26px rgba(17, 24, 39, 0.16) !important;
+    }
+    #btn-compare-analysis:disabled,
+    #btn-pipe-match-analysis:disabled {
+      border-color: #9ca3af !important;
+      background: #f3f4f6 !important;
+      color: #6b7280 !important;
+      cursor: not-allowed !important;
+    }
+    #analysis-modal,
+    #pipe-match-modal {
+      background: rgba(240, 242, 245, 0.86) !important;
+      backdrop-filter: blur(2px) !important;
+    }
+    #analysis-modal h3,
+    #analysis-modal strong,
+    #analysis-modal span,
+    #pipe-match-modal span,
+    #pipe-match-modal strong {
+      color: #111827 !important;
+    }
+    #res-total-score,
+    #pipe-match-score,
+    #pipe-match-dxf-count,
+    #pipe-match-sdf-count,
+    #pipe-match-fail-count {
+      color: #111827 !important;
+      background-image: none !important;
+      -webkit-text-fill-color: #111827 !important;
+    }
+    .match-table th {
+      background: #f3f4f6 !important;
+      color: #111827 !important;
+      border-bottom-color: #d1d5db !important;
+    }
+    .match-table td {
+      color: #111827 !important;
+      border-bottom-color: #e5e7eb !important;
+    }
+    .match-pass { color: #0f766e !important; }
+    .match-review { color: #9a6700 !important; }
+    .match-fail { color: #b91c1c !important; }
+    .viewer-control-panel {
+      width: min(760px, calc(100% - 32px)) !important;
+      padding: 12px !important;
+      display: grid !important;
+      grid-template-columns: 150px minmax(0, 1fr) auto !important;
+      gap: 10px !important;
+      align-items: center !important;
+    }
+    .viewer-control-panel h1 {
+      margin: 0 !important;
+      font-size: 15px !important;
+      white-space: nowrap !important;
+    }
+    .viewer-file-button {
+      grid-column: 1 !important;
+      width: 100% !important;
+      padding: 9px 10px !important;
+      font-size: 12px !important;
+    }
+    .viewer-button-row {
+      grid-column: 2 !important;
+      margin: 0 !important;
+      display: flex !important;
+      gap: 6px !important;
+      min-width: 0 !important;
+    }
+    .viewer-button-row button {
+      flex: 1 1 0 !important;
+      min-width: 78px !important;
+      padding: 9px 8px !important;
+      font-size: 12px !important;
+      white-space: nowrap !important;
+    }
+    .viewer-secondary-row {
+      grid-column: 3 !important;
+      margin: 0 !important;
+      display: flex !important;
+      gap: 6px !important;
+    }
+    .viewer-secondary-row button {
+      min-width: 82px !important;
+      padding: 9px 10px !important;
+      font-size: 12px !important;
+      white-space: nowrap !important;
+    }
+    .viewer-control-panel .selection-hint,
+    .viewer-control-panel #dxf-status,
+    .viewer-control-panel #sdf-status {
+      grid-column: 1 / -1 !important;
+      margin: 0 !important;
+    }
+    @media (max-width: 980px) {
+      .viewer-control-panel {
+        grid-template-columns: 1fr !important;
+      }
+      .viewer-file-button,
+      .viewer-button-row,
+      .viewer-secondary-row,
+      .viewer-control-panel .selection-hint,
+      .viewer-control-panel #dxf-status,
+      .viewer-control-panel #sdf-status {
+        grid-column: 1 !important;
+      }
+    }
     .custom-scrollbar::-webkit-scrollbar { width: 6px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #1f2937; border-radius: 4px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
@@ -20,44 +240,110 @@
 </head>
 <body class="text-white flex flex-row w-screen h-screen">
   <div class="canvas-container" id="dxf-container">
-    <div class="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-md p-5 rounded-2xl shadow-2xl border border-gray-700/50 z-10 w-72">
+    <div class="viewer-control-panel absolute top-4 left-4 bg-gray-900/90 backdrop-blur-md p-5 rounded-2xl shadow-2xl border border-gray-700/50 z-10 w-72">
       <h1 class="text-xl font-bold mb-4 text-blue-400">DXF 뷰어 (도면)</h1>
-      <label class="flex justify-center items-center w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-colors">
+      <label class="viewer-file-button flex justify-center items-center w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-colors">
         DXF 파일 열기
         <input id="dxf-file" type="file" accept=".dxf" class="hidden" />
       </label>
-      <div class="mt-4 flex gap-2">
+      <div class="viewer-button-row mt-4 flex gap-2">
         <button id="dxf-btn-pan" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-blue-500">이동 모드</button>
         <button id="dxf-btn-select" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-transparent">영역 선택</button>
+        <button id="dxf-btn-entity" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-transparent">객체 선택</button>
+        <button id="dxf-btn-network" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-transparent">배관망 선택</button>
       </div>
-      <button id="dxf-btn-crop" class="mt-2 w-full bg-red-600 text-white text-xs font-semibold py-2 px-4 rounded-lg hidden">선택 영역 외 삭제</button>
+      <div class="viewer-secondary-row mt-2 flex gap-2">
+        <button id="dxf-btn-filters" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border border-gray-600">필터</button>
+        <button id="dxf-btn-crop" class="bg-red-600 text-white text-xs font-semibold py-2 px-4 rounded-lg hidden">선택 영역 외 삭제</button>
+      </div>
+      <div class="selection-hint">객체 선택 모드에서는 선/원/문자를 클릭한 뒤 Delete 키로 제거할 수 있습니다. 배관망 선택 모드에서는 선을 클릭하면 연결된 DXF 배관 컴포넌트만 선택됩니다.</div>
       <div id="dxf-status" class="mt-3 text-xs font-medium text-yellow-400 hidden">처리 중...</div>
+    </div>
+    <aside id="dxf-filter-panel" class="filter-panel custom-scrollbar">
+      <div class="filter-panel-head">
+        <h2>DXF 필터</h2>
+        <button type="button" id="dxf-filter-close" class="filter-close-btn" title="필터 닫기">×</button>
+      </div>
+      <div class="viewer-chip"><strong>권장</strong> 문자/치수/건축 레이어를 끄고 배관 관련 레이어만 남기세요.</div>
+      <section class="filter-group">
+        <div class="filter-group-head">
+          <span>레이어</span>
+          <button type="button" id="dxf-toggle-layers">전체 전환</button>
+        </div>
+        <div id="dxf-layer-list" class="filter-list custom-scrollbar"></div>
+      </section>
+      <section class="filter-group">
+        <div class="filter-group-head">
+          <span>객체 타입</span>
+          <button type="button" id="dxf-toggle-types">전체 전환</button>
+        </div>
+        <div id="dxf-type-list" class="filter-list custom-scrollbar"></div>
+      </section>
+    </aside>
+    <div class="zoom-toolbar" aria-label="DXF 뷰 조작">
+      <button type="button" id="dxf-btn-zoom-in" title="확대">+</button>
+      <button type="button" id="dxf-btn-zoom-out" title="축소">-</button>
+      <button type="button" id="dxf-btn-zoom-fit" class="zoom-fit" title="현재 표시 대상 맞춤">FIT</button>
     </div>
     <canvas id="dxf-canvas"></canvas>
   </div>
 
   <div class="canvas-container" id="sdf-container">
-    <div class="absolute top-4 left-4 bg-gray-900/90 backdrop-blur-md p-5 rounded-2xl shadow-2xl border border-gray-700/50 z-10 w-72">
+    <div class="viewer-control-panel absolute top-4 left-4 bg-gray-900/90 backdrop-blur-md p-5 rounded-2xl shadow-2xl border border-gray-700/50 z-10 w-72">
       <h1 class="text-xl font-bold mb-4 text-emerald-400">SDF 뷰어 (배관망)</h1>
-      <label class="flex justify-center items-center w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-colors">
+      <label class="viewer-file-button flex justify-center items-center w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-colors">
         Pipenet SDF 열기
         <input id="sdf-file" type="file" accept=".sdf" class="hidden" />
       </label>
-      <div class="mt-4 flex gap-2">
+      <div class="viewer-button-row mt-4 flex gap-2">
         <button id="sdf-btn-pan" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-emerald-500">이동 모드</button>
         <button id="sdf-btn-select" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-transparent">영역 선택</button>
       </div>
-      <button id="sdf-btn-crop" class="mt-2 w-full bg-red-600 text-white text-xs font-semibold py-2 px-4 rounded-lg hidden">선택 영역 외 삭제</button>
+      <div class="viewer-secondary-row mt-2 flex gap-2">
+        <button id="sdf-btn-filters" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border border-gray-600">필터</button>
+        <button id="sdf-btn-crop" class="bg-red-600 text-white text-xs font-semibold py-2 px-4 rounded-lg hidden">선택 영역 외 삭제</button>
+      </div>
       <div id="sdf-status" class="mt-3 text-xs font-medium text-yellow-400 hidden">처리 중...</div>
+    </div>
+    <aside id="sdf-filter-panel" class="filter-panel custom-scrollbar">
+      <div class="filter-panel-head">
+        <h2>SDF 필터</h2>
+        <button type="button" id="sdf-filter-close" class="filter-close-btn" title="필터 닫기">×</button>
+      </div>
+      <div class="viewer-chip"><strong>권장</strong> Pipe 재질 레이어와 설비 타입을 끄고 켜면서 비교 범위를 좁히세요.</div>
+      <section class="filter-group">
+        <div class="filter-group-head">
+          <span>레이어</span>
+          <button type="button" id="sdf-toggle-layers">전체 전환</button>
+        </div>
+        <div id="sdf-layer-list" class="filter-list custom-scrollbar"></div>
+      </section>
+      <section class="filter-group">
+        <div class="filter-group-head">
+          <span>객체 타입</span>
+          <button type="button" id="sdf-toggle-types">전체 전환</button>
+        </div>
+        <div id="sdf-type-list" class="filter-list custom-scrollbar"></div>
+      </section>
+    </aside>
+    <div class="zoom-toolbar" aria-label="SDF 뷰 조작">
+      <button type="button" id="sdf-btn-zoom-in" title="확대">+</button>
+      <button type="button" id="sdf-btn-zoom-out" title="축소">-</button>
+      <button type="button" id="sdf-btn-zoom-fit" class="zoom-fit" title="현재 표시 대상 맞춤">FIT</button>
     </div>
     <canvas id="sdf-canvas"></canvas>
   </div>
 
   <div class="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-40 flex flex-col items-center">
     <div id="compare-tooltip" class="text-xs text-yellow-400 mb-2 bg-gray-900/80 px-3 py-1 rounded-full border border-gray-700 backdrop-blur-sm shadow-lg">💡 양쪽 화면에서 '영역 선택' 모드로 비교할 범위를 각각 드래그하세요.</div>
-    <button id="btn-compare-analysis" class="bg-gray-600 text-gray-400 px-6 py-3 rounded-full font-bold flex items-center gap-3 border border-gray-500 cursor-not-allowed" disabled>
-      <span id="btn-compare-text">핵심 구성요소 대조 분석</span>
-    </button>
+    <div class="flex gap-3">
+      <button id="btn-compare-analysis" class="bg-gray-600 text-gray-400 px-6 py-3 rounded-full font-bold flex items-center gap-3 border border-gray-500 cursor-not-allowed" disabled>
+        <span id="btn-compare-text">핵심 구성요소 대조 분석</span>
+      </button>
+      <button id="btn-pipe-match-analysis" class="bg-gray-600 text-gray-400 px-6 py-3 rounded-full font-bold flex items-center gap-3 border border-gray-500 cursor-not-allowed" disabled>
+        <span id="btn-pipe-match-text">Pipe 단위 대조 분석</span>
+      </button>
+    </div>
   </div>
 
   <div id="analysis-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex justify-center items-center overflow-y-auto pt-10 pb-10">
@@ -97,11 +383,46 @@
     </div>
   </div>
 
+  <div id="pipe-match-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex justify-center items-center overflow-y-auto pt-10 pb-10">
+    <div class="bg-gray-900 border border-gray-700 p-7 rounded-2xl shadow-2xl w-[1100px] max-w-[96vw] relative">
+      <button id="btn-close-pipe-match-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white">닫기</button>
+      <h2 class="text-2xl font-bold mb-2 text-center"><span class="text-cyan-300">Pipe 단위 DXF-SDF 대조 분석</span></h2>
+      <p class="text-center text-[13px] text-gray-400 mb-5">선택 영역 안의 DXF 선분 그래프와 SDF Pipe 그래프를 정규화 좌표로 비교합니다. 현재 단계는 반자동 그래프 매칭이며, DXF 구경 텍스트는 근접 텍스트가 있을 때만 참고합니다.</p>
+      <div class="grid grid-cols-4 gap-3 mb-5">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">매칭률</div><div id="pipe-match-score" class="text-3xl font-black text-cyan-300">0%</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">DXF Edge</div><div id="pipe-match-dxf-count" class="text-3xl font-black text-blue-300">0</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">SDF Pipe</div><div id="pipe-match-sdf-count" class="text-3xl font-black text-emerald-300">0</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">Mismatch</div><div id="pipe-match-fail-count" class="text-3xl font-black text-red-300">0</div></div>
+      </div>
+      <div id="pipe-match-summary" class="bg-gray-800 border border-gray-700 rounded-xl p-4 text-[13px] text-gray-200 mb-5"></div>
+      <div class="max-h-[52vh] overflow-auto rounded-xl border border-gray-700">
+        <table class="match-table">
+          <thead>
+            <tr>
+              <th>상태</th>
+              <th>DXF Edge</th>
+              <th>SDF Pipe</th>
+              <th>비교 항목</th>
+              <th>판정 사유</th>
+            </tr>
+          </thead>
+          <tbody id="pipe-match-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <script>
     const cadColors = { 1:'#FF0000', 2:'#FFFF00', 3:'#00FF00', 4:'#00FFFF', 5:'#0000FF', 6:'#FF00FF', 7:'#FFFFFF', 8:'#808080', 9:'#C0C0C0' };
     const sdfLayerColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+    const DXF_ENDPOINT_TOLERANCE = 120;
+    const DXF_BORE_TEXT_TOLERANCE = 500;
+    const MATCH_MAX_SCORE = 1.35;
+    const MATCH_REVIEW_SCORE = 0.72;
+    const MATCH_LENGTH_TOLERANCE = 0.25;
 
     class Viewer {
+      static activePointerOwner = null;
       constructor(prefix, activeClass) {
         this.prefix = prefix;
         this.canvas = document.getElementById(`${prefix}-canvas`);
@@ -109,18 +430,37 @@
         this.fileInput = document.getElementById(`${prefix}-file`);
         this.btnPan = document.getElementById(`${prefix}-btn-pan`);
         this.btnSelect = document.getElementById(`${prefix}-btn-select`);
+        this.btnEntity = document.getElementById(`${prefix}-btn-entity`);
+        this.btnNetwork = document.getElementById(`${prefix}-btn-network`);
+        this.btnFilters = document.getElementById(`${prefix}-btn-filters`);
         this.btnCrop = document.getElementById(`${prefix}-btn-crop`);
+        this.btnZoomIn = document.getElementById(`${prefix}-btn-zoom-in`);
+        this.btnZoomOut = document.getElementById(`${prefix}-btn-zoom-out`);
+        this.btnZoomFit = document.getElementById(`${prefix}-btn-zoom-fit`);
         this.status = document.getElementById(`${prefix}-status`);
+        this.filterPanel = document.getElementById(`${prefix}-filter-panel`);
+        this.filterClose = document.getElementById(`${prefix}-filter-close`);
+        this.layerList = document.getElementById(`${prefix}-layer-list`);
+        this.typeList = document.getElementById(`${prefix}-type-list`);
+        this.toggleLayersBtn = document.getElementById(`${prefix}-toggle-layers`);
+        this.toggleTypesBtn = document.getElementById(`${prefix}-toggle-types`);
         this.activeClass = activeClass;
         this.mode = 'pan';
         this.dragging = false;
         this.start = null;
         this.end = null;
+        this.componentSelection = null;
+        this.entitySelection = null;
         this.pan = { x: 0, y: 0 };
         this.zoom = 1;
         this.bounds = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
         this.data = null;
         this.lastMouse = null;
+        this.availableLayers = [];
+        this.availableTypes = [];
+        this.activeLayers = new Set();
+        this.activeTypes = new Set();
+        this.filtersInitialized = false;
         this.bind();
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -135,21 +475,153 @@
         this.fileInput.addEventListener('change', (e) => this.load(e));
         this.btnPan.addEventListener('click', () => this.setMode('pan'));
         this.btnSelect.addEventListener('click', () => this.setMode('select'));
+        if (this.btnEntity) this.btnEntity.addEventListener('click', () => this.setMode('entity'));
+        if (this.btnNetwork) this.btnNetwork.addEventListener('click', () => this.setMode('network'));
+        if (this.btnFilters) this.btnFilters.addEventListener('click', () => this.toggleFilters());
+        if (this.filterClose) this.filterClose.addEventListener('click', () => this.closeFilters());
         this.btnCrop.addEventListener('click', () => this.crop());
         this.canvas.addEventListener('mousedown', (e) => this.onDown(e));
+        this.canvas.addEventListener('dblclick', () => this.fitVisibleItems());
         window.addEventListener('mouseup', () => this.onUp());
         window.addEventListener('mousemove', (e) => this.onMove(e));
         this.canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
+        this.toggleLayersBtn?.addEventListener('click', () => this.toggleAllFilters('layer'));
+        this.toggleTypesBtn?.addEventListener('click', () => this.toggleAllFilters('type'));
+        this.btnZoomIn?.addEventListener('click', () => this.applyZoomFactor(1.2));
+        this.btnZoomOut?.addEventListener('click', () => this.applyZoomFactor(1 / 1.2));
+        this.btnZoomFit?.addEventListener('click', () => this.fitVisibleItems());
       }
       setMode(mode) {
         this.mode = mode;
         this.btnPan.classList.toggle(this.activeClass, mode === 'pan');
         this.btnSelect.classList.toggle(this.activeClass, mode === 'select');
-        if (mode === 'pan') {
+        this.btnEntity?.classList.toggle(this.activeClass, mode === 'entity');
+        this.btnNetwork?.classList.toggle(this.activeClass, mode === 'network');
+        this.btnNetwork?.classList.toggle('mode-network', mode === 'network');
+        if (mode === 'pan' || mode === 'network' || mode === 'entity') {
           this.start = null; this.end = null; this.btnCrop.classList.add('hidden');
         }
         this.render();
         checkGlobalAnalysisReady();
+      }
+      toggleFilters() {
+        if (!this.filterPanel) return;
+        this.filterPanel.classList.toggle('is-open');
+      }
+      closeFilters() {
+        if (!this.filterPanel) return;
+        this.filterPanel.classList.remove('is-open');
+      }
+      toggleAllFilters(kind) {
+        const available = kind === 'layer' ? this.availableLayers : this.availableTypes;
+        const target = kind === 'layer' ? this.activeLayers : this.activeTypes;
+        const allChecked = available.length && available.every((x) => target.has(x));
+        target.clear();
+        if (!allChecked) available.forEach((x) => target.add(x));
+        this.buildFilterUI();
+        this.onFilterChange();
+      }
+      buildFilterUI() {
+        if (this.layerList) this.layerList.innerHTML = '';
+        if (this.typeList) this.typeList.innerHTML = '';
+        this.availableLayers.forEach((layer) => this.layerList?.appendChild(this.makeFilterRow('layer', layer)));
+        this.availableTypes.forEach((type) => this.typeList?.appendChild(this.makeFilterRow('type', type)));
+      }
+      makeFilterRow(kind, value) {
+        const wrapper = document.createElement('label');
+        wrapper.className = 'filter-item';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = kind === 'layer' ? this.activeLayers.has(value) : this.activeTypes.has(value);
+        input.addEventListener('change', () => {
+          const target = kind === 'layer' ? this.activeLayers : this.activeTypes;
+          if (input.checked) target.add(value); else target.delete(value);
+          this.onFilterChange();
+        });
+        const text = document.createElement('span');
+        text.textContent = value;
+        wrapper.append(input, text);
+        return wrapper;
+      }
+      onFilterChange() {
+        this.clearSelection();
+        this.render();
+      }
+      captureViewState() {
+        return {
+          bounds: { ...this.bounds },
+          pan: { ...this.pan },
+          zoom: this.zoom,
+        };
+      }
+      restoreViewState(state) {
+        if (!state) return;
+        this.bounds = { ...state.bounds };
+        this.pan = { ...state.pan };
+        this.zoom = state.zoom;
+      }
+      applyZoomFactor(factor, screenX = this.canvas.width / 2, screenY = this.canvas.height / 2) {
+        const focusWorld = this.screenToWorld(screenX, screenY);
+        this.zoom = Math.max(0.000001, Math.min(this.zoom * factor, 100000));
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const dcx = (this.bounds.minX + this.bounds.maxX) / 2;
+        const dcy = (this.bounds.minY + this.bounds.maxY) / 2;
+        this.pan.x = screenX - cx - (focusWorld.x - dcx) * this.zoom;
+        this.pan.y = screenY - cy - (dcy - focusWorld.y) * this.zoom;
+        this.render();
+      }
+      getVisibleGeometryPoints() {
+        return [];
+      }
+      fitVisibleItems() {
+        const points = this.getVisibleGeometryPoints();
+        if (!points.length) return;
+        this.resetFromPoints(points);
+        this.render();
+      }
+      captureFilterState() {
+        return {
+          initialized: this.filtersInitialized,
+          activeLayers: new Set(this.activeLayers),
+          activeTypes: new Set(this.activeTypes),
+        };
+      }
+      restoreFilterState(state) {
+        if (!state) return;
+        this.filtersInitialized = state.initialized;
+        this.activeLayers = new Set(this.availableLayers.filter((layer) => state.activeLayers.has(layer)));
+        this.activeTypes = new Set(this.availableTypes.filter((type) => state.activeTypes.has(type)));
+        this.buildFilterUI();
+      }
+      extractFilters(items, options = {}) {
+        const reset = options.reset === true || !this.filtersInitialized;
+        const nextLayers = [...new Set(items.map((item) => item.layer || '0'))].sort();
+        const nextTypes = [...new Set(items.map((item) => item.type || 'UNKNOWN'))].sort();
+        const prevLayers = new Set(this.activeLayers);
+        const prevTypes = new Set(this.activeTypes);
+        this.availableLayers = nextLayers;
+        this.availableTypes = nextTypes;
+        if (reset) {
+          this.activeLayers = new Set(nextLayers);
+          this.activeTypes = new Set(nextTypes);
+        } else {
+          this.activeLayers = new Set(nextLayers.filter((layer) => prevLayers.has(layer)));
+          this.activeTypes = new Set(nextTypes.filter((type) => prevTypes.has(type)));
+        }
+        this.filtersInitialized = true;
+        this.buildFilterUI();
+      }
+      isItemVisible(item) {
+        const layer = item?.layer || '0';
+        const type = item?.type || 'UNKNOWN';
+        return this.activeLayers.has(layer) && this.activeTypes.has(type);
+      }
+      bboxInside(bbox, sel) {
+        return !!bbox && bbox.minX >= sel.minX && bbox.maxX <= sel.maxX && bbox.minY >= sel.minY && bbox.maxY <= sel.maxY;
+      }
+      bboxOverlaps(bbox, sel) {
+        return !!bbox && !(bbox.maxX < sel.minX || bbox.minX > sel.maxX || bbox.maxY < sel.minY || bbox.minY > sel.maxY);
       }
       screenToWorld(x, y) {
         const cx = this.canvas.width / 2;
@@ -162,6 +634,7 @@
         };
       }
       getSelectionBBox() {
+        if (this.componentSelection?.bbox) return this.componentSelection.bbox;
         if (!this.start || !this.end) return null;
         const a = this.screenToWorld(this.start.x, this.start.y);
         const b = this.screenToWorld(this.end.x, this.end.y);
@@ -170,6 +643,8 @@
       clearSelection() {
         this.start = null;
         this.end = null;
+        this.componentSelection = null;
+        this.entitySelection = null;
         this.btnCrop.classList.add('hidden');
         checkGlobalAnalysisReady();
       }
@@ -185,22 +660,46 @@
       onDown(e) {
         const r = this.canvas.getBoundingClientRect();
         const x = e.clientX - r.left, y = e.clientY - r.top;
+        Viewer.activePointerOwner = this;
         if (this.mode === 'pan') {
           this.dragging = true; this.lastMouse = { x: e.clientX, y: e.clientY };
-        } else {
+        } else if (this.mode === 'select') {
+          this.componentSelection = null;
+          this.entitySelection = null;
           this.start = { x, y }; this.end = { x, y }; this.btnCrop.classList.add('hidden');
+        } else if (this.mode === 'entity') {
+          this.handleEntityPick?.(this.screenToWorld(x, y));
+        } else if (this.mode === 'network') {
+          this.entitySelection = null;
+          this.handleNetworkPick?.(this.screenToWorld(x, y));
         }
       }
       onUp() {
-        if (this.mode === 'pan') { this.dragging = false; return; }
+        if (Viewer.activePointerOwner && Viewer.activePointerOwner !== this) return;
+        if (this.mode === 'pan') {
+          this.dragging = false;
+          Viewer.activePointerOwner = null;
+          return;
+        }
+        if (this.mode === 'network') {
+          checkGlobalAnalysisReady();
+          Viewer.activePointerOwner = null;
+          return;
+        }
+        if (this.mode === 'entity') {
+          Viewer.activePointerOwner = null;
+          return;
+        }
         if (this.start && this.end) {
           const dx = Math.abs(this.end.x - this.start.x);
           const dy = Math.abs(this.end.y - this.start.y);
           if (dx > 5 && dy > 5) this.btnCrop.classList.remove('hidden');
           checkGlobalAnalysisReady();
         }
+        Viewer.activePointerOwner = null;
       }
       onMove(e) {
+        if (Viewer.activePointerOwner && Viewer.activePointerOwner !== this) return;
         const r = this.canvas.getBoundingClientRect();
         const x = e.clientX - r.left, y = e.clientY - r.top;
         if (this.mode === 'pan' && this.dragging) {
@@ -214,9 +713,12 @@
       }
       onWheel(e) {
         e.preventDefault();
-        const factor = Math.exp(-e.deltaY * 0.0015);
-        this.zoom = Math.max(0.000001, Math.min(this.zoom * factor, 100000));
-        this.render();
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const step = Math.max(-180, Math.min(180, e.deltaY));
+        const factor = Math.exp(-step * 0.0012);
+        this.applyZoomFactor(factor, x, y);
       }
       setupView(minX, minY, maxX, maxY) {
         this.bounds = { minX, minY, maxX, maxY };
@@ -240,6 +742,34 @@
         return true;
       }
       drawOverlay() {
+        if (this.componentSelection?.bbox) {
+          const { minX, minY, maxX, maxY } = this.componentSelection.bbox;
+          const a = this.worldToScreen(minX, minY);
+          const b = this.worldToScreen(maxX, maxY);
+          this.ctx.save();
+          this.ctx.fillStyle = 'rgba(245, 158, 11, 0.14)';
+          this.ctx.strokeStyle = 'rgba(245, 158, 11, 0.92)';
+          this.ctx.setLineDash([6, 4]);
+          const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+          const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+          this.ctx.fillRect(x, y, w, h); this.ctx.strokeRect(x, y, w, h);
+          this.ctx.restore();
+          return;
+        }
+        if (this.entitySelection?.bbox) {
+          const { minX, minY, maxX, maxY } = this.entitySelection.bbox;
+          const a = this.worldToScreen(minX, minY);
+          const b = this.worldToScreen(maxX, maxY);
+          this.ctx.save();
+          this.ctx.fillStyle = 'rgba(34, 211, 238, 0.12)';
+          this.ctx.strokeStyle = 'rgba(34, 211, 238, 0.95)';
+          this.ctx.setLineDash([4, 3]);
+          const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+          const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+          this.ctx.fillRect(x, y, w, h); this.ctx.strokeRect(x, y, w, h);
+          this.ctx.restore();
+          return;
+        }
         if (this.mode === 'select' && this.start && this.end) {
           this.ctx.save();
           this.ctx.fillStyle = 'rgba(59,130,246,0.15)';
@@ -250,6 +780,16 @@
           this.ctx.fillRect(x, y, w, h); this.ctx.strokeRect(x, y, w, h);
           this.ctx.restore();
         }
+      }
+      worldToScreen(x, y) {
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const dcx = (this.bounds.minX + this.bounds.maxX) / 2;
+        const dcy = (this.bounds.minY + this.bounds.maxY) / 2;
+        return {
+          x: (x - dcx) * this.zoom + cx + this.pan.x,
+          y: (dcy - y) * this.zoom + cy + this.pan.y,
+        };
       }
     }
 
@@ -269,6 +809,7 @@
             throw new Error(payload.message || 'DXF parse failed');
           }
           this.data = payload.cad_payload || { entities: [], bounds: null };
+          this.extractFilters(this.data.entities || [], { reset: true });
           const bounds = this.data.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 };
           this.setupView(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
           this.status.classList.add('hidden');
@@ -304,12 +845,6 @@
         const ys = pts.map((p) => p.y);
         return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
       }
-      bboxInside(bbox, sel) {
-        return bbox && bbox.minX >= sel.minX && bbox.maxX <= sel.maxX && bbox.minY >= sel.minY && bbox.maxY <= sel.maxY;
-      }
-      bboxOverlaps(bbox, sel) {
-        return !!bbox && !(bbox.maxX < sel.minX || bbox.minX > sel.maxX || bbox.maxY < sel.minY || bbox.minY > sel.maxY);
-      }
       entityHint(ent) {
         return [
           ent.layer || '',
@@ -328,12 +863,179 @@
         const hint = this.entityHint(ent);
         return /(head|sprink|nozzle|upright|pendent|sidewall)/.test(hint);
       }
+      isPipeLike(ent) {
+        return ent.type === 'LINE' || ent.type === 'LWPOLYLINE' || ent.type === 'ARC';
+      }
+      entityEndpoints(ent) {
+        if (ent.type === 'LINE' && ent.start && ent.end) return [ent.start, ent.end];
+        if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points) && ent.points.length >= 2) return [ent.points[0], ent.points[ent.points.length - 1]];
+        if (ent.type === 'ARC' && ent.center && Number.isFinite(ent.radius)) {
+          const s = (ent.startAngle || 0) * Math.PI / 180;
+          const e = (ent.endAngle || 0) * Math.PI / 180;
+          return [
+            { x: ent.center.x + Math.cos(s) * ent.radius, y: ent.center.y + Math.sin(s) * ent.radius },
+            { x: ent.center.x + Math.cos(e) * ent.radius, y: ent.center.y + Math.sin(e) * ent.radius },
+          ];
+        }
+        return [];
+      }
+      visibleEntities() {
+        return (this.data?.entities || []).filter((ent) => this.isItemVisible(ent));
+      }
+      getVisibleGeometryPoints() {
+        const points = [];
+        this.visibleEntities().forEach((ent) => {
+          if (ent.type === 'LINE' && ent.start && ent.end) {
+            points.push(ent.start, ent.end);
+          } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points)) {
+            points.push(...ent.points);
+          } else if ((ent.type === 'CIRCLE' || ent.type === 'ARC') && ent.center && Number.isFinite(ent.radius)) {
+            points.push(
+              { x: ent.center.x - ent.radius, y: ent.center.y - ent.radius },
+              { x: ent.center.x + ent.radius, y: ent.center.y + ent.radius }
+            );
+          } else if (ent.type === 'TEXT' && ent.insert) {
+            points.push(ent.insert);
+          }
+        });
+        return points;
+      }
+      handleNetworkPick(worldPoint) {
+        const candidates = this.visibleEntities().filter((ent) => this.isPipeLike(ent));
+        if (!candidates.length) return;
+        let best = null;
+        let bestDist = Infinity;
+        candidates.forEach((ent) => {
+          const dist = this.entityDistance(ent, worldPoint);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = { ent };
+          }
+        });
+        const pickTolerance = Math.max(80, 14 / Math.max(this.zoom, 0.000001));
+        if (!best || bestDist > pickTolerance) return;
+        const component = this.findConnectedComponent(best.ent, candidates);
+        if (!component.length) return;
+        const boxes = component.map((ent) => this.getEntityBBox(ent)).filter(Boolean);
+        const bbox = {
+          minX: Math.min(...boxes.map((b) => b.minX)),
+          minY: Math.min(...boxes.map((b) => b.minY)),
+          maxX: Math.max(...boxes.map((b) => b.maxX)),
+          maxY: Math.max(...boxes.map((b) => b.maxY)),
+        };
+        this.componentSelection = { entities: new Set(component), bbox };
+        this.btnCrop.classList.remove('hidden');
+        this.render();
+        checkGlobalAnalysisReady();
+      }
+      findConnectedComponent(seed, entities) {
+        const tolerance = DXF_ENDPOINT_TOLERANCE;
+        const endpointKeys = new Map();
+        entities.forEach((ent) => {
+          this.entityEndpoints(ent).forEach((pt) => {
+            const key = `${Math.round(pt.x / tolerance)},${Math.round(pt.y / tolerance)}`;
+            if (!endpointKeys.has(key)) endpointKeys.set(key, []);
+            endpointKeys.get(key).push(ent);
+          });
+        });
+        const queue = [seed];
+        const seen = new Set([seed]);
+        while (queue.length) {
+          const current = queue.shift();
+          this.entityEndpoints(current).forEach((pt) => {
+            const key = `${Math.round(pt.x / tolerance)},${Math.round(pt.y / tolerance)}`;
+            (endpointKeys.get(key) || []).forEach((next) => {
+              if (!seen.has(next)) {
+                seen.add(next);
+                queue.push(next);
+              }
+            });
+          });
+        }
+        return [...seen];
+      }
+      distanceToSegment(point, a, b) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const l2 = dx * dx + dy * dy;
+        if (!l2) return Math.hypot(point.x - a.x, point.y - a.y);
+        let t = ((point.x - a.x) * dx + (point.y - a.y) * dy) / l2;
+        t = Math.max(0, Math.min(1, t));
+        const projX = a.x + t * dx;
+        const projY = a.y + t * dy;
+        return Math.hypot(point.x - projX, point.y - projY);
+      }
+      entityDistance(ent, worldPoint) {
+        if (ent.type === 'LINE' && ent.start && ent.end) return this.distanceToSegment(worldPoint, ent.start, ent.end);
+        if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points) && ent.points.length >= 2) {
+          let best = Infinity;
+          for (let i = 0; i < ent.points.length - 1; i += 1) best = Math.min(best, this.distanceToSegment(worldPoint, ent.points[i], ent.points[i + 1]));
+          return best;
+        }
+        if ((ent.type === 'CIRCLE' || ent.type === 'ARC') && ent.center) {
+          return Math.abs(Math.hypot(worldPoint.x - ent.center.x, worldPoint.y - ent.center.y) - (ent.radius || 0));
+        }
+        if (ent.type === 'TEXT' && ent.insert) return Math.hypot(worldPoint.x - ent.insert.x, worldPoint.y - ent.insert.y);
+        const bbox = this.getEntityBBox(ent);
+        if (!bbox) return Infinity;
+        const cx = (bbox.minX + bbox.maxX) / 2;
+        const cy = (bbox.minY + bbox.maxY) / 2;
+        return Math.hypot(worldPoint.x - cx, worldPoint.y - cy);
+      }
+      handleEntityPick(worldPoint) {
+        const candidates = this.visibleEntities();
+        if (!candidates.length) return;
+        const tolerance = Math.max(((this.bounds.maxX - this.bounds.minX) / Math.max(this.canvas.width, 1)) * 18, 60);
+        let picked = null;
+        let bestDist = Infinity;
+        candidates.forEach((ent) => {
+          const dist = this.entityDistance(ent, worldPoint);
+          if (dist < bestDist) {
+            bestDist = dist;
+            picked = ent;
+          }
+        });
+        if (!picked || bestDist > tolerance) {
+          this.entitySelection = null;
+          this.render();
+          return;
+        }
+        this.componentSelection = null;
+        this.entitySelection = { entity: picked, bbox: this.getEntityBBox(picked) };
+        this.render();
+      }
+      deleteSelectedEntity() {
+        if (!this.entitySelection?.entity || !this.data?.entities) return false;
+        const target = this.entitySelection.entity;
+        const viewState = this.captureViewState();
+        const filterState = this.captureFilterState();
+        this.data.entities = this.data.entities.filter((ent) => ent !== target);
+        this.extractFilters(this.data.entities || []);
+        this.restoreFilterState(filterState);
+        this.restoreViewState(viewState);
+        this.entitySelection = null;
+        this.componentSelection = null;
+        this.start = null;
+        this.end = null;
+        this.btnCrop.classList.add('hidden');
+        this.render();
+        requestAnimationFrame(() => {
+          this.restoreFilterState(filterState);
+          this.restoreViewState(viewState);
+          this.render();
+        });
+        return true;
+      }
       render() {
         if (!this.baseRenderBegin()) return;
-        (this.data.entities || []).forEach(ent => {
+        this.visibleEntities().forEach(ent => {
+          this.ctx.save();
           this.ctx.beginPath();
-          this.ctx.strokeStyle = this.getEntityStroke(ent);
-          this.ctx.lineWidth = 1.5 / this.zoom;
+          const isSelected = this.componentSelection?.entities?.has(ent);
+          const isEntitySelected = this.entitySelection?.entity === ent;
+          this.ctx.strokeStyle = isEntitySelected ? '#22d3ee' : isSelected ? '#f59e0b' : this.getEntityStroke(ent);
+          this.ctx.lineWidth = (isSelected ? 3 : 1.5) / this.zoom;
+          this.ctx.globalAlpha = this.componentSelection && !isSelected ? 0.18 : 1;
           if (ent.type === 'LINE' && ent.start && ent.end) {
             this.ctx.moveTo(ent.start.x, ent.start.y); this.ctx.lineTo(ent.end.x, ent.end.y);
           } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points)) {
@@ -347,22 +1049,30 @@
             this.ctx.save();
             this.ctx.translate(ent.insert.x, ent.insert.y);
             this.ctx.scale(1, -1);
-            this.ctx.fillStyle = this.getEntityStroke(ent);
+            this.ctx.globalAlpha = this.componentSelection && !isSelected ? 0.18 : 1;
+            this.ctx.fillStyle = isEntitySelected ? '#22d3ee' : isSelected ? '#fbbf24' : this.getEntityStroke(ent);
             this.ctx.font = `${Math.max((ent.height || 120) / this.zoom * 0.08, 3)}px sans-serif`;
             this.ctx.fillText(ent.text, 0, 0);
             this.ctx.restore();
+            this.ctx.restore();
             return;
-          } else return;
+          } else {
+            this.ctx.restore();
+            return;
+          }
           this.ctx.stroke();
+          this.ctx.globalAlpha = 1;
+          this.ctx.restore();
         });
         this.ctx.restore();
         this.drawOverlay();
       }
       crop() {
-        if (!this.data || !this.data.entities || !this.start || !this.end) return;
+        if (!this.data || !this.data.entities) return;
         const sel = this.getSelectionBBox();
         if (!sel) return;
-        this.data.entities = this.data.entities.filter((ent) => this.bboxOverlaps(this.getEntityBBox(ent), sel));
+        this.data.entities = this.data.entities.filter((ent) => this.isItemVisible(ent) && this.bboxOverlaps(this.getEntityBBox(ent), sel));
+        this.extractFilters(this.data.entities || []);
         const pts = [];
         (this.data.entities || []).forEach((ent) => {
           if (ent.type === 'LINE' && ent.start && ent.end) {
@@ -385,7 +1095,7 @@
       analyzeSelection(bbox) {
         let heads = 0, valves = 0, branchLen = 0, mainLen = 0, fittings = 0;
         const pointsMap = {};
-        (this.data.entities || []).forEach(ent => {
+        this.visibleEntities().forEach(ent => {
           const entBox = this.getEntityBBox(ent);
           if (!this.bboxInside(entBox, bbox)) return;
           if (this.isHeadLike(ent)) heads++;
@@ -409,10 +1119,116 @@
         Object.values(pointsMap).forEach(d => { if (d >= 2) fittings++; });
         return { heads, branchLen, mainLen, fittings, valves };
       }
+      buildPipeMatchGraph(bbox) {
+        const edges = [];
+        const texts = [];
+        const pushEdge = (ent, points, segmentIndex = 0) => {
+          if (points.length < 2) return;
+          const start = points[0];
+          const end = points[points.length - 1];
+          const length = points.slice(1).reduce((sum, p, idx) => sum + Math.hypot(p.x - points[idx].x, p.y - points[idx].y), 0);
+          if (length <= 0) return;
+          edges.push({
+            id: `${ent.id || ent.sourceHandle || 'dxf'}-${segmentIndex}`,
+            label: ent.sourceHandle || ent.id || `DXF-${edges.length + 1}`,
+            layer: ent.layer || '0',
+            start,
+            end,
+            points,
+            length,
+            sourceDegree: 0,
+            targetDegree: 0,
+            boreText: null,
+          });
+        };
+        this.visibleEntities().forEach((ent) => {
+          const entBox = this.getEntityBBox(ent);
+          if (!this.bboxOverlaps(entBox, bbox)) return;
+          if (ent.type === 'TEXT' && ent.insert && ent.text) {
+            texts.push({ x: ent.insert.x, y: ent.insert.y, text: ent.text });
+            return;
+          }
+          if (ent.type === 'LINE' && ent.start && ent.end) {
+            pushEdge(ent, [ent.start, ent.end]);
+          } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points) && ent.points.length >= 2) {
+            for (let i = 0; i < ent.points.length - 1; i += 1) pushEdge(ent, [ent.points[i], ent.points[i + 1]], i);
+          } else if (ent.type === 'ARC') {
+            const pts = this.sampleArc(ent);
+            pushEdge(ent, pts);
+          }
+        });
+        this.enrichGraphDegrees(edges, DXF_ENDPOINT_TOLERANCE);
+        this.attachNearestBoreText(edges, texts);
+        return { edges, texts };
+      }
+      sampleArc(ent) {
+        if (!ent.center || !Number.isFinite(ent.radius)) return [];
+        let start = (ent.startAngle || 0) * Math.PI / 180;
+        let end = (ent.endAngle || 0) * Math.PI / 180;
+        if (end < start) end += Math.PI * 2;
+        const steps = Math.max(8, Math.ceil(Math.abs(end - start) / (Math.PI / 18)));
+        const pts = [];
+        for (let i = 0; i <= steps; i += 1) {
+          const t = start + (end - start) * (i / steps);
+          pts.push({ x: ent.center.x + Math.cos(t) * ent.radius, y: ent.center.y + Math.sin(t) * ent.radius });
+        }
+        return pts;
+      }
+      enrichGraphDegrees(edges, tolerance) {
+        const clusters = [];
+        const findCluster = (pt) => {
+          let best = null;
+          let bestDist = Infinity;
+          clusters.forEach((cluster, idx) => {
+            const dist = Math.hypot(pt.x - cluster.x, pt.y - cluster.y);
+            if (dist <= tolerance && dist < bestDist) { best = idx; bestDist = dist; }
+          });
+          if (best === null) {
+            clusters.push({ x: pt.x, y: pt.y, degree: 0 });
+            return clusters.length - 1;
+          }
+          const c = clusters[best];
+          c.x = (c.x + pt.x) / 2;
+          c.y = (c.y + pt.y) / 2;
+          return best;
+        };
+        edges.forEach((edge) => {
+          edge.sourceNode = findCluster(edge.start);
+          edge.targetNode = findCluster(edge.end);
+          clusters[edge.sourceNode].degree += 1;
+          clusters[edge.targetNode].degree += 1;
+        });
+        edges.forEach((edge) => {
+          edge.sourceDegree = clusters[edge.sourceNode]?.degree || 0;
+          edge.targetDegree = clusters[edge.targetNode]?.degree || 0;
+        });
+      }
+      attachNearestBoreText(edges, texts) {
+        const borePattern = /\b(?:DN\s*)?(\d{2,3})\s*A?\b/i;
+        texts.forEach((text) => {
+          const match = String(text.text || '').match(borePattern);
+          if (!match) return;
+          let best = null;
+          let bestDist = Infinity;
+          edges.forEach((edge) => {
+            for (let i = 0; i < edge.points.length - 1; i += 1) {
+              const dist = this.distanceToSegment(text, edge.points[i], edge.points[i + 1]);
+              if (dist < bestDist) { bestDist = dist; best = edge; }
+            }
+          });
+          if (best && bestDist <= DXF_BORE_TEXT_TOLERANCE) best.boreText = `${match[1]}A`;
+        });
+      }
     }
 
     class SdfViewer extends Viewer {
       constructor() { super('sdf', 'border-emerald-500'); }
+      getVisibleGeometryPoints() {
+        const points = [];
+        (this.data?.elements || []).filter((e) => this.isItemVisible(e)).forEach((e) => points.push({ x: e.x, y: e.y }));
+        (this.data?.pipes || []).filter((p) => this.isItemVisible(p)).forEach((p) => points.push(p.in, ...(p.waypoints || []), p.out));
+        return points;
+      }
       load(e) {
         const file = e.target.files[0]; if (!file) return;
         this.status.classList.remove('hidden'); this.status.textContent = 'SDF 파싱 중...';
@@ -420,6 +1236,7 @@
         reader.onload = (ev) => {
           try {
             this.data = this.parseSDF(ev.target.result);
+            this.extractFilters([...(this.data.elements || []), ...(this.data.pipes || [])], { reset: true });
             const pts = this.data.elements.map(e => ({ x: e.x, y: e.y }));
             this.data.pipes.forEach(p => { pts.push(p.in, p.out, ...(p.waypoints || [])); });
             const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
@@ -472,10 +1289,10 @@
       }
       render() {
         if (!this.baseRenderBegin()) return;
-        this.data.pipes.forEach(p => {
+        this.data.pipes.filter((p) => this.isItemVisible(p)).forEach(p => {
           this.ctx.beginPath(); this.ctx.strokeStyle = p.color || '#fff'; this.ctx.lineWidth = 2 / this.zoom; this.ctx.moveTo(p.in.x, p.in.y); (p.waypoints || []).forEach(wp => this.ctx.lineTo(wp.x, wp.y)); this.ctx.lineTo(p.out.x, p.out.y); this.ctx.stroke();
         });
-        this.data.elements.forEach(e => {
+        this.data.elements.filter((e) => this.isItemVisible(e)).forEach(e => {
           if (e.type === 'Node') { this.ctx.beginPath(); this.ctx.fillStyle = '#4b5563'; this.ctx.arc(e.x, e.y, 2 / this.zoom, 0, Math.PI * 2); this.ctx.fill(); }
           else if (e.type === 'Nozzle') { this.ctx.beginPath(); this.ctx.fillStyle = '#ef4444'; this.ctx.arc(e.x, e.y, 4 / this.zoom, 0, Math.PI * 2); this.ctx.fill(); }
           else if (e.type === 'Valve' || e.type === 'Pump') { const s = 8 / this.zoom; this.ctx.fillStyle = '#3b82f6'; this.ctx.fillRect(e.x - s/2, e.y - s/2, s, s); }
@@ -487,8 +1304,9 @@
         const sel = this.getSelectionBBox();
         if (!sel) return;
         const pointBox = (x, y) => ({ minX: x, minY: y, maxX: x, maxY: y });
-        this.data.elements = this.data.elements.filter((e) => this.bboxOverlaps(pointBox(e.x, e.y), sel));
-        this.data.pipes = this.data.pipes.filter((p) => this.bboxOverlaps(this.getPipeBBox(p), sel));
+        this.data.elements = this.data.elements.filter((e) => this.isItemVisible(e) && this.bboxOverlaps(pointBox(e.x, e.y), sel));
+        this.data.pipes = this.data.pipes.filter((p) => this.isItemVisible(p) && this.bboxOverlaps(this.getPipeBBox(p), sel));
+        this.extractFilters([...(this.data.elements || []), ...(this.data.pipes || [])]);
         const pts = [];
         this.data.elements.forEach((e) => pts.push({ x: e.x, y: e.y }));
         this.data.pipes.forEach((p) => pts.push(p.in, ...(p.waypoints || []), p.out));
@@ -499,32 +1317,235 @@
       analyzeSelection(bbox) {
         let heads = 0, valves = 0, branchLen = 0, mainLen = 0, fittings = 0;
         const isInside = (x,y) => x >= bbox.minX && x <= bbox.maxX && y >= bbox.minY && y <= bbox.maxY;
-        this.data.elements.forEach(e => { if (isInside(e.x,e.y)) { if (e.type === 'Nozzle') heads++; if (e.type === 'Valve' || e.type === 'Pump') valves++; } });
-        this.data.pipes.forEach(p => {
+        this.data.elements.filter((e) => this.isItemVisible(e)).forEach(e => { if (isInside(e.x,e.y)) { if (e.type === 'Nozzle') heads++; if (e.type === 'Valve' || e.type === 'Pump') valves++; } });
+        this.data.pipes.filter((p) => this.isItemVisible(p)).forEach(p => {
           let inside = isInside(p.in.x,p.in.y) && isInside(p.out.x,p.out.y); (p.waypoints || []).forEach(wp => { if (!isInside(wp.x, wp.y)) inside = false; });
           if (inside) { if (p.bore >= 0.05) mainLen += p.length; else branchLen += p.length; fittings += p.fittings.elbow + p.fittings.tee + p.fittings.cross; valves += p.fittings.valve; }
         });
         return { heads, branchLen, mainLen, fittings, valves };
+      }
+      buildPipeMatchGraph(bbox) {
+        const edges = [];
+        const isInside = (x,y) => x >= bbox.minX && x <= bbox.maxX && y >= bbox.minY && y <= bbox.maxY;
+        (this.data?.pipes || []).filter((p) => this.isItemVisible(p)).forEach((p) => {
+          const points = [p.in, ...(p.waypoints || []), p.out];
+          if (!points.some((pt) => isInside(pt.x, pt.y)) && !this.bboxOverlaps(this.getPipeBBox(p), bbox)) return;
+          const length = Number.isFinite(p.length) && p.length > 0
+            ? p.length
+            : points.slice(1).reduce((sum, pt, idx) => sum + Math.hypot(pt.x - points[idx].x, pt.y - points[idx].y), 0);
+          edges.push({
+            id: p.label || `SDF-${edges.length + 1}`,
+            label: p.label || `SDF-${edges.length + 1}`,
+            layer: p.layer || 'Default Pipe',
+            start: points[0],
+            end: points[points.length - 1],
+            points,
+            length,
+            bore: p.bore ? p.bore * 1000 : null,
+            sourceDegree: 0,
+            targetDegree: 0,
+          });
+        });
+        const degree = {};
+        edges.forEach((edge) => {
+          const s = edge.start.id || `${edge.start.x},${edge.start.y}`;
+          const t = edge.end.id || `${edge.end.x},${edge.end.y}`;
+          degree[s] = (degree[s] || 0) + 1;
+          degree[t] = (degree[t] || 0) + 1;
+          edge.sourceKey = s;
+          edge.targetKey = t;
+        });
+        edges.forEach((edge) => {
+          edge.sourceDegree = degree[edge.sourceKey] || 0;
+          edge.targetDegree = degree[edge.targetKey] || 0;
+        });
+        return { edges };
       }
     }
 
     const dxfApp = new DxfViewer();
     const sdfApp = new SdfViewer();
     const btnCompare = document.getElementById('btn-compare-analysis');
+    const btnPipeMatch = document.getElementById('btn-pipe-match-analysis');
     const analysisModal = document.getElementById('analysis-modal');
+    const pipeMatchModal = document.getElementById('pipe-match-modal');
     const btnCloseModal = document.getElementById('btn-close-modal');
+    const btnClosePipeMatchModal = document.getElementById('btn-close-pipe-match-modal');
 
     function checkGlobalAnalysisReady() {
       const dBox = dxfApp.getSelectionBBox(); const sBox = sdfApp.getSelectionBBox();
-      const tooltip = document.getElementById('compare-tooltip'); const textSpan = document.getElementById('btn-compare-text');
-      if (dBox && sBox) {
-        btnCompare.disabled = false; btnCompare.classList.remove('bg-gray-600','text-gray-400','border-gray-500','cursor-not-allowed'); btnCompare.classList.add('bg-indigo-600','hover:bg-indigo-500','text-white','border-indigo-400'); textSpan.textContent = '핵심 구성요소 대조 분석'; tooltip.classList.add('opacity-0');
+      const ready = !!(dBox && sBox);
+      const tooltip = document.getElementById('compare-tooltip');
+      setAnalysisButtonState(btnCompare, document.getElementById('btn-compare-text'), ready, 'indigo', '핵심 구성요소 대조 분석');
+      setAnalysisButtonState(btnPipeMatch, document.getElementById('btn-pipe-match-text'), ready, 'cyan', 'Pipe 단위 대조 분석');
+      tooltip.classList.toggle('opacity-0', ready);
+    }
+
+    function setAnalysisButtonState(button, textEl, ready, color, label) {
+      const activeClasses = color === 'cyan'
+        ? ['bg-cyan-600', 'hover:bg-cyan-500', 'text-white', 'border-cyan-400']
+        : ['bg-indigo-600', 'hover:bg-indigo-500', 'text-white', 'border-indigo-400'];
+      const disabledClasses = ['bg-gray-600', 'text-gray-400', 'border-gray-500', 'cursor-not-allowed'];
+      button.disabled = !ready;
+      button.classList.toggle('cursor-not-allowed', !ready);
+      if (ready) {
+        button.classList.remove(...disabledClasses);
+        button.classList.add(...activeClasses);
+        textEl.textContent = label;
       } else {
-        btnCompare.disabled = true; btnCompare.classList.add('bg-gray-600','text-gray-400','border-gray-500','cursor-not-allowed'); btnCompare.classList.remove('bg-indigo-600','hover:bg-indigo-500','text-white','border-indigo-400'); textSpan.textContent = '핵심 구성요소 대조 분석 (준비 안됨)'; tooltip.classList.remove('opacity-0');
+        button.classList.add(...disabledClasses);
+        button.classList.remove(...activeClasses);
+        textEl.textContent = `${label} (준비 안됨)`;
       }
     }
     checkGlobalAnalysisReady();
     btnCloseModal.addEventListener('click', () => analysisModal.classList.add('hidden'));
+    btnClosePipeMatchModal.addEventListener('click', () => pipeMatchModal.classList.add('hidden'));
+
+    function normalizeEdge(edge, bbox) {
+      const w = Math.max(bbox.maxX - bbox.minX, 1e-9);
+      const h = Math.max(bbox.maxY - bbox.minY, 1e-9);
+      const diag = Math.hypot(w, h) || 1;
+      const mid = {
+        x: ((edge.start.x + edge.end.x) / 2 - bbox.minX) / w,
+        y: ((edge.start.y + edge.end.y) / 2 - bbox.minY) / h,
+      };
+      const angle = Math.atan2((edge.end.y - edge.start.y) / h, (edge.end.x - edge.start.x) / w);
+      return {
+        ...edge,
+        normMid: mid,
+        normLength: edge.length / diag,
+        normAngle: angle,
+      };
+    }
+
+    function angleDistance(a, b) {
+      let diff = Math.abs(a - b) % Math.PI;
+      if (diff > Math.PI / 2) diff = Math.PI - diff;
+      return diff / (Math.PI / 2);
+    }
+
+    function edgeScore(dxf, sdf) {
+      const midDist = Math.hypot(dxf.normMid.x - sdf.normMid.x, dxf.normMid.y - sdf.normMid.y);
+      const lenDiff = Math.abs(dxf.normLength - sdf.normLength) / Math.max(sdf.normLength, 1e-6);
+      const angleDiff = angleDistance(dxf.normAngle, sdf.normAngle);
+      const degreeDiff = Math.abs((dxf.sourceDegree + dxf.targetDegree) - (sdf.sourceDegree + sdf.targetDegree)) / 8;
+      return midDist * 1.0 + Math.min(lenDiff, 2) * 0.55 + angleDiff * 0.35 + Math.min(degreeDiff, 1) * 0.25;
+    }
+
+    function buildPipeMatches(dxfEdges, sdfEdges, dxfBox, sdfBox) {
+      const dxfs = dxfEdges.map((edge) => normalizeEdge(edge, dxfBox));
+      const sdfs = sdfEdges.map((edge) => normalizeEdge(edge, sdfBox));
+      const pairs = [];
+      dxfs.forEach((dxf) => {
+        sdfs.forEach((sdf) => pairs.push({ dxf, sdf, score: edgeScore(dxf, sdf) }));
+      });
+      pairs.sort((a, b) => a.score - b.score);
+      const usedDxf = new Set();
+      const usedSdf = new Set();
+      const rows = [];
+      pairs.forEach((pair) => {
+        if (usedDxf.has(pair.dxf.id) || usedSdf.has(pair.sdf.id)) return;
+        if (pair.score > MATCH_MAX_SCORE) return;
+        usedDxf.add(pair.dxf.id);
+        usedSdf.add(pair.sdf.id);
+        const lengthRatio = pair.dxf.normLength / Math.max(pair.sdf.normLength, 1e-6);
+        const lengthMismatch = Math.abs(1 - lengthRatio) > MATCH_LENGTH_TOLERANCE;
+        const topologyMismatch = Math.abs((pair.dxf.sourceDegree + pair.dxf.targetDegree) - (pair.sdf.sourceDegree + pair.sdf.targetDegree)) >= 2;
+        const boreMismatch = pair.dxf.boreText && pair.sdf.bore ? Math.abs(parseFloat(pair.dxf.boreText) - pair.sdf.bore) > 1 : false;
+        const status = lengthMismatch || topologyMismatch || boreMismatch ? 'FAIL' : pair.score > MATCH_REVIEW_SCORE ? 'REVIEW' : 'PASS';
+        const reasons = [];
+        reasons.push(`공간/방향 매칭 점수 ${pair.score.toFixed(3)}`);
+        reasons.push(`상대 길이비 DXF/SDF ${lengthRatio.toFixed(2)}`);
+        reasons.push(`연결차수 DXF ${pair.dxf.sourceDegree}+${pair.dxf.targetDegree}, SDF ${pair.sdf.sourceDegree}+${pair.sdf.targetDegree}`);
+        if (pair.dxf.boreText || pair.sdf.bore) reasons.push(`구경 참고 DXF ${pair.dxf.boreText || '미검출'}, SDF ${pair.sdf.bore ? pair.sdf.bore.toFixed(0) + 'A' : '미검출'}`);
+        rows.push({
+          status,
+          dxf: pair.dxf,
+          sdf: pair.sdf,
+          compare: `길이 ${pair.dxf.length.toFixed(1)} / ${pair.sdf.length.toFixed(1)}, 각도차 ${angleDistance(pair.dxf.normAngle, pair.sdf.normAngle).toFixed(2)}`,
+          reason: reasons.join(' | '),
+        });
+      });
+      dxfs.filter((edge) => !usedDxf.has(edge.id)).forEach((edge) => rows.push({
+        status: 'REVIEW',
+        dxf: edge,
+        sdf: null,
+        compare: 'SDF 대응 Pipe 미확정',
+        reason: '선택 영역 안에서 위치/길이/방향 기준으로 충분히 가까운 SDF Pipe를 찾지 못했습니다.',
+      }));
+      sdfs.filter((edge) => !usedSdf.has(edge.id)).forEach((edge) => rows.push({
+        status: 'FAIL',
+        dxf: null,
+        sdf: edge,
+        compare: 'DXF 대응 Edge 없음',
+        reason: 'SDF Pipe는 선택 영역 안에 있으나 대응되는 DXF 배관 선분이 매칭되지 않았습니다.',
+      }));
+      return rows;
+    }
+
+    function renderPipeMatchReport(rows, dxfCount, sdfCount) {
+      const passCount = rows.filter((r) => r.status === 'PASS').length;
+      const failCount = rows.filter((r) => r.status === 'FAIL').length;
+      const reviewCount = rows.filter((r) => r.status === 'REVIEW').length;
+      const score = sdfCount ? Math.max(0, Math.min(100, (passCount + reviewCount * 0.45) / sdfCount * 100)) : 0;
+      document.getElementById('pipe-match-score').textContent = `${score.toFixed(1)}%`;
+      document.getElementById('pipe-match-dxf-count').textContent = dxfCount;
+      document.getElementById('pipe-match-sdf-count').textContent = sdfCount;
+      document.getElementById('pipe-match-fail-count').textContent = failCount;
+      document.getElementById('pipe-match-summary').innerHTML = [
+        `PASS ${passCount}건, REVIEW ${reviewCount}건, FAIL ${failCount}건입니다.`,
+        '현재 로직은 사용자가 지정한 DXF/SDF 선택 영역을 각각 0~1 좌표로 정규화한 뒤, 배관 중심점·상대길이·방향·연결차수를 종합해 greedy matching을 수행합니다.',
+        'DXF 구경은 근접 텍스트가 있을 때만 참고하므로, 구경 표기가 없는 도면은 길이/방향/토폴로지 중심으로 판정됩니다.'
+      ].join('<br>');
+      const body = document.getElementById('pipe-match-table-body');
+      body.innerHTML = '';
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        const cls = row.status === 'PASS' ? 'match-pass' : row.status === 'FAIL' ? 'match-fail' : 'match-review';
+        tr.innerHTML = `
+          <td class="${cls}">${row.status}</td>
+          <td>${row.dxf ? `${row.dxf.label}<br><span class="text-gray-500">${row.dxf.layer || '-'}</span>` : '-'}</td>
+          <td>${row.sdf ? `Pipe ${row.sdf.label}<br><span class="text-gray-500">${row.sdf.layer || '-'}</span>` : '-'}</td>
+          <td>${row.compare}</td>
+          <td>${row.reason}</td>
+        `;
+        body.appendChild(tr);
+      });
+      pipeMatchModal.classList.remove('hidden');
+    }
+    window.addEventListener('keydown', (event) => {
+      if (event.key !== 'Delete') return;
+      if (dxfApp.mode !== 'entity') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const viewState = dxfApp.captureViewState();
+      const removed = dxfApp.deleteSelectedEntity();
+      if (!removed) return;
+      dxfApp.restoreViewState(viewState);
+      dxfApp.render();
+      dxfApp.status.classList.remove('hidden');
+      dxfApp.status.textContent = '선택한 DXF 객체를 삭제했습니다.';
+      setTimeout(() => dxfApp.status.classList.add('hidden'), 1200);
+      requestAnimationFrame(() => {
+        dxfApp.restoreViewState(viewState);
+        dxfApp.render();
+      });
+      checkGlobalAnalysisReady();
+    });
+    btnPipeMatch.addEventListener('click', () => {
+      const dBox = dxfApp.getSelectionBBox();
+      const sBox = sdfApp.getSelectionBBox();
+      if (!dBox || !sBox) return;
+      const dxfGraph = dxfApp.buildPipeMatchGraph(dBox);
+      const sdfGraph = sdfApp.buildPipeMatchGraph(sBox);
+      if (!dxfGraph.edges.length || !sdfGraph.edges.length) {
+        alert('선택 영역 안에서 DXF 배관 선분 또는 SDF Pipe를 찾지 못했습니다. 필터와 선택 영역을 확인하세요.');
+        return;
+      }
+      const rows = buildPipeMatches(dxfGraph.edges, sdfGraph.edges, dBox, sBox);
+      renderPipeMatchReport(rows, dxfGraph.edges.length, sdfGraph.edges.length);
+    });
     btnCompare.addEventListener('click', () => {
       const dBox = dxfApp.getSelectionBBox(); const sBox = sdfApp.getSelectionBBox(); if (!dBox || !sBox) return;
       const dxfRes = dxfApp.analyzeSelection(dBox); const sdfRes = sdfApp.analyzeSelection(sBox);

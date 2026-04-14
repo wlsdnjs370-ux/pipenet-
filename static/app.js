@@ -13,7 +13,9 @@ const resultsBody = document.getElementById("results-body");
 const pipeRulesBtnEl = document.getElementById("pipe-rules-btn");
 const insightPanelEl = document.getElementById("insight-panel");
 const engineeringListEl = document.getElementById("engineering-list");
+const engineeringVisualsEl = document.getElementById("engineering-visuals");
 const economyListEl = document.getElementById("economy-list");
+const economyVisualsEl = document.getElementById("economy-visuals");
 const tablesPanelEl = document.getElementById("tables-panel");
 const tableContainerEl = document.getElementById("table-container");
 const statsPanelEl = document.getElementById("stats-panel");
@@ -24,6 +26,29 @@ const statsOutputRightEl = document.getElementById("stats-output-right");
 const reportPanelEl = document.getElementById("report-panel");
 const reportOutputEl = document.getElementById("report-output");
 const cadComparePanelEl = document.getElementById("cad-compare-panel");
+const sdfAnalysisPanelEl = document.getElementById("sdf-analysis-panel");
+const feedbackPanelEl = document.getElementById("feedback-panel");
+const sdfAnalysisFormEl = document.getElementById("sdf-analysis-form");
+const sdfAnalysisFileEl = document.getElementById("sdf-analysis-file");
+const sdfAnalysisCadFileEl = document.getElementById("sdf-analysis-cad-file");
+const sdfAnalysisRunBtnEl = document.getElementById("sdf-analysis-run-btn");
+const sdfAnalysisStatusEl = document.getElementById("sdf-analysis-status");
+const sdfAnalysisOutputEl = document.getElementById("sdf-analysis-output");
+const feedbackFormEl = document.getElementById("feedback-form");
+const feedbackAuthorEl = document.getElementById("feedback-author");
+const feedbackTitleEl = document.getElementById("feedback-title");
+const feedbackBodyEl = document.getElementById("feedback-body");
+const feedbackAttachmentEl = document.getElementById("feedback-attachment");
+const feedbackSubmitBtnEl = document.getElementById("feedback-submit-btn");
+const feedbackRefreshBtnEl = document.getElementById("feedback-refresh-btn");
+const feedbackStatusEl = document.getElementById("feedback-status");
+const feedbackListEl = document.getElementById("feedback-list");
+const feedbackCountEl = document.getElementById("feedback-count");
+const feedbackWriteBtnEl = document.getElementById("feedback-write-btn");
+const feedbackDetailModalEl = document.getElementById("feedback-detail-modal");
+const feedbackDetailCloseEl = document.getElementById("feedback-detail-close");
+const feedbackDetailBodyEl = document.getElementById("feedback-detail-body");
+const feedbackDetailTitleEl = document.getElementById("feedback-detail-title");
 const cadRefFileEl = document.getElementById("cad-ref-file");
 const cadIsoFileEl = document.getElementById("cad-iso-file");
 const cadUseYoloEl = document.getElementById("cad-use-yolo");
@@ -64,6 +89,9 @@ let currentTables = null;
 let currentRules = null;
 let currentTab = "pipes";
 let currentMenuPanel = null;
+let currentEngineeringSpikes = [];
+let currentFeedbackPosts = [];
+let engineeringMapPan = null;
 let currentGraph = null;
 let graphFilterMode = null; // null | FAIL | PASS
 let activeResultButton = null;
@@ -104,7 +132,7 @@ const statsLabelMap = {
 const tableConfigs = {
   pipes: {
     title: "배관(FLOW IN PIPES)",
-    columns: [["label", "Pipe"], ["input_node", "입력 노드"], ["output_node", "출력 노드"], ["nominal_bore_mm", "구경(mm)"], ["material_name", "재질"], ["pipe_type_id", "Pipe Type"], ["actual_bore_mm", "실내경(mm)"], ["c_factor", "C-Factor"], ["max_pressure_kgcm2", "최대 관압"], ["pipe_role", "배관 역할"], ["downstream_nozzle_count", "하류 헤드 수"], ["subtree_has_cross_split", "하류 교차분기"], ["velocity_limit_mps", "유속 기준(m/s)"], ["velocity_ok", "유속 적합"], ["rule_high_pressure_ok", "고압재질"], ["rule_cfactor_ok", "C값"], ["rule_unit_internal_cpvc_status", "세대내CPVC"], ["rule_unit_inlet_status", "세대유입65A"], ["rule_headcount_size_status", "헤드수-구경정책"], ["flow_lpm", "유량(L/min)"], ["velocity_mps", "유속(m/s)"], ["base_length_m", "배관길이(m)"], ["fitting_eq_length_m", "피팅 등가길이(m)"], ["special_eq_length_m", "특수설비 등가길이(m)"], ["total_length_m", "총 등가길이(m)"], ["friction_loss", "결과서 마찰손실"], ["hw_expected_friction_loss", "HW 재계산 마찰손실"], ["hw_abs_diff", "HW 절대오차"], ["hw_rel_diff", "HW 상대오차"], ["hw_formula_ok", "HW 검산 적합"], ["inlet_pressure", "입구압"], ["outlet_pressure", "출구압"], ["special_equipment", "특수설비"], ["hw_fail", "HW 실패"], ["role_reason", "판정 사유"]],
+    columns: [["label", "Pipe"], ["input_node", "입력 노드"], ["output_node", "출력 노드"], ["nominal_bore_mm", "구경(mm)"], ["material_name", "재질"], ["pipe_type_id", "Pipe Type"], ["actual_bore_mm", "실내경(mm)"], ["c_factor", "C-Factor"], ["max_pressure_kgcm2", "최대 관압"], ["pipe_role", "배관 역할"], ["downstream_nozzle_count", "하류 헤드 수"], ["subtree_has_cross_split", "하류 교차분기"], ["velocity_limit_mps", "유속 기준(m/s)"], ["velocity_ok", "유속 적합"], ["engineering_reasons", "공학 후보 사유"], ["economy_reasons", "경제성 후보 사유"], ["rule_high_pressure_ok", "고압재질"], ["rule_cfactor_ok", "C값"], ["rule_unit_internal_cpvc_status", "세대내CPVC"], ["rule_unit_inlet_status", "세대유입65A"], ["rule_headcount_size_status", "헤드수-구경정책"], ["flow_lpm", "유량(L/min)"], ["velocity_mps", "유속(m/s)"], ["base_length_m", "배관길이(m)"], ["fitting_eq_length_m", "피팅 등가길이(m)"], ["special_eq_length_m", "특수설비 등가길이(m)"], ["total_length_m", "총 등가길이(m)"], ["friction_loss", "결과서 마찰손실"], ["hw_expected_friction_loss", "HW 재계산 마찰손실"], ["hw_abs_diff", "HW 절대오차"], ["hw_rel_diff", "HW 상대오차"], ["hw_formula_ok", "HW 검산 적합"], ["inlet_pressure", "입구압"], ["outlet_pressure", "출구압"], ["special_equipment", "특수설비"], ["hw_fail", "HW 실패"], ["role_reason", "판정 사유"]],
   },
   nozzles: {
     title: "헤드(FLOW THROUGH NOZZLES)",
@@ -189,11 +217,386 @@ function openPipeRulesModal() {
   pipeRulesModalEl.classList.remove("hidden");
 }
 
+function renderGuideItem(text) {
+  const raw = String(text ?? "");
+  const markerMatch = raw.match(/(주요\s*(?:구간|배관|헤드|설비|노드)\s*:|二쇱슂\s*援ш컙\s*:)/);
+  if (!markerMatch) return `<li>${escapeHtml(raw)}</li>`;
+
+  const markerIndex = markerMatch.index ?? -1;
+  const intro = raw.slice(0, markerIndex + markerMatch[0].length).trim();
+  const listText = raw.slice(markerIndex + markerMatch[0].length).trim();
+  const rows = [];
+  const itemPattern = /([A-Za-z가-힣]+)\s*(\d+)\(([^)]*)\)/g;
+  let match;
+  while ((match = itemPattern.exec(listText)) !== null) {
+    rows.push({ type: match[1], label: match[2], detail: match[3] });
+  }
+
+  if (!rows.length) return `<li>${escapeHtml(raw)}</li>`;
+
+  const tableRows = rows
+    .map(
+      (row) => `<tr>
+        <td>${escapeHtml(row.type)}</td>
+        <td>${escapeHtml(row.label)}</td>
+        <td>${escapeHtml(row.detail)}</td>
+      </tr>`
+    )
+    .join("");
+
+  return `<li class="guide-table-item">
+    <p>${escapeHtml(intro)}</p>
+    <div class="guide-mini-table-wrap">
+      <table class="guide-mini-table">
+        <thead><tr><th>구분</th><th>번호</th><th>판정값</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+  </li>`;
+}
+
 function renderInsights(insights) {
   const eng = insights?.engineering_advice || [];
   const eco = insights?.economy_guide || [];
-  engineeringListEl.innerHTML = eng.length ? eng.map((x) => `<li>${escapeHtml(x)}</li>`).join("") : "<li>해당 사항 없음</li>";
-  economyListEl.innerHTML = eco.length ? eco.map((x) => `<li>${escapeHtml(x)}</li>`).join("") : "<li>해당 사항 없음</li>";
+  const visuals = Array.isArray(insights?.engineering_visualizations) ? insights.engineering_visualizations : [];
+  currentEngineeringSpikes = [];
+  engineeringListEl.innerHTML = eng.length ? eng.map(renderGuideItem).join("") : "<li>해당 사항 없음</li>";
+  economyListEl.innerHTML = eco.length ? eco.map(renderGuideItem).join("") : "<li>해당 사항 없음</li>";
+  if (engineeringVisualsEl) {
+    const chartHtml = visuals.length
+      ? visuals
+          .map((v) => {
+            const spikes = Array.isArray(v.spike_points) ? v.spike_points : [];
+            const offset = currentEngineeringSpikes.length;
+            currentEngineeringSpikes.push(...spikes);
+            const markers = spikes
+              .map(
+                (spike, i) => `<button type="button" class="friction-spike-marker" data-spike-index="${
+                  offset + i
+                }" style="left:${Number(spike.left_percent || 50).toFixed(2)}%; top:${Number(
+                  spike.top_percent || 50
+                ).toFixed(2)}%;" aria-label="Pipe ${escapeHtml(spike.label)} 급증 원인 보기" title="Pipe ${escapeHtml(
+                  spike.label
+                )} 급증 원인 보기"></button>`
+              )
+              .join("");
+            return `<article class="insight-chart-card">
+              <h4>${escapeHtml(v.title || "Friction Loss Ratio")}</h4>
+              <p>${escapeHtml(v.description || "")}</p>
+              <div class="chart-overlay-wrap">
+                <img src="${escapeHtml(v.image_data_url || "")}" alt="${escapeHtml(v.title || "engineering chart")}">
+                ${markers}
+              </div>
+              ${
+                spikes.length
+                  ? `<p class="spike-help">빨간 삼각형을 클릭하면 해당 배관의 손실 변화율 원인과 조치안을 확인할 수 있습니다.</p>`
+                  : ""
+              }
+            </article>`;
+          })
+          .join("")
+      : "";
+    engineeringVisualsEl.innerHTML = renderEngineeringNetworkMap(currentGraph, currentTables?.pipes || []) + chartHtml;
+  }
+  if (economyVisualsEl) {
+    economyVisualsEl.innerHTML = renderEconomyNetworkMap(currentGraph, currentTables?.pipes || []);
+  }
+}
+
+function openEngineeringSpikeModal(index) {
+  const spike = currentEngineeringSpikes[index];
+  if (!spike) return;
+  openLogicModal(`Pipe ${spike.label} 마찰손실 변화율 급증 원인`, spike.cards || {});
+}
+
+function renderEngineeringNetworkMap(graph, pipeRows) {
+  const pipes = graph?.pipes || [];
+  if (!pipes.length) {
+    return `<article class="insight-network-card">
+      <h4>Friction Loss Spike Map</h4>
+      <p class="empty">SDF 파일을 업로드하면 마찰손실 급증 배관 위치가 표시됩니다.</p>
+    </article>`;
+  }
+
+  const pipeInfoMap = new Map((pipeRows || []).map((row) => [String(row.label), row]));
+  const pipeChangeMap = new Map();
+  const ratioRows = (pipeRows || [])
+    .map((row) => {
+      const label = Number(row.label);
+      const frictionLoss = Number(row.friction_loss ?? row.friction_loss_kgcm2);
+      const lengthM = Number(row.base_length_m ?? row.length_m ?? row.pipe_length_m);
+      const ratio = lengthM > 0 ? frictionLoss / lengthM : Number(row.friction_loss_ratio ?? row.friction_loss_per_m);
+      return { label, frictionLoss, lengthM, ratio };
+    })
+    .filter((row) => Number.isFinite(row.label) && Number.isFinite(row.ratio))
+    .sort((a, b) => a.label - b.label);
+  ratioRows.forEach((row, index) => {
+    if (index === 0) return;
+    const prev = ratioRows[index - 1];
+    const delta = row.ratio - prev.ratio;
+    const changeRatePercent = (delta / Math.max(Math.abs(prev.ratio), 1e-9)) * 100;
+    pipeChangeMap.set(String(row.label), {
+      previousLabel: prev.label,
+      previousRatio: prev.ratio,
+      delta,
+      changeRatePercent,
+    });
+  });
+  const threshold = 1.0;
+  const spikePipeIds = new Set(ratioRows.filter((row) => row.ratio > threshold).map((row) => String(row.label)));
+  const fy = (y) => -Number(y);
+  const pts = [];
+  for (const pipe of pipes) for (const q of pipe.path || []) pts.push([Number(q[0]), fy(q[1])]);
+  for (const n of graph.nozzles || []) pts.push([Number(n.x), fy(n.y)]);
+  for (const e of graph.equipment || []) pts.push([Number(e.x), fy(e.y)]);
+  for (const v of graph.valves || []) pts.push([Number(v.x), fy(v.y)]);
+  if (!pts.length) return "";
+
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const pad = 220;
+  const minX = Math.min(...xs) - pad;
+  const minY = Math.min(...ys) - pad;
+  const width = Math.max(...xs) - Math.min(...xs) + pad * 2;
+  const height = Math.max(...ys) - Math.min(...ys) + pad * 2;
+  const baseViewBox = `${minX} ${minY} ${width} ${height}`;
+
+  const pipeEls = pipes
+    .map((pipe) => {
+      const isSpike = spikePipeIds.has(String(pipe.label));
+      const row = pipeInfoMap.get(String(pipe.label)) || {};
+      const points = (pipe.path || []).map((q) => `${Number(q[0])},${fy(q[1])}`).join(" ");
+      const frictionLoss = fmtLogicNumber(row.friction_loss ?? row.friction_loss_kgcm2, 4);
+      const lengthM = fmtLogicNumber(row.length_m ?? row.base_length_m, 3);
+      const ratioSource =
+        Number(row.base_length_m ?? row.length_m ?? row.pipe_length_m) > 0
+          ? Number(row.friction_loss ?? row.friction_loss_kgcm2) /
+            Number(row.base_length_m ?? row.length_m ?? row.pipe_length_m)
+          : row.friction_loss_ratio ?? row.friction_loss_per_m;
+      const ratioValue = Number(ratioSource);
+      const ratio = Number.isFinite(ratioValue) ? fmtLogicNumber(ratioValue, 4) : "-";
+      const velocity = fmtLogicNumber(row.velocity_mps ?? row.velocity, 3);
+      const change = pipeChangeMap.get(String(pipe.label));
+      const changeRate = change ? `${fmtLogicNumber(change.changeRatePercent, 1)}%` : "-";
+      const previousPipe = change ? String(change.previousLabel) : "-";
+      const deltaRatio = change ? fmtLogicNumber(change.delta, 4) : "-";
+      const dataAttrs = isSpike
+        ? ` class="spike-network-pipe" data-pipe-label="${escapeHtml(pipe.label)}" data-friction-loss="${escapeHtml(
+            frictionLoss
+          )}" data-length-m="${escapeHtml(lengthM)}" data-ratio="${escapeHtml(ratio)}" data-change-rate="${escapeHtml(
+            changeRate
+          )}" data-previous-pipe="${escapeHtml(previousPipe)}" data-delta-ratio="${escapeHtml(
+            deltaRatio
+          )}" data-velocity="${escapeHtml(velocity)}"`
+        : "";
+      const visiblePipe = `<polyline${dataAttrs} points="${points}" fill="none" stroke="${isSpike ? "#dc2626" : "#cbd5e1"}" stroke-width="${
+        isSpike ? 22 : 10
+      }" stroke-linecap="round" stroke-linejoin="round"><title>Pipe ${escapeHtml(pipe.label)}${
+        isSpike ? " - 마찰손실 급증 배관" : ""
+      }</title></polyline>`;
+      if (!isSpike) return visiblePipe;
+      return `${visiblePipe}<polyline class="spike-network-hitbox" data-pipe-label="${escapeHtml(
+        pipe.label
+      )}" data-friction-loss="${escapeHtml(frictionLoss)}" data-length-m="${escapeHtml(
+        lengthM
+      )}" data-ratio="${escapeHtml(ratio)}" data-change-rate="${escapeHtml(
+        changeRate
+      )}" data-previous-pipe="${escapeHtml(previousPipe)}" data-delta-ratio="${escapeHtml(
+        deltaRatio
+      )}" data-velocity="${escapeHtml(velocity)}" points="${points}" fill="none" stroke="transparent" stroke-width="70" stroke-linecap="round" stroke-linejoin="round"></polyline>`;
+    })
+    .join("");
+  const nozzleEls = (graph.nozzles || [])
+    .map((n) => `<circle cx="${Number(n.x)}" cy="${fy(n.y)}" r="12" fill="#94a3b8" stroke="#334155" stroke-width="3" />`)
+    .join("");
+  const equipmentEls = (graph.equipment || [])
+    .map((e) => `<rect x="${Number(e.x) - 14}" y="${fy(e.y) - 14}" width="28" height="28" fill="#94a3b8" stroke="#334155" stroke-width="3" />`)
+    .join("");
+  const valveEls = (graph.valves || [])
+    .map((v) => {
+      const x = Number(v.x);
+      const y = fy(v.y);
+      return `<polygon points="${x},${y - 18} ${x + 18},${y} ${x},${y + 18} ${x - 18},${y}" fill="#94a3b8" stroke="#334155" stroke-width="3" />`;
+    })
+    .join("");
+
+  return `<article class="insight-network-card">
+    <h4>Friction Loss Spike Map</h4>
+    <p>빨간 배관은 m당 마찰손실 기준(1.00 kg/cm²/m)을 초과한 공학 최적화 후보입니다. 빨간 배관 위에서 드래그하면 간단 정보를 확인할 수 있습니다.</p>
+    <div class="insight-network-stage">
+      <div class="insight-network-controls" aria-label="Friction Loss Spike Map zoom controls">
+        <button type="button" data-network-zoom="in" aria-label="확대">+</button>
+        <button type="button" data-network-zoom="out" aria-label="축소">-</button>
+      </div>
+      <svg class="insight-network-svg" viewBox="${baseViewBox}" data-base-viewbox="${baseViewBox}" preserveAspectRatio="xMidYMid meet">
+        <g>${pipeEls}${nozzleEls}${equipmentEls}${valveEls}</g>
+      </svg>
+    </div>
+    <div class="network-legend insight-network-legend">
+      <span class="network-legend-item"><i class="shape-line"></i>일반 배관</span>
+      <span class="network-legend-item"><i class="shape-line shape-line-red"></i>마찰손실 급증 배관</span>
+      <span class="network-legend-item"><i class="shape-circle"></i>헤드</span>
+      <span class="network-legend-item"><i class="shape-square"></i>특수설비</span>
+      <span class="network-legend-item"><i class="shape-diamond"></i>감압밸브</span>
+    </div>
+  </article>`;
+}
+
+function renderEconomyNetworkMap(graph, pipeRows) {
+  const pipes = graph?.pipes || [];
+  if (!pipes.length) {
+    return `<article class="insight-network-card">
+      <h4>Economy Optimization Candidate Map</h4>
+      <p class="empty">SDF 파일을 업로드하면 경제성 검토 후보 배관 위치가 표시됩니다.</p>
+    </article>`;
+  }
+
+  const pipeInfoMap = new Map((pipeRows || []).map((row) => [String(row.label), row]));
+  const economyPipeIds = new Set((pipeRows || []).filter((row) => row.economy_flag).map((row) => String(row.label)));
+  const fy = (y) => -Number(y);
+  const pts = [];
+  for (const pipe of pipes) for (const q of pipe.path || []) pts.push([Number(q[0]), fy(q[1])]);
+  for (const n of graph.nozzles || []) pts.push([Number(n.x), fy(n.y)]);
+  for (const e of graph.equipment || []) pts.push([Number(e.x), fy(e.y)]);
+  for (const v of graph.valves || []) pts.push([Number(v.x), fy(v.y)]);
+  if (!pts.length) return "";
+
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const pad = 220;
+  const minX = Math.min(...xs) - pad;
+  const minY = Math.min(...ys) - pad;
+  const width = Math.max(...xs) - Math.min(...xs) + pad * 2;
+  const height = Math.max(...ys) - Math.min(...ys) + pad * 2;
+  const baseViewBox = `${minX} ${minY} ${width} ${height}`;
+
+  const pipeEls = pipes
+    .map((pipe) => {
+      const isEconomy = economyPipeIds.has(String(pipe.label));
+      const row = pipeInfoMap.get(String(pipe.label)) || {};
+      const points = (pipe.path || []).map((q) => `${Number(q[0])},${fy(q[1])}`).join(" ");
+      const reason = row.economy_reasons || "경제성 검토 후보";
+      const velocity = fmtLogicNumber(row.velocity_mps ?? row.velocity, 3);
+      const dataAttrs = isEconomy
+        ? ` class="spike-network-pipe economy-network-pipe" data-pipe-label="${escapeHtml(pipe.label)}" data-friction-loss="${escapeHtml(
+            fmtLogicNumber(row.friction_loss, 4)
+          )}" data-length-m="${escapeHtml(fmtLogicNumber(row.base_length_m ?? row.pipe_length_m, 3))}" data-ratio="${escapeHtml(
+            reason
+          )}" data-change-rate="-" data-previous-pipe="-" data-delta-ratio="${escapeHtml(
+            `구경 ${fmtLogicNumber(row.nominal_bore_mm, 0)}A`
+          )}" data-velocity="${escapeHtml(velocity)}"`
+        : "";
+      const visiblePipe = `<polyline${dataAttrs} points="${points}" fill="none" stroke="${isEconomy ? "#16a34a" : "#cbd5e1"}" stroke-width="${
+        isEconomy ? 22 : 10
+      }" stroke-linecap="round" stroke-linejoin="round"><title>Pipe ${escapeHtml(pipe.label)}${
+        isEconomy ? ` - ${escapeHtml(reason)}` : ""
+      }</title></polyline>`;
+      if (!isEconomy) return visiblePipe;
+      return `${visiblePipe}<polyline class="spike-network-hitbox economy-network-hitbox" data-pipe-label="${escapeHtml(
+        pipe.label
+      )}" data-friction-loss="${escapeHtml(fmtLogicNumber(row.friction_loss, 4))}" data-length-m="${escapeHtml(
+        fmtLogicNumber(row.base_length_m ?? row.pipe_length_m, 3)
+      )}" data-ratio="${escapeHtml(reason)}" data-change-rate="-" data-previous-pipe="-" data-delta-ratio="${escapeHtml(
+        `구경 ${fmtLogicNumber(row.nominal_bore_mm, 0)}A`
+      )}" data-velocity="${escapeHtml(velocity)}" points="${points}" fill="none" stroke="transparent" stroke-width="70" stroke-linecap="round" stroke-linejoin="round"></polyline>`;
+    })
+    .join("");
+  const nozzleEls = (graph.nozzles || [])
+    .map((n) => `<circle cx="${Number(n.x)}" cy="${fy(n.y)}" r="12" fill="#94a3b8" stroke="#334155" stroke-width="3" />`)
+    .join("");
+  const equipmentEls = (graph.equipment || [])
+    .map((e) => `<rect x="${Number(e.x) - 14}" y="${fy(e.y) - 14}" width="28" height="28" fill="#94a3b8" stroke="#334155" stroke-width="3" />`)
+    .join("");
+  const valveEls = (graph.valves || [])
+    .map((v) => {
+      const x = Number(v.x);
+      const y = fy(v.y);
+      return `<polygon points="${x},${y - 18} ${x + 18},${y} ${x},${y + 18} ${x - 18},${y}" fill="#94a3b8" stroke="#334155" stroke-width="3" />`;
+    })
+    .join("");
+
+  return `<article class="insight-network-card">
+    <h4>Economy Optimization Candidate Map</h4>
+    <p>초록 배관은 저유속 과설계, 관경 축소 가능성, CPVC 대구경 등 경제성 검토 후보입니다. 공학 맵의 빨간 급증 구간과 분리해서 비교합니다.</p>
+    <div class="insight-network-stage">
+      <div class="insight-network-controls" aria-label="Economy Optimization Candidate Map zoom controls">
+        <button type="button" data-network-zoom="in" aria-label="확대">+</button>
+        <button type="button" data-network-zoom="out" aria-label="축소">-</button>
+      </div>
+      <svg class="insight-network-svg" viewBox="${baseViewBox}" data-base-viewbox="${baseViewBox}" preserveAspectRatio="xMidYMid meet">
+        <g>${pipeEls}${nozzleEls}${equipmentEls}${valveEls}</g>
+      </svg>
+    </div>
+    <div class="network-legend insight-network-legend">
+      <span class="network-legend-item"><i class="shape-line"></i>일반 배관</span>
+      <span class="network-legend-item"><i class="shape-line shape-line-green"></i>경제성 검토 후보</span>
+      <span class="network-legend-item"><i class="shape-circle"></i>헤드</span>
+      <span class="network-legend-item"><i class="shape-square"></i>특수설비</span>
+      <span class="network-legend-item"><i class="shape-diamond"></i>감압밸브</span>
+    </div>
+  </article>`;
+}
+
+function getEngineeringMapTooltipEl() {
+  let el = document.getElementById("engineering-map-tooltip");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "engineering-map-tooltip";
+    el.className = "engineering-map-tooltip hidden";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function showEngineeringMapTooltip(event, target) {
+  const el = getEngineeringMapTooltipEl();
+  el.innerHTML = `
+    <strong>Pipe ${escapeHtml(target.dataset.pipeLabel || "-")}</strong>
+    <span>마찰손실: ${escapeHtml(target.dataset.frictionLoss || "-")} kg/cm²</span>
+    <span>배관길이: ${escapeHtml(target.dataset.lengthM || "-")} m</span>
+    <span>m당 마찰손실: ${escapeHtml(target.dataset.ratio || "-")} kg/cm²/m</span>
+    <span>변화율: ${escapeHtml(target.dataset.changeRate || "-")} (직전 Pipe ${escapeHtml(
+      target.dataset.previousPipe || "-"
+    )} 대비)</span>
+    <span>증가량: ${escapeHtml(target.dataset.deltaRatio || "-")} kg/cm²/m</span>
+    <span>유속: ${escapeHtml(target.dataset.velocity || "-")} m/s</span>
+  `;
+  const margin = 14;
+  el.style.left = `${event.clientX + margin}px`;
+  el.style.top = `${event.clientY + margin}px`;
+  el.classList.remove("hidden");
+}
+
+function hideEngineeringMapTooltip() {
+  document.getElementById("engineering-map-tooltip")?.classList.add("hidden");
+}
+
+function parseSvgViewBox(svg) {
+  const raw = svg?.getAttribute("viewBox") || svg?.dataset.baseViewbox || "";
+  const nums = raw.split(/\s+/).map(Number);
+  if (nums.length !== 4 || nums.some((n) => !Number.isFinite(n))) return null;
+  return { x: nums[0], y: nums[1], width: nums[2], height: nums[3] };
+}
+
+function setSvgViewBox(svg, box) {
+  if (!svg || !box) return;
+  svg.setAttribute("viewBox", `${box.x} ${box.y} ${box.width} ${box.height}`);
+}
+
+function zoomEngineeringNetworkMap(svg, direction) {
+  const box = parseSvgViewBox(svg);
+  if (!box) return;
+  const factor = direction === "in" ? 0.8 : 1.25;
+  const nextWidth = box.width * factor;
+  const nextHeight = box.height * factor;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  setSvgViewBox(svg, {
+    x: cx - nextWidth / 2,
+    y: cy - nextHeight / 2,
+    width: nextWidth,
+    height: nextHeight,
+  });
 }
 
 function renderStats(stats, visualizations = []) {
@@ -376,6 +779,284 @@ function renderCadSvg(payload, headBoxes) {
   }
 }
 
+function renderMiniTable(headers, rows, emptyText = "데이터가 없습니다.") {
+  if (!rows || !rows.length) return `<p class="empty">${escapeHtml(emptyText)}</p>`;
+  return `<div class="table-wrap mini-table-wrap"><table><thead><tr>${headers
+    .map((h) => `<th>${escapeHtml(h[1])}</th>`)
+    .join("")}</tr></thead><tbody>${rows
+    .map((row) => `<tr>${headers.map(([key]) => `<td>${escapeHtml(fmt(row[key]))}</td>`).join("")}</tr>`)
+    .join("")}</tbody></table></div>`;
+}
+
+function renderSdfAnalysisGraph(analysis) {
+  const nodes = analysis.nodes || [];
+  const pipes = analysis.pipes || [];
+  const nozzles = analysis.nozzles || [];
+  if (!nodes.length) return '<p class="empty">SDF 좌표 데이터가 없습니다.</p>';
+  const xs = nodes.map((n) => Number(n.x || 0));
+  const ys = nodes.map((n) => Number(n.y || 0));
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const pad = Math.max(maxX - minX, maxY - minY, 1) * 0.08;
+  const viewBox = `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
+  const farHeadSet = new Set((analysis.farthest_heads || []).map((h) => String(h.label)));
+  const pipeEls = pipes
+    .map((p) => {
+      const pts = (p.path || []).map((pt) => pt.join(",")).join(" ");
+      const cls = p.status === "red" ? "sdf-pipe issue" : p.status === "orange" ? "sdf-pipe warn" : "sdf-pipe";
+      return `<polyline class="${cls}" points="${escapeHtml(pts)}"><title>Pipe ${escapeHtml(p.label)} / ${fmt(p.bore_mm)}A / ${fmt(p.length_m)}m / ${escapeHtml(p.material || "-")}</title></polyline>`;
+    })
+    .join("");
+  const nozzleEls = nozzles
+    .filter((n) => Number.isFinite(Number(n.x)) && Number.isFinite(Number(n.y)))
+    .map((n) => {
+      const cls = farHeadSet.has(String(n.label)) ? "sdf-nozzle far" : "sdf-nozzle";
+      return `<circle class="${cls}" cx="${Number(n.x)}" cy="${Number(n.y)}" r="${farHeadSet.has(String(n.label)) ? 18 : 12}"><title>Head ${escapeHtml(n.label)} / Node ${escapeHtml(n.input_node)}</title></circle>`;
+    })
+    .join("");
+  return `<div class="sdf-analysis-map">
+    <svg viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet">
+      <g transform="scale(1,-1) translate(0,${-(minY + maxY)})">${pipeEls}${nozzleEls}</g>
+    </svg>
+  </div>`;
+}
+
+function buildSvgBoxFromPoints(points) {
+  const valid = (points || []).filter((p) => Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)));
+  if (!valid.length) return null;
+  const xs = valid.map((p) => Number(p.x));
+  const ys = valid.map((p) => Number(p.y));
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const pad = Math.max(maxX - minX, maxY - minY, 1) * 0.08;
+  return { minX, maxX, minY, maxY, viewBox: `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}` };
+}
+
+function renderCadAnalysisGraph(cad, comparison) {
+  if (!cad) {
+    return `<div class="sdf-analysis-map cad-analysis-map empty-map"><p class="empty">CAD DXF 파일을 함께 업로드하면 이 영역에 CAD 도면 후보가 표시됩니다.</p></div>`;
+  }
+  const entities = cad.drawing_entities || [];
+  const candidates = cad.candidates || [];
+  const matchedCadIds = new Set((comparison?.matches || []).map((m) => String(m.cad_candidate)));
+  const points = [];
+  for (const ent of entities) {
+    for (const pt of ent.points || []) points.push({ x: pt[0], y: pt[1] });
+  }
+  for (const c of candidates) points.push(c);
+  const box = buildSvgBoxFromPoints(points);
+  if (!box) return `<div class="sdf-analysis-map cad-analysis-map empty-map"><p class="empty">CAD 좌표 데이터를 표시할 수 없습니다.</p></div>`;
+
+  const lineEls = entities
+    .map((ent) => {
+      const pts = (ent.points || []).map((pt) => `${Number(pt[0])},${Number(pt[1])}`).join(" ");
+      if (!pts) return "";
+      return `<polyline class="cad-drawing-entity" points="${escapeHtml(pts)}"><title>${escapeHtml(ent.type || "LINE")} / ${escapeHtml(ent.layer || "-")}</title></polyline>`;
+    })
+    .join("");
+  const candidateEls = candidates
+    .map((c) => {
+      const matched = matchedCadIds.has(String(c.label));
+      const cls = matched ? "cad-head-candidate matched" : "cad-head-candidate";
+      return `<circle class="${cls}" cx="${Number(c.x)}" cy="${Number(c.y)}" r="${matched ? 22 : 11}">
+        <title>CAD 후보 ${escapeHtml(c.label)} / ${escapeHtml(c.layer || "-")}${matched ? " / SDF 자동 매칭 후보" : ""}</title>
+      </circle>`;
+    })
+    .join("");
+  return `<div class="sdf-analysis-map cad-analysis-map">
+    <svg viewBox="${box.viewBox}" preserveAspectRatio="xMidYMid meet">
+      <g transform="scale(1,-1) translate(0,${-(box.minY + box.maxY)})">${lineEls}${candidateEls}</g>
+    </svg>
+  </div>`;
+}
+
+function renderSdfCadDualGraph(data) {
+  const analysis = data.analysis || {};
+  const cad = data.cad_analysis || null;
+  const comparison = data.comparison || null;
+  return `<div class="sdf-cad-dual-map">
+    <article class="sdf-map-pane">
+      <div class="map-pane-head">
+        <h4>SDF 좌표 기반 배관망</h4>
+        <span>파랑: A/V 기준 최원단 헤드 후보</span>
+      </div>
+      ${renderSdfAnalysisGraph(analysis)}
+    </article>
+    <article class="sdf-map-pane">
+      <div class="map-pane-head">
+        <h4>CAD 도면 자동 인식 영역</h4>
+        <span>빨강: SDF 헤드와 같다고 자동 매칭한 CAD 후보</span>
+      </div>
+      ${renderCadAnalysisGraph(cad, comparison)}
+    </article>
+  </div>`;
+}
+
+function renderCadSdfHeadComparison(data) {
+  const cad = data.cad_analysis;
+  const comparison = data.comparison;
+  if (!cad || !comparison) {
+    return `<article class="sdf-analysis-card">
+      <h3>CAD-DXF 헤드 위치 대조</h3>
+      <p class="empty">DXF 파일을 함께 업로드하면 CAD 도면의 헤드 후보 위치와 SDF 최원단 헤드 30개를 비교합니다.</p>
+    </article>`;
+  }
+  return `<article class="sdf-analysis-card">
+    <h3>CAD-DXF 헤드 위치 대조</h3>
+    <div class="sdf-summary-grid">
+      <div><strong>CAD 파일</strong><span>${escapeHtml(cad.filename || "-")}</span></div>
+      <div><strong>CAD 헤드 후보</strong><span>${fmt(cad.candidate_count)}</span></div>
+      <div><strong>CAD 선분 후보</strong><span>${fmt(cad.raw_line_count)}</span></div>
+      <div><strong>비교 상태</strong><span>${escapeHtml(comparison.status || "-")}</span></div>
+      <div><strong>불일치 후보</strong><span>${fmt(comparison.mismatch_count)}</span></div>
+    </div>
+    <p class="section-note">${escapeHtml(comparison.message || "")}</p>
+    ${renderMiniTable(
+      [
+        ["sdf_head", "SDF Head"],
+        ["sdf_node", "SDF Node"],
+        ["cad_candidate", "CAD 후보"],
+        ["cad_layer", "CAD Layer"],
+        ["normalized_error", "정규화 오차"],
+        ["status", "판정"],
+        ["reason", "사유"],
+      ],
+      comparison.matches || [],
+      "매칭 결과가 없습니다."
+    )}
+  </article>`;
+}
+
+function renderSdfAnalysis(data) {
+  const a = data.analysis || {};
+  const s = a.summary || {};
+  const fittingRows = a.fitting_summary || [];
+  const checklist = a.checklist || [];
+  sdfAnalysisOutputEl.classList.remove("hidden");
+  sdfAnalysisOutputEl.innerHTML = `
+    <div class="sdf-analysis-grid">
+      <article class="sdf-analysis-card">
+        <h3>분석 요약</h3>
+        <p class="section-note">${escapeHtml(a.title || a.filename || "-")}</p>
+        <div class="sdf-summary-grid">
+          <div><strong>노드</strong><span>${fmt(s.node_count)}</span></div>
+          <div><strong>배관</strong><span>${fmt(s.pipe_count)}</span></div>
+          <div><strong>헤드</strong><span>${fmt(s.nozzle_count)}</span></div>
+          <div><strong>특수설비</strong><span>${fmt(s.equipment_count)}</span></div>
+          <div><strong>A/V 추정 노드</strong><span>${fmt(s.av_node)}</span></div>
+          <div><strong>A/V 배관</strong><span>${fmt(s.av_pipe_label)}</span></div>
+        </div>
+      </article>
+      <article class="sdf-analysis-card">
+        <h3>도면 대조 체크리스트</h3>
+        <ul class="guide-list">${checklist.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>
+      </article>
+    </div>
+    <article class="sdf-analysis-card">
+      <h3>SDF 좌표 기반 배관망</h3>
+      <p class="section-note">빨강: 길이 대조 주의, 주황: 구경 축소 대조 포인트, 파란 헤드: A/V 기준 최원단 헤드 후보</p>
+      ${renderSdfCadDualGraph(data)}
+    </article>
+    ${renderCadSdfHeadComparison(data)}
+    <div class="sdf-analysis-grid">
+      <article class="sdf-analysis-card">
+        <h3>A/V 기준 최원단 헤드 30개</h3>
+        ${renderMiniTable([["label", "Head"], ["input_node", "Node"], ["x", "X"], ["y", "Y"], ["z", "Z"], ["distance_from_av_m", "거리(m)"]], a.farthest_heads || [])}
+      </article>
+      <article class="sdf-analysis-card">
+        <h3>배관 길이 대조 주의 구간</h3>
+        ${renderMiniTable([["pipe_label", "Pipe"], ["sdf_length_m", "SDF 길이"], ["xy_length_m", "XY 길이"], ["diff_m", "차이"], ["reason", "사유"]], a.length_checks || [], "길이 대조 주의 구간이 없습니다.")}
+      </article>
+      <article class="sdf-analysis-card">
+        <h3>구경 축소 지점</h3>
+        ${renderMiniTable([["node", "Node"], ["from_pipe", "상류 Pipe"], ["from_bore_mm", "상류 구경"], ["to_pipe", "하류 Pipe"], ["to_bore_mm", "하류 구경"]], a.bore_reductions || [], "구경 축소 지점이 없습니다.")}
+      </article>
+      <article class="sdf-analysis-card">
+        <h3>분기티/부속 대조 포인트</h3>
+        ${renderMiniTable([["node", "분기 Node"], ["degree", "연결 차수"], ["x", "X"], ["y", "Y"]], a.branch_nodes || [], "분기 노드가 없습니다.")}
+        <h4>부속류 집계</h4>
+        ${renderMiniTable([["type", "부속"], ["count", "수량"]], fittingRows, "부속류 데이터가 없습니다.")}
+      </article>
+      <article class="sdf-analysis-card">
+        <h3>엘보/티 집중 배관</h3>
+        ${renderMiniTable([["pipe_label", "Pipe"], ["fitting_count", "부속 수"], ["fittings", "부속"], ["reason", "사유"]], a.fitting_hotspots || [], "부속 집중 구간이 없습니다.")}
+      </article>
+      <article class="sdf-analysis-card">
+        <h3>수직 배관 확인 구간</h3>
+        ${renderMiniTable([["pipe_label", "Pipe"], ["input_node", "입력"], ["output_node", "출력"], ["length_m", "길이"], ["rise_m", "Rise"], ["bore_mm", "구경"]], a.vertical_pipes || [], "수직 배관 확인 구간이 없습니다.")}
+      </article>
+    </div>
+  `;
+}
+
+function renderFeedbackPosts(posts) {
+  const rows = Array.isArray(posts) ? posts : [];
+  currentFeedbackPosts = rows;
+  if (feedbackCountEl) feedbackCountEl.textContent = `${rows.length}건`;
+  if (!feedbackListEl) return;
+  if (!rows.length) {
+    feedbackListEl.innerHTML = '<p class="empty">등록된 개선의견이 없습니다.</p>';
+    return;
+  }
+  feedbackListEl.innerHTML = rows
+    .map(
+      (post) => {
+        const attachment = post.attachment || null;
+        const attachmentHtml = attachment
+          ? `<span class="feedback-list-attachment">첨부 1</span>`
+          : "";
+        return `<article class="feedback-post feedback-list-post" data-feedback-id="${escapeHtml(post.id || "")}" tabindex="0" role="button">
+        <div class="feedback-post-head">
+          <h4>${escapeHtml(post.title || "-")}</h4>
+          <span>${escapeHtml(post.created_at || "-")}</span>
+        </div>
+        <div class="feedback-meta">작성자: ${escapeHtml(post.author || "익명")}</div>
+        ${attachmentHtml}
+      </article>`;
+      }
+    )
+    .join("");
+}
+
+function openFeedbackDetail(postId) {
+  const post = currentFeedbackPosts.find((item) => String(item.id) === String(postId));
+  if (!post || !feedbackDetailModalEl || !feedbackDetailBodyEl) return;
+  const attachment = post.attachment || null;
+  const attachmentHtml = attachment
+    ? `<a class="feedback-attachment" href="${escapeHtml(attachment.download_url || "#")}" download>${escapeHtml(attachment.original_name || "첨부파일")}</a>`
+    : '<p class="empty">첨부파일 없음</p>';
+  if (feedbackDetailTitleEl) feedbackDetailTitleEl.textContent = post.title || "개선의견 상세";
+  feedbackDetailBodyEl.innerHTML = `<article class="feedback-detail-card">
+    <div class="feedback-detail-meta">
+      <span>작성자: ${escapeHtml(post.author || "익명")}</span>
+      <span>작성일: ${escapeHtml(post.created_at || "-")}</span>
+    </div>
+    <div class="feedback-detail-content">${escapeHtml(post.body || "").replaceAll("\n", "<br>")}</div>
+    <h4>첨부파일</h4>
+    ${attachmentHtml}
+  </article>`;
+  feedbackDetailModalEl.classList.remove("hidden");
+}
+
+async function loadFeedbackPosts() {
+  if (!feedbackListEl) return;
+  try {
+    if (feedbackStatusEl) feedbackStatusEl.textContent = "개선의견 목록을 불러오는 중입니다...";
+    const resp = await fetch("/api/feedback-posts", { cache: "no-store" });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) throw new Error(data.message || "개선의견 목록을 불러오지 못했습니다.");
+    renderFeedbackPosts(data.posts || []);
+    if (feedbackStatusEl) feedbackStatusEl.textContent = "개선의견 목록을 불러왔습니다.";
+  } catch (err) {
+    if (feedbackStatusEl) feedbackStatusEl.textContent = err.message || "개선의견 목록 조회 중 오류가 발생했습니다.";
+    feedbackListEl.innerHTML = '<p class="empty">개선의견 목록을 불러오지 못했습니다.</p>';
+  }
+}
+
 function buildTableHtml(columns, rows, startCol, wrapClass = "") {
   const head = columns.map(([, l]) => `<th>${l}</th>`).join("");
   const body = rows.length
@@ -403,6 +1084,9 @@ function setActiveMenuPanel(panelId) {
   currentMenuPanel = panelId;
   for (const b of menuButtons) b.classList.toggle("active", !!panelId && b.dataset.panel === panelId);
   for (const p of menuPanels) p.classList.toggle("hidden", p.id !== panelId);
+  if (appShellEl) appShellEl.classList.toggle("feedback-mode", panelId === "feedback-panel");
+  if (panelId === "feedback-panel") loadFeedbackPosts();
+  if (panelId !== "feedback-panel") feedbackPanelEl?.classList.remove("compose-open");
 }
 
 function setMenuLayoutVisible(visible) {
@@ -448,7 +1132,8 @@ function buildRowLogicExplanation(tab, row) {
       const frictionLoss = Number(row.friction_loss || 0);
       const length = Number(row.pipe_length_m || 0);
       const unitLoss = length > 0 ? frictionLoss / length : null;
-      const spike = Number(row.friction_spike_limit ?? 0.05);
+      const spike = Number(row.friction_spike_limit ?? 1.0);
+      cards.criteria.push(`공학 후보 사유: ${row.engineering_reasons || "사유 미분류"}`);
       cards.criteria.push(`공학 최적화 기준: 단위 마찰손실 > ${fmtLogicNumber(spike, 3)} kg/cm²/m`);
       cards.formula.push(`단위 마찰손실 = friction_loss / length`);
       cards.values.push(`단위 마찰손실 = ${fmtLogicNumber(frictionLoss)} / ${fmtLogicNumber(length)} = ${fmtLogicNumber(unitLoss)} kg/cm²/m`);
@@ -456,6 +1141,7 @@ function buildRowLogicExplanation(tab, row) {
     }
     if (row.economy_flag) {
       const econLimit = Number(row.economy_velocity_limit ?? 2.0);
+      cards.criteria.push(`경제성 후보 사유: ${row.economy_reasons || "사유 미분류"}`);
       cards.criteria.push(`경제성 기준: 유속 < ${fmtLogicNumber(econLimit, 1)} m/s AND 구경 > 25A`);
       cards.formula.push(`경제성 판정식: velocity < ${fmtLogicNumber(econLimit, 1)} AND bore > 25`);
       cards.values.push(`실제 값 대입: ${fmtLogicNumber(velocity)} < ${fmtLogicNumber(econLimit, 1)}, ${fmtLogicNumber(Number(row.nominal_bore_mm || 0), 0)}A > 25A`);
@@ -960,6 +1646,144 @@ tableContainerEl.addEventListener("click", (event) => {
   openLogicModal(`[${tableConfigs[currentTab]?.columns?.[Number(c.dataset.colIndex || 0)]?.[1] || "선택 항목"}] 필터 판정 로직`, buildRowLogicExplanation(currentTab, row));
 });
 
+engineeringVisualsEl?.addEventListener("click", (event) => {
+  const zoomBtn = event.target.closest("[data-network-zoom]");
+  if (zoomBtn) {
+    const svg = zoomBtn.closest(".insight-network-card")?.querySelector(".insight-network-svg");
+    zoomEngineeringNetworkMap(svg, zoomBtn.dataset.networkZoom);
+    return;
+  }
+
+  const marker = event.target.closest(".friction-spike-marker");
+  if (!marker) return;
+  openEngineeringSpikeModal(Number(marker.dataset.spikeIndex));
+});
+
+engineeringVisualsEl?.addEventListener("pointermove", (event) => {
+  if (engineeringMapPan) {
+    const { svg, startX, startY, startBox, tooltipTarget } = engineeringMapPan;
+    const rect = svg.getBoundingClientRect();
+    const dx = ((event.clientX - startX) * startBox.width) / Math.max(rect.width, 1);
+    const dy = ((event.clientY - startY) * startBox.height) / Math.max(rect.height, 1);
+    setSvgViewBox(svg, {
+      x: startBox.x - dx,
+      y: startBox.y - dy,
+      width: startBox.width,
+      height: startBox.height,
+    });
+    if (tooltipTarget) showEngineeringMapTooltip(event, tooltipTarget);
+    return;
+  }
+
+  const target = event.target.closest(".spike-network-pipe, .spike-network-hitbox");
+  if (!target) {
+    hideEngineeringMapTooltip();
+    return;
+  }
+  showEngineeringMapTooltip(event, target);
+});
+
+engineeringVisualsEl?.addEventListener("pointerdown", (event) => {
+  const svg = event.target.closest(".insight-network-svg");
+  const target = event.target.closest(".spike-network-pipe, .spike-network-hitbox");
+  if (svg && event.button === 0) {
+    const startBox = parseSvgViewBox(svg);
+    if (!startBox) return;
+    engineeringMapPan = {
+      svg,
+      startX: event.clientX,
+      startY: event.clientY,
+      startBox,
+      tooltipTarget: target || null,
+    };
+    svg.classList.add("is-panning");
+    svg.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+  if (target) showEngineeringMapTooltip(event, target);
+});
+
+engineeringVisualsEl?.addEventListener("pointerup", () => {
+  engineeringMapPan?.svg?.classList.remove("is-panning");
+  engineeringMapPan = null;
+});
+
+engineeringVisualsEl?.addEventListener("pointercancel", () => {
+  engineeringMapPan?.svg?.classList.remove("is-panning");
+  engineeringMapPan = null;
+  hideEngineeringMapTooltip();
+});
+
+engineeringVisualsEl?.addEventListener("pointerleave", () => {
+  if (!engineeringMapPan) hideEngineeringMapTooltip();
+});
+
+economyVisualsEl?.addEventListener("click", (event) => {
+  const zoomBtn = event.target.closest("[data-network-zoom]");
+  if (!zoomBtn) return;
+  const svg = zoomBtn.closest(".insight-network-card")?.querySelector(".insight-network-svg");
+  zoomEngineeringNetworkMap(svg, zoomBtn.dataset.networkZoom);
+});
+
+economyVisualsEl?.addEventListener("pointermove", (event) => {
+  if (engineeringMapPan) {
+    const { svg, startX, startY, startBox, tooltipTarget } = engineeringMapPan;
+    const rect = svg.getBoundingClientRect();
+    const dx = ((event.clientX - startX) * startBox.width) / Math.max(rect.width, 1);
+    const dy = ((event.clientY - startY) * startBox.height) / Math.max(rect.height, 1);
+    setSvgViewBox(svg, {
+      x: startBox.x - dx,
+      y: startBox.y - dy,
+      width: startBox.width,
+      height: startBox.height,
+    });
+    if (tooltipTarget) showEngineeringMapTooltip(event, tooltipTarget);
+    return;
+  }
+
+  const target = event.target.closest(".spike-network-pipe, .spike-network-hitbox");
+  if (!target) {
+    hideEngineeringMapTooltip();
+    return;
+  }
+  showEngineeringMapTooltip(event, target);
+});
+
+economyVisualsEl?.addEventListener("pointerdown", (event) => {
+  const svg = event.target.closest(".insight-network-svg");
+  const target = event.target.closest(".spike-network-pipe, .spike-network-hitbox");
+  if (svg && event.button === 0) {
+    const startBox = parseSvgViewBox(svg);
+    if (!startBox) return;
+    engineeringMapPan = {
+      svg,
+      startX: event.clientX,
+      startY: event.clientY,
+      startBox,
+      tooltipTarget: target || null,
+    };
+    svg.classList.add("is-panning");
+    svg.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+  if (target) showEngineeringMapTooltip(event, target);
+});
+
+economyVisualsEl?.addEventListener("pointerup", () => {
+  engineeringMapPan?.svg?.classList.remove("is-panning");
+  engineeringMapPan = null;
+});
+
+economyVisualsEl?.addEventListener("pointercancel", () => {
+  engineeringMapPan?.svg?.classList.remove("is-panning");
+  engineeringMapPan = null;
+  hideEngineeringMapTooltip();
+});
+
+economyVisualsEl?.addEventListener("pointerleave", () => {
+  if (!engineeringMapPan) hideEngineeringMapTooltip();
+});
+
 for (const b of tabButtons) b.addEventListener("click", () => setActiveTab(b.dataset.tab));
 for (const b of menuButtons) b.addEventListener("click", () => setActiveMenuPanel(b.dataset.panel));
 setActiveMenuPanel(null);
@@ -970,6 +1794,8 @@ if (pipeRulesBtnEl) pipeRulesBtnEl.textContent = "배관 규칙 상태 보기";
 if (updatesModalTitleEl) updatesModalTitleEl.textContent = "업데이트 기록";
 if (updatesModalCloseEl) updatesModalCloseEl.textContent = "닫기";
 if (reportFileLabelEl) reportFileLabelEl.textContent = "결과서 파일 (docx)";
+if (feedbackWriteBtnEl) feedbackWriteBtnEl.textContent = "의견작성";
+if (feedbackRefreshBtnEl) feedbackRefreshBtnEl.textContent = "닫기";
 
 networkSvgEl.addEventListener("wheel", (event) => {
   if (!viewState.base) return;
@@ -1075,12 +1901,106 @@ if (cadRunBtnEl) {
     }
   });
 }
+if (sdfAnalysisFormEl) {
+  sdfAnalysisFormEl.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const sdfFile = sdfAnalysisFileEl?.files?.[0];
+    if (!sdfFile) {
+      sdfAnalysisStatusEl.textContent = "SDF 파일을 먼저 선택해 주세요.";
+      return;
+    }
+    sdfAnalysisStatusEl.textContent = "SDF 스프링클러 배관 분석 중입니다...";
+    if (sdfAnalysisRunBtnEl) sdfAnalysisRunBtnEl.disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append("sdf_file", sdfFile);
+      if (sdfAnalysisCadFileEl?.files?.[0]) fd.append("cad_file", sdfAnalysisCadFileEl.files[0]);
+      const resp = await fetch("/api/sdf-sprinkler-analysis", { method: "POST", body: fd });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.message || "SDF 분석 요청에 실패했습니다.");
+      sdfAnalysisStatusEl.textContent = data.message || "SDF 분석이 완료되었습니다.";
+      renderSdfAnalysis(data);
+    } catch (e) {
+      sdfAnalysisStatusEl.textContent = e.message || "SDF 분석 중 오류가 발생했습니다.";
+      if (sdfAnalysisOutputEl) {
+        sdfAnalysisOutputEl.classList.remove("hidden");
+        sdfAnalysisOutputEl.innerHTML = '<p class="empty">SDF 분석 결과를 불러오지 못했습니다.</p>';
+      }
+    } finally {
+      if (sdfAnalysisRunBtnEl) sdfAnalysisRunBtnEl.disabled = false;
+    }
+  });
+}
+if (feedbackWriteBtnEl) {
+  feedbackWriteBtnEl.addEventListener("click", () => feedbackPanelEl?.classList.add("compose-open"));
+}
+if (feedbackRefreshBtnEl) {
+  feedbackRefreshBtnEl.addEventListener("click", () => feedbackPanelEl?.classList.remove("compose-open"));
+}
+feedbackListEl?.addEventListener("click", (event) => {
+  const postEl = event.target.closest(".feedback-list-post");
+  if (postEl) openFeedbackDetail(postEl.dataset.feedbackId);
+});
+feedbackListEl?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const postEl = event.target.closest(".feedback-list-post");
+  if (postEl) {
+    event.preventDefault();
+    openFeedbackDetail(postEl.dataset.feedbackId);
+  }
+});
+feedbackDetailCloseEl?.addEventListener("click", () => feedbackDetailModalEl?.classList.add("hidden"));
+feedbackDetailModalEl?.addEventListener("click", (event) => {
+  if (event.target === feedbackDetailModalEl) feedbackDetailModalEl.classList.add("hidden");
+});
+if (feedbackFormEl) {
+  feedbackFormEl.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = {
+      author: feedbackAuthorEl?.value || "",
+      title: feedbackTitleEl?.value || "",
+      body: feedbackBodyEl?.value || "",
+    };
+    if (!payload.title.trim() || !payload.body.trim()) {
+      if (feedbackStatusEl) feedbackStatusEl.textContent = "제목과 내용을 모두 입력해주세요.";
+      return;
+    }
+    feedbackSubmitBtnEl.disabled = true;
+    if (feedbackStatusEl) feedbackStatusEl.textContent = "개선의견을 등록하는 중입니다...";
+    try {
+      const fd = new FormData();
+      fd.append("author", payload.author);
+      fd.append("title", payload.title);
+      fd.append("body", payload.body);
+      if (feedbackAttachmentEl?.files?.[0]) fd.append("attachment", feedbackAttachmentEl.files[0]);
+      const resp = await fetch("/api/feedback-posts", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.message || "개선의견 등록에 실패했습니다.");
+      if (feedbackTitleEl) feedbackTitleEl.value = "";
+      if (feedbackBodyEl) feedbackBodyEl.value = "";
+      if (feedbackAttachmentEl) feedbackAttachmentEl.value = "";
+      if (feedbackStatusEl) feedbackStatusEl.textContent = data.message || "개선의견이 등록되었습니다.";
+      feedbackPanelEl?.classList.remove("compose-open");
+      await loadFeedbackPosts();
+    } catch (err) {
+      if (feedbackStatusEl) feedbackStatusEl.textContent = err.message || "개선의견 등록 중 오류가 발생했습니다.";
+    } finally {
+      feedbackSubmitBtnEl.disabled = false;
+    }
+  });
+  loadFeedbackPosts();
+}
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     logicModalEl.classList.add("hidden");
     criteriaModalEl.classList.add("hidden");
     if (updatesModalEl) updatesModalEl.classList.add("hidden");
     if (pipeRulesModalEl) pipeRulesModalEl.classList.add("hidden");
+    if (feedbackDetailModalEl) feedbackDetailModalEl.classList.add("hidden");
+    if (feedbackPanelEl) feedbackPanelEl.classList.remove("compose-open");
   }
 });
 
@@ -1108,6 +2028,7 @@ form.addEventListener("submit", async (event) => {
   statsPanelEl.classList.add("hidden");
   reportPanelEl.classList.add("hidden");
   if (cadComparePanelEl) cadComparePanelEl.classList.add("hidden");
+  if (sdfAnalysisPanelEl) sdfAnalysisPanelEl.classList.add("hidden");
 
   const formData = new FormData();
   formData.append("report_file", reportFile);
@@ -1122,9 +2043,9 @@ form.addEventListener("submit", async (event) => {
     renderSummary(data.summary || {}, data.filename, data.sdf_filename);
     renderResultRows(data.results || {});
     renderPipeRulesButton(data.rules || {});
+    currentTables = data.tables || {};
     renderNetworkGraph(data.sdf_graph || null);
     renderInsights(data.insights || {});
-    currentTables = data.tables || {};
     setActiveTab(currentTab);
     renderStats(data.stats || {}, data.visualizations || []);
     renderReport(data);

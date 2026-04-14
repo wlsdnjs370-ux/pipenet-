@@ -226,7 +226,7 @@ class PipenetGuideValidator:
     PV_EQ_REF = 10.1
     VALVE_DROP_TOLERANCE = 0.05
     ECONOMY_V_LOW = 2.0
-    FRICTION_SPIKE = 0.05
+    FRICTION_SPIKE = 1.0
     HW_DECLARED_TEXT = "USING THE HAZEN-WILLIAMS EQUATION"
 
     def __init__(
@@ -290,6 +290,12 @@ class PipenetGuideValidator:
             pipe_rows=pipe_rows,
             pipe_lengths=pipe_lengths,
             equipment_rows=equipment_rows,
+            pipe_config_rows=pipe_config_rows,
+            designed_pipe_rows=designed_pipe_rows,
+            design_material_rows=design_material_rows,
+            hw_checks=hw_checks,
+            velocity_checks=velocity_checks,
+            nozzle_rows=nozzle_rows,
         )
 
         results: dict[str, list[str]] = {"PASS": [], "FAIL": [], "WARNING": []}
@@ -340,6 +346,8 @@ class PipenetGuideValidator:
             engineering_pipe_ids=insights["engineering_pipe_ids"],
             economy_pipe_ids=insights["economy_pipe_ids"],
             economy_equipment_ids=insights["economy_equipment_ids"],
+            engineering_reason_map=insights.get("engineering_reason_map", {}),
+            economy_reason_map=insights.get("economy_reason_map", {}),
         )
 
         return {
@@ -1360,45 +1368,187 @@ class PipenetGuideValidator:
         pipe_rows: list[PipeFlowRow],
         pipe_lengths: dict[int, float],
         equipment_rows: list[EquipmentRow],
+        pipe_config_rows: list[PipeConfigRow],
+        designed_pipe_rows: list[DesignedPipeRow],
+        design_material_rows: list[DesignMaterialRow],
+        hw_checks: list[HwCheckRow],
+        velocity_checks: list[PipeVelocityCheckRow],
+        nozzle_rows: list[NozzleFlowRow],
     ) -> dict:
         engineering_advice: list[str] = []
         economy_guide: list[str] = []
         engineering_pipe_ids: set[int] = set()
         economy_pipe_ids: set[int] = set()
         economy_equipment_ids: set[int] = set()
+        engineering_reason_map: dict[int, list[str]] = {}
+        economy_reason_map: dict[int, list[str]] = {}
+
+        def add_engineering_reason(label: int, reason: str) -> None:
+            engineering_pipe_ids.add(label)
+            engineering_reason_map.setdefault(label, [])
+            if reason not in engineering_reason_map[label]:
+                engineering_reason_map[label].append(reason)
+
+        def add_economy_reason(label: int, reason: str) -> None:
+            economy_pipe_ids.add(label)
+            economy_reason_map.setdefault(label, [])
+            if reason not in economy_reason_map[label]:
+                economy_reason_map[label].append(reason)
 
         pipe_map = {row.label: row for row in pipe_rows}
+        designed_map = {row.label: row for row in designed_pipe_rows}
+        material_map = {row.pipe_type_id: row.material_name for row in design_material_rows}
+        hw_map = {row.label: row for row in hw_checks}
+        velocity_map = {row.label: row for row in velocity_checks}
 
-        friction_spikes: list[tuple[int, float]] = []
+        engineering_advice.append(
+            "최적화 전제: 헤드 최소 방수압 0.1MPa(1.0kg/cm²G), 헤드 유량, 배관 유속, C-Factor, 등가길이, Hazen-Williams 검산을 먼저 만족한 뒤 공학/경제 최적화를 검토합니다."
+        )
+        engineering_advice.append(
+            "공학 관점: 비용 증가 가능성을 감수하더라도 마찰손실 집중, 유속 여유 부족, 압력 안정성 부족, 피팅/특수설비 손실 집중을 줄이는 방향입니다."
+        )
+        economy_guide.append(
+            "경제성 전제: 기준을 위반하면서 관경을 줄이는 것이 아니라, 법적/기술 조건을 유지하는 범위에서 과대 관경, 저유속, 대구경 밸브, CPVC 대구경 구간을 줄이는 방향입니다."
+        )
+
+        friction_spikes: list[tuple[int, float, float, float]] = []
+        change_spikes: list[tuple[int, float, float]] = []
+        tight_velocity_candidates: list[tuple[int, float, float, float]] = []
+        fitting_concentration: list[tuple[int, float, float, float]] = []
+        low_pressure_candidates: list[tuple[int, float]] = []
         low_velocity_candidates: list[tuple[int, float, float]] = []
+        main_downsize_candidates: list[tuple[int, float, float]] = []
+        branch_downsize_candidates: list[tuple[int, float, float]] = []
+        cpvc_large_candidates: list[tuple[int, float, str]] = []
+        pressure_surplus_nozzles: list[tuple[int, float]] = []
+        unit_losses: list[tuple[int, float]] = []
 
         for row in pipe_rows:
             length_m = pipe_lengths.get(row.label)
             if length_m and length_m > 0:
                 unit_loss = row.friction_loss / length_m
+                unit_losses.append((row.label, unit_loss))
                 if unit_loss > self.FRICTION_SPIKE:
-                    engineering_pipe_ids.add(row.label)
-                    friction_spikes.append((row.label, unit_loss))
+                    add_engineering_reason(row.label, "마찰손실")
+                    friction_spikes.append((row.label, unit_loss, row.friction_loss, length_m))
+
+            velocity_check = velocity_map.get(row.label)
+            if velocity_check and velocity_check.velocity_limit_mps:
+                velocity_margin = 1 - row.velocity_mps / max(velocity_check.velocity_limit_mps, 1e-9)
+                if 0 <= velocity_margin < 0.10:
+                    add_engineering_reason(row.label, "유속여유")
+                    tight_velocity_candidates.append((row.label, row.velocity_mps, velocity_check.velocity_limit_mps, velocity_margin))
+                if velocity_margin > 0.35 and row.nominal_bore_mm >= 80.0 and velocity_check.pipe_role == "other":
+                    add_economy_reason(row.label, "주배관 관경축소")
+                    main_downsize_candidates.append((row.label, row.nominal_bore_mm, row.velocity_mps))
+                if velocity_margin > 0.35 and row.nominal_bore_mm in {32.0, 40.0, 50.0} and velocity_check.pipe_role == "branch":
+                    add_economy_reason(row.label, "가지배관 관경축소")
+                    branch_downsize_candidates.append((row.label, row.nominal_bore_mm, row.velocity_mps))
 
             if row.velocity_mps < self.ECONOMY_V_LOW and row.nominal_bore_mm > 25.0:
-                economy_pipe_ids.add(row.label)
+                add_economy_reason(row.label, "저유속 과설계")
                 low_velocity_candidates.append((row.label, row.nominal_bore_mm, row.velocity_mps))
+
+            if row.outlet_pressure < self.MIN_HEAD_PRESSURE + 0.2:
+                add_engineering_reason(row.label, "압력여유")
+                low_pressure_candidates.append((row.label, row.outlet_pressure))
+
+            hw = hw_map.get(row.label)
+            if hw and hw.total_length_m > 0:
+                eq_ratio = (hw.fitting_eq_length_m + hw.special_eq_length_m) / hw.total_length_m
+                if eq_ratio > 0.30:
+                    add_engineering_reason(row.label, "피팅집중")
+                    fitting_concentration.append((row.label, eq_ratio, hw.fitting_eq_length_m, hw.special_eq_length_m))
+
+            designed = designed_map.get(row.label)
+            material = material_map.get(designed.pipe_type_id, "") if designed else ""
+            if material.upper().startswith("CPVC") and row.nominal_bore_mm > 65.0:
+                add_economy_reason(row.label, "CPVC 대구경")
+                cpvc_large_candidates.append((row.label, row.nominal_bore_mm, material))
+
+        unit_losses.sort(key=lambda x: x[0])
+        for idx in range(1, len(unit_losses)):
+            label, unit_loss = unit_losses[idx]
+            _, prev_loss = unit_losses[idx - 1]
+            if prev_loss <= 0:
+                continue
+            change_rate = (unit_loss - prev_loss) / prev_loss
+            if change_rate > 0.50 and unit_loss > 0.10:
+                add_engineering_reason(label, "변화율")
+                change_spikes.append((label, change_rate, unit_loss))
+
+        for nozzle in nozzle_rows:
+            if nozzle.inlet_pressure_kgf_cm2 >= 1.30:
+                pressure_surplus_nozzles.append((nozzle.label, nozzle.inlet_pressure_kgf_cm2))
 
         if friction_spikes:
             friction_spikes.sort(key=lambda x: x[1], reverse=True)
-            top_items = ", ".join(f"{label}번({loss:.3f})" for label, loss in friction_spikes[:8])
-            engineering_advice.append(
-                f"m당 마찰손실 급증 배관이 {len(friction_spikes)}개 있습니다. 주요 구간: {top_items}"
+            top_items = ", ".join(
+                f"Pipe {label}(m당 {unit_loss:.3f}, 손실 {loss:.3f}, 길이 {length:.2f}m)"
+                for label, unit_loss, loss, length in friction_spikes[:8]
             )
-            engineering_advice.append("가이드: 유속 저감(구경 상향), 피팅 수량 축소, 배관 경로 단순화를 우선 검토하세요.")
+            engineering_advice.append(
+                f"m당 마찰손실 기준({self.FRICTION_SPIKE:.2f} kg/cm²/m) 초과 배관이 {len(friction_spikes)}개 있습니다. 주요 구간: {top_items}"
+            )
+            engineering_advice.append("조치: 절대 손실값이 높은 구간은 구경 상향, 피팅 축소, 특수설비 위치 조정, 배관 경로 단순화를 우선 검토합니다.")
+
+        if change_spikes:
+            change_spikes.sort(key=lambda x: x[1], reverse=True)
+            top_items = ", ".join(f"Pipe {label}(변화율 {rate*100:.1f}%, m당 {unit_loss:.3f})" for label, rate, unit_loss in change_spikes[:8])
+            engineering_advice.append(f"직전 배관 대비 마찰손실 변화율 급증 후보가 {len(change_spikes)}개 있습니다. 주요 구간: {top_items}")
+            engineering_advice.append("조치: 짧은 배관이면 피팅/밸브/특수설비 등가길이 집중을 확인하고, 긴 배관이면 경로 분산 또는 루프/그리드 배치를 검토합니다.")
+
+        if tight_velocity_candidates:
+            tight_velocity_candidates.sort(key=lambda x: x[3])
+            top_items = ", ".join(f"Pipe {label}({velocity:.2f}/{limit:.2f}m/s, 여유 {margin*100:.1f}%)" for label, velocity, limit, margin in tight_velocity_candidates[:8])
+            engineering_advice.append(f"유속 기준 여유가 10% 미만인 배관이 {len(tight_velocity_candidates)}개 있습니다. 주요 구간: {top_items}")
+            engineering_advice.append("조치: 유속 여유 부족 구간은 관경 상향, 분기 위치 조정, 경로 단순화로 안정성을 확보합니다.")
+
+        if fitting_concentration:
+            fitting_concentration.sort(key=lambda x: x[1], reverse=True)
+            top_items = ", ".join(f"Pipe {label}(등가길이 비율 {ratio*100:.1f}%, 피팅 {fit:.2f}m, 특수 {special:.2f}m)" for label, ratio, fit, special in fitting_concentration[:8])
+            engineering_advice.append(f"피팅/특수설비 등가길이 비율이 30%를 넘는 손실 집중 후보가 {len(fitting_concentration)}개 있습니다. 주요 구간: {top_items}")
+            engineering_advice.append("조치: 90도 엘보, Tee, Cross, 신축배관, 밸브류가 몰린 구간은 경로 직선화와 분기 방식 단순화를 검토합니다.")
+
+        if low_pressure_candidates:
+            low_pressure_candidates.sort(key=lambda x: x[1])
+            top_items = ", ".join(f"Pipe {label}(출구압 {pressure:.3f}kg/cm²G)" for label, pressure in low_pressure_candidates[:8])
+            engineering_advice.append(f"출구압력이 1.2kg/cm²G 미만인 압력 여유 부족 후보가 {len(low_pressure_candidates)}개 있습니다. 주요 구간: {top_items}")
+            engineering_advice.append("조치: 말단 압력 안정성을 위해 해당 하류 계통의 관경 상향 또는 마찰손실 저감 조치를 우선 검토합니다.")
+
+        engineering_advice.append("절충 원칙: 공학안은 손실과 유속을 안정화하지만 비용 증가가 따르므로, 먼저 피팅/특수설비 집중과 배관 경로를 점검한 뒤 관경 상향을 결정합니다.")
 
         if low_velocity_candidates:
             low_velocity_candidates.sort(key=lambda x: x[2])
-            top_items = ", ".join(f"{label}번({bore:.0f}A/{vel:.2f}m/s)" for label, bore, vel in low_velocity_candidates[:8])
+            top_items = ", ".join(f"Pipe {label}({bore:.0f}A/{vel:.2f}m/s)" for label, bore, vel in low_velocity_candidates[:8])
             economy_guide.append(
-                f"저유속 과설계 후보 배관이 {len(low_velocity_candidates)}개 있습니다. 주요 구간: {top_items}"
+                f"저유속 과설계 후보가 {len(low_velocity_candidates)}개 있습니다. 조건: 유속 < {self.ECONOMY_V_LOW:.1f}m/s이고 구경 > 25A. 주요 구간: {top_items}"
             )
-            economy_guide.append("가이드: 법적 압력/최소유량을 유지하는 범위에서 구경 축소 가능성을 검토하세요.")
+            economy_guide.append("조치: 법적 압력과 최소유량을 유지하는 범위에서 한 단계 구경 축소 시뮬레이션을 수행합니다.")
+
+        if main_downsize_candidates:
+            main_downsize_candidates.sort(key=lambda x: (-x[1], x[2]))
+            top_items = ", ".join(f"Pipe {label}({bore:.0f}A/{vel:.2f}m/s)" for label, bore, vel in main_downsize_candidates[:8])
+            economy_guide.append(f"주배관/교차배관 구경 축소 검토 후보가 {len(main_downsize_candidates)}개 있습니다. 125A→100A, 100A→80A, 80A→65A 순서로 검토합니다. 주요 구간: {top_items}")
+            economy_guide.append("확인조건: 그 밖의 배관 유속 10m/s 이하, 말단 방수압 0.1MPa 이상, 전체 압력 균형, 밸브/특수설비 손실 증가 영향을 재계산해야 합니다.")
+
+        if branch_downsize_candidates:
+            branch_downsize_candidates.sort(key=lambda x: (-x[1], x[2]))
+            top_items = ", ".join(f"Pipe {label}({bore:.0f}A/{vel:.2f}m/s)" for label, bore, vel in branch_downsize_candidates[:8])
+            economy_guide.append(f"가지배관 구경 축소 검토 후보가 {len(branch_downsize_candidates)}개 있습니다. 40A→32A, 32A→25A 방향으로 물량이 많은 말단부를 우선 검토합니다. 주요 구간: {top_items}")
+            economy_guide.append("확인조건: topology 기준 가지배관 유속 6m/s 이하, 말단 방수압 0.1MPa 이상, 헤드 유량 기준을 다시 만족해야 합니다.")
+
+        if pressure_surplus_nozzles:
+            pressure_surplus_nozzles.sort(key=lambda x: x[1], reverse=True)
+            top_items = ", ".join(f"Head {label}({pressure:.3f}kg/cm²G)" for label, pressure in pressure_surplus_nozzles[:8])
+            economy_guide.append(f"헤드 압력 여유가 큰 후보가 {len(pressure_surplus_nozzles)}개 있습니다. 경제 목표는 약 1.1~1.2kg/cm²G 수준을 검토하되 최소 1.0kg/cm²G는 반드시 유지해야 합니다. 주요 헤드: {top_items}")
+            economy_guide.append("조치: 압력 여유가 큰 계통은 관경 한 단계 축소를 가정하고 Hazen-Williams 재계산, 유속 기준, 헤드 유량을 재확인합니다.")
+
+        if cpvc_large_candidates:
+            cpvc_large_candidates.sort(key=lambda x: x[1], reverse=True)
+            top_items = ", ".join(f"Pipe {label}({bore:.0f}A/{material})" for label, bore, material in cpvc_large_candidates[:8])
+            economy_guide.append(f"CPVC 65A 초과 비용 검토 후보가 {len(cpvc_large_candidates)}개 있습니다. 주요 구간: {top_items}")
+            economy_guide.append("조치: CPVC 80A 이상 단일 라인은 50A/65A 복수 라인 분산, 세대 인입부 65A 이하 유지 가능성을 검토합니다.")
 
         for item in equipment_rows:
             desc = normalize_desc(item.description)
@@ -1412,10 +1562,13 @@ class PipenetGuideValidator:
                     "수리 여유가 있으면 100A 이하 대안 검토로 밸브/부속 단가를 낮출 수 있습니다."
                 )
 
-        if not engineering_advice:
-            engineering_advice.append("마찰손실 급증 구간은 발견되지 않았습니다.")
-        if not economy_guide:
-            economy_guide.append("경제성 저하가 우려되는 과설계 구간은 발견되지 않았습니다.")
+        economy_guide.append("루프/그리드 검토: 하류 헤드 수가 많고 한쪽 계통에 유량이 집중된 구간은 양방향 공급으로 손실을 분산해 전체 관경을 줄일 수 있는지 검토합니다.")
+        economy_guide.append("C-Factor 활용: C=150 계열 재질은 손실을 줄일 수 있으나 재료 단가가 오를 수 있으므로, 재질비 증가분과 관경/펌프양정/시공비 절감분을 함께 비교합니다.")
+
+        if len(engineering_advice) <= 3:
+            engineering_advice.append("현재 데이터 기준으로 즉시 눈에 띄는 마찰손실 급증/유속 여유 부족/압력 여유 부족 후보는 제한적입니다.")
+        if len(economy_guide) <= 3:
+            economy_guide.append("현재 데이터 기준으로 즉시 눈에 띄는 저유속 과설계 또는 대구경 비용 후보는 제한적입니다.")
 
         return {
             "engineering_advice": engineering_advice,
@@ -1423,6 +1576,8 @@ class PipenetGuideValidator:
             "engineering_pipe_ids": engineering_pipe_ids,
             "economy_pipe_ids": economy_pipe_ids,
             "economy_equipment_ids": economy_equipment_ids,
+            "engineering_reason_map": engineering_reason_map,
+            "economy_reason_map": economy_reason_map,
         }
 
     def _build_nozzle_messages(self, rows: list[NozzleFlowRow], results: dict[str, list[str]]) -> None:
@@ -1595,12 +1750,16 @@ class PipenetGuideValidator:
         engineering_pipe_ids: set[int],
         economy_pipe_ids: set[int],
         economy_equipment_ids: set[int],
+        engineering_reason_map: dict[int, list[str]] | None = None,
+        economy_reason_map: dict[int, list[str]] | None = None,
     ) -> dict:
         pipe_config_map = {row.label: row for row in pipe_config_rows}
         designed_map = {row.label: row for row in designed_pipe_rows}
         hw_map = {row.label: row for row in hw_checks}
         velocity_map = {row.label: row for row in velocity_checks}
         pipe_validation_map = {row.label: row for row in pipe_validation_rows}
+        engineering_reason_map = engineering_reason_map or {}
+        economy_reason_map = economy_reason_map or {}
         return {
             "nozzles": [
                 {
@@ -1667,6 +1826,8 @@ class PipenetGuideValidator:
                     "warn": False,
                     "engineering_flag": item.label in engineering_pipe_ids,
                     "economy_flag": item.label in economy_pipe_ids,
+                    "engineering_reasons": ", ".join(engineering_reason_map.get(item.label, [])),
+                    "economy_reasons": ", ".join(economy_reason_map.get(item.label, [])),
                 }
                 for item in pipe_rows
             ],

@@ -37,6 +37,7 @@ NEGATIVE_NETWORK_KEYWORDS = ("소화기", "옥내소화전", "SHEET", "TEX", "F-
 HEAD_RADIUS_KEYWORDS = ("반경", "radius", "r=2.6", "2.6m")
 AUXILIARY_LAYERS = {"0", "L3", "L4"}
 COMMANDS = ["LINE", "RECT", "CIRCLE", "TEXT", "MOVE", "COPY", "DELETE", "DELETE_WINDOW", "LAYER", "SAVE", "SAVEAS", "NEW"]
+GRAPH_LINEAR_TYPES = {"LINE", "LWPOLYLINE", "ARC"}
 
 
 @dataclass
@@ -116,8 +117,9 @@ class DXFWorkspace:
         self,
         include_network_entities: bool = False,
         include_network_summary: bool = False,
+        include_graph: bool = False,
     ) -> dict[str, Any]:
-        cache_key = (include_network_entities, include_network_summary)
+        cache_key = (include_network_entities, include_network_summary, include_graph)
         if cache_key in self._payload_cache:
             return self._payload_cache[cache_key]
 
@@ -139,6 +141,11 @@ class DXFWorkspace:
             "networkEntityIds": network_ids,
             "entities": entities,
             "bounds": self._compute_bounds(entities),
+            "graph": self._build_linear_graph(
+                entities,
+                visible_entity_ids=set(network_ids) if network_ids else None,
+                visible_layers=set(display_layers) if display_layers else None,
+            ) if include_graph else {},
             "unsupported": unsupported,
             "commands": COMMANDS,
         }
@@ -1253,6 +1260,285 @@ class DXFWorkspace:
         if entity.get("closed") and len(points) > 2:
             segments.append((points[-1], points[0]))
         return segments
+
+    def _build_linear_graph(
+        self,
+        entities: list[dict[str, Any]],
+        *,
+        visible_entity_ids: set[str] | None = None,
+        visible_layers: set[str] | None = None,
+        endpoint_tolerance: float = 120.0,
+        attachment_tolerance: float = 180.0,
+    ) -> dict[str, Any]:
+        linear_entities = []
+        attachment_entities = []
+        for entity in entities:
+            if visible_entity_ids is not None and entity.get("id") not in visible_entity_ids:
+                continue
+            if visible_layers is not None and entity.get("layer") not in visible_layers:
+                continue
+            if entity.get("type") in GRAPH_LINEAR_TYPES:
+                linear_entities.append(entity)
+            elif self._is_graph_attachment_entity(entity):
+                attachment_entities.append(entity)
+
+        if not linear_entities:
+            return {
+                "nodes": [],
+                "edges": [],
+                "attachments": [],
+                "stats": {
+                    "node_count": 0,
+                    "edge_count": 0,
+                    "attachment_count": 0,
+                    "branch_count": 0,
+                    "terminal_count": 0,
+                    "inline_count": 0,
+                    "endpoint_tolerance": endpoint_tolerance,
+                    "attachment_tolerance": attachment_tolerance,
+                },
+            }
+
+        raw_points: list[tuple[float, float]] = []
+        edge_sources: list[dict[str, Any]] = []
+        for entity in linear_entities:
+            path = self._entity_graph_path(entity)
+            if len(path) < 2:
+                continue
+            raw_points.append(path[0])
+            raw_points.append(path[-1])
+            edge_sources.append(
+                {
+                    "entity": entity,
+                    "path": path,
+                    "start": path[0],
+                    "end": path[-1],
+                    "length": self._path_length(path),
+                }
+            )
+
+        node_clusters = self._cluster_graph_points(raw_points, endpoint_tolerance)
+        nodes = [
+            {
+                "id": cluster["id"],
+                "x": round(cluster["x"], 3),
+                "y": round(cluster["y"], 3),
+                "degree": 0,
+                "kind": "isolated",
+                "roles": [],
+            }
+            for cluster in node_clusters
+        ]
+        node_by_id = {node["id"]: node for node in nodes}
+
+        edges: list[dict[str, Any]] = []
+        for idx, source in enumerate(edge_sources, start=1):
+            start_node = self._nearest_cluster_id(node_clusters, source["start"], endpoint_tolerance)
+            end_node = self._nearest_cluster_id(node_clusters, source["end"], endpoint_tolerance)
+            if start_node is None or end_node is None:
+                continue
+            if start_node == end_node and source["length"] <= endpoint_tolerance:
+                continue
+            edge_id = f"edge-{idx}"
+            edges.append(
+                {
+                    "id": edge_id,
+                    "source": start_node,
+                    "target": end_node,
+                    "entityId": source["entity"].get("id"),
+                    "sourceHandle": source["entity"].get("sourceHandle"),
+                    "layer": source["entity"].get("layer"),
+                    "entityType": source["entity"].get("type"),
+                    "length": round(source["length"], 3),
+                    "path": [{"x": round(x, 3), "y": round(y, 3)} for x, y in source["path"]],
+                }
+            )
+            node_by_id[start_node]["degree"] += 1
+            node_by_id[end_node]["degree"] += 1
+
+        for node in nodes:
+            degree = node["degree"]
+            if degree <= 1:
+                node["kind"] = "terminal"
+            elif degree == 2:
+                node["kind"] = "inline"
+            else:
+                node["kind"] = "branch"
+
+        attachments: list[dict[str, Any]] = []
+        for idx, entity in enumerate(attachment_entities, start=1):
+            point = self._entity_anchor_point(entity)
+            if point is None:
+                continue
+            node_id = self._nearest_cluster_id(node_clusters, point, attachment_tolerance)
+            edge_id = None
+            edge_distance = math.inf
+            if node_id is None:
+                edge_id, edge_distance = self._nearest_edge_id(edges, point)
+            attachment_kind = self._graph_attachment_kind(entity)
+            attachments.append(
+                {
+                    "id": f"attachment-{idx}",
+                    "entityId": entity.get("id"),
+                    "sourceHandle": entity.get("sourceHandle"),
+                    "kind": attachment_kind,
+                    "layer": entity.get("layer"),
+                    "text": entity.get("text"),
+                    "x": round(point[0], 3),
+                    "y": round(point[1], 3),
+                    "nodeId": node_id,
+                    "edgeId": edge_id if edge_distance <= attachment_tolerance else None,
+                }
+            )
+            if node_id is not None and attachment_kind not in node_by_id[node_id]["roles"]:
+                node_by_id[node_id]["roles"].append(attachment_kind)
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "attachments": attachments,
+            "stats": {
+                "node_count": len(nodes),
+                "edge_count": len(edges),
+                "attachment_count": len(attachments),
+                "branch_count": sum(1 for node in nodes if node["kind"] == "branch"),
+                "terminal_count": sum(1 for node in nodes if node["kind"] == "terminal"),
+                "inline_count": sum(1 for node in nodes if node["kind"] == "inline"),
+                "endpoint_tolerance": endpoint_tolerance,
+                "attachment_tolerance": attachment_tolerance,
+            },
+        }
+
+    def _entity_graph_path(self, entity: dict[str, Any]) -> list[tuple[float, float]]:
+        entity_type = entity.get("type")
+        if entity_type == "LINE":
+            return [
+                (entity["start"]["x"], entity["start"]["y"]),
+                (entity["end"]["x"], entity["end"]["y"]),
+            ]
+        if entity_type == "LWPOLYLINE":
+            return [(point["x"], point["y"]) for point in entity.get("points", [])]
+        if entity_type == "ARC":
+            center = entity.get("center")
+            radius = entity.get("radius")
+            if not center or not radius:
+                return []
+            start_angle = math.radians(entity.get("startAngle", 0.0))
+            end_angle = math.radians(entity.get("endAngle", 0.0))
+            if end_angle < start_angle:
+                end_angle += math.tau
+            steps = max(12, int(abs(end_angle - start_angle) / (math.pi / 18)))
+            points = []
+            for idx in range(steps + 1):
+                t = start_angle + (end_angle - start_angle) * (idx / steps)
+                points.append((center["x"] + radius * math.cos(t), center["y"] + radius * math.sin(t)))
+            return points
+        return []
+
+    def _path_length(self, path: list[tuple[float, float]]) -> float:
+        if len(path) < 2:
+            return 0.0
+        return sum(math.dist(path[idx], path[idx + 1]) for idx in range(len(path) - 1))
+
+    def _cluster_graph_points(self, points: list[tuple[float, float]], tolerance: float) -> list[dict[str, Any]]:
+        clusters: list[dict[str, Any]] = []
+        if not points:
+            return clusters
+        cell_size = max(tolerance, 1.0)
+        grid: defaultdict[tuple[int, int], list[int]] = defaultdict(list)
+        for px, py in points:
+            cell_x = math.floor(px / cell_size)
+            cell_y = math.floor(py / cell_size)
+            candidate_ids: list[int] = []
+            for gx in range(cell_x - 1, cell_x + 2):
+                for gy in range(cell_y - 1, cell_y + 2):
+                    candidate_ids.extend(grid.get((gx, gy), []))
+            best_idx = None
+            best_dist = math.inf
+            for cluster_idx in candidate_ids:
+                cluster = clusters[cluster_idx]
+                dist = math.hypot(px - cluster["x"], py - cluster["y"])
+                if dist <= tolerance and dist < best_dist:
+                    best_idx = cluster_idx
+                    best_dist = dist
+            if best_idx is None:
+                best_idx = len(clusters)
+                clusters.append({"id": f"node-{best_idx + 1}", "x": px, "y": py, "count": 1})
+            else:
+                cluster = clusters[best_idx]
+                count = cluster["count"] + 1
+                cluster["x"] = (cluster["x"] * cluster["count"] + px) / count
+                cluster["y"] = (cluster["y"] * cluster["count"] + py) / count
+                cluster["count"] = count
+            grid[(cell_x, cell_y)].append(best_idx)
+        return clusters
+
+    def _nearest_cluster_id(
+        self,
+        clusters: list[dict[str, Any]],
+        point: tuple[float, float],
+        tolerance: float,
+    ) -> str | None:
+        best = None
+        best_dist = math.inf
+        for cluster in clusters:
+            dist = math.hypot(point[0] - cluster["x"], point[1] - cluster["y"])
+            if dist <= tolerance and dist < best_dist:
+                best = cluster["id"]
+                best_dist = dist
+        return best
+
+    def _nearest_edge_id(self, edges: list[dict[str, Any]], point: tuple[float, float]) -> tuple[str | None, float]:
+        best_id = None
+        best_dist = math.inf
+        for edge in edges:
+            path = edge.get("path") or []
+            if len(path) < 2:
+                continue
+            for idx in range(len(path) - 1):
+                start = path[idx]
+                end = path[idx + 1]
+                dist = self._point_to_segment_distance(
+                    point[0],
+                    point[1],
+                    start["x"],
+                    start["y"],
+                    end["x"],
+                    end["y"],
+                )
+                if dist < best_dist:
+                    best_dist = dist
+                    best_id = edge["id"]
+        return best_id, best_dist
+
+    def _entity_anchor_point(self, entity: dict[str, Any]) -> tuple[float, float] | None:
+        entity_type = entity.get("type")
+        if entity_type in {"CIRCLE", "ARC"} and entity.get("center"):
+            return (entity["center"]["x"], entity["center"]["y"])
+        if entity_type == "TEXT" and entity.get("insert"):
+            return (entity["insert"]["x"], entity["insert"]["y"])
+        if entity_type == "INSERT" and entity.get("insert"):
+            return (entity["insert"]["x"], entity["insert"]["y"])
+        key_points = self._entity_key_points(entity)
+        return key_points[0] if key_points else None
+
+    def _is_graph_attachment_entity(self, entity: dict[str, Any]) -> bool:
+        entity_type = entity.get("type")
+        if entity_type in {"CIRCLE", "TEXT", "INSERT"}:
+            return True
+        return bool(self._entity_hint_text(entity))
+
+    def _graph_attachment_kind(self, entity: dict[str, Any]) -> str:
+        hint = self._entity_hint_text(entity)
+        if any(token in hint for token in ("head", "sprink", "nozzle", "upright", "pendent", "sidewall")):
+            return "head"
+        if any(token in hint for token in ("valve", "alarm", "gate", "check", "butterfly", "av", "pv")):
+            return "valve"
+        if entity.get("type") == "TEXT":
+            return "text"
+        if entity.get("type") == "CIRCLE":
+            return "head_candidate"
+        return "attachment"
 
     def _entity_bbox(self, entity: dict[str, Any]) -> tuple[float, float, float, float]:
         points = self._entity_key_points(entity)

@@ -3,10 +3,12 @@ __pycache__/
 *.py[cod]
 *.pyd
 *.so
+*.egg-info/
 
 # Virtual env
 .venv/
 venv/
+env/
 
 # IDE
 .idea/
@@ -20,6 +22,11 @@ temp/
 
 # Data and model artifacts
 data/uploads/
+data/prototype_runs/
+data/remote30_outputs/
+data/feedback_uploads/
+data/exports/
+data/_smoke*
 models/
 runs/
 *.pt
@@ -29,6 +36,14 @@ runs/
 
 # Notebook checkpoints
 .ipynb_checkpoints/
+
+# Test / coverage
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Claude / local agent state
+.claude/
 
 # OS files
 Thumbs.db

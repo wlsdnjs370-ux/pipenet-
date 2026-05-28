@@ -25,7 +25,9 @@ import csv
 import io
 import json
 import math
+import os
 import time
+import warnings
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -35,6 +37,73 @@ from xml.dom import minidom
 
 import ezdxf
 from ezdxf.math import Matrix44, Vec3
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 자산 파일 경로 해석 — 환경변수 → 모듈 디렉토리 fallback
+# ────────────────────────────────────────────────────────────────────────────
+# emit_sdf 는 두 가지 자산 파일에 의존한다:
+#   1. Template SDF — PIPENET 의 Graphics 블록(아이소매트릭 표시 메타) 보존용
+#   2. Standard SLF — 6 schedule 정의 + 표준 노즐/펌프 라이브러리, 결과 폴더에 동봉
+#
+# 본 모듈을 Linux 서버 / 다른 PC / Docker / CI 등 다양한 환경에서 실행 가능하게 하기 위해
+# 절대 경로 하드코딩 대신 다음 우선순위로 해석한다:
+#   ① 환경변수 (REMOTE30_TEMPLATE_SDF, REMOTE30_STANDARD_SLF)
+#   ② 모듈 디렉토리 (=`__file__` 의 부모) 기준 상대 파일명
+#
+# 두 단계 모두 실패하면 명확한 RuntimeWarning 을 발행하고 None 을 반환.
+# 호출 측은 None 을 받아 fallback 경로(template 없이 빈 SDF / SLF 동봉 생략)를
+# 택할 수 있지만, 그 영향(아이소매트릭 누락 / diameter Unset)을 사용자가 인지하게 된다.
+
+_MODULE_DIR = Path(__file__).resolve().parent
+TEMPLATE_SDF_FILENAME = "3-1형_자연낙차_LSP_4F_OA_지하층포함_120m~200m미만_6.6K로 감압_알람밸브.sdf"
+STANDARD_SLF_FILENAME = "OA_3-1형_지하층포함_120~200m미만_35F.slf"
+
+
+def _resolve_asset(env_var: str, default_filename: str, *, role: str) -> Path | None:
+    """환경변수 → 모듈 디렉토리 순으로 자산 파일을 찾는다. 못 찾으면 None.
+
+    Args:
+        env_var: 절대/상대 경로를 담은 환경변수 이름. 비어있으면 모듈 디렉토리로 폴백.
+        default_filename: 모듈 디렉토리에서 찾을 파일명.
+        role: 경고 메시지에 쓰일 자산 역할 설명 ("Template SDF" 등).
+
+    Returns:
+        해석된 절대 경로 (Path), 또는 None (둘 다 실패).
+    """
+    env_val = os.environ.get(env_var, "").strip()
+    if env_val:
+        candidate = Path(env_val).expanduser()
+        if not candidate.is_absolute():
+            candidate = (Path.cwd() / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+        if candidate.is_file():
+            return candidate
+        warnings.warn(
+            f"[remote30_prototype] 환경변수 {env_var}='{env_val}' 지정 — "
+            f"하지만 '{candidate}' 에 {role} 파일이 없음. 모듈 디렉토리 fallback 시도.",
+            RuntimeWarning, stacklevel=3,
+        )
+
+    candidate = (_MODULE_DIR / default_filename).resolve()
+    if candidate.is_file():
+        return candidate
+    return None
+
+
+def resolve_template_sdf() -> Path | None:
+    """PIPENET Graphics 블록(아이소매트릭 메타) 보존용 template SDF 경로."""
+    return _resolve_asset(
+        "REMOTE30_TEMPLATE_SDF", TEMPLATE_SDF_FILENAME, role="Template SDF",
+    )
+
+
+def resolve_standard_slf() -> Path | None:
+    """6 schedule + 표준 노즐/펌프 정의가 담긴 표준 SLF 경로."""
+    return _resolve_asset(
+        "REMOTE30_STANDARD_SLF", STANDARD_SLF_FILENAME, role="Standard SLF",
+    )
 
 # Optional — sprinkler_remote30_extractor 의 layer 카테고리 분류 활용
 try:
@@ -379,6 +448,7 @@ def filter_pipenet_only(bundle: ParsedDxfBundle) -> list[dict]:
 
 SNAP_TOL_MM = 200.0  # 200mm: 미세 segment 가 snap 단계에서 통합 (참조 ref 의 min pipe 길이가 320mm 이므로 200mm 까지 OK)
 HEAD_BRIDGE_MAX_MM = 2000.0  # 헤드 INSERT 좌표 ↔ 가장 가까운 그래프 노드 brigde 허용 거리
+SOURCE_BRIDGE_MAX_MM = 10000.0  # 알람밸브(source) ↔ 배관망 nearest 노드 bridge 허용 거리 (10m). 초과 시 nearest 로 fallback + 경고
 
 
 def _round_pt(x: float, y: float, tol: float = SNAP_TOL_MM) -> tuple[float, float]:
@@ -535,6 +605,10 @@ class SelectionResult:
     nodes_in_subgraph: list[tuple[float, float]]
     # 추가: pipe-내부에 흡수된 elbow 들. {(a,b): [(node_pos, angle_deg), ...]}
     elbow_fittings: dict[tuple, list[tuple[tuple[float, float], float]]] = field(default_factory=dict)
+    # source 가 그래프 nearest 와 떨어진 거리(mm). 0 = 그래프 위에 정확히 있음 / 큰 값 = 떨어져 있음.
+    source_bridge_dist_mm: float = 0.0
+    # 한도(SOURCE_BRIDGE_MAX_MM) 초과로 source 를 nearest 로 fallback 한 경우 True.
+    source_fallback: bool = False
 
 
 def _build_graph(pipe_entities: list[dict]) -> tuple[dict[tuple[float, float], set[tuple[float, float]]], dict[tuple, float]]:
@@ -776,14 +850,33 @@ def select_worst30_heads(
     else:
         src_raw, src_kind = _find_source(pipe_entities, layer_categories)
 
-    src = _nearest_graph_node(graph, src_raw) if src_raw else None
-    if src is None:
-        # fallback — 그래프의 가장 차수 높은 노드를 source 로
+    src_nearest = _nearest_graph_node(graph, src_raw) if src_raw else None
+    src_bridge_dist_mm = 0.0
+    src_fallback = False
+    if src_nearest is None:
+        # fallback — 그래프 자체가 빈 경우 / src_raw 없음
         if graph:
             src = max(graph, key=lambda n: len(graph[n]))
             src_kind = "highest_degree"
         else:
             return SelectionResult(None, "none", [], [], [], [], {})
+    else:
+        d_src = math.hypot(src_raw[0] - src_nearest[0], src_raw[1] - src_nearest[1])
+        src_bridge_dist_mm = d_src
+        if d_src <= 1e-3:
+            # 사용자 좌표가 정확히 그래프 노드 위 — nearest 그대로 사용
+            src = src_nearest
+        elif d_src <= SOURCE_BRIDGE_MAX_MM:
+            # 한도 이내 — src_raw 를 그래프 노드로 추가하고 nearest 와 edge 로 연결
+            graph.setdefault(src_raw, set()).add(src_nearest)
+            graph[src_nearest].add(src_raw)
+            edge_len[(min(src_raw, src_nearest), max(src_raw, src_nearest))] = d_src
+            src = src_raw
+        else:
+            # 한도 초과 — nearest 로 fallback 하고 경고 플래그
+            src = src_nearest
+            src_fallback = True
+            src_kind = src_kind + ":fallback_far"
 
     # 헤드 좌표 → 가장 가까운 그래프 노드로 강제 연결 (HEAD_BRIDGE_MAX_MM 이내)
     for h in heads:
@@ -915,6 +1008,8 @@ def select_worst30_heads(
         edges=merged_edges,
         nodes_in_subgraph=merged_nodes,
         elbow_fittings={k: v for k, v in edge_elbows.items() if v},
+        source_bridge_dist_mm=src_bridge_dist_mm,
+        source_fallback=src_fallback,
     )
 
 
@@ -974,34 +1069,119 @@ def build_input_tables(
             "x": int(round(pos[0])), "y": int(round(pos[1])),
         })
 
-    # ====== Diameter 추론 — TEX 레이어 '25A/32A/40A/50A/65A/80A/100A/125A' 텍스트를 가장 가까운 pipe 에 매핑
+    # ====== Diameter 추론 — 3단계 알고리즘
+    # ① DXF TEXT 패턴 5종 추출 (노이즈 워드 필터)
+    # ② NFPC 103 별표 1 "가"칸 (폐쇄형 SP) — 담당 헤드 수 → 최소 호칭경 매핑
+    # ③ 결정: 텍스트 매칭이 있으면 max(텍스트값, NFPC최소값), 없으면 NFPC fallback
     import re as _re
-    dia_text_pattern = _re.compile(r"\b(\d{2,3})A\b")
-    dia_candidates: list[tuple[float, float, int]] = []  # (x, y, dia_mm)
+    DIA_PATTERNS = [
+        _re.compile(r"\b(\d{2,3})\s*A\b"),                                # 25A
+        _re.compile(r"^\s*(\d{2,3})\s*$"),                                # 순수 숫자 (이 도면 dominant)
+        _re.compile(r"[Øø]\s*(\d{2,3})"),                                 # Ø25
+        _re.compile(r"DN\s*(\d{2,3})"),                                   # DN25
+        _re.compile(r"(?<![0-9])(\d{2,3})\s*mm(?![0-9])"),                # 25mm
+    ]
+    NOISE_KEYWORDS = ("호스", "방수구", "소화전", "옥내", "HOSE", "EA", "KG", "℃",
+                       "SET", "SCALE", "PUMP", "펌프", "TANK", "탱크")
+    VALID_DIA = {15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300}
+    DIA_RANGE_LIMIT_MM = 1500.0  # 호칭경 텍스트는 보통 배관에 1.5m 이내 가까이 위치
+
+    dia_text_pts: list[tuple[float, float, int]] = []  # (x, y, dia_mm)
     if pipe_entities:
         for en in pipe_entities:
             if en["t"] != "T":
                 continue
-            v = en.get("v", "") or ""
-            m = dia_text_pattern.search(v)
-            if not m:
+            v = (en.get("v") or "").strip()
+            if not v:
                 continue
-            dia = int(m.group(1))
-            if dia not in (20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200):
-                continue
-            dia_candidates.append((en["p"][0], en["p"][1], dia))
+            if any(nw in v for nw in NOISE_KEYWORDS):
+                continue  # 옥내소화전 / 헤드 라벨 / 스펙 표 등 노이즈
+            for pat in DIA_PATTERNS:
+                m = pat.search(v)
+                if not m:
+                    continue
+                try:
+                    d = int(m.group(1))
+                except ValueError:
+                    continue
+                if d in VALID_DIA:
+                    dia_text_pts.append((en["p"][0], en["p"][1], d))
+                    break
+
+    # ── NFPC 103 별표 1 "가" 칸 (폐쇄형 SP, 가장 일반)
+    def _nfpc_min_bore_mm(head_count: int) -> int:
+        if head_count <= 2:   return 25
+        if head_count <= 3:   return 32
+        if head_count <= 5:   return 40
+        if head_count <= 10:  return 50
+        if head_count <= 30:  return 65
+        if head_count <= 60:  return 80
+        if head_count <= 80:  return 90
+        if head_count <= 100: return 100
+        if head_count <= 160: return 125
+        return 150
+
+    # ── subgraph 안 src 부터의 BFS tree → pipe 별 downstream 헤드 수
+    src_pos = selection.source_pos
+    adj_sub: dict = defaultdict(list)
+    for ea, eb, _ in selection.edges:
+        adj_sub[ea].append(eb); adj_sub[eb].append(ea)
+    parent_map: dict = {src_pos: None}
+    bfs_q: list = [src_pos]
+    while bfs_q:
+        cur = bfs_q.pop(0)
+        for nb in adj_sub[cur]:
+            if nb not in parent_map:
+                parent_map[nb] = cur
+                bfs_q.append(nb)
+    children_of: dict = defaultdict(list)
+    for nd, pr in parent_map.items():
+        if pr is not None:
+            children_of[pr].append(nd)
+    selected_head_set = {h.pos for h in selection.heads}
+    subtree_count: dict = {}
+    def _subtree_calc(n):
+        cnt = 1 if n in selected_head_set else 0
+        for c in children_of[n]:
+            cnt += _subtree_calc(c)
+        subtree_count[n] = cnt
+        return cnt
+    if src_pos is not None:
+        _subtree_calc(src_pos)
+
+    def _downstream_heads(a, b) -> int:
+        if parent_map.get(b) == a: return subtree_count.get(b, 0)
+        if parent_map.get(a) == b: return subtree_count.get(a, 0)
+        return 0
+
+    def _point_seg_dist(px, py, ax, ay, bx, by) -> float:
+        dx, dy = bx - ax, by - ay
+        L2 = dx * dx + dy * dy
+        if L2 < 1e-9:
+            return math.hypot(px - ax, py - ay)
+        t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / L2))
+        qx, qy = ax + t * dx, ay + t * dy
+        return math.hypot(px - qx, py - qy)
+
+    diameter_source_counter: dict[str, int] = {"text": 0, "nfpc_min": 0, "nfpc_fallback": 0}
 
     def _pipe_diameter(a: tuple[float, float], b: tuple[float, float]) -> int:
-        if not dia_candidates:
-            return 25
-        # pipe 중심점에서 가장 가까운 dia text — 5m 이내
-        cx = (a[0] + b[0]) / 2; cy = (a[1] + b[1]) / 2
-        best = 25; best_d = 5000.0
-        for tx, ty, dia in dia_candidates:
-            d = math.hypot(tx - cx, ty - cy)
+        nfpc_min = _nfpc_min_bore_mm(_downstream_heads(a, b))
+        # 텍스트 매칭 — 점-선분 수직거리, 1500mm 이내
+        best_text = None; best_d = DIA_RANGE_LIMIT_MM
+        for tx, ty, dia in dia_text_pts:
+            d = _point_seg_dist(tx, ty, a[0], a[1], b[0], b[1])
             if d < best_d:
-                best_d = d; best = dia
-        return best
+                best_d = d; best_text = dia
+        if best_text is None:
+            diameter_source_counter["nfpc_fallback"] += 1
+            return nfpc_min
+        # 안전측: 텍스트 값이 별표 1 최소보다 작으면 별표 1 채택
+        if best_text < nfpc_min:
+            diameter_source_counter["nfpc_min"] += 1
+            return nfpc_min
+        diameter_source_counter["text"] += 1
+        return best_text
 
     # Pipes + edge key → pipe label mapping
     edge_key_to_pipe: dict[tuple, str] = {}
@@ -1122,14 +1302,16 @@ def build_input_tables(
             if already:
                 continue
             fx_count += 1
-            # FX 길이 — LWPOLYLINE 총 길이
-            fx_len = 0.0
+            # FX 등가길이 — 도면의 물리 길이가 아니라 KFI 인정/제품 스펙 기준의 고정값.
+            # 3-1형 LSP 레퍼런스 SDF (60개 모두 15.6m) 기준 채택. 도면 물리길이는 fx_len 으로
+            # 별도 계산되지만 검증/디버깅용으로만 메타에 남기고 eq_len 에는 쓰지 않음.
+            fx_len_mm = 0.0
             for p0, p1 in zip(pts, pts[1:]):
-                fx_len += math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+                fx_len_mm += math.hypot(p1[0] - p0[0], p1[1] - p0[1])
             tables.equipment.append({
                 "pipe": attached_pipe["label"], "in": attached_pipe["in"], "out": attached_pipe["out"],
                 "label": str(fx_count + 1), "desc": "FX",
-                "eq_len": round(fx_len / 1000.0, 2) if fx_len > 0 else 15.6,
+                "eq_len": 15.6,
                 "rel_pos": 0.5,
             })
 
@@ -1173,6 +1355,10 @@ def build_input_tables(
         ("Equipment", str(len(tables.equipment))),
         ("알람밸브 좌표 (snap)", f"({selection.source_pos[0]:.1f}, {selection.source_pos[1]:.1f})"),
         ("source 자동 식별 방식", selection.source_kind),
+        ("Diameter 추론 — DXF text 매칭", str(diameter_source_counter.get("text", 0))),
+        ("Diameter 추론 — NFPC 별표 1 보강 (text<min)", str(diameter_source_counter.get("nfpc_min", 0))),
+        ("Diameter 추론 — NFPC 별표 1 fallback (text 미매칭)", str(diameter_source_counter.get("nfpc_fallback", 0))),
+        ("Diameter 텍스트 후보 수 (도면)", str(len(dia_text_pts))),
     ]
     return tables
 
@@ -1243,6 +1429,26 @@ def write_xlsx_tables(tables: PipeTables, out_path: Path) -> Path:
 # ────────────────────────────────────────────────────────────────────────────
 # 4) Stage 4 — PIPENET SDF emit
 # ────────────────────────────────────────────────────────────────────────────
+
+
+def bundle_result_zip(out_dir: Path, prefix: str) -> Path:
+    """결과 폴더의 .sdf + .slf + .xlsx + csv/*.csv 를 .zip 으로 묶음.
+
+    PIPENET 에서 열려면 .sdf 와 .slf 가 동일 폴더에 있어야 하므로,
+    사용자에게는 zip 한 번에 받아 unzip 하도록 안내.
+    """
+    import zipfile
+    zip_path = out_dir / f"{prefix}.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for suf in (".sdf", ".slf", ".xlsx"):
+            p = out_dir / f"{prefix}{suf}"
+            if p.is_file():
+                zf.write(p, arcname=p.name)
+        csv_dir = out_dir / "csv"
+        if csv_dir.is_dir():
+            for f in sorted(csv_dir.glob(f"{prefix}_*.csv")):
+                zf.write(f, arcname=f"csv/{f.name}")
+    return zip_path
 
 
 def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote 30 Prototype") -> Path:
@@ -1362,14 +1568,40 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
             library_item=str(nz["lib"]),
         ))
 
-    # 참조 SDF 를 template 로 사용 — Graphics 블록 (아이소매트릭 메타) 자동 보존
-    ref_sdf = Path(r"C:\Users\admin\PycharmProjects\JupyterProject\3-1형_자연낙차_LSP_4F_OA_지하층포함_120m~200m미만_6.6K로 감압_알람밸브.sdf")
-    template = ref_sdf if ref_sdf.is_file() else None
+    # 참조 SDF 를 template 로 사용 — Graphics 블록 (아이소매트릭 메타) 자동 보존.
+    # 경로 해석: 환경변수 REMOTE30_TEMPLATE_SDF → 모듈 디렉토리 fallback. (resolve_template_sdf 참조)
+    template = resolve_template_sdf()
+    if template is None:
+        warnings.warn(
+            f"[remote30_prototype.emit_sdf] Template SDF 를 찾을 수 없음. "
+            f"결과 SDF 의 Graphics 블록(아이소매트릭 표시 메타·schemes·Display-options) 이 누락됩니다. "
+            f"→ 환경변수 REMOTE30_TEMPLATE_SDF 로 절대 경로 지정, 또는 표준 파일 "
+            f"'{TEMPLATE_SDF_FILENAME}' 을 모듈 디렉토리 '{_MODULE_DIR}' 에 두세요.",
+            RuntimeWarning, stacklevel=2,
+        )
     _write_sdf(network, out_path, template_path=template)
 
-    # ── Template 잔재 정리: 레퍼런스 도면의 Text-element / User-lib 외부 경로 /
-    #    잔여 Title / Network-description 제거. Display-options(grid="isometric"),
-    #    Link-schemes, Node-schemes 은 PIPENET 의 캔버스 렌더링 메타라 유지.
+    # ── 표준 라이브러리(.slf) 를 결과 폴더에 동봉 — PIPENET 이 호칭경↔내경 매핑 lookup 용.
+    # SLF 는 6 schedule (KSD 3507/3562/3576/DP/CPVC/FX) + SP-HEAD / INDOOR HYDRANT 노즐 + 표준 펌프 정의를 담은
+    # 프로젝트 표준 라이브러리. 모든 수리계산 결과물 SDF 가 이 SLF 를 참조하도록 통일.
+    # 경로 해석: 환경변수 REMOTE30_STANDARD_SLF → 모듈 디렉토리 fallback. (resolve_standard_slf 참조)
+    import shutil as _shutil
+    ref_slf = resolve_standard_slf()
+    slf_name = out_path.with_suffix(".slf").name  # 예: prototype_<id>.slf
+    slf_dst = out_path.parent / slf_name
+    if ref_slf is not None and ref_slf.is_file():
+        _shutil.copy2(ref_slf, slf_dst)
+    else:
+        warnings.warn(
+            f"[remote30_prototype.emit_sdf] 표준 SLF 라이브러리를 찾을 수 없음. "
+            f"결과 SDF 에 schedule 라이브러리가 동봉되지 않아 PIPENET 에서 호칭경↔내경 lookup 이 실패해 "
+            f"diameter 가 'Unset' 으로 표시됩니다. "
+            f"→ 환경변수 REMOTE30_STANDARD_SLF 로 절대 경로 지정, 또는 표준 파일 "
+            f"'{STANDARD_SLF_FILENAME}' 을 모듈 디렉토리 '{_MODULE_DIR}' 에 두세요.",
+            RuntimeWarning, stacklevel=2,
+        )
+
+    # ── Template 잔재 정리 + User-lib 재구성 (동봉 SLF 가리키도록)
     import xml.etree.ElementTree as _ET
     _tree = _ET.parse(out_path)
     _root = _tree.getroot()
@@ -1379,33 +1611,103 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
     for _libs in _root.iter("Libraries"):
         for _ul in list(_libs.findall("User-lib")):
             _libs.remove(_ul)
+        if slf_dst.is_file():
+            # 파일명만 — SDF 와 같은 폴더에 SLF 가 있으면 PIPENET 이 자동 로드
+            _ul_new = _ET.Element("User-lib", {"file": slf_name})
+            _libs.append(_ul_new)
     for _ns in _root.iter("Network-spray"):
         _titles = list(_ns.findall("Title"))
         for _t in _titles[1:]:
             _ns.remove(_t)
         for _nd in list(_ns.findall("Network-description")):
             _ns.remove(_nd)
-    # ── Pipe-type 정의 삽입 (Pipe-set 첫 자식). 레퍼런스 KSD 3507 스케줄과 동일.
-    _ksd_sizes = [
-        (0.015, 6), (0.02, 6), (0.025, 6), (0.032, 6), (0.04, 6),
-        (0.05, 6), (0.065, 10), (0.08, 10), (0.09, 10), (0.1, 10),
-        (0.125, 10), (0.15, 10), (0.2, 10), (0.25, 10), (0.3, 10),
+    # ── 6 schedule Pipe-type 정의 — 표준 SLF (OA_3-1형_..._35F.slf) 의 Schedule-section 과 정합.
+    # 각 항목: (name, c-factor, [(size_m, max_velocity_m_s), ...])
+    # 호칭경 set 은 SLF 의 Size-definition.nominal 과 동일, velocity 컨벤션 (≤50mm=6, ≥65mm=10)
+    # 은 레퍼런스 4-1형 알람밸브 SDF 의 KSD 3507/3562/CPVC Pipe-type 정의에서 도출.
+    # DP/FX 처럼 단일 호칭경만 정의된 schedule 은 velocity=10 으로 통일.
+    _SCHEDULE_DEFS = [
+        ("KSD 3507", "120", [
+            (0.015, 6), (0.02, 6), (0.025, 6), (0.032, 6), (0.04, 6), (0.05, 6),
+            (0.065, 10), (0.08, 10), (0.09, 10), (0.1, 10), (0.125, 10),
+            (0.15, 10), (0.2, 10), (0.25, 10), (0.3, 10),
+        ]),
+        ("KSD 3562", "120", [
+            (0.02, 6), (0.025, 6), (0.032, 6), (0.04, 6), (0.05, 6),
+            (0.065, 10), (0.08, 10), (0.09, 10), (0.1, 10), (0.125, 10),
+            (0.15, 10), (0.2, 10), (0.25, 10), (0.3, 10),
+        ]),
+        ("KSD 3576", "120", [
+            (0.015, 6), (0.02, 6), (0.025, 6), (0.032, 6), (0.04, 6), (0.05, 6),
+            (0.065, 10), (0.08, 10), (0.09, 10), (0.1, 10), (0.125, 10),
+            (0.15, 10), (0.2, 10), (0.25, 10), (0.3, 10),
+        ]),
+        ("DP", "120", [(0.025, 10)]),
+        ("CPVC", "150", [
+            (0.025, 6), (0.032, 6), (0.04, 6), (0.05, 6), (0.065, 10), (0.08, 10),
+        ]),
+        ("FX", "120", [(0.02, 10)]),
     ]
-    for _ps in _root.iter("Pipe-set"):
-        if _ps.find("Pipe-type") is None:
-            _pt = _ET.Element("Pipe-type", {
-                "c-factor": "120", "criteria": "velocity", "max-velocity": "10",
+
+    def _make_pipe_type(name: str, c_factor: str, sizes: list) -> "_ET.Element":
+        pt = _ET.Element("Pipe-type", {
+            "c-factor": c_factor, "criteria": "velocity", "max-velocity": "10",
+        })
+        _ET.SubElement(pt, "Name").text = name
+        _ET.SubElement(pt, "Schedule").text = name
+        for _sz, _vel in sizes:
+            _ET.SubElement(pt, "Pipe-size", {
+                "Lagging-thickness": "0",
+                "size": str(_sz),
+                "use": "1",
+                "velocity": str(_vel),
             })
-            _ET.SubElement(_pt, "Name").text = "KSD 3507"
-            _ET.SubElement(_pt, "Schedule").text = "KSD 3507"
-            for _sz, _vel in _ksd_sizes:
-                _ET.SubElement(_pt, "Pipe-size", {
-                    "Lagging-thickness": "0",
-                    "size": str(_sz),
-                    "use": "1",
-                    "velocity": str(_vel),
-                })
-            _ps.insert(0, _pt)
+        return pt
+
+    # 현재 모든 추론 파이프는 KSD 3507. populated Pipe-set 에는 KSD 3507 Pipe-type 만 삽입한다.
+    # 나머지 5 schedule 은 별도 Pipe-set (Pipe-type 만, Pipe 없음) 으로 정의해 PIPENET UI 의 schedule
+    # 선택 드롭다운에 노출 — 추후 분류 로직 (task #8) 이 들어오면 해당 schedule Pipe-set 으로 Pipe 이동.
+    for _ps in _root.iter("Pipe-set"):
+        if _ps.find("Pipe") is None:
+            continue  # 빈 Pipe-set placeholder 는 건너뜀
+        if _ps.find("Pipe-type") is not None:
+            continue
+        _ps.insert(0, _make_pipe_type(*_SCHEDULE_DEFS[0]))
+
+    # ── PIPENET-native 패턴 정합: <Links> 구조를
+    #   [empty placeholder] + [populated KSD 3507 Pipe-set] + [other-schedule Pipe-sets]
+    # 로 재구성. PIPENET 이 SDF 를 읽을 때 첫 Pipe-set 을 "blank/default" 슬롯으로 예약하고
+    # 두 번째부터 Schedule 별 Pipe-type 을 바인딩하는 컨벤션 (레퍼런스 3-1/4-1형, 다이소 모든 SDF 에서 확인).
+    # placeholder 없으면 우리 Pipe-type 이 blank 슬롯으로 흡수돼 diameter "Unset" 이슈 발생.
+    for _links in _root.iter("Links"):
+        _populated = None
+        for _child in list(_links):
+            if _child.tag == "Pipe-set" and _child.find("Pipe") is not None:
+                _populated = _child
+                break
+        if _populated is None:
+            continue
+        _idx = list(_links).index(_populated)
+        # populated Pipe-set 앞에 빈 placeholder Pipe-set 이 없으면 prepend
+        if _idx == 0 or list(_links)[_idx - 1].tag != "Pipe-set" or list(_links)[_idx - 1].find("Pipe") is not None:
+            _links.insert(_idx, _ET.Element("Pipe-set"))
+            _idx += 1
+        # populated Pipe-set 뒤로 나머지 5 schedule Pipe-set 을 추가 (이미 있으면 skip)
+        _existing_names = set()
+        for _ps in _links.iter("Pipe-set"):
+            _name_el = _ps.find("Pipe-type/Name")
+            if _name_el is not None and _name_el.text:
+                _existing_names.add(_name_el.text)
+        _insert_at = _idx + 1
+        for _name, _cf, _sizes in _SCHEDULE_DEFS[1:]:
+            if _name in _existing_names:
+                continue
+            _new_ps = _ET.Element("Pipe-set")
+            _new_ps.append(_make_pipe_type(_name, _cf, _sizes))
+            _links.insert(_insert_at, _new_ps)
+            _insert_at += 1
+        break
+
     _tree.write(out_path, encoding="utf-8", xml_declaration=True)
     return out_path
 
@@ -1418,6 +1720,7 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
 def run_stages_0_2(
     dxf_path: Path,
     job_id: str,
+    alarm_xy: tuple[float, float] | None = None,
 ) -> Iterator[dict]:
     """Stage 0~2 만 실행 — 파싱 / 배관망 / 헤드 인식. 결과를 마지막 이벤트로 yield.
 
@@ -1510,15 +1813,49 @@ def run_stages_0_2(
         if len(set(neighbors)) >= 3:
             graph_ents.append({"t": "C", "l": "_graph_junction", "c": [n[0], n[1]], "r": 80.0})
             junction_count += 1
-    yield evt({"type": "entities", "stage": 3, "entities": graph_ents,
-               "summary": {
-                   "node_count": len(graph),
-                   "edge_count": len(seen_edges),
-                   "junction_count": junction_count,
-                   "components": len(_connected_components(graph)),
-               }})
-    yield evt({"type": "stage", "stage": 3, "status": "done",
-               "label": f"배관망 그래프 — {len(graph)} 노드 / {len(seen_edges)} edge / 분기 {junction_count}개"})
+
+    # ── 알람밸브(source) 시각화 — 사용자 지정 좌표 또는 자동 식별
+    if alarm_xy is not None:
+        src_raw_pt = _round_pt(alarm_xy[0], alarm_xy[1])
+        src_kind_preview = "manual"
+    else:
+        src_raw_pt, src_kind_preview = _find_source(pipe_ents, layer_categories)
+    src_bridge_preview = 0.0
+    src_far = False
+    if src_raw_pt is not None and graph:
+        src_nearest_pt = _nearest_graph_node(graph, src_raw_pt)
+        if src_nearest_pt is not None:
+            src_bridge_preview = math.hypot(src_raw_pt[0] - src_nearest_pt[0],
+                                            src_raw_pt[1] - src_nearest_pt[1])
+            src_far = src_bridge_preview > SOURCE_BRIDGE_MAX_MM
+            # source 점 + nearest 점 + drop-line
+            graph_ents.append({"t": "C", "l": "_alarm_source",
+                               "c": [src_raw_pt[0], src_raw_pt[1]], "r": 150.0})
+            if src_bridge_preview > 1e-3:
+                graph_ents.append({
+                    "t": "L", "l": "_alarm_drop_line",
+                    "p": [src_raw_pt[0], src_raw_pt[1], src_nearest_pt[0], src_nearest_pt[1]],
+                })
+                graph_ents.append({"t": "C", "l": "_alarm_attach",
+                                   "c": [src_nearest_pt[0], src_nearest_pt[1]], "r": 90.0})
+
+    summary = {
+        "node_count": len(graph),
+        "edge_count": len(seen_edges),
+        "junction_count": junction_count,
+        "components": len(_connected_components(graph)),
+        "source_pos": list(src_raw_pt) if src_raw_pt else None,
+        "source_kind": src_kind_preview if src_raw_pt else "none",
+        "source_bridge_dist_mm": round(src_bridge_preview, 1),
+        "source_far_from_pipes": src_far,
+    }
+    yield evt({"type": "entities", "stage": 3, "entities": graph_ents, "summary": summary})
+    label = f"배관망 그래프 — {len(graph)} 노드 / {len(seen_edges)} edge / 분기 {junction_count}개"
+    if src_raw_pt is not None:
+        label += f" · 알람밸브 ↔ 배관망 {src_bridge_preview:.0f}mm"
+        if src_far:
+            label += " ⚠너무 멈"
+    yield evt({"type": "stage", "stage": 3, "status": "done", "label": label})
 
     # 헤드 편집 일시정지 — 다음은 stage 4~6 (select30 / tables / SDF) 가 run_stages_3_5() 처리
     yield evt({"type": "awaiting_finalize",
@@ -1604,21 +1941,26 @@ def run_stages_3_5(
     yield evt({"type": "stage", "stage": 5, "status": "done",
                "label": f"5 테이블 생성 완료 — Pipes {len(tables.pipes)} / Nodes {len(tables.nodes)} / Nozzles {len(tables.nozzles)}"})
 
-    # Stage 6: SDF (기존 5)
-    yield evt({"type": "stage", "stage": 6, "status": "running", "label": "PIPENET SDF emit"})
+    # Stage 6: SDF (기존 5) + .slf 동봉 + 결과 zip
+    yield evt({"type": "stage", "stage": 6, "status": "running", "label": "PIPENET SDF emit + .slf 동봉 + zip 묶음"})
     sdf_path = out_dir / f"prototype_{job_id}.sdf"
     emit_sdf(tables, sdf_path, project_title=dxf_path.stem)
+    slf_path = sdf_path.with_suffix(".slf")
+    zip_path = bundle_result_zip(out_dir, prefix=f"prototype_{job_id}")
     yield evt({"type": "stage", "stage": 6, "status": "done",
-               "label": f"SDF 생성 완료 — {sdf_path.stat().st_size / 1024:.1f} KB"})
+               "label": f"SDF {sdf_path.stat().st_size/1024:.1f}KB + SLF {slf_path.stat().st_size/1024:.1f}KB + ZIP {zip_path.stat().st_size/1024:.1f}KB"})
 
-    yield evt({"type": "done",
-               "outputs": {
-                   "xlsx": xlsx_path.name, "sdf": sdf_path.name,
-                   "csv_nodes": csv_paths["nodes"].name, "csv_pipes": csv_paths["pipes"].name,
-                   "csv_nozzles": csv_paths["nozzles"].name, "csv_fittings": csv_paths["fittings"].name,
-                   "csv_equipment": csv_paths["equipment"].name,
-               },
-               "out_dir": str(out_dir)})
+    outputs = {
+        "xlsx": xlsx_path.name, "sdf": sdf_path.name,
+        "csv_nodes": csv_paths["nodes"].name, "csv_pipes": csv_paths["pipes"].name,
+        "csv_nozzles": csv_paths["nozzles"].name, "csv_fittings": csv_paths["fittings"].name,
+        "csv_equipment": csv_paths["equipment"].name,
+    }
+    if slf_path.is_file():
+        outputs["slf"] = slf_path.name
+    if zip_path.is_file():
+        outputs["zip"] = zip_path.name
+    yield evt({"type": "done", "outputs": outputs, "out_dir": str(out_dir)})
 
 
 def run_prototype_pipeline(
@@ -1742,12 +2084,14 @@ def run_prototype_pipeline(
     yield evt({"type": "stage", "stage": 4, "status": "done",
                "label": f"5 테이블 생성 완료 — Pipes {len(tables.pipes)} / Nodes {len(tables.nodes)} / Nozzles {len(tables.nozzles)}"})
 
-    # Stage 5 (구 Stage 4): SDF emit
-    yield evt({"type": "stage", "stage": 5, "status": "running", "label": "PIPENET SDF emit"})
+    # Stage 5 (구 Stage 4): SDF emit + .slf 동봉 + zip 묶음
+    yield evt({"type": "stage", "stage": 5, "status": "running", "label": "PIPENET SDF emit + .slf 동봉 + zip 묶음"})
     sdf_path = out_dir / f"prototype_{job_id}.sdf"
     emit_sdf(tables, sdf_path, project_title=dxf_path.stem)
+    slf_path = sdf_path.with_suffix(".slf")
+    zip_path = bundle_result_zip(out_dir, prefix=f"prototype_{job_id}")
     yield evt({"type": "stage", "stage": 5, "status": "done",
-               "label": f"SDF 생성 완료 — {sdf_path.stat().st_size / 1024:.1f} KB"})
+               "label": f"SDF {sdf_path.stat().st_size/1024:.1f}KB + SLF {slf_path.stat().st_size/1024:.1f}KB + ZIP {zip_path.stat().st_size/1024:.1f}KB"})
 
     # Done
     yield evt({"type": "done",

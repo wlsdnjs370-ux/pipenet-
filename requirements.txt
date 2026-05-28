@@ -3,3 +3,6 @@ ezdxf==1.4.3
 pypdf==5.4.0
 openpyxl==3.1.5
 matplotlib==3.10.7
+pandas==2.3.3
+networkx==3.6.1
+PyYAML==6.0.3

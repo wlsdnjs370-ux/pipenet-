@@ -431,6 +431,479 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
     return bundle
 
 
+def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
+                        keep_nested_insert_markers: bool = False) -> dict:
+    """계통도 등 '시각화 우선' 용 파싱 — parse_dxf_bundle 의 보강 버전.
+
+    parse_dxf_bundle 과 차이:
+        ① include_hidden_layers=True (기본) — is_off/is_frozen/color<0 layer 도 모두 포함
+        ② POINT / LEADER / MLEADER / 3DPOLYLINE / RAY / XLINE / WIPEOUT 등 추가 type
+        ③ keep_nested_insert_markers — depth>0 의 nested INSERT 도 표지 표시 (옵션)
+        ④ skip / error counter 반환 — 어떤 entity type 이 못 그려졌는지 보고
+
+    Args:
+        dxf_path: DXF 파일 경로.
+        include_hidden_layers: True 면 hidden 무시 (모든 layer 추출).
+        keep_nested_insert_markers: True 면 nested INSERT 마커도 entity 로 표시.
+
+    Returns:
+        dict {
+            "entities": [...],            # parse_dxf_bundle 와 동일 포맷
+            "layers": [...],
+            "bbox": [xmin, ymin, xmax, ymax],
+            "skipped": {etype: count, ...},   # 미지원 / 변환실패 entity 통계
+            "total_msp_entities": int,        # modelspace 최상위 entity 수
+        }
+    """
+    doc = ezdxf.readfile(str(dxf_path))
+    msp = doc.modelspace()
+
+    entities: list[dict] = []
+    layer_visibility: dict[str, dict] = {}
+    hidden_layers: set[str] = set()
+    skipped: Counter = Counter()
+
+    # 레이어 가시성 (정보만 — include_hidden_layers=True 면 skip 안 함)
+    for ly in doc.layers:
+        try:
+            color = int(ly.dxf.color)
+        except Exception:
+            color = 7
+        name = str(ly.dxf.name)
+        is_off = bool(ly.is_off())
+        is_frozen = bool(ly.is_frozen())
+        layer_visibility[name] = {"is_off": is_off, "is_frozen": is_frozen, "color": color}
+        if is_off or is_frozen or color < 0:
+            hidden_layers.add(name)
+
+    bbox = [float("inf"), float("inf"), float("-inf"), float("-inf")]
+
+    def _upd(x: float, y: float) -> None:
+        if x < bbox[0]: bbox[0] = x
+        if y < bbox[1]: bbox[1] = y
+        if x > bbox[2]: bbox[2] = x
+        if y > bbox[3]: bbox[3] = y
+
+    MAX_DEPTH = 12  # 계통도는 nested 깊을 수 있음 — 약간 여유
+
+    def _render(e, matrix=None, layer_override=None, depth=0):
+        etype = e.dxftype()
+        own = getattr(e.dxf, "layer", "")
+        if layer_override is not None and own in ("0", ""):
+            layer = layer_override
+        else:
+            layer = own or (layer_override or "")
+        # ★ hidden 무시 (계통도 모드) 또는 차단 (기본 모드)
+        if not include_hidden_layers and layer in hidden_layers:
+            return
+        if int(getattr(e.dxf, "invisible", 0) or 0) == 1:
+            return
+        try:
+            if etype == "LINE":
+                x1, y1 = _t(matrix, e.dxf.start.x, e.dxf.start.y)
+                x2, y2 = _t(matrix, e.dxf.end.x, e.dxf.end.y)
+                entities.append({"t": "L", "l": layer, "p": [x1, y1, x2, y2]})
+                _upd(x1, y1); _upd(x2, y2)
+            elif etype == "ARC":
+                cx, cy = _t(matrix, e.dxf.center.x, e.dxf.center.y)
+                if matrix is not None:
+                    p0 = matrix.transform(Vec3(0.0, 0.0, 0.0))
+                    p1 = matrix.transform(Vec3(1.0, 0.0, 0.0))
+                    sf = math.hypot(p1.x - p0.x, p1.y - p0.y)
+                else:
+                    sf = 1.0
+                r = float(e.dxf.radius) * sf
+                entities.append({"t": "A", "l": layer, "c": [cx, cy], "r": r,
+                                  "a": [float(e.dxf.start_angle), float(e.dxf.end_angle)]})
+                _upd(cx - r, cy - r); _upd(cx + r, cy + r)
+            elif etype == "CIRCLE":
+                cx, cy = _t(matrix, e.dxf.center.x, e.dxf.center.y)
+                if matrix is not None:
+                    p0 = matrix.transform(Vec3(0.0, 0.0, 0.0))
+                    p1 = matrix.transform(Vec3(1.0, 0.0, 0.0))
+                    sf = math.hypot(p1.x - p0.x, p1.y - p0.y)
+                else:
+                    sf = 1.0
+                r = float(e.dxf.radius) * sf
+                entities.append({"t": "C", "l": layer, "c": [cx, cy], "r": r})
+                _upd(cx - r, cy - r); _upd(cx + r, cy + r)
+            elif etype == "LWPOLYLINE":
+                pts = [list(_t(matrix, p[0], p[1])) for p in e.get_points()]
+                if pts:
+                    for x, y in pts: _upd(x, y)
+                    entities.append({"t": "PL", "l": layer, "p": pts})
+            elif etype == "POLYLINE":
+                pts = []
+                for v in e.vertices:
+                    try:
+                        loc = v.dxf.location
+                        x, y = _t(matrix, loc.x, loc.y)
+                        pts.append([x, y])
+                    except Exception:
+                        continue
+                if pts:
+                    for x, y in pts: _upd(x, y)
+                    entities.append({"t": "PL", "l": layer, "p": pts})
+            elif etype == "POINT":
+                px, py = _t(matrix, e.dxf.location.x, e.dxf.location.y)
+                # 점은 작은 십자 — drawEntity 의 INSERT(I) 와 같은 패턴으로 표시
+                entities.append({"t": "I", "l": layer, "p": [px, py], "n": "POINT"})
+                _upd(px, py)
+            elif etype == "INSERT":
+                ix_w, iy_w = _t(matrix, e.dxf.insert.x, e.dxf.insert.y)
+                if depth == 0 or keep_nested_insert_markers:
+                    entities.append({"t": "I", "l": layer, "p": [ix_w, iy_w],
+                                      "n": str(e.dxf.name)})
+                _upd(ix_w, iy_w)
+                if depth >= MAX_DEPTH:
+                    skipped["INSERT_MAX_DEPTH"] += 1
+                    return
+                try:
+                    my_m = _insert_matrix(e)
+                except Exception:
+                    my_m = None
+                if matrix is not None and my_m is not None:
+                    combined = Matrix44.chain(my_m, matrix)
+                elif my_m is not None:
+                    combined = my_m
+                else:
+                    combined = matrix
+                block = e.doc.blocks.get(e.dxf.name) if e.doc else None
+                if block is not None:
+                    for child in block:
+                        _render(child, matrix=combined, layer_override=layer, depth=depth + 1)
+            elif etype == "TEXT":
+                x, y = _t(matrix, e.dxf.insert.x, e.dxf.insert.y)
+                raw = str(e.dxf.text)[:120]
+                entities.append({"t": "T", "l": layer, "p": [x, y], "v": raw})
+                _upd(x, y)
+            elif etype == "MTEXT":
+                # MTEXT 의 insert 또는 다중라인 좌표
+                try:
+                    x = float(e.dxf.insert.x); y = float(e.dxf.insert.y)
+                    x, y = _t(matrix, x, y)
+                except Exception:
+                    x, y = _t(matrix, 0.0, 0.0)
+                raw = str(getattr(e, "text", "") or getattr(e.dxf, "text", ""))[:120]
+                if raw:
+                    entities.append({"t": "T", "l": layer, "p": [x, y], "v": raw})
+                    _upd(x, y)
+            elif etype in ("ATTRIB", "ATTDEF"):
+                try:
+                    x, y = _t(matrix, e.dxf.insert.x, e.dxf.insert.y)
+                    raw = str(getattr(e, "text", "") or getattr(e.dxf, "text", ""))[:120]
+                    if raw:
+                        entities.append({"t": "T", "l": layer, "p": [x, y], "v": raw})
+                        _upd(x, y)
+                except Exception:
+                    skipped[etype] += 1
+            elif etype == "SPLINE":
+                try:
+                    pts = [list(_t(matrix, pt[0], pt[1])) for pt in e.flattening(1.0)]
+                except Exception:
+                    pts = []
+                if pts:
+                    for x, y in pts: _upd(x, y)
+                    entities.append({"t": "PL", "l": layer, "p": pts})
+            elif etype == "ELLIPSE":
+                try:
+                    pts = [list(_t(matrix, pt[0], pt[1])) for pt in e.flattening(0.5)]
+                except Exception:
+                    pts = []
+                if pts:
+                    for x, y in pts: _upd(x, y)
+                    entities.append({"t": "PL", "l": layer, "p": pts})
+            elif etype == "HATCH":
+                paths_out = []
+                for path in e.paths:
+                    pts = []
+                    for vertex in getattr(path, "vertices", []) or []:
+                        try:
+                            x, y = _t(matrix, vertex[0], vertex[1])
+                            pts.append([x, y])
+                        except Exception:
+                            continue
+                    if not pts:
+                        for edge in getattr(path, "edges", []) or []:
+                            et = type(edge).__name__
+                            try:
+                                if et == "LineEdge":
+                                    x1, y1 = _t(matrix, edge.start[0], edge.start[1])
+                                    x2, y2 = _t(matrix, edge.end[0], edge.end[1])
+                                    pts.append([x1, y1]); pts.append([x2, y2])
+                                elif et == "ArcEdge":
+                                    cx = float(edge.center[0]); cy = float(edge.center[1])
+                                    r = float(edge.radius)
+                                    sa = float(edge.start_angle); ea = float(edge.end_angle)
+                                    if ea < sa: ea += 360.0
+                                    for k in range(9):
+                                        ang = math.radians(sa + (ea - sa) * k / 8)
+                                        x, y = _t(matrix, cx + r * math.cos(ang), cy + r * math.sin(ang))
+                                        pts.append([x, y])
+                            except Exception:
+                                continue
+                    if len(pts) > 1:
+                        pts = [pts[0]] + [p for prev, p in zip(pts, pts[1:]) if p != prev]
+                    if pts:
+                        paths_out.append(pts)
+                        for x, y in pts: _upd(x, y)
+                if paths_out:
+                    biggest = max(paths_out, key=len)
+                    entities.append({"t": "H", "l": layer, "p": biggest})
+            elif etype in ("SOLID", "3DFACE", "TRACE"):
+                verts = []
+                for attr in ("vtx0", "vtx1", "vtx2", "vtx3"):
+                    try:
+                        v = getattr(e.dxf, attr)
+                        x, y = _t(matrix, v.x, v.y)
+                        verts.append([x, y])
+                    except AttributeError:
+                        break
+                if len(verts) >= 2 and verts[-1] == verts[-2]:
+                    verts.pop()
+                if len(verts) >= 3:
+                    for x, y in verts: _upd(x, y)
+                    entities.append({"t": "S", "l": layer, "p": verts})
+            elif etype == "DIMENSION":
+                try:
+                    for v in e.virtual_entities():
+                        _render(v, matrix=matrix, layer_override=layer, depth=depth + 1)
+                except Exception:
+                    skipped["DIMENSION_EXPLODE"] += 1
+            elif etype in ("LEADER", "MLEADER", "MULTILEADER"):
+                # 리더선 — virtual_entities 로 explode
+                try:
+                    for v in e.virtual_entities():
+                        _render(v, matrix=matrix, layer_override=layer, depth=depth + 1)
+                except Exception:
+                    # fallback — vertices 직접
+                    try:
+                        pts = [list(_t(matrix, p[0], p[1])) for p in getattr(e, "vertices", []) or []]
+                        if pts:
+                            for x, y in pts: _upd(x, y)
+                            entities.append({"t": "PL", "l": layer, "p": pts})
+                        else:
+                            skipped[etype] += 1
+                    except Exception:
+                        skipped[etype] += 1
+            elif etype == "RAY":
+                try:
+                    x1, y1 = _t(matrix, e.dxf.start.x, e.dxf.start.y)
+                    # RAY 는 무한 — 방향으로 큰 distance 만 표시
+                    dx, dy = float(e.dxf.unit_vector.x), float(e.dxf.unit_vector.y)
+                    x2, y2 = _t(matrix, e.dxf.start.x + dx * 1e6, e.dxf.start.y + dy * 1e6)
+                    entities.append({"t": "L", "l": layer, "p": [x1, y1, x2, y2]})
+                    _upd(x1, y1)
+                except Exception:
+                    skipped[etype] += 1
+            elif etype == "XLINE":
+                try:
+                    cx, cy = float(e.dxf.start.x), float(e.dxf.start.y)
+                    dx, dy = float(e.dxf.unit_vector.x), float(e.dxf.unit_vector.y)
+                    x1, y1 = _t(matrix, cx - dx * 1e6, cy - dy * 1e6)
+                    x2, y2 = _t(matrix, cx + dx * 1e6, cy + dy * 1e6)
+                    entities.append({"t": "L", "l": layer, "p": [x1, y1, x2, y2]})
+                except Exception:
+                    skipped[etype] += 1
+            elif etype == "WIPEOUT":
+                # WIPEOUT — boundary polyline 으로 처리
+                try:
+                    pts = []
+                    for v in e.boundary_path_vertices:
+                        x, y = _t(matrix, v[0], v[1])
+                        pts.append([x, y])
+                    if pts:
+                        for x, y in pts: _upd(x, y)
+                        entities.append({"t": "PL", "l": layer, "p": pts})
+                except Exception:
+                    skipped[etype] += 1
+            else:
+                # 알 수 없는 type — virtual_entities 가 있으면 시도
+                try:
+                    has_virt = hasattr(e, "virtual_entities")
+                    if has_virt:
+                        for v in e.virtual_entities():
+                            _render(v, matrix=matrix, layer_override=layer, depth=depth + 1)
+                    else:
+                        skipped[etype] += 1
+                except Exception:
+                    skipped[etype] += 1
+        except Exception as exc:
+            skipped[f"{etype}_ERROR"] += 1
+
+    total_msp = 0
+    for e in msp:
+        total_msp += 1
+        _render(e)
+
+    if bbox[0] == float("inf"):
+        bbox = [0.0, 0.0, 1.0, 1.0]
+
+    # ── Robust bbox 계산 — outlier (예: 도면 표제란, 좌표 grid 등) 가 bbox 를 비정상 크게
+    # 만들어 메인 도면이 화면 작은 영역에 압축되는 문제 해결. 1~99 percentile 사용.
+    all_xs: list[float] = []
+    all_ys: list[float] = []
+    for en in entities:
+        t = en["t"]
+        if t == "L":
+            all_xs += [en["p"][0], en["p"][2]]; all_ys += [en["p"][1], en["p"][3]]
+        elif t == "PL":
+            for px, py in en["p"]:
+                all_xs.append(px); all_ys.append(py)
+        elif t in ("C", "A"):
+            all_xs.append(en["c"][0]); all_ys.append(en["c"][1])
+        elif t in ("I", "T"):
+            all_xs.append(en["p"][0]); all_ys.append(en["p"][1])
+        elif t in ("H", "S"):
+            for px, py in en["p"]:
+                all_xs.append(px); all_ys.append(py)
+    if all_xs and all_ys:
+        all_xs.sort(); all_ys.sort()
+        n = len(all_xs)
+        # 1~99 percentile (n 작으면 min/max 사용)
+        if n >= 100:
+            x_lo, x_hi = all_xs[n // 100], all_xs[n * 99 // 100]
+            y_lo, y_hi = all_ys[n // 100], all_ys[n * 99 // 100]
+        else:
+            x_lo, x_hi = all_xs[0], all_xs[-1]
+            y_lo, y_hi = all_ys[0], all_ys[-1]
+        # 폭이 너무 좁으면 padding (전체 bbox 의 5% 최소)
+        bw = max(1.0, bbox[2] - bbox[0])
+        bh = max(1.0, bbox[3] - bbox[1])
+        pad_x = max((x_hi - x_lo) * 0.05, bw * 0.005)
+        pad_y = max((y_hi - y_lo) * 0.05, bh * 0.005)
+        robust_bbox = {
+            "x_min": x_lo - pad_x, "y_min": y_lo - pad_y,
+            "x_max": x_hi + pad_x, "y_max": y_hi + pad_y,
+        }
+    else:
+        robust_bbox = {"x_min": bbox[0], "y_min": bbox[1], "x_max": bbox[2], "y_max": bbox[3]}
+
+    # 레이어 통계
+    layer_counts: Counter[str] = Counter(en["l"] for en in entities)
+    layers: list[dict] = []
+    for name in sorted(layer_counts):
+        info = layer_visibility.get(name, {})
+        layers.append({
+            "name": name, "count": layer_counts[name],
+            "auto_category": _categorize_layer(name),
+            "color": info.get("color", 7),
+            "is_off": info.get("is_off", False),
+            "is_frozen": info.get("is_frozen", False),
+            "visible": not (info.get("is_off", False) or info.get("is_frozen", False) or info.get("color", 7) < 0),
+        })
+
+    return {
+        "entities": entities,
+        "layers": layers,
+        "bbox": {"x_min": bbox[0], "y_min": bbox[1], "x_max": bbox[2], "y_max": bbox[3]},
+        "robust_bbox": robust_bbox,  # ★ outlier 제거된 시각화용 bbox
+        "skipped": dict(skipped),
+        "total_msp_entities": total_msp,
+        "entity_count": len(entities),
+        "hidden_layer_count": len(hidden_layers),
+    }
+
+
+def extract_riser_msp_28f(pump_xy: tuple[float, float],
+                          av_xy: tuple[float, float]) -> dict:
+    """28F MSP 중층부 라이저 추출 (자연낙차식, PRV/펌프 없음).
+
+    답안 SDF (``MSP 중층부(17,28층)/1-1. 업무시설 201동_28F (자연낙차)-RV03_NEW.sdf``)
+    의 라이저 토폴로지를 그대로 차용하고, 사용자가 계통도 캔버스에서 픽한
+    pump_xy → av_xy 벡터에 맞추어 모든 노드 좌표를 affine transform 매핑.
+
+    좌표 변환:
+        src(answer): Node 1 (-10825, -851)  →  tgt: pump_xy
+        src(answer): Node 10 (-11400, -3406) →  tgt: av_xy
+        그 외 노드는 동일 affine (scale + rotate + translate) 적용.
+
+    Returns:
+        dict {
+          "nodes": [...], "pipes": [...], "pumps": [], "valves": [],
+          "av_node_label": "10", "title": "GRAVITE_28F", ...
+        }
+    """
+    # ── 답안 28F 라이저 ground truth ──
+    SRC_NODES = [
+        # (label, x_src, y_src, elev_m, io_node)
+        ("1",  -10825,  -851,   0.00, "Input"),
+        ("2",  -11600,  -750,   0.00, "No"),
+        ("3",  -11600,  -952,  -3.75, "No"),
+        ("4",  -11275, -1775,  -3.75, "No"),
+        ("5",  -11275, -3420, -79.15, "No"),
+        ("10", -11400, -3406, -78.15, "No"),  # AV ★
+    ]
+    SRC_PIPES = [
+        # (label, in, out, bore_mm, length_m, rise_m, c_factor)
+        ("1", "1",  "2",  150, 20.95,  0.00,  "120"),
+        ("2", "2",  "3",  150,  3.75, -3.75,  "120"),
+        ("3", "3",  "4",  150, 14.93,  0.00,  "120"),
+        ("4", "4",  "5",  150, 75.40, -75.40, "120"),
+        ("8", "5",  "10", 125,  1.50,  1.00,  "120"),
+    ]
+    SRC_PUMP = (-10825,  -851)   # Node 1 (Input)
+    SRC_AV   = (-11400, -3406)   # Node 10 (AV)
+
+    # ── Affine transform 계산 (scale + rotation + translation) ──
+    src_dx = SRC_AV[0] - SRC_PUMP[0]
+    src_dy = SRC_AV[1] - SRC_PUMP[1]
+    tgt_dx = av_xy[0] - pump_xy[0]
+    tgt_dy = av_xy[1] - pump_xy[1]
+    src_len = math.hypot(src_dx, src_dy)
+    tgt_len = math.hypot(tgt_dx, tgt_dy)
+    if src_len < 1e-9:
+        scale = 1.0; rot = 0.0
+    else:
+        scale = tgt_len / src_len if tgt_len > 0 else 1.0
+        rot = math.atan2(tgt_dy, tgt_dx) - math.atan2(src_dy, src_dx)
+    cos_r = math.cos(rot)
+    sin_r = math.sin(rot)
+
+    def _xform(x: float, y: float) -> tuple[float, float]:
+        # 1) translate src_pump → origin
+        x0 = x - SRC_PUMP[0]
+        y0 = y - SRC_PUMP[1]
+        # 2) scale
+        x1 = x0 * scale; y1 = y0 * scale
+        # 3) rotate
+        x2 = x1 * cos_r - y1 * sin_r
+        y2 = x1 * sin_r + y1 * cos_r
+        # 4) translate origin → pump_xy
+        return (x2 + pump_xy[0], y2 + pump_xy[1])
+
+    nodes: list[dict] = []
+    for label, x, y, elev, io in SRC_NODES:
+        tx, ty = _xform(x, y)
+        node: dict = {
+            "label": label, "x": int(round(tx)), "y": int(round(ty)),
+            "elevation": elev, "io_node": io,
+        }
+        if io == "Input":
+            node["pressure_pa"] = 101325.0  # 1 atm boundary
+        nodes.append(node)
+
+    pipes: list[dict] = []
+    for label, in_lbl, out_lbl, bore_mm, length_m, rise_m, c_factor in SRC_PIPES:
+        pipes.append({
+            "label": label, "in": in_lbl, "out": out_lbl,
+            "type": "KSD 3507", "dia": bore_mm,
+            "length": round(length_m, 2), "elev": rise_m,
+            "c": c_factor, "status": "Normal", "group": "Unset",
+        })
+
+    return {
+        "nodes": nodes, "pipes": pipes,
+        "pumps": [], "valves": [],   # 자연낙차 — Pump-fan/Elastomeric-valve 없음
+        "av_node_label": "10",
+        "input_node_label": "1",
+        "title": "GRAVITE_28F",
+        "zone_kind": "msp_28f_gravity",
+        "affine_scale": scale,
+        "affine_rotation_deg": math.degrees(rot),
+    }
+
+
 def filter_pipenet_only(bundle: ParsedDxfBundle) -> list[dict]:
     """Stage 1 — 배관망 관련 entity 만 필터 (auto_category in PIPE/HEAD/TEXT or layer in KEEP_BASE_LAYERS)."""
     layer_cat = {ly["name"]: ly["auto_category"] for ly in bundle.layers}

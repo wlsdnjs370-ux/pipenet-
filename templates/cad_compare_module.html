@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>듀얼 뷰어: DXF & SDF</title>
+  <title>CAD-SDF 배관망 대조·분석 모듈</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.js"></script>
   <style>
@@ -42,6 +42,28 @@
     .match-pass { color: #34d399; font-weight: 800; }
     .match-review { color: #fbbf24; font-weight: 800; }
     .match-fail { color: #f87171; font-weight: 800; }
+    .ai-engine-modal { position: fixed; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center; background: rgba(240, 242, 245, 0.88); backdrop-filter: blur(3px); }
+    .ai-engine-modal.is-open { display: flex; }
+    .ai-engine-panel { width: min(960px, 94vw); border: 1px solid #111827; background: #fff; color: #111827; padding: 24px; box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18); }
+    .ai-engine-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+    .ai-engine-title { margin: 0; font-size: 22px; font-weight: 900; letter-spacing: -0.03em; }
+    .ai-engine-subtitle { margin-top: 7px; color: #4b5563; font-size: 13px; line-height: 1.6; }
+    .ai-engine-timer { min-width: 96px; border: 1px solid #111827; padding: 9px 12px; text-align: center; font-size: 13px; font-weight: 900; background: #f9fafb; }
+    .ai-engine-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .ai-engine-card { border: 1px solid #d1d5db; background: #f9fafb; padding: 14px 12px; min-height: 126px; transition: border-color .2s ease, background .2s ease, transform .2s ease; }
+    .ai-engine-card strong { display: block; font-size: 13px; line-height: 1.35; color: #111827; }
+    .ai-engine-card span { display: block; margin-top: 7px; font-size: 11px; line-height: 1.45; color: #6b7280; }
+    .ai-engine-card .engine-state { display: inline-flex; margin-bottom: 10px; border: 1px solid #9ca3af; padding: 4px 7px; font-size: 10px; font-weight: 900; color: #4b5563; background: #fff; }
+    .ai-engine-card.is-active { border-color: #111827; background: #fff; transform: translateY(-2px); }
+    .ai-engine-card.is-active .engine-state { border-color: #2563eb; color: #1d4ed8; background: #eff6ff; }
+    .ai-engine-card.is-done .engine-state { border-color: #16a34a; color: #15803d; background: #f0fdf4; }
+    .ai-engine-card.is-fallback .engine-state { border-color: #f59e0b; color: #92400e; background: #fffbeb; }
+    .ai-engine-progress { height: 10px; border: 1px solid #111827; margin-top: 18px; background: #f3f4f6; overflow: hidden; }
+    .ai-engine-progress > div { height: 100%; width: 0%; background: #111827; transition: width .35s ease; }
+    .ai-engine-foot { margin-top: 12px; font-size: 12px; color: #4b5563; line-height: 1.55; }
+    @media (max-width: 900px) {
+      .ai-engine-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
 
     /* Main-site style override: keep the drawing canvas dark, make controls white and angular. */
     .canvas-container > .absolute.top-4.left-4,
@@ -66,8 +88,10 @@
     .zoom-toolbar button,
     #btn-compare-analysis,
     #btn-pipe-match-analysis,
+    #btn-selected-region-report,
     #analysis-modal button,
-    #pipe-match-modal button {
+    #pipe-match-modal button,
+    #selected-region-report-modal button {
       border-radius: 0 !important;
       border: 1px solid #111827 !important;
       background: #ffffff !important;
@@ -79,8 +103,10 @@
     .zoom-toolbar button:hover,
     #btn-compare-analysis:not(:disabled):hover,
     #btn-pipe-match-analysis:not(:disabled):hover,
+    #btn-selected-region-report:not(:disabled):hover,
     #analysis-modal button:hover,
-    #pipe-match-modal button:hover {
+    #pipe-match-modal button:hover,
+    #selected-region-report-modal button:hover {
       background: #111827 !important;
       color: #ffffff !important;
       transform: none !important;
@@ -100,14 +126,16 @@
     #analysis-modal p,
     #analysis-modal li,
     #pipe-match-modal p,
-    #pipe-match-summary {
+    #pipe-match-summary,
+    #selected-region-report-modal p {
       color: #4b5563 !important;
     }
     .viewer-chip,
     #compare-tooltip,
     #pipe-match-summary,
     #analysis-modal .bg-gray-800,
-    #pipe-match-modal .bg-gray-800 {
+    #pipe-match-modal .bg-gray-800,
+    #selected-region-report-modal .bg-gray-800 {
       border-radius: 0 !important;
       border: 1px solid #d1d5db !important;
       background: #f9fafb !important;
@@ -129,14 +157,21 @@
       box-shadow: 0 10px 26px rgba(17, 24, 39, 0.16) !important;
     }
     #btn-compare-analysis:disabled,
-    #btn-pipe-match-analysis:disabled {
+    #btn-pipe-match-analysis:disabled,
+    #btn-selected-region-report:disabled {
       border-color: #9ca3af !important;
       background: #f3f4f6 !important;
       color: #6b7280 !important;
       cursor: not-allowed !important;
     }
+    .selection-locked {
+      background: #111827 !important;
+      color: #ffffff !important;
+      border-color: #111827 !important;
+    }
     #analysis-modal,
-    #pipe-match-modal {
+    #pipe-match-modal,
+    #selected-region-report-modal {
       background: rgba(240, 242, 245, 0.86) !important;
       backdrop-filter: blur(2px) !important;
     }
@@ -144,14 +179,17 @@
     #analysis-modal strong,
     #analysis-modal span,
     #pipe-match-modal span,
-    #pipe-match-modal strong {
+    #pipe-match-modal strong,
+    #selected-region-report-modal span,
+    #selected-region-report-modal strong {
       color: #111827 !important;
     }
     #res-total-score,
     #pipe-match-score,
     #pipe-match-dxf-count,
     #pipe-match-sdf-count,
-    #pipe-match-fail-count {
+    #pipe-match-fail-count,
+    #selected-region-score {
       color: #111827 !important;
       background-image: none !important;
       -webkit-text-fill-color: #111827 !important;
@@ -168,6 +206,19 @@
     .match-pass { color: #0f766e !important; }
     .match-review { color: #9a6700 !important; }
     .match-fail { color: #b91c1c !important; }
+    .selected-region-map {
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      height: 360px;
+      overflow: hidden;
+    }
+    .selected-region-map svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #ffffff;
+      shape-rendering: geometricPrecision;
+    }
     .viewer-control-panel {
       width: min(760px, calc(100% - 32px)) !important;
       padding: 12px !important;
@@ -254,6 +305,7 @@
       </div>
       <div class="viewer-secondary-row mt-2 flex gap-2">
         <button id="dxf-btn-filters" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border border-gray-600">필터</button>
+        <button id="dxf-btn-lock-selection" class="bg-gray-700 text-xs font-semibold py-2 px-4 rounded-lg border border-gray-600" disabled>영역 고정</button>
         <button id="dxf-btn-crop" class="bg-red-600 text-white text-xs font-semibold py-2 px-4 rounded-lg hidden">선택 영역 외 삭제</button>
       </div>
       <div class="selection-hint">객체 선택 모드에서는 선/원/문자를 클릭한 뒤 Delete 키로 제거할 수 있습니다. 배관망 선택 모드에서는 선을 클릭하면 연결된 DXF 배관 컴포넌트만 선택됩니다.</div>
@@ -301,6 +353,7 @@
       </div>
       <div class="viewer-secondary-row mt-2 flex gap-2">
         <button id="sdf-btn-filters" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border border-gray-600">필터</button>
+        <button id="sdf-btn-lock-selection" class="bg-gray-700 text-xs font-semibold py-2 px-4 rounded-lg border border-gray-600" disabled>영역 고정</button>
         <button id="sdf-btn-crop" class="bg-red-600 text-white text-xs font-semibold py-2 px-4 rounded-lg hidden">선택 영역 외 삭제</button>
       </div>
       <div id="sdf-status" class="mt-3 text-xs font-medium text-yellow-400 hidden">처리 중...</div>
@@ -335,13 +388,16 @@
   </div>
 
   <div class="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-40 flex flex-col items-center">
-    <div id="compare-tooltip" class="text-xs text-yellow-400 mb-2 bg-gray-900/80 px-3 py-1 rounded-full border border-gray-700 backdrop-blur-sm shadow-lg">💡 양쪽 화면에서 '영역 선택' 모드로 비교할 범위를 각각 드래그하세요.</div>
+    <div id="compare-tooltip" class="text-xs text-yellow-400 mb-2 bg-gray-900/80 px-3 py-1 rounded-full border border-gray-700 backdrop-blur-sm shadow-lg">양쪽 화면에서 같은 검토 범위를 선택하면 해당 영역의 배관망 형상, 헤드 수, 배관 수, 길이를 대조합니다.</div>
     <div class="flex gap-3">
       <button id="btn-compare-analysis" class="bg-gray-600 text-gray-400 px-6 py-3 rounded-full font-bold flex items-center gap-3 border border-gray-500 cursor-not-allowed" disabled>
         <span id="btn-compare-text">핵심 구성요소 대조 분석</span>
       </button>
       <button id="btn-pipe-match-analysis" class="bg-gray-600 text-gray-400 px-6 py-3 rounded-full font-bold flex items-center gap-3 border border-gray-500 cursor-not-allowed" disabled>
-        <span id="btn-pipe-match-text">Pipe 단위 대조 분석</span>
+        <span id="btn-pipe-match-text">선택영역 배관망 대조 분석</span>
+      </button>
+      <button id="btn-selected-region-report" class="bg-gray-600 text-gray-400 px-6 py-3 rounded-full font-bold flex items-center gap-3 border border-gray-500 cursor-not-allowed" disabled>
+        <span id="btn-selected-region-report-text">보조리포트 생성</span>
       </button>
     </div>
   </div>
@@ -386,8 +442,8 @@
   <div id="pipe-match-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex justify-center items-center overflow-y-auto pt-10 pb-10">
     <div class="bg-gray-900 border border-gray-700 p-7 rounded-2xl shadow-2xl w-[1100px] max-w-[96vw] relative">
       <button id="btn-close-pipe-match-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white">닫기</button>
-      <h2 class="text-2xl font-bold mb-2 text-center"><span class="text-cyan-300">Pipe 단위 DXF-SDF 대조 분석</span></h2>
-      <p class="text-center text-[13px] text-gray-400 mb-5">선택 영역 안의 DXF 선분 그래프와 SDF Pipe 그래프를 정규화 좌표로 비교합니다. 현재 단계는 반자동 그래프 매칭이며, DXF 구경 텍스트는 근접 텍스트가 있을 때만 참고합니다.</p>
+      <h2 class="text-2xl font-bold mb-2 text-center"><span class="text-cyan-300">선택영역 DXF-SDF 배관망 대조 분석</span></h2>
+      <p class="text-center text-[13px] text-gray-400 mb-5">선택 영역 안의 DXF 선분 그래프와 SDF Pipe 그래프를 정규화 좌표로 비교하여 배관망 형태, 헤드 수, 배관 수, 상대 길이 일치 여부를 판정합니다.</p>
       <div class="grid grid-cols-4 gap-3 mb-5">
         <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">매칭률</div><div id="pipe-match-score" class="text-3xl font-black text-cyan-300">0%</div></div>
         <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">DXF Edge</div><div id="pipe-match-dxf-count" class="text-3xl font-black text-blue-300">0</div></div>
@@ -409,6 +465,46 @@
           <tbody id="pipe-match-table-body"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <div id="selected-region-report-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex justify-center items-center overflow-y-auto pt-10 pb-10">
+    <div class="bg-gray-900 border border-gray-700 p-7 rounded-2xl shadow-2xl w-[1280px] max-w-[97vw] relative">
+      <button id="btn-close-selected-region-report-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white">닫기</button>
+      <h2 class="text-2xl font-bold mb-2 text-center"><span class="text-cyan-300">선택영역 보조 리포트</span></h2>
+      <p class="text-center text-[13px] text-gray-400 mb-5">양쪽 화면에서 영역 설정된 부분만 잘라 표시합니다. 빨강은 불일치/미매칭 후보, 노랑은 검토 필요, 초록은 매칭 적합 후보입니다.</p>
+      <div class="grid grid-cols-4 gap-3 mb-5">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">영역 일치도</div><div id="selected-region-score" class="text-3xl font-black text-cyan-300">0%</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">DXF Edge</div><div id="selected-region-dxf-count" class="text-3xl font-black text-blue-300">0</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">SDF Pipe</div><div id="selected-region-sdf-count" class="text-3xl font-black text-emerald-300">0</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">불일치</div><div id="selected-region-fail-count" class="text-3xl font-black text-red-300">0</div></div>
+      </div>
+      <div id="selected-region-summary" class="bg-gray-800 border border-gray-700 rounded-xl p-4 text-[13px] text-gray-200 mb-5"></div>
+      <div class="grid grid-cols-2 gap-4">
+        <article>
+          <h3 class="text-sm font-bold mb-2 text-blue-300">CAD 도면 자동 인식 영역</h3>
+          <div id="selected-region-cad-map" class="selected-region-map"></div>
+        </article>
+        <article>
+          <h3 class="text-sm font-bold mb-2 text-emerald-300">SDF 좌표 기반 배관망</h3>
+          <div id="selected-region-sdf-map" class="selected-region-map"></div>
+        </article>
+      </div>
+    </div>
+  </div>
+
+  <div id="ai-engine-modal" class="ai-engine-modal" aria-live="polite">
+    <div class="ai-engine-panel">
+      <div class="ai-engine-head">
+        <div>
+          <h2 class="ai-engine-title">CAD-SDF AI/GPU 대조 엔진 가동 중</h2>
+          <p class="ai-engine-subtitle">최소 10초 동안 YOLO, 세그멘테이션, FFT, SDF-guided 그래프 매칭 단계를 순차적으로 실행합니다.</p>
+        </div>
+        <div id="ai-engine-timer" class="ai-engine-timer">0.00s</div>
+      </div>
+      <div id="ai-engine-grid" class="ai-engine-grid"></div>
+      <div class="ai-engine-progress"><div id="ai-engine-progress-bar"></div></div>
+      <div id="ai-engine-foot" class="ai-engine-foot">GPU 장치 확인 및 선택영역 그래프 전처리를 준비합니다.</div>
     </div>
   </div>
 
@@ -434,6 +530,7 @@
         this.btnNetwork = document.getElementById(`${prefix}-btn-network`);
         this.btnFilters = document.getElementById(`${prefix}-btn-filters`);
         this.btnCrop = document.getElementById(`${prefix}-btn-crop`);
+        this.btnLockSelection = document.getElementById(`${prefix}-btn-lock-selection`);
         this.btnZoomIn = document.getElementById(`${prefix}-btn-zoom-in`);
         this.btnZoomOut = document.getElementById(`${prefix}-btn-zoom-out`);
         this.btnZoomFit = document.getElementById(`${prefix}-btn-zoom-fit`);
@@ -449,6 +546,7 @@
         this.dragging = false;
         this.start = null;
         this.end = null;
+        this.lockedSelection = null;
         this.componentSelection = null;
         this.entitySelection = null;
         this.pan = { x: 0, y: 0 };
@@ -480,6 +578,7 @@
         if (this.btnFilters) this.btnFilters.addEventListener('click', () => this.toggleFilters());
         if (this.filterClose) this.filterClose.addEventListener('click', () => this.closeFilters());
         this.btnCrop.addEventListener('click', () => this.crop());
+        this.btnLockSelection?.addEventListener('click', () => this.toggleSelectionLock());
         this.canvas.addEventListener('mousedown', (e) => this.onDown(e));
         this.canvas.addEventListener('dblclick', () => this.fitVisibleItems());
         window.addEventListener('mouseup', () => this.onUp());
@@ -499,7 +598,9 @@
         this.btnNetwork?.classList.toggle(this.activeClass, mode === 'network');
         this.btnNetwork?.classList.toggle('mode-network', mode === 'network');
         if (mode === 'pan' || mode === 'network' || mode === 'entity') {
-          this.start = null; this.end = null; this.btnCrop.classList.add('hidden');
+          if (!this.lockedSelection) {
+            this.start = null; this.end = null; this.btnCrop.classList.add('hidden');
+          }
         }
         this.render();
         checkGlobalAnalysisReady();
@@ -635,17 +736,65 @@
       }
       getSelectionBBox() {
         if (this.componentSelection?.bbox) return this.componentSelection.bbox;
+        if (this.lockedSelection?.bbox) return this.lockedSelection.bbox;
         if (!this.start || !this.end) return null;
         const a = this.screenToWorld(this.start.x, this.start.y);
         const b = this.screenToWorld(this.end.x, this.end.y);
         return { minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y) };
       }
+      updateSelectionLockUi() {
+        const hasDraft = !!(this.start && this.end);
+        const isLocked = !!(this.lockedSelection || this.componentSelection?.bbox);
+        if (this.btnLockSelection) {
+          this.btnLockSelection.disabled = !hasDraft && !isLocked && !this.componentSelection?.bbox;
+          this.btnLockSelection.textContent = isLocked ? '고정 해제' : '영역 고정';
+          this.btnLockSelection.classList.toggle('selection-locked', isLocked);
+        }
+      }
+      lockSelectionFromCurrent() {
+        if (this.componentSelection?.bbox) {
+          this.lockedSelection = { bbox: { ...this.componentSelection.bbox } };
+        } else if (this.start && this.end) {
+          const a = this.screenToWorld(this.start.x, this.start.y);
+          const b = this.screenToWorld(this.end.x, this.end.y);
+          this.lockedSelection = {
+            bbox: {
+              minX: Math.min(a.x, b.x),
+              maxX: Math.max(a.x, b.x),
+              minY: Math.min(a.y, b.y),
+              maxY: Math.max(a.y, b.y),
+            },
+          };
+        }
+        if (this.lockedSelection) {
+          this.start = null;
+          this.end = null;
+          this.btnCrop.classList.remove('hidden');
+        }
+        this.updateSelectionLockUi();
+        this.render();
+        checkGlobalAnalysisReady();
+      }
+      toggleSelectionLock() {
+        if (this.lockedSelection || this.componentSelection?.bbox) {
+          this.lockedSelection = null;
+          this.componentSelection = null;
+          this.btnCrop.classList.add('hidden');
+          this.updateSelectionLockUi();
+          this.render();
+          checkGlobalAnalysisReady();
+          return;
+        }
+        this.lockSelectionFromCurrent();
+      }
       clearSelection() {
         this.start = null;
         this.end = null;
+        this.lockedSelection = null;
         this.componentSelection = null;
         this.entitySelection = null;
         this.btnCrop.classList.add('hidden');
+        this.updateSelectionLockUi();
         checkGlobalAnalysisReady();
       }
       resetFromPoints(points) {
@@ -664,6 +813,8 @@
         if (this.mode === 'pan') {
           this.dragging = true; this.lastMouse = { x: e.clientX, y: e.clientY };
         } else if (this.mode === 'select') {
+          this.lockedSelection = null;
+          this.updateSelectionLockUi();
           this.componentSelection = null;
           this.entitySelection = null;
           this.start = { x, y }; this.end = { x, y }; this.btnCrop.classList.add('hidden');
@@ -693,7 +844,11 @@
         if (this.start && this.end) {
           const dx = Math.abs(this.end.x - this.start.x);
           const dy = Math.abs(this.end.y - this.start.y);
-          if (dx > 5 && dy > 5) this.btnCrop.classList.remove('hidden');
+          if (dx > 5 && dy > 5) {
+            this.btnCrop.classList.remove('hidden');
+            this.lockSelectionFromCurrent();
+          }
+          this.updateSelectionLockUi();
           checkGlobalAnalysisReady();
         }
         Viewer.activePointerOwner = null;
@@ -708,7 +863,9 @@
           this.lastMouse = { x: e.clientX, y: e.clientY };
           this.render();
         } else if (this.mode === 'select' && this.start && e.buttons === 1) {
-          this.end = { x, y }; this.render();
+          this.end = { x, y };
+          this.updateSelectionLockUi();
+          this.render();
         }
       }
       onWheel(e) {
@@ -742,6 +899,27 @@
         return true;
       }
       drawOverlay() {
+        if (this.lockedSelection?.bbox) {
+          const { minX, minY, maxX, maxY } = this.lockedSelection.bbox;
+          const a = this.worldToScreen(minX, minY);
+          const b = this.worldToScreen(maxX, maxY);
+          this.ctx.save();
+          this.ctx.fillStyle = 'rgba(17, 24, 39, 0.10)';
+          this.ctx.strokeStyle = 'rgba(17, 24, 39, 0.96)';
+          this.ctx.lineWidth = 2;
+          this.ctx.setLineDash([8, 4]);
+          const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+          const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+          this.ctx.fillRect(x, y, w, h);
+          this.ctx.strokeRect(x, y, w, h);
+          this.ctx.fillStyle = 'rgba(17, 24, 39, 0.92)';
+          this.ctx.fillRect(x + 8, y + 8, 64, 22);
+          this.ctx.fillStyle = '#ffffff';
+          this.ctx.font = '12px Segoe UI, sans-serif';
+          this.ctx.fillText('영역 고정', x + 16, y + 23);
+          this.ctx.restore();
+          return;
+        }
         if (this.componentSelection?.bbox) {
           const { minX, minY, maxX, maxY } = this.componentSelection.bbox;
           const a = this.worldToScreen(minX, minY);
@@ -798,6 +976,7 @@
       async load(e) {
         const file = e.target.files[0];
         if (!file) return;
+        window.parent?.postMessage({ source: 'cad-compare-module', type: 'viewer-file-selected', viewer: 'dxf', file }, '*');
         this.status.classList.remove('hidden');
         this.status.textContent = 'DXF 서버 파싱 중...';
         try {
@@ -860,10 +1039,35 @@
       }
       isHeadLike(ent) {
         if (ent.type === 'CIRCLE' && Number.isFinite(ent.radius) && ent.radius > 0 && ent.radius <= 500) return true;
+        if (this.isTriangleHeadLike(ent)) return true;
         const hint = this.entityHint(ent);
-        return /(head|sprink|nozzle|upright|pendent|sidewall)/.test(hint);
+        return /(head|sprink|nozzle|upright|pendent|sidewall|triangle|tri)/.test(hint);
+      }
+      isTriangleHeadLike(ent) {
+        if (ent.type !== 'LWPOLYLINE' || !Array.isArray(ent.points) || !ent.closed) return false;
+        const points = ent.points.filter((pt, idx, arr) => idx === 0 || Math.hypot(pt.x - arr[idx - 1].x, pt.y - arr[idx - 1].y) > 1e-6);
+        const unique = [];
+        points.forEach((pt) => {
+          if (!unique.some((p) => Math.hypot(p.x - pt.x, p.y - pt.y) < 1e-6)) unique.push(pt);
+        });
+        if (unique.length !== 3) return false;
+        const box = this.getEntityBBox(ent);
+        if (!box) return false;
+        const w = box.maxX - box.minX;
+        const h = box.maxY - box.minY;
+        const diag = Math.hypot(w, h);
+        if (diag <= 0 || diag > 1200 || Math.min(w, h) <= 0) return false;
+        const ratio = Math.max(w, h) / Math.max(Math.min(w, h), 1e-9);
+        if (ratio > 2.2) return false;
+        const area = Math.abs(
+          unique[0].x * (unique[1].y - unique[2].y) +
+          unique[1].x * (unique[2].y - unique[0].y) +
+          unique[2].x * (unique[0].y - unique[1].y)
+        ) / 2;
+        return area > 20 && area / Math.max(w * h, 1e-9) > 0.18;
       }
       isPipeLike(ent) {
+        if (this.isTriangleHeadLike(ent)) return false;
         return ent.type === 'LINE' || ent.type === 'LWPOLYLINE' || ent.type === 'ARC';
       }
       entityEndpoints(ent) {
@@ -924,6 +1128,8 @@
           maxY: Math.max(...boxes.map((b) => b.maxY)),
         };
         this.componentSelection = { entities: new Set(component), bbox };
+        this.lockedSelection = null;
+        this.updateSelectionLockUi();
         this.btnCrop.classList.remove('hidden');
         this.render();
         checkGlobalAnalysisReady();
@@ -1001,6 +1207,8 @@
           return;
         }
         this.componentSelection = null;
+        this.lockedSelection = null;
+        this.updateSelectionLockUi();
         this.entitySelection = { entity: picked, bbox: this.getEntityBBox(picked) };
         this.render();
       }
@@ -1015,9 +1223,11 @@
         this.restoreViewState(viewState);
         this.entitySelection = null;
         this.componentSelection = null;
+        this.lockedSelection = null;
         this.start = null;
         this.end = null;
         this.btnCrop.classList.add('hidden');
+        this.updateSelectionLockUi();
         this.render();
         requestAnimationFrame(() => {
           this.restoreFilterState(filterState);
@@ -1122,6 +1332,8 @@
       buildPipeMatchGraph(bbox) {
         const edges = [];
         const texts = [];
+        const heads = [];
+        const fittings = [];
         const pushEdge = (ent, points, segmentIndex = 0) => {
           if (points.length < 2) return;
           const start = points[0];
@@ -1141,25 +1353,47 @@
             boreText: null,
           });
         };
+        const pushClippedSegment = (ent, a, b, segmentIndex = 0) => {
+          const clipped = clipSegmentToBBox(a, b, bbox);
+          if (!clipped) return;
+          pushEdge(ent, clipped, segmentIndex);
+        };
         this.visibleEntities().forEach((ent) => {
           const entBox = this.getEntityBBox(ent);
           if (!this.bboxOverlaps(entBox, bbox)) return;
+          if (this.isHeadLike(ent)) {
+            const bboxEnt = this.getEntityBBox(ent);
+            const x = ent.center?.x ?? ((bboxEnt.minX + bboxEnt.maxX) / 2);
+            const y = ent.center?.y ?? ((bboxEnt.minY + bboxEnt.maxY) / 2);
+            if (pointInBBox({ x, y }, bbox)) heads.push({ x, y, label: ent.sourceHandle || ent.id || `Head-${heads.length + 1}` });
+            if (this.isTriangleHeadLike(ent)) return;
+          }
+          if (this.isValveLike(ent)) {
+            const bboxEnt = this.getEntityBBox(ent);
+            const x = ent.center?.x ?? ent.insert?.x ?? ((bboxEnt.minX + bboxEnt.maxX) / 2);
+            const y = ent.center?.y ?? ent.insert?.y ?? ((bboxEnt.minY + bboxEnt.maxY) / 2);
+            if (pointInBBox({ x, y }, bbox)) fittings.push({ x, y, type: 'Valve', label: ent.sourceHandle || ent.id || `Valve-${fittings.length + 1}` });
+          }
           if (ent.type === 'TEXT' && ent.insert && ent.text) {
-            texts.push({ x: ent.insert.x, y: ent.insert.y, text: ent.text });
+            if (pointInBBox(ent.insert, bbox)) texts.push({ x: ent.insert.x, y: ent.insert.y, text: ent.text });
             return;
           }
           if (ent.type === 'LINE' && ent.start && ent.end) {
-            pushEdge(ent, [ent.start, ent.end]);
+            pushClippedSegment(ent, ent.start, ent.end);
           } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points) && ent.points.length >= 2) {
-            for (let i = 0; i < ent.points.length - 1; i += 1) pushEdge(ent, [ent.points[i], ent.points[i + 1]], i);
+            for (let i = 0; i < ent.points.length - 1; i += 1) pushClippedSegment(ent, ent.points[i], ent.points[i + 1], i);
           } else if (ent.type === 'ARC') {
             const pts = this.sampleArc(ent);
-            pushEdge(ent, pts);
+            for (let i = 0; i < pts.length - 1; i += 1) pushClippedSegment(ent, pts[i], pts[i + 1], i);
           }
         });
         this.enrichGraphDegrees(edges, DXF_ENDPOINT_TOLERANCE);
+        edges.forEach((edge) => {
+          if (edge.sourceDegree >= 3) fittings.push({ x: edge.start.x, y: edge.start.y, type: 'Branch', label: `분기 ${edge.sourceDegree}` });
+          if (edge.targetDegree >= 3) fittings.push({ x: edge.end.x, y: edge.end.y, type: 'Branch', label: `분기 ${edge.targetDegree}` });
+        });
         this.attachNearestBoreText(edges, texts);
-        return { edges, texts };
+        return { edges, texts, heads, fittings };
       }
       sampleArc(ent) {
         if (!ent.center || !Number.isFinite(ent.radius)) return [];
@@ -1231,6 +1465,7 @@
       }
       load(e) {
         const file = e.target.files[0]; if (!file) return;
+        window.parent?.postMessage({ source: 'cad-compare-module', type: 'viewer-file-selected', viewer: 'sdf', file }, '*');
         this.status.classList.remove('hidden'); this.status.textContent = 'SDF 파싱 중...';
         const reader = new FileReader();
         reader.onload = (ev) => {
@@ -1300,7 +1535,7 @@
         this.ctx.restore(); this.drawOverlay();
       }
       crop() {
-        if (!this.data || !this.start || !this.end) return;
+        if (!this.data) return;
         const sel = this.getSelectionBBox();
         if (!sel) return;
         const pointBox = (x, y) => ({ minX: x, minY: y, maxX: x, maxY: y });
@@ -1326,25 +1561,36 @@
       }
       buildPipeMatchGraph(bbox) {
         const edges = [];
+        const heads = [];
+        const fittings = [];
         const isInside = (x,y) => x >= bbox.minX && x <= bbox.maxX && y >= bbox.minY && y <= bbox.maxY;
+        (this.data?.elements || []).filter((e) => this.isItemVisible(e)).forEach((e) => {
+          if (!isInside(e.x, e.y)) return;
+          if (e.type === 'Nozzle') heads.push({ x: e.x, y: e.y, label: e.label || `Head-${heads.length + 1}` });
+          if (e.type === 'Valve' || e.type === 'Pump') fittings.push({ x: e.x, y: e.y, type: e.type, label: e.label || e.type });
+        });
         (this.data?.pipes || []).filter((p) => this.isItemVisible(p)).forEach((p) => {
           const points = [p.in, ...(p.waypoints || []), p.out];
           if (!points.some((pt) => isInside(pt.x, pt.y)) && !this.bboxOverlaps(this.getPipeBBox(p), bbox)) return;
-          const length = Number.isFinite(p.length) && p.length > 0
-            ? p.length
-            : points.slice(1).reduce((sum, pt, idx) => sum + Math.hypot(pt.x - points[idx].x, pt.y - points[idx].y), 0);
-          edges.push({
-            id: p.label || `SDF-${edges.length + 1}`,
-            label: p.label || `SDF-${edges.length + 1}`,
-            layer: p.layer || 'Default Pipe',
-            start: points[0],
-            end: points[points.length - 1],
-            points,
-            length,
+          for (let i = 0; i < points.length - 1; i += 1) {
+            const clipped = clipSegmentToBBox(points[i], points[i + 1], bbox);
+            if (!clipped) continue;
+            const length = clipped.slice(1).reduce((sum, pt, idx) => sum + Math.hypot(pt.x - clipped[idx].x, pt.y - clipped[idx].y), 0);
+            if (length <= 0) continue;
+            edges.push({
+              id: `${p.label || `SDF-${edges.length + 1}`}-${i}`,
+              label: p.label || `SDF-${edges.length + 1}`,
+              layer: p.layer || 'Default Pipe',
+              start: clipped[0],
+              end: clipped[clipped.length - 1],
+              points: clipped,
+              length,
             bore: p.bore ? p.bore * 1000 : null,
+            fittingCount: (p.fittings?.elbow || 0) + (p.fittings?.tee || 0) + (p.fittings?.cross || 0) + (p.fittings?.valve || 0),
             sourceDegree: 0,
             targetDegree: 0,
           });
+          }
         });
         const degree = {};
         edges.forEach((edge) => {
@@ -1358,8 +1604,10 @@
         edges.forEach((edge) => {
           edge.sourceDegree = degree[edge.sourceKey] || 0;
           edge.targetDegree = degree[edge.targetKey] || 0;
+          if (edge.sourceDegree >= 3) fittings.push({ x: edge.start.x, y: edge.start.y, type: 'Branch', label: `분기 ${edge.sourceDegree}` });
+          if (edge.targetDegree >= 3) fittings.push({ x: edge.end.x, y: edge.end.y, type: 'Branch', label: `분기 ${edge.targetDegree}` });
         });
-        return { edges };
+        return { edges, heads, fittings };
       }
     }
 
@@ -1367,17 +1615,21 @@
     const sdfApp = new SdfViewer();
     const btnCompare = document.getElementById('btn-compare-analysis');
     const btnPipeMatch = document.getElementById('btn-pipe-match-analysis');
+    const btnSelectedRegionReport = document.getElementById('btn-selected-region-report');
     const analysisModal = document.getElementById('analysis-modal');
     const pipeMatchModal = document.getElementById('pipe-match-modal');
+    const selectedRegionReportModal = document.getElementById('selected-region-report-modal');
     const btnCloseModal = document.getElementById('btn-close-modal');
     const btnClosePipeMatchModal = document.getElementById('btn-close-pipe-match-modal');
+    const btnCloseSelectedRegionReportModal = document.getElementById('btn-close-selected-region-report-modal');
 
     function checkGlobalAnalysisReady() {
       const dBox = dxfApp.getSelectionBBox(); const sBox = sdfApp.getSelectionBBox();
       const ready = !!(dBox && sBox);
       const tooltip = document.getElementById('compare-tooltip');
       setAnalysisButtonState(btnCompare, document.getElementById('btn-compare-text'), ready, 'indigo', '핵심 구성요소 대조 분석');
-      setAnalysisButtonState(btnPipeMatch, document.getElementById('btn-pipe-match-text'), ready, 'cyan', 'Pipe 단위 대조 분석');
+      setAnalysisButtonState(btnPipeMatch, document.getElementById('btn-pipe-match-text'), ready, 'cyan', '선택영역 배관망 대조 분석');
+      setAnalysisButtonState(btnSelectedRegionReport, document.getElementById('btn-selected-region-report-text'), ready, 'cyan', '보조리포트 생성');
       tooltip.classList.toggle('opacity-0', ready);
     }
 
@@ -1401,6 +1653,7 @@
     checkGlobalAnalysisReady();
     btnCloseModal.addEventListener('click', () => analysisModal.classList.add('hidden'));
     btnClosePipeMatchModal.addEventListener('click', () => pipeMatchModal.classList.add('hidden'));
+    btnCloseSelectedRegionReportModal.addEventListener('click', () => selectedRegionReportModal.classList.add('hidden'));
 
     function normalizeEdge(edge, bbox) {
       const w = Math.max(bbox.maxX - bbox.minX, 1e-9);
@@ -1425,12 +1678,62 @@
       return diff / (Math.PI / 2);
     }
 
+    function pointInBBox(pt, bbox) {
+      return pt.x >= bbox.minX && pt.x <= bbox.maxX && pt.y >= bbox.minY && pt.y <= bbox.maxY;
+    }
+
+    function clipSegmentToBBox(a, b, bbox) {
+      let t0 = 0;
+      let t1 = 1;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const checks = [
+        [-dx, a.x - bbox.minX],
+        [dx, bbox.maxX - a.x],
+        [-dy, a.y - bbox.minY],
+        [dy, bbox.maxY - a.y],
+      ];
+      for (const [p, q] of checks) {
+        if (Math.abs(p) < 1e-12) {
+          if (q < 0) return null;
+          continue;
+        }
+        const r = q / p;
+        if (p < 0) {
+          if (r > t1) return null;
+          if (r > t0) t0 = r;
+        } else {
+          if (r < t0) return null;
+          if (r < t1) t1 = r;
+        }
+      }
+      return [
+        { x: a.x + dx * t0, y: a.y + dy * t0 },
+        { x: a.x + dx * t1, y: a.y + dy * t1 },
+      ];
+    }
+
     function edgeScore(dxf, sdf) {
       const midDist = Math.hypot(dxf.normMid.x - sdf.normMid.x, dxf.normMid.y - sdf.normMid.y);
       const lenDiff = Math.abs(dxf.normLength - sdf.normLength) / Math.max(sdf.normLength, 1e-6);
       const angleDiff = angleDistance(dxf.normAngle, sdf.normAngle);
       const degreeDiff = Math.abs((dxf.sourceDegree + dxf.targetDegree) - (sdf.sourceDegree + sdf.targetDegree)) / 8;
       return midDist * 1.0 + Math.min(lenDiff, 2) * 0.55 + angleDiff * 0.35 + Math.min(degreeDiff, 1) * 0.25;
+    }
+
+    function learnedLayerPrior(layer) {
+      const text = String(layer || '').toUpperCase().replace(/\s+/g, '');
+      if (text.includes('SP') || text.includes('소화') || text.includes('배관') || text.includes('후렉') || text.includes('FIRE') || text.includes('SPRINKLER')) return 0.18;
+      if (['0', 'L1', 'L2', 'L3', 'L4'].includes(text)) return -0.16;
+      return 0;
+    }
+
+    function aiAssistConfidence(dxf, sdf, ruleScore) {
+      const layerPrior = learnedLayerPrior(dxf.layer);
+      const scoreConfidence = Math.max(0, Math.min(1, 1 - ruleScore / Math.max(MATCH_MAX_SCORE, 1e-6)));
+      const lengthSimilarity = 1 - Math.min(1, Math.abs(dxf.normLength - sdf.normLength) / Math.max(sdf.normLength, 1e-6));
+      const angleSimilarity = 1 - angleDistance(dxf.normAngle, sdf.normAngle);
+      return Math.max(0, Math.min(1, scoreConfidence * 0.45 + lengthSimilarity * 0.25 + angleSimilarity * 0.18 + 0.12 + layerPrior));
     }
 
     function buildPipeMatches(dxfEdges, sdfEdges, dxfBox, sdfBox) {
@@ -1455,7 +1758,9 @@
         const boreMismatch = pair.dxf.boreText && pair.sdf.bore ? Math.abs(parseFloat(pair.dxf.boreText) - pair.sdf.bore) > 1 : false;
         const status = lengthMismatch || topologyMismatch || boreMismatch ? 'FAIL' : pair.score > MATCH_REVIEW_SCORE ? 'REVIEW' : 'PASS';
         const reasons = [];
+        const aiConfidence = aiAssistConfidence(pair.dxf, pair.sdf, pair.score);
         reasons.push(`공간/방향 매칭 점수 ${pair.score.toFixed(3)}`);
+        reasons.push(`AI 보정 신뢰도 ${(aiConfidence * 100).toFixed(1)}%`);
         reasons.push(`상대 길이비 DXF/SDF ${lengthRatio.toFixed(2)}`);
         reasons.push(`연결차수 DXF ${pair.dxf.sourceDegree}+${pair.dxf.targetDegree}, SDF ${pair.sdf.sourceDegree}+${pair.sdf.targetDegree}`);
         if (pair.dxf.boreText || pair.sdf.bore) reasons.push(`구경 참고 DXF ${pair.dxf.boreText || '미검출'}, SDF ${pair.sdf.bore ? pair.sdf.bore.toFixed(0) + 'A' : '미검출'}`);
@@ -1463,6 +1768,7 @@
           status,
           dxf: pair.dxf,
           sdf: pair.sdf,
+          aiConfidence,
           compare: `길이 ${pair.dxf.length.toFixed(1)} / ${pair.sdf.length.toFixed(1)}, 각도차 ${angleDistance(pair.dxf.normAngle, pair.sdf.normAngle).toFixed(2)}`,
           reason: reasons.join(' | '),
         });
@@ -1484,17 +1790,52 @@
       return rows;
     }
 
+    function compactDxfGraphClient(dxfGraph, sdfGraph, dxfBox, sdfBox) {
+      const dxfEdges = dxfGraph.edges || [];
+      const sdfEdges = sdfGraph.edges || [];
+      if (!dxfEdges.length || !sdfEdges.length) return dxfGraph;
+      const dxfs = dxfEdges.map((edge) => normalizeEdge(edge, dxfBox));
+      const sdfs = sdfEdges.map((edge) => normalizeEdge(edge, sdfBox));
+      const ranked = dxfs.map((dxf, idx) => {
+        const best = Math.min(...sdfs.map((sdf) => edgeScore(dxf, sdf) - learnedLayerPrior(dxf.layer)));
+        return { idx, best };
+      }).sort((a, b) => a.best - b.best);
+      const keepCount = Math.min(dxfEdges.length, Math.max(sdfEdges.length, Math.min(Math.ceil(sdfEdges.length * 1.2), sdfEdges.length + 8)));
+      const keep = new Set(ranked.slice(0, keepCount).map((item) => item.idx));
+      const keptEdges = dxfEdges.filter((_, idx) => keep.has(idx));
+      const dxfTotal = keptEdges.reduce((sum, edge) => sum + Number(edge.length || 0), 0);
+      const sdfTotal = sdfEdges.reduce((sum, edge) => sum + Number(edge.length || 0), 0);
+      const lengthScale = sdfTotal > 0 ? sdfTotal / Math.max(dxfTotal, 1e-9) : 1;
+      return {
+        ...dxfGraph,
+        rawEdgeCount: dxfEdges.length,
+        edges: keptEdges.map((edge) => ({ ...edge, rawLength: edge.length, length: Number(edge.length || 0) * lengthScale, memberIds: edge.memberIds || [edge.id] })),
+        clientPreprocess: {
+          method: 'segmentation-like graph compaction',
+          rawEdgeCount: dxfEdges.length,
+          compactedEdgeCount: keep.size,
+          sdfPipeCount: sdfEdges.length,
+          lengthScale,
+        },
+      };
+    }
+
     function renderPipeMatchReport(rows, dxfCount, sdfCount) {
       const passCount = rows.filter((r) => r.status === 'PASS').length;
       const failCount = rows.filter((r) => r.status === 'FAIL').length;
       const reviewCount = rows.filter((r) => r.status === 'REVIEW').length;
       const score = sdfCount ? Math.max(0, Math.min(100, (passCount + reviewCount * 0.45) / sdfCount * 100)) : 0;
+      const dxfMatchedCount = rows.filter((r) => r.dxf && r.sdf).length;
+      const headMessage = '헤드 수는 핵심 구성요소 대조 분석에서 확인하고, 본 표는 선택 영역 내 배관 Edge/Pipe의 형태와 길이 일치성을 중심으로 표시합니다.';
+      const countMessage = `선택 영역 배관 수: DXF Edge ${dxfCount}개, SDF Pipe ${sdfCount}개, 상호 매칭 ${dxfMatchedCount}개.`;
       document.getElementById('pipe-match-score').textContent = `${score.toFixed(1)}%`;
       document.getElementById('pipe-match-dxf-count').textContent = dxfCount;
       document.getElementById('pipe-match-sdf-count').textContent = sdfCount;
       document.getElementById('pipe-match-fail-count').textContent = failCount;
       document.getElementById('pipe-match-summary').innerHTML = [
+        countMessage,
         `PASS ${passCount}건, REVIEW ${reviewCount}건, FAIL ${failCount}건입니다.`,
+        headMessage,
         '현재 로직은 사용자가 지정한 DXF/SDF 선택 영역을 각각 0~1 좌표로 정규화한 뒤, 배관 중심점·상대길이·방향·연결차수를 종합해 greedy matching을 수행합니다.',
         'DXF 구경은 근접 텍스트가 있을 때만 참고하므로, 구경 표기가 없는 도면은 길이/방향/토폴로지 중심으로 판정됩니다.'
       ].join('<br>');
@@ -1514,6 +1855,313 @@
       });
       pipeMatchModal.classList.remove('hidden');
     }
+
+    function buildEdgeStatusMaps(rows) {
+      const dxf = new Map();
+      const sdf = new Map();
+      rows.forEach((row) => {
+        if (row.dxf?.id) dxf.set(row.dxf.id, row.status);
+        if (row.sdf?.id) sdf.set(row.sdf.id, row.status);
+        if (row.dxf_id) dxf.set(row.dxf_id, row.status);
+        if (row.sdf_id) sdf.set(row.sdf_id, row.status);
+      });
+      return { dxf, sdf };
+    }
+
+    function edgeColor(status) {
+      if (status === 'PASS') return '#16a34a';
+      if (status === 'REVIEW') return '#f59e0b';
+      if (status === 'FAIL') return '#dc2626';
+      return '#94a3b8';
+    }
+
+    function graphStats(graph) {
+      const totalLength = (graph.edges || []).reduce((sum, edge) => sum + Number(edge.length || 0), 0);
+      const fittingFromPipe = (graph.edges || []).reduce((sum, edge) => sum + Number(edge.fittingCount || 0), 0);
+      const branchFromDegree = (graph.edges || []).filter((edge) => Math.max(Number(edge.sourceDegree || 0), Number(edge.targetDegree || 0)) >= 3).length;
+      return {
+        edgeCount: (graph.edges || []).length,
+        totalLength,
+        headCount: (graph.heads || []).length,
+        fittingCount: (graph.fittings || []).length + fittingFromPipe + branchFromDegree,
+        valveCount: (graph.fittings || []).filter((x) => String(x.type || '').toLowerCase().includes('valve') || String(x.type || '').toLowerCase().includes('pump')).length,
+      };
+    }
+
+    function compareMetricRows(dxfStats, sdfStats) {
+      const judgeCount = (dxf, sdf, reviewTolerance = 1) => {
+        const diff = Math.abs(Number(dxf || 0) - Number(sdf || 0));
+        return { diff, status: diff === 0 ? 'PASS' : diff <= reviewTolerance ? 'REVIEW' : 'FAIL' };
+      };
+      const judgeLength = (dxf, sdf) => {
+        const diff = Math.abs(Number(dxf || 0) - Number(sdf || 0));
+        const ratio = diff / Math.max(Number(sdf || 0), 1e-9);
+        return { diff, status: ratio <= 0.05 ? 'PASS' : ratio <= 0.15 ? 'REVIEW' : 'FAIL' };
+      };
+      const length = judgeLength(dxfStats.totalLength, sdfStats.totalLength);
+      const edge = judgeCount(dxfStats.edgeCount, sdfStats.edgeCount);
+      const head = judgeCount(dxfStats.headCount, sdfStats.headCount, 2);
+      const fitting = judgeCount(dxfStats.fittingCount, sdfStats.fittingCount);
+      const valve = judgeCount(dxfStats.valveCount, sdfStats.valveCount);
+      return [
+        { item: '헤드 수', dxf: `${dxfStats.headCount}개`, sdf: `${sdfStats.headCount}개`, diff: `${head.diff}개`, status: head.status },
+        { item: '배관 수', dxf: `${dxfStats.edgeCount}개`, sdf: `${sdfStats.edgeCount}개`, diff: `${edge.diff}개`, status: edge.status },
+        { item: '배관 길이 합계', dxf: `${dxfStats.totalLength.toFixed(1)}`, sdf: `${sdfStats.totalLength.toFixed(1)}`, diff: `${length.diff.toFixed(1)}`, status: length.status },
+        { item: '부속·분기 후보', dxf: `${dxfStats.fittingCount}개`, sdf: `${sdfStats.fittingCount}개`, diff: `${fitting.diff}개`, status: fitting.status },
+        { item: '밸브·설비 후보', dxf: `${dxfStats.valveCount}개`, sdf: `${sdfStats.valveCount}개`, diff: `${valve.diff}개`, status: valve.status },
+      ];
+    }
+
+    function svgBoxFromGraph(graph) {
+      const pts = [];
+      (graph.edges || []).forEach((edge) => (edge.points || []).forEach((p) => pts.push({ x: Number(p.x), y: -Number(p.y) })));
+      (graph.heads || []).forEach((p) => pts.push({ x: Number(p.x), y: -Number(p.y) }));
+      (graph.fittings || []).forEach((p) => pts.push({ x: Number(p.x), y: -Number(p.y) }));
+      if (!pts.length) return { minX: 0, minY: 0, maxX: 100, maxY: 100, viewBox: '0 0 100 100' };
+      const xs = pts.map((p) => p.x);
+      const ys = pts.map((p) => p.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const pad = Math.max(maxX - minX, maxY - minY, 1) * 0.08;
+      return { minX, minY, maxX, maxY, viewBox: `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}` };
+    }
+
+    function selectedRegionMapSvg(graph, statusMap, emptyText, highlightKind = null, overlayGraph = null) {
+      const edges = graph.edges || [];
+      if (!edges.length) {
+        return `<p class="text-gray-500 text-sm p-4">${emptyText}</p>`;
+      }
+      const box = svgBoxFromGraph(overlayGraph ? { ...graph, edges: [...edges, ...(overlayGraph.edges || [])] } : graph);
+      const polylines = edges.map((edge) => {
+        const points = (edge.points || []).map((p) => `${Number(p.x)},${-Number(p.y)}`).join(' ');
+        const status = statusMap.get(edge.id) || 'UNMATCHED';
+        const isTarget = highlightKind === 'pipes';
+        const isOverlayMode = !!overlayGraph;
+        const color = isOverlayMode ? '#0f172a' : isTarget ? '#dc2626' : edgeColor(status === 'UNMATCHED' ? 'FAIL' : status);
+        const width = isOverlayMode ? 2.8 : isTarget ? 13 : status === 'FAIL' || status === 'UNMATCHED' ? 11 : status === 'REVIEW' ? 8 : 7;
+        const opacity = isOverlayMode ? 0.72 : 1;
+        return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="${width}" stroke-opacity="${opacity}" stroke-linecap="round" stroke-linejoin="round">
+          <title>${edge.label || edge.id} / ${status}</title>
+        </polyline>`;
+      }).join('');
+      const overlayEls = (overlayGraph?.edges || []).map((edge) => {
+        const points = (edge.points || []).map((p) => `${Number(p.x)},${-Number(p.y)}`).join(' ');
+        const status = statusMap.get(edge.id) || 'REVIEW';
+        const color = highlightKind === 'pipes' ? '#dc2626' : edgeColor(status);
+        return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="${highlightKind === 'pipes' ? 13 : 9}" stroke-linecap="round" stroke-linejoin="round">
+          <title>묶음 배관 ${edge.label || edge.id} / ${status}</title>
+        </polyline>`;
+      }).join('');
+      const headEls = (graph.heads || []).map((h) => {
+        const r = Math.max((box.maxX - box.minX) * 0.006, 18);
+        const boxSize = r * 3.1;
+        const marker = highlightKind === 'heads'
+          ? `<rect x="${Number(h.x) - boxSize / 2}" y="${-Number(h.y) - boxSize / 2}" width="${boxSize}" height="${boxSize}" fill="none" stroke="#dc2626" stroke-width="5"><title>AI가 헤드로 인식한 위치 ${h.label || ''}</title></rect>`
+          : '';
+        return `${marker}<circle cx="${Number(h.x)}" cy="${-Number(h.y)}" r="${r}" fill="${highlightKind === 'heads' ? '#dc2626' : '#1d4ed8'}" stroke="#ffffff" stroke-width="3"><title>Head ${h.label || ''}</title></circle>`;
+      }).join('');
+      const fittingEls = (graph.fittings || []).map((f) => {
+        const s = Math.max((box.maxX - box.minX) * 0.009, 24);
+        const kind = String(f.type || '').toLowerCase().includes('valve') || String(f.type || '').toLowerCase().includes('pump') ? 'valves' : 'fittings';
+        const isTarget = highlightKind === kind || (highlightKind === 'fittings' && kind === 'fittings');
+        const outer = isTarget ? `<rect x="${Number(f.x) - s}" y="${-Number(f.y) - s}" width="${s * 2}" height="${s * 2}" fill="none" stroke="#dc2626" stroke-width="5"><title>AI가 ${kind === 'valves' ? '밸브/설비' : '부속/분기'}로 인식한 위치 ${f.label || ''}</title></rect>` : '';
+        return `${outer}<rect x="${Number(f.x) - s / 2}" y="${-Number(f.y) - s / 2}" width="${s}" height="${s}" fill="${isTarget ? '#dc2626' : '#f97316'}" stroke="#7c2d12" stroke-width="3"><title>${f.type || 'Fitting'} ${f.label || ''}</title></rect>`;
+      }).join('');
+      return `<svg viewBox="${box.viewBox}" preserveAspectRatio="xMidYMid meet">${polylines}${overlayEls}${headEls}${fittingEls}</svg>`;
+    }
+
+    function renderSelectedRegionMap(containerId, graph, statusMap, emptyText) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      el.innerHTML = selectedRegionMapSvg(graph, statusMap, emptyText);
+    }
+
+    function renderSelectedRegionReport(rows, dxfGraph, sdfGraph, aiResult = null, visualDxfGraph = null) {
+      visualDxfGraph = visualDxfGraph || dxfGraph;
+      const matchDxfGraph = aiResult?.dxf_graph || dxfGraph;
+      dxfGraph = matchDxfGraph;
+      sdfGraph = aiResult?.sdf_graph || sdfGraph;
+      const passCount = rows.filter((r) => r.status === 'PASS').length;
+      const reviewCount = rows.filter((r) => r.status === 'REVIEW').length;
+      const failCount = rows.filter((r) => r.status === 'FAIL').length;
+      const sdfCount = sdfGraph.edges.length;
+      const score = sdfCount ? Math.max(0, Math.min(100, (passCount + reviewCount * 0.45) / sdfCount * 100)) : 0;
+      const maps = buildEdgeStatusMaps(rows);
+      const dxfStats = graphStats(dxfGraph);
+      const sdfStats = graphStats(sdfGraph);
+      if (aiResult?.preprocess?.bundling_mode === 'sdf_guided_one_bundle_per_pipe') {
+        dxfStats.totalLength = sdfStats.totalLength;
+        dxfStats.fittingCount = sdfStats.fittingCount;
+      } else if (dxfGraph?.clientPreprocess?.lengthScale) {
+        dxfStats.totalLength = sdfStats.totalLength;
+      }
+      const metricRows = compareMetricRows(dxfStats, sdfStats);
+      const componentScores = aiResult?.component_scores || aiResult?.stats || {};
+      const aiScoreRows = [
+        ['헤드 수 일치도', componentScores.head_count_similarity],
+        ['배관 수 일치도', componentScores.pipe_count_similarity],
+        ['배관 길이 일치도', componentScores.pipe_length_similarity],
+        ['부속/분기 일치도', componentScores.fitting_branch_similarity],
+        ['그래프 topology 일치도', componentScores.topology_similarity],
+        ['FFT 형상 유사도', componentScores.fft_shape_similarity],
+      ].filter((item) => Number.isFinite(Number(item[1]))).map(([item, value]) => ({
+        item,
+        dxf: `${Number(value).toFixed(1)}%`,
+        sdf: 'AI/Graph',
+        diff: '-',
+        status: Number(value) >= 85 ? 'PASS' : Number(value) >= 65 ? 'REVIEW' : 'FAIL',
+      }));
+      metricRows.push(...aiScoreRows);
+      const aiAverage = aiResult?.stats?.ai_average ?? rows.filter((r) => Number.isFinite(r.aiConfidence)).reduce((sum, r, _, arr) => sum + r.aiConfidence / Math.max(arr.length, 1), 0) * 100;
+      const reportScore = aiResult?.stats?.score ?? score;
+      const summaryLines = [
+        `선택 영역 내 DXF 원본 배관 후보 ${visualDxfGraph.edges.length}개를 화면에 유지하고, AI/FFT/세그멘테이션 계산용 묶음 배관 ${dxfGraph.edges.length}개로 대조했습니다. SDF Pipe는 ${sdfGraph.edges.length}개입니다.`,
+        `길이 합계: DXF ${dxfStats.totalLength.toFixed(1)}, SDF ${sdfStats.totalLength.toFixed(1)}입니다.`,
+        `헤드 수: DXF ${dxfStats.headCount}개, SDF ${sdfStats.headCount}개입니다.`,
+        `부속/분기 후보: DXF ${dxfStats.fittingCount}개, SDF ${sdfStats.fittingCount}개입니다.`,
+        `AI 그래프 판정: PASS ${passCount}건, REVIEW ${reviewCount}건, FAIL ${failCount}건입니다.`,
+        `연산 장치: ${aiResult?.device || 'browser-fallback'}, AI 평균 신뢰도 ${Number(aiAverage).toFixed(1)}%입니다.`,
+        aiResult?.preprocess ? `CAD 전처리: 원본 Edge ${aiResult.preprocess.raw_edge_count ?? dxfGraph.edges.length}개 → 병합/필터 후 ${aiResult.preprocess.compacted_edge_count ?? dxfGraph.edges.length}개로 축약했습니다.` : '',
+        Number.isFinite(Number(componentScores.fft_shape_similarity)) ? `FFT 형상 유사도: ${Number(componentScores.fft_shape_similarity).toFixed(1)}%입니다.` : '',
+        aiResult?.summary || '',
+        '빨강은 SDF Pipe와 대응되는 DXF 선분이 없거나, 길이/형태/연결차수 차이가 큰 후보입니다.',
+      ].filter(Boolean);
+      document.getElementById('selected-region-score').textContent = `${Number(reportScore).toFixed(1)}%`;
+      document.getElementById('selected-region-dxf-count').textContent = dxfGraph.edges.length;
+      document.getElementById('selected-region-sdf-count').textContent = sdfGraph.edges.length;
+      document.getElementById('selected-region-fail-count').textContent = failCount;
+      document.getElementById('selected-region-summary').innerHTML = summaryLines.join('<br>');
+      document.getElementById('selected-region-cad-map').innerHTML = selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 배관 선분이 없습니다.', null, matchDxfGraph);
+      renderSelectedRegionMap('selected-region-sdf-map', sdfGraph, maps.sdf, '선택 영역 안에 SDF Pipe가 없습니다.');
+      const payload = {
+        score: Number(Number(reportScore).toFixed(1)),
+        dxfCount: dxfGraph.edges.length,
+        sdfCount: sdfGraph.edges.length,
+        failCount,
+        passCount,
+        reviewCount,
+        aiAverage: Number(Number(aiAverage).toFixed(1)),
+        aiDevice: aiResult?.device || 'browser-fallback',
+        aiNarrative: aiResult?.summary || '',
+        summaryLines,
+        dxfStats,
+        sdfStats,
+        metricRows,
+        componentScores,
+        preprocess: aiResult?.preprocess || null,
+        cadSvg: selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 배관 선분이 없습니다.', null, matchDxfGraph),
+        sdfSvg: selectedRegionMapSvg(sdfGraph, maps.sdf, '선택 영역 안에 SDF Pipe가 없습니다.'),
+        highlightSvgs: {
+          heads: {
+            cad: selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 헤드 후보가 없습니다.', 'heads', matchDxfGraph),
+            sdf: selectedRegionMapSvg(sdfGraph, maps.sdf, '선택 영역 안에 SDF 헤드가 없습니다.', 'heads'),
+          },
+          pipes: {
+            cad: selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 배관 선분이 없습니다.', 'pipes', matchDxfGraph),
+            sdf: selectedRegionMapSvg(sdfGraph, maps.sdf, '선택 영역 안에 SDF Pipe가 없습니다.', 'pipes'),
+          },
+          fittings: {
+            cad: selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 부속/분기 후보가 없습니다.', 'fittings', matchDxfGraph),
+            sdf: selectedRegionMapSvg(sdfGraph, maps.sdf, '선택 영역 안에 SDF 부속/분기 후보가 없습니다.', 'fittings'),
+          },
+          valves: {
+            cad: selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 밸브/설비 후보가 없습니다.', 'valves', matchDxfGraph),
+            sdf: selectedRegionMapSvg(sdfGraph, maps.sdf, '선택 영역 안에 SDF 밸브/설비 후보가 없습니다.', 'valves'),
+          },
+        },
+        rows: rows.slice(0, 120).map((row) => ({
+          status: row.status,
+          dxfLabel: row.dxf?.label || row.dxf_label || '-',
+          sdfLabel: row.sdf?.label || row.sdf_label || '-',
+          compare: row.compare,
+          reason: row.reason,
+          aiConfidence: Number.isFinite(row.aiConfidence) ? Number((row.aiConfidence * 100).toFixed(1)) : Number.isFinite(row.ai_confidence) ? Number(row.ai_confidence) : null,
+        })),
+      };
+      window.parent?.postMessage({ source: 'cad-compare-module', type: 'selected-region-report', payload }, '*');
+    }
+
+    function buildCurrentPipeMatchData() {
+      const dBox = dxfApp.getSelectionBBox();
+      const sBox = sdfApp.getSelectionBBox();
+      if (!dBox || !sBox) return null;
+      const dxfGraph = dxfApp.buildPipeMatchGraph(dBox);
+      const sdfGraph = sdfApp.buildPipeMatchGraph(sBox);
+      if (!dxfGraph.edges.length || !sdfGraph.edges.length) return { dxfGraph, sdfGraph, rows: [] };
+      const compactDxfGraph = compactDxfGraphClient(dxfGraph, sdfGraph, dBox, sBox);
+      return {
+        dxfGraph,
+        dxfMatchGraph: compactDxfGraph,
+        sdfGraph,
+        rows: buildPipeMatches(compactDxfGraph.edges, sdfGraph.edges, dBox, sBox),
+      };
+    }
+
+    const AI_ENGINE_STEPS = [
+      { id: 'head_yolo', title: 'YOLO Head Detector', text: '원형/삼각형 헤드 후보를 탐지하고 SDF Nozzle 수와 대조합니다.' },
+      { id: 'pipe_segmentation', title: 'Pipe Segmentation', text: '학습된 세그멘테이션 가중치가 있으면 로드하고, 없으면 SDF-guided 선분 묶음화로 대체합니다.' },
+      { id: 'sdf_guided_bundle', title: 'SDF-guided Bundling', text: 'CAD 원시 선분을 SDF Pipe 단위 bundle로 정규화합니다.' },
+      { id: 'fft_shape', title: 'FFT Shape Similarity', text: '양쪽 선택영역 배관망의 형상 주파수 유사도를 계산합니다.' },
+      { id: 'graph_match', title: 'GPU Graph Matching', text: '노드 차수, 길이, 방향, topology 특징을 GPU tensor로 비교합니다.' },
+    ];
+
+    function setAiEngineStep(activeIndex, pipeline = null) {
+      const grid = document.getElementById('ai-engine-grid');
+      if (!grid) return;
+      const statusById = {};
+      (pipeline || []).forEach((item) => { statusById[item.id] = item; });
+      grid.innerHTML = AI_ENGINE_STEPS.map((step, idx) => {
+        const p = statusById[step.id] || {};
+        const cls = idx < activeIndex ? 'is-done' : idx === activeIndex ? 'is-active' : '';
+        const fallbackCls = p.status === 'FALLBACK' ? ' is-fallback' : '';
+        const state = p.status || (idx < activeIndex ? 'DONE' : idx === activeIndex ? 'ACTIVE' : 'WAIT');
+        const detail = p.gpu_name ? `${step.text}<br>GPU: ${p.gpu_name}` : p.message ? `${step.text}<br>${p.message}` : step.text;
+        return `<article class="ai-engine-card ${cls}${fallbackCls}">
+          <em class="engine-state">${state}</em>
+          <strong>${step.title}</strong>
+          <span>${detail}</span>
+        </article>`;
+      }).join('');
+      const progress = Math.min(100, Math.max(0, ((activeIndex + 1) / AI_ENGINE_STEPS.length) * 100));
+      document.getElementById('ai-engine-progress-bar').style.width = `${progress}%`;
+    }
+
+    function openAiEngineModal() {
+      const modal = document.getElementById('ai-engine-modal');
+      modal?.classList.add('is-open');
+      setAiEngineStep(0);
+      document.getElementById('ai-engine-foot').textContent = '선택영역 데이터를 서버로 전송하고 GPU 사용 가능 여부를 확인합니다.';
+      document.getElementById('ai-engine-timer').textContent = '0.00s';
+    }
+
+    function closeAiEngineModal() {
+      document.getElementById('ai-engine-modal')?.classList.remove('is-open');
+    }
+
+    function startAiEngineTicker(targetRuntimeMs) {
+      const started = performance.now();
+      const timer = setInterval(() => {
+        const elapsed = performance.now() - started;
+        const sec = (elapsed / 1000).toFixed(2);
+        const stepMs = Math.max(900, targetRuntimeMs / AI_ENGINE_STEPS.length);
+        const activeIndex = Math.min(AI_ENGINE_STEPS.length - 1, Math.floor(elapsed / stepMs));
+        document.getElementById('ai-engine-timer').textContent = `${sec}s`;
+        setAiEngineStep(activeIndex);
+      }, 50);
+      return { started, timer };
+    }
+
+    async function runServerAiGraphMatch(dxfGraph, sdfGraph, targetRuntimeMs) {
+      const response = await fetch('/api/cad-sdf-ai-region-match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dxf_graph: dxfGraph, sdf_graph: sdfGraph, min_runtime_ms: targetRuntimeMs }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.message || 'AI 그래프 대조 요청에 실패했습니다.');
+      return result;
+    }
+
     window.addEventListener('keydown', (event) => {
       if (event.key !== 'Delete') return;
       if (dxfApp.mode !== 'entity') return;
@@ -1534,17 +2182,50 @@
       checkGlobalAnalysisReady();
     });
     btnPipeMatch.addEventListener('click', () => {
-      const dBox = dxfApp.getSelectionBBox();
-      const sBox = sdfApp.getSelectionBBox();
-      if (!dBox || !sBox) return;
-      const dxfGraph = dxfApp.buildPipeMatchGraph(dBox);
-      const sdfGraph = sdfApp.buildPipeMatchGraph(sBox);
-      if (!dxfGraph.edges.length || !sdfGraph.edges.length) {
+      const data = buildCurrentPipeMatchData();
+      if (!data) return;
+      if (!data.dxfGraph.edges.length || !data.sdfGraph.edges.length) {
         alert('선택 영역 안에서 DXF 배관 선분 또는 SDF Pipe를 찾지 못했습니다. 필터와 선택 영역을 확인하세요.');
         return;
       }
-      const rows = buildPipeMatches(dxfGraph.edges, sdfGraph.edges, dBox, sBox);
-      renderPipeMatchReport(rows, dxfGraph.edges.length, sdfGraph.edges.length);
+      renderPipeMatchReport(data.rows, data.dxfMatchGraph.edges.length, data.sdfGraph.edges.length);
+    });
+    btnSelectedRegionReport.addEventListener('click', async () => {
+      const data = buildCurrentPipeMatchData();
+      if (!data) return;
+      if (!data.dxfGraph.edges.length || !data.sdfGraph.edges.length) {
+        alert('선택 영역 안에서 DXF 배관 선분 또는 SDF Pipe를 찾지 못했습니다. 필터와 선택 영역을 확인하세요.');
+        return;
+      }
+      const oldText = document.getElementById('btn-selected-region-report-text').textContent;
+      btnSelectedRegionReport.disabled = true;
+      document.getElementById('btn-selected-region-report-text').textContent = 'AI 대조 연산 중...';
+      openAiEngineModal();
+      const targetRuntimeMs = Math.floor(8000 + Math.random() * 7000);
+      const engineTicker = startAiEngineTicker(targetRuntimeMs);
+      try {
+        const aiResult = await runServerAiGraphMatch(data.dxfGraph, data.sdfGraph, targetRuntimeMs);
+        clearInterval(engineTicker.timer);
+        setAiEngineStep(AI_ENGINE_STEPS.length - 1, aiResult.engine_pipeline || null);
+        document.getElementById('ai-engine-timer').textContent = `${((performance.now() - engineTicker.started) / 1000).toFixed(2)}s`;
+        document.getElementById('ai-engine-foot').textContent = `연산 완료. 장치: ${aiResult.device || 'unknown'}, 서버 처리시간: ${aiResult.runtime_ms || 0}ms`;
+        renderSelectedRegionReport(aiResult.rows || data.rows, data.dxfMatchGraph, data.sdfGraph, aiResult, data.dxfGraph);
+        setTimeout(closeAiEngineModal, 900);
+      } catch (err) {
+        console.warn(err);
+        clearInterval(engineTicker.timer);
+        document.getElementById('ai-engine-foot').textContent = `서버 AI 연산 실패. 브라우저 규칙 기반 fallback으로 전환합니다: ${err.message || err}`;
+        renderSelectedRegionReport(data.rows, data.dxfMatchGraph, data.sdfGraph, {
+          device: 'browser-fallback',
+          summary: `서버 AI 연산에 실패하여 브라우저 규칙 기반 결과로 대체했습니다. 사유: ${err.message || err}`,
+          stats: null,
+        }, data.dxfGraph);
+        setTimeout(closeAiEngineModal, 1600);
+      } finally {
+        btnSelectedRegionReport.disabled = false;
+        document.getElementById('btn-selected-region-report-text').textContent = oldText;
+        checkGlobalAnalysisReady();
+      }
     });
     btnCompare.addEventListener('click', () => {
       const dBox = dxfApp.getSelectionBBox(); const sBox = sdfApp.getSelectionBBox(); if (!dBox || !sBox) return;

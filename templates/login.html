@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign In</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; background: #0f172a; color: #e2e8f0; }
+    body { display: flex; align-items: center; justify-content: center; }
+    .login-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 32px 28px; width: 92%; max-width: 360px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); }
+    .login-card h1 { margin: 0 0 6px; font-size: 1.1rem; color: #cbd5e1; font-weight: 700; text-align: center; letter-spacing: 0.02em; }
+    .login-card .sub { margin: 0 0 20px; font-size: 0.78rem; color: #64748b; text-align: center; line-height: 1.5; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 0.78rem; color: #94a3b8; margin-bottom: 6px; font-weight: 600; }
+    .field input { width: 100%; padding: 10px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 4px; font-size: 1rem; color: #f1f5f9; font-family: ui-monospace, "Consolas", monospace; letter-spacing: 0.1em; }
+    .field input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+    .submit-btn { width: 100%; padding: 11px; background: #1e40af; color: #fff; border: none; border-radius: 4px; font-size: 0.92rem; font-weight: 600; cursor: pointer; margin-top: 4px; letter-spacing: 0.02em; }
+    .submit-btn:hover { background: #1d4ed8; }
+    .submit-btn:active { transform: translateY(1px); }
+    .error { background: #7f1d1d; color: #fecaca; border: 1px solid #b91c1c; padding: 8px 12px; border-radius: 4px; font-size: 0.82rem; margin-bottom: 12px; text-align: center; }
+    .hint { background: #1e3a8a; color: #dbeafe; border: 1px solid #3b82f6; padding: 10px 12px; border-radius: 4px; font-size: 0.82rem; margin-bottom: 14px; text-align: center; line-height: 1.5; }
+    .hint .pw-value { font-family: ui-monospace, "Consolas", monospace; font-size: 1rem; font-weight: 700; color: #fef3c7; letter-spacing: 0.15em; background: rgba(0,0,0,0.25); padding: 2px 10px; border-radius: 3px; margin-left: 4px; }
+    .foot { margin-top: 16px; text-align: center; font-size: 0.7rem; color: #475569; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <form class="login-card" method="post" action="{{ url_for('login_submit') }}" autocomplete="off">
+    <h1>Restricted Access</h1>
+    <p class="sub">CAD &rarr; PIPENET Auto-Schematic System<br>Please enter your password to continue.</p>
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+    <div class="hint">
+      Password: <span class="pw-value">5361</span>
+    </div>
+    <input type="hidden" name="next" value="{{ next_path }}">
+    <div class="field">
+      <label for="pw">Password</label>
+      <input id="pw" type="password" name="password" value="5361" required autofocus inputmode="numeric" pattern="[0-9]*">
+    </div>
+    <button class="submit-btn" type="submit">Sign In &rarr;</button>
+    <div class="foot">Internal team access only.</div>
+  </form>
+</body>
+</html>

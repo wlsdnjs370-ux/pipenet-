@@ -1,0 +1,1694 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Remote 30 워크벤치</title>
+  <style>
+    :root {
+      --bg: #f0f2f5;
+      --panel: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --line: #d1d5db;
+      --accent: #111827;
+      --ok: #0f766e;
+      --warn-bg: #fef3c7;
+      --bad: #b91c1c;
+      --cat-pipe: #1d4ed8;
+      --cat-head: #b91c1c;
+      --cat-text: #166534;
+      --cat-arch: #9ca3af;
+      --cat-exclude: #6b7280;
+      --cat-other: #92400e;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font-family: "Malgun Gothic", "Segoe UI", sans-serif; color: var(--text); background: var(--bg); }
+    .workbench { display: grid; grid-template-columns: 1fr 380px; height: 100vh; }
+    .canvas-pane { position: relative; background: #0f172a; overflow: hidden; }
+    .canvas-pane canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    .canvas-pane canvas.is-panning { cursor: grabbing; }
+    .canvas-overlay { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; pointer-events: none; gap: 10px; flex-wrap: wrap; }
+    .canvas-overlay .pill { background: rgba(15, 23, 42, 0.85); color: #e5e7eb; border: 1px solid #334155; padding: 6px 10px; font-size: 0.8rem; pointer-events: auto; font-family: ui-monospace, monospace; }
+    .canvas-overlay button { pointer-events: auto; background: #1f2937; color: #e5e7eb; border: 1px solid #475569; padding: 6px 10px; font-size: 0.78rem; cursor: pointer; }
+    .canvas-overlay button:hover { background: #334155; }
+    .canvas-overlay button.active { background: #ef4444; border-color: #ef4444; }
+    .canvas-toolbar { position: absolute; bottom: 12px; left: 12px; display: flex; gap: 6px; pointer-events: none; }
+    .canvas-toolbar button { pointer-events: auto; background: rgba(15, 23, 42, 0.85); color: #e5e7eb; border: 1px solid #475569; padding: 7px 12px; font-size: 0.78rem; cursor: pointer; font-weight: 600; }
+    .canvas-toolbar button.active { background: #2563eb; border-color: #2563eb; }
+    .canvas-toolbar button:hover { background: #1e40af; border-color: #1e40af; }
+    .canvas-toolbar button.active:hover { background: #1d4ed8; }
+    canvas.mode-alarm { cursor: crosshair !important; }
+    canvas.mode-zone { cursor: crosshair !important; }
+    .zoom-group { display: inline-flex; align-items: stretch; margin-left: 8px; border: 1px solid #475569; background: rgba(15, 23, 42, 0.85); pointer-events: auto; }
+    .zoom-group button { background: transparent; color: #e5e7eb; border: none; padding: 7px 12px; font-size: 1.05rem; font-weight: 700; cursor: pointer; min-width: 32px; }
+    .zoom-group button:hover { background: #1e40af; color: #fff; }
+    .zoom-group button:active { background: #1d4ed8; }
+    .zoom-group .zoom-level { display: inline-flex; align-items: center; justify-content: center; min-width: 56px; padding: 0 6px; color: #cbd5e1; font-size: 0.78rem; font-family: ui-monospace, monospace; border-left: 1px solid #475569; border-right: 1px solid #475569; cursor: pointer; user-select: none; }
+    .zoom-group .zoom-level:hover { background: #1e293b; color: #fff; }
+    .canvas-empty { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #94a3b8; font-size: 0.9rem; text-align: center; }
+    .canvas-empty strong { display: block; font-size: 1.1rem; margin-bottom: 6px; color: #cbd5e1; }
+    .sidebar { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; display: flex; flex-direction: column; }
+    .sidebar h2 { margin: 0; padding: 14px 16px; font-size: 1rem; font-weight: 700; border-bottom: 1px solid var(--line); background: #f9fafb; position: sticky; top: 0; z-index: 2; }
+    .sidebar section { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    .sidebar section h3 { margin: 0 0 8px; font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+    .sidebar .field { display: grid; gap: 4px; margin-bottom: 8px; }
+    .sidebar .field label { font-size: 0.78rem; font-weight: 600; color: var(--text); }
+    .sidebar .field input, .sidebar .field select { width: 100%; padding: 6px 8px; border: 1px solid var(--line); background: #fff; font-size: 0.85rem; font-family: inherit; border-radius: 0; }
+    .sidebar .field input:focus, .sidebar .field select:focus { outline: 1px solid var(--accent); }
+    .sidebar button.primary { width: 100%; padding: 9px; background: var(--accent); color: #fff; border: 1px solid var(--accent); font-weight: 700; cursor: pointer; font-size: 0.9rem; }
+    .sidebar button.primary:hover { background: #1f2937; }
+    .sidebar button.primary:disabled { background: #6b7280; border-color: #6b7280; cursor: not-allowed; }
+    .sidebar button.ghost { padding: 6px 10px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.78rem; cursor: pointer; }
+    .sidebar button.ghost:hover { background: #f3f4f6; }
+    .sidebar button.ghost.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    #wb-edit-target-row { display: flex !important; }
+    #wb-edit-target-row[hidden] { display: none !important; }
+    .edit-target-btn { font-size: 0.78rem !important; padding: 5px 6px !important; }
+    .layer-list { max-height: 340px; overflow-y: auto; border: 1px solid var(--line); }
+    .layer-row { display: grid; grid-template-columns: auto 1fr 90px; gap: 6px; padding: 6px 8px; border-bottom: 1px solid #f3f4f6; align-items: center; font-size: 0.78rem; }
+    .layer-row:hover { background: #fafbfc; }
+    .layer-row input[type="checkbox"] { margin: 0; }
+    .layer-row .name { font-family: ui-monospace, monospace; font-size: 0.74rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .layer-row .count { font-size: 0.7rem; color: var(--muted); }
+    .layer-row select { padding: 3px 4px; font-size: 0.72rem; border: 1px solid var(--line); border-radius: 0; }
+    .layer-row .cat-PIPE { color: var(--cat-pipe); font-weight: 700; }
+    .layer-row .cat-HEAD { color: var(--cat-head); font-weight: 700; }
+    .layer-row .cat-TEXT { color: var(--cat-text); font-weight: 700; }
+    .layer-row .cat-ARCH { color: var(--cat-arch); }
+    .layer-row .cat-EXCLUDE { color: var(--cat-exclude); text-decoration: line-through; }
+    .layer-row .cat-OTHER { color: var(--cat-other); }
+    .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.72rem; margin: 6px 0; }
+    .legend span { display: inline-flex; align-items: center; gap: 4px; }
+    .legend .dot { display: inline-block; width: 10px; height: 10px; border: 1px solid #334155; }
+    .results-block { padding: 12px 16px; background: #f9fafb; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+    .stat { padding: 6px 8px; background: #fff; border: 1px solid var(--line); font-size: 0.78rem; }
+    .stat .label { color: var(--muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .stat .value { font-weight: 700; font-size: 0.92rem; }
+    .download-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .download-row a { padding: 6px 10px; background: var(--accent); color: #fff; text-decoration: none; font-size: 0.78rem; border: 1px solid var(--accent); }
+    .download-row a:hover { background: #1f2937; }
+    .download-row a.hidden { display: none; }
+    .warn-box { background: var(--warn-bg); border-left: 3px solid #d97706; padding: 8px 12px; margin-top: 8px; font-size: 0.78rem; }
+    .warn-box ul { margin: 4px 0 0; padding-left: 16px; }
+    .hidden { display: none !important; }
+    .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 8px 0 0; }
+    .tabs button { background: #f3f4f6; border: 1px solid var(--line); border-bottom: none; padding: 5px 10px; font-size: 0.75rem; cursor: pointer; font-weight: 600; }
+    .tabs button.active { background: #fff; color: var(--accent); border-color: var(--accent); border-bottom: 1px solid #fff; margin-bottom: -1px; }
+    .tab-meta { font-size: 0.72rem; color: var(--muted); margin: 4px 0; }
+    .sdf-table-wrap { max-height: 280px; overflow: auto; border: 1px solid var(--line); background: #fff; }
+    .sdf-table-wrap table { width: 100%; border-collapse: collapse; font-size: 0.72rem; font-family: ui-monospace, monospace; }
+    .sdf-table-wrap th { background: #f3f4f6; padding: 4px 6px; text-align: left; border-bottom: 1px solid var(--line); position: sticky; top: 0; font-weight: 700; font-size: 0.7rem; }
+    .sdf-table-wrap td { padding: 3px 6px; border-bottom: 1px solid #f3f4f6; }
+    .sdf-table-wrap td.editable { background: #fff; cursor: text; outline: none; }
+    .sdf-table-wrap td.editable:focus { background: #fef9c3; box-shadow: inset 0 0 0 1px #ca8a04; }
+    .sdf-table-wrap td.modified { background: #fef3c7; font-weight: 700; color: #92400e; }
+    .sdf-table-wrap td.modified::after { content: " ●"; color: #d97706; font-size: 0.7em; }
+    .sdf-table-wrap tr:hover td:not(.editable) { background: #fafbfc; }
+    .sdf-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
+    .sdf-actions button { padding: 5px 10px; font-size: 0.75rem; background: var(--accent); color: #fff; border: 1px solid var(--accent); cursor: pointer; }
+    .sdf-actions button:hover { background: #1f2937; }
+    .sdf-actions button.secondary { background: #fff; color: var(--text); }
+    .sdf-actions button.secondary:hover { background: #f3f4f6; }
+    .modified-counter { font-size: 0.72rem; color: var(--muted); }
+    .modified-counter strong { color: #d97706; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; background: var(--accent); color: #fff; font-size: 0.85rem; }
+    .topbar a { color: #cbd5e1; text-decoration: none; font-size: 0.78rem; }
+    .topbar a:hover { color: #fff; text-decoration: underline; }
+    @media (max-width: 900px) {
+      .workbench { grid-template-columns: 1fr; grid-template-rows: 60vh 1fr; }
+      .sidebar { border-left: 0; border-top: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <strong>Remote 30 워크벤치</strong>
+    <a href="/" target="_top">← 홈으로</a>
+  </div>
+  <div class="workbench">
+    <div class="canvas-pane">
+      <canvas id="wb-canvas"></canvas>
+      <div id="wb-empty" class="canvas-empty">
+        <strong>DXF 파일을 업로드하세요</strong>
+        오른쪽 사이드 패널에서 .dxf 파일을 선택하면<br>여기에 도면이 표시됩니다.
+      </div>
+      <div class="canvas-overlay">
+        <span id="wb-overlay-info" class="pill">대기 중</span>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span id="wb-overlay-cursor" class="pill" style="display:none;"></span>
+          <button id="wb-fit-btn" type="button">화면 맞춤</button>
+          <button id="wb-reset-classify" type="button">분류 초기화</button>
+        </div>
+      </div>
+      <div class="canvas-toolbar">
+        <button id="wb-mode-pan" class="active" type="button">팬/줌</button>
+        <button id="wb-mode-alarm" type="button">알람밸브 클릭 지정</button>
+        <button id="wb-mode-zone" type="button">Zone 박스 선택</button>
+        <button id="wb-clear-zone" type="button" style="display:none;">Zone 해제</button>
+        <div class="zoom-group">
+          <button id="wb-zoom-out" type="button" title="축소 (또는 - 키)">−</button>
+          <span id="wb-zoom-level" class="zoom-level" title="현재 줌">100%</span>
+          <button id="wb-zoom-in" type="button" title="확대 (또는 + 키)">+</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <h2>설정 및 결과</h2>
+
+      <section>
+        <h3>1. DXF 파일</h3>
+        <div class="field">
+          <label for="wb-dxf">DXF 업로드 (.dxf)</label>
+          <input id="wb-dxf" type="file" accept=".dxf">
+        </div>
+        <p id="wb-load-status" style="margin:4px 0 0; font-size:0.78rem; color: var(--muted);">파일을 선택하세요.</p>
+      </section>
+
+      <section>
+        <h3>2-pre. ML 헤드 검증 (선택)</h3>
+        <p style="margin:0 0 6px; font-size:0.78rem; color:var(--muted);">YOLO 모델로 도면을 인식해 헤드 후보를 검출. Layer 분류 결과와 비교해 신뢰도를 검증할 수 있습니다.</p>
+        <div class="field">
+          <label>검출 방식</label>
+          <select id="wb-ml-method">
+            <option value="layer_yolo" selected>Layer + YOLO 결합 (Layer 정확 + YOLO 보강) ★</option>
+            <option value="layer">Layer 직접 (DXF ground truth)</option>
+            <option value="yolo">YOLO 타일 단독</option>
+            <option value="color">Color 마스크 (HSV)</option>
+          </select>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+          <div class="field">
+            <label>타일 수 (N×N)</label>
+            <input id="wb-ml-tile" type="number" min="1" max="6" step="1" value="3">
+          </div>
+          <div class="field">
+            <label>conf 임계 (YOLO)</label>
+            <input id="wb-ml-conf" type="number" min="0.05" max="0.9" step="0.01" value="0.18">
+          </div>
+        </div>
+        <p style="margin:4px 0; font-size:0.7rem; color:var(--muted);">Layer: 즉시. Color: 5-15초. YOLO: 10-60초 (타일 수에 따라)</p>
+        <div style="display:flex; gap:4px;">
+          <button id="wb-ml-zone" class="ghost" type="button" disabled style="flex:0 0 auto;">범위 지정</button>
+          <button id="wb-ml-detect" class="ghost" type="button" disabled style="flex:1;">검출 실행</button>
+        </div>
+        <p id="wb-ml-zone-info" style="margin:4px 0 0; font-size:0.7rem; color:var(--muted); display:none;"></p>
+        <button id="wb-edit-heads" class="ghost" type="button" disabled style="margin-top:6px;">수동 바운딩 박스 추가/제거</button>
+        <button id="wb-connect-heads" class="ghost" type="button" disabled style="margin-top:4px;">누락 헤드 연결</button>
+        <p id="wb-connect-status" style="margin:4px 0 0; font-size:0.72rem; color:var(--muted); display:none;"></p>
+        <div id="wb-edit-target-row" style="display:none; margin-top:6px; gap:4px;">
+          <button id="wb-edit-target-head"  class="ghost edit-target-btn active" type="button" style="flex:1;">헤드</button>
+          <button id="wb-edit-target-pipe"  class="ghost edit-target-btn" type="button" style="flex:1;">배관</button>
+          <button id="wb-edit-target-alarm" class="ghost edit-target-btn" type="button" style="flex:1;">알람밸브</button>
+        </div>
+        <p id="wb-ml-status" style="margin:6px 0 0; font-size:0.74rem; color:var(--muted);">DXF 업로드 후 실행 가능합니다.</p>
+        <p id="wb-edit-status" style="margin:4px 0 0; font-size:0.72rem; color:var(--muted); display:none;">
+          편집 모드: 클릭 = 추가/토글, Shift+클릭 = 삭제.
+        </p>
+        <div style="margin-top:6px; font-size:0.72rem; color:var(--muted); line-height:1.5;">
+          <div><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:50%;"></span> 활성 헤드 (추출 대상)</div>
+          <div><span style="display:inline-block;width:10px;height:10px;background:#dc2626;border:2px solid #7f1d1d;border-radius:50%;"></span> YOLO 보강 후보 (비활성, 클릭하면 활성화)</div>
+          <div><span style="display:inline-block;width:10px;height:10px;background:#9ca3af;"></span> 비활성 (제외됨)</div>
+          <div><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border:1px solid #14532d;border-radius:50%;"></span> 사용자 수동 추가</div>
+        </div>
+      </section>
+
+      <section>
+        <h3>2. 레이어 분류</h3>
+        <div class="legend">
+          <span><i class="dot" style="background:#3b82f6"></i>PIPE</span>
+          <span><i class="dot" style="background:#ef4444"></i>HEAD</span>
+          <span><i class="dot" style="background:#22c55e"></i>TEXT</span>
+          <span><i class="dot" style="background:#94a3b8"></i>ARCH</span>
+          <span><i class="dot" style="background:#71717a"></i>EXCLUDE</span>
+          <span><i class="dot" style="background:#f59e0b"></i>OTHER</span>
+        </div>
+        <div id="wb-layer-list" class="layer-list">
+          <div style="padding:14px; text-align:center; color:var(--muted); font-size:0.82rem;">DXF 업로드 후 표시됩니다.</div>
+        </div>
+        <p style="margin:6px 0 0; font-size:0.72rem; color: var(--muted);">체크 = 캔버스 표시. 카테고리 변경 시 색상과 추출 적용이 바뀝니다.</p>
+      </section>
+
+      <section>
+        <h3>3. 알람밸브 / Remote 기준</h3>
+        <div class="field">
+          <label>알람밸브 모드</label>
+          <select id="wb-alarm-mode">
+            <option value="auto">자동 검출 (DXF 키워드 탐색)</option>
+            <option value="manual">수동 좌표 입력</option>
+          </select>
+        </div>
+        <div id="wb-alarm-manual" class="hidden" style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+          <div class="field"><label>X</label><input id="wb-alarm-x" type="number" step="any"></div>
+          <div class="field"><label>Y</label><input id="wb-alarm-y" type="number" step="any"></div>
+        </div>
+        <div class="field">
+          <label>Remote 선정 기준</label>
+          <select id="wb-remote-mode">
+            <option value="hydraulic" selected>Hydraulic (NFPA design-area, 추천)</option>
+            <option value="length">배관길이 (단순 dijkstra)</option>
+          </select>
+        </div>
+      </section>
+
+      <section>
+        <h3>4. Hydraulic 파라미터</h3>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+          <div class="field"><label>알람 elev. (m)</label><input id="wb-elev-alarm" type="number" step="any" placeholder="1.0"></div>
+          <div class="field"><label>헤드 elev. (m)</label><input id="wb-elev-head" type="number" step="any" placeholder="2.8"></div>
+          <div class="field"><label>K-factor</label><input id="wb-kfactor" type="number" step="any" placeholder="80"></div>
+          <div class="field"><label>유량 (LPM)</label><input id="wb-flow" type="number" step="any" placeholder="80"></div>
+          <div class="field"><label>Fallback Ø (mm)</label><input id="wb-fallback-dia" type="number" step="any" placeholder="50"></div>
+          <div class="field"><label>선정 헤드 수</label><input id="wb-count" type="number" step="1" placeholder="30"></div>
+          <div class="field"><label>자연낙차 (m)</label><input id="wb-fall-height" type="number" step="any" placeholder="0=비활성, RV03 137.35"></div>
+        </div>
+        <p style="font-size:0.7rem; color:var(--muted); margin:4px 0 0;">자연낙차 = 옥상수원 ↔ 단위세대 가상 수직 트렁크. 답안지 RV03_NEW 기준 약 137m.</p>
+        <label style="display:flex; gap:6px; align-items:center; margin-top:8px; font-size:0.82rem;">
+          <input id="wb-emit-sdf" type="checkbox" checked>
+          PIPENET SDF (XML) 생성
+        </label>
+        <label style="display:flex; gap:6px; align-items:center; margin-top:4px; font-size:0.82rem;">
+          <input id="wb-emit-csv" type="checkbox" checked>
+          CSV 4 파일 (nodes/pipes/nozzles/valves) 생성
+        </label>
+      </section>
+
+      <section>
+        <button id="wb-auto-process-btn" class="primary" disabled style="background:#0f766e; border-color:#0f766e; margin-bottom:8px;">★ 전체 자동 처리 (DXF → SDF + Excel + CSV)</button>
+        <p id="wb-auto-process-status" style="margin:4px 0 8px; font-size:0.74rem; color:var(--muted);">한 번 클릭으로 자동 분류 → 자동 헤드 연결 → 추출 → 4종 파일 모두 생성</p>
+
+        <label style="display:flex; gap:6px; align-items:center; margin-bottom:8px; font-size:0.82rem;">
+          <input id="wb-auto-run" type="checkbox">
+          <span>분류/옵션 변경 시 자동 재계산 (600ms debounce)</span>
+        </label>
+        <button id="wb-run-btn" class="primary" disabled>Remote 30 추출 실행 (수동 편집 반영)</button>
+        <p id="wb-run-status" style="margin:8px 0 0; font-size:0.78rem; color: var(--muted);">DXF 업로드 후 실행 가능합니다.</p>
+        <p id="wb-zone-info" style="margin:6px 0 0; font-size:0.74rem; color: var(--muted); display:none;"></p>
+      </section>
+
+      <div id="wb-results" class="results-block hidden">
+        <h3 style="margin:0 0 8px; font-size:0.82rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted);">추출 결과</h3>
+        <div id="wb-stats" class="stats"></div>
+        <div id="wb-warnings"></div>
+        <div class="download-row">
+          <a id="wb-dl-png" href="#" target="_blank" rel="noopener" class="hidden">PNG</a>
+          <a id="wb-dl-xlsx" href="#" target="_blank" rel="noopener" class="hidden">Excel</a>
+          <a id="wb-dl-sdf" href="#" target="_blank" rel="noopener" class="hidden">SDF</a>
+          <a id="wb-dl-csv" href="#" target="_blank" rel="noopener" class="hidden">CSV.zip</a>
+        </div>
+
+        <div id="wb-sdf-section" class="hidden" style="margin-top:10px;">
+          <h3 style="margin:0; font-size:0.82rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted);">PIPENET 테이블 (인라인 편집 가능)</h3>
+          <p class="tab-meta">셀을 클릭하면 값을 편집할 수 있습니다. 편집된 셀은 노란색으로 표시되고, [편집된 SDF 다운로드] 로 즉시 XML 생성합니다.</p>
+          <div class="tabs">
+            <button class="tab-btn active" data-tab="nodes">Nodes</button>
+            <button class="tab-btn" data-tab="pipes">Pipes</button>
+            <button class="tab-btn" data-tab="nozzles">Nozzles</button>
+            <button class="tab-btn" data-tab="valves">Valves</button>
+          </div>
+          <div id="wb-sdf-table" class="sdf-table-wrap"></div>
+          <div class="sdf-actions">
+            <button id="wb-sdf-regen" type="button">편집된 SDF 다운로드</button>
+            <button id="wb-sdf-revert" type="button" class="secondary">편집 취소</button>
+            <span id="wb-sdf-modified" class="modified-counter">편집 0건</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    // ====== 상태 ======
+    const CATEGORY_COLORS = {
+      PIPE:    "#3b82f6",
+      HEAD:    "#ef4444",
+      TEXT:    "#22c55e",
+      ARCH:    "#94a3b8",
+      EXCLUDE: "#71717a",
+      OTHER:   "#f59e0b",
+    };
+    const state = {
+      entities: [],
+      bbox: null,
+      layers: [],
+      layerState: {},
+      view: { zoom: 1, panX: 0, panY: 0 },
+      dpr: window.devicePixelRatio || 1,
+      dxfFile: null,
+      dxfToken: null,        // inspect 응답 토큰 - 재업로드 생략
+      drag: null,
+      mode: "pan",           // "pan" | "alarm" | "zone"
+      alarmManual: null,     // {x, y} 사용자가 클릭한 알람밸브 (월드 좌표)
+      zoneBbox: null,        // [x_min, y_min, x_max, y_max] 월드 좌표
+      zoneDrag: null,        // 박스 그리는 중
+      result: null,          // 마지막 extract 결과 (오버레이용)
+      autoRun: false,
+      autoRunTimer: null,
+      running: false,
+      sdfTables: null,       // {nodes, pipes, nozzles, valves} - 인라인 편집 대상
+      sdfTablesOriginal: null, // 원본 (revert 용)
+      sdfActiveTab: "nodes",
+      sdfModifiedCells: new Set(),
+      mlHeads: null,
+      mlAlarms: null,
+      // 수동 편집:
+      // headEdit[idx] = true|false  (mlHeads index → active state)
+      // manualHeads: [{x,y}] 사용자가 추가한 헤드
+      headEdit: {},
+      manualHeads: [],
+      manualPipes: [],     // [{x1,y1,x2,y2}]
+      pendingPipeStart: null,  // 배관 첫 클릭 좌표 (둘째 클릭 대기)
+      editTarget: "head",  // "head" | "pipe" | "alarm"
+    };
+
+    const canvas = document.getElementById("wb-canvas");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    const emptyEl = document.getElementById("wb-empty");
+    const overlayInfoEl = document.getElementById("wb-overlay-info");
+    const overlayCursorEl = document.getElementById("wb-overlay-cursor");
+    const dxfInputEl = document.getElementById("wb-dxf");
+    const loadStatusEl = document.getElementById("wb-load-status");
+    const layerListEl = document.getElementById("wb-layer-list");
+    const runBtnEl = document.getElementById("wb-run-btn");
+    const runStatusEl = document.getElementById("wb-run-status");
+    const fitBtnEl = document.getElementById("wb-fit-btn");
+    const resetBtnEl = document.getElementById("wb-reset-classify");
+    const resultsEl = document.getElementById("wb-results");
+    const statsEl = document.getElementById("wb-stats");
+    const warningsEl = document.getElementById("wb-warnings");
+    const dlPng = document.getElementById("wb-dl-png");
+    const dlXlsx = document.getElementById("wb-dl-xlsx");
+    const dlSdf = document.getElementById("wb-dl-sdf");
+    const alarmModeEl = document.getElementById("wb-alarm-mode");
+    const alarmManualEl = document.getElementById("wb-alarm-manual");
+    const alarmXEl = document.getElementById("wb-alarm-x");
+    const alarmYEl = document.getElementById("wb-alarm-y");
+    const modePanBtn = document.getElementById("wb-mode-pan");
+    const modeAlarmBtn = document.getElementById("wb-mode-alarm");
+    const modeZoneBtn = document.getElementById("wb-mode-zone");
+    const clearZoneBtn = document.getElementById("wb-clear-zone");
+    const autoRunEl = document.getElementById("wb-auto-run");
+    const zoneInfoEl = document.getElementById("wb-zone-info");
+    const sdfSectionEl = document.getElementById("wb-sdf-section");
+    const sdfTableEl = document.getElementById("wb-sdf-table");
+    const sdfTabBtns = document.querySelectorAll(".tab-btn");
+    const sdfRegenBtn = document.getElementById("wb-sdf-regen");
+    const sdfRevertBtn = document.getElementById("wb-sdf-revert");
+    const sdfModifiedEl = document.getElementById("wb-sdf-modified");
+    const zoomInBtn = document.getElementById("wb-zoom-in");
+    const zoomOutBtn = document.getElementById("wb-zoom-out");
+    const zoomLevelEl = document.getElementById("wb-zoom-level");
+    const mlDetectBtn = document.getElementById("wb-ml-detect");
+    const mlStatusEl = document.getElementById("wb-ml-status");
+    const editHeadsBtn = document.getElementById("wb-edit-heads");
+    const editStatusEl = document.getElementById("wb-edit-status");
+    const mlZoneBtn = document.getElementById("wb-ml-zone");
+    const mlZoneInfoEl = document.getElementById("wb-ml-zone-info");
+    const connectHeadsBtn = document.getElementById("wb-connect-heads");
+    const connectStatusEl = document.getElementById("wb-connect-status");
+    const editTargetRow = document.getElementById("wb-edit-target-row");
+    const editTargetBtns = {
+      head:  document.getElementById("wb-edit-target-head"),
+      pipe:  document.getElementById("wb-edit-target-pipe"),
+      alarm: document.getElementById("wb-edit-target-alarm"),
+    };
+
+    // ====== Canvas 리사이즈 ======
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      state.dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * state.dpr);
+      canvas.height = Math.round(rect.height * state.dpr);
+      render();
+    }
+    window.addEventListener("resize", resizeCanvas);
+
+    // ====== 뷰 변환 ======
+    // 클릭 위치에서 가장 가까운 헤드 찾기 (반경 hitR CAD 안)
+    function findNearestHead(wx, wy, hitR) {
+      let bestIdx = -1, bestKind = null, bestD = hitR;
+      // mlHeads
+      if (state.mlHeads) {
+        for (let i = 0; i < state.mlHeads.length; i++) {
+          const h = state.mlHeads[i];
+          const d = Math.hypot(h.x - wx, h.y - wy);
+          if (d < bestD) { bestD = d; bestIdx = i; bestKind = "ml"; }
+        }
+      }
+      // manualHeads
+      for (let i = 0; i < state.manualHeads.length; i++) {
+        const h = state.manualHeads[i];
+        const d = Math.hypot(h.x - wx, h.y - wy);
+        if (d < bestD) { bestD = d; bestIdx = i; bestKind = "manual"; }
+      }
+      return { idx: bestIdx, kind: bestKind, dist: bestD };
+    }
+
+    function handleHeadEditClick(wx, wy, shiftKey) {
+      // 클릭 반경: 줌에 비례 (화면상 약 15px)
+      const hitR = 15 / state.view.zoom;
+      const nearest = findNearestHead(wx, wy, hitR);
+      if (nearest.idx >= 0) {
+        if (shiftKey) {
+          // Shift+클릭: 강제 삭제
+          if (nearest.kind === "manual") {
+            state.manualHeads.splice(nearest.idx, 1);
+          } else {
+            state.headEdit[nearest.idx] = false;
+          }
+        } else {
+          // 일반 클릭: 토글
+          if (nearest.kind === "manual") {
+            // manual 은 삭제 (toggle off = 의미 없음)
+            state.manualHeads.splice(nearest.idx, 1);
+          } else {
+            state.headEdit[nearest.idx] = !state.headEdit[nearest.idx];
+          }
+        }
+      } else {
+        // 빈 곳 클릭 → 새 manual 헤드 추가
+        state.manualHeads.push({ x: wx, y: wy });
+      }
+      updateEditStatus();
+    }
+
+    function updateEditStatus() {
+      if (!editStatusEl) return;
+      const active = countActiveHeads();
+      const pipes = state.manualPipes.length;
+      let target = state.editTarget;
+      let hint;
+      if (target === "head") {
+        hint = "클릭 = 추가/토글, Shift+클릭 = 삭제";
+      } else if (target === "pipe") {
+        hint = state.pendingPipeStart ? "두 번째 끝점 클릭 (Esc 취소)" : "첫 번째 끝점 클릭. Shift+클릭 = 가까운 manual 배관 삭제";
+      } else if (target === "alarm") {
+        hint = "클릭 = 알람밸브 좌표 설정";
+      }
+      editStatusEl.innerHTML = `편집 [${target}]: ${hint}<br>활성 헤드 <strong>${active}</strong>개, 수동 배관 ${pipes}개`;
+    }
+
+    // 점-선분 최단거리 (배관 hit-test 용)
+    function pointToSegmentDist(px, py, ax, ay, bx, by) {
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx*dx + dy*dy;
+      if (len2 === 0) return Math.hypot(px - ax, py - ay);
+      let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+      t = Math.max(0, Math.min(1, t));
+      const qx = ax + t * dx, qy = ay + t * dy;
+      return Math.hypot(px - qx, py - qy);
+    }
+
+    function handlePipeEditClick(wx, wy, shiftKey) {
+      if (shiftKey) {
+        // Shift+클릭: 가까운 manual 배관 삭제
+        const hitR = 20 / state.view.zoom;
+        let bestIdx = -1, bestD = hitR;
+        for (let i = 0; i < state.manualPipes.length; i++) {
+          const p = state.manualPipes[i];
+          const d = pointToSegmentDist(wx, wy, p.x1, p.y1, p.x2, p.y2);
+          if (d < bestD) { bestD = d; bestIdx = i; }
+        }
+        if (bestIdx >= 0) state.manualPipes.splice(bestIdx, 1);
+        state.pendingPipeStart = null;
+        updateEditStatus();
+        return;
+      }
+      if (state.pendingPipeStart) {
+        state.manualPipes.push({
+          x1: state.pendingPipeStart.x, y1: state.pendingPipeStart.y,
+          x2: wx, y2: wy,
+        });
+        state.pendingPipeStart = null;
+      } else {
+        state.pendingPipeStart = { x: wx, y: wy };
+      }
+      updateEditStatus();
+    }
+
+    function handleAlarmEditClick(wx, wy) {
+      state.alarmManual = { x: wx, y: wy };
+      alarmModeEl.value = "manual";
+      alarmManualEl.classList.remove("hidden");
+      alarmXEl.value = wx.toFixed(2);
+      alarmYEl.value = wy.toFixed(2);
+      updateEditStatus();
+    }
+
+    // ====== 누락 헤드 자동 연결 ======
+    function collectPipeSegments() {
+      // PIPE 카테고리 layer 의 LINE/LWPOLYLINE/ARC chord + 사용자 추가 manualPipes
+      const segs = [];
+      if (state.entities && state.layerState) {
+        for (const ent of state.entities) {
+          const ls = state.layerState[ent.l];
+          if (!ls || !ls.visible) continue;
+          if (ls.category !== "PIPE") continue;
+          if (ent.t === "L") {
+            segs.push({ x1: ent.p[0], y1: ent.p[1], x2: ent.p[2], y2: ent.p[3] });
+          } else if (ent.t === "PL" && Array.isArray(ent.p)) {
+            for (let i = 0; i + 1 < ent.p.length; i++) {
+              segs.push({ x1: ent.p[i][0], y1: ent.p[i][1], x2: ent.p[i+1][0], y2: ent.p[i+1][1] });
+            }
+          } else if (ent.t === "ARC") {
+            // chord
+            const sa = ent.a[0] * Math.PI / 180;
+            const ea = ent.a[1] * Math.PI / 180;
+            const x1 = ent.c[0] + ent.r * Math.cos(sa);
+            const y1 = ent.c[1] + ent.r * Math.sin(sa);
+            const x2 = ent.c[0] + ent.r * Math.cos(ea);
+            const y2 = ent.c[1] + ent.r * Math.sin(ea);
+            segs.push({ x1, y1, x2, y2 });
+          }
+        }
+      }
+      for (const p of state.manualPipes) {
+        segs.push({ x1: p.x1, y1: p.y1, x2: p.x2, y2: p.y2 });
+      }
+      return segs;
+    }
+
+    function nearestPointOnSegment(px, py, ax, ay, bx, by) {
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx*dx + dy*dy;
+      if (len2 === 0) return { x: ax, y: ay, dist: Math.hypot(px - ax, py - ay) };
+      let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+      t = Math.max(0, Math.min(1, t));
+      const qx = ax + t * dx, qy = ay + t * dy;
+      return { x: qx, y: qy, dist: Math.hypot(px - qx, py - qy) };
+    }
+
+    function collectActiveHeadPositions() {
+      const out = [];
+      if (state.mlHeads) {
+        for (let i = 0; i < state.mlHeads.length; i++) {
+          if (!state.headEdit[i]) continue;
+          const h = state.mlHeads[i];
+          out.push({ x: h.x, y: h.y });
+        }
+      }
+      for (const h of state.manualHeads) {
+        out.push({ x: h.x, y: h.y });
+      }
+      return out;
+    }
+
+    function connectMissingHeads() {
+      const headPositions = collectActiveHeadPositions();
+      if (headPositions.length === 0) {
+        connectStatusEl.style.display = "block";
+        connectStatusEl.innerHTML = "<span style='color:#b91c1c'>활성 헤드가 없습니다. 먼저 [검출 실행] 으로 헤드를 인식하세요.</span>";
+        return;
+      }
+      const segs = collectPipeSegments();
+      if (segs.length === 0) {
+        connectStatusEl.style.display = "block";
+        connectStatusEl.innerHTML = "<span style='color:#b91c1c'>PIPE 카테고리 배관이 없습니다. 레이어 분류 확인 또는 수동 배관 추가 필요.</span>";
+        return;
+      }
+
+      // 이미 연결됨으로 판단할 임계 (CAD 단위 mm 기준). 헤드 중심이 배관 위 1mm 안이면 이미 연결.
+      const eps = 1.0;
+      // 최대 연결 거리 (이보다 멀면 안 연결 - "고립된 헤드"). 단위 mm 기준 8m.
+      const maxDist = parseFloat(prompt("최대 연결 거리(CAD 단위)? 예: 8000 (8m, mm 단위 도면 기준)", "8000") || "8000");
+      if (!isFinite(maxDist) || maxDist <= 0) {
+        connectStatusEl.style.display = "block";
+        connectStatusEl.innerHTML = "<span style='color:#b91c1c'>잘못된 거리 값.</span>";
+        return;
+      }
+
+      let added = 0, alreadyConnected = 0, tooFar = 0;
+      for (const h of headPositions) {
+        let best = null, bestD = Infinity;
+        for (const s of segs) {
+          const p = nearestPointOnSegment(h.x, h.y, s.x1, s.y1, s.x2, s.y2);
+          if (p.dist < bestD) { bestD = p.dist; best = p; }
+        }
+        if (best == null) continue;
+        if (bestD <= eps) { alreadyConnected++; continue; }
+        if (bestD > maxDist) { tooFar++; continue; }
+        // 새 연결선 추가 (헤드 → 가장 가까운 배관 점)
+        state.manualPipes.push({ x1: h.x, y1: h.y, x2: best.x, y2: best.y });
+        added++;
+      }
+      connectStatusEl.style.display = "block";
+      connectStatusEl.innerHTML = `완료 — 새 연결선 <strong>${added}개</strong> 추가. 이미 연결 ${alreadyConnected}개, 너무 멀어 제외 ${tooFar}개 (>${maxDist})`;
+      updateEditStatus();
+      render();
+    }
+
+    connectHeadsBtn.addEventListener("click", connectMissingHeads);
+
+    // ESC = 배관 첫점 취소
+    window.addEventListener("keydown", (e) => {
+      if (state.mode === "head_edit" && state.editTarget === "pipe" && e.key === "Escape") {
+        state.pendingPipeStart = null;
+        render();
+        updateEditStatus();
+      }
+    });
+
+    function countActiveHeads() {
+      let n = 0;
+      if (state.mlHeads) {
+        for (let i = 0; i < state.mlHeads.length; i++) {
+          if (state.headEdit[i]) n++;
+        }
+      }
+      n += state.manualHeads.length;
+      return n;
+    }
+
+    function collectActiveHeads() {
+      // 추출 API 에 보낼 최종 헤드 좌표 리스트
+      const out = [];
+      if (state.mlHeads) {
+        for (let i = 0; i < state.mlHeads.length; i++) {
+          if (!state.headEdit[i]) continue;
+          const h = state.mlHeads[i];
+          out.push({ x: h.x, y: h.y, origin: h.origin || "ml" });
+        }
+      }
+      for (const h of state.manualHeads) {
+        out.push({ x: h.x, y: h.y, origin: "manual" });
+      }
+      return out;
+    }
+
+    function fitToBBox() {
+      if (!state.bbox) return;
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      const bw = state.bbox.x_max - state.bbox.x_min;
+      const bh = state.bbox.y_max - state.bbox.y_min;
+      if (bw <= 0 || bh <= 0) return;
+      const margin = 30;
+      const zx = (w - 2 * margin) / bw;
+      const zy = (h - 2 * margin) / bh;
+      const z = Math.min(zx, zy);
+      state.view.zoom = z;
+      // DXF 좌표계: Y가 위쪽. Canvas 는 Y가 아래쪽. -z 로 뒤집기.
+      state.view.panX = w / 2 - ((state.bbox.x_min + state.bbox.x_max) / 2) * z;
+      state.view.panY = h / 2 + ((state.bbox.y_min + state.bbox.y_max) / 2) * z;
+      state.fitZoom = z; // 화면 맞춤 기준 줌 — % 표시용
+      render();
+      updateZoomLevelDisplay();
+    }
+    fitBtnEl.addEventListener("click", fitToBBox);
+
+    function zoomAtPoint(sx, sy, factor) {
+      if (!state.entities.length) return;
+      const [wx, wy] = screenToWorld(sx, sy);
+      state.view.zoom *= factor;
+      const [nsx, nsy] = worldToScreen(wx, wy);
+      state.view.panX += sx - nsx;
+      state.view.panY += sy - nsy;
+      render();
+      updateZoomLevelDisplay();
+    }
+
+    function zoomCenter(factor) {
+      const rect = canvas.getBoundingClientRect();
+      zoomAtPoint(rect.width / 2, rect.height / 2, factor);
+    }
+
+    function updateZoomLevelDisplay() {
+      if (!zoomLevelEl) return;
+      const ratio = state.fitZoom ? (state.view.zoom / state.fitZoom) : state.view.zoom;
+      zoomLevelEl.textContent = (ratio * 100).toFixed(0) + "%";
+    }
+
+    zoomInBtn.addEventListener("click", () => zoomCenter(1.25));
+    zoomOutBtn.addEventListener("click", () => zoomCenter(1 / 1.25));
+    zoomLevelEl.addEventListener("click", fitToBBox);
+
+    // 키보드 단축키: + 확대 / - 축소 / 0 화면 맞춤
+    window.addEventListener("keydown", (e) => {
+      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable)) return;
+      if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomCenter(1.25); }
+      else if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomCenter(1 / 1.25); }
+      else if (e.key === "0") { e.preventDefault(); fitToBBox(); }
+    });
+
+    function worldToScreen(x, y) {
+      return [x * state.view.zoom + state.view.panX, -y * state.view.zoom + state.view.panY];
+    }
+    function screenToWorld(sx, sy) {
+      return [(sx - state.view.panX) / state.view.zoom, -(sy - state.view.panY) / state.view.zoom];
+    }
+
+    // ====== 렌더링 ======
+    function render() {
+      const w = canvas.width / state.dpr;
+      const h = canvas.height / state.dpr;
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, w, h);
+      if (!state.entities.length) return;
+
+      const { zoom, panX, panY } = state.view;
+      ctx.lineWidth = 1;
+
+      // 카테고리별 그룹 렌더 (TEXT/INSERT 는 마지막에)
+      const groups = { ARCH: [], EXCLUDE: [], OTHER: [], PIPE: [], HEAD: [], TEXT: [] };
+      for (const ent of state.entities) {
+        const ls = state.layerState[ent.l];
+        if (!ls || !ls.visible) continue;
+        const cat = ls.category;
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(ent);
+      }
+      const order = ["EXCLUDE", "ARCH", "OTHER", "TEXT", "PIPE", "HEAD"];
+      for (const cat of order) {
+        const arr = groups[cat] || [];
+        if (!arr.length) continue;
+        const color = CATEGORY_COLORS[cat];
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = (cat === "ARCH" || cat === "EXCLUDE") ? 0.35 : 1.0;
+        ctx.lineWidth = (cat === "PIPE" || cat === "HEAD") ? 1.6 : 0.9;
+        for (const ent of arr) drawEntity(ent);
+      }
+      ctx.globalAlpha = 1;
+
+      drawOverlays();
+    }
+
+    function drawOverlays() {
+      // Zone bbox (확정)
+      if (state.zoneBbox) {
+        const [x1, y1] = worldToScreen(state.zoneBbox[0], state.zoneBbox[1]);
+        const [x2, y2] = worldToScreen(state.zoneBbox[2], state.zoneBbox[3]);
+        ctx.strokeStyle = "#fbbf24";
+        ctx.fillStyle = "rgba(251, 191, 36, 0.08)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#fbbf24";
+        ctx.font = "11px ui-monospace, monospace";
+        ctx.fillText("ZONE", Math.min(x1, x2) + 6, Math.min(y1, y2) + 14);
+      }
+      // Zone 드래그 중
+      if (state.zoneDrag) {
+        const d = state.zoneDrag;
+        ctx.strokeStyle = "#fde047";
+        ctx.fillStyle = "rgba(253, 224, 71, 0.10)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.rect(Math.min(d.sx, d.ex), Math.min(d.sy, d.ey), Math.abs(d.ex - d.sx), Math.abs(d.ey - d.sy));
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // ML 검출 헤드 + 사용자 편집 상태 반영
+      //   active(파랑 동그라미)  = 추출 대상
+      //   inactive(회색 X)       = 사용자가 제외
+      //   yolo_only inactive     = 빨간 NEW (클릭하면 활성화 권유)
+      //   manual(녹색 +)         = 사용자 추가
+      if (state.mlHeads && state.mlHeads.length) {
+        for (let i = 0; i < state.mlHeads.length; i++) {
+          const h = state.mlHeads[i];
+          const active = state.headEdit[i];
+          const [sx, sy] = worldToScreen(h.x, h.y);
+          if (active) {
+            // 파랑 동그라미 (활성)
+            ctx.strokeStyle = "#1e3a8a";
+            ctx.fillStyle = "rgba(59, 130, 246, 0.75)";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          } else if (h.origin === "yolo_only") {
+            // YOLO 보강 후보 — 빨간 NEW (비활성. 클릭 권유)
+            ctx.strokeStyle = "#dc2626";
+            ctx.fillStyle = "rgba(220, 38, 38, 0.25)";
+            ctx.lineWidth = 2.2;
+            ctx.beginPath(); ctx.arc(sx, sy, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = "#dc2626";
+            ctx.font = "bold 8px ui-monospace, monospace";
+            ctx.fillText("NEW", sx + 10, sy - 6);
+          } else {
+            // 사용자가 비활성화한 헤드 — 회색 X
+            ctx.strokeStyle = "#9ca3af";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(sx - 5, sy - 5); ctx.lineTo(sx + 5, sy + 5);
+            ctx.moveTo(sx + 5, sy - 5); ctx.lineTo(sx - 5, sy + 5);
+            ctx.stroke();
+          }
+        }
+      }
+      // 사용자가 수동 추가한 배관 — 청록색 굵은 선
+      if (state.manualPipes && state.manualPipes.length) {
+        ctx.strokeStyle = "#0d9488";
+        ctx.lineWidth = 2.5;
+        for (const p of state.manualPipes) {
+          const [a, b] = worldToScreen(p.x1, p.y1);
+          const [c, d] = worldToScreen(p.x2, p.y2);
+          ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke();
+          // 양 끝 작은 점
+          ctx.fillStyle = "#0d9488";
+          ctx.beginPath(); ctx.arc(a, b, 3, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(c, d, 3, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      // pipe 첫 점 대기 중인 표시
+      if (state.mode === "head_edit" && state.editTarget === "pipe" && state.pendingPipeStart) {
+        const [sx, sy] = worldToScreen(state.pendingPipeStart.x, state.pendingPipeStart.y);
+        ctx.strokeStyle = "#0d9488";
+        ctx.fillStyle = "rgba(13, 148, 136, 0.5)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "#0d9488";
+        ctx.font = "bold 9px ui-monospace, monospace";
+        ctx.fillText("PIPE start", sx + 8, sy - 6);
+      }
+
+      // 사용자가 수동 추가한 헤드 — 녹색 + 마커
+      if (state.manualHeads && state.manualHeads.length) {
+        ctx.strokeStyle = "#14532d";
+        ctx.fillStyle = "rgba(34, 197, 94, 0.85)";
+        ctx.lineWidth = 1.4;
+        for (const h of state.manualHeads) {
+          const [sx, sy] = worldToScreen(h.x, h.y);
+          ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(sx - 3, sy); ctx.lineTo(sx + 3, sy);
+          ctx.moveTo(sx, sy - 3); ctx.lineTo(sx, sy + 3);
+          ctx.stroke();
+          ctx.strokeStyle = "#14532d"; ctx.lineWidth = 1.4;
+        }
+      }
+      // ML 검출 알람밸브 — 큰 보라색 마름모
+      if (state.mlAlarms && state.mlAlarms.length) {
+        ctx.strokeStyle = "#a855f7";
+        ctx.fillStyle = "rgba(168, 85, 247, 0.25)";
+        ctx.lineWidth = 2;
+        for (const a of state.mlAlarms) {
+          const [sx, sy] = worldToScreen(a.x, a.y);
+          ctx.beginPath();
+          ctx.moveTo(sx, sy - 12);
+          ctx.lineTo(sx + 12, sy);
+          ctx.lineTo(sx, sy + 12);
+          ctx.lineTo(sx - 12, sy);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#581c87";
+          ctx.font = "bold 9px ui-monospace, monospace";
+          ctx.fillText("ALV", sx + 14, sy + 3);
+          ctx.fillStyle = "rgba(168, 85, 247, 0.25)";
+        }
+      }
+
+      // 추출 결과 오버레이: path edges + 헤드
+      if (state.result) {
+        const r = state.result;
+        // path edges - 원본 배관 좌표 사용, closure 는 점선
+        if (r.path_edges_xy && r.path_edges_xy.length) {
+          for (const edge of r.path_edges_xy) {
+            const x1 = edge[0], y1 = edge[1], x2 = edge[2], y2 = edge[3];
+            const kind = edge[4] || "pipe";
+            const [a, b] = worldToScreen(x1, y1);
+            const [c, d] = worldToScreen(x2, y2);
+            if (kind === "closure") {
+              ctx.strokeStyle = "#fbbf24";
+              ctx.lineWidth = 1.5;
+              ctx.globalAlpha = 0.7;
+              ctx.setLineDash([4, 3]);
+            } else {
+              ctx.strokeStyle = "#fde047";
+              ctx.lineWidth = 2.4;
+              ctx.globalAlpha = 0.95;
+              ctx.setLineDash([]);
+            }
+            ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke();
+          }
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+        }
+        // 선정 헤드
+        if (r.selected_heads_xy && r.selected_heads_xy.length) {
+          for (const h of r.selected_heads_xy) {
+            const [sx, sy] = worldToScreen(h.x, h.y);
+            ctx.fillStyle = "#fef08a";
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = "#dc2626";
+            ctx.font = "bold 9px ui-monospace, monospace";
+            ctx.fillText(h.rh_no, sx + 7, sy - 5);
+          }
+        }
+        // 알람밸브 (서버 결과 기준)
+        if (r.alarm_node_xy) {
+          const [sx, sy] = worldToScreen(r.alarm_node_xy[0], r.alarm_node_xy[1]);
+          ctx.fillStyle = "#ef4444";
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(sx, sy, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = "#fff";
+          ctx.font = "bold 10px ui-monospace, monospace";
+          ctx.fillText("AV", sx - 7, sy + 3);
+        }
+      } else if (state.alarmManual) {
+        // 사용자가 클릭한 임시 알람밸브 (추출 전)
+        const [sx, sy] = worldToScreen(state.alarmManual.x, state.alarmManual.y);
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sx - 8, sy); ctx.lineTo(sx + 8, sy);
+        ctx.moveTo(sx, sy - 8); ctx.lineTo(sx, sy + 8);
+        ctx.stroke();
+        ctx.fillStyle = "#ef4444";
+        ctx.font = "bold 10px ui-monospace, monospace";
+        ctx.fillText("AV(클릭)", sx + 10, sy - 6);
+      }
+    }
+
+    function drawEntity(ent) {
+      const z = state.view.zoom;
+      if (ent.t === "L") {
+        const [a, b] = worldToScreen(ent.p[0], ent.p[1]);
+        const [c, d] = worldToScreen(ent.p[2], ent.p[3]);
+        ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke();
+      } else if (ent.t === "PL") {
+        ctx.beginPath();
+        for (let i = 0; i < ent.p.length; i++) {
+          const [sx, sy] = worldToScreen(ent.p[i][0], ent.p[i][1]);
+          if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        }
+        ctx.stroke();
+      } else if (ent.t === "ARC") {
+        const [sx, sy] = worldToScreen(ent.c[0], ent.c[1]);
+        const r = ent.r * z;
+        if (r < 0.3) return;
+        // DXF ARC 는 CCW. Canvas 는 CW 가 양수.
+        const sa = ent.a[0] * Math.PI / 180;
+        const ea = ent.a[1] * Math.PI / 180;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, -ea, -sa, false);
+        ctx.stroke();
+      } else if (ent.t === "C") {
+        const [sx, sy] = worldToScreen(ent.c[0], ent.c[1]);
+        const r = ent.r * z;
+        if (r < 0.5) {
+          // 너무 작으면 점으로
+          ctx.fillRect(sx - 1, sy - 1, 2, 2);
+          return;
+        }
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (ent.t === "I") {
+        const [sx, sy] = worldToScreen(ent.p[0], ent.p[1]);
+        // 작은 다이아몬드
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - 3); ctx.lineTo(sx + 3, sy); ctx.lineTo(sx, sy + 3); ctx.lineTo(sx - 3, sy);
+        ctx.closePath();
+        ctx.fill();
+      } else if (ent.t === "T") {
+        if (z < 0.005) return; // 너무 작을 때 텍스트 생략
+        const [sx, sy] = worldToScreen(ent.p[0], ent.p[1]);
+        ctx.font = "10px ui-monospace, monospace";
+        ctx.fillText(ent.v, sx, sy);
+      }
+    }
+
+    // ====== 인터랙션: zoom + pan ======
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      zoomAtPoint(mx, my, factor);
+    }, { passive: false });
+
+    function setMode(mode) {
+      state.mode = mode;
+      modePanBtn.classList.toggle("active", mode === "pan");
+      modeAlarmBtn.classList.toggle("active", mode === "alarm");
+      modeZoneBtn.classList.toggle("active", mode === "zone");
+      canvas.classList.toggle("mode-alarm", mode === "alarm" || mode === "head_edit");
+      canvas.classList.toggle("mode-zone", mode === "zone");
+      if (editHeadsBtn) {
+        editHeadsBtn.classList.toggle("active", mode === "head_edit");
+        editHeadsBtn.textContent = (mode === "head_edit") ? "편집 종료" : "수동 바운딩 박스 추가/제거";
+      }
+      if (editTargetRow) editTargetRow.style.display = (mode === "head_edit") ? "flex" : "none";
+      if (editStatusEl) editStatusEl.style.display = (mode === "head_edit") ? "block" : "none";
+      if (mode !== "head_edit") state.pendingPipeStart = null;
+      updateEditTargetButtons();
+    }
+
+    function updateEditTargetButtons() {
+      for (const k of Object.keys(editTargetBtns)) {
+        if (editTargetBtns[k]) editTargetBtns[k].classList.toggle("active", state.editTarget === k);
+      }
+    }
+    function setEditTarget(t) {
+      state.editTarget = t;
+      state.pendingPipeStart = null;
+      updateEditTargetButtons();
+      updateEditStatus();
+    }
+    editTargetBtns.head.addEventListener("click", () => setEditTarget("head"));
+    editTargetBtns.pipe.addEventListener("click", () => setEditTarget("pipe"));
+    editTargetBtns.alarm.addEventListener("click", () => setEditTarget("alarm"));
+    modePanBtn.addEventListener("click", () => setMode("pan"));
+    modeAlarmBtn.addEventListener("click", () => setMode("alarm"));
+    modeZoneBtn.addEventListener("click", () => setMode("zone"));
+    editHeadsBtn.addEventListener("click", () => {
+      setMode(state.mode === "head_edit" ? "pan" : "head_edit");
+    });
+    mlZoneBtn.addEventListener("click", () => {
+      // 검출 범위 지정 = Zone 박스 모드. 같은 zone 이 검출+추출 모두에 적용됨.
+      setMode(state.mode === "zone" ? "pan" : "zone");
+    });
+    clearZoneBtn.addEventListener("click", () => {
+      state.zoneBbox = null;
+      clearZoneBtn.style.display = "none";
+      zoneInfoEl.style.display = "none";
+      updateMlZoneInfo();
+      render();
+      scheduleAutoRun();
+    });
+
+    function updateMlZoneInfo() {
+      if (!mlZoneInfoEl) return;
+      if (state.zoneBbox) {
+        const b = state.zoneBbox;
+        mlZoneInfoEl.style.display = "block";
+        mlZoneInfoEl.innerHTML = `<span style="color:#b45309;font-weight:600;">● 검출 범위:</span> (${b[0].toFixed(0)}, ${b[1].toFixed(0)}) ~ (${b[2].toFixed(0)}, ${b[3].toFixed(0)})`;
+        mlZoneBtn.classList.add("active");
+      } else {
+        mlZoneInfoEl.style.display = "none";
+        mlZoneInfoEl.innerHTML = "";
+        mlZoneBtn.classList.remove("active");
+      }
+    }
+
+    canvas.addEventListener("mousedown", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      if (state.mode === "alarm") {
+        const [wx, wy] = screenToWorld(mx, my);
+        state.alarmManual = { x: wx, y: wy };
+        alarmModeEl.value = "manual";
+        alarmManualEl.classList.remove("hidden");
+        alarmXEl.value = wx.toFixed(2);
+        alarmYEl.value = wy.toFixed(2);
+        setMode("pan");
+        render();
+        scheduleAutoRun();
+        return;
+      }
+      if (state.mode === "head_edit") {
+        const [wx, wy] = screenToWorld(mx, my);
+        if (state.editTarget === "head") {
+          handleHeadEditClick(wx, wy, e.shiftKey);
+        } else if (state.editTarget === "pipe") {
+          handlePipeEditClick(wx, wy, e.shiftKey);
+        } else if (state.editTarget === "alarm") {
+          handleAlarmEditClick(wx, wy);
+        }
+        render();
+        return;
+      }
+      if (state.mode === "zone") {
+        state.zoneDrag = { sx: mx, sy: my, ex: mx, ey: my };
+        return;
+      }
+      // pan
+      state.drag = { x: e.clientX, y: e.clientY, panX: state.view.panX, panY: state.view.panY };
+      canvas.classList.add("is-panning");
+    });
+
+    window.addEventListener("mouseup", (e) => {
+      if (state.zoneDrag) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = state.zoneDrag.sx, sy = state.zoneDrag.sy;
+        const ex = e.clientX - rect.left, ey = e.clientY - rect.top;
+        const xmin = Math.min(sx, ex), xmax = Math.max(sx, ex);
+        const ymin = Math.min(sy, ey), ymax = Math.max(sy, ey);
+        state.zoneDrag = null;
+        if (Math.abs(xmax - xmin) < 6 || Math.abs(ymax - ymin) < 6) {
+          render();
+          return;
+        }
+        const [wx1, wy1] = screenToWorld(xmin, ymax); // (좌하)
+        const [wx2, wy2] = screenToWorld(xmax, ymin); // (우상)
+        state.zoneBbox = [Math.min(wx1, wx2), Math.min(wy1, wy2), Math.max(wx1, wx2), Math.max(wy1, wy2)];
+        clearZoneBtn.style.display = "inline-block";
+        zoneInfoEl.style.display = "block";
+        const bx = state.zoneBbox;
+        zoneInfoEl.textContent = `Zone: (${bx[0].toFixed(0)}, ${bx[1].toFixed(0)}) ~ (${bx[2].toFixed(0)}, ${bx[3].toFixed(0)})`;
+        updateMlZoneInfo();
+        setMode("pan");
+        render();
+        scheduleAutoRun();
+        return;
+      }
+      state.drag = null;
+      canvas.classList.remove("is-panning");
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (state.zoneDrag) {
+        state.zoneDrag.ex = e.clientX - rect.left;
+        state.zoneDrag.ey = e.clientY - rect.top;
+        render();
+        return;
+      }
+      if (state.drag) {
+        state.view.panX = state.drag.panX + (e.clientX - state.drag.x);
+        state.view.panY = state.drag.panY + (e.clientY - state.drag.y);
+        render();
+        return;
+      }
+      if (state.entities.length && inside) {
+        const [wx, wy] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        overlayCursorEl.style.display = "inline-block";
+        overlayCursorEl.textContent = `( ${wx.toFixed(0)} , ${wy.toFixed(0)} )`;
+      } else {
+        overlayCursorEl.style.display = "none";
+      }
+    });
+
+    // ====== DXF 업로드 + inspect ======
+    dxfInputEl.addEventListener("change", async () => {
+      const file = dxfInputEl.files[0];
+      if (!file) return;
+      state.dxfFile = file;
+      loadStatusEl.textContent = `업로드 중... (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+      runBtnEl.disabled = true;
+      runStatusEl.textContent = "분석 중...";
+
+      const fd = new FormData();
+      fd.append("dxf_file", file);
+      try {
+        const res = await fetch("/api/remote30/inspect", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || `HTTP ${res.status}`);
+
+        state.entities = data.entities;
+        state.bbox = data.bbox;
+        state.layers = data.layers;
+        state.dxfToken = data.dxf_token;
+        state.result = null;
+        state.alarmManual = null;
+        state.zoneBbox = null;
+        state.mlHeads = null;
+        clearZoneBtn.style.display = "none";
+        zoneInfoEl.style.display = "none";
+        updateMlZoneInfo();
+        mlDetectBtn.disabled = false;
+        mlZoneBtn.disabled = false;
+        mlStatusEl.textContent = "검출 실행 대기 (범위 지정 안 하면 도면 전체).";
+        state.layerState = {};
+        for (const layer of data.layers) {
+          state.layerState[layer.name] = {
+            visible: layer.auto_category !== "EXCLUDE",
+            category: layer.auto_category,
+          };
+        }
+        loadStatusEl.textContent = `${data.dxf_filename} — entity ${data.counts.total_entities}, layer ${data.counts.layers}`;
+        overlayInfoEl.textContent = `${data.counts.total_entities} entities | ${data.counts.layers} layers`;
+        emptyEl.style.display = "none";
+        renderLayerList();
+        fitToBBox();
+        runBtnEl.disabled = false;
+        runStatusEl.textContent = "분류를 확인하고 추출을 실행하세요.";
+      } catch (err) {
+        loadStatusEl.textContent = "오류: " + err.message;
+        runStatusEl.textContent = "DXF 분석 실패. 다른 파일로 시도하세요.";
+      }
+    });
+
+    // ====== 레이어 목록 렌더 ======
+    function renderLayerList() {
+      if (!state.layers.length) return;
+      const cats = ["PIPE", "HEAD", "TEXT", "ARCH", "EXCLUDE", "OTHER"];
+      const rows = state.layers.map((l) => {
+        const ls = state.layerState[l.name];
+        const opts = cats.map((c) => `<option value="${c}" ${ls.category === c ? "selected" : ""}>${c}</option>`).join("");
+        const safeName = l.name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return `<div class="layer-row">
+          <input type="checkbox" data-layer="${encodeURIComponent(l.name)}" ${ls.visible ? "checked" : ""}>
+          <div>
+            <div class="name cat-${ls.category}" title="${safeName}">${safeName}</div>
+            <div class="count">${l.count.toLocaleString()} ent.</div>
+          </div>
+          <select data-layer-cat="${encodeURIComponent(l.name)}">${opts}</select>
+        </div>`;
+      }).join("");
+      layerListEl.innerHTML = rows;
+
+      layerListEl.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const name = decodeURIComponent(cb.dataset.layer);
+          state.layerState[name].visible = cb.checked;
+          render();
+        });
+      });
+      layerListEl.querySelectorAll("select").forEach((sel) => {
+        sel.addEventListener("change", () => {
+          const name = decodeURIComponent(sel.dataset.layerCat);
+          state.layerState[name].category = sel.value;
+          const row = sel.closest(".layer-row");
+          const nameEl = row.querySelector(".name");
+          nameEl.className = "name cat-" + sel.value;
+          render();
+          scheduleAutoRun();
+        });
+      });
+    }
+
+    // Auto-run debounce
+    autoRunEl.addEventListener("change", () => {
+      state.autoRun = autoRunEl.checked;
+      if (state.autoRun) scheduleAutoRun();
+    });
+    function scheduleAutoRun() {
+      if (!state.autoRun) return;
+      if (!state.dxfToken || state.running) return;
+      if (state.autoRunTimer) clearTimeout(state.autoRunTimer);
+      state.autoRunTimer = setTimeout(() => runExtract(true), 600);
+    }
+    // 모든 옵션 input 변경 감지
+    ["wb-remote-mode", "wb-elev-alarm", "wb-elev-head", "wb-kfactor", "wb-flow", "wb-fallback-dia", "wb-count", "wb-emit-sdf"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("change", () => scheduleAutoRun());
+    });
+    alarmXEl.addEventListener("change", () => scheduleAutoRun());
+    alarmYEl.addEventListener("change", () => scheduleAutoRun());
+
+    resetBtnEl.addEventListener("click", () => {
+      for (const l of state.layers) {
+        state.layerState[l.name] = { visible: l.auto_category !== "EXCLUDE", category: l.auto_category };
+      }
+      renderLayerList();
+      render();
+    });
+
+    alarmModeEl.addEventListener("change", () => {
+      alarmManualEl.classList.toggle("hidden", alarmModeEl.value !== "manual");
+      scheduleAutoRun();
+    });
+
+    // ====== 분류 → 키워드 리스트 변환 ======
+    function buildKeywordOverrides() {
+      const buckets = { PIPE: [], HEAD: [], TEXT: [], ARCH: [], EXCLUDE: [] };
+      for (const l of state.layers) {
+        const cat = state.layerState[l.name].category;
+        if (buckets[cat]) buckets[cat].push(l.name);
+      }
+      return {
+        pipe_layer_keywords: buckets.PIPE.join(","),
+        head_layer_keywords: buckets.HEAD.join(","),
+        text_layer_keywords: buckets.TEXT.join(","),
+        arch_layer_keywords: buckets.ARCH.join(","),
+        exclude_layer_keywords: buckets.EXCLUDE.join(","),
+      };
+    }
+
+    async function runExtract(isAuto) {
+      if (!state.dxfToken && !state.dxfFile) return;
+      if (state.running) return;
+      state.running = true;
+      runBtnEl.disabled = true;
+      runStatusEl.textContent = isAuto ? "자동 재계산 중..." : "추출 중... (도면 크기에 따라 1~수십 초)";
+
+      const fd = new FormData();
+      if (state.dxfToken) {
+        fd.append("dxf_token", state.dxfToken);
+      } else if (state.dxfFile) {
+        fd.append("dxf_file", state.dxfFile);
+      }
+      const overrides = buildKeywordOverrides();
+      for (const [k, v] of Object.entries(overrides)) {
+        if (v) fd.append(k, v);
+      }
+      fd.append("remote_mode", document.getElementById("wb-remote-mode").value);
+      fd.append("auto_detect_alarm", alarmModeEl.value === "auto" ? "true" : "false");
+      if (alarmModeEl.value === "manual") {
+        fd.append("alarm_x", alarmXEl.value || "0");
+        fd.append("alarm_y", alarmYEl.value || "0");
+      }
+      const optMap = {
+        "wb-elev-alarm": "elevation_alarm_m",
+        "wb-elev-head":  "elevation_head_m",
+        "wb-kfactor":    "k_factor",
+        "wb-flow":       "design_flow_per_head_lpm",
+        "wb-fallback-dia": "fallback_dia_mm",
+        "wb-count":      "remote_head_count",
+        "wb-fall-height": "natural_fall_height_m",
+      };
+      for (const [id, key] of Object.entries(optMap)) {
+        const v = document.getElementById(id).value.trim();
+        if (v) fd.append(key, v);
+      }
+      if (document.getElementById("wb-emit-sdf").checked) fd.append("emit_sdf", "1");
+      if (document.getElementById("wb-emit-csv") && document.getElementById("wb-emit-csv").checked) fd.append("emit_csv", "1");
+      if (state.zoneBbox) {
+        fd.append("zone_bbox", state.zoneBbox.map((n) => n.toFixed(3)).join(","));
+      }
+      // 사용자가 ml-detect + 편집한 경우 → active 헤드 좌표를 백엔드에 직접 전달
+      if (state.mlHeads && state.mlHeads.length > 0) {
+        const activeHeads = collectActiveHeads();
+        if (activeHeads.length > 0) {
+          fd.append("override_heads", JSON.stringify(activeHeads));
+        }
+      }
+      // 사용자가 수동 추가한 배관 (segments 에 그대로 합쳐짐)
+      if (state.manualPipes && state.manualPipes.length > 0) {
+        fd.append("override_pipes", JSON.stringify(state.manualPipes));
+      }
+
+      const t0 = performance.now();
+      try {
+        const res = await fetch("/api/remote30/extract", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || `HTTP ${res.status}`);
+        state.result = data;
+        render();
+        renderResults(data);
+        const dt = ((performance.now() - t0) / 1000).toFixed(1);
+        runStatusEl.textContent = `완료 (${dt}s) — 선정 ${data.counts.selected}개`;
+      } catch (err) {
+        runStatusEl.textContent = "오류: " + err.message;
+      } finally {
+        state.running = false;
+        runBtnEl.disabled = false;
+      }
+    }
+
+    runBtnEl.addEventListener("click", () => runExtract(false));
+
+    // ====== 전체 자동 처리 (one-click) ======
+    const autoBtn = document.getElementById("wb-auto-process-btn");
+    const autoStatusEl = document.getElementById("wb-auto-process-status");
+    if (autoBtn) {
+      autoBtn.addEventListener("click", async () => {
+        if (!state.dxfFile) {
+          autoStatusEl.innerHTML = "<span style='color:#b91c1c'>먼저 DXF 파일을 업로드하세요.</span>";
+          return;
+        }
+        autoBtn.disabled = true;
+        const t0 = performance.now();
+        autoStatusEl.textContent = "처리 중... (자동 분류 → 헤드 연결 → 추출 → SDF/CSV 생성)";
+        const fd = new FormData();
+        fd.append("dxf_file", state.dxfFile);
+        // 기본값들. zone 이 있으면 같이 보냄
+        if (state.zoneBbox) fd.append("zone_bbox", state.zoneBbox.map((n) => n.toFixed(3)).join(","));
+        if (state.alarmManual) {
+          fd.append("alarm_x", String(state.alarmManual.x));
+          fd.append("alarm_y", String(state.alarmManual.y));
+        }
+        for (const [id, key] of Object.entries({
+          "wb-elev-alarm": "elevation_alarm_m",
+          "wb-elev-head":  "elevation_head_m",
+          "wb-kfactor":    "k_factor",
+          "wb-flow":       "design_flow_per_head_lpm",
+          "wb-count":      "remote_head_count",
+          "wb-fall-height": "natural_fall_height_m",
+        })) {
+          const v = (document.getElementById(id).value || "").trim();
+          if (v) fd.append(key, v);
+        }
+        try {
+          const res = await fetch("/api/remote30/auto_process", { method: "POST", body: fd });
+          const data = await res.json();
+          if (!res.ok || !data.ok) throw new Error(data.message || `HTTP ${res.status}`);
+          state.result = data;
+          render();
+          renderResults(data);
+          const dt = ((performance.now() - t0) / 1000).toFixed(1);
+          const dl = [];
+          if (data.png_url) dl.push("PNG");
+          if (data.xlsx_url) dl.push("Excel");
+          if (data.sdf_url) dl.push("SDF");
+          if (data.csv_url) dl.push("CSV.zip");
+          autoStatusEl.innerHTML = `완료 (${dt}s) — 선정 ${data.counts.selected}개. 생성 파일: <strong>${dl.join(", ")}</strong>`;
+        } catch (err) {
+          autoStatusEl.innerHTML = "<span style='color:#b91c1c'>오류: " + err.message + "</span>";
+        } finally {
+          autoBtn.disabled = false;
+        }
+      });
+    }
+
+    // ====== YOLO 헤드 검출 ======
+    mlDetectBtn.addEventListener("click", async () => {
+      if (!state.dxfToken && !state.dxfFile) return;
+      mlDetectBtn.disabled = true;
+      const origText = mlDetectBtn.textContent;
+      mlDetectBtn.textContent = "검출 중...";
+      mlStatusEl.textContent = "YOLO 추론 중 (5-15초)...";
+      const t0 = performance.now();
+      try {
+        const fd = new FormData();
+        if (state.dxfToken) fd.append("dxf_token", state.dxfToken);
+        else fd.append("dxf_file", state.dxfFile);
+        const method = document.getElementById("wb-ml-method").value || "color";
+        const tileGrid = parseInt(document.getElementById("wb-ml-tile").value, 10) || 3;
+        const conf = parseFloat(document.getElementById("wb-ml-conf").value) || 0.18;
+        fd.append("method", method);
+        fd.append("tile_grid", String(tileGrid));
+        fd.append("conf", String(conf));
+        if (state.zoneBbox) {
+          fd.append("zone_bbox", state.zoneBbox.map((n) => n.toFixed(3)).join(","));
+        }
+        const res = await fetch("/api/remote30/ml-detect", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || `HTTP ${res.status}`);
+        state.mlHeads = data.ml_heads || [];
+        state.mlAlarms = data.ml_alarms || [];
+        // 기본 active 상태: layer → true, yolo_only → false, 나머지(yolo/manual) → true
+        state.headEdit = {};
+        for (let i = 0; i < state.mlHeads.length; i++) {
+          const h = state.mlHeads[i];
+          state.headEdit[i] = (h.origin === "yolo_only") ? false : true;
+        }
+        state.manualHeads = [];
+        editHeadsBtn.disabled = false;
+        connectHeadsBtn.disabled = false;
+        const autoBtn = document.getElementById("wb-auto-process-btn");
+        if (autoBtn) autoBtn.disabled = false;
+        const dt = ((performance.now() - t0) / 1000).toFixed(1);
+        const layerHeadLayers = state.layers.filter((l) => state.layerState[l.name].category === "HEAD");
+        const layerHeadEntCount = layerHeadLayers.reduce((sum, l) => sum + (l.types?.I || 0) + (l.types?.C || 0), 0);
+        const t = data.counts;
+        const methodLabel = ({yolo:"YOLO", color:"Color", layer:"Layer", layer_yolo:"Layer+YOLO"})[data.source] || data.source;
+        const alarmLine = (state.mlAlarms.length) ? `, 알람밸브 ${state.mlAlarms.length}개` : "";
+        let extra = "";
+        if (data.source === "layer_yolo") {
+          const layerN = t.layer_count || 0;
+          const yoloN = t.yolo_only_after_dedup || 0;
+          extra = `<br><small>Layer ${layerN}개 + YOLO 보강 <strong style="color:#dc2626;">${yoloN}개</strong> (Layer가 놓친 후보, 빨간 NEW)</small>`;
+        }
+        mlStatusEl.innerHTML = `완료 ${dt}s — ${methodLabel} 헤드 <strong>${t.detected}</strong>개${alarmLine}${extra}`;
+        render();
+      } catch (err) {
+        mlStatusEl.textContent = "오류: " + err.message;
+      } finally {
+        mlDetectBtn.disabled = false;
+        mlDetectBtn.textContent = origText;
+      }
+    });
+
+    function renderResults(data) {
+      const c = data.counts || {};
+      const alarmTag = ({auto:"자동검출", manual:"수동입력", fallback_origin:"fallback(0,0)", fallback_main_component:"fallback(중심)"})[data.alarm_source] || data.alarm_source;
+      const modeTag = ({length:"배관길이", hydraulic:"Hydraulic"})[data.remote_mode] || data.remote_mode;
+      const stat = (label, value) => `<div class="stat"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+      const fmt = (v) => (v === undefined || v === null) ? "-" : v;
+      statsEl.innerHTML = [
+        stat("선정 기준", modeTag),
+        stat("알람밸브", alarmTag),
+        stat("배관 segs", fmt(c.segments)),
+        stat("노드 / 에지", `${fmt(c.nodes)} / ${fmt(c.edges)}`),
+        stat("부착 헤드", `${fmt(c.attached_heads)} / ${fmt(c.heads)}`),
+        stat("선정 Remote", `<strong>${fmt(c.selected)}</strong>`),
+      ].join("");
+      warningsEl.innerHTML = (data.warnings && data.warnings.length)
+        ? `<div class="warn-box"><strong>경고</strong><ul>${data.warnings.map((w) => `<li>${w}</li>`).join("")}</ul></div>`
+        : "";
+      const setLink = (a, url) => {
+        if (url) { a.href = url; a.classList.remove("hidden"); }
+        else { a.classList.add("hidden"); }
+      };
+      setLink(dlPng, data.png_url ? data.png_url + "?t=" + Date.now() : null);
+      setLink(dlXlsx, data.xlsx_url);
+      setLink(dlSdf, data.sdf_url);
+      const dlCsv = document.getElementById("wb-dl-csv");
+      setLink(dlCsv, data.csv_url);
+      resultsEl.classList.remove("hidden");
+
+      // SDF tables 인라인 편집 영역
+      if (data.sdf_tables && data.sdf_tables.nodes && data.sdf_tables.nodes.length) {
+        state.sdfTables = JSON.parse(JSON.stringify(data.sdf_tables));
+        state.sdfTablesOriginal = JSON.parse(JSON.stringify(data.sdf_tables));
+        state.sdfModifiedCells.clear();
+        renderSdfTable(state.sdfActiveTab);
+        sdfSectionEl.classList.remove("hidden");
+        updateModifiedCounter();
+      } else {
+        sdfSectionEl.classList.add("hidden");
+        state.sdfTables = null;
+      }
+    }
+
+    // ====== SDF 테이블 렌더 + 인라인 편집 ======
+    const SDF_COLUMNS = {
+      nodes:   ["node_id", "x", "y", "z", "node_type", "source"],
+      pipes:   ["pipe_id", "from_node", "to_node", "diameter_m", "diameter_label", "length_m", "rise_m", "c_factor", "material", "status"],
+      nozzles: ["nozzle_id", "input_node", "output_node", "flow_m3s", "status", "library_item"],
+      valves:  ["valve_id", "input_node", "output_node", "valve_type", "target_value"],
+    };
+    // 편집 불가능한 식별자 컬럼
+    const SDF_READONLY = new Set(["node_id", "pipe_id", "nozzle_id", "valve_id"]);
+
+    function renderSdfTable(tab) {
+      if (!state.sdfTables) return;
+      state.sdfActiveTab = tab;
+      sdfTabBtns.forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+      const cols = SDF_COLUMNS[tab];
+      const rows = state.sdfTables[tab] || [];
+      const meta = `<div class="tab-meta">${rows.length}개 행 — 컬럼: ${cols.join(", ")}</div>`;
+      const head = `<tr>${cols.map((c) => `<th>${c}</th>`).join("")}</tr>`;
+      const body = rows.map((row, ri) => {
+        const tds = cols.map((c) => {
+          const isReadonly = SDF_READONLY.has(c);
+          const cellKey = `${tab}:${ri}:${c}`;
+          const modified = state.sdfModifiedCells.has(cellKey);
+          const val = row[c];
+          const display = (val === null || val === undefined) ? "" : String(val);
+          if (isReadonly) {
+            return `<td>${escapeHtml(display)}</td>`;
+          }
+          const cls = modified ? "editable modified" : "editable";
+          return `<td class="${cls}" contenteditable="true" data-tab="${tab}" data-row="${ri}" data-col="${c}">${escapeHtml(display)}</td>`;
+        }).join("");
+        return `<tr>${tds}</tr>`;
+      }).join("");
+      sdfTableEl.innerHTML = meta + `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+      attachCellListeners();
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function attachCellListeners() {
+      sdfTableEl.querySelectorAll("td.editable").forEach((td) => {
+        td.addEventListener("blur", () => {
+          const tab = td.dataset.tab;
+          const ri = parseInt(td.dataset.row, 10);
+          const col = td.dataset.col;
+          const row = state.sdfTables[tab][ri];
+          const orig = state.sdfTablesOriginal[tab][ri][col];
+          const newRaw = td.textContent.trim();
+          let parsed = newRaw;
+          // 숫자 컬럼은 number 로 변환
+          const numericCols = new Set(["x", "y", "z", "diameter_m", "length_m", "rise_m", "c_factor", "flow_m3s", "target_value", "status"]);
+          if (numericCols.has(col) && newRaw !== "") {
+            const n = Number(newRaw);
+            if (!isNaN(n)) parsed = n;
+          }
+          row[col] = parsed;
+          const cellKey = `${tab}:${ri}:${col}`;
+          if (String(orig) === String(parsed)) {
+            state.sdfModifiedCells.delete(cellKey);
+            td.classList.remove("modified");
+          } else {
+            state.sdfModifiedCells.add(cellKey);
+            td.classList.add("modified");
+          }
+          updateModifiedCounter();
+        });
+        td.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); td.blur(); }
+          if (e.key === "Escape") {
+            const orig = state.sdfTablesOriginal[td.dataset.tab][parseInt(td.dataset.row, 10)][td.dataset.col];
+            td.textContent = (orig === null || orig === undefined) ? "" : String(orig);
+            td.blur();
+          }
+        });
+      });
+    }
+
+    function updateModifiedCounter() {
+      const n = state.sdfModifiedCells.size;
+      sdfModifiedEl.innerHTML = n > 0 ? `편집 <strong>${n}</strong>건` : `편집 0건`;
+    }
+
+    sdfTabBtns.forEach((b) => b.addEventListener("click", () => renderSdfTable(b.dataset.tab)));
+
+    sdfRevertBtn.addEventListener("click", () => {
+      if (!state.sdfTablesOriginal) return;
+      state.sdfTables = JSON.parse(JSON.stringify(state.sdfTablesOriginal));
+      state.sdfModifiedCells.clear();
+      renderSdfTable(state.sdfActiveTab);
+      updateModifiedCounter();
+    });
+
+    sdfRegenBtn.addEventListener("click", async () => {
+      if (!state.sdfTables) return;
+      sdfRegenBtn.disabled = true;
+      const origText = sdfRegenBtn.textContent;
+      sdfRegenBtn.textContent = "생성 중...";
+      try {
+        const payload = {
+          tables: state.sdfTables,
+          title: "Remote 30 (workbench-edited)",
+          filename: `remote30_edited_${Date.now()}.sdf`,
+          settings: {
+            c_factor: parseFloat(document.getElementById("wb-kfactor").value) || undefined,
+            design_flow_per_head_lpm: parseFloat(document.getElementById("wb-flow").value) || undefined,
+          },
+        };
+        const res = await fetch("/api/remote30/sdf-from-tables", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`HTTP ${res.status}: ${errText.slice(0, 120)}`);
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = payload.filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (err) {
+        alert("SDF 생성 오류: " + err.message);
+      } finally {
+        sdfRegenBtn.disabled = false;
+        sdfRegenBtn.textContent = origText;
+      }
+    });
+
+    // 초기 모드 + 렌더
+    setMode("pan");
+    setTimeout(resizeCanvas, 50);
+  </script>
+</body>
+</html>

@@ -599,11 +599,41 @@ class DXFWorkspace:
         return " ".join(part for part in parts if part)
 
     def _group_has_head_hint(self, group: dict[str, Any], hint_text: str) -> bool:
-        head_tokens = ("head", "sprink", "upright", "pendent", "sidewall", "nozzle")
+        head_tokens = ("head", "sprink", "upright", "pendent", "sidewall", "nozzle", "triangle")
         return any(token in hint_text for token in head_tokens) or (
             any(entity["type"] == "CIRCLE" and entity.get("radius", 0.0) < 500.0 for entity in group["entities"])
             and len(group["segments"]) <= 4
-        )
+        ) or any(self._is_triangle_head_entity(entity) for entity in group["entities"])
+
+    def _is_triangle_head_entity(self, entity: dict[str, Any]) -> bool:
+        if entity.get("type") != "LWPOLYLINE" or not entity.get("closed"):
+            return False
+        points = entity.get("points") or []
+        unique: list[tuple[float, float]] = []
+        for point in points:
+            try:
+                pt = (float(point["x"]), float(point["y"]))
+            except Exception:
+                continue
+            if not any(math.hypot(pt[0] - old[0], pt[1] - old[1]) < 1e-6 for old in unique):
+                unique.append(pt)
+        if len(unique) != 3:
+            return False
+        xs = [pt[0] for pt in unique]
+        ys = [pt[1] for pt in unique]
+        w = max(xs) - min(xs)
+        h = max(ys) - min(ys)
+        diag = math.hypot(w, h)
+        if diag <= 0 or diag > 1200 or min(w, h) <= 0:
+            return False
+        if max(w, h) / max(min(w, h), 1e-9) > 2.2:
+            return False
+        area = abs(
+            unique[0][0] * (unique[1][1] - unique[2][1])
+            + unique[1][0] * (unique[2][1] - unique[0][1])
+            + unique[2][0] * (unique[0][1] - unique[1][1])
+        ) / 2
+        return area > 20 and area / max(w * h, 1e-9) > 0.18
 
     def _group_has_valve_hint(self, group: dict[str, Any], hint_text: str) -> bool:
         valve_tokens = ("valve", "alarm", "drain", "check", "gate", "butterfly", "av")
@@ -1530,13 +1560,15 @@ class DXFWorkspace:
 
     def _graph_attachment_kind(self, entity: dict[str, Any]) -> str:
         hint = self._entity_hint_text(entity)
-        if any(token in hint for token in ("head", "sprink", "nozzle", "upright", "pendent", "sidewall")):
+        if any(token in hint for token in ("head", "sprink", "nozzle", "upright", "pendent", "sidewall", "triangle")):
             return "head"
         if any(token in hint for token in ("valve", "alarm", "gate", "check", "butterfly", "av", "pv")):
             return "valve"
         if entity.get("type") == "TEXT":
             return "text"
         if entity.get("type") == "CIRCLE":
+            return "head_candidate"
+        if self._is_triangle_head_entity(entity):
             return "head_candidate"
         return "attachment"
 

@@ -6,3 +6,6 @@ matplotlib==3.10.7
 pandas==2.3.3
 networkx==3.6.1
 PyYAML==6.0.3
+# Production 서버 (Windows) + 환경변수 로드
+waitress==3.0.2
+python-dotenv==1.0.1

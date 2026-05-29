@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Remote 30 워크벤치 (GNN 버전)</title>
+  <style>
+    :root {
+      --bg: #f0f2f5;
+      --panel: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --line: #d1d5db;
+      --accent: #111827;
+      --ok: #0f766e;
+      --warn-bg: #fef3c7;
+      --bad: #b91c1c;
+      --phase-1: #2563eb;
+      --phase-2a: #7c3aed;
+      --phase-2b: #db2777;
+      --phase-3: #0f766e;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font-family: "Malgun Gothic", "Segoe UI", sans-serif; color: var(--text); background: var(--bg); }
+    .workbench { display: grid; grid-template-columns: 1fr 380px; height: 100vh; }
+    .canvas-pane { position: relative; background: #0f172a; overflow: hidden; }
+    .canvas-pane canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    .canvas-pane canvas.is-panning { cursor: grabbing; }
+    .canvas-overlay { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; pointer-events: none; gap: 10px; flex-wrap: wrap; }
+    .canvas-overlay .pill { background: rgba(15, 23, 42, 0.85); color: #e5e7eb; border: 1px solid #334155; padding: 6px 10px; font-size: 0.8rem; pointer-events: auto; font-family: ui-monospace, monospace; }
+    .canvas-overlay button { pointer-events: auto; background: #1f2937; color: #e5e7eb; border: 1px solid #475569; padding: 6px 10px; font-size: 0.78rem; cursor: pointer; }
+    .canvas-overlay button:hover { background: #334155; }
+    .canvas-toolbar { position: absolute; bottom: 12px; left: 12px; display: flex; gap: 6px; pointer-events: none; }
+    .canvas-toolbar button { pointer-events: auto; background: rgba(15, 23, 42, 0.85); color: #e5e7eb; border: 1px solid #475569; padding: 7px 12px; font-size: 0.78rem; cursor: pointer; font-weight: 600; }
+    .canvas-toolbar button:hover { background: #1e40af; border-color: #1e40af; }
+    .zoom-group { display: inline-flex; align-items: stretch; margin-left: 8px; border: 1px solid #475569; background: rgba(15, 23, 42, 0.85); pointer-events: auto; }
+    .zoom-group button { background: transparent; color: #e5e7eb; border: none; padding: 7px 12px; font-size: 1.05rem; font-weight: 700; cursor: pointer; min-width: 32px; }
+    .zoom-group button:hover { background: #1e40af; color: #fff; }
+    .zoom-group .zoom-level { display: inline-flex; align-items: center; justify-content: center; min-width: 56px; padding: 0 6px; color: #cbd5e1; font-size: 0.78rem; font-family: ui-monospace, monospace; border-left: 1px solid #475569; border-right: 1px solid #475569; cursor: pointer; user-select: none; }
+    .zoom-group .zoom-level:hover { background: #1e293b; color: #fff; }
+    .canvas-empty { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #94a3b8; font-size: 0.9rem; text-align: center; }
+    .canvas-empty strong { display: block; font-size: 1.1rem; margin-bottom: 6px; color: #cbd5e1; }
+    /* ---- Layer toggle panel (캔버스 우측 상단) ---- */
+    .layer-panel { position: absolute; top: 56px; right: 12px; width: 270px; max-height: calc(100% - 80px); background: rgba(15, 23, 42, 0.94); border: 1px solid #334155; color: #e5e7eb; font-size: 0.78rem; display: none; flex-direction: column; pointer-events: auto; z-index: 5; }
+    .layer-panel.is-open { display: flex; }
+    .layer-panel .lp-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #334155; background: #1e293b; }
+    .layer-panel .lp-header strong { font-size: 0.82rem; }
+    .layer-panel .lp-actions { display: flex; gap: 4px; }
+    .layer-panel .lp-actions button { background: #334155; color: #e5e7eb; border: 1px solid #475569; padding: 2px 6px; font-size: 0.7rem; cursor: pointer; }
+    .layer-panel .lp-actions button:hover { background: #475569; }
+    .layer-panel .lp-list { overflow-y: auto; max-height: 480px; padding: 4px 0; }
+    .layer-panel .lp-item { display: grid; grid-template-columns: 18px 10px 1fr auto; gap: 6px; align-items: center; padding: 4px 10px; cursor: pointer; }
+    .layer-panel .lp-item:hover { background: rgba(255, 255, 255, 0.05); }
+    .layer-panel .lp-item.is-hidden-in-cad { opacity: 0.55; }
+    .layer-panel .lp-item input[type="checkbox"] { margin: 0; cursor: pointer; accent-color: #3b82f6; }
+    .layer-panel .lp-item .lp-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .layer-panel .lp-item .lp-name { font-family: ui-monospace, monospace; font-size: 0.74rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .layer-panel .lp-item .lp-count { font-family: ui-monospace, monospace; font-size: 0.68rem; color: #94a3b8; }
+    .layer-panel .lp-item .lp-name .lp-hidden-tag { display: inline-block; margin-left: 4px; padding: 0 4px; font-size: 0.62rem; background: #7f1d1d; color: #fecaca; border-radius: 2px; vertical-align: middle; }
+    .layer-toggle-btn { background: rgba(15, 23, 42, 0.85); color: #e5e7eb; border: 1px solid #475569; padding: 6px 10px; font-size: 0.78rem; cursor: pointer; pointer-events: auto; }
+    .layer-toggle-btn:hover { background: #334155; }
+    .layer-toggle-btn.is-active { background: #1e40af; border-color: #1e40af; }
+    .sidebar { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; display: flex; flex-direction: column; }
+    .sidebar h2 { margin: 0; padding: 14px 16px; font-size: 1rem; font-weight: 700; border-bottom: 1px solid var(--line); background: #f9fafb; position: sticky; top: 0; z-index: 2; }
+    .sidebar section { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    .sidebar section h3 { margin: 0 0 8px; font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+    .phase-tag { display: inline-block; padding: 1px 6px; font-size: 0.66rem; color: #fff; font-weight: 700; letter-spacing: 0.04em; }
+    .phase-tag.p1  { background: var(--phase-1); }
+    .phase-tag.p2a { background: var(--phase-2a); }
+    .phase-tag.p2b { background: var(--phase-2b); }
+    .phase-tag.p3  { background: var(--phase-3); }
+    .phase-tag.todo { background: #9ca3af; }
+    .sidebar .field { display: grid; gap: 4px; margin-bottom: 8px; }
+    .sidebar .field label { font-size: 0.78rem; font-weight: 600; }
+    .sidebar .field input { width: 100%; padding: 6px 8px; border: 1px solid var(--line); background: #fff; font-size: 0.85rem; font-family: inherit; border-radius: 0; }
+    .sidebar button.ghost { padding: 6px 10px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.78rem; cursor: pointer; }
+    .sidebar button.ghost:hover:not(:disabled) { background: #f3f4f6; }
+    .sidebar button.ghost:disabled { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .stat { padding: 6px 8px; background: #f9fafb; border: 1px solid var(--line); font-size: 0.78rem; }
+    .stat .label { color: var(--muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .stat .value { font-weight: 700; font-size: 0.92rem; font-family: ui-monospace, monospace; }
+    .info-line { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+    .info-line code { font-family: ui-monospace, monospace; background: #f3f4f6; padding: 1px 4px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; background: #5b21b6; color: #fff; font-size: 0.85rem; }
+    .topbar a { color: #cbd5e1; text-decoration: none; font-size: 0.78rem; }
+    .topbar a:hover { color: #fff; text-decoration: underline; }
+    .status-pill { display: inline-block; padding: 2px 8px; font-size: 0.72rem; font-weight: 600; border: 1px solid; margin-left: 6px; }
+    .status-pill.pending { color: var(--muted); border-color: var(--line); background: #f9fafb; }
+    .status-pill.done { color: #065f46; border-color: #047857; background: #d1fae5; }
+    .status-pill.disabled { color: var(--muted); border-color: var(--line); background: #f9fafb; opacity: 0.75; }
+    @media (max-width: 900px) {
+      .workbench { grid-template-columns: 1fr; grid-template-rows: 60vh 1fr; }
+      .sidebar { border-left: 0; border-top: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <strong>Remote 30 워크벤치 <span style="opacity:0.85; font-weight:400; font-size:0.85em;">(GNN 버전 — fire-dxf2sdf charter pipeline)</span></strong>
+    <a href="/" target="_top">← 홈으로</a>
+  </div>
+  <div class="workbench">
+    <div class="canvas-pane">
+      <canvas id="wb-canvas"></canvas>
+      <div id="wb-empty" class="canvas-empty">
+        <strong>DXF 파일을 업로드하세요</strong>
+        오른쪽 사이드 패널에서 .dxf 파일을 선택하면<br>여기에 도면이 표시됩니다.
+      </div>
+      <div class="canvas-overlay">
+        <span id="wb-overlay-info" class="pill">대기 중</span>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span id="wb-overlay-cursor" class="pill" style="display:none;"></span>
+          <button id="wb-pipenet-only" class="layer-toggle-btn" type="button" disabled title="PIPE/HEAD/TEXT 카테고리 + INSERT BYLAYER '0' 만 표시">배관망만</button>
+          <button id="wb-layer-toggle" class="layer-toggle-btn" type="button" disabled>레이어 ▾</button>
+          <button id="wb-fit-btn" type="button">화면 맞춤</button>
+        </div>
+      </div>
+      <aside id="wb-layer-panel" class="layer-panel">
+        <div class="lp-header">
+          <strong>레이어 (<span id="wb-lp-count">0</span>)</strong>
+          <div class="lp-actions">
+            <button id="wb-lp-all-on" type="button" title="모두 켜기">전체 ✓</button>
+            <button id="wb-lp-all-off" type="button" title="모두 끄기">전체 ✗</button>
+            <button id="wb-lp-cad" type="button" title="CAD 가시성 따르기 (hidden 레이어 OFF)">CAD</button>
+          </div>
+        </div>
+        <div id="wb-lp-list" class="lp-list"></div>
+      </aside>
+      <div class="canvas-toolbar">
+        <div class="zoom-group">
+          <button id="wb-zoom-out" type="button" title="축소 (또는 - 키)">−</button>
+          <span id="wb-zoom-level" class="zoom-level" title="현재 줌">100%</span>
+          <button id="wb-zoom-in" type="button" title="확대 (또는 + 키)">+</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <h2>fire-dxf2sdf charter pipeline</h2>
+
+      <section>
+        <h3><span class="phase-tag p1">Phase 1</span> DXF 멀티모달 추출 <span id="wb-phase1-status" class="status-pill pending">대기</span></h3>
+        <div class="field">
+          <label for="wb-dxf">DXF 업로드 (.dxf)</label>
+          <input id="wb-dxf" type="file" accept=".dxf">
+        </div>
+        <p id="wb-load-status" class="info-line">파일을 선택하세요.</p>
+        <div id="wb-phase1-stats" class="stats" style="display:none; margin-top:8px;"></div>
+      </section>
+
+      <section>
+        <h3>
+          <span class="phase-tag p2a">Phase 1-3</span>
+          파이프라인 실행 <span id="wb-run-status" class="status-pill pending">대기</span>
+        </h3>
+        <p class="info-line">
+          DXF 파일 → Stage 1 (멀티모달 추출) → Stage 2-A (G₀ 그래프) →
+          Stage 3 (헤드 선정 + subgraph). 결과 PNG + JSON 출력.
+        </p>
+        <div class="field">
+          <label for="wb-k">선정 헤드 수 K</label>
+          <input id="wb-k" type="number" min="1" value="30">
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+          <div class="field">
+            <label for="wb-alarm-x">알람밸브 X (mm, 옵션)</label>
+            <input id="wb-alarm-x" type="number" step="any" placeholder="auto">
+          </div>
+          <div class="field">
+            <label for="wb-alarm-y">알람밸브 Y (mm, 옵션)</label>
+            <input id="wb-alarm-y" type="number" step="any" placeholder="auto">
+          </div>
+        </div>
+        <p class="info-line" style="margin-top:-4px;">
+          ※ 좌표 미지정 시 ALARM_VALVE 심볼 또는 VALVE kind 노드 자동 선택.
+          캔버스에서 클릭하면 좌표가 자동 채워집니다.
+        </p>
+        <div class="field">
+          <label for="wb-method">선정 방식</label>
+          <select id="wb-method" style="width:100%; padding:6px 8px; border:1px solid var(--line);">
+            <option value="simple_greedy">SIMPLE_GREEDY (default)</option>
+            <option value="branch_aware">BRANCH_AWARE (placeholder)</option>
+            <option value="branch_cluster">BRANCH_CLUSTER (placeholder)</option>
+          </select>
+        </div>
+        <button id="wb-run-pipeline" type="button" disabled
+          style="width:100%; padding:9px; background:var(--accent); color:#fff; border:1px solid var(--accent); font-weight:700; cursor:pointer; font-size:0.9rem;">
+          ★ Phase 1-3 실행
+        </button>
+        <p id="wb-run-message" class="info-line" style="margin-top:6px;">DXF 업로드 후 실행 가능.</p>
+        <div id="wb-run-stats" class="stats" style="display:none; margin-top:8px;"></div>
+      </section>
+
+      <section id="wb-result-section" style="display:none;">
+        <h3>
+          <span class="phase-tag p3">결과</span>
+          시각화 + 다운로드
+        </h3>
+        <div id="wb-result-preview" style="width:100%; text-align:center; background:#f3f4f6; border:1px solid var(--line); padding:8px;">
+          <img id="wb-result-png" alt="선정 결과" style="max-width:100%; display:block; margin:0 auto;">
+        </div>
+        <div class="info-line" style="margin-top:6px;">
+          <strong>선정 거리</strong>
+          <span id="wb-result-distance">—</span>
+        </div>
+        <div class="info-line">
+          <strong>가지(branch)</strong>
+          <span id="wb-result-branches">—</span>
+        </div>
+        <div class="info-line">
+          <strong>subgraph</strong>
+          <span id="wb-result-subgraph">—</span>
+        </div>
+        <div style="display:flex; gap:6px; margin-top:8px;">
+          <a id="wb-result-png-link" href="#" target="_blank"
+            style="flex:1; text-align:center; padding:6px; background:#fff; color:var(--text); border:1px solid var(--line); text-decoration:none; font-size:0.78rem;">
+            PNG 새 창
+          </a>
+          <a id="wb-result-json-link" href="#" target="_blank"
+            style="flex:1; text-align:center; padding:6px; background:#fff; color:var(--text); border:1px solid var(--line); text-decoration:none; font-size:0.78rem;">
+            JSON 다운로드
+          </a>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    // ====== 상태 ======
+    const CATEGORY_COLORS = {
+      PIPE:    "#3b82f6",
+      HEAD:    "#ef4444",
+      TEXT:    "#22c55e",
+      ARCH:    "#94a3b8",
+      EXCLUDE: "#71717a",
+      OTHER:   "#f59e0b",
+    };
+    const state = {
+      entities: [],
+      bbox: null,
+      layers: [],
+      layerCat: {},  // layer name → auto-category (for color only)
+      visibleLayers: new Set(),  // 캔버스에 그릴 레이어 이름들 (체크박스 ON)
+      layerMeta: {}, // layer name → { count, is_off, is_frozen, color, visible(=CAD default) }
+      view: { zoom: 1, panX: 0, panY: 0, fitZoom: null },
+      dpr: window.devicePixelRatio || 1,
+      drag: null,
+    };
+
+    const canvas = document.getElementById("wb-canvas");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    const emptyEl = document.getElementById("wb-empty");
+    const overlayInfoEl = document.getElementById("wb-overlay-info");
+    const overlayCursorEl = document.getElementById("wb-overlay-cursor");
+    const dxfInputEl = document.getElementById("wb-dxf");
+    const loadStatusEl = document.getElementById("wb-load-status");
+    const fitBtnEl = document.getElementById("wb-fit-btn");
+    const zoomInBtn = document.getElementById("wb-zoom-in");
+    const zoomOutBtn = document.getElementById("wb-zoom-out");
+    const zoomLevelEl = document.getElementById("wb-zoom-level");
+    const phase1StatsEl = document.getElementById("wb-phase1-stats");
+    const phase1StatusEl = document.getElementById("wb-phase1-status");
+    // Phase 1-3 실행 UI
+    const runBtn = document.getElementById("wb-run-pipeline");
+    const runStatusEl = document.getElementById("wb-run-status");
+    const runMessageEl = document.getElementById("wb-run-message");
+    const runStatsEl = document.getElementById("wb-run-stats");
+    const kInputEl = document.getElementById("wb-k");
+    const alarmXEl = document.getElementById("wb-alarm-x");
+    const alarmYEl = document.getElementById("wb-alarm-y");
+    const methodEl = document.getElementById("wb-method");
+    const resultSectionEl = document.getElementById("wb-result-section");
+    const resultPngEl = document.getElementById("wb-result-png");
+    const resultPngLinkEl = document.getElementById("wb-result-png-link");
+    const resultJsonLinkEl = document.getElementById("wb-result-json-link");
+    const resultDistanceEl = document.getElementById("wb-result-distance");
+    const resultBranchesEl = document.getElementById("wb-result-branches");
+    const resultSubgraphEl = document.getElementById("wb-result-subgraph");
+    // 업로드 파일 보관 — 실행 시 재사용
+    let lastUploadedDxf = null;
+
+    // ====== Canvas 리사이즈 ======
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      state.dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * state.dpr);
+      canvas.height = Math.round(rect.height * state.dpr);
+      render();
+    }
+    window.addEventListener("resize", resizeCanvas);
+
+    function worldToScreen(x, y) {
+      return [x * state.view.zoom + state.view.panX, -y * state.view.zoom + state.view.panY];
+    }
+    function screenToWorld(sx, sy) {
+      return [(sx - state.view.panX) / state.view.zoom, -(sy - state.view.panY) / state.view.zoom];
+    }
+
+    function fitToBBox() {
+      if (!state.bbox) return;
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      const bw = state.bbox.x_max - state.bbox.x_min;
+      const bh = state.bbox.y_max - state.bbox.y_min;
+      if (bw <= 0 || bh <= 0) return;
+      const margin = 30;
+      const zx = (w - 2 * margin) / bw;
+      const zy = (h - 2 * margin) / bh;
+      const z = Math.min(zx, zy);
+      state.view.zoom = z;
+      state.view.panX = w / 2 - ((state.bbox.x_min + state.bbox.x_max) / 2) * z;
+      state.view.panY = h / 2 + ((state.bbox.y_min + state.bbox.y_max) / 2) * z;
+      state.view.fitZoom = z;
+      render();
+      updateZoomLevelDisplay();
+    }
+    fitBtnEl.addEventListener("click", fitToBBox);
+
+    function zoomAtPoint(sx, sy, factor) {
+      if (!state.entities.length) return;
+      const [wx, wy] = screenToWorld(sx, sy);
+      state.view.zoom *= factor;
+      const [nsx, nsy] = worldToScreen(wx, wy);
+      state.view.panX += sx - nsx;
+      state.view.panY += sy - nsy;
+      render();
+      updateZoomLevelDisplay();
+    }
+    function zoomCenter(factor) {
+      const rect = canvas.getBoundingClientRect();
+      zoomAtPoint(rect.width / 2, rect.height / 2, factor);
+    }
+    function updateZoomLevelDisplay() {
+      if (!zoomLevelEl) return;
+      const ratio = state.view.fitZoom ? (state.view.zoom / state.view.fitZoom) : state.view.zoom;
+      zoomLevelEl.textContent = (ratio * 100).toFixed(0) + "%";
+    }
+    zoomInBtn.addEventListener("click", () => zoomCenter(1.25));
+    zoomOutBtn.addEventListener("click", () => zoomCenter(1 / 1.25));
+    zoomLevelEl.addEventListener("click", fitToBBox);
+
+    // ====== Layer toggle panel ======
+    const layerPanelEl = document.getElementById("wb-layer-panel");
+    const layerToggleBtn = document.getElementById("wb-layer-toggle");
+    const lpListEl = document.getElementById("wb-lp-list");
+    const lpCountEl = document.getElementById("wb-lp-count");
+    const lpAllOnBtn = document.getElementById("wb-lp-all-on");
+    const lpAllOffBtn = document.getElementById("wb-lp-all-off");
+    const lpCadBtn = document.getElementById("wb-lp-cad");
+
+    layerToggleBtn.addEventListener("click", () => {
+      if (layerToggleBtn.disabled) return;
+      const open = layerPanelEl.classList.toggle("is-open");
+      layerToggleBtn.classList.toggle("is-active", open);
+      layerToggleBtn.textContent = open ? "레이어 ▴" : "레이어 ▾";
+    });
+
+    function renderLayerPanel() {
+      lpListEl.innerHTML = "";
+      const layers = (state.layers || []).slice().sort((a, b) => b.count - a.count);
+      lpCountEl.textContent = layers.length;
+      if (!layers.length) {
+        layerToggleBtn.disabled = true;
+        layerPanelEl.classList.remove("is-open");
+        layerToggleBtn.classList.remove("is-active");
+        layerToggleBtn.textContent = "레이어 ▾";
+        return;
+      }
+      layerToggleBtn.disabled = false;
+      for (const ly of layers) {
+        const checked = state.visibleLayers.has(ly.name);
+        const cadHidden = ly.visible === false;
+        const cat = ly.auto_category || "OTHER";
+        const color = CATEGORY_COLORS[cat] || "#888";
+        const row = document.createElement("label");
+        row.className = "lp-item" + (cadHidden ? " is-hidden-in-cad" : "");
+        row.title = `${ly.name}\n카테고리 ${cat} · entity ${ly.count}` + (cadHidden ? "\nCAD 에서 숨겨진 레이어 (off/frozen)" : "");
+        row.innerHTML = `
+          <input type="checkbox" ${checked ? "checked" : ""}>
+          <span class="lp-dot" style="background:${color}"></span>
+          <span class="lp-name">${escapeHtml(ly.name)}${cadHidden ? '<span class="lp-hidden-tag">CAD 숨김</span>' : ""}</span>
+          <span class="lp-count">${ly.count.toLocaleString()}</span>
+        `;
+        const cb = row.querySelector("input");
+        cb.addEventListener("change", (e) => {
+          if (e.target.checked) state.visibleLayers.add(ly.name);
+          else state.visibleLayers.delete(ly.name);
+          // 개별 토글 시 "배관망만" 모드 표시 해제 (사용자가 임의로 변경했음)
+          pipenetOnlyBtn.classList.remove("is-active");
+          render();
+        });
+        lpListEl.appendChild(row);
+      }
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+    lpAllOnBtn.addEventListener("click", () => {
+      for (const ly of state.layers) state.visibleLayers.add(ly.name);
+      renderLayerPanel(); render();
+    });
+    lpAllOffBtn.addEventListener("click", () => {
+      state.visibleLayers.clear();
+      renderLayerPanel(); render();
+    });
+    lpCadBtn.addEventListener("click", () => {
+      state.visibleLayers.clear();
+      for (const ly of state.layers) {
+        if (ly.visible !== false) state.visibleLayers.add(ly.name);
+      }
+      pipenetOnlyBtn.classList.remove("is-active");
+      renderLayerPanel(); render();
+    });
+
+    // ====== "배관망만" 필터 (PIPE/HEAD/TEXT + "0") ======
+    const pipenetOnlyBtn = document.getElementById("wb-pipenet-only");
+    const PIPENET_CATEGORIES = new Set(["PIPE", "HEAD", "TEXT"]);
+    function applyPipenetOnly() {
+      state.visibleLayers.clear();
+      for (const ly of state.layers) {
+        const isPipenet = PIPENET_CATEGORIES.has(ly.auto_category) || ly.name === "0";
+        if (isPipenet) state.visibleLayers.add(ly.name);
+      }
+      renderLayerPanel(); render();
+    }
+    pipenetOnlyBtn.addEventListener("click", () => {
+      if (pipenetOnlyBtn.disabled) return;
+      const active = pipenetOnlyBtn.classList.toggle("is-active");
+      if (active) applyPipenetOnly();
+      else {
+        // 전체 CAD-visible 레이어로 복원
+        state.visibleLayers.clear();
+        for (const ly of state.layers) if (ly.visible !== false) state.visibleLayers.add(ly.name);
+        renderLayerPanel(); render();
+      }
+    });
+
+    // 키보드: + 확대 / - 축소 / 0 fit
+    window.addEventListener("keydown", (e) => {
+      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.isContentEditable)) return;
+      if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomCenter(1.25); }
+      else if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomCenter(1 / 1.25); }
+      else if (e.key === "0") { e.preventDefault(); fitToBBox(); }
+    });
+
+    // ====== 렌더링 ======
+    function render() {
+      const w = canvas.width / state.dpr;
+      const h = canvas.height / state.dpr;
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, w, h);
+      if (!state.entities.length) return;
+
+      ctx.lineWidth = 1;
+      const groups = { ARCH: [], EXCLUDE: [], OTHER: [], PIPE: [], HEAD: [], TEXT: [] };
+      const useLayerFilter = state.visibleLayers.size > 0;
+      for (const ent of state.entities) {
+        if (useLayerFilter && !state.visibleLayers.has(ent.l)) continue;
+        const cat = state.layerCat[ent.l] || "OTHER";
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(ent);
+      }
+      const order = ["EXCLUDE", "ARCH", "OTHER", "TEXT", "PIPE", "HEAD"];
+      for (const cat of order) {
+        const arr = groups[cat] || [];
+        if (!arr.length) continue;
+        const color = CATEGORY_COLORS[cat];
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = (cat === "ARCH" || cat === "EXCLUDE") ? 0.35 : 1.0;
+        ctx.lineWidth = (cat === "PIPE" || cat === "HEAD") ? 1.6 : 0.9;
+        for (const ent of arr) drawEntity(ent);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawEntity(ent) {
+      const z = state.view.zoom;
+      if (ent.t === "L") {
+        const [a, b] = worldToScreen(ent.p[0], ent.p[1]);
+        const [c, d] = worldToScreen(ent.p[2], ent.p[3]);
+        ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke();
+      } else if (ent.t === "PL") {
+        ctx.beginPath();
+        for (let i = 0; i < ent.p.length; i++) {
+          const [sx, sy] = worldToScreen(ent.p[i][0], ent.p[i][1]);
+          if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        }
+        ctx.stroke();
+      } else if (ent.t === "A") {
+        const [sx, sy] = worldToScreen(ent.c[0], ent.c[1]);
+        const r = ent.r * z;
+        if (r < 0.3) return;
+        const sa = ent.a[0] * Math.PI / 180;
+        const ea = ent.a[1] * Math.PI / 180;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, -ea, -sa, false);
+        ctx.stroke();
+      } else if (ent.t === "C") {
+        const [sx, sy] = worldToScreen(ent.c[0], ent.c[1]);
+        const r = ent.r * z;
+        if (r < 0.5) { ctx.fillRect(sx - 1, sy - 1, 2, 2); return; }
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.stroke();
+      } else if (ent.t === "I") {
+        const [sx, sy] = worldToScreen(ent.p[0], ent.p[1]);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - 3); ctx.lineTo(sx + 3, sy); ctx.lineTo(sx, sy + 3); ctx.lineTo(sx - 3, sy);
+        ctx.closePath();
+        ctx.fill();
+      } else if (ent.t === "T") {
+        if (z < 0.005) return;
+        const [sx, sy] = worldToScreen(ent.p[0], ent.p[1]);
+        ctx.font = "10px ui-monospace, monospace";
+        ctx.fillText(ent.v, sx, sy);
+      } else if (ent.t === "H") {
+        ctx.beginPath();
+        for (let i = 0; i < ent.p.length; i++) {
+          const [sx, sy] = worldToScreen(ent.p[i][0], ent.p[i][1]);
+          if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      } else if (ent.t === "S") {
+        ctx.beginPath();
+        for (let i = 0; i < ent.p.length; i++) {
+          const [sx, sy] = worldToScreen(ent.p[i][0], ent.p[i][1]);
+          if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // ====== 인터랙션 ======
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      zoomAtPoint(mx, my, factor);
+    }, { passive: false });
+
+    canvas.addEventListener("mousedown", (e) => {
+      state.drag = { x: e.clientX, y: e.clientY, panX: state.view.panX, panY: state.view.panY };
+      canvas.classList.add("is-panning");
+    });
+    window.addEventListener("mouseup", () => {
+      state.drag = null;
+      canvas.classList.remove("is-panning");
+    });
+    window.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (state.drag) {
+        state.view.panX = state.drag.panX + (e.clientX - state.drag.x);
+        state.view.panY = state.drag.panY + (e.clientY - state.drag.y);
+        render();
+        return;
+      }
+      if (state.entities.length && inside) {
+        const [wx, wy] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        overlayCursorEl.style.display = "inline-block";
+        overlayCursorEl.textContent = `( ${wx.toFixed(0)} , ${wy.toFixed(0)} )`;
+      } else {
+        overlayCursorEl.style.display = "none";
+      }
+    });
+
+    // ====== DXF 업로드 + inspect ======
+    dxfInputEl.addEventListener("change", async () => {
+      const file = dxfInputEl.files[0];
+      if (!file) return;
+      lastUploadedDxf = file;
+      loadStatusEl.textContent = `업로드 중... (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+      phase1StatusEl.textContent = "추출 중";
+      phase1StatusEl.className = "status-pill pending";
+
+      const fd = new FormData();
+      fd.append("dxf_file", file);
+      try {
+        const res = await fetch("/api/remote30/inspect", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || `HTTP ${res.status}`);
+
+        state.entities = data.entities;
+        state.bbox = data.bbox;
+        state.layers = data.layers;
+        state.layerCat = {};
+        state.layerMeta = {};
+        state.visibleLayers = new Set();
+        for (const layer of data.layers) {
+          state.layerCat[layer.name] = layer.auto_category;
+          state.layerMeta[layer.name] = {
+            count: layer.count,
+            is_off: !!layer.is_off,
+            is_frozen: !!layer.is_frozen,
+            color: layer.color,
+            cad_visible: layer.visible !== false,  // CAD 기본 가시성
+          };
+          if (layer.visible !== false) state.visibleLayers.add(layer.name);  // CAD 에서 보이는 레이어만 기본 ON
+        }
+        renderLayerPanel();
+        pipenetOnlyBtn.disabled = !(state.layers && state.layers.length);
+        pipenetOnlyBtn.classList.remove("is-active");
+        loadStatusEl.textContent = `${data.dxf_filename} — entity ${data.counts.total_entities.toLocaleString()}, layer ${data.counts.layers}`;
+        overlayInfoEl.textContent = `${data.counts.total_entities.toLocaleString()} entities | ${data.counts.layers} layers`;
+        emptyEl.style.display = "none";
+        phase1StatusEl.textContent = "완료";
+        phase1StatusEl.className = "status-pill done";
+
+        // Phase 1 통계 (현재는 inspect 결과만; fire-dxf2sdf 백엔드 라우트 추가 시 확장)
+        const catCounts = {};
+        for (const l of data.layers) {
+          const cat = l.auto_category || "OTHER";
+          catCounts[cat] = (catCounts[cat] || 0) + 1;
+        }
+        const pipeLayers = catCounts.PIPE || 0;
+        const headLayers = catCounts.HEAD || 0;
+        const textLayers = catCounts.TEXT || 0;
+        phase1StatsEl.style.display = "grid";
+        phase1StatsEl.innerHTML = `
+          <div class="stat"><div class="label">entities</div><div class="value">${data.counts.total_entities.toLocaleString()}</div></div>
+          <div class="stat"><div class="label">layers</div><div class="value">${data.counts.layers}</div></div>
+          <div class="stat"><div class="label">PIPE layers</div><div class="value">${pipeLayers}</div></div>
+          <div class="stat"><div class="label">HEAD layers</div><div class="value">${headLayers}</div></div>
+          <div class="stat"><div class="label">TEXT layers</div><div class="value">${textLayers}</div></div>
+          <div class="stat"><div class="label">bbox (mm)</div><div class="value" style="font-size:0.72rem;">${(data.bbox.x_max - data.bbox.x_min).toFixed(0)} × ${(data.bbox.y_max - data.bbox.y_min).toFixed(0)}</div></div>
+        `;
+        fitToBBox();
+        // Phase 1-3 실행 가능
+        runBtn.disabled = false;
+        runMessageEl.textContent = "실행 준비됨. K 값 조정 후 버튼 클릭.";
+      } catch (err) {
+        loadStatusEl.textContent = "오류: " + err.message;
+        phase1StatusEl.textContent = "오류";
+        phase1StatusEl.className = "status-pill pending";
+      }
+    });
+
+    // ====== 캔버스 클릭 — 알람밸브 좌표 자동 채우기 ======
+    let lastClickTime = 0;
+    canvas.addEventListener("click", (e) => {
+      // 드래그와 구분: 마우스 down 위치와 같으면 클릭
+      if (state.drag) return;
+      // 더블 클릭 또는 빠른 클릭은 거부 (실수 방지)
+      const now = Date.now();
+      if (now - lastClickTime < 300) {
+        lastClickTime = now;
+        return;
+      }
+      lastClickTime = now;
+      // shift 키 누른 클릭만 알람밸브 픽
+      if (!e.shiftKey) return;
+      const rect = canvas.getBoundingClientRect();
+      const [wx, wy] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      alarmXEl.value = wx.toFixed(1);
+      alarmYEl.value = wy.toFixed(1);
+      runMessageEl.textContent = `알람밸브 좌표 (${wx.toFixed(0)}, ${wy.toFixed(0)}) 지정.`;
+    });
+
+    // 알림: shift+클릭 안내
+    canvas.title = "Shift+클릭 = 알람밸브 좌표 지정";
+
+    // ====== Phase 1-3 실행 ======
+    runBtn.addEventListener("click", async () => {
+      if (!lastUploadedDxf) {
+        runMessageEl.innerHTML = '<span style="color:#b91c1c;">DXF 파일을 먼저 업로드하세요.</span>';
+        return;
+      }
+      const k = parseInt(kInputEl.value, 10);
+      if (!k || k <= 0) {
+        runMessageEl.innerHTML = '<span style="color:#b91c1c;">K 는 양수여야 합니다.</span>';
+        return;
+      }
+      runBtn.disabled = true;
+      runStatusEl.textContent = "실행 중";
+      runStatusEl.className = "status-pill pending";
+      runMessageEl.innerHTML = "실행 중... (도면 크기에 따라 수십 초)";
+
+      const fd = new FormData();
+      fd.append("dxf_file", lastUploadedDxf);
+      fd.append("k", String(k));
+      fd.append("selection_method", methodEl.value);
+      const ax = alarmXEl.value.trim();
+      const ay = alarmYEl.value.trim();
+      if (ax !== "" && ay !== "") {
+        fd.append("alarm_x", ax);
+        fd.append("alarm_y", ay);
+      } else if (ax !== "" || ay !== "") {
+        runMessageEl.innerHTML = '<span style="color:#b91c1c;">알람밸브 X/Y 둘 다 입력하거나 둘 다 비워두세요.</span>';
+        runBtn.disabled = false;
+        return;
+      }
+
+      const t0 = performance.now();
+      try {
+        const res = await fetch("/api/remote30/gnn/run", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          const msg = data.message || `HTTP ${res.status}`;
+          const stderr = data.stderr ? `<pre style="font-size:0.7rem; background:#fee; padding:4px; margin:4px 0; max-height:120px; overflow:auto;">${escapeHtml(data.stderr)}</pre>` : "";
+          throw new Error(msg + stderr);
+        }
+        const dt = ((performance.now() - t0) / 1000).toFixed(1);
+        runStatusEl.textContent = "완료";
+        runStatusEl.className = "status-pill done";
+        runMessageEl.innerHTML = `완료 (${dt}s) — run_id <code>${data.run_id}</code>`;
+        renderResults(data);
+      } catch (err) {
+        runStatusEl.textContent = "오류";
+        runStatusEl.className = "status-pill pending";
+        runMessageEl.innerHTML = '<span style="color:#b91c1c;">오류: ' + err.message + '</span>';
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function renderResults(data) {
+      // 통계 (요약 dict 에서 stage3 추출)
+      const s3 = (data.summary && data.summary.stage3) || {};
+      const ds = s3.metrics && s3.metrics.distance_stats;
+      const bd = s3.metrics && s3.metrics.branch_distribution;
+      const sub = s3.subgraph;
+      const sel = s3.selection;
+      runStatsEl.style.display = "grid";
+      runStatsEl.innerHTML = `
+        <div class="stat"><div class="label">선정 K</div><div class="value">${sel?.k ?? '—'}</div></div>
+        <div class="stat"><div class="label">가용 헤드</div><div class="value">${sel?.total_heads_available ?? '—'}</div></div>
+        <div class="stat"><div class="label">도달 가능</div><div class="value">${sel?.total_heads_reachable ?? '—'}</div></div>
+        <div class="stat"><div class="label">source method</div><div class="value" style="font-size:0.72rem;">${s3.source?.method || '—'}</div></div>
+        <div class="stat"><div class="label">분기 수</div><div class="value">${bd?.num_branches ?? '—'}</div></div>
+        <div class="stat"><div class="label">subgraph 노드</div><div class="value">${sub?.node_count ?? '—'}</div></div>
+      `;
+      if (ds) {
+        resultDistanceEl.textContent = `min ${ds.min_m.toFixed(2)}m / max ${ds.max_m.toFixed(2)}m / mean ${ds.mean_m.toFixed(2)}m (σ ${ds.std_m.toFixed(2)})`;
+      }
+      if (bd) {
+        resultBranchesEl.textContent = `${bd.num_branches} 개`;
+      }
+      if (sub) {
+        resultSubgraphEl.textContent = `${sub.node_count} 노드 / ${sub.edge_count} 엣지 (전체 대비 drop ${sub.dropped_nodes}/${sub.dropped_edges})`;
+      }
+      if (data.png_url) {
+        resultPngEl.src = data.png_url + "?t=" + Date.now();
+        resultPngLinkEl.href = data.png_url;
+        resultSectionEl.style.display = "block";
+      }
+      if (data.json_url) {
+        resultJsonLinkEl.href = data.json_url;
+      }
+    }
+
+    // 초기 렌더
+    setTimeout(resizeCanvas, 50);
+  </script>
+</body>
+</html>

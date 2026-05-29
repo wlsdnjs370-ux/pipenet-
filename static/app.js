@@ -1,10 +1,20 @@
-const form = document.getElementById("upload-form");
+﻿const form = document.getElementById("upload-form");
 const appShellEl = document.querySelector(".app-shell");
 const reportFileInput = document.getElementById("report-file");
 const sdfFileInput = document.getElementById("sdf-file");
 const reportFileLabelEl = document.querySelector('label[for="report-file"]');
 const statusEl = document.getElementById("status");
+const printReportBtnEl = document.getElementById("print-report-btn");
 const summaryEl = document.getElementById("summary");
+const validationUploadCardEl = document.getElementById("validation-upload-card");
+const homePanelEl = document.getElementById("home-panel");
+const validationNavEl = document.getElementById("validation-nav");
+const suiteButtons = Array.from(document.querySelectorAll(".suite-btn"));
+const homeModuleButtons = Array.from(document.querySelectorAll(".home-module-btn[data-panel]"));
+const openValidationSuiteBtnEl = document.getElementById("open-validation-suite-btn");
+const homeNavBtnEl = document.getElementById("home-nav-btn");
+const openFeedbackBtnEl = document.getElementById("open-feedback-btn");
+const backHomeButtons = Array.from(document.querySelectorAll(".back-home-btn"));
 const menuLayoutEl = document.getElementById("menu-layout");
 const menuButtons = Array.from(document.querySelectorAll(".menu-btn"));
 const menuPanels = Array.from(document.querySelectorAll(".menu-panel"));
@@ -86,9 +96,17 @@ const pipeRulesModalCloseEl = document.getElementById("pipe-rules-modal-close");
 const pipeRulesModalBodyEl = document.getElementById("pipe-rules-modal-body");
 
 let currentTables = null;
+let currentPrintReportUrl = null;
 let currentRules = null;
 let currentTab = "pipes";
 let currentMenuPanel = null;
+const validationSuitePanels = new Set([
+  "workspace-panel",
+  "insight-panel",
+  "tables-panel",
+  "stats-panel",
+  "report-panel",
+]);
 let currentEngineeringSpikes = [];
 let currentFeedbackPosts = [];
 let engineeringMapPan = null;
@@ -154,6 +172,12 @@ function fmt(v) {
   if (v === null || v === undefined || v === "") return "-";
   return v;
 }
+function pipeRoleLabel(role) {
+  if (role === "branch") return "가지배관";
+  if (role === "other") return "교차배관";
+  if (role === "review") return "검토필요";
+  return role;
+}
 function escapeHtml(s) {
   return String(s).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
@@ -168,6 +192,12 @@ function rowClass(row) {
   if (row.engineering_flag) return "row-eng";
   if (row.economy_flag) return "row-econ";
   return "";
+}
+
+function setPrintButtonsEnabled(enabled) {
+  if (!printReportBtnEl) return;
+  printReportBtnEl.disabled = !enabled;
+  printReportBtnEl.classList.toggle("hidden", !enabled);
 }
 
 function renderSummary(summary, filename, sdfFilename) {
@@ -1060,7 +1090,7 @@ async function loadFeedbackPosts() {
 function buildTableHtml(columns, rows, startCol, wrapClass = "") {
   const head = columns.map(([, l]) => `<th>${l}</th>`).join("");
   const body = rows.length
-    ? rows.map((row, idx) => `<tr class="${rowClass(row)}" data-row-index="${idx}">${columns.map(([k], j) => `<td data-col-index="${startCol + j}" data-key="${k}">${escapeHtml(fmt(row[k]))}</td>`).join("")}</tr>`).join("")
+    ? rows.map((row, idx) => `<tr class="${rowClass(row)}" data-row-index="${idx}">${columns.map(([k], j) => `<td data-col-index="${startCol + j}" data-key="${k}">${escapeHtml(fmt(k === "pipe_role" ? pipeRoleLabel(row[k]) : row[k]))}</td>`).join("")}</tr>`).join("")
     : `<tr><td colspan="${columns.length}" class="empty">데이터가 없습니다.</td></tr>`;
   return `<div class="table-wrap ${wrapClass}"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
@@ -1083,15 +1113,187 @@ function setActiveTab(tab) {
 function setActiveMenuPanel(panelId) {
   currentMenuPanel = panelId;
   for (const b of menuButtons) b.classList.toggle("active", !!panelId && b.dataset.panel === panelId);
+  for (const b of suiteButtons) b.classList.toggle("active", !!panelId && b.dataset.panel === panelId);
   for (const p of menuPanels) p.classList.toggle("hidden", p.id !== panelId);
-  if (appShellEl) appShellEl.classList.toggle("feedback-mode", panelId === "feedback-panel");
-  if (panelId === "feedback-panel") loadFeedbackPosts();
-  if (panelId !== "feedback-panel") feedbackPanelEl?.classList.remove("compose-open");
+  const isHome = !panelId;
+  const isFeedback = panelId === "feedback-panel";
+  const isValidationSuite = !!panelId && validationSuitePanels.has(panelId);
+
+  homePanelEl?.classList.toggle("hidden", !isHome);
+  validationNavEl?.classList.toggle("hidden", !isValidationSuite);
+  homeNavBtnEl?.classList.toggle("hidden", isHome);
+  validationUploadCardEl?.classList.toggle("hidden", !isValidationSuite);
+  summaryEl?.classList.toggle("hidden", !isValidationSuite || !summaryEl.innerHTML.trim());
+
+  if (appShellEl) {
+    appShellEl.classList.toggle("feedback-mode", isFeedback);
+    appShellEl.classList.toggle("validation-suite-mode", isValidationSuite);
+    appShellEl.classList.toggle("fullscreen-module-mode", !!panelId && !isValidationSuite);
+    appShellEl.classList.toggle("home-mode", isHome);
+  }
+
+  if (isFeedback) loadFeedbackPosts();
+  if (!isFeedback) feedbackPanelEl?.classList.remove("compose-open");
 }
 
 function setMenuLayoutVisible(visible) {
   if (menuLayoutEl) menuLayoutEl.classList.toggle("hidden", !visible);
+  validationNavEl?.classList.toggle("hidden", !visible || !currentMenuPanel || !validationSuitePanels.has(currentMenuPanel));
   if (appShellEl) appShellEl.classList.toggle("menu-open", visible);
+  if (!visible) {
+    setActiveMenuPanel(null);
+    return;
+  }
+  if (!currentMenuPanel || !validationSuitePanels.has(currentMenuPanel)) {
+    setActiveMenuPanel("workspace-panel");
+  }
+}
+
+window.setActiveMenuPanel = setActiveMenuPanel;
+
+function initPipelineStageLinks() {
+  const pipelinePanelEl = document.getElementById("sprinkler-pipeline-panel");
+  if (!pipelinePanelEl) return;
+
+  const stageMappings = [
+    {
+      id: "stage-1",
+      status: "partial",
+      statusLabel: "부분 구현",
+      gap: "DXF 추출 흐름은 있으나 §2.4.18 exclusion_mask와 환경 메타 자동화는 아직 서버 코드에 없다.",
+      backend: "기존 CAD/DXF 추출 및 CAD-SDF 비교 로직 사용",
+      nextStep: "공간·용도·구조 라벨을 기반으로 exclusion_mask JSON을 생성하는 전처리 API 추가",
+      actions: [{ panel: "design-automation-panel", label: "8번 설계자동화", note: "DXF 입력과 객체 추출 흐름 확인", priority: "primary" }],
+    },
+    {
+      id: "stage-2",
+      status: "partial",
+      statusLabel: "부분 구현",
+      gap: "Zone/헤드 조건 입력 흐름은 있으나 system_type 자동 결정과 한백 룰 엔진은 아직 명시 구현되지 않았다.",
+      backend: "설계자동화 화면의 입력 단계와 파이프라인 문서만 연결됨",
+      nextStep: "습식·건식·준비작동·일제살수·NFPA13식 결정을 위한 YAML 룰셋과 결정 함수 추가",
+      actions: [{ panel: "design-automation-panel", label: "8번 설계자동화", note: "시스템 선정·Zone 분할 입력 흐름 확인", priority: "primary" }],
+    },
+    {
+      id: "stage-3",
+      status: "partial",
+      statusLabel: "부분 구현",
+      gap: "헤드 배치 설명은 있지만 (2R)^2, 장애물 룰, RTI 기반 자동 제약은 별도 엔진으로 분리되어 있지 않다.",
+      backend: "설계자동화 모듈에서 배치 화면 접근 가능",
+      nextStep: "한백 표의 S/L 조합과 장애물 규칙을 검증하는 배치 평가기 추가",
+      actions: [{ panel: "design-automation-panel", label: "8번 설계자동화", note: "헤드 배치 단계로 바로 이동", priority: "primary" }],
+    },
+    {
+      id: "stage-4",
+      status: "missing",
+      statusLabel: "핵심 누락",
+      gap: "Case 1~5 결정, 행거/후렉시블/릴리프·감압밸브 자동 배치, 고가수조/펌프 토폴로지는 현재 서버 기능에 없다.",
+      backend: "설계자동화 화면과 CAD-SDF 대조 화면만 연결되어 있고 계통 토폴로지 엔진은 없음",
+      nextStep: "건물 높이·피난안전층 간격·수원 조건으로 Case를 산정하는 topology builder 추가",
+      actions: [
+        { panel: "design-automation-panel", label: "8번 설계자동화", note: "배관 라우팅 화면과 입력 흐름 확인", priority: "primary" },
+        { panel: "cad-compare-panel-7", label: "CAD-SDF 대조 복제", note: "배관망 형상과 차이를 미리 보기", priority: "secondary" },
+      ],
+    },
+    {
+      id: "stage-5",
+      status: "partial",
+      statusLabel: "부분 구현",
+      gap: "PipeNet 검증 흐름은 있으나 N185 양식 출력, BOM, 펌프 동작점 정식 산출은 현재 노출 기능이 아니다.",
+      backend: "검증 업로드 및 SDF 그래프 분석 로직 존재",
+      nextStep: "구역별 Q/H 결과를 누적해 N185 데이터셋과 BOM 요약 JSON을 생성하도록 확장",
+      actions: [
+        { panel: "design-automation-panel", label: "8번 설계자동화", note: "PipeNet 변환 실행 흐름 확인", priority: "primary" },
+        { panel: "workspace-panel", label: "1. 검증결과", note: "수리계산 결과 업로드와 검진", priority: "secondary" },
+      ],
+    },
+    {
+      id: "stage-6",
+      status: "implemented",
+      statusLabel: "상대적 구현",
+      gap: "검진 결과·통계·상세 리포트는 현재 서버에서 가장 실제 구현에 가깝다.",
+      backend: "report validator, SDF graph, visualization, 통계 패널",
+      nextStep: "한백 6대 hard 검증 항목명을 현재 validator 결과 테이블과 직접 매핑",
+      actions: [
+        { panel: "workspace-panel", label: "1. 검증결과", note: "검진 결과와 규칙 위반 확인", priority: "primary" },
+        { panel: "stats-panel", label: "4. 검증통계", note: "차트와 통계로 결과 검토", priority: "secondary" },
+      ],
+    },
+    {
+      id: "stage-7",
+      status: "partial",
+      statusLabel: "부분 구현",
+      gap: "재설계 판단용 비교와 가이드는 있으나 회귀 단계(③/④/⑤) 자동 지정과 옵션 ranking 로직은 아직 없다.",
+      backend: "CAD-SDF 비교 결과와 최적화 가이드 패널 존재",
+      nextStep: "실패 유형별로 헤드·배관·펌프·Case 변경 후보를 정렬하는 진단 분류기 추가",
+      actions: [
+        { panel: "cad-compare-panel-7", label: "CAD-SDF 대조 복제", note: "재설계 전후 배관망 비교", priority: "primary" },
+        { panel: "insight-panel", label: "2. 최적화 가이드", note: "재설계 진단 근거 확인", priority: "secondary" },
+      ],
+    },
+    {
+      id: "stage-8",
+      status: "partial",
+      statusLabel: "부분 구현",
+      gap: "상세리포트와 피드백은 있으나 서명 DXF, 한백 표준 설계보고서, N185, BOM 패키지 출력은 미구현이다.",
+      backend: "상세리포트 출력과 피드백 게시판 제공",
+      nextStep: "최종 산출물 묶음 API를 만들어 DXF, 보고서, N185, BOM을 한 번에 내보내기",
+      actions: [
+        { panel: "report-panel", label: "5. 상세리포트", note: "최종 근거를 리포트로 확인", priority: "primary" },
+        { panel: "feedback-panel", label: "개선의견 게시판", note: "검토 의견과 후속 이슈 기록", priority: "secondary" },
+      ],
+    },
+  ];
+
+  for (const stage of stageMappings) {
+    const stageEl = pipelinePanelEl.querySelector(`#${stage.id}`);
+    if (!stageEl || stageEl.querySelector(".pipeline-stage-links")) continue;
+    const ioEl = stageEl.querySelector(".stage-io");
+    if (!ioEl) continue;
+
+    const linksEl = document.createElement("div");
+    linksEl.className = "pipeline-stage-links";
+
+    const labelEl = document.createElement("div");
+    labelEl.className = "pipeline-stage-links-label";
+    labelEl.textContent = "Server Modules";
+    linksEl.appendChild(labelEl);
+
+    const mainEl = document.createElement("div");
+    mainEl.className = "pipeline-stage-links-main";
+
+    const actionsEl = document.createElement("div");
+    actionsEl.className = "pipeline-stage-links-actions";
+
+    for (const action of stage.actions) {
+      const buttonEl = document.createElement("button");
+      buttonEl.type = "button";
+      buttonEl.className = `pipeline-jump-btn${action.priority === "secondary" ? " secondary" : ""}`;
+      buttonEl.dataset.panel = action.panel;
+      buttonEl.innerHTML = `<span class="pipeline-jump-btn-name">${escapeHtml(action.label)}</span><span class="pipeline-jump-btn-note">${escapeHtml(action.note)}</span>`;
+      actionsEl.appendChild(buttonEl);
+    }
+
+    mainEl.appendChild(actionsEl);
+
+    const statusEl = document.createElement("div");
+    statusEl.className = "pipeline-stage-status";
+    statusEl.innerHTML = `<span class="pipeline-stage-status-badge ${escapeHtml(stage.status || "partial")}">${escapeHtml(stage.statusLabel || "부분 구현")}</span><span>${escapeHtml(stage.gap || "")}</span>`;
+    mainEl.appendChild(statusEl);
+
+    if (stage.backend || stage.nextStep) {
+      const detailEl = document.createElement("div");
+      detailEl.className = "pipeline-stage-detail";
+      detailEl.innerHTML = `
+        ${stage.backend ? `<div><strong>현재 근거</strong> ${escapeHtml(stage.backend)}</div>` : ""}
+        ${stage.nextStep ? `<div><strong>보완 작업</strong> ${escapeHtml(stage.nextStep)}</div>` : ""}
+      `;
+      mainEl.appendChild(detailEl);
+    }
+
+    linksEl.appendChild(mainEl);
+    ioEl.insertAdjacentElement("beforebegin", linksEl);
+  }
 }
 
 function buildRowLogicExplanation(tab, row) {
@@ -1105,12 +1307,12 @@ function buildRowLogicExplanation(tab, row) {
     const velocity = Number(row.velocity_mps || 0);
     const limit = row.velocity_limit_mps == null ? null : Number(row.velocity_limit_mps);
     const role = String(row.pipe_role || "review");
-    const roleLabel = role === "branch" ? "branch" : role === "other" ? "other" : "review";
+    const roleLabel = pipeRoleLabel(role);
     const over = limit == null ? null : velocity - limit;
     cards.criteria.push(`Topology 판정: downstream nozzle 수 = ${fmt(row.downstream_nozzle_count)}, subtree cross split = ${fmt(row.subtree_has_cross_split)}`);
     cards.criteria.push(`최종 분류: ${roleLabel}`);
     cards.criteria.push(`판정 근거: ${row.role_reason || "-"}`);
-    cards.formula.push("속도 기준: branch -> 6.0 m/s, other -> 10.0 m/s");
+    cards.formula.push("속도 기준: 가지배관 -> 6.0 m/s, 교차배관 -> 10.0 m/s");
     if (role === "review") cards.formula.push("review -> 자동 기준 미적용, 수동 검토 필요");
     else cards.formula.push(`적용 기준식: V_actual <= ${fmtLogicNumber(limit, 3)} m/s`);
     cards.values.push(`실제 유속 V_actual = ${fmtLogicNumber(velocity)} m/s`);
@@ -1120,7 +1322,7 @@ function buildRowLogicExplanation(tab, row) {
     } else if (row.velocity_ok === true && limit != null) {
       cards.conclusion.push(`적합 해석: ${fmtLogicNumber(limit)} - ${fmtLogicNumber(velocity)} = ${fmtLogicNumber(limit - velocity)} m/s 여유가 있어 유속 기준을 만족합니다.`);
     } else {
-      cards.conclusion.push("노랑(확인 필요): topology ambiguity로 branch/other 판정이 확정되지 않아 자동 유속 판정을 보류했습니다.");
+      cards.conclusion.push("노랑(확인 필요): topology ambiguity로 가지배관/교차배관 판정이 확정되지 않아 자동 유속 판정을 보류했습니다.");
     }
     if (row.hw_fail) {
       cards.conclusion.push("추가 참고: 이 배관은 HW 마찰손실 검산도 실패 상태입니다.");
@@ -1264,8 +1466,8 @@ function criteriaGuideHtml() {
       <li><strong>판정 체계</strong>: PASS / FAIL / WARNING</li>
     </ul></section>
     <section class="criteria-section"><h4>2) 배관 유속 기준</h4><ul>
-      <li><strong>Topology branch</strong>: 50A 이하 배관 중 downstream subtree에 multi-head split node가 없으면 6.0 m/s 이하</li>
-      <li><strong>Topology other</strong>: 50A 초과 배관이거나, 50A 이하라도 downstream subtree에 multi-head split node가 있으면 10.0 m/s 이하</li>
+      <li><strong>가지배관 (Topology branch)</strong>: 50A 이하 배관 중 downstream subtree에 multi-head split node가 없으면 6.0 m/s 이하</li>
+      <li><strong>교차배관 (Topology other)</strong>: 50A 초과 배관이거나, 50A 이하라도 downstream subtree에 multi-head split node가 있으면 10.0 m/s 이하</li>
       <li>배관 역할은 구경만으로 결정하지 않고, PIPE CONFIGURATION + NOZZLE CONFIGURATION 기반 topology 판정 결과로 확정합니다.</li>
       <li>기준 초과 시 빨강(기준 위반), topology ambiguity 시 노랑(확인 필요)으로 표시됩니다.</li>
     </ul></section>
@@ -1299,8 +1501,8 @@ function updatesHistoryHtml() {
       <li>검증 결과, 통계, 상세리포트, 결과 데이터 테이블 기본 출력 기능 추가</li>
     </ul></section>
     <section class="criteria-section"><h4>2) 검증 로직 고도화</h4><ul>
-      <li>배관 유속 기준을 단순 구경 판정에서 topology 기반 branch/other 판정으로 교체</li>
-      <li>downstream nozzle count, subtree cross split 판정으로 40A/50A 교차배관을 other로 분류하도록 보강</li>
+      <li>배관 유속 기준을 단순 구경 판정에서 topology 기반 가지배관/교차배관 판정으로 교체</li>
+      <li>downstream nozzle count, subtree cross split 판정으로 40A/50A 교차배관을 교차배관으로 분류하도록 보강</li>
       <li>헤드 유량/압력, FX 등가길이, AV/PV 기준값 검증 추가</li>
       <li>헤드 유량편차 과다 평가 항목 제거</li>
     </ul></section>
@@ -1598,6 +1800,14 @@ async function downloadTablesAsXlsx() {
   }
 }
 
+function openAllValidationPrint(copies = 2) {
+  if (currentPrintReportUrl && currentPrintReportUrl !== "client-print") {
+    window.open(currentPrintReportUrl, "_blank", "noopener,noreferrer");
+    return;
+  }
+  window.print();
+}
+
 resultsBody.addEventListener("click", (event) => {
   const btn = event.target.closest(".result-status-btn");
   if (!btn) return;
@@ -1786,8 +1996,22 @@ economyVisualsEl?.addEventListener("pointerleave", () => {
 
 for (const b of tabButtons) b.addEventListener("click", () => setActiveTab(b.dataset.tab));
 for (const b of menuButtons) b.addEventListener("click", () => setActiveMenuPanel(b.dataset.panel));
+for (const b of suiteButtons) b.addEventListener("click", () => setActiveMenuPanel(b.dataset.panel));
+for (const b of homeModuleButtons) b.addEventListener("click", () => setActiveMenuPanel(b.dataset.panel));
+for (const b of backHomeButtons) b.addEventListener("click", () => setActiveMenuPanel(null));
+document.addEventListener("click", (event) => {
+  const jumpBtn = event.target.closest(".pipeline-jump-btn");
+  if (!jumpBtn) return;
+  const targetPanel = jumpBtn.dataset.panel;
+  if (!targetPanel) return;
+  setActiveMenuPanel(targetPanel);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+openValidationSuiteBtnEl?.addEventListener("click", () => setActiveMenuPanel("workspace-panel"));
+homeNavBtnEl?.addEventListener("click", () => setActiveMenuPanel(null));
+openFeedbackBtnEl?.addEventListener("click", () => setActiveMenuPanel("feedback-panel"));
+initPipelineStageLinks();
 setActiveMenuPanel(null);
-setMenuLayoutVisible(true);
 if (updatesBtnEl) updatesBtnEl.textContent = "업데이트 기록";
 if (criteriaBtnEl) criteriaBtnEl.textContent = "평가 기준";
 if (pipeRulesBtnEl) pipeRulesBtnEl.textContent = "배관 규칙 상태 보기";
@@ -1837,7 +2061,7 @@ logicModalCloseEl.addEventListener("click", () => logicModalEl.classList.add("hi
 logicModalEl.addEventListener("click", (e) => {
   if (e.target === logicModalEl) logicModalEl.classList.add("hidden");
 });
-criteriaBtnEl.addEventListener("click", () => {
+criteriaBtnEl?.addEventListener("click", () => {
   criteriaModalBodyEl.innerHTML = criteriaGuideHtml();
   criteriaModalEl.classList.remove("hidden");
 });
@@ -1854,9 +2078,9 @@ if (updatesBtnEl) {
     updatesModalEl.classList.remove("hidden");
   });
 }
-criteriaModalCloseEl.addEventListener("click", () => criteriaModalEl.classList.add("hidden"));
+criteriaModalCloseEl?.addEventListener("click", () => criteriaModalEl.classList.add("hidden"));
 if (updatesModalCloseEl) updatesModalCloseEl.addEventListener("click", () => updatesModalEl.classList.add("hidden"));
-criteriaModalEl.addEventListener("click", (e) => {
+criteriaModalEl?.addEventListener("click", (e) => {
   if (e.target === criteriaModalEl) criteriaModalEl.classList.add("hidden");
 });
 if (updatesModalEl) {
@@ -1870,6 +2094,7 @@ pipeRulesModalEl?.addEventListener("click", (e) => {
   if (e.target === pipeRulesModalEl) pipeRulesModalEl.classList.add("hidden");
 });
 downloadExcelBtnEl.addEventListener("click", downloadTablesAsXlsx);
+printReportBtnEl?.addEventListener("click", () => openAllValidationPrint(2));
 if (cadRunBtnEl) {
   cadRunBtnEl.addEventListener("click", async () => {
     const cadFile = cadRefFileEl?.files?.[0];
@@ -2014,6 +2239,9 @@ form.addEventListener("submit", async (event) => {
 
   statusEl.textContent = "검증 중입니다...";
   downloadExcelBtnEl.disabled = true;
+  currentTables = null;
+  currentPrintReportUrl = null;
+  setPrintButtonsEnabled(false);
   graphFilterMode = null;
   graphSelection = null;
   if (activeResultButton) {
@@ -2035,14 +2263,38 @@ form.addEventListener("submit", async (event) => {
   if (sdfFileInput.files[0]) formData.append("sdf_file", sdfFileInput.files[0]);
 
   try {
-    const resp = await fetch("/api/validate", { method: "POST", body: formData });
+    const resp = await fetch("/api/validate", {
+      method: "POST",
+      body: formData,
+      credentials: "same-origin",   // 세션 쿠키 명시 전달
+      redirect: "manual",            // /login 으로 자동 follow 차단 (HTML 받으면 안 됨)
+    });
+    // 응답이 JSON 아니면 명확한 메시지 — HTML 받으면 인증 만료 또는 서버 오류
+    const contentType = (resp.headers.get("content-type") || "").toLowerCase();
+    if (resp.type === "opaqueredirect" || resp.status === 0) {
+      throw new Error("세션이 만료되었습니다. 페이지를 새로고침하여 다시 로그인해 주세요.");
+    }
+    if (!contentType.includes("application/json")) {
+      const head = (await resp.text()).slice(0, 200);
+      throw new Error(
+        `서버가 JSON 대신 ${contentType || "알 수 없는 형식"}을 반환했습니다 (HTTP ${resp.status}). ` +
+        `세션 만료/로그인 게이트 또는 서버 오류 가능성. 페이지 새로고침 후 재시도.\n응답 미리보기: ${head}`
+      );
+    }
     const data = await resp.json();
-    if (!resp.ok || !data.ok) throw new Error(data.message || "검증 요청에 실패했습니다.");
+    if (!resp.ok || !data.ok) {
+      if (data.login_required) {
+        throw new Error("로그인이 필요합니다. 페이지를 새로고침하여 다시 로그인해 주세요.");
+      }
+      throw new Error(data.message || "검증 요청에 실패했습니다.");
+    }
 
     statusEl.textContent = data.message;
     renderSummary(data.summary || {}, data.filename, data.sdf_filename);
     renderResultRows(data.results || {});
     renderPipeRulesButton(data.rules || {});
+    currentPrintReportUrl = data.print_url || "client-print";
+    setPrintButtonsEnabled(!!currentPrintReportUrl);
     currentTables = data.tables || {};
     renderNetworkGraph(data.sdf_graph || null);
     renderInsights(data.insights || {});
@@ -2063,3 +2315,126 @@ form.addEventListener("submit", async (event) => {
     networkSvgEl.classList.add("hidden");
   }
 });
+
+// =========================
+// Remote 30 추출 모듈
+// =========================
+(function initRemote30Module() {
+  const formEl = document.getElementById("remote30-form");
+  if (!formEl) return;
+
+  const statusEl = document.getElementById("remote30-status");
+  const resultEl = document.getElementById("remote30-result");
+  const countsEl = document.getElementById("remote30-counts");
+  const warningsEl = document.getElementById("remote30-warnings");
+  const pngEl = document.getElementById("remote30-png");
+  const xlsxLinkEl = document.getElementById("remote30-xlsx-link");
+  const sdfLinkEl = document.getElementById("remote30-sdf-link");
+  const summaryTableEl = document.getElementById("remote30-summary-table");
+  const submitBtnEl = document.getElementById("remote30-submit-btn");
+  const alarmManualEl = document.getElementById("remote30-alarm-manual");
+
+  const alarmRadios = formEl.querySelectorAll('input[name="alarm_mode"]');
+  for (const r of alarmRadios) {
+    r.addEventListener("change", () => {
+      const isManual = formEl.querySelector('input[name="alarm_mode"]:checked')?.value === "manual";
+      if (alarmManualEl) alarmManualEl.style.display = isManual ? "block" : "none";
+    });
+  }
+
+  function renderSummaryTable(rows) {
+    if (!summaryTableEl) return;
+    if (!rows || !rows.length) {
+      summaryTableEl.innerHTML = '<p class="remote30-empty">선정된 헤드가 없습니다.</p>';
+      return;
+    }
+    const hasHydra = rows[0].total_loss_kgcm2 !== undefined;
+    let head;
+    let body;
+    if (hasHydra) {
+      head = `<tr><th>Remote No</th><th>Node</th><th>X</th><th>Y</th><th>경로(m)</th><th>마찰손실(kgf/cm²)</th><th>정수두(kgf/cm²)</th><th>총손실(kgf/cm²)</th></tr>`;
+      body = rows.map((r) => `<tr><td>${r.remote_head_no}</td><td>${r.node}</td><td>${r.x}</td><td>${r.y}</td><td>${r.path_length_m}</td><td>${r.friction_loss_kgcm2}</td><td>${r.static_head_kgcm2}</td><td><strong>${r.total_loss_kgcm2}</strong></td></tr>`).join("");
+    } else {
+      head = `<tr><th>Remote No</th><th>Node</th><th>X</th><th>Y</th><th>AV로부터 거리(CAD)</th></tr>`;
+      body = rows.map((r) => `<tr><td>${r.remote_head_no}</td><td>${r.node}</td><td>${r.x}</td><td>${r.y}</td><td>${r.distance_from_av}</td></tr>`).join("");
+    }
+    summaryTableEl.innerHTML = `<table class="result-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  }
+
+  formEl.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fd = new FormData(formEl);
+    const alarmMode = fd.get("alarm_mode") || "auto";
+    fd.set("auto_detect_alarm", alarmMode === "auto" ? "true" : "false");
+    fd.delete("alarm_mode");
+    if (alarmMode !== "manual") {
+      fd.delete("alarm_x");
+      fd.delete("alarm_y");
+    }
+
+    submitBtnEl.disabled = true;
+    statusEl.textContent = "DXF 추출 중... (도면 크기에 따라 1~수십 초)";
+    resultEl?.classList.add("hidden");
+
+    try {
+      const res = await fetch("/api/remote30/extract", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || `HTTP ${res.status}`);
+      }
+
+      const c = data.counts || {};
+      const alarmTag = { auto: "자동검출", manual: "수동입력", fallback_origin: "fallback(0,0)", fallback_main_component: "fallback(중심)" }[data.alarm_source] || data.alarm_source;
+      const modeTag = { length: "배관길이", hydraulic: "Hydraulic" }[data.remote_mode] || data.remote_mode;
+      const fmt = (n) => (n === undefined || n === null) ? "-" : n;
+      const stat = (label, value) => `<div class="remote30-stat"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+      countsEl.innerHTML = [
+        stat("선정 기준", modeTag),
+        stat("알람밸브", `<small>${alarmTag}</small><br>(${data.alarm_xy[0].toFixed(0)}, ${data.alarm_xy[1].toFixed(0)})`),
+        stat("배관 segment", fmt(c.segments)),
+        stat("그래프 노드", fmt(c.nodes)),
+        stat("그래프 에지", fmt(c.edges)),
+        stat("헤드 후보", fmt(c.heads)),
+        stat("부착 헤드", `${fmt(c.attached_heads)} / ${fmt(c.heads)}`),
+        stat("선정 Remote", `<strong>${fmt(c.selected)}</strong>`),
+        c.supplementary_insert_exploded ? stat("INSERT 분해", fmt(c.supplementary_insert_exploded)) : "",
+        c.supplementary_near_text_line ? stat("TEXT 근접 LINE", fmt(c.supplementary_near_text_line)) : "",
+        c.graph_closure_edges ? stat("그래프 closure", fmt(c.graph_closure_edges)) : "",
+      ].filter(Boolean).join("");
+
+      warningsEl.innerHTML = (data.warnings && data.warnings.length)
+        ? `<div class="remote30-warnings"><strong>경고</strong><ul>${data.warnings.map((w) => `<li>${w}</li>`).join("")}</ul></div>`
+        : "";
+
+      if (data.png_url) {
+        pngEl.src = data.png_url + "?t=" + Date.now();
+        pngEl.classList.remove("hidden");
+      } else {
+        pngEl.removeAttribute("src");
+        pngEl.classList.add("hidden");
+      }
+
+      if (data.xlsx_url) {
+        xlsxLinkEl.href = data.xlsx_url;
+        xlsxLinkEl.classList.remove("hidden");
+      } else {
+        xlsxLinkEl.classList.add("hidden");
+      }
+
+      if (data.sdf_url && sdfLinkEl) {
+        sdfLinkEl.href = data.sdf_url;
+        sdfLinkEl.classList.remove("hidden");
+      } else if (sdfLinkEl) {
+        sdfLinkEl.classList.add("hidden");
+      }
+
+      renderSummaryTable(data.summary);
+      resultEl?.classList.remove("hidden");
+      statusEl.textContent = "완료";
+    } catch (err) {
+      statusEl.textContent = "오류: " + err.message;
+    } finally {
+      submitBtnEl.disabled = false;
+    }
+  });
+})();

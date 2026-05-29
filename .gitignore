@@ -45,6 +45,10 @@ htmlcov/
 # Claude / local agent state
 .claude/
 
+# Env / secrets
+.env
+.env.local
+
 # OS files
 Thumbs.db
 .DS_Store

@@ -67,6 +67,93 @@ for evt in run_stages_0_2(Path("도면.dxf"), job_id="test"):
 emit_sdf(tables, Path("out.sdf"), project_title="My Project")
 ```
 
+## Production 운영 — 본체 PC 를 24/7 서버로
+
+개발용 `app.run` 대신 **waitress** (Windows production WSGI) 로 띄우고, 부팅 시 자동 실행 + Cloudflare Tunnel 로 외부 도메인 노출.
+
+### 1. 초기 설정 (한 번만)
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env
+# .env 의 FLASK_SECRET_KEY 를 새 값으로 교체 (이미 자동 생성됐다면 그대로 둠):
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### 2. 서버 실행
+
+```bash
+# 수동 (한 번 띄우기)
+python serve.py
+
+# 또는 더블 클릭 / cmd
+start_server.bat
+```
+
+`start_server.bat` 은 크래시 시 5초 후 자동 재시작 루프가 포함됩니다.
+
+### 3. 부팅 시 자동 시작 (Windows 작업 스케줄러)
+
+```cmd
+schtasks /create /tn "Remote30 Server" ^
+  /tr "\"C:\Users\admin\PycharmProjects\JupyterProject\start_server.bat\"" ^
+  /sc onstart /ru SYSTEM /rl HIGHEST
+```
+
+또는 GUI: `taskschd.msc` → 작업 만들기 → 트리거 "시작할 때" → 동작 `start_server.bat`.
+
+추가 권장 설정 (제어판 → 전원 옵션):
+- 절대 끄지 않음 (디스플레이/슬립 모두)
+- 빠른 시작 비활성화
+
+### 4. 외부 접속 — Cloudflare Tunnel + 자체 도메인
+
+#### 4-1. 도메인 구매 (~$10/년)
+
+- **Cloudflare Registrar** (https://dash.cloudflare.com → Domains) 권장 — 원가 마진 없이 도메인 등록
+- 또는 Namecheap / Gabia 등에서 산 뒤 Cloudflare 에 DNS 위탁
+
+#### 4-2. cloudflared 설치 + 터널 생성
+
+```cmd
+winget install Cloudflare.cloudflared
+
+cloudflared tunnel login                                  # 브라우저 인증
+cloudflared tunnel create remote30                        # 터널 생성
+cloudflared tunnel route dns remote30 cad.yourdomain.com  # DNS 매핑
+```
+
+`%USERPROFILE%\.cloudflared\config.yml` 작성:
+
+```yaml
+tunnel: remote30
+credentials-file: C:\Users\<user>\.cloudflared\<tunnel-id>.json
+
+ingress:
+  - hostname: cad.yourdomain.com
+    service: http://localhost:5051
+  - service: http_status:404
+```
+
+#### 4-3. 터널 실행 (자동 시작 권장)
+
+```cmd
+# 서비스로 등록 (관리자 cmd)
+cloudflared service install
+```
+
+이후 `cad.yourdomain.com` 으로 외부 접속 → 로그인 게이트(비밀번호) 통과 → 메인 화면. HTTPS 자동 (Let's Encrypt 인증서 Cloudflare 가 발급).
+
+### 5. 운영 후 점검
+
+| 항목 | 확인 방법 |
+|---|---|
+| 서버 살아있나 | `curl http://localhost:5051/login` → 200 |
+| 외부 도메인 살아있나 | `curl https://cad.yourdomain.com/login` → 200 |
+| 자동 시작 등록됨 | `schtasks /query /tn "Remote30 Server"` |
+| cloudflared 서비스 | `Get-Service cloudflared` (PowerShell) |
+| 디스크 차오름 방지 | `data/uploads/`, `data/overall_runs/` 주기 정리 |
+
 ## 문제 해결
 
 | 증상 | 원인 / 조치 |

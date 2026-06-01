@@ -35,6 +35,16 @@
       #home-nav-btn.float-back-btn:hover { background: #1e293b; transform: translateY(-1px); }
       #home-nav-btn.float-back-btn::before { content: "←"; font-size: 1rem; line-height: 1; opacity: 0.9; }
       #home-nav-btn.float-back-btn.hidden { display: none !important; }
+
+      /* iframe 모듈 진입 시 — 외부 페이지 스크롤바 + iframe 자체 스크롤바 제거 */
+      /* 사이드바 안쪽 스크롤바 하나만 남도록 통일 */
+      body:has(.app-shell.fullscreen-module-mode) { overflow: hidden; }
+      .app-shell.fullscreen-module-mode { padding: 0 !important; overflow: hidden !important; }
+      .app-shell.fullscreen-module-mode .main-pane { gap: 0 !important; padding: 0 !important; }
+      .app-shell.fullscreen-module-mode .embedded-iframe-panel { padding: 0 !important; margin: 0 !important; min-height: 100vh; height: 100vh; overflow: hidden; }
+      .app-shell.fullscreen-module-mode .embedded-iframe-panel .module-iframe-full {
+        height: 100vh !important; min-height: 100vh !important; border: 0; display: block;
+      }
     </style>
   </head>
   <body>

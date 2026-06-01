@@ -4,55 +4,272 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>FNCADnet</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260520-wb1">
     <style>
+      /* ─── 디자인 시스템 토큰 (FNCADnet 2026) ─── */
+      :root {
+        --c-bg: #fafbfc;
+        --c-surface: #ffffff;
+        --c-surface-soft: #f8fafc;
+        --c-border: #e2e8f0;
+        --c-border-strong: #cbd5e1;
+        --c-text: #0f172a;
+        --c-text-secondary: #475569;
+        --c-muted: #94a3b8;
+        --c-accent: #4f46e5;
+        --c-accent-hover: #4338ca;
+        --c-accent-soft: #eef2ff;
+        --c-violet: #8b5cf6;
+        --c-cyan: #06b6d4;
+        --c-emerald: #10b981;
+        --c-amber: #f59e0b;
+        --c-rose: #f43f5e;
+
+        --grad-brand: linear-gradient(135deg, #4f46e5 0%, #6366f1 35%, #8b5cf6 65%, #06b6d4 100%);
+        --grad-soft-bg: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+
+        --r-sm: 6px;
+        --r-md: 10px;
+        --r-lg: 14px;
+        --r-xl: 20px;
+
+        --sh-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+        --sh-md: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+        --sh-lg: 0 4px 12px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+        --sh-xl: 0 12px 32px -6px rgba(15, 23, 42, 0.10), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
+        --sh-glow: 0 4px 24px -4px rgba(99, 102, 241, 0.22);
+
+        --tr-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+        --tr: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+
+        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+      }
+
+      html, body {
+        font-family: var(--font-sans) !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        color: var(--c-text);
+        background: var(--c-bg);
+        letter-spacing: -0.005em;
+      }
+
+      /* ─── 헤더 (홈 화면 전용) ─── */
+      .app-header.header.card {
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-lg);
+        padding: 14px 20px;
+        box-shadow: var(--sh-sm);
+      }
+      .app-header .header-top {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 16px;
+      }
+      .app-header h1 {
+        margin: 0;
+        font-size: 1.1rem; font-weight: 700;
+        letter-spacing: -0.02em;
+        display: flex; align-items: center; gap: 10px;
+      }
+      .app-header h1::before {
+        content: '';
+        width: 28px; height: 28px;
+        border-radius: 7px;
+        background: var(--grad-brand);
+        box-shadow: 0 3px 10px -2px rgba(99, 102, 241, 0.4);
+        background-image:
+          url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M3 12h4l3-9 4 18 3-9h4'/></svg>"),
+          var(--grad-brand);
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: 18px 18px, cover;
+      }
+      .app-header h1 .brand-name {
+        background: var(--grad-brand);
+        -webkit-background-clip: text; background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .app-header .criteria-btn {
+        background: var(--c-surface) !important;
+        color: var(--c-text-secondary) !important;
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-md);
+        padding: 7px 12px;
+        font-size: 0.82rem; font-weight: 500;
+        transition: all var(--tr);
+        font-family: inherit;
+        letter-spacing: 0.005em;
+      }
+      .app-header .criteria-btn:hover {
+        background: var(--c-surface-soft) !important;
+        border-color: var(--c-rose) !important;
+        color: var(--c-rose) !important;
+      }
+
+      /* ─── 홈 패널 (워크플로우 + 모듈 카드) ─── */
+      #home-panel.home-panel.card {
+        background: transparent;
+        border: 0;
+        padding: 0;
+        box-shadow: none;
+        display: grid;
+        gap: 22px;
+      }
+
+      /* ─── 워크플로우 컨테이너 ─── */
       .workflow-svg {
-        width: 100%; height: auto; max-height: 560px; display: block;
+        width: 100%; height: auto; max-height: 540px; display: block;
         margin: 0;
         background:
-          radial-gradient(circle at 18% 30%, rgba(99,102,241,0.10) 0, transparent 38%),
-          radial-gradient(circle at 78% 70%, rgba(16,185,129,0.10) 0, transparent 40%),
-          linear-gradient(180deg, #fafbff 0%, #eef2ff 50%, #f1f5fb 100%);
-        border-radius: 14px; padding: 18px; box-sizing: border-box;
-        box-shadow: 0 6px 24px rgba(99,102,241,0.10), inset 0 1px 0 rgba(255,255,255,0.7);
+          radial-gradient(ellipse at 18% 25%, rgba(99,102,241,0.08) 0, transparent 42%),
+          radial-gradient(ellipse at 82% 75%, rgba(16,185,129,0.07) 0, transparent 45%),
+          radial-gradient(ellipse at 50% 50%, rgba(139,92,246,0.04) 0, transparent 60%),
+          var(--grad-soft-bg);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-xl);
+        padding: 24px;
+        box-sizing: border-box;
+        box-shadow: var(--sh-lg);
+        position: relative;
+        overflow: hidden;
+      }
+      .workflow-svg::before {
+        content: ''; position: absolute; inset: 0;
+        background:
+          linear-gradient(rgba(99,102,241,0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(99,102,241,0.025) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, transparent 70%);
+        pointer-events: none;
       }
 
-      /* 모듈 진입 후엔 상단 헤더 카드(브랜드 + Logout) 숨김 */
+      /* ─── 모듈 카드 (.home-module-btn 재정의) ─── */
+      .home-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px !important;
+      }
+      .home-module-btn {
+        position: relative;
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-lg);
+        padding: 22px 22px 20px !important;
+        min-height: auto !important;
+        text-align: left;
+        cursor: pointer;
+        transition: all var(--tr);
+        display: flex !important;
+        flex-direction: column;
+        gap: 10px;
+        font-family: var(--font-sans) !important;
+        color: var(--c-text) !important;
+        box-shadow: var(--sh-sm);
+        overflow: hidden;
+      }
+      .home-module-btn::before {
+        content: ''; position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: var(--grad-brand);
+        opacity: 0;
+        transition: opacity var(--tr);
+      }
+      .home-module-btn::after {
+        content: '→';
+        position: absolute;
+        top: 22px; right: 22px;
+        font-size: 1rem; line-height: 1;
+        color: var(--c-muted);
+        transition: all var(--tr);
+      }
+      .home-module-btn:hover {
+        border-color: var(--c-accent);
+        transform: translateY(-2px);
+        box-shadow: var(--sh-xl), var(--sh-glow);
+      }
+      .home-module-btn:hover::before { opacity: 1; }
+      .home-module-btn:hover::after { color: var(--c-accent); transform: translateX(4px); }
+      .home-module-btn:active { transform: translateY(-1px); }
+
+      .home-module-btn .module-chip {
+        display: inline-flex; align-items: center; gap: 6px;
+        align-self: flex-start;
+        font-size: 0.68rem; font-weight: 700;
+        letter-spacing: 0.16em;
+        color: var(--c-accent);
+        background: var(--c-accent-soft);
+        padding: 4px 10px;
+        border-radius: 999px;
+        text-transform: uppercase;
+      }
+      .home-module-btn .module-chip::before {
+        content: ''; width: 6px; height: 6px;
+        border-radius: 50%;
+        background: var(--c-accent);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
+      }
+      .home-module-btn strong {
+        font-size: 1.05rem !important;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--c-text);
+        line-height: 1.3;
+        padding-right: 28px;
+      }
+      .home-module-btn span {
+        font-size: 0.85rem !important;
+        line-height: 1.55 !important;
+        color: var(--c-text-secondary) !important;
+        margin-top: 2px;
+      }
+
+      /* ─── 모듈 진입 후엔 상단 헤더 카드 숨김 ─── */
       .app-shell:not(.home-mode) .app-header { display: none; }
 
-      /* 모듈 진입 시 좌상단에 떠있는 "처음으로" 버튼 */
+      /* ─── 플로팅 "처음으로" 버튼 (모듈 진입 시) ─── */
       #home-nav-btn.float-back-btn {
         position: fixed;
-        top: 14px;
-        left: 16px;
+        top: 14px; left: 16px;
         z-index: 1000;
-        padding: 8px 14px 8px 11px;
-        background: rgba(15, 23, 42, 0.92);
+        padding: 8px 14px 8px 12px;
+        background: rgba(15, 23, 42, 0.78);
         color: #f1f5f9;
-        border: 1px solid #334155;
-        border-radius: 8px;
-        font-size: 0.86rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        font-size: 0.82rem;
         font-weight: 600;
+        font-family: var(--font-sans);
         cursor: pointer;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.22);
-        backdrop-filter: blur(8px);
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        font-family: inherit;
+        box-shadow: 0 6px 20px -4px rgba(15, 23, 42, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(14px) saturate(1.4);
+        -webkit-backdrop-filter: blur(14px) saturate(1.4);
+        display: inline-flex; align-items: center; gap: 7px;
         letter-spacing: 0.01em;
-        transition: transform 0.12s ease, background 0.12s ease;
+        transition: all var(--tr);
       }
-      #home-nav-btn.float-back-btn:hover { background: #1e293b; transform: translateY(-1px); }
-      #home-nav-btn.float-back-btn::before { content: "←"; font-size: 1rem; line-height: 1; opacity: 0.9; }
+      #home-nav-btn.float-back-btn:hover {
+        background: rgba(30, 41, 59, 0.92);
+        transform: translateY(-1px);
+        box-shadow: 0 10px 28px -4px rgba(15, 23, 42, 0.45);
+      }
+      #home-nav-btn.float-back-btn::before { content: "←"; font-size: 0.95rem; line-height: 1; opacity: 0.85; }
       #home-nav-btn.float-back-btn.hidden { display: none !important; }
 
-      /* iframe 모듈 진입 시 — 외부 페이지 스크롤바 + iframe 자체 스크롤바 제거 */
-      /* 사이드바 안쪽 스크롤바 하나만 남도록 통일 */
+      /* ─── iframe 모듈 진입 시 — 외부 페이지·iframe 자체 스크롤바 제거 ─── */
       body:has(.app-shell.fullscreen-module-mode) { overflow: hidden; }
       .app-shell.fullscreen-module-mode { padding: 0 !important; overflow: hidden !important; }
       .app-shell.fullscreen-module-mode .main-pane { gap: 0 !important; padding: 0 !important; }
-      .app-shell.fullscreen-module-mode .embedded-iframe-panel { padding: 0 !important; margin: 0 !important; min-height: 100vh; height: 100vh; overflow: hidden; }
+      .app-shell.fullscreen-module-mode .embedded-iframe-panel {
+        padding: 0 !important; margin: 0 !important;
+        min-height: 100vh; height: 100vh; overflow: hidden;
+        border: 0 !important; border-radius: 0 !important;
+      }
       .app-shell.fullscreen-module-mode .embedded-iframe-panel .module-iframe-full {
         height: 100vh !important; min-height: 100vh !important; border: 0; display: block;
       }
@@ -64,14 +281,13 @@
       <div class="main-pane">
         <header class="header card app-header">
           <div class="header-top">
-            <div>
-              <h1>FNCADnet</h1>
-            </div>
+            <h1><span class="brand-name">FNCADnet</span></h1>
             <div class="header-actions">
-              <a href="{{ url_for('logout') }}" class="criteria-btn" title="End current session and return to the login screen"
-                 style="background: #ffffff; color: #b91c1c; border-color: #fca5a5; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;"
+              <a href="{{ url_for('logout') }}" class="criteria-btn"
+                 title="End current session and return to the login screen"
+                 style="text-decoration: none;"
                  onclick="return confirm('Sign out?\nYou will need to enter the password again.');">
-                🔒 Logout
+                Sign out
               </a>
             </div>
           </div>
@@ -336,13 +552,15 @@
             <text class="wf-subcaption" x="1140" y="326">최적화 가이드 + 통계</text>
           </svg>
 
-          <div class="home-grid" style="margin-top:22px;">
+          <div class="home-grid">
             <button type="button" class="home-module-btn" data-panel="remote30-prototype-panel">
-              <strong>Remote 30 Prototype <span style="font-size:0.75rem; color:#6366f1; font-weight:700; letter-spacing:0.08em;">— Module A</span></strong>
+              <span class="module-chip">Module A</span>
+              <strong>Remote 30 Prototype</strong>
               <span>Upload a single DXF → extract the piping network → identify the 30 hydraulically worst heads → emit PIPENET XLSX/CSV input → .sdf output. All 4 stages are animated live on the canvas.</span>
             </button>
             <button id="open-validation-suite-btn" type="button" class="home-module-btn">
-              <strong>Integrated Validation Module <span style="font-size:0.75rem; color:#6366f1; font-weight:700; letter-spacing:0.08em;">— Module B</span></strong>
+              <span class="module-chip">Module B</span>
+              <strong>Integrated Validation Module</strong>
               <span>Run the validation suite end-to-end: hydraulic results, optimization guide, data tables, audit statistics, and the detailed report — all in one workflow.</span>
             </button>
           </div>

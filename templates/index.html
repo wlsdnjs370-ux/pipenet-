@@ -26,38 +26,42 @@
       html.entering-validation .app-shell { padding-top: 0 !important; }
     </style>
     <style>
-      /* ─── 디자인 시스템 토큰 (FNCADnet 2026) ─── */
+      /* ─── 디자인 시스템 토큰 (FNCADnet — monochrome: 흑/백/짙은 네이비) ─── */
       :root {
-        --c-bg: #fafbfc;
+        --c-navy: #0a1228;          /* 아주 짙은 네이비 */
+        --c-navy-light: #1a2548;    /* 동일계열, 호버용 */
+        --c-bg: #ffffff;
         --c-surface: #ffffff;
-        --c-surface-soft: #f8fafc;
-        --c-border: #e2e8f0;
-        --c-border-strong: #cbd5e1;
-        --c-text: #0f172a;
-        --c-text-secondary: #475569;
-        --c-muted: #94a3b8;
-        --c-accent: #4f46e5;
-        --c-accent-hover: #4338ca;
-        --c-accent-soft: #eef2ff;
-        --c-violet: #8b5cf6;
-        --c-cyan: #06b6d4;
-        --c-emerald: #10b981;
-        --c-amber: #f59e0b;
-        --c-rose: #f43f5e;
+        --c-surface-soft: #ffffff;
+        --c-border: #000000;
+        --c-border-strong: #000000;
+        --c-text: #000000;
+        --c-text-secondary: #0a1228;
+        --c-muted: #0a1228;
+        --c-accent: #0a1228;
+        --c-accent-hover: #000000;
+        --c-accent-soft: #ffffff;
+        --c-violet: #0a1228;
+        --c-cyan: #0a1228;
+        --c-emerald: #0a1228;
+        --c-amber: #0a1228;
+        --c-rose: #000000;
 
-        --grad-brand: linear-gradient(135deg, #4f46e5 0%, #6366f1 35%, #8b5cf6 65%, #06b6d4 100%);
-        --grad-soft-bg: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        --grad-brand: var(--c-navy);
+        --grad-soft-bg: #ffffff;
 
-        --r-sm: 6px;
-        --r-md: 10px;
-        --r-lg: 14px;
-        --r-xl: 20px;
+        /* 모든 radius 0 (각진 직사각형) */
+        --r-sm: 0;
+        --r-md: 0;
+        --r-lg: 0;
+        --r-xl: 0;
 
-        --sh-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-        --sh-md: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
-        --sh-lg: 0 4px 12px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
-        --sh-xl: 0 12px 32px -6px rgba(15, 23, 42, 0.10), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
-        --sh-glow: 0 4px 24px -4px rgba(99, 102, 241, 0.22);
+        /* shadow 제거 — 브루탈리스트/스위스 미니멀 톤 */
+        --sh-sm: none;
+        --sh-md: none;
+        --sh-lg: none;
+        --sh-xl: none;
+        --sh-glow: none;
 
         --tr-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
         --tr: 180ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -96,20 +100,21 @@
       .app-header h1::before {
         content: '';
         width: 28px; height: 28px;
-        border-radius: 7px;
-        background: var(--grad-brand);
-        box-shadow: 0 3px 10px -2px rgba(99, 102, 241, 0.4);
+        border-radius: 0;
+        background: #0a1228;
+        box-shadow: none;
         background-image:
           url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M3 12h4l3-9 4 18 3-9h4'/></svg>"),
-          var(--grad-brand);
+          #0a1228;
         background-repeat: no-repeat;
         background-position: center;
         background-size: 18px 18px, cover;
       }
       .app-header h1 .brand-name {
-        background: var(--grad-brand);
-        -webkit-background-clip: text; background-clip: text;
-        -webkit-text-fill-color: transparent;
+        background: none;
+        -webkit-background-clip: initial; background-clip: initial;
+        -webkit-text-fill-color: #000000;
+        color: #000000;
       }
       .app-header .criteria-btn {
         background: var(--c-surface) !important;
@@ -142,28 +147,16 @@
       .workflow-svg {
         width: 100%; height: auto; max-height: 540px; display: block;
         margin: 0;
-        background:
-          radial-gradient(ellipse at 18% 25%, rgba(99,102,241,0.08) 0, transparent 42%),
-          radial-gradient(ellipse at 82% 75%, rgba(16,185,129,0.07) 0, transparent 45%),
-          radial-gradient(ellipse at 50% 50%, rgba(139,92,246,0.04) 0, transparent 60%),
-          var(--grad-soft-bg);
-        border: 1px solid var(--c-border);
-        border-radius: var(--r-xl);
+        background: #ffffff;
+        border: 1.5px solid #000000;
+        border-radius: 0;
         padding: 8px 12px;
         box-sizing: border-box;
-        box-shadow: var(--sh-lg);
+        box-shadow: none;
         position: relative;
         overflow: hidden;
       }
-      .workflow-svg::before {
-        content: ''; position: absolute; inset: 0;
-        background:
-          linear-gradient(rgba(99,102,241,0.025) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(99,102,241,0.025) 1px, transparent 1px);
-        background-size: 32px 32px;
-        mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, transparent 70%);
-        pointer-events: none;
-      }
+      .workflow-svg::before { display: none; }
 
       /* ─── 모듈 카드 (.home-module-btn 재정의) ─── */
       .home-grid {
@@ -173,9 +166,9 @@
       }
       .home-module-btn {
         position: relative;
-        background: var(--c-surface);
-        border: 1px solid var(--c-border);
-        border-radius: var(--r-lg);
+        background: #ffffff;
+        border: 1.5px solid #000000;
+        border-radius: 0;
         padding: 22px 22px 20px !important;
         min-height: auto !important;
         text-align: left;
@@ -185,20 +178,19 @@
         flex-direction: column;
         gap: 10px;
         font-family: var(--font-sans) !important;
-        color: var(--c-text) !important;
-        box-shadow: var(--sh-sm);
+        color: #000000 !important;
+        box-shadow: none;
         overflow: hidden;
-        /* <a> 일 때 기본 스타일 상쇄 */
         text-decoration: none;
         -webkit-appearance: none;
       }
-      a.home-module-btn, a.home-module-btn:visited { color: var(--c-text) !important; text-decoration: none; }
-      a.home-module-btn:focus-visible { outline: 3px solid rgba(79, 70, 229, 0.35); outline-offset: 2px; }
+      a.home-module-btn, a.home-module-btn:visited { color: #000000 !important; text-decoration: none; }
+      a.home-module-btn:focus-visible { outline: 2px solid #0a1228; outline-offset: 2px; }
       .home-module-btn::before {
         content: ''; position: absolute;
         top: 0; left: 0; right: 0;
-        height: 3px;
-        background: var(--grad-brand);
+        height: 4px;
+        background: #0a1228;
         opacity: 0;
         transition: opacity var(--tr);
       }
@@ -207,34 +199,41 @@
         position: absolute;
         top: 22px; right: 22px;
         font-size: 1rem; line-height: 1;
-        color: var(--c-muted);
+        color: #0a1228;
         transition: all var(--tr);
       }
       .home-module-btn:hover {
-        border-color: var(--c-accent);
-        transform: translateY(-2px);
-        box-shadow: var(--sh-xl), var(--sh-glow);
+        background: #0a1228;
+        color: #ffffff !important;
+        transform: none;
+        box-shadow: none;
       }
+      a.home-module-btn:hover, a.home-module-btn:hover:visited { color: #ffffff !important; }
       .home-module-btn:hover::before { opacity: 1; }
-      .home-module-btn:hover::after { color: var(--c-accent); transform: translateX(4px); }
-      .home-module-btn:active { transform: translateY(-1px); }
+      .home-module-btn:hover::after { color: #ffffff; transform: translateX(4px); }
+      .home-module-btn:hover strong, .home-module-btn:hover span { color: #ffffff !important; }
+      .home-module-btn:active { background: #000000; }
 
       .home-module-btn .module-chip {
         display: inline-flex; align-items: center; gap: 6px;
         align-self: flex-start;
         font-size: 0.68rem; font-weight: 700;
         letter-spacing: 0.16em;
-        color: var(--c-accent);
-        background: var(--c-accent-soft);
+        color: #ffffff;
+        background: #0a1228;
         padding: 4px 10px;
-        border-radius: 999px;
+        border-radius: 0;
         text-transform: uppercase;
+      }
+      .home-module-btn:hover .module-chip {
+        color: #0a1228;
+        background: #ffffff;
       }
       .home-module-btn .module-chip::before {
         content: ''; width: 6px; height: 6px;
-        border-radius: 50%;
-        background: var(--c-accent);
-        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
+        border-radius: 0;
+        background: currentColor;
+        box-shadow: none;
       }
       .home-module-btn strong {
         font-size: 1.05rem !important;
@@ -269,25 +268,25 @@
         top: 14px; left: 16px;
         z-index: 1000;
         padding: 8px 14px 8px 12px;
-        background: rgba(15, 23, 42, 0.78);
-        color: #f1f5f9;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 999px;
+        background: #0a1228;
+        color: #ffffff;
+        border: 1.5px solid #0a1228;
+        border-radius: 0;
         font-size: 0.82rem;
         font-weight: 600;
         font-family: var(--font-sans);
         cursor: pointer;
-        box-shadow: 0 6px 20px -4px rgba(15, 23, 42, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-        backdrop-filter: blur(14px) saturate(1.4);
-        -webkit-backdrop-filter: blur(14px) saturate(1.4);
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
         display: inline-flex; align-items: center; gap: 7px;
         letter-spacing: 0.01em;
         transition: all var(--tr);
       }
       #home-nav-btn.float-back-btn:hover {
-        background: rgba(30, 41, 59, 0.92);
-        transform: translateY(-1px);
-        box-shadow: 0 10px 28px -4px rgba(15, 23, 42, 0.45);
+        background: #ffffff;
+        color: #0a1228;
+        border-color: #0a1228;
       }
       #home-nav-btn.float-back-btn::before { content: "←"; font-size: 0.95rem; line-height: 1; opacity: 0.85; }
       #home-nav-btn.float-back-btn.hidden { display: none !important; }
@@ -589,26 +588,26 @@
           <svg class="workflow-svg" viewBox="0 60 1280 300" preserveAspectRatio="xMidYMid meet" role="img" aria-label="FNCADnet workflow: DXF → Remote 30 → PIPENET → Validation → Report">
             <defs>
               <linearGradient id="wfFlow" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%"   stop-color="#3b82f6"/>
-                <stop offset="25%"  stop-color="#6366f1"/>
-                <stop offset="55%"  stop-color="#8b5cf6"/>
-                <stop offset="80%"  stop-color="#06b6d4"/>
-                <stop offset="100%" stop-color="#10b981"/>
+                <stop offset="0%"   stop-color="#0a1228"/>
+                <stop offset="25%"  stop-color="#0a1228"/>
+                <stop offset="55%"  stop-color="#0a1228"/>
+                <stop offset="80%"  stop-color="#0a1228"/>
+                <stop offset="100%" stop-color="#0a1228"/>
               </linearGradient>
               <radialGradient id="wfNodeFill" cx="0.35" cy="0.35" r="0.85">
                 <stop offset="0%"   stop-color="#ffffff"/>
-                <stop offset="100%" stop-color="#f1f5f9"/>
+                <stop offset="100%" stop-color="#ffffff"/>
               </radialGradient>
               <radialGradient id="wfNodeFillHi" cx="0.35" cy="0.35" r="0.85">
                 <stop offset="0%"   stop-color="#ffffff"/>
-                <stop offset="100%" stop-color="#dbeafe"/>
+                <stop offset="100%" stop-color="#ffffff"/>
               </radialGradient>
               <filter id="wfGlow" x="-30%" y="-30%" width="160%" height="160%">
                 <feGaussianBlur stdDeviation="2.5" result="blur"/>
                 <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
               </filter>
               <marker id="wfArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M0,0 L10,5 L0,10 z" fill="#6366f1"/>
+                <path d="M0,0 L10,5 L0,10 z" fill="#0a1228"/>
               </marker>
               <style>
                 .wf-edge      { fill:none; stroke:url(#wfFlow); stroke-width:1.8; opacity:0.55; }
@@ -618,18 +617,18 @@
                 .wf-node.fill        circle.body { fill:url(#wfNodeFill); }
                 .wf-node.highlighted circle.body { fill:url(#wfNodeFillHi); stroke-width:4; }
                 .wf-node text { fill:#111827; font-weight:700; font-size:18px; text-anchor:middle; dominant-baseline:middle; font-family:'Segoe UI',Arial,sans-serif; }
-                .wf-node .sub { font-weight:500; font-size:12.5px; fill:#6366f1; }
+                .wf-node .sub { font-weight:500; font-size:12.5px; fill:#0a1228; }
                 .wf-caption    { fill:#111827; font-size:15px; font-weight:600; text-anchor:middle; font-family:'Segoe UI',Arial,sans-serif; }
-                .wf-caption.module-tag { fill:#6366f1; font-size:11.5px; font-weight:700; letter-spacing:0.16em; }
+                .wf-caption.module-tag { fill:#0a1228; font-size:11.5px; font-weight:700; letter-spacing:0.16em; }
                 .wf-subcaption { fill:#6b7280; font-size:12.5px; text-anchor:middle; font-family:'Segoe UI',Arial,sans-serif; }
-                .wf-neuron     { fill:#8b5cf6; opacity:0.7; }
+                .wf-neuron     { fill:#0a1228; opacity:0.7; }
 
                 /* Pulsing ring around highlighted module nodes */
                 @keyframes wfRing {
                   0%   { r: 56; opacity: 0.55; stroke-width: 2; }
                   100% { r: 92; opacity: 0;    stroke-width: 0.5; }
                 }
-                .wf-ring { fill:none; stroke:#6366f1; transform-origin:center; animation: wfRing 2.6s ease-out infinite; }
+                .wf-ring { fill:none; stroke:#0a1228; transform-origin:center; animation: wfRing 2.6s ease-out infinite; }
                 .wf-ring.delay { animation-delay: 1.3s; }
 
                 /* Breathing on all node bodies */
@@ -643,7 +642,7 @@
                 /* Background floating particles */
                 @keyframes wfDrift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(14px, -10px); } }
                 @keyframes wfDrift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-12px, 12px); } }
-                .wf-bg-dot { fill:#6366f1; opacity:0.18; }
+                .wf-bg-dot { fill:#0a1228; opacity:0.18; }
                 .wf-bg-dot.a { animation: wfDrift1 7s ease-in-out infinite; }
                 .wf-bg-dot.b { animation: wfDrift2 8.5s ease-in-out infinite; }
 
@@ -653,12 +652,12 @@
 
                 /* Sub-spark dots (legacy) */
                 @keyframes wfPulse { 0%,100% { opacity:0.35; } 50% { opacity:1; } }
-                .wf-spark { fill:#3b82f6; opacity:0.7; animation: wfPulse 2.4s ease-in-out infinite; }
+                .wf-spark { fill:#0a1228; opacity:0.7; animation: wfPulse 2.4s ease-in-out infinite; }
 
                 /* Travelling particle (set via animateMotion below) */
-                .wf-particle { fill:#3b82f6; filter:url(#wfGlow); }
-                .wf-particle.green { fill:#10b981; }
-                .wf-particle.purple { fill:#8b5cf6; }
+                .wf-particle { fill:#0a1228; filter:url(#wfGlow); }
+                .wf-particle.green { fill:#0a1228; }
+                .wf-particle.purple { fill:#0a1228; }
               </style>
             </defs>
 
@@ -852,27 +851,27 @@
               <svg class="module-illustration" viewBox="0 0 780 280" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Module A — Transformer encoder + graph decoder for DXF entity classification">
                 <defs>
                   <linearGradient id="mAFlow" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%"   stop-color="#3b82f6"/>
-                    <stop offset="50%"  stop-color="#8b5cf6"/>
-                    <stop offset="100%" stop-color="#06b6d4"/>
+                    <stop offset="0%"   stop-color="#0a1228"/>
+                    <stop offset="50%"  stop-color="#0a1228"/>
+                    <stop offset="100%" stop-color="#0a1228"/>
                   </linearGradient>
                   <radialGradient id="mANode" cx="0.35" cy="0.35" r="0.85">
                     <stop offset="0%"   stop-color="#ffffff"/>
-                    <stop offset="100%" stop-color="#f1f5f9"/>
+                    <stop offset="100%" stop-color="#ffffff"/>
                   </radialGradient>
                   <radialGradient id="mANodeHi" cx="0.35" cy="0.35" r="0.85">
                     <stop offset="0%"   stop-color="#ffffff"/>
-                    <stop offset="100%" stop-color="#e0e7ff"/>
+                    <stop offset="100%" stop-color="#ffffff"/>
                   </radialGradient>
                   <filter id="mAGlow" x="-40%" y="-40%" width="180%" height="180%">
                     <feGaussianBlur stdDeviation="1.4" result="blur"/>
                     <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
                   </filter>
                   <marker id="mAArr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-                    <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+                    <path d="M0,0 L10,5 L0,10 z" fill="#0a1228"/>
                   </marker>
                   <marker id="mAArrRes" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-                    <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/>
+                    <path d="M0,0 L10,5 L0,10 z" fill="#0a1228"/>
                   </marker>
                   <style>
                     .mA-band-input   { fill: #f1f5f9; }
@@ -884,33 +883,33 @@
                     .mA-title  { font-family: 'Inter','Malgun Gothic',sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; fill: #334155; text-anchor: middle; text-transform: uppercase; }
                     .mA-dim    { font-family: 'JetBrains Mono',Consolas,monospace; font-size: 9px; fill: #64748b; text-anchor: middle; letter-spacing: 0.02em; }
                     .mA-token  { font-family: 'JetBrains Mono',Consolas,monospace; font-size: 8.5px; fill: #475569; text-anchor: middle; font-weight: 500; }
-                    .mA-eqn    { font-family: 'Times New Roman',Cambria,serif; font-style: italic; fill: #4f46e5; text-anchor: middle; }
-                    .mA-cls    { font-family: 'JetBrains Mono',Consolas,monospace; font-size: 9px; fill: #4f46e5; text-anchor: middle; font-weight: 700; }
+                    .mA-eqn    { font-family: 'Times New Roman',Cambria,serif; font-style: italic; fill: #0a1228; text-anchor: middle; }
+                    .mA-cls    { font-family: 'JetBrains Mono',Consolas,monospace; font-size: 9px; fill: #0a1228; text-anchor: middle; font-weight: 700; }
                     .mA-edge      { fill: none; stroke: url(#mAFlow); stroke-width: 0.9; opacity: 0.50; }
                     .mA-edge.faint { opacity: 0.18; stroke-width: 0.7; }
                     .mA-edge.main  { stroke-width: 1.5; opacity: 0.92; stroke-dasharray: 5 3; animation: mADash 1.4s linear infinite; }
                     .mA-edge.rejected { stroke: #cbd5e1; opacity: 0.45; }
-                    .mA-residual { fill: none; stroke: #a78bfa; stroke-width: 1.2; stroke-dasharray: 4 3; opacity: 0.65; marker-end: url(#mAArrRes); }
+                    .mA-residual { fill: none; stroke: #0a1228; stroke-width: 1.2; stroke-dasharray: 4 3; opacity: 0.65; marker-end: url(#mAArrRes); }
                     @keyframes mADash { to { stroke-dashoffset: -24; } }
                     .mA-node        { fill: url(#mANode); stroke: #cbd5e1; stroke-width: 1.3; filter: url(#mAGlow); }
                     .mA-node.hi     { fill: url(#mANodeHi); stroke: url(#mAFlow); stroke-width: 1.8; }
-                    .mA-node.head   { fill: #ede9fe; stroke: #8b5cf6; stroke-width: 1.5; }
-                    .mA-node.spr    { fill: #f59e0b; stroke: #f59e0b; }
-                    .mA-node.alm    { fill: #ef4444; stroke: #ffffff; stroke-width: 2; }
+                    .mA-node.head   { fill: #ede9fe; stroke: #0a1228; stroke-width: 1.5; }
+                    .mA-node.spr    { fill: #0a1228; stroke: #0a1228; }
+                    .mA-node.alm    { fill: #000000; stroke: #ffffff; stroke-width: 2; }
                     .mA-pipe { stroke: url(#mAFlow); stroke-width: 1.7; fill: none; opacity: 0.78; }
                     .mA-vec  { stroke: #c7d2fe; stroke-width: 0.6; }
                     @keyframes mARing {
                       0%   { r: 13; opacity: 0.55; stroke-width: 1.4; }
                       100% { r: 24; opacity: 0;    stroke-width: 0.5; }
                     }
-                    .mA-ring { fill: none; stroke: #6366f1; animation: mARing 2.4s ease-out infinite; }
+                    .mA-ring { fill: none; stroke: #0a1228; animation: mARing 2.4s ease-out infinite; }
                     .mA-ring.delay { animation-delay: 1.2s; }
                     @keyframes mAPulse {
                       0%,100% { opacity: 0.5; transform: scale(1); }
                       50%     { opacity: 1;   transform: scale(1.08); }
                     }
                     .mA-head-pulse { transform-box: fill-box; transform-origin: center; animation: mAPulse 2.6s ease-in-out infinite; }
-                    .mA-bgdot { fill: #8b5cf6; opacity: 0.18; }
+                    .mA-bgdot { fill: #0a1228; opacity: 0.18; }
                     @keyframes mADrift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(8px,-6px); } }
                     @keyframes mADrift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-6px,8px); } }
                     .mA-bgdot.a { animation: mADrift1 6s ease-in-out infinite; }
@@ -965,29 +964,29 @@
                 <g transform="translate(143, 65)">
                   <!-- row 1 -->
                   <g><rect width="60" height="10" rx="2" class="mA-vec" fill="#dbeafe"/>
-                    <rect x="0"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="6"  y="0" width="6" height="10" fill="#818cf8"/><rect x="12" y="0" width="6" height="10" fill="#6366f1"/>
-                    <rect x="18" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="24" y="0" width="6" height="10" fill="#818cf8"/><rect x="30" y="0" width="6" height="10" fill="#c7d2fe"/>
-                    <rect x="36" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="42" y="0" width="6" height="10" fill="#6366f1"/><rect x="48" y="0" width="6" height="10" fill="#818cf8"/><rect x="54" y="0" width="6" height="10" fill="#a5b4fc"/></g>
+                    <rect x="0"  y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="6"  y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="12" y="0" width="6" height="10" fill="#0a1228"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="24" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="30" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="42" y="0" width="6" height="10" fill="#0a1228"/><rect x="48" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="54" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/></g>
                   <!-- row 2 -->
                   <g transform="translate(0,30)"><rect width="60" height="10" rx="2" class="mA-vec" fill="#dbeafe"/>
-                    <rect x="0"  y="0" width="6" height="10" fill="#818cf8"/><rect x="6"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="12" y="0" width="6" height="10" fill="#818cf8"/>
-                    <rect x="18" y="0" width="6" height="10" fill="#6366f1"/><rect x="24" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="30" y="0" width="6" height="10" fill="#a5b4fc"/>
-                    <rect x="36" y="0" width="6" height="10" fill="#818cf8"/><rect x="42" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="48" y="0" width="6" height="10" fill="#6366f1"/><rect x="54" y="0" width="6" height="10" fill="#818cf8"/></g>
+                    <rect x="0"  y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="6"  y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="12" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#0a1228"/><rect x="24" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/><rect x="30" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="42" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="48" y="0" width="6" height="10" fill="#0a1228"/><rect x="54" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/></g>
                   <!-- row 3 -->
                   <g transform="translate(0,60)"><rect width="60" height="10" rx="2" class="mA-vec" fill="#dbeafe"/>
-                    <rect x="0"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="6"  y="0" width="6" height="10" fill="#6366f1"/><rect x="12" y="0" width="6" height="10" fill="#a5b4fc"/>
-                    <rect x="18" y="0" width="6" height="10" fill="#818cf8"/><rect x="24" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="30" y="0" width="6" height="10" fill="#818cf8"/>
-                    <rect x="36" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="42" y="0" width="6" height="10" fill="#818cf8"/><rect x="48" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="54" y="0" width="6" height="10" fill="#6366f1"/></g>
+                    <rect x="0"  y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="6"  y="0" width="6" height="10" fill="#0a1228"/><rect x="12" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="24" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="30" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/><rect x="42" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="48" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="54" y="0" width="6" height="10" fill="#0a1228"/></g>
                   <!-- row 4 -->
                   <g transform="translate(0,90)"><rect width="60" height="10" rx="2" class="mA-vec" fill="#dbeafe"/>
-                    <rect x="0"  y="0" width="6" height="10" fill="#c7d2fe"/><rect x="6"  y="0" width="6" height="10" fill="#818cf8"/><rect x="12" y="0" width="6" height="10" fill="#a5b4fc"/>
-                    <rect x="18" y="0" width="6" height="10" fill="#6366f1"/><rect x="24" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="30" y="0" width="6" height="10" fill="#818cf8"/>
-                    <rect x="36" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="42" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="48" y="0" width="6" height="10" fill="#818cf8"/><rect x="54" y="0" width="6" height="10" fill="#a5b4fc"/></g>
+                    <rect x="0"  y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/><rect x="6"  y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="12" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#0a1228"/><rect x="24" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="30" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="42" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/><rect x="48" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="54" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/></g>
                   <!-- row 5 -->
                   <g transform="translate(0,120)"><rect width="60" height="10" rx="2" class="mA-vec" fill="#dbeafe"/>
-                    <rect x="0"  y="0" width="6" height="10" fill="#c7d2fe"/><rect x="6"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="12" y="0" width="6" height="10" fill="#818cf8"/>
-                    <rect x="18" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="24" y="0" width="6" height="10" fill="#818cf8"/><rect x="30" y="0" width="6" height="10" fill="#c7d2fe"/>
-                    <rect x="36" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="42" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="48" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="54" y="0" width="6" height="10" fill="#c7d2fe"/></g>
+                    <rect x="0"  y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/><rect x="6"  y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="12" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/><rect x="24" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="30" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="42" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/><rect x="48" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="54" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/></g>
                 </g>
 
                 <!-- Stage 2 → 3 (5 embed → 4 heads — multi-fanout) -->
@@ -1015,19 +1014,19 @@
                 <!-- 4 attention head circles (Q,K,V each in compact form) -->
                 <g transform="translate(285, 88)">
                   <circle class="mA-node head" r="11"/>
-                  <text class="mA-token" y="2.5" fill="#7c3aed" font-weight="700">h₁</text>
+                  <text class="mA-token" y="2.5" fill="#0a1228" font-weight="700">h₁</text>
                 </g>
                 <g transform="translate(285, 122)">
                   <circle class="mA-node head" r="11"/>
-                  <text class="mA-token" y="2.5" fill="#7c3aed" font-weight="700">h₂</text>
+                  <text class="mA-token" y="2.5" fill="#0a1228" font-weight="700">h₂</text>
                 </g>
                 <g transform="translate(285, 156)">
                   <circle class="mA-node head" r="11"/>
-                  <text class="mA-token" y="2.5" fill="#7c3aed" font-weight="700">h₃</text>
+                  <text class="mA-token" y="2.5" fill="#0a1228" font-weight="700">h₃</text>
                 </g>
                 <g transform="translate(285, 190)">
                   <circle class="mA-node head" r="11"/>
-                  <text class="mA-token" y="2.5" fill="#7c3aed" font-weight="700">h₄</text>
+                  <text class="mA-token" y="2.5" fill="#0a1228" font-weight="700">h₄</text>
                 </g>
 
                 <!-- Concat heads → output (single edge) -->
@@ -1039,7 +1038,7 @@
                 <!-- Concat → projection node -->
                 <g transform="translate(380, 140)">
                   <circle class="mA-node hi" r="10"/>
-                  <text class="mA-token" y="2.5" fill="#4f46e5" font-weight="700">W</text>
+                  <text class="mA-token" y="2.5" fill="#0a1228" font-weight="700">W</text>
                 </g>
 
                 <!-- Residual skip arrow (Stage 2 → Stage 4, label removed) -->
@@ -1048,21 +1047,21 @@
                 <!-- ══════════════ Stage 4 — FFN block (simplified illustration) ══════════════ -->
                 <!-- LN box -->
                 <g transform="translate(408, 74)">
-                  <rect width="98" height="22" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
-                  <text x="49" y="14" class="mA-token" fill="#0f766e" font-weight="700">LayerNorm</text>
+                  <rect width="98" height="22" rx="4" fill="#fff" stroke="#0a1228" stroke-width="1.4"/>
+                  <text x="49" y="14" class="mA-token" fill="#0a1228" font-weight="700">LayerNorm</text>
                 </g>
                 <!-- FFN box with 3 stacked dense-layer lines (visual icon, no text dims) -->
                 <g transform="translate(408, 108)">
-                  <rect width="98" height="40" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
-                  <text x="49" y="13" class="mA-token" fill="#0f766e" font-weight="700">FFN</text>
-                  <line x1="16" y1="22" x2="82" y2="22" stroke="#14b8a6" stroke-width="1.6" opacity="0.55"/>
-                  <line x1="16" y1="28" x2="82" y2="28" stroke="#14b8a6" stroke-width="1.6" opacity="0.78"/>
-                  <line x1="16" y1="34" x2="82" y2="34" stroke="#14b8a6" stroke-width="1.6"/>
+                  <rect width="98" height="40" rx="4" fill="#fff" stroke="#0a1228" stroke-width="1.4"/>
+                  <text x="49" y="13" class="mA-token" fill="#0a1228" font-weight="700">FFN</text>
+                  <line x1="16" y1="22" x2="82" y2="22" stroke="#0a1228" stroke-width="1.6" opacity="0.55"/>
+                  <line x1="16" y1="28" x2="82" y2="28" stroke="#0a1228" stroke-width="1.6" opacity="0.78"/>
+                  <line x1="16" y1="34" x2="82" y2="34" stroke="#0a1228" stroke-width="1.6"/>
                 </g>
                 <!-- LN box again -->
                 <g transform="translate(408, 158)">
-                  <rect width="98" height="22" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
-                  <text x="49" y="14" class="mA-token" fill="#0f766e" font-weight="700">LayerNorm</text>
+                  <rect width="98" height="22" rx="4" fill="#fff" stroke="#0a1228" stroke-width="1.4"/>
+                  <text x="49" y="14" class="mA-token" fill="#0a1228" font-weight="700">LayerNorm</text>
                 </g>
 
                 <!-- Edge from concat W_O → FFN entry -->
@@ -1086,7 +1085,7 @@
                 </g>
                 <g transform="translate(575, 172)">
                   <circle class="mA-node" r="10" opacity="0.55"/>
-                  <text class="mA-cls" y="2.5" fill="#94a3b8" font-size="8">noise</text>
+                  <text class="mA-cls" y="2.5" fill="#0a1228" font-size="8">noise</text>
                 </g>
 
                 <!-- Pulse rings on top class hubs -->
@@ -1123,17 +1122,17 @@
                 <circle class="mA-node alm" cx="650" cy="135" r="6"/>
 
                 <!-- Traveling particles along main flow -->
-                <circle r="2.6" class="mA-particle" fill="#4f46e5"><animateMotion dur="1.9s" repeatCount="indefinite"><mpath href="#mAe-e1"/></animateMotion></circle>
-                <circle r="2.4" class="mA-particle" fill="#06b6d4"><animateMotion dur="1.9s" begin="0.4s" repeatCount="indefinite"><mpath href="#mAe-e2"/></animateMotion></circle>
-                <circle r="2.4" class="mA-particle" fill="#8b5cf6"><animateMotion dur="1.9s" begin="0.8s" repeatCount="indefinite"><mpath href="#mAe-e3"/></animateMotion></circle>
-                <circle r="2.4" class="mA-particle" fill="#f59e0b"><animateMotion dur="1.9s" begin="1.2s" repeatCount="indefinite"><mpath href="#mAe-e4"/></animateMotion></circle>
-                <circle r="2.5" class="mA-particle" fill="#8b5cf6"><animateMotion dur="1.6s" begin="0.3s" repeatCount="indefinite"><mpath href="#mAe-c1"/></animateMotion></circle>
-                <circle r="2.5" class="mA-particle" fill="#8b5cf6"><animateMotion dur="1.6s" begin="0.9s" repeatCount="indefinite"><mpath href="#mAe-c2"/></animateMotion></circle>
+                <circle r="2.6" class="mA-particle" fill="#0a1228"><animateMotion dur="1.9s" repeatCount="indefinite"><mpath href="#mAe-e1"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#0a1228"><animateMotion dur="1.9s" begin="0.4s" repeatCount="indefinite"><mpath href="#mAe-e2"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#0a1228"><animateMotion dur="1.9s" begin="0.8s" repeatCount="indefinite"><mpath href="#mAe-e3"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#0a1228"><animateMotion dur="1.9s" begin="1.2s" repeatCount="indefinite"><mpath href="#mAe-e4"/></animateMotion></circle>
+                <circle r="2.5" class="mA-particle" fill="#0a1228"><animateMotion dur="1.6s" begin="0.3s" repeatCount="indefinite"><mpath href="#mAe-c1"/></animateMotion></circle>
+                <circle r="2.5" class="mA-particle" fill="#0a1228"><animateMotion dur="1.6s" begin="0.9s" repeatCount="indefinite"><mpath href="#mAe-c2"/></animateMotion></circle>
                 <circle r="2.6" class="mA-particle" fill="#0d9488"><animateMotion dur="1.7s" begin="0.5s" repeatCount="indefinite"><mpath href="#mAe-ffn"/></animateMotion></circle>
-                <circle r="2.5" class="mA-particle" fill="#4f46e5"><animateMotion dur="1.6s" begin="0.6s" repeatCount="indefinite"><mpath href="#mAe-cls"/></animateMotion></circle>
-                <circle r="2.4" class="mA-particle" fill="#f59e0b"><animateMotion dur="1.8s" begin="0.2s" repeatCount="indefinite"><mpath href="#mAe-dec1"/></animateMotion></circle>
-                <circle r="2.4" class="mA-particle" fill="#f59e0b"><animateMotion dur="1.8s" begin="0.7s" repeatCount="indefinite"><mpath href="#mAe-dec3"/></animateMotion></circle>
-                <circle r="2.4" class="mA-particle" fill="#ef4444"><animateMotion dur="1.8s" begin="1.0s" repeatCount="indefinite"><mpath href="#mAe-dec2"/></animateMotion></circle>
+                <circle r="2.5" class="mA-particle" fill="#0a1228"><animateMotion dur="1.6s" begin="0.6s" repeatCount="indefinite"><mpath href="#mAe-cls"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#0a1228"><animateMotion dur="1.8s" begin="0.2s" repeatCount="indefinite"><mpath href="#mAe-dec1"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#0a1228"><animateMotion dur="1.8s" begin="0.7s" repeatCount="indefinite"><mpath href="#mAe-dec3"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#000000"><animateMotion dur="1.8s" begin="1.0s" repeatCount="indefinite"><mpath href="#mAe-dec2"/></animateMotion></circle>
               </svg>
             </a>
             <a class="home-module-btn" href="{{ url_for('index') }}?view=validation">
@@ -1143,32 +1142,32 @@
               <svg class="module-illustration" viewBox="0 0 780 280" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Module B — Physics-informed GNN for hydraulic validation">
                 <defs>
                   <linearGradient id="mBFlow" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%"   stop-color="#3b82f6"/>
-                    <stop offset="35%"  stop-color="#8b5cf6"/>
-                    <stop offset="75%"  stop-color="#06b6d4"/>
-                    <stop offset="100%" stop-color="#10b981"/>
+                    <stop offset="0%"   stop-color="#0a1228"/>
+                    <stop offset="35%"  stop-color="#0a1228"/>
+                    <stop offset="75%"  stop-color="#0a1228"/>
+                    <stop offset="100%" stop-color="#0a1228"/>
                   </linearGradient>
                   <radialGradient id="mBNode" cx="0.35" cy="0.35" r="0.85">
                     <stop offset="0%"   stop-color="#ffffff"/>
-                    <stop offset="100%" stop-color="#f1f5f9"/>
+                    <stop offset="100%" stop-color="#ffffff"/>
                   </radialGradient>
                   <radialGradient id="mBNodeHi" cx="0.35" cy="0.35" r="0.85">
                     <stop offset="0%"   stop-color="#ffffff"/>
-                    <stop offset="100%" stop-color="#e0e7ff"/>
+                    <stop offset="100%" stop-color="#ffffff"/>
                   </radialGradient>
                   <radialGradient id="mBNodeChk" cx="0.35" cy="0.35" r="0.85">
                     <stop offset="0%"   stop-color="#ffffff"/>
-                    <stop offset="100%" stop-color="#f3e8ff"/>
+                    <stop offset="100%" stop-color="#ffffff"/>
                   </radialGradient>
                   <filter id="mBGlow" x="-40%" y="-40%" width="180%" height="180%">
                     <feGaussianBlur stdDeviation="1.4" result="blur"/>
                     <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
                   </filter>
                   <marker id="mBArr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-                    <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+                    <path d="M0,0 L10,5 L0,10 z" fill="#0a1228"/>
                   </marker>
                   <marker id="mBArrRes" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-                    <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/>
+                    <path d="M0,0 L10,5 L0,10 z" fill="#0a1228"/>
                   </marker>
                   <style>
                     .mB-band-input  { fill: #f1f5f9; }
@@ -1180,39 +1179,39 @@
                     .mB-title { font-family: 'Inter','Malgun Gothic',sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; fill: #334155; text-anchor: middle; text-transform: uppercase; }
                     .mB-dim   { font-family: 'JetBrains Mono',Consolas,monospace; font-size: 9px; fill: #64748b; text-anchor: middle; letter-spacing: 0.02em; }
                     .mB-token { font-family: 'JetBrains Mono',Consolas,monospace; font-size: 8.5px; fill: #475569; text-anchor: middle; font-weight: 500; }
-                    .mB-eqn   { font-family: 'Times New Roman',Cambria,serif; font-style: italic; fill: #4f46e5; text-anchor: middle; }
+                    .mB-eqn   { font-family: 'Times New Roman',Cambria,serif; font-style: italic; fill: #0a1228; text-anchor: middle; }
                     .mB-edge      { fill: none; stroke: url(#mBFlow); stroke-width: 0.9; opacity: 0.50; }
                     .mB-edge.faint { opacity: 0.18; stroke-width: 0.7; }
                     .mB-edge.main  { stroke-width: 1.5; opacity: 0.92; stroke-dasharray: 5 3; animation: mBDash 1.4s linear infinite; }
-                    .mB-residual   { fill: none; stroke: #a78bfa; stroke-width: 1.2; stroke-dasharray: 4 3; opacity: 0.65; marker-end: url(#mBArrRes); }
+                    .mB-residual   { fill: none; stroke: #0a1228; stroke-width: 1.2; stroke-dasharray: 4 3; opacity: 0.65; marker-end: url(#mBArrRes); }
                     @keyframes mBDash { to { stroke-dashoffset: -24; } }
                     .mB-node       { fill: url(#mBNode); stroke: #cbd5e1; stroke-width: 1.3; filter: url(#mBGlow); }
                     .mB-node.calc  { fill: url(#mBNodeHi); stroke: url(#mBFlow); stroke-width: 1.8; }
-                    .mB-node.check { fill: url(#mBNodeChk); stroke: #8b5cf6; stroke-width: 1.8; }
-                    .mB-node.gnn   { fill: #ede9fe; stroke: #8b5cf6; stroke-width: 1.5; }
-                    .mB-node.spr   { fill: #f59e0b; stroke: #f59e0b; }
-                    .mB-node.alm   { fill: #ef4444; stroke: #ffffff; stroke-width: 2; }
-                    .mB-pipe { stroke: #06b6d4; stroke-width: 1.4; fill: none; opacity: 0.7; }
+                    .mB-node.check { fill: url(#mBNodeChk); stroke: #0a1228; stroke-width: 1.8; }
+                    .mB-node.gnn   { fill: #ede9fe; stroke: #0a1228; stroke-width: 1.5; }
+                    .mB-node.spr   { fill: #0a1228; stroke: #0a1228; }
+                    .mB-node.alm   { fill: #000000; stroke: #ffffff; stroke-width: 2; }
+                    .mB-pipe { stroke: #0a1228; stroke-width: 1.4; fill: none; opacity: 0.7; }
                     @keyframes mBRing {
                       0%   { r: 13; opacity: 0.55; stroke-width: 1.4; }
                       100% { r: 24; opacity: 0;    stroke-width: 0.5; }
                     }
-                    .mB-ring         { fill: none; stroke: #8b5cf6; animation: mBRing 2.4s ease-out infinite; }
+                    .mB-ring         { fill: none; stroke: #0a1228; animation: mBRing 2.4s ease-out infinite; }
                     .mB-ring.delay   { animation-delay: 1.2s; }
-                    .mB-ring.success { stroke: #10b981; animation-duration: 2s; }
+                    .mB-ring.success { stroke: #0a1228; animation-duration: 2s; }
                     @keyframes mBBreathe {
                       0%, 100% { r: 12.5; }
                       50%      { r: 14; }
                     }
                     .mB-node.calc, .mB-node.check { animation: mBBreathe 3s ease-in-out infinite; }
-                    .mB-bgdot { fill: #8b5cf6; opacity: 0.18; }
+                    .mB-bgdot { fill: #0a1228; opacity: 0.18; }
                     @keyframes mBDrift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(8px,-6px); } }
                     @keyframes mBDrift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-6px,8px); } }
                     .mB-bgdot.a { animation: mBDrift1 6s ease-in-out infinite; }
                     .mB-bgdot.b { animation: mBDrift2 7s ease-in-out infinite; }
                     .mB-particle { filter: url(#mBGlow); }
                     .mB-loss { font-family: 'Times New Roman',Cambria,serif; font-style: italic; font-size: 9.5px; fill: #94a3b8; text-anchor: middle; }
-                    .mB-label.check { fill: #7c3aed; font-weight: 700; font-family: 'JetBrains Mono','Inter','Malgun Gothic',sans-serif; font-size: 9px; text-anchor: middle; }
+                    .mB-label.check { fill: #0a1228; font-weight: 700; font-family: 'JetBrains Mono','Inter','Malgun Gothic',sans-serif; font-size: 9px; text-anchor: middle; }
                   </style>
                 </defs>
 
@@ -1242,7 +1241,7 @@
 
                 <!-- ══════════════ Stage 1 — .sdf network graph ══════════════ -->
                 <g transform="translate(20, 60)">
-                  <rect width="64" height="156" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+                  <rect width="64" height="156" rx="5" fill="#ffffff" stroke="#0a1228" stroke-width="1"/>
                   <line x1="32" y1="20" x2="32" y2="140" class="mB-pipe" stroke-width="1.8"/>
                   <line x1="10" y1="38"  x2="54" y2="38"  class="mB-pipe"/>
                   <line x1="10" y1="80"  x2="54" y2="80"  class="mB-pipe"/>
@@ -1264,22 +1263,22 @@
 
                 <!-- ══════════════ Stage 2 — Node embedding (4 vector rows) ══════════════ -->
                 <g transform="translate(115, 60)">
-                  <g><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#c7d2fe" stroke-width="0.6"/>
-                    <rect x="0"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="6"  y="0" width="6" height="10" fill="#818cf8"/><rect x="12" y="0" width="6" height="10" fill="#6366f1"/>
-                    <rect x="18" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="24" y="0" width="6" height="10" fill="#818cf8"/><rect x="30" y="0" width="6" height="10" fill="#c7d2fe"/>
-                    <rect x="36" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="42" y="0" width="6" height="10" fill="#6366f1"/><rect x="48" y="0" width="6" height="10" fill="#818cf8"/><rect x="54" y="0" width="6" height="10" fill="#a5b4fc"/></g>
-                  <g transform="translate(0,40)"><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#c7d2fe" stroke-width="0.6"/>
-                    <rect x="0"  y="0" width="6" height="10" fill="#818cf8"/><rect x="6"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="12" y="0" width="6" height="10" fill="#818cf8"/>
-                    <rect x="18" y="0" width="6" height="10" fill="#6366f1"/><rect x="24" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="30" y="0" width="6" height="10" fill="#a5b4fc"/>
-                    <rect x="36" y="0" width="6" height="10" fill="#818cf8"/><rect x="42" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="48" y="0" width="6" height="10" fill="#6366f1"/><rect x="54" y="0" width="6" height="10" fill="#818cf8"/></g>
-                  <g transform="translate(0,80)"><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#c7d2fe" stroke-width="0.6"/>
-                    <rect x="0"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="6"  y="0" width="6" height="10" fill="#6366f1"/><rect x="12" y="0" width="6" height="10" fill="#a5b4fc"/>
-                    <rect x="18" y="0" width="6" height="10" fill="#818cf8"/><rect x="24" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="30" y="0" width="6" height="10" fill="#818cf8"/>
-                    <rect x="36" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="42" y="0" width="6" height="10" fill="#818cf8"/><rect x="48" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="54" y="0" width="6" height="10" fill="#6366f1"/></g>
-                  <g transform="translate(0,120)"><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#c7d2fe" stroke-width="0.6"/>
-                    <rect x="0"  y="0" width="6" height="10" fill="#c7d2fe"/><rect x="6"  y="0" width="6" height="10" fill="#818cf8"/><rect x="12" y="0" width="6" height="10" fill="#a5b4fc"/>
-                    <rect x="18" y="0" width="6" height="10" fill="#6366f1"/><rect x="24" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="30" y="0" width="6" height="10" fill="#818cf8"/>
-                    <rect x="36" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="42" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="48" y="0" width="6" height="10" fill="#818cf8"/><rect x="54" y="0" width="6" height="10" fill="#a5b4fc"/></g>
+                  <g><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#0a1228" stroke-width="0.6"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="6"  y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="12" y="0" width="6" height="10" fill="#0a1228"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="24" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="30" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="42" y="0" width="6" height="10" fill="#0a1228"/><rect x="48" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="54" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/></g>
+                  <g transform="translate(0,40)"><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#0a1228" stroke-width="0.6"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="6"  y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="12" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#0a1228"/><rect x="24" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/><rect x="30" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="42" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="48" y="0" width="6" height="10" fill="#0a1228"/><rect x="54" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/></g>
+                  <g transform="translate(0,80)"><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#0a1228" stroke-width="0.6"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="6"  y="0" width="6" height="10" fill="#0a1228"/><rect x="12" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="24" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="30" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/><rect x="42" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="48" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="54" y="0" width="6" height="10" fill="#0a1228"/></g>
+                  <g transform="translate(0,120)"><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#0a1228" stroke-width="0.6"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/><rect x="6"  y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="12" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#0a1228"/><rect x="24" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="30" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/><rect x="42" y="0" width="6" height="10" fill="#0a1228" opacity="0.18"/><rect x="48" y="0" width="6" height="10" fill="#0a1228" opacity="0.55"/><rect x="54" y="0" width="6" height="10" fill="#0a1228" opacity="0.32"/></g>
                 </g>
 
                 <!-- Stage 2 → 3 (dense) -->
@@ -1298,26 +1297,26 @@
 
                 <!-- ══════════════ Stage 3 — GNN Message Passing (k=3 iterations) ══════════════ -->
                 <!-- Sub-stage 1: nodes -->
-                <g transform="translate(245, 85)"><circle class="mB-node gnn" r="10"/><text class="mB-token" y="2.5" fill="#7c3aed" font-weight="700">v₁</text></g>
-                <g transform="translate(245, 120)"><circle class="mB-node gnn" r="10"/><text class="mB-token" y="2.5" fill="#7c3aed" font-weight="700">v₂</text></g>
-                <g transform="translate(245, 165)"><circle class="mB-node gnn" r="10"/><text class="mB-token" y="2.5" fill="#7c3aed" font-weight="700">v₃</text></g>
+                <g transform="translate(245, 85)"><circle class="mB-node gnn" r="10"/><text class="mB-token" y="2.5" fill="#0a1228" font-weight="700">v₁</text></g>
+                <g transform="translate(245, 120)"><circle class="mB-node gnn" r="10"/><text class="mB-token" y="2.5" fill="#0a1228" font-weight="700">v₂</text></g>
+                <g transform="translate(245, 165)"><circle class="mB-node gnn" r="10"/><text class="mB-token" y="2.5" fill="#0a1228" font-weight="700">v₃</text></g>
 
                 <!-- Bidirectional message arrows between v1, v2, v3 -->
-                <path d="M 250 95 Q 260 105 250 115" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
-                <path d="M 250 130 Q 260 145 250 155" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
-                <path d="M 240 115 Q 230 105 240 95" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
-                <path d="M 240 155 Q 230 145 240 130" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
+                <path d="M 250 95 Q 260 105 250 115" stroke="#0a1228" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
+                <path d="M 250 130 Q 260 145 250 155" stroke="#0a1228" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
+                <path d="M 240 115 Q 230 105 240 95" stroke="#0a1228" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
+                <path d="M 240 155 Q 230 145 240 130" stroke="#0a1228" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
 
                 <!-- AGG aggregation node -->
                 <g transform="translate(290, 125)">
-                  <rect x="-16" y="-12" width="32" height="24" rx="4" fill="#fff" stroke="#8b5cf6" stroke-width="1.4"/>
-                  <text class="mB-token" y="3" fill="#7c3aed" font-weight="700">AGG</text>
+                  <rect x="-16" y="-12" width="32" height="24" rx="4" fill="#fff" stroke="#0a1228" stroke-width="1.4"/>
+                  <text class="mB-token" y="3" fill="#0a1228" font-weight="700">AGG</text>
                 </g>
 
                 <!-- k=3 unrolled iterations: 3 sub-blocks -->
-                <g transform="translate(330, 95)"><rect width="36" height="22" rx="3" fill="#fff" stroke="#a78bfa" stroke-width="1.2"/><text class="mB-token" x="18" y="14" fill="#7c3aed" font-weight="700">k=1</text></g>
-                <g transform="translate(330, 125)"><rect width="36" height="22" rx="3" fill="#fff" stroke="#a78bfa" stroke-width="1.2"/><text class="mB-token" x="18" y="14" fill="#7c3aed" font-weight="700">k=2</text></g>
-                <g transform="translate(330, 155)"><rect width="36" height="22" rx="3" fill="#fff" stroke="#a78bfa" stroke-width="1.2"/><text class="mB-token" x="18" y="14" fill="#7c3aed" font-weight="700">k=3</text></g>
+                <g transform="translate(330, 95)"><rect width="36" height="22" rx="3" fill="#fff" stroke="#0a1228" stroke-width="1.2"/><text class="mB-token" x="18" y="14" fill="#0a1228" font-weight="700">k=1</text></g>
+                <g transform="translate(330, 125)"><rect width="36" height="22" rx="3" fill="#fff" stroke="#0a1228" stroke-width="1.2"/><text class="mB-token" x="18" y="14" fill="#0a1228" font-weight="700">k=2</text></g>
+                <g transform="translate(330, 155)"><rect width="36" height="22" rx="3" fill="#fff" stroke="#0a1228" stroke-width="1.2"/><text class="mB-token" x="18" y="14" fill="#0a1228" font-weight="700">k=3</text></g>
 
                 <!-- Pulse ring on AGG -->
                 <g transform="translate(290, 125)"><circle class="mB-ring" r="14"/><circle class="mB-ring delay" r="14"/></g>
@@ -1327,40 +1326,40 @@
 
                 <!-- ══════════════ Stage 4 — Hydraulics (illustration only) ══════════════ -->
                 <g transform="translate(393, 70)">
-                  <rect width="118" height="116" rx="5" fill="#fff" stroke="#f59e0b" stroke-width="1.4"/>
-                  <text x="59" y="16" class="mB-token" fill="#92400e" font-weight="700">Hazen-Williams</text>
-                  <line x1="6" y1="22" x2="112" y2="22" stroke="#fde68a" stroke-width="0.8"/>
+                  <rect width="118" height="116" rx="5" fill="#fff" stroke="#0a1228" stroke-width="1.4"/>
+                  <text x="59" y="16" class="mB-token" fill="#0a1228" font-weight="700">Hazen-Williams</text>
+                  <line x1="6" y1="22" x2="112" y2="22" stroke="#0a1228" stroke-width="0.8"/>
 
                   <!-- Pipe segment with flow gradient + arrows (illustration) -->
                   <defs>
                     <linearGradient id="mBPipe" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%"   stop-color="#dbeafe"/>
-                      <stop offset="100%" stop-color="#fef3c7"/>
+                      <stop offset="0%"   stop-color="#ffffff"/>
+                      <stop offset="100%" stop-color="#ffffff"/>
                     </linearGradient>
                   </defs>
-                  <rect x="10" y="32" width="98" height="18" rx="3" fill="url(#mBPipe)" stroke="#3b82f6" stroke-width="1"/>
+                  <rect x="10" y="32" width="98" height="18" rx="3" fill="url(#mBPipe)" stroke="#0a1228" stroke-width="1"/>
                   <!-- Inlet · outlet pressure dots -->
-                  <circle cx="10" cy="41" r="3.5" fill="#10b981" stroke="#fff" stroke-width="1"/>
-                  <circle cx="108" cy="41" r="3.5" fill="#ef4444" stroke="#fff" stroke-width="1"/>
+                  <circle cx="10" cy="41" r="3.5" fill="#0a1228" stroke="#fff" stroke-width="1"/>
+                  <circle cx="108" cy="41" r="3.5" fill="#000000" stroke="#fff" stroke-width="1"/>
                   <!-- 5 flow arrows along pipe -->
-                  <path d="M 22 41 L 30 41" stroke="#1e40af" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
-                  <path d="M 40 41 L 48 41" stroke="#1e40af" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
-                  <path d="M 58 41 L 66 41" stroke="#1e40af" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
-                  <path d="M 76 41 L 84 41" stroke="#1e40af" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
-                  <path d="M 94 41 L 102 41" stroke="#1e40af" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
+                  <path d="M 22 41 L 30 41" stroke="#0a1228" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
+                  <path d="M 40 41 L 48 41" stroke="#0a1228" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
+                  <path d="M 58 41 L 66 41" stroke="#0a1228" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
+                  <path d="M 76 41 L 84 41" stroke="#0a1228" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
+                  <path d="M 94 41 L 102 41" stroke="#0a1228" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
 
                   <!-- Branching network beneath (per-segment calc visualisation) -->
                   <g transform="translate(15, 68)">
-                    <line x1="0" y1="0" x2="88" y2="0" stroke="#3b82f6" stroke-width="1.6" opacity="0.75"/>
-                    <line x1="14" y1="0" x2="14" y2="22" stroke="#3b82f6" stroke-width="1.3" opacity="0.75"/>
-                    <line x1="36" y1="0" x2="36" y2="22" stroke="#3b82f6" stroke-width="1.3" opacity="0.75"/>
-                    <line x1="58" y1="0" x2="58" y2="22" stroke="#3b82f6" stroke-width="1.3" opacity="0.75"/>
-                    <line x1="80" y1="0" x2="80" y2="22" stroke="#3b82f6" stroke-width="1.3" opacity="0.75"/>
-                    <circle cx="14" cy="22" r="2.4" fill="#f59e0b"/>
-                    <circle cx="36" cy="22" r="2.4" fill="#f59e0b"/>
-                    <circle cx="58" cy="22" r="2.4" fill="#f59e0b"/>
-                    <circle cx="80" cy="22" r="2.4" fill="#f59e0b"/>
-                    <circle cx="0" cy="0" r="3" fill="#ef4444" stroke="#fff" stroke-width="0.8"/>
+                    <line x1="0" y1="0" x2="88" y2="0" stroke="#0a1228" stroke-width="1.6" opacity="0.75"/>
+                    <line x1="14" y1="0" x2="14" y2="22" stroke="#0a1228" stroke-width="1.3" opacity="0.75"/>
+                    <line x1="36" y1="0" x2="36" y2="22" stroke="#0a1228" stroke-width="1.3" opacity="0.75"/>
+                    <line x1="58" y1="0" x2="58" y2="22" stroke="#0a1228" stroke-width="1.3" opacity="0.75"/>
+                    <line x1="80" y1="0" x2="80" y2="22" stroke="#0a1228" stroke-width="1.3" opacity="0.75"/>
+                    <circle cx="14" cy="22" r="2.4" fill="#0a1228"/>
+                    <circle cx="36" cy="22" r="2.4" fill="#0a1228"/>
+                    <circle cx="58" cy="22" r="2.4" fill="#0a1228"/>
+                    <circle cx="80" cy="22" r="2.4" fill="#0a1228"/>
+                    <circle cx="0" cy="0" r="3" fill="#000000" stroke="#fff" stroke-width="0.8"/>
                   </g>
                 </g>
 
@@ -1398,27 +1397,27 @@
                 </g>
                 <!-- Big PASS badge -->
                 <g transform="translate(692, 130)">
-                  <circle r="20" fill="#10b981" filter="url(#mBGlow)"/>
+                  <circle r="20" fill="#0a1228" filter="url(#mBGlow)"/>
                   <path d="M -10 0 L -3 7 L 11 -8" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
                 </g>
                 <!-- Probability bar chart -->
                 <g transform="translate(672, 170)">
-                  <rect x="0"  y="20" width="5" height="14" fill="#10b981" opacity="0.55"/>
-                  <rect x="8"  y="8"  width="5" height="26" fill="#10b981" opacity="0.75"/>
-                  <rect x="16" y="12" width="5" height="22" fill="#10b981" opacity="0.85"/>
-                  <rect x="24" y="2"  width="5" height="32" fill="#10b981"/>
-                  <rect x="32" y="6"  width="5" height="28" fill="#10b981" opacity="0.9"/>
+                  <rect x="0"  y="20" width="5" height="14" fill="#0a1228" opacity="0.55"/>
+                  <rect x="8"  y="8"  width="5" height="26" fill="#0a1228" opacity="0.75"/>
+                  <rect x="16" y="12" width="5" height="22" fill="#0a1228" opacity="0.85"/>
+                  <rect x="24" y="2"  width="5" height="32" fill="#0a1228"/>
+                  <rect x="32" y="6"  width="5" height="28" fill="#0a1228" opacity="0.9"/>
                 </g>
 
                 <!-- Traveling particles -->
-                <circle r="2.5" class="mB-particle" fill="#4f46e5"><animateMotion dur="1.9s" repeatCount="indefinite"><mpath href="#mBe-g1"/></animateMotion></circle>
-                <circle r="2.5" class="mB-particle" fill="#06b6d4"><animateMotion dur="1.9s" begin="0.4s" repeatCount="indefinite"><mpath href="#mBe-g2"/></animateMotion></circle>
-                <circle r="2.5" class="mB-particle" fill="#8b5cf6"><animateMotion dur="1.9s" begin="0.8s" repeatCount="indefinite"><mpath href="#mBe-g3"/></animateMotion></circle>
-                <circle r="2.6" class="mB-particle" fill="#f59e0b"><animateMotion dur="1.8s" begin="0.3s" repeatCount="indefinite"><mpath href="#mBe-gphys"/></animateMotion></circle>
-                <circle r="2.6" class="mB-particle" fill="#f59e0b"><animateMotion dur="1.6s" begin="0.6s" repeatCount="indefinite"><mpath href="#mBe-pmtl"/></animateMotion></circle>
-                <circle r="2.6" class="mB-particle" fill="#10b981"><animateMotion dur="1.6s" begin="0.5s" repeatCount="indefinite"><mpath href="#mBe-v1"/></animateMotion></circle>
-                <circle r="2.6" class="mB-particle" fill="#10b981"><animateMotion dur="1.6s" begin="1s"   repeatCount="indefinite"><mpath href="#mBe-v2"/></animateMotion></circle>
-                <circle r="2.6" class="mB-particle" fill="#10b981"><animateMotion dur="1.6s" begin="1.4s" repeatCount="indefinite"><mpath href="#mBe-v3"/></animateMotion></circle>
+                <circle r="2.5" class="mB-particle" fill="#0a1228"><animateMotion dur="1.9s" repeatCount="indefinite"><mpath href="#mBe-g1"/></animateMotion></circle>
+                <circle r="2.5" class="mB-particle" fill="#0a1228"><animateMotion dur="1.9s" begin="0.4s" repeatCount="indefinite"><mpath href="#mBe-g2"/></animateMotion></circle>
+                <circle r="2.5" class="mB-particle" fill="#0a1228"><animateMotion dur="1.9s" begin="0.8s" repeatCount="indefinite"><mpath href="#mBe-g3"/></animateMotion></circle>
+                <circle r="2.6" class="mB-particle" fill="#0a1228"><animateMotion dur="1.8s" begin="0.3s" repeatCount="indefinite"><mpath href="#mBe-gphys"/></animateMotion></circle>
+                <circle r="2.6" class="mB-particle" fill="#0a1228"><animateMotion dur="1.6s" begin="0.6s" repeatCount="indefinite"><mpath href="#mBe-pmtl"/></animateMotion></circle>
+                <circle r="2.6" class="mB-particle" fill="#0a1228"><animateMotion dur="1.6s" begin="0.5s" repeatCount="indefinite"><mpath href="#mBe-v1"/></animateMotion></circle>
+                <circle r="2.6" class="mB-particle" fill="#0a1228"><animateMotion dur="1.6s" begin="1s"   repeatCount="indefinite"><mpath href="#mBe-v2"/></animateMotion></circle>
+                <circle r="2.6" class="mB-particle" fill="#0a1228"><animateMotion dur="1.6s" begin="1.4s" repeatCount="indefinite"><mpath href="#mBe-v3"/></animateMotion></circle>
               </svg>
             </a>
           </div>

@@ -1383,8 +1383,11 @@ def _system_path_to_riser_dict(
         # pipe elev: 노드 간 elev 차이 (층 기반이면 정확, 아니면 Y/1000 fallback)
         in_e = nodes[i]["elevation"]
         out_e = nodes[i + 1]["elevation"]
+        # Pipe 라벨에 "r" prefix — 라이저(1..9)/헤드망(10+) 컨벤션 영역 분리.
+        # path 길이 ≥ 10 이면 "10" 등이 헤드망 pipe 와 충돌 (stitch 시 ValueError).
+        # "r1", "r2", ... 식으로 prefix 해 절대 겹칠 일 없게.
         pipe: dict = {
-            "label": str(i + 1),
+            "label": f"r{i + 1}",
             "in":  nodes[i]["label"],
             "out": nodes[i + 1]["label"],
             "type": "KSD 3507",

@@ -1236,6 +1236,27 @@
       state.view.zoom = z;
       state.view.panX = w / 2 - ((b.x_min + b.x_max) / 2) * z;
       state.view.panY = h / 2 + ((b.y_min + b.y_max) / 2) * z;
+      state.view.fitMode = "system";
+    }
+
+    // 통합 모드용 — combined_geometry 의 노드 bbox 에 맞춰 state.view 를 초기화
+    function fitCombinedToView() {
+      const g = state.combined_geometry;
+      if (!g || !g.nodes || !g.nodes.length) return;
+      const xs = g.nodes.map(n => n.x);
+      const ys = g.nodes.map(n => n.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      const margin = 50;
+      const bw = (maxX - minX) || 1;
+      const bh = (maxY - minY) || 1;
+      const z = Math.min((w - 2 * margin) / bw, (h - 2 * margin) / bh);
+      state.view.zoom = z;
+      state.view.panX = w / 2 - (minX + maxX) / 2 * z;
+      state.view.panY = h / 2 + (minY + maxY) / 2 * z;
+      state.view.fitMode = "combined";
     }
 
     // 펌프/AV 픽 모드 토글
@@ -1388,23 +1409,16 @@
       for (const n of g.nodes) nodeMap.set(n.label, n);
 
       // 좌표 fit — 모든 노드의 (x, y) bbox 자동 계산
-      const xs = g.nodes.map(n => n.x);
-      const ys = g.nodes.map(n => n.y);
-      if (!xs.length) {
+      if (!g.nodes.length) {
         ctx.fillStyle = "#94a3b8"; ctx.font = "14px ui-monospace";
         ctx.fillText("통합 데이터 없음", w/2 - 80, h/2);
         return;
       }
-      const minX = Math.min(...xs), maxX = Math.max(...xs);
-      const minY = Math.min(...ys), maxY = Math.max(...ys);
-      const margin = 50;
-      const bw = (maxX - minX) || 1;
-      const bh = (maxY - minY) || 1;
-      const z = Math.min((w - 2 * margin) / bw, (h - 2 * margin) / bh);
-      const ox = w / 2 - (minX + maxX) / 2 * z;
-      const oy = h / 2 + (minY + maxY) / 2 * z;
+      // state.view 가 combined 용으로 fit 되어 있지 않으면 한 번 자동 fit
+      if (state.view.fitMode !== "combined") fitCombinedToView();
+      // 이후엔 wheel/drag 가 state.view 를 갱신 → 줌·팬 동작
       // PIPENET 의 Y 축은 위가 양수 — 우리 캔버스 Y 는 아래가 양수, 그래서 -y 적용
-      const toScreen = (x, y) => [x * z + ox, -y * z + oy];
+      const toScreen = (x, y) => [x * state.view.zoom + state.view.panX, -y * state.view.zoom + state.view.panY];
 
       // 파이프 — 라이저(노랑) vs 헤드망(시안)
       for (const p of g.pipes) {
@@ -1623,6 +1637,7 @@
         // 통합 배관망 캔버스 시각화 — geometry 저장 + 통합 모드로 캔버스 redraw
         if (data.geometry) {
           state.combined_geometry = data.geometry;
+          state.view.fitMode = null;  // 새 geometry → 다음 render 에서 자동 fit
           render();
         }
       } catch (err) {
@@ -1638,8 +1653,10 @@
     const _origSetMode = setMode;
     setMode = function(mode) {
       _origSetMode(mode);
-      // 모드 변경 시 캔버스도 다시 그림
+      // 모드 변경 시 캔버스도 다시 그림 — 각 모드의 bbox 기준으로 한 번 fit
       if (mode === "system" && state.system_bbox) fitSystemCanvas();
+      else if (mode === "combined" && state.combined_geometry && state.view.fitMode !== "combined") fitCombinedToView();
+      else if (mode === "plane") state.view.fitMode = "plane";  // 평면도는 기존 fitZoom 로직 그대로
       render();
     };
   </script>

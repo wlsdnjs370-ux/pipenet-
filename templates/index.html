@@ -171,7 +171,12 @@
         color: var(--c-text) !important;
         box-shadow: var(--sh-sm);
         overflow: hidden;
+        /* <a> 일 때 기본 스타일 상쇄 */
+        text-decoration: none;
+        -webkit-appearance: none;
       }
+      a.home-module-btn, a.home-module-btn:visited { color: var(--c-text) !important; text-decoration: none; }
+      a.home-module-btn:focus-visible { outline: 3px solid rgba(79, 70, 229, 0.35); outline-offset: 2px; }
       .home-module-btn::before {
         content: ''; position: absolute;
         top: 0; left: 0; right: 0;
@@ -553,16 +558,20 @@
           </svg>
 
           <div class="home-grid">
-            <button type="button" class="home-module-btn" data-panel="remote30-prototype-panel">
-              <span class="module-chip">Module A</span>
+            <a class="home-module-btn" href="{{ url_for('remote30_prototype') }}"
+               target="_blank" rel="noopener"
+               title="새 창에서 열림 — Remote 30 Prototype">
+              <span class="module-chip">Module A · opens in new tab</span>
               <strong>Remote 30 Prototype</strong>
               <span>Upload a single DXF → extract the piping network → identify the 30 hydraulically worst heads → emit PIPENET XLSX/CSV input → .sdf output. All 4 stages are animated live on the canvas.</span>
-            </button>
-            <button id="open-validation-suite-btn" type="button" class="home-module-btn">
-              <span class="module-chip">Module B</span>
+            </a>
+            <a class="home-module-btn" href="{{ url_for('index') }}?view=validation"
+               target="_blank" rel="noopener"
+               title="새 창에서 열림 — Integrated Validation Module">
+              <span class="module-chip">Module B · opens in new tab</span>
               <strong>Integrated Validation Module</strong>
               <span>Run the validation suite end-to-end: hydraulic results, optimization guide, data tables, audit statistics, and the detailed report — all in one workflow.</span>
-            </button>
+            </a>
           </div>
         </section>
 
@@ -805,5 +814,22 @@
     </div>
 
     <script src="{{ url_for('static', filename='app.js') }}?v=20260520-wb1"></script>
+    <script>
+      // ?view=validation 으로 진입하면 — Module B 새창 진입 자동 처리
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          if (params.get("view") === "validation") {
+            window.addEventListener("load", function () {
+              setTimeout(function () {
+                if (typeof window.setActiveMenuPanel === "function") {
+                  window.setActiveMenuPanel("workspace-panel");
+                }
+              }, 80);
+            });
+          }
+        } catch (e) { /* no-op */ }
+      })();
+    </script>
   </body>
 </html>

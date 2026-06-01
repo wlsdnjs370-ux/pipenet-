@@ -3,44 +3,302 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign In</title>
+  <title>Sign In — FNCADnet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg-deep: #0b1020;
+      --bg-card: #ffffff;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+      --border-subtle: #e2e8f0;
+      --border-input: #cbd5e1;
+      --accent: #4f46e5;
+      --accent-hover: #4338ca;
+      --accent-soft: #eef2ff;
+      --danger: #dc2626;
+      --danger-soft: #fef2f2;
+      --hint-bg: #f8fafc;
+      --hint-border: #e2e8f0;
+      --hint-text: #475569;
+      --hint-mono: #4f46e5;
+      --shadow-card: 0 24px 60px -16px rgba(15, 23, 42, 0.30), 0 2px 4px -1px rgba(15, 23, 42, 0.08);
+      --shadow-card-hover: 0 32px 80px -16px rgba(15, 23, 42, 0.40);
+      --radius-card: 16px;
+      --radius-input: 8px;
+      --radius-btn: 8px;
+      --transition: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
     * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; background: #0f172a; color: #e2e8f0; }
-    body { display: flex; align-items: center; justify-content: center; }
-    .login-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 32px 28px; width: 92%; max-width: 360px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); }
-    .login-card h1 { margin: 0 0 6px; font-size: 1.1rem; color: #cbd5e1; font-weight: 700; text-align: center; letter-spacing: 0.02em; }
-    .login-card .sub { margin: 0 0 20px; font-size: 0.78rem; color: #64748b; text-align: center; line-height: 1.5; }
-    .field { margin-bottom: 12px; }
-    .field label { display: block; font-size: 0.78rem; color: #94a3b8; margin-bottom: 6px; font-weight: 600; }
-    .field input { width: 100%; padding: 10px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 4px; font-size: 1rem; color: #f1f5f9; font-family: ui-monospace, "Consolas", monospace; letter-spacing: 0.1em; }
-    .field input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
-    .submit-btn { width: 100%; padding: 11px; background: #1e40af; color: #fff; border: none; border-radius: 4px; font-size: 0.92rem; font-weight: 600; cursor: pointer; margin-top: 4px; letter-spacing: 0.02em; }
-    .submit-btn:hover { background: #1d4ed8; }
-    .submit-btn:active { transform: translateY(1px); }
-    .error { background: #7f1d1d; color: #fecaca; border: 1px solid #b91c1c; padding: 8px 12px; border-radius: 4px; font-size: 0.82rem; margin-bottom: 12px; text-align: center; }
-    .hint { background: #1e3a8a; color: #dbeafe; border: 1px solid #3b82f6; padding: 10px 12px; border-radius: 4px; font-size: 0.82rem; margin-bottom: 14px; text-align: center; line-height: 1.5; }
-    .hint .pw-value { font-family: ui-monospace, "Consolas", monospace; font-size: 1rem; font-weight: 700; color: #fef3c7; letter-spacing: 0.15em; background: rgba(0,0,0,0.25); padding: 2px 10px; border-radius: 3px; margin-left: 4px; }
-    .foot { margin-top: 16px; text-align: center; font-size: 0.7rem; color: #475569; line-height: 1.5; }
+    html, body {
+      margin: 0; padding: 0; min-height: 100%;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      color: var(--text-primary);
+      background: var(--bg-deep);
+      overflow: hidden;
+    }
+    body {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh;
+      position: relative;
+    }
+    /* 배경 — 동적 그라디언트 오브 */
+    .bg-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.55;
+      pointer-events: none;
+      animation: drift 18s ease-in-out infinite alternate;
+    }
+    .bg-orb.a { width: 520px; height: 520px; background: radial-gradient(circle, #6366f1 0%, transparent 70%); top: -180px; left: -120px; }
+    .bg-orb.b { width: 600px; height: 600px; background: radial-gradient(circle, #06b6d4 0%, transparent 70%); bottom: -200px; right: -160px; animation-delay: -6s; animation-duration: 22s; }
+    .bg-orb.c { width: 360px; height: 360px; background: radial-gradient(circle, #8b5cf6 0%, transparent 70%); top: 40%; left: 50%; transform: translate(-50%, -50%); opacity: 0.30; animation-delay: -10s; }
+    @keyframes drift {
+      0%   { transform: translate(0,0) scale(1); }
+      50%  { transform: translate(30px, -20px) scale(1.05); }
+      100% { transform: translate(-20px, 30px) scale(0.95); }
+    }
+    .bg-grid {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 56px 56px;
+      mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.6) 0%, transparent 65%);
+      pointer-events: none;
+    }
+
+    /* 카드 */
+    .login-card {
+      position: relative;
+      background: var(--bg-card);
+      border-radius: var(--radius-card);
+      padding: 36px 32px 28px;
+      width: calc(100% - 32px);
+      max-width: 400px;
+      box-shadow: var(--shadow-card);
+      animation: card-in 480ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes card-in {
+      from { opacity: 0; transform: translateY(12px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* 브랜드 */
+    .brand {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; margin-bottom: 28px;
+    }
+    .brand-mark {
+      width: 36px; height: 36px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, #4f46e5 0%, #8b5cf6 55%, #06b6d4 100%);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 16px -4px rgba(99, 102, 241, 0.55);
+    }
+    .brand-mark svg { display: block; }
+    .brand-name {
+      font-size: 1.05rem; font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #4f46e5 0%, #6366f1 60%, #06b6d4 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* 헤더 */
+    .header h1 {
+      margin: 0 0 6px;
+      font-size: 1.30rem; font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+      text-align: center;
+    }
+    .header .sub {
+      margin: 0 0 24px;
+      font-size: 0.83rem; line-height: 1.55;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+
+    /* 힌트 */
+    .hint {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px;
+      background: var(--hint-bg);
+      border: 1px solid var(--hint-border);
+      border-radius: var(--radius-input);
+      padding: 10px 14px;
+      font-size: 0.81rem;
+      color: var(--hint-text);
+      margin-bottom: 20px;
+    }
+    .hint-icon { color: var(--accent); flex-shrink: 0; }
+    .hint .pw-value {
+      font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+      font-size: 0.88rem; font-weight: 700;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 2px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.06em;
+    }
+
+    /* 에러 */
+    .error {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--danger-soft);
+      border: 1px solid #fecaca;
+      color: var(--danger);
+      padding: 10px 14px;
+      border-radius: var(--radius-input);
+      font-size: 0.82rem;
+      font-weight: 500;
+      margin-bottom: 16px;
+      animation: shake 380ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-4px); }
+      40%, 80% { transform: translateX(4px); }
+    }
+
+    /* 필드 */
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 7px;
+      letter-spacing: 0.02em;
+    }
+    .field input {
+      width: 100%;
+      padding: 11px 14px;
+      background: #ffffff;
+      border: 1.5px solid var(--border-input);
+      border-radius: var(--radius-input);
+      font-size: 0.95rem;
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+      letter-spacing: 0.15em;
+      transition: all var(--transition);
+    }
+    .field input::placeholder {
+      color: var(--text-muted);
+      letter-spacing: 0.02em;
+      font-family: 'Inter', sans-serif;
+    }
+    .field input:hover { border-color: #94a3b8; }
+    .field input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15);
+    }
+
+    /* 제출 버튼 */
+    .submit-btn {
+      width: 100%;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+      color: #ffffff;
+      border: none;
+      border-radius: var(--radius-btn);
+      font-size: 0.95rem;
+      font-weight: 600;
+      font-family: inherit;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      transition: all var(--transition);
+      box-shadow: 0 4px 12px -2px rgba(79, 70, 229, 0.35);
+      margin-top: 4px;
+      position: relative;
+      overflow: hidden;
+    }
+    .submit-btn::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, transparent 0%, rgba(255,255,255,0.18) 50%, transparent 100%);
+      opacity: 0;
+      transition: opacity var(--transition);
+    }
+    .submit-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px -2px rgba(79, 70, 229, 0.50); }
+    .submit-btn:hover::before { opacity: 1; }
+    .submit-btn:active { transform: translateY(0); box-shadow: 0 2px 8px -1px rgba(79, 70, 229, 0.30); }
+    .submit-btn .arrow { display: inline-block; transition: transform var(--transition); margin-left: 2px; }
+    .submit-btn:hover .arrow { transform: translateX(3px); }
+
+    /* 푸터 */
+    .foot {
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border-subtle);
+      text-align: center;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      letter-spacing: 0.02em;
+    }
+    .foot strong { color: var(--text-secondary); font-weight: 500; }
+
+    /* 반응형 */
+    @media (max-width: 480px) {
+      .login-card { padding: 28px 22px 22px; }
+    }
   </style>
 </head>
 <body>
+  <div class="bg-orb a"></div>
+  <div class="bg-orb b"></div>
+  <div class="bg-orb c"></div>
+  <div class="bg-grid"></div>
+
   <form class="login-card" method="post" action="{{ url_for('login_submit') }}" autocomplete="off">
-    <h1>Restricted Access</h1>
-    <p class="sub">CAD &rarr; PIPENET Auto-Schematic System<br>Please enter your password to continue.</p>
-    {% if error %}
-      <div class="error">{{ error }}</div>
-    {% endif %}
-    <div class="hint">
-      Password: <span class="pw-value">5361</span>
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12h4l3-9 4 18 3-9h4"/>
+        </svg>
+      </div>
+      <span class="brand-name">FNCADnet</span>
     </div>
+
+    <div class="header">
+      <h1>Welcome back</h1>
+      <p class="sub">CAD → PIPENET Auto-Schematic System<br>Sign in to continue.</p>
+    </div>
+
+    {% if error %}
+      <div class="error">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span>{{ error }}</span>
+      </div>
+    {% endif %}
+
+    <div class="hint">
+      <svg class="hint-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+      </svg>
+      <span>Password</span>
+      <span class="pw-value">5361</span>
+    </div>
+
     <input type="hidden" name="next" value="{{ next_path }}">
     <div class="field">
       <label for="pw">Password</label>
-      <input id="pw" type="password" name="password" value="" required autofocus inputmode="numeric" pattern="[0-9]*" placeholder="Enter password">
+      <input id="pw" type="password" name="password" value="" required autofocus inputmode="numeric" pattern="[0-9]*" placeholder="Enter 4-digit password">
     </div>
-    <button class="submit-btn" type="submit">Sign In &rarr;</button>
-    <div class="foot">Internal team access only.</div>
+
+    <button class="submit-btn" type="submit">Sign In <span class="arrow">→</span></button>
+
+    <div class="foot"><strong>Internal team access only.</strong></div>
   </form>
 </body>
 </html>

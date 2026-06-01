@@ -1406,12 +1406,17 @@
       const f = dxfInputEl.files[0];
       if (!f) return;
       state.uploadedFile = f;
-      fileStatusEl.textContent = `${f.name} — ${(f.size / 1024 / 1024).toFixed(1)} MB · 캔버스 프리뷰 로딩 중...`;
+      const sizeMb = (f.size / 1024 / 1024).toFixed(1);
+      fileStatusEl.textContent = `${f.name} — ${sizeMb} MB · 캔버스 프리뷰 로딩 중...`;
       runBtn.disabled = true;  // 프리뷰 완료까지 잠시 비활성
+      // PR1.7 — 업로드 단계에도 boot overlay 로 동적 피드백 (스피너 + 점점 애니메이션)
+      BootOverlay.show(`Reading ${f.name} (${sizeMb} MB)`);
       try {
         const fd = new FormData();
         fd.append("dxf_file", f);
+        BootOverlay.setSub(`Parsing DXF entities (${sizeMb} MB)`);
         const res = await fetch("/api/remote30/inspect", { method: "POST", body: fd });
+        BootOverlay.setSub("Decoding entity bundle");
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.message || `HTTP ${res.status}`);
         // stage 0 entity 로 캔버스에 띄움 — 첫 업로드 시에만 fit, 이후는 사용자 줌/팬 보존
@@ -1430,6 +1435,7 @@
         fileStatusEl.textContent = `프리뷰 실패: ${err.message || err}. 그래도 [배관망 생성] 으로 실행 가능.`;
       } finally {
         runBtn.disabled = false;
+        BootOverlay.hide();
       }
     });
 
@@ -1911,12 +1917,23 @@
       if (_panelPlane)    _panelPlane.style.display    = (mode === "plane")    ? "" : "none";
       if (_panelSystem)   _panelSystem.style.display   = (mode === "system")   ? "" : "none";
       if (_panelCombined) _panelCombined.style.display = (mode === "combined") ? "" : "none";
-      // 평면도 모드 기본 안내(wb-empty)는 평면도 모드일 때만 표시 — 계통도·통합 모드에선 캔버스 안 안내문이 따로 있음
+      // wb-empty 안내문: 평면도 모드 + 아직 DXF 미업로드 일 때만 표시.
+      // 도면 이미 있는데 "DXF 업로드하세요" 안내가 다시 뜨는 버그 방지.
       const _wbEmpty = document.getElementById("wb-empty");
-      if (_wbEmpty) _wbEmpty.style.display = (mode === "plane") ? "" : "none";
+      if (_wbEmpty) {
+        const hasPlaneData = !!(state.stage_entities && state.stage_entities[0] && state.stage_entities[0].length);
+        _wbEmpty.style.display = (mode === "plane" && !hasPlaneData) ? "" : "none";
+      }
+      // 부유 패널 (canvas-pane 자식이라 모드 무관) — 평면도 모드 전용이므로 다른 모드 진입 시 숨김.
+      if (mode !== "plane") {
+        if (typeof LayerPanel !== "undefined") LayerPanel.hide();
+        if (typeof BootOverlay !== "undefined") BootOverlay.hide();
+      }
       // 좌측 overlay 정보
       const labels = { plane: "평면도 추출", system: "계통도 추출", combined: "통합" };
       if (overlayInfoEl) overlayInfoEl.textContent = `[모드] ${labels[mode] || mode}`;
+      // 캔버스 강제 리렌더 — 모드 전환 후 이전 모드 화면이 잔류하는 버그 방지.
+      try { render(); } catch (_) {}
     }
     _modeButtons.forEach(btn => {
       btn.addEventListener("click", () => setMode(btn.dataset.mode));

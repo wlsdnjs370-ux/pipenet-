@@ -6,7 +6,16 @@
     <title>FNCADnet</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260520-wb1">
     <style>
-      .workflow-svg { width: 100%; height: auto; max-height: 360px; display: block; margin: 8px 0 0; background: linear-gradient(180deg, #fafbff 0%, #f1f5fb 100%); border-radius: 10px; padding: 12px; box-sizing: border-box; }
+      .workflow-svg {
+        width: 100%; height: auto; max-height: 560px; display: block;
+        margin: 0;
+        background:
+          radial-gradient(circle at 18% 30%, rgba(99,102,241,0.10) 0, transparent 38%),
+          radial-gradient(circle at 78% 70%, rgba(16,185,129,0.10) 0, transparent 40%),
+          linear-gradient(180deg, #fafbff 0%, #eef2ff 50%, #f1f5fb 100%);
+        border-radius: 14px; padding: 18px; box-sizing: border-box;
+        box-shadow: 0 6px 24px rgba(99,102,241,0.10), inset 0 1px 0 rgba(255,255,255,0.7);
+      }
     </style>
   </head>
   <body>
@@ -29,12 +38,7 @@
         </header>
 
         <section id="home-panel" class="card home-panel">
-          <div class="section-head">
-            <h2>Workflow</h2>
-            <p class="section-note">DXF 도면을 업로드 → Remote 30 으로 배관망을 추출 → PIPENET 입력 파일 생성 → 통합 검증 모듈로 수리계산 결과를 검진하는 흐름입니다.</p>
-          </div>
-
-          <svg class="workflow-svg" viewBox="0 0 1280 360" preserveAspectRatio="xMidYMid meet" role="img" aria-label="FNCADnet workflow: DXF → Remote 30 → PIPENET → Validation → Report">
+          <svg class="workflow-svg" viewBox="0 0 1280 420" preserveAspectRatio="xMidYMid meet" role="img" aria-label="FNCADnet workflow: DXF → Remote 30 → PIPENET → Validation → Report">
             <defs>
               <linearGradient id="wfFlow" x1="0" y1="0" x2="1" y2="0">
                 <stop offset="0%"   stop-color="#3b82f6"/>
@@ -59,134 +63,240 @@
                 <path d="M0,0 L10,5 L0,10 z" fill="#6366f1"/>
               </marker>
               <style>
-                .wf-edge      { fill:none; stroke:url(#wfFlow); stroke-width:1.6; opacity:0.55; }
-                .wf-edge.thin { stroke-width:1.0; opacity:0.30; }
-                .wf-edge.main { stroke-width:2.4; opacity:0.95; marker-end:url(#wfArrow); }
-                .wf-node circle { stroke:url(#wfFlow); stroke-width:2.5; filter:url(#wfGlow); }
-                .wf-node.fill        circle { fill:url(#wfNodeFill); }
-                .wf-node.highlighted circle { fill:url(#wfNodeFillHi); stroke-width:3.5; }
-                .wf-node text { fill:#111827; font-weight:700; font-size:15px; text-anchor:middle; dominant-baseline:middle; font-family:'Segoe UI',Arial,sans-serif; }
-                .wf-node .sub { font-weight:500; font-size:11px; fill:#6366f1; }
-                .wf-caption    { fill:#111827; font-size:13.5px; font-weight:600; text-anchor:middle; font-family:'Segoe UI',Arial,sans-serif; }
-                .wf-caption.module-tag { fill:#6366f1; font-size:10px; font-weight:700; letter-spacing:0.12em; }
-                .wf-subcaption { fill:#6b7280; font-size:11.5px; text-anchor:middle; font-family:'Segoe UI',Arial,sans-serif; }
+                .wf-edge      { fill:none; stroke:url(#wfFlow); stroke-width:1.8; opacity:0.55; }
+                .wf-edge.thin { stroke-width:1.1; opacity:0.32; }
+                .wf-edge.main { stroke-width:2.8; opacity:0.95; marker-end:url(#wfArrow); }
+                .wf-node circle.body { stroke:url(#wfFlow); stroke-width:2.8; filter:url(#wfGlow); }
+                .wf-node.fill        circle.body { fill:url(#wfNodeFill); }
+                .wf-node.highlighted circle.body { fill:url(#wfNodeFillHi); stroke-width:4; }
+                .wf-node text { fill:#111827; font-weight:700; font-size:18px; text-anchor:middle; dominant-baseline:middle; font-family:'Segoe UI',Arial,sans-serif; }
+                .wf-node .sub { font-weight:500; font-size:12.5px; fill:#6366f1; }
+                .wf-caption    { fill:#111827; font-size:15px; font-weight:600; text-anchor:middle; font-family:'Segoe UI',Arial,sans-serif; }
+                .wf-caption.module-tag { fill:#6366f1; font-size:11.5px; font-weight:700; letter-spacing:0.16em; }
+                .wf-subcaption { fill:#6b7280; font-size:12.5px; text-anchor:middle; font-family:'Segoe UI',Arial,sans-serif; }
                 .wf-neuron     { fill:#8b5cf6; opacity:0.7; }
-                @keyframes wfPulse {
-                  0%, 100% { opacity: 0.3; r: 2.5; }
-                  50%      { opacity: 0.9; r: 4.0; }
+
+                /* Pulsing ring around highlighted module nodes */
+                @keyframes wfRing {
+                  0%   { r: 56; opacity: 0.55; stroke-width: 2; }
+                  100% { r: 92; opacity: 0;    stroke-width: 0.5; }
                 }
-                .wf-spark { fill:#3b82f6; animation: wfPulse 2.6s ease-in-out infinite; }
-                .wf-spark.d1 { animation-delay: 0s;    }
-                .wf-spark.d2 { animation-delay: 0.5s;  }
-                .wf-spark.d3 { animation-delay: 1.0s;  }
-                .wf-spark.d4 { animation-delay: 1.5s;  }
-                @keyframes wfDash { to { stroke-dashoffset: -28; } }
-                .wf-edge.main { stroke-dasharray: 8 4; animation: wfDash 1.8s linear infinite; }
+                .wf-ring { fill:none; stroke:#6366f1; transform-origin:center; animation: wfRing 2.6s ease-out infinite; }
+                .wf-ring.delay { animation-delay: 1.3s; }
+
+                /* Breathing on all node bodies */
+                @keyframes wfBreathe {
+                  0%, 100% { r: 56; }
+                  50%      { r: 60; }
+                }
+                .wf-node circle.body { animation: wfBreathe 4.5s ease-in-out infinite; }
+                .wf-node.highlighted circle.body { animation-duration: 3.2s; }
+
+                /* Background floating particles */
+                @keyframes wfDrift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(14px, -10px); } }
+                @keyframes wfDrift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-12px, 12px); } }
+                .wf-bg-dot { fill:#6366f1; opacity:0.18; }
+                .wf-bg-dot.a { animation: wfDrift1 7s ease-in-out infinite; }
+                .wf-bg-dot.b { animation: wfDrift2 8.5s ease-in-out infinite; }
+
+                /* Animated gradient on main edges via dash march */
+                @keyframes wfDash { to { stroke-dashoffset: -36; } }
+                .wf-edge.main { stroke-dasharray: 10 5; animation: wfDash 1.6s linear infinite; }
+
+                /* Sub-spark dots (legacy) */
+                @keyframes wfPulse { 0%,100% { opacity:0.35; } 50% { opacity:1; } }
+                .wf-spark { fill:#3b82f6; opacity:0.7; animation: wfPulse 2.4s ease-in-out infinite; }
+
+                /* Travelling particle (set via animateMotion below) */
+                .wf-particle { fill:#3b82f6; filter:url(#wfGlow); }
+                .wf-particle.green { fill:#10b981; }
+                .wf-particle.purple { fill:#8b5cf6; }
               </style>
             </defs>
 
+            <!-- ─── Background drifting particles ─── -->
+            <circle class="wf-bg-dot a" cx="240" cy="80"  r="3"/>
+            <circle class="wf-bg-dot b" cx="420" cy="340" r="4"/>
+            <circle class="wf-bg-dot a" cx="640" cy="60"  r="2.5"/>
+            <circle class="wf-bg-dot b" cx="820" cy="350" r="3.5"/>
+            <circle class="wf-bg-dot a" cx="1040" cy="70" r="3"/>
+            <circle class="wf-bg-dot b" cx="160" cy="335" r="2.5"/>
+            <circle class="wf-bg-dot a" cx="1200" cy="330" r="3"/>
+            <circle class="wf-bg-dot b" cx="540" cy="55"  r="2"/>
+            <circle class="wf-bg-dot a" cx="920" cy="345" r="2.5"/>
+
             <!-- ─── Neural connections (per gap: 5 curves: 1 main + 4 faint synapses) ─── -->
-            <!-- Gap 1→2: node at (140,170) → (390,170) -->
-            <path class="wf-edge thin" d="M 185 145 C 250 100, 330 100, 348 145"/>
-            <path class="wf-edge thin" d="M 185 195 C 250 240, 330 240, 348 195"/>
-            <path class="wf-edge"      d="M 185 158 C 250 130, 330 130, 348 158"/>
-            <path class="wf-edge"      d="M 185 182 C 250 210, 330 210, 348 182"/>
-            <path class="wf-edge main" d="M 185 170 C 260 170, 310 170, 348 170"/>
+            <!-- Gap 1→2: node at (140,210) → (390,210) -->
+            <path class="wf-edge thin" d="M 195 175 C 265 120, 325 120, 335 175"/>
+            <path class="wf-edge thin" d="M 195 245 C 265 300, 325 300, 335 245"/>
+            <path class="wf-edge"      d="M 195 192 C 265 155, 325 155, 335 192"/>
+            <path class="wf-edge"      d="M 195 228 C 265 265, 325 265, 335 228"/>
+            <path id="wfEdge1" class="wf-edge main" d="M 195 210 C 265 210, 325 210, 335 210"/>
 
-            <!-- Gap 2→3: (390,170) → (640,170) -->
-            <path class="wf-edge thin" d="M 432 145 C 500 100, 580 100, 598 145"/>
-            <path class="wf-edge thin" d="M 432 195 C 500 240, 580 240, 598 195"/>
-            <path class="wf-edge"      d="M 432 158 C 500 130, 580 130, 598 158"/>
-            <path class="wf-edge"      d="M 432 182 C 500 210, 580 210, 598 182"/>
-            <path class="wf-edge main" d="M 432 170 C 510 170, 560 170, 598 170"/>
+            <!-- Gap 2→3: (390,210) → (640,210) -->
+            <path class="wf-edge thin" d="M 445 175 C 515 120, 575 120, 585 175"/>
+            <path class="wf-edge thin" d="M 445 245 C 515 300, 575 300, 585 245"/>
+            <path class="wf-edge"      d="M 445 192 C 515 155, 575 155, 585 192"/>
+            <path class="wf-edge"      d="M 445 228 C 515 265, 575 265, 585 228"/>
+            <path id="wfEdge2" class="wf-edge main" d="M 445 210 C 515 210, 575 210, 585 210"/>
 
-            <!-- Gap 3→4: (640,170) → (890,170) -->
-            <path class="wf-edge thin" d="M 682 145 C 750 100, 830 100, 848 145"/>
-            <path class="wf-edge thin" d="M 682 195 C 750 240, 830 240, 848 195"/>
-            <path class="wf-edge"      d="M 682 158 C 750 130, 830 130, 848 158"/>
-            <path class="wf-edge"      d="M 682 182 C 750 210, 830 210, 848 182"/>
-            <path class="wf-edge main" d="M 682 170 C 760 170, 810 170, 848 170"/>
+            <!-- Gap 3→4: (640,210) → (890,210) -->
+            <path class="wf-edge thin" d="M 695 175 C 765 120, 825 120, 835 175"/>
+            <path class="wf-edge thin" d="M 695 245 C 765 300, 825 300, 835 245"/>
+            <path class="wf-edge"      d="M 695 192 C 765 155, 825 155, 835 192"/>
+            <path class="wf-edge"      d="M 695 228 C 765 265, 825 265, 835 228"/>
+            <path id="wfEdge3" class="wf-edge main" d="M 695 210 C 765 210, 825 210, 835 210"/>
 
-            <!-- Gap 4→5: (890,170) → (1140,170) -->
-            <path class="wf-edge thin" d="M 932 145 C 1000 100, 1080 100, 1098 145"/>
-            <path class="wf-edge thin" d="M 932 195 C 1000 240, 1080 240, 1098 195"/>
-            <path class="wf-edge"      d="M 932 158 C 1000 130, 1080 130, 1098 158"/>
-            <path class="wf-edge"      d="M 932 182 C 1000 210, 1080 210, 1098 182"/>
-            <path class="wf-edge main" d="M 932 170 C 1010 170, 1060 170, 1098 170"/>
-
-            <!-- Animated sparks travelling along the main path -->
-            <circle class="wf-spark d1" cx="266" cy="170"/>
-            <circle class="wf-spark d2" cx="516" cy="170"/>
-            <circle class="wf-spark d3" cx="766" cy="170"/>
-            <circle class="wf-spark d4" cx="1016" cy="170"/>
+            <!-- Gap 4→5: (890,210) → (1140,210) -->
+            <path class="wf-edge thin" d="M 945 175 C 1015 120, 1075 120, 1085 175"/>
+            <path class="wf-edge thin" d="M 945 245 C 1015 300, 1075 300, 1085 245"/>
+            <path class="wf-edge"      d="M 945 192 C 1015 155, 1075 155, 1085 192"/>
+            <path class="wf-edge"      d="M 945 228 C 1015 265, 1075 265, 1085 228"/>
+            <path id="wfEdge4" class="wf-edge main" d="M 945 210 C 1015 210, 1075 210, 1085 210"/>
 
             <!-- Synapse neurons (small purple dots scattered on synapse lines) -->
-            <circle class="wf-neuron" cx="270" cy="118" r="2"/>
-            <circle class="wf-neuron" cx="270" cy="222" r="2"/>
-            <circle class="wf-neuron" cx="520" cy="118" r="2"/>
-            <circle class="wf-neuron" cx="520" cy="222" r="2"/>
-            <circle class="wf-neuron" cx="770" cy="118" r="2"/>
-            <circle class="wf-neuron" cx="770" cy="222" r="2"/>
-            <circle class="wf-neuron" cx="1020" cy="118" r="2"/>
-            <circle class="wf-neuron" cx="1020" cy="222" r="2"/>
+            <circle class="wf-neuron" cx="270" cy="142" r="2.5"/>
+            <circle class="wf-neuron" cx="270" cy="278" r="2.5"/>
+            <circle class="wf-neuron" cx="520" cy="142" r="2.5"/>
+            <circle class="wf-neuron" cx="520" cy="278" r="2.5"/>
+            <circle class="wf-neuron" cx="770" cy="142" r="2.5"/>
+            <circle class="wf-neuron" cx="770" cy="278" r="2.5"/>
+            <circle class="wf-neuron" cx="1020" cy="142" r="2.5"/>
+            <circle class="wf-neuron" cx="1020" cy="278" r="2.5"/>
+
+            <!-- Static pulse sparks (legacy decoration) -->
+            <circle class="wf-spark" cx="266" cy="210" r="3"/>
+            <circle class="wf-spark" cx="516" cy="210" r="3" style="animation-delay:0.6s"/>
+            <circle class="wf-spark" cx="766" cy="210" r="3" style="animation-delay:1.2s"/>
+            <circle class="wf-spark" cx="1016" cy="210" r="3" style="animation-delay:1.8s"/>
+
+            <!-- ─── Travelling particles (animateMotion along main edges) ─── -->
+            <!-- Edge 1 particles -->
+            <circle r="4" class="wf-particle">
+              <animateMotion dur="2.4s" repeatCount="indefinite" rotate="auto">
+                <mpath href="#wfEdge1"/>
+              </animateMotion>
+            </circle>
+            <circle r="3" class="wf-particle purple">
+              <animateMotion dur="2.4s" begin="0.8s" repeatCount="indefinite">
+                <mpath href="#wfEdge1"/>
+              </animateMotion>
+            </circle>
+            <circle r="2.5" class="wf-particle green">
+              <animateMotion dur="2.4s" begin="1.6s" repeatCount="indefinite">
+                <mpath href="#wfEdge1"/>
+              </animateMotion>
+            </circle>
+
+            <!-- Edge 2 particles -->
+            <circle r="4" class="wf-particle">
+              <animateMotion dur="2.2s" begin="0.2s" repeatCount="indefinite">
+                <mpath href="#wfEdge2"/>
+              </animateMotion>
+            </circle>
+            <circle r="3" class="wf-particle purple">
+              <animateMotion dur="2.2s" begin="1.0s" repeatCount="indefinite">
+                <mpath href="#wfEdge2"/>
+              </animateMotion>
+            </circle>
+            <circle r="2.5" class="wf-particle green">
+              <animateMotion dur="2.2s" begin="1.8s" repeatCount="indefinite">
+                <mpath href="#wfEdge2"/>
+              </animateMotion>
+            </circle>
+
+            <!-- Edge 3 particles -->
+            <circle r="4" class="wf-particle">
+              <animateMotion dur="2.3s" begin="0.4s" repeatCount="indefinite">
+                <mpath href="#wfEdge3"/>
+              </animateMotion>
+            </circle>
+            <circle r="3" class="wf-particle purple">
+              <animateMotion dur="2.3s" begin="1.2s" repeatCount="indefinite">
+                <mpath href="#wfEdge3"/>
+              </animateMotion>
+            </circle>
+            <circle r="2.5" class="wf-particle green">
+              <animateMotion dur="2.3s" begin="2.0s" repeatCount="indefinite">
+                <mpath href="#wfEdge3"/>
+              </animateMotion>
+            </circle>
+
+            <!-- Edge 4 particles -->
+            <circle r="4" class="wf-particle">
+              <animateMotion dur="2.1s" begin="0.6s" repeatCount="indefinite">
+                <mpath href="#wfEdge4"/>
+              </animateMotion>
+            </circle>
+            <circle r="3" class="wf-particle purple">
+              <animateMotion dur="2.1s" begin="1.4s" repeatCount="indefinite">
+                <mpath href="#wfEdge4"/>
+              </animateMotion>
+            </circle>
+            <circle r="2.5" class="wf-particle green">
+              <animateMotion dur="2.1s" begin="2.0s" repeatCount="indefinite">
+                <mpath href="#wfEdge4"/>
+              </animateMotion>
+            </circle>
 
             <!-- ─── Stage nodes ─── -->
             <!-- 1. DXF Input -->
-            <g class="wf-node fill" transform="translate(140, 170)">
-              <circle r="46"/>
-              <text y="-4">DXF</text>
-              <text class="sub" y="14">Drawing</text>
+            <g class="wf-node fill" transform="translate(140, 210)">
+              <circle class="body" r="56"/>
+              <text y="-5">DXF</text>
+              <text class="sub" y="16">Drawing</text>
             </g>
-            <text class="wf-caption" x="140" y="245">Drawing Upload</text>
-            <text class="wf-subcaption" x="140" y="265">CAD 도면 (.dxf)</text>
+            <text class="wf-caption" x="140" y="305">Drawing Upload</text>
+            <text class="wf-subcaption" x="140" y="326">CAD 도면 (.dxf)</text>
 
-            <!-- 2. Remote 30 (highlighted — Module A) -->
-            <g class="wf-node fill highlighted" transform="translate(390, 170)">
-              <circle r="46"/>
-              <text y="-4">Remote 30</text>
-              <text class="sub" y="14">Extractor</text>
+            <!-- 2. Remote 30 (highlighted — Module A) — with pulse rings -->
+            <g transform="translate(390, 210)">
+              <circle class="wf-ring" r="56"/>
+              <circle class="wf-ring delay" r="56"/>
             </g>
-            <text class="wf-caption module-tag" x="390" y="230">MODULE A</text>
-            <text class="wf-caption" x="390" y="248">Remote 30 Prototype</text>
-            <text class="wf-subcaption" x="390" y="268">배관망·헤드 추출 + Worst-30 색출</text>
+            <g class="wf-node fill highlighted" transform="translate(390, 210)">
+              <circle class="body" r="56"/>
+              <text y="-5">Remote 30</text>
+              <text class="sub" y="16">Extractor</text>
+            </g>
+            <text class="wf-caption module-tag" x="390" y="288">MODULE A</text>
+            <text class="wf-caption" x="390" y="308">Remote 30 Prototype</text>
+            <text class="wf-subcaption" x="390" y="328">배관망·헤드 추출 + Worst-30 색출</text>
 
             <!-- 3. PIPENET file -->
-            <g class="wf-node fill" transform="translate(640, 170)">
-              <circle r="46"/>
-              <text y="-4">PIPENET</text>
-              <text class="sub" y="14">.sdf / .slf</text>
+            <g class="wf-node fill" transform="translate(640, 210)">
+              <circle class="body" r="56"/>
+              <text y="-5">PIPENET</text>
+              <text class="sub" y="16">.sdf / .slf</text>
             </g>
-            <text class="wf-caption" x="640" y="245">PIPENET Files</text>
-            <text class="wf-subcaption" x="640" y="265">수리계산용 입력 산출</text>
+            <text class="wf-caption" x="640" y="305">PIPENET Files</text>
+            <text class="wf-subcaption" x="640" y="326">수리계산용 입력 산출</text>
 
-            <!-- 4. Validation (highlighted — Module B) -->
-            <g class="wf-node fill highlighted" transform="translate(890, 170)">
-              <circle r="46"/>
-              <text y="-4">Validation</text>
-              <text class="sub" y="14">Suite</text>
+            <!-- 4. Validation (highlighted — Module B) — with pulse rings -->
+            <g transform="translate(890, 210)">
+              <circle class="wf-ring" r="56" style="animation-duration:2.4s"/>
+              <circle class="wf-ring delay" r="56" style="animation-duration:2.4s"/>
             </g>
-            <text class="wf-caption module-tag" x="890" y="230">MODULE B</text>
-            <text class="wf-caption" x="890" y="248">Integrated Validation</text>
-            <text class="wf-subcaption" x="890" y="268">수리계산 결과 검진 + 가이드</text>
+            <g class="wf-node fill highlighted" transform="translate(890, 210)">
+              <circle class="body" r="56"/>
+              <text y="-5">Validation</text>
+              <text class="sub" y="16">Suite</text>
+            </g>
+            <text class="wf-caption module-tag" x="890" y="288">MODULE B</text>
+            <text class="wf-caption" x="890" y="308">Integrated Validation</text>
+            <text class="wf-subcaption" x="890" y="328">수리계산 결과 검진 + 가이드</text>
 
             <!-- 5. Report -->
-            <g class="wf-node fill" transform="translate(1140, 170)">
-              <circle r="46"/>
-              <text y="-4">Report</text>
-              <text class="sub" y="14">Output</text>
+            <g class="wf-node fill" transform="translate(1140, 210)">
+              <circle class="body" r="56"/>
+              <text y="-5">Report</text>
+              <text class="sub" y="16">Output</text>
             </g>
-            <text class="wf-caption" x="1140" y="245">Audit Report</text>
-            <text class="wf-subcaption" x="1140" y="265">최적화 가이드 + 통계</text>
-
-            <!-- Bottom hint -->
-            <text x="640" y="335" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="11.5" fill="#9ca3af">아래에서 모듈을 선택하면 해당 단계로 바로 진입합니다.</text>
+            <text class="wf-caption" x="1140" y="305">Audit Report</text>
+            <text class="wf-subcaption" x="1140" y="326">최적화 가이드 + 통계</text>
           </svg>
 
-          <div class="section-head" style="margin-top:18px;">
-            <h2>Select a Module</h2>
-            <p class="section-note">두 모듈은 워크플로우 상에서 <strong>Module A → Module B</strong> 순으로 연결됩니다. 보통 Remote 30 으로 PIPENET 파일을 먼저 만들고, 그 결과를 Integrated Validation 으로 검진합니다.</p>
-          </div>
-          <div class="home-grid">
+          <div class="home-grid" style="margin-top:22px;">
             <button type="button" class="home-module-btn" data-panel="remote30-prototype-panel">
               <strong>Remote 30 Prototype <span style="font-size:0.75rem; color:#6366f1; font-weight:700; letter-spacing:0.08em;">— Module A</span></strong>
               <span>Upload a single DXF → extract the piping network → identify the 30 hydraulically worst heads → emit PIPENET XLSX/CSV input → .sdf output. All 4 stages are animated live on the canvas.</span>

@@ -2120,24 +2120,87 @@
         const algoLabel = data.algorithm === "legacy_template"
           ? "정답 템플릿 (28F MSP affine)"
           : "DXF 경로 추출 v1";
-        let html = `✓ <strong>${r.title}</strong> — ${algoLabel}<br>`;
-        html += `&nbsp;&nbsp;노드 ${r.nodes.length}개, 파이프 ${r.pipes.length}개`;
+
+        // PR C — 결과 카드: 헤더 + 4 섹션 (그래프 / 층 / 직경 / 경로 요약)
+        const sec = (title, body, color) => {
+          const c = color || "#1e40af";
+          return `<div style="margin-top:6px;padding:6px 8px;border-left:3px solid ${c};background:#fafafa;font-size:0.74rem;line-height:1.5;">` +
+                 `<div style="font-weight:700;color:${c};margin-bottom:2px;">${title}</div>${body}</div>`;
+        };
+
+        let html = `<div style="font-weight:700;font-size:0.85rem;margin-bottom:4px;color:#0a1228;">` +
+                   `✓ ${r.title} <span style="color:#6b7280;font-weight:400;">— ${algoLabel}</span></div>`;
+
+        // 1) 그래프 / Snap 통계
+        let graphBody = `노드 <strong>${r.nodes.length}</strong> · 파이프 <strong>${r.pipes.length}</strong>`;
         if (typeof r.total_pipe_length_m === "number") {
-          html += `, 총 길이 ${r.total_pipe_length_m.toFixed(1)} m`;
+          graphBody += ` · 총 <strong>${r.total_pipe_length_m.toFixed(1)} m</strong>`;
         }
-        html += "<br>";
         if (typeof r.pump_snap_dist_mm === "number") {
-          html += `&nbsp;&nbsp;Snap dist — 펌프 ${r.pump_snap_dist_mm.toFixed(0)}mm, AV ${r.av_snap_dist_mm.toFixed(0)}mm<br>`;
+          const okPump = r.pump_snap_dist_mm < 1000;
+          const okAv   = r.av_snap_dist_mm   < 1000;
+          graphBody += `<br>Snap — 펌프 <span style="color:${okPump?'#065f46':'#b91c1c'};">${r.pump_snap_dist_mm.toFixed(0)}mm</span>` +
+                       ` · AV <span style="color:${okAv?'#065f46':'#b91c1c'};">${r.av_snap_dist_mm.toFixed(0)}mm</span>`;
         }
         if (r.graph_stats && r.graph_stats.node_count) {
           const gs = r.graph_stats;
-          html += `&nbsp;&nbsp;Graph: ${gs.node_count} nodes / ${gs.edge_count} edges / `;
-          html += `bridges ${gs.bridges_applied} (${gs.components_before_bridge}→${gs.components_after_bridge} comp.)`;
-          html += "<br>";
+          graphBody += `<br>Graph: ${gs.node_count}n / ${gs.edge_count}e · `;
+          if (gs.layer_filter_used && gs.layer_filter_used.length) {
+            graphBody += `layers [${gs.layer_filter_used.join(", ")}]`;
+          } else if (gs.layer_filter_fallback_no_match) {
+            graphBody += `<span style="color:#b91c1c;">layer 매칭 실패 — 전체 LINE 사용</span>`;
+          }
         }
+        html += sec("⚙ 그래프 / Snap", graphBody, "#0a1228");
+
+        // 2) 층 매칭
+        const fm = r.floor_matching || {};
+        if (fm.label_count != null) {
+          let floorBody;
+          if (fm.label_count === 0) {
+            floorBody = `<span style="color:#b91c1c;">⚠ 층 라벨 0개 — DXF 텍스트에 "지상N층" 패턴 없음. elev 는 Y/1000 fallback.</span>`;
+          } else {
+            const avMatched = fm.av_floor_idx != null;
+            const fhM = (fm.floor_height_mm / 1000).toFixed(2);
+            floorBody = `라벨 <strong>${fm.label_count}</strong>개 · 평균 층고 <strong>${fhM} m</strong>`;
+            floorBody += `<br>AV 위치 → ` + (avMatched
+              ? `<strong style="color:#065f46;">${fm.av_floor_name || ("지상" + fm.av_floor_idx + "층")}</strong> (idx ${fm.av_floor_idx})`
+              : `<span style="color:#b91c1c;">미식별</span>`);
+            floorBody += `<br>노드 매칭률 <strong>${fm.nodes_with_floor}/${r.nodes.length}</strong>` +
+                         ` (${(fm.nodes_with_floor / Math.max(1, r.nodes.length) * 100).toFixed(0)}%)`;
+          }
+          html += sec("🏢 층 매칭", floorBody, "#16a34a");
+        }
+
+        // 3) 직경 매칭
+        const dm = r.diameter_matching || {};
+        if (dm.total_pipes != null) {
+          const matchRate = dm.total_pipes > 0 ? (dm.matched_pipes / dm.total_pipes * 100).toFixed(0) : 0;
+          let diaBody = `text 라벨 <strong>${dm.text_label_count}</strong>개 → 매칭 <strong>${dm.matched_pipes}/${dm.total_pipes}</strong> pipes (${matchRate}%)`;
+          if (dm.matched_pipes === 0 && dm.total_pipes > 0) {
+            diaBody += `<br><span style="color:#b45309;">⚠ 모든 pipe dia=100A default — 도면에 직경 라벨 부족. PIPENET 으로 넘기기 전 수동 보정 필요.</span>`;
+          }
+          html += sec("Ø 직경 매칭", diaBody, "#b45309");
+        }
+
+        // 4) 경로 미리보기 (펌프 + AV + 중간 1-2개)
+        if (r.nodes && r.nodes.length >= 2) {
+          const first = r.nodes[0], last = r.nodes[r.nodes.length - 1];
+          const fmtNode = (n) => {
+            const fl = n.floor ? ` · ${n.floor.trim()}` : "";
+            const lab = (n.io_node === "Input") ? "P" : (n.label === r.av_node_label ? "AV" : n.label);
+            return `<strong>${lab}</strong> · elev <strong>${(n.elevation >= 0 ? "+" : "") + n.elevation.toFixed(2)}m</strong>${fl}`;
+          };
+          let pathBody = fmtNode(first) + `<br>` +
+                         `<span style="color:#6b7280;">↓ 라이저 ${r.pipes.length} segment</span><br>` +
+                         fmtNode(last);
+          html += sec("🛤 경로 요약", pathBody, "#1e40af");
+        }
+
         if (data.algorithm === "legacy_template") {
-          html += `&nbsp;&nbsp;Affine scale ${r.affine_scale.toFixed(3)} ×, rotation ${r.affine_rotation_deg.toFixed(1)}°`;
+          html += sec("⚙ Affine", `scale ${r.affine_scale.toFixed(3)}× · rotation ${r.affine_rotation_deg.toFixed(1)}°`, "#6b7280");
         }
+
         document.getElementById("sys-result-box").innerHTML = html;
         render();
       } catch (err) {

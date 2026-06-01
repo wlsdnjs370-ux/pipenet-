@@ -919,6 +919,158 @@ SYSTEM_PIPE_LAYER_KEYWORDS: tuple[str, ...] = (
     "입상", "가지", "분기", "감압밸브",  # 도면 표기 빈도 높음
 )
 
+# v2 — TEXT 라벨 파싱 (직경 + 층)
+import re as _re_v2
+
+_DIA_TEXT_PATTERNS = (
+    _re_v2.compile(r"\b(\d{2,3})\s*A\b"),                  # 25A
+    _re_v2.compile(r"^\s*(\d{2,3})\s*$"),                  # 순수 숫자
+    _re_v2.compile(r"[Øø]\s*(\d{2,3})"),                   # Ø25
+    _re_v2.compile(r"DN\s*(\d{2,3})"),                     # DN25
+    _re_v2.compile(r"(?<![0-9])(\d{2,3})\s*mm(?![0-9])"),  # 25mm
+)
+_DIA_TEXT_NOISE_KW = ("호스", "방수구", "소화전", "옥내", "HOSE", "EA", "KG",
+                      "SET", "SCALE", "PUMP", "펌프", "TANK", "탱크", "SIZE")
+_VALID_DIA_MM = frozenset((15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300))
+
+_FLOOR_LABEL_PATTERNS = (
+    (_re_v2.compile(r"지상\s*(\d{1,2})\s*층"), "ground"),     # 지상N층 → +N
+    (_re_v2.compile(r"지하\s*(\d{1,2})\s*층"), "basement"),   # 지하N층 → -N
+    (_re_v2.compile(r"B\s*(\d{1,2})\s*F", _re_v2.I), "basement"),  # B1F → -1
+    (_re_v2.compile(r"(?<![A-Za-z])(\d{1,2})\s*F(?![A-Za-z])"), "ground"),  # 5F → +5
+)
+_FLOOR_LABEL_SPECIAL = {"옥상": 99, "옥탑": 99, "ROOF": 99, "R/F": 99, "RF": 99}
+
+
+def _extract_dia_text_points(entities: list[dict]) -> list[tuple[float, float, int, str]]:
+    """TEXT/MTEXT entity 에서 직경 라벨 → [(x, y, dia_mm, raw), ...]"""
+    out: list[tuple[float, float, int, str]] = []
+    for en in entities:
+        if en.get("t") not in ("T", "M"):
+            continue
+        v = (en.get("v") or "").strip()
+        if not v or any(nw in v for nw in _DIA_TEXT_NOISE_KW):
+            continue
+        for pat in _DIA_TEXT_PATTERNS:
+            m = pat.search(v)
+            if not m:
+                continue
+            try:
+                d = int(m.group(1))
+            except ValueError:
+                continue
+            if d in _VALID_DIA_MM:
+                p = en.get("p")
+                if p and len(p) >= 2:
+                    out.append((float(p[0]), float(p[1]), d, v[:30]))
+                break
+    return out
+
+
+def _extract_floor_labels(entities: list[dict]) -> list[tuple[float, float, int, str]]:
+    """TEXT 에서 층 라벨 → [(x, y, floor_idx, name), ...]
+    floor_idx: 지상층 +N (1F=1), 지하층 -N (B1F=-1), 옥상 99.
+    """
+    out: list[tuple[float, float, int, str]] = []
+    for en in entities:
+        if en.get("t") not in ("T", "M"):
+            continue
+        v = (en.get("v") or "").strip()
+        if not v:
+            continue
+        p = en.get("p")
+        if not p or len(p) < 2:
+            continue
+        x, y = float(p[0]), float(p[1])
+        # special 옥상/옥탑
+        matched = False
+        for kw, idx in _FLOOR_LABEL_SPECIAL.items():
+            if kw in v.upper():
+                out.append((x, y, idx, v[:20]))
+                matched = True
+                break
+        if matched:
+            continue
+        for pat, kind in _FLOOR_LABEL_PATTERNS:
+            m = pat.search(v)
+            if not m:
+                continue
+            try:
+                n = int(m.group(1))
+            except ValueError:
+                continue
+            idx = -n if kind == "basement" else n
+            out.append((x, y, idx, v[:20]))
+            break
+    return out
+
+
+def _estimate_floor_height_mm(floor_labels: list[tuple[float, float, int, str]]) -> float:
+    """인접 층 라벨의 Y 차이 중앙값 → 평균 층고 (mm). 미정시 3000mm 디폴트."""
+    if len(floor_labels) < 2:
+        return 3000.0
+    sorted_labels = sorted(floor_labels, key=lambda fl: fl[2])
+    diffs: list[float] = []
+    for i in range(1, len(sorted_labels)):
+        a, b = sorted_labels[i - 1], sorted_labels[i]
+        if b[2] - a[2] == 1 and b[2] < 99 and a[2] >= 1:  # 연속 지상층만
+            diffs.append(abs(b[1] - a[1]))
+    if not diffs:
+        return 3000.0
+    diffs.sort()
+    return diffs[len(diffs) // 2]
+
+
+def _floor_for_node_y(node_y: float,
+                      floor_labels: list[tuple[float, float, int, str]],
+                      y_tolerance_mm: float = 1500.0,
+                      ) -> tuple[int | None, str | None]:
+    """노드 Y 와 가장 가까운 층 라벨 (Y 만 비교). 99(옥상) 제외."""
+    best: tuple[int, str] | None = None
+    bestd = float("inf")
+    for _fx, fy, fidx, fname in floor_labels:
+        if fidx == 99:
+            continue
+        dy = abs(node_y - fy)
+        if dy < bestd:
+            bestd = dy
+            best = (fidx, fname)
+    if best and bestd <= y_tolerance_mm:
+        return best
+    return None, None
+
+
+def _point_to_segment_dist(px: float, py: float,
+                            ax: float, ay: float,
+                            bx: float, by: float) -> float:
+    """점 (px,py) ↔ segment [a,b] 최단 거리."""
+    dx, dy = bx - ax, by - ay
+    if dx == 0 and dy == 0:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+    cx, cy = ax + t * dx, ay + t * dy
+    return math.hypot(px - cx, py - cy)
+
+
+def _match_diameter_for_segment(
+    a_xy: tuple[float, float], b_xy: tuple[float, float],
+    dia_text_pts: list[tuple[float, float, int, str]],
+    max_dist_mm: float = 1500.0,
+) -> tuple[int | None, float, str | None]:
+    """segment 와 가장 가까운 직경 라벨. (dia, dist, raw) 반환."""
+    best_d: int | None = None
+    best_dist = float("inf")
+    best_raw: str | None = None
+    for tx, ty, dia, raw in dia_text_pts:
+        d = _point_to_segment_dist(tx, ty, a_xy[0], a_xy[1], b_xy[0], b_xy[1])
+        if d < best_dist:
+            best_dist = d
+            best_d = dia
+            best_raw = raw
+    if best_d is not None and best_dist <= max_dist_mm:
+        return best_d, best_dist, best_raw
+    return None, best_dist, None
+
 
 def _auto_pipe_layer_filter(entities: list[dict],
                             keywords: tuple[str, ...] = SYSTEM_PIPE_LAYER_KEYWORDS,
@@ -1060,9 +1212,14 @@ def extract_system_path(
             f"snap 거리 펌프={pump_d:.0f}mm, AV={av_d:.0f}mm."
         )
 
+    # v2 — TEXT 에서 직경 + 층 라벨 추출
+    dia_text_pts = _extract_dia_text_points(entities)
+    floor_labels = _extract_floor_labels(entities)
+
     return _system_path_to_riser_dict(
         path, edge_len, pump_xy, av_xy,
         pump_snap_dist=pump_d, av_snap_dist=av_d, graph_stats=stats,
+        dia_text_pts=dia_text_pts, floor_labels=floor_labels,
     )
 
 
@@ -1074,26 +1231,43 @@ def _system_path_to_riser_dict(
     pump_snap_dist: float = 0.0,
     av_snap_dist: float = 0.0,
     graph_stats: dict | None = None,
+    dia_text_pts: list[tuple[float, float, int, str]] | None = None,
+    floor_labels: list[tuple[float, float, int, str]] | None = None,
 ) -> dict:
     """경로 (vertex 시퀀스) → PIPENET 라이저 dict 변환.
 
-    노드 라벨 컨벤션:
-        "1" = 펌프 (Input, 1 atm), "10" = AV (No), 중간 = "2", "3", ...
+    v2 — 직경 매칭 + 층 라벨 기반 elev:
+        - dia_text_pts: TEXT 에서 추출한 직경 라벨 → segment 별 가까운 라벨 매칭.
+        - floor_labels: "지상N층" 등 라벨 → 노드 Y 좌표를 실제 층고로 변환.
+        매칭 실패 시 fallback: dia=100, elev=(y - av_y)/1000 heuristic.
 
-    Elev 계산:
-        AV 의 y 좌표를 datum 으로 (elev_m=0).
-        나머지 노드: (node_y - av_y) / 1000.0 (DXF mm → m).
-        계통도 도면이 vertical schematic 이면 elev 가 물리적 높이에 근사.
-        (v2 에서 층 라벨 텍스트 파싱으로 정확도 개선 예정.)
+    노드 라벨: "1" = 펌프 (Input, 1 atm), "10" = AV (No), 중간 = "2", "3", ...
     """
     if len(path) < 2:
         raise ValueError(f"경로 노드 수 {len(path)} — 펌프 = AV 같은 위치 가능성")
 
-    av_y = path[-1][1]
+    dia_text_pts = dia_text_pts or []
+    floor_labels = floor_labels or []
+
+    av_y_dxf = path[-1][1]
     total = len(path)
     total_length_mm = 0.0
 
+    # v2 — 층 라벨 → AV 의 층 식별 + 평균 층고. 이걸로 노드 elev 정확히 계산.
+    floor_height_mm = _estimate_floor_height_mm(floor_labels)
+    av_floor_idx, av_floor_name = _floor_for_node_y(av_y_dxf, floor_labels)
+
+    def _elev_for_node(ny: float) -> tuple[float, str | None, bool]:
+        """노드 Y 의 (elev_m, floor_name, from_label) 반환. label 없으면 Y/1000 fallback."""
+        if floor_labels and av_floor_idx is not None:
+            f_idx, f_name = _floor_for_node_y(ny, floor_labels)
+            if f_idx is not None:
+                return ((f_idx - av_floor_idx) * floor_height_mm / 1000.0, f_name, True)
+        return ((ny - av_y_dxf) / 1000.0, None, False)
+
+    # 노드
     nodes: list[dict] = []
+    nodes_with_floor = 0
     for i, pt in enumerate(path):
         if i == 0:
             label, io = "1", "Input"
@@ -1101,35 +1275,57 @@ def _system_path_to_riser_dict(
             label, io = "10", "No"
         else:
             label, io = str(i + 1), "No"
+        elev_m, floor_name, from_label = _elev_for_node(pt[1])
+        if from_label:
+            nodes_with_floor += 1
         node: dict = {
             "label": label,
             "x": int(round(pt[0])),
             "y": int(round(pt[1])),
-            "elevation": round((pt[1] - av_y) / 1000.0, 3),
+            "elevation": round(elev_m, 3),
             "io_node": io,
         }
+        if floor_name:
+            node["floor"] = floor_name
         if io == "Input":
             node["pressure_pa"] = 101325.0
         nodes.append(node)
 
+    # 파이프 + 직경 매칭
     pipes: list[dict] = []
+    dia_match_count = 0
     for i in range(total - 1):
         a = path[i]; b = path[i + 1]
         edge_key = (min(a, b), max(a, b))
         length_mm = edge_len.get(edge_key, math.hypot(b[0] - a[0], b[1] - a[1]))
         total_length_mm += length_mm
-        pipes.append({
+        dia, dia_dist, dia_raw = _match_diameter_for_segment(a, b, dia_text_pts)
+        used_dia = dia if dia is not None else 100
+        if dia is not None:
+            dia_match_count += 1
+        # pipe elev: 노드 간 elev 차이 (층 기반이면 정확, 아니면 Y/1000 fallback)
+        in_e = nodes[i]["elevation"]
+        out_e = nodes[i + 1]["elevation"]
+        pipe: dict = {
             "label": str(i + 1),
             "in":  nodes[i]["label"],
             "out": nodes[i + 1]["label"],
             "type": "KSD 3507",
-            "dia": 100,       # v1: placeholder, v2 에서 텍스트 매칭
+            "dia": used_dia,
             "length": round(length_mm / 1000.0, 3),
-            "elev":   round((b[1] - a[1]) / 1000.0, 3),
+            "elev":   round(out_e - in_e, 3),
             "c": "120",
             "status": "Normal",
             "group": "Unset",
-        })
+        }
+        if dia is not None:
+            pipe["dia_source"] = "text_match"
+            pipe["dia_match_dist_mm"] = round(dia_dist, 1)
+            if dia_raw:
+                pipe["dia_raw"] = dia_raw
+        else:
+            pipe["dia_source"] = "default"
+        pipes.append(pipe)
 
     return {
         "nodes": nodes,
@@ -1146,7 +1342,20 @@ def _system_path_to_riser_dict(
         "pump_snap_dist_mm": round(pump_snap_dist, 1),
         "av_snap_dist_mm":   round(av_snap_dist, 1),
         "graph_stats": graph_stats or {},
-        # 호환성 키 — legacy template 출력 형태 유지 (frontend 가 참조함)
+        # v2 — 직경 / 층 매칭 통계
+        "diameter_matching": {
+            "matched_pipes": dia_match_count,
+            "total_pipes":   len(pipes),
+            "text_label_count": len(dia_text_pts),
+        },
+        "floor_matching": {
+            "label_count": len(floor_labels),
+            "floor_height_mm": round(floor_height_mm, 0),
+            "av_floor_idx":  av_floor_idx,
+            "av_floor_name": av_floor_name,
+            "nodes_with_floor": nodes_with_floor,
+        },
+        # 호환성 키 — legacy template 출력 형태 유지
         "affine_scale": 1.0,
         "affine_rotation_deg": 0.0,
     }

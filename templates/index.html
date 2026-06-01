@@ -16,9 +16,40 @@
         border-radius: 14px; padding: 18px; box-sizing: border-box;
         box-shadow: 0 6px 24px rgba(99,102,241,0.10), inset 0 1px 0 rgba(255,255,255,0.7);
       }
+
+      /* 모듈 진입 후엔 상단 헤더 카드(브랜드 + Logout) 숨김 */
+      .app-shell:not(.home-mode) .app-header { display: none; }
+
+      /* 모듈 진입 시 좌상단에 떠있는 "처음으로" 버튼 */
+      #home-nav-btn.float-back-btn {
+        position: fixed;
+        top: 14px;
+        left: 16px;
+        z-index: 1000;
+        padding: 8px 14px 8px 11px;
+        background: rgba(15, 23, 42, 0.92);
+        color: #f1f5f9;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        font-size: 0.86rem;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.22);
+        backdrop-filter: blur(8px);
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-family: inherit;
+        letter-spacing: 0.01em;
+        transition: transform 0.12s ease, background 0.12s ease;
+      }
+      #home-nav-btn.float-back-btn:hover { background: #1e293b; transform: translateY(-1px); }
+      #home-nav-btn.float-back-btn::before { content: "←"; font-size: 1rem; line-height: 1; opacity: 0.9; }
+      #home-nav-btn.float-back-btn.hidden { display: none !important; }
     </style>
   </head>
   <body>
+    <button id="home-nav-btn" type="button" class="float-back-btn hidden" aria-label="처음 화면으로 돌아가기">처음으로</button>
     <main class="page app-shell">
       <div class="main-pane">
         <header class="header card app-header">
@@ -27,7 +58,6 @@
               <h1>FNCADnet</h1>
             </div>
             <div class="header-actions">
-              <button id="home-nav-btn" type="button" class="criteria-btn hidden">처음으로</button>
               <a href="{{ url_for('logout') }}" class="criteria-btn" title="End current session and return to the login screen"
                  style="background: #ffffff; color: #b91c1c; border-color: #fca5a5; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;"
                  onclick="return confirm('Sign out?\nYou will need to enter the password again.');">

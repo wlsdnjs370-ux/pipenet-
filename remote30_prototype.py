@@ -1176,16 +1176,30 @@ def find_nearest_graph_node_constrained(
 def _collapse_collinear_nodes(
     path: list[tuple[float, float]],
     edge_len: dict,
-    angle_tol_deg: float = 2.0,
+    angle_tol_deg: float = 0.5,
+    short_ratio: float = 1.5,
 ) -> list[tuple[float, float]]:
-    """Path 의 직선상 중간 노드 제거 — 답안 SDF 노드 개수에 근접.
+    """Path 의 짧은 + 직선상 중간 노드 제거 — 답안 SDF 노드 구조에 근접.
 
-    노드 i 의 (i-1)→i 와 i→(i+1) 두 vector 의 각도가 angle_tol_deg 이내면
-    노드 i 는 직선 segment 의 중간점이라 통합 가능. 끝점 두 개는 항상 유지.
-    edge_len 도 합산된 segment 로 갱신.
+    답안 SDF 의 노드는 fitting elbow / 분기 / 직경 변경 지점이라 평균 3-8m 간격.
+    우리 path 는 LINE 끝점마다 노드라 같은 직선에 N+1 노드. 두 조건 동시 만족 시 통합:
+      1) (i-1)→i 와 i→(i+1) 각도 ≤ angle_tol_deg (직선)
+      2) 두 segment 길이 합 ≤ path median segment 길이 × short_ratio × 2
+         (도면 단위 무관 — 상대 기준. short_ratio=1.5 → 평균의 1.5배까지 통합)
     """
     if len(path) <= 2:
         return list(path)
+
+    # path 의 segment 길이 분포 → 중앙값
+    seg_lens: list[float] = []
+    for i in range(len(path) - 1):
+        a, b = path[i], path[i + 1]
+        L = edge_len.get((min(a, b), max(a, b)), math.hypot(b[0] - a[0], b[1] - a[1]))
+        seg_lens.append(L)
+    seg_lens_sorted = sorted(seg_lens)
+    median_len = seg_lens_sorted[len(seg_lens_sorted) // 2] if seg_lens_sorted else 1.0
+    threshold = median_len * short_ratio * 2.0   # 두 segment 합산용
+
     kept = [path[0]]
     for i in range(1, len(path) - 1):
         prev = kept[-1]
@@ -1195,14 +1209,13 @@ def _collapse_collinear_nodes(
         dx2, dy2 = nxt[0] - cur[0], nxt[1] - cur[1]
         L1 = math.hypot(dx1, dy1); L2 = math.hypot(dx2, dy2)
         if L1 < 1e-6 or L2 < 1e-6:
-            continue   # 동일 좌표 노드는 통합
-        # 두 vector 의 사이각 (외적 + 내적)
+            continue   # 동일 좌표 노드는 무조건 통합
         cross = dx1 * dy2 - dy1 * dx2
         dot   = dx1 * dx2 + dy1 * dy2
-        # angle = atan2(|cross|, dot)
         ang_rad = math.atan2(abs(cross), dot)
-        if math.degrees(ang_rad) <= angle_tol_deg:
-            # 직선 — 노드 i 제거 (kept 에 안 추가). edge_len 도 합산해서 prev→nxt 로 등록
+        is_collinear = math.degrees(ang_rad) <= angle_tol_deg
+        is_short = (L1 + L2) <= threshold
+        if is_collinear and is_short:
             key_in  = (min(prev, cur), max(prev, cur))
             key_out = (min(cur, nxt), max(cur, nxt))
             merged_len = edge_len.get(key_in, L1) + edge_len.get(key_out, L2)
@@ -1324,7 +1337,9 @@ def _system_path_to_riser_dict(
                 return ((f_idx - av_floor_idx) * floor_height_mm / 1000.0, f_name, True)
         return ((ny - av_y_dxf) / 1000.0, None, False)
 
-    # 노드
+    # 노드 — 라벨 컨벤션:
+    #   첫 노드 "1" (Input/펌프), 마지막 노드 "10" (AV).
+    #   중간 노드는 "n2", "n3", ... ("10" 과 충돌 방지 — path 길이 ≥ 10 일 때 collision 버그 fix).
     nodes: list[dict] = []
     nodes_with_floor = 0
     for i, pt in enumerate(path):
@@ -1333,7 +1348,7 @@ def _system_path_to_riser_dict(
         elif i == total - 1:
             label, io = "10", "No"
         else:
-            label, io = str(i + 1), "No"
+            label, io = f"n{i + 1}", "No"
         elev_m, floor_name, from_label = _elev_for_node(pt[1])
         if from_label:
             nodes_with_floor += 1
@@ -1359,7 +1374,10 @@ def _system_path_to_riser_dict(
         length_mm = edge_len.get(edge_key, math.hypot(b[0] - a[0], b[1] - a[1]))
         total_length_mm += length_mm
         dia, dia_dist, dia_raw = _match_diameter_for_segment(a, b, dia_text_pts)
-        used_dia = dia if dia is not None else 100
+        # C — 직경 default 100→150 (47 도면 학습:
+        #    답안 main_bore 분포 100mm 165개 / 150mm 148개 거의 동률,
+        #    대명동/양주옥정 자연낙차 case 답안 main 모두 150mm. 절충 default).
+        used_dia = dia if dia is not None else 150
         if dia is not None:
             dia_match_count += 1
         # pipe elev: 노드 간 elev 차이 (층 기반이면 정확, 아니면 Y/1000 fallback)

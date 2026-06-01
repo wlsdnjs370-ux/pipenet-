@@ -138,7 +138,7 @@ def compare_case(spec: CaseSpec, min_bore_mm: int = 100) -> dict:
     print(f"  entities: {len(parsed['entities']):,}, layers: {len(parsed.get('layers',[]))}")
     try:
         our_riser = extract_system_path(parsed["entities"], spec.pump_xy, spec.av_xy,
-                                         snap_tolerance_mm=5000.0)
+                                         snap_tolerance_mm=20000.0)
         our_stat = StatBlock.from_our_extract(our_riser, source="our_extract")
         our_error = None
     except Exception as e:
@@ -224,7 +224,15 @@ CASES = [
         pump_xy=(-644264.212, 178419.8529),
         av_xy=(-660081.0832, 133254.6858),
     ),
-    # 양주옥정 / 다이소 추가는 도면 좌표 파악 후 — 우선 대명동만 시연
+    CaseSpec(
+        label="양주옥정 101동 — 17F 자연낙차 (47 도면 학습 첫 검증)",
+        dxf_path="data/reference_library/2. 고가수조_양주옥정 중상1블럭/CAD/MF-016~ 계통도.dxf",
+        answer_sdf_path="data/reference_library/2. 고가수조_양주옥정 중상1블럭/수리계산 원본/수리계산 스프링클러/공동주택/101동/02-2. 양주옥정 101동 자연낙차구간 17F_USER.sdf",
+        # 17F + 99F (옥상) 좌표 둘 다 같은 X = -3,388,824 (101동 추정 첫 라이저)
+        # 도면 단위 mm 가정 — 양주옥정 도면이 대명동보다 ~100배 큰 좌표라 snap_tolerance 도 비례 ↑
+        pump_xy=(-3388824.1, 163954.3),
+        av_xy=(-3388824.1, 97417.3),
+    ),
 ]
 
 

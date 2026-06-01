@@ -1080,7 +1080,7 @@
 
     <script src="{{ url_for('static', filename='app.js') }}?v=20260520-wb1"></script>
     <script>
-      // ?view=validation 으로 진입하면 — Module B 새창 진입 자동 처리
+      // ?view=validation 으로 진입 시 — Module B 자동 진입 처리
       (function () {
         try {
           var params = new URLSearchParams(window.location.search);
@@ -1090,6 +1090,9 @@
                 if (typeof window.setActiveMenuPanel === "function") {
                   window.setActiveMenuPanel("workspace-panel");
                 }
+                // 진입 가드 클래스 제거 — 이후 "처음으로" 버튼이 정상 동작하려면 필수
+                // (이 클래스가 남아있으면 home-panel/header 가 display:none !important 로 영구 숨김)
+                document.documentElement.classList.remove("entering-validation");
               }, 80);
             });
           }

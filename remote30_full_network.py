@@ -526,25 +526,54 @@ class CombinedTables:
 
 
 def stitch_riser_and_heads(riser: RiserTables, head_tables: Any) -> CombinedTables:
-    """라이저 끝점(AV node) ↔ 헤드망 source(=같은 label) 결합.
+    """라이저 끝점(AV node) ↔ 헤드망 source(=같은 label) 결합 + 좌표 정렬.
 
     Args:
         riser: Stage B 산출.
         head_tables: remote30_prototype.PipeTables 인스턴스.
 
     Returns:
-        CombinedTables — 모든 element 가 합쳐진 표.
+        CombinedTables — 좌표가 통합된 한 schematic 위에 라이저+헤드망 부착.
 
     충돌 처리:
         라이저 노드 라벨 = {1..9, 87, 88, 89, 100} + AV(10)
+                          또는 v1 path: {1, n2, n3, ..., 10}
         헤드망 노드 라벨 = {10, 11, 12, ...} (10 이 source = AV)
         AV(10) 만 공통 — 라이저 쪽 노드만 유지, 헤드망 쪽 노드 10 의 elevation
         을 라이저 AV elevation 으로 동기화.
+
+    좌표 정렬:
+        라이저 (계통도 도면 절대 좌표) + 헤드망 (평면도 절대 좌표) — 두 좌표계가
+        수백만 mm 떨어져 있을 수 있어 PIPENET 시각화 시 두 부분이 멀리 흩어져 보임.
+        Fix: 라이저 AV(label=10) 좌표 ↔ 헤드망 AV(label=10) 좌표 매칭하도록
+        라이저 전체 노드를 평행이동. 결과는 PIPENET 답안 schematic 처럼 라이저가
+        헤드망 AV 위치에 막대로 부착.
     """
     av_lbl = riser.av_node_label
     riser_av_node = next((n for n in riser.nodes if n["label"] == av_lbl), None)
     if riser_av_node is None:
         raise ValueError(f"라이저에 AV 노드(label={av_lbl})가 없음")
+
+    # 좌표 정렬 — 헤드망 AV 위치 찾고, 라이저 노드 전체를 그 점으로 평행이동.
+    head_av_node = next((n for n in head_tables.nodes if n["label"] == av_lbl), None)
+    if head_av_node is not None:
+        try:
+            dx = float(head_av_node["x"]) - float(riser_av_node["x"])
+            dy = float(head_av_node["y"]) - float(riser_av_node["y"])
+        except (KeyError, TypeError, ValueError):
+            dx = dy = 0.0
+        if dx != 0.0 or dy != 0.0:
+            translated_riser_nodes = []
+            for n in riser.nodes:
+                nx = float(n.get("x", 0.0)) + dx
+                ny = float(n.get("y", 0.0)) + dy
+                translated_riser_nodes.append({
+                    **n, "x": int(round(nx)), "y": int(round(ny)),
+                })
+        else:
+            translated_riser_nodes = list(riser.nodes)
+    else:
+        translated_riser_nodes = list(riser.nodes)
 
     # 헤드망 노드 10 의 elevation → 라이저 AV elevation 으로 일치
     head_nodes_filtered = []
@@ -555,7 +584,7 @@ def stitch_riser_and_heads(riser: RiserTables, head_tables: Any) -> CombinedTabl
         head_nodes_filtered.append(n)
 
     return CombinedTables(
-        nodes=list(riser.nodes) + head_nodes_filtered,
+        nodes=translated_riser_nodes + head_nodes_filtered,
         pipes=list(riser.pipes) + list(head_tables.pipes),
         nozzles=list(head_tables.nozzles),
         fittings=list(head_tables.fittings),

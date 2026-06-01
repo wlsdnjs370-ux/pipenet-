@@ -820,6 +820,8 @@
       revealed_heads_4: null,           // null = 전부, 정수 = 처음 N rank 까지
       subgraph_alpha_4: 1.0,            // 0..1 subgraph 엣지 opacity (점진 fade-in)
       head_rank_4: null,                // Map<entity, rank> — AV 로부터 거리 순 (.size 필요해 WeakMap 불가)
+      // 계통도 동적 추출 — null = 전부, 정수 = 처음 N pipe 까지
+      system_revealed_pipes_count: null,
     };
 
     // ══════════════ PR1 — AnimationQueue + Boot overlay + Layer panel ══════════════
@@ -1015,6 +1017,28 @@
         state.subgraph_alpha_4 = 1.0;
         render();
         overlayInfoEl.textContent = `[Stage 4 완료] 30 헤드 + 최단경로 subgraph`;
+      }},
+
+      // ─── 계통도 동적 추출 (평면도의 stage 시리즈와 동일 패턴) ───
+      sys_intro: { budgetMs: 600, handler: (e) => {
+        overlayInfoEl.textContent = e.msg || "[계통도] 알고리즘 분석 시작…";
+      }},
+      sys_graph_msg: { budgetMs: 700, handler: (e) => {
+        overlayInfoEl.textContent = e.msg || "";
+      }},
+      sys_pipe_reveal: { budgetMs: 80, handler: (e) => {
+        state.system_revealed_pipes_count = e.index + 1;
+        overlayInfoEl.textContent = `[계통도] 라이저 segment ${e.index + 1} / ${e.total}`;
+        if (state.current_mode === "system") render();
+      }},
+      sys_extract_done: { budgetMs: 500, handler: () => {
+        state.system_revealed_pipes_count = null; // 전체 표시
+        if (state.current_mode === "system") render();
+        // 결과 카드 표시 (함수로 분리됨)
+        if (typeof _updateSystemResultCard === "function" && state._sys_extract_last) {
+          _updateSystemResultCard(state._sys_extract_last);
+        }
+        overlayInfoEl.textContent = `[계통도 완료] pump → AV 경로 추출됨`;
       }},
     });
 
@@ -2092,6 +2116,91 @@
       return await res.json();
     }
 
+    // 결과 카드 렌더링 — 추출 완료 후 호출 (큐 sys_extract_done 핸들러에서도 호출됨)
+    function _updateSystemResultCard(data) {
+      const r = data.riser;
+      const algoLabel = data.algorithm === "legacy_template"
+        ? "정답 템플릿 (28F MSP affine)"
+        : "DXF 경로 추출 v1";
+
+      const sec = (title, body, color) => {
+        const c = color || "#1e40af";
+        return `<div style="margin-top:6px;padding:6px 8px;border-left:3px solid ${c};background:#fafafa;font-size:0.74rem;line-height:1.5;">` +
+               `<div style="font-weight:700;color:${c};margin-bottom:2px;">${title}</div>${body}</div>`;
+      };
+
+      let html = `<div style="font-weight:700;font-size:0.85rem;margin-bottom:4px;color:#0a1228;">` +
+                 `✓ ${r.title} <span style="color:#6b7280;font-weight:400;">— ${algoLabel}</span></div>`;
+
+      let graphBody = `노드 <strong>${r.nodes.length}</strong> · 파이프 <strong>${r.pipes.length}</strong>`;
+      if (typeof r.total_pipe_length_m === "number") {
+        graphBody += ` · 총 <strong>${r.total_pipe_length_m.toFixed(1)} m</strong>`;
+      }
+      if (typeof r.pump_snap_dist_mm === "number") {
+        const okPump = r.pump_snap_dist_mm < 1000;
+        const okAv = r.av_snap_dist_mm < 1000;
+        graphBody += `<br>Snap — 펌프 <span style="color:${okPump?'#065f46':'#b91c1c'};">${r.pump_snap_dist_mm.toFixed(0)}mm</span>` +
+                     ` · AV <span style="color:${okAv?'#065f46':'#b91c1c'};">${r.av_snap_dist_mm.toFixed(0)}mm</span>`;
+      }
+      if (r.graph_stats && r.graph_stats.node_count) {
+        const gs = r.graph_stats;
+        graphBody += `<br>Graph: ${gs.node_count}n / ${gs.edge_count}e · `;
+        if (gs.layer_filter_used && gs.layer_filter_used.length) {
+          graphBody += `layers [${gs.layer_filter_used.join(", ")}]`;
+        } else if (gs.layer_filter_fallback_no_match) {
+          graphBody += `<span style="color:#b91c1c;">layer 매칭 실패 — 전체 LINE 사용</span>`;
+        }
+      }
+      html += sec("⚙ 그래프 / Snap", graphBody, "#0a1228");
+
+      const fm = r.floor_matching || {};
+      if (fm.label_count != null) {
+        let floorBody;
+        if (fm.label_count === 0) {
+          floorBody = `<span style="color:#b91c1c;">⚠ 층 라벨 0개 — DXF 텍스트에 "지상N층" 패턴 없음. elev 는 Y/1000 fallback.</span>`;
+        } else {
+          const avMatched = fm.av_floor_idx != null;
+          const fhM = (fm.floor_height_mm / 1000).toFixed(2);
+          floorBody = `라벨 <strong>${fm.label_count}</strong>개 · 평균 층고 <strong>${fhM} m</strong>`;
+          floorBody += `<br>AV 위치 → ` + (avMatched
+            ? `<strong style="color:#065f46;">${fm.av_floor_name || ("지상" + fm.av_floor_idx + "층")}</strong> (idx ${fm.av_floor_idx})`
+            : `<span style="color:#b91c1c;">미식별</span>`);
+          floorBody += `<br>노드 매칭률 <strong>${fm.nodes_with_floor}/${r.nodes.length}</strong>` +
+                       ` (${(fm.nodes_with_floor / Math.max(1, r.nodes.length) * 100).toFixed(0)}%)`;
+        }
+        html += sec("🏢 층 매칭", floorBody, "#16a34a");
+      }
+
+      const dm = r.diameter_matching || {};
+      if (dm.total_pipes != null) {
+        const matchRate = dm.total_pipes > 0 ? (dm.matched_pipes / dm.total_pipes * 100).toFixed(0) : 0;
+        let diaBody = `text 라벨 <strong>${dm.text_label_count}</strong>개 → 매칭 <strong>${dm.matched_pipes}/${dm.total_pipes}</strong> pipes (${matchRate}%)`;
+        if (dm.matched_pipes === 0 && dm.total_pipes > 0) {
+          diaBody += `<br><span style="color:#b45309;">⚠ 모든 pipe dia=100A default — 도면에 직경 라벨 부족. PIPENET 으로 넘기기 전 수동 보정 필요.</span>`;
+        }
+        html += sec("Ø 직경 매칭", diaBody, "#b45309");
+      }
+
+      if (r.nodes && r.nodes.length >= 2) {
+        const first = r.nodes[0], last = r.nodes[r.nodes.length - 1];
+        const fmtNode = (n) => {
+          const fl = n.floor ? ` · ${n.floor.trim()}` : "";
+          const lab = (n.io_node === "Input") ? "P" : (n.label === r.av_node_label ? "AV" : n.label);
+          return `<strong>${lab}</strong> · elev <strong>${(n.elevation >= 0 ? "+" : "") + n.elevation.toFixed(2)}m</strong>${fl}`;
+        };
+        let pathBody = fmtNode(first) + `<br>` +
+                       `<span style="color:#6b7280;">↓ 라이저 ${r.pipes.length} segment</span><br>` +
+                       fmtNode(last);
+        html += sec("🛤 경로 요약", pathBody, "#1e40af");
+      }
+
+      if (data.algorithm === "legacy_template") {
+        html += sec("⚙ Affine", `scale ${r.affine_scale.toFixed(3)}× · rotation ${r.affine_rotation_deg.toFixed(1)}°`, "#6b7280");
+      }
+
+      document.getElementById("sys-result-box").innerHTML = html;
+    }
+
     _sysExtractBtn.addEventListener("click", async () => {
       if (!state.system_pump_marker || !state.system_av_marker) {
         alert("펌프와 알람밸브 위치를 모두 클릭으로 지정해주세요.");
@@ -2099,110 +2208,68 @@
       }
       _sysExtractBtn.disabled = true;
       _sysExtractBtn.textContent = "⏳ 추출 중...";
+      // 동적 추출 — Boot overlay + Layer panel + 큐 staged reveal
+      animQueue.clear();
+      LayerPanel.reset();
+      LayerPanel.show();
+      BootOverlay.show("Analyzing CAD system diagram");
+      state.system_revealed_pipes_count = null;
+      state.system_riser = null;  // 이전 path 지움 (재실행 대비)
+      if (state.current_mode === "system") render();
       try {
         let data = await _runSystemExtract(false);
-        // v1 알고리즘 실패 + legacy 폴백 제안 → 사용자에게 확인 후 자동 폴백
+        // v1 알고리즘 실패 + legacy 폴백 제안
         if (!data.ok && data.suggest_legacy) {
+          BootOverlay.hide();
           const proceed = confirm(
             "계통도 DXF 추출 실패:\n\n" + (data.message || "") +
             "\n\n옛 정답 템플릿(28F MSP affine) 으로 폴백할까요?"
           );
           if (proceed) {
+            BootOverlay.show("Falling back to legacy template");
             data = await _runSystemExtract(true);
           }
         }
+        BootOverlay.hide();
         if (!data.ok) {
+          LayerPanel.hide();
           alert("추출 실패: " + (data.message || "unknown"));
           return;
         }
+        // ── 결과를 큐로 staged reveal (사용자가 평면도 추출처럼 영상 같은 흐름 보도록)
         state.system_riser = data.riser;
-        const r = data.riser;
-        const algoLabel = data.algorithm === "legacy_template"
-          ? "정답 템플릿 (28F MSP affine)"
-          : "DXF 경로 추출 v1";
+        state._sys_extract_last = data;   // 결과 카드는 sys_extract_done 에서 표시
+        state.system_revealed_pipes_count = 0;
+        if (state.current_mode === "system") render();
 
-        // PR C — 결과 카드: 헤더 + 4 섹션 (그래프 / 층 / 직경 / 경로 요약)
-        const sec = (title, body, color) => {
-          const c = color || "#1e40af";
-          return `<div style="margin-top:6px;padding:6px 8px;border-left:3px solid ${c};background:#fafafa;font-size:0.74rem;line-height:1.5;">` +
-                 `<div style="font-weight:700;color:${c};margin-bottom:2px;">${title}</div>${body}</div>`;
-        };
-
-        let html = `<div style="font-weight:700;font-size:0.85rem;margin-bottom:4px;color:#0a1228;">` +
-                   `✓ ${r.title} <span style="color:#6b7280;font-weight:400;">— ${algoLabel}</span></div>`;
-
-        // 1) 그래프 / Snap 통계
-        let graphBody = `노드 <strong>${r.nodes.length}</strong> · 파이프 <strong>${r.pipes.length}</strong>`;
-        if (typeof r.total_pipe_length_m === "number") {
-          graphBody += ` · 총 <strong>${r.total_pipe_length_m.toFixed(1)} m</strong>`;
+        // Stage 1 — Layer Discovery (사용된 pipe 레이어 LayerPanel 에 표시)
+        const gs = data.riser.graph_stats || {};
+        const layers = gs.layer_filter_used || [];
+        LayerPanel.setTotal(layers.length || 1);
+        for (const ln of layers) {
+          animQueue.enqueue({ type: "layer_seen", name: ln });
+          animQueue.enqueue({ type: "layer_classified", name: ln, category: "PIPE", kept: true });
         }
-        if (typeof r.pump_snap_dist_mm === "number") {
-          const okPump = r.pump_snap_dist_mm < 1000;
-          const okAv   = r.av_snap_dist_mm   < 1000;
-          graphBody += `<br>Snap — 펌프 <span style="color:${okPump?'#065f46':'#b91c1c'};">${r.pump_snap_dist_mm.toFixed(0)}mm</span>` +
-                       ` · AV <span style="color:${okAv?'#065f46':'#b91c1c'};">${r.av_snap_dist_mm.toFixed(0)}mm</span>`;
-        }
-        if (r.graph_stats && r.graph_stats.node_count) {
-          const gs = r.graph_stats;
-          graphBody += `<br>Graph: ${gs.node_count}n / ${gs.edge_count}e · `;
-          if (gs.layer_filter_used && gs.layer_filter_used.length) {
-            graphBody += `layers [${gs.layer_filter_used.join(", ")}]`;
-          } else if (gs.layer_filter_fallback_no_match) {
-            graphBody += `<span style="color:#b91c1c;">layer 매칭 실패 — 전체 LINE 사용</span>`;
+        // Stage 2 — Graph build / bridge 메시지
+        if (gs.node_count) {
+          animQueue.enqueue({ type: "sys_graph_msg",
+            msg: `Graph 빌드: ${gs.node_count.toLocaleString()} nodes / ${gs.edge_count.toLocaleString()} edges` });
+          if (gs.bridges_applied) {
+            animQueue.enqueue({ type: "sys_graph_msg",
+              msg: `컴포넌트 bridge: ${gs.components_before_bridge} → ${gs.components_after_bridge} (${gs.bridges_applied} 연결)` });
           }
         }
-        html += sec("⚙ 그래프 / Snap", graphBody, "#0a1228");
-
-        // 2) 층 매칭
-        const fm = r.floor_matching || {};
-        if (fm.label_count != null) {
-          let floorBody;
-          if (fm.label_count === 0) {
-            floorBody = `<span style="color:#b91c1c;">⚠ 층 라벨 0개 — DXF 텍스트에 "지상N층" 패턴 없음. elev 는 Y/1000 fallback.</span>`;
-          } else {
-            const avMatched = fm.av_floor_idx != null;
-            const fhM = (fm.floor_height_mm / 1000).toFixed(2);
-            floorBody = `라벨 <strong>${fm.label_count}</strong>개 · 평균 층고 <strong>${fhM} m</strong>`;
-            floorBody += `<br>AV 위치 → ` + (avMatched
-              ? `<strong style="color:#065f46;">${fm.av_floor_name || ("지상" + fm.av_floor_idx + "층")}</strong> (idx ${fm.av_floor_idx})`
-              : `<span style="color:#b91c1c;">미식별</span>`);
-            floorBody += `<br>노드 매칭률 <strong>${fm.nodes_with_floor}/${r.nodes.length}</strong>` +
-                         ` (${(fm.nodes_with_floor / Math.max(1, r.nodes.length) * 100).toFixed(0)}%)`;
-          }
-          html += sec("🏢 층 매칭", floorBody, "#16a34a");
+        // Stage 3 — Snap
+        animQueue.enqueue({ type: "sys_graph_msg",
+          msg: `Snap 매핑: 펌프 ${data.riser.pump_snap_dist_mm.toFixed(0)}mm, AV ${data.riser.av_snap_dist_mm.toFixed(0)}mm` });
+        // Stage 4 — Pipe reveal (Dijkstra path 점진 표시)
+        const total = data.riser.pipes.length;
+        const _b = Math.max(50, Math.min(220, Math.round(4000 / Math.max(1, total))));
+        for (let i = 0; i < total; i++) {
+          animQueue.enqueue({ type: "sys_pipe_reveal", index: i, total, _budgetMs: _b });
         }
-
-        // 3) 직경 매칭
-        const dm = r.diameter_matching || {};
-        if (dm.total_pipes != null) {
-          const matchRate = dm.total_pipes > 0 ? (dm.matched_pipes / dm.total_pipes * 100).toFixed(0) : 0;
-          let diaBody = `text 라벨 <strong>${dm.text_label_count}</strong>개 → 매칭 <strong>${dm.matched_pipes}/${dm.total_pipes}</strong> pipes (${matchRate}%)`;
-          if (dm.matched_pipes === 0 && dm.total_pipes > 0) {
-            diaBody += `<br><span style="color:#b45309;">⚠ 모든 pipe dia=100A default — 도면에 직경 라벨 부족. PIPENET 으로 넘기기 전 수동 보정 필요.</span>`;
-          }
-          html += sec("Ø 직경 매칭", diaBody, "#b45309");
-        }
-
-        // 4) 경로 미리보기 (펌프 + AV + 중간 1-2개)
-        if (r.nodes && r.nodes.length >= 2) {
-          const first = r.nodes[0], last = r.nodes[r.nodes.length - 1];
-          const fmtNode = (n) => {
-            const fl = n.floor ? ` · ${n.floor.trim()}` : "";
-            const lab = (n.io_node === "Input") ? "P" : (n.label === r.av_node_label ? "AV" : n.label);
-            return `<strong>${lab}</strong> · elev <strong>${(n.elevation >= 0 ? "+" : "") + n.elevation.toFixed(2)}m</strong>${fl}`;
-          };
-          let pathBody = fmtNode(first) + `<br>` +
-                         `<span style="color:#6b7280;">↓ 라이저 ${r.pipes.length} segment</span><br>` +
-                         fmtNode(last);
-          html += sec("🛤 경로 요약", pathBody, "#1e40af");
-        }
-
-        if (data.algorithm === "legacy_template") {
-          html += sec("⚙ Affine", `scale ${r.affine_scale.toFixed(3)}× · rotation ${r.affine_rotation_deg.toFixed(1)}°`, "#6b7280");
-        }
-
-        document.getElementById("sys-result-box").innerHTML = html;
-        render();
+        // Stage 5 — 완료. 결과 카드는 sys_extract_done 핸들러가 _updateSystemResultCard 호출.
+        animQueue.enqueue({ type: "sys_extract_done" });
       } catch (err) {
         alert("네트워크 오류: " + err.message);
       } finally {
@@ -2212,7 +2279,8 @@
     });
 
     // 캔버스 system 모드에 라이저 시각화 추가 — _renderSystemMode 후처리.
-    // PR1.7: glow halo + 굵은 sharp center + 노드 강조로 path 가 평행 라이저들 위로 부각되게.
+    // PR1.7: glow halo + 굵은 sharp center + 노드 강조.
+    // 동적 추출: state.system_revealed_pipes_count (int) 까지만 그림 (점진 reveal).
     const _origRenderSystemMode = _renderSystemMode;
     _renderSystemMode = function() {
       _origRenderSystemMode();
@@ -2221,52 +2289,51 @@
       const nodeMap = new Map();
       for (const n of r.nodes) nodeMap.set(n.label, n);
 
+      // 동적 reveal — 정수면 처음 N pipes 만, null 이면 전체
+      const limit = state.system_revealed_pipes_count;
+      const pipesToDraw = (limit !== null && limit !== undefined)
+        ? r.pipes.slice(0, limit)
+        : r.pipes;
+      // 표시할 노드 = 그려진 pipe 들의 in/out + 펌프 (시작점은 항상)
+      const nodesShown = new Set([r.input_node_label || "1"]);
+      for (const p of pipesToDraw) { nodesShown.add(p.in); nodesShown.add(p.out); }
+
       ctx.globalAlpha = 1.0;
-      // Pass 1 — 굵은 halo (path 주변에 따뜻한 발광)
-      ctx.strokeStyle = "rgba(253, 224, 71, 0.30)"; ctx.lineWidth = 12;
+      // 3-pass glow halo
+      const passes = [
+        { color: "rgba(253, 224, 71, 0.30)", width: 12 },
+        { color: "rgba(253, 224, 71, 0.55)", width: 6 },
+        { color: "#fde047",                   width: 2.5 },
+      ];
       ctx.lineCap = "round"; ctx.lineJoin = "round";
-      for (const p of r.pipes) {
-        const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
-        if (!a || !b) continue;
-        const [x1, y1] = worldToScreen(a.x, a.y);
-        const [x2, y2] = worldToScreen(b.x, b.y);
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-      }
-      // Pass 2 — 중간 halo
-      ctx.strokeStyle = "rgba(253, 224, 71, 0.55)"; ctx.lineWidth = 6;
-      for (const p of r.pipes) {
-        const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
-        if (!a || !b) continue;
-        const [x1, y1] = worldToScreen(a.x, a.y);
-        const [x2, y2] = worldToScreen(b.x, b.y);
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-      }
-      // Pass 3 — sharp center (밝은 amber)
-      ctx.strokeStyle = "#fde047"; ctx.lineWidth = 2.5;
-      for (const p of r.pipes) {
-        const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
-        if (!a || !b) continue;
-        const [x1, y1] = worldToScreen(a.x, a.y);
-        const [x2, y2] = worldToScreen(b.x, b.y);
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      for (const pass of passes) {
+        ctx.strokeStyle = pass.color; ctx.lineWidth = pass.width;
+        for (const p of pipesToDraw) {
+          const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
+          if (!a || !b) continue;
+          const [x1, y1] = worldToScreen(a.x, a.y);
+          const [x2, y2] = worldToScreen(b.x, b.y);
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        }
       }
       ctx.lineCap = "butt"; ctx.lineJoin = "miter";
 
-      // 노드 — pump(보라) / AV(빨강) / 중간(amber). 작은 fitting 노드는 작게.
+      // 노드 — 표시되는 것만. pump (보라) / AV (빨강) / 중간 (amber).
       const isEndpoint = (n) => (n.io_node === "Input") || (n.label === r.av_node_label);
+      // AV 는 path 가 마지막 pipe 까지 도달한 후에만 표시 (reveal 중간엔 AV 가 미확정)
+      const avReached = (limit === null || limit === undefined) || (limit >= r.pipes.length);
       for (const n of r.nodes) {
+        if (!nodesShown.has(n.label)) continue;
+        if (n.label === r.av_node_label && !avReached) continue;
         const [sx, sy] = worldToScreen(n.x, n.y);
         const ep = isEndpoint(n);
         const radius = ep ? 8 : 4;
-        // 흰 외곽
         ctx.strokeStyle = "#ffffff"; ctx.lineWidth = ep ? 2.5 : 1.5;
         ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.stroke();
-        // 색 채움
         ctx.fillStyle = (n.io_node === "Input") ? "#a855f7"
                        : (n.label === r.av_node_label) ? "#ef4444"
                        : "#fde047";
         ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.fill();
-        // endpoint 만 라벨 표시 (P / AV) — 중간 노드는 너무 많아서 라벨 생략
         if (ep) {
           ctx.fillStyle = "#fef3c7";
           ctx.font = "bold 12px ui-monospace, monospace";
@@ -2427,9 +2494,13 @@
         if (en.t === "T") drawEntity(en);
       }
       ctx.globalAlpha = 1.0;
-      // 펌프/AV 마커 (가장 위)
-      drawSystemMarker(state.system_pump_marker, "#10b981", "P", "PUMP");
-      drawSystemMarker(state.system_av_marker, "#ef4444", "A", "AV");
+      // 펌프/AV 마커 — path overlay 가 endpoint 를 따로 표시하므로,
+      // path 가 fully revealed 됐을 때 클릭 마커를 숨김 (AV 가 두 번 그려지는 시각 노이즈 제거).
+      const pathDone = !!(state.system_riser) && state.system_revealed_pipes_count === null;
+      if (!pathDone) {
+        drawSystemMarker(state.system_pump_marker, "#10b981", "P", "PUMP");
+        drawSystemMarker(state.system_av_marker, "#ef4444", "A", "AV");
+      }
     }
 
     function drawSystemMarker(marker, color, glyph, label) {

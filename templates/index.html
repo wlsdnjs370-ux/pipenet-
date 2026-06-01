@@ -343,29 +343,36 @@
         font-weight: 600;
       }
 
-      /* 업로드 카드 — 결과서 + SDF + 실행 버튼 균등 배치 */
+      /* 업로드 카드 — 결과서·SDF 두 칸이 아래 workspace 와 동일한 1:1 카드 비율,
+         "검증 실행" 버튼은 두 카드 아래로 별도 행 배치 */
       .app-shell.validation-suite-mode .validation-upload-card .upload-form {
         display: grid !important;
-        grid-template-columns: 1fr 1fr auto;
-        gap: 14px;
-        align-items: end;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: stretch;
       }
       .app-shell.validation-suite-mode .validation-upload-card .field {
-        display: flex; flex-direction: column; gap: 6px;
+        background: var(--c-surface-soft);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-md);
+        padding: 16px;
+        display: flex; flex-direction: column; gap: 10px;
+        min-width: 0;
       }
       .app-shell.validation-suite-mode .validation-upload-card .field label {
-        font-size: 0.78rem; font-weight: 600;
-        color: var(--c-text-secondary);
-        letter-spacing: 0.005em;
+        font-size: 0.85rem; font-weight: 700;
+        color: var(--c-text);
+        letter-spacing: -0.005em;
       }
       .app-shell.validation-suite-mode .validation-upload-card .field input {
-        padding: 8px 10px;
+        padding: 9px 12px;
         border: 1px solid var(--c-border);
         border-radius: var(--r-md);
         background: var(--c-surface);
         font-size: 0.85rem;
         font-family: var(--font-sans);
         transition: all var(--tr);
+        margin-top: auto;
       }
       .app-shell.validation-suite-mode .validation-upload-card .field input:hover { border-color: var(--c-border-strong); }
       .app-shell.validation-suite-mode .validation-upload-card .field input:focus {
@@ -374,15 +381,17 @@
         box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
       }
       .app-shell.validation-suite-mode .validation-upload-card button[type="submit"] {
-        padding: 9px 18px;
+        grid-column: 1 / -1;
+        padding: 12px 24px;
         background: var(--c-accent);
         color: #fff;
         border: 0;
         border-radius: var(--r-md);
-        font-size: 0.88rem; font-weight: 600;
+        font-size: 0.92rem; font-weight: 600;
         font-family: var(--font-sans);
         cursor: pointer;
-        height: 38px;
+        height: auto;
+        margin-top: 4px;
         transition: all var(--tr);
         box-shadow: 0 1px 3px rgba(79, 70, 229, 0.30);
       }

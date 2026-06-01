@@ -8,6 +8,22 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260520-wb1">
+    <!-- ?view=… 직접 진입 시 — app.js 로딩 전 home UI 깜박임 차단 -->
+    <script>
+      (function () {
+        try {
+          var v = new URLSearchParams(window.location.search).get("view");
+          if (v === "validation") document.documentElement.classList.add("entering-validation");
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      html.entering-validation .app-header,
+      html.entering-validation #home-panel,
+      html.entering-validation .workflow-svg,
+      html.entering-validation #home-nav-btn { display: none !important; }
+      html.entering-validation .app-shell { padding-top: 0 !important; }
+    </style>
     <style>
       /* ─── 디자인 시스템 토큰 (FNCADnet 2026) ─── */
       :root {
@@ -558,17 +574,13 @@
           </svg>
 
           <div class="home-grid">
-            <a class="home-module-btn" href="{{ url_for('remote30_prototype') }}"
-               target="_blank" rel="noopener"
-               title="새 창에서 열림 — Remote 30 Prototype">
-              <span class="module-chip">Module A · opens in new tab</span>
+            <a class="home-module-btn" href="{{ url_for('remote30_prototype') }}">
+              <span class="module-chip">Module A</span>
               <strong>Remote 30 Prototype</strong>
               <span>Upload a single DXF → extract the piping network → identify the 30 hydraulically worst heads → emit PIPENET XLSX/CSV input → .sdf output. All 4 stages are animated live on the canvas.</span>
             </a>
-            <a class="home-module-btn" href="{{ url_for('index') }}?view=validation"
-               target="_blank" rel="noopener"
-               title="새 창에서 열림 — Integrated Validation Module">
-              <span class="module-chip">Module B · opens in new tab</span>
+            <a class="home-module-btn" href="{{ url_for('index') }}?view=validation">
+              <span class="module-chip">Module B</span>
               <strong>Integrated Validation Module</strong>
               <span>Run the validation suite end-to-end: hydraulic results, optimization guide, data tables, audit statistics, and the detailed report — all in one workflow.</span>
             </a>

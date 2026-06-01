@@ -3597,27 +3597,73 @@ def remote30_combined_result(job_id: str, filename: str):
 
 @app.post("/api/remote30/system/extract")
 def remote30_system_extract():
-    """28F MSP 중층부 라이저 추출 — 펌프/AV 좌표 입력 → 라이저 노드/파이프 반환.
+    """계통도 라이저 추출 — v1 (DXF 토폴로지) + legacy fallback.
 
-    Body (JSON):
-        pump_x, pump_y  — 사용자가 계통도 캔버스에서 픽한 펌프 좌표 (mm)
-        av_x,   av_y    — 사용자가 픽한 알람밸브 좌표 (mm)
-        zone (옵션)     — 현재 "msp_28f" 만 지원 (자연낙차)
+    Multipart form:
+        system_dxf_file        — 계통도 .dxf (v1 알고리즘 사용 시 필수)
+        pump_x, pump_y         — 사용자 픽 펌프 좌표 (mm, 필수)
+        av_x,   av_y           — 사용자 픽 알람밸브 좌표 (mm, 필수)
+        use_legacy_template    — "true" 면 옛 affine template 사용 (DXF 불필요)
+        snap_tolerance_mm      — 클릭 ↔ 그래프 노드 허용 거리 (기본 2500)
+
+    v1 동작: DXF LINE 들로 그래프 빌드 → 펌프/AV 클릭점 → 가장 가까운 노드 매핑
+        → Dijkstra → 경로를 PIPENET 호환 dict 로 반환.
+    Legacy: extract_riser_msp_28f — 정답 28F 토폴로지 affine 변환 (DXF 무시).
     """
-    body = request.get_json(silent=True) or {}
+    # 좌표는 form 또는 JSON 둘 다 받기 (legacy JSON 호출자 호환)
+    px = py = ax = ay = None
+    use_legacy = False
+    snap_tol = 2500.0
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        try:
+            px = float(body["pump_x"]); py = float(body["pump_y"])
+            ax = float(body["av_x"]);   ay = float(body["av_y"])
+        except (KeyError, TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "message": f"pump_x/y, av_x/y 좌표 필요: {exc}"}), 400
+        use_legacy = bool(body.get("use_legacy_template"))
+        snap_tol = float(body.get("snap_tolerance_mm", 2500.0))
+    else:
+        try:
+            px = float(request.form["pump_x"]); py = float(request.form["pump_y"])
+            ax = float(request.form["av_x"]);   ay = float(request.form["av_y"])
+        except (KeyError, TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "message": f"pump_x/y, av_x/y 좌표 필요: {exc}"}), 400
+        use_legacy = request.form.get("use_legacy_template", "").lower() == "true"
+        snap_tol = float(request.form.get("snap_tolerance_mm", "2500"))
+
+    if use_legacy:
+        from remote30_prototype import extract_riser_msp_28f
+        try:
+            riser = extract_riser_msp_28f((px, py), (ax, ay))
+            return jsonify({"ok": True, "riser": riser, "algorithm": "legacy_template"})
+        except Exception as exc:  # noqa: BLE001
+            import traceback
+            return jsonify({"ok": False, "message": str(exc)[:300],
+                            "traceback": traceback.format_exc()[-1500:]}), 500
+
+    # v1 — DXF 기반 path 추출 (DXF 파일 필수)
     try:
-        px = float(body["pump_x"]); py = float(body["pump_y"])
-        ax = float(body["av_x"]);   ay = float(body["av_y"])
-    except (KeyError, TypeError, ValueError) as exc:
-        return jsonify({"ok": False, "message": f"pump_x/y, av_x/y 좌표 필요: {exc}"}), 400
-    from remote30_prototype import extract_riser_msp_28f
+        dxf_path = _save_upload("system_dxf_file", {".dxf"}, required=True)
+    except ValueError as exc:
+        return jsonify({"ok": False,
+                        "message": f"DXF 파일 필요 (v1 알고리즘). legacy 사용하려면 use_legacy_template=true. ({exc})"}), 400
+
+    from remote30_prototype import parse_dxf_for_view, extract_system_path
     try:
-        riser = extract_riser_msp_28f((px, py), (ax, ay))
+        parsed = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
+        riser = extract_system_path(parsed["entities"], (px, py), (ax, ay),
+                                    snap_tolerance_mm=snap_tol)
+        return jsonify({"ok": True, "riser": riser, "algorithm": "dxf_path_v1"})
+    except ValueError as exc:
+        # 사용자 입력 오류 (snap 실패 / disconnected). 상태코드 200 + suggest_legacy 표시.
+        return jsonify({"ok": False, "message": str(exc),
+                        "algorithm": "dxf_path_v1", "suggest_legacy": True}), 200
     except Exception as exc:  # noqa: BLE001
         import traceback
         return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
-    return jsonify({"ok": True, "riser": riser})
+                        "traceback": traceback.format_exc()[-1500:],
+                        "algorithm": "dxf_path_v1"}), 500
 
 
 @app.post("/api/remote30/overall/parse-system-diagram")

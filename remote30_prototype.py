@@ -904,6 +904,201 @@ def extract_riser_msp_28f(pump_xy: tuple[float, float],
     }
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# 계통도 배관망 추출 v1 — DXF 의 LINE entity 들에서 펌프 → AV 토폴로지 path 추출
+# 가짜 affine template (extract_riser_msp_28f) 의 진짜 알고리즘 버전.
+# v1 은 토폴로지만 (노드 좌표 + 연결). 직경/압력은 v2 에서.
+# ──────────────────────────────────────────────────────────────────────────
+
+def build_system_graph(
+    entities: list[dict],
+    bridge_tolerances_mm: tuple[float, ...] = (200.0, 500.0, 1000.0, 2000.0),
+) -> tuple[dict, dict, dict]:
+    """계통도 entity 에서 LINE/POLYLINE 만 추려 무방향 그래프 빌드 + 다단계 bridge.
+
+    Args:
+        entities: parse_dxf_for_view().entities 또는 parse_dxf_bundle().entities.
+        bridge_tolerances_mm: 점진적으로 큰 거리부터 컴포넌트 연결. 작은 것부터.
+
+    Returns:
+        (graph, edge_len, stats) — stats 에는 노드 수, 엣지 수, 컴포넌트 수, bridge 수 등.
+    """
+    line_ents = [en for en in entities if en.get("t") in ("L", "PL")]
+    graph, edge_len = _build_graph(line_ents)
+    comps_before = len(_connected_components(graph))
+    total_bridges = 0
+    for tol in bridge_tolerances_mm:
+        total_bridges += _bridge_components(graph, edge_len, max_bridge_mm=tol)
+    comps_after = len(_connected_components(graph))
+    stats = {
+        "line_entity_count": len(line_ents),
+        "node_count": len(graph),
+        "edge_count": sum(len(nb) for nb in graph.values()) // 2,
+        "components_before_bridge": comps_before,
+        "components_after_bridge": comps_after,
+        "bridges_applied": total_bridges,
+    }
+    return graph, edge_len, stats
+
+
+def find_nearest_graph_node_constrained(
+    graph: dict,
+    click_xy: tuple[float, float],
+    max_dist_mm: float = 2500.0,
+) -> tuple[tuple[float, float] | None, float]:
+    """그래프 노드 중 클릭 좌표에 가장 가까운 노드. None = max_dist_mm 초과 (실패)."""
+    near = _nearest_graph_node(graph, click_xy)
+    if near is None:
+        return None, float("inf")
+    d = math.hypot(near[0] - click_xy[0], near[1] - click_xy[1])
+    if d > max_dist_mm:
+        return None, d
+    return near, d
+
+
+def extract_system_path(
+    entities: list[dict],
+    pump_xy: tuple[float, float],
+    av_xy: tuple[float, float],
+    snap_tolerance_mm: float = 2500.0,
+) -> dict:
+    """계통도 DXF 에서 펌프 → AV 실제 배관망 경로 추출 (v1: 토폴로지만).
+
+    파이프라인:
+        1. LINE/PL entity 만 추출
+        2. 끝점 snap (_round_pt) + 다단계 bridge (200/500/1000/2000mm)
+        3. 클릭 좌표 ↔ 가장 가까운 그래프 노드 매핑 (snap_tolerance_mm 안)
+        4. Dijkstra 최단 경로
+        5. 경로 → PIPENET 호환 dict
+
+    Raises:
+        ValueError: snap 실패 (클릭이 배관에서 너무 멀음) 또는 path 없음 (disconnected).
+
+    Returns:
+        extract_riser_msp_28f 와 호환되는 dict + 진단 정보 포함.
+    """
+    if not entities:
+        raise ValueError("계통도 entity 비어있음 — DXF 파싱 결과 확인 필요")
+
+    graph, edge_len, stats = build_system_graph(entities)
+    if not graph:
+        raise ValueError(f"LINE entity 가 없음 (전체 entity {len(entities)}개 중 LINE/PL 0개)")
+
+    pump_node, pump_d = find_nearest_graph_node_constrained(graph, pump_xy, max_dist_mm=snap_tolerance_mm)
+    if pump_node is None:
+        raise ValueError(
+            f"펌프 클릭 좌표 ({int(pump_xy[0])}, {int(pump_xy[1])}) 근처 "
+            f"{snap_tolerance_mm:.0f}mm 안에 배관 끝점 없음. "
+            f"가장 가까운 노드까지 {pump_d:.0f}mm. 더 정확히 클릭하거나 snap_tolerance_mm 증가."
+        )
+    av_node, av_d = find_nearest_graph_node_constrained(graph, av_xy, max_dist_mm=snap_tolerance_mm)
+    if av_node is None:
+        raise ValueError(
+            f"AV 클릭 좌표 ({int(av_xy[0])}, {int(av_xy[1])}) 근처 "
+            f"{snap_tolerance_mm:.0f}mm 안에 배관 끝점 없음. "
+            f"가장 가까운 노드까지 {av_d:.0f}mm."
+        )
+
+    path = _shortest_path(graph, edge_len, pump_node, av_node)
+    if not path or len(path) < 2:
+        raise ValueError(
+            f"펌프 → AV 경로 없음 — 두 점이 disconnected component 에 있을 수 있음. "
+            f"그래프 컴포넌트 {stats['components_after_bridge']}개 (bridge {stats['bridges_applied']}회 시도 후). "
+            f"snap 거리 펌프={pump_d:.0f}mm, AV={av_d:.0f}mm."
+        )
+
+    return _system_path_to_riser_dict(
+        path, edge_len, pump_xy, av_xy,
+        pump_snap_dist=pump_d, av_snap_dist=av_d, graph_stats=stats,
+    )
+
+
+def _system_path_to_riser_dict(
+    path: list[tuple[float, float]],
+    edge_len: dict,
+    pump_xy_orig: tuple[float, float],
+    av_xy_orig: tuple[float, float],
+    pump_snap_dist: float = 0.0,
+    av_snap_dist: float = 0.0,
+    graph_stats: dict | None = None,
+) -> dict:
+    """경로 (vertex 시퀀스) → PIPENET 라이저 dict 변환.
+
+    노드 라벨 컨벤션:
+        "1" = 펌프 (Input, 1 atm), "10" = AV (No), 중간 = "2", "3", ...
+
+    Elev 계산:
+        AV 의 y 좌표를 datum 으로 (elev_m=0).
+        나머지 노드: (node_y - av_y) / 1000.0 (DXF mm → m).
+        계통도 도면이 vertical schematic 이면 elev 가 물리적 높이에 근사.
+        (v2 에서 층 라벨 텍스트 파싱으로 정확도 개선 예정.)
+    """
+    if len(path) < 2:
+        raise ValueError(f"경로 노드 수 {len(path)} — 펌프 = AV 같은 위치 가능성")
+
+    av_y = path[-1][1]
+    total = len(path)
+    total_length_mm = 0.0
+
+    nodes: list[dict] = []
+    for i, pt in enumerate(path):
+        if i == 0:
+            label, io = "1", "Input"
+        elif i == total - 1:
+            label, io = "10", "No"
+        else:
+            label, io = str(i + 1), "No"
+        node: dict = {
+            "label": label,
+            "x": int(round(pt[0])),
+            "y": int(round(pt[1])),
+            "elevation": round((pt[1] - av_y) / 1000.0, 3),
+            "io_node": io,
+        }
+        if io == "Input":
+            node["pressure_pa"] = 101325.0
+        nodes.append(node)
+
+    pipes: list[dict] = []
+    for i in range(total - 1):
+        a = path[i]; b = path[i + 1]
+        edge_key = (min(a, b), max(a, b))
+        length_mm = edge_len.get(edge_key, math.hypot(b[0] - a[0], b[1] - a[1]))
+        total_length_mm += length_mm
+        pipes.append({
+            "label": str(i + 1),
+            "in":  nodes[i]["label"],
+            "out": nodes[i + 1]["label"],
+            "type": "KSD 3507",
+            "dia": 100,       # v1: placeholder, v2 에서 텍스트 매칭
+            "length": round(length_mm / 1000.0, 3),
+            "elev":   round((b[1] - a[1]) / 1000.0, 3),
+            "c": "120",
+            "status": "Normal",
+            "group": "Unset",
+        })
+
+    return {
+        "nodes": nodes,
+        "pipes": pipes,
+        "pumps": [],
+        "valves": [],
+        "av_node_label": "10",
+        "input_node_label": "1",
+        "title": "SYSTEM_EXTRACT_V1",
+        "zone_kind": "system_path_dxf",
+        "extracted_from": "dxf",
+        "path_node_count": total,
+        "total_pipe_length_m": round(total_length_mm / 1000.0, 2),
+        "pump_snap_dist_mm": round(pump_snap_dist, 1),
+        "av_snap_dist_mm":   round(av_snap_dist, 1),
+        "graph_stats": graph_stats or {},
+        # 호환성 키 — legacy template 출력 형태 유지 (frontend 가 참조함)
+        "affine_scale": 1.0,
+        "affine_rotation_deg": 0.0,
+    }
+
+
 def filter_pipenet_only(bundle: ParsedDxfBundle) -> list[dict]:
     """Stage 1 — 배관망 관련 entity 만 필터 (auto_category in PIPE/HEAD/TEXT or layer in KEEP_BASE_LAYERS)."""
     layer_cat = {ly["name"]: ly["auto_category"] for ly in bundle.layers}

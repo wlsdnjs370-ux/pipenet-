@@ -63,3 +63,6 @@ Thumbs.db
 수리계산 참고용 도서.zip
 대명동201동 계통도_최소.dwg
 대명동201동 계통도_최소.dxf
+
+# 답안 라이브러리 (수리계산 참고용 도서) — 1.2GB+, repo 외부 보관
+data/reference_library/

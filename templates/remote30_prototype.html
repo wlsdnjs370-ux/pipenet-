@@ -39,6 +39,8 @@
       --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
     }
     * { box-sizing: border-box; }
+    /* 각진 직사각형 강제 — border 는 얇은 슬레이트 라인 그대로 유지 */
+    * { border-radius: 0 !important; }
     html, body {
       margin: 0; height: 100%;
       font-family: var(--font-sans);

@@ -840,11 +840,11 @@
               <span class="module-chip">Module A</span>
               <strong>Remote 30 Prototype</strong>
               <span>Upload a single DXF → extract the piping network → identify the 30 hydraulically worst heads → emit PIPENET XLSX/CSV input → .sdf output. All 4 stages are animated live on the canvas.</span>
-              <svg class="module-illustration" viewBox="0 0 640 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="DXF 엔티티 분류 → 배관망 추출 신경망">
+              <svg class="module-illustration" viewBox="0 0 780 280" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Module A — Transformer encoder + graph decoder for DXF entity classification">
                 <defs>
                   <linearGradient id="mAFlow" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%"  stop-color="#3b82f6"/>
-                    <stop offset="50%" stop-color="#8b5cf6"/>
+                    <stop offset="0%"   stop-color="#3b82f6"/>
+                    <stop offset="50%"  stop-color="#8b5cf6"/>
                     <stop offset="100%" stop-color="#06b6d4"/>
                   </linearGradient>
                   <radialGradient id="mANode" cx="0.35" cy="0.35" r="0.85">
@@ -856,155 +856,308 @@
                     <stop offset="100%" stop-color="#e0e7ff"/>
                   </radialGradient>
                   <filter id="mAGlow" x="-40%" y="-40%" width="180%" height="180%">
-                    <feGaussianBlur stdDeviation="1.6" result="blur"/>
+                    <feGaussianBlur stdDeviation="1.4" result="blur"/>
                     <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
                   </filter>
+                  <marker id="mAArr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                    <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+                  </marker>
+                  <marker id="mAArrRes" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                    <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/>
+                  </marker>
                   <style>
-                    .mA-edge       { fill: none; stroke: url(#mAFlow); stroke-width: 1; opacity: 0.55; }
-                    .mA-edge.faint { opacity: 0.20; stroke-width: 0.8; }
-                    .mA-edge.main  { stroke-width: 1.7; opacity: 0.95; stroke-dasharray: 6 3; animation: mADash 1.4s linear infinite; }
+                    .mA-band-input   { fill: #f1f5f9; }
+                    .mA-band-embed   { fill: #dbeafe; opacity: 0.45; }
+                    .mA-band-attn    { fill: #ede9fe; opacity: 0.50; }
+                    .mA-band-ffn     { fill: #ccfbf1; opacity: 0.40; }
+                    .mA-band-cls     { fill: #fef3c7; opacity: 0.50; }
+                    .mA-band-out     { fill: #dcfce7; opacity: 0.50; }
+                    .mA-title  { font-family: 'Inter','Malgun Gothic',sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; fill: #334155; text-anchor: middle; text-transform: uppercase; }
+                    .mA-dim    { font-family: 'JetBrains Mono',Consolas,monospace; font-size: 9px; fill: #64748b; text-anchor: middle; letter-spacing: 0.02em; }
+                    .mA-token  { font-family: 'JetBrains Mono',Consolas,monospace; font-size: 8.5px; fill: #475569; text-anchor: middle; font-weight: 500; }
+                    .mA-eqn    { font-family: 'Times New Roman',Cambria,serif; font-style: italic; fill: #4f46e5; text-anchor: middle; }
+                    .mA-cls    { font-family: 'JetBrains Mono',Consolas,monospace; font-size: 9px; fill: #4f46e5; text-anchor: middle; font-weight: 700; }
+                    .mA-edge      { fill: none; stroke: url(#mAFlow); stroke-width: 0.9; opacity: 0.50; }
+                    .mA-edge.faint { opacity: 0.18; stroke-width: 0.7; }
+                    .mA-edge.main  { stroke-width: 1.5; opacity: 0.92; stroke-dasharray: 5 3; animation: mADash 1.4s linear infinite; }
                     .mA-edge.rejected { stroke: #cbd5e1; opacity: 0.45; }
-                    @keyframes mADash { to { stroke-dashoffset: -27; } }
-                    .mA-node            { fill: url(#mANode); stroke: #cbd5e1; stroke-width: 1.4; filter: url(#mAGlow); }
-                    .mA-node.classifier { fill: url(#mANodeHi); stroke: url(#mAFlow); stroke-width: 2.3; }
-                    .mA-node.rejected   { fill: #f8fafc; stroke: #cbd5e1; opacity: 0.6; }
-                    .mA-node.sprinkler  { fill: #f59e0b; stroke: #f59e0b; }
-                    .mA-node.alarm      { fill: #ef4444; stroke: #ffffff; stroke-width: 2; }
-                    .mA-pipe { stroke: url(#mAFlow); stroke-width: 1.8; fill: none; opacity: 0.78; }
+                    .mA-residual { fill: none; stroke: #a78bfa; stroke-width: 1.2; stroke-dasharray: 4 3; opacity: 0.65; marker-end: url(#mAArrRes); }
+                    @keyframes mADash { to { stroke-dashoffset: -24; } }
+                    .mA-node        { fill: url(#mANode); stroke: #cbd5e1; stroke-width: 1.3; filter: url(#mAGlow); }
+                    .mA-node.hi     { fill: url(#mANodeHi); stroke: url(#mAFlow); stroke-width: 1.8; }
+                    .mA-node.head   { fill: #ede9fe; stroke: #8b5cf6; stroke-width: 1.5; }
+                    .mA-node.spr    { fill: #f59e0b; stroke: #f59e0b; }
+                    .mA-node.alm    { fill: #ef4444; stroke: #ffffff; stroke-width: 2; }
+                    .mA-pipe { stroke: url(#mAFlow); stroke-width: 1.7; fill: none; opacity: 0.78; }
+                    .mA-vec  { stroke: #c7d2fe; stroke-width: 0.6; }
                     @keyframes mARing {
-                      0%   { r: 14; opacity: 0.55; stroke-width: 1.5; }
-                      100% { r: 28; opacity: 0;    stroke-width: 0.5; }
+                      0%   { r: 13; opacity: 0.55; stroke-width: 1.4; }
+                      100% { r: 24; opacity: 0;    stroke-width: 0.5; }
                     }
                     .mA-ring { fill: none; stroke: #6366f1; animation: mARing 2.4s ease-out infinite; }
                     .mA-ring.delay { animation-delay: 1.2s; }
-                    @keyframes mABreathe {
-                      0%, 100% { r: 13; }
-                      50%      { r: 14.5; }
+                    @keyframes mAPulse {
+                      0%,100% { opacity: 0.5; transform: scale(1); }
+                      50%     { opacity: 1;   transform: scale(1.08); }
                     }
-                    .mA-node.classifier { animation: mABreathe 3s ease-in-out infinite; }
-                    .mA-bgdot { fill: #8b5cf6; opacity: 0.20; }
+                    .mA-head-pulse { transform-box: fill-box; transform-origin: center; animation: mAPulse 2.6s ease-in-out infinite; }
+                    .mA-bgdot { fill: #8b5cf6; opacity: 0.18; }
                     @keyframes mADrift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(8px,-6px); } }
                     @keyframes mADrift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-6px,8px); } }
                     .mA-bgdot.a { animation: mADrift1 6s ease-in-out infinite; }
                     .mA-bgdot.b { animation: mADrift2 7s ease-in-out infinite; }
-                    .mA-label  { font-family: 'Inter','Malgun Gothic',sans-serif; font-size: 8.5px; fill: #475569; text-anchor: middle; font-weight: 500; letter-spacing: 0.02em; }
-                    .mA-label.tag   { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; fill: #4f46e5; }
-                    .mA-label.brand { fill: #4f46e5; font-weight: 700; }
                     .mA-particle { filter: url(#mAGlow); }
+                    .mA-loss { font-family: 'Times New Roman',Cambria,serif; font-style: italic; font-size: 9.5px; fill: #94a3b8; text-anchor: middle; }
                   </style>
                 </defs>
 
                 <!-- Background drifting dots -->
-                <circle class="mA-bgdot a" cx="160" cy="20"  r="2"/>
-                <circle class="mA-bgdot b" cx="380" cy="205" r="2.5"/>
-                <circle class="mA-bgdot a" cx="500" cy="15"  r="2"/>
-                <circle class="mA-bgdot b" cx="220" cy="200" r="2"/>
-                <circle class="mA-bgdot a" cx="80"  cy="195" r="2"/>
-                <circle class="mA-bgdot b" cx="610" cy="40"  r="2"/>
+                <circle class="mA-bgdot a" cx="160" cy="22"  r="2"/>
+                <circle class="mA-bgdot b" cx="420" cy="262" r="2.5"/>
+                <circle class="mA-bgdot a" cx="600" cy="18"  r="2"/>
+                <circle class="mA-bgdot b" cx="260" cy="258" r="2"/>
+                <circle class="mA-bgdot a" cx="90"  cy="255" r="2"/>
+                <circle class="mA-bgdot b" cx="730" cy="40"  r="2"/>
 
-                <!-- Layer 1 → 2 synapses (5 inputs × 3 hidden = 15 connections) -->
-                <!-- CIRCLE (60,35) -->
-                <path class="mA-edge faint"    d="M 70 35 C 160 35,  200 50,  278 60"/>
-                <path id="mAe-cir-head" class="mA-edge main" d="M 70 35 C 160 60,  200 90,  278 115"/>
-                <path class="mA-edge faint"    d="M 70 35 C 160 80,  200 130, 278 170"/>
-                <!-- LINE (60,75) -->
-                <path id="mAe-line-pipe" class="mA-edge main" d="M 70 75 C 160 65,  200 60,  278 60"/>
-                <path class="mA-edge faint"    d="M 70 75 C 160 90,  200 105, 278 115"/>
-                <path class="mA-edge rejected" d="M 70 75 C 160 110, 200 145, 278 170"/>
-                <!-- INSERT (60,115) -->
-                <path id="mAe-ins-pipe" class="mA-edge main" d="M 70 115 C 160 90,  200 75, 278 60"/>
-                <path id="mAe-ins-head" class="mA-edge main" d="M 70 115 C 160 115, 200 115, 278 115"/>
-                <path class="mA-edge faint"    d="M 70 115 C 160 145, 200 160, 278 170"/>
-                <!-- HATCH (60,155) -->
-                <path class="mA-edge faint"    d="M 70 155 C 160 115, 200 85, 278 60"/>
-                <path id="mAe-hat-head" class="mA-edge main" d="M 70 155 C 160 135, 200 120, 278 115"/>
-                <path class="mA-edge faint"    d="M 70 155 C 160 165, 200 170, 278 170"/>
-                <!-- TEXT (60,190) → mostly NOISE -->
-                <path class="mA-edge rejected" d="M 70 190 C 160 150, 200 95,  278 60"/>
-                <path class="mA-edge faint"    d="M 70 190 C 160 165, 200 145, 278 115"/>
-                <path class="mA-edge main"     d="M 70 190 C 160 188, 200 180, 278 170"/>
+                <!-- ══════════════ Layer bands (academic stratification) ══════════════ -->
+                <rect class="mA-band-input"  x="14"  y="46" width="82"  height="186" rx="7"/>
+                <rect class="mA-band-embed"  x="106" y="46" width="98"  height="186" rx="7"/>
+                <rect class="mA-band-attn"   x="214" y="46" width="174" height="186" rx="7"/>
+                <rect class="mA-band-ffn"    x="398" y="46" width="118" height="186" rx="7"/>
+                <rect class="mA-band-cls"    x="526" y="46" width="104" height="186" rx="7"/>
+                <rect class="mA-band-out"    x="640" y="46" width="128" height="186" rx="7"/>
 
-                <!-- Layer 2 → 3 connections (PIPE → main pipe + branches, HEAD → sprinklers) -->
-                <path id="mAe-pipe-main" class="mA-edge main" d="M 302 60  C 380 65,  420 90,  475 105"/>
-                <path class="mA-edge"            d="M 302 60  C 380 60,  420 60,  475 60"/>
-                <path class="mA-edge"            d="M 302 60  C 380 90,  420 130, 475 150"/>
-                <path id="mAe-head-spr"  class="mA-edge main" d="M 302 115 C 380 85,  420 55,  475 35"/>
-                <path class="mA-edge"            d="M 302 115 C 380 110, 420 95,  475 80"/>
-                <path class="mA-edge"            d="M 302 115 C 380 130, 420 150, 475 170"/>
-                <path class="mA-edge"            d="M 302 115 C 380 145, 420 175, 475 195"/>
+                <!-- Stage titles -->
+                <text class="mA-title" x="55"  y="30">Input</text>
+                <text class="mA-title" x="155" y="30">Embed</text>
+                <text class="mA-title" x="301" y="30">Multi-Head Attn</text>
+                <text class="mA-title" x="457" y="30">FFN + LN</text>
+                <text class="mA-title" x="578" y="30">Classify</text>
+                <text class="mA-title" x="704" y="30">Graph Decode</text>
 
-                <!-- Pulse rings on classifier hubs -->
-                <g transform="translate(290, 60)">
+                <!-- Stage dim/aux labels -->
+                <text class="mA-dim" x="55"  y="246">N=5 tokens</text>
+                <text class="mA-dim" x="155" y="246">[N, d=64]</text>
+                <text class="mA-dim" x="301" y="246">h=4 · d_k=16</text>
+                <text class="mA-dim" x="457" y="246">64→256→64 · GELU</text>
+                <text class="mA-dim" x="578" y="246">softmax ∈ ℝ³</text>
+                <text class="mA-dim" x="704" y="246">.sdf · 30 heads</text>
+
+                <!-- Loss annotation -->
+                <text class="mA-loss" x="390" y="272">𝓛 = 𝓛_CE + λ · 𝓛_graph</text>
+
+                <!-- ══════════════ Stage 1 — Input tokens ══════════════ -->
+                <g transform="translate(55, 70)">
+                  <g><circle class="mA-node" r="8"/><text class="mA-token" y="2.5">CIRCLE</text></g>
+                  <g transform="translate(0,30)"><circle class="mA-node" r="8"/><text class="mA-token" y="2.5">LINE</text></g>
+                  <g transform="translate(0,60)"><circle class="mA-node" r="8"/><text class="mA-token" y="2.5">INSERT</text></g>
+                  <g transform="translate(0,90)"><circle class="mA-node" r="8"/><text class="mA-token" y="2.5">HATCH</text></g>
+                  <g transform="translate(0,120)"><circle class="mA-node" r="8"/><text class="mA-token" y="2.5">TEXT</text></g>
+                </g>
+
+                <!-- Stage 1 → 2 edges -->
+                <path class="mA-edge main" d="M 65 70  C 95 70,  120 70,  140 70"/>
+                <path class="mA-edge main" d="M 65 100 C 95 100, 120 100, 140 100"/>
+                <path class="mA-edge main" d="M 65 130 C 95 130, 120 130, 140 130"/>
+                <path class="mA-edge main" d="M 65 160 C 95 160, 120 160, 140 160"/>
+                <path class="mA-edge main" d="M 65 190 C 95 190, 120 190, 140 190"/>
+
+                <!-- ══════════════ Stage 2 — Token + Position embedding ══════════════ -->
+                <!-- 5 vector rows × 10 cells = "embedding matrix" feel -->
+                <g transform="translate(143, 65)">
+                  <!-- row 1 -->
+                  <g><rect width="60" height="10" rx="2" class="mA-vec" fill="#dbeafe"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="6"  y="0" width="6" height="10" fill="#818cf8"/><rect x="12" y="0" width="6" height="10" fill="#6366f1"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="24" y="0" width="6" height="10" fill="#818cf8"/><rect x="30" y="0" width="6" height="10" fill="#c7d2fe"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="42" y="0" width="6" height="10" fill="#6366f1"/><rect x="48" y="0" width="6" height="10" fill="#818cf8"/><rect x="54" y="0" width="6" height="10" fill="#a5b4fc"/></g>
+                  <!-- row 2 -->
+                  <g transform="translate(0,30)"><rect width="60" height="10" rx="2" class="mA-vec" fill="#dbeafe"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#818cf8"/><rect x="6"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="12" y="0" width="6" height="10" fill="#818cf8"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#6366f1"/><rect x="24" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="30" y="0" width="6" height="10" fill="#a5b4fc"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#818cf8"/><rect x="42" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="48" y="0" width="6" height="10" fill="#6366f1"/><rect x="54" y="0" width="6" height="10" fill="#818cf8"/></g>
+                  <!-- row 3 -->
+                  <g transform="translate(0,60)"><rect width="60" height="10" rx="2" class="mA-vec" fill="#dbeafe"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="6"  y="0" width="6" height="10" fill="#6366f1"/><rect x="12" y="0" width="6" height="10" fill="#a5b4fc"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#818cf8"/><rect x="24" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="30" y="0" width="6" height="10" fill="#818cf8"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="42" y="0" width="6" height="10" fill="#818cf8"/><rect x="48" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="54" y="0" width="6" height="10" fill="#6366f1"/></g>
+                  <!-- row 4 -->
+                  <g transform="translate(0,90)"><rect width="60" height="10" rx="2" class="mA-vec" fill="#dbeafe"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#c7d2fe"/><rect x="6"  y="0" width="6" height="10" fill="#818cf8"/><rect x="12" y="0" width="6" height="10" fill="#a5b4fc"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#6366f1"/><rect x="24" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="30" y="0" width="6" height="10" fill="#818cf8"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="42" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="48" y="0" width="6" height="10" fill="#818cf8"/><rect x="54" y="0" width="6" height="10" fill="#a5b4fc"/></g>
+                  <!-- row 5 -->
+                  <g transform="translate(0,120)"><rect width="60" height="10" rx="2" class="mA-vec" fill="#dbeafe"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#c7d2fe"/><rect x="6"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="12" y="0" width="6" height="10" fill="#818cf8"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="24" y="0" width="6" height="10" fill="#818cf8"/><rect x="30" y="0" width="6" height="10" fill="#c7d2fe"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="42" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="48" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="54" y="0" width="6" height="10" fill="#c7d2fe"/></g>
+                </g>
+
+                <!-- Stage 2 → 3 (5 embed → 4 heads — multi-fanout) -->
+                <path id="mAe-e1" class="mA-edge main"  d="M 207 70  C 235 70,  255 80, 270 88"/>
+                <path class="mA-edge"       d="M 207 70  C 235 90,  255 105, 270 122"/>
+                <path class="mA-edge faint" d="M 207 70  C 235 110, 255 130, 270 156"/>
+                <path class="mA-edge faint" d="M 207 70  C 235 130, 255 155, 270 190"/>
+                <path class="mA-edge"       d="M 207 100 C 235 90,  255 88,  270 88"/>
+                <path id="mAe-e2" class="mA-edge main"  d="M 207 100 C 235 115, 255 122, 270 122"/>
+                <path class="mA-edge"       d="M 207 100 C 235 130, 255 145, 270 156"/>
+                <path class="mA-edge"       d="M 207 130 C 235 110, 255 100, 270 88"/>
+                <path class="mA-edge"       d="M 207 130 C 235 125, 255 125, 270 122"/>
+                <path id="mAe-e3" class="mA-edge main"  d="M 207 130 C 235 145, 255 152, 270 156"/>
+                <path class="mA-edge"       d="M 207 130 C 235 158, 255 180, 270 190"/>
+                <path class="mA-edge faint" d="M 207 160 C 235 130, 255 105, 270 88"/>
+                <path class="mA-edge"       d="M 207 160 C 235 145, 255 135, 270 122"/>
+                <path id="mAe-e4" class="mA-edge main"  d="M 207 160 C 235 162, 255 160, 270 156"/>
+                <path class="mA-edge"       d="M 207 160 C 235 175, 255 185, 270 190"/>
+                <path class="mA-edge faint" d="M 207 190 C 235 145, 255 115, 270 88"/>
+                <path class="mA-edge"       d="M 207 190 C 235 170, 255 145, 270 122"/>
+                <path class="mA-edge"       d="M 207 190 C 235 178, 255 168, 270 156"/>
+                <path class="mA-edge main"  d="M 207 190 C 235 190, 255 190, 270 190"/>
+
+                <!-- ══════════════ Stage 3 — Multi-Head Self-Attention (h=4 heads) ══════════════ -->
+                <!-- 4 attention head circles (Q,K,V each in compact form) -->
+                <g transform="translate(285, 88)">
+                  <circle class="mA-node head" r="11"/>
+                  <text class="mA-token" y="2.5" fill="#7c3aed" font-weight="700">h₁</text>
+                </g>
+                <g transform="translate(285, 122)">
+                  <circle class="mA-node head" r="11"/>
+                  <text class="mA-token" y="2.5" fill="#7c3aed" font-weight="700">h₂</text>
+                </g>
+                <g transform="translate(285, 156)">
+                  <circle class="mA-node head" r="11"/>
+                  <text class="mA-token" y="2.5" fill="#7c3aed" font-weight="700">h₃</text>
+                </g>
+                <g transform="translate(285, 190)">
+                  <circle class="mA-node head" r="11"/>
+                  <text class="mA-token" y="2.5" fill="#7c3aed" font-weight="700">h₄</text>
+                </g>
+
+                <!-- Equation for attention -->
+                <text class="mA-eqn" x="350" y="80" font-size="11">softmax(QKᵀ/√d</text>
+                <text class="mA-eqn" x="382" y="80" font-size="9">k</text>
+                <text class="mA-eqn" x="392" y="80" font-size="11">)·V</text>
+
+                <!-- Concat heads → output (single edge) -->
+                <path id="mAe-c1" class="mA-edge main" d="M 296 88  C 330 100, 350 110, 375 140"/>
+                <path id="mAe-c2" class="mA-edge main" d="M 296 122 C 330 130, 350 135, 375 140"/>
+                <path id="mAe-c3" class="mA-edge main" d="M 296 156 C 330 150, 350 145, 375 140"/>
+                <path id="mAe-c4" class="mA-edge main" d="M 296 190 C 330 175, 350 160, 375 140"/>
+
+                <!-- Concat → projection node -->
+                <g transform="translate(380, 140)">
+                  <circle class="mA-node hi" r="10"/>
+                  <text class="mA-token" y="2.5" fill="#4f46e5" font-weight="700">W</text>
+                  <text class="mA-token" y="2.5" x="6" fill="#4f46e5" font-size="6.5">O</text>
+                </g>
+
+                <!-- Residual skip arrow (Stage 2 → Stage 4) -->
+                <path class="mA-residual" d="M 175 55 C 270 36, 380 36, 460 55"/>
+                <text class="mA-eqn" x="320" y="46" font-size="9" fill="#a78bfa">+ residual</text>
+
+                <!-- ══════════════ Stage 4 — FFN + Layer Norm ══════════════ -->
+                <!-- LN box -->
+                <g transform="translate(408, 70)">
+                  <rect width="98" height="28" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
+                  <text x="49" y="11" class="mA-token" fill="#0f766e" font-weight="700">LayerNorm</text>
+                  <text x="49" y="22" class="mA-token" fill="#0f766e" font-size="7">μ, σ²</text>
+                </g>
+                <!-- FFN: linear → GELU → linear -->
+                <g transform="translate(408, 110)">
+                  <rect width="98" height="36" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
+                  <text x="49" y="13" class="mA-token" fill="#0f766e" font-weight="700">Linear 64→256</text>
+                  <text x="49" y="24" class="mA-eqn" font-size="9" fill="#14b8a6">GELU(·)</text>
+                  <text x="49" y="33" class="mA-token" fill="#0f766e" font-weight="700">Linear 256→64</text>
+                </g>
+                <!-- LN box again -->
+                <g transform="translate(408, 156)">
+                  <rect width="98" height="20" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
+                  <text x="49" y="14" class="mA-token" fill="#0f766e" font-weight="700">LayerNorm</text>
+                </g>
+
+                <!-- Edge from concat W_O → FFN entry -->
+                <path id="mAe-ffn" class="mA-edge main" d="M 391 140 C 400 130, 405 100, 408 84"/>
+
+                <!-- Residual skip — from MHA output → after FFN LN -->
+                <path class="mA-residual" d="M 392 155 C 410 195, 502 195, 514 174"/>
+
+                <!-- Stage 4 → 5: FFN final → classifier hub -->
+                <path id="mAe-cls" class="mA-edge main" d="M 510 166 C 525 158, 540 138, 550 130"/>
+
+                <!-- ══════════════ Stage 5 — Classification Head (softmax → 3 classes) ══════════════ -->
+                <!-- 3 logit boxes + softmax label -->
+                <g transform="translate(575, 88)">
+                  <circle class="mA-node hi mA-head-pulse" r="13"/>
+                  <text class="mA-cls" y="2.5">PIPE</text>
+                </g>
+                <g transform="translate(575, 130)">
+                  <circle class="mA-node hi mA-head-pulse" r="13" style="animation-delay:0.5s"/>
+                  <text class="mA-cls" y="2.5">HEAD</text>
+                </g>
+                <g transform="translate(575, 172)">
+                  <circle class="mA-node" r="10" opacity="0.55"/>
+                  <text class="mA-cls" y="2.5" fill="#94a3b8" font-size="8">noise</text>
+                </g>
+
+                <!-- Pulse rings on top class hubs -->
+                <g transform="translate(575, 88)">
                   <circle class="mA-ring" r="14"/>
                   <circle class="mA-ring delay" r="14"/>
                 </g>
-                <g transform="translate(290, 115)">
+                <g transform="translate(575, 130)">
                   <circle class="mA-ring" r="14"/>
                   <circle class="mA-ring delay" r="14"/>
                 </g>
 
-                <!-- Layer 1: input entity types -->
-                <g transform="translate(60, 35)"><circle class="mA-node" r="9"/><text class="mA-label" x="-30" y="3">CIRCLE</text></g>
-                <g transform="translate(60, 75)"><circle class="mA-node" r="9"/><text class="mA-label" x="-22" y="3">LINE</text></g>
-                <g transform="translate(60, 115)"><circle class="mA-node" r="9"/><text class="mA-label" x="-26" y="3">INSERT</text></g>
-                <g transform="translate(60, 155)"><circle class="mA-node" r="9"/><text class="mA-label" x="-27" y="3">HATCH</text></g>
-                <g transform="translate(60, 190)"><circle class="mA-node" r="9"/><text class="mA-label" x="-23" y="3">TEXT</text></g>
-                <text class="mA-label tag" x="60" y="217">DXF entities</text>
+                <!-- Softmax tag -->
+                <text class="mA-eqn" x="578" y="62" font-size="9">argmax · softmax(W·x)</text>
 
-                <!-- Layer 2: classifiers -->
-                <g transform="translate(290, 60)">
-                  <circle class="mA-node classifier" r="13"/>
-                  <text class="mA-label brand" y="3" font-size="9">PIPE</text>
-                </g>
-                <g transform="translate(290, 115)">
-                  <circle class="mA-node classifier" r="13"/>
-                  <text class="mA-label brand" y="3" font-size="9">HEAD</text>
-                </g>
-                <g transform="translate(290, 170)">
-                  <circle class="mA-node rejected" r="11"/>
-                  <text class="mA-label" y="3" font-size="8" fill="#94a3b8">noise</text>
-                </g>
-                <text class="mA-label tag" x="290" y="217">Classifier</text>
+                <!-- Stage 5 → 6: classifier → decoder -->
+                <path id="mAe-dec1" class="mA-edge main" d="M 588 88  C 615 80,  635 60,  655 55"/>
+                <path id="mAe-dec2" class="mA-edge main" d="M 588 88  C 615 90,  635 95,  655 110"/>
+                <path id="mAe-dec3" class="mA-edge main" d="M 588 130 C 615 120, 635 75,  655 75"/>
+                <path id="mAe-dec4" class="mA-edge main" d="M 588 130 C 615 135, 635 150, 655 170"/>
+                <path id="mAe-dec5" class="mA-edge main" d="M 588 130 C 615 140, 635 165, 655 195"/>
 
-                <!-- Layer 3: extracted .sdf network -->
-                <line x1="465" y1="105" x2="615" y2="105" class="mA-pipe" stroke-width="2.4"/>
-                <line x1="485" y1="40" x2="485" y2="170" class="mA-pipe"/>
-                <line x1="520" y1="40" x2="520" y2="170" class="mA-pipe"/>
-                <line x1="555" y1="40" x2="555" y2="170" class="mA-pipe"/>
-                <line x1="590" y1="40" x2="590" y2="170" class="mA-pipe"/>
-                <!-- sprinkler heads -->
-                <circle class="mA-node sprinkler" cx="485" cy="40" r="4.5"/>
-                <circle class="mA-node sprinkler" cx="520" cy="40" r="4.5"/>
-                <circle class="mA-node sprinkler" cx="555" cy="40" r="4.5"/>
-                <circle class="mA-node sprinkler" cx="590" cy="40" r="4.5"/>
-                <circle class="mA-node sprinkler" cx="485" cy="170" r="4.5"/>
-                <circle class="mA-node sprinkler" cx="520" cy="170" r="4.5"/>
-                <circle class="mA-node sprinkler" cx="555" cy="170" r="4.5"/>
-                <circle class="mA-node sprinkler" cx="590" cy="170" r="4.5"/>
-                <!-- alarm valve -->
-                <circle class="mA-node alarm" cx="465" cy="105" r="6"/>
-                <text class="mA-label tag" x="545" y="217">.sdf network · 30 heads</text>
+                <!-- ══════════════ Stage 6 — Graph Decoder + Output Network ══════════════ -->
+                <line x1="650" y1="135" x2="760" y2="135" class="mA-pipe" stroke-width="2.4"/>
+                <line x1="665" y1="70" x2="665" y2="200" class="mA-pipe"/>
+                <line x1="695" y1="70" x2="695" y2="200" class="mA-pipe"/>
+                <line x1="725" y1="70" x2="725" y2="200" class="mA-pipe"/>
+                <line x1="755" y1="70" x2="755" y2="200" class="mA-pipe"/>
+                <circle class="mA-node spr" cx="665" cy="70"  r="4.5"/>
+                <circle class="mA-node spr" cx="695" cy="70"  r="4.5"/>
+                <circle class="mA-node spr" cx="725" cy="70"  r="4.5"/>
+                <circle class="mA-node spr" cx="755" cy="70"  r="4.5"/>
+                <circle class="mA-node spr" cx="665" cy="200" r="4.5"/>
+                <circle class="mA-node spr" cx="695" cy="200" r="4.5"/>
+                <circle class="mA-node spr" cx="725" cy="200" r="4.5"/>
+                <circle class="mA-node spr" cx="755" cy="200" r="4.5"/>
+                <circle class="mA-node alm" cx="650" cy="135" r="6"/>
 
-                <!-- Traveling particles -->
-                <circle r="2.6" class="mA-particle" fill="#4f46e5"><animateMotion dur="1.8s" repeatCount="indefinite"><mpath href="#mAe-line-pipe"/></animateMotion></circle>
-                <circle r="2.5" class="mA-particle" fill="#06b6d4"><animateMotion dur="1.8s" begin="0.4s" repeatCount="indefinite"><mpath href="#mAe-ins-pipe"/></animateMotion></circle>
-                <circle r="2.4" class="mA-particle" fill="#8b5cf6"><animateMotion dur="2s"   begin="0.2s" repeatCount="indefinite"><mpath href="#mAe-cir-head"/></animateMotion></circle>
-                <circle r="2.4" class="mA-particle" fill="#f59e0b"><animateMotion dur="2s"   begin="0.8s" repeatCount="indefinite"><mpath href="#mAe-hat-head"/></animateMotion></circle>
-                <circle r="2.4" class="mA-particle" fill="#06b6d4"><animateMotion dur="2s"   begin="1.2s" repeatCount="indefinite"><mpath href="#mAe-ins-head"/></animateMotion></circle>
-                <circle r="2.6" class="mA-particle" fill="#4f46e5"><animateMotion dur="2.2s" begin="0.5s" repeatCount="indefinite"><mpath href="#mAe-pipe-main"/></animateMotion></circle>
-                <circle r="2.5" class="mA-particle" fill="#f59e0b"><animateMotion dur="2.2s" begin="1.1s" repeatCount="indefinite"><mpath href="#mAe-head-spr"/></animateMotion></circle>
+                <!-- Traveling particles along main flow -->
+                <circle r="2.6" class="mA-particle" fill="#4f46e5"><animateMotion dur="1.9s" repeatCount="indefinite"><mpath href="#mAe-e1"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#06b6d4"><animateMotion dur="1.9s" begin="0.4s" repeatCount="indefinite"><mpath href="#mAe-e2"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#8b5cf6"><animateMotion dur="1.9s" begin="0.8s" repeatCount="indefinite"><mpath href="#mAe-e3"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#f59e0b"><animateMotion dur="1.9s" begin="1.2s" repeatCount="indefinite"><mpath href="#mAe-e4"/></animateMotion></circle>
+                <circle r="2.5" class="mA-particle" fill="#8b5cf6"><animateMotion dur="1.6s" begin="0.3s" repeatCount="indefinite"><mpath href="#mAe-c1"/></animateMotion></circle>
+                <circle r="2.5" class="mA-particle" fill="#8b5cf6"><animateMotion dur="1.6s" begin="0.9s" repeatCount="indefinite"><mpath href="#mAe-c2"/></animateMotion></circle>
+                <circle r="2.6" class="mA-particle" fill="#0d9488"><animateMotion dur="1.7s" begin="0.5s" repeatCount="indefinite"><mpath href="#mAe-ffn"/></animateMotion></circle>
+                <circle r="2.5" class="mA-particle" fill="#4f46e5"><animateMotion dur="1.6s" begin="0.6s" repeatCount="indefinite"><mpath href="#mAe-cls"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#f59e0b"><animateMotion dur="1.8s" begin="0.2s" repeatCount="indefinite"><mpath href="#mAe-dec1"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#f59e0b"><animateMotion dur="1.8s" begin="0.7s" repeatCount="indefinite"><mpath href="#mAe-dec3"/></animateMotion></circle>
+                <circle r="2.4" class="mA-particle" fill="#ef4444"><animateMotion dur="1.8s" begin="1.0s" repeatCount="indefinite"><mpath href="#mAe-dec2"/></animateMotion></circle>
               </svg>
             </a>
             <a class="home-module-btn" href="{{ url_for('index') }}?view=validation">
               <span class="module-chip">Module B</span>
               <strong>Integrated Validation Module</strong>
               <span>Run the validation suite end-to-end: hydraulic results, optimization guide, data tables, audit statistics, and the detailed report — all in one workflow.</span>
-              <svg class="module-illustration" viewBox="0 0 640 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="배관망 → 수리계산 → 규준 비교 → 검증 신경망">
+              <svg class="module-illustration" viewBox="0 0 780 280" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Module B — Physics-informed GNN for hydraulic validation">
                 <defs>
                   <linearGradient id="mBFlow" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%"  stop-color="#3b82f6"/>
-                    <stop offset="35%" stop-color="#8b5cf6"/>
-                    <stop offset="75%" stop-color="#06b6d4"/>
+                    <stop offset="0%"   stop-color="#3b82f6"/>
+                    <stop offset="35%"  stop-color="#8b5cf6"/>
+                    <stop offset="75%"  stop-color="#06b6d4"/>
                     <stop offset="100%" stop-color="#10b981"/>
                   </linearGradient>
                   <radialGradient id="mBNode" cx="0.35" cy="0.35" r="0.85">
@@ -1020,172 +1173,266 @@
                     <stop offset="100%" stop-color="#f3e8ff"/>
                   </radialGradient>
                   <filter id="mBGlow" x="-40%" y="-40%" width="180%" height="180%">
-                    <feGaussianBlur stdDeviation="1.6" result="blur"/>
+                    <feGaussianBlur stdDeviation="1.4" result="blur"/>
                     <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
                   </filter>
+                  <marker id="mBArr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                    <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+                  </marker>
+                  <marker id="mBArrRes" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                    <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/>
+                  </marker>
                   <style>
-                    .mB-edge       { fill: none; stroke: url(#mBFlow); stroke-width: 1; opacity: 0.55; }
-                    .mB-edge.faint { opacity: 0.20; stroke-width: 0.8; }
-                    .mB-edge.main  { stroke-width: 1.7; opacity: 0.95; stroke-dasharray: 6 3; animation: mBDash 1.4s linear infinite; }
-                    @keyframes mBDash { to { stroke-dashoffset: -27; } }
-                    .mB-node          { fill: url(#mBNode); stroke: #cbd5e1; stroke-width: 1.4; filter: url(#mBGlow); }
-                    .mB-node.calc     { fill: url(#mBNodeHi); stroke: url(#mBFlow); stroke-width: 2.3; }
-                    .mB-node.check    { fill: url(#mBNodeChk); stroke: #8b5cf6; stroke-width: 2; }
-                    .mB-node.sprinkler { fill: #f59e0b; stroke: #f59e0b; }
-                    .mB-node.alarm     { fill: #ef4444; stroke: #ffffff; stroke-width: 2; }
+                    .mB-band-input  { fill: #f1f5f9; }
+                    .mB-band-enc    { fill: #dbeafe; opacity: 0.45; }
+                    .mB-band-gnn    { fill: #ede9fe; opacity: 0.50; }
+                    .mB-band-phys   { fill: #fef3c7; opacity: 0.50; }
+                    .mB-band-mtl    { fill: #f3e8ff; opacity: 0.55; }
+                    .mB-band-out    { fill: #dcfce7; opacity: 0.55; }
+                    .mB-title { font-family: 'Inter','Malgun Gothic',sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; fill: #334155; text-anchor: middle; text-transform: uppercase; }
+                    .mB-dim   { font-family: 'JetBrains Mono',Consolas,monospace; font-size: 9px; fill: #64748b; text-anchor: middle; letter-spacing: 0.02em; }
+                    .mB-token { font-family: 'JetBrains Mono',Consolas,monospace; font-size: 8.5px; fill: #475569; text-anchor: middle; font-weight: 500; }
+                    .mB-eqn   { font-family: 'Times New Roman',Cambria,serif; font-style: italic; fill: #4f46e5; text-anchor: middle; }
+                    .mB-edge      { fill: none; stroke: url(#mBFlow); stroke-width: 0.9; opacity: 0.50; }
+                    .mB-edge.faint { opacity: 0.18; stroke-width: 0.7; }
+                    .mB-edge.main  { stroke-width: 1.5; opacity: 0.92; stroke-dasharray: 5 3; animation: mBDash 1.4s linear infinite; }
+                    .mB-residual   { fill: none; stroke: #a78bfa; stroke-width: 1.2; stroke-dasharray: 4 3; opacity: 0.65; marker-end: url(#mBArrRes); }
+                    @keyframes mBDash { to { stroke-dashoffset: -24; } }
+                    .mB-node       { fill: url(#mBNode); stroke: #cbd5e1; stroke-width: 1.3; filter: url(#mBGlow); }
+                    .mB-node.calc  { fill: url(#mBNodeHi); stroke: url(#mBFlow); stroke-width: 1.8; }
+                    .mB-node.check { fill: url(#mBNodeChk); stroke: #8b5cf6; stroke-width: 1.8; }
+                    .mB-node.gnn   { fill: #ede9fe; stroke: #8b5cf6; stroke-width: 1.5; }
+                    .mB-node.spr   { fill: #f59e0b; stroke: #f59e0b; }
+                    .mB-node.alm   { fill: #ef4444; stroke: #ffffff; stroke-width: 2; }
                     .mB-pipe { stroke: #06b6d4; stroke-width: 1.4; fill: none; opacity: 0.7; }
                     @keyframes mBRing {
-                      0%   { r: 14; opacity: 0.55; stroke-width: 1.5; }
-                      100% { r: 28; opacity: 0;    stroke-width: 0.5; }
+                      0%   { r: 13; opacity: 0.55; stroke-width: 1.4; }
+                      100% { r: 24; opacity: 0;    stroke-width: 0.5; }
                     }
-                    .mB-ring       { fill: none; stroke: #8b5cf6; animation: mBRing 2.4s ease-out infinite; }
-                    .mB-ring.delay { animation-delay: 1.2s; }
+                    .mB-ring         { fill: none; stroke: #8b5cf6; animation: mBRing 2.4s ease-out infinite; }
+                    .mB-ring.delay   { animation-delay: 1.2s; }
                     .mB-ring.success { stroke: #10b981; animation-duration: 2s; }
                     @keyframes mBBreathe {
-                      0%, 100% { r: 13; }
-                      50%      { r: 14.5; }
+                      0%, 100% { r: 12.5; }
+                      50%      { r: 14; }
                     }
-                    .mB-node.calc { animation: mBBreathe 3s ease-in-out infinite; }
+                    .mB-node.calc, .mB-node.check { animation: mBBreathe 3s ease-in-out infinite; }
                     .mB-bgdot { fill: #8b5cf6; opacity: 0.18; }
                     @keyframes mBDrift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(8px,-6px); } }
                     @keyframes mBDrift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-6px,8px); } }
                     .mB-bgdot.a { animation: mBDrift1 6s ease-in-out infinite; }
                     .mB-bgdot.b { animation: mBDrift2 7s ease-in-out infinite; }
-                    .mB-label   { font-family: 'Inter','Malgun Gothic',sans-serif; font-size: 8.5px; fill: #475569; text-anchor: middle; font-weight: 500; letter-spacing: 0.02em; }
-                    .mB-label.tag { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; fill: #4f46e5; }
-                    .mB-label.tag.success { fill: #10b981; }
-                    .mB-label.brand { fill: #4f46e5; font-weight: 700; }
-                    .mB-label.check { fill: #7c3aed; font-weight: 700; }
                     .mB-particle { filter: url(#mBGlow); }
+                    .mB-loss { font-family: 'Times New Roman',Cambria,serif; font-style: italic; font-size: 9.5px; fill: #94a3b8; text-anchor: middle; }
+                    .mB-label.check { fill: #7c3aed; font-weight: 700; font-family: 'JetBrains Mono','Inter','Malgun Gothic',sans-serif; font-size: 9px; text-anchor: middle; }
                   </style>
                 </defs>
 
                 <!-- Background drifting dots -->
-                <circle class="mB-bgdot a" cx="130" cy="18"  r="2"/>
-                <circle class="mB-bgdot b" cx="280" cy="200" r="2.5"/>
-                <circle class="mB-bgdot a" cx="450" cy="20"  r="2"/>
-                <circle class="mB-bgdot b" cx="540" cy="200" r="2.5"/>
-                <circle class="mB-bgdot a" cx="180" cy="200" r="2"/>
-                <circle class="mB-bgdot b" cx="620" cy="30"  r="2"/>
+                <circle class="mB-bgdot a" cx="130" cy="22"  r="2"/>
+                <circle class="mB-bgdot b" cx="320" cy="262" r="2.5"/>
+                <circle class="mB-bgdot a" cx="540" cy="18"  r="2"/>
+                <circle class="mB-bgdot b" cx="240" cy="258" r="2"/>
+                <circle class="mB-bgdot a" cx="90"  cy="255" r="2"/>
+                <circle class="mB-bgdot b" cx="700" cy="32"  r="2"/>
 
-                <!-- L1 (mini network rendered as box, x≈10-75) → conceptual nodes at x=80 -->
-                <!-- L2 hydraulic calc at x=240 y=60/115/170 -->
-                <!-- L3 compliance check at x=410 y=60/115/170 -->
-                <!-- L4 verdict at x=565 y=115 -->
+                <!-- ══════════════ Layer bands (academic stratification) ══════════════ -->
+                <rect class="mB-band-input"  x="14"  y="46" width="80"  height="186" rx="7"/>
+                <rect class="mB-band-enc"    x="104" y="46" width="92"  height="186" rx="7"/>
+                <rect class="mB-band-gnn"    x="206" y="46" width="170" height="186" rx="7"/>
+                <rect class="mB-band-phys"   x="386" y="46" width="132" height="186" rx="7"/>
+                <rect class="mB-band-mtl"    x="528" y="46" width="106" height="186" rx="7"/>
+                <rect class="mB-band-out"    x="644" y="46" width="124" height="186" rx="7"/>
 
-                <!-- Layer 1 → 2 synapses (4 inputs × 3 calc = 12 connections) -->
-                <path class="mB-edge faint"    d="M 90 40  C 160 50,  200 55,  226 60"/>
-                <path id="mBe-1-1" class="mB-edge main"  d="M 90 40  C 160 70,  200 90,  226 115"/>
-                <path class="mB-edge faint"    d="M 90 40  C 160 95,  200 135, 226 170"/>
-                <path id="mBe-1-2" class="mB-edge main"  d="M 90 80  C 160 75,  200 65,  226 60"/>
-                <path class="mB-edge"          d="M 90 80  C 160 95,  200 105, 226 115"/>
-                <path class="mB-edge faint"    d="M 90 80  C 160 115, 200 145, 226 170"/>
-                <path class="mB-edge"          d="M 90 120 C 160 95,  200 75,  226 60"/>
-                <path id="mBe-1-3" class="mB-edge main"  d="M 90 120 C 160 117, 200 116, 226 115"/>
-                <path class="mB-edge"          d="M 90 120 C 160 140, 200 156, 226 170"/>
-                <path class="mB-edge faint"    d="M 90 160 C 160 125, 200 90,  226 60"/>
-                <path class="mB-edge"          d="M 90 160 C 160 140, 200 125, 226 115"/>
-                <path id="mBe-1-4" class="mB-edge main"  d="M 90 160 C 160 162, 200 165, 226 170"/>
+                <!-- Stage titles -->
+                <text class="mB-title" x="54"  y="30">.sdf Graph</text>
+                <text class="mB-title" x="150" y="30">Node Embed</text>
+                <text class="mB-title" x="291" y="30">GNN · k = 3</text>
+                <text class="mB-title" x="452" y="30">Physics-Informed</text>
+                <text class="mB-title" x="581" y="30">Multi-Task</text>
+                <text class="mB-title" x="706" y="30">Verdict</text>
 
-                <!-- Layer 2 → 3 synapses (3 × 3 = 9 connections) -->
-                <path id="mBe-2-1" class="mB-edge main" d="M 254 60  C 320 60,  360 60,  397 60"/>
-                <path class="mB-edge"           d="M 254 60  C 320 75,  360 100, 397 115"/>
-                <path class="mB-edge faint"     d="M 254 60  C 320 100, 360 135, 397 170"/>
-                <path class="mB-edge"           d="M 254 115 C 320 95,  360 80,  397 60"/>
-                <path id="mBe-2-2" class="mB-edge main" d="M 254 115 C 320 115, 360 115, 397 115"/>
-                <path class="mB-edge"           d="M 254 115 C 320 135, 360 150, 397 170"/>
-                <path class="mB-edge faint"     d="M 254 170 C 320 135, 360 100, 397 60"/>
-                <path class="mB-edge"           d="M 254 170 C 320 150, 360 130, 397 115"/>
-                <path id="mBe-2-3" class="mB-edge main" d="M 254 170 C 320 170, 360 170, 397 170"/>
+                <!-- Stage dim/aux labels -->
+                <text class="mB-dim" x="54"  y="246">G = (V, E)</text>
+                <text class="mB-dim" x="150" y="246">[|V|, d=64]</text>
+                <text class="mB-dim" x="291" y="246">3 × MessagePass</text>
+                <text class="mB-dim" x="452" y="246">Hazen-Williams</text>
+                <text class="mB-dim" x="581" y="246">3 heads · BCE</text>
+                <text class="mB-dim" x="706" y="246">σ(W·x) ∈ [0,1]</text>
 
-                <!-- Layer 3 → 4 (verdict at 565,115) — converging -->
-                <path id="mBe-3-1" class="mB-edge main" d="M 423 60  C 480 80,  520 100, 552 110"/>
-                <path id="mBe-3-2" class="mB-edge main" d="M 423 115 C 480 115, 520 115, 552 115"/>
-                <path id="mBe-3-3" class="mB-edge main" d="M 423 170 C 480 145, 520 125, 552 120"/>
+                <!-- Loss caption -->
+                <text class="mB-loss" x="390" y="272">𝓛 = 𝓛_BCE + λ_P · ‖f_θ − h_HW‖² (physics consistency)</text>
 
-                <!-- Pulse rings on calc + verdict -->
-                <g transform="translate(240, 60)"><circle class="mB-ring" r="14"/><circle class="mB-ring delay" r="14"/></g>
-                <g transform="translate(240, 115)"><circle class="mB-ring" r="14"/><circle class="mB-ring delay" r="14"/></g>
-                <g transform="translate(240, 170)"><circle class="mB-ring" r="14"/><circle class="mB-ring delay" r="14"/></g>
-                <g transform="translate(565, 115)"><circle class="mB-ring success" r="20"/><circle class="mB-ring success delay" r="20"/></g>
+                <!-- ══════════════ Stage 1 — .sdf network graph ══════════════ -->
+                <g transform="translate(20, 60)">
+                  <rect width="64" height="156" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+                  <line x1="32" y1="20" x2="32" y2="140" class="mB-pipe" stroke-width="1.8"/>
+                  <line x1="10" y1="38"  x2="54" y2="38"  class="mB-pipe"/>
+                  <line x1="10" y1="80"  x2="54" y2="80"  class="mB-pipe"/>
+                  <line x1="10" y1="122" x2="54" y2="122" class="mB-pipe"/>
+                  <circle class="mB-node spr" cx="10" cy="38"  r="3"/>
+                  <circle class="mB-node spr" cx="54" cy="38"  r="3"/>
+                  <circle class="mB-node spr" cx="10" cy="80"  r="3"/>
+                  <circle class="mB-node spr" cx="54" cy="80"  r="3"/>
+                  <circle class="mB-node spr" cx="10" cy="122" r="3"/>
+                  <circle class="mB-node spr" cx="54" cy="122" r="3"/>
+                  <circle class="mB-node alm" cx="32" cy="20" r="4"/>
+                </g>
 
-                <!-- L1: mini piping network -->
-                <g transform="translate(15, 20)">
-                  <rect width="60" height="160" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
-                  <line x1="30" y1="20" x2="30" y2="140" class="mB-pipe" stroke-width="1.8"/>
-                  <line x1="10" y1="35" x2="50" y2="35" class="mB-pipe"/>
-                  <line x1="10" y1="80" x2="50" y2="80" class="mB-pipe"/>
-                  <line x1="10" y1="125" x2="50" y2="125" class="mB-pipe"/>
-                  <circle class="mB-node sprinkler" cx="10" cy="35"  r="3"/>
-                  <circle class="mB-node sprinkler" cx="50" cy="35"  r="3"/>
-                  <circle class="mB-node sprinkler" cx="10" cy="80"  r="3"/>
-                  <circle class="mB-node sprinkler" cx="50" cy="80"  r="3"/>
-                  <circle class="mB-node sprinkler" cx="10" cy="125" r="3"/>
-                  <circle class="mB-node sprinkler" cx="50" cy="125" r="3"/>
-                  <circle class="mB-node alarm" cx="30" cy="20" r="4"/>
-                </g>
-                <!-- L1 conceptual node overlay -->
-                <circle class="mB-node" cx="84" cy="40"  r="7"/>
-                <circle class="mB-node" cx="84" cy="80"  r="7"/>
-                <circle class="mB-node" cx="84" cy="120" r="7"/>
-                <circle class="mB-node" cx="84" cy="160" r="7"/>
-                <text class="mB-label tag" x="48" y="217">.sdf network</text>
+                <!-- Stage 1 → 2 edges -->
+                <path class="mB-edge main" d="M 88 80  C 100 80, 112 75, 132 70"/>
+                <path class="mB-edge main" d="M 88 100 C 100 100, 112 105, 132 110"/>
+                <path class="mB-edge main" d="M 88 140 C 100 140, 112 145, 132 150"/>
+                <path class="mB-edge main" d="M 88 180 C 100 180, 112 185, 132 190"/>
 
-                <!-- L2: hydraulic calc -->
-                <g transform="translate(240, 60)">
-                  <circle class="mB-node calc" r="13"/>
-                  <text class="mB-label brand" y="3" font-size="8.5">Σ ΔP</text>
+                <!-- ══════════════ Stage 2 — Node embedding (4 vector rows) ══════════════ -->
+                <g transform="translate(115, 60)">
+                  <g><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#c7d2fe" stroke-width="0.6"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="6"  y="0" width="6" height="10" fill="#818cf8"/><rect x="12" y="0" width="6" height="10" fill="#6366f1"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="24" y="0" width="6" height="10" fill="#818cf8"/><rect x="30" y="0" width="6" height="10" fill="#c7d2fe"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="42" y="0" width="6" height="10" fill="#6366f1"/><rect x="48" y="0" width="6" height="10" fill="#818cf8"/><rect x="54" y="0" width="6" height="10" fill="#a5b4fc"/></g>
+                  <g transform="translate(0,40)"><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#c7d2fe" stroke-width="0.6"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#818cf8"/><rect x="6"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="12" y="0" width="6" height="10" fill="#818cf8"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#6366f1"/><rect x="24" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="30" y="0" width="6" height="10" fill="#a5b4fc"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#818cf8"/><rect x="42" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="48" y="0" width="6" height="10" fill="#6366f1"/><rect x="54" y="0" width="6" height="10" fill="#818cf8"/></g>
+                  <g transform="translate(0,80)"><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#c7d2fe" stroke-width="0.6"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#a5b4fc"/><rect x="6"  y="0" width="6" height="10" fill="#6366f1"/><rect x="12" y="0" width="6" height="10" fill="#a5b4fc"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#818cf8"/><rect x="24" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="30" y="0" width="6" height="10" fill="#818cf8"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="42" y="0" width="6" height="10" fill="#818cf8"/><rect x="48" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="54" y="0" width="6" height="10" fill="#6366f1"/></g>
+                  <g transform="translate(0,120)"><rect width="60" height="10" rx="2" fill="#dbeafe" stroke="#c7d2fe" stroke-width="0.6"/>
+                    <rect x="0"  y="0" width="6" height="10" fill="#c7d2fe"/><rect x="6"  y="0" width="6" height="10" fill="#818cf8"/><rect x="12" y="0" width="6" height="10" fill="#a5b4fc"/>
+                    <rect x="18" y="0" width="6" height="10" fill="#6366f1"/><rect x="24" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="30" y="0" width="6" height="10" fill="#818cf8"/>
+                    <rect x="36" y="0" width="6" height="10" fill="#a5b4fc"/><rect x="42" y="0" width="6" height="10" fill="#c7d2fe"/><rect x="48" y="0" width="6" height="10" fill="#818cf8"/><rect x="54" y="0" width="6" height="10" fill="#a5b4fc"/></g>
                 </g>
-                <g transform="translate(240, 115)">
-                  <circle class="mB-node calc" r="13"/>
-                  <text class="mB-label brand" y="3" font-size="8.5">Σ Q</text>
-                </g>
-                <g transform="translate(240, 170)">
-                  <circle class="mB-node calc" r="13"/>
-                  <text class="mB-label brand" y="3" font-size="8">C·H/W</text>
-                </g>
-                <text class="mB-label tag" x="240" y="217">Hydraulics</text>
 
-                <!-- L3: compliance check -->
-                <g transform="translate(410, 60)">
-                  <circle class="mB-node check" r="13"/>
-                  <text class="mB-label check" y="3" font-size="9">압력</text>
-                </g>
-                <g transform="translate(410, 115)">
-                  <circle class="mB-node check" r="13"/>
-                  <text class="mB-label check" y="3" font-size="9">유량</text>
-                </g>
-                <g transform="translate(410, 170)">
-                  <circle class="mB-node check" r="13"/>
-                  <text class="mB-label check" y="3" font-size="8.5">K-fac</text>
-                </g>
-                <text class="mB-label tag" x="410" y="217">Compliance</text>
+                <!-- Stage 2 → 3 (dense) -->
+                <path id="mBe-g1" class="mB-edge main"  d="M 178 70  C 200 75,  220 80,  238 85"/>
+                <path class="mB-edge"        d="M 178 70  C 200 90,  220 105, 238 120"/>
+                <path class="mB-edge faint"  d="M 178 70  C 200 105, 220 140, 238 165"/>
+                <path class="mB-edge"        d="M 178 110 C 200 95,  220 90,  238 85"/>
+                <path id="mBe-g2" class="mB-edge main"  d="M 178 110 C 200 115, 220 118, 238 120"/>
+                <path class="mB-edge"        d="M 178 110 C 200 135, 220 150, 238 165"/>
+                <path class="mB-edge"        d="M 178 150 C 200 120, 220 100, 238 85"/>
+                <path class="mB-edge"        d="M 178 150 C 200 138, 220 128, 238 120"/>
+                <path id="mBe-g3" class="mB-edge main"  d="M 178 150 C 200 155, 220 160, 238 165"/>
+                <path class="mB-edge faint"  d="M 178 190 C 200 150, 220 110, 238 85"/>
+                <path class="mB-edge"        d="M 178 190 C 200 160, 220 138, 238 120"/>
+                <path class="mB-edge"        d="M 178 190 C 200 180, 220 175, 238 165"/>
 
-                <!-- L4: verdict + bar chart -->
-                <g transform="translate(565, 115)">
-                  <circle r="18" fill="#10b981" filter="url(#mBGlow)"/>
-                  <path d="M -8 0 L -2 6 L 9 -7" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- ══════════════ Stage 3 — GNN Message Passing (k=3 iterations) ══════════════ -->
+                <!-- Sub-stage 1: nodes -->
+                <g transform="translate(245, 85)"><circle class="mB-node gnn" r="10"/><text class="mB-token" y="2.5" fill="#7c3aed" font-weight="700">v₁</text></g>
+                <g transform="translate(245, 120)"><circle class="mB-node gnn" r="10"/><text class="mB-token" y="2.5" fill="#7c3aed" font-weight="700">v₂</text></g>
+                <g transform="translate(245, 165)"><circle class="mB-node gnn" r="10"/><text class="mB-token" y="2.5" fill="#7c3aed" font-weight="700">v₃</text></g>
+
+                <!-- Message-passing equation -->
+                <text class="mB-eqn" x="305" y="62" font-size="9.5">h</text>
+                <text class="mB-eqn" x="312" y="58" font-size="7.5">(k+1)</text>
+                <text class="mB-eqn" x="325" y="62" font-size="9.5">= σ(W</text>
+                <text class="mB-eqn" x="355" y="65" font-size="7.5">m</text>
+                <text class="mB-eqn" x="368" y="62" font-size="9.5">·AGG{h</text>
+                <text class="mB-eqn" x="365" y="80" font-size="9.5">u∈𝒩(v)</text>
+
+                <!-- Bidirectional message arrows between v1, v2, v3 -->
+                <path d="M 250 95 Q 260 105 250 115" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
+                <path d="M 250 130 Q 260 145 250 155" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
+                <path d="M 240 115 Q 230 105 240 95" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
+                <path d="M 240 155 Q 230 145 240 130" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
+
+                <!-- AGG aggregation node -->
+                <g transform="translate(290, 125)">
+                  <rect x="-16" y="-12" width="32" height="24" rx="4" fill="#fff" stroke="#8b5cf6" stroke-width="1.4"/>
+                  <text class="mB-token" y="3" fill="#7c3aed" font-weight="700">AGG</text>
                 </g>
-                <!-- mini bar chart -->
-                <g transform="translate(597, 95)">
-                  <rect x="0"  y="22" width="5" height="14" fill="#10b981" opacity="0.55"/>
-                  <rect x="8"  y="10" width="5" height="26" fill="#10b981" opacity="0.75"/>
-                  <rect x="16" y="14" width="5" height="22" fill="#10b981" opacity="0.85"/>
-                  <rect x="24" y="3"  width="5" height="33" fill="#10b981"/>
+
+                <!-- k=3 unrolled iterations: 3 sub-blocks -->
+                <g transform="translate(330, 95)"><rect width="36" height="22" rx="3" fill="#fff" stroke="#a78bfa" stroke-width="1.2"/><text class="mB-token" x="18" y="14" fill="#7c3aed" font-weight="700">k=1</text></g>
+                <g transform="translate(330, 125)"><rect width="36" height="22" rx="3" fill="#fff" stroke="#a78bfa" stroke-width="1.2"/><text class="mB-token" x="18" y="14" fill="#7c3aed" font-weight="700">k=2</text></g>
+                <g transform="translate(330, 155)"><rect width="36" height="22" rx="3" fill="#fff" stroke="#a78bfa" stroke-width="1.2"/><text class="mB-token" x="18" y="14" fill="#7c3aed" font-weight="700">k=3</text></g>
+
+                <!-- Pulse ring on AGG -->
+                <g transform="translate(290, 125)"><circle class="mB-ring" r="14"/><circle class="mB-ring delay" r="14"/></g>
+
+                <!-- Edge GNN → Physics -->
+                <path id="mBe-gphys" class="mB-edge main" d="M 366 125 C 380 125, 386 105, 393 95"/>
+
+                <!-- ══════════════ Stage 4 — Physics-Informed Layer (Hazen-Williams) ══════════════ -->
+                <g transform="translate(393, 70)">
+                  <rect width="118" height="116" rx="5" fill="#fff" stroke="#f59e0b" stroke-width="1.4"/>
+                  <text x="59" y="14" class="mB-token" fill="#92400e" font-weight="700">Hazen-Williams</text>
+                  <line x1="6" y1="22" x2="112" y2="22" stroke="#fde68a" stroke-width="0.8"/>
+                  <!-- Equation as italic serif: h_f = 10.67·Q^1.85 / (C^1.85·D^4.87)·L -->
+                  <text x="59" y="42" class="mB-eqn" font-size="11">h</text>
+                  <text x="65" y="46" class="mB-eqn" font-size="8">f</text>
+                  <text x="73" y="42" class="mB-eqn" font-size="11">= 10.67·Q</text>
+                  <text x="105" y="38" class="mB-eqn" font-size="8">1.85</text>
+                  <line x1="20" y1="50" x2="98" y2="50" stroke="#92400e" stroke-width="0.8"/>
+                  <text x="59" y="64" class="mB-eqn" font-size="11">C</text>
+                  <text x="67" y="60" class="mB-eqn" font-size="8">1.85</text>
+                  <text x="80" y="64" class="mB-eqn" font-size="11">·D</text>
+                  <text x="93" y="60" class="mB-eqn" font-size="8">4.87</text>
+                  <text x="59" y="80" class="mB-eqn" font-size="9">· L · g(differentiable)</text>
+                  <text x="59" y="98" class="mB-token" fill="#92400e" font-weight="700" font-size="8">∇𝓛/∇θ ✓</text>
+                  <text x="59" y="110" class="mB-eqn" font-size="8.5">PINN regularizer</text>
                 </g>
-                <text class="mB-label tag success" x="585" y="217">PASS · 통계</text>
+
+                <!-- Edge Physics → Multi-task -->
+                <path id="mBe-pmtl" class="mB-edge main" d="M 511 130 C 525 130, 538 130, 548 130"/>
+
+                <!-- ══════════════ Stage 5 — Multi-Task Discrimination Heads ══════════════ -->
+                <g transform="translate(580, 78)">
+                  <circle class="mB-node check" r="12"/>
+                  <text class="mB-label check" y="3">압력</text>
+                </g>
+                <g transform="translate(580, 130)">
+                  <circle class="mB-node check" r="12"/>
+                  <text class="mB-label check" y="3">유량</text>
+                </g>
+                <g transform="translate(580, 182)">
+                  <circle class="mB-node check" r="12"/>
+                  <text class="mB-label check" y="3" font-size="8">K-fac</text>
+                </g>
+                <!-- 3 pulse rings -->
+                <g transform="translate(580, 78)"><circle class="mB-ring" r="13"/><circle class="mB-ring delay" r="13"/></g>
+                <g transform="translate(580, 130)"><circle class="mB-ring" r="13"/><circle class="mB-ring delay" r="13"/></g>
+                <g transform="translate(580, 182)"><circle class="mB-ring" r="13"/><circle class="mB-ring delay" r="13"/></g>
+
+                <!-- Edge Multi-Task → Verdict (converging) -->
+                <path id="mBe-v1" class="mB-edge main" d="M 593 78  C 625 90,  655 110, 678 125"/>
+                <path id="mBe-v2" class="mB-edge main" d="M 593 130 C 625 130, 655 130, 678 130"/>
+                <path id="mBe-v3" class="mB-edge main" d="M 593 182 C 625 165, 655 145, 678 137"/>
+
+                <!-- ══════════════ Stage 6 — Verdict (Sigmoid + bar chart) ══════════════ -->
+                <!-- Pulse ring around verdict -->
+                <g transform="translate(692, 130)">
+                  <circle class="mB-ring success" r="22"/>
+                  <circle class="mB-ring success delay" r="22"/>
+                </g>
+                <!-- Big PASS badge -->
+                <g transform="translate(692, 130)">
+                  <circle r="20" fill="#10b981" filter="url(#mBGlow)"/>
+                  <path d="M -10 0 L -3 7 L 11 -8" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                </g>
+                <!-- P(PASS|x) label -->
+                <text class="mB-eqn" x="700" y="80" font-size="10">P(✓|x) = σ(W·x)</text>
+                <!-- Probability bar chart -->
+                <g transform="translate(672, 170)">
+                  <rect x="0"  y="20" width="5" height="14" fill="#10b981" opacity="0.55"/>
+                  <rect x="8"  y="8"  width="5" height="26" fill="#10b981" opacity="0.75"/>
+                  <rect x="16" y="12" width="5" height="22" fill="#10b981" opacity="0.85"/>
+                  <rect x="24" y="2"  width="5" height="32" fill="#10b981"/>
+                  <rect x="32" y="6"  width="5" height="28" fill="#10b981" opacity="0.9"/>
+                </g>
 
                 <!-- Traveling particles -->
-                <circle r="2.6" class="mB-particle" fill="#4f46e5"><animateMotion dur="1.8s" repeatCount="indefinite"><mpath href="#mBe-1-2"/></animateMotion></circle>
-                <circle r="2.4" class="mB-particle" fill="#06b6d4"><animateMotion dur="1.8s" begin="0.6s" repeatCount="indefinite"><mpath href="#mBe-1-3"/></animateMotion></circle>
-                <circle r="2.4" class="mB-particle" fill="#8b5cf6"><animateMotion dur="2s"   begin="0.3s" repeatCount="indefinite"><mpath href="#mBe-1-1"/></animateMotion></circle>
-                <circle r="2.4" class="mB-particle" fill="#4f46e5"><animateMotion dur="1.8s" begin="0.9s" repeatCount="indefinite"><mpath href="#mBe-1-4"/></animateMotion></circle>
-                <circle r="2.5" class="mB-particle" fill="#8b5cf6"><animateMotion dur="2s"   begin="0.4s" repeatCount="indefinite"><mpath href="#mBe-2-1"/></animateMotion></circle>
-                <circle r="2.5" class="mB-particle" fill="#8b5cf6"><animateMotion dur="2s"   begin="1s"   repeatCount="indefinite"><mpath href="#mBe-2-2"/></animateMotion></circle>
-                <circle r="2.5" class="mB-particle" fill="#8b5cf6"><animateMotion dur="2s"   begin="1.6s" repeatCount="indefinite"><mpath href="#mBe-2-3"/></animateMotion></circle>
-                <circle r="2.6" class="mB-particle" fill="#10b981"><animateMotion dur="1.6s" begin="0.5s" repeatCount="indefinite"><mpath href="#mBe-3-1"/></animateMotion></circle>
-                <circle r="2.6" class="mB-particle" fill="#10b981"><animateMotion dur="1.6s" begin="1.1s" repeatCount="indefinite"><mpath href="#mBe-3-2"/></animateMotion></circle>
-                <circle r="2.6" class="mB-particle" fill="#10b981"><animateMotion dur="1.6s" begin="0.8s" repeatCount="indefinite"><mpath href="#mBe-3-3"/></animateMotion></circle>
+                <circle r="2.5" class="mB-particle" fill="#4f46e5"><animateMotion dur="1.9s" repeatCount="indefinite"><mpath href="#mBe-g1"/></animateMotion></circle>
+                <circle r="2.5" class="mB-particle" fill="#06b6d4"><animateMotion dur="1.9s" begin="0.4s" repeatCount="indefinite"><mpath href="#mBe-g2"/></animateMotion></circle>
+                <circle r="2.5" class="mB-particle" fill="#8b5cf6"><animateMotion dur="1.9s" begin="0.8s" repeatCount="indefinite"><mpath href="#mBe-g3"/></animateMotion></circle>
+                <circle r="2.6" class="mB-particle" fill="#f59e0b"><animateMotion dur="1.8s" begin="0.3s" repeatCount="indefinite"><mpath href="#mBe-gphys"/></animateMotion></circle>
+                <circle r="2.6" class="mB-particle" fill="#f59e0b"><animateMotion dur="1.6s" begin="0.6s" repeatCount="indefinite"><mpath href="#mBe-pmtl"/></animateMotion></circle>
+                <circle r="2.6" class="mB-particle" fill="#10b981"><animateMotion dur="1.6s" begin="0.5s" repeatCount="indefinite"><mpath href="#mBe-v1"/></animateMotion></circle>
+                <circle r="2.6" class="mB-particle" fill="#10b981"><animateMotion dur="1.6s" begin="1s"   repeatCount="indefinite"><mpath href="#mBe-v2"/></animateMotion></circle>
+                <circle r="2.6" class="mB-particle" fill="#10b981"><animateMotion dur="1.6s" begin="1.4s" repeatCount="indefinite"><mpath href="#mBe-v3"/></animateMotion></circle>
               </svg>
             </a>
           </div>

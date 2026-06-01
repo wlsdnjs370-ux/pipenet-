@@ -2148,7 +2148,8 @@
       }
     });
 
-    // 캔버스 system 모드에 라이저 시각화 추가 — _renderSystemMode 후처리
+    // 캔버스 system 모드에 라이저 시각화 추가 — _renderSystemMode 후처리.
+    // PR1.7: glow halo + 굵은 sharp center + 노드 강조로 path 가 평행 라이저들 위로 부각되게.
     const _origRenderSystemMode = _renderSystemMode;
     _renderSystemMode = function() {
       _origRenderSystemMode();
@@ -2157,9 +2158,10 @@
       const nodeMap = new Map();
       for (const n of r.nodes) nodeMap.set(n.label, n);
 
-      // 라이저 파이프 — 굵은 노란선
-      ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3.5;
-      ctx.globalAlpha = 0.95;
+      ctx.globalAlpha = 1.0;
+      // Pass 1 — 굵은 halo (path 주변에 따뜻한 발광)
+      ctx.strokeStyle = "rgba(253, 224, 71, 0.30)"; ctx.lineWidth = 12;
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
       for (const p of r.pipes) {
         const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
         if (!a || !b) continue;
@@ -2167,23 +2169,48 @@
         const [x2, y2] = worldToScreen(b.x, b.y);
         ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
       }
-      // 라이저 노드 — 굵은 점 + 라벨
+      // Pass 2 — 중간 halo
+      ctx.strokeStyle = "rgba(253, 224, 71, 0.55)"; ctx.lineWidth = 6;
+      for (const p of r.pipes) {
+        const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
+        if (!a || !b) continue;
+        const [x1, y1] = worldToScreen(a.x, a.y);
+        const [x2, y2] = worldToScreen(b.x, b.y);
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      // Pass 3 — sharp center (밝은 amber)
+      ctx.strokeStyle = "#fde047"; ctx.lineWidth = 2.5;
+      for (const p of r.pipes) {
+        const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
+        if (!a || !b) continue;
+        const [x1, y1] = worldToScreen(a.x, a.y);
+        const [x2, y2] = worldToScreen(b.x, b.y);
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+
+      // 노드 — pump(보라) / AV(빨강) / 중간(amber). 작은 fitting 노드는 작게.
+      const isEndpoint = (n) => (n.io_node === "Input") || (n.label === r.av_node_label);
       for (const n of r.nodes) {
         const [sx, sy] = worldToScreen(n.x, n.y);
+        const ep = isEndpoint(n);
+        const radius = ep ? 8 : 4;
         // 흰 외곽
-        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = ep ? 2.5 : 1.5;
+        ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.stroke();
         // 색 채움
         ctx.fillStyle = (n.io_node === "Input") ? "#a855f7"
                        : (n.label === r.av_node_label) ? "#ef4444"
-                       : "#fbbf24";
-        ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill();
-        // 라벨
-        ctx.fillStyle = "#fef3c7";
-        ctx.font = "bold 11px ui-monospace, monospace";
-        ctx.fillText(n.label, sx + 10, sy + 4);
+                       : "#fde047";
+        ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.fill();
+        // endpoint 만 라벨 표시 (P / AV) — 중간 노드는 너무 많아서 라벨 생략
+        if (ep) {
+          ctx.fillStyle = "#fef3c7";
+          ctx.font = "bold 12px ui-monospace, monospace";
+          const tag = (n.io_node === "Input") ? "P" : "AV";
+          ctx.fillText(tag, sx + 12, sy + 5);
+        }
       }
-      ctx.globalAlpha = 1;
     };
 
     // ─────────────────────────────────────────────────────────────────
@@ -2302,35 +2329,41 @@
         ctx.fillText(msg, w / 2 - m.width / 2, h / 2);
         return;
       }
+      // PR1.7 — 추출 path 가 있으면 base drawing 흐리게 (path 강조용).
+      // 시각적으로 평행 라이저들이 path 와 구분되도록.
+      const dim = state.system_riser ? 0.22 : 1.0;
       // entity 를 카테고리별 색상으로 — TEXT 는 노랑, PIPE/L 류는 시안, INSERT/SYMBOL 는 주황
-      ctx.globalAlpha = 1.0;
       // 1) LINE / LWPOLYLINE / ARC — 시안 (배관 라인)
+      ctx.globalAlpha = dim;
       ctx.strokeStyle = "#22d3ee"; ctx.fillStyle = "#22d3ee"; ctx.lineWidth = 1.4;
       for (const en of ents) {
         if (en.t === "L" || en.t === "PL" || en.t === "A") drawEntity(en);
       }
       // 2) CIRCLE — 노랑 (헤드/심볼)
+      ctx.globalAlpha = dim;
       ctx.strokeStyle = "#fbbf24"; ctx.fillStyle = "#fbbf24"; ctx.lineWidth = 1.6;
       for (const en of ents) {
         if (en.t === "C") drawEntity(en);
       }
       // 3) INSERT — 주황 (블록 — 펌프/밸브/표지 등)
+      ctx.globalAlpha = dim;
       ctx.strokeStyle = "#fb923c"; ctx.fillStyle = "#fb923c"; ctx.lineWidth = 1.2;
       for (const en of ents) {
         if (en.t === "I") drawEntity(en);
       }
-      // 4) HATCH/SOLID — 연한 회색 (배경 영역)
+      // 4) HATCH/SOLID — 연한 회색 (배경 영역). dim * 0.4 합성.
+      ctx.globalAlpha = dim * 0.4;
       ctx.strokeStyle = "#64748b"; ctx.fillStyle = "#64748b"; ctx.lineWidth = 0.6;
-      ctx.globalAlpha = 0.4;
       for (const en of ents) {
         if (en.t === "H" || en.t === "S") drawEntity(en);
       }
-      ctx.globalAlpha = 1.0;
-      // 5) TEXT — 흰색 (층 라벨 등)
+      // 5) TEXT — 흰색 (층 라벨 등). 텍스트는 path 있어도 적당히 보이게 dim 약간 완화.
+      ctx.globalAlpha = state.system_riser ? 0.55 : 1.0;
       ctx.fillStyle = "#e2e8f0"; ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1.0;
       for (const en of ents) {
         if (en.t === "T") drawEntity(en);
       }
+      ctx.globalAlpha = 1.0;
       // 펌프/AV 마커 (가장 위)
       drawSystemMarker(state.system_pump_marker, "#10b981", "P", "PUMP");
       drawSystemMarker(state.system_av_marker, "#ef4444", "A", "AV");

@@ -814,6 +814,8 @@
       uploadedFile: null,
       jobId: null,
       stageStartTimes: {},
+      // PR1.5 — Stage 2 헤드 점진 reveal. null = 전부 표시, 정수 = 처음 N개만
+      revealed_heads_count: null,
     };
 
     // ══════════════ PR1 — AnimationQueue + Boot overlay + Layer panel ══════════════
@@ -841,15 +843,20 @@
         if (this.queue.length === 0) { this.running = false; return; }
         this.budget += now - this.lastTick;
         this.lastTick = now;
-        // 적응형: 큐 크기 따라 speedup
         const qs = this.queue.length;
-        const speedup = qs > 80 ? 6 : qs > 40 ? 3 : qs > 20 ? 1.6 : 1;
         let processed = 0;
         while (this.queue.length > 0 && processed < 50) {
           const evt = this.queue[0];
           const def = this.handlers[evt.type];
           if (!def) { this.queue.shift(); processed++; continue; }
-          const cost = (def.budgetMs || 30) / speedup;
+          // 이벤트별 override (_budgetMs) > 핸들러 default budget
+          const baseCost = evt._budgetMs || def.budgetMs || 30;
+          // 적응형 speedup — 짧은 이벤트 (≤50ms, 보통 레이어 reveal 같은 micro) 만 가속.
+          // stage transition (≥600ms) 이나 head_reveal (≥50ms) 은 풀 듀레이션 유지.
+          const speedup = (baseCost <= 50)
+            ? (qs > 80 ? 4 : qs > 40 ? 2 : qs > 20 ? 1.4 : 1)
+            : 1;
+          const cost = baseCost / speedup;
           if (this.budget >= cost || this.fastForward) {
             this.queue.shift();
             try { def.handler(evt); } catch (err) { console.error("[animQueue]", evt.type, err); }
@@ -943,11 +950,45 @@
     };
     lpSkipBtnEl.addEventListener("click", () => animQueue.flush());
 
-    // 큐 핸들러 등록. PR2+ 에서 head_detected / graph_step / rank_assigned 추가.
+    // 큐 핸들러 등록. PR2+ 에서 graph_step / rank_assigned 추가.
     const animQueue = new AnimationQueue({
       layer_seen:       { budgetMs: 22, handler: (e) => LayerPanel.addLayer(e.name, e.entity_count) },
       layer_classified: { budgetMs: 30, handler: (e) => LayerPanel.classifyLayer(e.name, e.category, e.kept) },
       boot_msg:         { budgetMs: 40, handler: (e) => BootOverlay.setSub(e.msg) },
+
+      // PR1.5 — Stage 1/2 점진 reveal (백엔드 batch 응답을 클라이언트 모킹)
+      stage1_intro: { budgetMs: 600, handler: () => {
+        overlayInfoEl.textContent = "[Stage 1] 비배관 레이어 필터링 중…";
+      }},
+      stage1_switch: { budgetMs: 900, handler: () => {
+        setStageView(1);
+        const n = (state.stage_entities[1] || []).length;
+        overlayInfoEl.textContent = `[Stage 1 완료] 배관망 entity ${n.toLocaleString()}개`;
+      }},
+      stage2_intro: { budgetMs: 600, handler: () => {
+        overlayInfoEl.textContent = "[Stage 2] 헤드 후보 스캔 시작…";
+      }},
+      stage2_switch: { budgetMs: 300, handler: () => {
+        state.revealed_heads_count = 0;
+        setStageView(2);
+      }},
+      head_reveal: { budgetMs: 70, handler: (e) => {
+        state.revealed_heads_count = e.index + 1;
+        overlayInfoEl.textContent = `[Stage 2] 헤드 검출 ${e.index + 1} / ${e.total}`;
+        render();
+      }},
+      stage2_done: { budgetMs: 500, handler: () => {
+        state.revealed_heads_count = null; // 전부 표시 모드로 복귀
+        render();
+        overlayInfoEl.textContent = `[Stage 2 완료] ${state.detected_heads.length}개 헤드`;
+        updateEditCounts();
+        headEditSection.style.display = "block";
+        editStatusEl.textContent = `${state.detected_heads.length}개 헤드 검출됨. 편집 후 [배관망 완성] 클릭.`;
+      }},
+      stage3_switch: { budgetMs: 600, handler: () => {
+        setStageView(3);
+        overlayInfoEl.textContent = "[Stage 3 완료] 배관망 그래프";
+      }},
     });
 
     // PR1 mocking — 백엔드가 아직 micro-event 안 보냄.
@@ -1102,8 +1143,14 @@
         ctx.globalAlpha = 1;
         ctx.lineWidth = 1.4;
         // 검출된 헤드 bbox (삭제 마킹된 건 빨간 X)
+        // PR1.5 — revealed_heads_count 가 정수면 처음 N개만 표시 (점진 reveal)
+        let _headSeen = 0;
         for (const en of ents) {
           if (en.t !== "B") continue;
+          if (state.revealed_heads_count !== null && _headSeen >= state.revealed_heads_count) {
+            _headSeen++; continue;
+          }
+          _headSeen++;
           const deleted = state.user_deleted_indices.has(en.i);
           const conf = en.c ?? 0.5;
           if (deleted) ctx.strokeStyle = "#dc2626";
@@ -1530,11 +1577,12 @@
       if (!state.uploadedFile) return;
       runBtn.disabled = true;
       runBtn.textContent = "▶ 진행 중...";
-      // PR1 — Boot overlay + Layer panel 초기화
+      // PR1/1.5 — Boot overlay + Layer panel + reveal 상태 초기화
       animQueue.clear();
       LayerPanel.reset();
       LayerPanel.show();
       BootOverlay.show("Parsing DXF entities");
+      state.revealed_heads_count = null;
       // reset stage rows
       for (let i = 0; i <= 6; i++) {
         const row = document.getElementById("stage-row-" + i);
@@ -1636,22 +1684,33 @@
           emptyEl.style.display = "none";
           render();
         }
-        // stage 1/2/3/4 entity 도착 시 자동 view 토글 (view 만, 줌 안 건드림)
-        if (evt.stage === 1 && state.stage_entities[1].length) setStageView(1);
+        // PR1.5 — stage 1/2/3 view 전환을 큐로 직렬화 (사용자가 각 단계를 보도록).
+        // stage 1: intro 메시지 → 실제 view 전환.
+        if (evt.stage === 1 && state.stage_entities[1].length) {
+          animQueue.enqueue({ type: "stage1_intro" });
+          animQueue.enqueue({ type: "stage1_switch" });
+        }
+        // stage 2: 헤드 데이터는 즉시 캡처 (큐가 처리할 때 사용 가능해야 함), reveal 은 큐로.
         if (evt.stage === 2 && state.stage_entities[2].length) {
-          setStageView(2);
-          // 헤드 인식 결과 캡처 (편집 UI 준비)
           state.detected_heads = state.stage_entities[2]
             .filter(en => en.t === "B" && en.pos)
             .map(en => ({ i: en.i, pos: en.pos, bbox: en.p, k: en.k, c: en.c }));
           state.user_added_heads = [];
           state.user_deleted_indices = new Set();
           state.zones = [];
-          updateEditCounts();
-          headEditSection.style.display = "block";
-          editStatusEl.textContent = `${state.detected_heads.length}개 헤드 검출됨. 편집 후 [배관망 완성] 클릭.`;
+          animQueue.enqueue({ type: "stage2_intro" });
+          animQueue.enqueue({ type: "stage2_switch" });
+          const _total = state.detected_heads.length;
+          // Stage 2 reveal 총 ~3-5s 목표: 헤드당 budget = clamp(2500ms / N, 35ms, 120ms)
+          const _hbud = Math.max(35, Math.min(120, Math.round(3500 / Math.max(1, _total))));
+          for (let i = 0; i < _total; i++) {
+            animQueue.enqueue({ type: "head_reveal", index: i, total: _total, _budgetMs: _hbud });
+          }
+          animQueue.enqueue({ type: "stage2_done" });
         }
-        if (evt.stage === 3 && state.stage_entities[3].length) setStageView(3);  // 배관망 그래프
+        if (evt.stage === 3 && state.stage_entities[3].length) {
+          animQueue.enqueue({ type: "stage3_switch" });
+        }
         if (evt.stage === 4 && state.stage_entities[4].length) setStageView(4);  // 30 헤드
         // 버튼 활성화
         const btn = stageButtons[evt.stage];

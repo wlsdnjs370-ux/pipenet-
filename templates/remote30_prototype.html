@@ -1934,7 +1934,38 @@
     const _panelSystem = document.getElementById("mode-panel-system");
     const _panelCombined = document.getElementById("mode-panel-combined");
 
+    // 모드 별 view (zoom/pan) 보존 — 모드 전환 시 각자의 view 로 복원.
+    // 미설정 (이 모드 첫 진입) 이면 데이터 fit 또는 기본값 사용.
+    state.view_per_mode = { plane: null, system: null, combined: null };
+
+    function _saveCurrentView(mode) {
+      if (!mode) return;
+      state.view_per_mode[mode] = {
+        zoom: state.view.zoom, panX: state.view.panX, panY: state.view.panY,
+        fitZoom: state.view.fitZoom, fitMode: state.view.fitMode,
+      };
+    }
+    function _restoreOrFitForMode(mode) {
+      const saved = state.view_per_mode[mode];
+      if (saved && saved.zoom) {
+        Object.assign(state.view, saved);
+        return true;
+      }
+      // 저장된 view 없음 — 첫 진입. 데이터 있으면 fit, 없으면 그대로.
+      if (mode === "plane") {
+        const has = state.stage_entities && state.stage_entities[0] && state.stage_entities[0].length;
+        if (has && typeof fitToBBox === "function") { fitToBBox(); return true; }
+      } else if (mode === "system") {
+        const has = state.system_entities && state.system_entities.length;
+        if (has && typeof fitSystemCanvas === "function") { fitSystemCanvas(); return true; }
+      }
+      return false;
+    }
+
     function setMode(mode) {
+      const prev = state.current_mode;
+      // 이전 모드의 view 저장 (다음 복귀 시 사용)
+      if (prev && prev !== mode) _saveCurrentView(prev);
       state.current_mode = mode;
       _modeButtons.forEach(b => b.classList.toggle("is-active", b.dataset.mode === mode));
       // 사이드바 패널 토글 — 모드별로 다른 입력 인터페이스 표시
@@ -1956,6 +1987,9 @@
       // 좌측 overlay 정보
       const labels = { plane: "평면도 추출", system: "계통도 추출", combined: "통합" };
       if (overlayInfoEl) overlayInfoEl.textContent = `[모드] ${labels[mode] || mode}`;
+      // 모드 전환 후 view 복원 (저장된 게 있으면) 또는 데이터에 맞춰 fit.
+      // 이전 모드에서 변경된 zoom/pan 이 이번 모드 entity 와 안 맞아 화면 밖으로 사라지는 버그 방지.
+      _restoreOrFitForMode(mode);
       // 캔버스 강제 리렌더 — 모드 전환 후 이전 모드 화면이 잔류하는 버그 방지.
       try { render(); } catch (_) {}
     }

@@ -283,6 +283,258 @@
       #home-nav-btn.float-back-btn::before { content: "←"; font-size: 0.95rem; line-height: 1; opacity: 0.85; }
       #home-nav-btn.float-back-btn.hidden { display: none !important; }
 
+      /* ─── 통합 검증 모듈 카드 정렬 (좌우상하 대칭) ─── */
+      /* 공통 카드 surface 통일 */
+      .app-shell.validation-suite-mode .card.menu-panel,
+      .app-shell.validation-suite-mode .validation-upload-card,
+      .app-shell.validation-suite-mode #summary {
+        background: var(--c-surface) !important;
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-lg) !important;
+        box-shadow: var(--sh-sm) !important;
+        padding: 20px 22px !important;
+        margin-bottom: 14px;
+      }
+
+      /* validation-nav (5개 탭 버튼 행) */
+      .app-shell.validation-suite-mode .validation-nav.card {
+        background: var(--c-surface) !important;
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-lg) !important;
+        box-shadow: var(--sh-sm) !important;
+        padding: 8px !important;
+        margin-bottom: 14px;
+      }
+      .app-shell.validation-suite-mode .validation-nav .validation-nav-row {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 4px;
+      }
+      .app-shell.validation-suite-mode .validation-nav .suite-btn {
+        background: transparent;
+        border: 0;
+        padding: 9px 12px;
+        border-radius: 7px;
+        font-size: 0.83rem;
+        font-weight: 500;
+        color: var(--c-text-secondary);
+        font-family: var(--font-sans);
+        cursor: pointer;
+        transition: all var(--tr);
+        letter-spacing: -0.005em;
+      }
+      .app-shell.validation-suite-mode .validation-nav .suite-btn:hover {
+        background: var(--c-surface-soft);
+        color: var(--c-text);
+      }
+      .app-shell.validation-suite-mode .validation-nav .suite-btn.active {
+        background: var(--c-accent);
+        color: #fff;
+        box-shadow: 0 1px 3px rgba(79, 70, 229, 0.30);
+        font-weight: 600;
+      }
+
+      /* 업로드 카드 — 결과서 + SDF + 실행 버튼 균등 배치 */
+      .app-shell.validation-suite-mode .validation-upload-card .upload-form {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr auto;
+        gap: 14px;
+        align-items: end;
+      }
+      .app-shell.validation-suite-mode .validation-upload-card .field {
+        display: flex; flex-direction: column; gap: 6px;
+      }
+      .app-shell.validation-suite-mode .validation-upload-card .field label {
+        font-size: 0.78rem; font-weight: 600;
+        color: var(--c-text-secondary);
+        letter-spacing: 0.005em;
+      }
+      .app-shell.validation-suite-mode .validation-upload-card .field input {
+        padding: 8px 10px;
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-md);
+        background: var(--c-surface);
+        font-size: 0.85rem;
+        font-family: var(--font-sans);
+        transition: all var(--tr);
+      }
+      .app-shell.validation-suite-mode .validation-upload-card .field input:hover { border-color: var(--c-border-strong); }
+      .app-shell.validation-suite-mode .validation-upload-card .field input:focus {
+        outline: none;
+        border-color: var(--c-accent);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+      }
+      .app-shell.validation-suite-mode .validation-upload-card button[type="submit"] {
+        padding: 9px 18px;
+        background: var(--c-accent);
+        color: #fff;
+        border: 0;
+        border-radius: var(--r-md);
+        font-size: 0.88rem; font-weight: 600;
+        font-family: var(--font-sans);
+        cursor: pointer;
+        height: 38px;
+        transition: all var(--tr);
+        box-shadow: 0 1px 3px rgba(79, 70, 229, 0.30);
+      }
+      .app-shell.validation-suite-mode .validation-upload-card button[type="submit"]:hover {
+        background: var(--c-accent-hover);
+        transform: translateY(-1px);
+        box-shadow: 0 3px 8px rgba(79, 70, 229, 0.40);
+      }
+      .app-shell.validation-suite-mode .validation-upload-card .status {
+        margin: 12px 0 0;
+        font-size: 0.8rem; color: var(--c-text-secondary);
+        padding-top: 12px; border-top: 1px solid var(--c-border);
+      }
+
+      /* workspace-panel — 좌우 동일 높이, 동일 카드 외관 */
+      .app-shell.validation-suite-mode #workspace-panel .workspace-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: stretch;
+      }
+      .app-shell.validation-suite-mode .workspace-left,
+      .app-shell.validation-suite-mode .workspace-right {
+        background: var(--c-surface-soft);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-md);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .app-shell.validation-suite-mode .panel-head,
+      .app-shell.validation-suite-mode .network-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        min-height: 32px;
+      }
+      .app-shell.validation-suite-mode .panel-head h2,
+      .app-shell.validation-suite-mode .network-head h2 {
+        margin: 0;
+        font-size: 0.95rem; font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--c-text);
+      }
+      .app-shell.validation-suite-mode .result-table-wrap {
+        flex: 1;
+        background: var(--c-surface);
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-md);
+        overflow: auto;
+        min-height: 520px;
+      }
+      .app-shell.validation-suite-mode .network-wrap {
+        flex: 1;
+        background: var(--c-surface) !important;
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-md);
+        height: auto !important;
+        min-height: 520px;
+      }
+      .app-shell.validation-suite-mode .network-tools {
+        display: flex; gap: 4px;
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-md);
+        padding: 3px;
+      }
+      .app-shell.validation-suite-mode .network-tools button {
+        padding: 3px 9px;
+        background: transparent;
+        border: 0;
+        border-radius: 4px;
+        font-size: 0.78rem;
+        font-family: var(--font-sans);
+        font-weight: 500;
+        color: var(--c-text-secondary);
+        cursor: pointer;
+        transition: all var(--tr);
+      }
+      .app-shell.validation-suite-mode .network-tools button:hover {
+        background: var(--c-surface-soft);
+        color: var(--c-text);
+      }
+      .app-shell.validation-suite-mode .network-legend {
+        display: flex; flex-wrap: wrap; gap: 12px;
+        padding: 10px 12px; margin-top: 10px;
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-md);
+      }
+      .app-shell.validation-suite-mode .network-legend-item {
+        font-size: 0.78rem; color: var(--c-text-secondary);
+        display: inline-flex; align-items: center; gap: 6px;
+      }
+      .app-shell.validation-suite-mode .section-note {
+        font-size: 0.75rem; color: var(--c-muted);
+        margin: 8px 0 0;
+      }
+
+      /* insight-panel — 공학적 + 경제성 카드 정렬 */
+      .app-shell.validation-suite-mode #insight-panel .insight-grid {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: stretch;
+      }
+      .app-shell.validation-suite-mode .insight-box {
+        background: var(--c-surface-soft);
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-md);
+        padding: 16px !important;
+        display: flex;
+        flex-direction: column;
+        min-height: 320px;
+      }
+      .app-shell.validation-suite-mode .insight-box h3 {
+        margin: 0 0 14px !important;
+        font-size: 0.92rem !important;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--c-text);
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--c-border);
+      }
+      .app-shell.validation-suite-mode .engineering-visuals { margin-bottom: 12px; }
+      .app-shell.validation-suite-mode .guide-list {
+        margin: 0; padding: 0; list-style: none;
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      .app-shell.validation-suite-mode .guide-list li {
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-sm);
+        padding: 10px 12px;
+        font-size: 0.83rem; line-height: 1.55;
+        color: var(--c-text);
+      }
+
+      /* h2 — 패널 헤더 일관 */
+      .app-shell.validation-suite-mode .card.menu-panel > h2 {
+        margin: 0 0 14px;
+        font-size: 1rem; font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--c-text);
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--c-border);
+      }
+
+      /* 반응형 — 좁은 화면 (1024px 이하) */
+      @media (max-width: 1024px) {
+        .app-shell.validation-suite-mode #workspace-panel .workspace-grid,
+        .app-shell.validation-suite-mode #insight-panel .insight-grid {
+          grid-template-columns: 1fr;
+        }
+        .app-shell.validation-suite-mode .validation-upload-card .upload-form {
+          grid-template-columns: 1fr;
+        }
+      }
+
       /* ─── iframe 모듈 진입 시 — 외부 페이지·iframe 자체 스크롤바 제거 ─── */
       body:has(.app-shell.fullscreen-module-mode) { overflow: hidden; }
       .app-shell.fullscreen-module-mode { padding: 0 !important; overflow: hidden !important; }

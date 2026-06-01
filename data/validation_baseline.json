@@ -1,0 +1,97 @@
+{
+  "baseline_results": [
+    {
+      "case": "대명동 201동 — 28F 자연낙차 라이저",
+      "dxf": "대명동201동 계통도.dxf",
+      "answer_sdf": "1-1. 업무시설 201동_28F (자연낙차)-RV03_NEW.sdf",
+      "our": {
+        "source": "our_extract",
+        "node_count": 6,
+        "pipe_count": 5,
+        "nozzle_count": 0,
+        "valve_count": 0,
+        "total_length_m": 62.05,
+        "elev_min_m": 0.0,
+        "elev_max_m": 45.8,
+        "elev_span_m": 45.8,
+        "bore_distribution_mm": {
+          "100": 5
+        },
+        "bore_length_mm": {
+          "100": 62.05
+        },
+        "main_bore_mm": 100,
+        "main_bore_length_m": 62.05
+      },
+      "our_error": null,
+      "answer_full": {
+        "source": "answer_full",
+        "node_count": 135,
+        "pipe_count": 104,
+        "nozzle_count": 30,
+        "valve_count": 0,
+        "total_length_m": 245.06,
+        "elev_min_m": -79.15,
+        "elev_max_m": 0.0,
+        "elev_span_m": 79.15,
+        "bore_distribution_mm": {
+          "125": 11,
+          "80": 2,
+          "50": 7,
+          "65": 14,
+          "150": 4,
+          "25": 47,
+          "40": 7,
+          "32": 12
+        },
+        "bore_length_mm": {
+          "125": 18.14,
+          "80": 9.36,
+          "50": 12.28,
+          "65": 29.31,
+          "150": 115.03,
+          "25": 37.88,
+          "40": 9.58,
+          "32": 13.48
+        },
+        "main_bore_mm": 150,
+        "main_bore_length_m": 115.03
+      },
+      "answer_riser_only": {
+        "source": "answer_riser_100mm+",
+        "node_count": 16,
+        "pipe_count": 15,
+        "nozzle_count": 0,
+        "valve_count": 0,
+        "total_length_m": 133.17,
+        "elev_min_m": -79.15,
+        "elev_max_m": 0.0,
+        "elev_span_m": 79.15,
+        "bore_distribution_mm": {
+          "125": 11,
+          "150": 4
+        },
+        "bore_length_mm": {
+          "125": 18.14,
+          "150": 115.03
+        },
+        "main_bore_mm": 150,
+        "main_bore_length_m": 115.03
+      },
+      "comparison": {
+        "node_ratio_our_vs_answer_full": 0.044,
+        "node_ratio_our_vs_answer_riser": 0.375,
+        "pipe_ratio_our_vs_answer_full": 0.048,
+        "pipe_ratio_our_vs_answer_riser": 0.333,
+        "length_ratio_our_vs_answer_full": 0.253,
+        "length_ratio_our_vs_answer_riser": 0.466,
+        "length_diff_pct_vs_riser": -53.4,
+        "elev_span_diff_m": -33.35,
+        "main_bore_match": false,
+        "our_main_bore_mm": 100,
+        "answer_riser_main_bore_mm": 150,
+        "bore_diversity_iou_vs_riser": 0.0
+      }
+    }
+  ]
+}

@@ -58,3 +58,8 @@ Thumbs.db
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# 대용량 / 루트 잔재 (2026-06-01) — repository 에는 두지 않음
+수리계산 참고용 도서.zip
+대명동201동 계통도_최소.dwg
+대명동201동 계통도_최소.dxf

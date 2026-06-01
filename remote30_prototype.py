@@ -910,20 +910,69 @@ def extract_riser_msp_28f(pump_xy: tuple[float, float],
 # v1 은 토폴로지만 (노드 좌표 + 연결). 직경/압력은 v2 에서.
 # ──────────────────────────────────────────────────────────────────────────
 
+# 계통도 배관 레이어 자동 식별 키워드 — 사용자의 작도 컨벤션 기반.
+# 매칭되는 레이어 이름은 case-insensitive substring 검사.
+SYSTEM_PIPE_LAYER_KEYWORDS: tuple[str, ...] = (
+    "HSP", "LSP", "MSP", "LLSP",  # 사용자 zone 약어 (고/저/중층, 지하)
+    "SP",                            # 일반 스프링클러
+    "배관", "PIPE", "RISER",          # 한/영 일반어
+    "입상", "가지", "분기", "감압밸브",  # 도면 표기 빈도 높음
+)
+
+
+def _auto_pipe_layer_filter(entities: list[dict],
+                            keywords: tuple[str, ...] = SYSTEM_PIPE_LAYER_KEYWORDS,
+                            ) -> set[str]:
+    """entity 의 layer 이름들 중 키워드와 substring 매칭되는 것 추출 (대소문자 무시)."""
+    layer_names: set[str] = set()
+    for en in entities:
+        l = en.get("l")
+        if l:
+            layer_names.add(l)
+    kw_upper = [k.upper() for k in keywords]
+    matched: set[str] = set()
+    for l in layer_names:
+        u = l.upper()
+        for k in kw_upper:
+            if k in u:
+                matched.add(l)
+                break
+    return matched
+
+
 def build_system_graph(
     entities: list[dict],
     bridge_tolerances_mm: tuple[float, ...] = (200.0, 500.0, 1000.0, 2000.0),
+    layer_filter: set[str] | None = None,
+    auto_filter_min_lines: int = 20,
 ) -> tuple[dict, dict, dict]:
     """계통도 entity 에서 LINE/POLYLINE 만 추려 무방향 그래프 빌드 + 다단계 bridge.
 
     Args:
         entities: parse_dxf_for_view().entities 또는 parse_dxf_bundle().entities.
         bridge_tolerances_mm: 점진적으로 큰 거리부터 컴포넌트 연결. 작은 것부터.
+        layer_filter: 명시 지정 시 이 레이어들의 LINE 만 사용. None 이면 자동 키워드 필터.
+        auto_filter_min_lines: 자동 필터 결과 LINE 수가 이 미만이면 fallback 으로 전체 사용
+            (사용자 작도 컨벤션이 키워드와 안 맞는 도면 대비).
 
     Returns:
-        (graph, edge_len, stats) — stats 에는 노드 수, 엣지 수, 컴포넌트 수, bridge 수 등.
+        (graph, edge_len, stats) — stats 에 layer_filter 결과도 포함.
     """
-    line_ents = [en for en in entities if en.get("t") in ("L", "PL")]
+    all_line_ents = [en for en in entities if en.get("t") in ("L", "PL")]
+    if layer_filter is None:
+        auto_matched = _auto_pipe_layer_filter(entities)
+        line_ents = [en for en in all_line_ents if en.get("l") in auto_matched]
+        filter_used = auto_matched
+        fallback = False
+        if len(line_ents) < auto_filter_min_lines:
+            line_ents = all_line_ents
+            filter_used = set()  # = no filter
+            fallback = True
+    else:
+        line_ents = [en for en in all_line_ents if en.get("l") in layer_filter]
+        filter_used = set(layer_filter)
+        fallback = False
+
     graph, edge_len = _build_graph(line_ents)
     comps_before = len(_connected_components(graph))
     total_bridges = 0
@@ -932,11 +981,14 @@ def build_system_graph(
     comps_after = len(_connected_components(graph))
     stats = {
         "line_entity_count": len(line_ents),
+        "all_line_entity_count": len(all_line_ents),
         "node_count": len(graph),
         "edge_count": sum(len(nb) for nb in graph.values()) // 2,
         "components_before_bridge": comps_before,
         "components_after_bridge": comps_after,
         "bridges_applied": total_bridges,
+        "layer_filter_used": sorted(filter_used) if filter_used else None,
+        "layer_filter_fallback_no_match": fallback,
     }
     return graph, edge_len, stats
 
@@ -961,6 +1013,7 @@ def extract_system_path(
     pump_xy: tuple[float, float],
     av_xy: tuple[float, float],
     snap_tolerance_mm: float = 2500.0,
+    layer_filter: set[str] | None = None,
 ) -> dict:
     """계통도 DXF 에서 펌프 → AV 실제 배관망 경로 추출 (v1: 토폴로지만).
 
@@ -980,7 +1033,7 @@ def extract_system_path(
     if not entities:
         raise ValueError("계통도 entity 비어있음 — DXF 파싱 결과 확인 필요")
 
-    graph, edge_len, stats = build_system_graph(entities)
+    graph, edge_len, stats = build_system_graph(entities, layer_filter=layer_filter)
     if not graph:
         raise ValueError(f"LINE entity 가 없음 (전체 entity {len(entities)}개 중 LINE/PL 0개)")
 

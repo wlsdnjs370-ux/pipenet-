@@ -910,13 +910,26 @@ def extract_riser_msp_28f(pump_xy: tuple[float, float],
 # v1 은 토폴로지만 (노드 좌표 + 연결). 직경/압력은 v2 에서.
 # ──────────────────────────────────────────────────────────────────────────
 
-# 계통도 배관 레이어 자동 식별 키워드 — 사용자의 작도 컨벤션 기반.
+# 계통도 배관 레이어 자동 식별 키워드 — 47 도면 (다이소 + 양주옥정) 전수 분석 기반.
 # 매칭되는 레이어 이름은 case-insensitive substring 검사.
 SYSTEM_PIPE_LAYER_KEYWORDS: tuple[str, ...] = (
-    "HSP", "LSP", "MSP", "LLSP",  # 사용자 zone 약어 (고/저/중층, 지하)
-    "SP",                            # 일반 스프링클러
-    "배관", "PIPE", "RISER",          # 한/영 일반어
-    "입상", "가지", "분기", "감압밸브",  # 도면 표기 빈도 높음
+    # 사용자 zone 약어 (대명동 컨벤션)
+    "HSP", "LSP", "MSP", "LLSP",
+    # 일반 스프링클러 (+Spf, Sp-, SP-, SPF 다이소·양주옥정 공통)
+    "SP",
+    # 한/영 일반어
+    "배관", "PIPE", "RISER",
+    # 도면 표기 빈도 높음
+    "입상", "가지", "분기", "감압밸브",
+    # 47 도면 학습 결과 신규 (양주옥정 컨벤션)
+    "Sprinkler",            # F-Low Sprinkler, Mezzanine Sprinkler, High Sprinkler (29회 매치)
+    "F-",                   # F-고층부, F-저층부, F-중층부 prefix
+    "고층부", "중층부", "저층부",  # 한글 zone keyword
+    "In-h",                 # In-hyd, In-hbox, In-hpipe (옥내소화전 시스템)
+    "OPLSP", "OPSP",        # 오피스텔용 LSP / SP
+    "지하주차장",            # LSP-2 (지하주차장), 지하주차장 평면도 등
+    "배수배관",              # 양주옥정 배수배관 layer
+    "SC ", "SC(", "SC1",    # SC 1차(SP) 패턴
 )
 
 # v2 — TEXT 라벨 파싱 (직경 + 층)
@@ -1160,6 +1173,60 @@ def find_nearest_graph_node_constrained(
     return near, d
 
 
+def _collapse_collinear_nodes(
+    path: list[tuple[float, float]],
+    edge_len: dict,
+    angle_tol_deg: float = 0.5,
+    short_ratio: float = 1.5,
+) -> list[tuple[float, float]]:
+    """Path 의 짧은 + 직선상 중간 노드 제거 — 답안 SDF 노드 구조에 근접.
+
+    답안 SDF 의 노드는 fitting elbow / 분기 / 직경 변경 지점이라 평균 3-8m 간격.
+    우리 path 는 LINE 끝점마다 노드라 같은 직선에 N+1 노드. 두 조건 동시 만족 시 통합:
+      1) (i-1)→i 와 i→(i+1) 각도 ≤ angle_tol_deg (직선)
+      2) 두 segment 길이 합 ≤ path median segment 길이 × short_ratio × 2
+         (도면 단위 무관 — 상대 기준. short_ratio=1.5 → 평균의 1.5배까지 통합)
+    """
+    if len(path) <= 2:
+        return list(path)
+
+    # path 의 segment 길이 분포 → 중앙값
+    seg_lens: list[float] = []
+    for i in range(len(path) - 1):
+        a, b = path[i], path[i + 1]
+        L = edge_len.get((min(a, b), max(a, b)), math.hypot(b[0] - a[0], b[1] - a[1]))
+        seg_lens.append(L)
+    seg_lens_sorted = sorted(seg_lens)
+    median_len = seg_lens_sorted[len(seg_lens_sorted) // 2] if seg_lens_sorted else 1.0
+    threshold = median_len * short_ratio * 2.0   # 두 segment 합산용
+
+    kept = [path[0]]
+    for i in range(1, len(path) - 1):
+        prev = kept[-1]
+        cur = path[i]
+        nxt = path[i + 1]
+        dx1, dy1 = cur[0] - prev[0], cur[1] - prev[1]
+        dx2, dy2 = nxt[0] - cur[0], nxt[1] - cur[1]
+        L1 = math.hypot(dx1, dy1); L2 = math.hypot(dx2, dy2)
+        if L1 < 1e-6 or L2 < 1e-6:
+            continue   # 동일 좌표 노드는 무조건 통합
+        cross = dx1 * dy2 - dy1 * dx2
+        dot   = dx1 * dx2 + dy1 * dy2
+        ang_rad = math.atan2(abs(cross), dot)
+        is_collinear = math.degrees(ang_rad) <= angle_tol_deg
+        is_short = (L1 + L2) <= threshold
+        if is_collinear and is_short:
+            key_in  = (min(prev, cur), max(prev, cur))
+            key_out = (min(cur, nxt), max(cur, nxt))
+            merged_len = edge_len.get(key_in, L1) + edge_len.get(key_out, L2)
+            new_key = (min(prev, nxt), max(prev, nxt))
+            edge_len[new_key] = merged_len
+            continue
+        kept.append(cur)
+    kept.append(path[-1])
+    return kept
+
+
 def extract_system_path(
     entities: list[dict],
     pump_xy: tuple[float, float],
@@ -1211,6 +1278,11 @@ def extract_system_path(
             f"그래프 컴포넌트 {stats['components_after_bridge']}개 (bridge {stats['bridges_applied']}회 시도 후). "
             f"snap 거리 펌프={pump_d:.0f}mm, AV={av_d:.0f}mm."
         )
+
+    # D — 직선 노드 통합: (i-1)→i→(i+1) 가 직선이면 i 제거.
+    # 답안 SDF 는 fitting elbow / branch 만 노드. 우리는 LINE 끝점 마다 노드라
+    # 노드 수가 답안보다 ~60% 많음. 직선 segment 들을 한 pipe 로 합침.
+    path = _collapse_collinear_nodes(path, edge_len, angle_tol_deg=2.0)
 
     # v2 — TEXT 에서 직경 + 층 라벨 추출
     dia_text_pts = _extract_dia_text_points(entities)
@@ -1265,7 +1337,9 @@ def _system_path_to_riser_dict(
                 return ((f_idx - av_floor_idx) * floor_height_mm / 1000.0, f_name, True)
         return ((ny - av_y_dxf) / 1000.0, None, False)
 
-    # 노드
+    # 노드 — 라벨 컨벤션:
+    #   첫 노드 "1" (Input/펌프), 마지막 노드 "10" (AV).
+    #   중간 노드는 "n2", "n3", ... ("10" 과 충돌 방지 — path 길이 ≥ 10 일 때 collision 버그 fix).
     nodes: list[dict] = []
     nodes_with_floor = 0
     for i, pt in enumerate(path):
@@ -1274,7 +1348,7 @@ def _system_path_to_riser_dict(
         elif i == total - 1:
             label, io = "10", "No"
         else:
-            label, io = str(i + 1), "No"
+            label, io = f"n{i + 1}", "No"
         elev_m, floor_name, from_label = _elev_for_node(pt[1])
         if from_label:
             nodes_with_floor += 1
@@ -1300,7 +1374,10 @@ def _system_path_to_riser_dict(
         length_mm = edge_len.get(edge_key, math.hypot(b[0] - a[0], b[1] - a[1]))
         total_length_mm += length_mm
         dia, dia_dist, dia_raw = _match_diameter_for_segment(a, b, dia_text_pts)
-        used_dia = dia if dia is not None else 100
+        # C — 직경 default 100→150 (47 도면 학습:
+        #    답안 main_bore 분포 100mm 165개 / 150mm 148개 거의 동률,
+        #    대명동/양주옥정 자연낙차 case 답안 main 모두 150mm. 절충 default).
+        used_dia = dia if dia is not None else 150
         if dia is not None:
             dia_match_count += 1
         # pipe elev: 노드 간 elev 차이 (층 기반이면 정확, 아니면 Y/1000 fallback)
@@ -1403,8 +1480,30 @@ class HeadCandidate:
 #   A$C324C7814 — head body block (LWPOLYLINE + CIRCLE)
 #   A$C0F5C7CDB — head fitting (LWPOLYLINE + CIRCLE x 2)
 KNOWN_HEAD_BLOCKS: set[str] = {
+    # 대명동 201동 (기존 — nested INSERT 블록명)
     "A$C39172136", "A$C3F157AFD", "A$C60792707",
     "A$C6B5253FE", "A$C563427C5", "A$C324C7814", "A$C0F5C7CDB",
+    # 다이소 양주허브센터 — 47 도면 분석 결과 발견 (총 34K+ 인스턴스)
+    "K-160 헤드",            # 18,523 — K-160 표준 스프링클러
+    "K-160 (조기반응)",       #  9,042 — 조기반응형 스프링클러
+    "K-200 헤드",            #  7,039 — K-200 큰 직경
+    "Large Drop head-1",     #  1,665 — 다이소 물류센터 Large Drop 헤드
+    # 양주옥정 중상1블럭 — 표준 SP01 시리즈 (총 63K+ 인스턴스)
+    "SP01-01",               #  1,138
+    "SP01-02",               #  6,031
+    "SP01-04",               # 54,837 — 표준 헤드
+    "SP01-05",               #  2,194
+}
+
+# 헤드 부속/연결 (헤드 자체 아니지만 헤드 근처에 같이 작도되는 블록).
+# 이 블록들은 헤드 근접 클러스터링에 가중치 추가용 — 단독으로는 헤드 안 됨.
+HEAD_FITTING_BLOCKS: set[str] = {
+    "HEADCON",      # 15,193 — 헤드 connection (배관 연결)
+    "HDCROSS",      # 12,117 — 헤드 cross fitting (T자)
+    "HEADCOL",      #  4,204 — 헤드 collar
+    "HEADCOR",      #  3,980 — 헤드 corner
+    "SPCAP",        # 32,643 — SP 캡 (마감)
+    "HEADCOL (3)",  #    883 — collar 3-way
 }
 
 

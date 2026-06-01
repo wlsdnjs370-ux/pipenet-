@@ -1372,7 +1372,7 @@ def _system_path_to_riser_dict(
         a = path[i]; b = path[i + 1]
         edge_key = (min(a, b), max(a, b))
         length_mm = edge_len.get(edge_key, math.hypot(b[0] - a[0], b[1] - a[1]))
-        total_length_mm += length_mm
+        length_m_dxf = length_mm / 1000.0
         dia, dia_dist, dia_raw = _match_diameter_for_segment(a, b, dia_text_pts)
         # C — 직경 default 100→150 (47 도면 학습:
         #    답안 main_bore 분포 100mm 165개 / 150mm 148개 거의 동률,
@@ -1380,9 +1380,15 @@ def _system_path_to_riser_dict(
         used_dia = dia if dia is not None else 150
         if dia is not None:
             dia_match_count += 1
-        # pipe elev: 노드 간 elev 차이 (층 기반이면 정확, 아니면 Y/1000 fallback)
+        # pipe elev: 노드 간 elev 차이 (층 라벨 매칭 시 floor-aware elev).
         in_e = nodes[i]["elevation"]
         out_e = nodes[i + 1]["elevation"]
+        elev_m = round(out_e - in_e, 3)
+        # PIPENET 제약: |elev| ≤ length (피타고라스). 도면이 짧게 압축돼 그려진
+        # 수직 run (한 층 차이 = 2.1m elev 인데 DXF segment 가 1m 같은 경우) 의
+        # 실제 길이는 elev 만큼 되어야 hydraulic 계산 가능. length 보정.
+        length_m = max(length_m_dxf, abs(elev_m))
+        total_length_mm += length_m * 1000.0
         # Pipe 라벨에 "r" prefix — 라이저(1..9)/헤드망(10+) 컨벤션 영역 분리.
         # path 길이 ≥ 10 이면 "10" 등이 헤드망 pipe 와 충돌 (stitch 시 ValueError).
         # "r1", "r2", ... 식으로 prefix 해 절대 겹칠 일 없게.
@@ -1392,8 +1398,8 @@ def _system_path_to_riser_dict(
             "out": nodes[i + 1]["label"],
             "type": "KSD 3507",
             "dia": used_dia,
-            "length": round(length_mm / 1000.0, 3),
-            "elev":   round(out_e - in_e, 3),
+            "length": round(length_m, 3),
+            "elev":   elev_m,
             "c": "120",
             "status": "Normal",
             "group": "Unset",

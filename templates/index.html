@@ -140,7 +140,7 @@
 
       /* ─── 워크플로우 컨테이너 ─── */
       .workflow-svg {
-        width: 100%; height: auto; max-height: 540px; display: block;
+        width: 100%; height: auto; max-height: 270px; display: block;
         margin: 0;
         background:
           radial-gradient(ellipse at 18% 25%, rgba(99,102,241,0.08) 0, transparent 42%),
@@ -149,7 +149,7 @@
           var(--grad-soft-bg);
         border: 1px solid var(--c-border);
         border-radius: var(--r-xl);
-        padding: 24px;
+        padding: 14px;
         box-sizing: border-box;
         box-shadow: var(--sh-lg);
         position: relative;
@@ -250,6 +250,15 @@
         color: var(--c-text-secondary) !important;
         margin-top: 2px;
       }
+      .module-illustration {
+        width: 100%; height: auto;
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px dashed var(--c-border);
+        display: block;
+      }
+      .module-illustration .mi-bg { fill: var(--c-surface-soft); }
+      .module-illustration .mi-stroke { stroke: var(--c-border-strong); }
 
       /* ─── 모듈 진입 후엔 상단 헤더 카드 숨김 ─── */
       .app-shell:not(.home-mode) .app-header { display: none; }
@@ -831,11 +840,127 @@
               <span class="module-chip">Module A</span>
               <strong>Remote 30 Prototype</strong>
               <span>Upload a single DXF → extract the piping network → identify the 30 hydraulically worst heads → emit PIPENET XLSX/CSV input → .sdf output. All 4 stages are animated live on the canvas.</span>
+              <svg class="module-illustration" viewBox="0 0 360 110" preserveAspectRatio="xMidYMid meet" role="img" aria-label="DXF → 배관망 추출 → PIPENET .sdf">
+                <defs>
+                  <marker id="miArrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                    <path d="M0,0 L10,5 L0,10 z" fill="#4f46e5"/>
+                  </marker>
+                </defs>
+                <!-- DXF source (left) — 어수선한 도면 -->
+                <g transform="translate(8, 14)">
+                  <rect class="mi-bg mi-stroke" width="98" height="82" rx="6" stroke-width="1"/>
+                  <!-- 어수선한 도면 요소: 건축선, 텍스트 등 -->
+                  <line x1="8" y1="14" x2="90" y2="14" stroke="#94a3b8" stroke-width="0.7"/>
+                  <line x1="8" y1="14" x2="8" y2="72" stroke="#94a3b8" stroke-width="0.7"/>
+                  <line x1="90" y1="14" x2="90" y2="72" stroke="#94a3b8" stroke-width="0.7"/>
+                  <line x1="8" y1="72" x2="90" y2="72" stroke="#94a3b8" stroke-width="0.7"/>
+                  <line x1="8" y1="30" x2="60" y2="30" stroke="#cbd5e1" stroke-width="0.6" stroke-dasharray="2 2"/>
+                  <line x1="30" y1="14" x2="30" y2="55" stroke="#cbd5e1" stroke-width="0.6" stroke-dasharray="2 2"/>
+                  <line x1="55" y1="40" x2="85" y2="40" stroke="#94a3b8" stroke-width="0.7"/>
+                  <line x1="20" y1="50" x2="78" y2="50" stroke="#06b6d4" stroke-width="1.4"/>
+                  <line x1="30" y1="38" x2="30" y2="68" stroke="#06b6d4" stroke-width="1.2"/>
+                  <line x1="50" y1="38" x2="50" y2="68" stroke="#06b6d4" stroke-width="1.2"/>
+                  <line x1="70" y1="38" x2="70" y2="68" stroke="#06b6d4" stroke-width="1.2"/>
+                  <circle cx="30" cy="38" r="2" fill="#f59e0b"/>
+                  <circle cx="50" cy="38" r="2" fill="#f59e0b"/>
+                  <circle cx="70" cy="38" r="2" fill="#f59e0b"/>
+                  <circle cx="30" cy="68" r="2" fill="#f59e0b"/>
+                  <circle cx="50" cy="68" r="2" fill="#f59e0b"/>
+                  <circle cx="70" cy="68" r="2" fill="#f59e0b"/>
+                  <text x="49" y="-3" text-anchor="middle" font-size="9" fill="#64748b" font-family="Inter,sans-serif" font-weight="600">.dxf 원본</text>
+                </g>
+                <!-- 추출 (middle) — 깔때기 + EXTRACT 라벨 -->
+                <g transform="translate(125, 36)">
+                  <path d="M 0 19 L 36 19" stroke="#4f46e5" stroke-width="2" fill="none" marker-end="url(#miArrowA)"/>
+                  <text x="20" y="3" text-anchor="middle" font-size="8.5" fill="#4f46e5" font-weight="700" font-family="Inter,sans-serif" letter-spacing="0.08em">EXTRACT</text>
+                  <text x="20" y="36" text-anchor="middle" font-size="7.5" fill="#94a3b8" font-family="Inter,sans-serif">SP 레이어만</text>
+                </g>
+                <!-- 결과 (right) — 깔끔한 추출 배관망 -->
+                <g transform="translate(178, 14)">
+                  <rect width="174" height="82" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+                  <!-- main pipe -->
+                  <line x1="14" y1="44" x2="160" y2="44" stroke="#06b6d4" stroke-width="2.2"/>
+                  <!-- branches -->
+                  <line x1="28" y1="22" x2="28" y2="68" stroke="#06b6d4" stroke-width="1.6"/>
+                  <line x1="58" y1="22" x2="58" y2="68" stroke="#06b6d4" stroke-width="1.6"/>
+                  <line x1="88" y1="22" x2="88" y2="68" stroke="#06b6d4" stroke-width="1.6"/>
+                  <line x1="118" y1="22" x2="118" y2="68" stroke="#06b6d4" stroke-width="1.6"/>
+                  <line x1="148" y1="22" x2="148" y2="68" stroke="#06b6d4" stroke-width="1.6"/>
+                  <!-- 헤드 (sprinklers) -->
+                  <circle cx="28" cy="22" r="2.6" fill="#f59e0b"/>
+                  <circle cx="58" cy="22" r="2.6" fill="#f59e0b"/>
+                  <circle cx="88" cy="22" r="2.6" fill="#f59e0b"/>
+                  <circle cx="118" cy="22" r="2.6" fill="#f59e0b"/>
+                  <circle cx="148" cy="22" r="2.6" fill="#f59e0b"/>
+                  <circle cx="28" cy="68" r="2.6" fill="#f59e0b"/>
+                  <circle cx="58" cy="68" r="2.6" fill="#f59e0b"/>
+                  <circle cx="88" cy="68" r="2.6" fill="#f59e0b"/>
+                  <circle cx="118" cy="68" r="2.6" fill="#f59e0b"/>
+                  <circle cx="148" cy="68" r="2.6" fill="#f59e0b"/>
+                  <!-- 알람밸브 강조 -->
+                  <circle cx="14" cy="44" r="3.5" fill="#ef4444" stroke="#fff" stroke-width="1.4"/>
+                  <text x="87" y="-3" text-anchor="middle" font-size="9" fill="#0f172a" font-weight="600" font-family="Inter,sans-serif">.sdf 배관망 + 30 헤드</text>
+                </g>
+              </svg>
             </a>
             <a class="home-module-btn" href="{{ url_for('index') }}?view=validation">
               <span class="module-chip">Module B</span>
               <strong>Integrated Validation Module</strong>
               <span>Run the validation suite end-to-end: hydraulic results, optimization guide, data tables, audit statistics, and the detailed report — all in one workflow.</span>
+              <svg class="module-illustration" viewBox="0 0 360 110" preserveAspectRatio="xMidYMid meet" role="img" aria-label="배관망 → 수리계산 → 검증 리포트">
+                <defs>
+                  <marker id="miArrowB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                    <path d="M0,0 L10,5 L0,10 z" fill="#4f46e5"/>
+                  </marker>
+                </defs>
+                <!-- 배관망 입력 (left) -->
+                <g transform="translate(8, 14)">
+                  <rect width="118" height="82" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>
+                  <line x1="14" y1="44" x2="104" y2="44" stroke="#06b6d4" stroke-width="2"/>
+                  <line x1="30" y1="22" x2="30" y2="68" stroke="#06b6d4" stroke-width="1.4"/>
+                  <line x1="58" y1="22" x2="58" y2="68" stroke="#06b6d4" stroke-width="1.4"/>
+                  <line x1="86" y1="22" x2="86" y2="68" stroke="#06b6d4" stroke-width="1.4"/>
+                  <circle cx="30" cy="22" r="2.3" fill="#f59e0b"/>
+                  <circle cx="58" cy="22" r="2.3" fill="#f59e0b"/>
+                  <circle cx="86" cy="22" r="2.3" fill="#f59e0b"/>
+                  <circle cx="30" cy="68" r="2.3" fill="#f59e0b"/>
+                  <circle cx="58" cy="68" r="2.3" fill="#f59e0b"/>
+                  <circle cx="86" cy="68" r="2.3" fill="#f59e0b"/>
+                  <circle cx="14" cy="44" r="3.2" fill="#ef4444" stroke="#fff" stroke-width="1.2"/>
+                  <text x="59" y="-3" text-anchor="middle" font-size="9" fill="#64748b" font-family="Inter,sans-serif" font-weight="600">.sdf 입력</text>
+                </g>
+                <!-- 수리계산 (middle) -->
+                <g transform="translate(140, 14)">
+                  <path d="M 0 30 L 16 30" stroke="#4f46e5" stroke-width="2" fill="none" marker-end="url(#miArrowB)"/>
+                  <g transform="translate(20, 14)">
+                    <rect width="50" height="54" rx="6" fill="#eef2ff" stroke="#6366f1" stroke-width="1.2"/>
+                    <text x="25" y="18" text-anchor="middle" font-size="13" fill="#4f46e5" font-weight="800" font-family="Inter,sans-serif">Σ ΔP</text>
+                    <text x="25" y="32" text-anchor="middle" font-size="7.5" fill="#6366f1" font-family="Inter,sans-serif">Hazen-Williams</text>
+                    <line x1="8" y1="40" x2="42" y2="40" stroke="#6366f1" stroke-width="0.8" stroke-dasharray="2 2"/>
+                    <text x="25" y="48" text-anchor="middle" font-size="7.5" fill="#6366f1" font-family="Inter,sans-serif">규준 비교</text>
+                  </g>
+                  <path d="M 72 30 L 88 30" stroke="#4f46e5" stroke-width="2" fill="none" marker-end="url(#miArrowB)"/>
+                  <text x="45" y="-3" text-anchor="middle" font-size="8.5" fill="#4f46e5" font-weight="700" font-family="Inter,sans-serif" letter-spacing="0.08em">CALCULATE</text>
+                </g>
+                <!-- 검증 결과 (right) -->
+                <g transform="translate(240, 14)">
+                  <rect width="112" height="82" rx="6" fill="#ecfdf5" stroke="#10b981" stroke-width="1.2"/>
+                  <!-- checkmark badge -->
+                  <circle cx="22" cy="32" r="11" fill="#10b981"/>
+                  <path d="M 16 32 L 21 37 L 30 27" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                  <text x="22" y="56" text-anchor="middle" font-size="7.5" fill="#10b981" font-family="Inter,sans-serif" font-weight="700">PASS</text>
+                  <!-- bar chart -->
+                  <g transform="translate(46, 18)">
+                    <rect x="0" y="20" width="7" height="20" fill="#10b981" opacity="0.55"/>
+                    <rect x="11" y="10" width="7" height="30" fill="#10b981" opacity="0.75"/>
+                    <rect x="22" y="14" width="7" height="26" fill="#10b981" opacity="0.85"/>
+                    <rect x="33" y="4" width="7" height="36" fill="#10b981"/>
+                    <rect x="44" y="16" width="7" height="24" fill="#10b981" opacity="0.85"/>
+                    <text x="25" y="56" text-anchor="middle" font-size="7.5" fill="#10b981" font-family="Inter,sans-serif" font-weight="700">통계</text>
+                  </g>
+                  <text x="56" y="-3" text-anchor="middle" font-size="9" fill="#0f172a" font-weight="600" font-family="Inter,sans-serif">검증 리포트</text>
+                </g>
+              </svg>
             </a>
           </div>
         </section>

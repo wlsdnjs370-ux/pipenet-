@@ -279,24 +279,24 @@
     .stage-dot {
       width: 24px; height: 24px; border-radius: 50%;
       background: #fff;
-      color: var(--muted);
+      color: #0a1228;
       display: flex; align-items: center; justify-content: center;
       font-weight: 700; font-size: 0.75rem;
-      border: 1.5px solid var(--line-strong);
+      border: 1.5px solid #0a1228;
       transition: all var(--tr);
       flex-shrink: 0;
       font-family: var(--font-mono);
     }
     .stage-row.is-running .stage-dot {
-      background: var(--accent); color: #fff; border-color: var(--accent);
+      background: #0a1228; color: #fff; border-color: #0a1228;
       animation: pulse 1.4s ease-in-out infinite;
-      box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.18);
+      box-shadow: 0 0 0 4px rgba(10, 18, 40, 0.18);
     }
-    .stage-row.is-done .stage-dot { background: var(--ok); color: #fff; border-color: var(--ok); }
-    .stage-row.is-error .stage-dot { background: var(--bad); color: #fff; border-color: var(--bad); }
+    .stage-row.is-done .stage-dot { background: #0a1228; color: #fff; border-color: #0a1228; }
+    .stage-row.is-error .stage-dot { background: #000000; color: #fff; border-color: #000000; }
     @keyframes pulse {
-      0%, 100% { box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.18); }
-      50%      { box-shadow: 0 0 0 8px rgba(79, 70, 229, 0.10); }
+      0%, 100% { box-shadow: 0 0 0 4px rgba(10, 18, 40, 0.18); }
+      50%      { box-shadow: 0 0 0 8px rgba(10, 18, 40, 0.10); }
     }
     .stage-title { font-weight: 600; font-size: 0.83rem; color: var(--text); letter-spacing: -0.005em; }
     .stage-desc { font-size: 0.72rem; color: var(--text-2); margin-top: 3px; line-height: 1.5; }
@@ -492,7 +492,7 @@
             <div class="stage-elapsed" id="stage-elapsed-1">—</div>
           </div>
           <div id="stage-row-2" class="stage-row">
-            <div class="stage-dot" style="border:2px solid #f97316">2</div>
+            <div class="stage-dot" style="border:2px solid #0a1228">2</div>
             <div>
               <div class="stage-title">전체 헤드 후보 바운딩박스 인식</div>
               <div class="stage-desc">HEAD 카테고리의 INSERT(block-name match) + CIRCLE 시그니처 + HATCH 삼각형 → 250mm 근접 클러스터링</div>
@@ -500,7 +500,7 @@
             <div class="stage-elapsed" id="stage-elapsed-2">—</div>
           </div>
           <div id="stage-row-3" class="stage-row">
-            <div class="stage-dot" style="border:2px solid #06b6d4">3</div>
+            <div class="stage-dot" style="border:2px solid #0a1228">3</div>
             <div>
               <div class="stage-title">전체 배관망 인식 (그래프 시각화)</div>
               <div class="stage-desc">snap + 컴포넌트 bridge + 헤드 drop line 적용된 내부 그래프 — 30 헤드 선정의 거리 계산이 사용하는 정확한 길</div>
@@ -536,7 +536,7 @@
 
       <section>
         <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">결과 다운로드</h3>
-        <div style="font-size: 0.72rem; padding: 6px 8px; margin-bottom: 6px; background: #fef3c7; border-left: 3px solid #f59e0b; color: #78350f; line-height: 1.45;">
+        <div style="font-size: 0.72rem; padding: 8px 10px; margin-bottom: 6px; background: #ffffff; border: 1px solid var(--line); color: #0a1228; line-height: 1.45;">
           ⚠ <b>PIPENET 사용 시</b>: 반드시 <b>.zip 을 다운받아 압축을 푼 후</b> 폴더 안의 <code>.sdf</code> 를 열어주세요.
           <br>(압축파일 안에서 .sdf 를 바로 열면 <code>.slf</code> 라이브러리 분리로 인해 내경(Internal)이 Unset 으로 표시됩니다.)
         </div>
@@ -1902,7 +1902,7 @@
         _cmbResultBox.innerHTML =
           `✓ <strong>${data.title}</strong> 통합 SDF 생성 완료<br>` +
           `&nbsp;&nbsp;Node ${data.nodes} / Pipe ${data.pipes} / Pump ${data.pumps} / Valve ${data.valves} / Nozzle ${data.nozzles}<br>` +
-          `<div style="margin-top:8px; padding:8px; background:#fef3c7; border-left:3px solid #f59e0b; font-size:0.72rem; color:#78350f; line-height:1.5;">` +
+          `<div style="margin-top:8px; padding:8px 10px; background:#ffffff; border:1px solid var(--line); font-size:0.72rem; color:#0a1228; line-height:1.5;">` +
           `<strong>⚠ PIPENET 사용 시</strong>: 반드시 <strong>.zip 을 다운받아 압축을 푼 후</strong> 폴더 안의 <code>.sdf</code> 를 여세요.<br>` +
           `(압축 안에서 .sdf 를 바로 열면 .slf 라이브러리 분리로 내경(Internal) 이 Unset 으로 표시되고 "pipe bore must be given" 오류 발생.)` +
           `</div>` +

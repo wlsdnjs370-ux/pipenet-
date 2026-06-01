@@ -370,6 +370,128 @@
     }
     .tab-btn:hover { color: var(--text); }
     .tab-btn.is-active { background: #fff; color: var(--accent); box-shadow: var(--sh-sm); font-weight: 600; }
+
+    /* ─── Boot overlay (S0 — Initializing CAD engine) ─── */
+    .boot-overlay {
+      position: absolute; inset: 0; z-index: 1000;
+      background: rgba(10, 18, 40, 0.96);
+      display: flex; align-items: center; justify-content: center; flex-direction: column;
+      gap: 18px;
+      color: #e2e8f0;
+      font-family: var(--font-mono);
+      opacity: 0; pointer-events: none;
+      transition: opacity 320ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .boot-overlay.is-visible { opacity: 1; pointer-events: auto; }
+    .boot-overlay .boot-spinner {
+      width: 44px; height: 44px;
+      border: 3px solid rgba(255,255,255,0.16);
+      border-top-color: #ffffff;
+      border-radius: 50% !important;
+      animation: boot-spin 0.9s linear infinite;
+    }
+    @keyframes boot-spin { to { transform: rotate(360deg); } }
+    .boot-overlay .boot-text {
+      font-size: 0.92rem; letter-spacing: 0.06em; font-weight: 600;
+    }
+    .boot-overlay .boot-sub {
+      font-size: 0.72rem; color: rgba(226,232,240,0.6);
+      min-height: 1.2em; letter-spacing: 0.04em;
+    }
+    .boot-overlay .boot-dots::after {
+      content: ""; display: inline-block; width: 1.2em; text-align: left;
+      animation: boot-dots 1.4s steps(4, end) infinite;
+    }
+    @keyframes boot-dots {
+      0%   { content: ""; }
+      25%  { content: "."; }
+      50%  { content: ".."; }
+      75%  { content: "..."; }
+      100% { content: ""; }
+    }
+
+    /* ─── Layer panel (S1/S2 — floating, right-top of canvas) ─── */
+    .layer-panel {
+      position: absolute; top: 60px; right: 14px; z-index: 50;
+      width: 240px; max-height: calc(100% - 110px);
+      background: rgba(10, 18, 40, 0.78);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(12px) saturate(1.4);
+      -webkit-backdrop-filter: blur(12px) saturate(1.4);
+      color: #e2e8f0;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      padding: 10px 12px;
+      opacity: 0; transform: translateY(-6px);
+      transition: opacity 240ms cubic-bezier(0.4, 0, 0.2, 1), transform 240ms cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+      display: flex; flex-direction: column; gap: 6px;
+      overflow: hidden;
+    }
+    .layer-panel.is-visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+    .layer-panel .lp-head {
+      font-weight: 700; font-size: 0.7rem; letter-spacing: 0.1em;
+      text-transform: uppercase; color: rgba(226,232,240,0.92);
+      padding-bottom: 7px;
+      border-bottom: 1px solid rgba(255,255,255,0.14);
+      display: flex; justify-content: space-between; align-items: baseline;
+      flex-shrink: 0;
+    }
+    .layer-panel .lp-counter { color: #fbbf24; font-weight: 500; letter-spacing: 0.04em; }
+    .layer-panel .lp-list {
+      display: flex; flex-direction: column; gap: 1px;
+      overflow-y: auto; overflow-x: hidden;
+      min-height: 0; flex: 1 1 auto;
+      padding-right: 2px;
+    }
+    .layer-panel .lp-list::-webkit-scrollbar { width: 4px; }
+    .layer-panel .lp-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); }
+    .layer-panel .lp-row {
+      display: grid; grid-template-columns: 1fr auto; gap: 6px;
+      padding: 3px 4px;
+      align-items: center;
+      animation: lp-row-in 220ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+      white-space: nowrap; overflow: hidden;
+      transition: opacity 320ms cubic-bezier(0.4, 0, 0.6, 1), max-height 320ms cubic-bezier(0.4, 0, 0.6, 1), padding 320ms cubic-bezier(0.4, 0, 0.6, 1);
+      max-height: 24px;
+    }
+    @keyframes lp-row-in {
+      from { opacity: 0; transform: translateX(-8px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .layer-panel .lp-row.is-dropped {
+      opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0;
+    }
+    .layer-panel .lp-tag {
+      font-size: 0.6rem; font-weight: 700;
+      padding: 1px 6px; letter-spacing: 0.05em;
+      background: rgba(255,255,255,0.10); color: #cbd5e1;
+    }
+    .layer-panel .lp-tag.is-pipe    { background: rgba(125,211,252,0.22); color: #7dd3fc; }
+    .layer-panel .lp-tag.is-head    { background: rgba(251,191,36,0.22); color: #fbbf24; }
+    .layer-panel .lp-tag.is-text    { background: rgba(167,243,208,0.18); color: #a7f3d0; }
+    .layer-panel .lp-tag.is-arch    { background: rgba(203,213,225,0.16); color: #cbd5e1; }
+    .layer-panel .lp-tag.is-exclude { background: rgba(252,165,165,0.18); color: #fca5a5; }
+    .layer-panel .lp-tag.is-other   { background: rgba(255,255,255,0.10); color: #94a3b8; }
+    .layer-panel .lp-name {
+      color: #e2e8f0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .layer-panel .lp-row.is-classified .lp-name { color: rgba(226,232,240,0.95); }
+    .layer-panel .lp-row.is-dropped .lp-name {
+      color: rgba(226,232,240,0.4); text-decoration: line-through;
+    }
+    .layer-panel .lp-skip {
+      margin-top: 4px; padding: 5px 8px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: #e2e8f0;
+      font-size: 0.66rem; letter-spacing: 0.04em;
+      cursor: pointer; width: 100%;
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+    }
+    .layer-panel .lp-skip:hover { background: rgba(255,255,255,0.14); }
   </style>
 </head>
 <body>
@@ -407,6 +529,23 @@
         </div>
       </div>
       <div id="wb-stage-badge" class="stage-badge" style="display:none;"></div>
+
+      <!-- ─── PR1: Boot overlay (S0) ─── -->
+      <div id="boot-overlay" class="boot-overlay" role="status" aria-live="polite">
+        <div class="boot-spinner"></div>
+        <div class="boot-text">Initializing CAD engine<span class="boot-dots"></span></div>
+        <div id="boot-sub" class="boot-sub">Preparing entity parser</div>
+      </div>
+
+      <!-- ─── PR1: Layer panel (S1/S2) ─── -->
+      <div id="layer-panel" class="layer-panel" aria-label="Layer discovery">
+        <div class="lp-head">
+          <span>Layer Discovery</span>
+          <span class="lp-counter" id="lp-counter">0 / 0</span>
+        </div>
+        <div class="lp-list" id="lp-list"></div>
+        <button class="lp-skip" id="lp-skip" type="button" title="Skip animation">⏩ Skip animation</button>
+      </div>
     </div>
 
     <aside class="sidebar">
@@ -676,6 +815,159 @@
       jobId: null,
       stageStartTimes: {},
     };
+
+    // ══════════════ PR1 — AnimationQueue + Boot overlay + Layer panel ══════════════
+    // SSE micro-events 를 즉시 처리하지 않고 큐에 넣고, rAF 루프가 budget 시간만큼만 pop.
+    // 큐 사이즈 커지면 자동 fast-forward (적응형 페이스).
+    class AnimationQueue {
+      constructor(handlers) {
+        this.handlers = handlers;   // { type: { budgetMs, handler } }
+        this.queue = [];
+        this.lastTick = 0;
+        this.budget = 0;
+        this.running = false;
+        this.fastForward = false;
+      }
+      enqueue(evt) {
+        this.queue.push(evt);
+        if (!this.running) this._start();
+      }
+      _start() {
+        this.running = true;
+        this.lastTick = performance.now();
+        requestAnimationFrame((t) => this._tick(t));
+      }
+      _tick(now) {
+        if (this.queue.length === 0) { this.running = false; return; }
+        this.budget += now - this.lastTick;
+        this.lastTick = now;
+        // 적응형: 큐 크기 따라 speedup
+        const qs = this.queue.length;
+        const speedup = qs > 80 ? 6 : qs > 40 ? 3 : qs > 20 ? 1.6 : 1;
+        let processed = 0;
+        while (this.queue.length > 0 && processed < 50) {
+          const evt = this.queue[0];
+          const def = this.handlers[evt.type];
+          if (!def) { this.queue.shift(); processed++; continue; }
+          const cost = (def.budgetMs || 30) / speedup;
+          if (this.budget >= cost || this.fastForward) {
+            this.queue.shift();
+            try { def.handler(evt); } catch (err) { console.error("[animQueue]", evt.type, err); }
+            this.budget -= cost;
+            if (this.fastForward) this.budget = 0;
+            processed++;
+          } else break;
+        }
+        requestAnimationFrame((t) => this._tick(t));
+      }
+      flush() {
+        // 큐에 남은 거 즉시 다 처리
+        while (this.queue.length > 0) {
+          const evt = this.queue.shift();
+          const def = this.handlers[evt.type];
+          if (def) { try { def.handler(evt); } catch (err) { console.error(err); } }
+        }
+      }
+      clear() { this.queue.length = 0; }
+      size() { return this.queue.length; }
+    }
+
+    const bootOverlayEl = document.getElementById("boot-overlay");
+    const bootSubEl     = document.getElementById("boot-sub");
+    const BootOverlay = {
+      show(msg) {
+        if (msg) bootSubEl.textContent = msg;
+        bootOverlayEl.classList.add("is-visible");
+      },
+      hide() { bootOverlayEl.classList.remove("is-visible"); },
+      setSub(msg) { bootSubEl.textContent = msg; }
+    };
+
+    const layerPanelEl = document.getElementById("layer-panel");
+    const lpListEl     = document.getElementById("lp-list");
+    const lpCounterEl  = document.getElementById("lp-counter");
+    const lpSkipBtnEl  = document.getElementById("lp-skip");
+    const LayerPanel = {
+      rows: Object.create(null),
+      total: 0,
+      seen: 0,
+      kept: 0,
+      show() { layerPanelEl.classList.add("is-visible"); },
+      hide() {
+        layerPanelEl.classList.remove("is-visible");
+        setTimeout(() => this.reset(), 280);
+      },
+      reset() {
+        lpListEl.innerHTML = "";
+        this.rows = Object.create(null);
+        this.total = 0; this.seen = 0; this.kept = 0;
+        lpCounterEl.textContent = "0 / 0";
+      },
+      setTotal(n) {
+        this.total = n;
+        lpCounterEl.textContent = `${this.seen} / ${this.total}`;
+      },
+      addLayer(name, entityCount) {
+        if (this.rows[name]) return;
+        const row = document.createElement("div");
+        row.className = "lp-row";
+        const safeName = String(name).replace(/[<>&"']/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c]));
+        row.innerHTML = `<span class="lp-name" title="${safeName}">${safeName}</span><span class="lp-tag">…</span>`;
+        lpListEl.appendChild(row);
+        this.rows[name] = row;
+        this.seen += 1;
+        lpCounterEl.textContent = `${this.seen} / ${this.total || this.seen}`;
+        // auto-scroll to bottom so newly added rows are visible
+        lpListEl.scrollTop = lpListEl.scrollHeight;
+      },
+      classifyLayer(name, category, kept) {
+        const row = this.rows[name];
+        if (!row) return;
+        const tag = row.querySelector(".lp-tag");
+        const catKey = (category || "other").toLowerCase();
+        tag.textContent = category || "?";
+        tag.className = "lp-tag is-" + catKey;
+        row.classList.add("is-classified");
+        if (!kept) {
+          setTimeout(() => {
+            row.classList.add("is-dropped");
+            setTimeout(() => {
+              if (row.parentNode) row.parentNode.removeChild(row);
+              delete this.rows[name];
+            }, 340);
+          }, 280);
+        } else {
+          this.kept += 1;
+        }
+      }
+    };
+    lpSkipBtnEl.addEventListener("click", () => animQueue.flush());
+
+    // 큐 핸들러 등록. PR2+ 에서 head_detected / graph_step / rank_assigned 추가.
+    const animQueue = new AnimationQueue({
+      layer_seen:       { budgetMs: 22, handler: (e) => LayerPanel.addLayer(e.name, e.entity_count) },
+      layer_classified: { budgetMs: 30, handler: (e) => LayerPanel.classifyLayer(e.name, e.category, e.kept) },
+      boot_msg:         { budgetMs: 40, handler: (e) => BootOverlay.setSub(e.msg) },
+    });
+
+    // PR1 mocking — 백엔드가 아직 micro-event 안 보냄.
+    // 기존 stage 0 entities 도착 시 layers 배열에서 micro-event 합성.
+    // PIPE/HEAD 먼저, ARCH/EXCLUDE 나중 순으로 (시각 효과 우선순).
+    function _mockLayerEvents(layers) {
+      const orderRank = { PIPE: 0, HEAD: 1, TEXT: 2, OTHER: 3, ARCH: 4, EXCLUDE: 5 };
+      const sorted = [...layers].sort((a, b) => {
+        const ra = orderRank[a.auto_category] ?? 9;
+        const rb = orderRank[b.auto_category] ?? 9;
+        return ra - rb || String(a.name).localeCompare(String(b.name));
+      });
+      LayerPanel.setTotal(sorted.length);
+      for (const layer of sorted) {
+        const cat = layer.auto_category || "OTHER";
+        const kept = (cat === "PIPE" || cat === "HEAD");
+        animQueue.enqueue({ type: "layer_seen", name: layer.name, entity_count: layer.entity_count || 0 });
+        animQueue.enqueue({ type: "layer_classified", name: layer.name, category: cat, kept });
+      }
+    }
 
     const canvas = document.getElementById("wb-canvas");
     const ctx = canvas.getContext("2d", { alpha: false });
@@ -1238,6 +1530,11 @@
       if (!state.uploadedFile) return;
       runBtn.disabled = true;
       runBtn.textContent = "▶ 진행 중...";
+      // PR1 — Boot overlay + Layer panel 초기화
+      animQueue.clear();
+      LayerPanel.reset();
+      LayerPanel.show();
+      BootOverlay.show("Parsing DXF entities");
       // reset stage rows
       for (let i = 0; i <= 6; i++) {
         const row = document.getElementById("stage-row-" + i);
@@ -1303,7 +1600,14 @@
         overlayInfoEl.textContent = `[Stage ${evt.stage}] ${evt.label || ""}`;
       } else if (evt.type === "entities") {
         state.stage_entities[evt.stage] = evt.entities;
-        if (evt.layers) state.layer_cat = Object.fromEntries(evt.layers.map(l => [l.name, l.auto_category]));
+        if (evt.layers) {
+          state.layer_cat = Object.fromEntries(evt.layers.map(l => [l.name, l.auto_category]));
+          // PR1 — stage 0 도착 시 boot overlay 닫고 layer panel 모킹 시작
+          if (evt.stage === 0) {
+            BootOverlay.hide();
+            _mockLayerEvents(evt.layers);
+          }
+        }
         if (evt.bbox) state.bbox = evt.bbox;
         // Stage 4 (30 헤드 선정, 기존 3) 에서 auto 알람밸브 좌표를 입력 필드 placeholder 로
         if (evt.stage === 4 && evt.summary && evt.summary.source_pos && !alarmXEl.value && !alarmYEl.value) {

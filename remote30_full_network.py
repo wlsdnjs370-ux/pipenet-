@@ -525,52 +525,92 @@ class CombinedTables:
     meta: list[tuple[str, str]] = field(default_factory=list)
 
 
-def stitch_riser_and_heads(riser: RiserTables, head_tables: Any) -> CombinedTables:
-    """라이저 끝점(AV node) ↔ 헤드망 source(=같은 label) 결합 + 좌표 정렬.
+def _layout_riser_as_schematic(
+    riser_nodes: list[dict],
+    head_av_xy: tuple[float, float],
+    head_yspan: float = 5000.0,
+) -> list[dict]:
+    """라이저 노드를 PIPENET schematic 의 수직 막대 형태로 재배치.
+
+    실제 계통도 DXF 의 라이저는 수십 m (60km mm) 길이라 헤드망 (5-10m schematic)
+    과 통합하면 라이저가 너무 거대해서 그래프가 깨져 보임. PIPENET 답안처럼
+    라이저는 헤드 AV 위로 수직 막대 (5m 정도) 로 배치해 한 화면에 깔끔히 보이게.
+
+    Layout:
+        - 모든 노드 X = head_av_xy[0] (수직 막대)
+        - AV (마지막 노드) = head_av_xy 정확히 일치
+        - 펌프 (첫 노드) = (head_av_xy[0], head_av_xy[1] + 라이저 yspan)
+        - 중간 노드 = 균등 간격으로 사이 배치
 
     Args:
-        riser: Stage B 산출.
+        riser_nodes: 라이저 노드 리스트. 인덱스 0 = 펌프, 마지막 = AV.
+        head_av_xy: 헤드망의 AV 좌표 (정확히 일치 anchor).
+        head_yspan: 헤드망 bbox 의 y 범위 — 라이저 막대 길이는 이의 80%.
+    """
+    n = len(riser_nodes)
+    if n < 2:
+        return list(riser_nodes)
+    riser_yspan = max(2000.0, head_yspan * 0.8)
+    step_y = riser_yspan / (n - 1)
+    target_x = float(head_av_xy[0])
+    target_y_av = float(head_av_xy[1])
+
+    out: list[dict] = []
+    for i, node in enumerate(riser_nodes):
+        # i=0: 펌프 (가장 위), i=n-1: AV (가장 아래, head_av 위치)
+        rank_from_av = (n - 1) - i
+        out.append({
+            **node,
+            "x": int(round(target_x)),
+            "y": int(round(target_y_av + rank_from_av * step_y)),
+        })
+    return out
+
+
+def stitch_riser_and_heads(riser: RiserTables, head_tables: Any) -> CombinedTables:
+    """라이저 끝점(AV node) ↔ 헤드망 source(=같은 label) 결합 + schematic 좌표 정렬.
+
+    Args:
+        riser: Stage B 산출 (legacy template) 또는 extract_system_path 결과.
         head_tables: remote30_prototype.PipeTables 인스턴스.
 
     Returns:
-        CombinedTables — 좌표가 통합된 한 schematic 위에 라이저+헤드망 부착.
+        CombinedTables — 좌표가 정렬된 한 schematic.
 
     충돌 처리:
-        라이저 노드 라벨 = {1..9, 87, 88, 89, 100} + AV(10)
-                          또는 v1 path: {1, n2, n3, ..., 10}
+        라이저 노드 라벨 = {1..9, ...} + AV(10) — 또는 v1 path: {1, n2..nN, 10}
         헤드망 노드 라벨 = {10, 11, 12, ...} (10 이 source = AV)
-        AV(10) 만 공통 — 라이저 쪽 노드만 유지, 헤드망 쪽 노드 10 의 elevation
-        을 라이저 AV elevation 으로 동기화.
+        AV(10) 만 공통 — 라이저 쪽 노드만 유지, 헤드망 사본은 skip.
 
-    좌표 정렬:
-        라이저 (계통도 도면 절대 좌표) + 헤드망 (평면도 절대 좌표) — 두 좌표계가
-        수백만 mm 떨어져 있을 수 있어 PIPENET 시각화 시 두 부분이 멀리 흩어져 보임.
-        Fix: 라이저 AV(label=10) 좌표 ↔ 헤드망 AV(label=10) 좌표 매칭하도록
-        라이저 전체 노드를 평행이동. 결과는 PIPENET 답안 schematic 처럼 라이저가
-        헤드망 AV 위치에 막대로 부착.
+    좌표 정렬 (PIPENET answer schematic 스타일):
+        legacy 28F 템플릿은 6 노드의 작은 schematic 좌표 (0~15K 범위) 를 affine
+        변환으로 사용자 클릭 위치에 맞춤. v1 path 는 실제 DXF 절대 좌표 (수십m)
+        를 그대로 써서 통합 시 라이저가 헤드망보다 훨씬 거대해 보임.
+
+        해결: 라이저를 _layout_riser_as_schematic 로 헤드 AV 위치 위 수직 막대
+        로 재배치. 라이저 막대 길이는 헤드 bbox y-span 의 80%. 결과는 답안 SDF
+        의 schematic 처럼 한 시각 영역 안에 컴팩트하게 부착.
     """
     av_lbl = riser.av_node_label
     riser_av_node = next((n for n in riser.nodes if n["label"] == av_lbl), None)
     if riser_av_node is None:
         raise ValueError(f"라이저에 AV 노드(label={av_lbl})가 없음")
 
-    # 좌표 정렬 — 헤드망 AV 위치 찾고, 라이저 노드 전체를 그 점으로 평행이동.
     head_av_node = next((n for n in head_tables.nodes if n["label"] == av_lbl), None)
+
+    # 헤드망 bbox 계산 (라이저 schematic 크기 결정용)
+    head_xs = [float(nd.get("x", 0.0)) for nd in head_tables.nodes if "x" in nd]
+    head_ys = [float(nd.get("y", 0.0)) for nd in head_tables.nodes if "y" in nd]
+    head_yspan = (max(head_ys) - min(head_ys)) if head_ys else 5000.0
+
+    # 라이저 좌표 schematic 재배치
     if head_av_node is not None:
         try:
-            dx = float(head_av_node["x"]) - float(riser_av_node["x"])
-            dy = float(head_av_node["y"]) - float(riser_av_node["y"])
+            head_av_xy = (float(head_av_node["x"]), float(head_av_node["y"]))
+            translated_riser_nodes = _layout_riser_as_schematic(
+                list(riser.nodes), head_av_xy, head_yspan=head_yspan,
+            )
         except (KeyError, TypeError, ValueError):
-            dx = dy = 0.0
-        if dx != 0.0 or dy != 0.0:
-            translated_riser_nodes = []
-            for n in riser.nodes:
-                nx = float(n.get("x", 0.0)) + dx
-                ny = float(n.get("y", 0.0)) + dy
-                translated_riser_nodes.append({
-                    **n, "x": int(round(nx)), "y": int(round(ny)),
-                })
-        else:
             translated_riser_nodes = list(riser.nodes)
     else:
         translated_riser_nodes = list(riser.nodes)

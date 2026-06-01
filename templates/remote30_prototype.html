@@ -2074,7 +2074,24 @@
       render();
     });
 
-    // 28F MSP 중층부 라이저 추출 (자연낙차)
+    // 계통도 추출 — v1 (DXF 토폴로지 path) + legacy template fallback
+    async function _runSystemExtract(useLegacy) {
+      const fd = new FormData();
+      fd.append("pump_x", String(state.system_pump_marker.x));
+      fd.append("pump_y", String(state.system_pump_marker.y));
+      fd.append("av_x",   String(state.system_av_marker.x));
+      fd.append("av_y",   String(state.system_av_marker.y));
+      if (useLegacy) {
+        fd.append("use_legacy_template", "true");
+      } else if (state.system_uploaded_file) {
+        fd.append("system_dxf_file", state.system_uploaded_file);
+      } else {
+        return { ok: false, message: "계통도 DXF 가 업로드되어 있지 않습니다 — 파일 다시 업로드 후 시도해 주세요." };
+      }
+      const res = await fetch("/api/remote30/system/extract", { method: "POST", body: fd });
+      return await res.json();
+    }
+
     _sysExtractBtn.addEventListener("click", async () => {
       if (!state.system_pump_marker || !state.system_av_marker) {
         alert("펌프와 알람밸브 위치를 모두 클릭으로 지정해주세요.");
@@ -2083,27 +2100,45 @@
       _sysExtractBtn.disabled = true;
       _sysExtractBtn.textContent = "⏳ 추출 중...";
       try {
-        const res = await fetch("/api/remote30/system/extract", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pump_x: state.system_pump_marker.x,
-            pump_y: state.system_pump_marker.y,
-            av_x:   state.system_av_marker.x,
-            av_y:   state.system_av_marker.y,
-          }),
-        });
-        const data = await res.json();
+        let data = await _runSystemExtract(false);
+        // v1 알고리즘 실패 + legacy 폴백 제안 → 사용자에게 확인 후 자동 폴백
+        if (!data.ok && data.suggest_legacy) {
+          const proceed = confirm(
+            "계통도 DXF 추출 실패:\n\n" + (data.message || "") +
+            "\n\n옛 정답 템플릿(28F MSP affine) 으로 폴백할까요?"
+          );
+          if (proceed) {
+            data = await _runSystemExtract(true);
+          }
+        }
         if (!data.ok) {
           alert("추출 실패: " + (data.message || "unknown"));
           return;
         }
         state.system_riser = data.riser;
-        document.getElementById("sys-result-box").innerHTML =
-          `✓ <strong>${data.riser.title}</strong> (자연낙차식) 계통도 추출 완료<br>` +
-          `&nbsp;&nbsp;노드 ${data.riser.nodes.length}개, 파이프 ${data.riser.pipes.length}개<br>` +
-          `&nbsp;&nbsp;Pump 0 / Valve 0 (PRV 없음)<br>` +
-          `&nbsp;&nbsp;Affine scale ${data.riser.affine_scale.toFixed(3)} ×, rotation ${data.riser.affine_rotation_deg.toFixed(1)}°`;
+        const r = data.riser;
+        const algoLabel = data.algorithm === "legacy_template"
+          ? "정답 템플릿 (28F MSP affine)"
+          : "DXF 경로 추출 v1";
+        let html = `✓ <strong>${r.title}</strong> — ${algoLabel}<br>`;
+        html += `&nbsp;&nbsp;노드 ${r.nodes.length}개, 파이프 ${r.pipes.length}개`;
+        if (typeof r.total_pipe_length_m === "number") {
+          html += `, 총 길이 ${r.total_pipe_length_m.toFixed(1)} m`;
+        }
+        html += "<br>";
+        if (typeof r.pump_snap_dist_mm === "number") {
+          html += `&nbsp;&nbsp;Snap dist — 펌프 ${r.pump_snap_dist_mm.toFixed(0)}mm, AV ${r.av_snap_dist_mm.toFixed(0)}mm<br>`;
+        }
+        if (r.graph_stats && r.graph_stats.node_count) {
+          const gs = r.graph_stats;
+          html += `&nbsp;&nbsp;Graph: ${gs.node_count} nodes / ${gs.edge_count} edges / `;
+          html += `bridges ${gs.bridges_applied} (${gs.components_before_bridge}→${gs.components_after_bridge} comp.)`;
+          html += "<br>";
+        }
+        if (data.algorithm === "legacy_template") {
+          html += `&nbsp;&nbsp;Affine scale ${r.affine_scale.toFixed(3)} ×, rotation ${r.affine_rotation_deg.toFixed(1)}°`;
+        }
+        document.getElementById("sys-result-box").innerHTML = html;
         render();
       } catch (err) {
         alert("네트워크 오류: " + err.message);

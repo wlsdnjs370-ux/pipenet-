@@ -50,18 +50,18 @@
         --grad-brand: var(--c-navy);
         --grad-soft-bg: #ffffff;
 
-        /* 모든 radius 0 (각진 직사각형) */
-        --r-sm: 0;
-        --r-md: 0;
-        --r-lg: 0;
-        --r-xl: 0;
+        /* radius — 원복 (둥근 모서리 디자인) */
+        --r-sm: 6px;
+        --r-md: 10px;
+        --r-lg: 14px;
+        --r-xl: 20px;
 
-        /* shadow 제거 — 브루탈리스트/스위스 미니멀 톤 */
-        --sh-sm: none;
-        --sh-md: none;
-        --sh-lg: none;
-        --sh-xl: none;
-        --sh-glow: none;
+        /* shadow — 원복, 색상은 무채색이라 그대로 유지 가능 */
+        --sh-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+        --sh-md: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+        --sh-lg: 0 4px 12px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+        --sh-xl: 0 12px 32px -6px rgba(15, 23, 42, 0.10), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
+        --sh-glow: 0 4px 24px -4px rgba(10, 18, 40, 0.22);
 
         --tr-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
         --tr: 180ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -100,9 +100,9 @@
       .app-header h1::before {
         content: '';
         width: 28px; height: 28px;
-        border-radius: 0;
+        border-radius: 7px;
         background: #0a1228;
-        box-shadow: none;
+        box-shadow: 0 3px 10px -2px rgba(10, 18, 40, 0.40);
         background-image:
           url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M3 12h4l3-9 4 18 3-9h4'/></svg>"),
           #0a1228;
@@ -148,11 +148,11 @@
         width: 100%; height: auto; max-height: 540px; display: block;
         margin: 0;
         background: #ffffff;
-        border: 1.5px solid #000000;
-        border-radius: 0;
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-xl);
         padding: 8px 12px;
         box-sizing: border-box;
-        box-shadow: none;
+        box-shadow: var(--sh-lg);
         position: relative;
         overflow: hidden;
       }
@@ -167,8 +167,8 @@
       .home-module-btn {
         position: relative;
         background: #ffffff;
-        border: 1.5px solid #000000;
-        border-radius: 0;
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-lg);
         padding: 22px 22px 20px !important;
         min-height: auto !important;
         text-align: left;
@@ -178,18 +178,18 @@
         flex-direction: column;
         gap: 10px;
         font-family: var(--font-sans) !important;
-        color: #000000 !important;
-        box-shadow: none;
+        color: var(--c-text) !important;
+        box-shadow: var(--sh-sm);
         overflow: hidden;
         text-decoration: none;
         -webkit-appearance: none;
       }
-      a.home-module-btn, a.home-module-btn:visited { color: #000000 !important; text-decoration: none; }
-      a.home-module-btn:focus-visible { outline: 2px solid #0a1228; outline-offset: 2px; }
+      a.home-module-btn, a.home-module-btn:visited { color: var(--c-text) !important; text-decoration: none; }
+      a.home-module-btn:focus-visible { outline: 3px solid rgba(10, 18, 40, 0.30); outline-offset: 2px; }
       .home-module-btn::before {
         content: ''; position: absolute;
         top: 0; left: 0; right: 0;
-        height: 4px;
+        height: 3px;
         background: #0a1228;
         opacity: 0;
         transition: opacity var(--tr);
@@ -199,20 +199,17 @@
         position: absolute;
         top: 22px; right: 22px;
         font-size: 1rem; line-height: 1;
-        color: #0a1228;
+        color: var(--c-muted);
         transition: all var(--tr);
       }
       .home-module-btn:hover {
-        background: #0a1228;
-        color: #ffffff !important;
-        transform: none;
-        box-shadow: none;
+        border-color: #0a1228;
+        transform: translateY(-2px);
+        box-shadow: var(--sh-xl), var(--sh-glow);
       }
-      a.home-module-btn:hover, a.home-module-btn:hover:visited { color: #ffffff !important; }
       .home-module-btn:hover::before { opacity: 1; }
-      .home-module-btn:hover::after { color: #ffffff; transform: translateX(4px); }
-      .home-module-btn:hover strong, .home-module-btn:hover span { color: #ffffff !important; }
-      .home-module-btn:active { background: #000000; }
+      .home-module-btn:hover::after { color: #0a1228; transform: translateX(4px); }
+      .home-module-btn:active { transform: translateY(-1px); }
 
       .home-module-btn .module-chip {
         display: inline-flex; align-items: center; gap: 6px;
@@ -222,18 +219,14 @@
         color: #ffffff;
         background: #0a1228;
         padding: 4px 10px;
-        border-radius: 0;
+        border-radius: 999px;
         text-transform: uppercase;
-      }
-      .home-module-btn:hover .module-chip {
-        color: #0a1228;
-        background: #ffffff;
       }
       .home-module-btn .module-chip::before {
         content: ''; width: 6px; height: 6px;
-        border-radius: 0;
-        background: currentColor;
-        box-shadow: none;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.30);
       }
       .home-module-btn strong {
         font-size: 1.05rem !important;
@@ -268,25 +261,25 @@
         top: 14px; left: 16px;
         z-index: 1000;
         padding: 8px 14px 8px 12px;
-        background: #0a1228;
+        background: rgba(10, 18, 40, 0.85);
         color: #ffffff;
-        border: 1.5px solid #0a1228;
-        border-radius: 0;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
         font-size: 0.82rem;
         font-weight: 600;
         font-family: var(--font-sans);
         cursor: pointer;
-        box-shadow: none;
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
+        box-shadow: 0 6px 20px -4px rgba(10, 18, 40, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(14px) saturate(1.4);
+        -webkit-backdrop-filter: blur(14px) saturate(1.4);
         display: inline-flex; align-items: center; gap: 7px;
         letter-spacing: 0.01em;
         transition: all var(--tr);
       }
       #home-nav-btn.float-back-btn:hover {
-        background: #ffffff;
-        color: #0a1228;
-        border-color: #0a1228;
+        background: rgba(0, 0, 0, 0.92);
+        transform: translateY(-1px);
+        box-shadow: 0 10px 28px -4px rgba(10, 18, 40, 0.50);
       }
       #home-nav-btn.float-back-btn::before { content: "←"; font-size: 0.95rem; line-height: 1; opacity: 0.85; }
       #home-nav-btn.float-back-btn.hidden { display: none !important; }

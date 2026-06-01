@@ -1080,20 +1080,24 @@
 
     <script src="{{ url_for('static', filename='app.js') }}?v=20260520-wb1"></script>
     <script>
-      // ?view=validation 으로 진입 시 — Module B 자동 진입 처리
+      // ?view=validation 진입 시 — app.js 직후 동기적으로 처리, 가드는 home 복귀까지 유지
       (function () {
         try {
           var params = new URLSearchParams(window.location.search);
-          if (params.get("view") === "validation") {
-            window.addEventListener("load", function () {
-              setTimeout(function () {
-                if (typeof window.setActiveMenuPanel === "function") {
-                  window.setActiveMenuPanel("workspace-panel");
-                }
-                // 진입 가드 클래스 제거 — 이후 "처음으로" 버튼이 정상 동작하려면 필수
-                // (이 클래스가 남아있으면 home-panel/header 가 display:none !important 로 영구 숨김)
-                document.documentElement.classList.remove("entering-validation");
-              }, 80);
+          if (params.get("view") !== "validation") return;
+
+          // 1. app.js 가 이미 로드·실행됨 → setActiveMenuPanel 동기 호출 가능
+          if (typeof window.setActiveMenuPanel === "function") {
+            window.setActiveMenuPanel("workspace-panel");
+          }
+
+          // 2. 가드 클래스(.entering-validation) 는 그대로 유지
+          //    → 어떤 이유로든 home-panel/header 가 렌더되어도 CSS 가 강제 숨김
+          // 3. "처음으로" 버튼 클릭 시점에 가드 제거 → home 복귀 가능
+          var hbtn = document.getElementById("home-nav-btn");
+          if (hbtn) {
+            hbtn.addEventListener("click", function () {
+              document.documentElement.classList.remove("entering-validation");
             });
           }
         } catch (e) { /* no-op */ }

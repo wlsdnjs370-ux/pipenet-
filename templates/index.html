@@ -135,7 +135,7 @@
         padding: 0;
         box-shadow: none;
         display: grid;
-        gap: 22px;
+        gap: 14px;
       }
 
       /* ─── 워크플로우 컨테이너 ─── */
@@ -149,7 +149,7 @@
           var(--grad-soft-bg);
         border: 1px solid var(--c-border);
         border-radius: var(--r-xl);
-        padding: 24px;
+        padding: 8px 12px;
         box-sizing: border-box;
         box-shadow: var(--sh-lg);
         position: relative;
@@ -169,7 +169,7 @@
       .home-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 18px !important;
+        gap: 14px !important;
       }
       .home-module-btn {
         position: relative;
@@ -928,23 +928,12 @@
                 <rect class="mA-band-out"    x="640" y="46" width="128" height="186" rx="7"/>
 
                 <!-- Stage titles -->
-                <text class="mA-title" x="55"  y="30">Input</text>
-                <text class="mA-title" x="155" y="30">Embed</text>
-                <text class="mA-title" x="301" y="30">Multi-Head Attn</text>
-                <text class="mA-title" x="457" y="30">FFN + LN</text>
-                <text class="mA-title" x="578" y="30">Classify</text>
-                <text class="mA-title" x="704" y="30">Graph Decode</text>
-
-                <!-- Stage dim/aux labels -->
-                <text class="mA-dim" x="55"  y="246">N=5 tokens</text>
-                <text class="mA-dim" x="155" y="246">[N, d=64]</text>
-                <text class="mA-dim" x="301" y="246">h=4 · d_k=16</text>
-                <text class="mA-dim" x="457" y="246">64→256→64 · GELU</text>
-                <text class="mA-dim" x="578" y="246">softmax ∈ ℝ³</text>
-                <text class="mA-dim" x="704" y="246">.sdf · 30 heads</text>
-
-                <!-- Loss annotation -->
-                <text class="mA-loss" x="390" y="272">𝓛 = 𝓛_CE + λ · 𝓛_graph</text>
+                <text class="mA-title" x="55"  y="32">Input</text>
+                <text class="mA-title" x="155" y="32">Embed</text>
+                <text class="mA-title" x="301" y="32">Multi-Head Attn</text>
+                <text class="mA-title" x="457" y="32">FFN</text>
+                <text class="mA-title" x="578" y="32">Classify</text>
+                <text class="mA-title" x="704" y="32">Decode</text>
 
                 <!-- ══════════════ Stage 1 — Input tokens ══════════════ -->
                 <g transform="translate(55, 70)">
@@ -1032,11 +1021,6 @@
                   <text class="mA-token" y="2.5" fill="#7c3aed" font-weight="700">h₄</text>
                 </g>
 
-                <!-- Equation for attention -->
-                <text class="mA-eqn" x="350" y="80" font-size="11">softmax(QKᵀ/√d</text>
-                <text class="mA-eqn" x="382" y="80" font-size="9">k</text>
-                <text class="mA-eqn" x="392" y="80" font-size="11">)·V</text>
-
                 <!-- Concat heads → output (single edge) -->
                 <path id="mAe-c1" class="mA-edge main" d="M 296 88  C 330 100, 350 110, 375 140"/>
                 <path id="mAe-c2" class="mA-edge main" d="M 296 122 C 330 130, 350 135, 375 140"/>
@@ -1047,30 +1031,28 @@
                 <g transform="translate(380, 140)">
                   <circle class="mA-node hi" r="10"/>
                   <text class="mA-token" y="2.5" fill="#4f46e5" font-weight="700">W</text>
-                  <text class="mA-token" y="2.5" x="6" fill="#4f46e5" font-size="6.5">O</text>
                 </g>
 
-                <!-- Residual skip arrow (Stage 2 → Stage 4) -->
+                <!-- Residual skip arrow (Stage 2 → Stage 4, label removed) -->
                 <path class="mA-residual" d="M 175 55 C 270 36, 380 36, 460 55"/>
-                <text class="mA-eqn" x="320" y="46" font-size="9" fill="#a78bfa">+ residual</text>
 
-                <!-- ══════════════ Stage 4 — FFN + Layer Norm ══════════════ -->
+                <!-- ══════════════ Stage 4 — FFN block (simplified illustration) ══════════════ -->
                 <!-- LN box -->
-                <g transform="translate(408, 70)">
-                  <rect width="98" height="28" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
-                  <text x="49" y="11" class="mA-token" fill="#0f766e" font-weight="700">LayerNorm</text>
-                  <text x="49" y="22" class="mA-token" fill="#0f766e" font-size="7">μ, σ²</text>
+                <g transform="translate(408, 74)">
+                  <rect width="98" height="22" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
+                  <text x="49" y="14" class="mA-token" fill="#0f766e" font-weight="700">LayerNorm</text>
                 </g>
-                <!-- FFN: linear → GELU → linear -->
-                <g transform="translate(408, 110)">
-                  <rect width="98" height="36" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
-                  <text x="49" y="13" class="mA-token" fill="#0f766e" font-weight="700">Linear 64→256</text>
-                  <text x="49" y="24" class="mA-eqn" font-size="9" fill="#14b8a6">GELU(·)</text>
-                  <text x="49" y="33" class="mA-token" fill="#0f766e" font-weight="700">Linear 256→64</text>
+                <!-- FFN box with 3 stacked dense-layer lines (visual icon, no text dims) -->
+                <g transform="translate(408, 108)">
+                  <rect width="98" height="40" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
+                  <text x="49" y="13" class="mA-token" fill="#0f766e" font-weight="700">FFN</text>
+                  <line x1="16" y1="22" x2="82" y2="22" stroke="#14b8a6" stroke-width="1.6" opacity="0.55"/>
+                  <line x1="16" y1="28" x2="82" y2="28" stroke="#14b8a6" stroke-width="1.6" opacity="0.78"/>
+                  <line x1="16" y1="34" x2="82" y2="34" stroke="#14b8a6" stroke-width="1.6"/>
                 </g>
                 <!-- LN box again -->
-                <g transform="translate(408, 156)">
-                  <rect width="98" height="20" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
+                <g transform="translate(408, 158)">
+                  <rect width="98" height="22" rx="4" fill="#fff" stroke="#5eead4" stroke-width="1.4"/>
                   <text x="49" y="14" class="mA-token" fill="#0f766e" font-weight="700">LayerNorm</text>
                 </g>
 
@@ -1107,9 +1089,6 @@
                   <circle class="mA-ring" r="14"/>
                   <circle class="mA-ring delay" r="14"/>
                 </g>
-
-                <!-- Softmax tag -->
-                <text class="mA-eqn" x="578" y="62" font-size="9">argmax · softmax(W·x)</text>
 
                 <!-- Stage 5 → 6: classifier → decoder -->
                 <path id="mAe-dec1" class="mA-edge main" d="M 588 88  C 615 80,  635 60,  655 55"/>
@@ -1245,23 +1224,12 @@
                 <rect class="mB-band-out"    x="644" y="46" width="124" height="186" rx="7"/>
 
                 <!-- Stage titles -->
-                <text class="mB-title" x="54"  y="30">.sdf Graph</text>
-                <text class="mB-title" x="150" y="30">Node Embed</text>
-                <text class="mB-title" x="291" y="30">GNN · k = 3</text>
-                <text class="mB-title" x="452" y="30">Physics-Informed</text>
-                <text class="mB-title" x="581" y="30">Multi-Task</text>
-                <text class="mB-title" x="706" y="30">Verdict</text>
-
-                <!-- Stage dim/aux labels -->
-                <text class="mB-dim" x="54"  y="246">G = (V, E)</text>
-                <text class="mB-dim" x="150" y="246">[|V|, d=64]</text>
-                <text class="mB-dim" x="291" y="246">3 × MessagePass</text>
-                <text class="mB-dim" x="452" y="246">Hazen-Williams</text>
-                <text class="mB-dim" x="581" y="246">3 heads · BCE</text>
-                <text class="mB-dim" x="706" y="246">σ(W·x) ∈ [0,1]</text>
-
-                <!-- Loss caption -->
-                <text class="mB-loss" x="390" y="272">𝓛 = 𝓛_BCE + λ_P · ‖f_θ − h_HW‖² (physics consistency)</text>
+                <text class="mB-title" x="54"  y="32">.sdf Graph</text>
+                <text class="mB-title" x="150" y="32">Embed</text>
+                <text class="mB-title" x="291" y="32">GNN</text>
+                <text class="mB-title" x="452" y="32">Hydraulics</text>
+                <text class="mB-title" x="581" y="32">Multi-Task</text>
+                <text class="mB-title" x="706" y="32">Verdict</text>
 
                 <!-- ══════════════ Stage 1 — .sdf network graph ══════════════ -->
                 <g transform="translate(20, 60)">
@@ -1325,14 +1293,6 @@
                 <g transform="translate(245, 120)"><circle class="mB-node gnn" r="10"/><text class="mB-token" y="2.5" fill="#7c3aed" font-weight="700">v₂</text></g>
                 <g transform="translate(245, 165)"><circle class="mB-node gnn" r="10"/><text class="mB-token" y="2.5" fill="#7c3aed" font-weight="700">v₃</text></g>
 
-                <!-- Message-passing equation -->
-                <text class="mB-eqn" x="305" y="62" font-size="9.5">h</text>
-                <text class="mB-eqn" x="312" y="58" font-size="7.5">(k+1)</text>
-                <text class="mB-eqn" x="325" y="62" font-size="9.5">= σ(W</text>
-                <text class="mB-eqn" x="355" y="65" font-size="7.5">m</text>
-                <text class="mB-eqn" x="368" y="62" font-size="9.5">·AGG{h</text>
-                <text class="mB-eqn" x="365" y="80" font-size="9.5">u∈𝒩(v)</text>
-
                 <!-- Bidirectional message arrows between v1, v2, v3 -->
                 <path d="M 250 95 Q 260 105 250 115" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
                 <path d="M 250 130 Q 260 145 250 155" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#mBArr)" opacity="0.7"/>
@@ -1356,24 +1316,43 @@
                 <!-- Edge GNN → Physics -->
                 <path id="mBe-gphys" class="mB-edge main" d="M 366 125 C 380 125, 386 105, 393 95"/>
 
-                <!-- ══════════════ Stage 4 — Physics-Informed Layer (Hazen-Williams) ══════════════ -->
+                <!-- ══════════════ Stage 4 — Hydraulics (illustration only) ══════════════ -->
                 <g transform="translate(393, 70)">
                   <rect width="118" height="116" rx="5" fill="#fff" stroke="#f59e0b" stroke-width="1.4"/>
-                  <text x="59" y="14" class="mB-token" fill="#92400e" font-weight="700">Hazen-Williams</text>
+                  <text x="59" y="16" class="mB-token" fill="#92400e" font-weight="700">Hazen-Williams</text>
                   <line x1="6" y1="22" x2="112" y2="22" stroke="#fde68a" stroke-width="0.8"/>
-                  <!-- Equation as italic serif: h_f = 10.67·Q^1.85 / (C^1.85·D^4.87)·L -->
-                  <text x="59" y="42" class="mB-eqn" font-size="11">h</text>
-                  <text x="65" y="46" class="mB-eqn" font-size="8">f</text>
-                  <text x="73" y="42" class="mB-eqn" font-size="11">= 10.67·Q</text>
-                  <text x="105" y="38" class="mB-eqn" font-size="8">1.85</text>
-                  <line x1="20" y1="50" x2="98" y2="50" stroke="#92400e" stroke-width="0.8"/>
-                  <text x="59" y="64" class="mB-eqn" font-size="11">C</text>
-                  <text x="67" y="60" class="mB-eqn" font-size="8">1.85</text>
-                  <text x="80" y="64" class="mB-eqn" font-size="11">·D</text>
-                  <text x="93" y="60" class="mB-eqn" font-size="8">4.87</text>
-                  <text x="59" y="80" class="mB-eqn" font-size="9">· L · g(differentiable)</text>
-                  <text x="59" y="98" class="mB-token" fill="#92400e" font-weight="700" font-size="8">∇𝓛/∇θ ✓</text>
-                  <text x="59" y="110" class="mB-eqn" font-size="8.5">PINN regularizer</text>
+
+                  <!-- Pipe segment with flow gradient + arrows (illustration) -->
+                  <defs>
+                    <linearGradient id="mBPipe" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%"   stop-color="#dbeafe"/>
+                      <stop offset="100%" stop-color="#fef3c7"/>
+                    </linearGradient>
+                  </defs>
+                  <rect x="10" y="32" width="98" height="18" rx="3" fill="url(#mBPipe)" stroke="#3b82f6" stroke-width="1"/>
+                  <!-- Inlet · outlet pressure dots -->
+                  <circle cx="10" cy="41" r="3.5" fill="#10b981" stroke="#fff" stroke-width="1"/>
+                  <circle cx="108" cy="41" r="3.5" fill="#ef4444" stroke="#fff" stroke-width="1"/>
+                  <!-- 5 flow arrows along pipe -->
+                  <path d="M 22 41 L 30 41" stroke="#1e40af" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
+                  <path d="M 40 41 L 48 41" stroke="#1e40af" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
+                  <path d="M 58 41 L 66 41" stroke="#1e40af" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
+                  <path d="M 76 41 L 84 41" stroke="#1e40af" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
+                  <path d="M 94 41 L 102 41" stroke="#1e40af" stroke-width="1.4" fill="none" marker-end="url(#mBArr)"/>
+
+                  <!-- Branching network beneath (per-segment calc visualisation) -->
+                  <g transform="translate(15, 68)">
+                    <line x1="0" y1="0" x2="88" y2="0" stroke="#3b82f6" stroke-width="1.6" opacity="0.75"/>
+                    <line x1="14" y1="0" x2="14" y2="22" stroke="#3b82f6" stroke-width="1.3" opacity="0.75"/>
+                    <line x1="36" y1="0" x2="36" y2="22" stroke="#3b82f6" stroke-width="1.3" opacity="0.75"/>
+                    <line x1="58" y1="0" x2="58" y2="22" stroke="#3b82f6" stroke-width="1.3" opacity="0.75"/>
+                    <line x1="80" y1="0" x2="80" y2="22" stroke="#3b82f6" stroke-width="1.3" opacity="0.75"/>
+                    <circle cx="14" cy="22" r="2.4" fill="#f59e0b"/>
+                    <circle cx="36" cy="22" r="2.4" fill="#f59e0b"/>
+                    <circle cx="58" cy="22" r="2.4" fill="#f59e0b"/>
+                    <circle cx="80" cy="22" r="2.4" fill="#f59e0b"/>
+                    <circle cx="0" cy="0" r="3" fill="#ef4444" stroke="#fff" stroke-width="0.8"/>
+                  </g>
                 </g>
 
                 <!-- Edge Physics → Multi-task -->
@@ -1413,8 +1392,6 @@
                   <circle r="20" fill="#10b981" filter="url(#mBGlow)"/>
                   <path d="M -10 0 L -3 7 L 11 -8" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
                 </g>
-                <!-- P(PASS|x) label -->
-                <text class="mB-eqn" x="700" y="80" font-size="10">P(✓|x) = σ(W·x)</text>
                 <!-- Probability bar chart -->
                 <g transform="translate(672, 170)">
                   <rect x="0"  y="20" width="5" height="14" fill="#10b981" opacity="0.55"/>

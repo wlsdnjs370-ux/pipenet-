@@ -115,11 +115,14 @@
     }
     .stage3-legend.is-visible { display: block; }
     /* ─── 아이소메트릭 3D — 옵션 패널 + 안내 + 캔버스 ─── */
-    .iso-canvas {
+    /* specificity: .canvas-pane canvas (0,1,1) 보다 높여야 display 가 적용됨.
+       (.canvas-pane 의 ' canvas { display: block }' 가 단일 class .iso-canvas 를 덮어쓰는
+       버그 — 평면도 위에 빈 3D 캔버스가 깔려 평면도 안 보이던 원인) */
+    .canvas-pane canvas.iso-canvas {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       display: none; background: #050b1f;
     }
-    .iso-canvas.is-visible { display: block; }
+    .canvas-pane canvas.iso-canvas.is-visible { display: block; }
     .iso-controls {
       position: absolute; top: 64px; right: 14px;
       background: rgba(15, 23, 42, 0.86);

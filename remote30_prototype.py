@@ -2314,10 +2314,10 @@ def select_worst30_heads(
     # 짧은 거리부터 단계적으로 brigde — 가까운 endpoint 우선 + 점점 멀리
     for tol in (200.0, 500.0, 1000.0, 2000.0):
         _bridge_components(graph, edge_len, max_bridge_mm=tol)
-    # 가지식 트리 강제 (SPT) — Stage 3 와 같은 토폴로지. SPT root 는 SDF source.
-    # (source 가 이 시점에 아직 미결정 → 일단 None 으로 호출, component 별 임의 root.
-    #  source 결정 후 트리가 SDF path 계산에 사용됨.)
-    force_spanning_tree(graph, edge_len, source=None)
+    # 참고: force_spanning_tree 는 Stage 3 시각화 전용으로만 적용한다.
+    # SDF 토폴로지에 SPT 를 적용하면 bridge 가 못 합친 fragment 의 헤드들이
+    # 모두 src 에서 unreachable (distance=inf) → top_k 가 비어 Stage 4 진행 안 됨.
+    # SDF 는 원래 cycle 그래프에서 Dijkstra shortest-path 로 worst-30 추출.
     if manual_heads is not None:
         # 사용자가 편집한 헤드 목록 사용
         heads = [HeadCandidate(pos=_round_pt(x, y), raw=(x, y), block_name="(user)", layer="_user")

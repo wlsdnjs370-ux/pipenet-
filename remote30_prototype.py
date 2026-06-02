@@ -151,6 +151,9 @@ def _categorize_layer(name: str) -> str:
     return "OTHER"
 
 
+_INF_THRESHOLD = 1e300  # NaN/inf 검사 — abs 비교가 set 검사보다 빠름
+
+
 class _BBoxAccum:
     """좌표 누적 후 percentile-based robust bbox 계산.
 
@@ -160,20 +163,36 @@ class _BBoxAccum:
     를 구해 안정적인 초기 시야를 제공.
 
     좌표 단위 percentile (entity 단위 아님) — PL N vertex 는 N 점으로 계산.
+
+    최적화: finalize() 와 outlier_stats() 가 같은 instance 에서 호출 시 정렬
+    결과를 캐시 (parse 끝난 뒤엔 add 없음을 가정). 큰 도면 (수십만 점) 에서
+    sort 1회 절약.
     """
 
-    __slots__ = ("xs", "ys")
+    __slots__ = ("xs", "ys", "_sx", "_sy")
 
     def __init__(self) -> None:
         self.xs: list[float] = []
         self.ys: list[float] = []
+        self._sx: list[float] | None = None  # sorted xs cache
+        self._sy: list[float] | None = None  # sorted ys cache
 
     def add(self, x: float, y: float) -> None:
-        # NaN / inf 즉시 거부 (DXF 파싱 에러로 가끔 발생)
-        if x != x or y != y or x in (float("inf"), float("-inf")) or y in (float("inf"), float("-inf")):
+        # NaN / inf 즉시 거부 (DXF 파싱 에러로 가끔 발생).
+        # abs 비교 — set/in operator 보다 빠른 hot path.
+        if x != x or y != y:  # NaN
+            return
+        if x < -_INF_THRESHOLD or x > _INF_THRESHOLD:
+            return
+        if y < -_INF_THRESHOLD or y > _INF_THRESHOLD:
             return
         self.xs.append(x)
         self.ys.append(y)
+
+    def _ensure_sorted(self) -> None:
+        if self._sx is None:
+            self._sx = sorted(self.xs)
+            self._sy = sorted(self.ys)
 
     def finalize(
         self,
@@ -185,9 +204,9 @@ class _BBoxAccum:
         """robust bbox [xmin, ymin, xmax, ymax]. 좌표 없으면 [0,0,1,1] fallback."""
         if not self.xs:
             return [0.0, 0.0, 1.0, 1.0]
-        n = len(self.xs)
-        xs = sorted(self.xs)
-        ys = sorted(self.ys)
+        self._ensure_sorted()
+        xs, ys = self._sx, self._sy
+        n = len(xs)
         lo = max(int(n * pct_low / 100.0), 0)
         hi = min(int(n * pct_high / 100.0), n - 1)
         if hi <= lo:
@@ -206,17 +225,22 @@ class _BBoxAccum:
             return {"coord_count": 0, "outlier_points": 0,
                     "raw_bbox": [0, 0, 0, 0], "robust_bbox": [0, 0, 1, 1],
                     "bbox_ratio": 1.0}
-        n = len(self.xs)
-        xs = sorted(self.xs); ys = sorted(self.ys)
+        self._ensure_sorted()
+        xs, ys = self._sx, self._sy
+        n = len(xs)
         lo = max(int(n * pct_low / 100.0), 0)
         hi = min(int(n * pct_high / 100.0), n - 1)
         outliers = lo + (n - 1 - hi)
         raw_bbox = [xs[0], ys[0], xs[-1], ys[-1]]
         rob_bbox = [xs[lo], ys[lo], xs[hi], ys[hi]]
-        raw_w = max(raw_bbox[2] - raw_bbox[0], 1.0)
-        raw_h = max(raw_bbox[3] - raw_bbox[1], 1.0)
-        rob_w = max(rob_bbox[2] - rob_bbox[0], 1.0)
-        rob_h = max(rob_bbox[3] - rob_bbox[1], 1.0)
+        raw_w = raw_bbox[2] - raw_bbox[0]
+        raw_h = raw_bbox[3] - raw_bbox[1]
+        rob_w = rob_bbox[2] - rob_bbox[0]
+        rob_h = rob_bbox[3] - rob_bbox[1]
+        if raw_w < 1.0: raw_w = 1.0
+        if raw_h < 1.0: raw_h = 1.0
+        if rob_w < 1.0: rob_w = 1.0
+        if rob_h < 1.0: rob_h = 1.0
         # raw bbox 가 robust 보다 N 배 크면 outlier 의심 — 화면 fit 시 도면이 1/N 로 보임
         bbox_ratio = max(raw_w / rob_w, raw_h / rob_h)
         return {
@@ -274,10 +298,13 @@ def _insert_matrix(insert_entity) -> Matrix44:
 
 
 def _t(matrix: Matrix44 | None, x: float, y: float) -> tuple[float, float]:
+    # Fast path — matrix is None (top-level entity) 이 압도적으로 많음.
+    # 이 케이스에서 float() 호출 / Vec3 생성 / transform 모두 회피.
+    # ezdxf 의 e.dxf.start.x 등은 이미 float 이라 명시 cast 불필요.
     if matrix is None:
-        return float(x), float(y)
-    v = matrix.transform(Vec3(float(x), float(y), 0.0))
-    return float(v.x), float(v.y)
+        return x, y
+    v = matrix.transform(Vec3(x, y, 0.0))
+    return v.x, v.y
 
 
 def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
@@ -307,9 +334,9 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
             bundle.hidden_layers.add(name)
 
     bbox_acc = _BBoxAccum()
-
-    def _upd(x: float, y: float) -> None:
-        bbox_acc.add(x, y)
+    # 핫 루프에서 attribute lookup 한 번 줄이기 위해 local alias.
+    # (`_upd = bbox_acc.add` 직접 alias — 함수 호출 1단 절약. 수만 entity × N vertex 에서 누적 효과.)
+    _upd = bbox_acc.add
 
     MAX_DEPTH = 10
 
@@ -548,9 +575,9 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
             hidden_layers.add(name)
 
     bbox_acc = _BBoxAccum()
-
-    def _upd(x: float, y: float) -> None:
-        bbox_acc.add(x, y)
+    # 핫 루프에서 attribute lookup 한 번 줄이기 위해 local alias.
+    # (`_upd = bbox_acc.add` 직접 alias — 함수 호출 1단 절약. 수만 entity × N vertex 에서 누적 효과.)
+    _upd = bbox_acc.add
 
     MAX_DEPTH = 12  # 계통도는 nested 깊을 수 있음 — 약간 여유
 

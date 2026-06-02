@@ -1308,10 +1308,19 @@
         for (const en of ghost) drawEntity(en);
         ctx.globalAlpha = 1;
 
-        // Subgraph 엣지 — alpha 점진 fade-in
+        // Subgraph 엣지 — 공통 GRAPH_STYLE 3-pass glow (라이저 amber) + alpha 점진 fade-in
         ctx.globalAlpha = state.subgraph_alpha_4 != null ? state.subgraph_alpha_4 : 1.0;
-        ctx.strokeStyle = CAT_COLORS._subgraph; ctx.fillStyle = CAT_COLORS._subgraph; ctx.lineWidth = 2.2;
-        for (const en of ents) if (en.l === "_subgraph") drawEntity(en);
+        ctx.lineCap = "round"; ctx.lineJoin = "round";
+        const _sub_passes = (typeof GRAPH_STYLE !== "undefined") ? [
+          ["rgba(253, 224, 71, 0.30)", GRAPH_STYLE.pipe_halo_width],
+          ["rgba(253, 224, 71, 0.55)", GRAPH_STYLE.pipe_mid_width],
+          [GRAPH_STYLE.color_riser,    GRAPH_STYLE.pipe_core_width],
+        ] : [[CAT_COLORS._subgraph, 2.2]];
+        for (const [c, w] of _sub_passes) {
+          ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineWidth = w;
+          for (const en of ents) if (en.l === "_subgraph") drawEntity(en);
+        }
+        ctx.lineCap = "butt"; ctx.lineJoin = "miter";
         ctx.globalAlpha = 1;
 
         // 30 헤드 — rank 기반 progressive reveal + 거리 그라데이션
@@ -2312,9 +2321,75 @@
       }
     });
 
+    // ─── 공통 그래프 시각화 스타일 — 평면도/계통도/통합 세 모드 통일 ───
+    // 색깔별 의미 (유지): Pump=보라, AV=빨강, 라이저 중간=amber, 헤드망=cyan,
+    //   펌프 부속=초록, 밸브=주황.
+    // 모양/굵기/명암 (통일): pipe 는 3-pass glow halo, 노드는 endpoint(=8px)와
+    //   중간(=4px) 두 가지 크기, 흰 외곽 + 색 채움, endpoint 만 라벨 (P/AV).
+    const GRAPH_STYLE = {
+      pipe_halo_width: 12,
+      pipe_mid_width:  6,
+      pipe_core_width: 2.5,
+      endpoint_radius:    8,
+      endpoint_stroke:    2.5,
+      mid_radius:         4,
+      mid_stroke:         1.5,
+      label_font:   "bold 12px ui-monospace, monospace",
+      label_color:  "#fef3c7",
+      label_offset: 12,
+      color_pump:  "#a855f7",
+      color_av:    "#ef4444",
+      color_riser: "#fde047",
+      color_head:  "#06b6d4",
+      color_pump_extra: "#10b981",
+      color_valve:      "#f59e0b",
+      color_white:      "#ffffff",
+    };
+    function _glowColors(baseHex) {
+      // base hex (#rrggbb) → rgba 30% 와 55% (halo, mid)
+      const r = parseInt(baseHex.slice(1,3),16);
+      const g = parseInt(baseHex.slice(3,5),16);
+      const b = parseInt(baseHex.slice(5,7),16);
+      return [`rgba(${r},${g},${b},0.30)`, `rgba(${r},${g},${b},0.55)`, baseHex];
+    }
+    // pipe 그룹 (3-pass glow) — toScreen 은 함수 (좌표 변환), pipes 는 [{a:{x,y}, b:{x,y}}, ...]
+    function _drawPipeGroupGlow(pairs, baseHex, toScreen) {
+      const [haloC, midC, coreC] = _glowColors(baseHex);
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      const passes = [
+        [haloC, GRAPH_STYLE.pipe_halo_width],
+        [midC,  GRAPH_STYLE.pipe_mid_width],
+        [coreC, GRAPH_STYLE.pipe_core_width],
+      ];
+      for (const [c, w] of passes) {
+        ctx.strokeStyle = c; ctx.lineWidth = w;
+        for (const {a, b} of pairs) {
+          const [x1, y1] = toScreen(a.x, a.y);
+          const [x2, y2] = toScreen(b.x, b.y);
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        }
+      }
+      ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+    }
+    // 노드 (endpoint 또는 중간) — color 결정 + 흰 외곽 + 채움 + 라벨 (endpoint 만).
+    function _drawGraphNode(sx, sy, role, fillColor, labelTag) {
+      // role: 'endpoint' or 'mid'
+      const radius = role === "endpoint" ? GRAPH_STYLE.endpoint_radius : GRAPH_STYLE.mid_radius;
+      const stroke = role === "endpoint" ? GRAPH_STYLE.endpoint_stroke : GRAPH_STYLE.mid_stroke;
+      ctx.strokeStyle = GRAPH_STYLE.color_white; ctx.lineWidth = stroke;
+      ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = fillColor;
+      ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.fill();
+      if (role === "endpoint" && labelTag) {
+        ctx.fillStyle = GRAPH_STYLE.label_color;
+        ctx.font = GRAPH_STYLE.label_font;
+        ctx.fillText(labelTag, sx + GRAPH_STYLE.label_offset, sy + 5);
+      }
+    }
+
     // 캔버스 system 모드에 라이저 시각화 추가 — _renderSystemMode 후처리.
-    // PR1.7: glow halo + 굵은 sharp center + 노드 강조.
-    // 동적 추출: state.system_revealed_pipes_count (int) 까지만 그림 (점진 reveal).
+    // 동적 추출: state.system_revealed_pipes_count (int) 까지만 그림.
+    // 그래프 스타일은 공통 GRAPH_STYLE / 헬퍼 사용.
     const _origRenderSystemMode = _renderSystemMode;
     _renderSystemMode = function() {
       _origRenderSystemMode();
@@ -2328,52 +2403,32 @@
       const pipesToDraw = (limit !== null && limit !== undefined)
         ? r.pipes.slice(0, limit)
         : r.pipes;
-      // 표시할 노드 = 그려진 pipe 들의 in/out + 펌프 (시작점은 항상)
       const nodesShown = new Set([r.input_node_label || "1"]);
       for (const p of pipesToDraw) { nodesShown.add(p.in); nodesShown.add(p.out); }
 
       ctx.globalAlpha = 1.0;
-      // 3-pass glow halo
-      const passes = [
-        { color: "rgba(253, 224, 71, 0.30)", width: 12 },
-        { color: "rgba(253, 224, 71, 0.55)", width: 6 },
-        { color: "#fde047",                   width: 2.5 },
-      ];
-      ctx.lineCap = "round"; ctx.lineJoin = "round";
-      for (const pass of passes) {
-        ctx.strokeStyle = pass.color; ctx.lineWidth = pass.width;
-        for (const p of pipesToDraw) {
-          const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
-          if (!a || !b) continue;
-          const [x1, y1] = worldToScreen(a.x, a.y);
-          const [x2, y2] = worldToScreen(b.x, b.y);
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-        }
+      // pipe — 공통 glow halo (라이저 amber)
+      const pairs = [];
+      for (const p of pipesToDraw) {
+        const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
+        if (a && b) pairs.push({a, b});
       }
-      ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+      _drawPipeGroupGlow(pairs, GRAPH_STYLE.color_riser,
+                         (x, y) => worldToScreen(x, y));
 
-      // 노드 — 표시되는 것만. pump (보라) / AV (빨강) / 중간 (amber).
+      // 노드 — 공통 헬퍼
       const isEndpoint = (n) => (n.io_node === "Input") || (n.label === r.av_node_label);
-      // AV 는 path 가 마지막 pipe 까지 도달한 후에만 표시 (reveal 중간엔 AV 가 미확정)
       const avReached = (limit === null || limit === undefined) || (limit >= r.pipes.length);
       for (const n of r.nodes) {
         if (!nodesShown.has(n.label)) continue;
         if (n.label === r.av_node_label && !avReached) continue;
         const [sx, sy] = worldToScreen(n.x, n.y);
         const ep = isEndpoint(n);
-        const radius = ep ? 8 : 4;
-        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = ep ? 2.5 : 1.5;
-        ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = (n.io_node === "Input") ? "#a855f7"
-                       : (n.label === r.av_node_label) ? "#ef4444"
-                       : "#fde047";
-        ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.fill();
-        if (ep) {
-          ctx.fillStyle = "#fef3c7";
-          ctx.font = "bold 12px ui-monospace, monospace";
-          const tag = (n.io_node === "Input") ? "P" : "AV";
-          ctx.fillText(tag, sx + 12, sy + 5);
-        }
+        const fill = (n.io_node === "Input") ? GRAPH_STYLE.color_pump
+                   : (n.label === r.av_node_label) ? GRAPH_STYLE.color_av
+                   : GRAPH_STYLE.color_riser;
+        const tag = ep ? ((n.io_node === "Input") ? "P" : "AV") : null;
+        _drawGraphNode(sx, sy, ep ? "endpoint" : "mid", fill, tag);
       }
     };
 
@@ -2415,41 +2470,30 @@
       // PIPENET 의 Y 축은 위가 양수 — 우리 캔버스 Y 는 아래가 양수, 그래서 -y 적용
       const toScreen = (x, y) => [x * state.view.zoom + state.view.panX, -y * state.view.zoom + state.view.panY];
 
-      // 파이프 — 라이저(노랑) vs 헤드망(시안)
+      // 파이프 — 공통 glow halo (라이저 amber + 헤드망 cyan)
+      const riserPairs = [], headPairs = [];
       for (const p of g.pipes) {
         const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
         if (!a || !b) continue;
         const isRiser = riserSet.has(p.in) || riserSet.has(p.out);
-        const [sx1, sy1] = toScreen(a.x, a.y);
-        const [sx2, sy2] = toScreen(b.x, b.y);
-        ctx.strokeStyle = isRiser ? "#fde047" : "#06b6d4";
-        ctx.lineWidth = isRiser ? 2.6 : 1.6;
-        ctx.beginPath(); ctx.moveTo(sx1, sy1); ctx.lineTo(sx2, sy2); ctx.stroke();
+        (isRiser ? riserPairs : headPairs).push({a, b});
       }
+      _drawPipeGroupGlow(headPairs,  GRAPH_STYLE.color_head,  toScreen);
+      _drawPipeGroupGlow(riserPairs, GRAPH_STYLE.color_riser, toScreen);
 
-      // 노드
+      // 노드 — 공통 헬퍼 (endpoint vs mid 통일)
       for (const n of g.nodes) {
         const [sx, sy] = toScreen(n.x, n.y);
         const isAV = (n.label === g.av_node_label);
         const isInput = (n.io === "Input");
         const isRiser = riserSet.has(n.label);
-        if (isInput) {
-          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2); ctx.stroke();
-          ctx.fillStyle = "#a855f7";
-          ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2); ctx.fill();
-        } else if (isAV) {
-          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2); ctx.stroke();
-          ctx.fillStyle = "#ef4444";
-          ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2); ctx.fill();
-        } else if (isRiser) {
-          ctx.fillStyle = "#fde047";
-          ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2); ctx.fill();
-        } else {
-          ctx.fillStyle = "#06b6d4";
-          ctx.beginPath(); ctx.arc(sx, sy, 2.5, 0, Math.PI * 2); ctx.fill();
-        }
+        const ep = isInput || isAV;
+        const fill = isInput ? GRAPH_STYLE.color_pump
+                   : isAV    ? GRAPH_STYLE.color_av
+                   : isRiser ? GRAPH_STYLE.color_riser
+                             : GRAPH_STYLE.color_head;
+        const tag = ep ? (isInput ? "P" : "AV") : null;
+        _drawGraphNode(sx, sy, ep ? "endpoint" : "mid", fill, tag);
       }
 
       // 펌프 / 밸브 표시

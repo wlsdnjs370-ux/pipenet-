@@ -7,6 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Three.js r128 — WebGL 3D 라이브러리. 아이소메트릭 통합 배관망 시각화 (mode=iso) 전용. -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <style>
     :root {
       --bg: #ffffff;
@@ -111,6 +114,73 @@
       letter-spacing: 0.01em;
     }
     .stage3-legend.is-visible { display: block; }
+    /* ─── 아이소메트릭 3D — 옵션 패널 + 안내 + 캔버스 ─── */
+    .iso-canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: none; background: #050b1f;
+    }
+    .iso-canvas.is-visible { display: block; }
+    .iso-controls {
+      position: absolute; top: 64px; right: 14px;
+      background: rgba(15, 23, 42, 0.86);
+      border: 1px solid rgba(255,255,255,0.10);
+      color: #e2e8f0;
+      padding: 14px 14px;
+      font-size: 0.74rem; font-family: var(--font-sans);
+      border-radius: 8px;
+      backdrop-filter: blur(10px) saturate(1.4);
+      -webkit-backdrop-filter: blur(10px) saturate(1.4);
+      display: none; flex-direction: column; gap: 10px;
+      min-width: 230px;
+      pointer-events: auto;
+      letter-spacing: 0.01em;
+      z-index: 10;
+    }
+    .iso-controls.is-visible { display: flex; }
+    .iso-controls .iso-title {
+      font-size: 0.66rem; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.10em;
+      font-weight: 700; margin-bottom: 2px;
+    }
+    .iso-controls .iso-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; font-size: 0.72rem;
+    }
+    .iso-controls .iso-row label {
+      display: flex; align-items: center; gap: 6px;
+      font-weight: 500; color: #cbd5e1;
+    }
+    .iso-controls .iso-row input[type=range] {
+      flex: 1; height: 18px; accent-color: #06b6d4;
+    }
+    .iso-controls .iso-row .iso-val {
+      font-family: var(--font-mono); font-size: 0.68rem;
+      color: #94a3b8; min-width: 36px; text-align: right;
+    }
+    .iso-controls .iso-btn-row { display: flex; gap: 6px; }
+    .iso-controls .iso-btn-row button {
+      flex: 1; padding: 6px 10px;
+      background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.10);
+      color: #e2e8f0; border-radius: 4px; cursor: pointer;
+      font-size: 0.70rem; font-family: var(--font-sans);
+    }
+    .iso-controls .iso-btn-row button:hover {
+      background: rgba(51, 65, 85, 0.85);
+    }
+    .iso-hint {
+      position: absolute; bottom: 14px; left: 14px;
+      background: rgba(15, 23, 42, 0.82);
+      border: 1px solid rgba(255,255,255,0.10);
+      color: #94a3b8;
+      padding: 8px 12px;
+      font-size: 0.68rem; font-family: var(--font-mono);
+      border-radius: 6px;
+      backdrop-filter: blur(8px);
+      display: none;
+      pointer-events: none;
+      letter-spacing: 0.02em;
+    }
+    .iso-hint.is-visible { display: block; }
     .stage3-legend .legend-title {
       font-size: 0.68rem; color: #94a3b8; text-transform: uppercase;
       letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;
@@ -525,6 +595,7 @@
         <button id="mode-btn-plane" class="is-active" data-mode="plane" title="평면도 DXF → 헤드망 추출 (기존)">평면도 추출</button>
         <button id="mode-btn-system" data-mode="system" title="계통도 DXF → 라이저 + 펌프/AV 위치 지정">계통도 추출</button>
         <button id="mode-btn-combined" data-mode="combined" title="평면도 + 계통도 결과를 결합해 완성 SDF">통합</button>
+        <button id="mode-btn-iso" data-mode="iso" title="통합 배관망 3D Isometric — 마우스 드래그 회전, 휠 줌, Shift+드래그 팬">아이소메트릭 3D</button>
       </div>
     </div>
     <a href="/" target="_top">← 홈으로</a>
@@ -532,7 +603,41 @@
   <div class="workbench">
     <div class="canvas-pane">
       <canvas id="wb-canvas"></canvas>
-
+      <!-- 아이소메트릭 3D 전용 캔버스 — Three.js WebGL renderer 가 그림. 일반 2D 캔버스와 분리. -->
+      <canvas id="wb-canvas-3d" class="iso-canvas" aria-hidden="true"></canvas>
+      <!-- 아이소메트릭 옵션 패널 — Z 스케일, 노드/edge 굵기, 그리드/축/라벨 토글 등 -->
+      <div id="iso-controls" class="iso-controls" aria-hidden="true">
+        <div class="iso-title">아이소메트릭 3D 옵션</div>
+        <div class="iso-row">
+          <label for="iso-z-scale">Z 배율</label>
+          <input type="range" id="iso-z-scale" min="0.0" max="20.0" step="0.5" value="3.0">
+          <span class="iso-val" id="iso-z-scale-val">3.0×</span>
+        </div>
+        <div class="iso-row">
+          <label for="iso-node-size">노드 크기</label>
+          <input type="range" id="iso-node-size" min="1" max="20" step="1" value="6">
+          <span class="iso-val" id="iso-node-size-val">6</span>
+        </div>
+        <div class="iso-row">
+          <label for="iso-edge-width">엣지 굵기</label>
+          <input type="range" id="iso-edge-width" min="0.5" max="6" step="0.5" value="1.5">
+          <span class="iso-val" id="iso-edge-width-val">1.5</span>
+        </div>
+        <div class="iso-row">
+          <label><input type="checkbox" id="iso-show-grid" checked> 그리드</label>
+          <label><input type="checkbox" id="iso-show-axes" checked> 축</label>
+        </div>
+        <div class="iso-row">
+          <label><input type="checkbox" id="iso-show-labels"> 라벨</label>
+          <label><input type="checkbox" id="iso-color-by-elev"> 높이 그라데이션</label>
+        </div>
+        <div class="iso-btn-row">
+          <button id="iso-fit-view">맞춤</button>
+          <button id="iso-reset-view">시점 reset</button>
+        </div>
+      </div>
+      <!-- 하단 안내 — 마우스 조작 힌트 -->
+      <div id="iso-hint" class="iso-hint">드래그: 회전 · 휠: 줌 · Shift+드래그: 이동 · 더블클릭: 자동 맞춤</div>
 
       <div id="wb-empty" class="canvas-empty">
         <strong>DXF 파일을 업로드하세요</strong>
@@ -2039,12 +2144,16 @@
       const prev = state.current_mode;
       // 이전 모드의 view 저장 (다음 복귀 시 사용)
       if (prev && prev !== mode) _saveCurrentView(prev);
+      // 이전 모드가 iso 였으면 Three.js 정지 + 캔버스 숨김
+      if (prev === "iso" && mode !== "iso") {
+        if (typeof IsoViewer !== "undefined") IsoViewer.exit();
+      }
       state.current_mode = mode;
       _modeButtons.forEach(b => b.classList.toggle("is-active", b.dataset.mode === mode));
       // 사이드바 패널 토글 — 모드별로 다른 입력 인터페이스 표시
       if (_panelPlane)    _panelPlane.style.display    = (mode === "plane")    ? "" : "none";
       if (_panelSystem)   _panelSystem.style.display   = (mode === "system")   ? "" : "none";
-      if (_panelCombined) _panelCombined.style.display = (mode === "combined") ? "" : "none";
+      if (_panelCombined) _panelCombined.style.display = (mode === "combined" || mode === "iso") ? "" : "none";
       // wb-empty 안내문: 평면도 모드 + 아직 DXF 미업로드 일 때만 표시.
       // 도면 이미 있는데 "DXF 업로드하세요" 안내가 다시 뜨는 버그 방지.
       const _wbEmpty = document.getElementById("wb-empty");
@@ -2058,8 +2167,22 @@
         if (typeof BootOverlay !== "undefined") BootOverlay.hide();
       }
       // 좌측 overlay 정보
-      const labels = { plane: "평면도 추출", system: "계통도 추출", combined: "통합" };
+      const labels = { plane: "평면도 추출", system: "계통도 추출", combined: "통합", iso: "아이소메트릭 3D" };
       if (overlayInfoEl) overlayInfoEl.textContent = `[모드] ${labels[mode] || mode}`;
+      // iso 모드 진입: Three.js 캔버스 활성화. 통합 데이터 필요.
+      if (mode === "iso") {
+        if (typeof IsoViewer !== "undefined") {
+          if (state.combined_geometry) {
+            IsoViewer.enter();
+          } else {
+            // 통합 데이터 없음 — 안내 메시지
+            if (overlayInfoEl) {
+              overlayInfoEl.textContent = "[모드 아이소메트릭 3D] 통합 geometry 가 없습니다. 먼저 통합 모드에서 [통합 결과 생성] 클릭.";
+            }
+          }
+        }
+        return;  // 일반 2D render 호출 안 함
+      }
       // 모드 전환 후 view 복원 (저장된 게 있으면) 또는 데이터에 맞춰 fit.
       // 이전 모드에서 변경된 zoom/pan 이 이번 모드 entity 와 안 맞아 화면 밖으로 사라지는 버그 방지.
       _restoreOrFitForMode(mode);
@@ -2566,6 +2689,437 @@
       ctx.fillStyle = "#e2e8f0"; ctx.font = "bold 12px ui-monospace";
       ctx.fillText(`통합 배관망 — 라이저(노랑) + 헤드망(시안) + Input(보라) + AV(빨강)`, 12, h - 14);
     }
+
+    // ─────────────────────────────────────────────────────────────────
+    // 아이소메트릭 3D 뷰어 — Three.js (mode === "iso") 전용
+    //   X, Y: 평면도 좌표 (mm). Z: 노드의 elevation (m → mm 변환 + Z 배율).
+    //   학술적 노드-엣지 그래프 스타일 — sphere 노드 + cylinder 엣지 +
+    //   그리드 + 축 helper + 카테고리별 색상 (라이저 amber, 헤드 cyan,
+    //   AV 빨강, 펌프 보라). OrbitControls 로 회전·줌·팬.
+    // ─────────────────────────────────────────────────────────────────
+    const IsoViewer = (() => {
+      let scene = null, camera = null, renderer = null, controls = null;
+      let nodeGroup = null, edgeGroup = null, labelGroup = null;
+      let gridHelper = null, axesHelper = null;
+      let labelRenderer = null;  // 라벨 = sprite 텍스처
+      let raycaster = null;
+      let _initialized = false, _running = false, _animFrameId = null;
+      let _resizeObserver = null;
+      const canvas3d = document.getElementById("wb-canvas-3d");
+      const hintEl = document.getElementById("iso-hint");
+      const controlsEl = document.getElementById("iso-controls");
+
+      // UI 옵션 — 컨트롤러 input 값과 동기화
+      const opts = {
+        zScale: 3.0,         // elev (m) → world (mm) × 1000 × zScale
+        nodeSize: 6.0,       // sphere radius (world unit)
+        edgeWidth: 1.5,      // cylinder radius (world unit)
+        showGrid: true,
+        showAxes: true,
+        showLabels: false,
+        colorByElev: false,  // true 면 elev 기반 그라데이션, false 면 카테고리 색
+      };
+
+      // 카테고리 색상 (GRAPH_STYLE 과 동일 hex)
+      const COLOR = {
+        head:  0x06b6d4,  // cyan
+        riser: 0xf59e0b,  // amber
+        pump:  0xa855f7,  // 보라
+        av:    0xef4444,  // 빨강
+        gridMajor: 0x1e293b,
+        gridMinor: 0x0f172a,
+      };
+
+      // hex (CSS) → THREE.Color
+      function _hex(n) { return new THREE.Color(n); }
+
+      // elev 그라데이션 — 0 (낮음) = 파랑 → 1 (높음) = 빨강
+      function _elevColor(t) {
+        const r = t;
+        const g = 0.2 + 0.3 * Math.sin(Math.PI * t);
+        const b = 1.0 - t;
+        return new THREE.Color(r, g, b);
+      }
+
+      function init() {
+        if (_initialized) return;
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050b1f);
+        scene.fog = new THREE.Fog(0x050b1f, 8000, 80000);
+
+        const rect = canvas3d.getBoundingClientRect();
+        const w = Math.max(rect.width, 1);
+        const h = Math.max(rect.height, 1);
+        camera = new THREE.PerspectiveCamera(35, w / h, 1, 200000);
+        camera.position.set(8000, 8000, 8000);
+        camera.up.set(0, 0, 1);  // Z 위 (PIPENET 관례)
+
+        renderer = new THREE.WebGLRenderer({
+          canvas: canvas3d, antialias: true, alpha: false,
+        });
+        renderer.setPixelRatio(window.devicePixelRatio || 1);
+        renderer.setSize(w, h, false);
+
+        controls = new THREE.OrbitControls(camera, canvas3d);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.rotateSpeed = 0.85;
+        controls.zoomSpeed = 1.0;
+        controls.panSpeed = 0.85;
+        controls.minDistance = 100;
+        controls.maxDistance = 100000;
+        controls.target.set(0, 0, 0);
+        // 사용자 지정: 드래그 회전, Shift+드래그 팬, 휠 줌
+        controls.mouseButtons = {
+          LEFT: THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.PAN,
+        };
+
+        // 라이트 — ambient + directional (학술 그래프 스타일은 무광 평면, 약간의 음영)
+        const amb = new THREE.AmbientLight(0xffffff, 0.55);
+        scene.add(amb);
+        const dir = new THREE.DirectionalLight(0xffffff, 0.45);
+        dir.position.set(1, 1, 1).normalize();
+        scene.add(dir);
+
+        // 그리드 + 축 helper
+        gridHelper = new THREE.GridHelper(20000, 20, COLOR.gridMajor, COLOR.gridMinor);
+        gridHelper.rotation.x = Math.PI / 2;  // X-Y 평면에 깔기 (Z 가 up)
+        scene.add(gridHelper);
+        axesHelper = new THREE.AxesHelper(3000);
+        scene.add(axesHelper);
+
+        nodeGroup = new THREE.Group();
+        edgeGroup = new THREE.Group();
+        labelGroup = new THREE.Group();
+        scene.add(nodeGroup); scene.add(edgeGroup); scene.add(labelGroup);
+
+        raycaster = new THREE.Raycaster();
+
+        // 더블 클릭 → 자동 fit
+        canvas3d.addEventListener("dblclick", () => fitToData());
+
+        // 윈도우/패널 사이즈 변경 시 캔버스 리사이즈
+        _resizeObserver = new ResizeObserver(() => resize());
+        _resizeObserver.observe(canvas3d.parentElement);
+
+        _initialized = true;
+      }
+
+      function dispose() {
+        stop();
+        if (renderer) { renderer.dispose(); renderer = null; }
+        if (controls) { controls.dispose(); controls = null; }
+        if (_resizeObserver) { _resizeObserver.disconnect(); _resizeObserver = null; }
+        scene = camera = nodeGroup = edgeGroup = labelGroup = null;
+        gridHelper = axesHelper = null;
+        _initialized = false;
+      }
+
+      function resize() {
+        if (!renderer || !camera) return;
+        const rect = canvas3d.getBoundingClientRect();
+        const w = Math.max(rect.width, 1);
+        const h = Math.max(rect.height, 1);
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+
+      function start() {
+        if (_running) return;
+        _running = true;
+        const loop = () => {
+          if (!_running) return;
+          _animFrameId = requestAnimationFrame(loop);
+          if (controls) controls.update();
+          if (renderer && scene && camera) renderer.render(scene, camera);
+        };
+        loop();
+      }
+
+      function stop() {
+        _running = false;
+        if (_animFrameId) cancelAnimationFrame(_animFrameId);
+        _animFrameId = null;
+      }
+
+      // combined_geometry 의 노드/엣지를 scene 으로 변환.
+      // 좌표 정규화: bbox 중심을 원점으로, mm 그대로 (Three.js 단위는 자유).
+      let _dataBounds = null;  // {cx, cy, cz, rx, ry, rz}
+      function loadGeometry(geom) {
+        if (!_initialized) init();
+        clearGroups();
+        if (!geom || !geom.nodes || !geom.nodes.length) {
+          _dataBounds = null;
+          return;
+        }
+        const riserSet = new Set(geom.riser_labels || []);
+        const avLabel = geom.av_node_label;
+        const pumpInNodes = new Set();
+        for (const p of (geom.pumps || [])) {
+          if (p.in) pumpInNodes.add(p.in);
+          if (p.out) pumpInNodes.add(p.out);
+        }
+
+        // 노드 좌표 정규화 — bbox 중심, mm 단위 유지
+        const xs = geom.nodes.map(n => n.x);
+        const ys = geom.nodes.map(n => n.y);
+        const elevs = geom.nodes.map(n => (typeof n.elevation === "number") ? n.elevation : 0);
+        const minX = Math.min(...xs), maxX = Math.max(...xs);
+        const minY = Math.min(...ys), maxY = Math.max(...ys);
+        const minE = Math.min(...elevs), maxE = Math.max(...elevs);
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const eRange = Math.max(maxE - minE, 1e-6);
+        // Z = elev (m) * 1000 (mm) * zScale - center
+        // 중심을 0 으로 맞추기 위해 평균 elev 도 빼줌
+        const eMid = (minE + maxE) / 2;
+
+        const nodeMap = new Map();  // label → THREE.Vector3
+        const nodeMeta = new Map(); // label → {category, t (elev 정규화)}
+        for (const n of geom.nodes) {
+          const e = (typeof n.elevation === "number") ? n.elevation : 0;
+          const x = n.x - cx;
+          const y = n.y - cy;
+          const z = (e - eMid) * 1000 * opts.zScale;
+          nodeMap.set(n.label, new THREE.Vector3(x, y, z));
+
+          let cat = "head";
+          if (n.label === avLabel) cat = "av";
+          else if (n.io === "Input" || pumpInNodes.has(n.label)) cat = "pump";
+          else if (riserSet.has(n.label)) cat = "riser";
+          const t = (e - minE) / eRange;
+          nodeMeta.set(n.label, { category: cat, elevT: t, raw: n });
+        }
+
+        // bounds 저장 (fitToData 용)
+        _dataBounds = {
+          cx: 0, cy: 0, cz: 0,
+          rx: (maxX - minX) / 2 || 1,
+          ry: (maxY - minY) / 2 || 1,
+          rz: Math.max(eRange * 1000 * opts.zScale / 2, (maxX - minX) * 0.05),
+        };
+
+        // 엣지 — cylinder (학술 그래프 스타일: 일관 굵기, 카테고리 색)
+        const edgeMatCache = {};
+        const sphereMatCache = {};
+        for (const p of (geom.pipes || [])) {
+          const a = nodeMap.get(p.in);
+          const b = nodeMap.get(p.out);
+          if (!a || !b) continue;
+          const isRiser = riserSet.has(p.in) || riserSet.has(p.out);
+          let color = isRiser ? COLOR.riser : COLOR.head;
+          if (opts.colorByElev) {
+            const ta = nodeMeta.get(p.in)?.elevT ?? 0.5;
+            const tb = nodeMeta.get(p.out)?.elevT ?? 0.5;
+            color = _elevColor((ta + tb) / 2).getHex();
+          }
+          if (!edgeMatCache[color]) {
+            edgeMatCache[color] = new THREE.MeshLambertMaterial({ color });
+          }
+          edgeGroup.add(_makeCylinder(a, b, opts.edgeWidth, edgeMatCache[color]));
+        }
+
+        // 노드 — sphere
+        for (const [label, pos] of nodeMap) {
+          const meta = nodeMeta.get(label);
+          let color = COLOR[meta.category] || COLOR.head;
+          if (opts.colorByElev) {
+            color = _elevColor(meta.elevT).getHex();
+          }
+          const size = meta.category === "av" || meta.category === "pump"
+                     ? opts.nodeSize * 1.4 : opts.nodeSize;
+          if (!sphereMatCache[color]) {
+            sphereMatCache[color] = new THREE.MeshLambertMaterial({ color });
+          }
+          const geo = new THREE.SphereGeometry(size, 18, 14);
+          const mesh = new THREE.Mesh(geo, sphereMatCache[color]);
+          mesh.position.copy(pos);
+          mesh.userData.label = label;
+          mesh.userData.category = meta.category;
+          mesh.userData.elev = meta.raw.elevation;
+          nodeGroup.add(mesh);
+
+          // 라벨 sprite (옵션, 표시 시에만 생성)
+          if (opts.showLabels) {
+            const sprite = _makeLabelSprite(label, color);
+            if (sprite) {
+              sprite.position.copy(pos);
+              sprite.position.z += size * 1.8;
+              labelGroup.add(sprite);
+            }
+          }
+        }
+
+        // 그리드/축 helper 가시성
+        if (gridHelper) gridHelper.visible = opts.showGrid;
+        if (axesHelper) axesHelper.visible = opts.showAxes;
+      }
+
+      function clearGroups() {
+        const grps = [nodeGroup, edgeGroup, labelGroup];
+        for (const g of grps) {
+          if (!g) continue;
+          while (g.children.length) {
+            const c = g.children.pop();
+            if (c.geometry) c.geometry.dispose();
+            if (c.material) {
+              if (Array.isArray(c.material)) c.material.forEach(m => m.dispose());
+              else c.material.dispose();
+            }
+            if (c.material && c.material.map) c.material.map.dispose();
+          }
+        }
+      }
+
+      // 두 점 사이 cylinder mesh — TubeGeometry 대신 가볍게.
+      function _makeCylinder(a, b, radius, material) {
+        const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+        const len = Math.hypot(dx, dy, dz);
+        if (len < 1e-6) return new THREE.Object3D();
+        const geo = new THREE.CylinderGeometry(radius, radius, len, 10, 1, true);
+        const mesh = new THREE.Mesh(geo, material);
+        // CylinderGeometry 는 기본 Y축 정렬. a→b 방향으로 회전.
+        mesh.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+        const yAxis = new THREE.Vector3(0, 1, 0);
+        const dir = new THREE.Vector3(dx, dy, dz).normalize();
+        mesh.quaternion.setFromUnitVectors(yAxis, dir);
+        return mesh;
+      }
+
+      function _makeLabelSprite(text, colorHex) {
+        const cw = 256, ch = 64;
+        const cv = document.createElement("canvas");
+        cv.width = cw; cv.height = ch;
+        const c2d = cv.getContext("2d");
+        c2d.fillStyle = "rgba(15,23,42,0.85)";
+        c2d.fillRect(0, 0, cw, ch);
+        c2d.fillStyle = "#e2e8f0";
+        c2d.font = "bold 28px ui-monospace, monospace";
+        c2d.textBaseline = "middle";
+        c2d.fillText(String(text).slice(0, 12), 12, ch / 2);
+        const tex = new THREE.CanvasTexture(cv);
+        tex.needsUpdate = true;
+        const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+        const sprite = new THREE.Sprite(mat);
+        const s = opts.nodeSize * 14;
+        sprite.scale.set(s, s * (ch / cw), 1);
+        return sprite;
+      }
+
+      function fitToData() {
+        if (!_dataBounds || !camera || !controls) return;
+        const { rx, ry, rz } = _dataBounds;
+        const maxR = Math.max(rx, ry, rz);
+        // 카메라 거리 = maxR × (1 / tan(fov/2)) × margin
+        const fov = camera.fov * Math.PI / 180;
+        const dist = maxR / Math.tan(fov / 2) * 1.6;
+        // 아이소메트릭 방향: (1,1,1) 정규화
+        const dirN = new THREE.Vector3(1, 1, 1).normalize();
+        camera.position.copy(dirN.multiplyScalar(dist));
+        controls.target.set(0, 0, 0);
+        controls.update();
+      }
+
+      function resetView() {
+        // 표준 isometric (1,1,1) 방향, 자동 거리.
+        fitToData();
+      }
+
+      function setOptionsFromUI() {
+        const sZ = document.getElementById("iso-z-scale");
+        const sN = document.getElementById("iso-node-size");
+        const sE = document.getElementById("iso-edge-width");
+        const cG = document.getElementById("iso-show-grid");
+        const cA = document.getElementById("iso-show-axes");
+        const cL = document.getElementById("iso-show-labels");
+        const cC = document.getElementById("iso-color-by-elev");
+        if (sZ) opts.zScale = parseFloat(sZ.value);
+        if (sN) opts.nodeSize = parseFloat(sN.value);
+        if (sE) opts.edgeWidth = parseFloat(sE.value);
+        if (cG) opts.showGrid = cG.checked;
+        if (cA) opts.showAxes = cA.checked;
+        if (cL) opts.showLabels = cL.checked;
+        if (cC) opts.colorByElev = cC.checked;
+      }
+
+      function bindUI() {
+        const sZ = document.getElementById("iso-z-scale");
+        const sN = document.getElementById("iso-node-size");
+        const sE = document.getElementById("iso-edge-width");
+        const cG = document.getElementById("iso-show-grid");
+        const cA = document.getElementById("iso-show-axes");
+        const cL = document.getElementById("iso-show-labels");
+        const cC = document.getElementById("iso-color-by-elev");
+        const vZ = document.getElementById("iso-z-scale-val");
+        const vN = document.getElementById("iso-node-size-val");
+        const vE = document.getElementById("iso-edge-width-val");
+        const btnFit = document.getElementById("iso-fit-view");
+        const btnReset = document.getElementById("iso-reset-view");
+        if (sZ) sZ.addEventListener("input", () => {
+          opts.zScale = parseFloat(sZ.value);
+          if (vZ) vZ.textContent = opts.zScale.toFixed(1) + "×";
+          if (state.combined_geometry) loadGeometry(state.combined_geometry);
+        });
+        if (sN) sN.addEventListener("input", () => {
+          opts.nodeSize = parseFloat(sN.value);
+          if (vN) vN.textContent = String(opts.nodeSize);
+          if (state.combined_geometry) loadGeometry(state.combined_geometry);
+        });
+        if (sE) sE.addEventListener("input", () => {
+          opts.edgeWidth = parseFloat(sE.value);
+          if (vE) vE.textContent = opts.edgeWidth.toFixed(1);
+          if (state.combined_geometry) loadGeometry(state.combined_geometry);
+        });
+        const togglesRedraw = (input, key) => {
+          if (!input) return;
+          input.addEventListener("change", () => {
+            opts[key] = input.checked;
+            if (state.combined_geometry) loadGeometry(state.combined_geometry);
+          });
+        };
+        togglesRedraw(cG, "showGrid");
+        togglesRedraw(cA, "showAxes");
+        togglesRedraw(cL, "showLabels");
+        togglesRedraw(cC, "colorByElev");
+        if (btnFit) btnFit.addEventListener("click", fitToData);
+        if (btnReset) btnReset.addEventListener("click", resetView);
+      }
+
+      function enter() {
+        if (typeof THREE === "undefined") {
+          console.warn("[IsoViewer] Three.js not loaded — CDN 로드 실패?");
+          return false;
+        }
+        canvas3d.classList.add("is-visible");
+        canvas3d.setAttribute("aria-hidden", "false");
+        controlsEl.classList.add("is-visible");
+        controlsEl.setAttribute("aria-hidden", "false");
+        if (hintEl) hintEl.classList.add("is-visible");
+        if (!_initialized) { init(); bindUI(); }
+        setOptionsFromUI();
+        resize();
+        if (state.combined_geometry) {
+          loadGeometry(state.combined_geometry);
+          fitToData();
+        }
+        start();
+        return true;
+      }
+
+      function exit() {
+        stop();
+        canvas3d.classList.remove("is-visible");
+        canvas3d.setAttribute("aria-hidden", "true");
+        controlsEl.classList.remove("is-visible");
+        controlsEl.setAttribute("aria-hidden", "true");
+        if (hintEl) hintEl.classList.remove("is-visible");
+      }
+
+      return { init, enter, exit, loadGeometry, resize, fitToData, resetView, dispose };
+    })();
 
     function _renderSystemMode() {
       const w = canvas.width / state.dpr;

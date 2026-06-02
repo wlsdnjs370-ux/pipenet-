@@ -626,7 +626,7 @@
           <span class="iso-val" id="iso-edge-width-val">1.5</span>
         </div>
         <div class="iso-row">
-          <label><input type="checkbox" id="iso-show-grid" checked> 그리드</label>
+          <label><input type="checkbox" id="iso-show-grid"> 그리드</label>
           <label><input type="checkbox" id="iso-show-axes" checked> 축</label>
         </div>
         <div class="iso-row">
@@ -2731,7 +2731,7 @@
         zScale: 3.0,           // 라이저 Z spread = bbox diag × 0.5 × zScale
         nodeSize: 6.0,         // 슬라이더 (default 6) — bbox diag × 0.006 mm × (값/6)
         edgeWidth: 1.5,        // 슬라이더 (default 1.5) — bbox diag × 0.0012 × (값/1.5)
-        showGrid: true,
+        showGrid: false,       // 기본 OFF (사용자 요청 — 깔끔한 시작)
         showAxes: true,
         showLabels: false,
         colorByElev: false,    // true 면 elev 기반 그라데이션, false 면 카테고리 색
@@ -2791,10 +2791,11 @@
         controls.enableDamping = true;
         controls.dampingFactor = 0.08;
         controls.rotateSpeed = 0.85;
-        controls.zoomSpeed = 1.0;
+        controls.zoomSpeed = 1.2;
         controls.panSpeed = 0.85;
-        controls.minDistance = 100;
-        controls.maxDistance = 100000;
+        // 줌 거의 무제한 — 계통도 라이저 가까이 + 전체 멀리 자유롭게
+        controls.minDistance = 0.1;
+        controls.maxDistance = 1e9;
         controls.target.set(0, 0, 0);
         // 사용자 지정: 드래그 회전, Shift+드래그 팬, 휠 줌
         controls.mouseButtons = {
@@ -3106,34 +3107,60 @@
         const cv = document.createElement("canvas");
         cv.width = cw; cv.height = ch;
         const c2d = cv.getContext("2d");
-        c2d.fillStyle = "rgba(15,23,42,0.85)";
-        c2d.fillRect(0, 0, cw, ch);
-        c2d.fillStyle = "#e2e8f0";
-        c2d.font = "bold 28px ui-monospace, monospace";
+        // 흰 반투명 배경 — 어두운 캔버스 위에서 텍스트 가독성 ↑ (이전 어두운 배경은 텍스트 안 보였음)
+        c2d.fillStyle = "rgba(255, 255, 255, 0.95)";
+        // 둥근 사각형 — 학술 그래프 라벨 스타일
+        const pad = 4, br = 10;
+        c2d.beginPath();
+        c2d.moveTo(pad + br, pad);
+        c2d.lineTo(cw - pad - br, pad);
+        c2d.quadraticCurveTo(cw - pad, pad, cw - pad, pad + br);
+        c2d.lineTo(cw - pad, ch - pad - br);
+        c2d.quadraticCurveTo(cw - pad, ch - pad, cw - pad - br, ch - pad);
+        c2d.lineTo(pad + br, ch - pad);
+        c2d.quadraticCurveTo(pad, ch - pad, pad, ch - pad - br);
+        c2d.lineTo(pad, pad + br);
+        c2d.quadraticCurveTo(pad, pad, pad + br, pad);
+        c2d.closePath();
+        c2d.fill();
+        // 노드 카테고리 색 outline (두꺼운 stroke 로 cd 가시성)
+        if (typeof colorHex === "number") {
+          c2d.strokeStyle = "#" + colorHex.toString(16).padStart(6, "0");
+          c2d.lineWidth = 3;
+          c2d.stroke();
+        }
+        // 짙은 텍스트 + bold + outline shadow 로 contrast 강화
+        c2d.fillStyle = "#0f172a";
+        c2d.font = "bold 30px 'JetBrains Mono', ui-monospace, monospace";
         c2d.textBaseline = "middle";
-        c2d.fillText(String(text).slice(0, 12), 12, ch / 2);
+        c2d.textAlign = "center";
+        c2d.fillText(String(text).slice(0, 14), cw / 2, ch / 2 + 2);
         const tex = new THREE.CanvasTexture(cv);
         tex.needsUpdate = true;
-        const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+        const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
         const sprite = new THREE.Sprite(mat);
         // 라벨 크기 — 노드 반경에 비례 (refRadius 미지정 시 _autoNodeRadius 사용)
         const r = refRadius || _autoNodeRadius;
-        const s = r * 10;
+        const s = r * 12;
         sprite.scale.set(s, s * (ch / cw), 1);
+        // 라벨은 항상 다른 객체 위에 그려짐
+        sprite.renderOrder = 999;
         return sprite;
       }
 
       function fitToData() {
         if (!_dataBounds || !camera || !controls) return;
-        const { rx, ry, rz } = _dataBounds;
+        const { rx, ry, rz, cz } = _dataBounds;
         const maxR = Math.max(rx, ry, rz);
-        // 카메라 거리 = maxR × (1 / tan(fov/2)) × margin
         const fov = camera.fov * Math.PI / 180;
         const dist = maxR / Math.tan(fov / 2) * 1.6;
-        // 아이소메트릭 방향: (1,1,1) 정규화
-        const dirN = new THREE.Vector3(1, 1, 1).normalize();
+        // 카메라 방향 — Z 가 화면에서 거의 수직으로 보이도록 elevation 낮춤.
+        // (1, 1, 0.2) — atan2(0.2, sqrt(2)) ≈ 8° 만 위에서 본 시점.
+        // 이전 (1,1,1) 은 45° 위라 Z 가 30° 정도 휘어 보임.
+        const dirN = new THREE.Vector3(1, 1, 0.2).normalize();
         camera.position.copy(dirN.multiplyScalar(dist));
-        controls.target.set(0, 0, 0);
+        // target 은 데이터 중심 — 라이저가 위로 펼침이라 cz 만큼 위쪽
+        controls.target.set(0, 0, cz || 0);
         controls.update();
       }
 

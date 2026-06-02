@@ -96,6 +96,29 @@
       background: var(--accent); border-color: var(--accent); color: #fff;
       box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.25);
     }
+    .stage3-legend {
+      position: absolute; bottom: 60px; right: 14px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255,255,255,0.10);
+      color: #e2e8f0;
+      padding: 10px 12px;
+      font-size: 0.72rem; font-family: var(--font-sans);
+      pointer-events: none;
+      border-radius: 8px;
+      backdrop-filter: blur(10px) saturate(1.4);
+      -webkit-backdrop-filter: blur(10px) saturate(1.4);
+      display: none;
+      letter-spacing: 0.01em;
+    }
+    .stage3-legend.is-visible { display: block; }
+    .stage3-legend .legend-title {
+      font-size: 0.68rem; color: #94a3b8; text-transform: uppercase;
+      letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;
+    }
+    .stage3-legend .legend-row {
+      display: flex; align-items: center; gap: 8px; padding: 2px 0;
+    }
+    .stage3-legend svg { flex-shrink: 0; }
     .stage-badge {
       position: absolute; bottom: 14px; right: 14px;
       background: rgba(15, 23, 42, 0.82);
@@ -529,6 +552,31 @@
         </div>
       </div>
       <div id="wb-stage-badge" class="stage-badge" style="display:none;"></div>
+
+      <!-- ─── Stage 3 배관망 그래프 범례 ─── -->
+      <div id="wb-stage3-legend" class="stage3-legend" aria-hidden="true">
+        <div class="legend-title">배관망 그래프 범례</div>
+        <div class="legend-row">
+          <svg width="34" height="6"><line x1="1" y1="3" x2="33" y2="3" stroke="#06b6d4" stroke-width="2"/></svg>
+          <span>실배관 (가지식 트리)</span>
+        </div>
+        <div class="legend-row">
+          <svg width="34" height="6"><line x1="1" y1="3" x2="33" y2="3" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="8,4"/></svg>
+          <span>추정 bridge (강제 연결)</span>
+        </div>
+        <div class="legend-row">
+          <svg width="34" height="6"><line x1="1" y1="3" x2="33" y2="3" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="3,3"/></svg>
+          <span>헤드 drop-line</span>
+        </div>
+        <div class="legend-row">
+          <svg width="34" height="6"><line x1="1" y1="3" x2="33" y2="3" stroke="#64748b" stroke-width="1.0" stroke-dasharray="2,4" stroke-opacity="0.5"/></svg>
+          <span>제거된 cycle 자리</span>
+        </div>
+        <div class="legend-row">
+          <svg width="34" height="6"><line x1="1" y1="3" x2="33" y2="3" stroke="#ef4444" stroke-width="1.6" stroke-dasharray="6,4"/></svg>
+          <span>알람밸브 연결</span>
+        </div>
+      </div>
 
       <!-- ─── PR1: Boot overlay (S0) ─── -->
       <div id="boot-overlay" class="boot-overlay" role="status" aria-live="polite">
@@ -1441,6 +1489,12 @@
       stageBadge.style.display = "block";
       stageBadge.className = "stage-badge " + cls;
       stageBadge.textContent = labels[idx];
+      // Stage 3 (배관망 그래프) 일 때만 범례 노출
+      const legendEl = document.getElementById("wb-stage3-legend");
+      if (legendEl) {
+        legendEl.classList.toggle("is-visible", idx === 3);
+        legendEl.setAttribute("aria-hidden", idx === 3 ? "false" : "true");
+      }
       render();
     }
 

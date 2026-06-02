@@ -598,7 +598,6 @@
         <button id="mode-btn-plane" class="is-active" data-mode="plane" title="평면도 DXF → 헤드망 추출 (기존)">평면도 추출</button>
         <button id="mode-btn-system" data-mode="system" title="계통도 DXF → 라이저 + 펌프/AV 위치 지정">계통도 추출</button>
         <button id="mode-btn-combined" data-mode="combined" title="평면도 + 계통도 결과를 결합해 완성 SDF">통합</button>
-        <button id="mode-btn-iso" data-mode="iso" title="통합 배관망 3D Isometric — 마우스 드래그 회전, 휠 줌, Shift+드래그 팬">아이소메트릭 3D</button>
       </div>
     </div>
     <a href="/" target="_top">← 홈으로</a>
@@ -938,6 +937,15 @@
           <div id="cmb-result-box" class="info-line" style="font-size: 0.74rem;">
             아직 통합이 실행되지 않았습니다.
           </div>
+        </section>
+
+        <section>
+          <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">통합 배관망 시각화</h3>
+          <p class="info-line" style="font-size: 0.72rem; margin-bottom: 6px;">
+            평면도 (X·Y) + 계통도 라이저 (Z) 를 결합한 3D 아이소메트릭 뷰. 마우스 드래그로 회전, 휠 줌, Shift+드래그 팬.
+          </p>
+          <button id="cmb-iso-btn" type="button" disabled style="width: 100%; padding: 10px 12px; background: #0a1228; color: #fff; border: 1px solid #0a1228; font-weight: 700; cursor: pointer; font-size: 0.82rem;">▶ 아이소메트릭 3D 보기</button>
+          <p class="info-line" style="font-size: 0.68rem; margin-top: 4px; color: var(--muted);">통합 결과 생성 후 활성화됩니다.</p>
         </section>
       </div>
       <!-- ───── /mode-panel-combined ───── -->
@@ -2152,7 +2160,12 @@
         if (typeof IsoViewer !== "undefined") IsoViewer.exit();
       }
       state.current_mode = mode;
-      _modeButtons.forEach(b => b.classList.toggle("is-active", b.dataset.mode === mode));
+      // iso 는 combined 의 sub-mode — 상단 tabs 에서 통합 버튼이 active 유지
+      _modeButtons.forEach(b => {
+        const m = b.dataset.mode;
+        const match = (m === mode) || (mode === "iso" && m === "combined");
+        b.classList.toggle("is-active", match);
+      });
       // 사이드바 패널 토글 — 모드별로 다른 입력 인터페이스 표시
       if (_panelPlane)    _panelPlane.style.display    = (mode === "plane")    ? "" : "none";
       if (_panelSystem)   _panelSystem.style.display   = (mode === "system")   ? "" : "none";
@@ -2712,15 +2725,17 @@
       const hintEl = document.getElementById("iso-hint");
       const controlsEl = document.getElementById("iso-controls");
 
-      // UI 옵션 — 컨트롤러 input 값과 동기화
+      // UI 옵션 — 컨트롤러 input 값과 동기화. 노드/엣지 크기는 도면 bbox 의
+      // 비율로 자동 환산되고, 슬라이더는 그 위에 배수 (default 1.0×).
       const opts = {
-        zScale: 3.0,         // elev (m) → world (mm) × 1000 × zScale
-        nodeSize: 6.0,       // sphere radius (world unit)
-        edgeWidth: 1.5,      // cylinder radius (world unit)
+        zScale: 3.0,           // 라이저 Z spread = bbox diag × 0.5 × zScale
+        nodeSize: 6.0,         // 슬라이더 (default 6) — bbox diag × 0.006 mm × (값/6)
+        edgeWidth: 1.5,        // 슬라이더 (default 1.5) — bbox diag × 0.0012 × (값/1.5)
         showGrid: true,
         showAxes: true,
         showLabels: false,
-        colorByElev: false,  // true 면 elev 기반 그라데이션, false 면 카테고리 색
+        colorByElev: false,    // true 면 elev 기반 그라데이션, false 면 카테고리 색
+        autoRiserSpread: true, // 라이저 elev 가 모두 같으면 라벨 순서로 강제 Z 분배
       };
 
       // 카테고리 색상 (GRAPH_STYLE 과 동일 hex)
@@ -2851,6 +2866,7 @@
       // combined_geometry 의 노드/엣지를 scene 으로 변환.
       // 좌표 정규화: bbox 중심을 원점으로, mm 그대로 (Three.js 단위는 자유).
       let _dataBounds = null;  // {cx, cy, cz, rx, ry, rz}
+      let _autoNodeRadius = 1, _autoEdgeRadius = 1;  // bbox 비례 자동 스케일
       function loadGeometry(geom) {
         if (!_initialized) init();
         clearGroups();
@@ -2866,27 +2882,69 @@
           if (p.out) pumpInNodes.add(p.out);
         }
 
-        // 노드 좌표 정규화 — bbox 중심, mm 단위 유지
+        // 노드 X,Y bbox + 도면 대각 — 노드/엣지/그리드/Z spread 의 기준 스케일.
         const xs = geom.nodes.map(n => n.x);
         const ys = geom.nodes.map(n => n.y);
-        const elevs = geom.nodes.map(n => (typeof n.elevation === "number") ? n.elevation : 0);
         const minX = Math.min(...xs), maxX = Math.max(...xs);
         const minY = Math.min(...ys), maxY = Math.max(...ys);
-        const minE = Math.min(...elevs), maxE = Math.max(...elevs);
-        const cx = (minX + maxX) / 2;
-        const cy = (minY + maxY) / 2;
-        const eRange = Math.max(maxE - minE, 1e-6);
-        // Z = elev (m) * 1000 (mm) * zScale - center
-        // 중심을 0 으로 맞추기 위해 평균 elev 도 빼줌
+        const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+        const bboxW = (maxX - minX) || 1, bboxH = (maxY - minY) || 1;
+        const bboxDiag = Math.hypot(bboxW, bboxH);
+        // 도면 비례 자동 크기 (mm) — slider 는 그 위 배수 (default 1.0×).
+        // 노드: bbox 의 0.6% 반경 (10m 도면 = 60mm), 엣지: 0.12% (10m = 12mm)
+        const baseNode = bboxDiag * 0.006;
+        const baseEdge = bboxDiag * 0.0012;
+        _autoNodeRadius = baseNode * (opts.nodeSize / 6.0);
+        _autoEdgeRadius = baseEdge * (opts.edgeWidth / 1.5);
+
+        // ─── Z 매핑 결정 ───
+        // 라이저 노드의 elev 범위가 너무 작으면 (단층 도면, 헤드망 + 라이저 모두
+        // elev=2.8 같은 hardcoded) Z 변화가 안 보임 → 라이저 라벨 순서로 강제 펼침.
+        // riser_labels 순서가 펌프(Input, 첫 노드) → AV (마지막). 정확하지 않으면
+        // pipe edge 따라 위상 정렬 + 라벨 numeric sort 결합.
+        const riserNodes = geom.nodes.filter(n => riserSet.has(n.label));
+        const riserElevs = riserNodes.map(n => (typeof n.elevation === "number") ? n.elevation : 0);
+        const riserElevSpread = riserElevs.length
+          ? Math.max(...riserElevs) - Math.min(...riserElevs) : 0;
+        const useAutoSpread = opts.autoRiserSpread && riserElevSpread < 1.0;
+        // 라이저 라벨 → 강제 Z 매핑 (펌프=top, AV=헤드망 평면)
+        const riserAutoZ = new Map();
+        if (useAutoSpread && riserNodes.length >= 2) {
+          // 정렬: 펌프(Input) 가 가장 위. avLabel 이 가장 아래.
+          // 휴리스틱: avLabel 마지막, 나머지는 numeric sort.
+          const sorted = [...riserNodes].sort((a, b) => {
+            if (a.label === avLabel) return 1;
+            if (b.label === avLabel) return -1;
+            const na = parseFloat(a.label), nb = parseFloat(b.label);
+            if (!isNaN(na) && !isNaN(nb)) return na - nb;
+            return String(a.label).localeCompare(String(b.label));
+          });
+          const spreadHeight = bboxDiag * 0.5 * opts.zScale;
+          sorted.forEach((n, i) => {
+            // 펌프 (i=0) → Z = spreadHeight (top), AV (i=last) → Z = 0 (헤드망 평면)
+            const t = 1 - (i / Math.max(1, sorted.length - 1));
+            riserAutoZ.set(n.label, t * spreadHeight);
+          });
+        }
+
+        // elev 기반 Z (autoSpread 안 쓸 때)
+        const allElevs = geom.nodes.map(n => (typeof n.elevation === "number") ? n.elevation : 0);
+        const minE = Math.min(...allElevs), maxE = Math.max(...allElevs);
         const eMid = (minE + maxE) / 2;
+        const eRange = Math.max(maxE - minE, 1e-6);
 
         const nodeMap = new Map();  // label → THREE.Vector3
-        const nodeMeta = new Map(); // label → {category, t (elev 정규화)}
+        const nodeMeta = new Map(); // label → {category, ...}
         for (const n of geom.nodes) {
           const e = (typeof n.elevation === "number") ? n.elevation : 0;
           const x = n.x - cx;
           const y = n.y - cy;
-          const z = (e - eMid) * 1000 * opts.zScale;
+          let z;
+          if (useAutoSpread) {
+            z = riserSet.has(n.label) ? (riserAutoZ.get(n.label) ?? 0) : 0;
+          } else {
+            z = (e - eMid) * 1000 * opts.zScale;
+          }
           nodeMap.set(n.label, new THREE.Vector3(x, y, z));
 
           let cat = "head";
@@ -2897,15 +2955,36 @@
           nodeMeta.set(n.label, { category: cat, elevT: t, raw: n });
         }
 
-        // bounds 저장 (fitToData 용)
+        // bounds (fitToData) — Z 범위는 autoSpread 시 spreadHeight, else elev range
+        const zRange = useAutoSpread
+          ? bboxDiag * 0.5 * opts.zScale
+          : eRange * 1000 * opts.zScale;
         _dataBounds = {
-          cx: 0, cy: 0, cz: 0,
-          rx: (maxX - minX) / 2 || 1,
-          ry: (maxY - minY) / 2 || 1,
-          rz: Math.max(eRange * 1000 * opts.zScale / 2, (maxX - minX) * 0.05),
+          cx: 0, cy: 0, cz: zRange / 2,  // 평면이 z=0, 라이저가 위로 펼침 → 중앙은 z/2
+          rx: bboxW / 2, ry: bboxH / 2,
+          rz: Math.max(zRange / 2, bboxDiag * 0.05),
         };
 
-        // 엣지 — cylinder (학술 그래프 스타일: 일관 굵기, 카테고리 색)
+        // 그리드/축 크기를 bbox 에 맞춤
+        if (gridHelper) {
+          scene.remove(gridHelper);
+          gridHelper.geometry.dispose();
+          gridHelper = new THREE.GridHelper(
+            bboxDiag * 1.2, 20, COLOR.gridMajor, COLOR.gridMinor,
+          );
+          gridHelper.rotation.x = Math.PI / 2;
+          gridHelper.visible = opts.showGrid;
+          scene.add(gridHelper);
+        }
+        if (axesHelper) {
+          scene.remove(axesHelper);
+          axesHelper.geometry.dispose();
+          axesHelper = new THREE.AxesHelper(bboxDiag * 0.2);
+          axesHelper.visible = opts.showAxes;
+          scene.add(axesHelper);
+        }
+
+        // 엣지 — cylinder, bbox 비례 굵기
         const edgeMatCache = {};
         const sphereMatCache = {};
         for (const p of (geom.pipes || [])) {
@@ -2922,22 +3001,24 @@
           if (!edgeMatCache[color]) {
             edgeMatCache[color] = new THREE.MeshLambertMaterial({ color });
           }
-          edgeGroup.add(_makeCylinder(a, b, opts.edgeWidth, edgeMatCache[color]));
+          // 라이저 엣지는 약간 더 두껍게 (배관 본관 강조)
+          const r = isRiser ? _autoEdgeRadius * 1.4 : _autoEdgeRadius;
+          edgeGroup.add(_makeCylinder(a, b, r, edgeMatCache[color]));
         }
 
-        // 노드 — sphere
+        // 노드 — sphere, bbox 비례 크기
         for (const [label, pos] of nodeMap) {
           const meta = nodeMeta.get(label);
           let color = COLOR[meta.category] || COLOR.head;
-          if (opts.colorByElev) {
-            color = _elevColor(meta.elevT).getHex();
-          }
-          const size = meta.category === "av" || meta.category === "pump"
-                     ? opts.nodeSize * 1.4 : opts.nodeSize;
+          if (opts.colorByElev) color = _elevColor(meta.elevT).getHex();
+          // AV / 펌프 1.4×, 라이저 1.2×, 헤드 1.0×
+          const sizeMul = (meta.category === "av" || meta.category === "pump") ? 1.4
+                       : (meta.category === "riser") ? 1.2 : 1.0;
+          const radius = _autoNodeRadius * sizeMul;
           if (!sphereMatCache[color]) {
             sphereMatCache[color] = new THREE.MeshLambertMaterial({ color });
           }
-          const geo = new THREE.SphereGeometry(size, 18, 14);
+          const geo = new THREE.SphereGeometry(radius, 18, 14);
           const mesh = new THREE.Mesh(geo, sphereMatCache[color]);
           mesh.position.copy(pos);
           mesh.userData.label = label;
@@ -2945,20 +3026,15 @@
           mesh.userData.elev = meta.raw.elevation;
           nodeGroup.add(mesh);
 
-          // 라벨 sprite (옵션, 표시 시에만 생성)
           if (opts.showLabels) {
-            const sprite = _makeLabelSprite(label, color);
+            const sprite = _makeLabelSprite(label, color, radius);
             if (sprite) {
               sprite.position.copy(pos);
-              sprite.position.z += size * 1.8;
+              sprite.position.z += radius * 1.8;
               labelGroup.add(sprite);
             }
           }
         }
-
-        // 그리드/축 helper 가시성
-        if (gridHelper) gridHelper.visible = opts.showGrid;
-        if (axesHelper) axesHelper.visible = opts.showAxes;
       }
 
       function clearGroups() {
@@ -2992,7 +3068,7 @@
         return mesh;
       }
 
-      function _makeLabelSprite(text, colorHex) {
+      function _makeLabelSprite(text, colorHex, refRadius) {
         const cw = 256, ch = 64;
         const cv = document.createElement("canvas");
         cv.width = cw; cv.height = ch;
@@ -3007,7 +3083,9 @@
         tex.needsUpdate = true;
         const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
         const sprite = new THREE.Sprite(mat);
-        const s = opts.nodeSize * 14;
+        // 라벨 크기 — 노드 반경에 비례 (refRadius 미지정 시 _autoNodeRadius 사용)
+        const r = refRadius || _autoNodeRadius;
+        const s = r * 10;
         sprite.scale.set(s, s * (ch / cw), 1);
         return sprite;
       }
@@ -3217,6 +3295,14 @@
     const _cmbSystemStatus = document.getElementById("cmb-system-status");
     const _cmbMergeBtn = document.getElementById("cmb-merge");
     const _cmbResultBox = document.getElementById("cmb-result-box");
+    const _cmbIsoBtn = document.getElementById("cmb-iso-btn");
+    if (_cmbIsoBtn) {
+      _cmbIsoBtn.addEventListener("click", () => {
+        // 통합 결과 없으면 무시 (disabled 라 클릭 자체 차단됨)
+        if (!state.combined_geometry) return;
+        setMode("iso");
+      });
+    }
 
     function updateCombinedStatus() {
       // 평면도 status — state.jobId + finalize 완료 (state.user_added_heads 등 편집 정보 보관)
@@ -3291,6 +3377,14 @@
           state.combined_geometry = data.geometry;
           state.view.fitMode = null;  // 새 geometry → 다음 render 에서 자동 fit
           render();
+          // 통합 결과 도착 → 아이소메트릭 3D 버튼 활성화
+          const _isoBtn = document.getElementById("cmb-iso-btn");
+          if (_isoBtn) _isoBtn.disabled = false;
+          // 현재 iso 모드 라면 새 geometry 반영
+          if (state.current_mode === "iso" && typeof IsoViewer !== "undefined") {
+            IsoViewer.loadGeometry(state.combined_geometry);
+            IsoViewer.fitToData();
+          }
         }
       } catch (err) {
         _cmbResultBox.innerHTML = `<span style="color:#b91c1c;">❌ 네트워크 오류: ${err.message}</span>`;

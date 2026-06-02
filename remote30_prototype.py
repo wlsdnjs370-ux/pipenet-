@@ -151,6 +151,83 @@ def _categorize_layer(name: str) -> str:
     return "OTHER"
 
 
+class _BBoxAccum:
+    """좌표 누적 후 percentile-based robust bbox 계산.
+
+    raw min/max 는 outlier 한 점이 bbox 폭주시켜 캔버스 fit 시 도면이 매우 작게
+    보이는 문제 발생 (WIPEOUT 의 (1e30, 1e30), 잘못 변환된 nested INSERT 좌표,
+    paper space 잔재 등). percentile [pct_low, pct_high] 으로 main cluster bbox
+    를 구해 안정적인 초기 시야를 제공.
+
+    좌표 단위 percentile (entity 단위 아님) — PL N vertex 는 N 점으로 계산.
+    """
+
+    __slots__ = ("xs", "ys")
+
+    def __init__(self) -> None:
+        self.xs: list[float] = []
+        self.ys: list[float] = []
+
+    def add(self, x: float, y: float) -> None:
+        # NaN / inf 즉시 거부 (DXF 파싱 에러로 가끔 발생)
+        if x != x or y != y or x in (float("inf"), float("-inf")) or y in (float("inf"), float("-inf")):
+            return
+        self.xs.append(x)
+        self.ys.append(y)
+
+    def finalize(
+        self,
+        pct_low: float = 0.5,
+        pct_high: float = 99.5,
+        margin_ratio: float = 0.02,
+        min_margin: float = 50.0,
+    ) -> list[float]:
+        """robust bbox [xmin, ymin, xmax, ymax]. 좌표 없으면 [0,0,1,1] fallback."""
+        if not self.xs:
+            return [0.0, 0.0, 1.0, 1.0]
+        n = len(self.xs)
+        xs = sorted(self.xs)
+        ys = sorted(self.ys)
+        lo = max(int(n * pct_low / 100.0), 0)
+        hi = min(int(n * pct_high / 100.0), n - 1)
+        if hi <= lo:
+            hi = lo
+        x_min, x_max = xs[lo], xs[hi]
+        y_min, y_max = ys[lo], ys[hi]
+        w = x_max - x_min
+        h = y_max - y_min
+        mx = max(w * margin_ratio, min_margin)
+        my = max(h * margin_ratio, min_margin)
+        return [x_min - mx, y_min - my, x_max + mx, y_max + my]
+
+    def outlier_stats(self, pct_low: float = 0.5, pct_high: float = 99.5) -> dict:
+        """raw vs robust bbox 비교 + outlier 점 수. 진단용."""
+        if not self.xs:
+            return {"coord_count": 0, "outlier_points": 0,
+                    "raw_bbox": [0, 0, 0, 0], "robust_bbox": [0, 0, 1, 1],
+                    "bbox_ratio": 1.0}
+        n = len(self.xs)
+        xs = sorted(self.xs); ys = sorted(self.ys)
+        lo = max(int(n * pct_low / 100.0), 0)
+        hi = min(int(n * pct_high / 100.0), n - 1)
+        outliers = lo + (n - 1 - hi)
+        raw_bbox = [xs[0], ys[0], xs[-1], ys[-1]]
+        rob_bbox = [xs[lo], ys[lo], xs[hi], ys[hi]]
+        raw_w = max(raw_bbox[2] - raw_bbox[0], 1.0)
+        raw_h = max(raw_bbox[3] - raw_bbox[1], 1.0)
+        rob_w = max(rob_bbox[2] - rob_bbox[0], 1.0)
+        rob_h = max(rob_bbox[3] - rob_bbox[1], 1.0)
+        # raw bbox 가 robust 보다 N 배 크면 outlier 의심 — 화면 fit 시 도면이 1/N 로 보임
+        bbox_ratio = max(raw_w / rob_w, raw_h / rob_h)
+        return {
+            "coord_count": n,
+            "outlier_points": outliers * 2,  # x + y 양쪽
+            "raw_bbox": raw_bbox,
+            "robust_bbox": rob_bbox,
+            "bbox_ratio": round(bbox_ratio, 2),
+        }
+
+
 @dataclass(slots=True)
 class ParsedDxfBundle:
     """Stage 0 출력 — 캔버스가 직접 그릴 수 있는 entity dict + 메타."""
@@ -162,6 +239,8 @@ class ParsedDxfBundle:
     layer_visibility: dict[str, dict] = field(default_factory=dict)
     # entity index → source meta (graph stage 에서 좌표→layer 매칭에 사용)
     layer_counts: dict[str, int] = field(default_factory=dict)
+    # robust bbox 진단 (outlier 가 있을 때 디버깅 + 라벨에 표시)
+    bbox_diagnostics: dict = field(default_factory=dict)
 
 
 def _insert_matrix(insert_entity) -> Matrix44:
@@ -227,17 +306,10 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
         if is_off or is_frozen or color < 0:
             bundle.hidden_layers.add(name)
 
-    bbox = [float("inf"), float("inf"), float("-inf"), float("-inf")]
+    bbox_acc = _BBoxAccum()
 
     def _upd(x: float, y: float) -> None:
-        if x < bbox[0]:
-            bbox[0] = x
-        if y < bbox[1]:
-            bbox[1] = y
-        if x > bbox[2]:
-            bbox[2] = x
-        if y > bbox[3]:
-            bbox[3] = y
+        bbox_acc.add(x, y)
 
     MAX_DEPTH = 10
 
@@ -410,9 +482,8 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
     for e in msp:
         _render(e)
 
-    if bbox[0] == float("inf"):
-        bbox = [0.0, 0.0, 1.0, 1.0]
-    bundle.bbox = bbox
+    bundle.bbox = bbox_acc.finalize()
+    bundle.bbox_diagnostics = bbox_acc.outlier_stats()
 
     # 레이어 통계 + 카테고리
     layer_counts: Counter[str] = Counter(en["l"] for en in bundle.entities)
@@ -476,13 +547,10 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
         if is_off or is_frozen or color < 0:
             hidden_layers.add(name)
 
-    bbox = [float("inf"), float("inf"), float("-inf"), float("-inf")]
+    bbox_acc = _BBoxAccum()
 
     def _upd(x: float, y: float) -> None:
-        if x < bbox[0]: bbox[0] = x
-        if y < bbox[1]: bbox[1] = y
-        if x > bbox[2]: bbox[2] = x
-        if y > bbox[3]: bbox[3] = y
+        bbox_acc.add(x, y)
 
     MAX_DEPTH = 12  # 계통도는 nested 깊을 수 있음 — 약간 여유
 
@@ -736,48 +804,16 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
         total_msp += 1
         _render(e)
 
-    if bbox[0] == float("inf"):
+    # ── Robust bbox — _BBoxAccum 의 0.5%/99.5% percentile + 2% margin.
+    # parse_dxf_bundle 과 동일 헬퍼 사용. raw bbox 와 robust bbox 모두 반환해서
+    # 클라이언트가 outlier 인지 + 진단 가능.
+    _bbox_diag = bbox_acc.outlier_stats()
+    raw_bbox = _bbox_diag["raw_bbox"]
+    bbox = [raw_bbox[0], raw_bbox[1], raw_bbox[2], raw_bbox[3]]
+    if not bbox_acc.xs:
         bbox = [0.0, 0.0, 1.0, 1.0]
-
-    # ── Robust bbox 계산 — outlier (예: 도면 표제란, 좌표 grid 등) 가 bbox 를 비정상 크게
-    # 만들어 메인 도면이 화면 작은 영역에 압축되는 문제 해결. 1~99 percentile 사용.
-    all_xs: list[float] = []
-    all_ys: list[float] = []
-    for en in entities:
-        t = en["t"]
-        if t == "L":
-            all_xs += [en["p"][0], en["p"][2]]; all_ys += [en["p"][1], en["p"][3]]
-        elif t == "PL":
-            for px, py in en["p"]:
-                all_xs.append(px); all_ys.append(py)
-        elif t in ("C", "A"):
-            all_xs.append(en["c"][0]); all_ys.append(en["c"][1])
-        elif t in ("I", "T"):
-            all_xs.append(en["p"][0]); all_ys.append(en["p"][1])
-        elif t in ("H", "S"):
-            for px, py in en["p"]:
-                all_xs.append(px); all_ys.append(py)
-    if all_xs and all_ys:
-        all_xs.sort(); all_ys.sort()
-        n = len(all_xs)
-        # 1~99 percentile (n 작으면 min/max 사용)
-        if n >= 100:
-            x_lo, x_hi = all_xs[n // 100], all_xs[n * 99 // 100]
-            y_lo, y_hi = all_ys[n // 100], all_ys[n * 99 // 100]
-        else:
-            x_lo, x_hi = all_xs[0], all_xs[-1]
-            y_lo, y_hi = all_ys[0], all_ys[-1]
-        # 폭이 너무 좁으면 padding (전체 bbox 의 5% 최소)
-        bw = max(1.0, bbox[2] - bbox[0])
-        bh = max(1.0, bbox[3] - bbox[1])
-        pad_x = max((x_hi - x_lo) * 0.05, bw * 0.005)
-        pad_y = max((y_hi - y_lo) * 0.05, bh * 0.005)
-        robust_bbox = {
-            "x_min": x_lo - pad_x, "y_min": y_lo - pad_y,
-            "x_max": x_hi + pad_x, "y_max": y_hi + pad_y,
-        }
-    else:
-        robust_bbox = {"x_min": bbox[0], "y_min": bbox[1], "x_max": bbox[2], "y_max": bbox[3]}
+    _rob = bbox_acc.finalize()
+    robust_bbox = {"x_min": _rob[0], "y_min": _rob[1], "x_max": _rob[2], "y_max": _rob[3]}
 
     # 레이어 통계
     layer_counts: Counter[str] = Counter(en["l"] for en in entities)
@@ -1462,13 +1498,66 @@ def filter_pipenet_only(bundle: ParsedDxfBundle) -> list[dict]:
 # 2) Stage 2 — G₀ 그래프 빌드 + 가장 불리한 K 헤드 + subgraph 추출
 # ────────────────────────────────────────────────────────────────────────────
 
-SNAP_TOL_MM = 200.0  # 200mm: 미세 segment 가 snap 단계에서 통합 (참조 ref 의 min pipe 길이가 320mm 이므로 200mm 까지 OK)
+SNAP_TOL_MM = 5.0
+# 5mm: 부동소수점 / CAD 작업자 미세 오차 흡수용 epsilon. 격자 snap 이 아니라
+# _NodeIndex 의 cluster 반경으로 사용. 이전 200mm 격자는 시각화에서 도면이
+# 200mm 단위로 비뚤어지는 원인이었고, 격자 경계 분리(2.4 vs 2.6 → 다른 격자) 및
+# 가짜 분기(다른 점 같은 격자칸 합쳐짐) 문제도 있어 폐기.
 HEAD_BRIDGE_MAX_MM = 2000.0  # 헤드 INSERT 좌표 ↔ 가장 가까운 그래프 노드 brigde 허용 거리
 SOURCE_BRIDGE_MAX_MM = 10000.0  # 알람밸브(source) ↔ 배관망 nearest 노드 bridge 허용 거리 (10m). 초과 시 nearest 로 fallback + 경고
+MIN_PIPE_EDGE_MM = 50.0
+# 50mm 미만 LINE/PL/ARC segment 는 그래프 edge 로 사용 안 함.
+# 헤드 부속(HEADCON, HDCROSS, SPCAP 등), 치수 보조선, 텍스트 underline 등
+# 평면도에는 보이지만 배관망 토폴로지에는 노이즈인 짧은 segment 제거.
+CLOSED_PL_TOL_MM = 5.0  # PL 의 첫점과 마지막점이 이 거리 안이면 closed polygon 으로 간주 → 그래프 제외
 
 
 def _round_pt(x: float, y: float, tol: float = SNAP_TOL_MM) -> tuple[float, float]:
+    """격자 정렬 좌표 — HeadCandidate dedup, Counter 키 등 동등성 비교용.
+
+    그래프 노드 키로는 더 이상 사용 안 함 (_NodeIndex 가 raw 좌표 기반 cluster 처리).
+    """
     return (round(x / tol) * tol, round(y / tol) * tol)
+
+
+class _NodeIndex:
+    """Grid-bucket 기반 epsilon-tolerant endpoint cluster.
+
+    Snap 격자(round-to-grid)의 대안. raw 좌표를 노드 키로 그대로 보존하면서,
+    epsilon 반경 안에 기존 노드가 있으면 그 노드 좌표를 반환 (없으면 신규 등록).
+
+    이점:
+      - 노드 좌표 = raw → Stage 3 시각화가 격자 정렬 안 됨 → 비뚤어짐 없음
+      - 격자 경계 분리 위험 없음 (cluster 가 9 bucket neighborhood 검색)
+      - 같은 raw 좌표는 항상 같은 tuple value → dict hash 일관
+    """
+
+    __slots__ = ("eps", "_eps_sq", "_cell", "_bucket")
+
+    def __init__(self, epsilon_mm: float = SNAP_TOL_MM):
+        self.eps = epsilon_mm
+        self._eps_sq = epsilon_mm * epsilon_mm
+        self._cell = epsilon_mm
+        self._bucket: dict[tuple[int, int], list[tuple[float, float]]] = defaultdict(list)
+
+    def canonical(self, x: float, y: float) -> tuple[float, float]:
+        """epsilon 안에 기존 노드 있으면 그 좌표, 없으면 (x, y) 신규 등록."""
+        kx = int(x // self._cell)
+        ky = int(y // self._cell)
+        best = None
+        bestd = float("inf")
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for pt in self._bucket.get((kx + dx, ky + dy), ()):
+                    d = (pt[0] - x) ** 2 + (pt[1] - y) ** 2
+                    if d < bestd and d <= self._eps_sq:
+                        bestd = d
+                        best = pt
+        if best is not None:
+            return best
+        new_pt = (x, y)
+        self._bucket[(kx, ky)].append(new_pt)
+        return new_pt
 
 
 @dataclass(slots=True)
@@ -1649,30 +1738,378 @@ class SelectionResult:
     source_fallback: bool = False
 
 
-def _build_graph(pipe_entities: list[dict]) -> tuple[dict[tuple[float, float], set[tuple[float, float]]], dict[tuple, float]]:
-    """파이프 LINE/PL 으로부터 무방향 그래프 빌드 (snap 적용)."""
+def _build_graph(
+    pipe_entities: list[dict],
+    node_index: _NodeIndex | None = None,
+    layer_categories: dict[str, str] | None = None,
+    min_edge_mm: float = MIN_PIPE_EDGE_MM,
+) -> tuple[dict[tuple[float, float], set[tuple[float, float]]], dict[tuple, float]]:
+    """파이프 LINE/PL/ARC 으로부터 무방향 그래프 빌드.
+
+    노이즈 컷:
+      - layer_categories 가 주어지면 "PIPE" 카테고리 layer 의 entity 만 사용
+        (헤드 부속 LINE, 텍스트 underline, 치수 보조선 등 제외)
+      - closed PL (첫점=끝점) 은 배관 아니므로 제외 (알람밸브 박스 등)
+      - min_edge_mm 미만 segment 는 그래프 edge 로 사용 안 함
+
+    Endpoint 동등성: _NodeIndex (epsilon=SNAP_TOL_MM mm) 기반 cluster.
+    노드 좌표는 raw (DXF 원본) — 격자에 정렬 안 됨, 시각화 시 비뚤어짐 없음.
+
+    node_index: caller 가 이미 가지고 있으면 재사용 (헤드/AV 좌표도 동일 cluster 로
+        canonicalize 하기 위함). 없으면 새로 생성.
+    layer_categories: 레이어→카테고리 매핑. None 이면 전체 entity 통과 (호환 모드).
+    """
     g: dict[tuple[float, float], set[tuple[float, float]]] = defaultdict(set)
     edge_len: dict[tuple, float] = {}
+    idx = node_index if node_index is not None else _NodeIndex()
+    min_sq = min_edge_mm * min_edge_mm
+
+    def is_pipe(layer: str) -> bool:
+        if layer_categories is None:
+            return True
+        return layer_categories.get(layer, "OTHER") == "PIPE"
+
+    def add_edge(ax: float, ay: float, bx: float, by: float, length: float | None = None) -> None:
+        a = idx.canonical(ax, ay)
+        b = idx.canonical(bx, by)
+        if a == b:
+            return
+        if length is None:
+            length = math.hypot(b[0] - a[0], b[1] - a[1])
+        if length < min_edge_mm:
+            return
+        g[a].add(b); g[b].add(a)
+        key = (min(a, b), max(a, b))
+        # 같은 노드 쌍에 더 짧은 edge_len 이 이미 있으면 덮어쓰지 않음 (실제 최단)
+        prev = edge_len.get(key)
+        if prev is None or length < prev:
+            edge_len[key] = length
+
     for en in pipe_entities:
-        # PIPE 카테고리만 그래프 구성에 사용 (LINE, PL)
-        if en["t"] == "L":
+        if not is_pipe(en.get("l", "")):
+            continue
+        et = en["t"]
+        if et == "L":
             x1, y1, x2, y2 = en["p"]
-            a = _round_pt(x1, y1); b = _round_pt(x2, y2)
-            if a == b:
+            # 짧은 edge 사전 컷 (epsilon-cluster 전 raw 거리)
+            if (x2 - x1) ** 2 + (y2 - y1) ** 2 < min_sq:
                 continue
-            g[a].add(b); g[b].add(a)
-            key = (min(a, b), max(a, b))
-            edge_len[key] = math.hypot(b[0] - a[0], b[1] - a[1])
-        elif en["t"] == "PL":
+            add_edge(x1, y1, x2, y2)
+        elif et == "PL":
             pts = en["p"]
+            if len(pts) < 2:
+                continue
+            # closed polygon 감지 → 배관 아님
+            first = pts[0]; last = pts[-1]
+            if len(pts) >= 3 and math.hypot(first[0] - last[0], first[1] - last[1]) <= CLOSED_PL_TOL_MM:
+                continue
             for p0, p1 in zip(pts, pts[1:]):
-                a = _round_pt(p0[0], p0[1]); b = _round_pt(p1[0], p1[1])
-                if a == b:
+                if (p1[0] - p0[0]) ** 2 + (p1[1] - p0[1]) ** 2 < min_sq:
                     continue
-                g[a].add(b); g[b].add(a)
-                key = (min(a, b), max(a, b))
-                edge_len[key] = math.hypot(b[0] - a[0], b[1] - a[1])
+                add_edge(p0[0], p0[1], p1[0], p1[1])
+        elif et == "A":
+            # ARC — 양 끝점을 graph edge 로. 길이는 호 길이 (chord 아님).
+            cx, cy = en["c"]
+            r = float(en.get("r", 0.0) or 0.0)
+            if r <= 0.0:
+                continue
+            sa, ea = en.get("a", [0.0, 0.0])
+            sa_r = math.radians(sa); ea_r = math.radians(ea)
+            ax = cx + r * math.cos(sa_r); ay = cy + r * math.sin(sa_r)
+            bx = cx + r * math.cos(ea_r); by = cy + r * math.sin(ea_r)
+            # 호 sweep 각도 정규화 (0~360)
+            sweep = ea - sa
+            while sweep < 0: sweep += 360.0
+            while sweep >= 360.0: sweep -= 360.0
+            arc_len = r * math.radians(sweep)
+            if arc_len < min_edge_mm:
+                continue
+            add_edge(ax, ay, bx, by, length=arc_len)
     return g, edge_len
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 평행 ladder collapse — 관경 두 줄 표현 → 중심선 1줄로 합성
+# ────────────────────────────────────────────────────────────────────────────
+# CAD 도면에서 배관을 두 평행 LINE 으로 그리는 관례 (관경 시각 표현).
+# 그래프 빌드 시 두 줄이 모두 edge 로 남아 "ladder" (사다리) 모양 → 분기 수 부풀고
+# 시각적으로 꼬임/겹침. 이 모듈은 4-cycle (u-v-w-x) 중 두 변이 평행하고 (rail)
+# 나머지 두 변이 짧으면 (rung, 관 cap/cross-fitting) ladder 로 식별, midline 하나로 합성.
+
+LADDER_MAX_RUNG_MM = 300.0     # rung (짧은 cross 변) 최대 길이. 단위세대 도면 기준.
+LADDER_MIN_RAIL_RATIO = 3.0    # rail / rung 평균 길이 비. 정사각형 (=1) 은 합성 안 됨.
+LADDER_PARALLEL_COS = 0.985    # 두 rail 의 방향 cos 유사도 임계값 (≈ 10도 안)
+LADDER_MAX_ITER = 10           # collapse 반복 횟수 (합성 후 새 ladder 생길 수 있음)
+
+
+def _edge_dir(p: tuple, q: tuple) -> tuple[float, float]:
+    dx, dy = q[0] - p[0], q[1] - p[1]
+    n = math.hypot(dx, dy)
+    if n == 0.0:
+        return (0.0, 0.0)
+    return (dx / n, dy / n)
+
+
+def _midpoint(p: tuple, q: tuple) -> tuple[float, float]:
+    return ((p[0] + q[0]) / 2, (p[1] + q[1]) / 2)
+
+
+def _find_ladder_4cycles(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    max_rung_mm: float,
+    min_rail_ratio: float,
+    cos_tol: float,
+) -> list[tuple]:
+    """4-cycle ladder 후보 검출.
+
+    반환: (u, v, w, x, case) 리스트.
+        case 'A': rails = (u,v) & (x,w), rungs = (v,w) & (x,u)
+                  midline endpoints = mid(u,x), mid(v,w)
+        case 'B': rails = (v,w) & (u,x), rungs = (u,v) & (w,x)
+                  midline endpoints = mid(u,v), mid(w,x)
+    """
+    out: list[tuple] = []
+    seen: set[frozenset] = set()
+
+    def edge_length(a, b):
+        key = (min(a, b), max(a, b))
+        return edge_len.get(key, math.hypot(a[0] - b[0], a[1] - b[1]))
+
+    for u in list(graph.keys()):
+        nbs = list(graph.get(u, ()))
+        n = len(nbs)
+        if n < 2:
+            continue
+        for i in range(n):
+            v = nbs[i]
+            v_nb = graph.get(v, set()) - {u}
+            if not v_nb:
+                continue
+            for j in range(i + 1, n):
+                x = nbs[j]
+                x_nb = graph.get(x, set()) - {u}
+                if not x_nb:
+                    continue
+                common = v_nb & x_nb
+                for w in common:
+                    if w == u:
+                        continue
+                    cyc = frozenset((u, v, w, x))
+                    if len(cyc) < 4 or cyc in seen:
+                        continue
+                    seen.add(cyc)
+
+                    l_uv = edge_length(u, v)
+                    l_vw = edge_length(v, w)
+                    l_wx = edge_length(w, x)
+                    l_xu = edge_length(x, u)
+
+                    d_uv = _edge_dir(u, v)
+                    d_xw = _edge_dir(x, w)
+                    cos_A = abs(d_uv[0] * d_xw[0] + d_uv[1] * d_xw[1])
+
+                    d_vw = _edge_dir(v, w)
+                    d_ux = _edge_dir(u, x)
+                    cos_B = abs(d_vw[0] * d_ux[0] + d_vw[1] * d_ux[1])
+
+                    # Case A 와 B 모두 평가하고 rail/rung ratio 가 더 큰 쪽 선택.
+                    # (cos 만 보고 case 결정하면 평행성은 더 좋지만 rung 길이 실패하는
+                    #  쪽으로 빠질 수 있음 — T6 케이스)
+                    chosen = None
+                    best_ratio = 0.0
+                    if cos_A >= cos_tol and l_vw <= max_rung_mm and l_xu <= max_rung_mm:
+                        avg_rail = (l_uv + l_wx) / 2.0
+                        avg_rung = (l_vw + l_xu) / 2.0
+                        ratio = avg_rail / max(avg_rung, 1.0)
+                        if ratio >= min_rail_ratio and ratio > best_ratio:
+                            chosen = (u, v, w, x, "A")
+                            best_ratio = ratio
+                    if cos_B >= cos_tol and l_uv <= max_rung_mm and l_wx <= max_rung_mm:
+                        avg_rail = (l_vw + l_xu) / 2.0
+                        avg_rung = (l_uv + l_wx) / 2.0
+                        ratio = avg_rail / max(avg_rung, 1.0)
+                        if ratio >= min_rail_ratio and ratio > best_ratio:
+                            chosen = (u, v, w, x, "B")
+                            best_ratio = ratio
+                    if chosen is not None:
+                        out.append(chosen)
+    return out
+
+
+def _collapse_one_ladder(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    u: tuple, v: tuple, w: tuple, x: tuple, case: str,
+) -> tuple[tuple, tuple]:
+    """4-cycle 의 네 노드를 제거하고 두 midpoint (m1, m2) + edge m1-m2 로 합성.
+
+    cycle 노드의 외부 연결은 가까운 midpoint 로 redirect.
+    return: (m1, m2) midpoint 좌표.
+    """
+    if case == "A":
+        m1 = _midpoint(u, x)
+        m2 = _midpoint(v, w)
+        m1_src = (u, x)
+        m2_src = (v, w)
+    else:
+        m1 = _midpoint(u, v)
+        m2 = _midpoint(w, x)
+        m1_src = (u, v)
+        m2_src = (w, x)
+
+    cycle_nodes = {u, v, w, x}
+    # 외부 연결 수집 (cycle 내부 연결 제외)
+    ext_m1: set[tuple] = set()
+    ext_m2: set[tuple] = set()
+    for s in m1_src:
+        ext_m1.update(graph.get(s, set()) - cycle_nodes)
+    for s in m2_src:
+        ext_m2.update(graph.get(s, set()) - cycle_nodes)
+    # 동일 노드가 양쪽에 — 매우 드물지만 m1 우선
+    ext_m2 -= ext_m1
+
+    # cycle 의 모든 edge_len 제거 (외부 연결 포함)
+    for n in cycle_nodes:
+        for nb in list(graph.get(n, ())):
+            edge_len.pop((min(n, nb), max(n, nb)), None)
+            graph[nb].discard(n)
+        graph.pop(n, None)
+
+    # m1, m2 노드 추가 + cycle 내부 midline edge
+    graph[m1] = set(ext_m1) | {m2}
+    graph[m2] = set(ext_m2) | {m1}
+    edge_len[(min(m1, m2), max(m1, m2))] = math.hypot(m1[0] - m2[0], m1[1] - m2[1])
+    for nb in ext_m1:
+        graph.setdefault(nb, set()).add(m1)
+        edge_len[(min(m1, nb), max(m1, nb))] = math.hypot(m1[0] - nb[0], m1[1] - nb[1])
+    for nb in ext_m2:
+        graph.setdefault(nb, set()).add(m2)
+        edge_len[(min(m2, nb), max(m2, nb))] = math.hypot(m2[0] - nb[0], m2[1] - nb[1])
+    return m1, m2
+
+
+def collapse_parallel_ladders(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    max_rung_mm: float = LADDER_MAX_RUNG_MM,
+    min_rail_ratio: float = LADDER_MIN_RAIL_RATIO,
+    cos_tol: float = LADDER_PARALLEL_COS,
+    max_iter: int = LADDER_MAX_ITER,
+) -> int:
+    """모든 평행 ladder 를 안정 상태까지 반복 합성.
+
+    한 4-cycle 합성이 인접 ladder 의 노드를 바꿀 수 있어 한 패스에서는 노드 중복
+    사용을 피하고, 패스 사이에는 다시 검출. 새로 생성된 m1/m2 가 다음 패스의
+    ladder 일부일 수 있어 max_iter 회 반복.
+
+    return: 합성된 ladder 총 개수.
+    """
+    total = 0
+    for _ in range(max_iter):
+        candidates = _find_ladder_4cycles(graph, edge_len, max_rung_mm, min_rail_ratio, cos_tol)
+        if not candidates:
+            break
+        applied = 0
+        used: set[tuple] = set()
+        for (u, v, w, x, case) in candidates:
+            quad = {u, v, w, x}
+            if quad & used:
+                continue
+            if not all(n in graph for n in quad):
+                continue
+            _collapse_one_ladder(graph, edge_len, u, v, w, x, case)
+            used.update(quad)
+            applied += 1
+        total += applied
+        if applied == 0:
+            break
+    return total
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Spanning Tree 강제 (가지식 트리 변환)
+# ────────────────────────────────────────────────────────────────────────────
+# 한국 NFTC 표준 SP 시스템은 기본 "가지식" — AV → 본관 → 가지관 → 헤드 트리 구조.
+# 그래프에 cycle 이 남으면 (CAD 작도 실수, 미해결 ladder, 텍스트 box 오인 등)
+# 시각적 겹침/꼬임 + hydraulic 계산 부정확 (cycle 안 분배 흐름).
+# force_spanning_tree 는 AV-rooted Dijkstra SPT 로 강제 트리화.
+# - 도달 가능한 노드: AV 까지 최단 경로 트리
+# - 도달 불가능한 component: 각자 임의 root 의 SPT
+# - 제거된 edge 들은 별도 set 으로 반환 → 시각화에서 cycle 자리 표시 가능
+
+
+def force_spanning_tree(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    source: tuple | None = None,
+) -> tuple[set, set]:
+    """그래프를 (각 component 마다) shortest-path spanning tree 로 강제 변환.
+
+    Args:
+        graph: 무방향 그래프 (in-place 수정됨 — cycle edge 제거)
+        edge_len: edge 길이 dict (in-place 수정 — 제거된 edge 도 같이 pop)
+        source: AV (또는 시작 노드). 이 노드가 속한 component 는 source 가 root.
+                다른 component 는 임의 root (가장 작은 좌표 노드).
+
+    Returns:
+        (tree_edges, removed_edges) — 각각 (min, max) 키 set.
+    """
+    import heapq
+
+    tree_edges: set[tuple] = set()
+    visited: set[tuple] = set()
+
+    comps = _connected_components(graph)
+    for comp in comps:
+        if not comp:
+            continue
+        # 이 component 의 root 선택
+        if source is not None and source in comp:
+            root = source
+        else:
+            root = min(comp, key=lambda p: (p[0], p[1]))  # deterministic
+
+        # Dijkstra SPT
+        dist: dict[tuple, float] = {root: 0.0}
+        parent: dict[tuple, tuple | None] = {root: None}
+        pq: list[tuple[float, tuple]] = [(0.0, root)]
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dist[u]:
+                continue
+            for v in graph.get(u, ()):
+                if v not in comp:
+                    continue
+                e_key = (min(u, v), max(u, v))
+                w = edge_len.get(e_key)
+                if w is None:
+                    w = math.hypot(u[0] - v[0], u[1] - v[1])
+                nd = d + w
+                if nd < dist.get(v, float("inf")):
+                    dist[v] = nd
+                    parent[v] = u
+                    heapq.heappush(pq, (nd, v))
+        for n, p in parent.items():
+            if p is not None:
+                tree_edges.add((min(n, p), max(n, p)))
+            visited.add(n)
+
+    # 전체 edge 수집 → tree 외는 제거 대상
+    all_edges: set[tuple] = set()
+    for u, nbs in list(graph.items()):
+        for v in nbs:
+            all_edges.add((min(u, v), max(u, v)))
+    removed_edges = all_edges - tree_edges
+
+    # in-place 수정 — 트리 외 edge 제거
+    for (a, b) in removed_edges:
+        graph[a].discard(b)
+        graph[b].discard(a)
+        edge_len.pop((a, b), None)
+    # 빈 인접 set 노드는 그대로 유지 (시각화에서 isolated 노드도 보여줘야 함)
+
+    return tree_edges, removed_edges
 
 
 def _find_head_candidates(pipe_entities: list[dict], layer_categories: dict[str, str]) -> list[HeadCandidate]:
@@ -1819,8 +2256,17 @@ def _connected_components(graph: dict) -> list[set]:
     return comps
 
 
-def _bridge_components(graph: dict, edge_len: dict, max_bridge_mm: float = 500.0) -> int:
-    """끊어진 component 들을 가장 가까운 endpoint 쌍 연결 — 50cm 이내만."""
+def _bridge_components(
+    graph: dict,
+    edge_len: dict,
+    max_bridge_mm: float = 500.0,
+    bridge_edges_out: set | None = None,
+) -> int:
+    """끊어진 component 들을 가장 가까운 endpoint 쌍 연결 — 50cm 이내만.
+
+    bridge_edges_out: 주어지면 추가된 bridge edge 의 (min,max) 키를 누적.
+        호출자가 "실제 배관"과 "알고리즘이 추정한 연결"을 구분 렌더할 수 있음.
+    """
     comps = _connected_components(graph)
     if len(comps) <= 1:
         return 0
@@ -1841,7 +2287,10 @@ def _bridge_components(graph: dict, edge_len: dict, max_bridge_mm: float = 500.0
         if best and bestd <= max_bridge_mm:
             u, v = best
             graph[u].add(v); graph[v].add(u)
-            edge_len[(min(u, v), max(u, v))] = bestd
+            key = (min(u, v), max(u, v))
+            edge_len[key] = bestd
+            if bridge_edges_out is not None:
+                bridge_edges_out.add(key)
             bridges += 1
     return bridges
 
@@ -1859,10 +2308,16 @@ def select_worst30_heads(
     manual_heads: 명시되면 자동 검출 대신 이 리스트 사용 (사용자 편집 후)
     zones: [(x1,y1,x2,y2), ...] 영역 union. 비어있지 않으면 그 안의 헤드만 후보로.
     """
-    graph, edge_len = _build_graph(pipe_entities)
+    graph, edge_len = _build_graph(pipe_entities, layer_categories=layer_categories)
+    # 평행 ladder collapse — Stage 3 시각화와 같은 토폴로지로 정렬.
+    collapse_parallel_ladders(graph, edge_len)
     # 짧은 거리부터 단계적으로 brigde — 가까운 endpoint 우선 + 점점 멀리
     for tol in (200.0, 500.0, 1000.0, 2000.0):
         _bridge_components(graph, edge_len, max_bridge_mm=tol)
+    # 가지식 트리 강제 (SPT) — Stage 3 와 같은 토폴로지. SPT root 는 SDF source.
+    # (source 가 이 시점에 아직 미결정 → 일단 None 으로 호출, component 별 임의 root.
+    #  source 결정 후 트리가 SDF path 계산에 사용됨.)
+    force_spanning_tree(graph, edge_len, source=None)
     if manual_heads is not None:
         # 사용자가 편집한 헤드 목록 사용
         heads = [HeadCandidate(pos=_round_pt(x, y), raw=(x, y), block_name="(user)", layer="_user")
@@ -2780,9 +3235,17 @@ def run_stages_0_2(
                "bbox": {"x_min": bundle.bbox[0], "y_min": bundle.bbox[1],
                         "x_max": bundle.bbox[2], "y_max": bundle.bbox[3]},
                "layers": bundle.layers,
-               "summary": {"entity_count": len(bundle.entities), "layer_count": len(bundle.layers)}})
+               "summary": {"entity_count": len(bundle.entities),
+                           "layer_count": len(bundle.layers),
+                           "bbox_diagnostics": bundle.bbox_diagnostics}})
+    _diag = bundle.bbox_diagnostics or {}
+    _ratio = _diag.get("bbox_ratio", 1.0)
+    _outliers = _diag.get("outlier_points", 0)
+    _diag_msg = ""
+    if _ratio >= 2.0:
+        _diag_msg = f" · outlier {_outliers}점 제외 (raw bbox 가 robust 의 {_ratio}× — 자동 보정)"
     yield evt({"type": "stage", "stage": 0, "status": "done",
-               "label": f"DXF 파싱 완료 — {len(bundle.entities):,} entity / {len(bundle.layers)} 레이어"})
+               "label": f"DXF 파싱 완료 — {len(bundle.entities):,} entity / {len(bundle.layers)} 레이어{_diag_msg}"})
 
     # Stage 1
     yield evt({"type": "stage", "stage": 1, "status": "running", "label": "건축/기타 레이어 제거 (배관망만)"})
@@ -2816,17 +3279,36 @@ def run_stages_0_2(
 
     # ===== Stage 3 (신규): 전체 배관망 그래프 시각화 =====
     # select_worst30_heads 가 사용할 정확한 내부 그래프를 미리 보여줌.
-    # snap + 컴포넌트 brigde + 헤드 drop line 모두 포함된 최종 그래프.
+    # epsilon-cluster + 컴포넌트 brigde + 헤드 drop line 모두 포함된 최종 그래프.
+    # 그래프 노드 좌표는 raw (DXF 원본) — 격자 정렬 안 됨, 시각화 시 비뚤어짐 없음.
     yield evt({"type": "stage", "stage": 3, "status": "running",
-               "label": "전체 배관망 그래프 인식 (snap + 컴포넌트 bridge + 헤드 drop line)"})
-    graph, edge_len = _build_graph(pipe_ents)
+               "label": "전체 배관망 그래프 인식 (epsilon-cluster + 컴포넌트 bridge + 헤드 drop line)"})
+    # 모든 좌표(파이프 endpoint, 헤드 INSERT, 알람밸브) 가 같은 NodeIndex 공간을
+    # 공유 → 헤드/AV 좌표가 그래프 노드와 정확히 매칭, 별도 nearest fallback 불필요.
+    node_index = _NodeIndex()
+    graph, edge_len = _build_graph(pipe_ents, node_index=node_index,
+                                   layer_categories=layer_categories)
+    # 평행 ladder collapse — 관 두 줄 표현 → midline 1줄로. bridge 전에 적용해
+    # ladder 양 끝 cap 이 가짜 component 분리 만들지 않도록.
+    ladders_collapsed = collapse_parallel_ladders(graph, edge_len)
+    # bridge_edges: _bridge_components 가 강제로 이은 연결 (실제 배관 아님)
+    # head_drop_edges: 헤드 INSERT 좌표 ↔ 배관 nearest 노드 직선 (실제 배관 아님)
+    # 두 종류 모두 "알고리즘이 추정한 연결"이라 시각적으로 구분 렌더.
+    bridge_edges: set = set()
     for tol in (200.0, 500.0, 1000.0, 2000.0):
-        _bridge_components(graph, edge_len, max_bridge_mm=tol)
-    # 헤드 drop line 추가 (select_worst30_heads 와 동일 로직)
+        _bridge_components(graph, edge_len, max_bridge_mm=tol, bridge_edges_out=bridge_edges)
+    # 주의: SPT 가 cycle edge 를 제거하면서 bridge_edges 일부도 같이 제거될 수 있음.
+    # SPT 적용 후 살아남은 bridge_edges 만 유효.
+    # 헤드 drop line — 헤드 INSERT 좌표를 같은 NodeIndex 로 canonicalize
+    # (그래프에 이미 같은 epsilon 안 노드 있으면 그 raw 좌표 반환 → drop line 불필요).
+    head_drop_edges: set = set()
     head_pos_list = []
     for h in detect_heads(pipe_ents, layer_categories):
-        head_pos_list.append(_round_pt(h.pos[0], h.pos[1]))
+        head_pos_list.append(node_index.canonical(h.pos[0], h.pos[1]))
     for hp in head_pos_list:
+        if hp in graph:
+            # 헤드가 epsilon 안에서 이미 그래프 노드와 일치 → drop line 불필요
+            continue
         nearest = _nearest_graph_node(graph, hp)
         if nearest is None or hp == nearest:
             continue
@@ -2834,17 +3316,51 @@ def run_stages_0_2(
         if d > 1e-3 and d <= HEAD_BRIDGE_MAX_MM:
             graph.setdefault(hp, set()).add(nearest)
             graph[nearest].add(hp)
-            edge_len[(min(hp, nearest), max(hp, nearest))] = d
-    # edge entity 모두 같은 색 emit (사용자 옵션 C)
+            key = (min(hp, nearest), max(hp, nearest))
+            edge_len[key] = d
+            head_drop_edges.add(key)
+
+    # ── Spanning Tree 강제 — 가지식 트리화 (cycle 제거)
+    # AV-rooted Dijkstra SPT. 도달 가능한 노드는 AV 까지 최단 경로 트리, 다른
+    # component 는 각자 임의 root. 트리 외 edge 는 graph 에서 제거 + removed
+    # set 으로 회수 → 시각화에서 별도 카테고리로 표시 가능.
+    # source 가 AV 좌표 (NodeIndex canonicalized) — 그래프 노드와 정확 매칭.
+    spt_source = None
+    if alarm_xy is not None:
+        spt_source = node_index.canonical(float(alarm_xy[0]), float(alarm_xy[1]))
+        if spt_source not in graph:
+            spt_source = _nearest_graph_node(graph, spt_source)
+    tree_edges_set, removed_cycle_edges = force_spanning_tree(graph, edge_len, source=spt_source)
+    # SPT 가 일부 bridge/drop edge 도 제거할 수 있음 — 살아남은 것만 유효
+    bridge_edges &= tree_edges_set
+    head_drop_edges &= tree_edges_set
+
+    # edge entity emit — 4종 구분 (실배관 / bridge / drop / 제거된 cycle)
     graph_ents = []
     seen_edges: set = set()
+    bridge_emitted = 0
+    head_drop_emitted = 0
+    cycle_emitted = 0
+    # 1) 트리 edge (실제 토폴로지) — graph 에 남아 있음
     for u, neighbors in graph.items():
         for v in neighbors:
             key = (min(u, v), max(u, v))
             if key in seen_edges:
                 continue
             seen_edges.add(key)
-            graph_ents.append({"t": "L", "l": "_graph_edge", "p": [u[0], u[1], v[0], v[1]]})
+            if key in bridge_edges:
+                layer = "_graph_bridge"
+                bridge_emitted += 1
+            elif key in head_drop_edges:
+                layer = "_graph_head_drop"
+                head_drop_emitted += 1
+            else:
+                layer = "_graph_edge"
+            graph_ents.append({"t": "L", "l": layer, "p": [u[0], u[1], v[0], v[1]]})
+    # 2) 제거된 cycle edge — 별도 카테고리 (회색 매우 흐릿, 참고용)
+    for (u, v) in removed_cycle_edges:
+        graph_ents.append({"t": "L", "l": "_graph_removed_cycle", "p": [u[0], u[1], v[0], v[1]]})
+        cycle_emitted += 1
     # junction 노드 (차수 ≥ 3) 만 점으로
     junction_count = 0
     for n, neighbors in graph.items():
@@ -2853,11 +3369,14 @@ def run_stages_0_2(
             junction_count += 1
 
     # ── 알람밸브(source) 시각화 — 사용자 지정 좌표 또는 자동 식별
+    # NodeIndex 로 canonicalize → 그래프 노드와 epsilon 안에서 일치 가능.
     if alarm_xy is not None:
-        src_raw_pt = _round_pt(alarm_xy[0], alarm_xy[1])
+        src_raw_pt = node_index.canonical(float(alarm_xy[0]), float(alarm_xy[1]))
         src_kind_preview = "manual"
     else:
         src_raw_pt, src_kind_preview = _find_source(pipe_ents, layer_categories)
+        if src_raw_pt is not None:
+            src_raw_pt = node_index.canonical(src_raw_pt[0], src_raw_pt[1])
     src_bridge_preview = 0.0
     src_far = False
     if src_raw_pt is not None and graph:
@@ -2877,18 +3396,28 @@ def run_stages_0_2(
                 graph_ents.append({"t": "C", "l": "_alarm_attach",
                                    "c": [src_nearest_pt[0], src_nearest_pt[1]], "r": 90.0})
 
+    real_edge_count = len(seen_edges) - bridge_emitted - head_drop_emitted
     summary = {
         "node_count": len(graph),
         "edge_count": len(seen_edges),
+        "real_edge_count": real_edge_count,
+        "bridge_edge_count": bridge_emitted,
+        "head_drop_edge_count": head_drop_emitted,
         "junction_count": junction_count,
         "components": len(_connected_components(graph)),
+        "ladders_collapsed": ladders_collapsed,
+        "removed_cycle_edges": cycle_emitted,
         "source_pos": list(src_raw_pt) if src_raw_pt else None,
         "source_kind": src_kind_preview if src_raw_pt else "none",
         "source_bridge_dist_mm": round(src_bridge_preview, 1),
         "source_far_from_pipes": src_far,
     }
     yield evt({"type": "entities", "stage": 3, "entities": graph_ents, "summary": summary})
-    label = f"배관망 그래프 — {len(graph)} 노드 / {len(seen_edges)} edge / 분기 {junction_count}개"
+    label = (
+        f"가지식 트리 — {len(graph)} 노드 / 실배관 {real_edge_count} edge"
+        f" / bridge {bridge_emitted} / 헤드 drop {head_drop_emitted} / 분기 {junction_count}개"
+        f" / ladder 합성 {ladders_collapsed} / cycle 제거 {cycle_emitted}"
+    )
     if src_raw_pt is not None:
         label += f" · 알람밸브 ↔ 배관망 {src_bridge_preview:.0f}mm"
         if src_far:
@@ -3026,9 +3555,17 @@ def run_prototype_pipeline(
                "bbox": {"x_min": bundle.bbox[0], "y_min": bundle.bbox[1],
                         "x_max": bundle.bbox[2], "y_max": bundle.bbox[3]},
                "layers": bundle.layers,
-               "summary": {"entity_count": len(bundle.entities), "layer_count": len(bundle.layers)}})
+               "summary": {"entity_count": len(bundle.entities),
+                           "layer_count": len(bundle.layers),
+                           "bbox_diagnostics": bundle.bbox_diagnostics}})
+    _diag = bundle.bbox_diagnostics or {}
+    _ratio = _diag.get("bbox_ratio", 1.0)
+    _outliers = _diag.get("outlier_points", 0)
+    _diag_msg = ""
+    if _ratio >= 2.0:
+        _diag_msg = f" · outlier {_outliers}점 제외 (raw bbox 가 robust 의 {_ratio}× — 자동 보정)"
     yield evt({"type": "stage", "stage": 0, "status": "done",
-               "label": f"DXF 파싱 완료 — {len(bundle.entities):,} entity / {len(bundle.layers)} 레이어"})
+               "label": f"DXF 파싱 완료 — {len(bundle.entities):,} entity / {len(bundle.layers)} 레이어{_diag_msg}"})
 
     # Stage 1: 배관망만 필터
     yield evt({"type": "stage", "stage": 1, "status": "running", "label": "건축/기타 레이어 제거 (배관망만)"})

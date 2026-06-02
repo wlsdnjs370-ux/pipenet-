@@ -1274,16 +1274,33 @@
         return;
       }
 
-      // Stage 3 — 전체 배관망 그래프 (cyan edges + junction dots) + 알람밸브 source/drop-line
+      // Stage 3 — 가지식 트리 — 실배관 / bridge / 헤드 drop / 제거된 cycle 4종 구분
       if (state.current_stage_view === 3) {
         const ghost = state.stage_entities[1] || [];
         ctx.globalAlpha = 0.18;
         ctx.strokeStyle = "#475569"; ctx.fillStyle = "#475569"; ctx.lineWidth = 0.6;
         for (const en of ghost) drawEntity(en);
         ctx.globalAlpha = 1;
-        // 그래프 edges (real + virtual 동일 색)
+        // 제거된 cycle edge — 가장 먼저 + 흐릿 (트리 강제 시 cycle 끊은 곳)
+        ctx.globalAlpha = 0.30;
+        ctx.strokeStyle = "#64748b"; ctx.lineWidth = 0.8;
+        ctx.setLineDash([2, 4]);
+        for (const en of ents) if (en.l === "_graph_removed_cycle") drawEntity(en);
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        // 실배관 edge — cyan 실선 (가지식 트리 본체)
         ctx.strokeStyle = "#06b6d4"; ctx.lineWidth = 1.8;
         for (const en of ents) if (en.l === "_graph_edge") drawEntity(en);
+        // 추정 bridge edge — amber 점선 (끊긴 component 를 알고리즘이 강제 연결, 실배관 아님)
+        ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 1.4;
+        ctx.setLineDash([8, 4]);
+        for (const en of ents) if (en.l === "_graph_bridge") drawEntity(en);
+        ctx.setLineDash([]);
+        // 헤드 drop edge — slate 짧은 점선 (헤드 INSERT ↔ 가장 가까운 배관 노드)
+        ctx.strokeStyle = "#94a3b8"; ctx.lineWidth = 1.0;
+        ctx.setLineDash([3, 3]);
+        for (const en of ents) if (en.l === "_graph_head_drop") drawEntity(en);
+        ctx.setLineDash([]);
         // junction (차수≥3) 점
         ctx.fillStyle = "#0e7490"; ctx.strokeStyle = "#0e7490"; ctx.lineWidth = 1.5;
         for (const en of ents) if (en.l === "_graph_junction") drawEntity(en);

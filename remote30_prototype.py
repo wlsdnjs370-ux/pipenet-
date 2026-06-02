@@ -951,7 +951,8 @@ def extract_riser_msp_28f(pump_xy: tuple[float, float],
         pipes.append({
             "label": label, "in": in_lbl, "out": out_lbl,
             "type": "KSD 3507", "dia": bore_mm,
-            "length": round(length_m, 2), "elev": rise_m,
+            # PIPENET 최소 길이 0.001m floor (defensive — SRC_PIPES 는 hardcoded 지만 일관성)
+            "length": max(round(length_m, 2), 0.001), "elev": rise_m,
             "c": c_factor, "status": "Normal", "group": "Unset",
         })
 
@@ -1461,7 +1462,8 @@ def _system_path_to_riser_dict(
             "out": nodes[i + 1]["label"],
             "type": "KSD 3507",
             "dia": used_dia,
-            "length": round(length_m, 3),
+            # PIPENET 최소 길이 0.001m floor — 5mm 미만 segment 가 0 으로 round 되는 사고 방지.
+            "length": max(round(length_m, 3), 0.001),
             "elev":   elev_m,
             "c": "120",
             "status": "Normal",
@@ -2722,7 +2724,9 @@ def build_input_tables(
             "in": la, "out": lb,
             "type": "KSD 3507",
             "dia": dia,
-            "length": round(length_mm / 1000.0, 2),
+            # PIPENET 최소 길이 = 0.001m. round(L_m, 2) 가 0 이 되는 5mm 미만
+            # edge (epsilon-cluster 잔여, drop-line 등) 는 0.001m 으로 floor.
+            "length": max(round(length_mm / 1000.0, 2), 0.001),
             "elev": 0.0,
             "c": "120",
             "status": "Normal",

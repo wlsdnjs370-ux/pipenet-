@@ -302,7 +302,8 @@ def _pipe(label: str, in_lbl: str, out_lbl: str, bore_mm: int,
     """라이저 파이프 dict — remote30_prototype.PipeTables.pipes 호환."""
     return {
         "label": label, "in": in_lbl, "out": out_lbl, "type": "KSD 3507",
-        "dia": bore_mm, "length": round(length_m, 2), "elev": rise_m,
+        # PIPENET 최소 길이 0.001m floor — round(L, 2) 가 0 으로 깎이면 reject
+        "dia": bore_mm, "length": max(round(length_m, 2), 0.001), "elev": rise_m,
         "c": c_factor, "status": "Normal", "group": "Unset",
     }
 

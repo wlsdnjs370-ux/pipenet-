@@ -120,7 +120,7 @@
        버그 — 평면도 위에 빈 3D 캔버스가 깔려 평면도 안 보이던 원인) */
     .canvas-pane canvas.iso-canvas {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      display: none; background: #050b1f;
+      display: none; background: #0f1d3a;
     }
     .canvas-pane canvas.iso-canvas.is-visible { display: block; }
     .iso-controls {
@@ -2744,8 +2744,9 @@
         riser: 0xf59e0b,  // amber
         pump:  0xa855f7,  // 보라
         av:    0xef4444,  // 빨강
-        gridMajor: 0x1e293b,
-        gridMinor: 0x0f172a,
+        // 그리드 — 어두운 배경 위에서 잘 보이도록 약간 밝게
+        gridMajor: 0x475569,  // slate-600
+        gridMinor: 0x334155,  // slate-700
       };
 
       // hex (CSS) → THREE.Color
@@ -2762,21 +2763,29 @@
       function init() {
         if (_initialized) return;
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050b1f);
-        scene.fog = new THREE.Fog(0x050b1f, 8000, 80000);
+        // 배경 — 짙은 navy 보다 살짝 밝은 slate-900 (학술 다크 모드 + 노드/엣지 대비 ↑)
+        scene.background = new THREE.Color(0x0f1d3a);
+        // fog 제거 — fog 가 멀리 있는 객체 fade 시켜 전체적으로 어둡게 보였던 원인
+        scene.fog = null;
 
         const rect = canvas3d.getBoundingClientRect();
         const w = Math.max(rect.width, 1);
         const h = Math.max(rect.height, 1);
-        camera = new THREE.PerspectiveCamera(35, w / h, 1, 200000);
+        camera = new THREE.PerspectiveCamera(35, w / h, 1, 500000);
         camera.position.set(8000, 8000, 8000);
         camera.up.set(0, 0, 1);  // Z 위 (PIPENET 관례)
 
         renderer = new THREE.WebGLRenderer({
           canvas: canvas3d, antialias: true, alpha: false,
+          powerPreference: "high-performance",
         });
         renderer.setPixelRatio(window.devicePixelRatio || 1);
         renderer.setSize(w, h, false);
+        // 색상 인코딩 — sRGB 로 색이 더 vivid 하게 보임
+        if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
+        // 톤 매핑 — 전체적으로 약간 밝게 + 명암 보존
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.35;
 
         controls = new THREE.OrbitControls(camera, canvas3d);
         controls.enableDamping = true;
@@ -2794,12 +2803,21 @@
           RIGHT: THREE.MOUSE.PAN,
         };
 
-        // 라이트 — ambient + directional (학술 그래프 스타일은 무광 평면, 약간의 음영)
-        const amb = new THREE.AmbientLight(0xffffff, 0.55);
+        // 라이트 — 4-light 셋업으로 전 방향 균등하게 밝게
+        // (이전 ambient 0.55 + directional 0.45 는 어두운 면이 거의 검정으로 보였음)
+        const amb = new THREE.AmbientLight(0xffffff, 1.0);
         scene.add(amb);
-        const dir = new THREE.DirectionalLight(0xffffff, 0.45);
-        dir.position.set(1, 1, 1).normalize();
-        scene.add(dir);
+        // 위에서 주광 (key light) — 그림자 방향 결정 + 입체감
+        const dirKey = new THREE.DirectionalLight(0xffffff, 1.1);
+        dirKey.position.set(0.6, 0.7, 1.2).normalize();
+        scene.add(dirKey);
+        // 반대편 fill light — 어두운 면 보완
+        const dirFill = new THREE.DirectionalLight(0xeaf4ff, 0.55);
+        dirFill.position.set(-1, -0.6, 0.4).normalize();
+        scene.add(dirFill);
+        // 하늘색/지면색 hemisphere — 학술 시각화의 부드러운 ambient
+        const hemi = new THREE.HemisphereLight(0x9bc8ff, 0x1b2942, 0.65);
+        scene.add(hemi);
 
         // 그리드 + 축 helper
         gridHelper = new THREE.GridHelper(20000, 20, COLOR.gridMajor, COLOR.gridMinor);
@@ -2999,7 +3017,15 @@
             color = _elevColor((ta + tb) / 2).getHex();
           }
           if (!edgeMatCache[color]) {
-            edgeMatCache[color] = new THREE.MeshLambertMaterial({ color });
+            // MeshPhongMaterial — Lambert 보다 highlight 가 있어 입체감 + emissive
+            // 로 자체 발광 추가해 어두운 면에서도 색 보임.
+            edgeMatCache[color] = new THREE.MeshPhongMaterial({
+              color,
+              emissive: color,
+              emissiveIntensity: 0.35,
+              shininess: 50,
+              specular: 0x222233,
+            });
           }
           // 라이저 엣지는 약간 더 두껍게 (배관 본관 강조)
           const r = isRiser ? _autoEdgeRadius * 1.4 : _autoEdgeRadius;
@@ -3016,7 +3042,14 @@
                        : (meta.category === "riser") ? 1.2 : 1.0;
           const radius = _autoNodeRadius * sizeMul;
           if (!sphereMatCache[color]) {
-            sphereMatCache[color] = new THREE.MeshLambertMaterial({ color });
+            // 노드는 좀 더 강한 emissive + shininess 로 입체 + 형광 느낌 (학술 그래프)
+            sphereMatCache[color] = new THREE.MeshPhongMaterial({
+              color,
+              emissive: color,
+              emissiveIntensity: 0.4,
+              shininess: 80,
+              specular: 0xffffff,
+            });
           }
           const geo = new THREE.SphereGeometry(radius, 18, 14);
           const mesh = new THREE.Mesh(geo, sphereMatCache[color]);

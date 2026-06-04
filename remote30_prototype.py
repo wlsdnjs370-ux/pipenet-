@@ -1403,7 +1403,8 @@ def _system_path_to_riser_dict(
 
     # 노드 — 라벨 컨벤션:
     #   첫 노드 "1" (Input/펌프), 마지막 노드 "10" (AV).
-    #   중간 노드는 "n2", "n3", ... ("10" 과 충돌 방지 — path 길이 ≥ 10 일 때 collision 버그 fix).
+    #   중간 노드는 "11", "12", ... — 순수 숫자 라벨. 헤드망 노드는 100+ 에서
+    #   시작하도록 build_input_tables 가 분리되어 충돌 없음.
     nodes: list[dict] = []
     nodes_with_floor = 0
     for i, pt in enumerate(path):
@@ -1412,7 +1413,9 @@ def _system_path_to_riser_dict(
         elif i == total - 1:
             label, io = "10", "No"
         else:
-            label, io = f"n{i + 1}", "No"
+            # 중간 노드 = 10 + i (i ≥ 1). i=1 → "11", i=2 → "12", ...
+            # 라이저 path 가 매우 길어도 (∞) 헤드망 100+ 와 충돌 없음.
+            label, io = str(10 + i), "No"
         elev_m, floor_name, from_label = _elev_for_node(pt[1])
         if from_label:
             nodes_with_floor += 1
@@ -1453,11 +1456,10 @@ def _system_path_to_riser_dict(
         # 실제 길이는 elev 만큼 되어야 hydraulic 계산 가능. length 보정.
         length_m = max(length_m_dxf, abs(elev_m))
         total_length_mm += length_m * 1000.0
-        # Pipe 라벨에 "r" prefix — 라이저(1..9)/헤드망(10+) 컨벤션 영역 분리.
-        # path 길이 ≥ 10 이면 "10" 등이 헤드망 pipe 와 충돌 (stitch 시 ValueError).
-        # "r1", "r2", ... 식으로 prefix 해 절대 겹칠 일 없게.
+        # Pipe 라벨 — 순수 숫자 (1, 2, 3, ...). 헤드망 pipe 는 build_input_tables
+        # 가 100+ 로 시작하도록 분리되어 라이저 1~99 와 충돌 없음.
         pipe: dict = {
-            "label": f"r{i + 1}",
+            "label": str(i + 1),
             "in":  nodes[i]["label"],
             "out": nodes[i + 1]["label"],
             "type": "KSD 3507",
@@ -2663,15 +2665,24 @@ def build_input_tables(
     if not selection.heads or selection.source_pos is None:
         return tables
 
-    # 노드 라벨링 — 알람밸브 = 10, 나머지 1 부터 순차
+    # 노드 라벨링 — AV(알람밸브) = 10, 나머지는 100 부터 순차.
+    # 100+ 시작은 라이저 1~99 와 영역 분리 — extract_system_path 의 라이저 path 가
+    # 길어도 (n2/n3 prefix 없이) 헤드망과 충돌 없음.
     pos_to_label: dict[tuple[float, float], str] = {}
     label_to_pos: dict[str, tuple[float, float]] = {}
-    counter = [10]
+    # source (AV) 만 "10" 고정. 나머지 노드는 counter 부터 부여.
+    counter = [100]
+    _src_assigned = [False]
 
     def _label_node(pos: tuple[float, float]) -> str:
         if pos in pos_to_label:
             return pos_to_label[pos]
-        lab = str(counter[0]); counter[0] += 1
+        if not _src_assigned[0]:
+            # 첫 호출 = src (AV). label = "10" 으로 고정 (라이저 AV 와 매칭).
+            lab = "10"
+            _src_assigned[0] = True
+        else:
+            lab = str(counter[0]); counter[0] += 1
         pos_to_label[pos] = lab
         label_to_pos[lab] = pos
         return lab
@@ -2877,8 +2888,9 @@ def build_input_tables(
         return base
 
     # Pipes + edge key → pipe label mapping
+    # 헤드망 pipe 시작 = 100 — 라이저 pipe (1~99, extract_system_path) 와 영역 분리.
     edge_key_to_pipe: dict[tuple, str] = {}
-    pipe_label_counter = 10
+    pipe_label_counter = 100
     for a, b, length_mm in selection.edges:
         la = pos_to_label[a]; lb = pos_to_label[b]
         try:

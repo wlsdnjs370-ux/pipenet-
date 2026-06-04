@@ -2670,7 +2670,8 @@
       for (const n of g.nodes) {
         const [sx, sy] = toScreen(n.x, n.y);
         const isAV = (n.label === g.av_node_label);
-        const isInput = (n.io === "Input");
+        // 백엔드 SDF dict 는 "io_node" 필드 (n.io 가 아님). 호환을 위해 둘 다 검사.
+        const isInput = (n.io_node === "Input" || n.io === "Input");
         const isRiser = riserSet.has(n.label);
         const ep = isInput || isAV;
         const fill = isInput ? GRAPH_STYLE.color_pump
@@ -2918,31 +2919,87 @@
 
         // ─── Z 매핑 결정 ───
         // 라이저 노드의 elev 범위가 너무 작으면 (단층 도면, 헤드망 + 라이저 모두
-        // elev=2.8 같은 hardcoded) Z 변화가 안 보임 → 라이저 라벨 순서로 강제 펼침.
-        // riser_labels 순서가 펌프(Input, 첫 노드) → AV (마지막). 정확하지 않으면
-        // pipe edge 따라 위상 정렬 + 라벨 numeric sort 결합.
+        // elev=2.8 같은 hardcoded) Z 변화가 안 보임 → 라이저 토폴로지 순서로 강제 펼침.
         const riserNodes = geom.nodes.filter(n => riserSet.has(n.label));
         const riserElevs = riserNodes.map(n => (typeof n.elevation === "number") ? n.elevation : 0);
         const riserElevSpread = riserElevs.length
           ? Math.max(...riserElevs) - Math.min(...riserElevs) : 0;
         const useAutoSpread = opts.autoRiserSpread && riserElevSpread < 1.0;
-        // 라이저 라벨 → 강제 Z 매핑 (펌프=top, AV=헤드망 평면)
+        // 라이저 라벨 → 강제 Z 매핑 (펌프=top, AV=헤드망 평면).
+        // ★ 라벨 numeric sort 가 아니라 pipe 토폴로지 BFS 로 순서 결정.
+        // 예: 라이저 라벨 [1,2,3,4,7,8,89,5,10] — numeric sort 면 1,2,3,4,5,7,8,10,89
+        // 이지만 실제 토폴로지는 1→2→3→4→7→8→89→5→10. numeric sort 사용하면
+        // 5 와 89 가 잘못된 Z 받아 라이저가 꼬여 보임.
         const riserAutoZ = new Map();
         if (useAutoSpread && riserNodes.length >= 2) {
-          // 정렬: 펌프(Input) 가 가장 위. avLabel 이 가장 아래.
-          // 휴리스틱: avLabel 마지막, 나머지는 numeric sort.
-          const sorted = [...riserNodes].sort((a, b) => {
-            if (a.label === avLabel) return 1;
-            if (b.label === avLabel) return -1;
-            const na = parseFloat(a.label), nb = parseFloat(b.label);
-            if (!isNaN(na) && !isNaN(nb)) return na - nb;
-            return String(a.label).localeCompare(String(b.label));
-          });
+          // Step 1: 라이저 노드 라벨 set + 인접리스트 (라이저 pipe 만)
+          const riserLabelSet = new Set(riserNodes.map(n => n.label));
+          const adj = new Map();
+          for (const p of (geom.pipes || [])) {
+            if (!riserLabelSet.has(p.in) || !riserLabelSet.has(p.out)) continue;
+            if (!adj.has(p.in)) adj.set(p.in, []);
+            if (!adj.has(p.out)) adj.set(p.out, []);
+            adj.get(p.in).push(p.out);
+            adj.get(p.out).push(p.in);
+          }
+          // Step 2: BFS root 식별 — 펌프 (Input) 라이저 노드 우선,
+          // 없으면 AV 의 반대편 (펌프 후보) 선택.
+          const inputNode = riserNodes.find(n =>
+            n.io_node === "Input" || n.io === "Input"
+          );
+          const pumpFromPumps = (geom.pumps || []).find(p =>
+            riserLabelSet.has(p.in)
+          );
+          let root = inputNode?.label || pumpFromPumps?.in;
+          // Fallback: AV 와 가장 먼 라이저 노드 (펌프일 가능성)
+          if (!root && avLabel && adj.has(avLabel)) {
+            // AV 부터 BFS — 가장 먼 leaf 가 펌프
+            const visited = new Map([[avLabel, 0]]);
+            const q = [avLabel];
+            let far = avLabel, farDist = 0;
+            while (q.length) {
+              const u = q.shift();
+              for (const v of (adj.get(u) || [])) {
+                if (visited.has(v)) continue;
+                const d = visited.get(u) + 1;
+                visited.set(v, d);
+                if (d > farDist) { farDist = d; far = v; }
+                q.push(v);
+              }
+            }
+            root = far;
+          }
+          if (!root) root = riserNodes[0].label;
+
+          // Step 3: root → ... → AV 위상 정렬 BFS
+          const order = [];
+          const visited = new Set([root]);
+          const q = [root];
+          while (q.length) {
+            const u = q.shift();
+            order.push(u);
+            for (const v of (adj.get(u) || [])) {
+              if (visited.has(v)) continue;
+              visited.add(v);
+              q.push(v);
+            }
+          }
+          // BFS 가 잡지 못한 노드 (다른 component) 는 마지막에 append
+          for (const n of riserNodes) {
+            if (!visited.has(n.label)) order.push(n.label);
+          }
+          // Step 4: AV 가 last 가 아니면 강제로 last 로 이동 (헤드망 평면 anchor)
+          if (avLabel && order.includes(avLabel) && order[order.length - 1] !== avLabel) {
+            const idx = order.indexOf(avLabel);
+            order.splice(idx, 1);
+            order.push(avLabel);
+          }
+
+          // Step 5: order index → Z. root=top, AV=bottom (헤드망 평면)
           const spreadHeight = bboxDiag * 0.5 * opts.zScale;
-          sorted.forEach((n, i) => {
-            // 펌프 (i=0) → Z = spreadHeight (top), AV (i=last) → Z = 0 (헤드망 평면)
-            const t = 1 - (i / Math.max(1, sorted.length - 1));
-            riserAutoZ.set(n.label, t * spreadHeight);
+          order.forEach((label, i) => {
+            const t = 1 - (i / Math.max(1, order.length - 1));
+            riserAutoZ.set(label, t * spreadHeight);
           });
         }
 
@@ -2968,7 +3025,7 @@
 
           let cat = "head";
           if (n.label === avLabel) cat = "av";
-          else if (n.io === "Input" || pumpInNodes.has(n.label)) cat = "pump";
+          else if (n.io_node === "Input" || n.io === "Input" || pumpInNodes.has(n.label)) cat = "pump";
           else if (riserSet.has(n.label)) cat = "riser";
           const t = (e - minE) / eRange;
           nodeMeta.set(n.label, { category: cat, elevT: t, raw: n });

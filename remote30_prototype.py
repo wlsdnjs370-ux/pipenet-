@@ -2810,25 +2810,71 @@ def build_input_tables(
         qx, qy = ax + t * dx, ay + t * dy
         return math.hypot(px - qx, py - qy)
 
-    diameter_source_counter: dict[str, int] = {"text": 0, "nfpc_min": 0, "nfpc_fallback": 0}
+    diameter_source_counter: dict[str, int] = {
+        "text": 0, "nfpc_min": 0, "nfpc_fallback": 0, "velocity_upsize": 0,
+    }
+
+    # ── NFTC 102 §6 유속 한계 자동 검증
+    # NFPC 별표 1 의 "가" 칸은 헤드 수당 최소 호칭경이지만 유속을 보장하지 않음.
+    # 보수적 유량 가정 (K=80, 잔류 압력 1 kg/cm²) 으로 직경별 유속 계산 후
+    # 한계 (본관 6 m/s, 가지관 10 m/s) 초과면 한 단계 위로 자동 upsize.
+    # 가지관/본관 구분: 담당 헤드 수 ≥ MAIN_HEAD_THRESHOLD 이면 본관.
+    _K_FACTOR = 80.0                # SP-HEAD 표준 K (L/min/bar^0.5)
+    _RESIDUAL_BAR = 1.0             # 최말단 헤드 잔류 압력 가정 1 kg/cm² ≈ 1 bar
+    _FLOW_LMIN_PER_HEAD = _K_FACTOR * math.sqrt(_RESIDUAL_BAR)  # ≈ 80 L/min
+    _V_LIMIT_MAIN = 6.0             # 본관 유속 한계 m/s
+    _V_LIMIT_BRANCH = 10.0          # 가지관 유속 한계 m/s
+    _MAIN_HEAD_THRESHOLD = 10       # 헤드 수 ≥ 10 이면 본관
+
+    _SORTED_VALID_DIA = sorted(_VALID_DIA_MM)
+
+    def _velocity_m_per_s(flow_lmin: float, bore_mm: float) -> float:
+        # Q [L/min] → m³/s: ÷ (1000 × 60)
+        # A [m²]: π × (d_mm/2/1000)²
+        Q = flow_lmin / 60000.0
+        A = math.pi * (bore_mm * 0.0005) ** 2
+        return Q / A if A > 0 else float("inf")
+
+    def _velocity_safe_bore(head_count: int, base_bore: int) -> int:
+        """base_bore (NFPC 최소 또는 텍스트값) 부터 시작해 유속 한계 안 들어가는
+        가장 작은 표준 직경 반환. 한계 초과면 표준 다음 단계로 한 칸씩 upsize."""
+        if head_count <= 0:
+            return base_bore
+        flow = head_count * _FLOW_LMIN_PER_HEAD
+        v_limit = _V_LIMIT_MAIN if head_count >= _MAIN_HEAD_THRESHOLD else _V_LIMIT_BRANCH
+        for d in _SORTED_VALID_DIA:
+            if d < base_bore:
+                continue
+            if _velocity_m_per_s(flow, d) <= v_limit:
+                return d
+        return _SORTED_VALID_DIA[-1]
 
     def _pipe_diameter(a: tuple[float, float], b: tuple[float, float]) -> int:
-        nfpc_min = _nfpc_min_bore_mm(_downstream_heads(a, b))
+        hc = _downstream_heads(a, b)
+        nfpc_min = _nfpc_min_bore_mm(hc)
         # 텍스트 매칭 — 점-선분 수직거리, 1500mm 이내
         best_text = None; best_d = DIA_RANGE_LIMIT_MM
         for tx, ty, dia in dia_text_pts:
             d = _point_seg_dist(tx, ty, a[0], a[1], b[0], b[1])
             if d < best_d:
                 best_d = d; best_text = dia
+        # 1단계: 텍스트 vs NFPC 최소 결정
         if best_text is None:
-            diameter_source_counter["nfpc_fallback"] += 1
-            return nfpc_min
-        # 안전측: 텍스트 값이 별표 1 최소보다 작으면 별표 1 채택
-        if best_text < nfpc_min:
-            diameter_source_counter["nfpc_min"] += 1
-            return nfpc_min
-        diameter_source_counter["text"] += 1
-        return best_text
+            base = nfpc_min
+            stage1_source = "nfpc_fallback"
+        elif best_text < nfpc_min:
+            base = nfpc_min
+            stage1_source = "nfpc_min"
+        else:
+            base = best_text
+            stage1_source = "text"
+        # 2단계: 유속 한계 검증 → 필요 시 upsize
+        v_safe = _velocity_safe_bore(hc, base)
+        if v_safe > base:
+            diameter_source_counter["velocity_upsize"] += 1
+            return v_safe
+        diameter_source_counter[stage1_source] += 1
+        return base
 
     # Pipes + edge key → pipe label mapping
     edge_key_to_pipe: dict[tuple, str] = {}
@@ -3007,6 +3053,7 @@ def build_input_tables(
         ("Diameter 추론 — DXF text 매칭", str(diameter_source_counter.get("text", 0))),
         ("Diameter 추론 — NFPC 별표 1 보강 (text<min)", str(diameter_source_counter.get("nfpc_min", 0))),
         ("Diameter 추론 — NFPC 별표 1 fallback (text 미매칭)", str(diameter_source_counter.get("nfpc_fallback", 0))),
+        ("Diameter 추론 — 유속 한계 자동 upsize (NFTC 102 §6)", str(diameter_source_counter.get("velocity_upsize", 0))),
         ("Diameter 텍스트 후보 수 (도면)", str(len(dia_text_pts))),
     ]
     return tables

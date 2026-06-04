@@ -339,17 +339,21 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
     _upd = bbox_acc.add
 
     MAX_DEPTH = 10
+    # closure local alias — hidden_layers (frozenset/set) lookup attribute 절약.
+    _hidden = bundle.hidden_layers
 
     def _render(e, matrix=None, layer_override=None, depth=0):
         etype = e.dxftype()
-        own = getattr(e.dxf, "layer", "")
+        edxf = e.dxf
+        own = getattr(edxf, "layer", "")
         if layer_override is not None and own in ("0", ""):
             layer = layer_override
         else:
             layer = own or (layer_override or "")
-        if layer in bundle.hidden_layers:
+        if layer in _hidden:
             return
-        if int(getattr(e.dxf, "invisible", 0) or 0) == 1:
+        # invisible: int 0 또는 1 (DXF spec). truthy 검사면 int() 호출 회피.
+        if getattr(edxf, "invisible", 0):
             return
         try:
             if etype == "LINE":
@@ -1570,22 +1574,51 @@ class _NodeIndex:
         self._bucket: dict[tuple[int, int], list[tuple[float, float]]] = defaultdict(list)
 
     def canonical(self, x: float, y: float) -> tuple[float, float]:
-        """epsilon 안에 기존 노드 있으면 그 좌표, 없으면 (x, y) 신규 등록."""
-        kx = int(x // self._cell)
-        ky = int(y // self._cell)
+        """epsilon 안에 기존 노드 있으면 그 좌표, 없으면 (x, y) 신규 등록.
+
+        최적화 — 가장 가능성 큰 자기 bucket (dx=dy=0) 먼저 검색, epsilon 안
+        match 발견 즉시 return. 통계상 90%+ 케이스에서 첫 bucket 만 확인하면 됨.
+        """
+        cell = self._cell
+        kx = int(x // cell)
+        ky = int(y // cell)
+        eps_sq = self._eps_sq
+        b_get = self._bucket.get
+
+        # Step 1: 자기 bucket 먼저 (대부분 케이스)
+        lst = b_get((kx, ky))
+        if lst:
+            for pt in lst:
+                dx0 = pt[0] - x; dy0 = pt[1] - y
+                if dx0 * dx0 + dy0 * dy0 <= eps_sq:
+                    return pt
+
+        # Step 2: 8개 이웃 bucket — 격자 경계 가까울 때만 필요
         best = None
-        bestd = float("inf")
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                for pt in self._bucket.get((kx + dx, ky + dy), ()):
-                    d = (pt[0] - x) ** 2 + (pt[1] - y) ** 2
-                    if d < bestd and d <= self._eps_sq:
+        bestd = eps_sq
+        for ddx in (-1, 0, 1):
+            for ddy in (-1, 0, 1):
+                if ddx == 0 and ddy == 0:
+                    continue
+                lst = b_get((kx + ddx, ky + ddy))
+                if not lst:
+                    continue
+                for pt in lst:
+                    dx0 = pt[0] - x; dy0 = pt[1] - y
+                    d = dx0 * dx0 + dy0 * dy0
+                    if d <= bestd:
                         bestd = d
                         best = pt
         if best is not None:
             return best
+
+        # Step 3: 신규 등록
         new_pt = (x, y)
-        self._bucket[(kx, ky)].append(new_pt)
+        own = b_get((kx, ky))
+        if own is None:
+            self._bucket[(kx, ky)] = [new_pt]
+        else:
+            own.append(new_pt)
         return new_pt
 
 
@@ -2200,64 +2233,149 @@ def _find_source(pipe_entities: list[dict], layer_categories: dict[str, str]) ->
 
 
 def _dijkstra_from(graph: dict, edge_len: dict, src: tuple[float, float]) -> dict[tuple[float, float], float]:
-    """단순 Dijkstra — 모든 노드까지의 거리."""
-    import heapq
-    dist: dict[tuple[float, float], float] = {src: 0.0}
-    pq: list[tuple[float, tuple[float, float]]] = [(0.0, src)]
-    while pq:
-        d, u = heapq.heappop(pq)
-        if d > dist.get(u, float("inf")):
-            continue
-        for v in graph.get(u, ()):
-            key = (min(u, v), max(u, v))
-            w = edge_len.get(key, math.hypot(v[0] - u[0], v[1] - u[1]))
-            nd = d + w
-            if nd < dist.get(v, float("inf")):
-                dist[v] = nd
-                heapq.heappush(pq, (nd, v))
+    """단순 Dijkstra — 모든 노드까지의 거리 (dist만)."""
+    dist, _ = _dijkstra_full(graph, edge_len, src)
     return dist
 
 
-def _shortest_path(graph: dict, edge_len: dict, src: tuple[float, float], tgt: tuple[float, float]) -> list[tuple[float, float]]:
-    """src → tgt 최단 경로 (vertex 시퀀스)."""
+def _dijkstra_full(
+    graph: dict, edge_len: dict, src: tuple[float, float],
+) -> tuple[dict[tuple[float, float], float], dict[tuple[float, float], tuple[float, float]]]:
+    """Dijkstra — dist 와 parent (prev) 둘 다 반환.
+
+    select_worst30_heads 가 worst-N 헤드마다 _shortest_path 를 호출하면 매번
+    Dijkstra 가 다시 돌아가는데 (N× cost), 이 함수는 1회로 dist + parent 를
+    모두 만들어두고 path 는 `_reconstruct_path(parent, src, tgt)` 로 trace back.
+    """
     import heapq
-    if src == tgt:
-        return [src]
-    dist = {src: 0.0}
-    prev: dict = {}
-    pq = [(0.0, src)]
+    dist: dict = {src: 0.0}
+    parent: dict = {}
+    pq: list[tuple[float, tuple[float, float]]] = [(0.0, src)]
+    pop = heapq.heappop
+    push = heapq.heappush
+    g_get = graph.get
+    e_get = edge_len.get
     while pq:
-        d, u = heapq.heappop(pq)
-        if u == tgt:
-            break
+        d, u = pop(pq)
         if d > dist.get(u, float("inf")):
             continue
-        for v in graph.get(u, ()):
-            key = (min(u, v), max(u, v))
-            w = edge_len.get(key, math.hypot(v[0] - u[0], v[1] - u[1]))
+        for v in g_get(u, ()):
+            key = (u, v) if u < v else (v, u)
+            w = e_get(key)
+            if w is None:
+                w = math.hypot(v[0] - u[0], v[1] - u[1])
             nd = d + w
             if nd < dist.get(v, float("inf")):
                 dist[v] = nd
-                prev[v] = u
-                heapq.heappush(pq, (nd, v))
-    if tgt not in prev and tgt != src:
+                parent[v] = u
+                push(pq, (nd, v))
+    return dist, parent
+
+
+def _reconstruct_path(parent: dict, src: tuple[float, float],
+                      tgt: tuple[float, float]) -> list[tuple[float, float]]:
+    """parent dict 에서 src → tgt 경로 trace back. 도달 불가능이면 []."""
+    if src == tgt:
+        return [src]
+    if tgt not in parent:
         return []
-    # backtrack
     out = [tgt]
-    while out[-1] in prev:
-        out.append(prev[out[-1]])
+    while out[-1] in parent:
+        out.append(parent[out[-1]])
     out.reverse()
     return out if out and out[0] == src else []
 
 
+def _shortest_path(graph: dict, edge_len: dict, src: tuple[float, float], tgt: tuple[float, float]) -> list[tuple[float, float]]:
+    """src → tgt 최단 경로 (vertex 시퀀스). 단발성 호출용.
+
+    여러 tgt 에 대해 반복 호출이면 `_dijkstra_full` 한 번 + 각 tgt 에 대해
+    `_reconstruct_path` 가 빠름.
+    """
+    if src == tgt:
+        return [src]
+    _, parent = _dijkstra_full(graph, edge_len, src)
+    return _reconstruct_path(parent, src, tgt)
+
+
+class _SpatialIndex:
+    """그래프 노드 grid-bucket 공간 인덱스 — O(1) 평균 nearest lookup.
+
+    `_nearest_graph_node` 가 O(N) brute force 라 select_worst30_heads 의
+    헤드 × 그래프 노드 (보통 100×1000) 마다 누적 비용 큼. cell_size 에
+    bucket 으로 나누고, 확장 검색 (1×1 → 3×3 → 5×5 → ...) 으로 nearest 가
+    있는 첫 ring 만 검색. 도면 sparse 분포에서 거의 항상 1~3 ring 안에서 결정.
+    """
+
+    __slots__ = ("cell", "_b")
+
+    def __init__(self, nodes, cell_size: float = 500.0):
+        # cell_size 권장: 도면 bbox 의 0.5% 정도. 너무 작으면 bucket 폭증, 너무
+        # 크면 ring 검색 효과 약함. 기본 500mm = 50cm (소방 도면 합리적).
+        self.cell = cell_size
+        self._b: dict[tuple[int, int], list[tuple[float, float]]] = {}
+        c = cell_size
+        b = self._b
+        for n in nodes:
+            k = (int(n[0] // c), int(n[1] // c))
+            lst = b.get(k)
+            if lst is None:
+                b[k] = [n]
+            else:
+                lst.append(n)
+
+    def nearest(self, x: float, y: float) -> tuple[float, float] | None:
+        if not self._b:
+            return None
+        c = self.cell
+        b = self._b
+        kx = int(x // c)
+        ky = int(y // c)
+        best = None
+        bestd = float("inf")
+        max_ring = 200
+        for r in range(max_ring + 1):
+            # ring r 의 bucket 들의 가장 가까운 가능 점 거리 = max(0, (r-1)*c).
+            # 이미 발견된 best 가 그보다 가까우면 — 더 확장해도 nearest 갱신 불가.
+            if r >= 2:
+                min_possible = (r - 1) * c
+                if bestd < min_possible * min_possible:
+                    break
+            if r == 0:
+                xs = [(kx, ky)]
+            else:
+                xs = []
+                for dx in range(-r, r + 1):
+                    xs.append((kx + dx, ky - r))
+                    xs.append((kx + dx, ky + r))
+                for dy in range(-r + 1, r):
+                    xs.append((kx - r, ky + dy))
+                    xs.append((kx + r, ky + dy))
+            for kk in xs:
+                lst = b.get(kk)
+                if not lst:
+                    continue
+                for pt in lst:
+                    d = (pt[0] - x) ** 2 + (pt[1] - y) ** 2
+                    if d < bestd:
+                        bestd = d
+                        best = pt
+        return best
+
+
 def _nearest_graph_node(graph: dict, pt: tuple[float, float]) -> tuple[float, float] | None:
-    """그래프 노드 중 pt 와 가장 가까운 노드. 같은 좌표면 그대로."""
+    """그래프 노드 중 pt 와 가장 가까운 노드. 같은 좌표면 그대로.
+
+    단일 호출 (1회) 이면 O(N) brute force 가 충분. 반복 호출이면 caller 가
+    `_SpatialIndex(graph.keys())` 를 만들어 `.nearest(x, y)` 사용 — O(1) 평균.
+    """
     if pt in graph:
         return pt
     best = None
     bestd = float("inf")
+    px, py = pt
     for n in graph:
-        d = (n[0] - pt[0]) ** 2 + (n[1] - pt[1]) ** 2
+        d = (n[0] - px) ** 2 + (n[1] - py) ** 2
         if d < bestd:
             bestd = d
             best = n
@@ -2372,7 +2490,16 @@ def select_worst30_heads(
     else:
         src_raw, src_kind = _find_source(pipe_entities, layer_categories)
 
-    src_nearest = _nearest_graph_node(graph, src_raw) if src_raw else None
+    # 헤드 매칭에서 nearest lookup 이 다수 호출 — grid-bucket 인덱스로 O(1).
+    # source 매칭 + 헤드 N개 + 나중 fallback (자기 자신 lookup) 모두 동일 인덱스 사용.
+    _spx = _SpatialIndex(list(graph.keys())) if graph else None
+
+    def _nearest(pt):
+        if pt in graph:
+            return pt
+        return _spx.nearest(pt[0], pt[1]) if _spx is not None else None
+
+    src_nearest = _nearest(src_raw) if src_raw else None
     src_bridge_dist_mm = 0.0
     src_fallback = False
     if src_nearest is None:
@@ -2400,9 +2527,10 @@ def select_worst30_heads(
             src_fallback = True
             src_kind = src_kind + ":fallback_far"
 
-    # 헤드 좌표 → 가장 가까운 그래프 노드로 강제 연결 (HEAD_BRIDGE_MAX_MM 이내)
+    # 헤드 좌표 → 가장 가까운 그래프 노드로 강제 연결 (HEAD_BRIDGE_MAX_MM 이내).
+    # _SpatialIndex 사용 — 헤드 N개 × 그래프 노드 N개 (O(N²)) → 헤드 N × O(1).
     for h in heads:
-        nearest = _nearest_graph_node(graph, h.pos)
+        nearest = _nearest(h.pos)
         if nearest is None:
             continue
         d = math.hypot(h.pos[0] - nearest[0], h.pos[1] - nearest[1])
@@ -2411,12 +2539,14 @@ def select_worst30_heads(
             graph[nearest].add(h.pos)
             edge_len[(min(h.pos, nearest), max(h.pos, nearest))] = d
 
-    dist_map = _dijkstra_from(graph, edge_len, src)
+    # Dijkstra 한 번에 dist + parent 둘 다 — worst-K 헤드 경로 trace back 에 재사용.
+    # (이전: dist 1번 + 각 헤드마다 path Dijkstra 1번씩 = K+1 회. 새: 1회.)
+    dist_map, parent_map = _dijkstra_full(graph, edge_len, src)
 
     # head 후보들을 그래프 노드로 스냅 후 거리 정렬 — 도달 불가도 가능한 한 포함
     head_with_d: list[tuple[HeadCandidate, tuple[float, float], float]] = []
     for h in heads:
-        node = h.pos if h.pos in graph else _nearest_graph_node(graph, h.pos)
+        node = h.pos if h.pos in graph else _nearest(h.pos)
         if node is None:
             continue
         d = dist_map.get(node, float("inf"))
@@ -2428,12 +2558,12 @@ def select_worst30_heads(
     selected_heads = [h for h, _, _ in top_k]
     distances = [d for _, _, d in top_k]
 
-    # subgraph 추출 — top-K 헤드 각각의 src→head 최단경로의 합집합
+    # subgraph 추출 — top-K 헤드 각각 parent_map 으로 path trace back (Dijkstra 재실행 없음)
     sub_edges_seen: set[tuple[tuple[float, float], tuple[float, float]]] = set()
     sub_edges: list[tuple[tuple[float, float], tuple[float, float], float]] = []
     sub_nodes: set[tuple[float, float]] = {src}
     for _, head_node, _ in top_k:
-        path = _shortest_path(graph, edge_len, src, head_node)
+        path = _reconstruct_path(parent_map, src, head_node)
         for a, b in zip(path, path[1:]):
             key = (min(a, b), max(a, b))
             if key in sub_edges_seen:

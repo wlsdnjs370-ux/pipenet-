@@ -124,6 +124,56 @@ class _SafeJSONProvider(_DefaultJSONProvider):
 app.json = _SafeJSONProvider(app)
 
 # ────────────────────────────────────────────────────────────────────────────
+# Gzip 응답 압축 (large JSON 페이로드 ↓)
+# ────────────────────────────────────────────────────────────────────────────
+# Stage 0 의 entity 리스트 (수만 ~ 수십만) 가 JSON 직렬화되면 MB 단위 페이로드.
+# gzip 으로 보통 70-80% 감소. SSE (text/event-stream + streaming) 는 자동 제외해서
+# 로딩창 진행 이벤트 흐름은 그대로 유지.
+import gzip as _gzip
+import io as _gzip_io
+from flask import request as _flask_request
+
+
+@app.after_request
+def _gzip_compress(response):
+    # 1. 클라이언트가 gzip 받을 수 있어야
+    accept = _flask_request.headers.get("Accept-Encoding", "")
+    if "gzip" not in accept:
+        return response
+    # 2. 정상 응답만 (에러는 그대로)
+    if response.status_code < 200 or response.status_code >= 300 or response.status_code == 204:
+        return response
+    # 3. 이미 압축됐으면 skip
+    if response.headers.get("Content-Encoding"):
+        return response
+    # 4. ★ Streaming 응답 (SSE 등) 은 절대 건들지 말 것 — 로딩창 SSE 흐름 보호
+    if response.is_streamed or response.direct_passthrough:
+        return response
+    # 5. Content-Type 이 압축 효과 있는 타입만 (JSON / text)
+    ctype = response.headers.get("Content-Type", "")
+    if not (ctype.startswith("application/json") or ctype.startswith("text/")
+            or "javascript" in ctype or "xml" in ctype):
+        return response
+    raw = response.get_data()
+    # 6. 너무 작으면 압축 오버헤드가 더 큼 — 1KB 미만 skip
+    if len(raw) < 1024:
+        return response
+    buf = _gzip_io.BytesIO()
+    # compresslevel 5 — 속도 + 압축률 균형 (1=fastest, 9=best)
+    with _gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=5) as gz:
+        gz.write(raw)
+    compressed = buf.getvalue()
+    if len(compressed) >= len(raw):
+        return response  # 압축 안 됨 (이미 압축된 binary 등) — skip
+    response.set_data(compressed)
+    response.headers["Content-Encoding"] = "gzip"
+    response.headers["Content-Length"] = str(len(compressed))
+    # 캐시 정책에 Accept-Encoding 반영 (compressed/uncompressed 별도 캐싱)
+    response.headers["Vary"] = "Accept-Encoding"
+    return response
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # 비밀번호 로그인 게이트 — 외부 노출(터널 등) 시 접근 보호
 # ────────────────────────────────────────────────────────────────────────────
 # 한 줄 비밀번호 폼 → 세션 쿠키. SECRET_KEY 는 env var 또는 dev 용 hardcoded fallback.

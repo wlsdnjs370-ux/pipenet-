@@ -339,21 +339,17 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
     _upd = bbox_acc.add
 
     MAX_DEPTH = 10
-    # closure local alias — hidden_layers (frozenset/set) lookup attribute 절약.
-    _hidden = bundle.hidden_layers
 
     def _render(e, matrix=None, layer_override=None, depth=0):
         etype = e.dxftype()
-        edxf = e.dxf
-        own = getattr(edxf, "layer", "")
+        own = getattr(e.dxf, "layer", "")
         if layer_override is not None and own in ("0", ""):
             layer = layer_override
         else:
             layer = own or (layer_override or "")
-        if layer in _hidden:
+        if layer in bundle.hidden_layers:
             return
-        # invisible: int 0 또는 1 (DXF spec). truthy 검사면 int() 호출 회피.
-        if getattr(edxf, "invisible", 0):
+        if int(getattr(e.dxf, "invisible", 0) or 0) == 1:
             return
         try:
             if etype == "LINE":
@@ -1574,51 +1570,27 @@ class _NodeIndex:
         self._bucket: dict[tuple[int, int], list[tuple[float, float]]] = defaultdict(list)
 
     def canonical(self, x: float, y: float) -> tuple[float, float]:
-        """epsilon 안에 기존 노드 있으면 그 좌표, 없으면 (x, y) 신규 등록.
-
-        최적화 — 가장 가능성 큰 자기 bucket (dx=dy=0) 먼저 검색, epsilon 안
-        match 발견 즉시 return. 통계상 90%+ 케이스에서 첫 bucket 만 확인하면 됨.
-        """
-        cell = self._cell
-        kx = int(x // cell)
-        ky = int(y // cell)
+        """epsilon 안에 기존 노드 있으면 그 좌표, 없으면 (x, y) 신규 등록."""
+        kx = int(x // self._cell)
+        ky = int(y // self._cell)
+        best = None
+        bestd = float("inf")
         eps_sq = self._eps_sq
         b_get = self._bucket.get
-
-        # Step 1: 자기 bucket 먼저 (대부분 케이스)
-        lst = b_get((kx, ky))
-        if lst:
-            for pt in lst:
-                dx0 = pt[0] - x; dy0 = pt[1] - y
-                if dx0 * dx0 + dy0 * dy0 <= eps_sq:
-                    return pt
-
-        # Step 2: 8개 이웃 bucket — 격자 경계 가까울 때만 필요
-        best = None
-        bestd = eps_sq
-        for ddx in (-1, 0, 1):
-            for ddy in (-1, 0, 1):
-                if ddx == 0 and ddy == 0:
-                    continue
-                lst = b_get((kx + ddx, ky + ddy))
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                lst = b_get((kx + dx, ky + dy))
                 if not lst:
                     continue
                 for pt in lst:
-                    dx0 = pt[0] - x; dy0 = pt[1] - y
-                    d = dx0 * dx0 + dy0 * dy0
-                    if d <= bestd:
+                    d = (pt[0] - x) ** 2 + (pt[1] - y) ** 2
+                    if d < bestd and d <= eps_sq:
                         bestd = d
                         best = pt
         if best is not None:
             return best
-
-        # Step 3: 신규 등록
         new_pt = (x, y)
-        own = b_get((kx, ky))
-        if own is None:
-            self._bucket[(kx, ky)] = [new_pt]
-        else:
-            own.append(new_pt)
+        self._bucket[(kx, ky)].append(new_pt)
         return new_pt
 
 

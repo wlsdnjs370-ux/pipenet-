@@ -134,8 +134,18 @@ import io as _gzip_io
 from flask import request as _flask_request
 
 
+# 게이팅 — fncadnet.com 은 Cloudflare Tunnel 통과 → Cloudflare 가 자동 압축.
+# 우리 서버에서 다시 압축하면 CPU 중복 부담 (큰 entity JSON 압축에 시간 소요).
+# 환경변수 REMOTE30_SERVER_GZIP=1 인 경우만 활성화 — 기본 OFF.
+_GZIP_ENABLED = _os_for_auth.environ.get("REMOTE30_SERVER_GZIP", "0") == "1"
+# 매우 큰 응답 (5MB+) 만 압축 시도 — 작은 건 Cloudflare 가 처리하는 게 빠름.
+_GZIP_MIN_BYTES = 5 * 1024 * 1024
+
+
 @app.after_request
 def _gzip_compress(response):
+    if not _GZIP_ENABLED:
+        return response
     # 1. 클라이언트가 gzip 받을 수 있어야
     accept = _flask_request.headers.get("Accept-Encoding", "")
     if "gzip" not in accept:
@@ -155,20 +165,18 @@ def _gzip_compress(response):
             or "javascript" in ctype or "xml" in ctype):
         return response
     raw = response.get_data()
-    # 6. 너무 작으면 압축 오버헤드가 더 큼 — 1KB 미만 skip
-    if len(raw) < 1024:
+    if len(raw) < _GZIP_MIN_BYTES:
         return response
     buf = _gzip_io.BytesIO()
-    # compresslevel 5 — 속도 + 압축률 균형 (1=fastest, 9=best)
-    with _gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=5) as gz:
+    # compresslevel 1 — fastest. CPU 부담 최소화 (압축률은 살짝 낮지만 전송 절약 충분).
+    with _gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=1) as gz:
         gz.write(raw)
     compressed = buf.getvalue()
     if len(compressed) >= len(raw):
-        return response  # 압축 안 됨 (이미 압축된 binary 등) — skip
+        return response
     response.set_data(compressed)
     response.headers["Content-Encoding"] = "gzip"
     response.headers["Content-Length"] = str(len(compressed))
-    # 캐시 정책에 Accept-Encoding 반영 (compressed/uncompressed 별도 캐싱)
     response.headers["Vary"] = "Accept-Encoding"
     return response
 

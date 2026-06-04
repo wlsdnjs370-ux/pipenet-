@@ -2679,11 +2679,34 @@ def build_input_tables(
     src_label = _label_node(selection.source_pos)
     for n in selection.nodes_in_subgraph:
         _label_node(n)
+    # ★ orphan 헤드 fix — h.pos 는 _round_pt 격자 좌표지만 sub_nodes/sub_edges
+    # 의 endpoint 는 NodeIndex 의 raw 좌표라 직접 비교 시 거의 모든 헤드가
+    # mismatch 됨. 결과: head 마다 새 label 부여 → 노즐 input 노드가 어떤
+    # pipe 의 endpoint 도 아닌 dangling 노드 = orphan. PIPENET reject.
+    # 해결: 각 head.pos 를 sub_nodes 의 가장 가까운 raw 좌표로 강제 매핑.
+    _sub_set = set(selection.nodes_in_subgraph)
+    def _attach_head_to_subgraph(h_pos):
+        if h_pos in _sub_set:
+            return h_pos
+        # nearest from sub_nodes — 같은 헤드의 graph 노드 (collinear merge 후 raw)
+        if not _sub_set:
+            return h_pos
+        best = None
+        bestd = float("inf")
+        hx, hy = h_pos
+        for n in _sub_set:
+            d = (n[0] - hx) ** 2 + (n[1] - hy) ** 2
+            if d < bestd:
+                bestd = d
+                best = n
+        return best if best is not None else h_pos
+
     head_node_label: dict[tuple[float, float], str] = {}
     for h, dist in zip(selection.heads, selection.distances):
-        snap = h.pos
+        snap = _attach_head_to_subgraph(h.pos)
         lab = _label_node(snap)
-        head_node_label[snap] = lab
+        # key 는 원본 h.pos — 노즐 추가 루프 (head_node_label[h.pos]) 와 정합.
+        head_node_label[h.pos] = lab
 
     # Nodes
     for label, pos in label_to_pos.items():

@@ -137,7 +137,8 @@ from flask import request as _flask_request
 # 게이팅 — fncadnet.com 은 Cloudflare Tunnel 통과 → Cloudflare 가 자동 압축.
 # 우리 서버에서 다시 압축하면 CPU 중복 부담 (큰 entity JSON 압축에 시간 소요).
 # 환경변수 REMOTE30_SERVER_GZIP=1 인 경우만 활성화 — 기본 OFF.
-_GZIP_ENABLED = _os_for_auth.environ.get("REMOTE30_SERVER_GZIP", "0") == "1"
+import os as _os_for_gzip
+_GZIP_ENABLED = _os_for_gzip.environ.get("REMOTE30_SERVER_GZIP", "0") == "1"
 # 매우 큰 응답 (5MB+) 만 압축 시도 — 작은 건 Cloudflare 가 처리하는 게 빠름.
 _GZIP_MIN_BYTES = 5 * 1024 * 1024
 

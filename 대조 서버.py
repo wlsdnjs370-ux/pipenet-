@@ -65,6 +65,29 @@ app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
+# ────────────────────────────────────────────────────────────────────────────
+# 보안 하드닝 — fncadnet.com 외부 노출 시 기본 방어선
+# ────────────────────────────────────────────────────────────────────────────
+# (1) 업로드 크기 제한 — 수GB 파일 업로드 DoS 차단.
+#     일반 DXF/SDF/KFP 는 수십 MB 이내. 200 MB 면 큰 통합 도면도 충분.
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
+
+# (2) 세션 쿠키 하드닝
+#     SECURE: HTTPS 만 전송 (cloudflared 가 TLS terminate → origin 까지는 HTTP
+#       지만, X-Forwarded-Proto: https 를 ProxyFix 로 신뢰 시 Flask 가 https
+#       세션 발급. 아래 ProxyFix 와 함께 동작.)
+#     HTTPONLY: JS 접근 차단 — XSS 발생 시 쿠키 탈취 막음.
+#     SAMESITE=Lax: 외부 사이트의 cross-site 요청에 쿠키 전송 안 함 (CSRF 완화).
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+# (3) ProxyFix — cloudflared 가 보내는 X-Forwarded-Proto/For 헤더를 신뢰해서
+#     request.is_secure 가 https 로 인식되도록. 없으면 SESSION_COOKIE_SECURE=True
+#     일 때 쿠키 자체가 안 발급되어 로그인이 작동 안 함.
+from werkzeug.middleware.proxy_fix import ProxyFix as _ProxyFix
+app.wsgi_app = _ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # JSON Provider 안전화 — complex / numpy / NaN / Path 등 추가 타입 지원
@@ -189,8 +212,52 @@ def _gzip_compress(response):
 # 비밀번호는 LOGIN_PASSWORD env var 로 override 가능 (기본 "5361").
 import secrets as _secrets
 import os as _os_for_auth
+import time as _time_for_auth
+from collections import defaultdict as _dd_for_auth
+from threading import Lock as _Lock_for_auth
 app.secret_key = _os_for_auth.environ.get("FLASK_SECRET_KEY") or _secrets.token_hex(32)
 LOGIN_PASSWORD = _os_for_auth.environ.get("LOGIN_PASSWORD", "5361")
+
+# Brute-force 방어 — 5회 실패 시 15분 lock-out (IP 단위).
+# 단순 in-memory dict — waitress 단일 프로세스 + 16 thread 환경 적합.
+# 분산 환경이면 Redis 등으로 옮기겠지만 현재는 PC 1대 + cloudflared 만.
+_LOGIN_FAIL_WINDOW_S = 15 * 60   # 15 분 동안의 시도 카운트
+_LOGIN_FAIL_THRESHOLD = 5         # 임계
+_LOGIN_LOCK_S = 15 * 60           # 잠금 지속
+_login_state: dict = {}           # ip → {"fails": [ts, ...], "lock_until": ts}
+_login_lock = _Lock_for_auth()
+
+
+def _client_ip() -> str:
+    """ProxyFix 적용된 후 request.remote_addr 이 진짜 사용자 IP."""
+    return request.remote_addr or "unknown"
+
+
+def _login_locked_until(ip: str) -> float:
+    with _login_lock:
+        st = _login_state.get(ip)
+        if not st:
+            return 0.0
+        return float(st.get("lock_until", 0.0))
+
+
+def _record_login_failure(ip: str) -> tuple[int, float]:
+    """실패 1회 기록 → (현재 윈도우 내 실패횟수, lock_until_ts)."""
+    now = _time_for_auth.time()
+    with _login_lock:
+        st = _login_state.setdefault(ip, {"fails": [], "lock_until": 0.0})
+        # 윈도우 밖 실패 제거
+        st["fails"] = [t for t in st["fails"] if now - t < _LOGIN_FAIL_WINDOW_S]
+        st["fails"].append(now)
+        if len(st["fails"]) >= _LOGIN_FAIL_THRESHOLD:
+            st["lock_until"] = now + _LOGIN_LOCK_S
+        return len(st["fails"]), st["lock_until"]
+
+
+def _clear_login_failures(ip: str) -> None:
+    with _login_lock:
+        _login_state.pop(ip, None)
+
 
 # 게이트에서 제외할 path prefix (login/logout/정적 파일/health 등)
 _AUTH_EXEMPT_PREFIXES = ("/login", "/logout", "/static/", "/favicon.ico")
@@ -226,11 +293,31 @@ def login_submit():
     # safety — open redirect 방지 (외부 URL 금지)
     if not nxt.startswith("/") or nxt.startswith("//"):
         nxt = "/"
-    if pw == LOGIN_PASSWORD:
+    ip = _client_ip()
+    # 잠긴 IP — 시도조차 못 함
+    lock_until = _login_locked_until(ip)
+    now = _time_for_auth.time()
+    if lock_until > now:
+        wait_s = int(lock_until - now)
+        msg = f"로그인 시도 횟수 초과. {wait_s // 60}분 {wait_s % 60}초 후 다시 시도하세요."
+        response = make_response(render_template("login.html", error=msg, next_path=nxt))
+        response.headers["Cache-Control"] = "no-store"
+        return response, 429
+    # 상수 시간 비교 — timing attack 방지
+    if _secrets.compare_digest(pw, LOGIN_PASSWORD):
+        _clear_login_failures(ip)
         session["authed"] = True
         session.permanent = True  # 세션 영구 (기본 31일)
         return redirect(nxt)
-    response = make_response(render_template("login.html", error="Incorrect password.", next_path=nxt))
+    # 실패 기록 + 임계 도달 시 lock 상태로 응답
+    n_fail, locked = _record_login_failure(ip)
+    if locked > now:
+        wait_s = int(locked - now)
+        msg = f"로그인 시도 {_LOGIN_FAIL_THRESHOLD}회 실패. {wait_s // 60}분 동안 잠금됩니다."
+    else:
+        remaining = _LOGIN_FAIL_THRESHOLD - n_fail
+        msg = f"비밀번호가 틀립니다. (남은 시도 {remaining}회)"
+    response = make_response(render_template("login.html", error=msg, next_path=nxt))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -257,11 +344,18 @@ def _api_safe_errorhandler(exc):
                 "message": exc.description or str(exc),
                 "status": exc.code,
             }), exc.code
-        return jsonify({
+        # ★ 외부 노출 환경 — traceback 본문은 서버 로그로만 보내고 클라이언트엔
+        # 짧은 오류 코드 + 사람용 메시지만. 디버그 필요 시 EXPOSE_TRACEBACK=1 env.
+        tb_text = _tb.format_exc()
+        app.logger.error("Unhandled exception on %s: %s\n%s",
+                         request.path, exc, tb_text)
+        body = {
             "ok": False,
-            "message": f"서버 오류: {type(exc).__name__}: {str(exc)[:300]}",
-            "traceback": _tb.format_exc()[-2000:],
-        }), 500
+            "message": f"서버 오류: {type(exc).__name__}",
+        }
+        if _os_for_auth.environ.get("EXPOSE_TRACEBACK") == "1":
+            body["traceback"] = tb_text[-2000:]
+        return jsonify(body), 500
     # /api/ 가 아니면 Flask 기본 처리 (HTML 페이지 OK)
     if isinstance(exc, HTTPException):
         return exc

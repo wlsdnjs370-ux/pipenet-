@@ -3472,8 +3472,20 @@
         });
         const data = await res.json();
         if (!data.ok) {
-          _cmbResultBox.innerHTML = `<span style="color:#b91c1c;">❌ ${data.message || "실패"}</span>` +
-            (data.traceback ? `<pre style="font-size:0.7rem; color:#7f1d1d; max-height:120px; overflow:auto;">${data.traceback}</pre>` : "");
+          // XSS 방지 — data.message / data.traceback 은 서버 오류 텍스트 (사용자
+          // 입력에서 유래 가능, 예: 업로드 파일명) 라 innerHTML 직접 삽입 시
+          // <script> / <img onerror=...> 가 실행됨. DOM 조작으로 텍스트 노드만 삽입.
+          _cmbResultBox.replaceChildren();
+          const errSpan = document.createElement("span");
+          errSpan.style.color = "#b91c1c";
+          errSpan.textContent = "❌ " + (data.message || "실패");
+          _cmbResultBox.appendChild(errSpan);
+          if (data.traceback) {
+            const pre = document.createElement("pre");
+            pre.style.cssText = "font-size:0.7rem; color:#7f1d1d; max-height:120px; overflow:auto;";
+            pre.textContent = data.traceback;
+            _cmbResultBox.appendChild(pre);
+          }
           return;
         }
         // 결과 박스 — ZIP 우선 (.sdf + .slf 동봉)
@@ -3504,7 +3516,12 @@
           }
         }
       } catch (err) {
-        _cmbResultBox.innerHTML = `<span style="color:#b91c1c;">❌ 네트워크 오류: ${err.message}</span>`;
+        // XSS 방지 — err.message (브라우저 / fetch 오류 메시지) 도 안전 삽입
+        _cmbResultBox.replaceChildren();
+        const errSpan = document.createElement("span");
+        errSpan.style.color = "#b91c1c";
+        errSpan.textContent = "❌ 네트워크 오류: " + (err && err.message ? err.message : "알 수 없음");
+        _cmbResultBox.appendChild(errSpan);
       } finally {
         _cmbMergeBtn.disabled = false;
         _cmbMergeBtn.textContent = "▶ 통합 SDF 생성";

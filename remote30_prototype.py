@@ -2166,7 +2166,7 @@ def _find_source(pipe_entities: list[dict], layer_categories: dict[str, str]) ->
         from sprinkler_remote30_extractor import DEFAULT_ALARM_VALVE_KEYWORDS as _AV_KW
         av_keywords = [k.upper() for k in _AV_KW]
     except ImportError:
-        av_keywords = ["ALARM", "ALV", "AV", "알람", "알람밸브", "RISER", "라이저",
+        av_keywords = ["ALARM", "알람", "알람밸브", "RISER", "라이저",
                         "STAND-PIPE", "STANDPIPE", "STAND_PIPE"]
 
     def _matches_av(text: str) -> bool:

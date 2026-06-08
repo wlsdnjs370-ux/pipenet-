@@ -335,6 +335,7 @@
     const CAT_COLORS = {
       PIPE: "#3b82f6", HEAD: "#ef4444", TEXT: "#22c55e",
       ARCH: "#94a3b8", EXCLUDE: "#71717a", OTHER: "#f59e0b",
+      ALARM: "#a855f7",
       _subgraph: "#fde047", _subgraph_head: "#ef4444", _alarm_valve: "#a855f7",
     };
     const state = {
@@ -591,7 +592,7 @@
         if (!groups[cat]) groups[cat] = [];
         groups[cat].push(en);
       }
-      const order = ["EXCLUDE", "ARCH", "OTHER", "TEXT", "PIPE", "HEAD"];
+      const order = ["EXCLUDE", "ARCH", "OTHER", "TEXT", "PIPE", "HEAD", "ALARM"];
       for (const cat of order) {
         const arr = groups[cat] || [];
         if (!arr.length) continue;

@@ -760,7 +760,7 @@
         if (!groups[cat]) groups[cat] = [];
         groups[cat].push(ent);
       }
-      const order = ["EXCLUDE", "ARCH", "OTHER", "TEXT", "PIPE", "HEAD"];
+      const order = ["EXCLUDE", "ARCH", "OTHER", "TEXT", "PIPE", "HEAD", "ALARM"];
       for (const cat of order) {
         const arr = groups[cat] || [];
         if (!arr.length) continue;

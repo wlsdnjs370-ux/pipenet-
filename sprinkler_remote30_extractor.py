@@ -32,8 +32,12 @@ DEFAULT_HEAD_LAYER_KEYWORDS = ["HEAD", "헤드", "SP-H", "SPR_HEAD", "하향식"
 DEFAULT_TEXT_LAYER_KEYWORDS = ["TEXT", "문자", "관경", "SP", "TEX"]
 DEFAULT_ARCH_LAYER_KEYWORDS = ["A-", "ARCH", "WALL", "DOOR", "WINDOW", "건축", "가구", "DIM", "SHEET", "AREA"]
 DEFAULT_ALARM_VALVE_KEYWORDS = [
-    "ALARM", "ALV", "AV", "알람", "알람밸브", "ALARM_VALVE", "ALARMVALVE",
-    # 라이저 (입상관) 레이어 — 알람밸브 INSERT 가 라이저 레이어에 같이 있는 도면 흔함
+    # ★ 짧은 키워드 (2~3글자) 는 layer_match 가 substring 매칭이라 위험 ↑.
+    # 예: "AV" 가 WAVE/PAVED/SAVE/TRAVEL 까지 매칭. "ALV" 도 VALVE 매칭.
+    # 평면도 렌더링에서 ALARM 으로 오분류되는 레이어가 화면에서 사라지는 버그 원인.
+    # 안전한 4글자 이상 키워드만 사용.
+    "ALARM", "알람", "알람밸브", "ALARM_VALVE", "ALARMVALVE",
+    # 라이저 (입상관) 레이어 — 알람밸브 INSERT 가 라이저 레이어에 함께 있는 도면 흔함
     # (예: 다이소 세종허브센터 MF-125 의 "RISER" 레이어).
     "RISER", "라이저", "STAND-PIPE", "STANDPIPE", "STAND_PIPE",
 ]

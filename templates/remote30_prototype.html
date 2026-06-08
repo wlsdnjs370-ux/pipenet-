@@ -956,6 +956,7 @@
     const CAT_COLORS = {
       PIPE: "#3b82f6", HEAD: "#ef4444", TEXT: "#22c55e",
       ARCH: "#94a3b8", EXCLUDE: "#71717a", OTHER: "#f59e0b",
+      ALARM: "#a855f7",  // 라이저 (입상관) / 알람밸브 레이어 — 보라색 (alarm valve 와 동일)
       _subgraph: "#fde047", _subgraph_head: "#ef4444", _alarm_valve: "#a855f7",
     };
     const state = {
@@ -1232,7 +1233,7 @@
     // 기존 stage 0 entities 도착 시 layers 배열에서 micro-event 합성.
     // PIPE/HEAD 먼저, ARCH/EXCLUDE 나중 순으로 (시각 효과 우선순).
     function _mockLayerEvents(layers) {
-      const orderRank = { PIPE: 0, HEAD: 1, TEXT: 2, OTHER: 3, ARCH: 4, EXCLUDE: 5 };
+      const orderRank = { PIPE: 0, HEAD: 1, ALARM: 1, TEXT: 2, OTHER: 3, ARCH: 4, EXCLUDE: 5 };
       const sorted = [...layers].sort((a, b) => {
         const ra = orderRank[a.auto_category] ?? 9;
         const rb = orderRank[b.auto_category] ?? 9;
@@ -1526,7 +1527,8 @@
         if (!groups[cat]) groups[cat] = [];
         groups[cat].push(en);
       }
-      const order = ["EXCLUDE", "ARCH", "OTHER", "TEXT", "PIPE", "HEAD"];
+      // ALARM 카테고리 (RISER 등) 추가 — 미포함 시 해당 entity 가 렌더 누락 (평면도 미표시 버그)
+      const order = ["EXCLUDE", "ARCH", "OTHER", "TEXT", "PIPE", "HEAD", "ALARM"];
       for (const cat of order) {
         const arr = groups[cat] || [];
         if (!arr.length) continue;

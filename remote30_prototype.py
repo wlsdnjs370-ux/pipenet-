@@ -117,12 +117,17 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-PIPENET_CATEGORIES = {"PIPE", "HEAD", "TEXT"}
+PIPENET_CATEGORIES = {"PIPE", "HEAD", "TEXT", "ALARM"}
 KEEP_BASE_LAYERS = {"0"}  # INSERT BYLAYER 공통 + 도면 컨텍스트
 
 
 def _categorize_layer(name: str) -> str:
-    """Remote30Settings 기준 layer 카테고리. 가능하면 외부 모듈 사용."""
+    """Remote30Settings 기준 layer 카테고리. 가능하면 외부 모듈 사용.
+
+    ALARM 카테고리 추가 (2026-06-08) — 알람밸브 키워드 매칭되는 레이어
+    (예: "RISER", "라이저") 를 별도 분류해서 filter_pipenet_only 통과시킴.
+    이전엔 OTHER 로 떨어져서 _find_source 가 RISER 의 INSERT 를 볼 수 없었음.
+    """
     if Remote30Settings is None or layer_match is None:
         # fallback heuristic
         n = name.lower()
@@ -130,6 +135,8 @@ def _categorize_layer(name: str) -> str:
             return "EXCLUDE"
         if any(k in name for k in ("HEAD", "헤드", "SP-H", "하향식", "상향식", "헤드반경")):
             return "HEAD"
+        if any(k in name.upper() for k in ("ALARM", "RISER", "라이저", "STAND-PIPE")):
+            return "ALARM"
         if any(k in name for k in ("SP", "배관", "소방", "가지관", "후렉시블", "FLEX")):
             return "PIPE"
         if any(k in n for k in ("text", "문자")) or "TEX" in name:
@@ -144,6 +151,9 @@ def _categorize_layer(name: str) -> str:
         return "ARCH"
     if layer_match(name, s.head_layer_keywords):
         return "HEAD"
+    # ALARM 검사를 PIPE 보다 먼저 — "RISER" 가 "SP" 와 겹치지 않지만 우선순위 명시
+    if layer_match(name, s.alarm_valve_keywords):
+        return "ALARM"
     if layer_match(name, s.pipe_layer_keywords):
         return "PIPE"
     if layer_match(name, s.text_layer_keywords):
@@ -1171,7 +1181,7 @@ def _auto_pipe_layer_filter(entities: list[dict],
 
 def build_system_graph(
     entities: list[dict],
-    bridge_tolerances_mm: tuple[float, ...] = (200.0, 500.0, 1000.0, 2000.0),
+    bridge_tolerances_mm: tuple[float, ...] = (200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0),
     layer_filter: set[str] | None = None,
     auto_filter_min_lines: int = 20,
 ) -> tuple[dict, dict, dict]:
@@ -1529,13 +1539,19 @@ def filter_pipenet_only(bundle: ParsedDxfBundle) -> list[dict]:
 # 2) Stage 2 — G₀ 그래프 빌드 + 가장 불리한 K 헤드 + subgraph 추출
 # ────────────────────────────────────────────────────────────────────────────
 
-SNAP_TOL_MM = 5.0
-# 5mm: 부동소수점 / CAD 작업자 미세 오차 흡수용 epsilon. 격자 snap 이 아니라
-# _NodeIndex 의 cluster 반경으로 사용. 이전 200mm 격자는 시각화에서 도면이
-# 200mm 단위로 비뚤어지는 원인이었고, 격자 경계 분리(2.4 vs 2.6 → 다른 격자) 및
-# 가짜 분기(다른 점 같은 격자칸 합쳐짐) 문제도 있어 폐기.
-HEAD_BRIDGE_MAX_MM = 2000.0  # 헤드 INSERT 좌표 ↔ 가장 가까운 그래프 노드 brigde 허용 거리
-SOURCE_BRIDGE_MAX_MM = 10000.0  # 알람밸브(source) ↔ 배관망 nearest 노드 bridge 허용 거리 (10m). 초과 시 nearest 로 fallback + 경고
+SNAP_TOL_MM = 50.0
+# 50mm: DN50 (최소 호칭경) 미만 거리는 배관 토폴로지상 같은 점으로 간주.
+# 부동소수점 오차 + DWG→DXF 변환 누적 오차 + CAD 작업자 미세 오차 모두 흡수.
+# 이전 5mm 는 대명동/다이소 작업엔 문제 없었으나, 좌표 절댓값이 큰 도면
+# (예: MF-125 의 측지 좌표 3,500,000mm) 에서 변환 오차가 5mm 초과 → SP-LINE
+# 끝점들이 안 만나서 그래프가 3,058 component 로 쪼개지는 사고 발생.
+# 50mm 는 토폴로지 분석에 영향 없음 (호칭경 단위가 50/65/80/100mm 라 50mm
+# 이내 차이는 의미 없음). 격자 snap 아니라 _NodeIndex cluster 반경.
+HEAD_BRIDGE_MAX_MM = 5000.0  # 헤드 INSERT 좌표 ↔ 가장 가까운 그래프 노드 brigde 허용 거리.
+# 5m: 메자닌/대형 도면 (예: MF-125) 의 헤드가 배관 라인과 천장고 차이로 멀리 떨어진 경우 보호.
+SOURCE_BRIDGE_MAX_MM = 25000.0  # 알람밸브 (source) ↔ 배관망 nearest bridge 허용 (25m).
+# 알람밸브는 라이저 (수직 입상관) 위에 위치 — 평면도상 가지관과 거리가 멀 수 있음.
+# 25m 이내면 알람밸브 위치 그대로 source 로 사용 → 그래프 component 통합 효과.
 MIN_PIPE_EDGE_MM = 50.0
 # 50mm 미만 LINE/PL/ARC segment 는 그래프 edge 로 사용 안 함.
 # 헤드 부속(HEADCON, HDCROSS, SPCAP 등), 치수 보조선, 텍스트 underline 등
@@ -2174,24 +2190,44 @@ def _find_head_candidates(pipe_entities: list[dict], layer_categories: dict[str,
 
 
 def _find_source(pipe_entities: list[dict], layer_categories: dict[str, str]) -> tuple[tuple[float, float] | None, str]:
-    """알람밸브 자동 식별 — 4-tier fallback:
-      1) block_name 에 'ALARM' 또는 '알람' 포함된 INSERT
-      2) '배관-SP 2차' 또는 'SP 2차' 레이어의 첫 INSERT (입상→알람→가지 source)
-      3) '배관-SP 2차' 레이어의 LINE 의 endpoint 중 가지관 그래프와 가장 가까운 점
-      4) None (호출자가 fallback 처리)
+    """알람밸브 자동 식별 — 5-tier fallback:
+      1) block_name 에 ALARM_VALVE 키워드 포함된 INSERT (사전 기반)
+      2) layer 이름이 ALARM_VALVE 키워드 포함된 INSERT (예: 'RISER' 레이어)
+      3) '배관-SP 2차' 또는 'SP 2차' 레이어의 첫 INSERT (입상→알람→가지 source)
+      4) '배관-SP 2차' 레이어의 LINE 의 endpoint 중 가지관 그래프와 가장 가까운 점
+      5) None (호출자가 fallback 처리)
     """
+    # 사전 import — 사용자가 sprinkler_remote30_extractor.py 에서 키워드 추가하면 자동 반영
+    try:
+        from sprinkler_remote30_extractor import DEFAULT_ALARM_VALVE_KEYWORDS as _AV_KW
+        av_keywords = [k.upper() for k in _AV_KW]
+    except ImportError:
+        av_keywords = ["ALARM", "ALV", "AV", "알람", "알람밸브", "RISER", "라이저",
+                        "STAND-PIPE", "STANDPIPE", "STAND_PIPE"]
+
+    def _matches_av(text: str) -> bool:
+        up = (text or "").upper()
+        return any(kw in up for kw in av_keywords)
+
+    # tier 1: block_name 매칭
     for en in pipe_entities:
         if en["t"] != "I":
             continue
-        bn = (en.get("n") or "").upper()
-        if "ALARM" in bn or "알람" in bn:
+        if _matches_av(en.get("n") or ""):
             return _round_pt(en["p"][0], en["p"][1]), "alarm_block"
+    # tier 2: layer 이름 매칭 (예: 'RISER' 레이어의 INSERT) — 새로 추가
+    for en in pipe_entities:
+        if en["t"] != "I":
+            continue
+        if _matches_av(en.get("l") or ""):
+            return _round_pt(en["p"][0], en["p"][1]), "alarm_layer"
+    # tier 3: 2차측 배관 레이어의 INSERT
     for en in pipe_entities:
         if en["t"] != "I":
             continue
         if "배관-SP 2차" in en["l"] or "SP 2차" in en["l"]:
             return _round_pt(en["p"][0], en["p"][1]), "secondary_layer_insert"
-    # 2차 배관 LINE 의 endpoint 들 수집
+    # tier 4: 2차 배관 LINE 의 endpoint 들 수집
     secondary_endpoints: list[tuple[float, float]] = []
     for en in pipe_entities:
         if en["t"] == "L" and ("배관-SP 2차" in en["l"] or "SP 2차" in en["l"]):
@@ -2199,7 +2235,6 @@ def _find_source(pipe_entities: list[dict], layer_categories: dict[str, str]) ->
             secondary_endpoints.append(_round_pt(p[0], p[1]))
             secondary_endpoints.append(_round_pt(p[2], p[3]))
     if secondary_endpoints:
-        # endpoint 중 가장 자주 등장하는 점 (T-junction with 가지관) — alarm valve 가 거기
         from collections import Counter as _C
         ec = _C(secondary_endpoints)
         return ec.most_common(1)[0][0], "secondary_layer_line"
@@ -2432,8 +2467,10 @@ def select_worst30_heads(
     graph, edge_len = _build_graph(pipe_entities, layer_categories=layer_categories)
     # 평행 ladder collapse — Stage 3 시각화와 같은 토폴로지로 정렬.
     collapse_parallel_ladders(graph, edge_len)
-    # 짧은 거리부터 단계적으로 brigde — 가까운 endpoint 우선 + 점점 멀리
-    for tol in (200.0, 500.0, 1000.0, 2000.0):
+    # 짧은 거리부터 단계적으로 brigde — 가까운 endpoint 우선 + 점점 멀리.
+    # 5m / 10m 추가: 측지좌표 도면 (예: MF-125) 처럼 SP-LINE 끝점들이 멀리
+    # 떨어진 경우 (변환 누적 오차 + 도면 분할 작업) component 통합 위해.
+    for tol in (200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0):
         _bridge_components(graph, edge_len, max_bridge_mm=tol)
     # 참고: force_spanning_tree 는 Stage 3 시각화 전용으로만 적용한다.
     # SDF 토폴로지에 SPT 를 적용하면 bridge 가 못 합친 fragment 의 헤드들이
@@ -3510,7 +3547,7 @@ def run_stages_0_2(
     # head_drop_edges: 헤드 INSERT 좌표 ↔ 배관 nearest 노드 직선 (실제 배관 아님)
     # 두 종류 모두 "알고리즘이 추정한 연결"이라 시각적으로 구분 렌더.
     bridge_edges: set = set()
-    for tol in (200.0, 500.0, 1000.0, 2000.0):
+    for tol in (200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0):
         _bridge_components(graph, edge_len, max_bridge_mm=tol, bridge_edges_out=bridge_edges)
     # 주의: SPT 가 cycle edge 를 제거하면서 bridge_edges 일부도 같이 제거될 수 있음.
     # SPT 적용 후 살아남은 bridge_edges 만 유효.

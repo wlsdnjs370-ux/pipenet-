@@ -2847,6 +2847,115 @@ def remote30_overall():
     return response
 
 
+# ────────────────────────────────────────────────────────────────────────────
+# 11번 모듈 — KFP ↔ SDF 변환기
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@app.get("/kfp-sdf-converter")
+def kfp_sdf_converter_page():
+    """11번 모듈 — K-solver .kfp ↔ PIPENET .sdf 양방향 변환기."""
+    response = make_response(render_template("kfp_sdf_converter.html"))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
+
+
+@app.post("/api/kfp_sdf/preview")
+def kfp_sdf_preview():
+    """업로드된 .kfp 또는 .sdf → 미리보기 + (KFP 의 경우) round-trip 통계.
+
+    Form: file (multipart). 응답: {ok, preview, round_trip?}.
+    임시 파일에 저장 후 kfp_sdf_converter.parse_for_preview 호출.
+    """
+    import tempfile, os
+    from pathlib import Path as _Path
+    import kfp_sdf_converter as _conv
+
+    f = request.files.get("file")
+    if f is None:
+        return jsonify({"ok": False, "message": "file 누락"}), 400
+    suffix = _Path(f.filename or "").suffix.lower() or ".kfp"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        f.save(tmp.name)
+        tmp_path = tmp.name
+    try:
+        preview = _conv.parse_for_preview(tmp_path)
+        out = {"ok": True, "preview": preview}
+        if preview["format"] == "kfp":
+            try:
+                out["round_trip"] = _conv.round_trip_check(tmp_path)
+            except Exception as _e:
+                out["round_trip"] = {"error": str(_e)}
+        return jsonify(out)
+    except Exception as exc:
+        return jsonify({"ok": False, "message": f"파싱 실패: {exc}"}), 400
+    finally:
+        try: os.unlink(tmp_path)
+        except OSError: pass
+
+
+@app.post("/api/kfp_sdf/convert")
+def kfp_sdf_convert():
+    """양방향 변환 + 결과 파일 즉시 다운로드.
+
+    Form: file (multipart), direction ("to_sdf" | "to_kfp").
+    응답: 파일 내용 (application/octet-stream).
+    """
+    import tempfile, os, json as _json
+    from pathlib import Path as _Path
+    import kfp_sdf_converter as _conv
+
+    f = request.files.get("file")
+    direction = (request.form.get("direction") or "").strip()
+    if f is None:
+        return jsonify({"ok": False, "message": "file 누락"}), 400
+    if direction not in ("to_sdf", "to_kfp"):
+        return jsonify({"ok": False, "message": "direction 은 to_sdf 또는 to_kfp"}), 400
+
+    suffix = _Path(f.filename or "").suffix.lower() or ".bin"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        f.save(tmp.name)
+        tmp_path = tmp.name
+    try:
+        if direction == "to_sdf":
+            # PIPENET native 모드 + SLF 동봉 ZIP — PIPENET 계산/아이소 모두 통과.
+            # 단순 .sdf 만 보내면 SLF 없어서 내경(Internal) "Unset" 이슈 발생.
+            import zipfile, io, shutil
+            from remote30_prototype import resolve_standard_slf
+            stem = _Path(f.filename or "converted").stem or "converted"
+            # SLF 파일명을 SDF 의 <User-lib file=...> 에 매핑.
+            # 같은 ZIP 안에 stem.slf 동봉되므로 사용자가 풀면 PIPENET 자동 인식.
+            xml = _conv.convert_kfp_to_sdf(tmp_path, use_pipenet_native=True,
+                                             project_title=stem,
+                                             slf_filename=f"{stem}.slf")
+            # ZIP 으로 .sdf + .slf 묶기 — PIPENET 권장 (zip 다운 후 압축해제 사용)
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(f"{stem}.sdf", xml)
+                try:
+                    slf_src = resolve_standard_slf()
+                    zf.write(slf_src, f"{stem}.slf")
+                except Exception as _slf_err:
+                    # SLF 없어도 .sdf 에 6 schedule 임베드 되어 있으므로 동작은 함
+                    zf.writestr("_slf_missing.txt",
+                                f"SLF 동봉 실패: {_slf_err}\n"
+                                "→ .sdf 안에 6 schedule 임베드 되어 있어 PIPENET 동작은 정상.")
+            return Response(buf.getvalue(), mimetype="application/zip",
+                            headers={"Content-Disposition": f'attachment; filename="{stem}.zip"'})
+        else:
+            kfp = _conv.convert_sdf_to_kfp(tmp_path)
+            data = _json.dumps(kfp, ensure_ascii=False, indent=2).encode("utf-8")
+            return Response(data, mimetype="application/json",
+                            headers={"Content-Disposition": 'attachment; filename="converted.kfp"'})
+    except Exception as exc:
+        import traceback
+        return jsonify({"ok": False, "message": f"변환 실패: {exc}",
+                        "traceback": traceback.format_exc()[-2000:]}), 400
+    finally:
+        try: os.unlink(tmp_path)
+        except OSError: pass
+
+
 @app.post("/api/remote30/prototype/run")
 def remote30_prototype_run():
     """DXF 업로드 → 백그라운드 잡 시작 → job_id 반환. 진행은 /stream/<job_id> 으로 구독.
@@ -3443,7 +3552,10 @@ def remote30_combined_build():
             pass
 
     from remote30_prototype import select_worst30_heads, build_input_tables
-    from remote30_full_network import RiserTables, stitch_riser_and_heads, emit_full_sdf
+    from remote30_full_network import (
+        RiserTables, stitch_riser_and_heads, emit_full_sdf,
+        prepend_machine_room_to_riser,
+    )
 
     # ── Stage A 마무리 — 평면도 헤드 선정 + PipeTables 생성
     detected_pos = [tuple(d["pos"]) for d in plane_job.get("detected_heads", [])]
@@ -3513,9 +3625,44 @@ def remote30_combined_build():
         av_node_label=av_label,
     )
 
+    # ── 기계실(옥상수조) 경로 (선택) → 라이저 Input 앞에 prepend.
+    # 있으면 수원 경계가 탱크(m1)로 이동하고 옥상부 마찰손실이 통합망에 반영됨.
+    machine_room = body.get("machine_room")
+    mr_attached = False
+    machine_room_labels: list[str] = []
+    pump_junction_label: str | None = None
+    if machine_room and machine_room.get("nodes") and machine_room.get("pipes"):
+        # 펌프 junction = 기계실이 병합되는 라이저 Input ("1"). prepend 후엔
+        # io 가 No 로 강등되므로 prepend 전에 미리 라벨을 기록해 둔다. 캔버스에서
+        # 이 노드를 "펌프" 로 명시해 기계실↔계통도 경계를 시각적으로 분리.
+        _ri = next((n for n in riser.nodes
+                    if str(n.get("io_node", "")).lower() == "input"), None)
+        if _ri is None:
+            _ri = next((n for n in riser.nodes if str(n["label"]) == "1"), None)
+        pump_junction_label = str(_ri["label"]) if _ri else None
+        # 기계실 노드 라벨 (conn=mK 은 라이저 Input 과 병합돼 사라지므로 제외)
+        _conn = str(machine_room.get("conn_node_label")
+                    or machine_room["nodes"][-1]["label"])
+        machine_room_labels = [str(n["label"]) for n in machine_room["nodes"]
+                               if str(n["label"]) != _conn]
+        try:
+            riser, mr_attached = prepend_machine_room_to_riser(machine_room, riser)
+        except Exception as _mr_exc:  # noqa: BLE001 — 기계실 실패가 통합을 막지 않도록
+            import warnings as _warnings
+            _warnings.warn(f"[combined] 기계실 prepend 실패 (라이저만 사용): {_mr_exc}",
+                           RuntimeWarning, stacklevel=2)
+        if not mr_attached:
+            machine_room_labels = []
+            pump_junction_label = None
+
     # ── Stitch + emit
     try:
-        combined = stitch_riser_and_heads(riser, head_tables)
+        combined = stitch_riser_and_heads(
+            riser, head_tables,
+            machine_room_labels=machine_room_labels,
+            pump_junction_label=pump_junction_label,
+            machine_room_plan_edges=(machine_room.get("plan_edges") if mr_attached else None),
+        )
         job_id = secrets.token_hex(6)
         out_dir = COMBINED_OUTPUT_DIR / job_id
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -3523,7 +3670,27 @@ def remote30_combined_build():
         title = system_riser.get("title", "Combined")
         emit_full_sdf(combined, out_sdf,
                       project_title=f"Remote 30 통합 — {title}")
-        # ── SDF + SLF (같은 폴더에 자동 생성됨) 를 ZIP 으로 묶어 한 번에 다운로드.
+        # ── KFP (K-Fire Solver) — 최종 SDF 를 그대로 변환. 실패해도 SDF 출력은 유지.
+        out_kfp = out_dir / f"combined_{job_id}.kfp"
+        kfp_ok = False
+        try:
+            from remote30_prototype import emit_kfp as _emit_kfp
+            _emit_kfp(out_sdf, out_kfp)
+            kfp_ok = out_kfp.is_file()
+        except Exception as _kfp_exc:  # noqa: BLE001 — KFP 실패가 통합 출력을 막지 않도록
+            import warnings as _warnings
+            _warnings.warn(f"[combined] KFP emit 실패 (SDF 는 정상): {_kfp_exc}", RuntimeWarning, stacklevel=2)
+        # ── HAS (HASS/하스) — 최종 SDF 를 그대로 변환. 실패해도 SDF/KFP 출력은 유지.
+        out_has = out_dir / f"combined_{job_id}.has"
+        has_ok = False
+        try:
+            from remote30_prototype import emit_has as _emit_has
+            _emit_has(out_sdf, out_has)
+            has_ok = out_has.is_file()
+        except Exception as _has_exc:  # noqa: BLE001 — HAS 실패가 통합 출력을 막지 않도록
+            import warnings as _warnings
+            _warnings.warn(f"[combined] HAS emit 실패 (SDF 는 정상): {_has_exc}", RuntimeWarning, stacklevel=2)
+        # ── SDF + SLF (같은 폴더에 자동 생성됨) + KFP + HAS 를 ZIP 으로 묶어 한 번에 다운로드.
         # PIPENET 은 .sdf 와 .slf 가 같은 폴더에 있어야 호칭경↔내경 lookup 가능.
         # .sdf 만 받으면 diameter "Unset" / "pipe bore must be given" 오류 발생.
         import zipfile as _zipfile
@@ -3533,6 +3700,10 @@ def remote30_combined_build():
             zf.write(out_sdf, arcname=out_sdf.name)
             if out_slf.is_file():
                 zf.write(out_slf, arcname=out_slf.name)
+            if kfp_ok:
+                zf.write(out_kfp, arcname=out_kfp.name)
+            if has_ok:
+                zf.write(out_has, arcname=out_has.name)
     except Exception as exc:  # noqa: BLE001
         import traceback
         return jsonify({"ok": False, "message": str(exc)[:300],
@@ -3543,6 +3714,9 @@ def remote30_combined_build():
     geometry = {
         "av_node_label": riser.av_node_label,
         "riser_labels": list(riser_labels),
+        "machine_room_labels": machine_room_labels,
+        "pump_junction_label": pump_junction_label,
+        "machine_room_plan_edges": combined.machine_room_plan_edges,
         "nodes": [
             {"label": str(n["label"]),
              "x": float(n.get("x", 0)), "y": float(n.get("y", 0)),
@@ -3574,8 +3748,11 @@ def remote30_combined_build():
         "nozzles": len(combined.nozzles),
         "download_url_sdf": f"/api/remote30/combined/result/{job_id}/{out_sdf.name}",
         "download_url_slf": f"/api/remote30/combined/result/{job_id}/{out_slf.name}" if (out_dir / f"combined_{job_id}.slf").is_file() else None,
+        "download_url_kfp": f"/api/remote30/combined/result/{job_id}/{out_kfp.name}" if kfp_ok else None,
+        "download_url_has": f"/api/remote30/combined/result/{job_id}/{out_has.name}" if has_ok else None,
         "download_url_zip": f"/api/remote30/combined/result/{job_id}/{out_zip.name}",
         "title": title,
+        "machine_room_attached": mr_attached,
         "geometry": geometry,
     })
 
@@ -3664,6 +3841,79 @@ def remote30_system_extract():
         return jsonify({"ok": False, "message": str(exc)[:300],
                         "traceback": traceback.format_exc()[-1500:],
                         "algorithm": "dxf_path_v1"}), 500
+
+
+@app.post("/api/remote30/machineroom/parse")
+def remote30_machineroom_parse():
+    """기계실 모드용 DXF 파싱 — 캔버스 표시용 (system/parse 와 동형)."""
+    try:
+        dxf_path = _save_upload("machineroom_dxf_file", {".dxf"}, required=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    from remote30_prototype import parse_dxf_for_view
+    try:
+        result = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+        return jsonify({"ok": False, "message": str(exc)[:300],
+                        "traceback": traceback.format_exc()[-1500:]}), 500
+    result["ok"] = True
+    result["filename"] = dxf_path.name
+    return jsonify(result)
+
+
+@app.post("/api/remote30/machineroom/extract")
+def remote30_machineroom_extract():
+    """기계실(옥상수조) 경로 추출 — 탱크(수원) → 입상관 연결점 2점 클릭.
+
+    Multipart form (또는 JSON):
+        machineroom_dxf_file   — 기계실 .dxf (필수)
+        source_x, source_y     — 탱크 토출구(수원) 좌표 (mm, 필수)
+        conn_x,   conn_y       — 입상관 연결점 좌표 (mm, 필수)
+        snap_tolerance_mm      — 클릭 ↔ 그래프 노드 허용 거리 (기본 3000)
+
+    동작: 계통도 추출(extract_system_path)과 동형 — DXF LINE 으로 그래프 빌드 →
+        탱크/연결점 클릭점을 가장 가까운 노드에 snap → Dijkstra 경로 → 기계실 dict.
+        결과는 combined/build 의 machine_room 입력으로 전달.
+    """
+    sx = sy = cx = cy = None
+    snap_tol = 3000.0
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        try:
+            sx = float(body["source_x"]); sy = float(body["source_y"])
+            cx = float(body["conn_x"]);   cy = float(body["conn_y"])
+        except (KeyError, TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "message": f"source_x/y, conn_x/y 좌표 필요: {exc}"}), 400
+        snap_tol = float(body.get("snap_tolerance_mm", 3000.0))
+    else:
+        try:
+            sx = float(request.form["source_x"]); sy = float(request.form["source_y"])
+            cx = float(request.form["conn_x"]);   cy = float(request.form["conn_y"])
+        except (KeyError, TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "message": f"source_x/y, conn_x/y 좌표 필요: {exc}"}), 400
+        snap_tol = float(request.form.get("snap_tolerance_mm", "3000"))
+
+    try:
+        dxf_path = _save_upload("machineroom_dxf_file", {".dxf"}, required=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": f"기계실 DXF 파일 필요: {exc}"}), 400
+
+    from remote30_prototype import parse_dxf_for_view, extract_machine_room_path
+    try:
+        parsed = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
+        mr = extract_machine_room_path(parsed["entities"], (sx, sy), (cx, cy),
+                                       snap_tolerance_mm=snap_tol)
+        return jsonify({"ok": True, "machine_room": mr, "algorithm": "machineroom_path_v1"})
+    except ValueError as exc:
+        # 사용자 입력 오류 (snap 실패 / disconnected) — 상태코드 200.
+        return jsonify({"ok": False, "message": str(exc),
+                        "algorithm": "machineroom_path_v1"}), 200
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+        return jsonify({"ok": False, "message": str(exc)[:300],
+                        "traceback": traceback.format_exc()[-1500:],
+                        "algorithm": "machineroom_path_v1"}), 500
 
 
 @app.post("/api/remote30/overall/parse-system-diagram")

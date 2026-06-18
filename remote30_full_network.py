@@ -523,28 +523,32 @@ class CombinedTables:
     pumps: list[dict] = field(default_factory=list)
     valves: list[dict] = field(default_factory=list)
     meta: list[tuple[str, str]] = field(default_factory=list)
+    # 기계실 전체 평면 배관망 edge (시각화 전용, SDF 미포함). [[x1,y1,x2,y2], ...]
+    machine_room_plan_edges: list[list[float]] = field(default_factory=list)
 
 
 def _layout_riser_as_schematic(
     riser_nodes: list[dict],
-    head_av_xy: tuple[float, float],
+    anchor_xy: tuple[float, float],
     head_yspan: float = 5000.0,
 ) -> list[dict]:
     """라이저 노드를 PIPENET schematic 의 수직 막대 형태로 재배치.
 
     실제 계통도 DXF 의 라이저는 수십 m (60km mm) 길이라 헤드망 (5-10m schematic)
     과 통합하면 라이저가 너무 거대해서 그래프가 깨져 보임. PIPENET 답안처럼
-    라이저는 헤드 AV 위로 수직 막대 (5m 정도) 로 배치해 한 화면에 깔끔히 보이게.
+    라이저는 헤드 군집 위로 수직 막대 (5m 정도) 로 배치해 한 화면에 깔끔히 보이게.
 
     Layout:
-        - 모든 노드 X = head_av_xy[0] (수직 막대)
-        - AV (마지막 노드) = head_av_xy 정확히 일치
-        - 펌프 (첫 노드) = (head_av_xy[0], head_av_xy[1] + 라이저 yspan)
+        - 모든 노드 X = anchor_xy[0] (수직 막대)
+        - AV (마지막 노드) = anchor_xy 위치 (= 헤드 군집 가로 중앙 위)
+        - 펌프 (첫 노드) = (anchor_xy[0], anchor_xy[1] + 라이저 yspan)
         - 중간 노드 = 균등 간격으로 사이 배치
 
     Args:
         riser_nodes: 라이저 노드 리스트. 인덱스 0 = 펌프, 마지막 = AV.
-        head_av_xy: 헤드망의 AV 좌표 (정확히 일치 anchor).
+        anchor_xy: 막대 하단(AV) 을 놓을 좌표. 헤드 AV 노드 좌표가 아니라
+            헤드 bbox 가로 중앙 위로 잡아야 막대가 군집 중앙에서 내려와
+            한 흐름으로 연결돼 보임 (우상단 외딴 막대 회피).
         head_yspan: 헤드망 bbox 의 y 범위 — 라이저 막대 길이는 이의 80%.
     """
     n = len(riser_nodes)
@@ -552,8 +556,8 @@ def _layout_riser_as_schematic(
         return list(riser_nodes)
     riser_yspan = max(2000.0, head_yspan * 0.8)
     step_y = riser_yspan / (n - 1)
-    target_x = float(head_av_xy[0])
-    target_y_av = float(head_av_xy[1])
+    target_x = float(anchor_xy[0])
+    target_y_av = float(anchor_xy[1])
 
     out: list[dict] = []
     for i, node in enumerate(riser_nodes):
@@ -567,7 +571,77 @@ def _layout_riser_as_schematic(
     return out
 
 
-def stitch_riser_and_heads(riser: RiserTables, head_tables: Any) -> CombinedTables:
+def _layout_machine_room_plan(
+    mr_nodes: list[dict],
+    plan_edges: list[list[float]] | None,
+    pump_xy: tuple[float, float],
+    head_yspan: float = 5000.0,
+) -> tuple[list[dict], list[list[float]]]:
+    """기계실(옥상수조) 전체 평면 배관망을 실제 x, y 형상 그대로 배치 — schematic 금지.
+
+    기계실 DXF 는 평면도(옥상층 소방배관 평면도)라 실제 2D 배관망 형상을 가진다.
+    라이저(계통도)처럼 수직 막대로 모사하면 그 형상이 뭉개지므로, 헤드망(평면도)
+    과 동일하게 실제 x, y 로 보여준다. 수리계산 경로(mr_nodes, m*) 뿐 아니라 전체
+    SP 배관망 edge(plan_edges)까지 **동일 변환**으로 배치해 완전한 평면도로 렌더.
+
+        1. 경로 노드 + 전체 edge 끝점을 합친 bbox 기준 균등 스케일(aspect 보존),
+           헤드 군집과 비슷한 크기로.
+        2. bbox 하단(min y)을 펌프 위쪽(gap)에, 가로 중앙을 펌프 x 에 정렬.
+           → 평면 군집이 라이저 막대 위에 떠 펌프와 brige edge 로 이어져 보임.
+
+    Args:
+        mr_nodes: 수리경로 노드(라벨 m*). 실제 DXF x, y 보유(원점 미변환 raw).
+        plan_edges: 기계실 전체 SP 배관망 edge [[x1,y1,x2,y2], ...] (raw DXF).
+        pump_xy: 펌프 junction(라이저 "1")의 schematic 좌표 — 부착 기준점.
+        head_yspan: 헤드망 y-span — 기계실 평면 크기·gap 산정 기준.
+
+    Returns:
+        (laid_nodes, laid_edges) — 동일 변환 적용된 경로 노드 + 전체망 edge.
+    """
+    pe = plan_edges or []
+    pts: list[tuple[float, float]] = [
+        (float(n.get("x", 0.0)), float(n.get("y", 0.0))) for n in mr_nodes
+    ]
+    for e in pe:
+        pts.append((float(e[0]), float(e[1])))
+        pts.append((float(e[2]), float(e[3])))
+    if not pts:
+        return list(mr_nodes), []
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    w = max(xs) - min(xs)
+    h = max(ys) - min(ys)
+    diag = max((w * w + h * h) ** 0.5, 1.0)
+    target = max(2000.0, head_yspan * 0.7)   # 헤드 군집과 비슷한 크기로
+    scale = target / diag
+    cx = (min(xs) + max(xs)) / 2.0
+    y_min = min(ys)
+    gap = max(800.0, head_yspan * 0.12)       # 펌프와 기계실 군집 사이 간격
+    px, py = float(pump_xy[0]), float(pump_xy[1])
+
+    def _tf(x: float, y: float) -> tuple[float, float]:
+        return ((x - cx) * scale + px, (y - y_min) * scale + py + gap)
+
+    laid_nodes: list[dict] = []
+    for n in mr_nodes:
+        nx, ny = _tf(float(n.get("x", 0.0)), float(n.get("y", 0.0)))
+        laid_nodes.append({**n, "x": int(round(nx)), "y": int(round(ny))})
+    laid_edges: list[list[float]] = []
+    for e in pe:
+        x1, y1 = _tf(float(e[0]), float(e[1]))
+        x2, y2 = _tf(float(e[2]), float(e[3]))
+        laid_edges.append([int(round(x1)), int(round(y1)),
+                           int(round(x2)), int(round(y2))])
+    return laid_nodes, laid_edges
+
+
+def stitch_riser_and_heads(
+    riser: RiserTables,
+    head_tables: Any,
+    machine_room_labels: set[str] | list[str] | None = None,
+    pump_junction_label: str | None = None,
+    machine_room_plan_edges: list[list[float]] | None = None,
+) -> CombinedTables:
     """라이저 끝점(AV node) ↔ 헤드망 source(=같은 label) 결합 + schematic 좌표 정렬.
 
     Args:
@@ -603,17 +677,50 @@ def stitch_riser_and_heads(riser: RiserTables, head_tables: Any) -> CombinedTabl
     head_ys = [float(nd.get("y", 0.0)) for nd in head_tables.nodes if "y" in nd]
     head_yspan = (max(head_ys) - min(head_ys)) if head_ys else 5000.0
 
-    # 라이저 좌표 schematic 재배치
-    if head_av_node is not None:
+    # 노드를 진짜 라이저(계통도) 와 기계실(평면도) 로 분리.
+    #   - 라이저: 실제 좌표가 수십 m 라 schematic 수직 막대로 재배치.
+    #   - 기계실: 평면도이므로 실제 x, y 형상을 유지(평면 군집). 막대로 뭉개지 않음.
+    mr_set = {str(l) for l in (machine_room_labels or [])}
+    true_riser_nodes = [n for n in riser.nodes if str(n["label"]) not in mr_set]
+    mr_nodes = [n for n in riser.nodes if str(n["label"]) in mr_set]
+
+    # 라이저 좌표 schematic 재배치 — 헤드 bbox 가로 중앙 위에 수직 막대.
+    #   기존엔 헤드 AV 노드 좌표(=헤드망 우측 끝)에 anchor 해 외딴 막대로 보였음.
+    if head_av_node is not None and head_xs and head_ys:
         try:
-            head_av_xy = (float(head_av_node["x"]), float(head_av_node["y"]))
+            head_cx = (min(head_xs) + max(head_xs)) / 2.0
+            head_top = max(head_ys)
+            anchor_xy = (head_cx, head_top + 0.18 * head_yspan)
             translated_riser_nodes = _layout_riser_as_schematic(
-                list(riser.nodes), head_av_xy, head_yspan=head_yspan,
+                true_riser_nodes, anchor_xy, head_yspan=head_yspan,
             )
         except (KeyError, TypeError, ValueError):
-            translated_riser_nodes = list(riser.nodes)
+            translated_riser_nodes = list(true_riser_nodes)
     else:
-        translated_riser_nodes = list(riser.nodes)
+        translated_riser_nodes = list(true_riser_nodes)
+
+    # 기계실 평면 배치 — 펌프 junction("1")의 schematic 좌표에 부착, 실제 x,y 형상 유지.
+    #   수리경로 노드(mr_nodes) + 전체 SP 배관망 edge(plan_edges)를 **동일 변환**으로
+    #   배치해 완전한 평면도로 렌더. plan_laid 는 시각화 전용(SDF 미포함).
+    plan_laid: list[list[float]] = []
+    if mr_nodes and pump_junction_label is not None:
+        pump_node = next((n for n in translated_riser_nodes
+                          if str(n["label"]) == str(pump_junction_label)), None)
+        if pump_node is not None:
+            try:
+                pump_xy = (float(pump_node["x"]), float(pump_node["y"]))
+                mr_laid, plan_laid = _layout_machine_room_plan(
+                    mr_nodes, machine_room_plan_edges, pump_xy, head_yspan=head_yspan,
+                )
+            except (KeyError, TypeError, ValueError):
+                mr_laid = list(mr_nodes)
+                plan_laid = []
+        else:
+            mr_laid = list(mr_nodes)
+    else:
+        mr_laid = list(mr_nodes)
+
+    translated_riser_nodes = translated_riser_nodes + mr_laid
 
     # 헤드망 노드 10 의 elevation → 라이저 AV elevation 으로 일치
     head_nodes_filtered = []
@@ -632,7 +739,81 @@ def stitch_riser_and_heads(riser: RiserTables, head_tables: Any) -> CombinedTabl
         pumps=list(riser.pumps),
         valves=list(riser.valves),
         meta=list(getattr(head_tables, "meta", [])),
+        machine_room_plan_edges=plan_laid,
     )
+
+
+def prepend_machine_room_to_riser(machine_room: dict, riser: RiserTables) -> tuple[RiserTables, bool]:
+    """기계실(옥상수조) 경로를 라이저 Input 노드 앞에 prepend → 확장 RiserTables.
+
+    고가수조(옥상수조) 방식: 수원 경계가 라이저 top('1', 옥상 수원)이 아니라
+    그보다 상류인 탱크 수면(m1)이다. 기계실 경로 = 탱크(m1, Input) → 입상관
+    연결점(mK). mK 를 라이저 Input 노드와 병합하고 라이저 Input 은 일반 분기로
+    강등(경계는 이제 m1 하나). 이렇게 옥상부 배관의 마찰손실이 통합망에 반영된다.
+
+    좌표 정합 (x, y): 기계실 노드의 raw DXF x, y 는 그대로 보존한다. 통합 캔버스
+    배치는 stitch 단계의 _layout_machine_room_plan 이 수리경로 노드 + 전체 SP
+    배관망 edge(plan_edges, 동일 raw 좌표계)를 한 변환으로 묶어 펌프 위에 부착하므로,
+    여기서 미리 translation 하면 오히려 plan_edges 와 어긋난다. → x, y 무변환.
+
+    elevation: 옥상수조부는 라이저 top 과 동일한 옥상 레벨(수평)이므로, 추출 시
+    0 으로 둔 기계실 노드 elev 를 라이저 Input elev 로 offset 해 고도를 정합한다.
+
+    반환: (확장 RiserTables, attached) — attached 는 실제 병합 성공 여부.
+    machine_room 가 비었거나 라이저 Input 을 못 찾으면 (원본 riser, False) 반환(안전).
+    """
+    mr_nodes = list(machine_room.get("nodes", []))
+    mr_pipes = list(machine_room.get("pipes", []))
+    if not mr_nodes or not mr_pipes:
+        return riser, False
+
+    conn_label = str(machine_room.get("conn_node_label") or mr_nodes[-1]["label"])
+
+    riser_input = next(
+        (n for n in riser.nodes if str(n.get("io_node", "")).lower() == "input"), None)
+    if riser_input is None:
+        riser_input = next((n for n in riser.nodes if str(n["label"]) == "1"), None)
+    if riser_input is None:
+        return riser, False  # 정합 불가 — 기계실 skip
+    riser_input_label = str(riser_input["label"])
+    riser_input_elev = float(riser_input.get("elevation", 0.0))
+
+    # 기계실 노드: x,y 는 raw DXF 좌표 그대로(무변환 — plan_edges 와 동일 좌표계 유지),
+    # elev 는 라이저 Input 고도로 offset + conn 노드(mK) 제거(병합)
+    new_mr_nodes: list[dict] = []
+    for n in mr_nodes:
+        if str(n["label"]) == conn_label:
+            continue  # mK ≡ riser_input — 중복 제거
+        nn = dict(n)
+        nn["elevation"] = round(riser_input_elev + float(n.get("elevation", 0.0)), 3)
+        new_mr_nodes.append(nn)
+
+    # 기계실 pipe: conn(mK) 향하던 끝점을 riser_input_label 로 재지정
+    new_mr_pipes: list[dict] = []
+    for p in mr_pipes:
+        pp = dict(p)
+        if str(pp.get("out")) == conn_label:
+            pp["out"] = riser_input_label
+        if str(pp.get("in")) == conn_label:
+            pp["in"] = riser_input_label
+        new_mr_pipes.append(pp)
+
+    # 라이저 Input 강등: Input→No, pressure 제거 (경계는 이제 m1)
+    new_riser_nodes: list[dict] = []
+    for n in riser.nodes:
+        nn = dict(n)
+        if str(n["label"]) == riser_input_label:
+            nn["io_node"] = "No"
+            nn.pop("pressure_pa", None)
+        new_riser_nodes.append(nn)
+
+    return RiserTables(
+        nodes=new_mr_nodes + new_riser_nodes,
+        pipes=new_mr_pipes + list(riser.pipes),
+        pumps=list(riser.pumps),
+        valves=list(riser.valves),
+        av_node_label=riser.av_node_label,
+    ), True
 
 
 # ────────────────────────────────────────────────────────────────────────────

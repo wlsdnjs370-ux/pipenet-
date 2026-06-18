@@ -1492,6 +1492,193 @@ def _system_path_to_riser_dict(
     }
 
 
+# ────────────────────────────────────────────────────────────────────────────
+# 기계실(옥상수조) 경로 추출 — extract_system_path 미러
+# ────────────────────────────────────────────────────────────────────────────
+
+# 기계실 소화배관 레이어 (대명동 201동 옥상층 평면도 기준).
+# 스프링클러(SP) 계통 + 물탱크. 도면별 레이어명이 달라 layer_filter 미지정 시
+# 존재하는 것만 추려 쓰고, 매칭 0건이면 build_system_graph 의 키워드 자동 필터 사용.
+MACHINE_ROOM_SP_LAYERS = {"-소화(SP-고)", "-소화(SP-저)", "물탱크"}
+
+
+def extract_machine_room_path(
+    entities: list[dict],
+    source_xy: tuple[float, float],
+    riser_conn_xy: tuple[float, float],
+    snap_tolerance_mm: float = 2500.0,
+    layer_filter: set[str] | None = None,
+) -> dict:
+    """기계실(옥상수조) DXF 에서 수원(탱크) → 입상관 연결점 배관 경로 추출.
+
+    계통도 추출(extract_system_path)과 동형 — 같은 그래프/Dijkstra 사용.
+    차이는 (1) 의미: source = 옥상수조 수원(Input 경계), conn = 라이저 Input '1'
+    에 stitch 될 입상관 연결점. (2) 라벨: m1..mK ('1'~'10'/'r*'/헤드 10+ 와 비충돌).
+
+    Args:
+        entities: parse_dxf_for_view().entities.
+        source_xy: 사용자 픽 탱크 토출구(수원) 좌표 (mm).
+        riser_conn_xy: 사용자 픽 입상관 연결점 좌표 (mm).
+        snap_tolerance_mm: 클릭 ↔ 그래프 노드 허용 거리.
+        layer_filter: None 이면 SP+물탱크 레이어 시도, 결과 부족 시 키워드 자동.
+
+    Returns:
+        { nodes, pipes, source_node_label, conn_node_label, ... 진단 }
+        nodes[0] = m1 (source, io='Input', pressure_pa=101325),
+        nodes[-1] = mK (conn, io='No') — 3-way stitch 시 라이저 '1' 과 병합.
+
+    Raises:
+        ValueError: snap 실패 / 경로 없음.
+    """
+    if not entities:
+        raise ValueError("기계실 entity 비어있음 — DXF 파싱 결과 확인 필요")
+
+    lf = layer_filter
+    if lf is None:
+        present = {en.get("l") for en in entities}
+        lf = {ly for ly in MACHINE_ROOM_SP_LAYERS if ly in present} or None
+
+    graph, edge_len, stats = build_system_graph(entities, layer_filter=lf)
+    if not graph:
+        raise ValueError(f"LINE entity 없음 (전체 {len(entities)}개 중 LINE/PL 0개)")
+
+    src_node, src_d = find_nearest_graph_node_constrained(
+        graph, source_xy, max_dist_mm=snap_tolerance_mm)
+    if src_node is None:
+        raise ValueError(
+            f"수원(탱크) 클릭 ({int(source_xy[0])}, {int(source_xy[1])}) 근처 "
+            f"{snap_tolerance_mm:.0f}mm 안에 배관 끝점 없음. 가장 가까운 노드 {src_d:.0f}mm. "
+            f"더 정확히 클릭하거나 snap_tolerance_mm 증가."
+        )
+    conn_node, conn_d = find_nearest_graph_node_constrained(
+        graph, riser_conn_xy, max_dist_mm=snap_tolerance_mm)
+    if conn_node is None:
+        raise ValueError(
+            f"입상관 연결점 클릭 ({int(riser_conn_xy[0])}, {int(riser_conn_xy[1])}) 근처 "
+            f"{snap_tolerance_mm:.0f}mm 안에 배관 끝점 없음. 가장 가까운 노드 {conn_d:.0f}mm."
+        )
+
+    path = _shortest_path(graph, edge_len, src_node, conn_node)
+    if not path or len(path) < 2:
+        raise ValueError(
+            f"수원 → 입상관 연결점 경로 없음 — disconnected component 가능. "
+            f"그래프 컴포넌트 {stats['components_after_bridge']}개 "
+            f"(bridge {stats['bridges_applied']}회 후). snap 수원={src_d:.0f}mm, 연결={conn_d:.0f}mm."
+        )
+
+    path = _collapse_collinear_nodes(path, edge_len, angle_tol_deg=2.0)
+    dia_text_pts = _extract_dia_text_points(entities)
+
+    result = _machine_room_path_to_dict(
+        path, edge_len, source_xy, riser_conn_xy,
+        source_snap_dist=src_d, conn_snap_dist=conn_d,
+        graph_stats=stats, dia_text_pts=dia_text_pts,
+    )
+
+    # 전체 SP 배관망 edge (시각화 전용) — 수리경로 spine 뿐 아니라 기계실 전 배관을
+    # 평면도로 렌더하기 위해 그래프 전 edge 를 raw DXF 좌표로 dedupe 해 첨부.
+    seen: set[tuple] = set()
+    plan_edges: list[list[float]] = []
+    for a, nbrs in graph.items():
+        for b in nbrs:
+            key = (min(a, b), max(a, b))
+            if key in seen:
+                continue
+            seen.add(key)
+            plan_edges.append([int(round(a[0])), int(round(a[1])),
+                               int(round(b[0])), int(round(b[1]))])
+    result["plan_edges"] = plan_edges
+    return result
+
+
+def _machine_room_path_to_dict(
+    path: list[tuple[float, float]],
+    edge_len: dict,
+    source_xy_orig: tuple[float, float],
+    conn_xy_orig: tuple[float, float],
+    source_snap_dist: float = 0.0,
+    conn_snap_dist: float = 0.0,
+    graph_stats: dict | None = None,
+    dia_text_pts: list[tuple[float, float, int, str]] | None = None,
+) -> dict:
+    """기계실 경로(vertex 시퀀스) → dict. 라벨 m1..mK, m1=Input(옥상수조 수면, 1atm).
+
+    옥상수조부는 수평 분포라 노드 elev=0 (탱크 수면 기준). 실제 수직 낙차는
+    라이저(계통도)가 담당하므로 기계실 elev 는 의도적으로 0 으로 둔다.
+    """
+    if len(path) < 2:
+        raise ValueError(f"경로 노드 수 {len(path)} — 수원 = 연결점 같은 위치 가능성")
+    dia_text_pts = dia_text_pts or []
+    total = len(path)
+    total_length_mm = 0.0
+
+    nodes: list[dict] = []
+    for i, pt in enumerate(path):
+        io = "Input" if i == 0 else "No"
+        node: dict = {
+            "label": f"m{i + 1}",
+            "x": int(round(pt[0])),
+            "y": int(round(pt[1])),
+            "elevation": 0.0,
+            "io_node": io,
+        }
+        if io == "Input":
+            node["pressure_pa"] = 101325.0  # 개방형 옥상수조 수면 = 대기압 경계
+        nodes.append(node)
+
+    pipes: list[dict] = []
+    dia_match_count = 0
+    for i in range(total - 1):
+        a = path[i]; b = path[i + 1]
+        edge_key = (min(a, b), max(a, b))
+        length_mm = edge_len.get(edge_key, math.hypot(b[0] - a[0], b[1] - a[1]))
+        total_length_mm += length_mm
+        dia, dia_dist, dia_raw = _match_diameter_for_segment(a, b, dia_text_pts)
+        used_dia = dia if dia is not None else 150
+        if dia is not None:
+            dia_match_count += 1
+        pipe: dict = {
+            "label": f"m{i + 1}",
+            "in":  nodes[i]["label"],
+            "out": nodes[i + 1]["label"],
+            "type": "KSD 3507",
+            "dia": used_dia,
+            "length": round(length_mm / 1000.0, 3),
+            "elev": 0.0,
+            "c": "120",
+            "status": "Normal",
+            "group": "Unset",
+        }
+        if dia is not None:
+            pipe["dia_source"] = "text_match"
+            pipe["dia_match_dist_mm"] = round(dia_dist, 1)
+            if dia_raw:
+                pipe["dia_raw"] = dia_raw
+        else:
+            pipe["dia_source"] = "default"
+        pipes.append(pipe)
+
+    return {
+        "nodes": nodes,
+        "pipes": pipes,
+        "source_node_label": "m1",
+        "conn_node_label": f"m{total}",
+        "title": "MACHINE_ROOM_EXTRACT_V1",
+        "zone_kind": "machine_room_path_dxf",
+        "extracted_from": "dxf",
+        "path_node_count": total,
+        "total_pipe_length_m": round(total_length_mm / 1000.0, 2),
+        "source_snap_dist_mm": round(source_snap_dist, 1),
+        "conn_snap_dist_mm": round(conn_snap_dist, 1),
+        "graph_stats": graph_stats or {},
+        "diameter_matching": {
+            "matched_pipes": dia_match_count,
+            "total_pipes": len(pipes),
+            "text_label_count": len(dia_text_pts),
+        },
+    }
+
+
 def filter_pipenet_only(bundle: ParsedDxfBundle) -> list[dict]:
     """Stage 1 — 배관망 관련 entity 만 필터 (auto_category in PIPE/HEAD/TEXT or layer in KEEP_BASE_LAYERS)."""
     layer_cat = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
@@ -2969,7 +3156,7 @@ def bundle_result_zip(out_dir: Path, prefix: str) -> Path:
     import zipfile
     zip_path = out_dir / f"{prefix}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for suf in (".sdf", ".slf", ".xlsx"):
+        for suf in (".sdf", ".slf", ".xlsx", ".kfp"):
             p = out_dir / f"{prefix}{suf}"
             if p.is_file():
                 zf.write(p, arcname=p.name)
@@ -3088,10 +3275,27 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
 
     # 노즐
     for nz in tables.nozzles:
+        in_id = str(nz["in"])
+        out_id = str(nz["out"])
+        # 노즐 토출구(@/N 대기노드)를 <Node> 로 선언 — 참조 SDF 와 동일하게.
+        # 미선언 시 PIPENET 이 토출 대기노드를 해석하지 못해 연산이 실패한다.
+        if out_id not in network.nodes:
+            anchor = network.nodes.get(in_id)
+            if anchor is not None:
+                nx, ny, nz_elev = anchor.x, anchor.y, anchor.z
+            else:
+                nx = ny = 0.0
+                nz_elev = 0.0
+            network.add_node(PnNode(
+                node_id=out_id,
+                x=nx, y=ny, z=nz_elev,
+                node_type="no",
+                metadata={"io_node": "No"},
+            ))
         network.add_nozzle(PnNozzle(
             nozzle_id=str(nz["label"]),
-            input_node=str(nz["in"]),
-            output_node=str(nz["out"]),
+            input_node=in_id,
+            output_node=out_id,
             flow_m3s=float(nz["flow_m3s"]),
             status=int(nz["status"]),
             library_item=str(nz["lib"]),
@@ -3239,6 +3443,54 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
 
     _tree.write(out_path, encoding="utf-8", xml_declaration=True)
     return out_path
+
+
+def emit_kfp(sdf_path: Path, kfp_path: Path) -> Path:
+    """K-Fire Solver .kfp emit — 이미 쓰여진 .sdf 를 그대로 KFP 로 변환.
+
+    SDF→KFP 는 검증 완료된 ``kfp_sdf_converter`` 경로를 재사용한다 (노즐→노드 folding,
+    head/nozzle 키워드 구분, junction 토폴로지 기반 fitting 재분배, 3D length 재계산,
+    K-Fire_Solver 표준 라이브러리 동봉). 최종 .sdf 파일을 입력으로 삼으므로 SDF 와 KFP 가
+    항상 동일 네트워크를 가리킨다 (좌표 정규화·Graphics 후처리 반영본 기준).
+
+    sig="" / license_tag="TRIAL" — K-solver 가 둘 다 검증하지 않음을 실측 확인 (kfp-format-notes).
+    """
+    import sys as _sys
+    _repo_root = Path(__file__).parent
+    if str(_repo_root) not in _sys.path:
+        _sys.path.insert(0, str(_repo_root))
+    try:
+        from kfp_sdf_converter import convert_sdf_to_kfp as _convert
+    except ImportError as exc:
+        raise RuntimeError(
+            f"[remote30_prototype.emit_kfp] kfp_sdf_converter 모듈을 찾을 수 없어 KFP 출력 불가: {exc}. "
+            f"→ kfp_sdf_converter.py 를 모듈 루트 '{_repo_root}' 에 두세요."
+        ) from exc
+    _convert(sdf_path, kfp_path)
+    return kfp_path
+
+
+def emit_has(sdf_path: Path, has_path: Path) -> Path:
+    """HASS(하스) .has emit — 이미 쓰여진 .sdf 를 그대로 HAS 로 변환.
+
+    SDF→HAS 는 ``has_converter`` (parse_sdf → CommonNetwork → emit_has) 경로를 쓴다.
+    붙임 샘플(.has)을 스켈레톤으로 로드해 참조 DB/범례/단위계를 그대로 동봉하므로
+    HASS 가 받자마자 열 수 있고, 노즐 K 는 nozzleDataTable 에 자동 등록된다.
+    RESULT_* 는 0 으로 비워 HASS 가 재계산하게 한다 (우리는 솔버가 아님).
+    """
+    import sys as _sys
+    _repo_root = Path(__file__).parent
+    if str(_repo_root) not in _sys.path:
+        _sys.path.insert(0, str(_repo_root))
+    try:
+        from has_converter import convert_sdf_to_has as _convert
+    except ImportError as exc:
+        raise RuntimeError(
+            f"[remote30_prototype.emit_has] has_converter 모듈을 찾을 수 없어 HAS 출력 불가: {exc}. "
+            f"→ has_converter.py 를 모듈 루트 '{_repo_root}' 에 두세요."
+        ) from exc
+    _convert(sdf_path, has_path)
+    return has_path
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -3549,9 +3801,18 @@ def run_stages_3_5(
     sdf_path = out_dir / f"prototype_{job_id}.sdf"
     emit_sdf(tables, sdf_path, project_title=dxf_path.stem)
     slf_path = sdf_path.with_suffix(".slf")
+    # KFP (K-Fire Solver) — 최종 SDF 를 그대로 변환. 실패해도 SDF 출력은 유지.
+    kfp_path = out_dir / f"prototype_{job_id}.kfp"
+    kfp_ok = False
+    try:
+        emit_kfp(sdf_path, kfp_path)
+        kfp_ok = kfp_path.is_file()
+    except Exception as _kfp_exc:  # noqa: BLE001 — KFP 실패가 전체 파이프라인을 막지 않도록
+        warnings.warn(f"[remote30_prototype] KFP emit 실패 (SDF 는 정상): {_kfp_exc}", RuntimeWarning, stacklevel=2)
     zip_path = bundle_result_zip(out_dir, prefix=f"prototype_{job_id}")
+    _kfp_label = f" + KFP {kfp_path.stat().st_size/1024:.1f}KB" if kfp_ok else ""
     yield evt({"type": "stage", "stage": 6, "status": "done",
-               "label": f"SDF {sdf_path.stat().st_size/1024:.1f}KB + SLF {slf_path.stat().st_size/1024:.1f}KB + ZIP {zip_path.stat().st_size/1024:.1f}KB"})
+               "label": f"SDF {sdf_path.stat().st_size/1024:.1f}KB + SLF {slf_path.stat().st_size/1024:.1f}KB{_kfp_label} + ZIP {zip_path.stat().st_size/1024:.1f}KB"})
 
     outputs = {
         "xlsx": xlsx_path.name, "sdf": sdf_path.name,
@@ -3561,6 +3822,8 @@ def run_stages_3_5(
     }
     if slf_path.is_file():
         outputs["slf"] = slf_path.name
+    if kfp_ok:
+        outputs["kfp"] = kfp_path.name
     if zip_path.is_file():
         outputs["zip"] = zip_path.name
     yield evt({"type": "done", "outputs": outputs, "out_dir": str(out_dir)})

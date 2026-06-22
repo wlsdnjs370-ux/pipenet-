@@ -904,6 +904,21 @@
             아직 계통도 추출이 실행되지 않았습니다.
           </div>
         </section>
+
+        <section>
+          <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">수리계산 파일 (계통도 단독)</h3>
+          <p class="info-line" style="font-size: 0.7rem; color: var(--muted);">
+            계통도(펌프→AV 라이저) 구간만 PIPENET/K-Fire 입력 파일로 받습니다. 통합 없이 부분 검토용.
+          </p>
+          <button id="sys-emit" type="button" class="run-btn" disabled style="background:#ffffff;color:var(--accent);border-color:var(--accent);margin-top:4px;">▶ 수리계산 파일 생성</button>
+          <p id="sys-emit-status" class="info-line" style="font-size: 0.7rem; min-height: 1em;"></p>
+          <div class="download-grid">
+            <a id="sys-dl-zip" class="download-btn is-disabled" href="#" target="_blank" title="SDF + SLF + KFP 일체 — PIPENET 사용 시 권장">.zip (전체)</a>
+            <a id="sys-dl-sdf" class="download-btn is-disabled" href="#" target="_blank">.sdf</a>
+            <a id="sys-dl-slf" class="download-btn is-disabled" href="#" target="_blank" title="PIPENET 라이브러리 — .sdf 와 같은 폴더 필요">.slf</a>
+            <a id="sys-dl-kfp" class="download-btn is-disabled" href="#" target="_blank" title="K-Fire Solver 입력">.kfp</a>
+          </div>
+        </section>
       </div>
       <!-- ───── /mode-panel-system ───── -->
 
@@ -942,6 +957,21 @@
           <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">결과</h3>
           <div id="mr-result-box" class="info-line" style="font-size: 0.74rem;">
             아직 기계실 추출이 실행되지 않았습니다.
+          </div>
+        </section>
+
+        <section>
+          <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">수리계산 파일 (기계실 단독)</h3>
+          <p class="info-line" style="font-size: 0.7rem; color: var(--muted);">
+            기계실(수원→입상관 연결점) 구간만 PIPENET/K-Fire 입력 파일로 받습니다. 통합 없이 부분 검토용.
+          </p>
+          <button id="mr-emit" type="button" class="run-btn" disabled style="background:#ffffff;color:var(--accent);border-color:var(--accent);margin-top:4px;">▶ 수리계산 파일 생성</button>
+          <p id="mr-emit-status" class="info-line" style="font-size: 0.7rem; min-height: 1em;"></p>
+          <div class="download-grid">
+            <a id="mr-dl-zip" class="download-btn is-disabled" href="#" target="_blank" title="SDF + SLF + KFP 일체 — PIPENET 사용 시 권장">.zip (전체)</a>
+            <a id="mr-dl-sdf" class="download-btn is-disabled" href="#" target="_blank">.sdf</a>
+            <a id="mr-dl-slf" class="download-btn is-disabled" href="#" target="_blank" title="PIPENET 라이브러리 — .sdf 와 같은 폴더 필요">.slf</a>
+            <a id="mr-dl-kfp" class="download-btn is-disabled" href="#" target="_blank" title="K-Fire Solver 입력">.kfp</a>
           </div>
         </section>
       </div>
@@ -1259,6 +1289,7 @@
         if (typeof _updateSystemResultCard === "function" && state._sys_extract_last) {
           _updateSystemResultCard(state._sys_extract_last);
         }
+        if (typeof _resetSysEmit === "function") _resetSysEmit(true);
         overlayInfoEl.textContent = `[계통도 완료] pump → AV 경로 추출됨`;
       }},
     });
@@ -2533,6 +2564,7 @@
       BootOverlay.show("Analyzing CAD system diagram");
       state.system_revealed_pipes_count = null;
       state.system_riser = null;  // 이전 path 지움 (재실행 대비)
+      if (typeof _resetSysEmit === "function") _resetSysEmit(false);  // 이전 다운로드 링크/버튼 초기화
       if (state.current_mode === "system") render();
       try {
         let data = await _runSystemExtract(false);
@@ -2842,6 +2874,7 @@
       _mrExtractBtn.disabled = true;
       _mrExtractBtn.textContent = "⏳ 추출 중...";
       state.machine_room = null;
+      if (typeof _resetMrEmit === "function") _resetMrEmit(false);  // 이전 다운로드 링크/버튼 초기화
       if (state.current_mode === "machineroom") render();
       try {
         const data = await _runMachineroomExtract();
@@ -2851,6 +2884,7 @@
         }
         state.machine_room = data.machine_room;
         _updateMachineroomResultCard(data.machine_room);
+        if (typeof _resetMrEmit === "function") _resetMrEmit(true);
         if (state.current_mode === "machineroom") render();
         if (typeof updateCombinedStatus === "function") updateCombinedStatus();
         // 이미 통합을 빌드해 둔 상태라면, 그 결과는 기계실이 빠진 옛 그래프임.
@@ -2864,6 +2898,104 @@
       } finally {
         _mrExtractBtn.disabled = false;
         _mrExtractBtn.textContent = "▶ 기계실 추출";
+      }
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // 단독 수리계산 파일 다운로드 — 계통도/기계실 부분망만 SDF/SLF/KFP/ZIP 출력
+    //   통합(combined) 을 거치지 않고 추출 결과 dict 만으로 백엔드 emit 호출.
+    // ─────────────────────────────────────────────────────────────────
+    function _setEmitLink(id, url) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (url) {
+        el.href = url;
+        el.classList.remove("is-disabled");
+      } else {
+        el.href = "#";
+        el.classList.add("is-disabled");
+      }
+    }
+
+    // 계통도 단독 emit
+    const _sysEmitBtn = document.getElementById("sys-emit");
+    const _sysEmitStatus = document.getElementById("sys-emit-status");
+    function _resetSysEmit(enableBtn) {
+      if (_sysEmitBtn) _sysEmitBtn.disabled = !enableBtn;
+      if (_sysEmitStatus) _sysEmitStatus.textContent = "";
+      ["sys-dl-zip", "sys-dl-sdf", "sys-dl-slf", "sys-dl-kfp"].forEach(id => _setEmitLink(id, null));
+    }
+    if (_sysEmitBtn) _sysEmitBtn.addEventListener("click", async () => {
+      if (!state.system_riser) {
+        alert("계통도 추출을 먼저 실행하세요.");
+        return;
+      }
+      _sysEmitBtn.disabled = true;
+      _sysEmitBtn.textContent = "⏳ 생성 중...";
+      if (_sysEmitStatus) _sysEmitStatus.textContent = "수리계산 파일 생성 중...";
+      try {
+        const res = await fetch("/api/remote30/system/emit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ riser: state.system_riser }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          if (_sysEmitStatus) _sysEmitStatus.textContent = "❌ " + (data.message || "생성 실패");
+          return;
+        }
+        _setEmitLink("sys-dl-zip", data.download_url_zip);
+        _setEmitLink("sys-dl-sdf", data.download_url_sdf);
+        _setEmitLink("sys-dl-slf", data.download_url_slf);
+        _setEmitLink("sys-dl-kfp", data.download_url_kfp);
+        if (_sysEmitStatus) _sysEmitStatus.textContent =
+          `✓ 생성 완료 — 노드 ${data.nodes} · 파이프 ${data.pipes}. 아래에서 다운로드.`;
+      } catch (err) {
+        if (_sysEmitStatus) _sysEmitStatus.textContent = "❌ 네트워크 오류: " + err.message;
+      } finally {
+        _sysEmitBtn.disabled = false;
+        _sysEmitBtn.textContent = "▶ 수리계산 파일 생성";
+      }
+    });
+
+    // 기계실 단독 emit
+    const _mrEmitBtn = document.getElementById("mr-emit");
+    const _mrEmitStatus = document.getElementById("mr-emit-status");
+    function _resetMrEmit(enableBtn) {
+      if (_mrEmitBtn) _mrEmitBtn.disabled = !enableBtn;
+      if (_mrEmitStatus) _mrEmitStatus.textContent = "";
+      ["mr-dl-zip", "mr-dl-sdf", "mr-dl-slf", "mr-dl-kfp"].forEach(id => _setEmitLink(id, null));
+    }
+    if (_mrEmitBtn) _mrEmitBtn.addEventListener("click", async () => {
+      if (!state.machine_room) {
+        alert("기계실 추출을 먼저 실행하세요.");
+        return;
+      }
+      _mrEmitBtn.disabled = true;
+      _mrEmitBtn.textContent = "⏳ 생성 중...";
+      if (_mrEmitStatus) _mrEmitStatus.textContent = "수리계산 파일 생성 중...";
+      try {
+        const res = await fetch("/api/remote30/machineroom/emit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ machine_room: state.machine_room }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          if (_mrEmitStatus) _mrEmitStatus.textContent = "❌ " + (data.message || "생성 실패");
+          return;
+        }
+        _setEmitLink("mr-dl-zip", data.download_url_zip);
+        _setEmitLink("mr-dl-sdf", data.download_url_sdf);
+        _setEmitLink("mr-dl-slf", data.download_url_slf);
+        _setEmitLink("mr-dl-kfp", data.download_url_kfp);
+        if (_mrEmitStatus) _mrEmitStatus.textContent =
+          `✓ 생성 완료 — 노드 ${data.nodes} · 파이프 ${data.pipes}. 아래에서 다운로드.`;
+      } catch (err) {
+        if (_mrEmitStatus) _mrEmitStatus.textContent = "❌ 네트워크 오류: " + err.message;
+      } finally {
+        _mrEmitBtn.disabled = false;
+        _mrEmitBtn.textContent = "▶ 수리계산 파일 생성";
       }
     });
 

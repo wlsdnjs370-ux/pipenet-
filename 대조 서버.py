@@ -3628,6 +3628,50 @@ def remote30_system_parse():
 
 COMBINED_OUTPUT_DIR = BASE_DIR / "data" / "combined_runs"
 COMBINED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+SYSTEM_OUTPUT_DIR = BASE_DIR / "data" / "system_runs"
+SYSTEM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+MACHINEROOM_OUTPUT_DIR = BASE_DIR / "data" / "machineroom_runs"
+MACHINEROOM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _emit_subnetwork_bundle(net, out_dir: Path, job_id: str, prefix: str,
+                            project_title: str) -> dict:
+    """부분 배관망(계통도 라이저 / 기계실 경로) 단독 → SDF + SLF + KFP + ZIP.
+
+    combined/build 의 emit 패턴을 부분망에 재사용. net 은 CombinedTables.
+    PIPENET 은 .sdf 와 .slf 가 같은 폴더에 있어야 호칭경↔내경 lookup 가능하므로
+    ZIP 으로 함께 묶는다. KFP 실패는 SDF/ZIP 출력을 막지 않는다.
+    반환: {"sdf","slf","kfp","zip"} — 없으면 None.
+    """
+    from remote30_full_network import emit_full_sdf
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_sdf = out_dir / f"{prefix}_{job_id}.sdf"
+    emit_full_sdf(net, out_sdf, project_title=project_title)
+    out_slf = out_dir / f"{prefix}_{job_id}.slf"  # emit_sdf 가 같은 폴더에 자동 생성
+    out_kfp = out_dir / f"{prefix}_{job_id}.kfp"
+    kfp_ok = False
+    try:
+        from remote30_prototype import emit_kfp as _emit_kfp
+        _emit_kfp(out_sdf, out_kfp)
+        kfp_ok = out_kfp.is_file()
+    except Exception as _kfp_exc:  # noqa: BLE001 — KFP 실패가 SDF 출력을 막지 않도록
+        import warnings as _warnings
+        _warnings.warn(f"[{prefix}] KFP emit 실패 (SDF 는 정상): {_kfp_exc}",
+                       RuntimeWarning, stacklevel=2)
+    import zipfile as _zipfile
+    out_zip = out_dir / f"{prefix}_{job_id}.zip"
+    with _zipfile.ZipFile(out_zip, "w", _zipfile.ZIP_DEFLATED) as zf:
+        zf.write(out_sdf, arcname=out_sdf.name)
+        if out_slf.is_file():
+            zf.write(out_slf, arcname=out_slf.name)
+        if kfp_ok:
+            zf.write(out_kfp, arcname=out_kfp.name)
+    return {
+        "sdf": out_sdf.name,
+        "slf": out_slf.name if out_slf.is_file() else None,
+        "kfp": out_kfp.name if kfp_ok else None,
+        "zip": out_zip.name,
+    }
 
 
 @app.post("/api/remote30/combined/build")
@@ -3886,6 +3930,119 @@ def remote30_combined_result(job_id: str, filename: str):
     target = COMBINED_OUTPUT_DIR / safe_id / filename
     try:
         target.resolve().relative_to(COMBINED_OUTPUT_DIR.resolve())
+    except ValueError:
+        return "잘못된 경로", 400
+    if not target.is_file():
+        return "결과 파일 없음", 404
+    return send_file(target, as_attachment=True)
+
+
+@app.post("/api/remote30/system/emit")
+def remote30_system_emit():
+    """계통도(라이저) 단독 수리계산 파일 생성 — riser dict → SDF/SLF/KFP/ZIP.
+
+    통합(combined) 을 거치지 않고 계통도 추출 결과만으로 부분 SDF 를 받기 위함.
+    Body(JSON): { riser: extract_system_path 출력 dict }
+    """
+    import secrets
+    body = request.get_json(silent=True) or {}
+    riser = body.get("riser")
+    if not riser or not riser.get("nodes") or not riser.get("pipes"):
+        return jsonify({"ok": False,
+                        "message": "riser (계통도 추출 결과) 가 필요합니다 — 계통도 추출을 먼저 실행하세요."}), 400
+    from remote30_full_network import CombinedTables
+    try:
+        net = CombinedTables(
+            nodes=list(riser["nodes"]),
+            pipes=list(riser["pipes"]),
+            pumps=list(riser.get("pumps", [])),
+            valves=list(riser.get("valves", [])),
+        )
+        job_id = secrets.token_hex(6)
+        _sweep_old_run_dirs(SYSTEM_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR,
+                            COMBINED_OUTPUT_DIR, PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR)
+        out_dir = SYSTEM_OUTPUT_DIR / job_id
+        files = _emit_subnetwork_bundle(
+            net, out_dir, job_id, "system",
+            f"Remote 30 계통도 — {riser.get('title', 'System')}")
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+        return jsonify({"ok": False, "message": str(exc)[:300],
+                        "traceback": traceback.format_exc()[-1500:]}), 500
+    base = f"/api/remote30/system/result/{job_id}/"
+    return jsonify({
+        "ok": True, "job_id": job_id,
+        "nodes": len(net.nodes), "pipes": len(net.pipes),
+        "download_url_sdf": base + files["sdf"],
+        "download_url_slf": (base + files["slf"]) if files["slf"] else None,
+        "download_url_kfp": (base + files["kfp"]) if files["kfp"] else None,
+        "download_url_zip": base + files["zip"],
+    })
+
+
+@app.get("/api/remote30/system/result/<job_id>/<path:filename>")
+def remote30_system_result(job_id: str, filename: str):
+    safe_id = secure_filename(job_id)
+    if not safe_id or safe_id != job_id:
+        return "잘못된 job_id", 400
+    target = SYSTEM_OUTPUT_DIR / safe_id / filename
+    try:
+        target.resolve().relative_to(SYSTEM_OUTPUT_DIR.resolve())
+    except ValueError:
+        return "잘못된 경로", 400
+    if not target.is_file():
+        return "결과 파일 없음", 404
+    return send_file(target, as_attachment=True)
+
+
+@app.post("/api/remote30/machineroom/emit")
+def remote30_machineroom_emit():
+    """기계실(옥상수조) 경로 단독 수리계산 파일 생성 — machine_room dict → SDF/SLF/KFP/ZIP.
+
+    Body(JSON): { machine_room: extract_machine_room_path 출력 dict }
+    """
+    import secrets
+    body = request.get_json(silent=True) or {}
+    mr = body.get("machine_room")
+    if not mr or not mr.get("nodes") or not mr.get("pipes"):
+        return jsonify({"ok": False,
+                        "message": "machine_room (기계실 추출 결과) 가 필요합니다 — 기계실 추출을 먼저 실행하세요."}), 400
+    from remote30_full_network import CombinedTables
+    try:
+        net = CombinedTables(
+            nodes=list(mr["nodes"]),
+            pipes=list(mr["pipes"]),
+        )
+        job_id = secrets.token_hex(6)
+        _sweep_old_run_dirs(SYSTEM_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR,
+                            COMBINED_OUTPUT_DIR, PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR)
+        out_dir = MACHINEROOM_OUTPUT_DIR / job_id
+        files = _emit_subnetwork_bundle(
+            net, out_dir, job_id, "machineroom",
+            f"Remote 30 기계실 — {mr.get('title', 'MachineRoom')}")
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+        return jsonify({"ok": False, "message": str(exc)[:300],
+                        "traceback": traceback.format_exc()[-1500:]}), 500
+    base = f"/api/remote30/machineroom/result/{job_id}/"
+    return jsonify({
+        "ok": True, "job_id": job_id,
+        "nodes": len(net.nodes), "pipes": len(net.pipes),
+        "download_url_sdf": base + files["sdf"],
+        "download_url_slf": (base + files["slf"]) if files["slf"] else None,
+        "download_url_kfp": (base + files["kfp"]) if files["kfp"] else None,
+        "download_url_zip": base + files["zip"],
+    })
+
+
+@app.get("/api/remote30/machineroom/result/<job_id>/<path:filename>")
+def remote30_machineroom_result(job_id: str, filename: str):
+    safe_id = secure_filename(job_id)
+    if not safe_id or safe_id != job_id:
+        return "잘못된 job_id", 400
+    target = MACHINEROOM_OUTPUT_DIR / safe_id / filename
+    try:
+        target.resolve().relative_to(MACHINEROOM_OUTPUT_DIR.resolve())
     except ValueError:
         return "잘못된 경로", 400
     if not target.is_file():

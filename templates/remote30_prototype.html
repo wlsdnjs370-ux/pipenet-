@@ -2333,6 +2333,8 @@
       const f = _sysDxfInput.files[0];
       if (!f) return;
       state.system_uploaded_file = f;
+      state.system_riser = null;  // 새 도면 — 이전 추출/다운로드 무효화
+      if (typeof _resetSysEmit === "function") _resetSysEmit(false);
       _sysFileStatus.textContent = `⏳ ${f.name} 파싱 중...`;
       const fd = new FormData();
       fd.append("system_dxf_file", f);
@@ -2654,6 +2656,8 @@
       const f = _mrDxfInput.files[0];
       if (!f) return;
       state.machineroom_uploaded_file = f;
+      state.machine_room = null;  // 새 도면 — 이전 추출/다운로드 무효화
+      if (typeof _resetMrEmit === "function") _resetMrEmit(false);
       _mrFileStatus.textContent = `⏳ ${f.name} 파싱 중...`;
       const fd = new FormData();
       fd.append("machineroom_dxf_file", f);

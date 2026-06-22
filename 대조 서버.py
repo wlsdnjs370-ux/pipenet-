@@ -7,6 +7,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime
 from io import BytesIO
@@ -64,6 +65,87 @@ app = Flask(__name__)
 # Flask debug mode 가 꺼져있어도 활성화.
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 잡 스토어 / 임시파일 수명 관리 — 24/7 구동 프로세스의 무한 누적 방지
+# ────────────────────────────────────────────────────────────────────────────
+# waitress 는 단일 프로세스 + 다중 스레드라 in-memory 잡 dict 가 영원히 산다.
+# 매 업로드마다 대용량(pipe_ents·detected_heads)이 적재되면 메모리가 무한 증가하고,
+# 산출물/업로드 디렉토리도 무한 누적된다. → 잡은 TTL/개수로 evict, 디렉토리는 mtime
+# TTL 로 주기적 sweep(rate-limited).
+_JOB_TTL_SECONDS = 12 * 3600       # 잡 메타 12시간 후 만료 (편집 세션 여유)
+_JOB_MAX_ENTRIES = 100             # 스토어당 최대 잡 수 (초과 시 오래된 것부터)
+_DIR_TTL_SECONDS = 24 * 3600       # 산출물/업로드 24시간 후 정리
+_DIR_SWEEP_INTERVAL = 1800         # 디렉토리 sweep 최소 간격(초) — 매 요청마다 안 돌게
+_jobs_lock = threading.Lock()
+_last_dir_sweep = [0.0]
+
+
+def _register_job(store: dict, job_id: str, data: dict) -> None:
+    """잡 등록 + 오래된/초과 잡 eviction (thread-safe).
+
+    읽기(`store.get`)는 GIL 하에서 원자적이라 lock 불필요하지만, 삽입+iterate-삭제는
+    경쟁이 생기므로 lock 으로 감싼다. 활성 잡(_created≈now)은 evict 대상이 아니다.
+    """
+    data["_created"] = time.time()
+    with _jobs_lock:
+        store[job_id] = data
+        now = time.time()
+        stale = [k for k, v in store.items()
+                 if now - v.get("_created", now) > _JOB_TTL_SECONDS]
+        for k in stale:
+            store.pop(k, None)
+        if len(store) > _JOB_MAX_ENTRIES:
+            ordered = sorted(store.items(), key=lambda kv: kv[1].get("_created", 0.0))
+            for k, _v in ordered[: len(store) - _JOB_MAX_ENTRIES]:
+                store.pop(k, None)
+
+
+def _sweep_old_run_dirs(*parents: Path) -> None:
+    """오래된 잡 산출물 디렉토리(자식) 정리 — opportunistic, rate-limited.
+
+    예외는 전부 삼킨다(정리 실패가 요청을 막으면 안 됨). 활성 잡 dir 은 방금 생성돼
+    mtime 이 최신이라 TTL 에 안 걸린다.
+    """
+    now = time.time()
+    with _jobs_lock:
+        if now - _last_dir_sweep[0] < _DIR_SWEEP_INTERVAL:
+            return
+        _last_dir_sweep[0] = now
+    for parent in parents:
+        try:
+            if not parent.is_dir():
+                continue
+            for child in list(parent.iterdir()):
+                try:
+                    if now - child.stat().st_mtime <= _DIR_TTL_SECONDS:
+                        continue
+                    if child.is_dir():
+                        shutil.rmtree(child, ignore_errors=True)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
+
+def _sweep_old_upload_files(parent: Path, keep_dirs: set[str] | None = None) -> None:
+    """오래된 업로드 *파일* 정리 — 디렉토리(예: cad_workspace)는 보존."""
+    keep = keep_dirs or {"cad_workspace"}
+    now = time.time()
+    try:
+        if not parent.is_dir():
+            return
+        for child in list(parent.iterdir()):
+            try:
+                if child.is_dir() or child.name in keep:
+                    continue
+                if now - child.stat().st_mtime > _DIR_TTL_SECONDS:
+                    child.unlink(missing_ok=True)
+            except OSError:
+                pass
+    except OSError:
+        pass
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -409,6 +491,7 @@ def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) ->
 
     saved_path = UPLOAD_DIR / filename
     uploaded.save(saved_path)
+    _sweep_old_upload_files(UPLOAD_DIR)
     return saved_path
 
 
@@ -1542,11 +1625,6 @@ def _segments_from_points(points: list[list[float]], box: dict, source_id: str, 
     return rows
 
 
-def _angle_delta(a: float, b: float) -> float:
-    delta = abs((a - b + math.pi) % math.tau - math.pi)
-    return min(delta, abs(math.pi - delta))
-
-
 def _mark_similar_cad_pipe_entities(cad: dict, sdf: dict) -> dict:
     learning_profile = _load_cad_sdf_learning_profile()
     cad_entities = cad.get("drawing_entities") or []
@@ -2099,10 +2177,13 @@ def _apply_sheet_style(ws):
         c.border = border
 
     for row in range(4, max_row + 1):
-        flag_fail = ws.cell(row=row, column=max_col - 3).value == "Y"
-        flag_warn = ws.cell(row=row, column=max_col - 2).value == "Y"
-        flag_eng = ws.cell(row=row, column=max_col - 1).value == "Y"
-        flag_econ = ws.cell(row=row, column=max_col).value == "Y"
+        if max_col >= 4:
+            flag_fail = ws.cell(row=row, column=max_col - 3).value == "Y"
+            flag_warn = ws.cell(row=row, column=max_col - 2).value == "Y"
+            flag_eng = ws.cell(row=row, column=max_col - 1).value == "Y"
+            flag_econ = ws.cell(row=row, column=max_col).value == "Y"
+        else:
+            flag_fail = flag_warn = flag_eng = flag_econ = False
 
         row_fill = None
         if flag_fail:
@@ -2151,6 +2232,7 @@ def _ai_edge_features(edges: list[dict]) -> list[list[float]]:
     w = max(max_x - min_x, 1e-9)
     h = max(max_y - min_y, 1e-9)
     diag = max(math.hypot(w, h), 1e-9)
+    _profile = _load_cad_sdf_learning_profile()
     rows = []
     for edge in edges:
         start = edge.get("start") or {}
@@ -2163,7 +2245,7 @@ def _ai_edge_features(edges: list[dict]) -> list[list[float]]:
         angle = math.atan2((ey - sy) / h, (ex - sx) / w)
         degree = (float(edge.get("sourceDegree") or 0.0) + float(edge.get("targetDegree") or 0.0)) / 8.0
         bore = float(edge.get("bore") or 0.0) / 200.0
-        layer_prior = _cad_layer_weight(edge.get("layer"), _load_cad_sdf_learning_profile()) / 5.0
+        layer_prior = _cad_layer_weight(edge.get("layer"), _profile) / 5.0
         rows.append([mx, my, length, math.cos(angle), math.sin(angle), degree, bore, layer_prior])
     return rows
 
@@ -2307,18 +2389,35 @@ def _merge_collinear_cad_edges(edges: list[dict]) -> list[dict]:
     return work
 
 
+# AI 그래프 매칭 가드 — pair 행렬/텐서가 O(N×M) 라 입력 edge 수를 상한으로 자른다.
+# 실제 도면은 수백 edge 규모. 거대/악성 입력이 워커 스레드를 막거나 메모리를 터뜨리지
+# 않도록 길이 상위 N 만 남긴다(매칭엔 긴 edge 가 더 중요).
+_AI_MATCH_MAX_EDGES = 2000
+
+
 def _compact_cad_graph_for_sdf(dxf_graph: dict, sdf_graph: dict) -> dict:
     raw_edges = [dict(edge) for edge in (dxf_graph.get("edges") or [])]
     sdf_edges = sdf_graph.get("edges") or []
     if not raw_edges or not sdf_edges:
         return dxf_graph
     _recompute_edge_degrees(sdf_edges)
-    target_count = max(len(sdf_edges), 1)
     merged = _merge_collinear_cad_edges(raw_edges)
     min_x, min_y, max_x, max_y = _graph_bbox_from_edges(merged)
     diag = max(math.hypot(max_x - min_x, max_y - min_y), 1e-9)
     min_len = max(diag * 0.002, 1.0)
     merged = [edge for edge in merged if _edge_length(edge) >= min_len]
+
+    # 거대 입력 가드 — pair_scores 는 O(len(merged)×len(sdf)) 라 입력이 크면 워커 스레드가
+    # 메모리·시간으로 막힌다. 매칭엔 긴 edge 가 더 중요하므로 길이 내림차순 상위 N 만 남긴다.
+    if len(merged) > _AI_MATCH_MAX_EDGES:
+        merged = sorted(merged, key=_edge_length, reverse=True)[:_AI_MATCH_MAX_EDGES]
+    if len(sdf_edges) > _AI_MATCH_MAX_EDGES:
+        sdf_edges = sorted(
+            sdf_edges,
+            key=lambda e: float(e.get("length") or _edge_length(e)),
+            reverse=True,
+        )[:_AI_MATCH_MAX_EDGES]
+    target_count = max(len(sdf_edges), 1)
 
     # Segmentation proxy: build SDF-guided CAD pipe bundles. One SDF Pipe gets
     # one best CAD line bundle for comparison; the original CAD lines are kept
@@ -2416,6 +2515,7 @@ def _rasterize_edges_for_fft(edges: list[dict], size: int = 64):
         pts = _edge_points(edge)
         for a, b in zip(pts, pts[1:]):
             steps = max(2, int(math.hypot(b["x"] - a["x"], b["y"] - a["y"]) / max(w, h) * size * 2))
+            steps = min(steps, size * 4)  # 퇴화 좌표 방어 — 픽셀 캔버스라 그 이상은 무의미
             for i in range(steps + 1):
                 t = i / max(steps, 1)
                 x = a["x"] + (b["x"] - a["x"]) * t
@@ -2488,6 +2588,13 @@ def _ai_graph_match(dxf_graph: dict, sdf_graph: dict) -> dict:
     dxf_graph = _compact_cad_graph_for_sdf(raw_dxf_graph, sdf_graph)
     dxf_edges = dxf_graph.get("edges") or []
     sdf_edges = sdf_graph.get("edges") or []
+    # sdf 측도 상한 — diff 텐서가 (len(dxf)×len(sdf)×8) 라 sdf 가 거대하면 메모리 폭발.
+    if len(sdf_edges) > _AI_MATCH_MAX_EDGES:
+        sdf_edges = sorted(
+            sdf_edges,
+            key=lambda e: float(e.get("length") or _edge_length(e)),
+            reverse=True,
+        )[:_AI_MATCH_MAX_EDGES]
     _recompute_edge_degrees(dxf_edges)
     _recompute_edge_degrees(sdf_edges)
     for edge in dxf_edges:
@@ -2726,7 +2833,7 @@ def cad_sdf_ai_region_match():
     started = time.perf_counter()
     try:
         payload = request.get_json(force=True)
-        min_runtime_ms = max(0, min(int(payload.get("min_runtime_ms") or 0), 30000))
+        min_runtime_ms = max(0, min(int(payload.get("min_runtime_ms") or 0), 8000))
         result = _ai_graph_match(payload.get("dxf_graph") or {}, payload.get("sdf_graph") or {})
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         remaining = max(0, min_runtime_ms - elapsed_ms)
@@ -2981,12 +3088,13 @@ def remote30_prototype_run():
     job_id = secrets.token_hex(6)
     out_dir = PROTOTYPE_OUTPUT_DIR / job_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    _PROTOTYPE_JOBS[job_id] = {
+    _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
+    _register_job(_PROTOTYPE_JOBS, job_id, {
         "dxf_path": str(dxf_path),
         "out_dir": str(out_dir),
         "dxf_filename": dxf_path.name,
         "alarm_xy": alarm_xy,
-    }
+    })
     return jsonify({"ok": True, "job_id": job_id, "dxf_filename": dxf_path.name,
                     "alarm_xy": list(alarm_xy) if alarm_xy else None})
 
@@ -3061,6 +3169,15 @@ def remote30_prototype_finalize(job_id: str):
             job["alarm_xy"] = (float(ax), float(ay))
         except (TypeError, ValueError):
             pass
+    # 불리한 헤드 개수 N (미지정 시 기본 30 — run_stages_3_5 default)
+    n_heads = body.get("n_heads")
+    if n_heads is not None:
+        try:
+            n_val = int(n_heads)
+            if n_val >= 1:
+                job["k_heads"] = n_val
+        except (TypeError, ValueError):
+            pass
     return jsonify({"ok": True, "job_id": job_id,
                     "added": len(job["edit"]["added_heads"]),
                     "deleted": len(job["edit"]["deleted_indices"]),
@@ -3086,6 +3203,7 @@ def remote30_prototype_finalize_stream(job_id: str):
                 pipe_ents=job.get("pipe_ents", []),
                 layer_categories=job.get("layer_cat", {}),
                 detected_heads_pos=detected_pos,
+                k_heads=job.get("k_heads", 30),
                 alarm_xy=job.get("alarm_xy"),
                 user_added_heads=job["edit"]["added_heads"],
                 user_deleted_indices=job["edit"]["deleted_indices"],
@@ -3218,7 +3336,8 @@ def remote30_overall_run():
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
 
-    _OVERALL_JOBS[job_id] = {
+    _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
+    _register_job(_OVERALL_JOBS, job_id, {
         "dxf_path": str(dxf_path),
         "dxf_filename": dxf_path.name,
         "out_dir": str(out_dir),
@@ -3226,7 +3345,7 @@ def remote30_overall_run():
         "spec_form": dict(request.form),  # finalize 시 ZoneSpec 재구성
         "pressure_table_csv": str(pressure_csv) if pressure_csv else None,
         "pressure_table_xlsx": str(pressure_xlsx) if pressure_xlsx else None,
-    }
+    })
     return jsonify({
         "ok": True, "job_id": job_id, "dxf_filename": dxf_path.name,
         "zone_type": spec.zone_type.value, "target_floor": spec.target_floor,
@@ -3590,9 +3709,6 @@ def remote30_combined_build():
     if head_av_node is None:
         return jsonify({"ok": False,
                         "message": f"헤드망에 AV(label={av_label}) 노드가 없음 — 평면도 추출 다시 확인"}), 500
-    head_av_x = float(head_av_node["x"])
-    head_av_y = float(head_av_node["y"])
-
     # 답안 28F (GRAVITE_28F) 의 라이저 raw 좌표 (mm 도메인, 평면도와 단위 일치)
     ANSWER_28F_COORDS = {
         "1":  (-10825,  -851),    # Input (옥상 수원)
@@ -3602,28 +3718,32 @@ def remote30_combined_build():
         "5":  (-11275, -3420),    # AV 직전
         "10": (-11400, -3406),    # AV — 헤드망 source 와 정합
     }
-    answer_av_x, answer_av_y = ANSWER_28F_COORDS["10"]
-    # 답안 AV 위치 → 헤드망 AV 위치로 translation
-    tx_off = head_av_x - answer_av_x
-    ty_off = head_av_y - answer_av_y
-
-    remapped_nodes: list[dict] = []
-    for n in system_riser["nodes"]:
-        label = str(n.get("label", ""))
-        new_n = dict(n)
-        if label in ANSWER_28F_COORDS:
-            ax, ay = ANSWER_28F_COORDS[label]
-            new_n["x"] = int(round(ax + tx_off))
-            new_n["y"] = int(round(ay + ty_off))
-        remapped_nodes.append(new_n)
-
-    riser = RiserTables(
-        nodes=remapped_nodes,
-        pipes=list(system_riser["pipes"]),
-        pumps=list(system_riser.get("pumps", [])),
-        valves=list(system_riser.get("valves", [])),
-        av_node_label=av_label,
-    )
+    # 좌표 재매핑 — head_av/노드 좌표가 비숫자·누락이면 500+traceback 대신 깔끔한 400.
+    try:
+        head_av_x = float(head_av_node["x"])
+        head_av_y = float(head_av_node["y"])
+        answer_av_x, answer_av_y = ANSWER_28F_COORDS["10"]
+        tx_off = head_av_x - answer_av_x
+        ty_off = head_av_y - answer_av_y
+        remapped_nodes: list[dict] = []
+        for n in system_riser["nodes"]:
+            label = str(n.get("label", ""))
+            new_n = dict(n)
+            if label in ANSWER_28F_COORDS:
+                ax, ay = ANSWER_28F_COORDS[label]
+                new_n["x"] = int(round(ax + tx_off))
+                new_n["y"] = int(round(ay + ty_off))
+            remapped_nodes.append(new_n)
+        riser = RiserTables(
+            nodes=remapped_nodes,
+            pipes=list(system_riser["pipes"]),
+            pumps=list(system_riser.get("pumps", [])),
+            valves=list(system_riser.get("valves", [])),
+            av_node_label=av_label,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify({"ok": False,
+                        "message": f"계통도/헤드망 노드 좌표가 올바르지 않습니다: {exc}"}), 400
 
     # ── 기계실(옥상수조) 경로 (선택) → 라이저 Input 앞에 prepend.
     # 있으면 수원 경계가 탱크(m1)로 이동하고 옥상부 마찰손실이 통합망에 반영됨.
@@ -3664,6 +3784,7 @@ def remote30_combined_build():
             machine_room_plan_edges=(machine_room.get("plan_edges") if mr_attached else None),
         )
         job_id = secrets.token_hex(6)
+        _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
         out_dir = COMBINED_OUTPUT_DIR / job_id
         out_dir.mkdir(parents=True, exist_ok=True)
         out_sdf = out_dir / f"combined_{job_id}.sdf"
@@ -3799,7 +3920,10 @@ def remote30_system_extract():
         except (KeyError, TypeError, ValueError) as exc:
             return jsonify({"ok": False, "message": f"pump_x/y, av_x/y 좌표 필요: {exc}"}), 400
         use_legacy = bool(body.get("use_legacy_template"))
-        snap_tol = float(body.get("snap_tolerance_mm", 2500.0))
+        try:
+            snap_tol = float(body.get("snap_tolerance_mm", 2500.0))
+        except (TypeError, ValueError):
+            snap_tol = 2500.0
     else:
         try:
             px = float(request.form["pump_x"]); py = float(request.form["pump_y"])
@@ -3807,7 +3931,10 @@ def remote30_system_extract():
         except (KeyError, TypeError, ValueError) as exc:
             return jsonify({"ok": False, "message": f"pump_x/y, av_x/y 좌표 필요: {exc}"}), 400
         use_legacy = request.form.get("use_legacy_template", "").lower() == "true"
-        snap_tol = float(request.form.get("snap_tolerance_mm", "2500"))
+        try:
+            snap_tol = float(request.form.get("snap_tolerance_mm", "2500"))
+        except (TypeError, ValueError):
+            snap_tol = 2500.0
 
     if use_legacy:
         from remote30_prototype import extract_riser_msp_28f
@@ -3885,14 +4012,20 @@ def remote30_machineroom_extract():
             cx = float(body["conn_x"]);   cy = float(body["conn_y"])
         except (KeyError, TypeError, ValueError) as exc:
             return jsonify({"ok": False, "message": f"source_x/y, conn_x/y 좌표 필요: {exc}"}), 400
-        snap_tol = float(body.get("snap_tolerance_mm", 3000.0))
+        try:
+            snap_tol = float(body.get("snap_tolerance_mm", 3000.0))
+        except (TypeError, ValueError):
+            snap_tol = 3000.0
     else:
         try:
             sx = float(request.form["source_x"]); sy = float(request.form["source_y"])
             cx = float(request.form["conn_x"]);   cy = float(request.form["conn_y"])
         except (KeyError, TypeError, ValueError) as exc:
             return jsonify({"ok": False, "message": f"source_x/y, conn_x/y 좌표 필요: {exc}"}), 400
-        snap_tol = float(request.form.get("snap_tolerance_mm", "3000"))
+        try:
+            snap_tol = float(request.form.get("snap_tolerance_mm", "3000"))
+        except (TypeError, ValueError):
+            snap_tol = 3000.0
 
     try:
         dxf_path = _save_upload("machineroom_dxf_file", {".dxf"}, required=True)

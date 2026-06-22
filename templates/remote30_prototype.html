@@ -763,6 +763,12 @@
 
         <p id="wb-edit-status" class="info-line" style="font-size: 0.72rem; min-height: 1.2em;">캔버스에서 모드 버튼을 누른 뒤 클릭/드래그하세요.</p>
 
+        <div class="field" style="margin: 0 0 8px; display: flex; align-items: center; gap: 8px;">
+          <label for="wb-n-heads" style="font-size: 0.74rem; font-weight: 600; white-space: nowrap;">불리한 헤드 개수 N</label>
+          <input id="wb-n-heads" type="number" min="1" step="1" value="30" style="width: 80px;">
+          <span class="info-line" style="font-size: 0.68rem; color: var(--muted);">후보보다 크면 있는 만큼 선정</span>
+        </div>
+
         <button id="wb-finalize" type="button" style="width: 100%; padding: 12px; background: #1e40af; color: #fff; border: 1px solid #1e40af; font-weight: 700; cursor: pointer; font-size: 0.95rem;" disabled>▶ 배관망 완성 (Stage 3~5 진행)</button>
       </section>
 
@@ -797,14 +803,14 @@
             <div class="stage-dot" style="border:2px solid #0a1228">3</div>
             <div>
               <div class="stage-title">전체 배관망 인식 (그래프 시각화)</div>
-              <div class="stage-desc">snap + 컴포넌트 bridge + 헤드 drop line 적용된 내부 그래프 — 30 헤드 선정의 거리 계산이 사용하는 정확한 길</div>
+              <div class="stage-desc">snap + 컴포넌트 bridge + 헤드 drop line 적용된 내부 그래프 — 불리한 헤드 선정의 거리 계산이 사용하는 정확한 길</div>
             </div>
             <div class="stage-elapsed" id="stage-elapsed-3">—</div>
           </div>
           <div id="stage-row-4" class="stage-row">
             <div class="stage-dot" style="border:2px solid var(--s2)">4</div>
             <div>
-              <div class="stage-title">가장 불리한 30 헤드 + 경로 색출</div>
+              <div class="stage-title" id="stage4-title">가장 불리한 30 헤드 + 경로 색출</div>
               <div class="stage-desc">알람밸브 자동 식별 → Dijkstra → top-K + subgraph union</div>
             </div>
             <div class="stage-elapsed" id="stage-elapsed-4">—</div>
@@ -1213,7 +1219,7 @@
 
       // PR1.6 — Stage 4: AV → worst-30 progressive reach
       stage4_intro: { budgetMs: 600, handler: () => {
-        overlayInfoEl.textContent = "[Stage 4] 알람밸브에서 가장 불리한 30 헤드로…";
+        overlayInfoEl.textContent = `[Stage 4] 알람밸브에서 가장 불리한 ${state.k_heads || 30} 헤드로…`;
       }},
       stage4_switch: { budgetMs: 300, handler: () => {
         state.revealed_heads_4 = 0;
@@ -1903,6 +1909,14 @@
       };
       const ax = alarmXEl.value.trim(), ay = alarmYEl.value.trim();
       if (ax && ay) { payload.alarm_x = ax; payload.alarm_y = ay; }
+      const nHeadsEl = document.getElementById("wb-n-heads");
+      const nHeads = parseInt(nHeadsEl && nHeadsEl.value, 10);
+      if (Number.isFinite(nHeads) && nHeads >= 1) {
+        payload.n_heads = nHeads;
+        state.k_heads = nHeads;
+        const t4 = document.getElementById("stage4-title");
+        if (t4) t4.textContent = `가장 불리한 ${nHeads} 헤드 + 경로 색출`;
+      }
       const r = await fetch(`/api/remote30/prototype/finalize/${state.jobId}`, {
         method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload),

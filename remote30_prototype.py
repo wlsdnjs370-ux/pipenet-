@@ -136,7 +136,8 @@ def _categorize_layer(name: str) -> str:
             return "HEAD"
         if any(k in name.upper() for k in ("ALARM", "RISER", "라이저", "STAND-PIPE")):
             return "ALARM"
-        if any(k in name for k in ("SP", "배관", "소방", "가지관", "후렉시블", "FLEX")):
+        if any(k in name for k in ("SP", "배관", "소방", "가지관", "후렉시블", "FLEX")) \
+                or any(k in name.upper() for k in ("PIPE", "PIPING")):
             return "PIPE"
         if any(k in n for k in ("text", "문자")) or "TEX" in name:
             return "TEXT"
@@ -1497,9 +1498,13 @@ def _system_path_to_riser_dict(
 # ────────────────────────────────────────────────────────────────────────────
 
 # 기계실 소화배관 레이어 (대명동 201동 옥상층 평면도 기준).
-# 스프링클러(SP) 계통 + 물탱크. 도면별 레이어명이 달라 layer_filter 미지정 시
-# 존재하는 것만 추려 쓰고, 매칭 0건이면 build_system_graph 의 키워드 자동 필터 사용.
-MACHINE_ROOM_SP_LAYERS = {"-소화(SP-고)", "-소화(SP-저)", "물탱크"}
+# 스프링클러(SP) 계통만 — 물탱크 레이어는 배관이 아니라 탱크 박스 도면(외곽선·
+# 해치 LINE 54+)이라 그래프에 넣으면 가짜 배관 노드 60+ 와 추정 bridge 다발이
+# 생겨 평면도가 엉키고 배치 bbox 가 틀어진다. 탱크는 수원 한 점(m1)으로만 표현하며,
+# SP 배관이 탱크 토출구 근처(실측 252mm)에 끝점을 가지므로 수원 스냅은 그대로 동작.
+# 도면별 레이어명이 달라 layer_filter 미지정 시 존재하는 것만 추려 쓰고,
+# 매칭 0건이면 build_system_graph 의 키워드 자동 필터 사용.
+MACHINE_ROOM_SP_LAYERS = {"-소화(SP-고)", "-소화(SP-저)"}
 
 
 def extract_machine_room_path(
@@ -1954,6 +1959,13 @@ def _build_graph(
       - closed PL (첫점=끝점) 은 배관 아니므로 제외 (알람밸브 박스 등)
       - min_edge_mm 미만 segment 는 그래프 edge 로 사용 안 함
 
+    Geometry fallback (2026-06-22):
+      배관이 전용 레이어가 아니라 기본 레이어 '0'(또는 이름에 키워드 없는 레이어)에
+      작도된 도면(예: LH306동)은 "PIPE" 카테고리 필터가 전부 걸러 그래프가 빈다.
+      → PIPE-strict 로 먼저 시도하고 edge 가 0 이면 HEAD/TEXT/ALARM/ARCH/EXCLUDE 를
+      제외한 나머지(OTHER·기본 '0' 포함)를 배관 geometry 로 재시도. 이름이 제대로 된
+      도면은 1차 통과로 동일 동작, 키워드 미스인 도면만 fallback 으로 살린다.
+
     Endpoint 동등성: _NodeIndex (epsilon=SNAP_TOL_MM mm) 기반 cluster.
     노드 좌표는 raw (DXF 원본) — 격자에 정렬 안 됨, 시각화 시 비뚤어짐 없음.
 
@@ -1966,10 +1978,17 @@ def _build_graph(
     idx = node_index if node_index is not None else _NodeIndex()
     min_sq = min_edge_mm * min_edge_mm
 
+    # 배관 geometry 가 될 수 없는 카테고리 — fallback 시에도 항상 제외.
+    _NON_PIPE_CATS = {"HEAD", "TEXT", "ALARM", "ARCH", "EXCLUDE"}
+    _pred_mode = "strict"   # "strict" → PIPE 만 / "broad" → 비-배관 카테고리만 제외
+
     def is_pipe(layer: str) -> bool:
         if layer_categories is None:
             return True
-        return layer_categories.get(layer, "OTHER") == "PIPE"
+        cat = layer_categories.get(layer, "OTHER")
+        if _pred_mode == "broad":
+            return cat not in _NON_PIPE_CATS
+        return cat == "PIPE"
 
     def add_edge(ax: float, ay: float, bx: float, by: float, length: float | None = None) -> None:
         a = idx.canonical(ax, ay)
@@ -1987,46 +2006,55 @@ def _build_graph(
         if prev is None or length < prev:
             edge_len[key] = length
 
-    for en in pipe_entities:
-        if not is_pipe(en.get("l", "")):
-            continue
-        et = en["t"]
-        if et == "L":
-            x1, y1, x2, y2 = en["p"]
-            # 짧은 edge 사전 컷 (epsilon-cluster 전 raw 거리)
-            if (x2 - x1) ** 2 + (y2 - y1) ** 2 < min_sq:
+    def _consume() -> None:
+        for en in pipe_entities:
+            if not is_pipe(en.get("l", "")):
                 continue
-            add_edge(x1, y1, x2, y2)
-        elif et == "PL":
-            pts = en["p"]
-            if len(pts) < 2:
-                continue
-            # closed polygon 감지 → 배관 아님
-            first = pts[0]; last = pts[-1]
-            if len(pts) >= 3 and math.hypot(first[0] - last[0], first[1] - last[1]) <= CLOSED_PL_TOL_MM:
-                continue
-            for p0, p1 in zip(pts, pts[1:]):
-                if (p1[0] - p0[0]) ** 2 + (p1[1] - p0[1]) ** 2 < min_sq:
+            et = en["t"]
+            if et == "L":
+                x1, y1, x2, y2 = en["p"]
+                # 짧은 edge 사전 컷 (epsilon-cluster 전 raw 거리)
+                if (x2 - x1) ** 2 + (y2 - y1) ** 2 < min_sq:
                     continue
-                add_edge(p0[0], p0[1], p1[0], p1[1])
-        elif et == "A":
-            # ARC — 양 끝점을 graph edge 로. 길이는 호 길이 (chord 아님).
-            cx, cy = en["c"]
-            r = float(en.get("r", 0.0) or 0.0)
-            if r <= 0.0:
-                continue
-            sa, ea = en.get("a", [0.0, 0.0])
-            sa_r = math.radians(sa); ea_r = math.radians(ea)
-            ax = cx + r * math.cos(sa_r); ay = cy + r * math.sin(sa_r)
-            bx = cx + r * math.cos(ea_r); by = cy + r * math.sin(ea_r)
-            # 호 sweep 각도 정규화 (0~360)
-            sweep = ea - sa
-            while sweep < 0: sweep += 360.0
-            while sweep >= 360.0: sweep -= 360.0
-            arc_len = r * math.radians(sweep)
-            if arc_len < min_edge_mm:
-                continue
-            add_edge(ax, ay, bx, by, length=arc_len)
+                add_edge(x1, y1, x2, y2)
+            elif et == "PL":
+                pts = en["p"]
+                if len(pts) < 2:
+                    continue
+                # closed polygon 감지 → 배관 아님
+                first = pts[0]; last = pts[-1]
+                if len(pts) >= 3 and math.hypot(first[0] - last[0], first[1] - last[1]) <= CLOSED_PL_TOL_MM:
+                    continue
+                for p0, p1 in zip(pts, pts[1:]):
+                    if (p1[0] - p0[0]) ** 2 + (p1[1] - p0[1]) ** 2 < min_sq:
+                        continue
+                    add_edge(p0[0], p0[1], p1[0], p1[1])
+            elif et == "A":
+                # ARC — 양 끝점을 graph edge 로. 길이는 호 길이 (chord 아님).
+                cx, cy = en["c"]
+                r = float(en.get("r", 0.0) or 0.0)
+                if r <= 0.0:
+                    continue
+                sa, ea = en.get("a", [0.0, 0.0])
+                sa_r = math.radians(sa); ea_r = math.radians(ea)
+                ax = cx + r * math.cos(sa_r); ay = cy + r * math.sin(sa_r)
+                bx = cx + r * math.cos(ea_r); by = cy + r * math.sin(ea_r)
+                # 호 sweep 각도 정규화 (0~360)
+                sweep = ea - sa
+                while sweep < 0: sweep += 360.0
+                while sweep >= 360.0: sweep -= 360.0
+                arc_len = r * math.radians(sweep)
+                if arc_len < min_edge_mm:
+                    continue
+                add_edge(ax, ay, bx, by, length=arc_len)
+
+    _consume()
+    # PIPE-strict 가 빈 그래프를 내면 (배관이 '0' 등 OTHER 레이어에 작도된 도면)
+    # 비-배관 카테고리만 제외하고 재시도. layer_categories=None 이면 두 모드가 동일해
+    # 재시도해도 결과 불변이므로 strict 결과를 그대로 둔다.
+    if not edge_len and layer_categories is not None:
+        _pred_mode = "broad"
+        _consume()
     return g, edge_len
 
 
@@ -2315,28 +2343,20 @@ def force_spanning_tree(
 
 
 def _find_head_candidates(pipe_entities: list[dict], layer_categories: dict[str, str]) -> list[HeadCandidate]:
-    """HEAD 카테고리 레이어의 INSERT 또는 CIRCLE 위치를 헤드 후보로."""
-    heads: list[HeadCandidate] = []
-    seen: set[tuple[float, float]] = set()
-    for en in pipe_entities:
-        cat = layer_categories.get(en["l"], "OTHER")
-        if cat != "HEAD":
-            continue
-        if en["t"] == "I":
-            x, y = en["p"][0], en["p"][1]
-            pos = _round_pt(x, y)
-            if pos in seen:
-                continue
-            seen.add(pos)
-            heads.append(HeadCandidate(pos=pos, raw=(x, y), block_name=en.get("n", ""), layer=en["l"]))
-        elif en["t"] == "C":
-            cx, cy = en["c"][0], en["c"][1]
-            pos = _round_pt(cx, cy)
-            if pos in seen:
-                continue
-            seen.add(pos)
-            heads.append(HeadCandidate(pos=pos, raw=(cx, cy), block_name="(circle)", layer=en["l"]))
-    return heads
+    """자동 헤드 후보 — Stage 2 ``detect_heads`` 결과를 그대로 사용.
+
+    과거엔 HEAD 레이어의 INSERT/CIRCLE 만 모으는 별도 단순 로직이었으나, 그러면
+    사용자가 Stage 2 에서 보는 헤드 집합(detect_heads: HATCH 삼각형·layer-agnostic
+    드라이팬던트·근접 클러스터링 포함)과 자동 fallback 경로가 어긋났다(예: 대명동
+    32 vs 28). select_worst30_heads 가 manual_heads 없이 호출될 때도 동일 집합을
+    쓰도록 detect_heads 로 위임한다. raw=pos (클러스터 대표 cue 좌표).
+    """
+    detections = detect_heads(pipe_entities, layer_categories)
+    return [
+        HeadCandidate(pos=_round_pt(d.pos[0], d.pos[1]), raw=d.pos,
+                      block_name=d.block_name or f"({d.kind})", layer=d.layer)
+        for d in detections
+    ]
 
 
 def _find_source(pipe_entities: list[dict], layer_categories: dict[str, str]) -> tuple[tuple[float, float] | None, str]:
@@ -2488,32 +2508,42 @@ def _bridge_components(
     bridge_edges_out: 주어지면 추가된 bridge edge 의 (min,max) 키를 누적.
         호출자가 "실제 배관"과 "알고리즘이 추정한 연결"을 구분 렌더할 수 있음.
     """
-    comps = _connected_components(graph)
-    if len(comps) <= 1:
-        return 0
-    # main = 가장 큰 component
-    main = max(comps, key=len)
-    others = [c for c in comps if c is not main]
-    bridges = 0
-    for comp in others:
-        # comp 의 각 노드에서 main 의 가장 가까운 노드 찾기 (작은 comp 기준 O(|comp|*|main|))
-        best = None
-        bestd = float("inf")
-        for u in comp:
-            for v in main:
-                d = math.hypot(u[0] - v[0], u[1] - v[1])
-                if d < bestd:
-                    bestd = d
-                    best = (u, v)
-        if best and bestd <= max_bridge_mm:
-            u, v = best
-            graph[u].add(v); graph[v].add(u)
-            key = (min(u, v), max(u, v))
-            edge_len[key] = bestd
-            if bridge_edges_out is not None:
-                bridge_edges_out.add(key)
-            bridges += 1
-    return bridges
+    # 한 번의 pass 만 돌면 stale-main chain 문제 발생: A→main 으로 병합되며
+    # main 이 커지면 그 다음에야 tol 안에 드는 comp(B) 가 같은 pass 에선 이미
+    # 평가·skip 된 뒤라 연결되지 않음 (예: LH306 입상 — 알람밸브 stub 가 중간
+    # 입상 comp 가 main 에 붙은 직후 1.7m 거리로 좁혀지지만 그 pass 는 끝나버림).
+    # → comp 를 재계산하며 더 이상 병합이 없을 때까지 반복 (single-linkage).
+    total = 0
+    while True:
+        comps = _connected_components(graph)
+        if len(comps) <= 1:
+            break
+        # main = 가장 큰 component
+        main = max(comps, key=len)
+        others = [c for c in comps if c is not main]
+        bridges = 0
+        for comp in others:
+            # comp 의 각 노드에서 main 의 가장 가까운 노드 찾기 (작은 comp 기준 O(|comp|*|main|))
+            best = None
+            bestd = float("inf")
+            for u in comp:
+                for v in main:
+                    d = math.hypot(u[0] - v[0], u[1] - v[1])
+                    if d < bestd:
+                        bestd = d
+                        best = (u, v)
+            if best and bestd <= max_bridge_mm:
+                u, v = best
+                graph[u].add(v); graph[v].add(u)
+                key = (min(u, v), max(u, v))
+                edge_len[key] = bestd
+                if bridge_edges_out is not None:
+                    bridge_edges_out.add(key)
+                bridges += 1
+        total += bridges
+        if bridges == 0:
+            break
+    return total
 
 
 def select_worst30_heads(
@@ -2918,7 +2948,9 @@ def build_input_tables(
             "in": la, "out": lb,
             "type": "KSD 3507",
             "dia": dia,
-            "length": round(length_mm / 1000.0, 2),
+            # PIPENET/K-solver 는 length=0 배관을 거부(특이행렬). 좌표가 거의 겹치는
+            # 노드쌍(클러스터 잔여)은 round 후 0.0 이 되므로 10mm 하한 강제.
+            "length": max(round(length_mm / 1000.0, 3), 0.01),
             "elev": 0.0,
             "c": "120",
             "status": "Normal",
@@ -3591,7 +3623,7 @@ def run_stages_0_2(
     # (그래프에 이미 같은 epsilon 안 노드 있으면 그 raw 좌표 반환 → drop line 불필요).
     head_drop_edges: set = set()
     head_pos_list = []
-    for h in detect_heads(pipe_ents, layer_categories):
+    for h in head_detections:  # Stage 2 결과 재사용 (detect_heads 재호출 제거)
         head_pos_list.append(node_index.canonical(h.pos[0], h.pos[1]))
     for hp in head_pos_list:
         if hp in graph:

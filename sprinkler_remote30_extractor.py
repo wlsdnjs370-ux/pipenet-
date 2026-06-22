@@ -27,7 +27,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
-DEFAULT_PIPE_LAYER_KEYWORDS = ["SP", "SPR", "SPRINKLER", "배관", "소방", "가지관", "후렉시블", "후렉", "FLEX"]
+DEFAULT_PIPE_LAYER_KEYWORDS = ["SP", "SPR", "SPRINKLER", "배관", "소방", "가지관", "후렉시블", "후렉", "FLEX", "PIPE", "PIPING"]
 DEFAULT_HEAD_LAYER_KEYWORDS = ["HEAD", "헤드", "SP-H", "SPR_HEAD", "하향식", "하향", "상향식", "상향", "헤드반경"]
 DEFAULT_TEXT_LAYER_KEYWORDS = ["TEXT", "문자", "관경", "SP", "TEX"]
 DEFAULT_ARCH_LAYER_KEYWORDS = ["A-", "ARCH", "WALL", "DOOR", "WINDOW", "건축", "가구", "DIM", "SHEET", "AREA"]

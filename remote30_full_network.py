@@ -427,8 +427,7 @@ def build_riser_hsp_pump(spec: ZoneSpec, profile: BuildingPressureProfile | None
         _pipe("r7", "5", "10",  125,  1.5,  1.0),
     ]
     pumps = [
-        _pump_fan(str(i + 1), "100" if i == 0 else "100", "1",
-                  library_pump=spec.pump_library_name)
+        _pump_fan(str(i + 1), "100", "1", library_pump=spec.pump_library_name)
         for i in range(max(1, spec.pump_count))
     ]
     return RiserTables(
@@ -546,9 +545,9 @@ def _layout_riser_as_schematic(
 
     Args:
         riser_nodes: 라이저 노드 리스트. 인덱스 0 = 펌프, 마지막 = AV.
-        anchor_xy: 막대 하단(AV) 을 놓을 좌표. 헤드 AV 노드 좌표가 아니라
-            헤드 bbox 가로 중앙 위로 잡아야 막대가 군집 중앙에서 내려와
-            한 흐름으로 연결돼 보임 (우상단 외딴 막대 회피).
+        anchor_xy: 막대 하단(AV) 을 놓을 좌표. 헤드망 source 노드 실좌표를 넘겨
+            AV 를 source 에 정합하면 둘을 잇는 헤드 첫 배관(선언 길이 ~0)이
+            긴 선으로 늘어나지 않음.
         head_yspan: 헤드망 bbox 의 y 범위 — 라이저 막대 길이는 이의 80%.
     """
     n = len(riser_nodes)
@@ -684,13 +683,14 @@ def stitch_riser_and_heads(
     true_riser_nodes = [n for n in riser.nodes if str(n["label"]) not in mr_set]
     mr_nodes = [n for n in riser.nodes if str(n["label"]) in mr_set]
 
-    # 라이저 좌표 schematic 재배치 — 헤드 bbox 가로 중앙 위에 수직 막대.
-    #   기존엔 헤드 AV 노드 좌표(=헤드망 우측 끝)에 anchor 해 외딴 막대로 보였음.
+    # 라이저 좌표 schematic 재배치 — AV(막대 하단)를 헤드망 source 노드 실좌표에 snap.
+    #   AV 노드는 (1) 라이저 막대 하단이자 (2) 헤드망 첫 메인(파이프 av_lbl)의 source 로
+    #   같은 논리 분기점이다. 막대를 헤드 군집 중앙 위에 띄우면 AV 가 헤드 source 위치에서
+    #   떨어져, 그 둘을 잇는 헤드 첫 배관(선언 길이 ~0)이 두 좌표계를 가로지르는 긴 선으로
+    #   그려졌다. → anchor 를 head_av_node 좌표로 잡아 AV 를 source 에 정합, 연결선을 0 으로.
     if head_av_node is not None and head_xs and head_ys:
         try:
-            head_cx = (min(head_xs) + max(head_xs)) / 2.0
-            head_top = max(head_ys)
-            anchor_xy = (head_cx, head_top + 0.18 * head_yspan)
+            anchor_xy = (float(head_av_node["x"]), float(head_av_node["y"]))
             translated_riser_nodes = _layout_riser_as_schematic(
                 true_riser_nodes, anchor_xy, head_yspan=head_yspan,
             )
@@ -730,9 +730,30 @@ def stitch_riser_and_heads(
             continue
         head_nodes_filtered.append(n)
 
+    # 파이프 라벨 전역 유일화 — 계통도·평면도·기계실이 전부 r1.. 컨벤션을 쓰므로
+    # 합치면 라벨이 충돌한다. parse_sdf 의 plabel_to_pid 는 라벨 문자열로 keying 해
+    # 같은 라벨 두 파이프를 한 K-solver pid 로 접어버려 KFP 토폴로지가 붕괴된다.
+    # → 충돌하는 두 번째 이후 항목만 개명(원본 dict 불변, 사본 생성).
+    combined_pipes: list[dict] = []
+    seen_pipe_labels: set[str] = set()
+    for p in (list(riser.pipes) + list(head_tables.pipes)):
+        lbl = str(p.get("label", ""))
+        if lbl and lbl not in seen_pipe_labels:
+            seen_pipe_labels.add(lbl)
+            combined_pipes.append(p)
+            continue
+        base = lbl or "p"
+        k = 2
+        new_lbl = f"{base}_{k}"
+        while new_lbl in seen_pipe_labels:
+            k += 1
+            new_lbl = f"{base}_{k}"
+        seen_pipe_labels.add(new_lbl)
+        combined_pipes.append({**p, "label": new_lbl})
+
     return CombinedTables(
         nodes=translated_riser_nodes + head_nodes_filtered,
-        pipes=list(riser.pipes) + list(head_tables.pipes),
+        pipes=combined_pipes,
         nozzles=list(head_tables.nozzles),
         fittings=list(head_tables.fittings),
         equipment=list(head_tables.equipment),

@@ -26,6 +26,9 @@ data/prototype_runs/
 data/remote30_outputs/
 data/feedback_uploads/
 data/exports/
+data/combined_runs/
+data/system_runs/
+data/machineroom_runs/
 data/_smoke*
 models/
 runs/

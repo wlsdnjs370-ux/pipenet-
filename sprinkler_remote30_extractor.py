@@ -993,10 +993,15 @@ def build_sdf_xml(tables: dict, settings: Remote30Settings, *, title: str = "Rem
     for idx, row in enumerate(tables["nodes"], 1):
         label = str(idx)
         node_label_map[row["node_id"]] = label
+        # ★ 알람밸브(node_type=="source") 는 망의 급수 경계 — io-node="Input" +
+        # Calculation-spec(1기압) 으로 표시. 없으면 SDF/KFP 에 수원이 없어 PIPENET·
+        # K-solver 가 "수원 부재" 로 계산을 거부한다(평면도 단독 헤드검출 경로 재현).
+        # emit_full_sdf 통합망과 동일 컨벤션(io-node="Input", pressure=101325 Pa).
+        is_source = str(row.get("node_type", "")) == "source"
         node_el = ET.SubElement(
             nodes_el, "Node",
             elevation=f"{float(row.get('z', 0.0)):g}",
-            **{"io-node": "No"},
+            **{"io-node": "Input" if is_source else "No"},
             label=label,
         )
         # x/y 는 PIPENET 좌표(metres). build 시 cad_unit_to_m 이미 곱해진 상태.
@@ -1004,6 +1009,8 @@ def build_sdf_xml(tables: dict, settings: Remote30Settings, *, title: str = "Rem
         x_mm = float(row.get("x", 0.0)) * 1000.0
         y_mm = float(row.get("y", 0.0)) * 1000.0
         ET.SubElement(node_el, "Position", x=f"{x_mm:g}", y=f"{y_mm:g}")
+        if is_source:
+            ET.SubElement(node_el, "Calculation-spec", pressure="101325")
 
     # Pipes
     pipes_el = ET.SubElement(network, "Pipes")

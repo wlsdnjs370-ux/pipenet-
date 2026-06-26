@@ -308,11 +308,18 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
         name = str(ly.dxf.name)
         is_off = bool(ly.is_off())
         is_frozen = bool(ly.is_frozen())
+        try:
+            no_plot = int(getattr(ly.dxf, "plot", 1)) == 0
+        except Exception:
+            no_plot = False
         bundle.layer_visibility[name] = {
             "is_off": is_off,
             "is_frozen": is_frozen,
             "color": color,
+            "no_plot": no_plot,
         }
+        # CAD 화면에 안 보이는 것만 숨김 (off/frozen/color<0). plot=0(비출력) 레이어는
+        # 화면엔 보이므로 렌더해 실제 도면과 동일 규격 유지.
         if is_off or is_frozen or color < 0:
             bundle.hidden_layers.add(name)
 
@@ -381,6 +388,7 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
                     bundle.entities.append({"t": "I", "l": layer, "p": [ix_w, iy_w],
                                            "n": str(e.dxf.name)})
                 _upd(ix_w, iy_w)
+                # ARCH/EXCLUDE 레이어 블록도 폭발 — 실제 CAD 도면과 동일하게 건축 배경 렌더.
                 if depth >= MAX_DEPTH:
                     return
                 try:
@@ -965,6 +973,8 @@ SYSTEM_PIPE_LAYER_KEYWORDS: tuple[str, ...] = (
     "SP",
     # 한/영 일반어
     "배관", "PIPE", "RISER",
+    # 소화전용 영문 레이어 (LH 지하층배관도 컨벤션 — FIRE, FIRESYM 에 소화 배관망)
+    "FIRE", "소화", "HYD", "HYDR", "옥내소화",
     # 도면 표기 빈도 높음
     "입상", "가지", "분기", "감압밸브",
     # 47 도면 학습 결과 신규 (양주옥정 컨벤션)
@@ -1151,11 +1161,43 @@ def _auto_pipe_layer_filter(entities: list[dict],
     return matched
 
 
+def _drawing_scale_ratio(line_ents: list[dict], ref_median_mm: float = 200.0) -> float:
+    """배관 segment 스케일에서 그래프 허용치 비례계수(0<r≤1) 산출.
+
+    실좌표 평면도(가지관 run 이 수십 cm~수 m)는 median ≥ ref → r=1.0 → SNAP_TOL/
+    MIN_EDGE/bridge 가 기존 절대값 그대로(회귀 없음). 용지 스케일 계통도(segment 가
+    ~mm 인 스키매틱)는 median/ref 로 축소 → 50mm 절대 허용치가 도면을 통째로 뭉개거나
+    배관선을 노이즈로 잘라버리지 않게 함.
+
+    ref_median_mm=200: 실배관 최소 run 과 스키매틱(~1mm) 사이 100배 간극에 위치 →
+    경계 부근 도면이 없어 분류가 robust.
+    """
+    segs: list[float] = []
+    for en in line_ents:
+        t = en.get("t")
+        if t == "L":
+            p = en["p"]
+            segs.append(math.hypot(p[2] - p[0], p[3] - p[1]))
+        elif t == "PL":
+            pts = en["p"]
+            for i in range(len(pts) - 1):
+                segs.append(math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]))
+    segs = [s for s in segs if s > 1e-9]
+    if not segs:
+        return 1.0
+    segs.sort()
+    med = segs[len(segs) // 2]
+    if med <= 0:
+        return 1.0
+    return min(1.0, med / ref_median_mm)
+
+
 def build_system_graph(
     entities: list[dict],
     bridge_tolerances_mm: tuple[float, ...] = (200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0),
     layer_filter: set[str] | None = None,
     auto_filter_min_lines: int = 20,
+    force_connect: bool = False,
 ) -> tuple[dict, dict, dict]:
     """계통도 entity 에서 LINE/POLYLINE 만 추려 무방향 그래프 빌드 + 다단계 bridge.
 
@@ -1184,11 +1226,25 @@ def build_system_graph(
         filter_used = set(layer_filter)
         fallback = False
 
-    graph, edge_len = _build_graph(line_ents)
+    # 스케일 적응 — 용지 스케일 계통도(좌표가 작은 스키매틱) 대응. 실좌표 평면도는 r=1.0.
+    scale_ratio = _drawing_scale_ratio(line_ents)
+    snap_eps = SNAP_TOL_MM * scale_ratio
+    min_edge = MIN_PIPE_EDGE_MM * scale_ratio
+    node_index = _NodeIndex(epsilon_mm=snap_eps) if scale_ratio < 1.0 else None
+    graph, edge_len = _build_graph(line_ents, node_index=node_index, min_edge_mm=min_edge)
     comps_before = len(_connected_components(graph))
     total_bridges = 0
     for tol in bridge_tolerances_mm:
-        total_bridges += _bridge_components(graph, edge_len, max_bridge_mm=tol)
+        total_bridges += _bridge_components(graph, edge_len, max_bridge_mm=tol * scale_ratio)
+    # force_connect — 거리 무제한으로 남은 모든 component 를 가장 가까운 endpoint 쌍으로
+    #   강제 연결 (single-linkage MST). 깨끗한 배관망 파일이 없어 풀 도면(geometry 파편화)
+    #   하나로 추출해야 할 때 사용. 강제 연결된 edge 는 추정(estimated)이므로 별도 추적해
+    #   호출자가 점선·다른 색으로 구분 렌더할 수 있게 한다.
+    forced_edges: set = set()
+    if force_connect:
+        total_bridges += _bridge_components(
+            graph, edge_len, max_bridge_mm=float("inf"), bridge_edges_out=forced_edges,
+        )
     comps_after = len(_connected_components(graph))
     stats = {
         "line_entity_count": len(line_ents),
@@ -1198,8 +1254,16 @@ def build_system_graph(
         "components_before_bridge": comps_before,
         "components_after_bridge": comps_after,
         "bridges_applied": total_bridges,
+        "forced_bridges": len(forced_edges),
+        "forced_bridge_edges": [
+            [[int(round(a[0])), int(round(a[1]))], [int(round(b[0])), int(round(b[1]))]]
+            for (a, b) in forced_edges
+        ],
         "layer_filter_used": sorted(filter_used) if filter_used else None,
         "layer_filter_fallback_no_match": fallback,
+        "scale_ratio": round(scale_ratio, 6),
+        "snap_eps_mm": round(snap_eps, 3),
+        "min_edge_mm": round(min_edge, 3),
     }
     return graph, edge_len, stats
 
@@ -1279,6 +1343,7 @@ def extract_system_path(
     av_xy: tuple[float, float],
     snap_tolerance_mm: float = 2500.0,
     layer_filter: set[str] | None = None,
+    waypoints: list[tuple[float, float]] | None = None,
 ) -> dict:
     """계통도 DXF 에서 펌프 → AV 실제 배관망 경로 추출 (v1: 토폴로지만).
 
@@ -1298,26 +1363,65 @@ def extract_system_path(
     if not entities:
         raise ValueError("계통도 entity 비어있음 — DXF 파싱 결과 확인 필요")
 
-    graph, edge_len, stats = build_system_graph(entities, layer_filter=layer_filter)
+    graph, edge_len, stats = build_system_graph(entities, layer_filter=layer_filter,
+                                                force_connect=True)
     if not graph:
         raise ValueError(f"LINE entity 가 없음 (전체 entity {len(entities)}개 중 LINE/PL 0개)")
 
-    pump_node, pump_d = find_nearest_graph_node_constrained(graph, pump_xy, max_dist_mm=snap_tolerance_mm)
-    if pump_node is None:
-        raise ValueError(
-            f"펌프 클릭 좌표 ({int(pump_xy[0])}, {int(pump_xy[1])}) 근처 "
-            f"{snap_tolerance_mm:.0f}mm 안에 배관 끝점 없음. "
-            f"가장 가까운 노드까지 {pump_d:.0f}mm. 더 정확히 클릭하거나 snap_tolerance_mm 증가."
-        )
-    av_node, av_d = find_nearest_graph_node_constrained(graph, av_xy, max_dist_mm=snap_tolerance_mm)
-    if av_node is None:
-        raise ValueError(
-            f"AV 클릭 좌표 ({int(av_xy[0])}, {int(av_xy[1])}) 근처 "
-            f"{snap_tolerance_mm:.0f}mm 안에 배관 끝점 없음. "
-            f"가장 가까운 노드까지 {av_d:.0f}mm."
-        )
+    # 클릭 → 가장 가까운 그래프 노드. 거리 제한 없이 무조건 가장 가까운 노드로 끌어붙인다
+    # (사용자 요구: "배관끼리 연결이 안되도 그냥 강제로 가까운데에 연결되게, 끝점 연결 상관없이").
+    # force_connect=True 로 그래프가 단일 컴포넌트라 어떤 노드 쌍이든 경로가 보장된다.
+    def _snap(xy):
+        n = _nearest_graph_node(graph, (float(xy[0]), float(xy[1])))
+        d = math.hypot(n[0] - float(xy[0]), n[1] - float(xy[1])) if n else float("inf")
+        return n, d
 
-    path = _shortest_path(graph, edge_len, pump_node, av_node)
+    pump_node, pump_d = _snap(pump_xy)
+    av_node, av_d = _snap(av_xy)
+    if pump_node is None or av_node is None:
+        raise ValueError("그래프에 노드가 없어 펌프/AV 를 매핑할 수 없음 (LINE entity 확인 필요).")
+
+    # 경유점(waypoint) — 클릭 순서대로 가장 가까운 노드에 강제 snap. 경로는
+    # 펌프 → wp1 → wp2 → ... → AV 의 최단경로를 이어붙여 반드시 통과시킨다.
+    wp_nodes: list = []
+    if waypoints:
+        for wxy in waypoints:
+            wnode, _wd = _snap(wxy)
+            if wnode is not None and (not wp_nodes or wp_nodes[-1] != wnode):
+                wp_nodes.append(wnode)
+
+    # 추정 bridge(force_connect 직선 wormhole) penalty — 기계실 추출과 동일 원리.
+    # 패널티 없으면 추정 직선이 가장 짧아 선호돼 도면을 가로지르는 "엉뚱한 경로"가 된다.
+    _forced_keys: set[tuple] = set()
+    for (ea, eb) in (stats.get("forced_bridge_edges") or []):
+        _ka = (int(ea[0]), int(ea[1]))
+        _kb = (int(eb[0]), int(eb[1]))
+        _forced_keys.add((min(_ka, _kb), max(_ka, _kb)))
+
+    # 경로 구성: 펌프 → (경유점들) → AV 의 구간별 최단경로 연결.
+    via_seq = [pump_node, *wp_nodes, av_node]
+    path: list = []
+    for seg_i in range(len(via_seq) - 1):
+        a_node, b_node = via_seq[seg_i], via_seq[seg_i + 1]
+        if a_node == b_node:
+            continue
+        seg = _shortest_path(graph, edge_len, a_node, b_node, penalty_keys=_forced_keys)
+        if not seg or len(seg) < 2:
+            via_label = (
+                "펌프" if seg_i == 0 else f"경유점 {seg_i}"
+            ) + " → " + (
+                "AV" if seg_i == len(via_seq) - 2 else f"경유점 {seg_i + 1}"
+            )
+            raise ValueError(
+                f"{via_label} 구간 경로 없음 — disconnected component 일 수 있음. "
+                f"그래프 컴포넌트 {stats['components_after_bridge']}개 "
+                f"(bridge {stats['bridges_applied']}회 시도 후)."
+            )
+        # 구간 이어붙이기 — 직전 구간 끝 노드 중복 제거.
+        if path and path[-1] == seg[0]:
+            path.extend(seg[1:])
+        else:
+            path.extend(seg)
     if not path or len(path) < 2:
         raise ValueError(
             f"펌프 → AV 경로 없음 — 두 점이 disconnected component 에 있을 수 있음. "
@@ -1334,11 +1438,44 @@ def extract_system_path(
     dia_text_pts = _extract_dia_text_points(entities)
     floor_labels = _extract_floor_labels(entities)
 
-    return _system_path_to_riser_dict(
+    riser = _system_path_to_riser_dict(
         path, edge_len, pump_xy, av_xy,
         pump_snap_dist=pump_d, av_snap_dist=av_d, graph_stats=stats,
         dia_text_pts=dia_text_pts, floor_labels=floor_labels,
     )
+    # 전체 배관망 형태 — 원본 파일에 "그려진 실제 선"만 (force_connect 가 추가한 추측
+    # bridge 는 제외). 그래야 화면이 파일 형태 그대로 보이고, 추측 연결선이 망을 가로질러
+    # 휘게 만들지 않는다. bridge 는 경로 연결(연산)용으로만 그래프에 남는다.
+    forced = {
+        frozenset(((e[0][0], e[0][1]), (e[1][0], e[1][1])))
+        for e in stats.get("forced_bridge_edges", [])
+    }
+    riser["network_edges"] = _graph_edges_for_render(graph, exclude=forced)
+    return riser
+
+
+def _graph_edges_for_render(graph: dict, exclude: set | None = None) -> list[list[int]]:
+    """그래프의 무방향 edge 들을 [x1,y1,x2,y2] (정수, mm) 리스트로. 중복 제거.
+
+    exclude: frozenset({(ix1,iy1),(ix2,iy2)}) 집합 — 이 (정수 반올림) edge 는 건너뜀.
+        force_connect 추측 bridge 를 화면에서 빼기 위함.
+    machineroom 의 plan_edges 와 동일 포맷 — 프론트가 같은 헬퍼로 렌더.
+    """
+    exclude = exclude or set()
+    seen: set = set()
+    out: list[list[int]] = []
+    for a in graph:
+        for b in graph[a]:
+            key = (a, b) if a <= b else (b, a)
+            if key in seen:
+                continue
+            seen.add(key)
+            ia = (int(round(a[0])), int(round(a[1])))
+            ib = (int(round(b[0])), int(round(b[1])))
+            if frozenset((ia, ib)) in exclude:
+                continue
+            out.append([ia[0], ia[1], ib[0], ib[1]])
+    return out
 
 
 def _system_path_to_riser_dict(
@@ -1493,6 +1630,188 @@ def _system_path_to_riser_dict(
     }
 
 
+def extract_clean_system_network(dxf_path, scale_mm_per_unit: float = 1.0) -> dict:
+    """깨끗한(손작도) 배관망 DXF 의 **전체 망**을 그대로 riser dict 로.
+
+    임시 stopgap — 풀 계통도가 조각나 강제 bridge 로 path 가 튀는 문제를 우회.
+    깨끗한 파일(계통도_LH_306_배관망추출.dxf)은 단일 연결망이라 force_connect 없이
+    파일에 그려진 선 그대로 배관 + 길이를 띄운다. 단일 P→AV path 가 아니라 망 전체를
+    pipe 로 낸다.
+
+    Args:
+        scale_mm_per_unit: 도면 1단위 = 실제 몇 mm 인지. 1.0 이면 도면 측정값 그대로(용지
+            스케일이면 작게 나옴). 실제 플롯 스케일을 알면 곱해서 실측 길이로 변환.
+    """
+    parsed = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
+    entities = parsed["entities"]
+    if not entities:
+        raise ValueError("배관망 DXF entity 비어있음")
+    # 깨끗한 파일은 단일 컴포넌트 — force_connect 불필요(추측 bridge 0개라 안 튄다).
+    graph, edge_len, stats = build_system_graph(entities, force_connect=False)
+    if not graph:
+        raise ValueError("LINE entity 가 없음 — 배관망 추출 불가")
+    dia_text_pts = _extract_dia_text_points(entities)
+    floor_labels = _extract_floor_labels(entities)
+    return _network_to_riser_dict(
+        graph, edge_len, stats=stats,
+        dia_text_pts=dia_text_pts, floor_labels=floor_labels,
+        scale_mm_per_unit=scale_mm_per_unit,
+    )
+
+
+def _network_to_riser_dict(
+    graph: dict,
+    edge_len: dict,
+    stats: dict | None = None,
+    dia_text_pts: list | None = None,
+    floor_labels: list | None = None,
+    scale_mm_per_unit: float = 1.0,
+) -> dict:
+    """그래프 전체(트리/망)를 riser dict 로 — 모든 edge 를 pipe 로, 측정 길이 포함.
+
+    노드 라벨: degree-1 잎 하나를 "1"(Input), 그로부터 가장 먼 잎을 "10"(AV) 으로,
+    나머지는 "n{i}". 단일 path 가 아니므로 분기(branch)도 그대로 pipe 로 낸다.
+    """
+    dia_text_pts = dia_text_pts or []
+    floor_labels = floor_labels or []
+    node_list = list(graph.keys())
+    if not node_list:
+        raise ValueError("배관망 노드가 없음")
+
+    # ★ 다중 컴포넌트 정리 — 클린망에 떠 있는 작은 부유 조각(2~3 노드짜리 stray pipe)은
+    # 평면도가 라이저로만 연결되거나 도면 노이즈라서, 단독 수리계산 시 솔버가 "특정 노드
+    # 누락(연결 안 됨)" 으로 계산을 막는다(LH306동 평면: 628 본망 + 2노드 조각 6개 →
+    # 7 컴포넌트로 SDF/KFP/HAS 전부 계산 불가 재현). 가장 큰 연결 컴포넌트만 남겨 단일망을
+    # 보장한다. 이미 단일 컴포넌트면 무영향(no-op). 버려진 조각은 stats 에 기록.
+    comps = _connected_components(graph)
+    if len(comps) > 1:
+        comps.sort(key=len, reverse=True)
+        keep = comps[0]
+        dropped = len(graph) - len(keep)
+        graph = {n: [m for m in graph[n] if m in keep] for n in keep}
+        edge_len = {e: L for e, L in edge_len.items() if e[0] in keep and e[1] in keep}
+        node_list = list(graph.keys())
+        if stats is not None:
+            stats["dropped_fragment_components"] = len(comps) - 1
+            stats["dropped_fragment_nodes"] = dropped
+            stats["kept_component_nodes"] = len(keep)
+
+    deg = {n: len(graph[n]) for n in node_list}
+    leaves = [n for n in node_list if deg.get(n, 0) == 1]
+    input_node = leaves[0] if leaves else node_list[0]
+
+    # input 에서 가장 먼(그래프 거리) 잎 → AV 후보 (라벨 "10").
+    av_node = None
+    if len(node_list) > 1:
+        far = None
+        far_d = -1.0
+        for leaf in (leaves or node_list):
+            if leaf == input_node:
+                continue
+            p = _shortest_path(graph, edge_len, input_node, leaf)
+            if not p:
+                continue
+            d = sum(
+                edge_len.get((min(p[i], p[i + 1]), max(p[i], p[i + 1])),
+                             math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]))
+                for i in range(len(p) - 1)
+            )
+            if d > far_d:
+                far_d, far = d, leaf
+        av_node = far
+
+    ref_y = input_node[1]
+    label_of: dict = {}
+    nodes: list[dict] = []
+    ni = 1
+    for n in node_list:
+        if n == input_node:
+            label, io = "1", "Input"
+        elif n == av_node:
+            label, io = "10", "No"
+        else:
+            ni += 1
+            label, io = f"n{ni}", "No"
+        label_of[n] = label
+        elev_m = (n[1] - ref_y) / 1000.0 * scale_mm_per_unit
+        node: dict = {
+            "label": label,
+            "x": int(round(n[0])),
+            "y": int(round(n[1])),
+            "elevation": round(elev_m, 3),
+            "io_node": io,
+        }
+        if io == "Input":
+            node["pressure_pa"] = 101325.0
+        nodes.append(node)
+
+    pipes: list[dict] = []
+    seen: set = set()
+    total_length_mm = 0.0
+    total_measured_mm = 0.0
+    dia_match_count = 0
+    pidx = 0
+    for a in graph:
+        for b in graph[a]:
+            key = (a, b) if a <= b else (b, a)
+            if key in seen:
+                continue
+            seen.add(key)
+            measured_mm = edge_len.get(key, math.hypot(b[0] - a[0], b[1] - a[1]))
+            total_measured_mm += measured_mm
+            length_m = measured_mm / 1000.0 * scale_mm_per_unit
+            dia, dia_dist, dia_raw = _match_diameter_for_segment(a, b, dia_text_pts)
+            used_dia = dia if dia is not None else 150
+            if dia is not None:
+                dia_match_count += 1
+            in_e = (a[1] - ref_y) / 1000.0 * scale_mm_per_unit
+            out_e = (b[1] - ref_y) / 1000.0 * scale_mm_per_unit
+            elev_m = round(out_e - in_e, 3)
+            length_m = max(length_m, abs(elev_m))
+            total_length_mm += length_m * 1000.0
+            pidx += 1
+            pipe: dict = {
+                "label": f"r{pidx}",
+                "in": label_of[a],
+                "out": label_of[b],
+                "type": "KSD 3507",
+                "dia": used_dia,
+                "length": round(length_m, 3),
+                "length_measured_mm": round(measured_mm, 2),
+                "elev": elev_m,
+                "c": "120",
+                "status": "Normal",
+                "group": "Unset",
+                "dia_source": "text_match" if dia is not None else "default",
+            }
+            pipes.append(pipe)
+
+    return {
+        "nodes": nodes,
+        "pipes": pipes,
+        "pumps": [],
+        "valves": [],
+        "av_node_label": "10" if av_node is not None else None,
+        "input_node_label": "1",
+        "title": "CLEAN_NETWORK (임시)",
+        "zone_kind": "clean_network_dxf",
+        "extracted_from": "dxf_clean_network",
+        "path_node_count": len(nodes),
+        "total_pipe_length_m": round(total_length_mm / 1000.0, 2),
+        "total_measured_mm": round(total_measured_mm, 1),
+        "scale_mm_per_unit": scale_mm_per_unit,
+        "network_edges": _graph_edges_for_render(graph),
+        "graph_stats": stats or {},
+        "diameter_matching": {
+            "matched_pipes": dia_match_count,
+            "total_pipes": len(pipes),
+            "text_label_count": len(dia_text_pts),
+        },
+        "affine_scale": 1.0,
+        "affine_rotation_deg": 0.0,
+    }
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # 기계실(옥상수조) 경로 추출 — extract_system_path 미러
 # ────────────────────────────────────────────────────────────────────────────
@@ -1543,27 +1862,42 @@ def extract_machine_room_path(
         present = {en.get("l") for en in entities}
         lf = {ly for ly in MACHINE_ROOM_SP_LAYERS if ly in present} or None
 
-    graph, edge_len, stats = build_system_graph(entities, layer_filter=lf)
+    graph, edge_len, stats = build_system_graph(entities, layer_filter=lf,
+                                                force_connect=True)
     if not graph:
         raise ValueError(f"LINE entity 없음 (전체 {len(entities)}개 중 LINE/PL 0개)")
 
-    src_node, src_d = find_nearest_graph_node_constrained(
-        graph, source_xy, max_dist_mm=snap_tolerance_mm)
-    if src_node is None:
-        raise ValueError(
-            f"수원(탱크) 클릭 ({int(source_xy[0])}, {int(source_xy[1])}) 근처 "
-            f"{snap_tolerance_mm:.0f}mm 안에 배관 끝점 없음. 가장 가까운 노드 {src_d:.0f}mm. "
-            f"더 정확히 클릭하거나 snap_tolerance_mm 증가."
-        )
-    conn_node, conn_d = find_nearest_graph_node_constrained(
-        graph, riser_conn_xy, max_dist_mm=snap_tolerance_mm)
-    if conn_node is None:
-        raise ValueError(
-            f"입상관 연결점 클릭 ({int(riser_conn_xy[0])}, {int(riser_conn_xy[1])}) 근처 "
-            f"{snap_tolerance_mm:.0f}mm 안에 배관 끝점 없음. 가장 가까운 노드 {conn_d:.0f}mm."
-        )
+    # 클릭 → 가장 가까운 그래프 노드. 끝점 거리 제한 없이 무조건 가장 가까운 노드로
+    # 끌어붙인다 (사용자 요구: "끝점 제한 없애고, pipe_소화배관만 켜도 그 위에서 최소거리
+    # 그냥 따라가게"). 선택 레이어(lf)로 그래프가 그 배관만 담고, force_connect=True 로
+    # 단일 컴포넌트라 어떤 클릭이든 그 배관 위 최근접 노드로 snap → 실패(ValueError) 없음.
+    # snap_tolerance_mm 인자는 더 이상 거리 컷에 쓰지 않는다(진단/호환용으로만 유지).
+    def _snap(xy):
+        n = _nearest_graph_node(graph, (float(xy[0]), float(xy[1])))
+        d = math.hypot(n[0] - float(xy[0]), n[1] - float(xy[1])) if n else float("inf")
+        return n, d
 
-    path = _shortest_path(graph, edge_len, src_node, conn_node)
+    src_node, src_d = _snap(source_xy)
+    conn_node, conn_d = _snap(riser_conn_xy)
+    if src_node is None or conn_node is None:
+        raise ValueError("그래프에 노드가 없어 수원/연결점을 매핑할 수 없음 "
+                         "(선택 배관 레이어에 LINE/PL 이 있는지 확인).")
+
+    # force_connect 가 거리 무제한으로 강제 연결한 bridge(추정 연결)는 실제 배관이
+    # 아니다. 이를 실선으로 같이 그리면 도면 전체를 가로지르는 직선들이 생겨 "꼬여
+    # 보이는" 원인이 된다. → 실측 edge(plan_edges)와 추정 edge(plan_edges_estimated)를
+    # 분리하고, 추출 경로(spine)가 추정 bridge 를 통과하면 그 segment 를 표시해
+    # 프론트가 점선·경고색으로 렌더하게 한다 (= "이 연결은 도면에 없는 알고리즘 추정").
+    forced_keys: set[tuple] = set()
+    for (ea, eb) in (stats.get("forced_bridge_edges") or []):
+        ka = (int(ea[0]), int(ea[1]))
+        kb = (int(eb[0]), int(eb[1]))
+        forced_keys.add((min(ka, kb), max(ka, kb)))
+
+    # 추정 bridge 는 거대 가중치로 패널티 → Dijkstra 가 실배관 경로를 우선한다.
+    # (추정 bridge 의 가중치는 실제 직선거리라 가장 짧아 패널티 없이는 wormhole 처럼
+    #  선호돼 "엉뚱한 경로"가 된다.) 진짜 다른 길이 없을 때만 최소 개수로 사용.
+    path = _shortest_path(graph, edge_len, src_node, conn_node, penalty_keys=forced_keys)
     if not path or len(path) < 2:
         raise ValueError(
             f"수원 → 입상관 연결점 경로 없음 — disconnected component 가능. "
@@ -1578,21 +1912,30 @@ def extract_machine_room_path(
         path, edge_len, source_xy, riser_conn_xy,
         source_snap_dist=src_d, conn_snap_dist=conn_d,
         graph_stats=stats, dia_text_pts=dia_text_pts,
+        forced_keys=forced_keys,
     )
 
     # 전체 SP 배관망 edge (시각화 전용) — 수리경로 spine 뿐 아니라 기계실 전 배관을
     # 평면도로 렌더하기 위해 그래프 전 edge 를 raw DXF 좌표로 dedupe 해 첨부.
     seen: set[tuple] = set()
     plan_edges: list[list[float]] = []
+    plan_edges_estimated: list[list[float]] = []
     for a, nbrs in graph.items():
         for b in nbrs:
             key = (min(a, b), max(a, b))
             if key in seen:
                 continue
             seen.add(key)
-            plan_edges.append([int(round(a[0])), int(round(a[1])),
-                               int(round(b[0])), int(round(b[1]))])
+            ra = (int(round(a[0])), int(round(a[1])))
+            rb = (int(round(b[0])), int(round(b[1])))
+            rounded_key = (min(ra, rb), max(ra, rb))
+            edge = [ra[0], ra[1], rb[0], rb[1]]
+            if rounded_key in forced_keys:
+                plan_edges_estimated.append(edge)
+            else:
+                plan_edges.append(edge)
     result["plan_edges"] = plan_edges
+    result["plan_edges_estimated"] = plan_edges_estimated
     return result
 
 
@@ -1605,6 +1948,7 @@ def _machine_room_path_to_dict(
     conn_snap_dist: float = 0.0,
     graph_stats: dict | None = None,
     dia_text_pts: list[tuple[float, float, int, str]] | None = None,
+    forced_keys: set[tuple] | None = None,
 ) -> dict:
     """기계실 경로(vertex 시퀀스) → dict. 라벨 m1..mK, m1=Input(옥상수조 수면, 1atm).
 
@@ -1631,6 +1975,8 @@ def _machine_room_path_to_dict(
             node["pressure_pa"] = 101325.0  # 개방형 옥상수조 수면 = 대기압 경계
         nodes.append(node)
 
+    forced_keys = forced_keys or set()
+    estimated_seg_count = 0
     pipes: list[dict] = []
     dia_match_count = 0
     for i in range(total - 1):
@@ -1638,6 +1984,11 @@ def _machine_room_path_to_dict(
         edge_key = (min(a, b), max(a, b))
         length_mm = edge_len.get(edge_key, math.hypot(b[0] - a[0], b[1] - a[1]))
         total_length_mm += length_mm
+        ra = (int(round(a[0])), int(round(a[1])))
+        rb = (int(round(b[0])), int(round(b[1])))
+        is_estimated = (min(ra, rb), max(ra, rb)) in forced_keys
+        if is_estimated:
+            estimated_seg_count += 1
         dia, dia_dist, dia_raw = _match_diameter_for_segment(a, b, dia_text_pts)
         used_dia = dia if dia is not None else 150
         if dia is not None:
@@ -1661,11 +2012,15 @@ def _machine_room_path_to_dict(
                 pipe["dia_raw"] = dia_raw
         else:
             pipe["dia_source"] = "default"
+        if is_estimated:
+            # 도면에 없는 알고리즘 추정 연결 — 프론트가 점선·경고색으로 표시.
+            pipe["estimated"] = True
         pipes.append(pipe)
 
     return {
         "nodes": nodes,
         "pipes": pipes,
+        "estimated_segment_count": estimated_seg_count,
         "source_node_label": "m1",
         "conn_node_label": f"m{total}",
         "title": "MACHINE_ROOM_EXTRACT_V1",
@@ -2430,11 +2785,20 @@ def _dijkstra_from(graph: dict, edge_len: dict, src: tuple[float, float]) -> dic
     return dist
 
 
-def _shortest_path(graph: dict, edge_len: dict, src: tuple[float, float], tgt: tuple[float, float]) -> list[tuple[float, float]]:
-    """src → tgt 최단 경로 (vertex 시퀀스)."""
+def _shortest_path(graph: dict, edge_len: dict, src: tuple[float, float], tgt: tuple[float, float],
+                   penalty_keys: set | None = None, penalty_mm: float = 1.0e9) -> list[tuple[float, float]]:
+    """src → tgt 최단 경로 (vertex 시퀀스).
+
+    penalty_keys: 거대 가중치를 더할 edge 키 집합 (rounded-int 좌표쌍 (min,max)).
+        force_connect 가 만든 추정 bridge(도면에 없는 직선 wormhole)를 여기에 넣으면
+        Dijkstra 가 실측 배관 경로를 우선하고, 추정 bridge 는 다른 대안이 전혀 없을 때만
+        (최소 개수로) 사용한다 → 도면을 가로지르는 "엉뚱한 경로" 방지. 단, 작은 gap 을
+        메우는 단계 bridge(≤tolerance)는 실배관 연속으로 보고 penalty 대상에서 제외.
+    """
     import heapq
     if src == tgt:
         return [src]
+    penalty_keys = penalty_keys or set()
     dist = {src: 0.0}
     prev: dict = {}
     pq = [(0.0, src)]
@@ -2447,6 +2811,11 @@ def _shortest_path(graph: dict, edge_len: dict, src: tuple[float, float], tgt: t
         for v in graph.get(u, ()):
             key = (min(u, v), max(u, v))
             w = edge_len.get(key, math.hypot(v[0] - u[0], v[1] - u[1]))
+            if penalty_keys:
+                ru = (int(round(u[0])), int(round(u[1])))
+                rv = (int(round(v[0])), int(round(v[1])))
+                if (min(ru, rv), max(ru, rv)) in penalty_keys:
+                    w += penalty_mm
             nd = d + w
             if nd < dist.get(v, float("inf")):
                 dist[v] = nd
@@ -3267,11 +3636,18 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
     # 노드
     for n in tables.nodes:
         nx, ny = _xform(float(n["x"]), float(n["y"]))
+        _meta = {"io_node": n["io_node"]}
+        # display_z(표시 전용 z) 가 있으면 x,y 와 **동일 _scale** 로 정규화해 Position z 로
+        # 전달 → 최종 KFP/HAS 에서 평면과 비례하는 라이저 입상관. elevation(z=)은 수리
+        # 실표고 그대로. (단독망/기존 호출은 display_z 미지정 → Position z 미기록.)
+        _dz = n.get("display_z")
+        if _dz is not None:
+            _meta["display_z"] = float(_dz) * _scale
         network.add_node(PnNode(
             node_id=str(n["label"]),
             x=nx, y=ny, z=float(n["elevation"]),
             node_type="input" if n["io_node"] == "Input" else "no",
-            metadata={"io_node": n["io_node"]},
+            metadata=_meta,
         ))
 
     # 파이프 (fittings/equipment 부착 위해 미리 dict 인덱싱)
@@ -3477,8 +3853,11 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
     return out_path
 
 
-def emit_kfp(sdf_path: Path, kfp_path: Path) -> Path:
+def emit_kfp(sdf_path: Path, kfp_path: Path, *, coord_scale: float = 1.0) -> Path:
     """K-Fire Solver .kfp emit — 이미 쓰여진 .sdf 를 그대로 KFP 로 변환.
+
+    ``coord_scale`` — K-solver 표시좌표 배율(노드 크기 조정용, 기본 1.0). 표시
+    전용이라 length_m/elevation_m 기반 유압계산엔 영향 없음.
 
     SDF→KFP 는 검증 완료된 ``kfp_sdf_converter`` 경로를 재사용한다 (노즐→노드 folding,
     head/nozzle 키워드 구분, junction 토폴로지 기반 fitting 재분배, 3D length 재계산,
@@ -3498,17 +3877,26 @@ def emit_kfp(sdf_path: Path, kfp_path: Path) -> Path:
             f"[remote30_prototype.emit_kfp] kfp_sdf_converter 모듈을 찾을 수 없어 KFP 출력 불가: {exc}. "
             f"→ kfp_sdf_converter.py 를 모듈 루트 '{_repo_root}' 에 두세요."
         ) from exc
-    _convert(sdf_path, kfp_path)
+    _convert(sdf_path, kfp_path, coord_scale=coord_scale)
     return kfp_path
 
 
-def emit_has(sdf_path: Path, has_path: Path) -> Path:
+def emit_has(
+    sdf_path: Path,
+    has_path: Path,
+    *,
+    isometric: bool = False,
+    iso_z_scale: float = 1.0,
+) -> Path:
     """HASS(하스) .has emit — 이미 쓰여진 .sdf 를 그대로 HAS 로 변환.
 
     SDF→HAS 는 ``has_converter`` (parse_sdf → CommonNetwork → emit_has) 경로를 쓴다.
     붙임 샘플(.has)을 스켈레톤으로 로드해 참조 DB/범례/단위계를 그대로 동봉하므로
     HASS 가 받자마자 열 수 있고, 노즐 K 는 nozzleDataTable 에 자동 등록된다.
     RESULT_* 는 0 으로 비워 HASS 가 재계산하게 한다 (우리는 솔버가 아님).
+
+    ``isometric=True`` 면 화면좌표를 등각투영(계통도)으로 베이크 — 통합모듈이
+    HASS/solver 화면처럼 보이도록 켠다. 수리계산엔 영향 없음(표시 전용).
     """
     import sys as _sys
     _repo_root = Path(__file__).parent
@@ -3521,7 +3909,7 @@ def emit_has(sdf_path: Path, has_path: Path) -> Path:
             f"[remote30_prototype.emit_has] has_converter 모듈을 찾을 수 없어 HAS 출력 불가: {exc}. "
             f"→ has_converter.py 를 모듈 루트 '{_repo_root}' 에 두세요."
         ) from exc
-    _convert(sdf_path, has_path)
+    _convert(sdf_path, has_path, isometric=isometric, iso_z_scale=iso_z_scale)
     return has_path
 
 

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import warnings
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -612,6 +613,21 @@ def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) ->
     return saved_path
 
 
+def _err500(exc, *, message=None, **extra):
+    """라우트 말미 `except Exception` 블록의 표준 500 JSON 응답.
+
+    traceback.format_exc() 는 호출 시점의 활성 예외(sys.exc_info)를 읽으므로,
+    except 블록 안에서 호출하면 헬퍼 내부여도 해당 예외의 트레이스백이 잡힌다.
+    message 미지정 시 str(exc)[:300]. extra 로 라우트별 추가 키(algorithm 등) 병합.
+    """
+    import traceback
+    body = {"ok": False,
+            "message": message if message is not None else str(exc)[:300],
+            "traceback": traceback.format_exc()[-1500:]}
+    body.update(extra)
+    return jsonify(body), 500
+
+
 def _printable_report_text(path: Path) -> str:
     return PipenetGuideValidator(report_path=path)._read_report_text(path)
 
@@ -1102,10 +1118,8 @@ def _sdf_counts_only(sdf_path: Path | None) -> dict:
     }
 
 
-def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
-    root = ET.parse(sdf_path).getroot()
-
-    titles = [t.text.strip() for t in root.findall(".//Title") if t.text and t.text.strip()]
+def _sdf_parse_nodes(root) -> dict[str, dict]:
+    """SDF <Node> → {label: {id, x, y, z(elevation)}}."""
     nodes: dict[str, dict] = {}
     for node in root.findall(".//Node"):
         label = node.attrib.get("label", "")
@@ -1118,7 +1132,11 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
             "y": _to_float(pos.attrib.get("y")),
             "z": _to_float(node.attrib.get("elevation")),
         }
+    return nodes
 
+
+def _sdf_parse_pipes_equipment(root) -> tuple[list[dict], list[dict]]:
+    """SDF <Pipe-set>/<Pipe> → (pipes, equipment). material 은 직전 Pipe-type Name 을 따른다."""
     pipes: list[dict] = []
     equipment: list[dict] = []
     material = "UNKNOWN"
@@ -1153,20 +1171,21 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                             "y": _to_float(wp.attrib.get("y")),
                         }
                     )
-            pipe_row = {
-                "label": label,
-                "input_node": input_node,
-                "output_node": output_node,
-                "bore_mm": bore_mm,
-                "length_m": length_m,
-                "rise_m": rise_m,
-                "c_factor": c_factor,
-                "material": material,
-                "fittings": fittings,
-                "fitting_summary": ", ".join(f"{f['type']}({f['count']})" for f in fittings) or "-",
-                "waypoints": waypoint_positions,
-            }
-            pipes.append(pipe_row)
+            pipes.append(
+                {
+                    "label": label,
+                    "input_node": input_node,
+                    "output_node": output_node,
+                    "bore_mm": bore_mm,
+                    "length_m": length_m,
+                    "rise_m": rise_m,
+                    "c_factor": c_factor,
+                    "material": material,
+                    "fittings": fittings,
+                    "fitting_summary": ", ".join(f"{f['type']}({f['count']})" for f in fittings) or "-",
+                    "waypoints": waypoint_positions,
+                }
+            )
             for eq in pipe.findall(".//Equipment"):
                 equipment.append(
                     {
@@ -1177,7 +1196,11 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                         "rel_position": _to_float(eq.attrib.get("rel-position"), 0.5),
                     }
                 )
+    return pipes, equipment
 
+
+def _sdf_parse_nozzles(root, nodes: dict) -> list[dict]:
+    """SDF <Nozzle> → 입력노드 좌표를 붙인 노즐(헤드) 리스트."""
     nozzles: list[dict] = []
     for nozzle in root.findall(".//Nozzle"):
         label = nozzle.attrib.get("label", "")
@@ -1192,15 +1215,23 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                 "z": node.get("z"),
             }
         )
+    return nozzles
 
-    pipe_by_label = {p["label"]: p for p in pipes}
+
+def _sdf_build_adjacency(pipes: list[dict]) -> tuple[dict, dict]:
+    """pipes → (outgoing[input_node]→pipes, adjacency[node]→(이웃,길이,라벨) 무방향)."""
     outgoing: dict[str, list[dict]] = {}
     adjacency: dict[str, list[tuple[str, float, str]]] = {}
     for pipe in pipes:
         outgoing.setdefault(pipe["input_node"], []).append(pipe)
         adjacency.setdefault(pipe["input_node"], []).append((pipe["output_node"], pipe["length_m"], pipe["label"]))
         adjacency.setdefault(pipe["output_node"], []).append((pipe["input_node"], pipe["length_m"], pipe["label"]))
+    return outgoing, adjacency
 
+
+def _sdf_av_node(pipes: list[dict], equipment: list[dict]) -> tuple[str, str]:
+    """알람밸브(A/V) 앵커 노드 추정 → (av_node, av_pipe_label). 못 찾으면 첫 배관 입력노드."""
+    pipe_by_label = {p["label"]: p for p in pipes}
     av_equipment = next((e for e in equipment if (e.get("description") or "").upper().replace(" ", "") in {"A/V", "AV"}), None)
     av_node = ""
     av_pipe_label = ""
@@ -1211,34 +1242,39 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
             av_node = av_pipe.get("output_node") or av_pipe.get("input_node") or ""
     if not av_node and pipes:
         av_node = pipes[0]["input_node"]
+    return av_node, av_pipe_label
 
-    # Dijkstra distance from alarm valve anchor to each nozzle node.
+
+def _sdf_dijkstra(av_node: str, adjacency: dict) -> dict[str, float]:
+    """A/V 앵커에서 각 노드까지 최단(누적 length) 거리."""
     dist = {av_node: 0.0} if av_node else {}
-    prev_pipe: dict[str, str] = {}
     visited: set[str] = set()
     while dist:
         current = min((n for n in dist if n not in visited), key=lambda n: dist[n], default=None)
         if current is None:
             break
         visited.add(current)
-        for nxt, length, pipe_label in adjacency.get(current, []):
+        for nxt, length, _pipe_label in adjacency.get(current, []):
             nd = dist[current] + max(length, 0.0)
             if nxt not in dist or nd < dist[nxt]:
                 dist[nxt] = nd
-                prev_pipe[nxt] = pipe_label
+    return dist
 
-    farthest_heads = sorted(
+
+def _sdf_farthest_heads(nozzles: list[dict], dist: dict) -> list[dict]:
+    """A/V 에서 먼 순으로 정렬한 헤드 상위 30개 (가장 먼 구간 검토용)."""
+    return sorted(
         [
-            {
-                **n,
-                "distance_from_av_m": dist.get(str(n.get("input_node")), 0.0),
-            }
+            {**n, "distance_from_av_m": dist.get(str(n.get("input_node")), 0.0)}
             for n in nozzles
         ],
         key=lambda r: r.get("distance_from_av_m", 0.0),
         reverse=True,
     )[:30]
 
+
+def _sdf_length_checks(pipes: list[dict], nodes: dict) -> list[dict]:
+    """SDF length 와 XY(+rise) 기하 길이가 허용오차(5% 또는 0.5m) 초과인 배관."""
     length_checks: list[dict] = []
     for pipe in pipes:
         n1 = nodes.get(pipe["input_node"])
@@ -1264,7 +1300,11 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                     "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
                 }
             )
+    return length_checks
 
+
+def _sdf_bore_reductions(pipes: list[dict], outgoing: dict) -> list[dict]:
+    """노드에서 하류 배관 구경이 작아지는(축소) 지점."""
     bore_reductions: list[dict] = []
     for pipe in pipes:
         for child in outgoing.get(pipe["output_node"], []):
@@ -1278,17 +1318,24 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                         "to_bore_mm": round(child["bore_mm"], 1),
                     }
                 )
+    return bore_reductions
 
+
+def _sdf_branch_nodes(pipes: list[dict], nodes: dict) -> list[dict]:
+    """차수(degree) 3 이상 분기 노드 (degree 내림차순)."""
     node_degree: dict[str, int] = {}
     for pipe in pipes:
         node_degree[pipe["input_node"]] = node_degree.get(pipe["input_node"], 0) + 1
         node_degree[pipe["output_node"]] = node_degree.get(pipe["output_node"], 0) + 1
-    branch_nodes = [
+    return [
         {"node": node, "degree": degree, **nodes.get(node, {})}
         for node, degree in sorted(node_degree.items(), key=lambda x: (-x[1], x[0]))
         if degree >= 3
     ]
 
+
+def _sdf_fitting_stats(pipes: list[dict]) -> tuple[dict, list]:
+    """부속(엘보/티 등) 총계 + 부속 집중(>=2) 핫스팟."""
     fitting_summary: dict[str, int] = {}
     fitting_hotspots: list[dict] = []
     for pipe in pipes:
@@ -1305,8 +1352,12 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                     "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다.",
                 }
             )
+    return fitting_summary, fitting_hotspots
 
-    vertical_pipes = [
+
+def _sdf_vertical_pipes(pipes: list[dict]) -> list[dict]:
+    """|rise| >= 3m 수직 배관 (층고/단면 대조용)."""
+    return [
         {
             "pipe_label": p["label"],
             "input_node": p["input_node"],
@@ -1319,7 +1370,11 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
         if abs(p.get("rise_m") or 0.0) >= 3.0
     ]
 
-    graph_pipes = []
+
+def _sdf_graph_pipes(pipes: list[dict], nodes: dict,
+                     length_checks: list[dict], bore_reductions: list[dict]) -> list[dict]:
+    """프론트 시각화용 배관 폴리라인 + 상태색(길이이상=red, 구경축소=orange)."""
+    graph_pipes: list[dict] = []
     for p in pipes:
         n1 = nodes.get(p["input_node"])
         n2 = nodes.get(p["output_node"])
@@ -1343,6 +1398,28 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                 "path": path,
             }
         )
+    return graph_pipes
+
+
+def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
+    root = ET.parse(sdf_path).getroot()
+
+    titles = [t.text.strip() for t in root.findall(".//Title") if t.text and t.text.strip()]
+    nodes = _sdf_parse_nodes(root)
+    pipes, equipment = _sdf_parse_pipes_equipment(root)
+    nozzles = _sdf_parse_nozzles(root, nodes)
+
+    outgoing, adjacency = _sdf_build_adjacency(pipes)
+    av_node, av_pipe_label = _sdf_av_node(pipes, equipment)
+    dist = _sdf_dijkstra(av_node, adjacency)
+
+    farthest_heads = _sdf_farthest_heads(nozzles, dist)
+    length_checks = _sdf_length_checks(pipes, nodes)
+    bore_reductions = _sdf_bore_reductions(pipes, outgoing)
+    branch_nodes = _sdf_branch_nodes(pipes, nodes)
+    fitting_summary, fitting_hotspots = _sdf_fitting_stats(pipes)
+    vertical_pipes = _sdf_vertical_pipes(pipes)
+    graph_pipes = _sdf_graph_pipes(pipes, nodes, length_checks, bore_reductions)
 
     return {
         "title": " / ".join(titles) or sdf_path.name,
@@ -3332,19 +3409,27 @@ def remote30_prototype_finalize_stream(job_id: str):
     return response
 
 
-@app.get("/api/remote30/prototype/result/<job_id>/<path:filename>")
-def remote30_prototype_result(job_id: str, filename: str):
+def _serve_run_file(base_dir: Path, job_id: str, filename: str):
+    """run 디렉토리(base_dir/<job_id>)에서 산출 파일을 안전하게 다운로드 제공.
+
+    job_id sanitize + base_dir escape 방지(relative_to) + 존재 확인 후 send_file.
+    """
     safe_id = secure_filename(job_id)
     if not safe_id or safe_id != job_id:
         return "잘못된 job_id", 400
-    target = PROTOTYPE_OUTPUT_DIR / safe_id / filename
+    target = base_dir / safe_id / filename
     try:
-        target.resolve().relative_to(PROTOTYPE_OUTPUT_DIR.resolve())
+        target.resolve().relative_to(base_dir.resolve())
     except ValueError:
         return "잘못된 경로", 400
     if not target.is_file():
         return "결과 파일 없음", 404
     return send_file(target, as_attachment=True)
+
+
+@app.get("/api/remote30/prototype/result/<job_id>/<path:filename>")
+def remote30_prototype_result(job_id: str, filename: str):
+    return _serve_run_file(PROTOTYPE_OUTPUT_DIR, job_id, filename)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -3730,9 +3815,7 @@ def remote30_system_parse():
     try:
         result = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
     result["ok"] = True
     result["filename"] = dxf_path.name
     return jsonify(result)
@@ -3810,9 +3893,7 @@ def remote30_has_parse():
     try:
         net = parse_has(has_path)
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": f"HAS 파싱 실패: {str(exc)[:280]}",
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc, message=f"HAS 파싱 실패: {str(exc)[:280]}")
 
     geometry = _common_network_to_geometry(net)
     src = next((n for n in geometry["nodes"] if n["io"] == "Input"), None)
@@ -3855,8 +3936,7 @@ def _emit_subnetwork_bundle(net, out_dir: Path, job_id: str, prefix: str,
         _emit_kfp(out_sdf, out_kfp, coord_scale=coord_scale)
         kfp_ok = out_kfp.is_file()
     except Exception as _kfp_exc:  # noqa: BLE001 — KFP 실패가 SDF 출력을 막지 않도록
-        import warnings as _warnings
-        _warnings.warn(f"[{prefix}] KFP emit 실패 (SDF 는 정상): {_kfp_exc}",
+        warnings.warn(f"[{prefix}] KFP emit 실패 (SDF 는 정상): {_kfp_exc}",
                        RuntimeWarning, stacklevel=2)
     import zipfile as _zipfile
     out_zip = out_dir / f"{prefix}_{job_id}.zip"
@@ -3986,6 +4066,123 @@ def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
     return moved
 
 
+# 답안 28F (GRAVITE_28F) 라이저 raw 좌표 (mm 도메인, 평면도와 단위 일치) — combined_build
+# 좌표 재매핑 기준. 계통도 노드를 이 좌표 + 헤드망 AV 오프셋으로 translate 한다.
+_ANSWER_28F_COORDS = {
+    "1":  (-10825,  -851),    # Input (옥상 수원)
+    "2":  (-11600,  -750),
+    "3":  (-11600,  -952),
+    "4":  (-11275, -1775),
+    "5":  (-11275, -3420),    # AV 직전
+    "10": (-11400, -3406),    # AV — 헤드망 source 와 정합
+}
+
+
+def _remap_riser_to_head_av(system_riser: dict, head_av_node: dict, av_label: str):
+    """계통도 라이저 노드를 답안 28F raw 좌표 + 헤드망 AV 오프셋으로 재매핑 → RiserTables.
+
+    system_riser 노드 좌표(계통도 픽, 수십만 mm)와 헤드망 좌표(평면 DXF, 수만 mm)는
+    도메인이 달라 emit_sdf 정규화 시 라이저가 한쪽에 압축된다. 답안 28F 라이저 좌표를
+    차용하고 헤드망 AV 위치로 translate 해 단위·배치를 정합시킨다(라이저가 AV 위쪽에 배치).
+    좌표가 비숫자/누락이면 (KeyError, TypeError, ValueError) 를 올린다(호출자가 400 처리).
+    """
+    from remote30_full_network import RiserTables
+    head_av_x = float(head_av_node["x"])
+    head_av_y = float(head_av_node["y"])
+    answer_av_x, answer_av_y = _ANSWER_28F_COORDS["10"]
+    tx_off = head_av_x - answer_av_x
+    ty_off = head_av_y - answer_av_y
+    remapped_nodes: list[dict] = []
+    for n in system_riser["nodes"]:
+        label = str(n.get("label", ""))
+        new_n = dict(n)
+        if label in _ANSWER_28F_COORDS:
+            ax, ay = _ANSWER_28F_COORDS[label]
+            new_n["x"] = int(round(ax + tx_off))
+            new_n["y"] = int(round(ay + ty_off))
+        remapped_nodes.append(new_n)
+    return RiserTables(
+        nodes=remapped_nodes,
+        pipes=list(system_riser["pipes"]),
+        pumps=list(system_riser.get("pumps", [])),
+        valves=list(system_riser.get("valves", [])),
+        av_node_label=av_label,
+    )
+
+
+def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
+                             machine_room_labels, pump_junction_label,
+                             is_pump, head_orientation, head_z_frac) -> dict:
+    """통합망(헤드+라이저) 캔버스 시각화용 geometry dict.
+
+    machine_room_at_bottom: 펌프방식이면 수원/기계실이 망 최하부 → 3D 아이소뷰가 Z 방향
+    (아래로)을 뒤집는다. 고가수조(gravity, 기본)면 수원이 옥상(위). DXF 에 z 가 없어
+    토폴로지 autoSpread 로 Z 를 만들므로 방향만 이 플래그로 결정한다.
+    head_labels: nozzle 부착(input) 노드 — 클라이언트가 여기서 짧은 니플 스텁을 ±z 로 그린다.
+    """
+    return {
+        "av_node_label": riser.av_node_label,
+        "riser_labels": list(riser_labels),
+        "machine_room_labels": machine_room_labels,
+        "pump_junction_label": pump_junction_label,
+        "machine_room_at_bottom": is_pump,
+        "machine_room_plan_edges": combined.machine_room_plan_edges,
+        "head_labels": sorted(head_label_set),
+        "head_orientation": head_orientation,
+        "head_z_frac": head_z_frac,
+        "nodes": [
+            {"label": str(n["label"]),
+             "x": float(n.get("x", 0)), "y": float(n.get("y", 0)),
+             "z": float(n.get("elevation", 0)),
+             "io": n.get("io_node", "No")}
+            for n in combined.nodes
+        ],
+        "pipes": [
+            {"label": str(p.get("label", "")),
+             "in": str(p["in"]), "out": str(p["out"]),
+             "dia": p.get("dia", 0)}
+            for p in combined.pipes
+        ],
+        "pumps": [
+            {"label": str(p["label"]), "in": str(p["in"]), "out": str(p["out"])}
+            for p in combined.pumps
+        ],
+        "valves": [
+            {"label": str(v["label"]), "in": str(v["in"]), "out": str(v["out"]),
+             "target_pa": v.get("target_value", 0)}
+            for v in combined.valves
+        ],
+    }
+
+
+def _build_roles_sidecar(combined, riser_labels, head_label_set, av_node_label,
+                         machine_room_labels, pump_junction_label,
+                         is_pump, head_orientation, head_z_frac) -> dict:
+    """포맷 미리보기(round-trip)용 역할 사이드카.
+
+    KFP/SDF/HAS emit→재파싱은 라벨을 N1..Nn 으로 개명하고 라이저/헤드/AV 구조 메타를
+    잃는다. 노드 순서별 원본 라벨(combined.nodes 순서 = parse 순서, 검증됨)과 역할 집합을
+    저장해두면 미리보기에서 개명 라벨로 재매핑해 동일 모양을 복원할 수 있다.
+    pumps/valves 는 round-trip 시 _common_network_to_geometry 가 비우므로 원본 라벨로 보존.
+    """
+    return {
+        "order_labels": [str(n["label"]) for n in combined.nodes],
+        "order_io": [str(n.get("io_node", "No")) for n in combined.nodes],
+        "riser_labels": sorted(riser_labels),
+        "head_labels": sorted(head_label_set),
+        "av_node_label": av_node_label,
+        "machine_room_labels": list(machine_room_labels),
+        "pump_junction_label": pump_junction_label,
+        "head_orientation": head_orientation,
+        "head_z_frac": head_z_frac,
+        "machine_room_at_bottom": is_pump,
+        "pumps": [{"label": str(p["label"]), "in": str(p["in"]), "out": str(p["out"])}
+                  for p in combined.pumps],
+        "valves": [{"label": str(v["label"]), "in": str(v["in"]), "out": str(v["out"]),
+                    "target_pa": v.get("target_value", 0)} for v in combined.valves],
+    }
+
+
 @app.post("/api/remote30/combined/build")
 def remote30_combined_build():
     """평면도 헤드망 + 계통도 라이저 → 결합 SDF 생성.
@@ -4028,7 +4225,7 @@ def remote30_combined_build():
 
     from remote30_prototype import select_worst30_heads, build_input_tables
     from remote30_full_network import (
-        RiserTables, stitch_riser_and_heads, emit_full_sdf,
+        stitch_riser_and_heads, emit_full_sdf,
         prepend_machine_room_to_riser, insert_source_pump,
     )
 
@@ -4090,9 +4287,7 @@ def remote30_combined_build():
             project_title=Path(plane_job["dxf_path"]).stem,
         )
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
 
     # ── 계통도 라이저 → RiserTables.
     # ★ 좌표 재매핑: system_riser 의 노드 좌표(사용자 계통도 픽 — 수십만 mm) 와 헤드망 노드
@@ -4104,38 +4299,9 @@ def remote30_combined_build():
     if head_av_node is None:
         return jsonify({"ok": False,
                         "message": f"헤드망에 AV(label={av_label}) 노드가 없음 — 평면도 추출 다시 확인"}), 500
-    # 답안 28F (GRAVITE_28F) 의 라이저 raw 좌표 (mm 도메인, 평면도와 단위 일치)
-    ANSWER_28F_COORDS = {
-        "1":  (-10825,  -851),    # Input (옥상 수원)
-        "2":  (-11600,  -750),
-        "3":  (-11600,  -952),
-        "4":  (-11275, -1775),
-        "5":  (-11275, -3420),    # AV 직전
-        "10": (-11400, -3406),    # AV — 헤드망 source 와 정합
-    }
     # 좌표 재매핑 — head_av/노드 좌표가 비숫자·누락이면 500+traceback 대신 깔끔한 400.
     try:
-        head_av_x = float(head_av_node["x"])
-        head_av_y = float(head_av_node["y"])
-        answer_av_x, answer_av_y = ANSWER_28F_COORDS["10"]
-        tx_off = head_av_x - answer_av_x
-        ty_off = head_av_y - answer_av_y
-        remapped_nodes: list[dict] = []
-        for n in system_riser["nodes"]:
-            label = str(n.get("label", ""))
-            new_n = dict(n)
-            if label in ANSWER_28F_COORDS:
-                ax, ay = ANSWER_28F_COORDS[label]
-                new_n["x"] = int(round(ax + tx_off))
-                new_n["y"] = int(round(ay + ty_off))
-            remapped_nodes.append(new_n)
-        riser = RiserTables(
-            nodes=remapped_nodes,
-            pipes=list(system_riser["pipes"]),
-            pumps=list(system_riser.get("pumps", [])),
-            valves=list(system_riser.get("valves", [])),
-            av_node_label=av_label,
-        )
+        riser = _remap_riser_to_head_av(system_riser, head_av_node, av_label)
     except (KeyError, TypeError, ValueError) as exc:
         return jsonify({"ok": False,
                         "message": f"계통도/헤드망 노드 좌표가 올바르지 않습니다: {exc}"}), 400
@@ -4165,8 +4331,7 @@ def remote30_combined_build():
                 machine_room, riser,
                 at_bottom=is_pump, source_drop_below_lowest_m=source_drop_m)
         except Exception as _mr_exc:  # noqa: BLE001 — 기계실 실패가 통합을 막지 않도록
-            import warnings as _warnings
-            _warnings.warn(f"[combined] 기계실 prepend 실패 (라이저만 사용): {_mr_exc}",
+            warnings.warn(f"[combined] 기계실 prepend 실패 (라이저만 사용): {_mr_exc}",
                            RuntimeWarning, stacklevel=2)
         if not mr_attached:
             machine_room_labels = []
@@ -4216,11 +4381,7 @@ def remote30_combined_build():
         riser_collapse_labels = {
             str(n["label"]) for n in riser.nodes if str(n["label"]) not in _mr_set
         }
-        # 실제 계통도 DXF x (방향 부호용) + 고도 z(m) — riser.nodes 의 원좌표에서.
-        _riser_dxf_x = {
-            str(n["label"]): float(n["x"])
-            for n in riser.nodes if n.get("x") is not None
-        }
+        # 라이저 고도 z(m) — riser.nodes 의 원좌표에서(_auto_spread 판정용).
         _riser_elev = {
             str(n["label"]): float(n.get("elevation", 0.0)) for n in riser.nodes
         }
@@ -4276,16 +4437,20 @@ def remote30_combined_build():
         head_disp_z = _head_sign * _plan_diag * head_z_frac
 
         def _collapse_riser_to_column(net_obj):
-            """net_obj 사본에서 라이저를 참 3D 로 재배치 (미리보기 3D 뷰와 정합).
+            """net_obj 사본에서 라이저를 수직 입상관으로 재배치 (미리보기 3D 뷰와 정합).
 
-            두 갈래 — 미리보기 remote30_prototype.html 의 Z 매핑과 동일 원리:
+            ★ 단위 일치 핵심: 라이저 x,y 를 AV 한 점으로 모으고(미리보기 riserSet→avX,avY
+            와 동일), 모든 노드의 표시 z 를 **평면 좌표(mm) 단위인 display_z** 로 베이크한다.
+            display_z 는 emit_sdf 가 x,y 와 동일 _scale 로 정규화 → KFP/HAS 변환기가 x,y 와
+            같은 배율을 타 평면과 자동 비례한다. (display_z 를 안 박으면 변환기가 Position z
+            부재로 raw elevation[미터]으로 fallback 하는데, x,y 는 mm·z 는 m 라 단위가
+            1000× 어긋나 라이저 기둥이 평면 대비 폭주했다 — 이 버그 수정.)
 
-            (A) 실제 고도폭 < 1 m (단층/하드코드) → **수직 입상관**: x,y 를 AV 한 점으로
-                모으고, elevation 을 **토폴로지 BFS 순서**로 펼친다(= 수직 기둥). 계통도는
-                실측 길이/고도가 없어(r1-r15 ≈0m) 누적거리론 안 펼쳐지므로, 미리보기
-                autoRiserSpread 와 동일하게 위상 순서×(헤드평면 대각선 0.5)로 Z 를 준다.
-            (B) 실제 고도폭 ≥ 1 m → 고도(z)를 권위값으로 두고, 각 배관 length 와 rise
-                로 수평 run=√(length²−rise²) 을 구해 x 축정렬 배치(옥상 수평 헤더 보존).
+            기둥 내부 고도 분배 t∈[0,1] (AV=0 바닥 → 최상류=1 꼭대기) 만 두 방식:
+            (A) 실측 고도폭 < 1 m (단층/하드코드) → 토폴로지 BFS 순서로 균등 분배.
+            (B) 실측 고도폭 ≥ 1 m → elevation 을 [0,1] 정규화(실 층고 비율 보존).
+            어느 쪽이든 기둥 전체 높이 = 0.5 × 평면 대각선 으로 통일해 항상 평면과 비례.
+            elevation(수리 실표고)은 일절 변경하지 않아 head 계산 불변.
 
             반환: (사본/원본, 변경여부). AV 를 못 찾으면 원본·False.
             """
@@ -4300,31 +4465,33 @@ def remote30_combined_build():
             import math as _math
             z_net = _copy.deepcopy(net_obj)
 
+            z_scale = 3.0  # 미리보기 opts.zScale 기본값 — 기둥 높이 배율(평면 대비).
+            dir_sign = -1.0 if is_pump else 1.0
+            # ── 공통 1: 라이저 x,y 를 AV 한 점으로 모은다(순수 수직 기둥) ──
+            #   미리보기 riserSet→(avX,avY)(remote30_prototype.html) 와 동일. 옛 branch-B
+            #   의 수평 run 재구성(라이저 꼬임 유발)을 폐지해 미리보기와 규격 일치.
+            for n in z_net.nodes:
+                if str(n.get("label")) in riser_collapse_labels:
+                    n["x"] = int(round(cx))
+                    n["y"] = cy
+            # ── 공통 2: 기둥 높이 = 0.5 × 전체 평면 대각선 × zScale (x,y 가 AV 로 모인 뒤
+            #   bbox — 미리보기 spreadHeight/_spreadH 와 정합). display_z 는 emit_sdf 가 x,y
+            #   와 동일 _scale 로 정규화 → 평면과 자동 비례(3/longest 보정 불필요).
+            _full_xs = [float(n["x"]) for n in z_net.nodes if n.get("x") is not None]
+            _full_ys = [float(n["y"]) for n in z_net.nodes if n.get("y") is not None]
+            _x_span = (max(_full_xs) - min(_full_xs)) if _full_xs else 0.0
+            _y_span = (max(_full_ys) - min(_full_ys)) if _full_ys else 0.0
+            _full_diag = _math.hypot(_x_span, _y_span)
+            spread_h = (0.5 * _full_diag * z_scale) if _full_diag > 1e-9 else 1500.0
+
             if _auto_spread:
-                # (A) "계통도를 완전히 z축으로 치환" — 미리보기 autoRiserSpread 와 동일 원리.
-                #   계통도 라이저는 실측 길이/고도가 없다(r1-r15 ≈0m, elev 전부 0·2.8).
-                #   → 누적 배관장으론 기둥이 안 선다. 대신 **토폴로지 BFS 순서**로 **표시
-                #   z(display_z)** 를 펼친다: root(수원/Input)=꼭대기, AV(헤드평면 anchor)=
-                #   바닥(z=0). x,y 는 AV 한 점으로 모아 순수 수직 기둥. 헤드평면·기계실은
-                #   display_z=0 으로 평탄화(미리보기처럼 라이저만 세움).
-                #
-                #   ★ 표시 z 와 수리 elevation 분리: display_z 는 Position z 채널로 흐르고
-                #     emit_sdf 가 x,y 와 동일 _scale 로 정규화 → 평면과 자동 비례. elevation
-                #     속성(수리 실표고 2.8 등)은 건드리지 않아 head 계산 불변. 그래서 기둥
-                #     높이를 DXF 좌표계 그대로 0.5×전체대각선으로 주면 된다(3/longest 보정
-                #     불필요 — x,y 와 같은 변환을 타므로).
-                dir_sign = -1.0 if is_pump else 1.0
+                # (A) 실측 고도폭 < 1 m(단층·하드코드 elev) → 토폴로지 BFS 순서로 펼친다.
+                #   root(수원/Input)=꼭대기(spread_h) → AV(헤드평면 anchor)=바닥(0).
                 import collections as _collections
-                # x,y 를 AV 점으로 먼저 모은다(기둥) — 이후 bbox 정규화 추정에 반영.
-                for n in z_net.nodes:
-                    if str(n.get("label")) in riser_collapse_labels:
-                        n["x"] = int(round(cx))
-                        n["y"] = cy
-                # BFS root — Input(수원) 라이저 노드 우선, 없으면 AV 에서 가장 먼 노드(펌프 후보).
                 root = next((str(n["label"]) for n in z_net.nodes
                              if str(n.get("label")) in riser_collapse_labels
                              and n.get("io_node") == "Input"), None)
-                if root is None:
+                if root is None:  # Input 없으면 AV 에서 가장 먼 노드(펌프 후보)를 root 로.
                     _vis = {str(av_label): 0}
                     _q = _collections.deque([str(av_label)])
                     _far, _fd = str(av_label), 0
@@ -4338,7 +4505,6 @@ def remote30_combined_build():
                                 _fd, _far = _vis[v], v
                             _q.append(v)
                     root = _far
-                # root → … → AV 위상 정렬 BFS.
                 order: list[str] = []
                 seen = {root}
                 q = _collections.deque([root])
@@ -4353,66 +4519,48 @@ def remote30_combined_build():
                 for lbl in riser_collapse_labels:  # 다른 component 는 끝에 append
                     if lbl not in seen:
                         order.append(lbl)
-                # AV 를 강제로 마지막(헤드평면 z=0 anchor)으로.
-                _av_s = str(av_label)
+                _av_s = str(av_label)  # AV 를 강제로 마지막(헤드평면 anchor=바닥)으로.
                 if _av_s in order and order[-1] != _av_s:
                     order.remove(_av_s)
                     order.append(_av_s)
-                # 기둥 높이 = 0.5 × 전체 평면 **대각선** (DXF 좌표 단위 그대로 — 미리보기
-                #   bboxDiag·0.5 와 정합). display_z 는 x,y 와 같은 _scale·coord_scale 변환을
-                #   타므로 평면과 자동 비례, 3/longest 보정 불필요. z_net(x,y 가 AV 로 모인
-                #   뒤 = emit_sdf 가 실제로 보는 bbox)의 **전체** 대각선 사용.
-                _full_xs = [float(n["x"]) for n in z_net.nodes if n.get("x") is not None]
-                _full_ys = [float(n["y"]) for n in z_net.nodes if n.get("y") is not None]
-                _x_span = (max(_full_xs) - min(_full_xs)) if _full_xs else 0.0
-                _y_span = (max(_full_ys) - min(_full_ys)) if _full_ys else 0.0
-                _full_diag = _math.hypot(_x_span, _y_span)
-                spread_h = 0.5 * _full_diag if _full_diag > 1e-9 else 1500.0
                 _n_order = max(1, len(order) - 1)
-                # 라이저 display_z: AV(바닥)=0 → root(꼭대기)=spread_h. pump 면 부호 반전.
-                _z_by_label = {
+                _riser_z = {
                     lbl: dir_sign * (1.0 - i / _n_order) * spread_h
                     for i, lbl in enumerate(order)
                 }
-                # 표시 z 부여: 라이저=기둥, 헤드=상/하향 돌출, 그 외(기계실 등)=0.
-                # elevation(수리 실표고)은 일절 변경하지 않는다.
+                _mr_z = dir_sign * spread_h * 1.18  # 라이저 극단 너머 수원 평면(미리보기 _mrZ).
                 for n in z_net.nodes:
                     lbl = str(n.get("label"))
-                    if lbl in riser_collapse_labels:
-                        n["display_z"] = _z_by_label.get(lbl, 0.0)
+                    if lbl in _mr_set:
+                        n["display_z"] = _mr_z
+                    elif lbl in riser_collapse_labels:
+                        n["display_z"] = _riser_z.get(lbl, 0.0)
                     elif lbl in head_label_set:
                         n["display_z"] = head_disp_z
                     else:
                         n["display_z"] = 0.0
                 return z_net, True
 
-            # (B) 실측 고도 — 수평 run 재구성으로 x 축정렬 (옥상 수평 헤더 보존).
-            xpos: dict[str, float] = {str(av_label): cx}
-            stack = [str(av_label)]
-            while stack:
-                a = stack.pop()
-                za = _riser_elev.get(a, 0.0)
-                for b, length_m in _riser_adj.get(a, ()):
-                    if b in xpos:
-                        continue
-                    zb = _riser_elev.get(b, 0.0)
-                    rise_m = abs(zb - za)
-                    horiz_m = _math.sqrt(max(0.0, length_m * length_m - rise_m * rise_m))
-                    # 방향: 실제 계통도 DXF x 차 부호. 정보 없으면 +.
-                    if a in _riser_dxf_x and b in _riser_dxf_x:
-                        sign = 1.0 if _riser_dxf_x[b] >= _riser_dxf_x[a] else -1.0
-                    else:
-                        sign = 1.0
-                    xpos[b] = xpos[a] + sign * horiz_m * 1000.0  # m → mm
-                    stack.append(b)
+            # (B) 실측 고도폭 ≥ 1 m → elevation(m)을 표시 z(mm)로 펼친다(실 층고 비율 보존).
+            #   미리보기 z=(e-eMid)*1000*zScale 와 동일: ×1000=m→mm 로 평면 x,y(mm) 단위와
+            #   일치, eMid 중심. 라이저·헤드·평면 모두 같은 식. 기계실은 라이저 극단 너머
+            #   수원 평면(_mrZ)에. (옛 코드는 display_z 미베이크 → 변환기가 raw elevation[m]
+            #   으로 fallback, x,y[mm] 와 1000× 어긋나 기둥이 폭주했다 — 이 버그 수정.)
+            _all_e = [float(n.get("elevation", 0.0) or 0.0) for n in z_net.nodes]
+            _e_lo, _e_hi = (min(_all_e), max(_all_e)) if _all_e else (0.0, 0.0)
+            _e_mid = (_e_lo + _e_hi) / 2.0
+            _riser_extreme = (((_e_lo - _e_mid) if is_pump else (_e_hi - _e_mid))
+                              * 1000.0 * z_scale * dir_sign)
+            _mr_z = _riser_extreme + dir_sign * spread_h * 0.18
             for n in z_net.nodes:
                 lbl = str(n.get("label"))
-                if lbl in riser_collapse_labels:
-                    n["x"] = int(round(xpos.get(lbl, cx)))
-                    n["y"] = cy
+                _ez = (float(n.get("elevation", 0.0) or 0.0) - _e_mid) * 1000.0 * z_scale
+                if lbl in _mr_set:
+                    n["display_z"] = _mr_z
                 elif lbl in head_label_set:
-                    # 헤드 상/하향 돌출(표시 전용) — 라이저는 실고도(elevation) z 사용.
-                    n["display_z"] = head_disp_z
+                    n["display_z"] = _ez + head_disp_z
+                else:
+                    n["display_z"] = _ez
             return z_net, True
 
         def _emit_bundle(net_obj, suffix: str) -> dict:
@@ -4440,25 +4588,25 @@ def remote30_combined_build():
                 try:
                     emit_full_sdf(z_net, z_sdf, project_title=f"Remote 30 통합 — {title}")
                 except Exception as _z_exc:  # noqa: BLE001 — 사본 실패 시 원본 좌표로 폴백
-                    import warnings as _warnings
-                    _warnings.warn(f"[combined{suffix}] z-aware SDF emit 실패 (원본 좌표 사용): {_z_exc}", RuntimeWarning, stacklevel=2)
+                    warnings.warn(f"[combined{suffix}] z-aware SDF emit 실패 (원본 좌표 사용): {_z_exc}", RuntimeWarning, stacklevel=2)
                     z_sdf = b_sdf
             b_kfp = out_dir / f"combined_{job_id}{suffix}.kfp"
             b_kfp_ok = False
             try:
-                _emit_kfp(z_sdf, b_kfp, coord_scale=kfp_coord_scale)
+                # 통합망 KFP — 미리보기와 동일한 스키매틱 표시좌표(라이저=기둥,
+                # display_z)로 비율 일치. length_m·elevation_m 는 실값 보존(수리 권위값).
+                _emit_kfp(z_sdf, b_kfp, coord_scale=kfp_coord_scale,
+                          display_geometry=True)
                 b_kfp_ok = b_kfp.is_file()
             except Exception as _kfp_exc:  # noqa: BLE001 — KFP 실패가 통합 출력을 막지 않도록
-                import warnings as _warnings
-                _warnings.warn(f"[combined{suffix}] KFP emit 실패 (SDF 는 정상): {_kfp_exc}", RuntimeWarning, stacklevel=2)
+                warnings.warn(f"[combined{suffix}] KFP emit 실패 (SDF 는 정상): {_kfp_exc}", RuntimeWarning, stacklevel=2)
             b_has = out_dir / f"combined_{job_id}{suffix}.has"
             b_has_ok = False
             try:
                 _emit_has(z_sdf, b_has, isometric=True, iso_z_scale=has_iso_z_scale)
                 b_has_ok = b_has.is_file()
             except Exception as _has_exc:  # noqa: BLE001 — HAS 실패가 통합 출력을 막지 않도록
-                import warnings as _warnings
-                _warnings.warn(f"[combined{suffix}] HAS emit 실패 (SDF 는 정상): {_has_exc}", RuntimeWarning, stacklevel=2)
+                warnings.warn(f"[combined{suffix}] HAS emit 실패 (SDF 는 정상): {_has_exc}", RuntimeWarning, stacklevel=2)
             # 임시 z-aware SDF/SLF 정리 — ZIP·다운로드에는 원본 b_sdf 만 포함.
             if z_sdf != b_sdf:
                 for _tmp in (z_sdf, z_sdf.with_suffix(".slf")):
@@ -4495,82 +4643,25 @@ def remote30_combined_build():
         out_kfp, out_has, out_zip = plan_bundle["kfp"], plan_bundle["has"], plan_bundle["zip"]
         kfp_ok, has_ok = plan_bundle["kfp_ok"], plan_bundle["has_ok"]
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
 
     # ── 캔버스 시각화용 geometry 데이터 (헤드망 + 라이저 통합)
     riser_labels = {str(n["label"]) for n in riser.nodes}
-    geometry = {
-        "av_node_label": riser.av_node_label,
-        "riser_labels": list(riser_labels),
-        "machine_room_labels": machine_room_labels,
-        "pump_junction_label": pump_junction_label,
-        # 펌프방식이면 수원/기계실이 망 최하부 → 3D 아이소뷰가 Z 방향(아래로)을 뒤집는다.
-        # 고가수조(gravity, 기본)면 수원이 옥상(위로). DXF 에 z 가 없어 토폴로지 기반
-        # autoSpread 로 Z 를 만들므로, 방향만 이 플래그로 결정한다.
-        "machine_room_at_bottom": is_pump,
-        "machine_room_plan_edges": combined.machine_room_plan_edges,
-        # 헤드(스프링클러) 노드 = nozzle 의 부착(input) 노드. 클라이언트가 이 노드에서
-        # 짧은 니플 스텁을 ±z(상/하향)로 그린다. 가지배관 자체는 z=0 유지(평면).
-        "head_labels": sorted(head_label_set),
-        "head_orientation": head_orientation,
-        "head_z_frac": head_z_frac,
-        "nodes": [
-            {"label": str(n["label"]),
-             "x": float(n.get("x", 0)), "y": float(n.get("y", 0)),
-             "z": float(n.get("elevation", 0)),
-             "io": n.get("io_node", "No")}
-            for n in combined.nodes
-        ],
-        "pipes": [
-            {"label": str(p.get("label", "")),
-             "in": str(p["in"]), "out": str(p["out"]),
-             "dia": p.get("dia", 0)}
-            for p in combined.pipes
-        ],
-        "pumps": [
-            {"label": str(p["label"]), "in": str(p["in"]), "out": str(p["out"])}
-            for p in combined.pumps
-        ],
-        "valves": [
-            {"label": str(v["label"]), "in": str(v["in"]), "out": str(v["out"]),
-             "target_pa": v.get("target_value", 0)}
-            for v in combined.valves
-        ],
-    }
+    geometry = _build_combined_geometry(
+        combined, riser, riser_labels, head_label_set,
+        machine_room_labels, pump_junction_label,
+        is_pump, head_orientation, head_z_frac)
 
     # ── 포맷 미리보기(round-trip)용 역할 사이드카.
-    # KFP/SDF/HAS 로 emit→재파싱하면 라벨이 N1..Nn 으로 개명되고 라이저/헤드/AV 같은
-    # 구조 메타가 사라진다. 렌더러는 이 구조 메타(riser_labels·head_labels·head_z_frac
-    # ·autoRiserSpread 토폴로지)로 모양을 재구성하므로, 메타가 없으면 평면으로 깨진다.
-    # combined.nodes 순서는 parse 순서와 동일(검증됨)하므로, 노드 순서대로 원본 라벨과
-    # 역할 집합을 저장해두면 미리보기에서 개명 라벨로 다시 매핑해 동일 모양을 복원할 수 있다.
     try:
-        roles_sidecar = {
-            "order_labels": [str(n["label"]) for n in combined.nodes],
-            "order_io": [str(n.get("io_node", "No")) for n in combined.nodes],
-            "riser_labels": sorted(riser_labels),
-            "head_labels": sorted(head_label_set),
-            "av_node_label": riser.av_node_label,
-            "machine_room_labels": list(machine_room_labels),
-            "pump_junction_label": pump_junction_label,
-            "head_orientation": head_orientation,
-            "head_z_frac": head_z_frac,
-            "machine_room_at_bottom": is_pump,
-            # round-trip 시 _common_network_to_geometry 가 비우는 pumps/valves 를 보존
-            # (펌프방식 망의 펌프 노드 평면 배치에 필요). in/out 은 원본 라벨로 저장 →
-            # 미리보기에서 개명 라벨로 remap.
-            "pumps": [{"label": str(p["label"]), "in": str(p["in"]), "out": str(p["out"])}
-                      for p in combined.pumps],
-            "valves": [{"label": str(v["label"]), "in": str(v["in"]), "out": str(v["out"]),
-                        "target_pa": v.get("target_value", 0)} for v in combined.valves],
-        }
+        roles_sidecar = _build_roles_sidecar(
+            combined, riser_labels, head_label_set, riser.av_node_label,
+            machine_room_labels, pump_junction_label,
+            is_pump, head_orientation, head_z_frac)
         (out_dir / f"combined_{job_id}_roles.json").write_text(
             json.dumps(roles_sidecar, ensure_ascii=False), encoding="utf-8")
     except Exception as _rs_exc:  # noqa: BLE001 — 사이드카 실패가 통합 출력을 막지 않도록
-        import warnings as _warnings
-        _warnings.warn(f"[combined] roles 사이드카 저장 실패 (미리보기 모양 복원 불가): {_rs_exc}",
+        warnings.warn(f"[combined] roles 사이드카 저장 실패 (미리보기 모양 복원 불가): {_rs_exc}",
                        RuntimeWarning, stacklevel=2)
 
     return jsonify({
@@ -4598,17 +4689,7 @@ def remote30_combined_build():
 
 @app.get("/api/remote30/combined/result/<job_id>/<path:filename>")
 def remote30_combined_result(job_id: str, filename: str):
-    safe_id = secure_filename(job_id)
-    if not safe_id or safe_id != job_id:
-        return "잘못된 job_id", 400
-    target = COMBINED_OUTPUT_DIR / safe_id / filename
-    try:
-        target.resolve().relative_to(COMBINED_OUTPUT_DIR.resolve())
-    except ValueError:
-        return "잘못된 경로", 400
-    if not target.is_file():
-        return "결과 파일 없음", 404
-    return send_file(target, as_attachment=True)
+    return _serve_run_file(COMBINED_OUTPUT_DIR, job_id, filename)
 
 
 @app.get("/api/remote30/combined/preview/<job_id>/<fmt>")
@@ -4650,10 +4731,7 @@ def remote30_combined_preview(job_id: str, fmt: str):
         net = _parse(str(target))
         geometry = _common_network_to_geometry(net)
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False,
-                        "message": f"{fmt.upper()} 미리보기 파싱 실패: {str(exc)[:280]}",
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc, message=f"{fmt.upper()} 미리보기 파싱 실패: {str(exc)[:280]}")
 
     # ── 역할 사이드카로 구조 메타 복원 (Option I).
     # emit→재파싱은 라벨을 N1..Nn 으로 개명하고 라이저/헤드/AV 구분을 잃는다. 빌드 때
@@ -4743,9 +4821,7 @@ def remote30_system_emit():
             f"Remote 30 계통도 — {riser.get('title', 'System')}",
             coord_scale=min(max(_to_float(body.get("kfp_coord_scale"), 1.0), 0.05), 20.0))
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
     base = f"/api/remote30/system/result/{job_id}/"
     return jsonify({
         "ok": True, "job_id": job_id,
@@ -4759,17 +4835,7 @@ def remote30_system_emit():
 
 @app.get("/api/remote30/system/result/<job_id>/<path:filename>")
 def remote30_system_result(job_id: str, filename: str):
-    safe_id = secure_filename(job_id)
-    if not safe_id or safe_id != job_id:
-        return "잘못된 job_id", 400
-    target = SYSTEM_OUTPUT_DIR / safe_id / filename
-    try:
-        target.resolve().relative_to(SYSTEM_OUTPUT_DIR.resolve())
-    except ValueError:
-        return "잘못된 경로", 400
-    if not target.is_file():
-        return "결과 파일 없음", 404
-    return send_file(target, as_attachment=True)
+    return _serve_run_file(SYSTEM_OUTPUT_DIR, job_id, filename)
 
 
 @app.post("/api/remote30/machineroom/emit")
@@ -4810,9 +4876,7 @@ def remote30_machineroom_emit():
             f"Remote 30 기계실 — {mr.get('title', 'MachineRoom')}",
             coord_scale=min(max(_to_float(body.get("kfp_coord_scale"), 1.0), 0.05), 20.0))
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
     base = f"/api/remote30/machineroom/result/{job_id}/"
     return jsonify({
         "ok": True, "job_id": job_id,
@@ -4827,17 +4891,7 @@ def remote30_machineroom_emit():
 
 @app.get("/api/remote30/machineroom/result/<job_id>/<path:filename>")
 def remote30_machineroom_result(job_id: str, filename: str):
-    safe_id = secure_filename(job_id)
-    if not safe_id or safe_id != job_id:
-        return "잘못된 job_id", 400
-    target = MACHINEROOM_OUTPUT_DIR / safe_id / filename
-    try:
-        target.resolve().relative_to(MACHINEROOM_OUTPUT_DIR.resolve())
-    except ValueError:
-        return "잘못된 경로", 400
-    if not target.is_file():
-        return "결과 파일 없음", 404
-    return send_file(target, as_attachment=True)
+    return _serve_run_file(MACHINEROOM_OUTPUT_DIR, job_id, filename)
 
 
 @app.post("/api/remote30/system/extract")
@@ -4903,9 +4957,7 @@ def remote30_system_extract():
             riser = extract_riser_msp_28f((px, py), (ax, ay))
             return jsonify({"ok": True, "riser": riser, "algorithm": "legacy_template"})
         except Exception as exc:  # noqa: BLE001
-            import traceback
-            return jsonify({"ok": False, "message": str(exc)[:300],
-                            "traceback": traceback.format_exc()[-1500:]}), 500
+            return _err500(exc)
 
     # v1 — DXF 기반 path 추출 (DXF 파일 필수)
     try:
@@ -4943,10 +4995,7 @@ def remote30_system_extract():
         return jsonify({"ok": False, "message": str(exc),
                         "algorithm": "dxf_path_v1", "suggest_legacy": True}), 200
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:],
-                        "algorithm": "dxf_path_v1"}), 500
+        return _err500(exc, algorithm="dxf_path_v1")
 
 
 @app.post("/api/remote30/system/connection_review")
@@ -5007,9 +5056,7 @@ def remote30_system_connection_review():
         payload["ml_cut"] = ml_cut
         return jsonify(payload)
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
 
 
 @app.post("/api/remote30/system/clean_network")
@@ -5048,10 +5095,7 @@ def remote30_system_clean_network():
         riser = extract_clean_system_network(clean_file, scale_mm_per_unit=scale)
         return jsonify({"ok": True, "riser": riser, "algorithm": "clean_network"})
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:],
-                        "algorithm": "clean_network"}), 500
+        return _err500(exc, algorithm="clean_network")
 
 
 @app.post("/api/remote30/machineroom/parse")
@@ -5065,9 +5109,7 @@ def remote30_machineroom_parse():
     try:
         result = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
     result["ok"] = True
     result["filename"] = dxf_path.name
     return jsonify(result)
@@ -5143,10 +5185,7 @@ def remote30_machineroom_extract():
         return jsonify({"ok": False, "message": str(exc),
                         "algorithm": "machineroom_path_v1"}), 200
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:],
-                        "algorithm": "machineroom_path_v1"}), 500
+        return _err500(exc, algorithm="machineroom_path_v1")
 
 
 @app.post("/api/remote30/overall/parse-system-diagram")
@@ -5173,9 +5212,7 @@ def remote30_overall_parse_system_diagram():
                                             default_height_m=default_h,
                                             roof_height_m=roof_h)
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
     return jsonify({
         "ok": True,
         "building_name": profile.building_name,
@@ -5190,17 +5227,7 @@ def remote30_overall_parse_system_diagram():
 
 @app.get("/api/remote30/overall/result/<job_id>/<path:filename>")
 def remote30_overall_result(job_id: str, filename: str):
-    safe_id = secure_filename(job_id)
-    if not safe_id or safe_id != job_id:
-        return "잘못된 job_id", 400
-    target = OVERALL_OUTPUT_DIR / safe_id / filename
-    try:
-        target.resolve().relative_to(OVERALL_OUTPUT_DIR.resolve())
-    except ValueError:
-        return "잘못된 경로", 400
-    if not target.is_file():
-        return "결과 파일 없음", 404
-    return send_file(target, as_attachment=True)
+    return _serve_run_file(OVERALL_OUTPUT_DIR, job_id, filename)
 
 
 @app.post("/api/remote30/gnn/run")
@@ -5374,6 +5401,62 @@ def remote30_gnn_result(run_id: str, filename: str):
     return send_file(target, as_attachment=True)
 
 
+def _inspect_cache_paths(dxf_path: Path):
+    """도면 내용 해시 기반 inspect 렌더 캐시 경로 → (entities_gz, meta_json).
+
+    동일 도면 재업로드(=내용 해시 일치)면 렌더 결과를 그대로 스트리밍하기 위함.
+    해시 실패 시 (None, None) — 캐시 비활성으로 동작.
+    """
+    try:
+        h = hashlib.sha256()
+        with open(dxf_path, "rb") as _f:
+            for _blk in iter(lambda: _f.read(1024 * 1024), b""):
+                h.update(_blk)
+        content_hash = h.hexdigest()
+    except Exception:
+        content_hash = ""
+    if not content_hash:
+        return None, None
+    cache_key = f"{INSPECT_CACHE_VERSION}_{content_hash}"
+    return (INSPECT_CACHE_DIR / f"{cache_key}.entities.ndjson.gz",
+            INSPECT_CACHE_DIR / f"{cache_key}.meta.json")
+
+
+def _inspect_layer_visibility(doc):
+    """DXF 레이어 가시성 수집 → (doc_layer_info, hidden_layers).
+
+    hidden_layers = CAD 가 화면에 안 그리는 레이어(off/frozen/color<0). plot=0(비출력)은
+    화면엔 그대로 보이므로(내진·치수·배치도 등) hidden 에 넣지 않고 no_plot 으로만 참고 보관.
+    """
+    doc_layer_info: dict[str, dict] = {}
+    hidden_layers: set[str] = set()
+    try:
+        for ly in doc.layers:
+            try:
+                color = int(ly.dxf.color)
+            except Exception:
+                color = 7
+            name = str(ly.dxf.name)
+            is_off = bool(ly.is_off())
+            is_frozen = bool(ly.is_frozen())
+            try:
+                no_plot = int(getattr(ly.dxf, "plot", 1)) == 0
+            except Exception:
+                no_plot = False
+            doc_layer_info[name] = {
+                "is_off": is_off,
+                "is_frozen": is_frozen,
+                "is_locked": bool(ly.is_locked()),
+                "color": color,
+                "no_plot": no_plot,
+            }
+            if is_off or is_frozen or color < 0:
+                hidden_layers.add(name)
+    except Exception:
+        pass
+    return doc_layer_info, hidden_layers
+
+
 @app.post("/api/remote30/inspect")
 def remote30_inspect():
     """DXF 업로드 → 모든 entity JSON + 레이어 통계 + 카테고리 자동 추천."""
@@ -5384,20 +5467,8 @@ def remote30_inspect():
 
     dxf_name = dxf_path.name
 
-    # ── 바이너리 캐시 조회 ───────────────────────────────────────────────
-    # 도면 내용 해시가 같으면(=동일 도면 재업로드) 렌더 결과를 그대로 스트리밍.
-    content_hash = ""
-    try:
-        h = hashlib.sha256()
-        with open(dxf_path, "rb") as _f:
-            for _blk in iter(lambda: _f.read(1024 * 1024), b""):
-                h.update(_blk)
-        content_hash = h.hexdigest()
-    except Exception:
-        content_hash = ""
-    cache_key = f"{INSPECT_CACHE_VERSION}_{content_hash}" if content_hash else ""
-    cache_ent_path = INSPECT_CACHE_DIR / f"{cache_key}.entities.ndjson.gz" if cache_key else None
-    cache_meta_path = INSPECT_CACHE_DIR / f"{cache_key}.meta.json" if cache_key else None
+    # ── 바이너리 캐시 조회 — 동일 도면 재업로드면 렌더 결과를 그대로 스트리밍.
+    cache_ent_path, cache_meta_path = _inspect_cache_paths(dxf_path)
 
     if cache_ent_path and cache_ent_path.exists() and cache_meta_path.exists():
         try:
@@ -5435,35 +5506,8 @@ def remote30_inspect():
     except Exception as exc:
         return jsonify({"ok": False, "message": f"DXF 파싱 실패: {exc}"}), 500
 
-    # DXF 레이어 가시성: CAD 가 화면에 안 그리는 것만 숨긴다 (off / frozen / color<0).
-    # plot=0(비출력) 레이어는 CAD 화면에는 그대로 보이므로(내진 Seismic·치수·배치도 등)
-    # 미리보기에서도 렌더해 실제 도면과 동일한 규격을 보여준다. no_plot 정보는 참고용으로만 보관.
-    doc_layer_info: dict[str, dict] = {}
-    hidden_layers: set[str] = set()  # CAD 가 화면에 안 그리는 레이어들 (off/frozen/color<0)
-    try:
-        for ly in doc.layers:
-            try:
-                color = int(ly.dxf.color)
-            except Exception:
-                color = 7
-            name = str(ly.dxf.name)
-            is_off = bool(ly.is_off())
-            is_frozen = bool(ly.is_frozen())
-            try:
-                no_plot = int(getattr(ly.dxf, "plot", 1)) == 0
-            except Exception:
-                no_plot = False
-            doc_layer_info[name] = {
-                "is_off": is_off,
-                "is_frozen": is_frozen,
-                "is_locked": bool(ly.is_locked()),
-                "color": color,
-                "no_plot": no_plot,
-            }
-            if is_off or is_frozen or color < 0:
-                hidden_layers.add(name)
-    except Exception:
-        pass
+    # DXF 레이어 가시성 (off/frozen/color<0 만 hidden, plot=0 은 화면엔 보이므로 렌더).
+    doc_layer_info, hidden_layers = _inspect_layer_visibility(doc)
 
     entities = []
     bbox = [float("inf"), float("inf"), float("-inf"), float("-inf")]
@@ -5547,6 +5591,9 @@ def remote30_inspect():
         v = matrix.transform(Vec3(float(x), float(y), 0.0))
         return float(v.x), float(v.y)
 
+    # ARC/CIRCLE 반지름 스케일 추정은 remote30_prototype 의 단일 헬퍼를 공유한다.
+    from remote30_prototype import _uniform_scale
+
     def _render_entity(e, *, matrix=None, layer_override: str | None = None, depth: int = 0) -> None:
         """Convert one ezdxf entity to canvas dict(s) and append to entities[].
 
@@ -5577,28 +5624,14 @@ def remote30_inspect():
                 _upd(x1, y1); _upd(x2, y2)
             elif etype == "ARC":
                 cx, cy = _t(matrix, e.dxf.center.x, e.dxf.center.y)
-                # scale factor for radius (uniform scale assumption — fine for sprinkler heads)
-                if matrix is not None:
-                    # estimate scale by transforming a unit X vector then measuring its length
-                    p0 = matrix.transform(Vec3(0.0, 0.0, 0.0))
-                    p1 = matrix.transform(Vec3(1.0, 0.0, 0.0))
-                    sf = math.hypot(p1.x - p0.x, p1.y - p0.y)
-                else:
-                    sf = 1.0
-                r = float(e.dxf.radius) * sf
+                r = float(e.dxf.radius) * _uniform_scale(matrix)
                 sa = float(e.dxf.start_angle)
                 ea = float(e.dxf.end_angle)
                 entities.append({"t": "A", "l": layer, "c": [cx, cy], "r": r, "a": [sa, ea]})
                 _upd(cx - r, cy - r); _upd(cx + r, cy + r)
             elif etype == "CIRCLE":
                 cx, cy = _t(matrix, e.dxf.center.x, e.dxf.center.y)
-                if matrix is not None:
-                    p0 = matrix.transform(Vec3(0.0, 0.0, 0.0))
-                    p1 = matrix.transform(Vec3(1.0, 0.0, 0.0))
-                    sf = math.hypot(p1.x - p0.x, p1.y - p0.y)
-                else:
-                    sf = 1.0
-                r = float(e.dxf.radius) * sf
+                r = float(e.dxf.radius) * _uniform_scale(matrix)
                 entities.append({"t": "C", "l": layer, "c": [cx, cy], "r": r})
                 _upd(cx - r, cy - r); _upd(cx + r, cy + r)
             elif etype == "LWPOLYLINE":

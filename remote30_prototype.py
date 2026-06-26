@@ -22,9 +22,10 @@ Stages
 from __future__ import annotations
 
 import csv
-import io
+import heapq
 import math
 import os
+import re
 import time
 import warnings
 import xml.etree.ElementTree as ET
@@ -290,6 +291,60 @@ def _t(matrix: Matrix44 | None, x: float, y: float) -> tuple[float, float]:
     return float(v.x), float(v.y)
 
 
+def _uniform_scale(matrix: Matrix44 | None) -> float:
+    """matrix 의 등방(uniform) 스케일 추정 — 단위 X 벡터를 변환한 길이.
+
+    ARC/CIRCLE 반지름을 INSERT 변환 후에도 맞추기 위함. matrix None 이면 1.0.
+    """
+    if matrix is None:
+        return 1.0
+    p0 = matrix.transform(Vec3(0.0, 0.0, 0.0))
+    p1 = matrix.transform(Vec3(1.0, 0.0, 0.0))
+    return math.hypot(p1.x - p0.x, p1.y - p0.y)
+
+
+def _hatch_outline_paths(entity, matrix: Matrix44 | None) -> list[list[list[float]]]:
+    """HATCH 경계 폴리라인 추출 — PolylinePath vertices 우선, 없으면 EdgePath(Line/Arc).
+
+    각 path 의 [x, y] 점목록(연속 중복점 제거)을 모아 반환하며 빈 path 는 제외한다.
+    호출부에서 bbox 갱신 + 최대 path 선택을 수행한다.
+    """
+    paths_out: list[list[list[float]]] = []
+    for path in entity.paths:
+        pts: list[list[float]] = []
+        for vertex in getattr(path, "vertices", []) or []:
+            try:
+                x, y = _t(matrix, vertex[0], vertex[1])
+                pts.append([x, y])
+            except Exception:
+                continue
+        if not pts:
+            for edge in getattr(path, "edges", []) or []:
+                et = type(edge).__name__
+                try:
+                    if et == "LineEdge":
+                        x1, y1 = _t(matrix, edge.start[0], edge.start[1])
+                        x2, y2 = _t(matrix, edge.end[0], edge.end[1])
+                        pts.append([x1, y1]); pts.append([x2, y2])
+                    elif et == "ArcEdge":
+                        cx = float(edge.center[0]); cy = float(edge.center[1])
+                        r = float(edge.radius)
+                        sa = float(edge.start_angle); ea = float(edge.end_angle)
+                        if ea < sa:
+                            ea += 360.0
+                        for k in range(9):
+                            ang = math.radians(sa + (ea - sa) * k / 8)
+                            x, y = _t(matrix, cx + r * math.cos(ang), cy + r * math.sin(ang))
+                            pts.append([x, y])
+                except Exception:
+                    continue
+        if len(pts) > 1:
+            pts = [pts[0]] + [p for prev, p in zip(pts, pts[1:]) if p != prev]
+        if pts:
+            paths_out.append(pts)
+    return paths_out
+
+
 def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
     """ezdxf 로 modelspace 파싱 → 캔버스용 entity dict 리스트.
 
@@ -349,25 +404,13 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
                 _upd(x1, y1); _upd(x2, y2)
             elif etype == "ARC":
                 cx, cy = _t(matrix, e.dxf.center.x, e.dxf.center.y)
-                if matrix is not None:
-                    p0 = matrix.transform(Vec3(0.0, 0.0, 0.0))
-                    p1 = matrix.transform(Vec3(1.0, 0.0, 0.0))
-                    sf = math.hypot(p1.x - p0.x, p1.y - p0.y)
-                else:
-                    sf = 1.0
-                r = float(e.dxf.radius) * sf
+                r = float(e.dxf.radius) * _uniform_scale(matrix)
                 bundle.entities.append({"t": "A", "l": layer, "c": [cx, cy], "r": r,
                                        "a": [float(e.dxf.start_angle), float(e.dxf.end_angle)]})
                 _upd(cx - r, cy - r); _upd(cx + r, cy + r)
             elif etype == "CIRCLE":
                 cx, cy = _t(matrix, e.dxf.center.x, e.dxf.center.y)
-                if matrix is not None:
-                    p0 = matrix.transform(Vec3(0.0, 0.0, 0.0))
-                    p1 = matrix.transform(Vec3(1.0, 0.0, 0.0))
-                    sf = math.hypot(p1.x - p0.x, p1.y - p0.y)
-                else:
-                    sf = 1.0
-                r = float(e.dxf.radius) * sf
+                r = float(e.dxf.radius) * _uniform_scale(matrix)
                 bundle.entities.append({"t": "C", "l": layer, "c": [cx, cy], "r": r})
                 _upd(cx - r, cy - r); _upd(cx + r, cy + r)
             elif etype == "LWPOLYLINE":
@@ -435,41 +478,10 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
                         _upd(x, y)
                     bundle.entities.append({"t": "PL", "l": layer, "p": pts})
             elif etype == "HATCH":
-                paths_out = []
-                for path in e.paths:
-                    pts = []
-                    for vertex in getattr(path, "vertices", []) or []:
-                        try:
-                            x, y = _t(matrix, vertex[0], vertex[1])
-                            pts.append([x, y])
-                        except Exception:
-                            continue
-                    if not pts:
-                        for edge in getattr(path, "edges", []) or []:
-                            et = type(edge).__name__
-                            try:
-                                if et == "LineEdge":
-                                    x1, y1 = _t(matrix, edge.start[0], edge.start[1])
-                                    x2, y2 = _t(matrix, edge.end[0], edge.end[1])
-                                    pts.append([x1, y1]); pts.append([x2, y2])
-                                elif et == "ArcEdge":
-                                    cx = float(edge.center[0]); cy = float(edge.center[1])
-                                    r = float(edge.radius)
-                                    sa = float(edge.start_angle); ea = float(edge.end_angle)
-                                    if ea < sa:
-                                        ea += 360.0
-                                    for k in range(9):
-                                        ang = math.radians(sa + (ea - sa) * k / 8)
-                                        x, y = _t(matrix, cx + r * math.cos(ang), cy + r * math.sin(ang))
-                                        pts.append([x, y])
-                            except Exception:
-                                continue
-                    if len(pts) > 1:
-                        pts = [pts[0]] + [p for prev, p in zip(pts, pts[1:]) if p != prev]
-                    if pts:
-                        paths_out.append(pts)
-                        for x, y in pts:
-                            _upd(x, y)
+                paths_out = _hatch_outline_paths(e, matrix)
+                for pts in paths_out:
+                    for x, y in pts:
+                        _upd(x, y)
                 if paths_out:
                     biggest = max(paths_out, key=len)
                     bundle.entities.append({"t": "H", "l": layer, "p": biggest})
@@ -592,25 +604,13 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
                 _upd(x1, y1); _upd(x2, y2)
             elif etype == "ARC":
                 cx, cy = _t(matrix, e.dxf.center.x, e.dxf.center.y)
-                if matrix is not None:
-                    p0 = matrix.transform(Vec3(0.0, 0.0, 0.0))
-                    p1 = matrix.transform(Vec3(1.0, 0.0, 0.0))
-                    sf = math.hypot(p1.x - p0.x, p1.y - p0.y)
-                else:
-                    sf = 1.0
-                r = float(e.dxf.radius) * sf
+                r = float(e.dxf.radius) * _uniform_scale(matrix)
                 entities.append({"t": "A", "l": layer, "c": [cx, cy], "r": r,
                                   "a": [float(e.dxf.start_angle), float(e.dxf.end_angle)]})
                 _upd(cx - r, cy - r); _upd(cx + r, cy + r)
             elif etype == "CIRCLE":
                 cx, cy = _t(matrix, e.dxf.center.x, e.dxf.center.y)
-                if matrix is not None:
-                    p0 = matrix.transform(Vec3(0.0, 0.0, 0.0))
-                    p1 = matrix.transform(Vec3(1.0, 0.0, 0.0))
-                    sf = math.hypot(p1.x - p0.x, p1.y - p0.y)
-                else:
-                    sf = 1.0
-                r = float(e.dxf.radius) * sf
+                r = float(e.dxf.radius) * _uniform_scale(matrix)
                 entities.append({"t": "C", "l": layer, "c": [cx, cy], "r": r})
                 _upd(cx - r, cy - r); _upd(cx + r, cy + r)
             elif etype == "LWPOLYLINE":
@@ -700,39 +700,9 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
                     for x, y in pts: _upd(x, y)
                     entities.append({"t": "PL", "l": layer, "p": pts})
             elif etype == "HATCH":
-                paths_out = []
-                for path in e.paths:
-                    pts = []
-                    for vertex in getattr(path, "vertices", []) or []:
-                        try:
-                            x, y = _t(matrix, vertex[0], vertex[1])
-                            pts.append([x, y])
-                        except Exception:
-                            continue
-                    if not pts:
-                        for edge in getattr(path, "edges", []) or []:
-                            et = type(edge).__name__
-                            try:
-                                if et == "LineEdge":
-                                    x1, y1 = _t(matrix, edge.start[0], edge.start[1])
-                                    x2, y2 = _t(matrix, edge.end[0], edge.end[1])
-                                    pts.append([x1, y1]); pts.append([x2, y2])
-                                elif et == "ArcEdge":
-                                    cx = float(edge.center[0]); cy = float(edge.center[1])
-                                    r = float(edge.radius)
-                                    sa = float(edge.start_angle); ea = float(edge.end_angle)
-                                    if ea < sa: ea += 360.0
-                                    for k in range(9):
-                                        ang = math.radians(sa + (ea - sa) * k / 8)
-                                        x, y = _t(matrix, cx + r * math.cos(ang), cy + r * math.sin(ang))
-                                        pts.append([x, y])
-                            except Exception:
-                                continue
-                    if len(pts) > 1:
-                        pts = [pts[0]] + [p for prev, p in zip(pts, pts[1:]) if p != prev]
-                    if pts:
-                        paths_out.append(pts)
-                        for x, y in pts: _upd(x, y)
+                paths_out = _hatch_outline_paths(e, matrix)
+                for pts in paths_out:
+                    for x, y in pts: _upd(x, y)
                 if paths_out:
                     biggest = max(paths_out, key=len)
                     entities.append({"t": "H", "l": layer, "p": biggest})
@@ -989,24 +959,22 @@ SYSTEM_PIPE_LAYER_KEYWORDS: tuple[str, ...] = (
 )
 
 # v2 — TEXT 라벨 파싱 (직경 + 층)
-import re as _re_v2
-
 _DIA_TEXT_PATTERNS = (
-    _re_v2.compile(r"\b(\d{2,3})\s*A\b"),                  # 25A
-    _re_v2.compile(r"^\s*(\d{2,3})\s*$"),                  # 순수 숫자
-    _re_v2.compile(r"[Øø]\s*(\d{2,3})"),                   # Ø25
-    _re_v2.compile(r"DN\s*(\d{2,3})"),                     # DN25
-    _re_v2.compile(r"(?<![0-9])(\d{2,3})\s*mm(?![0-9])"),  # 25mm
+    re.compile(r"\b(\d{2,3})\s*A\b"),                  # 25A
+    re.compile(r"^\s*(\d{2,3})\s*$"),                  # 순수 숫자
+    re.compile(r"[Øø]\s*(\d{2,3})"),                   # Ø25
+    re.compile(r"DN\s*(\d{2,3})"),                     # DN25
+    re.compile(r"(?<![0-9])(\d{2,3})\s*mm(?![0-9])"),  # 25mm
 )
 _DIA_TEXT_NOISE_KW = ("호스", "방수구", "소화전", "옥내", "HOSE", "EA", "KG",
                       "SET", "SCALE", "PUMP", "펌프", "TANK", "탱크", "SIZE")
 _VALID_DIA_MM = frozenset((15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300))
 
 _FLOOR_LABEL_PATTERNS = (
-    (_re_v2.compile(r"지상\s*(\d{1,2})\s*층"), "ground"),     # 지상N층 → +N
-    (_re_v2.compile(r"지하\s*(\d{1,2})\s*층"), "basement"),   # 지하N층 → -N
-    (_re_v2.compile(r"B\s*(\d{1,2})\s*F", _re_v2.I), "basement"),  # B1F → -1
-    (_re_v2.compile(r"(?<![A-Za-z])(\d{1,2})\s*F(?![A-Za-z])"), "ground"),  # 5F → +5
+    (re.compile(r"지상\s*(\d{1,2})\s*층"), "ground"),     # 지상N층 → +N
+    (re.compile(r"지하\s*(\d{1,2})\s*층"), "basement"),   # 지하N층 → -N
+    (re.compile(r"B\s*(\d{1,2})\s*F", re.I), "basement"),  # B1F → -1
+    (re.compile(r"(?<![A-Za-z])(\d{1,2})\s*F(?![A-Za-z])"), "ground"),  # 5F → +5
 )
 _FLOOR_LABEL_SPECIAL = {"옥상": 99, "옥탑": 99, "ROOF": 99, "R/F": 99, "RF": 99}
 
@@ -1266,21 +1234,6 @@ def build_system_graph(
         "min_edge_mm": round(min_edge, 3),
     }
     return graph, edge_len, stats
-
-
-def find_nearest_graph_node_constrained(
-    graph: dict,
-    click_xy: tuple[float, float],
-    max_dist_mm: float = 2500.0,
-) -> tuple[tuple[float, float] | None, float]:
-    """그래프 노드 중 클릭 좌표에 가장 가까운 노드. None = max_dist_mm 초과 (실패)."""
-    near = _nearest_graph_node(graph, click_xy)
-    if near is None:
-        return None, float("inf")
-    d = math.hypot(near[0] - click_xy[0], near[1] - click_xy[1])
-    if d > max_dist_mm:
-        return None, d
-    return near, d
 
 
 def _collapse_collinear_nodes(
@@ -2640,8 +2593,6 @@ def force_spanning_tree(
     Returns:
         (tree_edges, removed_edges) — 각각 (min, max) 키 set.
     """
-    import heapq
-
     tree_edges: set[tuple] = set()
     visited: set[tuple] = set()
 
@@ -2768,7 +2719,6 @@ def _find_source(pipe_entities: list[dict], layer_categories: dict[str, str]) ->
 
 def _dijkstra_from(graph: dict, edge_len: dict, src: tuple[float, float]) -> dict[tuple[float, float], float]:
     """단순 Dijkstra — 모든 노드까지의 거리."""
-    import heapq
     dist: dict[tuple[float, float], float] = {src: 0.0}
     pq: list[tuple[float, tuple[float, float]]] = [(0.0, src)]
     while pq:
@@ -2795,7 +2745,6 @@ def _shortest_path(graph: dict, edge_len: dict, src: tuple[float, float], tgt: t
         (최소 개수로) 사용한다 → 도면을 가로지르는 "엉뚱한 경로" 방지. 단, 작은 gap 을
         메우는 단계 bridge(≤tolerance)는 실배관 연속으로 보고 penalty 대상에서 제외.
     """
-    import heapq
     if src == tgt:
         return [src]
     penalty_keys = penalty_keys or set()
@@ -3188,13 +3137,12 @@ def build_input_tables(
     # ① DXF TEXT 패턴 5종 추출 (노이즈 워드 필터)
     # ② NFPC 103 별표 1 "가"칸 (폐쇄형 SP) — 담당 헤드 수 → 최소 호칭경 매핑
     # ③ 결정: 텍스트 매칭이 있으면 max(텍스트값, NFPC최소값), 없으면 NFPC fallback
-    import re as _re
     DIA_PATTERNS = [
-        _re.compile(r"\b(\d{2,3})\s*A\b"),                                # 25A
-        _re.compile(r"^\s*(\d{2,3})\s*$"),                                # 순수 숫자 (이 도면 dominant)
-        _re.compile(r"[Øø]\s*(\d{2,3})"),                                 # Ø25
-        _re.compile(r"DN\s*(\d{2,3})"),                                   # DN25
-        _re.compile(r"(?<![0-9])(\d{2,3})\s*mm(?![0-9])"),                # 25mm
+        re.compile(r"\b(\d{2,3})\s*A\b"),                                # 25A
+        re.compile(r"^\s*(\d{2,3})\s*$"),                                # 순수 숫자 (이 도면 dominant)
+        re.compile(r"[Øø]\s*(\d{2,3})"),                                 # Ø25
+        re.compile(r"DN\s*(\d{2,3})"),                                   # DN25
+        re.compile(r"(?<![0-9])(\d{2,3})\s*mm(?![0-9])"),                # 25mm
     ]
     NOISE_KEYWORDS = ("호스", "방수구", "소화전", "옥내", "HOSE", "EA", "KG", "℃",
                        "SET", "SCALE", "PUMP", "펌프", "TANK", "탱크")
@@ -3853,11 +3801,16 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
     return out_path
 
 
-def emit_kfp(sdf_path: Path, kfp_path: Path, *, coord_scale: float = 1.0) -> Path:
+def emit_kfp(sdf_path: Path, kfp_path: Path, *, coord_scale: float = 1.0,
+             display_geometry: bool = False) -> Path:
     """K-Fire Solver .kfp emit — 이미 쓰여진 .sdf 를 그대로 KFP 로 변환.
 
     ``coord_scale`` — K-solver 표시좌표 배율(노드 크기 조정용, 기본 1.0). 표시
     전용이라 length_m/elevation_m 기반 유압계산엔 영향 없음.
+
+    ``display_geometry`` — 통합망 전용. 미리보기와 동일한 스키매틱 표시좌표
+    (라이저=기둥, display_z)로 비율을 미리보기와 일치시킨다. 단독 도면(기본 False)은
+    좌표거리==length_m 자가보정(수리 정확) 유지. kfp_sdf_converter.emit_kfp 참조.
 
     SDF→KFP 는 검증 완료된 ``kfp_sdf_converter`` 경로를 재사용한다 (노즐→노드 folding,
     head/nozzle 키워드 구분, junction 토폴로지 기반 fitting 재분배, 3D length 재계산,
@@ -3877,7 +3830,8 @@ def emit_kfp(sdf_path: Path, kfp_path: Path, *, coord_scale: float = 1.0) -> Pat
             f"[remote30_prototype.emit_kfp] kfp_sdf_converter 모듈을 찾을 수 없어 KFP 출력 불가: {exc}. "
             f"→ kfp_sdf_converter.py 를 모듈 루트 '{_repo_root}' 에 두세요."
         ) from exc
-    _convert(sdf_path, kfp_path, coord_scale=coord_scale)
+    _convert(sdf_path, kfp_path, coord_scale=coord_scale,
+             display_geometry=display_geometry)
     return kfp_path
 
 

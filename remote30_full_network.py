@@ -764,11 +764,48 @@ def stitch_riser_and_heads(
         seen_pipe_labels.add(new_lbl)
         combined_pipes.append({**p, "label": new_lbl})
 
+    # ── 표준 소화배관 밸브(Fitting) 주입.
+    # 라이저 빌더는 fitting 을 생성하지 않아(통합 fitting 은 head_tables.fittings 만),
+    # 정답 SDF 의 펌프 토출부 개폐/체크밸브·알람밸브 1차측 버터플라이가 통째로 빠진다.
+    # 화재안전기준 표준 배치를 결정론적으로 부착한다:
+    #   · 수원/펌프 토출 배관(Input 경계 노드 직결): gate + check
+    #   · 알람밸브 배관(A/V Equipment 보유): butterfly
+    # (정답 2. Pipenet_hand.sdf 의 pipe"1"=gate+check, pipe"9"[A/V]=butterfly 와 정합.)
+    combined_fittings = list(head_tables.fittings)
+
+    def _pipe_by_label(lbl: str) -> dict | None:
+        return next((p for p in combined_pipes if str(p["label"]) == str(lbl)), None)
+
+    def _add_valve(pipe: dict, vtype: str) -> None:
+        combined_fittings.append({
+            "pipe": pipe["label"], "in": pipe["in"], "out": pipe["out"],
+            "type": vtype, "count": "1",
+        })
+
+    av_eq = next((e for e in head_tables.equipment
+                  if str(e.get("desc", "")).upper() == "A/V" and e.get("pipe")), None)
+    if av_eq is not None:
+        av_pipe = _pipe_by_label(av_eq["pipe"]) or next(
+            (p for p in combined_pipes
+             if str(p["in"]) == str(av_eq.get("in")) and str(p["out"]) == str(av_eq.get("out"))),
+            None)
+        if av_pipe is not None:
+            _add_valve(av_pipe, "butterfly")
+
+    input_label = next((str(n["label"]) for n in (translated_riser_nodes + head_nodes_filtered)
+                        if str(n.get("io_node", "")).lower() == "input"), None)
+    if input_label is not None:
+        src_pipe = next((p for p in combined_pipes
+                         if str(p["in"]) == input_label or str(p["out"]) == input_label), None)
+        if src_pipe is not None:
+            _add_valve(src_pipe, "gate")
+            _add_valve(src_pipe, "check")
+
     return CombinedTables(
         nodes=translated_riser_nodes + head_nodes_filtered,
         pipes=combined_pipes,
         nozzles=list(head_tables.nozzles),
-        fittings=list(head_tables.fittings),
+        fittings=combined_fittings,
         equipment=list(head_tables.equipment),
         pumps=list(riser.pumps),
         valves=list(riser.valves),
@@ -1108,7 +1145,7 @@ def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
            - ``<Pump-fan>`` element 추가 (combined.pumps)
            - ``<Elastomeric-valve>`` element 추가 (combined.valves)
     """
-    from remote30_prototype import emit_sdf, PipeTables
+    from remote30_prototype import emit_sdf, PipeTables, write_sdf_tree
 
     # 1단계: PipeTables 로 캐스팅 후 emit_sdf 호출
     tables = PipeTables(
@@ -1179,7 +1216,7 @@ def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
             links.append(ev)
         break  # 첫 Links 만
 
-    tree.write(out_path, encoding="utf-8", xml_declaration=True)
+    write_sdf_tree(tree, out_path)
 
     # 동봉 SLF 보정 — 노즐 최소운전압력 / 펌프 곡선 라이브러리 (PIPENET 연산 경고·에러 제거).
     # SDF 가 PIPENET 에 넘기는 실제 optimum flow(<Flow-define flow=>) 를 라이브러리별로

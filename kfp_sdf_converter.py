@@ -51,6 +51,7 @@ import copy
 import datetime
 import json
 import math
+import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -130,6 +131,104 @@ class CommonNetwork:
     design_settings: dict = field(default_factory=dict)        # min_p, calc_method, etc.
     project_meta: dict = field(default_factory=dict)           # title, company, ...
     source_format: str = ""                                    # "kfp" | "sdf"
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 노드 수 최적화 — 일직선 통과 노드(pass-through) 병합
+#   입상관(라이저)·직선 본관은 중간 노드가 여러 개일 필요가 없다(첫·끝 2개면 족함).
+#   "수리 무손실"인 경우에만 병합한다:
+#     · kind == "base" (헤드/노즐/수원/펌프/밸브/PRV/오리피스는 절대 제거 안 함)
+#     · degree == 2 (정확히 두 배관만 접속)
+#     · 두 배관의 호칭경·재질(type)·C 값 동일
+#     · 세 점(a–n–b)이 3D 로 일직선 (라이저=수직, 직선본관=수평)
+#   일직선이라 병합 후 직선거리 == 두 구간 길이합 → K-Fire 의
+#   "좌표거리 == length_m" 불변식 보존, 도면 형상도 그대로(꺾임 없음).
+#   꺾이는 본관(ㄷ자)은 일직선이 아니므로 보존된다(KFP 는 waypoint 직렬화가 없어
+#   코너 노드를 지우면 형상·길이 둘 다 깨지기 때문).
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _collinear_3d(na: "CommonNode", nn: "CommonNode", nb: "CommonNode",
+                  tol_deg: float) -> bool:
+    """a–n–b 가 n 을 통과해 일직선인가 (∠a-n-b ≈ 180°). z 는 elevation_m 사용."""
+    v1 = (na.x - nn.x, na.y - nn.y, na.elevation_m - nn.elevation_m)
+    v2 = (nb.x - nn.x, nb.y - nn.y, nb.elevation_m - nn.elevation_m)
+    m1 = math.sqrt(v1[0] ** 2 + v1[1] ** 2 + v1[2] ** 2)
+    m2 = math.sqrt(v2[0] ** 2 + v2[1] ** 2 + v2[2] ** 2)
+    if m1 <= 1e-9 or m2 <= 1e-9:
+        return True  # 영길이 구간 — 병합해도 형상·길이 변화 없음
+    cos = (v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]) / (m1 * m2)
+    cos = max(-1.0, min(1.0, cos))
+    return math.degrees(math.acos(cos)) >= 180.0 - tol_deg
+
+
+def simplify_passthrough_nodes(net: CommonNetwork, *,
+                               angle_tol_deg: float = 2.0) -> int:
+    """일직선 통과하는 degree-2 base 노드를 병합. 제거된 노드 수 반환 (in-place)."""
+    # 인접: nid -> 접속 배관 id 집합
+    adj: dict[str, set[str]] = {}
+    for pid, cp in net.pipes.items():
+        adj.setdefault(cp.start, set()).add(pid)
+        adj.setdefault(cp.end, set()).add(pid)
+
+    work: list[str] = [nid for nid, cn in net.nodes.items() if cn.kind == "base"]
+    removed = 0
+    while work:
+        nid = work.pop()
+        cn = net.nodes.get(nid)
+        if cn is None or cn.kind != "base":
+            continue
+        pids = adj.get(nid)
+        if not pids or len(pids) != 2:
+            continue
+        pa_id, pb_id = tuple(pids)
+        if pa_id == pb_id:
+            continue  # 자기루프
+        pa, pb = net.pipes.get(pa_id), net.pipes.get(pb_id)
+        if pa is None or pb is None:
+            continue
+        a = pa.start if pa.end == nid else pa.end
+        b = pb.start if pb.end == nid else pb.end
+        if a == nid or b == nid or a == b:
+            continue  # 자기루프 / 평행 생성 방지
+        # ★ 헤드/노즐 직결 통과노드(드롭 엘보)는 병합 금지 — 수직 드롭 보존.
+        #   하향식 헤드의 수직 드롭은 **표시 z(display_z)** 로만 존재하고 elevation_m
+        #   (수리 표고)에선 헤드가 평면에 얹혀 영길이로 보인다. 헤드 x,y 를 엘보에
+        #   스냅(대조 서버 _collapse_riser_to_column)하면 엘보↔헤드 구간이 영길이가 돼
+        #   _collinear_3d 가 collapse → 헤드가 가지 본관 노드로 재연결되며 대각선이
+        #   부활한다. 드롭 엘보를 남겨야 헤드가 엘보 바로 밑(완전 수직)에 매달린다.
+        _ka = net.nodes[a].kind if a in net.nodes else ""
+        _kb = net.nodes[b].kind if b in net.nodes else ""
+        if _ka in ("head", "nozzle") or _kb in ("head", "nozzle"):
+            continue
+        # 수리 호환 — 호칭경·재질·C 동일해야 무손실
+        if pa.nominal_mm != pb.nominal_mm:
+            continue
+        if (pa.pipe_type_label or "") != (pb.pipe_type_label or ""):
+            continue
+        if abs(pa.c_factor - pb.c_factor) > 1e-6:
+            continue
+        na, nb = net.nodes.get(a), net.nodes.get(b)
+        if na is None or nb is None:
+            continue
+        if not _collinear_3d(na, cn, nb, angle_tol_deg):
+            continue
+        # 병합: pa 를 a→b 로 확장, pb·n 제거
+        pa.start, pa.end = a, b
+        pa.length_m += pb.length_m
+        pa.equivalent_length_m += pb.equivalent_length_m
+        if pb.fittings:
+            pa.fittings = list(pa.fittings) + list(pb.fittings)
+        del net.pipes[pb_id]
+        del net.nodes[nid]
+        adj.pop(nid, None)
+        adj[b].discard(pb_id)
+        adj[b].add(pa_id)
+        removed += 1
+        # 이웃이 새로 일직선 통과점이 됐을 수 있음 → 재검사
+        work.append(a)
+        work.append(b)
+    return removed
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -539,11 +638,22 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
     for pid, cp in net.pipes.items():
         fittings_out = []
         eq_length_total = 0.0
-        # K-solver 라이브러리에서 inner_d_mm lookup — nominal 만 있으면 inner 채우기
+        # inner_d_mm lookup — nominal 만 있으면 inner 채우기. 권위 SLF 우선:
+        # FX/DP 처럼 inner==nominal(25.0) 인 스케줄도 .slf 권위값 25.0 을 보존하고
+        # K-solver 강관 표준(27.5)으로 뭉개지 않는다. .slf 미매칭 시 K-solver fallback.
+        raw_type = cp.raw.get("sdf_pipe_type") or cp.pipe_type_label
         inner_mm = cp.diameter_inner_mm
         if inner_mm <= 0 or abs(inner_mm - cp.nominal_mm) < 0.5:
-            # inner 가 없거나 nominal 과 같으면 라이브러리에서 진짜 inner 가져오기
-            inner_mm = _lookup_inner_d_mm(cp.nominal_mm, cp.pipe_type_label or pipe_standard_default)
+            slf_inner = _slf_inner_d_mm(cp.nominal_mm, raw_type)
+            if slf_inner is None:
+                slf_inner = _slf_inner_d_mm(cp.nominal_mm, cp.pipe_type_label or pipe_standard_default)
+            inner_mm = (slf_inner if slf_inner is not None
+                        else _lookup_inner_d_mm(cp.nominal_mm, cp.pipe_type_label or pipe_standard_default))
+        # 조도도 .slf 권위값으로 정합 (매칭 시). 미매칭이면 파싱값 유지.
+        slf_rough = _slf_roughness_mm(raw_type)
+        if slf_rough is None:
+            slf_rough = _slf_roughness_mm(cp.pipe_type_label or pipe_standard_default)
+        roughness_out = slf_rough if slf_rough is not None else cp.roughness_mm
         # fitting display 명 + L_over_D 계산 → equivalent_length
         # K-solver reference KFP 의 표기 규약 (1-1.업무시설_201동_28F 분석):
         #   tee-branch / tee_branch → "Tee(Branch)"  ← 분기 tee
@@ -581,14 +691,14 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
             "length_m": cp.length_m,
             "equivalent_length": round(eq_len, 5),  # ★ 자동 계산
             "C": cp.c_factor,
-            "roughness_mm": cp.roughness_mm,
+            "roughness_mm": roughness_out,
             "fittings": fittings_out,
             "flow_lpm": 0.0,
             "velocity_mps": 0.0,
             "headloss_m": 0.0,
         }
         # K-solver 가 unknown key 에 민감 — 내부 추적용 sdf_label / sdf_fittings 제외
-        pdat.update({k: v for k, v in cp.raw.items() if k not in ("sdf_label", "sdf_fittings")})
+        pdat.update({k: v for k, v in cp.raw.items() if k not in ("sdf_label", "sdf_fittings", "sdf_pipe_type")})
         pipe_data[pid] = pdat
 
     if display_geometry:
@@ -706,6 +816,79 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
         }
     max_pipe_n = _next_pnum - 1
 
+    # ★ 라이브러리 카탈로그 — 권위 SLF(2. Pipenet_hand.slf) 우선, 없으면 K-solver fallback.
+    _slf_pipe_lib = _slf_pipe_library_for_kfp()
+    _slf_noz_lib = _slf_nozzle_library_for_kfp()
+    _slf_pump_list = _slf_pump_library_for_kfp()
+    if _slf_noz_lib is not None:
+        # .slf 는 head 만 정의(SP-HEAD/INDOOR HYDRANT). spray nozzle 정의는 .slf 에
+        # 없으므로 K-solver spray 카테고리를 그대로 덧붙여 분사 헤드 매칭을 유지한다.
+        _nozzle_library = {
+            "schema_version": "2.0",
+            "categories": list(_slf_noz_lib["categories"]) + [
+                {
+                    "category_id": "nozzle",
+                    "display_name": "Nozzle",
+                    "is_system_protected": True,
+                    "type_id": "nozzle",
+                    "items": [
+                        {
+                            "id": f"NOZZLE_{n['name'].replace(' ', '_').upper()}",
+                            "display_name": n["name"],
+                            "K_val": n["K_val"],
+                            "Q_lpm": n["Q_lpm"],
+                            "P_bar": n["P_bar"],
+                            "min_p": n["min_p"],
+                            "type": "spray",
+                            "is_system_protected": True,
+                        }
+                        for n in KSOLVER_NOZZLE_LIBRARY["nozzles"]
+                    ],
+                },
+            ],
+        }
+    else:
+        _nozzle_library = {
+            "schema_version": "2.0",
+            "categories": [
+                {
+                    "category_id": "head",
+                    "display_name": "Head",
+                    "is_system_protected": True,
+                    "type_id": "head",
+                    "items": [
+                        {
+                            "id": f"HEAD_{int(n['K_val'])}",
+                            "display_name": n["name"],
+                            "K_SI": n["K_val"],
+                            "K_US": n["K_val"] / 1.4159,
+                            "is_system_protected": True,
+                        }
+                        for n in KSOLVER_NOZZLE_LIBRARY["nozzles"]
+                    ],
+                },
+                {
+                    "category_id": "nozzle",
+                    "display_name": "Nozzle",
+                    "is_system_protected": True,
+                    "type_id": "nozzle",
+                    "items": [
+                        {
+                            "id": f"NOZZLE_{n['name'].replace(' ', '_').upper()}",
+                            "display_name": n["name"],
+                            "K_val": n["K_val"],
+                            "Q_lpm": n["Q_lpm"],
+                            "P_bar": n["P_bar"],
+                            "min_p": n["min_p"],
+                            "type": "spray",
+                            "is_system_protected": True,
+                        }
+                        for n in KSOLVER_NOZZLE_LIBRARY["nozzles"]
+                    ],
+                },
+            ],
+        }
+
     out = {
         "nodes": nodes,
         "node_types": node_types,
@@ -740,47 +923,8 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
         # ★ K-Fire_Solver 표준 라이브러리 포함 — solver 가 nozzle K / pipe inner /
         # fitting L/D lookup 위해 필요. 우리 변환기는 이걸 default 로 동봉해 K-solver
         # 가 KFP 받자마자 hydraulic 계산 시작 가능하게 함.
-        "pipe_library": copy.deepcopy(_try_load_ksolver_libraries()["pipe"]),
-        "nozzle_library": {
-            "schema_version": "2.0",
-            "categories": [
-                {
-                    "category_id": "head",
-                    "display_name": "Head",
-                    "is_system_protected": True,
-                    "type_id": "head",
-                    "items": [
-                        {
-                            "id": f"HEAD_{int(n['K_val'])}",
-                            "display_name": n["name"],
-                            "K_SI": n["K_val"],
-                            "K_US": n["K_val"] / 1.4159,  # SI → US 변환
-                            "is_system_protected": True,
-                        }
-                        for n in KSOLVER_NOZZLE_LIBRARY["nozzles"]
-                    ],
-                },
-                {
-                    "category_id": "nozzle",
-                    "display_name": "Nozzle",
-                    "is_system_protected": True,
-                    "type_id": "nozzle",
-                    "items": [
-                        {
-                            "id": f"NOZZLE_{n['name'].replace(' ', '_').upper()}",
-                            "display_name": n["name"],
-                            "K_val": n["K_val"],
-                            "Q_lpm": n["Q_lpm"],
-                            "P_bar": n["P_bar"],
-                            "min_p": n["min_p"],
-                            "type": "spray",
-                            "is_system_protected": True,
-                        }
-                        for n in KSOLVER_NOZZLE_LIBRARY["nozzles"]
-                    ],
-                },
-            ],
-        },
+        "pipe_library": _slf_pipe_lib or copy.deepcopy(_try_load_ksolver_libraries()["pipe"]),
+        "nozzle_library": _nozzle_library,
         "fittings_library": {
             "schema_version": "2.0",
             "categories": [
@@ -795,7 +939,7 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
         },
         # ★ pump_library — pump 노드의 실제 곡선 데이터로 자동 채우기
         "pump_library": {
-            "pumps": (list(net.pump_library) + [
+            "pumps": (list(_slf_pump_list) + list(net.pump_library) + [
                 {
                     "id": f"PUMP_{i+1:03d}",
                     "name": (cn.raw.get("pump_name") or f"Pump {i+1}"),
@@ -924,6 +1068,7 @@ SDF_TYPE_TO_KSOLVER = {
     "KSM3413": "CPVC (KS M 3413)",
     # PIPENET 프로젝트 단축명 — 17개 PIPENET SDF 샘플 분석:
     "CPVC": "CPVC (KS M 3413)",     # CPVC 단독 — KS M 3413
+    "CPVC2": "CPVC (KS M 3413)",    # 권위 SLF(2. Pipenet_hand.slf) 의 CPVC schedule 명
     "FX": "KSD3507 (SPP)",          # 플렉시블 조인트 (헤드 직전 짧은 호스) — 강관 분류
     "DP": "KSD3507 (SPP)",          # Drop Pipe (헤드 직립관) — 강관
     "STS": "STS Sch10S (KS D 3576)",  # Stainless Steel
@@ -1182,7 +1327,9 @@ def sdf_root_to_network(root: ET.Element) -> CommonNetwork:
                 pipe_type_label=_normalize_pipe_type_name(pipe_type_label, c_factor),
                 fittings=fittings,
                 waypoints=waypoints_scaled,
-                raw={"sdf_label": plabel},
+                # sdf_pipe_type: 정규화 전 원명(FX/DP 등). emit_kfp 의 .slf 내경
+                # lookup 이 이 원명으로 FX/DP 25.0mm 권위값을 보존하는 데 쓴다.
+                raw={"sdf_label": plabel, "sdf_pipe_type": pipe_type_label},
             )
 
     # Nozzle — 노드를 nozzle 종류로 표시.
@@ -1507,9 +1654,261 @@ def _pretty_xml(elem: ET.Element) -> str:
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# 권위 SLF (2. Pipenet_hand.slf) — KFP 라이브러리의 단일 진실원천(SSOT).
+# .slf 의 Schedule/Nozzle/Pump 정의를 파싱해 KFP 의 pipe/nozzle/pump_library 를
+# 생성한다. 사용자가 .slf 를 모든 출력 포맷의 고정 권위 라이브러리로 지정.
+# ────────────────────────────────────────────────────────────────────────────
+
+STANDARD_SLF_FILENAME = "2. Pipenet_hand.slf"
+
+# .slf Schedule Item-name → K-Fire_Solver 표준 7종명. K-solver 가 KFP 를 받자마자
+# 매칭하도록 대응 표준이 있는 건 그 이름을 쓴다. FX/DP 는 K-solver 대응 표준이 없어
+# .slf 이름을 그대로 유지(내경 25.0·조도는 .slf 권위값 보존 — 강관으로 뭉개지 않음).
+_SLF_TO_KSOLVER_STD = {
+    "KSD 3507": "KSD3507 (SPP)",
+    "KSD 3562": "KSD3562 (SPPS)",
+    "KSD 3576": "STS Sch10S (KS D 3576)",
+    "CPVC2": "CPVC (KS M 3413)",
+    "DP": "DP",
+    "FX": "FX",
+}
+
+# Schedule 별 C-factor — .slf 는 C-factor 를 담지 않으므로(PIPENET 은 Pipe-type 에 저장)
+# remote30_prototype._SCHEDULE_DEFS 와 동일 컨벤션을 따른다.
+_SLF_SCHEDULE_CFACTOR = {
+    "KSD 3507": 120.0, "KSD 3562": 120.0, "KSD 3576": 120.0,
+    "DP": 120.0, "CPVC2": 150.0, "FX": 120.0,
+}
+
+# PIPENET K-value(m³/s·Pa^-0.5) → KFP K_SI(L/min·bar^-0.5).
+#   Q[m³/s] = K_pa·√(P[Pa]) → Q[L/min] = K_pa·60000·√(P[bar]·1e5)
+#            = (K_pa·60000·√1e5)·√P[bar]  →  K_si = K_pa · 60000 · √100000
+_PA_K_TO_SI = 60000.0 * math.sqrt(100000.0)   # ≈ 1.8974e7
+
+
+def _resolve_standard_slf() -> Path | None:
+    """권위 SLF 경로 — REMOTE30_STANDARD_SLF env → 모듈 디렉토리 fallback.
+
+    remote30_prototype.resolve_standard_slf 와 동일 규약이나, 순환 import 를 피해
+    여기서 독립 해석한다.
+    """
+    env_val = os.environ.get("REMOTE30_STANDARD_SLF", "").strip()
+    if env_val:
+        cand = Path(env_val).expanduser()
+        cand = cand.resolve() if cand.is_absolute() else (Path.cwd() / cand).resolve()
+        if cand.is_file():
+            return cand
+    cand = (Path(__file__).parent / STANDARD_SLF_FILENAME).resolve()
+    return cand if cand.is_file() else None
+
+
+@lru_cache(maxsize=1)
+def _load_slf_authoritative() -> dict:
+    """권위 SLF 파싱 → {schedules, nozzles, pumps}. 파일 없으면 빈 dict.
+
+    schedules: {item_name: {"roughness_mm": float, "sizes": {nominal_int: inner_float}}}
+    nozzles:   {item_name: {"k_si": float, "max_p_pa": float, "min_p_pa": float, "desc": str}}
+    pumps:     {item_name: {"curve_type": str, "flow_unit": str, "press_unit": str,
+                            "points": [(flow, pressure_pa), ...], "desc": str}}
+    """
+    out: dict = {"schedules": {}, "nozzles": {}, "pumps": {}, "_path": None}
+    slf_path = _resolve_standard_slf()
+    if slf_path is None:
+        return out
+    out["_path"] = str(slf_path)
+    try:
+        root = ET.fromstring(slf_path.read_text(encoding="utf-8"))
+    except (OSError, ET.ParseError):
+        return out
+
+    def _txt(parent: ET.Element | None, tag: str) -> str:
+        if parent is None:
+            return ""
+        el = parent.find(tag)
+        return (el.text or "").strip() if el is not None and el.text else ""
+
+    sched_sec = root.find("Schedule-section")
+    if sched_sec is not None:
+        for sch in sched_sec.findall("Schedule"):
+            name = _txt(sch, "Item-name")
+            md = sch.find("Metric-definition")
+            if not name or md is None:
+                continue
+            rough = _ffloat(md.attrib.get("roughness"), 0.0)
+            sizes: dict[int, float] = {}
+            for sd in md.findall("Size-definition"):
+                nom = sd.attrib.get("nominal")
+                inn = sd.attrib.get("internal")
+                if nom is None or inn in (None, "Unset"):
+                    continue
+                try:
+                    sizes[int(float(nom))] = float(inn)
+                except (TypeError, ValueError):
+                    continue
+            out["schedules"][name] = {"roughness_mm": rough, "sizes": sizes}
+
+    noz_sec = root.find("Nozzle-section")
+    if noz_sec is not None:
+        for nz in noz_sec.findall("Nozzle-definition"):
+            name = _txt(nz, "Item-name")
+            if not name:
+                continue
+            out["nozzles"][name] = {
+                "k_si": _ffloat(nz.attrib.get("k-value"), 0.0),
+                "max_p_pa": _ffloat(nz.attrib.get("maximum-pressure"), 0.0),
+                "min_p_pa": _ffloat(nz.attrib.get("minimum-pressure"), 0.0),
+                "desc": _txt(nz, "Description"),
+            }
+
+    pump_sec = root.find("Pump-section")
+    if pump_sec is not None:
+        for pd in pump_sec.findall("Pump-definition"):
+            name = _txt(pd, "Item-name")
+            if not name:
+                continue
+            points: list[tuple[float, float]] = []
+            pts_el = pd.find("Set-of-pump-points")
+            if pts_el is not None:
+                for pp in pts_el.findall("Pump-point"):
+                    points.append((_ffloat(pp.attrib.get("flow"), 0.0),
+                                   _ffloat(pp.attrib.get("pressure"), 0.0)))
+            out["pumps"][name] = {
+                "curve_type": pd.attrib.get("curve-type", "quadratic"),
+                "flow_unit": pd.attrib.get("flowrate-unit", "l-min"),
+                "press_unit": pd.attrib.get("pressure-unit", "metres"),
+                "points": points,
+                "desc": _txt(pd, "Description"),
+            }
+    return out
+
+
+def _slf_inner_d_mm(nominal_mm: int, slf_type_name: str) -> float | None:
+    """권위 SLF schedule 에서 (호칭 → 내경 mm). 매칭 실패 시 None.
+
+    slf_type_name 은 .slf 원명("FX","DP","KSD 3507"...) 또는 K-solver 정규화명
+    ("KSD3507 (SPP)"...) 둘 다 허용 — 역매핑으로 .slf 원명을 찾는다.
+    """
+    slf = _load_slf_authoritative()
+    scheds = slf.get("schedules") or {}
+    if not scheds:
+        return None
+    # 1) .slf 원명 직접
+    if slf_type_name in scheds:
+        return scheds[slf_type_name]["sizes"].get(int(nominal_mm))
+    # 2) K-solver 정규화명 → .slf 원명 역매핑
+    for slf_name, ks_name in _SLF_TO_KSOLVER_STD.items():
+        if ks_name == slf_type_name and slf_name in scheds:
+            v = scheds[slf_name]["sizes"].get(int(nominal_mm))
+            if v is not None:
+                return v
+    return None
+
+
+def _slf_roughness_mm(slf_type_name: str) -> float | None:
+    """권위 SLF schedule 의 조도(mm). 매칭 실패 시 None."""
+    slf = _load_slf_authoritative()
+    scheds = slf.get("schedules") or {}
+    if slf_type_name in scheds:
+        return scheds[slf_type_name].get("roughness_mm")
+    for slf_name, ks_name in _SLF_TO_KSOLVER_STD.items():
+        if ks_name == slf_type_name and slf_name in scheds:
+            return scheds[slf_name].get("roughness_mm")
+    return None
+
+
+def _slf_pipe_library_for_kfp() -> dict | None:
+    """권위 SLF schedules → KFP pipe_library dict. .slf 없으면 None."""
+    slf = _load_slf_authoritative()
+    scheds = slf.get("schedules") or {}
+    if not scheds:
+        return None
+    pipe_types: list[dict] = []
+    for slf_name, sdef in scheds.items():
+        std = _SLF_TO_KSOLVER_STD.get(slf_name, slf_name)
+        cf = _SLF_SCHEDULE_CFACTOR.get(slf_name, 120.0)
+        rough = sdef.get("roughness_mm", 0.0)
+        for nom, inner in sorted(sdef.get("sizes", {}).items()):
+            pipe_types.append({
+                "standard": std,
+                "nominal_mm": int(nom),
+                "inner_d_mm": float(inner),
+                "roughness_mm": float(rough),
+                "C": float(cf),
+            })
+    return {
+        "version": "slf-authoritative",
+        "description": f"Generated from {Path(slf['_path']).name}" if slf.get("_path") else "Generated from SLF",
+        "pipe_types": pipe_types,
+    }
+
+
+def _slf_nozzle_library_for_kfp() -> dict | None:
+    """권위 SLF nozzles → KFP nozzle_library (head/nozzle 카테고리). .slf 없으면 None."""
+    slf = _load_slf_authoritative()
+    nozzles = slf.get("nozzles") or {}
+    if not nozzles:
+        return None
+    head_items = []
+    for name, ndef in nozzles.items():
+        k_si = ndef.get("k_si", 0.0) * _PA_K_TO_SI
+        head_items.append({
+            "id": f"HEAD_{name.replace(' ', '_').replace('/', '_').upper()}",
+            "display_name": name,
+            "K_SI": round(k_si, 4),
+            "K_US": round(k_si / 1.4159, 4),
+            "min_p_bar": round(ndef.get("min_p_pa", 0.0) / 1e5, 5),
+            "max_p_bar": round(ndef.get("max_p_pa", 0.0) / 1e5, 5),
+            "is_system_protected": True,
+        })
+    return {
+        "schema_version": "2.0",
+        "categories": [{
+            "category_id": "head",
+            "display_name": "Head",
+            "is_system_protected": True,
+            "type_id": "head",
+            "items": head_items,
+        }],
+    }
+
+
+def _slf_pump_library_for_kfp() -> list[dict]:
+    """권위 SLF pumps → KFP pump_library pumps 리스트. .slf 없으면 빈 리스트.
+
+    .slf Pump-point pressure 는 Pa(레퍼런스 실측). KFP pump_library 압력은 bar.
+    points 에서 rated(중간점)/shutoff(flow0)/peak(max flow) 를 도출한다.
+    """
+    slf = _load_slf_authoritative()
+    pumps = slf.get("pumps") or {}
+    out: list[dict] = []
+    for name, pdef in pumps.items():
+        pts = pdef.get("points") or []
+        if not pts:
+            continue
+        pts_sorted = sorted(pts, key=lambda fp: fp[0])
+        flow0 = pts_sorted[0]
+        flowmax = pts_sorted[-1]
+        mid = pts_sorted[len(pts_sorted) // 2]
+        out.append({
+            "id": f"SLF_{name.replace(' ', '_').upper()}",
+            "name": name,
+            "description": pdef.get("desc", ""),
+            "curve_type": pdef.get("curve_type", "quadratic"),
+            "rated_q": round(mid[0], 6),
+            "rated_p": round(mid[1] / 1e5, 5),
+            "shutoff_p": round(flow0[1] / 1e5, 5),
+            "peak_q": round(flowmax[0], 6),
+            "peak_p": round(flowmax[1] / 1e5, 5),
+            "curve_points_bar": [[round(f, 6), round(p / 1e5, 5)] for f, p in pts_sorted],
+        })
+    return out
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # K-Fire_Solver 표준 라이브러리 — _internal/{nozzle,pipe,fittings}_library*.json
 # 내용을 모듈 상수로 embed. emit_kfp 가 출력에 그대로 포함해 K-Fire_Solver 가
 # 매칭 가능하게 함. SDF → KFP 변환 시 default 빈 라이브러리 대신 이걸 사용.
+# fittings 만 K-solver(NFPA L/D) 유지 — .slf Fitting-section 이 비어 매칭원천이 없음.
 # ────────────────────────────────────────────────────────────────────────────
 
 KSOLVER_NOZZLE_LIBRARY = {
@@ -1740,7 +2139,14 @@ def _add_boundary_calc_spec(sdf_path: Path, nodes: list[dict],
                     if pump.get("name"):
                         pf.set("library-pump", str(pump["name"]))
                 break
-    tree.write(str(sdf_path), encoding="utf-8", xml_declaration=True)
+    # DOCTYPE 보존 — ET.write 는 <!DOCTYPE Project SYSTEM "spray.dtd"> 를 떨어뜨려
+    # 다른 PC 의 PIPENET 에서 파일 열기/연산이 거부될 수 있다(레퍼런스 SDF 헤더 정합).
+    _body = _ET.tostring(root, encoding="unicode")
+    Path(sdf_path).write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE Project SYSTEM "spray.dtd">\n' + _body,
+        encoding="utf-8",
+    )
 
 
 def network_to_pipe_tables(net: CommonNetwork):
@@ -1939,12 +2345,16 @@ def convert_kfp_to_sdf_with_slf(kfp_path: str | Path, out_dir: str | Path,
 
 def convert_sdf_to_kfp(sdf_path: str | Path, kfp_path: str | Path | None = None,
                        *, coord_scale: float = 1.0,
-                       display_geometry: bool = False) -> dict:
+                       display_geometry: bool = False,
+                       simplify: bool = True) -> dict:
     """SDF → KFP dict. kfp_path 주어지면 파일 저장. coord_scale 은 표시좌표 배율.
 
     display_geometry — 통합망 전용(미리보기 비례 스키매틱 좌표). emit_kfp 참조.
+    simplify — 일직선 통과 base 노드 병합으로 출력 노드 수 절감(무손실). 기본 True.
     """
     net = parse_sdf(sdf_path)
+    if simplify:
+        simplify_passthrough_nodes(net)
     out = emit_kfp(net, kfp_path, coord_scale=coord_scale,
                    display_geometry=display_geometry)
     return out

@@ -97,7 +97,7 @@
               <span>DXF에서 배관/헤드/관경을 추출하고 알람밸브 기준 최원단 30개 헤드를 선정해 Isometric PNG와 PIPENET 호환 Excel을 생성합니다.</span>
             </button>
             <button type="button" class="home-module-btn" data-panel="remote30-workbench-panel">
-              <strong>Remote 30 워크벤치</strong>
+              <strong>건축 레이어 정리</strong>
               <span>DXF를 캔버스에 띄우고 레이어를 실시간으로 토글·재분류하면서 Remote 30 추출 → PIPENET SDF에 이르는 흐름을 한눈에 확인합니다.</span>
             </button>
             <button type="button" class="home-module-btn" data-panel="remote30-workbench-gnn-panel">
@@ -111,6 +111,10 @@
             <button type="button" class="home-module-btn" data-panel="remote30-overall-panel">
               <strong>Remote 30 전체 배관망 총괄</strong>
               <span>평면도(.dxf) + zone(HSP·LSP·LLSP) + 압력 분포표(또는 직접 입력) → 펌프·감압밸브·라이저까지 포함된 완성 PIPENET SDF 를 생성합니다. 프로토타입 모듈의 헤드망 로직을 재사용 + 라이저·펌프·PRV 템플릿을 추가합니다.</span>
+            </button>
+            <button type="button" class="home-module-btn" data-panel="kfp-sdf-converter-panel">
+              <strong>KFP ↔ SDF 변환기</strong>
+              <span>K-solver 의 .kfp 파일과 PIPENET Vision 의 .sdf 파일을 의미론적 동등성 (밸브/배관/헤드/피팅) 을 보존하며 양방향 변환합니다. 노드·파이프 토폴로지를 캔버스로 미리보기 + round-trip 손실 측정.</span>
             </button>
           </div>
         </section>
@@ -302,7 +306,7 @@
             id="remote30-workbench-frame"
             class="module-iframe module-iframe-full"
             src="{{ url_for('remote30_workbench') }}?v=20260520-wb16"
-            title="Remote 30 워크벤치"
+            title="건축 레이어 정리"
           ></iframe>
         </section>
 
@@ -319,7 +323,7 @@
           <iframe
             id="remote30-prototype-frame"
             class="module-iframe module-iframe-full"
-            src="{{ url_for('remote30_prototype') }}?v=20260529-combined-zip-geom
+            src="{{ url_for('remote30_prototype') }}?v=20260623-iso-mr-z"
             title="Remote 30 프로토타입"
           ></iframe>
         </section>
@@ -330,6 +334,15 @@
             class="module-iframe module-iframe-full"
             src="{{ url_for('remote30_overall') }}?v=20260528-overall4-riser-anchor"
             title="Remote 30 전체 배관망 총괄"
+          ></iframe>
+        </section>
+
+        <section id="kfp-sdf-converter-panel" class="card hidden menu-panel module-fullscreen-panel embedded-iframe-panel">
+          <iframe
+            id="kfp-sdf-converter-frame"
+            class="module-iframe module-iframe-full"
+            src="{{ url_for('kfp_sdf_converter_page') }}?v=20260606-conv1"
+            title="KFP ↔ SDF 변환기"
           ></iframe>
         </section>
 

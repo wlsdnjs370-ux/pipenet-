@@ -4356,7 +4356,12 @@ def remote30_combined_build():
         _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
         out_dir = COMBINED_OUTPUT_DIR / job_id
         out_dir.mkdir(parents=True, exist_ok=True)
-        title = system_riser.get("title", "Combined")
+        # 통합 Title — 업로드한 평면도 파일명(건물/도면명)을 따른다. 답안지 Title
+        # 컨벤션이 건물명(예: "Officetell")이라, 내부 식별자(SYSTEM_EXTRACT_V1)나
+        # 도구 브랜딩이 그대로 노출되지 않도록 도면 stem 을 쓴다.
+        title = (Path(plane_job.get("dxf_path", "")).stem
+                 or system_riser.get("title")
+                 or "Combined")
 
         import zipfile as _zipfile
         import copy as _copy
@@ -4474,6 +4479,30 @@ def remote30_combined_build():
                 if str(n.get("label")) in riser_collapse_labels:
                     n["x"] = int(round(cx))
                     n["y"] = cy
+            # ── 공통 1.5: 헤드(nozzle 부착 leaf)의 x,y 를 가지배관 이웃 노드에 스냅.
+            #   헤드는 display_z 로만 ±수직 돌출하는데, 평면 x,y 가 이웃(가지 tee)과
+            #   어긋나 있으면 드롭 배관이 대각선으로 보인다(예: head N48 35°, N54 48°).
+            #   이웃 x,y 로 맞추면 Δxy=0 → 완전 90° 수직 드롭. leaf(이웃 1개)만 대상으로
+            #   해 가지 중간 통과 헤드는 건드리지 않는다. 표시 전용(elevation·length_m
+            #   불변 → 수리 결과 동일).
+            _znode = {str(n.get("label")): n for n in z_net.nodes}
+            _head_nbrs: dict[str, set] = {}
+            for _p in z_net.pipes:
+                _a = str(_p.get("in", "")); _b = str(_p.get("out", ""))
+                if _a in head_label_set and _b:
+                    _head_nbrs.setdefault(_a, set()).add(_b)
+                if _b in head_label_set and _a:
+                    _head_nbrs.setdefault(_b, set()).add(_a)
+            for _hl, _nbs in _head_nbrs.items():
+                if len(_nbs) != 1:  # leaf 헤드만 (통과 헤드 제외)
+                    continue
+                _hn = _znode.get(_hl)
+                _tn = _znode.get(next(iter(_nbs)))
+                if (_hn is None or _tn is None
+                        or _tn.get("x") is None or _tn.get("y") is None):
+                    continue
+                _hn["x"] = _tn["x"]
+                _hn["y"] = _tn["y"]
             # ── 공통 2: 기둥 높이 = 0.5 × 전체 평면 대각선 × zScale (x,y 가 AV 로 모인 뒤
             #   bbox — 미리보기 spreadHeight/_spreadH 와 정합). display_z 는 emit_sdf 가 x,y
             #   와 동일 _scale 로 정규화 → 평면과 자동 비례(3/longest 보정 불필요).
@@ -4571,7 +4600,7 @@ def remote30_combined_build():
             이미 정해져 있으니 isometric=False (이중 투영 방지).
             """
             b_sdf = out_dir / f"combined_{job_id}{suffix}.sdf"
-            emit_full_sdf(net_obj, b_sdf, project_title=f"Remote 30 통합 — {title}")
+            emit_full_sdf(net_obj, b_sdf, project_title=title)
             b_slf = out_dir / f"combined_{job_id}{suffix}.slf"
             # ── KFP 와 HAS 는 표시 규약이 다르다(둘 다 등각 베이크 안 된 원본 combined
             #    에서 파생, 라이저만 수직 기둥으로 collapse — z_net):
@@ -4586,7 +4615,7 @@ def remote30_combined_build():
             if _z_done:
                 z_sdf = out_dir / f"combined_{job_id}{suffix}_z.sdf"
                 try:
-                    emit_full_sdf(z_net, z_sdf, project_title=f"Remote 30 통합 — {title}")
+                    emit_full_sdf(z_net, z_sdf, project_title=title)
                 except Exception as _z_exc:  # noqa: BLE001 — 사본 실패 시 원본 좌표로 폴백
                     warnings.warn(f"[combined{suffix}] z-aware SDF emit 실패 (원본 좌표 사용): {_z_exc}", RuntimeWarning, stacklevel=2)
                     z_sdf = b_sdf
@@ -4615,8 +4644,7 @@ def remote30_combined_build():
                             _tmp.unlink()
                     except OSError:
                         pass
-            # SDF + SLF(같은 폴더 자동생성) + KFP + HAS 를 ZIP 으로 묶어 한 번에 다운로드.
-            # PIPENET 은 .sdf 와 .slf 가 같은 폴더에 있어야 호칭경↔내경 lookup 가능.
+            # 전체 ZIP — SDF + SLF + KFP + HAS 를 한 번에 (모든 포맷 묶음).
             b_zip = out_dir / f"combined_{job_id}{suffix}.zip"
             with _zipfile.ZipFile(b_zip, "w", _zipfile.ZIP_DEFLATED) as zf:
                 zf.write(b_sdf, arcname=b_sdf.name)
@@ -4626,8 +4654,17 @@ def remote30_combined_build():
                     zf.write(b_kfp, arcname=b_kfp.name)
                 if b_has_ok:
                     zf.write(b_has, arcname=b_has.name)
+            # PIPENET-native ZIP — .sdf + .slf 만. PIPENET 은 두 파일이 같은 폴더에
+            # 있어야 호칭경↔내경 lookup 이 되므로 SDF 버튼은 이 쌍을 묶어 내보낸다
+            # (KFP/HAS 가 딸려나오지 않도록). .xml 결과파일은 PIPENET 이 연산 후 생성하는
+            # 산출물이라 입력 번들에 포함하지 않는다.
+            b_zip_sdf = out_dir / f"combined_{job_id}{suffix}_pipenet.zip"
+            with _zipfile.ZipFile(b_zip_sdf, "w", _zipfile.ZIP_DEFLATED) as zf:
+                zf.write(b_sdf, arcname=b_sdf.name)
+                if b_slf.is_file():
+                    zf.write(b_slf, arcname=b_slf.name)
             return {"sdf": b_sdf, "slf": b_slf, "kfp": b_kfp, "has": b_has, "zip": b_zip,
-                    "kfp_ok": b_kfp_ok, "has_ok": b_has_ok}
+                    "zip_sdf": b_zip_sdf, "kfp_ok": b_kfp_ok, "has_ok": b_has_ok}
 
         # 평면 세트(원본 좌표) — 캔버스 geometry 와 동일한 평면도 좌표.
         plan_bundle = _emit_bundle(combined, "")
@@ -4641,6 +4678,7 @@ def remote30_combined_build():
 
         out_sdf, out_slf = plan_bundle["sdf"], plan_bundle["slf"]
         out_kfp, out_has, out_zip = plan_bundle["kfp"], plan_bundle["has"], plan_bundle["zip"]
+        out_zip_sdf = plan_bundle["zip_sdf"]
         kfp_ok, has_ok = plan_bundle["kfp_ok"], plan_bundle["has_ok"]
     except Exception as exc:  # noqa: BLE001
         return _err500(exc)
@@ -4675,12 +4713,14 @@ def remote30_combined_build():
         "download_url_kfp": f"/api/remote30/combined/result/{job_id}/{out_kfp.name}" if kfp_ok else None,
         "download_url_has": f"/api/remote30/combined/result/{job_id}/{out_has.name}" if has_ok else None,
         "download_url_zip": f"/api/remote30/combined/result/{job_id}/{out_zip.name}",
+        "download_url_sdf_zip": f"/api/remote30/combined/result/{job_id}/{out_zip_sdf.name}",
         # 등각 세트 (30° 등각투영 좌표 베이크)
         "download_url_sdf_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['sdf'].name}",
         "download_url_slf_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['slf'].name}" if iso_bundle["slf"].is_file() else None,
         "download_url_kfp_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['kfp'].name}" if iso_bundle["kfp_ok"] else None,
         "download_url_has_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['has'].name}" if iso_bundle["has_ok"] else None,
         "download_url_zip_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['zip'].name}",
+        "download_url_sdf_zip_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['zip_sdf'].name}",
         "title": title,
         "machine_room_attached": mr_attached,
         "geometry": geometry,
@@ -6477,12 +6517,19 @@ def remote30_sdf_from_tables():
     except Exception as exc:
         return jsonify({"ok": False, "message": f"SDF 생성 오류: {exc}"}), 500
 
-    download_name = payload.get("filename", "remote30_edited.sdf")
+    # ASCII 파일명 정책: PIPENET 은 SDF/SLF 경로·파일명을 CP949(ANSI)로 읽으므로
+    # UTF-8 한글 파일명은 깨진다. 사용자 지정 이름에서 비-ASCII 를 제거(secure_filename)
+    # 하고, 남는 stem 이 없으면 기본값으로 폴백한다. (.sdf 확장자 보장)
+    _safe = secure_filename(str(payload.get("filename") or ""))
+    _stem = Path(_safe).stem
+    if not _stem:
+        _stem = "remote30_edited"
+    download_name = f"{_stem[:76]}.sdf"
     return send_file(
         BytesIO(xml_text.encode("utf-8")),
         mimetype="application/xml",
         as_attachment=True,
-        download_name=str(download_name)[:80] if download_name else "remote30_edited.sdf",
+        download_name=download_name,
     )
 
 

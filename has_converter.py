@@ -36,8 +36,12 @@ from kfp_sdf_converter import (
     CommonNetwork,
     CommonNode,
     CommonPipe,
+    _BAR_TO_M,
+    _coord_scale,
+    _spread_factor,
     emit_sdf_xml,
     parse_sdf,
+    simplify_passthrough_nodes,
 )
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -173,18 +177,8 @@ def _xyz_to_str(x: float, y: float, z: float = 0.0) -> str:
     return f"{x:.6f}, {y:.6f}, {z:.6f}"
 
 
-def _coord_scale(nodes: list[CommonNode]) -> float:
-    """좌표를 미터로 정규화하는 배율. bbox span 이 수 km 면 mm 로 보고 0.001.
-
-    HAS 도면은 m 단위(예: -25.98, 11.25). 통합망(SDF)이 schematic mm 좌표면
-    그대로 쓰면 도면이 1000배 커져 보임(수리계산엔 무영향 — PipeLength 사용).
-    """
-    xs = [n.x for n in nodes]
-    ys = [n.y for n in nodes]
-    if not xs:
-        return 1.0
-    span = max(max(xs) - min(xs), max(ys) - min(ys))
-    return 0.001 if span > 5000.0 else 1.0
+# 좌표 표시배율 헬퍼(_coord_scale / _spread_factor)는 kfp_sdf_converter 에서 import.
+# KFP·HAS 가 동일 통합망에서 동일 배율을 쓰도록 단일 소스 유지(중복 제거).
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -361,6 +355,35 @@ def _zero_results(block: dict) -> dict:
     return block
 
 
+# HASS 가 숫자로 파싱하는 문자열 필드. "" 를 받으면 파일 로드 실패(observed: nodeBlks.Height,
+# pumpBlks.MaxFlowQuantity/MinFlowQuantity 가 "" 일 때 HASS 가 파일을 거부). 안전망으로 "0".
+_HAS_NUMERIC_STRING_FIELDS = frozenset({
+    "Height",
+    "PipeLength", "PipeDiameter", "CFactor",
+    "MaxFlowQuantity", "MinFlowQuantity",
+    "MinPressure", "MaxPressure", "MinFlowRate",
+    "Diameter", "KFactor", "Efficiency", "FixFlowRate",
+    "Rotation",
+})
+
+
+def _sanitize_blank_numeric_strings(obj) -> None:
+    """재귀: 알려진 숫자 필드의 "" → "0" in-place. PumpType/NozzleType 같은 문자열 필드는 손대지 않음.
+
+    HASS 가 빈 문자열을 받으면 파일 로드 자체가 실패하므로, emit 마지막 단계에 한 번 돌려
+    어떤 경로로 들어온 blank 든 막는다 (얇은 방어막).
+    """
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(v, str) and v == "" and k in _HAS_NUMERIC_STRING_FIELDS:
+                obj[k] = "0"
+            elif isinstance(v, (dict, list)):
+                _sanitize_blank_numeric_strings(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            _sanitize_blank_numeric_strings(item)
+
+
 def _ensure_nozzle_type(db: dict, k: float) -> str:
     """nozzleDataTable 에서 KFactor 가 k 에 가장 가까운 NozzleName 반환.
 
@@ -395,12 +418,63 @@ def _ensure_nozzle_type(db: dict, k: float) -> str:
     return name
 
 
-def emit_has(net: CommonNetwork, path: str | Path | None = None) -> dict:
+def _set_pump_flow_table(db: dict, pump_name: str, curve: dict) -> bool:
+    """pumpFlowDataTable 의 ``pump_name`` 행을 성능곡선 3점으로 교체.
+
+    화재안전기준 표준 곡선(체절 140% / 정격 / 150% 65%)을 HASS 가 H-Q 보간에 쓰는
+    {PumpName, PumpFlowRate(L/min), PumpFlowHead(m)} 행으로 기록한다. curve 에 정격
+    토출량/양정이 없으면(0) 스켈레톤 기본 곡선을 그대로 두고 False 를 돌려준다.
+
+    curve 키(parse_sdf Pump-fan attribute 유래) — 압력은 **bar 로 정규화**되어 옴
+    (parse_sdf 가 rated-p-unit 으로 통일). HASS PumpFlowHead 는 양정[m] 이므로
+    bar→m(×_BAR_TO_M) 변환해 기록한다:
+        rated_q  = 정격 토출량 (L/min)
+        rated_p  = 정격 압력 (bar) → 양정[m]
+        shutoff_p= 체절 압력 (bar) → 양정[m]
+        peak_q   = 150% 토출량 (L/min)
+        peak_p   = 150% 압력 (bar) → 양정[m]
+    """
+    q = float(curve.get("rated_q") or 0.0)
+    h = float(curve.get("rated_p") or 0.0) * _BAR_TO_M
+    if q <= 0.0 or h <= 0.0:
+        return False
+    shut = (float(curve.get("shutoff_p") or 0.0) * _BAR_TO_M) or round(h * 1.40, 3)
+    pq = float(curve.get("peak_q") or 0.0) or round(q * 1.50, 3)
+    ph = (float(curve.get("peak_p") or 0.0) * _BAR_TO_M) or round(h * 0.65, 3)
+    points = [(0.0, shut), (q, h), (pq, ph)]
+
+    table = db.setdefault("pumpFlowDataTable", [])
+    # 같은 PumpName 의 기존 행 제거 후 재구성 (스켈레톤 FP 기본곡선 대체)
+    table[:] = [r for r in table if str(r.get("PumpName")) != str(pump_name)]
+    for fr, fh in points:
+        table.append({
+            "Id": len(table) + 1,
+            "PumpName": str(pump_name),
+            "PumpFlowRate": round(float(fr), 3),
+            "PumpFlowHead": round(float(fh), 3),
+        })
+    return True
+
+
+def emit_has(
+    net: CommonNetwork,
+    path: str | Path | None = None,
+    *,
+    isometric: bool = False,
+    iso_z_scale: float = 1.0,
+) -> dict:
     """CommonNetwork → HAS dict(JSON). path 주어지면 파일에도 UTF-8 로 기록.
 
     스켈레톤(붙임 샘플)을 로드해 참조 DB/범례/설정/단위계를 그대로 쓰고,
     ``PipeInfoMgr`` 의 도면+해석 블록만 우리 네트워크로 교체한다. 원본 도면 잔재
     (infoTxts/lines/장식 심볼 등)는 전부 비워 source 프로젝트 정보 누출을 막는다.
+
+    ``isometric=True`` 면 노드/배관의 화면좌표(InsertionPoint/Points X,Y)를
+    평면(x,y)+고도(elevation)의 **30° 등각투영**으로 베이크해 HASS/solver 화면처럼
+    계통도(아이소뷰)로 보이게 한다. 평면뷰는 층이 겹쳐 라이저가 점으로 뭉치지만,
+    등각투영은 고도를 화면 수직축으로 펼쳐 층·입상관이 분리돼 보인다. **순수 표시
+    변환** — Height/PipeLength/흐름방향은 그대로라 수리계산 결과엔 영향 0.
+    ``iso_z_scale`` 은 고도 펼침 배율(1.0=고도범위가 평면 대각선의 절반).
     """
     skel = json.loads(_template_path().read_text(encoding="utf-8-sig"))
     doc = skel["Document"]
@@ -414,9 +488,51 @@ def emit_has(net: CommonNetwork, path: str | Path | None = None) -> dict:
     proto_pump = copy.deepcopy(pim["pumpBlks"][0]) if pim.get("pumpBlks") else {}
     proto_reducing = copy.deepcopy(pim["reducingBlks"][0]) if pim.get("reducingBlks") else {}
     proto_orifice = copy.deepcopy(pim["orifiaceBlks"][0]) if pim.get("orifiaceBlks") else {}
+    # ★ directionBlk(흐름방향 화살표)은 원본 정보가 아니라 pline 마다 1:1 로 필요한
+    #   동반 엔티티. HASS 뷰어가 파일을 열 때 각 pline 의 방향블록을 참조하므로
+    #   비워두면 "개체 참조가 설정되지 않았습니다" null ref 로 열리지 않는다.
+    #   (붙임 레퍼런스 4종 모두 plines:directionBlks = 1:1, ParentId⊆pline Id)
+    proto_direction = copy.deepcopy(pim["directionBlks"][0]) if pim.get("directionBlks") else {}
 
     nodes = list(net.nodes.values())
-    scale = _coord_scale(nodes)
+    base_scale = _coord_scale(nodes)
+    # schematic 압축 보정 — 뭉친 망을 레퍼런스 수준 간격으로 균일 확대(시각화 전용).
+    scale = base_scale * _spread_factor(nodes, base_scale)
+
+    def _dz(cn) -> float:
+        # 표시 전용 z — 라이저 입상관 높이·헤드평면 평탄화(display_z_m). 없으면 실표고.
+        # HAS 등각 lift 는 이 표시 z 로(=계통도 형상), Height(수리표고)는 elevation_m 유지.
+        v = cn.raw.get("display_z_m")
+        return cn.elevation_m if v is None else v
+
+    # ── 등각투영(계통도) 화면좌표 변환 ─────────────────────────────────────────
+    # 평면(px,py)+고도(elev) → 30° 등각투영 화면좌표. 고도 펼침은 평면 표시 대각선에
+    # 정규화해 좌표 단위(m/mm)·_spread_factor 배율과 무관하게 비례를 유지한다.
+    # 순수 표시 변환(Height/PipeLength/방향 불변) — 수리계산 영향 0.
+    _COS30, _SIN30 = 0.8660254037844387, 0.5
+    _elevs = [_dz(c) for c in nodes if _dz(c) is not None]
+    _e_mid = (min(_elevs) + max(_elevs)) / 2.0 if _elevs else 0.0
+    _e_range = (max(_elevs) - min(_elevs)) if _elevs else 0.0
+    if isometric and _elevs:
+        _pxs = [c.x * scale for c in nodes]
+        _pys = [c.y * scale for c in nodes]
+        _diag = math.hypot(
+            (max(_pxs) - min(_pxs)) if _pxs else 0.0,
+            (max(_pys) - min(_pys)) if _pys else 0.0,
+        )
+        _lift_per_m = (_diag * 0.5 * iso_z_scale / _e_range) if _e_range > 0 else 0.0
+    else:
+        _lift_per_m = 0.0
+
+    def _proj(px: float, py: float, elev: float | None) -> tuple[float, float]:
+        """평면 표시좌표(px,py)+고도 → 등각투영 화면(X,Y). isometric off 면 그대로."""
+        if not isometric:
+            return px, py
+        e = _e_mid if elev is None else elev
+        return (
+            (px - py) * _COS30,
+            (px + py) * _SIN30 + (e - _e_mid) * _lift_per_m,
+        )
 
     # 단일 source 선택: wt 우선 → pump → 첫 노드
     source_id: str | None = None
@@ -432,6 +548,55 @@ def emit_has(net: CommonNetwork, path: str | Path | None = None) -> dict:
     if source_id is None and nodes:
         source_id = nodes[0].id
 
+    # ── 흐름방향 정규화 ──────────────────────────────────────────────────────
+    # HASS 입력검사는 배관이 source(수원)에서 멀어지는 방향(SNodeId=상류, ENodeId=하류)
+    # 으로 설치돼야 통과한다. 우리 망의 start/end 는 DXF 끝점/그래프 순서라 임의 방향이
+    # 라서, source 에서 멀어지는 절반가량 파이프가 "배관 역방향 설치" 입력값 오류로 막힌다.
+    # source 로부터 BFS 깊이를 구해 start 가 더 깊으면(=하류면) start↔end 를 뒤집는다.
+    # 길이·직경·CFactor 불변이라 수리계산 영향 0 — 입력 방향 메타와 흐름화살표만 교정.
+    # 이 교정은 pline 루프보다 먼저 실행해야 SNodeId/ENodeId 와 directionBlk(start→end
+    # 각도)가 함께 정합된다.
+    if source_id is not None and net.pipes:
+        from collections import deque as _deque
+        _adj: dict[str, list[str]] = {}
+        for _cp in net.pipes.values():
+            _adj.setdefault(_cp.start, []).append(_cp.end)
+            _adj.setdefault(_cp.end, []).append(_cp.start)
+        # 2-port 인라인 요소(펌프·PRV·오리피스)는 net.pipes 에 없는 별도 엣지로
+        # 망에 끼어든다. 펌프 흡입측 노드(=Input/수원, 흔히 source_id)는 토출 노드와
+        # *오직 펌프 요소로만* 이어져 파이프 인접에 안 잡힌다. 이 엣지를 BFS 인접에
+        # 넣지 않으면 source 에서 망 본체로 못 건너가 depth 가 전부 None → 한 건도
+        # 안 뒤집혀 "역방향 설치" 오류가 그대로 남는다(펌프 추가 후 재현된 버그).
+        for _cn in nodes:
+            _out = None
+            if _cn.kind == "pump":
+                _out = _cn.raw.get("pump_output")
+            elif _cn.kind == "prv":
+                _out = _cn.raw.get("prv_enode")
+            elif _cn.kind == "orifice":
+                _out = _cn.raw.get("orifice_enode")
+            if _out is not None:
+                _out = str(_out)
+                _adj.setdefault(_cn.id, []).append(_out)
+                _adj.setdefault(_out, []).append(_cn.id)
+        _depth: dict[str, int] = {source_id: 0}
+        _dq = _deque([source_id])
+        while _dq:
+            _u = _dq.popleft()
+            for _v in _adj.get(_u, ()):
+                if _v not in _depth:
+                    _depth[_v] = _depth[_u] + 1
+                    _dq.append(_v)
+        _flipped = 0
+        for _cp in net.pipes.values():
+            _ds = _depth.get(_cp.start)
+            _de = _depth.get(_cp.end)
+            if _ds is not None and _de is not None and _ds > _de:
+                _cp.start, _cp.end = _cp.end, _cp.start
+                if _cp.waypoints:
+                    _cp.waypoints = list(reversed(_cp.waypoints))
+                _flipped += 1
+
     # 전역 Id 카운터 (노드·pline·nozzle·pump 가 한 Id 공간 공유)
     gid = 1
     idmap: dict[str, int] = {}
@@ -442,18 +607,19 @@ def emit_has(net: CommonNetwork, path: str | Path | None = None) -> dict:
         hid = gid
         gid += 1
         idmap[cn.id] = hid
-        x, y = cn.x * scale, cn.y * scale
+        x, y = _proj(cn.x * scale, cn.y * scale, _dz(cn))
         xy_m[cn.id] = (x, y)
         nb = copy.deepcopy(proto_node)
         nb["Id"] = hid
         nb["Label"] = str(cn.raw.get("has_label") or cn.id)
         nb["InsertionPoint"] = _xyz_to_str(x, y, 0.0)
-        nb["Height"] = f"{cn.elevation_m:g}"
+        nb["Height"] = f"{cn.elevation_m:g}" if cn.elevation_m is not None else "0"
         nb["IoNode"] = 1 if cn.id == source_id else 0
         node_blks.append(_zero_results(nb))
 
     # plines
     pline_blks: list[dict] = []
+    pline_geom: list[tuple[int, float, float, float, float]] = []  # (pid, sx,sy, ex,ey)
     for cp in net.pipes.values():
         pid = gid
         gid += 1
@@ -465,9 +631,18 @@ def emit_has(net: CommonNetwork, path: str | Path | None = None) -> dict:
         # Points: start → waypoints → end (m)
         sx, sy = xy_m.get(cp.start, (0.0, 0.0))
         ex, ey = xy_m.get(cp.end, (0.0, 0.0))
+        pline_geom.append((pid, sx, sy, ex, ey))
+        # 경유점(bend)은 고도값이 없어 양 끝 노드의 중간 고도로 투영 — 등각에서 직선 유지.
+        _se = net.nodes.get(cp.start)
+        _ee = net.nodes.get(cp.end)
+        _wp_elev = None
+        if isometric:
+            _ev = [_dz(n) for n in (_se, _ee)
+                   if n is not None and _dz(n) is not None]
+            _wp_elev = (sum(_ev) / len(_ev)) if _ev else _e_mid
         pts = [_xyz_to_str(sx, sy)]
         for wx, wy in cp.waypoints:
-            pts.append(_xyz_to_str(wx * scale, wy * scale))
+            pts.append(_xyz_to_str(*_proj(wx * scale, wy * scale, _wp_elev)))
         pts.append(_xyz_to_str(ex, ey))
         pl["Points"] = pts
         pl["PipeDiameter"] = str(cp.nominal_mm or int(round(cp.diameter_inner_mm)))
@@ -513,15 +688,26 @@ def emit_has(net: CommonNetwork, path: str | Path | None = None) -> dict:
             pb["Id"] = pid
             pb["Label"] = str(cn.raw.get("has_label") or "FP")
             pb["SNodeId"] = str(idmap[cn.id])
-            # ENodeId = pump 노드의 하류(또는 상류) 이웃
-            enode = _downstream_hid(net, idmap, cn.id)
+            # ENodeId = 펌프 토출 노드. 펌프는 SRC→토출의 유일한 연결(병렬 파이프 없음)
+            # 이라 파이프로 추론 불가 → parse_sdf 가 보존한 pump_output 을 우선 사용.
+            # (없으면 파이프 이웃 추론, 그조차 없으면 self — 구버전 호환)
+            pump_out = cn.raw.get("pump_output")
+            enode = idmap.get(str(pump_out)) if pump_out is not None else None
+            if enode is None:
+                enode = _downstream_hid(net, idmap, cn.id)
             pb["ENodeId"] = str(enode if enode is not None else idmap[cn.id])
             px, py = xy_m.get(cn.id, (0.0, 0.0))
             pb["InsertionPoint"] = _xyz_to_str(px, py, 0.0)
             curve = cn.pump_curve or {}
             peak_q = curve.get("peak_q") or curve.get("rated_q") or 0
-            pb["MaxFlowQuantity"] = str(peak_q)
+            # HASS 가 거부하는 "" 을 막기 위해 PumpType 명시 set (proto_pump 의 값 보존, 없으면 "FP").
+            # MaxFlowQuantity 는 0 이라도 "0" 문자열은 들어가도록 강제 (peak_q 가 0 일 때 str(0)="0").
+            pb["PumpType"] = (pb.get("PumpType") or cn.raw.get("pump_type") or "FP")
+            pb["MaxFlowQuantity"] = str(peak_q) if str(peak_q).strip() else "0"
             pb["MinFlowQuantity"] = "0"
+            # 사용자 성능곡선이 있으면 pumpFlowDataTable 의 해당 PumpType 행을 교체
+            # (없으면 스켈레톤 기본 FP 곡선 유지). PumpType ↔ PumpName 일치 필수.
+            _set_pump_flow_table(db, pb["PumpType"], curve)
             pump_blks.append(_zero_results(pb))
 
     # reducingBlks(PRV) — kind=prv 노드마다 (2-port 인라인 감압변)
@@ -560,6 +746,21 @@ def emit_has(net: CommonNetwork, path: str | Path | None = None) -> dict:
             ob["InsertionPoint"] = _xyz_to_str(ox, oy, 0.0)
             orifice_blks.append(_zero_results(ob))
 
+    # directionBlks — pline 마다 1:1 흐름방향 화살표 (ParentId=pline Id).
+    # InsertionPoint=pline 중점, Rotation=start→end 방향각. HASS 가 열 때 필수.
+    direction_blks: list[dict] = []
+    if proto_direction:
+        for pid, sx, sy, ex, ey in pline_geom:
+            did = gid
+            gid += 1
+            d = copy.deepcopy(proto_direction)
+            d["Id"] = did
+            d["ParentId"] = pid
+            d["InsertionPoint"] = _xyz_to_str((sx + ex) / 2.0, (sy + ey) / 2.0, 0.0)
+            d["Rotation"] = math.atan2(ey - sy, ex - sx)
+            d["IsPositive"] = True
+            direction_blks.append(d)
+
     # PipeInfoMgr 교체 — geometry 만 우리 것, 나머지(원본 도면 잔재)는 비움
     pim["nodeBlks"] = node_blks
     pim["plines"] = pline_blks
@@ -567,8 +768,9 @@ def emit_has(net: CommonNetwork, path: str | Path | None = None) -> dict:
     pim["pumpBlks"] = pump_blks
     pim["reducingBlks"] = reducing_blks
     pim["orifiaceBlks"] = orifice_blks
+    pim["directionBlks"] = direction_blks
     for key in (
-        "lines", "directionBlks", "angleBlks", "alarmBlks", "butterBlks",
+        "lines", "angleBlks", "alarmBlks", "butterBlks",
         "delugeBlks", "dryBlks", "flexibleBlks", "gateBlks", "lengthPartBlks",
         "swingcheckBlks", "strainerBlks", "preactionBlks",
         "flowFactorBlks", "pressureLossBlks", "infoTxts", "txts",
@@ -589,6 +791,10 @@ def emit_has(net: CommonNetwork, path: str | Path | None = None) -> dict:
         proj["Calculation"] = meta["design_area"]
 
     out = {"Document": doc}
+    # 최종 안전망 — 어떤 경로로든 들어온 빈 숫자 문자열을 "0" 으로 채움.
+    # HASS 는 nodeBlks.Height / pumpBlks.MaxFlowQuantity 등 숫자 파싱 필드의
+    # "" 을 받으면 파일 로드 자체가 실패한다 (관측: 일예시 파.has 8건 diff).
+    _sanitize_blank_numeric_strings(out)
     if path is not None:
         Path(path).write_text(
             json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -611,10 +817,23 @@ def _downstream_hid(net: CommonNetwork, idmap: dict[str, int], node_id: str) -> 
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def convert_sdf_to_has(sdf_path: str | Path, has_path: str | Path) -> Path:
-    """SDF → HAS. parse_sdf 로 CommonNetwork 만든 뒤 emit_has."""
+def convert_sdf_to_has(
+    sdf_path: str | Path,
+    has_path: str | Path,
+    *,
+    isometric: bool = False,
+    iso_z_scale: float = 1.0,
+    simplify: bool = True,
+) -> Path:
+    """SDF → HAS. parse_sdf 로 CommonNetwork 만든 뒤 emit_has.
+
+    ``isometric=True`` 면 화면좌표를 등각투영(계통도)으로 베이크 — emit_has 참고.
+    ``simplify`` — 일직선 통과 base 노드 병합으로 출력 노드 수 절감(무손실). 기본 True.
+    """
     net = parse_sdf(sdf_path)
-    emit_has(net, has_path)
+    if simplify:
+        simplify_passthrough_nodes(net)
+    emit_has(net, has_path, isometric=isometric, iso_z_scale=iso_z_scale)
     return Path(has_path)
 
 

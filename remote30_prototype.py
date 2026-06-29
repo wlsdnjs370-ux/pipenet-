@@ -57,7 +57,7 @@ from ezdxf.math import Matrix44, Vec3
 
 _MODULE_DIR = Path(__file__).resolve().parent
 TEMPLATE_SDF_FILENAME = "3-1형_자연낙차_LSP_4F_OA_지하층포함_120m~200m미만_6.6K로 감압_알람밸브.sdf"
-STANDARD_SLF_FILENAME = "OA_3-1형_지하층포함_120~200m미만_35F.slf"
+STANDARD_SLF_FILENAME = "2. Pipenet_hand.slf"
 
 
 def _resolve_asset(env_var: str, default_filename: str, *, role: str) -> Path | None:
@@ -1240,28 +1240,18 @@ def _collapse_collinear_nodes(
     path: list[tuple[float, float]],
     edge_len: dict,
     angle_tol_deg: float = 0.5,
-    short_ratio: float = 1.5,
 ) -> list[tuple[float, float]]:
-    """Path 의 짧은 + 직선상 중간 노드 제거 — 답안 SDF 노드 구조에 근접.
+    """Path 의 직선상 중간 노드 제거 — 답안 SDF 노드 구조에 근접.
 
-    답안 SDF 의 노드는 fitting elbow / 분기 / 직경 변경 지점이라 평균 3-8m 간격.
-    우리 path 는 LINE 끝점마다 노드라 같은 직선에 N+1 노드. 두 조건 동시 만족 시 통합:
-      1) (i-1)→i 와 i→(i+1) 각도 ≤ angle_tol_deg (직선)
-      2) 두 segment 길이 합 ≤ path median segment 길이 × short_ratio × 2
-         (도면 단위 무관 — 상대 기준. short_ratio=1.5 → 평균의 1.5배까지 통합)
+    답안 SDF 의 노드는 fitting elbow / 분기 / 직경 변경 지점만 (직선 run = 단일 pipe).
+    우리 path 는 LINE 끝점마다 노드라 같은 직선에 N+1 노드가 생긴다. (i-1)→i→(i+1)
+    각도가 angle_tol_deg 이내(직선)면 i 를 흡수한다 — segment 길이는 보지 않는다.
+    직선상 노드는 fitting 이 없어 보존할 이유가 없고, merged_len = 두 구간 길이 합이라
+    마찰손실도 동일하다. (예전엔 "짧을 때만" 흡수해 긴 직선 run 의 중간 노드가
+    답안에 없는데도 살아남아 노드/파이프가 과분할됐다 — 이 게이트를 제거.)
     """
     if len(path) <= 2:
         return list(path)
-
-    # path 의 segment 길이 분포 → 중앙값
-    seg_lens: list[float] = []
-    for i in range(len(path) - 1):
-        a, b = path[i], path[i + 1]
-        L = edge_len.get((min(a, b), max(a, b)), math.hypot(b[0] - a[0], b[1] - a[1]))
-        seg_lens.append(L)
-    seg_lens_sorted = sorted(seg_lens)
-    median_len = seg_lens_sorted[len(seg_lens_sorted) // 2] if seg_lens_sorted else 1.0
-    threshold = median_len * short_ratio * 2.0   # 두 segment 합산용
 
     kept = [path[0]]
     for i in range(1, len(path) - 1):
@@ -1276,9 +1266,7 @@ def _collapse_collinear_nodes(
         cross = dx1 * dy2 - dy1 * dx2
         dot   = dx1 * dx2 + dy1 * dy2
         ang_rad = math.atan2(abs(cross), dot)
-        is_collinear = math.degrees(ang_rad) <= angle_tol_deg
-        is_short = (L1 + L2) <= threshold
-        if is_collinear and is_short:
+        if math.degrees(ang_rad) <= angle_tol_deg:
             key_in  = (min(prev, cur), max(prev, cur))
             key_out = (min(cur, nxt), max(cur, nxt))
             merged_len = edge_len.get(key_in, L1) + edge_len.get(key_out, L2)
@@ -2206,7 +2194,16 @@ def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str]) ->
                     ))
 
     # ── 클러스터링 — 같은 헤드를 가리키는 여러 cue (INSERT + CIRCLE + HATCH) 를 한 개로 ──
+    # 공간 격자(grid) 인덱스로 근접 후보만 비교 → 전수 비교 O(N²) 제거. seed(가장
+    # 앞선 미사용 후보) 기준 반경 클러스터링이라, 셀 크기를 CLUSTER_R 로 잡으면 반경
+    # 내 후보는 항상 seed 셀의 3×3 이웃 안에 있다. 클러스터 집계(max/min/set/len)는
+    # 순서 무관이라 결과는 전수 비교와 동일.
     CLUSTER_R = 250.0
+    grid: dict[tuple[int, int], list[int]] = {}
+    for idx, c in enumerate(candidates):
+        key = (int(math.floor(c.pos[0] / CLUSTER_R)), int(math.floor(c.pos[1] / CLUSTER_R)))
+        grid.setdefault(key, []).append(idx)
+
     used = [False] * len(candidates)
     out: list[HeadDetection] = []
     for i, c1 in enumerate(candidates):
@@ -2214,13 +2211,17 @@ def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str]) ->
             continue
         cluster = [c1]
         used[i] = True
-        for j in range(i + 1, len(candidates)):
-            if used[j]:
-                continue
-            c2 = candidates[j]
-            if math.hypot(c1.pos[0] - c2.pos[0], c1.pos[1] - c2.pos[1]) <= CLUSTER_R:
-                cluster.append(c2)
-                used[j] = True
+        gx0 = int(math.floor(c1.pos[0] / CLUSTER_R))
+        gy0 = int(math.floor(c1.pos[1] / CLUSTER_R))
+        for gx in (gx0 - 1, gx0, gx0 + 1):
+            for gy in (gy0 - 1, gy0, gy0 + 1):
+                for j in grid.get((gx, gy), ()):
+                    if j <= i or used[j]:
+                        continue
+                    c2 = candidates[j]
+                    if math.hypot(c1.pos[0] - c2.pos[0], c1.pos[1] - c2.pos[1]) <= CLUSTER_R:
+                        cluster.append(c2)
+                        used[j] = True
         best = max(cluster, key=lambda c: c.confidence)
         x1 = min(c.bbox[0] for c in cluster)
         y1 = min(c.bbox[1] for c in cluster)
@@ -3368,7 +3369,7 @@ def build_input_tables(
                 continue
             fx_count += 1
             # FX 등가길이 — 도면의 물리 길이가 아니라 KFI 인정/제품 스펙 기준의 고정값.
-            # 3-1형 LSP 레퍼런스 SDF (60개 모두 15.6m) 기준 채택. 도면 물리길이는 fx_len 으로
+            # 권위 레퍼런스(2. Pipenet_hand) 기준 15.62m 채택. 도면 물리길이는 fx_len 으로
             # 별도 계산되지만 검증/디버깅용으로만 메타에 남기고 eq_len 에는 쓰지 않음.
             fx_len_mm = 0.0
             for p0, p1 in zip(pts, pts[1:]):
@@ -3376,7 +3377,7 @@ def build_input_tables(
             tables.equipment.append({
                 "pipe": attached_pipe["label"], "in": attached_pipe["in"], "out": attached_pipe["out"],
                 "label": str(fx_count + 1), "desc": "FX",
-                "eq_len": 15.6,
+                "eq_len": 15.62,
                 "rel_pos": 0.5,
             })
 
@@ -3396,7 +3397,7 @@ def build_input_tables(
         tables.equipment.append({
             "pipe": attached_pipe["label"], "in": attached_pipe["in"], "out": attached_pipe["out"],
             "label": str(fx_count + 1), "desc": "FX",
-            "eq_len": 15.6, "rel_pos": 0.5,
+            "eq_len": 15.62, "rel_pos": 0.5,
         })
 
     # 2) 알람밸브 (A/V) — src_label 이 in/out 인 첫 pipe 에 부착
@@ -3514,6 +3515,24 @@ def bundle_result_zip(out_dir: Path, prefix: str) -> Path:
             for f in sorted(csv_dir.glob(f"{prefix}_*.csv")):
                 zf.write(f, arcname=f"csv/{f.name}")
     return zip_path
+
+
+def write_sdf_tree(tree: "ET.ElementTree", out_path: Path) -> None:
+    """ElementTree → PIPENET SDF 직렬화 (DOCTYPE 보존).
+
+    ``ElementTree.write`` 는 ``<!DOCTYPE ...>`` 를 보존하지 못하고 XML 선언도
+    ``<?xml version='1.0' encoding='utf-8'?>`` (작은따옴표·소문자) 로 쓴다.
+    레퍼런스 (2. 출력 배관망_수작업.sdf) 의 헤더는
+    ``<?xml version="1.0" encoding="UTF-8"?>`` + ``<!DOCTYPE Project SYSTEM "spray.dtd">`` —
+    DOCTYPE 가 빠지면 일부 PIPENET 설치에서 파일 열기/연산이 거부된다(다른 PC 에서
+    연산 오류의 원인). SLF 의 _harden_slf_for_combined 와 동일 패턴으로 헤더를 직접 붙인다.
+    """
+    body = ET.tostring(tree.getroot(), encoding="unicode")
+    Path(out_path).write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE Project SYSTEM "spray.dtd">\n' + body,
+        encoding="utf-8",
+    )
 
 
 def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote 30 Prototype") -> Path:
@@ -3671,7 +3690,7 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
     _write_sdf(network, out_path, template_path=template)
 
     # ── 표준 라이브러리(.slf) 를 결과 폴더에 동봉 — PIPENET 이 호칭경↔내경 매핑 lookup 용.
-    # SLF 는 6 schedule (KSD 3507/3562/3576/DP/CPVC/FX) + SP-HEAD / INDOOR HYDRANT 노즐 + 표준 펌프 정의를 담은
+    # SLF 는 6 schedule (KSD 3507/3562/3576/DP/CPVC2/FX) + SP-HEAD / INDOOR HYDRANT 노즐 + 표준 펌프 정의를 담은
     # 프로젝트 표준 라이브러리. 모든 수리계산 결과물 SDF 가 이 SLF 를 참조하도록 통일.
     # 경로 해석: 환경변수 REMOTE30_STANDARD_SLF → 모듈 디렉토리 fallback. (resolve_standard_slf 참조)
     import shutil as _shutil
@@ -3710,10 +3729,11 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
             _ns.remove(_t)
         for _nd in list(_ns.findall("Network-description")):
             _ns.remove(_nd)
-    # ── 6 schedule Pipe-type 정의 — 표준 SLF (OA_3-1형_..._35F.slf) 의 Schedule-section 과 정합.
+    # ── 6 schedule Pipe-type 정의 — 권위 SLF (2. Pipenet_hand.slf) 의 Schedule-section 과 정합.
     # 각 항목: (name, c-factor, [(size_m, max_velocity_m_s), ...])
-    # 호칭경 set 은 SLF 의 Size-definition.nominal 과 동일, velocity 컨벤션 (≤50mm=6, ≥65mm=10)
-    # 은 레퍼런스 4-1형 알람밸브 SDF 의 KSD 3507/3562/CPVC Pipe-type 정의에서 도출.
+    # Schedule name 은 SLF 의 Item-name 과 동일해야 PIPENET 이 Pipe-type↔Schedule(내경) 을
+    # 바인딩한다. 호칭경 set 은 SLF 의 Size-definition.nominal 과 동일, velocity 컨벤션
+    # (≤50mm=6, ≥65mm=10) 은 레퍼런스 알람밸브 SDF 의 Pipe-type 정의에서 도출.
     # DP/FX 처럼 단일 호칭경만 정의된 schedule 은 velocity=10 으로 통일.
     _SCHEDULE_DEFS = [
         ("KSD 3507", "120", [
@@ -3732,10 +3752,10 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
             (0.15, 10), (0.2, 10), (0.25, 10), (0.3, 10),
         ]),
         ("DP", "120", [(0.025, 10)]),
-        ("CPVC", "150", [
+        ("CPVC2", "150", [
             (0.025, 6), (0.032, 6), (0.04, 6), (0.05, 6), (0.065, 10), (0.08, 10),
         ]),
-        ("FX", "120", [(0.02, 10)]),
+        ("FX", "120", [(0.025, 10)]),
     ]
 
     def _make_pipe_type(name: str, c_factor: str, sizes: list) -> "_ET.Element":
@@ -3797,7 +3817,7 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
             _insert_at += 1
         break
 
-    _tree.write(out_path, encoding="utf-8", xml_declaration=True)
+    write_sdf_tree(_tree, out_path)
     return out_path
 
 

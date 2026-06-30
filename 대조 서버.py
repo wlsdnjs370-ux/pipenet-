@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import base64
+import gzip
+import hashlib
 import html as html_lib
 import json
+import os
 import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
+import warnings
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -37,6 +42,51 @@ from pipenet_validator import PipenetGuideValidator
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+# /inspect 렌더 결과(전체 entity NDJSON + 메타)를 도면 내용 해시로 캐시한다.
+# 같은 도면 재업로드 시 ezdxf 재파싱·explode(108s/172MB)를 건너뛰고 ~1-2s 에 스트리밍.
+# 렌더/카테고리 로직이 바뀌면 INSPECT_CACHE_VERSION 을 올려 캐시를 무효화한다.
+INSPECT_CACHE_DIR = UPLOAD_DIR / "_inspect_cache"
+INSPECT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+INSPECT_CACHE_VERSION = "v1"
+
+
+def _inspect_cache_key(dxf_path: Path) -> str:
+    """도면 내용 SHA256 → 캐시 키 (/inspect 와 동일 규칙)."""
+    h = hashlib.sha256()
+    with open(dxf_path, "rb") as _f:
+        for _blk in iter(lambda: _f.read(1024 * 1024), b""):
+            h.update(_blk)
+    return f"{INSPECT_CACHE_VERSION}_{h.hexdigest()}"
+
+
+def _load_cached_view_entities(dxf_path: Path) -> list | None:
+    """inspect 바이너리 캐시에서 entity 리스트 복원. 없거나 실패 시 None.
+
+    추출(경로 탐색)이 parse_dxf_for_view 로 대용량 DXF 를 재파싱(141MB≈110s)하는
+    대신, /inspect 가 이미 파싱·캐시한 entity 를 재사용한다. 캐시는 스트리밍된
+    progress 메시지(NDJSON)라 각 줄의 entities 배열을 평탄화한다. fresh 파싱과
+    동일 ezdxf 출력이므로 그래프/경로 결과가 같다.
+    """
+    try:
+        key = _inspect_cache_key(dxf_path)
+    except Exception:
+        return None
+    ent_path = INSPECT_CACHE_DIR / f"{key}.entities.ndjson.gz"
+    if not ent_path.exists():
+        return None
+    ents: list = []
+    try:
+        with gzip.open(ent_path, "rt", encoding="utf-8") as gz:
+            for line in gz:
+                line = line.strip()
+                if not line:
+                    continue
+                msg = json.loads(line)
+                if isinstance(msg, dict) and msg.get("type") == "progress":
+                    ents.extend(msg.get("entities") or [])
+    except Exception:
+        return None
+    return ents or None
 REMOTE30_OUTPUT_DIR = BASE_DIR / "data" / "remote30_outputs"
 REMOTE30_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 UPDATE_HISTORY_PATH = BASE_DIR / "data" / "update_history.json"
@@ -87,6 +137,87 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 #     일 때 쿠키 자체가 안 발급되어 로그인이 작동 안 함.
 from werkzeug.middleware.proxy_fix import ProxyFix as _ProxyFix
 app.wsgi_app = _ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 잡 스토어 / 임시파일 수명 관리 — 24/7 구동 프로세스의 무한 누적 방지
+# ────────────────────────────────────────────────────────────────────────────
+# waitress 는 단일 프로세스 + 다중 스레드라 in-memory 잡 dict 가 영원히 산다.
+# 매 업로드마다 대용량(pipe_ents·detected_heads)이 적재되면 메모리가 무한 증가하고,
+# 산출물/업로드 디렉토리도 무한 누적된다. → 잡은 TTL/개수로 evict, 디렉토리는 mtime
+# TTL 로 주기적 sweep(rate-limited).
+_JOB_TTL_SECONDS = 12 * 3600       # 잡 메타 12시간 후 만료 (편집 세션 여유)
+_JOB_MAX_ENTRIES = 100             # 스토어당 최대 잡 수 (초과 시 오래된 것부터)
+_DIR_TTL_SECONDS = 24 * 3600       # 산출물/업로드 24시간 후 정리
+_DIR_SWEEP_INTERVAL = 1800         # 디렉토리 sweep 최소 간격(초) — 매 요청마다 안 돌게
+_jobs_lock = threading.Lock()
+_last_dir_sweep = [0.0]
+
+
+def _register_job(store: dict, job_id: str, data: dict) -> None:
+    """잡 등록 + 오래된/초과 잡 eviction (thread-safe).
+
+    읽기(`store.get`)는 GIL 하에서 원자적이라 lock 불필요하지만, 삽입+iterate-삭제는
+    경쟁이 생기므로 lock 으로 감싼다. 활성 잡(_created≈now)은 evict 대상이 아니다.
+    """
+    data["_created"] = time.time()
+    with _jobs_lock:
+        store[job_id] = data
+        now = time.time()
+        stale = [k for k, v in store.items()
+                 if now - v.get("_created", now) > _JOB_TTL_SECONDS]
+        for k in stale:
+            store.pop(k, None)
+        if len(store) > _JOB_MAX_ENTRIES:
+            ordered = sorted(store.items(), key=lambda kv: kv[1].get("_created", 0.0))
+            for k, _v in ordered[: len(store) - _JOB_MAX_ENTRIES]:
+                store.pop(k, None)
+
+
+def _sweep_old_run_dirs(*parents: Path) -> None:
+    """오래된 잡 산출물 디렉토리(자식) 정리 — opportunistic, rate-limited.
+
+    예외는 전부 삼킨다(정리 실패가 요청을 막으면 안 됨). 활성 잡 dir 은 방금 생성돼
+    mtime 이 최신이라 TTL 에 안 걸린다.
+    """
+    now = time.time()
+    with _jobs_lock:
+        if now - _last_dir_sweep[0] < _DIR_SWEEP_INTERVAL:
+            return
+        _last_dir_sweep[0] = now
+    for parent in parents:
+        try:
+            if not parent.is_dir():
+                continue
+            for child in list(parent.iterdir()):
+                try:
+                    if now - child.stat().st_mtime <= _DIR_TTL_SECONDS:
+                        continue
+                    if child.is_dir():
+                        shutil.rmtree(child, ignore_errors=True)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
+
+def _sweep_old_upload_files(parent: Path, keep_dirs: set[str] | None = None) -> None:
+    """오래된 업로드 *파일* 정리 — 디렉토리(예: cad_workspace)는 보존."""
+    keep = keep_dirs or {"cad_workspace"}
+    now = time.time()
+    try:
+        if not parent.is_dir():
+            return
+        for child in list(parent.iterdir()):
+            try:
+                if child.is_dir() or child.name in keep:
+                    continue
+                if now - child.stat().st_mtime > _DIR_TTL_SECONDS:
+                    child.unlink(missing_ok=True)
+            except OSError:
+                pass
+    except OSError:
+        pass
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -147,80 +278,20 @@ class _SafeJSONProvider(_DefaultJSONProvider):
 app.json = _SafeJSONProvider(app)
 
 # ────────────────────────────────────────────────────────────────────────────
-# Gzip 응답 압축 (large JSON 페이로드 ↓)
-# ────────────────────────────────────────────────────────────────────────────
-# Stage 0 의 entity 리스트 (수만 ~ 수십만) 가 JSON 직렬화되면 MB 단위 페이로드.
-# gzip 으로 보통 70-80% 감소. SSE (text/event-stream + streaming) 는 자동 제외해서
-# 로딩창 진행 이벤트 흐름은 그대로 유지.
-import gzip as _gzip
-import io as _gzip_io
-from flask import request as _flask_request
-
-
-# 게이팅 — fncadnet.com 은 Cloudflare Tunnel 통과 → Cloudflare 가 자동 압축.
-# 우리 서버에서 다시 압축하면 CPU 중복 부담 (큰 entity JSON 압축에 시간 소요).
-# 환경변수 REMOTE30_SERVER_GZIP=1 인 경우만 활성화 — 기본 OFF.
-import os as _os_for_gzip
-_GZIP_ENABLED = _os_for_gzip.environ.get("REMOTE30_SERVER_GZIP", "0") == "1"
-# 매우 큰 응답 (5MB+) 만 압축 시도 — 작은 건 Cloudflare 가 처리하는 게 빠름.
-_GZIP_MIN_BYTES = 5 * 1024 * 1024
-
-
-@app.after_request
-def _gzip_compress(response):
-    if not _GZIP_ENABLED:
-        return response
-    # 1. 클라이언트가 gzip 받을 수 있어야
-    accept = _flask_request.headers.get("Accept-Encoding", "")
-    if "gzip" not in accept:
-        return response
-    # 2. 정상 응답만 (에러는 그대로)
-    if response.status_code < 200 or response.status_code >= 300 or response.status_code == 204:
-        return response
-    # 3. 이미 압축됐으면 skip
-    if response.headers.get("Content-Encoding"):
-        return response
-    # 4. ★ Streaming 응답 (SSE 등) 은 절대 건들지 말 것 — 로딩창 SSE 흐름 보호
-    if response.is_streamed or response.direct_passthrough:
-        return response
-    # 5. Content-Type 이 압축 효과 있는 타입만 (JSON / text)
-    ctype = response.headers.get("Content-Type", "")
-    if not (ctype.startswith("application/json") or ctype.startswith("text/")
-            or "javascript" in ctype or "xml" in ctype):
-        return response
-    raw = response.get_data()
-    if len(raw) < _GZIP_MIN_BYTES:
-        return response
-    buf = _gzip_io.BytesIO()
-    # compresslevel 1 — fastest. CPU 부담 최소화 (압축률은 살짝 낮지만 전송 절약 충분).
-    with _gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=1) as gz:
-        gz.write(raw)
-    compressed = buf.getvalue()
-    if len(compressed) >= len(raw):
-        return response
-    response.set_data(compressed)
-    response.headers["Content-Encoding"] = "gzip"
-    response.headers["Content-Length"] = str(len(compressed))
-    response.headers["Vary"] = "Accept-Encoding"
-    return response
-
-
-# ────────────────────────────────────────────────────────────────────────────
 # 비밀번호 로그인 게이트 — 외부 노출(터널 등) 시 접근 보호
 # ────────────────────────────────────────────────────────────────────────────
 # 한 줄 비밀번호 폼 → 세션 쿠키. SECRET_KEY 는 env var 또는 dev 용 hardcoded fallback.
 # 비밀번호는 LOGIN_PASSWORD env var 로 override 가능 (기본 "5361").
 import secrets as _secrets
 import os as _os_for_auth
-import time as _time_for_auth
-from collections import defaultdict as _dd_for_auth
-from threading import Lock as _Lock_for_auth
 app.secret_key = _os_for_auth.environ.get("FLASK_SECRET_KEY") or _secrets.token_hex(32)
 LOGIN_PASSWORD = _os_for_auth.environ.get("LOGIN_PASSWORD", "5361")
 
 # Brute-force 방어 — 5회 실패 시 15분 lock-out (IP 단위).
 # 단순 in-memory dict — waitress 단일 프로세스 + 16 thread 환경 적합.
 # 분산 환경이면 Redis 등으로 옮기겠지만 현재는 PC 1대 + cloudflared 만.
+import time as _time_for_auth
+from threading import Lock as _Lock_for_auth
 _LOGIN_FAIL_WINDOW_S = 15 * 60   # 15 분 동안의 시도 카운트
 _LOGIN_FAIL_THRESHOLD = 5         # 임계
 _LOGIN_LOCK_S = 15 * 60           # 잠금 지속
@@ -257,7 +328,6 @@ def _record_login_failure(ip: str) -> tuple[int, float]:
 def _clear_login_failures(ip: str) -> None:
     with _login_lock:
         _login_state.pop(ip, None)
-
 
 # 게이트에서 제외할 path prefix (login/logout/정적 파일/health 등)
 _AUTH_EXEMPT_PREFIXES = ("/login", "/logout", "/static/", "/favicon.ico")
@@ -541,6 +611,61 @@ EXPORT_SCHEMA = {
 }
 
 
+def _locate_oda_exe() -> str | None:
+    """ODA File Converter 실행파일 경로 탐색.
+
+    우선순위: 환경변수 ODA_FILE_CONVERTER_EXE → 표준 설치 경로
+    (버전 폴더명이 'ODAFileConverter 27.1.0' 처럼 버전을 포함해 ezdxf 기본 탐색이
+    실패하므로 직접 glob 으로 찾는다).
+    """
+    import os
+    env = os.environ.get("ODA_FILE_CONVERTER_EXE")
+    if env and Path(env).is_file():
+        return env
+    for base in (Path(r"C:/Program Files/ODA"), Path(r"C:/Program Files (x86)/ODA")):
+        if base.is_dir():
+            hits = sorted(base.glob("*/ODAFileConverter.exe"), reverse=True)
+            if hits:
+                return str(hits[0])
+    return None
+
+
+def _dwg_to_dxf(dwg_path: Path) -> Path:
+    """ODA File Converter (ezdxf odafc addon) 로 DWG → DXF 무손실 변환.
+
+    ODA File Converter 가 설치돼 있어야 함 (무료, 수동 다운로드 — winget 미제공).
+    미설치 시 설치 안내를 담은 ValueError 를 던진다.
+    """
+    try:
+        import ezdxf
+        from ezdxf.addons import odafc
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(
+            "DWG 변환 모듈(ezdxf odafc)을 불러오지 못했습니다. ezdxf 설치를 확인해 주세요."
+        ) from exc
+    # 버전 폴더에 설치된 exe 를 직접 지정 (ezdxf 기본 경로는 unversioned 라 못 찾음)
+    exe = _locate_oda_exe()
+    if exe:
+        try:
+            ezdxf.options.set("odafc-addon", "win_exec_path", exe)
+        except Exception:
+            pass
+    if not odafc.is_installed():
+        raise ValueError(
+            "DWG 업로드를 처리하려면 ODA File Converter(무료)가 필요합니다. "
+            "https://www.opendesign.com/guestfiles/oda_file_converter 에서 설치 후 다시 시도하거나, "
+            "CAD에서 DXF로 저장해 업로드해 주세요."
+        )
+    dxf_path = dwg_path.with_suffix(".dxf")
+    try:
+        odafc.convert(str(dwg_path), str(dxf_path), replace=True)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"DWG → DXF 변환에 실패했습니다: {exc}") from exc
+    if not dxf_path.exists():
+        raise ValueError("DWG → DXF 변환 결과 파일을 찾을 수 없습니다.")
+    return dxf_path
+
+
 def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) -> Path | None:
     uploaded = request.files.get(field_name)
     if uploaded is None or not uploaded.filename:
@@ -549,6 +674,17 @@ def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) ->
         return None
 
     original_name = Path(uploaded.filename).name
+    # 클라이언트에서 gzip 압축 전송 시 파일명이 ".gz" 로 끝남 → 실제 확장자 복원
+    raw = uploaded.read()
+    is_gzip = original_name.lower().endswith(".gz") or raw[:2] == b"\x1f\x8b"
+    if is_gzip:
+        try:
+            raw = gzip.decompress(raw)
+        except OSError as exc:
+            raise ValueError("업로드 파일의 압축 해제에 실패했습니다.") from exc
+        if original_name.lower().endswith(".gz"):
+            original_name = original_name[:-3]
+
     original_suffix = Path(original_name).suffix.lower()
     filename = secure_filename(original_name)
     if not filename:
@@ -561,8 +697,27 @@ def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) ->
         raise ValueError(f"`{field_name}` 파일 형식이 올바르지 않습니다. 허용 형식: {allowed}")
 
     saved_path = UPLOAD_DIR / filename
-    uploaded.save(saved_path)
+    saved_path.write_bytes(raw)
+    # DWG 업로드는 서버측에서 DXF 로 변환해 이후 파이프라인이 동일하게 처리
+    if suffix == ".dwg":
+        saved_path = _dwg_to_dxf(saved_path)
+    _sweep_old_upload_files(UPLOAD_DIR)
     return saved_path
+
+
+def _err500(exc, *, message=None, **extra):
+    """라우트 말미 `except Exception` 블록의 표준 500 JSON 응답.
+
+    traceback.format_exc() 는 호출 시점의 활성 예외(sys.exc_info)를 읽으므로,
+    except 블록 안에서 호출하면 헬퍼 내부여도 해당 예외의 트레이스백이 잡힌다.
+    message 미지정 시 str(exc)[:300]. extra 로 라우트별 추가 키(algorithm 등) 병합.
+    """
+    import traceback
+    body = {"ok": False,
+            "message": message if message is not None else str(exc)[:300],
+            "traceback": traceback.format_exc()[-1500:]}
+    body.update(extra)
+    return jsonify(body), 500
 
 
 def _printable_report_text(path: Path) -> str:
@@ -1055,10 +1210,8 @@ def _sdf_counts_only(sdf_path: Path | None) -> dict:
     }
 
 
-def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
-    root = ET.parse(sdf_path).getroot()
-
-    titles = [t.text.strip() for t in root.findall(".//Title") if t.text and t.text.strip()]
+def _sdf_parse_nodes(root) -> dict[str, dict]:
+    """SDF <Node> → {label: {id, x, y, z(elevation)}}."""
     nodes: dict[str, dict] = {}
     for node in root.findall(".//Node"):
         label = node.attrib.get("label", "")
@@ -1071,7 +1224,11 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
             "y": _to_float(pos.attrib.get("y")),
             "z": _to_float(node.attrib.get("elevation")),
         }
+    return nodes
 
+
+def _sdf_parse_pipes_equipment(root) -> tuple[list[dict], list[dict]]:
+    """SDF <Pipe-set>/<Pipe> → (pipes, equipment). material 은 직전 Pipe-type Name 을 따른다."""
     pipes: list[dict] = []
     equipment: list[dict] = []
     material = "UNKNOWN"
@@ -1096,7 +1253,6 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                         "count": int(_to_float(fitting.attrib.get("count"), 0)),
                     }
                 )
-            path_nodes = [input_node]
             waypoint_positions: list[dict] = []
             waypoints = pipe.find("Waypoints")
             if waypoints is not None:
@@ -1107,20 +1263,21 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                             "y": _to_float(wp.attrib.get("y")),
                         }
                     )
-            pipe_row = {
-                "label": label,
-                "input_node": input_node,
-                "output_node": output_node,
-                "bore_mm": bore_mm,
-                "length_m": length_m,
-                "rise_m": rise_m,
-                "c_factor": c_factor,
-                "material": material,
-                "fittings": fittings,
-                "fitting_summary": ", ".join(f"{f['type']}({f['count']})" for f in fittings) or "-",
-                "waypoints": waypoint_positions,
-            }
-            pipes.append(pipe_row)
+            pipes.append(
+                {
+                    "label": label,
+                    "input_node": input_node,
+                    "output_node": output_node,
+                    "bore_mm": bore_mm,
+                    "length_m": length_m,
+                    "rise_m": rise_m,
+                    "c_factor": c_factor,
+                    "material": material,
+                    "fittings": fittings,
+                    "fitting_summary": ", ".join(f"{f['type']}({f['count']})" for f in fittings) or "-",
+                    "waypoints": waypoint_positions,
+                }
+            )
             for eq in pipe.findall(".//Equipment"):
                 equipment.append(
                     {
@@ -1131,7 +1288,11 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                         "rel_position": _to_float(eq.attrib.get("rel-position"), 0.5),
                     }
                 )
+    return pipes, equipment
 
+
+def _sdf_parse_nozzles(root, nodes: dict) -> list[dict]:
+    """SDF <Nozzle> → 입력노드 좌표를 붙인 노즐(헤드) 리스트."""
     nozzles: list[dict] = []
     for nozzle in root.findall(".//Nozzle"):
         label = nozzle.attrib.get("label", "")
@@ -1146,15 +1307,23 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                 "z": node.get("z"),
             }
         )
+    return nozzles
 
-    pipe_by_label = {p["label"]: p for p in pipes}
+
+def _sdf_build_adjacency(pipes: list[dict]) -> tuple[dict, dict]:
+    """pipes → (outgoing[input_node]→pipes, adjacency[node]→(이웃,길이,라벨) 무방향)."""
     outgoing: dict[str, list[dict]] = {}
     adjacency: dict[str, list[tuple[str, float, str]]] = {}
     for pipe in pipes:
         outgoing.setdefault(pipe["input_node"], []).append(pipe)
         adjacency.setdefault(pipe["input_node"], []).append((pipe["output_node"], pipe["length_m"], pipe["label"]))
         adjacency.setdefault(pipe["output_node"], []).append((pipe["input_node"], pipe["length_m"], pipe["label"]))
+    return outgoing, adjacency
 
+
+def _sdf_av_node(pipes: list[dict], equipment: list[dict]) -> tuple[str, str]:
+    """알람밸브(A/V) 앵커 노드 추정 → (av_node, av_pipe_label). 못 찾으면 첫 배관 입력노드."""
+    pipe_by_label = {p["label"]: p for p in pipes}
     av_equipment = next((e for e in equipment if (e.get("description") or "").upper().replace(" ", "") in {"A/V", "AV"}), None)
     av_node = ""
     av_pipe_label = ""
@@ -1165,34 +1334,39 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
             av_node = av_pipe.get("output_node") or av_pipe.get("input_node") or ""
     if not av_node and pipes:
         av_node = pipes[0]["input_node"]
+    return av_node, av_pipe_label
 
-    # Dijkstra distance from alarm valve anchor to each nozzle node.
+
+def _sdf_dijkstra(av_node: str, adjacency: dict) -> dict[str, float]:
+    """A/V 앵커에서 각 노드까지 최단(누적 length) 거리."""
     dist = {av_node: 0.0} if av_node else {}
-    prev_pipe: dict[str, str] = {}
     visited: set[str] = set()
     while dist:
         current = min((n for n in dist if n not in visited), key=lambda n: dist[n], default=None)
         if current is None:
             break
         visited.add(current)
-        for nxt, length, pipe_label in adjacency.get(current, []):
+        for nxt, length, _pipe_label in adjacency.get(current, []):
             nd = dist[current] + max(length, 0.0)
             if nxt not in dist or nd < dist[nxt]:
                 dist[nxt] = nd
-                prev_pipe[nxt] = pipe_label
+    return dist
 
-    farthest_heads = sorted(
+
+def _sdf_farthest_heads(nozzles: list[dict], dist: dict) -> list[dict]:
+    """A/V 에서 먼 순으로 정렬한 헤드 상위 30개 (가장 먼 구간 검토용)."""
+    return sorted(
         [
-            {
-                **n,
-                "distance_from_av_m": dist.get(str(n.get("input_node")), 0.0),
-            }
+            {**n, "distance_from_av_m": dist.get(str(n.get("input_node")), 0.0)}
             for n in nozzles
         ],
         key=lambda r: r.get("distance_from_av_m", 0.0),
         reverse=True,
     )[:30]
 
+
+def _sdf_length_checks(pipes: list[dict], nodes: dict) -> list[dict]:
+    """SDF length 와 XY(+rise) 기하 길이가 허용오차(5% 또는 0.5m) 초과인 배관."""
     length_checks: list[dict] = []
     for pipe in pipes:
         n1 = nodes.get(pipe["input_node"])
@@ -1218,7 +1392,11 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                     "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
                 }
             )
+    return length_checks
 
+
+def _sdf_bore_reductions(pipes: list[dict], outgoing: dict) -> list[dict]:
+    """노드에서 하류 배관 구경이 작아지는(축소) 지점."""
     bore_reductions: list[dict] = []
     for pipe in pipes:
         for child in outgoing.get(pipe["output_node"], []):
@@ -1232,17 +1410,24 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                         "to_bore_mm": round(child["bore_mm"], 1),
                     }
                 )
+    return bore_reductions
 
+
+def _sdf_branch_nodes(pipes: list[dict], nodes: dict) -> list[dict]:
+    """차수(degree) 3 이상 분기 노드 (degree 내림차순)."""
     node_degree: dict[str, int] = {}
     for pipe in pipes:
         node_degree[pipe["input_node"]] = node_degree.get(pipe["input_node"], 0) + 1
         node_degree[pipe["output_node"]] = node_degree.get(pipe["output_node"], 0) + 1
-    branch_nodes = [
+    return [
         {"node": node, "degree": degree, **nodes.get(node, {})}
         for node, degree in sorted(node_degree.items(), key=lambda x: (-x[1], x[0]))
         if degree >= 3
     ]
 
+
+def _sdf_fitting_stats(pipes: list[dict]) -> tuple[dict, list]:
+    """부속(엘보/티 등) 총계 + 부속 집중(>=2) 핫스팟."""
     fitting_summary: dict[str, int] = {}
     fitting_hotspots: list[dict] = []
     for pipe in pipes:
@@ -1259,8 +1444,12 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                     "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다.",
                 }
             )
+    return fitting_summary, fitting_hotspots
 
-    vertical_pipes = [
+
+def _sdf_vertical_pipes(pipes: list[dict]) -> list[dict]:
+    """|rise| >= 3m 수직 배관 (층고/단면 대조용)."""
+    return [
         {
             "pipe_label": p["label"],
             "input_node": p["input_node"],
@@ -1273,7 +1462,11 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
         if abs(p.get("rise_m") or 0.0) >= 3.0
     ]
 
-    graph_pipes = []
+
+def _sdf_graph_pipes(pipes: list[dict], nodes: dict,
+                     length_checks: list[dict], bore_reductions: list[dict]) -> list[dict]:
+    """프론트 시각화용 배관 폴리라인 + 상태색(길이이상=red, 구경축소=orange)."""
+    graph_pipes: list[dict] = []
     for p in pipes:
         n1 = nodes.get(p["input_node"])
         n2 = nodes.get(p["output_node"])
@@ -1297,6 +1490,28 @@ def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
                 "path": path,
             }
         )
+    return graph_pipes
+
+
+def _analyze_sdf_sprinkler_network(sdf_path: Path) -> dict:
+    root = ET.parse(sdf_path).getroot()
+
+    titles = [t.text.strip() for t in root.findall(".//Title") if t.text and t.text.strip()]
+    nodes = _sdf_parse_nodes(root)
+    pipes, equipment = _sdf_parse_pipes_equipment(root)
+    nozzles = _sdf_parse_nozzles(root, nodes)
+
+    outgoing, adjacency = _sdf_build_adjacency(pipes)
+    av_node, av_pipe_label = _sdf_av_node(pipes, equipment)
+    dist = _sdf_dijkstra(av_node, adjacency)
+
+    farthest_heads = _sdf_farthest_heads(nozzles, dist)
+    length_checks = _sdf_length_checks(pipes, nodes)
+    bore_reductions = _sdf_bore_reductions(pipes, outgoing)
+    branch_nodes = _sdf_branch_nodes(pipes, nodes)
+    fitting_summary, fitting_hotspots = _sdf_fitting_stats(pipes)
+    vertical_pipes = _sdf_vertical_pipes(pipes)
+    graph_pipes = _sdf_graph_pipes(pipes, nodes, length_checks, bore_reductions)
 
     return {
         "title": " / ".join(titles) or sdf_path.name,
@@ -1695,11 +1910,6 @@ def _segments_from_points(points: list[list[float]], box: dict, source_id: str, 
     return rows
 
 
-def _angle_delta(a: float, b: float) -> float:
-    delta = abs((a - b + math.pi) % math.tau - math.pi)
-    return min(delta, abs(math.pi - delta))
-
-
 def _mark_similar_cad_pipe_entities(cad: dict, sdf: dict) -> dict:
     learning_profile = _load_cad_sdf_learning_profile()
     cad_entities = cad.get("drawing_entities") or []
@@ -1996,8 +2206,6 @@ def download_feedback_attachment(filename: str):
 def cad_module_dxf_parse():
     try:
         cad_path = _save_upload("cad_file", {".dxf", ".dwg"}, required=True)
-        if cad_path.suffix.lower() == ".dwg":
-            raise ValueError("현재 6번 모듈은 DXF만 지원합니다. DWG는 DXF로 변환 후 업로드해 주세요.")
 
         from cad_engine import DXFWorkspace
 
@@ -2036,7 +2244,7 @@ def sdf_sprinkler_analysis():
         analysis = _analyze_sdf_sprinkler_network(sdf_path)
         cad_analysis = None
         comparison = None
-        cad_path = _save_upload("cad_file", {".dxf"}, required=False)
+        cad_path = _save_upload("cad_file", {".dxf", ".dwg"}, required=False)
         if cad_path is not None:
             cad_analysis = _extract_cad_head_candidates(cad_path)
             comparison = _compare_cad_heads_to_sdf(cad_analysis, analysis)
@@ -2120,8 +2328,6 @@ def cad_compare():
     try:
         cad_path = _save_upload("cad_file", {".dxf", ".dwg"}, required=True)
         sdf_path = _save_upload("sdf_file", {".sdf"}, required=False)
-        if cad_path.suffix.lower() == ".dwg":
-            raise ValueError("현재 CAD 대조 모듈은 DXF만 지원합니다. DWG는 DXF로 변환 후 업로드해 주세요.")
 
         from cad_engine import DXFWorkspace
 
@@ -2252,10 +2458,13 @@ def _apply_sheet_style(ws):
         c.border = border
 
     for row in range(4, max_row + 1):
-        flag_fail = ws.cell(row=row, column=max_col - 3).value == "Y"
-        flag_warn = ws.cell(row=row, column=max_col - 2).value == "Y"
-        flag_eng = ws.cell(row=row, column=max_col - 1).value == "Y"
-        flag_econ = ws.cell(row=row, column=max_col).value == "Y"
+        if max_col >= 4:
+            flag_fail = ws.cell(row=row, column=max_col - 3).value == "Y"
+            flag_warn = ws.cell(row=row, column=max_col - 2).value == "Y"
+            flag_eng = ws.cell(row=row, column=max_col - 1).value == "Y"
+            flag_econ = ws.cell(row=row, column=max_col).value == "Y"
+        else:
+            flag_fail = flag_warn = flag_eng = flag_econ = False
 
         row_fill = None
         if flag_fail:
@@ -2304,6 +2513,7 @@ def _ai_edge_features(edges: list[dict]) -> list[list[float]]:
     w = max(max_x - min_x, 1e-9)
     h = max(max_y - min_y, 1e-9)
     diag = max(math.hypot(w, h), 1e-9)
+    _profile = _load_cad_sdf_learning_profile()
     rows = []
     for edge in edges:
         start = edge.get("start") or {}
@@ -2316,7 +2526,7 @@ def _ai_edge_features(edges: list[dict]) -> list[list[float]]:
         angle = math.atan2((ey - sy) / h, (ex - sx) / w)
         degree = (float(edge.get("sourceDegree") or 0.0) + float(edge.get("targetDegree") or 0.0)) / 8.0
         bore = float(edge.get("bore") or 0.0) / 200.0
-        layer_prior = _cad_layer_weight(edge.get("layer"), _load_cad_sdf_learning_profile()) / 5.0
+        layer_prior = _cad_layer_weight(edge.get("layer"), _profile) / 5.0
         rows.append([mx, my, length, math.cos(angle), math.sin(angle), degree, bore, layer_prior])
     return rows
 
@@ -2460,18 +2670,35 @@ def _merge_collinear_cad_edges(edges: list[dict]) -> list[dict]:
     return work
 
 
+# AI 그래프 매칭 가드 — pair 행렬/텐서가 O(N×M) 라 입력 edge 수를 상한으로 자른다.
+# 실제 도면은 수백 edge 규모. 거대/악성 입력이 워커 스레드를 막거나 메모리를 터뜨리지
+# 않도록 길이 상위 N 만 남긴다(매칭엔 긴 edge 가 더 중요).
+_AI_MATCH_MAX_EDGES = 2000
+
+
 def _compact_cad_graph_for_sdf(dxf_graph: dict, sdf_graph: dict) -> dict:
     raw_edges = [dict(edge) for edge in (dxf_graph.get("edges") or [])]
     sdf_edges = sdf_graph.get("edges") or []
     if not raw_edges or not sdf_edges:
         return dxf_graph
     _recompute_edge_degrees(sdf_edges)
-    target_count = max(len(sdf_edges), 1)
     merged = _merge_collinear_cad_edges(raw_edges)
     min_x, min_y, max_x, max_y = _graph_bbox_from_edges(merged)
     diag = max(math.hypot(max_x - min_x, max_y - min_y), 1e-9)
     min_len = max(diag * 0.002, 1.0)
     merged = [edge for edge in merged if _edge_length(edge) >= min_len]
+
+    # 거대 입력 가드 — pair_scores 는 O(len(merged)×len(sdf)) 라 입력이 크면 워커 스레드가
+    # 메모리·시간으로 막힌다. 매칭엔 긴 edge 가 더 중요하므로 길이 내림차순 상위 N 만 남긴다.
+    if len(merged) > _AI_MATCH_MAX_EDGES:
+        merged = sorted(merged, key=_edge_length, reverse=True)[:_AI_MATCH_MAX_EDGES]
+    if len(sdf_edges) > _AI_MATCH_MAX_EDGES:
+        sdf_edges = sorted(
+            sdf_edges,
+            key=lambda e: float(e.get("length") or _edge_length(e)),
+            reverse=True,
+        )[:_AI_MATCH_MAX_EDGES]
+    target_count = max(len(sdf_edges), 1)
 
     # Segmentation proxy: build SDF-guided CAD pipe bundles. One SDF Pipe gets
     # one best CAD line bundle for comparison; the original CAD lines are kept
@@ -2569,6 +2796,7 @@ def _rasterize_edges_for_fft(edges: list[dict], size: int = 64):
         pts = _edge_points(edge)
         for a, b in zip(pts, pts[1:]):
             steps = max(2, int(math.hypot(b["x"] - a["x"], b["y"] - a["y"]) / max(w, h) * size * 2))
+            steps = min(steps, size * 4)  # 퇴화 좌표 방어 — 픽셀 캔버스라 그 이상은 무의미
             for i in range(steps + 1):
                 t = i / max(steps, 1)
                 x = a["x"] + (b["x"] - a["x"]) * t
@@ -2641,6 +2869,13 @@ def _ai_graph_match(dxf_graph: dict, sdf_graph: dict) -> dict:
     dxf_graph = _compact_cad_graph_for_sdf(raw_dxf_graph, sdf_graph)
     dxf_edges = dxf_graph.get("edges") or []
     sdf_edges = sdf_graph.get("edges") or []
+    # sdf 측도 상한 — diff 텐서가 (len(dxf)×len(sdf)×8) 라 sdf 가 거대하면 메모리 폭발.
+    if len(sdf_edges) > _AI_MATCH_MAX_EDGES:
+        sdf_edges = sorted(
+            sdf_edges,
+            key=lambda e: float(e.get("length") or _edge_length(e)),
+            reverse=True,
+        )[:_AI_MATCH_MAX_EDGES]
     _recompute_edge_degrees(dxf_edges)
     _recompute_edge_degrees(sdf_edges)
     for edge in dxf_edges:
@@ -2879,7 +3114,7 @@ def cad_sdf_ai_region_match():
     started = time.perf_counter()
     try:
         payload = request.get_json(force=True)
-        min_runtime_ms = max(0, min(int(payload.get("min_runtime_ms") or 0), 30000))
+        min_runtime_ms = max(0, min(int(payload.get("min_runtime_ms") or 0), 8000))
         result = _ai_graph_match(payload.get("dxf_graph") or {}, payload.get("sdf_graph") or {})
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         remaining = max(0, min_runtime_ms - elapsed_ms)
@@ -3000,6 +3235,115 @@ def remote30_overall():
     return response
 
 
+# ────────────────────────────────────────────────────────────────────────────
+# 11번 모듈 — KFP ↔ SDF 변환기
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@app.get("/kfp-sdf-converter")
+def kfp_sdf_converter_page():
+    """11번 모듈 — K-solver .kfp ↔ PIPENET .sdf 양방향 변환기."""
+    response = make_response(render_template("kfp_sdf_converter.html"))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
+
+
+@app.post("/api/kfp_sdf/preview")
+def kfp_sdf_preview():
+    """업로드된 .kfp 또는 .sdf → 미리보기 + (KFP 의 경우) round-trip 통계.
+
+    Form: file (multipart). 응답: {ok, preview, round_trip?}.
+    임시 파일에 저장 후 kfp_sdf_converter.parse_for_preview 호출.
+    """
+    import tempfile, os
+    from pathlib import Path as _Path
+    import kfp_sdf_converter as _conv
+
+    f = request.files.get("file")
+    if f is None:
+        return jsonify({"ok": False, "message": "file 누락"}), 400
+    suffix = _Path(f.filename or "").suffix.lower() or ".kfp"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        f.save(tmp.name)
+        tmp_path = tmp.name
+    try:
+        preview = _conv.parse_for_preview(tmp_path)
+        out = {"ok": True, "preview": preview}
+        if preview["format"] == "kfp":
+            try:
+                out["round_trip"] = _conv.round_trip_check(tmp_path)
+            except Exception as _e:
+                out["round_trip"] = {"error": str(_e)}
+        return jsonify(out)
+    except Exception as exc:
+        return jsonify({"ok": False, "message": f"파싱 실패: {exc}"}), 400
+    finally:
+        try: os.unlink(tmp_path)
+        except OSError: pass
+
+
+@app.post("/api/kfp_sdf/convert")
+def kfp_sdf_convert():
+    """양방향 변환 + 결과 파일 즉시 다운로드.
+
+    Form: file (multipart), direction ("to_sdf" | "to_kfp").
+    응답: 파일 내용 (application/octet-stream).
+    """
+    import tempfile, os, json as _json
+    from pathlib import Path as _Path
+    import kfp_sdf_converter as _conv
+
+    f = request.files.get("file")
+    direction = (request.form.get("direction") or "").strip()
+    if f is None:
+        return jsonify({"ok": False, "message": "file 누락"}), 400
+    if direction not in ("to_sdf", "to_kfp"):
+        return jsonify({"ok": False, "message": "direction 은 to_sdf 또는 to_kfp"}), 400
+
+    suffix = _Path(f.filename or "").suffix.lower() or ".bin"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        f.save(tmp.name)
+        tmp_path = tmp.name
+    try:
+        if direction == "to_sdf":
+            # PIPENET native 모드 + SLF 동봉 ZIP — PIPENET 계산/아이소 모두 통과.
+            # 단순 .sdf 만 보내면 SLF 없어서 내경(Internal) "Unset" 이슈 발생.
+            import zipfile, io
+            from remote30_prototype import resolve_standard_slf
+            stem = _Path(f.filename or "converted").stem or "converted"
+            # SLF 파일명을 SDF 의 <User-lib file=...> 에 매핑.
+            # 같은 ZIP 안에 stem.slf 동봉되므로 사용자가 풀면 PIPENET 자동 인식.
+            xml = _conv.convert_kfp_to_sdf(tmp_path, use_pipenet_native=True,
+                                             project_title=stem,
+                                             slf_filename=f"{stem}.slf")
+            # ZIP 으로 .sdf + .slf 묶기 — PIPENET 권장 (zip 다운 후 압축해제 사용)
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(f"{stem}.sdf", xml)
+                try:
+                    slf_src = resolve_standard_slf()
+                    zf.write(slf_src, f"{stem}.slf")
+                except Exception as _slf_err:
+                    # SLF 없어도 .sdf 에 6 schedule 임베드 되어 있으므로 동작은 함
+                    zf.writestr("_slf_missing.txt",
+                                f"SLF 동봉 실패: {_slf_err}\n"
+                                "→ .sdf 안에 6 schedule 임베드 되어 있어 PIPENET 동작은 정상.")
+            return Response(buf.getvalue(), mimetype="application/zip",
+                            headers={"Content-Disposition": f'attachment; filename="{stem}.zip"'})
+        else:
+            kfp = _conv.convert_sdf_to_kfp(tmp_path)
+            data = _json.dumps(kfp, ensure_ascii=False, indent=2).encode("utf-8")
+            return Response(data, mimetype="application/json",
+                            headers={"Content-Disposition": 'attachment; filename="converted.kfp"'})
+    except Exception as exc:
+        import traceback
+        return jsonify({"ok": False, "message": f"변환 실패: {exc}",
+                        "traceback": traceback.format_exc()[-2000:]}), 400
+    finally:
+        try: os.unlink(tmp_path)
+        except OSError: pass
+
+
 @app.post("/api/remote30/prototype/run")
 def remote30_prototype_run():
     """DXF 업로드 → 백그라운드 잡 시작 → job_id 반환. 진행은 /stream/<job_id> 으로 구독.
@@ -3009,7 +3353,7 @@ def remote30_prototype_run():
     """
     import secrets
     try:
-        dxf_path = _save_upload("dxf_file", {".dxf"}, required=True)
+        dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
     alarm_x = request.form.get("alarm_x", "").strip()
@@ -3025,12 +3369,13 @@ def remote30_prototype_run():
     job_id = secrets.token_hex(6)
     out_dir = PROTOTYPE_OUTPUT_DIR / job_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    _PROTOTYPE_JOBS[job_id] = {
+    _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
+    _register_job(_PROTOTYPE_JOBS, job_id, {
         "dxf_path": str(dxf_path),
         "out_dir": str(out_dir),
         "dxf_filename": dxf_path.name,
         "alarm_xy": alarm_xy,
-    }
+    })
     return jsonify({"ok": True, "job_id": job_id, "dxf_filename": dxf_path.name,
                     "alarm_xy": list(alarm_xy) if alarm_xy else None})
 
@@ -3105,6 +3450,15 @@ def remote30_prototype_finalize(job_id: str):
             job["alarm_xy"] = (float(ax), float(ay))
         except (TypeError, ValueError):
             pass
+    # 불리한 헤드 개수 N (미지정 시 기본 30 — run_stages_3_5 default)
+    n_heads = body.get("n_heads")
+    if n_heads is not None:
+        try:
+            n_val = int(n_heads)
+            if n_val >= 1:
+                job["k_heads"] = n_val
+        except (TypeError, ValueError):
+            pass
     return jsonify({"ok": True, "job_id": job_id,
                     "added": len(job["edit"]["added_heads"]),
                     "deleted": len(job["edit"]["deleted_indices"]),
@@ -3130,6 +3484,7 @@ def remote30_prototype_finalize_stream(job_id: str):
                 pipe_ents=job.get("pipe_ents", []),
                 layer_categories=job.get("layer_cat", {}),
                 detected_heads_pos=detected_pos,
+                k_heads=job.get("k_heads", 30),
                 alarm_xy=job.get("alarm_xy"),
                 user_added_heads=job["edit"]["added_heads"],
                 user_deleted_indices=job["edit"]["deleted_indices"],
@@ -3146,19 +3501,27 @@ def remote30_prototype_finalize_stream(job_id: str):
     return response
 
 
-@app.get("/api/remote30/prototype/result/<job_id>/<path:filename>")
-def remote30_prototype_result(job_id: str, filename: str):
+def _serve_run_file(base_dir: Path, job_id: str, filename: str):
+    """run 디렉토리(base_dir/<job_id>)에서 산출 파일을 안전하게 다운로드 제공.
+
+    job_id sanitize + base_dir escape 방지(relative_to) + 존재 확인 후 send_file.
+    """
     safe_id = secure_filename(job_id)
     if not safe_id or safe_id != job_id:
         return "잘못된 job_id", 400
-    target = PROTOTYPE_OUTPUT_DIR / safe_id / filename
+    target = base_dir / safe_id / filename
     try:
-        target.resolve().relative_to(PROTOTYPE_OUTPUT_DIR.resolve())
+        target.resolve().relative_to(base_dir.resolve())
     except ValueError:
         return "잘못된 경로", 400
     if not target.is_file():
         return "결과 파일 없음", 404
     return send_file(target, as_attachment=True)
+
+
+@app.get("/api/remote30/prototype/result/<job_id>/<path:filename>")
+def remote30_prototype_result(job_id: str, filename: str):
+    return _serve_run_file(PROTOTYPE_OUTPUT_DIR, job_id, filename)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -3214,7 +3577,7 @@ def remote30_overall_run():
     from remote30_full_network import zone_spec_from_form, ZoneType
 
     try:
-        dxf_path = _save_upload("dxf_file", {".dxf"}, required=True)
+        dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
 
@@ -3262,7 +3625,8 @@ def remote30_overall_run():
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
 
-    _OVERALL_JOBS[job_id] = {
+    _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
+    _register_job(_OVERALL_JOBS, job_id, {
         "dxf_path": str(dxf_path),
         "dxf_filename": dxf_path.name,
         "out_dir": str(out_dir),
@@ -3270,7 +3634,7 @@ def remote30_overall_run():
         "spec_form": dict(request.form),  # finalize 시 ZoneSpec 재구성
         "pressure_table_csv": str(pressure_csv) if pressure_csv else None,
         "pressure_table_xlsx": str(pressure_xlsx) if pressure_xlsx else None,
-    }
+    })
     return jsonify({
         "ok": True, "job_id": job_id, "dxf_filename": dxf_path.name,
         "zone_type": spec.zone_type.value, "target_floor": spec.target_floor,
@@ -3536,23 +3900,379 @@ def remote30_system_parse():
       - skipped/error 통계 반환
     """
     try:
-        dxf_path = _save_upload("system_dxf_file", {".dxf"}, required=True)
+        dxf_path = _save_upload("system_dxf_file", {".dxf", ".dwg"}, required=True)
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
     from remote30_prototype import parse_dxf_for_view
     try:
         result = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
     result["ok"] = True
     result["filename"] = dxf_path.name
     return jsonify(result)
 
 
+def _common_label(cn) -> str:
+    """CommonNode/Pipe 의 표시 라벨 — 포맷별 원본 라벨(has/sdf) 우선, 없으면 id.
+
+    parse_has 는 raw["has_label"], parse_sdf 는 raw["sdf_label"] 에 원본 라벨을
+    보존한다. parse_kfp 는 id 자체가 표시 라벨. 셋 다 안전하게 한 함수로 해석.
+    """
+    raw = getattr(cn, "raw", None) or {}
+    return str(raw.get("has_label") or raw.get("sdf_label") or cn.id)
+
+
+def _common_network_to_geometry(net) -> dict:
+    """CommonNetwork → 통합(combined) 캔버스 렌더러용 geometry 스키마.
+
+    parse_sdf/parse_kfp/parse_has 어느 파서의 출력이든 동일하게 변환한다.
+    라이저·기계실 구분은 파싱된 파일에 없으므로 비우고, 수원(wt)·펌프만 강조.
+    포맷별 라벨 차이는 _common_label 로 흡수하고, 파이프 in/out 은 노드 id→라벨
+    매핑으로 정합시킨다(라벨끼리 연결돼야 캔버스가 끊김 없이 그린다).
+    """
+    nodes = list(net.nodes.values())
+    id2label = {cn.id: _common_label(cn) for cn in nodes}
+    pump_label = None
+    geo_nodes = []
+    for cn in nodes:
+        label = id2label[cn.id]
+        is_source = cn.kind in ("wt", "pump")
+        if cn.kind == "pump" and pump_label is None:
+            pump_label = label
+        # z 는 표시 전용 display_z(라이저 기둥·헤드 상/하향 돌출) 우선, 없으면 실표고.
+        _disp_z = cn.raw.get("display_z_m") if getattr(cn, "raw", None) else None
+        geo_nodes.append({
+            "label": label,
+            "x": float(cn.x), "y": float(cn.y),
+            "z": float(_disp_z if _disp_z is not None else (cn.elevation_m or 0.0)),
+            "io": "Input" if is_source else "No",
+        })
+    geo_pipes = []
+    for cp in net.pipes.values():
+        geo_pipes.append({
+            "label": _common_label(cp),
+            "in": id2label.get(cp.start, str(cp.start)),
+            "out": id2label.get(cp.end, str(cp.end)),
+            "dia": cp.nominal_mm or 0,
+        })
+    return {
+        "av_node_label": None,
+        "riser_labels": [],
+        "machine_room_labels": [],
+        "pump_junction_label": pump_label,
+        "machine_room_plan_edges": [],
+        "nodes": geo_nodes,
+        "pipes": geo_pipes,
+        "pumps": [],
+        "valves": [],
+    }
+
+
+@app.post("/api/remote30/has/parse")
+def remote30_has_parse():
+    """Remote 30 프로토타입 — .has(HASS) 파일 불러오기 → 통합 모드 geometry.
+
+    parse_has 로 CommonNetwork 를 만든 뒤, 통합(combined) 렌더러가 쓰는 geometry
+    스키마(nodes/pipes/*_labels)로 변환해 반환한다. 라이저·기계실 구분 정보는 .has 에
+    없으므로(우리 export 가 비움) 비워두고, 수원(IoNode=1)·펌프만 강조한다.
+    """
+    try:
+        has_path = _save_upload("has_file", {".has"}, required=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    from has_converter import parse_has
+    try:
+        net = parse_has(has_path)
+    except Exception as exc:  # noqa: BLE001
+        return _err500(exc, message=f"HAS 파싱 실패: {str(exc)[:280]}")
+
+    geometry = _common_network_to_geometry(net)
+    src = next((n for n in geometry["nodes"] if n["io"] == "Input"), None)
+    return jsonify({
+        "ok": True,
+        "filename": has_path.name,
+        "nodes": len(geometry["nodes"]),
+        "pipes": len(geometry["pipes"]),
+        "source_label": src["label"] if src else None,
+        "geometry": geometry,
+    })
+
+
 COMBINED_OUTPUT_DIR = BASE_DIR / "data" / "combined_runs"
 COMBINED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+SYSTEM_OUTPUT_DIR = BASE_DIR / "data" / "system_runs"
+SYSTEM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+MACHINEROOM_OUTPUT_DIR = BASE_DIR / "data" / "machineroom_runs"
+MACHINEROOM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _emit_subnetwork_bundle(net, out_dir: Path, job_id: str, prefix: str,
+                            project_title: str, *, coord_scale: float = 1.0) -> dict:
+    """부분 배관망(계통도 라이저 / 기계실 경로) 단독 → SDF + SLF + KFP + ZIP.
+
+    combined/build 의 emit 패턴을 부분망에 재사용. net 은 CombinedTables.
+    PIPENET 은 .sdf 와 .slf 가 같은 폴더에 있어야 호칭경↔내경 lookup 가능하므로
+    ZIP 으로 함께 묶는다. KFP 실패는 SDF/ZIP 출력을 막지 않는다.
+    반환: {"sdf","slf","kfp","zip"} — 없으면 None.
+    """
+    from remote30_full_network import emit_full_sdf
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_sdf = out_dir / f"{prefix}_{job_id}.sdf"
+    emit_full_sdf(net, out_sdf, project_title=project_title)
+    out_slf = out_dir / f"{prefix}_{job_id}.slf"  # emit_sdf 가 같은 폴더에 자동 생성
+    out_kfp = out_dir / f"{prefix}_{job_id}.kfp"
+    kfp_ok = False
+    try:
+        from remote30_prototype import emit_kfp as _emit_kfp
+        _emit_kfp(out_sdf, out_kfp, coord_scale=coord_scale)
+        kfp_ok = out_kfp.is_file()
+    except Exception as _kfp_exc:  # noqa: BLE001 — KFP 실패가 SDF 출력을 막지 않도록
+        warnings.warn(f"[{prefix}] KFP emit 실패 (SDF 는 정상): {_kfp_exc}",
+                       RuntimeWarning, stacklevel=2)
+    import zipfile as _zipfile
+    out_zip = out_dir / f"{prefix}_{job_id}.zip"
+    with _zipfile.ZipFile(out_zip, "w", _zipfile.ZIP_DEFLATED) as zf:
+        zf.write(out_sdf, arcname=out_sdf.name)
+        if out_slf.is_file():
+            zf.write(out_slf, arcname=out_slf.name)
+        if kfp_ok:
+            zf.write(out_kfp, arcname=out_kfp.name)
+    return {
+        "sdf": out_sdf.name,
+        "slf": out_slf.name if out_slf.is_file() else None,
+        "kfp": out_kfp.name if kfp_ok else None,
+        "zip": out_zip.name,
+    }
+
+
+def _bake_isometric_node_coords(nodes: list[dict], iso_z_scale: float = 1.0,
+                                head_labels: set | None = None,
+                                head_z_offset: float = 0.0) -> None:
+    """통합망 노드 dict 의 (x,y) 를 30° 등각투영 좌표로 in-place 변환.
+
+    등각 형태로 보이는 SDF/KFP/HAS 출력을 위해 emit 전에 적용한다. 노드 좌표는
+    표시 전용(수리계산은 length·elevation 사용)이라 결과는 불변. 공식은
+    has_converter.emit_has(isometric=True) 와 동일: X=(x−y)·cos30,
+    Y=(x+y)·sin30 + (elev−eMid)·lift. lift 는 평면 대각선의 절반에 정규화.
+
+    head_labels/head_z_offset 가 주어지면 헤드 노드만 화면 Y 에 추가 돌출(상향 +,
+    하향 −)한다. 헤드는 elevation=0 이라 lift 로는 안 펼쳐지므로 별도 픽셀 오프셋.
+    """
+    if not nodes:
+        return
+    COS30, SIN30 = 0.8660254037844387, 0.5
+    head_labels = head_labels or set()
+    xs = [float(n.get("x", 0) or 0) for n in nodes]
+    ys = [float(n.get("y", 0) or 0) for n in nodes]
+    elevs = [float(n.get("elevation", 0) or 0) for n in nodes]
+    e_min, e_max = min(elevs), max(elevs)
+    e_mid = (e_min + e_max) / 2.0
+    e_range = e_max - e_min
+    diag = math.hypot(max(xs) - min(xs), max(ys) - min(ys)) if xs else 0.0
+    lift = (diag * 0.5 * iso_z_scale / e_range) if e_range > 0 else 0.0
+    for n in nodes:
+        x = float(n.get("x", 0) or 0)
+        y = float(n.get("y", 0) or 0)
+        e = float(n.get("elevation", 0) or 0)
+        n["x"] = (x - y) * COS30
+        n["y"] = (x + y) * SIN30 + (e - e_mid) * lift
+        if head_z_offset and str(n.get("label")) in head_labels:
+            n["y"] += head_z_offset
+
+
+def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
+    """헤드평면(가지·교차배관)을 **실측 그대로 + 직교(0°/90°) 직선화**로 재배치 — 표시 (x,y) 만.
+
+    추출 원본은 실 도면 좌표라 배관 방향이 거의 직각이지만, 미세한 사선·꺾임이 누적돼
+    평면도/등각도가 꼬여 보였다. 30° 배수 스냅·트리 재배치(빗·뱀)는 오히려 더 꼬였다.
+
+    해법(사용자 요청): **평면도 배관망을 그대로 가져온 뒤** 각 배관을 가장 가까운 직교
+    축(0°/90°)으로만 직선화한다. 실제 위치·길이를 보존하므로 모양이 유지되고, 평면
+    0°/90° 는 30° 등각투영에서 자동으로 30°/150° 가 되어 **등각도도 깔끔**해진다.
+      · AV(root)부터 BFS 스패닝 트리. root 는 **실위치 고정**.
+      · 각 edge: 실 변위(dx,dy) 중 **지배 성분만 유지**(|dx|≥|dy| → 가로, 아니면 세로),
+        부모의 (직선화된) 위치에서 그 성분 길이만큼 전파. 미세 사선이 직각으로 펴진다.
+      · 거리·스케일 보정·압축 없음 → 실 도면 비율 그대로(축소·붕괴 없음).
+
+    표시 좌표만 바꾼다. 파이프 length·elevation 등 수리값은 emit 단계에서 좌표와
+    분리되어 직렬화되므로(emit_sdf 가 p["length"] 사용, 좌표거리 무관) **수리계산 결과
+    불변**. 라이저/기계실 노드(exclude_labels)는 손대지 않는다. nodes in-place 수정,
+    반환: 재배치된 노드 수.
+    """
+    from collections import defaultdict as _dd, deque as _deque
+    import math as _math
+
+    by_label = {str(n["label"]): n for n in nodes}
+    root = str(root_label)
+    if root not in by_label:
+        return 0
+    excl = {str(l) for l in exclude_labels} - {root}
+    movable = {lbl for lbl in by_label if lbl not in excl and lbl != root}
+    if not movable:
+        return 0
+    tree_set = movable | {root}
+
+    def _xy(lbl):
+        nd = by_label[lbl]
+        return float(nd["x"]), float(nd["y"])
+
+    adj = _dd(set)
+    for p in pipes:
+        a, b = str(p.get("in", "")), str(p.get("out", ""))
+        if a in tree_set and b in tree_set and a != b:
+            adj[a].add(b); adj[b].add(a)
+    if not adj.get(root):
+        return 0  # AV 가 헤드평면과 안 이어짐 — 건드리지 않음
+
+    # 스패닝 트리 (BFS, root 부터). children·order 확보, 도달 못한 노드는 원위치 유지.
+    children = _dd(list)
+    order = [root]
+    q = _deque([root]); seen = {root}
+    while q:
+        u = q.popleft()
+        for v in sorted(adj[u]):
+            if v not in seen:
+                seen.add(v); children[u].append(v); order.append(v); q.append(v)
+
+    # 실위치에서 각 edge 의 지배 성분만 유지해 전파(직선화). root 는 실위치 고정.
+    pos = {root: _xy(root)}
+    for u in order:
+        px, py = pos[u]
+        ux, uy = _xy(u)
+        for c in children[u]:
+            vx, vy = _xy(c)
+            dx = vx - ux; dy = vy - uy
+            if abs(dx) >= abs(dy):
+                pos[c] = (px + dx, py)        # 가로 지배 → 0° 직선
+            else:
+                pos[c] = (px, py + dy)        # 세로 지배 → 90° 직선
+
+    moved = 0
+    for u in seen:
+        if u == root:
+            continue
+        nd = by_label[u]
+        nd["x"], nd["y"] = pos[u]
+        moved += 1
+    return moved
+
+
+# 답안 28F (GRAVITE_28F) 라이저 raw 좌표 (mm 도메인, 평면도와 단위 일치) — combined_build
+# 좌표 재매핑 기준. 계통도 노드를 이 좌표 + 헤드망 AV 오프셋으로 translate 한다.
+_ANSWER_28F_COORDS = {
+    "1":  (-10825,  -851),    # Input (옥상 수원)
+    "2":  (-11600,  -750),
+    "3":  (-11600,  -952),
+    "4":  (-11275, -1775),
+    "5":  (-11275, -3420),    # AV 직전
+    "10": (-11400, -3406),    # AV — 헤드망 source 와 정합
+}
+
+
+def _remap_riser_to_head_av(system_riser: dict, head_av_node: dict, av_label: str):
+    """계통도 라이저 노드를 답안 28F raw 좌표 + 헤드망 AV 오프셋으로 재매핑 → RiserTables.
+
+    system_riser 노드 좌표(계통도 픽, 수십만 mm)와 헤드망 좌표(평면 DXF, 수만 mm)는
+    도메인이 달라 emit_sdf 정규화 시 라이저가 한쪽에 압축된다. 답안 28F 라이저 좌표를
+    차용하고 헤드망 AV 위치로 translate 해 단위·배치를 정합시킨다(라이저가 AV 위쪽에 배치).
+    좌표가 비숫자/누락이면 (KeyError, TypeError, ValueError) 를 올린다(호출자가 400 처리).
+    """
+    from remote30_full_network import RiserTables
+    head_av_x = float(head_av_node["x"])
+    head_av_y = float(head_av_node["y"])
+    answer_av_x, answer_av_y = _ANSWER_28F_COORDS["10"]
+    tx_off = head_av_x - answer_av_x
+    ty_off = head_av_y - answer_av_y
+    remapped_nodes: list[dict] = []
+    for n in system_riser["nodes"]:
+        label = str(n.get("label", ""))
+        new_n = dict(n)
+        if label in _ANSWER_28F_COORDS:
+            ax, ay = _ANSWER_28F_COORDS[label]
+            new_n["x"] = int(round(ax + tx_off))
+            new_n["y"] = int(round(ay + ty_off))
+        remapped_nodes.append(new_n)
+    return RiserTables(
+        nodes=remapped_nodes,
+        pipes=list(system_riser["pipes"]),
+        pumps=list(system_riser.get("pumps", [])),
+        valves=list(system_riser.get("valves", [])),
+        av_node_label=av_label,
+    )
+
+
+def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
+                             machine_room_labels, pump_junction_label,
+                             is_pump, head_orientation, head_z_frac) -> dict:
+    """통합망(헤드+라이저) 캔버스 시각화용 geometry dict.
+
+    machine_room_at_bottom: 펌프방식이면 수원/기계실이 망 최하부 → 3D 아이소뷰가 Z 방향
+    (아래로)을 뒤집는다. 고가수조(gravity, 기본)면 수원이 옥상(위). DXF 에 z 가 없어
+    토폴로지 autoSpread 로 Z 를 만들므로 방향만 이 플래그로 결정한다.
+    head_labels: nozzle 부착(input) 노드 — 클라이언트가 여기서 짧은 니플 스텁을 ±z 로 그린다.
+    """
+    return {
+        "av_node_label": riser.av_node_label,
+        "riser_labels": list(riser_labels),
+        "machine_room_labels": machine_room_labels,
+        "pump_junction_label": pump_junction_label,
+        "machine_room_at_bottom": is_pump,
+        "machine_room_plan_edges": combined.machine_room_plan_edges,
+        "head_labels": sorted(head_label_set),
+        "head_orientation": head_orientation,
+        "head_z_frac": head_z_frac,
+        "nodes": [
+            {"label": str(n["label"]),
+             "x": float(n.get("x", 0)), "y": float(n.get("y", 0)),
+             "z": float(n.get("elevation", 0)),
+             "io": n.get("io_node", "No")}
+            for n in combined.nodes
+        ],
+        "pipes": [
+            {"label": str(p.get("label", "")),
+             "in": str(p["in"]), "out": str(p["out"]),
+             "dia": p.get("dia", 0)}
+            for p in combined.pipes
+        ],
+        "pumps": [
+            {"label": str(p["label"]), "in": str(p["in"]), "out": str(p["out"])}
+            for p in combined.pumps
+        ],
+        "valves": [
+            {"label": str(v["label"]), "in": str(v["in"]), "out": str(v["out"]),
+             "target_pa": v.get("target_value", 0)}
+            for v in combined.valves
+        ],
+    }
+
+
+def _build_roles_sidecar(combined, riser_labels, head_label_set, av_node_label,
+                         machine_room_labels, pump_junction_label,
+                         is_pump, head_orientation, head_z_frac) -> dict:
+    """포맷 미리보기(round-trip)용 역할 사이드카.
+
+    KFP/SDF/HAS emit→재파싱은 라벨을 N1..Nn 으로 개명하고 라이저/헤드/AV 구조 메타를
+    잃는다. 노드 순서별 원본 라벨(combined.nodes 순서 = parse 순서, 검증됨)과 역할 집합을
+    저장해두면 미리보기에서 개명 라벨로 재매핑해 동일 모양을 복원할 수 있다.
+    pumps/valves 는 round-trip 시 _common_network_to_geometry 가 비우므로 원본 라벨로 보존.
+    """
+    return {
+        "order_labels": [str(n["label"]) for n in combined.nodes],
+        "order_io": [str(n.get("io_node", "No")) for n in combined.nodes],
+        "riser_labels": sorted(riser_labels),
+        "head_labels": sorted(head_label_set),
+        "av_node_label": av_node_label,
+        "machine_room_labels": list(machine_room_labels),
+        "pump_junction_label": pump_junction_label,
+        "head_orientation": head_orientation,
+        "head_z_frac": head_z_frac,
+        "machine_room_at_bottom": is_pump,
+        "pumps": [{"label": str(p["label"]), "in": str(p["in"]), "out": str(p["out"])}
+                  for p in combined.pumps],
+        "valves": [{"label": str(v["label"]), "in": str(v["in"]), "out": str(v["out"]),
+                    "target_pa": v.get("target_value", 0)} for v in combined.valves],
+    }
 
 
 @app.post("/api/remote30/combined/build")
@@ -3596,7 +4316,48 @@ def remote30_combined_build():
             pass
 
     from remote30_prototype import select_worst30_heads, build_input_tables
-    from remote30_full_network import RiserTables, stitch_riser_and_heads, emit_full_sdf
+    from remote30_full_network import (
+        stitch_riser_and_heads, emit_full_sdf,
+        prepend_machine_room_to_riser, insert_source_pump,
+    )
+
+    # ── 가압 방식 — "gravity"(자연낙차/고가수조, 기본) | "pump"(펌프 가압).
+    # 펌프 가압이면 (1) 기계실/수원을 망 최하부로 배치·재고도(고저차 lift 반영),
+    # (2) stitch 후 수원(Input) 직후에 펌프 요소를 삽입한다.
+    pressurization = str(body.get("pressurization") or "gravity").strip().lower()
+    pump_spec = body.get("pump") or {}
+    is_pump = pressurization == "pump"
+    # 등각 세트의 고도 펼침 배율 — 평면/등각 두 세트를 항상 함께 emit 하므로,
+    # 등각 좌표 베이크(_bake_isometric_node_coords)의 lift 강도만 받는다.
+    has_iso_z_scale = _to_float(body.get("has_iso_z_scale"), 1.0)
+    # KFP 표시좌표 배율 — K-Fire Solver 에서 노드가 작/크게 보일 때 조정(기본 1.0).
+    # 표시 전용(length_m·elevation_m 불변)이라 유압계산 결과는 동일. KFP 에만 적용.
+    kfp_coord_scale = min(max(_to_float(body.get("kfp_coord_scale"), 1.0), 0.05), 20.0)
+    # 수원(기계실)이 최저헤드보다 몇 m 아래인지 — 펌프 흡입측 실양정(>0). DXF 에
+    # z 가 없어 도출 불가 → 사용자 입력(미지정 0). 0 이면 고저차 lift 없음.
+    source_drop_m = abs(_to_float(pump_spec.get("source_drop_m"), 0.0))
+    # 헤드 설치방향(전역) — 상향식(upright)=가지배관 위로 돌출, 하향식(pendent)=아래로.
+    # DXF 에 상/하향 정보가 없어(재질과 동일) 전역 토글로 받는다. 표시 전용 — 헤드를
+    # 짧은 니플로 ±z 띄워 그릴 뿐, 수리 elevation·length 는 불변. head_z_frac 은 도면
+    # 대각선 대비 비율(스케일 무관) — m/mm 좌표계 모두에서 일관되게 보이도록.
+    head_orientation = str(body.get("head_orientation") or "pendent").strip().lower()
+    if head_orientation not in ("upright", "pendent"):
+        head_orientation = "pendent"
+    head_z_frac = _to_float(body.get("head_z_frac"), 0.04)
+    if head_z_frac < 0:
+        head_z_frac = 0.0
+    # 불리한 헤드 개수 N — 평면도에서 고른 값(통합 빌드 body 의 n_heads, 없으면
+    # finalize 단계에서 저장된 plane_job["k_heads"]). 미지정이면 select_worst30_heads
+    # 기본(30)을 따른다. 표시 전용이 아니라 망에 포함될 헤드 수를 결정 → 수리계산에도 반영.
+    n_heads_raw = body.get("n_heads", plane_job.get("k_heads"))
+    k_heads: int | None = None
+    if n_heads_raw is not None:
+        try:
+            _kv = int(n_heads_raw)
+            if _kv >= 1:
+                k_heads = _kv
+        except (TypeError, ValueError):
+            pass
 
     # ── Stage A 마무리 — 평면도 헤드 선정 + PipeTables 생성
     detected_pos = [tuple(d["pos"]) for d in plane_job.get("detected_heads", [])]
@@ -3610,6 +4371,7 @@ def remote30_combined_build():
             manual_source=alarm_xy,
             manual_heads=manual_heads if (manual_heads or deleted or added) else None,
             zones=zones if zones else None,
+            **({"k": k_heads} if k_heads is not None else {}),
         )
         head_tables = build_input_tables(
             selection,
@@ -3617,9 +4379,7 @@ def remote30_combined_build():
             project_title=Path(plane_job["dxf_path"]).stem,
         )
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
 
     # ── 계통도 라이저 → RiserTables.
     # ★ 좌표 재매핑: system_riser 의 노드 좌표(사용자 계통도 픽 — 수십만 mm) 와 헤드망 노드
@@ -3631,121 +4391,639 @@ def remote30_combined_build():
     if head_av_node is None:
         return jsonify({"ok": False,
                         "message": f"헤드망에 AV(label={av_label}) 노드가 없음 — 평면도 추출 다시 확인"}), 500
-    head_av_x = float(head_av_node["x"])
-    head_av_y = float(head_av_node["y"])
+    # 좌표 재매핑 — head_av/노드 좌표가 비숫자·누락이면 500+traceback 대신 깔끔한 400.
+    try:
+        riser = _remap_riser_to_head_av(system_riser, head_av_node, av_label)
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify({"ok": False,
+                        "message": f"계통도/헤드망 노드 좌표가 올바르지 않습니다: {exc}"}), 400
 
-    # 답안 28F (GRAVITE_28F) 의 라이저 raw 좌표 (mm 도메인, 평면도와 단위 일치)
-    ANSWER_28F_COORDS = {
-        "1":  (-10825,  -851),    # Input (옥상 수원)
-        "2":  (-11600,  -750),
-        "3":  (-11600,  -952),
-        "4":  (-11275, -1775),
-        "5":  (-11275, -3420),    # AV 직전
-        "10": (-11400, -3406),    # AV — 헤드망 source 와 정합
-    }
-    answer_av_x, answer_av_y = ANSWER_28F_COORDS["10"]
-    # 답안 AV 위치 → 헤드망 AV 위치로 translation
-    tx_off = head_av_x - answer_av_x
-    ty_off = head_av_y - answer_av_y
-
-    remapped_nodes: list[dict] = []
-    for n in system_riser["nodes"]:
-        label = str(n.get("label", ""))
-        new_n = dict(n)
-        if label in ANSWER_28F_COORDS:
-            ax, ay = ANSWER_28F_COORDS[label]
-            new_n["x"] = int(round(ax + tx_off))
-            new_n["y"] = int(round(ay + ty_off))
-        remapped_nodes.append(new_n)
-
-    riser = RiserTables(
-        nodes=remapped_nodes,
-        pipes=list(system_riser["pipes"]),
-        pumps=list(system_riser.get("pumps", [])),
-        valves=list(system_riser.get("valves", [])),
-        av_node_label=av_label,
-    )
+    # ── 기계실(옥상수조) 경로 (선택) → 라이저 Input 앞에 prepend.
+    # 있으면 수원 경계가 탱크(m1)로 이동하고 옥상부 마찰손실이 통합망에 반영됨.
+    machine_room = body.get("machine_room")
+    mr_attached = False
+    machine_room_labels: list[str] = []
+    pump_junction_label: str | None = None
+    if machine_room and machine_room.get("nodes") and machine_room.get("pipes"):
+        # 펌프 junction = 기계실이 병합되는 라이저 Input ("1"). prepend 후엔
+        # io 가 No 로 강등되므로 prepend 전에 미리 라벨을 기록해 둔다. 캔버스에서
+        # 이 노드를 "펌프" 로 명시해 기계실↔계통도 경계를 시각적으로 분리.
+        _ri = next((n for n in riser.nodes
+                    if str(n.get("io_node", "")).lower() == "input"), None)
+        if _ri is None:
+            _ri = next((n for n in riser.nodes if str(n["label"]) == "1"), None)
+        pump_junction_label = str(_ri["label"]) if _ri else None
+        # 기계실 노드 라벨 (conn=mK 은 라이저 Input 과 병합돼 사라지므로 제외)
+        _conn = str(machine_room.get("conn_node_label")
+                    or machine_room["nodes"][-1]["label"])
+        machine_room_labels = [str(n["label"]) for n in machine_room["nodes"]
+                               if str(n["label"]) != _conn]
+        try:
+            riser, mr_attached = prepend_machine_room_to_riser(
+                machine_room, riser,
+                at_bottom=is_pump, source_drop_below_lowest_m=source_drop_m)
+        except Exception as _mr_exc:  # noqa: BLE001 — 기계실 실패가 통합을 막지 않도록
+            warnings.warn(f"[combined] 기계실 prepend 실패 (라이저만 사용): {_mr_exc}",
+                           RuntimeWarning, stacklevel=2)
+        if not mr_attached:
+            machine_room_labels = []
+            pump_junction_label = None
 
     # ── Stitch + emit
     try:
-        combined = stitch_riser_and_heads(riser, head_tables)
+        combined = stitch_riser_and_heads(
+            riser, head_tables,
+            machine_room_labels=machine_room_labels,
+            pump_junction_label=pump_junction_label,
+            machine_room_plan_edges=(machine_room.get("plan_edges") if mr_attached else None),
+            machine_room_at_bottom=is_pump,
+        )
+        # ── 가압 방식: 펌프 선택 시 수원 경계에 펌프 삽입 (자연낙차는 기본값, 무변경)
+        if is_pump:
+            rated_q = float(pump_spec.get("rated_q") or 2400)
+            rated_h = float(pump_spec.get("rated_h") or 100)
+            count = int(pump_spec.get("count") or 1)
+            insert_source_pump(combined, rated_q_lpm=rated_q, rated_h_m=rated_h, count=count)
         job_id = secrets.token_hex(6)
+        _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
         out_dir = COMBINED_OUTPUT_DIR / job_id
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_sdf = out_dir / f"combined_{job_id}.sdf"
-        title = system_riser.get("title", "Combined")
-        emit_full_sdf(combined, out_sdf,
-                      project_title=f"Remote 30 통합 — {title}")
-        # ── SDF + SLF (같은 폴더에 자동 생성됨) 를 ZIP 으로 묶어 한 번에 다운로드.
-        # PIPENET 은 .sdf 와 .slf 가 같은 폴더에 있어야 호칭경↔내경 lookup 가능.
-        # .sdf 만 받으면 diameter "Unset" / "pipe bore must be given" 오류 발생.
+        # 통합 Title — 업로드한 평면도 파일명(건물/도면명)을 따른다. 답안지 Title
+        # 컨벤션이 건물명(예: "Officetell")이라, 내부 식별자(SYSTEM_EXTRACT_V1)나
+        # 도구 브랜딩이 그대로 노출되지 않도록 도면 stem 을 쓴다.
+        title = (Path(plane_job.get("dxf_path", "")).stem
+                 or system_riser.get("title")
+                 or "Combined")
+
         import zipfile as _zipfile
-        out_slf = out_dir / f"combined_{job_id}.slf"
-        out_zip = out_dir / f"combined_{job_id}.zip"
-        with _zipfile.ZipFile(out_zip, "w", _zipfile.ZIP_DEFLATED) as zf:
-            zf.write(out_sdf, arcname=out_sdf.name)
-            if out_slf.is_file():
-                zf.write(out_slf, arcname=out_slf.name)
+        import copy as _copy
+        from remote30_prototype import emit_kfp as _emit_kfp, emit_has as _emit_has
+
+        # ── z-aware 도구(K-solver/HASS)용 라이저 "참 3D 축정렬" 좌표 — KFP/HAS 만 적용.
+        # 라이저 막대는 schematic 으로 y 가 인위적으로 펼쳐져 있다(_layout_riser_as_schematic).
+        # SDF/PIPENET 은 선언 length 와 자체 schematic 을 써 이 y-spread 가 문제없지만,
+        # z(고도)까지 쓰는 K-solver/HASS 에서는 (1) 라이저가 대각선 지그재그로 깨지고,
+        # (2) KFP length 가 3D 좌표거리(=√(Δx²+Δy²+Δz²))라 인위적 Δy 가 라이저 배관장을
+        # 부풀린다.
+        #
+        # 단순히 라이저 전체를 AV 한 점으로 모으면 수직 입상관은 맞지만 옥상 수평 헤더
+        # (등고선 z 가 같고 수평으로 뻗는 구간)가 한 점에 뭉개져 길이 0 배관이 생기고
+        # 계통도가 찌그러진다. → 라이저를 하나의 수직 평면(y=AV.y 고정) 안에 축정렬로
+        # 재구성한다: 각 배관의 실제 선언 length 와 고도차 rise 로 수평 run =
+        # √(length²−rise²) 을 구하고, z 는 노드 고도(권위값)를 그대로 둔다. 수직관은
+        # rise≈length → 수평 run≈0(기둥), 수평 헤더는 rise≈0 → run=실제 길이(수평선).
+        # 방향(±x)은 실제 계통도 DXF x 차의 부호를 따라 자연스러운 배치를 유지한다.
+        # 기계실/헤드망(실제 평면 좌표)은 보존.
+        _mr_set = {str(l) for l in (machine_room_labels or [])}
+        riser_collapse_labels = {
+            str(n["label"]) for n in riser.nodes if str(n["label"]) not in _mr_set
+        }
+        # 라이저 고도 z(m) — riser.nodes 의 원좌표에서(_auto_spread 판정용).
+        _riser_elev = {
+            str(n["label"]): float(n.get("elevation", 0.0)) for n in riser.nodes
+        }
+        # 라이저 인접리스트 (라벨→[(이웃, 선언length_m), ...]) — riser.pipes 기준,
+        # collapse 대상(=계통도) 노드 사이 간선만. 기계실 간선은 제외.
+        _riser_adj: dict[str, list[tuple[str, float]]] = {}
+        for _p in riser.pipes:
+            _a = str(_p.get("in", "")); _b = str(_p.get("out", ""))
+            if _a not in riser_collapse_labels or _b not in riser_collapse_labels:
+                continue
+            try:
+                _ln = float(_p.get("length", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                _ln = 0.0
+            _riser_adj.setdefault(_a, []).append((_b, _ln))
+            _riser_adj.setdefault(_b, []).append((_a, _ln))
+
+        # 라이저 고도(elevation) 변화폭 — 미리보기 autoRiserSpread 와 동일 판정.
+        # < 1.0 m 이면 "실제 고도 정보 없음(단층 도면·하드코드 elev)" → 토폴로지로 강제 펼침.
+        _riser_elev_vals = [v for k, v in _riser_elev.items()
+                            if k in riser_collapse_labels]
+        _riser_elev_spread = ((max(_riser_elev_vals) - min(_riser_elev_vals))
+                              if _riser_elev_vals else 0.0)
+        _auto_spread = _riser_elev_spread < 1.0
+
+        # 헤드평면(가지·교차배관) 스키매틱 트리 정돈 — 표시 (x,y) 만 변경.
+        # combined 를 단일 원천(single source of truth)으로 한 번만 정돈하면
+        # 미리보기 geometry·평면 KFP/HAS·iso KFP/HAS 모두에 전파된다(다운 후 재투영).
+        # 라이저(별도 수직 collapse)·기계실(군집 보존)은 제외. 수리값(length·elevation) 불변.
+        try:
+            _tidied = _tidy_head_plane_layout(
+                combined.nodes, combined.pipes, av_label,
+                riser_collapse_labels | _mr_set)
+            app.logger.info("combined/build: head-plane tidied nodes=%d", _tidied)
+        except Exception as _e:  # 정돈 실패는 치명적이지 않음 — 원좌표로 진행.
+            app.logger.warning("combined/build: head-plane tidy skipped: %s", _e)
+
+        # ── 헤드(스프링클러) z 돌출 — 상향식(+)/하향식(−)을 표시 전용 display_z 로 베이크.
+        #   헤드 = nozzle 부착(input) 노드. 돌출량은 평면 대각선 비율(head_z_frac)이라
+        #   좌표 단위(m/mm)에 무관. elevation(수리 실표고)은 일절 건드리지 않아 결과 불변.
+        #   여기서 한 번 계산해 KFP/HAS(display_z)·iso SDF(iso 베이크)·geometry 가 공유.
+        _hd_xs = [float(n.get("x", 0) or 0) for n in combined.nodes]
+        _hd_ys = [float(n.get("y", 0) or 0) for n in combined.nodes]
+        _plan_diag = (math.hypot(max(_hd_xs) - min(_hd_xs), max(_hd_ys) - min(_hd_ys))
+                      if _hd_xs else 0.0)
+        head_label_set = {
+            str(nz.get("in") or nz.get("input_node") or nz.get("input") or "")
+            for nz in combined.nozzles
+            if (nz.get("in") or nz.get("input_node") or nz.get("input"))
+        }
+        head_label_set.discard("")
+        _head_sign = 1.0 if head_orientation == "upright" else -1.0
+        head_disp_z = _head_sign * _plan_diag * head_z_frac
+
+        def _collapse_riser_to_column(net_obj):
+            """net_obj 사본에서 라이저를 수직 입상관으로 재배치 (미리보기 3D 뷰와 정합).
+
+            ★ 단위 일치 핵심: 라이저 x,y 를 AV 한 점으로 모으고(미리보기 riserSet→avX,avY
+            와 동일), 모든 노드의 표시 z 를 **평면 좌표(mm) 단위인 display_z** 로 베이크한다.
+            display_z 는 emit_sdf 가 x,y 와 동일 _scale 로 정규화 → KFP/HAS 변환기가 x,y 와
+            같은 배율을 타 평면과 자동 비례한다. (display_z 를 안 박으면 변환기가 Position z
+            부재로 raw elevation[미터]으로 fallback 하는데, x,y 는 mm·z 는 m 라 단위가
+            1000× 어긋나 라이저 기둥이 평면 대비 폭주했다 — 이 버그 수정.)
+
+            기둥 내부 고도 분배 t∈[0,1] (AV=0 바닥 → 최상류=1 꼭대기) 만 두 방식:
+            (A) 실측 고도폭 < 1 m (단층/하드코드) → 토폴로지 BFS 순서로 균등 분배.
+            (B) 실측 고도폭 ≥ 1 m → elevation 을 [0,1] 정규화(실 층고 비율 보존).
+            어느 쪽이든 기둥 전체 높이 = 0.5 × 평면 대각선 으로 통일해 항상 평면과 비례.
+            elevation(수리 실표고)은 일절 변경하지 않아 head 계산 불변.
+
+            반환: (사본/원본, 변경여부). AV 를 못 찾으면 원본·False.
+            """
+            if not riser_collapse_labels:
+                return net_obj, False
+            av = next((n for n in net_obj.nodes
+                       if str(n.get("label")) == str(av_label)), None)
+            if av is None or av.get("x") is None or av.get("y") is None:
+                return net_obj, False
+            cx = float(av["x"])
+            cy = int(round(float(av["y"])))
+            import math as _math
+            z_net = _copy.deepcopy(net_obj)
+
+            z_scale = 3.0  # 미리보기 opts.zScale 기본값 — 기둥 높이 배율(평면 대비).
+            dir_sign = -1.0 if is_pump else 1.0
+            # ── 공통 1: 라이저 x,y 를 AV 한 점으로 모은다(순수 수직 기둥) ──
+            #   미리보기 riserSet→(avX,avY)(remote30_prototype.html) 와 동일. 옛 branch-B
+            #   의 수평 run 재구성(라이저 꼬임 유발)을 폐지해 미리보기와 규격 일치.
+            for n in z_net.nodes:
+                if str(n.get("label")) in riser_collapse_labels:
+                    n["x"] = int(round(cx))
+                    n["y"] = cy
+            # ── 공통 1.5: 헤드(nozzle 부착 leaf)의 x,y 를 가지배관 이웃 노드에 스냅.
+            #   헤드는 display_z 로만 ±수직 돌출하는데, 평면 x,y 가 이웃(가지 tee)과
+            #   어긋나 있으면 드롭 배관이 대각선으로 보인다(예: head N48 35°, N54 48°).
+            #   이웃 x,y 로 맞추면 Δxy=0 → 완전 90° 수직 드롭. leaf(이웃 1개)만 대상으로
+            #   해 가지 중간 통과 헤드는 건드리지 않는다. 표시 전용(elevation·length_m
+            #   불변 → 수리 결과 동일).
+            _znode = {str(n.get("label")): n for n in z_net.nodes}
+            _head_nbrs: dict[str, set] = {}
+            for _p in z_net.pipes:
+                _a = str(_p.get("in", "")); _b = str(_p.get("out", ""))
+                if _a in head_label_set and _b:
+                    _head_nbrs.setdefault(_a, set()).add(_b)
+                if _b in head_label_set and _a:
+                    _head_nbrs.setdefault(_b, set()).add(_a)
+            for _hl, _nbs in _head_nbrs.items():
+                if len(_nbs) != 1:  # leaf 헤드만 (통과 헤드 제외)
+                    continue
+                _hn = _znode.get(_hl)
+                _tn = _znode.get(next(iter(_nbs)))
+                if (_hn is None or _tn is None
+                        or _tn.get("x") is None or _tn.get("y") is None):
+                    continue
+                _hn["x"] = _tn["x"]
+                _hn["y"] = _tn["y"]
+            # ── 공통 2: 기둥 높이 = 0.5 × 전체 평면 대각선 × zScale (x,y 가 AV 로 모인 뒤
+            #   bbox — 미리보기 spreadHeight/_spreadH 와 정합). display_z 는 emit_sdf 가 x,y
+            #   와 동일 _scale 로 정규화 → 평면과 자동 비례(3/longest 보정 불필요).
+            _full_xs = [float(n["x"]) for n in z_net.nodes if n.get("x") is not None]
+            _full_ys = [float(n["y"]) for n in z_net.nodes if n.get("y") is not None]
+            _x_span = (max(_full_xs) - min(_full_xs)) if _full_xs else 0.0
+            _y_span = (max(_full_ys) - min(_full_ys)) if _full_ys else 0.0
+            _full_diag = _math.hypot(_x_span, _y_span)
+            spread_h = (0.5 * _full_diag * z_scale) if _full_diag > 1e-9 else 1500.0
+
+            if _auto_spread:
+                # (A) 실측 고도폭 < 1 m(단층·하드코드 elev) → 토폴로지 BFS 순서로 펼친다.
+                #   root(수원/Input)=꼭대기(spread_h) → AV(헤드평면 anchor)=바닥(0).
+                import collections as _collections
+                root = next((str(n["label"]) for n in z_net.nodes
+                             if str(n.get("label")) in riser_collapse_labels
+                             and n.get("io_node") == "Input"), None)
+                if root is None:  # Input 없으면 AV 에서 가장 먼 노드(펌프 후보)를 root 로.
+                    _vis = {str(av_label): 0}
+                    _q = _collections.deque([str(av_label)])
+                    _far, _fd = str(av_label), 0
+                    while _q:
+                        u = _q.popleft()
+                        for v, _ln in _riser_adj.get(u, ()):
+                            if v in _vis:
+                                continue
+                            _vis[v] = _vis[u] + 1
+                            if _vis[v] > _fd:
+                                _fd, _far = _vis[v], v
+                            _q.append(v)
+                    root = _far
+                order: list[str] = []
+                seen = {root}
+                q = _collections.deque([root])
+                while q:
+                    u = q.popleft()
+                    order.append(u)
+                    for v, _ln in _riser_adj.get(u, ()):
+                        if v in seen:
+                            continue
+                        seen.add(v)
+                        q.append(v)
+                for lbl in riser_collapse_labels:  # 다른 component 는 끝에 append
+                    if lbl not in seen:
+                        order.append(lbl)
+                _av_s = str(av_label)  # AV 를 강제로 마지막(헤드평면 anchor=바닥)으로.
+                if _av_s in order and order[-1] != _av_s:
+                    order.remove(_av_s)
+                    order.append(_av_s)
+                _n_order = max(1, len(order) - 1)
+                _riser_z = {
+                    lbl: dir_sign * (1.0 - i / _n_order) * spread_h
+                    for i, lbl in enumerate(order)
+                }
+                _mr_z = dir_sign * spread_h * 1.18  # 라이저 극단 너머 수원 평면(미리보기 _mrZ).
+                for n in z_net.nodes:
+                    lbl = str(n.get("label"))
+                    if lbl in _mr_set:
+                        n["display_z"] = _mr_z
+                    elif lbl in riser_collapse_labels:
+                        n["display_z"] = _riser_z.get(lbl, 0.0)
+                    elif lbl in head_label_set:
+                        n["display_z"] = head_disp_z
+                    else:
+                        n["display_z"] = 0.0
+                return z_net, True
+
+            # (B) 실측 고도폭 ≥ 1 m → elevation(m)을 표시 z(mm)로 펼친다(실 층고 비율 보존).
+            #   미리보기 z=(e-eMid)*1000*zScale 와 동일: ×1000=m→mm 로 평면 x,y(mm) 단위와
+            #   일치, eMid 중심. 라이저·헤드·평면 모두 같은 식. 기계실은 라이저 극단 너머
+            #   수원 평면(_mrZ)에. (옛 코드는 display_z 미베이크 → 변환기가 raw elevation[m]
+            #   으로 fallback, x,y[mm] 와 1000× 어긋나 기둥이 폭주했다 — 이 버그 수정.)
+            _all_e = [float(n.get("elevation", 0.0) or 0.0) for n in z_net.nodes]
+            _e_lo, _e_hi = (min(_all_e), max(_all_e)) if _all_e else (0.0, 0.0)
+            _e_mid = (_e_lo + _e_hi) / 2.0
+            _riser_extreme = (((_e_lo - _e_mid) if is_pump else (_e_hi - _e_mid))
+                              * 1000.0 * z_scale * dir_sign)
+            _mr_z = _riser_extreme + dir_sign * spread_h * 0.18
+            for n in z_net.nodes:
+                lbl = str(n.get("label"))
+                _ez = (float(n.get("elevation", 0.0) or 0.0) - _e_mid) * 1000.0 * z_scale
+                if lbl in _mr_set:
+                    n["display_z"] = _mr_z
+                elif lbl in head_label_set:
+                    n["display_z"] = _ez + head_disp_z
+                else:
+                    n["display_z"] = _ez
+            return z_net, True
+
+        def _emit_bundle(net_obj, suffix: str) -> dict:
+            """net_obj → SDF(+SLF)/KFP/HAS/ZIP 한 세트 생성. suffix 로 평면("")/등각("_iso") 구분.
+
+            net_obj 의 노드 좌표를 그대로 베이크하므로, 등각 세트는 호출 전에
+            _bake_isometric_node_coords 로 (x,y) 를 등각투영해 넘긴다. HAS 는 좌표가
+            이미 정해져 있으니 isometric=False (이중 투영 방지).
+            """
+            b_sdf = out_dir / f"combined_{job_id}{suffix}.sdf"
+            emit_full_sdf(net_obj, b_sdf, project_title=title)
+            b_slf = out_dir / f"combined_{job_id}{suffix}.slf"
+            # ── KFP 와 HAS 는 표시 규약이 다르다(둘 다 등각 베이크 안 된 원본 combined
+            #    에서 파생, 라이저만 수직 기둥으로 collapse — z_net):
+            #  · KFP: 참 3D 직교좌표 [x,y,z]. 노드 z = display_z(라이저=기둥, 헤드평면=0).
+            #    K-Fire Solver 가 화면에서 자체 등각투영하므로 우리는 베이크하지 않는다.
+            #  · HAS: HASS 는 InsertionPoint 2D 좌표를 **그대로** 표시(재투영 안 함, 참조
+            #    계통도도 30° 베이크본). 따라서 emit_has(isometric=True) 로 display_z 를
+            #    화면 Y 에 lift 베이크해야 라이저가 기둥으로 보인다. Height(수리표고)는
+            #    elevation_m 분리 보존. (SDF 는 PIPENET 2D 스키매틱 — net_obj 좌표 그대로.)
+            z_sdf = b_sdf
+            z_net, _z_done = _collapse_riser_to_column(combined)
+            if _z_done:
+                z_sdf = out_dir / f"combined_{job_id}{suffix}_z.sdf"
+                try:
+                    emit_full_sdf(z_net, z_sdf, project_title=title)
+                except Exception as _z_exc:  # noqa: BLE001 — 사본 실패 시 원본 좌표로 폴백
+                    warnings.warn(f"[combined{suffix}] z-aware SDF emit 실패 (원본 좌표 사용): {_z_exc}", RuntimeWarning, stacklevel=2)
+                    z_sdf = b_sdf
+            b_kfp = out_dir / f"combined_{job_id}{suffix}.kfp"
+            b_kfp_ok = False
+            try:
+                # 통합망 KFP — 미리보기와 동일한 스키매틱 표시좌표(라이저=기둥,
+                # display_z)로 비율 일치. length_m·elevation_m 는 실값 보존(수리 권위값).
+                _emit_kfp(z_sdf, b_kfp, coord_scale=kfp_coord_scale,
+                          display_geometry=True)
+                b_kfp_ok = b_kfp.is_file()
+            except Exception as _kfp_exc:  # noqa: BLE001 — KFP 실패가 통합 출력을 막지 않도록
+                warnings.warn(f"[combined{suffix}] KFP emit 실패 (SDF 는 정상): {_kfp_exc}", RuntimeWarning, stacklevel=2)
+            b_has = out_dir / f"combined_{job_id}{suffix}.has"
+            b_has_ok = False
+            try:
+                _emit_has(z_sdf, b_has, isometric=True, iso_z_scale=has_iso_z_scale)
+                b_has_ok = b_has.is_file()
+            except Exception as _has_exc:  # noqa: BLE001 — HAS 실패가 통합 출력을 막지 않도록
+                warnings.warn(f"[combined{suffix}] HAS emit 실패 (SDF 는 정상): {_has_exc}", RuntimeWarning, stacklevel=2)
+            # 임시 z-aware SDF/SLF 정리 — ZIP·다운로드에는 원본 b_sdf 만 포함.
+            if z_sdf != b_sdf:
+                for _tmp in (z_sdf, z_sdf.with_suffix(".slf")):
+                    try:
+                        if _tmp.is_file():
+                            _tmp.unlink()
+                    except OSError:
+                        pass
+            # 전체 ZIP — SDF + SLF + KFP + HAS 를 한 번에 (모든 포맷 묶음).
+            b_zip = out_dir / f"combined_{job_id}{suffix}.zip"
+            with _zipfile.ZipFile(b_zip, "w", _zipfile.ZIP_DEFLATED) as zf:
+                zf.write(b_sdf, arcname=b_sdf.name)
+                if b_slf.is_file():
+                    zf.write(b_slf, arcname=b_slf.name)
+                if b_kfp_ok:
+                    zf.write(b_kfp, arcname=b_kfp.name)
+                if b_has_ok:
+                    zf.write(b_has, arcname=b_has.name)
+            # PIPENET-native ZIP — .sdf + .slf 만. PIPENET 은 두 파일이 같은 폴더에
+            # 있어야 호칭경↔내경 lookup 이 되므로 SDF 버튼은 이 쌍을 묶어 내보낸다
+            # (KFP/HAS 가 딸려나오지 않도록). .xml 결과파일은 PIPENET 이 연산 후 생성하는
+            # 산출물이라 입력 번들에 포함하지 않는다.
+            b_zip_sdf = out_dir / f"combined_{job_id}{suffix}_pipenet.zip"
+            with _zipfile.ZipFile(b_zip_sdf, "w", _zipfile.ZIP_DEFLATED) as zf:
+                zf.write(b_sdf, arcname=b_sdf.name)
+                if b_slf.is_file():
+                    zf.write(b_slf, arcname=b_slf.name)
+            return {"sdf": b_sdf, "slf": b_slf, "kfp": b_kfp, "has": b_has, "zip": b_zip,
+                    "zip_sdf": b_zip_sdf, "kfp_ok": b_kfp_ok, "has_ok": b_has_ok}
+
+        # 평면 세트(원본 좌표) — 캔버스 geometry 와 동일한 평면도 좌표.
+        plan_bundle = _emit_bundle(combined, "")
+        # 등각 세트 — 노드 (x,y) 를 30° 등각투영으로 베이크한 사본에서 emit.
+        # 표시 전용 변환이라 SDF/KFP/HAS 의 수리계산 결과는 평면 세트와 동일.
+        combined_iso = _copy.deepcopy(combined)
+        _bake_isometric_node_coords(combined_iso.nodes, has_iso_z_scale,
+                                    head_labels=head_label_set,
+                                    head_z_offset=head_disp_z)
+        iso_bundle = _emit_bundle(combined_iso, "_iso")
+
+        out_sdf, out_slf = plan_bundle["sdf"], plan_bundle["slf"]
+        out_kfp, out_has, out_zip = plan_bundle["kfp"], plan_bundle["has"], plan_bundle["zip"]
+        out_zip_sdf = plan_bundle["zip_sdf"]
+        kfp_ok, has_ok = plan_bundle["kfp_ok"], plan_bundle["has_ok"]
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
 
     # ── 캔버스 시각화용 geometry 데이터 (헤드망 + 라이저 통합)
     riser_labels = {str(n["label"]) for n in riser.nodes}
-    geometry = {
-        "av_node_label": riser.av_node_label,
-        "riser_labels": list(riser_labels),
-        "nodes": [
-            {"label": str(n["label"]),
-             "x": float(n.get("x", 0)), "y": float(n.get("y", 0)),
-             "z": float(n.get("elevation", 0)),
-             "io": n.get("io_node", "No")}
-            for n in combined.nodes
-        ],
-        "pipes": [
-            {"label": str(p.get("label", "")),
-             "in": str(p["in"]), "out": str(p["out"]),
-             "dia": p.get("dia", 0)}
-            for p in combined.pipes
-        ],
-        "pumps": [
-            {"label": str(p["label"]), "in": str(p["in"]), "out": str(p["out"])}
-            for p in combined.pumps
-        ],
-        "valves": [
-            {"label": str(v["label"]), "in": str(v["in"]), "out": str(v["out"]),
-             "target_pa": v.get("target_value", 0)}
-            for v in combined.valves
-        ],
-    }
+    geometry = _build_combined_geometry(
+        combined, riser, riser_labels, head_label_set,
+        machine_room_labels, pump_junction_label,
+        is_pump, head_orientation, head_z_frac)
+
+    # ── 포맷 미리보기(round-trip)용 역할 사이드카.
+    try:
+        roles_sidecar = _build_roles_sidecar(
+            combined, riser_labels, head_label_set, riser.av_node_label,
+            machine_room_labels, pump_junction_label,
+            is_pump, head_orientation, head_z_frac)
+        (out_dir / f"combined_{job_id}_roles.json").write_text(
+            json.dumps(roles_sidecar, ensure_ascii=False), encoding="utf-8")
+    except Exception as _rs_exc:  # noqa: BLE001 — 사이드카 실패가 통합 출력을 막지 않도록
+        warnings.warn(f"[combined] roles 사이드카 저장 실패 (미리보기 모양 복원 불가): {_rs_exc}",
+                       RuntimeWarning, stacklevel=2)
 
     return jsonify({
         "ok": True, "job_id": job_id, "sdf": out_sdf.name, "zip": out_zip.name,
         "nodes": len(combined.nodes), "pipes": len(combined.pipes),
         "pumps": len(combined.pumps), "valves": len(combined.valves),
         "nozzles": len(combined.nozzles),
+        # 평면 세트
         "download_url_sdf": f"/api/remote30/combined/result/{job_id}/{out_sdf.name}",
-        "download_url_slf": f"/api/remote30/combined/result/{job_id}/{out_slf.name}" if (out_dir / f"combined_{job_id}.slf").is_file() else None,
+        "download_url_slf": f"/api/remote30/combined/result/{job_id}/{out_slf.name}" if out_slf.is_file() else None,
+        "download_url_kfp": f"/api/remote30/combined/result/{job_id}/{out_kfp.name}" if kfp_ok else None,
+        "download_url_has": f"/api/remote30/combined/result/{job_id}/{out_has.name}" if has_ok else None,
         "download_url_zip": f"/api/remote30/combined/result/{job_id}/{out_zip.name}",
+        "download_url_sdf_zip": f"/api/remote30/combined/result/{job_id}/{out_zip_sdf.name}",
+        # 등각 세트 (30° 등각투영 좌표 베이크)
+        "download_url_sdf_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['sdf'].name}",
+        "download_url_slf_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['slf'].name}" if iso_bundle["slf"].is_file() else None,
+        "download_url_kfp_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['kfp'].name}" if iso_bundle["kfp_ok"] else None,
+        "download_url_has_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['has'].name}" if iso_bundle["has_ok"] else None,
+        "download_url_zip_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['zip'].name}",
+        "download_url_sdf_zip_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['zip_sdf'].name}",
         "title": title,
+        "machine_room_attached": mr_attached,
         "geometry": geometry,
     })
 
 
 @app.get("/api/remote30/combined/result/<job_id>/<path:filename>")
 def remote30_combined_result(job_id: str, filename: str):
+    return _serve_run_file(COMBINED_OUTPUT_DIR, job_id, filename)
+
+
+@app.get("/api/remote30/combined/preview/<job_id>/<fmt>")
+def remote30_combined_preview(job_id: str, fmt: str):
+    """통합 결과 파일(.sdf/.kfp/.has)을 실제로 다시 파싱 → 캔버스 geometry.
+
+    다운로드 전에 "그 포맷으로 내보낸 파일을 다시 읽으면 망이 어떻게 보이는지"
+    를 미리보기로 보여주기 위함. emit 결과를 진짜로 round-trip 파싱하므로,
+    포맷별 라벨/노드 누락 같은 깨짐이 있으면 그대로 드러난다(진단용).
+
+    Query: form=plan(기본)|iso — 평면 좌표 세트 vs 등각투영 세트 선택.
+    """
     safe_id = secure_filename(job_id)
     if not safe_id or safe_id != job_id:
-        return "잘못된 job_id", 400
-    target = COMBINED_OUTPUT_DIR / safe_id / filename
+        return jsonify({"ok": False, "message": "잘못된 job_id"}), 400
+    fmt = (fmt or "").lower().lstrip(".")
+    if fmt not in ("sdf", "kfp", "has"):
+        return jsonify({"ok": False, "message": f"지원하지 않는 포맷: {fmt}"}), 400
+    form = (request.args.get("form") or "plan").lower()
+    suffix = "_iso" if form == "iso" else ""
+
+    run_dir = COMBINED_OUTPUT_DIR / safe_id
+    target = run_dir / f"combined_{safe_id}{suffix}.{fmt}"
     try:
         target.resolve().relative_to(COMBINED_OUTPUT_DIR.resolve())
     except ValueError:
-        return "잘못된 경로", 400
+        return jsonify({"ok": False, "message": "잘못된 경로"}), 400
     if not target.is_file():
-        return "결과 파일 없음", 404
-    return send_file(target, as_attachment=True)
+        return jsonify({"ok": False,
+                        "message": f"{fmt.upper()} 출력 파일이 없습니다 (emit 실패했거나 job 만료)"}), 404
+
+    try:
+        if fmt == "sdf":
+            from kfp_sdf_converter import parse_sdf as _parse
+        elif fmt == "kfp":
+            from kfp_sdf_converter import parse_kfp as _parse
+        else:
+            from has_converter import parse_has as _parse
+        net = _parse(str(target))
+        geometry = _common_network_to_geometry(net)
+    except Exception as exc:  # noqa: BLE001
+        return _err500(exc, message=f"{fmt.upper()} 미리보기 파싱 실패: {str(exc)[:280]}")
+
+    # ── 역할 사이드카로 구조 메타 복원 (Option I).
+    # emit→재파싱은 라벨을 N1..Nn 으로 개명하고 라이저/헤드/AV 구분을 잃는다. 빌드 때
+    # 저장한 노드 순서별 원본 라벨로 개명 라벨과 매핑해, 렌더러가 모양을 재구성하는 데
+    # 쓰는 riser_labels·head_labels·head_z_frac 등을 다시 채운다. 노드 순서는 parse==emit
+    # ==combined 로 동일(검증됨)하므로 인덱스 정합으로 안전하게 옮길 수 있다.
+    roles_path = run_dir / f"combined_{safe_id}_roles.json"
+    if roles_path.is_file():
+        try:
+            roles = json.loads(roles_path.read_text(encoding="utf-8"))
+            order_labels = roles.get("order_labels") or []
+            geo_nodes = geometry["nodes"]
+            if order_labels and len(order_labels) == len(geo_nodes):
+                old2new = {str(old): str(geo_nodes[i]["label"])
+                           for i, old in enumerate(order_labels)}
+
+                def _remap(labels):
+                    return [old2new[str(l)] for l in (labels or []) if str(l) in old2new]
+
+                geometry["riser_labels"] = _remap(roles.get("riser_labels"))
+                geometry["head_labels"] = _remap(roles.get("head_labels"))
+                geometry["machine_room_labels"] = _remap(roles.get("machine_room_labels"))
+                _av = roles.get("av_node_label")
+                geometry["av_node_label"] = old2new.get(str(_av)) if _av is not None else None
+                _pj = roles.get("pump_junction_label")
+                if _pj is not None and str(_pj) in old2new:
+                    geometry["pump_junction_label"] = old2new[str(_pj)]
+                geometry["head_orientation"] = roles.get("head_orientation", "pendent")
+                geometry["head_z_frac"] = roles.get("head_z_frac", 0.04)
+                geometry["machine_room_at_bottom"] = bool(roles.get("machine_room_at_bottom", False))
+                order_io = roles.get("order_io") or []
+                if len(order_io) == len(geo_nodes):
+                    for i, gn in enumerate(geo_nodes):
+                        gn["io"] = str(order_io[i])
+                geometry["pumps"] = [
+                    {"label": p["label"], "in": old2new.get(str(p["in"]), str(p["in"])),
+                     "out": old2new.get(str(p["out"]), str(p["out"]))}
+                    for p in (roles.get("pumps") or [])]
+                geometry["valves"] = [
+                    {"label": v["label"], "in": old2new.get(str(v["in"]), str(v["in"])),
+                     "out": old2new.get(str(v["out"]), str(v["out"])),
+                     "target_pa": v.get("target_pa", 0)}
+                    for v in (roles.get("valves") or [])]
+        except Exception:  # noqa: BLE001 — 사이드카 손상 시 round-trip 원본 그대로
+            pass
+
+    src = next((n for n in geometry["nodes"] if n["io"] == "Input"), None)
+    return jsonify({
+        "ok": True,
+        "fmt": fmt,
+        "form": "iso" if suffix else "plan",
+        "filename": target.name,
+        "nodes": len(geometry["nodes"]),
+        "pipes": len(geometry["pipes"]),
+        "source_label": src["label"] if src else None,
+        "geometry": geometry,
+    })
+
+
+@app.post("/api/remote30/system/emit")
+def remote30_system_emit():
+    """계통도(라이저) 단독 수리계산 파일 생성 — riser dict → SDF/SLF/KFP/ZIP.
+
+    통합(combined) 을 거치지 않고 계통도 추출 결과만으로 부분 SDF 를 받기 위함.
+    Body(JSON): { riser: extract_system_path 출력 dict }
+    """
+    import secrets
+    body = request.get_json(silent=True) or {}
+    riser = body.get("riser")
+    if not riser or not riser.get("nodes") or not riser.get("pipes"):
+        return jsonify({"ok": False,
+                        "message": "riser (계통도 추출 결과) 가 필요합니다 — 계통도 추출을 먼저 실행하세요."}), 400
+    from remote30_full_network import CombinedTables
+    try:
+        net = CombinedTables(
+            nodes=list(riser["nodes"]),
+            pipes=list(riser["pipes"]),
+            pumps=list(riser.get("pumps", [])),
+            valves=list(riser.get("valves", [])),
+        )
+        job_id = secrets.token_hex(6)
+        _sweep_old_run_dirs(SYSTEM_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR,
+                            COMBINED_OUTPUT_DIR, PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR)
+        out_dir = SYSTEM_OUTPUT_DIR / job_id
+        files = _emit_subnetwork_bundle(
+            net, out_dir, job_id, "system",
+            f"Remote 30 계통도 — {riser.get('title', 'System')}",
+            coord_scale=min(max(_to_float(body.get("kfp_coord_scale"), 1.0), 0.05), 20.0))
+    except Exception as exc:  # noqa: BLE001
+        return _err500(exc)
+    base = f"/api/remote30/system/result/{job_id}/"
+    return jsonify({
+        "ok": True, "job_id": job_id,
+        "nodes": len(net.nodes), "pipes": len(net.pipes),
+        "download_url_sdf": base + files["sdf"],
+        "download_url_slf": (base + files["slf"]) if files["slf"] else None,
+        "download_url_kfp": (base + files["kfp"]) if files["kfp"] else None,
+        "download_url_zip": base + files["zip"],
+    })
+
+
+@app.get("/api/remote30/system/result/<job_id>/<path:filename>")
+def remote30_system_result(job_id: str, filename: str):
+    return _serve_run_file(SYSTEM_OUTPUT_DIR, job_id, filename)
+
+
+@app.post("/api/remote30/machineroom/emit")
+def remote30_machineroom_emit():
+    """기계실(옥상수조) 경로 단독 수리계산 파일 생성 — machine_room dict → SDF/SLF/KFP/ZIP.
+
+    Body(JSON): { machine_room: extract_machine_room_path 출력 dict }
+    """
+    import secrets
+    body = request.get_json(silent=True) or {}
+    mr = body.get("machine_room")
+    if not mr or not mr.get("nodes") or not mr.get("pipes"):
+        return jsonify({"ok": False,
+                        "message": "machine_room (기계실 추출 결과) 가 필요합니다 — 기계실 추출을 먼저 실행하세요."}), 400
+    from remote30_full_network import CombinedTables, insert_source_pump
+    try:
+        net = CombinedTables(
+            nodes=list(mr["nodes"]),
+            pipes=list(mr["pipes"]),
+        )
+        # 펌프 노드 추가 (옵션) — 수원(Input 경계) 직후에 가압펌프 삽입.
+        # 기계실 단독망은 기본이 옥상수조 자연낙차라 펌프가 없어 입력검사에서
+        # "펌프 누락" 으로 뜬다. 사용자가 켜면 화재안전기준 3점 성능곡선 펌프를 넣는다.
+        if body.get("add_pump"):
+            try:
+                q = float(body.get("pump_q_lpm", 2400.0))
+                h = float(body.get("pump_h_m", 100.0))
+                n = int(body.get("pump_count", 1))
+            except (TypeError, ValueError):
+                q, h, n = 2400.0, 100.0, 1
+            insert_source_pump(net, rated_q_lpm=q, rated_h_m=h, count=max(1, n))
+        job_id = secrets.token_hex(6)
+        _sweep_old_run_dirs(SYSTEM_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR,
+                            COMBINED_OUTPUT_DIR, PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR)
+        out_dir = MACHINEROOM_OUTPUT_DIR / job_id
+        files = _emit_subnetwork_bundle(
+            net, out_dir, job_id, "machineroom",
+            f"Remote 30 기계실 — {mr.get('title', 'MachineRoom')}",
+            coord_scale=min(max(_to_float(body.get("kfp_coord_scale"), 1.0), 0.05), 20.0))
+    except Exception as exc:  # noqa: BLE001
+        return _err500(exc)
+    base = f"/api/remote30/machineroom/result/{job_id}/"
+    return jsonify({
+        "ok": True, "job_id": job_id,
+        "nodes": len(net.nodes), "pipes": len(net.pipes),
+        "pumps": len(net.pumps),
+        "download_url_sdf": base + files["sdf"],
+        "download_url_slf": (base + files["slf"]) if files["slf"] else None,
+        "download_url_kfp": (base + files["kfp"]) if files["kfp"] else None,
+        "download_url_zip": base + files["zip"],
+    })
+
+
+@app.get("/api/remote30/machineroom/result/<job_id>/<path:filename>")
+def remote30_machineroom_result(job_id: str, filename: str):
+    return _serve_run_file(MACHINEROOM_OUTPUT_DIR, job_id, filename)
 
 
 @app.post("/api/remote30/system/extract")
@@ -3767,6 +5045,18 @@ def remote30_system_extract():
     px = py = ax = ay = None
     use_legacy = False
     snap_tol = 2500.0
+    waypoints: list[tuple[float, float]] = []
+
+    def _parse_waypoints(raw):
+        """waypoints 는 [[x,y], ...] JSON 문자열. 잘못된 형식은 무시(빈 리스트)."""
+        if not raw:
+            return []
+        try:
+            data = raw if isinstance(raw, list) else json.loads(raw)
+            return [(float(p[0]), float(p[1])) for p in data]
+        except (TypeError, ValueError, KeyError, IndexError):
+            return []
+
     if request.is_json:
         body = request.get_json(silent=True) or {}
         try:
@@ -3775,7 +5065,11 @@ def remote30_system_extract():
         except (KeyError, TypeError, ValueError) as exc:
             return jsonify({"ok": False, "message": f"pump_x/y, av_x/y 좌표 필요: {exc}"}), 400
         use_legacy = bool(body.get("use_legacy_template"))
-        snap_tol = float(body.get("snap_tolerance_mm", 2500.0))
+        try:
+            snap_tol = float(body.get("snap_tolerance_mm", 2500.0))
+        except (TypeError, ValueError):
+            snap_tol = 2500.0
+        waypoints = _parse_waypoints(body.get("waypoints"))
     else:
         try:
             px = float(request.form["pump_x"]); py = float(request.form["pump_y"])
@@ -3783,7 +5077,11 @@ def remote30_system_extract():
         except (KeyError, TypeError, ValueError) as exc:
             return jsonify({"ok": False, "message": f"pump_x/y, av_x/y 좌표 필요: {exc}"}), 400
         use_legacy = request.form.get("use_legacy_template", "").lower() == "true"
-        snap_tol = float(request.form.get("snap_tolerance_mm", "2500"))
+        try:
+            snap_tol = float(request.form.get("snap_tolerance_mm", "2500"))
+        except (TypeError, ValueError):
+            snap_tol = 2500.0
+        waypoints = _parse_waypoints(request.form.get("waypoints"))
 
     if use_legacy:
         from remote30_prototype import extract_riser_msp_28f
@@ -3791,32 +5089,235 @@ def remote30_system_extract():
             riser = extract_riser_msp_28f((px, py), (ax, ay))
             return jsonify({"ok": True, "riser": riser, "algorithm": "legacy_template"})
         except Exception as exc:  # noqa: BLE001
-            import traceback
-            return jsonify({"ok": False, "message": str(exc)[:300],
-                            "traceback": traceback.format_exc()[-1500:]}), 500
+            return _err500(exc)
 
     # v1 — DXF 기반 path 추출 (DXF 파일 필수)
     try:
-        dxf_path = _save_upload("system_dxf_file", {".dxf"}, required=True)
+        dxf_path = _save_upload("system_dxf_file", {".dxf", ".dwg"}, required=True)
     except ValueError as exc:
         return jsonify({"ok": False,
                         "message": f"DXF 파일 필요 (v1 알고리즘). legacy 사용하려면 use_legacy_template=true. ({exc})"}), 400
 
+    # 선택: 주석 도면 (관경·층 라벨 TEXT 만 끌어와 결합).
+    # 깨끗한 배관망 파일은 geometry 만 (TEXT 0) 갖고, 풀 도면은 annotation 을 갖되
+    # geometry 가 파편화돼 있어 둘을 합친다 — geometry 는 primary, TEXT 는 annotation.
+    anno_path = None
+    try:
+        anno_path = _save_upload("system_annotation_dxf_file", {".dxf", ".dwg"}, required=False)
+    except ValueError:
+        anno_path = None
+
     from remote30_prototype import parse_dxf_for_view, extract_system_path
     try:
-        parsed = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
-        riser = extract_system_path(parsed["entities"], (px, py), (ax, ay),
-                                    snap_tolerance_mm=snap_tol)
+        entities = _load_cached_view_entities(dxf_path)
+        if entities is None:
+            entities = parse_dxf_for_view(dxf_path, include_hidden_layers=True)["entities"]
+        if anno_path is not None:
+            anno_ents = _load_cached_view_entities(anno_path)
+            if anno_ents is None:
+                anno_ents = parse_dxf_for_view(anno_path, include_hidden_layers=True)["entities"]
+            anno_text = [e for e in anno_ents if e.get("t") == "T"]
+            entities = entities + anno_text
+        riser = extract_system_path(entities, (px, py), (ax, ay),
+                                    snap_tolerance_mm=snap_tol,
+                                    waypoints=waypoints or None)
         return jsonify({"ok": True, "riser": riser, "algorithm": "dxf_path_v1"})
     except ValueError as exc:
         # 사용자 입력 오류 (snap 실패 / disconnected). 상태코드 200 + suggest_legacy 표시.
         return jsonify({"ok": False, "message": str(exc),
                         "algorithm": "dxf_path_v1", "suggest_legacy": True}), 200
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:],
-                        "algorithm": "dxf_path_v1"}), 500
+        return _err500(exc, algorithm="dxf_path_v1")
+
+
+@app.post("/api/remote30/system/connection_review")
+def remote30_system_connection_review():
+    """연결복원 검수 오버레이 — 휴리스틱 × ML 합의 등급(A/CONFLICT/B/C).
+
+    같은 계통도 DXF 를 받아 추출 계산망은 건드리지 않고(advisory), 복원 연결 후보를
+    신뢰등급으로 분류해 좌표 JSON 으로 반환한다(프론트 점선 오버레이용).
+
+      · A        : 휴리스틱∧ML 같은 끝단·같은 위치 → 고신뢰
+      · CONFLICT : 둘 다 그 끝단을 잇지만 목표 다름 → 최우선 검수
+      · B        : 휴리스틱 단독(거리 bridge, ML 침묵)
+      · C        : ML 단독(T분기 포함, 휴리스틱이 못 만드는 연결)
+
+    Multipart form:
+        system_dxf_file — 계통도 .dxf/.dwg (필수)
+        ml_cut          — ML top-1 채택 임계 (기본 0.45)
+        mode            — 모델 코퍼스 (remote/all/allt, 기본 allt)
+    """
+    try:
+        dxf_path = _save_upload("system_dxf_file", {".dxf", ".dwg"}, required=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": f"DXF 파일 필요. ({exc})"}), 400
+
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        raw_cut, mode = body.get("ml_cut"), body.get("mode", "allt")
+    else:
+        raw_cut, mode = request.form.get("ml_cut"), request.form.get("mode", "allt")
+    try:
+        ml_cut = float(raw_cut) if raw_cut is not None else 0.45
+    except (TypeError, ValueError):
+        ml_cut = 0.45
+    if mode not in ("remote", "all", "allt"):
+        mode = "allt"
+
+    import sys as _sys
+    from pathlib import Path as _Path
+    _cal = str((_Path(__file__).resolve().parent / "calibration"))
+    if _cal not in _sys.path:
+        _sys.path.insert(0, _cal)
+    import linkpred_integrate as li
+    from remote30_prototype import parse_dxf_for_view
+
+    pair = li.load_model(mode)
+    if pair is None:
+        return jsonify({"ok": False,
+                        "message": f"연결복원 모델 없음(mode={mode}). "
+                                   f"linkpred_train_v2.py {mode} 먼저 실행 필요."}), 503
+    model, feats = pair
+    try:
+        entities = _load_cached_view_entities(dxf_path)
+        if entities is None:
+            entities = parse_dxf_for_view(dxf_path, include_hidden_layers=True)["entities"]
+        res = li.reconcile_entities(entities, model, feats, ml_cut=ml_cut)
+        payload = li.serialize_result(res)
+        payload["mode"] = mode
+        payload["ml_cut"] = ml_cut
+        return jsonify(payload)
+    except Exception as exc:  # noqa: BLE001
+        return _err500(exc)
+
+
+@app.post("/api/remote30/system/clean_network")
+def remote30_system_clean_network():
+    """임시 stopgap — 깨끗한(손작도) 배관망 DXF 전체를 그대로 길이와 함께 추출.
+
+    풀 계통도가 조각나 강제 bridge 로 경로가 튀는 문제를 우회. 펌프/AV 클릭 없이
+    파일에 그려진 단일 연결망을 그대로 pipe + 길이로 띄운다.
+
+    Form/JSON (모두 선택):
+        scale_mm_per_unit — 도면 1단위 = 실제 mm (기본 1.0, 용지 스케일이면 작게 나옴).
+    파일 경로: env REMOTE30_CLEAN_SYSTEM_DXF 우선, 없으면 프로젝트 루트
+        계통도_LH_306_배관망추출.dxf.
+    """
+    scale = 1.0
+    raw_scale = None
+    if request.is_json:
+        raw_scale = (request.get_json(silent=True) or {}).get("scale_mm_per_unit")
+    else:
+        raw_scale = request.form.get("scale_mm_per_unit")
+    try:
+        if raw_scale is not None:
+            scale = float(raw_scale)
+    except (TypeError, ValueError):
+        scale = 1.0
+
+    clean_path = os.environ.get("REMOTE30_CLEAN_SYSTEM_DXF")
+    clean_file = Path(clean_path) if clean_path else (BASE_DIR / "계통도_LH_306_배관망추출.dxf")
+    if not clean_file.is_file():
+        return jsonify({"ok": False,
+                        "message": f"깨끗한 배관망 파일 없음: {clean_file}. "
+                                   f"REMOTE30_CLEAN_SYSTEM_DXF 로 경로 지정 가능."}), 200
+
+    from remote30_prototype import extract_clean_system_network
+    try:
+        riser = extract_clean_system_network(clean_file, scale_mm_per_unit=scale)
+        return jsonify({"ok": True, "riser": riser, "algorithm": "clean_network"})
+    except Exception as exc:  # noqa: BLE001
+        return _err500(exc, algorithm="clean_network")
+
+
+@app.post("/api/remote30/machineroom/parse")
+def remote30_machineroom_parse():
+    """기계실 모드용 DXF 파싱 — 캔버스 표시용 (system/parse 와 동형)."""
+    try:
+        dxf_path = _save_upload("machineroom_dxf_file", {".dxf", ".dwg"}, required=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    from remote30_prototype import parse_dxf_for_view
+    try:
+        result = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
+    except Exception as exc:  # noqa: BLE001
+        return _err500(exc)
+    result["ok"] = True
+    result["filename"] = dxf_path.name
+    return jsonify(result)
+
+
+@app.post("/api/remote30/machineroom/extract")
+def remote30_machineroom_extract():
+    """기계실(옥상수조) 경로 추출 — 탱크(수원) → 입상관 연결점 2점 클릭.
+
+    Multipart form (또는 JSON):
+        machineroom_dxf_file   — 기계실 .dxf (필수)
+        source_x, source_y     — 탱크 토출구(수원) 좌표 (mm, 필수)
+        conn_x,   conn_y       — 입상관 연결점 좌표 (mm, 필수)
+        snap_tolerance_mm      — 클릭 ↔ 그래프 노드 허용 거리 (기본 3000)
+
+    동작: 계통도 추출(extract_system_path)과 동형 — DXF LINE 으로 그래프 빌드 →
+        탱크/연결점 클릭점을 가장 가까운 노드에 snap → Dijkstra 경로 → 기계실 dict.
+        결과는 combined/build 의 machine_room 입력으로 전달.
+    """
+    sx = sy = cx = cy = None
+    snap_tol = 3000.0
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        try:
+            sx = float(body["source_x"]); sy = float(body["source_y"])
+            cx = float(body["conn_x"]);   cy = float(body["conn_y"])
+        except (KeyError, TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "message": f"source_x/y, conn_x/y 좌표 필요: {exc}"}), 400
+        try:
+            snap_tol = float(body.get("snap_tolerance_mm", 3000.0))
+        except (TypeError, ValueError):
+            snap_tol = 3000.0
+    else:
+        try:
+            sx = float(request.form["source_x"]); sy = float(request.form["source_y"])
+            cx = float(request.form["conn_x"]);   cy = float(request.form["conn_y"])
+        except (KeyError, TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "message": f"source_x/y, conn_x/y 좌표 필요: {exc}"}), 400
+        try:
+            snap_tol = float(request.form.get("snap_tolerance_mm", "3000"))
+        except (TypeError, ValueError):
+            snap_tol = 3000.0
+
+    # 사용자가 지정한 배관 레이어 — 다계통(PIPE/PIPE_MAIN/PIPE_SUB/소화수관…) 도면에서
+    # '어떤 레이어가 이 기계실 배관인가'를 명시. 없으면 자동(SP 레이어→키워드) 추론.
+    pipe_layers = None
+    _pl_raw = (request.get_json(silent=True) or {}).get("pipe_layers") if request.is_json \
+        else request.form.get("pipe_layers", "")
+    if _pl_raw:
+        try:
+            _pl = json.loads(_pl_raw) if isinstance(_pl_raw, str) else _pl_raw
+            if isinstance(_pl, list):
+                pipe_layers = {str(x) for x in _pl if str(x).strip()} or None
+        except (json.JSONDecodeError, TypeError):
+            pipe_layers = None
+
+    try:
+        dxf_path = _save_upload("machineroom_dxf_file", {".dxf", ".dwg"}, required=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": f"기계실 DXF 파일 필요: {exc}"}), 400
+
+    from remote30_prototype import parse_dxf_for_view, extract_machine_room_path
+    try:
+        entities = _load_cached_view_entities(dxf_path)
+        if entities is None:
+            entities = parse_dxf_for_view(dxf_path, include_hidden_layers=True)["entities"]
+        mr = extract_machine_room_path(entities, (sx, sy), (cx, cy),
+                                       layer_filter=pipe_layers,
+                                       snap_tolerance_mm=snap_tol)
+        return jsonify({"ok": True, "machine_room": mr, "algorithm": "machineroom_path_v1"})
+    except ValueError as exc:
+        # 사용자 입력 오류 (snap 실패 / disconnected) — 상태코드 200.
+        return jsonify({"ok": False, "message": str(exc),
+                        "algorithm": "machineroom_path_v1"}), 200
+    except Exception as exc:  # noqa: BLE001
+        return _err500(exc, algorithm="machineroom_path_v1")
 
 
 @app.post("/api/remote30/overall/parse-system-diagram")
@@ -3833,7 +5334,7 @@ def remote30_overall_parse_system_diagram():
     """
     from remote30_full_network import parse_system_diagram_dxf
     try:
-        dxf_path = _save_upload("system_diagram_file", {".dxf"}, required=True)
+        dxf_path = _save_upload("system_diagram_file", {".dxf", ".dwg"}, required=True)
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
     default_h = float(request.form.get("default_height_m", "2.9") or "2.9")
@@ -3843,9 +5344,7 @@ def remote30_overall_parse_system_diagram():
                                             default_height_m=default_h,
                                             roof_height_m=roof_h)
     except Exception as exc:  # noqa: BLE001
-        import traceback
-        return jsonify({"ok": False, "message": str(exc)[:300],
-                        "traceback": traceback.format_exc()[-1500:]}), 500
+        return _err500(exc)
     return jsonify({
         "ok": True,
         "building_name": profile.building_name,
@@ -3860,17 +5359,7 @@ def remote30_overall_parse_system_diagram():
 
 @app.get("/api/remote30/overall/result/<job_id>/<path:filename>")
 def remote30_overall_result(job_id: str, filename: str):
-    safe_id = secure_filename(job_id)
-    if not safe_id or safe_id != job_id:
-        return "잘못된 job_id", 400
-    target = OVERALL_OUTPUT_DIR / safe_id / filename
-    try:
-        target.resolve().relative_to(OVERALL_OUTPUT_DIR.resolve())
-    except ValueError:
-        return "잘못된 경로", 400
-    if not target.is_file():
-        return "결과 파일 없음", 404
-    return send_file(target, as_attachment=True)
+    return _serve_run_file(OVERALL_OUTPUT_DIR, job_id, filename)
 
 
 @app.post("/api/remote30/gnn/run")
@@ -3887,7 +5376,7 @@ def remote30_gnn_run():
     import subprocess
 
     try:
-        dxf_path = _save_upload("dxf_file", {".dxf"}, required=True)
+        dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
     if dxf_path is None:
@@ -4044,14 +5533,98 @@ def remote30_gnn_result(run_id: str, filename: str):
     return send_file(target, as_attachment=True)
 
 
+def _inspect_cache_paths(dxf_path: Path):
+    """도면 내용 해시 기반 inspect 렌더 캐시 경로 → (entities_gz, meta_json).
+
+    동일 도면 재업로드(=내용 해시 일치)면 렌더 결과를 그대로 스트리밍하기 위함.
+    해시 실패 시 (None, None) — 캐시 비활성으로 동작.
+    """
+    try:
+        h = hashlib.sha256()
+        with open(dxf_path, "rb") as _f:
+            for _blk in iter(lambda: _f.read(1024 * 1024), b""):
+                h.update(_blk)
+        content_hash = h.hexdigest()
+    except Exception:
+        content_hash = ""
+    if not content_hash:
+        return None, None
+    cache_key = f"{INSPECT_CACHE_VERSION}_{content_hash}"
+    return (INSPECT_CACHE_DIR / f"{cache_key}.entities.ndjson.gz",
+            INSPECT_CACHE_DIR / f"{cache_key}.meta.json")
+
+
+def _inspect_layer_visibility(doc):
+    """DXF 레이어 가시성 수집 → (doc_layer_info, hidden_layers).
+
+    hidden_layers = CAD 가 화면에 안 그리는 레이어(off/frozen/color<0). plot=0(비출력)은
+    화면엔 그대로 보이므로(내진·치수·배치도 등) hidden 에 넣지 않고 no_plot 으로만 참고 보관.
+    """
+    doc_layer_info: dict[str, dict] = {}
+    hidden_layers: set[str] = set()
+    try:
+        for ly in doc.layers:
+            try:
+                color = int(ly.dxf.color)
+            except Exception:
+                color = 7
+            name = str(ly.dxf.name)
+            is_off = bool(ly.is_off())
+            is_frozen = bool(ly.is_frozen())
+            try:
+                no_plot = int(getattr(ly.dxf, "plot", 1)) == 0
+            except Exception:
+                no_plot = False
+            doc_layer_info[name] = {
+                "is_off": is_off,
+                "is_frozen": is_frozen,
+                "is_locked": bool(ly.is_locked()),
+                "color": color,
+                "no_plot": no_plot,
+            }
+            if is_off or is_frozen or color < 0:
+                hidden_layers.add(name)
+    except Exception:
+        pass
+    return doc_layer_info, hidden_layers
+
+
 @app.post("/api/remote30/inspect")
 def remote30_inspect():
     """DXF 업로드 → 모든 entity JSON + 레이어 통계 + 카테고리 자동 추천."""
-    import math as _math
     try:
-        dxf_path = _save_upload("dxf_file", {".dxf"}, required=True)
+        dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
+
+    dxf_name = dxf_path.name
+
+    # ── 바이너리 캐시 조회 — 동일 도면 재업로드면 렌더 결과를 그대로 스트리밍.
+    cache_ent_path, cache_meta_path = _inspect_cache_paths(dxf_path)
+
+    if cache_ent_path and cache_ent_path.exists() and cache_meta_path.exists():
+        try:
+            meta = json.loads(cache_meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            meta = None
+        if meta is not None:
+            def _stream_cached():
+                with gzip.open(cache_ent_path, "rt", encoding="utf-8") as gz:
+                    for line in gz:
+                        if line:
+                            yield line
+                yield json.dumps({
+                    "type": "result",
+                    "ok": True,
+                    "dxf_filename": dxf_name,
+                    "dxf_token": dxf_name,
+                    "bbox": meta.get("bbox"),
+                    "layers": meta.get("layers", []),
+                    "counts": meta.get("counts", {}),
+                    "dropped_types": meta.get("dropped_types", {}),
+                    "cached": True,
+                }, ensure_ascii=False) + "\n"
+            return Response(_stream_cached(), mimetype="application/x-ndjson")
 
     try:
         import ezdxf
@@ -4065,28 +5638,8 @@ def remote30_inspect():
     except Exception as exc:
         return jsonify({"ok": False, "message": f"DXF 파싱 실패: {exc}"}), 500
 
-    # DXF 레이어 테이블에서 가시성 정보 추출 (off/frozen/color<0 인 레이어는 CAD 에서 안 보임)
-    doc_layer_info: dict[str, dict] = {}
-    hidden_layers: set[str] = set()  # CAD 가 화면에 안 그리는 레이어들
-    try:
-        for ly in doc.layers:
-            try:
-                color = int(ly.dxf.color)
-            except Exception:
-                color = 7
-            name = str(ly.dxf.name)
-            is_off = bool(ly.is_off())
-            is_frozen = bool(ly.is_frozen())
-            doc_layer_info[name] = {
-                "is_off": is_off,
-                "is_frozen": is_frozen,
-                "is_locked": bool(ly.is_locked()),
-                "color": color,
-            }
-            if is_off or is_frozen or color < 0:
-                hidden_layers.add(name)
-    except Exception:
-        pass
+    # DXF 레이어 가시성 (off/frozen/color<0 만 hidden, plot=0 은 화면엔 보이므로 렌더).
+    doc_layer_info, hidden_layers = _inspect_layer_visibility(doc)
 
     entities = []
     bbox = [float("inf"), float("inf"), float("-inf"), float("-inf")]
@@ -4103,6 +5656,31 @@ def remote30_inspect():
 
     dropped_types: dict[str, int] = {}
     MAX_INSERT_DEPTH = 10  # cycle 방지용 — 정상 도면은 3~4 단계면 충분
+
+    # 레이어 카테고리 사전 계산(캐시) — 배경(건축/제외) 레이어의 대형 블록
+    # (XREF 평면도 등 수십만 entity)은 배관 추출과 무관하므로 폭발(explode)을
+    # 건너뛰어 미리보기 파싱을 가속한다. 대형 도면에서 가장 큰 병목.
+    _cat_settings = Remote30Settings()
+    _cat_cache: dict[str, str] = {}
+
+    def _layer_category(name: str) -> str:
+        cached = _cat_cache.get(name)
+        if cached is not None:
+            return cached
+        if layer_match(name, _cat_settings.exclude_layer_keywords):
+            cat = "EXCLUDE"
+        elif layer_match(name, _cat_settings.arch_layer_keywords):
+            cat = "ARCH"
+        elif layer_match(name, _cat_settings.head_layer_keywords):
+            cat = "HEAD"
+        elif layer_match(name, _cat_settings.pipe_layer_keywords):
+            cat = "PIPE"
+        elif layer_match(name, _cat_settings.text_layer_keywords):
+            cat = "TEXT"
+        else:
+            cat = "OTHER"
+        _cat_cache[name] = cat
+        return cat
 
     # ezdxf 의 virtual_entities() 가 xscale=-1 mirror INSERT 의 자식 좌표를
     # 잘못 계산하는 버그가 있어, AutoCAD 표준 매트릭스를 직접 빌드해 적용한다.
@@ -4145,6 +5723,9 @@ def remote30_inspect():
         v = matrix.transform(Vec3(float(x), float(y), 0.0))
         return float(v.x), float(v.y)
 
+    # ARC/CIRCLE 반지름 스케일 추정은 remote30_prototype 의 단일 헬퍼를 공유한다.
+    from remote30_prototype import _uniform_scale
+
     def _render_entity(e, *, matrix=None, layer_override: str | None = None, depth: int = 0) -> None:
         """Convert one ezdxf entity to canvas dict(s) and append to entities[].
 
@@ -4175,28 +5756,14 @@ def remote30_inspect():
                 _upd(x1, y1); _upd(x2, y2)
             elif etype == "ARC":
                 cx, cy = _t(matrix, e.dxf.center.x, e.dxf.center.y)
-                # scale factor for radius (uniform scale assumption — fine for sprinkler heads)
-                if matrix is not None:
-                    # estimate scale by transforming a unit X vector then measuring its length
-                    p0 = matrix.transform(Vec3(0.0, 0.0, 0.0))
-                    p1 = matrix.transform(Vec3(1.0, 0.0, 0.0))
-                    sf = math.hypot(p1.x - p0.x, p1.y - p0.y)
-                else:
-                    sf = 1.0
-                r = float(e.dxf.radius) * sf
+                r = float(e.dxf.radius) * _uniform_scale(matrix)
                 sa = float(e.dxf.start_angle)
                 ea = float(e.dxf.end_angle)
                 entities.append({"t": "A", "l": layer, "c": [cx, cy], "r": r, "a": [sa, ea]})
                 _upd(cx - r, cy - r); _upd(cx + r, cy + r)
             elif etype == "CIRCLE":
                 cx, cy = _t(matrix, e.dxf.center.x, e.dxf.center.y)
-                if matrix is not None:
-                    p0 = matrix.transform(Vec3(0.0, 0.0, 0.0))
-                    p1 = matrix.transform(Vec3(1.0, 0.0, 0.0))
-                    sf = math.hypot(p1.x - p0.x, p1.y - p0.y)
-                else:
-                    sf = 1.0
-                r = float(e.dxf.radius) * sf
+                r = float(e.dxf.radius) * _uniform_scale(matrix)
                 entities.append({"t": "C", "l": layer, "c": [cx, cy], "r": r})
                 _upd(cx - r, cy - r); _upd(cx + r, cy + r)
             elif etype == "LWPOLYLINE":
@@ -4217,6 +5784,9 @@ def remote30_inspect():
                 if depth == 0:
                     entities.append({"t": "I", "l": layer, "p": [ix_w, iy_w], "n": str(e.dxf.name)})
                 _upd(ix_w, iy_w)
+                # ARCH/EXCLUDE 레이어 블록도 폭발해 건축 배경(건물 외곽선 등)을
+                # 실제 CAD 도면과 동일하게 렌더한다. (이전엔 속도 위해 생략했으나
+                # 화면 누락 문제로 복원) 마커(다이아몬드)도 유지.
                 # AutoCAD 표준 INSERT 매트릭스 빌드 + 부모 매트릭스와 결합
                 if depth >= MAX_INSERT_DEPTH:
                     dropped_types["INSERT(too deep)"] = dropped_types.get("INSERT(too deep)", 0) + 1
@@ -4350,67 +5920,156 @@ def remote30_inspect():
         except Exception:
             dropped_types[etype] = dropped_types.get(etype, 0) + 1
 
+    # ── 점진적 렌더링 (NDJSON 스트리밍) ─────────────────────────────────
+    # 배관/헤드 등 전경(foreground) top-level entity 를 먼저 렌더·전송해 사용자가
+    # 즉시 작업을 시작하게 하고, 건축 배경(ARCH/EXCLUDE)은 이어서 스트리밍으로 채운다.
+    # 화면 정보는 하나도 누락하지 않으며 첫 페인트까지의 체감 시간만 줄인다.
+    foreground_top, background_top = [], []
     for e in msp:
-        _render_entity(e)
-
-    # 레이어 통계
-    layer_counts = {}
-    layer_type_counts = {}
-    for ent in entities:
-        l = ent["l"]
-        layer_counts[l] = layer_counts.get(l, 0) + 1
-        if l not in layer_type_counts:
-            layer_type_counts[l] = {}
-        layer_type_counts[l][ent["t"]] = layer_type_counts[l].get(ent["t"], 0) + 1
-
-    # 카테고리 자동 추천
-    s = Remote30Settings()
-    layer_list = []
-    for name in sorted(layer_counts.keys()):
-        if layer_match(name, s.exclude_layer_keywords):
-            cat = "EXCLUDE"
-        elif layer_match(name, s.arch_layer_keywords):
-            cat = "ARCH"
-        elif layer_match(name, s.head_layer_keywords):
-            cat = "HEAD"
-        elif layer_match(name, s.pipe_layer_keywords):
-            cat = "PIPE"
-        elif layer_match(name, s.text_layer_keywords):
-            cat = "TEXT"
+        try:
+            _lyr = e.dxf.layer if hasattr(e.dxf, "layer") else ""
+        except Exception:
+            _lyr = ""
+        if _layer_category(str(_lyr)) in ("ARCH", "EXCLUDE"):
+            background_top.append(e)
         else:
-            cat = "OTHER"
-        # DXF 레이어 테이블 가시성 — CAD 에서 off/frozen 이면 기본 OFF 로 표시
-        info = doc_layer_info.get(name, {})
-        is_off = bool(info.get("is_off", False))
-        is_frozen = bool(info.get("is_frozen", False))
-        color = int(info.get("color", 7))
-        visible = (not is_off) and (not is_frozen) and (color >= 0)
-        layer_list.append({
-            "name": name,
-            "count": layer_counts[name],
-            "types": layer_type_counts.get(name, {}),
-            "auto_category": cat,
-            "is_off": is_off,
-            "is_frozen": is_frozen,
-            "color": color,
-            "visible": visible,
-        })
+            foreground_top.append(e)
 
-    if bbox[0] == float("inf"):
-        bbox = [0.0, 0.0, 1.0, 1.0]
-    return jsonify({
-        "ok": True,
-        "dxf_filename": dxf_path.name,
-        "dxf_token": dxf_path.name,  # extract 재호출 시 DXF 재업로드 생략 토큰
-        "bbox": {"x_min": bbox[0], "y_min": bbox[1], "x_max": bbox[2], "y_max": bbox[3]},
-        "layers": layer_list,
-        "entities": entities,
-        "counts": {
-            "total_entities": len(entities),
-            "layers": len(layer_counts),
-        },
-        "dropped_types": dropped_types,
-    })
+    FLUSH_N = 20000
+    layer_counts: dict[str, int] = {}
+    layer_type_counts: dict[str, dict] = {}
+    total_count = [0]
+
+    def _bbox_obj():
+        if bbox[0] == float("inf"):
+            return {"x_min": 0.0, "y_min": 0.0, "x_max": 1.0, "y_max": 1.0}
+        return {"x_min": bbox[0], "y_min": bbox[1], "x_max": bbox[2], "y_max": bbox[3]}
+
+    def _emit(phase: str, with_bbox: bool):
+        """현재 entities 버퍼를 FLUSH_N 단위로 yield 하며 레이어 통계 누적 후 비운다."""
+        n = len(entities)
+        i = 0
+        while i < n:
+            chunk = entities[i:i + FLUSH_N]
+            for ent in chunk:
+                l = ent["l"]
+                layer_counts[l] = layer_counts.get(l, 0) + 1
+                tc = layer_type_counts.setdefault(l, {})
+                tc[ent["t"]] = tc.get(ent["t"], 0) + 1
+            total_count[0] += len(chunk)
+            msg = {"type": "progress", "phase": phase, "entities": chunk}
+            if with_bbox and i == 0:
+                msg["bbox"] = _bbox_obj()
+            yield json.dumps(msg, ensure_ascii=False) + "\n"
+            i += FLUSH_N
+        del entities[:]
+
+    def _progress_lines():
+        # 1) 전경 — 점진적 flush. 첫 chunk 은 빠른 첫 페인트를 위해 작게(FIRST_FLUSH_N),
+        #    이후는 FLUSH_N 단위. 이전엔 전경 전부 렌더 후 flush 라 cold 파싱 시
+        #    첫 byte 까지 100초+ 무 페인트(체감 무한 로딩) 였다. bbox 는 누적되므로
+        #    매 flush 의 첫 chunk 가 "지금까지" 범위를 실어 보낸다(클라가 점진 fit).
+        FIRST_FLUSH_N = 2000
+        fg_flushed = False
+        for e in foreground_top:
+            _render_entity(e)
+            thresh = FIRST_FLUSH_N if not fg_flushed else FLUSH_N
+            if len(entities) >= thresh:
+                yield from _emit("foreground", with_bbox=True)
+                fg_flushed = True
+        if entities:
+            yield from _emit("foreground", with_bbox=True)
+        # 2) 배경 — top-level entity 마다 렌더, 버퍼가 차면 chunk 전송 (점진적)
+        for e in background_top:
+            _render_entity(e)
+            if len(entities) >= FLUSH_N:
+                yield from _emit("background", with_bbox=False)
+        if entities:
+            yield from _emit("background", with_bbox=False)
+
+    def _build_layer_list():
+        layer_list = []
+        for name in sorted(layer_counts.keys()):
+            info = doc_layer_info.get(name, {})
+            is_off = bool(info.get("is_off", False))
+            is_frozen = bool(info.get("is_frozen", False))
+            color = int(info.get("color", 7))
+            layer_list.append({
+                "name": name,
+                "count": layer_counts[name],
+                "types": layer_type_counts.get(name, {}),
+                "auto_category": _layer_category(name),
+                "is_off": is_off,
+                "is_frozen": is_frozen,
+                "color": color,
+                "visible": (not is_off) and (not is_frozen) and (color >= 0),
+            })
+        return layer_list
+
+    def _stream():
+        # 캐시 미스 → 렌더하며 NDJSON 스트리밍하고, 동시에 gzip 캐시에 tee.
+        tmp_ent = None
+        gz_out = None
+        committed = False
+        if cache_ent_path is not None:
+            tmp_ent = cache_ent_path.with_suffix(".tmp")
+            try:
+                gz_out = gzip.open(tmp_ent, "wt", encoding="utf-8")
+            except Exception:
+                gz_out = None
+        try:
+            for line in _progress_lines():
+                if gz_out is not None:
+                    try:
+                        gz_out.write(line)
+                    except Exception:
+                        pass
+                yield line
+            # 최종 result — 레이어 통계 / 전체 bbox / 카운트
+            layer_list = _build_layer_list()
+            bbox_obj = _bbox_obj()
+            counts_obj = {"total_entities": total_count[0], "layers": len(layer_counts)}
+            yield json.dumps({
+                "type": "result",
+                "ok": True,
+                "dxf_filename": dxf_name,
+                "dxf_token": dxf_name,  # extract 재호출 시 DXF 재업로드 생략 토큰
+                "bbox": bbox_obj,
+                "layers": layer_list,
+                "counts": counts_obj,
+                "dropped_types": dropped_types,
+            }, ensure_ascii=False) + "\n"
+            # 스트림 정상 완료 시에만 캐시 commit (부분/중단 시 미저장)
+            if gz_out is not None:
+                gz_out.close()
+                gz_out = None
+                try:
+                    meta = {
+                        "bbox": bbox_obj,
+                        "layers": layer_list,
+                        "counts": counts_obj,
+                        "dropped_types": dropped_types,
+                    }
+                    tmp_meta = cache_meta_path.with_suffix(".tmp")
+                    tmp_meta.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+                    os.replace(tmp_ent, cache_ent_path)
+                    os.replace(tmp_meta, cache_meta_path)
+                    committed = True
+                except Exception:
+                    committed = False
+        finally:
+            if gz_out is not None:
+                try:
+                    gz_out.close()
+                except Exception:
+                    pass
+            if not committed and tmp_ent is not None and tmp_ent.exists():
+                try:
+                    tmp_ent.unlink()
+                except Exception:
+                    pass
+
+    return Response(_stream(), mimetype="application/x-ndjson")
 
 
 @app.post("/api/remote30/extract")
@@ -4426,7 +6085,7 @@ def remote30_extract():
                 dxf_path = candidate
     if dxf_path is None:
         try:
-            dxf_path = _save_upload("dxf_file", {".dxf"}, required=True)
+            dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
         except ValueError as exc:
             return jsonify({"ok": False, "message": str(exc)}), 400
 
@@ -4557,14 +6216,13 @@ def remote30_ml_detect():
                 dxf_path = cand
     if dxf_path is None:
         try:
-            dxf_path = _save_upload("dxf_file", {".dxf"}, required=True)
+            dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
         except ValueError as exc:
             return jsonify({"ok": False, "message": str(exc)}), 400
 
     # 2) DXF parsing → head_detector 호환 entity 포맷
     try:
         import ezdxf
-        from ai_vision import get_cached_ai_vision_extractor
         from sprinkler_remote30_extractor import Remote30Settings, layer_match
     except ImportError as exc:
         return jsonify({"ok": False, "message": f"의존성 누락: {exc}"}), 500
@@ -4737,10 +6395,9 @@ def remote30_ml_detect():
 
         elif method == "layer":
             # DXF ground truth — HEAD layer 의 INSERT/CIRCLE 직접 추출. 가장 정확.
-            doc2 = ezdxf.readfile(str(dxf_path))
-            msp2 = doc2.modelspace()
+            # 위에서 이미 로드한 msp 재사용 (대형 도면 재파싱 30초+ 회피)
             settings2 = Remote30Settings()
-            heads_layer = detect_heads_by_layer_insert(msp=msp2, settings=settings2, layer_match_fn=layer_match)
+            heads_layer = detect_heads_by_layer_insert(msp=msp, settings=settings2, layer_match_fn=layer_match)
             # zone 적용
             if "zone_applied" in counts_meta:
                 zx_min, zy_min, zx_max, zy_max = counts_meta["zone_applied"]
@@ -4750,10 +6407,9 @@ def remote30_ml_detect():
 
         elif method == "layer_yolo":
             # Layer 먼저 (DXF ground truth) → YOLO 로 layer 가 놓친 추가 후보 보강
-            doc2 = ezdxf.readfile(str(dxf_path))
-            msp2 = doc2.modelspace()
+            # 위에서 이미 로드한 msp 재사용 (대형 도면 재파싱 30초+ 회피)
             settings2 = Remote30Settings()
-            heads_layer = detect_heads_by_layer_insert(msp=msp2, settings=settings2, layer_match_fn=layer_match)
+            heads_layer = detect_heads_by_layer_insert(msp=msp, settings=settings2, layer_match_fn=layer_match)
             # zone 적용
             if "zone_applied" in counts_meta:
                 zx_min, zy_min, zx_max, zy_max = counts_meta["zone_applied"]
@@ -4844,7 +6500,7 @@ def remote30_auto_process():
                  → PNG + Excel + SDF + CSV 4종 모두 출력
     """
     try:
-        dxf_path = _save_upload("dxf_file", {".dxf"}, required=True)
+        dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
 
@@ -4953,12 +6609,19 @@ def remote30_sdf_from_tables():
     except Exception as exc:
         return jsonify({"ok": False, "message": f"SDF 생성 오류: {exc}"}), 500
 
-    download_name = payload.get("filename", "remote30_edited.sdf")
+    # ASCII 파일명 정책: PIPENET 은 SDF/SLF 경로·파일명을 CP949(ANSI)로 읽으므로
+    # UTF-8 한글 파일명은 깨진다. 사용자 지정 이름에서 비-ASCII 를 제거(secure_filename)
+    # 하고, 남는 stem 이 없으면 기본값으로 폴백한다. (.sdf 확장자 보장)
+    _safe = secure_filename(str(payload.get("filename") or ""))
+    _stem = Path(_safe).stem
+    if not _stem:
+        _stem = "remote30_edited"
+    download_name = f"{_stem[:76]}.sdf"
     return send_file(
         BytesIO(xml_text.encode("utf-8")),
         mimetype="application/xml",
         as_attachment=True,
-        download_name=str(download_name)[:80] if download_name else "remote30_edited.sdf",
+        download_name=download_name,
     )
 
 

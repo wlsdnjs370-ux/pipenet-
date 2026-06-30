@@ -13,6 +13,14 @@ except Exception:  # pragma: no cover - optional at runtime
 
 try:
     from ultralytics import YOLO
+    # 외부 익명 사용통계(analytics) 전송 차단 — 사내 기밀 격리 환경(LH) 요구사항.
+    # ultralytics 기본값 sync=True 는 익명 통계를 외부로 전송. 영구 비활성화한다.
+    try:
+        from ultralytics import settings as _ul_settings
+        if _ul_settings.get("sync", True):
+            _ul_settings.update({"sync": False})
+    except Exception:  # pragma: no cover
+        pass
 except Exception:  # pragma: no cover - optional at runtime
     YOLO = None
 

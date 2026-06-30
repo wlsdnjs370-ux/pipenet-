@@ -30,7 +30,6 @@ PIPENET-native 후처리 + Pump-fan/Elastomeric-valve 직렬화(Stage D) 를
 from __future__ import annotations
 
 import csv
-import io
 import json
 from dataclasses import dataclass, field
 from enum import Enum
@@ -302,8 +301,7 @@ def _pipe(label: str, in_lbl: str, out_lbl: str, bore_mm: int,
     """라이저 파이프 dict — remote30_prototype.PipeTables.pipes 호환."""
     return {
         "label": label, "in": in_lbl, "out": out_lbl, "type": "KSD 3507",
-        # PIPENET 최소 길이 0.001m floor — round(L, 2) 가 0 으로 깎이면 reject
-        "dia": bore_mm, "length": max(round(length_m, 2), 0.001), "elev": rise_m,
+        "dia": bore_mm, "length": round(length_m, 2), "elev": rise_m,
         "c": c_factor, "status": "Normal", "group": "Unset",
     }
 
@@ -428,8 +426,7 @@ def build_riser_hsp_pump(spec: ZoneSpec, profile: BuildingPressureProfile | None
         _pipe("r7", "5", "10",  125,  1.5,  1.0),
     ]
     pumps = [
-        _pump_fan(str(i + 1), "100" if i == 0 else "100", "1",
-                  library_pump=spec.pump_library_name)
+        _pump_fan(str(i + 1), "100", "1", library_pump=spec.pump_library_name)
         for i in range(max(1, spec.pump_count))
     ]
     return RiserTables(
@@ -524,51 +521,137 @@ class CombinedTables:
     pumps: list[dict] = field(default_factory=list)
     valves: list[dict] = field(default_factory=list)
     meta: list[tuple[str, str]] = field(default_factory=list)
+    # 기계실 전체 평면 배관망 edge (시각화 전용, SDF 미포함). [[x1,y1,x2,y2], ...]
+    machine_room_plan_edges: list[list[float]] = field(default_factory=list)
 
 
 def _layout_riser_as_schematic(
     riser_nodes: list[dict],
-    head_av_xy: tuple[float, float],
+    anchor_xy: tuple[float, float],
     head_yspan: float = 5000.0,
+    descend: bool = False,
 ) -> list[dict]:
     """라이저 노드를 PIPENET schematic 의 수직 막대 형태로 재배치.
 
     실제 계통도 DXF 의 라이저는 수십 m (60km mm) 길이라 헤드망 (5-10m schematic)
     과 통합하면 라이저가 너무 거대해서 그래프가 깨져 보임. PIPENET 답안처럼
-    라이저는 헤드 AV 위로 수직 막대 (5m 정도) 로 배치해 한 화면에 깔끔히 보이게.
+    라이저는 헤드 군집 위로 수직 막대 (5m 정도) 로 배치해 한 화면에 깔끔히 보이게.
 
     Layout:
-        - 모든 노드 X = head_av_xy[0] (수직 막대)
-        - AV (마지막 노드) = head_av_xy 정확히 일치
-        - 펌프 (첫 노드) = (head_av_xy[0], head_av_xy[1] + 라이저 yspan)
+        - 모든 노드 X = anchor_xy[0] (수직 막대)
+        - AV (마지막 노드) = anchor_xy 위치 (= 헤드 군집 가로 중앙 위)
+        - 펌프 (첫 노드) = (anchor_xy[0], anchor_xy[1] + 라이저 yspan)
         - 중간 노드 = 균등 간격으로 사이 배치
 
     Args:
         riser_nodes: 라이저 노드 리스트. 인덱스 0 = 펌프, 마지막 = AV.
-        head_av_xy: 헤드망의 AV 좌표 (정확히 일치 anchor).
+        anchor_xy: 막대 하단(AV) 을 놓을 좌표. 헤드망 source 노드 실좌표를 넘겨
+            AV 를 source 에 정합하면 둘을 잇는 헤드 첫 배관(선언 길이 ~0)이
+            긴 선으로 늘어나지 않음.
         head_yspan: 헤드망 bbox 의 y 범위 — 라이저 막대 길이는 이의 80%.
+        descend: 펌프 가압(B1 펌프실) 모드. True 면 막대를 AV(헤드망) **아래**로
+            내려, 펌프/수원이 화면 최하부에 오도록 한다(물이 B1→위로 가압되는
+            물리 배치). 기본 False = 옥상수조(자연낙차) — 수원이 위.
     """
     n = len(riser_nodes)
     if n < 2:
         return list(riser_nodes)
     riser_yspan = max(2000.0, head_yspan * 0.8)
     step_y = riser_yspan / (n - 1)
-    target_x = float(head_av_xy[0])
-    target_y_av = float(head_av_xy[1])
+    target_x = float(anchor_xy[0])
+    target_y_av = float(anchor_xy[1])
+    # 자연낙차: 수원 위(+). 펌프 가압: 수원 아래(-).
+    y_dir = -1.0 if descend else 1.0
 
     out: list[dict] = []
     for i, node in enumerate(riser_nodes):
-        # i=0: 펌프 (가장 위), i=n-1: AV (가장 아래, head_av 위치)
+        # i=0: 펌프/수원, i=n-1: AV (head_av 위치, 막대 끝점)
         rank_from_av = (n - 1) - i
         out.append({
             **node,
             "x": int(round(target_x)),
-            "y": int(round(target_y_av + rank_from_av * step_y)),
+            "y": int(round(target_y_av + y_dir * rank_from_av * step_y)),
         })
     return out
 
 
-def stitch_riser_and_heads(riser: RiserTables, head_tables: Any) -> CombinedTables:
+def _layout_machine_room_plan(
+    mr_nodes: list[dict],
+    plan_edges: list[list[float]] | None,
+    pump_xy: tuple[float, float],
+    head_yspan: float = 5000.0,
+    below: bool = False,
+) -> tuple[list[dict], list[list[float]]]:
+    """기계실(옥상수조) 전체 평면 배관망을 실제 x, y 형상 그대로 배치 — schematic 금지.
+
+    기계실 DXF 는 평면도(옥상층 소방배관 평면도)라 실제 2D 배관망 형상을 가진다.
+    라이저(계통도)처럼 수직 막대로 모사하면 그 형상이 뭉개지므로, 헤드망(평면도)
+    과 동일하게 실제 x, y 로 보여준다. 수리계산 경로(mr_nodes, m*) 뿐 아니라 전체
+    SP 배관망 edge(plan_edges)까지 **동일 변환**으로 배치해 완전한 평면도로 렌더.
+
+        1. 경로 노드 + 전체 edge 끝점을 합친 bbox 기준 균등 스케일(aspect 보존),
+           헤드 군집과 비슷한 크기로.
+        2. bbox 하단(min y)을 펌프 위쪽(gap)에, 가로 중앙을 펌프 x 에 정렬.
+           → 평면 군집이 라이저 막대 위에 떠 펌프와 brige edge 로 이어져 보임.
+
+    Args:
+        mr_nodes: 수리경로 노드(라벨 m*). 실제 DXF x, y 보유(원점 미변환 raw).
+        plan_edges: 기계실 전체 SP 배관망 edge [[x1,y1,x2,y2], ...] (raw DXF).
+        pump_xy: 펌프 junction(라이저 "1")의 schematic 좌표 — 부착 기준점.
+        head_yspan: 헤드망 y-span — 기계실 평면 크기·gap 산정 기준.
+
+    Returns:
+        (laid_nodes, laid_edges) — 동일 변환 적용된 경로 노드 + 전체망 edge.
+    """
+    pe = plan_edges or []
+    pts: list[tuple[float, float]] = [
+        (float(n.get("x", 0.0)), float(n.get("y", 0.0))) for n in mr_nodes
+    ]
+    for e in pe:
+        pts.append((float(e[0]), float(e[1])))
+        pts.append((float(e[2]), float(e[3])))
+    if not pts:
+        return list(mr_nodes), []
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    x_min, x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)
+    w = x_max - x_min
+    h = y_max - y_min
+    diag = max((w * w + h * h) ** 0.5, 1.0)
+    target = max(2000.0, head_yspan * 0.7)   # 헤드 군집과 비슷한 크기로
+    scale = target / diag
+    cx = (x_min + x_max) / 2.0
+    gap = max(800.0, head_yspan * 0.12)       # 펌프와 기계실 군집 사이 간격
+    px, py = float(pump_xy[0]), float(pump_xy[1])
+
+    def _tf(x: float, y: float) -> tuple[float, float]:
+        # 자연낙차(옥상수조): 펌프 위쪽(+). 펌프 가압(B1): 펌프 아래쪽(-).
+        if below:
+            return ((x - cx) * scale + px, py - gap - (y_max - y) * scale)
+        return ((x - cx) * scale + px, (y - y_min) * scale + py + gap)
+
+    laid_nodes: list[dict] = []
+    for n in mr_nodes:
+        nx, ny = _tf(float(n.get("x", 0.0)), float(n.get("y", 0.0)))
+        laid_nodes.append({**n, "x": int(round(nx)), "y": int(round(ny))})
+    laid_edges: list[list[float]] = []
+    for e in pe:
+        x1, y1 = _tf(float(e[0]), float(e[1]))
+        x2, y2 = _tf(float(e[2]), float(e[3]))
+        laid_edges.append([int(round(x1)), int(round(y1)),
+                           int(round(x2)), int(round(y2))])
+    return laid_nodes, laid_edges
+
+
+def stitch_riser_and_heads(
+    riser: RiserTables,
+    head_tables: Any,
+    machine_room_labels: set[str] | list[str] | None = None,
+    pump_junction_label: str | None = None,
+    machine_room_plan_edges: list[list[float]] | None = None,
+    machine_room_at_bottom: bool = False,
+) -> CombinedTables:
     """라이저 끝점(AV node) ↔ 헤드망 source(=같은 label) 결합 + schematic 좌표 정렬.
 
     Args:
@@ -604,17 +687,53 @@ def stitch_riser_and_heads(riser: RiserTables, head_tables: Any) -> CombinedTabl
     head_ys = [float(nd.get("y", 0.0)) for nd in head_tables.nodes if "y" in nd]
     head_yspan = (max(head_ys) - min(head_ys)) if head_ys else 5000.0
 
-    # 라이저 좌표 schematic 재배치
-    if head_av_node is not None:
+    # 노드를 진짜 라이저(계통도) 와 기계실(평면도) 로 분리.
+    #   - 라이저: 실제 좌표가 수십 m 라 schematic 수직 막대로 재배치.
+    #   - 기계실: 평면도이므로 실제 x, y 형상을 유지(평면 군집). 막대로 뭉개지 않음.
+    mr_set = {str(l) for l in (machine_room_labels or [])}
+    true_riser_nodes = [n for n in riser.nodes if str(n["label"]) not in mr_set]
+    mr_nodes = [n for n in riser.nodes if str(n["label"]) in mr_set]
+
+    # 라이저 좌표 schematic 재배치 — AV(막대 하단)를 헤드망 source 노드 실좌표에 snap.
+    #   AV 노드는 (1) 라이저 막대 하단이자 (2) 헤드망 첫 메인(파이프 av_lbl)의 source 로
+    #   같은 논리 분기점이다. 막대를 헤드 군집 중앙 위에 띄우면 AV 가 헤드 source 위치에서
+    #   떨어져, 그 둘을 잇는 헤드 첫 배관(선언 길이 ~0)이 두 좌표계를 가로지르는 긴 선으로
+    #   그려졌다. → anchor 를 head_av_node 좌표로 잡아 AV 를 source 에 정합, 연결선을 0 으로.
+    if head_av_node is not None and head_xs and head_ys:
         try:
-            head_av_xy = (float(head_av_node["x"]), float(head_av_node["y"]))
+            anchor_xy = (float(head_av_node["x"]), float(head_av_node["y"]))
             translated_riser_nodes = _layout_riser_as_schematic(
-                list(riser.nodes), head_av_xy, head_yspan=head_yspan,
+                true_riser_nodes, anchor_xy, head_yspan=head_yspan,
+                descend=machine_room_at_bottom,
             )
         except (KeyError, TypeError, ValueError):
-            translated_riser_nodes = list(riser.nodes)
+            translated_riser_nodes = list(true_riser_nodes)
     else:
-        translated_riser_nodes = list(riser.nodes)
+        translated_riser_nodes = list(true_riser_nodes)
+
+    # 기계실 평면 배치 — 펌프 junction("1")의 schematic 좌표에 부착, 실제 x,y 형상 유지.
+    #   수리경로 노드(mr_nodes) + 전체 SP 배관망 edge(plan_edges)를 **동일 변환**으로
+    #   배치해 완전한 평면도로 렌더. plan_laid 는 시각화 전용(SDF 미포함).
+    plan_laid: list[list[float]] = []
+    if mr_nodes and pump_junction_label is not None:
+        pump_node = next((n for n in translated_riser_nodes
+                          if str(n["label"]) == str(pump_junction_label)), None)
+        if pump_node is not None:
+            try:
+                pump_xy = (float(pump_node["x"]), float(pump_node["y"]))
+                mr_laid, plan_laid = _layout_machine_room_plan(
+                    mr_nodes, machine_room_plan_edges, pump_xy, head_yspan=head_yspan,
+                    below=machine_room_at_bottom,
+                )
+            except (KeyError, TypeError, ValueError):
+                mr_laid = list(mr_nodes)
+                plan_laid = []
+        else:
+            mr_laid = list(mr_nodes)
+    else:
+        mr_laid = list(mr_nodes)
+
+    translated_riser_nodes = translated_riser_nodes + mr_laid
 
     # 헤드망 노드 10 의 elevation → 라이저 AV elevation 으로 일치
     head_nodes_filtered = []
@@ -624,21 +743,394 @@ def stitch_riser_and_heads(riser: RiserTables, head_tables: Any) -> CombinedTabl
             continue
         head_nodes_filtered.append(n)
 
+    # 파이프 라벨 전역 유일화 — 계통도·평면도·기계실이 전부 r1.. 컨벤션을 쓰므로
+    # 합치면 라벨이 충돌한다. parse_sdf 의 plabel_to_pid 는 라벨 문자열로 keying 해
+    # 같은 라벨 두 파이프를 한 K-solver pid 로 접어버려 KFP 토폴로지가 붕괴된다.
+    # → 충돌하는 두 번째 이후 항목만 개명(원본 dict 불변, 사본 생성).
+    combined_pipes: list[dict] = []
+    seen_pipe_labels: set[str] = set()
+    for p in (list(riser.pipes) + list(head_tables.pipes)):
+        lbl = str(p.get("label", ""))
+        if lbl and lbl not in seen_pipe_labels:
+            seen_pipe_labels.add(lbl)
+            combined_pipes.append(p)
+            continue
+        base = lbl or "p"
+        k = 2
+        new_lbl = f"{base}_{k}"
+        while new_lbl in seen_pipe_labels:
+            k += 1
+            new_lbl = f"{base}_{k}"
+        seen_pipe_labels.add(new_lbl)
+        combined_pipes.append({**p, "label": new_lbl})
+
+    # ── 표준 소화배관 밸브(Fitting) 주입.
+    # 라이저 빌더는 fitting 을 생성하지 않아(통합 fitting 은 head_tables.fittings 만),
+    # 정답 SDF 의 펌프 토출부 개폐/체크밸브·알람밸브 1차측 버터플라이가 통째로 빠진다.
+    # 화재안전기준 표준 배치를 결정론적으로 부착한다:
+    #   · 수원/펌프 토출 배관(Input 경계 노드 직결): gate + check
+    #   · 알람밸브 배관(A/V Equipment 보유): butterfly
+    # (정답 2. Pipenet_hand.sdf 의 pipe"1"=gate+check, pipe"9"[A/V]=butterfly 와 정합.)
+    combined_fittings = list(head_tables.fittings)
+
+    def _pipe_by_label(lbl: str) -> dict | None:
+        return next((p for p in combined_pipes if str(p["label"]) == str(lbl)), None)
+
+    def _add_valve(pipe: dict, vtype: str) -> None:
+        combined_fittings.append({
+            "pipe": pipe["label"], "in": pipe["in"], "out": pipe["out"],
+            "type": vtype, "count": "1",
+        })
+
+    av_eq = next((e for e in head_tables.equipment
+                  if str(e.get("desc", "")).upper() == "A/V" and e.get("pipe")), None)
+    if av_eq is not None:
+        av_pipe = _pipe_by_label(av_eq["pipe"]) or next(
+            (p for p in combined_pipes
+             if str(p["in"]) == str(av_eq.get("in")) and str(p["out"]) == str(av_eq.get("out"))),
+            None)
+        if av_pipe is not None:
+            _add_valve(av_pipe, "butterfly")
+
+    input_label = next((str(n["label"]) for n in (translated_riser_nodes + head_nodes_filtered)
+                        if str(n.get("io_node", "")).lower() == "input"), None)
+    if input_label is not None:
+        src_pipe = next((p for p in combined_pipes
+                         if str(p["in"]) == input_label or str(p["out"]) == input_label), None)
+        if src_pipe is not None:
+            _add_valve(src_pipe, "gate")
+            _add_valve(src_pipe, "check")
+
     return CombinedTables(
         nodes=translated_riser_nodes + head_nodes_filtered,
-        pipes=list(riser.pipes) + list(head_tables.pipes),
+        pipes=combined_pipes,
         nozzles=list(head_tables.nozzles),
-        fittings=list(head_tables.fittings),
+        fittings=combined_fittings,
         equipment=list(head_tables.equipment),
         pumps=list(riser.pumps),
         valves=list(riser.valves),
         meta=list(getattr(head_tables, "meta", [])),
+        machine_room_plan_edges=plan_laid,
     )
+
+
+def prepend_machine_room_to_riser(
+    machine_room: dict, riser: RiserTables, *,
+    at_bottom: bool = False, source_drop_below_lowest_m: float = 0.0,
+) -> tuple[RiserTables, bool]:
+    """기계실 경로를 라이저 Input 노드 앞에 prepend → 확장 RiserTables.
+
+    수원 경계가 라이저 top('1')이 아니라 그보다 상류인 기계실 수면(m1)으로 이동한다.
+    기계실 경로 = 수원(m1, Input) → 입상관 연결점(mK). mK 를 라이저 Input 노드와
+    병합하고 라이저 Input 은 일반 분기로 강등(경계는 이제 m1 하나). 이렇게 기계실부
+    배관의 마찰손실과 고저차가 통합망 수리계산에 반영된다.
+
+    좌표 정합 (x, y): 기계실 노드의 raw DXF x, y 는 그대로 보존한다. 통합 캔버스
+    배치는 stitch 단계의 _layout_machine_room_plan 이 수리경로 노드 + 전체 SP
+    배관망 edge(plan_edges, 동일 raw 좌표계)를 한 변환으로 묶어 펌프 위에 부착하므로,
+    여기서 미리 translation 하면 오히려 plan_edges 와 어긋난다. → x, y 무변환.
+
+    elevation (가압방식에 따라 기준이 다름 — 수리결과를 바꾸는 핵심):
+      • at_bottom=False (고가수조/자연낙차): 기계실(옥상수조)은 라이저 top 과
+        동일한 옥상 레벨(수평)이므로 기계실 노드 elev 를 라이저 Input(옥상) elev 로
+        offset. 수원이 망 최상부 → 자연낙차로 하류에 양압 공급.
+      • at_bottom=True (펌프 가압): 기계실/수원이 최하부(예: B1)다. 라이저 Input
+        (옥상)이 아니라 **라이저 최저 고도(=서비스 최저층, 보통 AV)** 를 기준으로
+        삼되, ``source_drop_below_lowest_m`` 만큼 그 아래로 더 내려 수원을 둔다.
+        도면(DXF)에는 z 가 없어 기계실의 실제 깊이를 추출할 수 없으므로, 이 깊이는
+        사용자가 가압방식 패널에서 직접 입력한다(미지정 시 0 = 최저헤드와 동일 고도).
+        그 결과 수원→최저헤드 사이에 ``source_drop_below_lowest_m`` 만큼의 양(+)의
+        정수두(lift)가 생겨 펌프가 극복해야 할 실양정으로 계산에 반영된다.
+        (옥상 기준이면 이 lift 가 0 으로 사라져 펌프 실양정이 과소평가됨.)
+
+    Args:
+        source_drop_below_lowest_m: at_bottom 일 때만 사용. 수원(기계실)이 라이저
+            최저 노드보다 몇 m 더 아래에 있는지(>0). 헤드 대비 실제 흡입 고저차.
+
+    반환: (확장 RiserTables, attached) — attached 는 실제 병합 성공 여부.
+    machine_room 가 비었거나 라이저 Input 을 못 찾으면 (원본 riser, False) 반환(안전).
+    """
+    mr_nodes = list(machine_room.get("nodes", []))
+    mr_pipes = list(machine_room.get("pipes", []))
+    if not mr_nodes or not mr_pipes:
+        return riser, False
+
+    conn_label = str(machine_room.get("conn_node_label") or mr_nodes[-1]["label"])
+
+    riser_input = next(
+        (n for n in riser.nodes if str(n.get("io_node", "")).lower() == "input"), None)
+    if riser_input is None:
+        riser_input = next((n for n in riser.nodes if str(n["label"]) == "1"), None)
+    if riser_input is None:
+        return riser, False  # 정합 불가 — 기계실 skip
+    riser_input_label = str(riser_input["label"])
+    riser_input_elev = float(riser_input.get("elevation", 0.0))
+
+    # 기계실 고도 기준(offset) — 가압방식에 따라 분기.
+    #  · 고가수조: 라이저 Input(옥상) 고도. 수원이 최상부.
+    #  · 펌프 가압(at_bottom): 라이저 최저 고도에서 source_drop_below_lowest_m 만큼
+    #    더 아래. 수원이 최저헤드보다 아래 → 양(+)의 실양정(lift)이 계산에 반영됨.
+    if at_bottom:
+        lowest = min(
+            (float(n.get("elevation", 0.0)) for n in riser.nodes),
+            default=riser_input_elev,
+        )
+        mr_ref_elev = lowest - abs(float(source_drop_below_lowest_m))
+    else:
+        mr_ref_elev = riser_input_elev
+
+    # 기계실 노드: x,y 는 raw DXF 좌표 그대로(무변환 — plan_edges 와 동일 좌표계 유지),
+    # elev 는 mr_ref_elev 기준으로 offset + conn 노드(mK) 제거(병합)
+    new_mr_nodes: list[dict] = []
+    for n in mr_nodes:
+        if str(n["label"]) == conn_label:
+            continue  # mK ≡ riser_input — 중복 제거
+        nn = dict(n)
+        nn["elevation"] = round(mr_ref_elev + float(n.get("elevation", 0.0)), 3)
+        new_mr_nodes.append(nn)
+
+    # 기계실 pipe: conn(mK) 향하던 끝점을 riser_input_label 로 재지정
+    new_mr_pipes: list[dict] = []
+    for p in mr_pipes:
+        pp = dict(p)
+        if str(pp.get("out")) == conn_label:
+            pp["out"] = riser_input_label
+        if str(pp.get("in")) == conn_label:
+            pp["in"] = riser_input_label
+        new_mr_pipes.append(pp)
+
+    # 라이저 Input 강등: Input→No, pressure 제거 (경계는 이제 m1)
+    new_riser_nodes: list[dict] = []
+    for n in riser.nodes:
+        nn = dict(n)
+        if str(n["label"]) == riser_input_label:
+            nn["io_node"] = "No"
+            nn.pop("pressure_pa", None)
+        new_riser_nodes.append(nn)
+
+    return RiserTables(
+        nodes=new_mr_nodes + new_riser_nodes,
+        pipes=new_mr_pipes + list(riser.pipes),
+        pumps=list(riser.pumps),
+        valves=list(riser.valves),
+        av_node_label=riser.av_node_label,
+    ), True
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 펌프 가압 방식 — 통합망 수원(Input 경계) 직후 펌프 요소 삽입
+# ────────────────────────────────────────────────────────────────────────────
+
+# 화재안전기준(NFPC 103) 펌프 성능시험 곡선 기준:
+#   체절운전(Q=0)      : 양정 ≤ 정격양정의 140%
+#   정격(Q=정격)        : 정격양정
+#   150% 유량(Q=1.5정격): 양정 ≥ 정격양정의 65%
+PUMP_SHUTOFF_HEAD_RATIO = 1.40
+PUMP_OVERLOAD_Q_RATIO = 1.50
+PUMP_OVERLOAD_HEAD_RATIO = 0.65
+
+
+def insert_source_pump(
+    combined: CombinedTables,
+    *,
+    rated_q_lpm: float,
+    rated_h_m: float,
+    count: int = 1,
+    pump_name: str = "FP",
+    efficiency: int = 100,
+) -> CombinedTables:
+    """통합망 수원(Input 경계) 직후에 펌프 요소를 삽입한다 (펌프 가압 방식).
+
+    물리 모델: 수원(Input, 대기압) → [Pump-fan] → 토출노드 → (기존 배관).
+    수원에서 출발하던 모든 파이프의 시작점을 새 토출노드로 옮기고, 펌프 요소가
+    수원→토출노드를 잇는다. 수원 노드는 그대로 대기압 경계(Calculation-spec)로
+    남으므로 parse_sdf 의 pressure_bar 가 None 이 아니어서 펌프 양정이 boundary
+    압력으로 잘못 주입되는 일이 없다.
+
+    화재안전기준 표준 3점 성능곡선(체절 140% / 정격 / 150% 65%)을 펌프 dict 에
+    담아 emit_full_sdf 의 Pump-fan attribute + has_converter 의 pumpFlowDataTable
+    로 전파한다. 이로써 SDF/KFP/HAS 모두 동일 곡선으로 연산 가능해진다.
+
+    Args:
+        combined: stitch_riser_and_heads 산출. in-place 로 펌프/토출노드 추가.
+        rated_q_lpm: 정격 토출량 (L/min).
+        rated_h_m:   정격 양정 (m).
+        count:       병렬 펌프 개수 (기본 1 — 운전 듀티 펌프 1대).
+        pump_name:   Library-pump / HAS PumpType 이름 (기본 "FP").
+
+    Returns:
+        combined (동일 객체) — 펌프/토출노드가 추가됨.
+
+    Raises:
+        ValueError: 통합망에 Input 경계 노드가 없을 때.
+    """
+    src = next((n for n in combined.nodes
+                if str(n.get("io_node", "")).lower() == "input"), None)
+    if src is None:
+        raise ValueError("통합망에 Input 경계 노드(수원)가 없어 펌프를 삽입할 수 없습니다.")
+    src_label = str(src["label"])
+
+    # 토출 노드 — 수원과 같은 고도(수평), 경계 아님. 라벨 유일 보장.
+    existing = {str(n["label"]) for n in combined.nodes}
+    disch_label = f"{src_label}_pd"
+    _k = 1
+    while disch_label in existing:
+        _k += 1
+        disch_label = f"{src_label}_pd{_k}"
+    disch = {
+        "label": disch_label,
+        "x": int(src.get("x", 0)) + 400,   # 캔버스에서 펌프가 보이도록 약간 오프셋
+        "y": int(src.get("y", 0)),
+        "elevation": float(src.get("elevation", 0.0)),
+        "io_node": "No",
+    }
+    combined.nodes.append(disch)
+
+    # 수원에서 나가던 파이프(in==수원)의 시작점을 토출노드로 재지정.
+    # (트리 root 인 수원은 모든 배관이 out 방향 → in==src 만 검사하면 충분)
+    for p in combined.pipes:
+        if str(p.get("in")) == src_label:
+            p["in"] = disch_label
+
+    q = float(rated_q_lpm)
+    h = float(rated_h_m)
+    shutoff_h = round(h * PUMP_SHUTOFF_HEAD_RATIO, 3)
+    peak_q = round(q * PUMP_OVERLOAD_Q_RATIO, 3)
+    peak_h = round(h * PUMP_OVERLOAD_HEAD_RATIO, 3)
+
+    # 소화펌프는 주+예비(또는 N대) 구성이나, 예비는 동시 운전하지 않는 신뢰성
+    # 이중화 → 수리계산은 운전 듀티 1대 곡선으로 한다(화재안전기준). 같은 in/out
+    # 노드에 N개 Pump-fan 을 직렬화하면 PIPENET/KFP 가 N대 병렬 = N배 용량으로
+    # 잘못 계산하므로, Pump-fan 은 단 하나만 만들고 대수는 count 메타로 보존한다.
+    n_pumps = max(1, int(count))
+    combined.pumps.append({
+        "label": pump_name,
+        "in": src_label,
+        "out": disch_label,
+        "efficiency": int(efficiency),
+        "status": 1,
+        "library_pump": pump_name,
+        "percentage_open": 1,
+        "pump_type": pump_name,
+        "count": n_pumps,            # 설치 대수(주+예비) — 표시/문서용, 수리계산 비반영
+        # 성능곡선 (정격 + 체절 + 150% 과부하) — m / L·min 단위
+        "rated_q": q,
+        "rated_h": h,
+        "shutoff_h": shutoff_h,
+        "peak_q": peak_q,
+        "peak_h": peak_h,
+    })
+    return combined
 
 
 # ────────────────────────────────────────────────────────────────────────────
 # Stage D — emit_full_sdf (PIPENET-native 후처리 + Pump-fan / Elastomeric-valve)
 # ────────────────────────────────────────────────────────────────────────────
+
+# 물 ρg (kg/m³ × m/s²) — 양정(m) → 압력(Pa). 표준 SLF 펌프점과 동일 계수.
+# M_TO_PA 와 같은 물리량(1 m 수두 → Pa). 의미가 다른 두 이름이라 alias 로 단일화.
+_WATER_RHO_G = M_TO_PA
+
+
+def _harden_slf_for_combined(
+    slf_path: Path,
+    opt_flow_by_lib: dict[str, float],
+    pumps: list[dict],
+) -> None:
+    """동봉 SLF 라이브러리를 통합망에 맞게 보정 — PIPENET 연산 경고/에러 제거.
+
+    1) Nozzle 최소운전압력 ↓ : 표준 SLF 의 SP-HEAD minimum-pressure 가 헤드
+       설계유량(optimum flow)에 해당하는 압력 (Q/k)² 보다 높으면 모든 헤드에
+       "optimum flow below minimum operating pressure" 경고가 발생한다. 각
+       노즐 정의의 minimum-pressure 를 설계유량 압력의 90% 이하로 낮춘다.
+    2) Pump 라이브러리 주입 : Pump-fan 이 참조하는 library_pump(예 "FP") 가
+       SLF Pump-section 에 없으면 곡선 범위가 미정의되어 "Minimum flowrate
+       should be less than maximum" 에러가 난다. NFPC 3점 곡선(체절 140% /
+       정격 / 150% 65%)으로 Pump-definition 을 만들어 주입한다.
+
+    SLF 는 DOCTYPE(<!DOCTYPE Library SYSTEM "Library.dtd">) 를 요구하므로
+    ElementTree 직렬화 후 XML 선언 + DOCTYPE 를 직접 앞에 붙여 보존한다.
+    """
+    import xml.etree.ElementTree as ET
+    if not slf_path.is_file():
+        return
+    try:
+        tree = ET.parse(slf_path)
+    except ET.ParseError:
+        return
+    root = tree.getroot()
+    changed = False
+
+    # ── (1) 노즐 최소운전압력 보정
+    for ndef in root.iter("Nozzle-definition"):
+        name_el = ndef.find("Item-name")
+        lib = (name_el.text or "").strip() if name_el is not None else ""
+        q_opt = opt_flow_by_lib.get(lib)
+        if not q_opt:
+            continue
+        try:
+            k = float(ndef.get("k-value", "0"))
+        except ValueError:
+            k = 0.0
+        if k <= 0:
+            continue
+        p_opt = (q_opt / k) ** 2  # 설계유량에 필요한 노즐 압력 (Pa)
+        try:
+            p_min = float(ndef.get("minimum-pressure", "0"))
+        except ValueError:
+            p_min = 0.0
+        if p_min > p_opt:
+            ndef.set("minimum-pressure", f"{p_opt * 0.9:.2f}")
+            changed = True
+
+    # ── (2) 펌프 라이브러리 주입
+    pump_sec = root.find("Pump-section")
+    if pump_sec is not None and pumps:
+        existing = {
+            (pd.find("Item-name").text or "").strip()
+            for pd in pump_sec.findall("Pump-definition")
+            if pd.find("Item-name") is not None
+        }
+        seen: set[str] = set()
+        for pump in pumps:
+            lib = str(pump.get("library_pump", "")).strip()
+            if not lib or lib in existing or lib in seen:
+                continue
+            q = float(pump.get("rated_q", 0) or 0)  # L/min
+            h = float(pump.get("rated_h", 0) or 0)  # m
+            if q <= 0 or h <= 0:
+                continue
+            seen.add(lib)
+            q_si = q / 60000.0  # L/min → m³/s
+            peak_q = float(pump.get("peak_q", q * PUMP_OVERLOAD_Q_RATIO) or q * PUMP_OVERLOAD_Q_RATIO)
+            peak_q_si = peak_q / 60000.0
+            shutoff_h = float(pump.get("shutoff_h", h * PUMP_SHUTOFF_HEAD_RATIO) or h * PUMP_SHUTOFF_HEAD_RATIO)
+            peak_h = float(pump.get("peak_h", h * PUMP_OVERLOAD_HEAD_RATIO) or h * PUMP_OVERLOAD_HEAD_RATIO)
+            pdef = ET.SubElement(pump_sec, "Pump-definition", {
+                "curve-type": "quadratic",
+                "flowrate-unit": "l-min",
+                "max-degeneration-factor": "0",
+                "max-flow": f"{peak_q_si:.9g}",
+                "min-degeneration-factor": "0",
+                "min-flow": "0",
+                "pressure-unit": "metres",
+            })
+            ET.SubElement(pdef, "Item-name").text = lib
+            ET.SubElement(pdef, "Description").text = lib
+            pts = ET.SubElement(pdef, "Set-of-pump-points")
+            # 압력은 평문 소수로 (과학표기 e+06 회피 — 표준 SLF 펌프점 포맷과 정합).
+            ET.SubElement(pts, "Pump-point", {"flow": "0", "pressure": f"{shutoff_h * _WATER_RHO_G:.2f}"})
+            ET.SubElement(pts, "Pump-point", {"flow": f"{q_si:.9g}", "pressure": f"{h * _WATER_RHO_G:.2f}"})
+            ET.SubElement(pts, "Pump-point", {"flow": f"{peak_q_si:.9g}", "pressure": f"{peak_h * _WATER_RHO_G:.2f}"})
+            changed = True
+
+    if changed:
+        body = ET.tostring(root, encoding="unicode")
+        slf_path.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE Library SYSTEM "Library.dtd">\n' + body,
+            encoding="utf-8",
+        )
 
 
 def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
@@ -653,7 +1145,7 @@ def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
            - ``<Pump-fan>`` element 추가 (combined.pumps)
            - ``<Elastomeric-valve>`` element 추가 (combined.valves)
     """
-    from remote30_prototype import emit_sdf, PipeTables
+    from remote30_prototype import emit_sdf, PipeTables, write_sdf_tree
 
     # 1단계: PipeTables 로 캐스팅 후 emit_sdf 호출
     tables = PipeTables(
@@ -685,13 +1177,27 @@ def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
     # Links 안에 Pump-fan + Elastomeric-valve 삽입 (Nozzle 다음, 또는 끝쪽)
     for links in root.iter("Links"):
         for pump in combined.pumps:
-            pf = ET.Element("Pump-fan", {
+            pf_attrib = {
                 "efficiency": str(pump["efficiency"]),
                 "input": pump["in"],
                 "label": pump["label"],
                 "output": pump["out"],
                 "status": str(pump["status"]),
-            })
+            }
+            # 성능곡선이 있으면 attribute 로 직렬화 → parse_sdf 가 읽어 .has/KFP 로 전파.
+            # rated-p/shutoff-p/peak-p 는 양정[m]. rated-p-unit="metres" 로 명시 →
+            # parse_sdf 가 bar 로 정규화(KFP→SDF 의 bar 와 구분). (수원 노드는 이미
+            # 대기압 boundary 라 parse_sdf 의 pressure_bar fallback 은 발동하지 않음.)
+            if pump.get("rated_q") and pump.get("rated_h"):
+                pf_attrib.update({
+                    "rated-q": f"{float(pump['rated_q']):g}",
+                    "rated-p": f"{float(pump['rated_h']):g}",
+                    "rated-p-unit": "metres",
+                    "shutoff-p": f"{float(pump.get('shutoff_h', float(pump['rated_h']) * 1.4)):g}",
+                    "peak-q": f"{float(pump.get('peak_q', float(pump['rated_q']) * 1.5)):g}",
+                    "peak-p": f"{float(pump.get('peak_h', float(pump['rated_h']) * 0.65)):g}",
+                })
+            pf = ET.Element("Pump-fan", pf_attrib)
             ET.SubElement(pf, "Description")
             lib = ET.SubElement(pf, "Library-pump")
             lib.text = pump["library_pump"]
@@ -710,7 +1216,25 @@ def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
             links.append(ev)
         break  # 첫 Links 만
 
-    tree.write(out_path, encoding="utf-8", xml_declaration=True)
+    write_sdf_tree(tree, out_path)
+
+    # 동봉 SLF 보정 — 노즐 최소운전압력 / 펌프 곡선 라이브러리 (PIPENET 연산 경고·에러 제거).
+    # SDF 가 PIPENET 에 넘기는 실제 optimum flow(<Flow-define flow=>) 를 라이브러리별로
+    # 모아 SLF 의 minimum-pressure 와 비교 보정한다.
+    opt_flow_by_lib: dict[str, float] = {}
+    for nz_el in root.iter("Nozzle"):
+        fd = nz_el.find("Flow-define")
+        li = nz_el.find("Library-item")
+        if fd is None or li is None:
+            continue
+        lib = (li.text or "").strip()
+        try:
+            q = float(fd.get("flow", "0"))
+        except ValueError:
+            continue
+        if lib and q > 0:
+            opt_flow_by_lib[lib] = min(opt_flow_by_lib.get(lib, q), q)
+    _harden_slf_for_combined(out_path.with_suffix(".slf"), opt_flow_by_lib, list(combined.pumps))
     return out_path
 
 

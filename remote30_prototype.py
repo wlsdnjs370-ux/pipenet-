@@ -4205,8 +4205,11 @@ def run_stages_3_5(
         warnings.warn(f"[remote30_prototype] KFP emit 실패 (SDF 는 정상): {_kfp_exc}", RuntimeWarning, stacklevel=2)
     zip_path = bundle_result_zip(out_dir, prefix=f"prototype_{job_id}")
     _kfp_label = f" + KFP {kfp_path.stat().st_size/1024:.1f}KB" if kfp_ok else ""
+    # SLF 는 표준 라이브러리 자산(resolve_standard_slf)이 있어야 동봉됨 — 없으면 emit_sdf 가
+    # 경고만 내고 .slf 를 만들지 않으므로 stat() 전에 존재 확인(WinError 2 방지).
+    _slf_label = f" + SLF {slf_path.stat().st_size/1024:.1f}KB" if slf_path.is_file() else " (SLF 자산 없음 — 미동봉)"
     yield evt({"type": "stage", "stage": 6, "status": "done",
-               "label": f"SDF {sdf_path.stat().st_size/1024:.1f}KB + SLF {slf_path.stat().st_size/1024:.1f}KB{_kfp_label} + ZIP {zip_path.stat().st_size/1024:.1f}KB"})
+               "label": f"SDF {sdf_path.stat().st_size/1024:.1f}KB{_slf_label}{_kfp_label} + ZIP {zip_path.stat().st_size/1024:.1f}KB"})
 
     outputs = {
         "xlsx": xlsx_path.name, "sdf": sdf_path.name,

@@ -47,7 +47,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 # 렌더/카테고리 로직이 바뀌면 INSPECT_CACHE_VERSION 을 올려 캐시를 무효화한다.
 INSPECT_CACHE_DIR = UPLOAD_DIR / "_inspect_cache"
 INSPECT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-INSPECT_CACHE_VERSION = "v1"
+INSPECT_CACHE_VERSION = "v2"
 
 
 def _inspect_cache_key(dxf_path: Path) -> str:
@@ -5530,6 +5530,9 @@ def remote30_inspect():
                     "layers": meta.get("layers", []),
                     "counts": meta.get("counts", {}),
                     "dropped_types": meta.get("dropped_types", {}),
+                    "bg_skipped": meta.get("bg_skipped", False),
+                    "bg_entities": meta.get("bg_entities", 0),
+                    "bg_budget": meta.get("bg_budget", 0),
                     "cached": True,
                 }, ensure_ascii=False) + "\n"
             return Response(_stream_cached(), mimetype="application/x-ndjson")
@@ -5564,10 +5567,13 @@ def remote30_inspect():
 
     dropped_types: dict[str, int] = {}
     MAX_INSERT_DEPTH = 10  # cycle 방지용 — 정상 도면은 3~4 단계면 충분
+    # 배경(건축/제외) 블록 폭발 엔티티 예산. 정상 도면(LH306 ~3.4만, 대명동 등)은
+    # 이 한도 이하라 배경 100% 렌더(화면 누락 없음)·속도 동일. 초대형 XREF 평면도
+    # (예: 141MB 지하층배관도 = 배경 28만)만 예산 초과 시 배경을 통째 생략(+알림)해
+    # 미리보기 처리를 가속한다. 깊이가 아닌 폭(breadth) 폭증이므로 깊이 cap은 무효.
+    BG_ENTITY_BUDGET = 120_000
 
-    # 레이어 카테고리 사전 계산(캐시) — 배경(건축/제외) 레이어의 대형 블록
-    # (XREF 평면도 등 수십만 entity)은 배관 추출과 무관하므로 폭발(explode)을
-    # 건너뛰어 미리보기 파싱을 가속한다. 대형 도면에서 가장 큰 병목.
+    # 레이어 카테고리 사전 계산(캐시) — 배경(건축/제외) 레이어 판별용.
     _cat_settings = Remote30Settings()
     _cat_cache: dict[str, str] = {}
 
@@ -5847,6 +5853,53 @@ def remote30_inspect():
     layer_counts: dict[str, int] = {}
     layer_type_counts: dict[str, dict] = {}
     total_count = [0]
+    bg_status = {"skipped": False, "entities": 0}
+
+    def _bg_leaf_estimate(top_entities):
+        """배경 top-level INSERT 들의 폭발 후 leaf 수 추정(렌더 없이). 깊이는 렌더와
+        동일하게 MAX_INSERT_DEPTH 에서 멈춘다.
+        블록 정의 leaf 수를 (블록명, depth) 단위로 memo — 같은 블록을 N번 INSERT 해도
+        subtree 는 깊이별 1회만 센다(per-instance 재귀 아님). depth 키가 필요한 이유:
+        깊이 cap 때문에 같은 블록도 진입 깊이에 따라 잘리는 양이 달라진다. depth cap 이
+        곧 순환참조 차단(cycle 은 depth 증가로 MAX_INSERT_DEPTH 에서 종료)이다.
+        fan-out 중첩 블록은 카운트를 지수폭증시켜 스킵 판정 전에 행을 걸 수 있다(외부
+        노출 서버 DoS 벡터). 합계가 ceiling(예산×5)에 닿으면 즉시 중단 — 판정엔 '예산
+        초과' 사실만 필요하므로 작업량이 O(ceiling) 로 유계."""
+        ceiling = BG_ENTITY_BUDGET * 5
+        memo: dict[tuple[str, int], int] = {}
+
+        def _block_leaves(block_name, depth, doc):
+            if depth >= MAX_INSERT_DEPTH or doc is None:
+                return 0
+            key = (block_name, depth)
+            if key in memo:
+                return memo[key]
+            blk = doc.blocks.get(block_name)
+            total = 0
+            if blk is not None:
+                for child in blk:
+                    if child.dxftype() == "INSERT":
+                        total += _block_leaves(child.dxf.name, depth + 1, doc)
+                    else:
+                        total += 1
+                    if total >= ceiling:
+                        total = ceiling
+                        break
+            memo[key] = total
+            return total
+
+        grand = 0
+        for ent in top_entities:
+            try:
+                if ent.dxftype() == "INSERT":
+                    grand += _block_leaves(ent.dxf.name, 0, ent.doc)
+                else:
+                    grand += 1
+            except Exception:
+                continue
+            if grand >= ceiling:
+                return ceiling
+        return grand
 
     def _bbox_obj():
         if bbox[0] == float("inf"):
@@ -5887,7 +5940,14 @@ def remote30_inspect():
                 fg_flushed = True
         if entities:
             yield from _emit("foreground", with_bbox=True)
-        # 2) 배경 — top-level entity 마다 렌더, 버퍼가 차면 chunk 전송 (점진적)
+        # 2) 배경 — 예산(BG_ENTITY_BUDGET) 이하면 top-level 마다 렌더(점진 flush).
+        #    초과 시(초대형 XREF 평면도) 배경을 통째 생략해 처리를 가속하고 알림.
+        bg_est = _bg_leaf_estimate(background_top)
+        bg_status["entities"] = bg_est
+        if bg_est > BG_ENTITY_BUDGET:
+            bg_status["skipped"] = True
+            dropped_types[f"건축배경(예산 {BG_ENTITY_BUDGET:,} 초과 생략)"] = bg_est
+            return
         for e in background_top:
             _render_entity(e)
             if len(entities) >= FLUSH_N:
@@ -5946,6 +6006,9 @@ def remote30_inspect():
                 "layers": layer_list,
                 "counts": counts_obj,
                 "dropped_types": dropped_types,
+                "bg_skipped": bg_status["skipped"],
+                "bg_entities": bg_status["entities"],
+                "bg_budget": BG_ENTITY_BUDGET,
             }, ensure_ascii=False) + "\n"
             # 스트림 정상 완료 시에만 캐시 commit (부분/중단 시 미저장)
             if gz_out is not None:

@@ -6020,6 +6020,9 @@ def remote30_inspect():
                         "layers": layer_list,
                         "counts": counts_obj,
                         "dropped_types": dropped_types,
+                        "bg_skipped": bg_status["skipped"],
+                        "bg_entities": bg_status["entities"],
+                        "bg_budget": BG_ENTITY_BUDGET,
                     }
                     tmp_meta = cache_meta_path.with_suffix(".tmp")
                     tmp_meta.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")

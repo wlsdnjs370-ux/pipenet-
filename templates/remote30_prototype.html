@@ -224,6 +224,94 @@
     }
     .canvas-empty em { color: #ef4444; font-style: normal; font-weight: 700; }
 
+    /* ─── 아이소 3D 컨트롤 패널 (우상단) — 뷰 옵션 + 방수 시뮬레이션 ─── */
+    #iso-controls {
+      position: absolute; top: 56px; right: 14px;
+      display: none; flex-direction: column; gap: 9px;
+      width: 236px; max-height: calc(100% - 84px); overflow-y: auto;
+      background: rgba(15, 23, 42, 0.82);
+      border: 1px solid rgba(255,255,255,0.10);
+      padding: 12px 13px; border-radius: 11px;
+      backdrop-filter: blur(11px) saturate(1.4);
+      -webkit-backdrop-filter: blur(11px) saturate(1.4);
+      pointer-events: auto; z-index: 11;
+      font-size: 0.72rem; color: #cbd5e1;
+      box-shadow: 0 12px 32px -12px rgba(0,0,0,0.55);
+    }
+    #iso-controls.is-visible { display: flex; }
+    #iso-controls::-webkit-scrollbar { width: 7px; }
+    #iso-controls::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    #iso-controls .ic-section {
+      font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: #7c8aa5;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 8px; margin-top: 2px;
+    }
+    #iso-controls .ic-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+    #iso-controls .ic-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    #iso-controls .ic-row label { flex: 1; white-space: nowrap; }
+    #iso-controls .ic-row input[type="range"] { flex: 1.4; min-width: 0; accent-color: var(--accent); }
+    #iso-controls .ic-row .ic-val {
+      min-width: 46px; text-align: right; font-family: var(--font-mono, ui-monospace, monospace);
+      color: #e2e8f0; font-size: 0.7rem;
+    }
+    #iso-controls .ic-check { display: flex; align-items: center; gap: 6px; }
+    #iso-controls .ic-check input { accent-color: var(--accent); }
+    #iso-controls .ic-btns { display: flex; gap: 6px; }
+    #iso-controls button {
+      flex: 1; background: rgba(51,65,85,0.6); color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;
+      padding: 6px 8px; font-size: 0.72rem; font-weight: 600; cursor: pointer;
+      font-family: var(--font-sans); transition: all var(--tr);
+    }
+    #iso-controls button:hover { background: rgba(71,85,105,0.85); color: #fff; }
+    #iso-controls button.is-active {
+      background: var(--accent); border-color: var(--accent); color: #fff;
+      box-shadow: 0 0 0 2px rgba(79,70,229,0.25);
+    }
+    #iso-controls button#sim-run.is-running {
+      background: #059669; border-color: #059669;
+      box-shadow: 0 0 0 2px rgba(5,150,105,0.3);
+    }
+    #iso-controls .ic-mode-tabs { display: flex; gap: 4px; }
+    #iso-controls .ic-mode-tabs button { padding: 5px 6px; font-size: 0.68rem; }
+    #iso-controls .ic-hidden { display: none !important; }
+
+    /* ─── 방수 시뮬레이션 수치 오버레이 (좌하단) ─── */
+    #sim-overlay {
+      position: absolute; bottom: 14px; left: 14px;
+      display: none; min-width: 210px; max-width: 300px;
+      background: rgba(8, 20, 40, 0.9);
+      border: 1px solid rgba(6, 182, 212, 0.45);
+      color: #e0f2fe; padding: 10px 13px; border-radius: 9px;
+      font-size: 0.72rem; line-height: 1.55; z-index: 11;
+      backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
+      box-shadow: 0 10px 28px -10px rgba(0,0,0,0.5);
+    }
+    #sim-overlay.is-visible { display: block; }
+    #sim-overlay .so-title {
+      font-size: 0.64rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: #38bdf8; margin-bottom: 5px;
+    }
+    #sim-overlay .so-row { display: flex; justify-content: space-between; gap: 12px; }
+    #sim-overlay .so-row .so-k { color: #94a3b8; }
+    #sim-overlay .so-row .so-v {
+      font-family: var(--font-mono, ui-monospace, monospace); color: #f1f5f9; font-weight: 600;
+    }
+    #sim-overlay .so-warn { color: #fca5a5; margin-top: 4px; font-size: 0.68rem; }
+
+    /* 3D hover 툴팁 — 노드 잔압 / 파이프 유량 */
+    #iso-tooltip {
+      position: absolute; display: none; pointer-events: none; z-index: 12;
+      background: rgba(15,23,42,0.95); border: 1px solid rgba(255,255,255,0.15);
+      color: #e2e8f0; padding: 5px 9px; border-radius: 6px;
+      font-size: 0.7rem; font-family: var(--font-mono, ui-monospace, monospace);
+      white-space: nowrap; box-shadow: 0 6px 18px -6px rgba(0,0,0,0.6);
+    }
+    #iso-tooltip.is-visible { display: block; }
+
     /* ─── Sidebar ─── */
     .sidebar {
       background: var(--panel);
@@ -623,6 +711,77 @@
         <button id="fp-has" data-fmt="has">.has</button>
       </div>
       <div id="fp-banner" class="fp-banner" aria-hidden="true"></div>
+
+      <!-- ─── 아이소 3D 컨트롤 패널 (우상단) — 뷰 옵션 + 방수 시뮬레이션 ─── -->
+      <div id="iso-controls" aria-hidden="true">
+        <div class="ic-section">뷰 옵션</div>
+        <div class="ic-row"><label>Z 배율</label>
+          <input type="range" id="iso-z-scale" min="0.2" max="8" step="0.1" value="3">
+          <span class="ic-val" id="iso-z-scale-val">3.0×</span></div>
+        <div class="ic-row"><label>노드 크기</label>
+          <input type="range" id="iso-node-size" min="1" max="16" step="0.5" value="6">
+          <span class="ic-val" id="iso-node-size-val">6</span></div>
+        <div class="ic-row"><label>엣지 굵기</label>
+          <input type="range" id="iso-edge-width" min="0.3" max="5" step="0.1" value="1.5">
+          <span class="ic-val" id="iso-edge-width-val">1.5</span></div>
+        <div class="ic-row" style="flex-wrap:wrap; gap:6px 12px;">
+          <span class="ic-check"><input type="checkbox" id="iso-show-grid"><label>그리드</label></span>
+          <span class="ic-check"><input type="checkbox" id="iso-show-axes" checked><label>축</label></span>
+          <span class="ic-check"><input type="checkbox" id="iso-show-labels"><label>라벨</label></span>
+          <span class="ic-check"><input type="checkbox" id="iso-color-by-elev"><label>고도색</label></span>
+        </div>
+        <div class="ic-btns">
+          <button id="iso-fit-view" type="button">화면 맞춤</button>
+          <button id="iso-reset-view" type="button">뷰 초기화</button>
+        </div>
+
+        <div class="ic-section">방수 시뮬레이션</div>
+        <div class="ic-btns">
+          <button id="sim-run" type="button">▶ 작동</button>
+        </div>
+        <div class="ic-mode-tabs">
+          <button id="sim-mode-supply" class="is-active" type="button" data-mode="supply">공급 지정</button>
+          <button id="sim-mode-design" type="button" data-mode="design">설계 역산</button>
+        </div>
+        <!-- 모드 A: 공급측 압력·유량 지정 (정방향) -->
+        <div id="sim-rows-supply">
+          <div class="ic-row"><label>공급압</label>
+            <input type="range" id="sim-supply-p" min="0.5" max="12" step="0.1" value="3.5">
+            <span class="ic-val" id="sim-supply-p-val">3.5 bar</span></div>
+          <div class="ic-row"><label>가용유량</label>
+            <input type="range" id="sim-supply-q" min="100" max="6000" step="50" value="2400">
+            <span class="ic-val" id="sim-supply-q-val">2400 L/min</span></div>
+        </div>
+        <!-- 모드 B: 헤드 최소방수압·K-factor 기준 역산 -->
+        <div id="sim-rows-design" class="ic-hidden">
+          <div class="ic-row"><label>최소방수압</label>
+            <input type="range" id="sim-design-p" min="0.5" max="6" step="0.1" value="1.0">
+            <span class="ic-val" id="sim-design-p-val">1.0 bar</span></div>
+        </div>
+        <div class="ic-row"><label>K-factor</label>
+          <input type="range" id="sim-k" min="40" max="200" step="1" value="80">
+          <span class="ic-val" id="sim-k-val">80</span></div>
+        <div class="ic-row"><label>C 계수</label>
+          <input type="range" id="sim-c" min="80" max="150" step="1" value="120">
+          <span class="ic-val" id="sim-c-val">120</span></div>
+        <div class="ic-row"><label>입자 크기</label>
+          <input type="range" id="sim-particle-scale" min="0.2" max="3" step="0.1" value="1">
+          <span class="ic-val" id="sim-particle-scale-val">1.0×</span></div>
+        <div class="ic-row" style="flex-wrap:wrap; gap:6px 12px;">
+          <span class="ic-check"><input type="checkbox" id="sim-viz-flow" checked><label>관내흐름</label></span>
+          <span class="ic-check"><input type="checkbox" id="sim-viz-spray" checked><label>방수분사</label></span>
+          <span class="ic-check"><input type="checkbox" id="sim-viz-heat"><label>압력히트맵</label></span>
+          <span class="ic-check"><input type="checkbox" id="sim-viz-overlay" checked><label>수치</label></span>
+        </div>
+      </div>
+
+      <!-- 방수 시뮬레이션 수치 오버레이 (좌하단) -->
+      <div id="sim-overlay" aria-hidden="true">
+        <div class="so-title">방수 시뮬레이션</div>
+        <div id="sim-overlay-body"></div>
+      </div>
+      <!-- 3D hover 툴팁 -->
+      <div id="iso-tooltip"></div>
 
       <div id="wb-empty" class="canvas-empty">
         <strong>DXF 파일을 업로드하세요</strong>
@@ -1159,7 +1318,7 @@
           <div style="display:flex; gap:6px;">
             <button id="cmb-exp-sdf" class="run-btn" type="button" disabled title="SDF + SLF 동봉 ZIP (PIPENET 권장)" style="flex:1; background:#ffffff; color:var(--accent); border-color:var(--accent);">SDF</button>
             <button id="cmb-exp-kfp" class="run-btn" type="button" disabled title="K-Fire Solver 입력 파일 (.kfp)" style="flex:1; background:#ffffff; color:var(--accent); border-color:var(--accent);">KFP</button>
-            <button id="cmb-exp-has" class="run-btn" type="button" disabled title="HASS(하스) 입력 파일 (.has)" style="flex:1; background:#ffffff; color:var(--accent); border-color:var(--accent);">HAS</button>
+            <button id="cmb-exp-has" class="run-btn" type="button" disabled title="HAS 출력 준비 중 (현재 미지원)" style="flex:1; background:#ffffff; color:var(--accent); border-color:var(--accent); opacity:0.45; cursor:not-allowed;">HAS</button>
           </div>
           <div id="cmb-result-box" class="info-line" style="font-size: 0.74rem; margin-top: 8px;">
             아직 배관망 통합이 실행되지 않았습니다.
@@ -1729,6 +1888,15 @@
       };
     })();
 
+    // 배경(건축) 생략 알림 접미사 — /inspect 가 예산 초과로 배경을 생략했을 때만.
+    function _bgSkipNote(result, short) {
+      if (!result || !result.bg_skipped) return "";
+      const n = (result.bg_entities || 0).toLocaleString();
+      return short
+        ? ` ⚡ 건축배경 ${n}개 생략(속도).`
+        : ` ⚡ 건축배경 ${n}개는 처리속도 위해 생략됨(배관 추출엔 무영향).`;
+    }
+
     function render() {
       _renderEntities();
       drawAlarmMarker();
@@ -2147,7 +2315,7 @@
           render();
           fileStatusEl.textContent =
             `${result.dxf_filename} — entity ${result.counts.total_entities.toLocaleString()}, layer ${result.counts.layers}. ` +
-            `알람밸브 좌표 지정 (선택) 후 [배관망 생성] 클릭.`;
+            `알람밸브 좌표 지정 (선택) 후 [배관망 생성] 클릭.` + _bgSkipNote(result, false);
           overlayInfoEl.textContent = `[프리뷰] ${result.counts.total_entities.toLocaleString()} entities`;
         } else {
           render();
@@ -2880,7 +3048,7 @@
           const b = state.system_bbox || {};
           const bw = (b.x_max - b.x_min) || 0, bh = (b.y_max - b.y_min) || 0;
           _sysFileStatus.textContent = `✓ ${result.dxf_filename || f.name} — ${total.toLocaleString()} entity, ` +
-            `표시 영역 ${(bw/1000).toFixed(1)}m × ${(bh/1000).toFixed(1)}m. 펌프/AV 클릭으로 위치 지정 →`;
+            `표시 영역 ${(bw/1000).toFixed(1)}m × ${(bh/1000).toFixed(1)}m. 펌프/AV 클릭으로 위치 지정 →` + _bgSkipNote(result, true);
         }
         if (typeof _enableConnReview === "function") _enableConnReview();
         if (state.current_mode === "system") {
@@ -3597,7 +3765,7 @@
           const b = state.machineroom_bbox || {};
           const bw = (b.x_max - b.x_min) || 0, bh = (b.y_max - b.y_min) || 0;
           _mrFileStatus.textContent = `✓ ${result.dxf_filename || f.name} — ${total.toLocaleString()} entity, ` +
-            `표시 영역 ${(bw/1000).toFixed(1)}m × ${(bh/1000).toFixed(1)}m. 배관 레이어 선택 후 수원/연결점 클릭 →`;
+            `표시 영역 ${(bw/1000).toFixed(1)}m × ${(bh/1000).toFixed(1)}m. 배관 레이어 선택 후 수원/연결점 클릭 →` + _bgSkipNote(result, true);
           _buildMrLayerPicker();
         }
         // 최종 1회 render (뷰는 첫 전경에서 이미 fit — 로딩 중 사용자 pan 보존).
@@ -4569,9 +4737,31 @@
       let raycaster = null;
       let _initialized = false, _running = false, _animFrameId = null;
       let _resizeObserver = null;
+      let _lastFrameT = 0;                 // 파티클 delta 계산용
       const canvas3d = document.getElementById("wb-canvas-3d");
       const hintEl = document.getElementById("iso-hint");
       const controlsEl = document.getElementById("iso-controls");
+
+      // ═══ 방수 시뮬레이션 상태 (트리망 하젠-윌리엄스 + Q=K√P) ═══
+      const sim = {
+        running: false,
+        mode: "supply",      // "supply"(공급 지정) | "design"(설계 역산)
+        supplyP: 3.5,        // bar — 공급측 압력 (mode supply)
+        supplyQ: 2400,       // L/min — 가용 유량 상한 (mode supply)
+        designP: 1.0,        // bar — 헤드 최소 방수압 (mode design)
+        kFactor: 80,         // L/min·bar^-0.5 — 스프링클러 방출계수
+        cOverride: 120,      // Hazen-Williams C (서버 pipe.c 대신 사용)
+        particleScale: 1.0,  // 입자 크기 배율 (관내흐름·방수분사 공통)
+        viz: { flow: true, spray: true, heat: false, overlay: true },
+        graph: null,         // { pos, headTip, pipes, heads, source, children, parentPipe, order }
+        result: null,        // 솔버 산출값
+      };
+      let _simGraph = null;  // loadGeometry 가 채우는 시뮬 그래프 (scene 좌표 + 물리 파라미터)
+      let flowPts = null, sprayPts = null;   // THREE.Points 풀 (관내 흐름 / 방수 분사)
+      let _flowMeta = null, _sprayMeta = null;
+      const simOverlayEl = document.getElementById("sim-overlay");
+      const simOverlayBody = document.getElementById("sim-overlay-body");
+      const isoTooltipEl = document.getElementById("iso-tooltip");
 
       // UI 옵션 — 컨트롤러 input 값과 동기화. 노드/엣지 크기는 도면 bbox 의
       // 비율로 자동 환산되고, 슬라이더는 그 위에 배수 (default 1.0×).
@@ -4683,8 +4873,8 @@
 
         raycaster = new THREE.Raycaster();
 
-        // 더블 클릭 → 자동 fit
-        canvas3d.addEventListener("dblclick", () => fitToData());
+        // 더블 클릭 → 클릭 지점으로 줌인/포커스 (빈 곳이면 전체 fit)
+        canvas3d.addEventListener("dblclick", (e) => _focusAt(e));
 
         // 윈도우/패널 사이즈 변경 시 캔버스 리사이즈
         _resizeObserver = new ResizeObserver(() => resize());
@@ -4695,6 +4885,9 @@
 
       function dispose() {
         stop();
+        stopSim();
+        _disposePoints(flowPts); flowPts = null; _flowMeta = null;
+        _disposePoints(sprayPts); sprayPts = null; _sprayMeta = null;
         if (renderer) { renderer.dispose(); renderer = null; }
         if (controls) { controls.dispose(); controls = null; }
         if (_resizeObserver) { _resizeObserver.disconnect(); _resizeObserver = null; }
@@ -4716,10 +4909,16 @@
       function start() {
         if (_running) return;
         _running = true;
+        _lastFrameT = performance.now();
         const loop = () => {
           if (!_running) return;
           _animFrameId = requestAnimationFrame(loop);
+          const now = performance.now();
+          let dt = (now - _lastFrameT) / 1000;
+          _lastFrameT = now;
+          if (dt > 0.1) dt = 0.1;   // 탭 비활성 후 점프 방지
           if (controls) controls.update();
+          if (sim.running) updateSim(dt);
           if (renderer && scene && camera) renderer.render(scene, camera);
         };
         loop();
@@ -5017,7 +5216,12 @@
           }
           // 라이저 엣지는 약간 더 두껍게 (배관 본관 강조)
           const r = isRiser ? _autoEdgeRadius * 1.4 : _autoEdgeRadius;
-          edgeGroup.add(_makeCylinder(a, b, r, edgeMatCache[color]));
+          const em = _makeCylinder(a, b, r, edgeMatCache[color]);
+          // 히트맵 재도색용 — 파이프 endpoint 라벨 + 기본색 보존
+          em.userData.pin = p.in; em.userData.pout = p.out;
+          em.userData.baseColor = color;
+          em.userData.baseMat = em.material;   // 히트맵 복원용
+          edgeGroup.add(em);
         }
 
         // 노드 — sphere, bbox 비례 크기
@@ -5045,6 +5249,7 @@
           mesh.userData.label = label;
           mesh.userData.category = meta.category;
           mesh.userData.elev = meta.raw.elevation;
+          mesh.userData.baseMat = mesh.material;   // 히트맵 복원용
           nodeGroup.add(mesh);
 
           if (opts.showLabels) {
@@ -5065,6 +5270,7 @@
         const headFrac = (typeof geom.head_z_frac === "number") ? geom.head_z_frac : 0.04;
         const headZ = (geom.head_orientation === "upright" ? 1 : -1)
                       * bboxDiag * headFrac * opts.zScale;
+        const headTipMap = new Map();   // headLabel → 방수 분사 원점(scene 좌표)
         if (headLabels.size && Math.abs(headZ) > 1e-9) {
           const stubColor = COLOR.head;
           if (!edgeMatCache[stubColor]) {
@@ -5083,6 +5289,7 @@
             const base = nodeMap.get(label);
             if (!base) continue;
             const tip = new THREE.Vector3(base.x, base.y, base.z + headZ);
+            headTipMap.set(label, tip.clone());
             edgeGroup.add(_makeCylinder(base, tip, _autoEdgeRadius, edgeMatCache[stubColor]));
             const tipMesh = new THREE.Mesh(
               new THREE.SphereGeometry(_autoNodeRadius * 0.8, 14, 10),
@@ -5093,6 +5300,15 @@
             nodeGroup.add(tipMesh);
           }
         }
+        // 헤드 스텁이 없으면(수직화 off) 헤드 노드 자체를 분사 원점으로.
+        for (const label of headLabels) {
+          if (!headTipMap.has(label) && nodeMap.has(label)) {
+            headTipMap.set(label, nodeMap.get(label).clone());
+          }
+        }
+
+        // ─── 방수 시뮬 그래프 캡처 (scene 좌표 + 서버 물리 파라미터) ───
+        _captureSimGraph(geom, nodeMap, headTipMap, headZ, _autoEdgeRadius);
       }
 
       function clearGroups() {
@@ -5193,6 +5409,483 @@
         fitToData();
       }
 
+      // 더블클릭 — 클릭한 노드/배관을 orbit 중심으로 잡고 그 지점으로 줌인.
+      // 빈 곳을 더블클릭하면 전체 fit 으로 복귀.
+      function _focusAt(ev) {
+        if (!raycaster || !camera || !controls) return;
+        const rect = canvas3d.getBoundingClientRect();
+        const mx = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+        const my = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera({ x: mx, y: my }, camera);
+        const targets = [];
+        if (nodeGroup) targets.push(...nodeGroup.children);
+        if (edgeGroup) targets.push(...edgeGroup.children);
+        const hits = raycaster.intersectObjects(targets, false);
+        if (!hits.length) { fitToData(); return; }   // 빈 곳 → 전체 복귀
+        const pt = hits[0].point;
+        const offset = camera.position.clone().sub(controls.target);
+        const newDist = Math.max(offset.length() * 0.45, controls.minDistance * 4);
+        offset.setLength(newDist);
+        controls.target.copy(pt);
+        camera.position.copy(pt).add(offset);
+        controls.update();
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      //  방수 시뮬레이션 — 트리망 간이 해석 (Hazen-Williams + Q=K√P)
+      //  물리는 서버가 준 실측값(pipe.length/dia/c, node.z 고도, pressure_pa)으로
+      //  계산하고, 파티클은 scene 좌표(nodeMap/headTip)로 그린다. 시각 Z spread 와 무관.
+      // ═══════════════════════════════════════════════════════════════
+      const _esc = (s) => String(s).replace(/[&<>"]/g,
+        c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+      // Hazen-Williams 마찰손실 (sprinkler_remote30_extractor.py:623 공식) → bar.
+      //   dp[MPa] = 6.174e4·Q^1.85·L / (C^1.85·d^4.87),  1 MPa = 10 bar.
+      function hfBar(Q, L, C, d) {
+        if (Q <= 0 || L <= 0 || C <= 0 || d <= 0) return 0;
+        const dp_mpa = 6.174e4 * Math.pow(Q, 1.85) * L
+                       / (Math.pow(C, 1.85) * Math.pow(d, 4.87));
+        return dp_mpa * 10;
+      }
+      // 정수두 — 상승 dz(m) 만큼 압력 손실(bar). 1 mH2O ≈ 0.0980665 bar.
+      function staticBar(dzUp) { return dzUp * 0.0980665; }
+
+      // ── scene 그래프 + 물리 파라미터 캡처 (loadGeometry 말미에 호출) ──
+      function _captureSimGraph(geom, nodeMap, headTipMap, headZ, edgeR) {
+        _simGraph = null; sim.graph = null;
+        if (!geom || !geom.nodes || !geom.nodes.length) { recomputeSim(); return; }
+        const pos = new Map(), elevM = new Map();
+        for (const n of geom.nodes) {
+          const v = nodeMap.get(n.label);
+          if (v) pos.set(n.label, { x: v.x, y: v.y, z: v.z });
+          elevM.set(n.label, (typeof n.z === "number") ? n.z
+                    : (typeof n.elevation === "number") ? n.elevation : 0);
+        }
+        // 무향 인접 + 파이프 물리 파라미터
+        const adj = new Map();
+        const addAdj = (a, b, pp) => { if (!adj.has(a)) adj.set(a, []); adj.get(a).push({ o: b, pp }); };
+        for (const p of (geom.pipes || [])) {
+          if (!pos.has(p.in) || !pos.has(p.out)) continue;
+          const pp = { dia: Number(p.dia) || 0, len: Number(p.length) || 0,
+                       c: Number(p.c) || 120, elev: Number(p.elev) || 0 };
+          addAdj(p.in, p.out, pp); addAdj(p.out, p.in, pp);
+        }
+        // source 결정: io=="Input" 또는 pressure_pa → pump_junction → 기계실 → 첫 노드
+        let source = null;
+        for (const n of geom.nodes) {
+          const io = (n.io || n.io_node || "");
+          if (io === "Input" || n.pressure_pa != null) { source = n.label; break; }
+        }
+        if (!source && geom.pump_junction_label && pos.has(geom.pump_junction_label))
+          source = geom.pump_junction_label;
+        if (!source && Array.isArray(geom.machine_room_labels))
+          source = geom.machine_room_labels.find(l => pos.has(l)) || null;
+        if (!source) source = geom.nodes[0].label;
+        // source 에서 BFS → 유향 트리 (source→leaf 가 흐름 방향)
+        const parent = new Map(), parentPipe = new Map(), children = new Map(), order = [];
+        const visited = new Set([source]); const queue = [source]; order.push(source);
+        let loopEdges = 0;
+        while (queue.length) {
+          const u = queue.shift();
+          for (const { o, pp } of (adj.get(u) || [])) {
+            if (!visited.has(o)) {
+              visited.add(o); parent.set(o, u); parentPipe.set(o, pp);
+              if (!children.has(u)) children.set(u, []); children.get(u).push(o);
+              order.push(o); queue.push(o);
+            } else if (parent.get(u) !== o) { loopEdges++; }
+          }
+        }
+        const heads = new Set((geom.head_labels || []).filter(h => visited.has(h)));
+        sim.graph = {
+          pos, elevM, source, parent, parentPipe, children, order, heads,
+          headTip: headTipMap, headZ, edgeR: edgeR || 5,
+          gScene: Math.max(1, (edgeR || 5) * 8),
+          loopEdges: Math.floor(loopEdges / 2),
+          unreached: geom.nodes.length - visited.size,
+        };
+        _simGraph = sim.graph;
+        recomputeSim();
+      }
+
+      // ── 솔버 ──
+      function _finishResult(nodeP, headQ, pipeFlow, pipeV, converged, supplyReq) {
+        const g = sim.graph;
+        let totalQ = 0, minP = Infinity, minLabel = null;
+        for (const h of g.heads) {
+          totalQ += (headQ.get(h) || 0);
+          const p = nodeP.get(h); if (p != null && p < minP) { minP = p; minLabel = h; }
+        }
+        let remote = null, remoteHops = -1;
+        for (const h of g.heads) {
+          let hops = 0, cur = h;
+          while (g.parent.has(cur)) { hops++; cur = g.parent.get(cur); }
+          if (hops > remoteHops) { remoteHops = hops; remote = h; }
+        }
+        let pmin = Infinity, pmax = -Infinity;
+        for (const p of nodeP.values()) { if (p < pmin) pmin = p; if (p > pmax) pmax = p; }
+        sim.result = {
+          nodeP, headQ, pipeFlow, pipeV, totalQ,
+          minHead: { label: minLabel, P: (minP === Infinity ? 0 : minP) },
+          remoteHead: remote, converged, supplyReq,
+          pmin: isFinite(pmin) ? pmin : 0, pmax: isFinite(pmax) ? pmax : 1,
+        };
+      }
+
+      function solveSim() {
+        const g = sim.graph;
+        if (!g) { sim.result = null; return; }
+        const K = sim.kFactor, C = sim.cOverride;
+        const rev = [...g.order].reverse();
+        const nodeP = new Map(), headQ = new Map(), pipeFlow = new Map(), pipeV = new Map();
+        const dz = (child) => (g.elevM.get(child) || 0) - (g.elevM.get(g.parent.get(child)) || 0);
+        const areaM2 = (d) => Math.PI / 4 * Math.pow(d / 1000, 2);
+        const accumulate = (headQ) => {
+          const sub = new Map();
+          for (const node of rev) {
+            let q = g.heads.has(node) ? (headQ.get(node) || 0) : 0;
+            for (const ch of (g.children.get(node) || [])) q += (sub.get(ch) || 0);
+            sub.set(node, q);
+          }
+          for (const [ch] of g.parentPipe) pipeFlow.set(ch, sub.get(ch) || 0);
+          return sub;
+        };
+        const velocities = () => {
+          for (const [ch, q] of pipeFlow) {
+            const pp = g.parentPipe.get(ch); const a = areaM2(pp.dia);
+            pipeV.set(ch, a > 0 ? (q / 60000) / a : 0);
+          }
+        };
+
+        if (sim.mode === "supply") {
+          const hp = new Map(); for (const h of g.heads) hp.set(h, sim.supplyP);
+          let converged = false;
+          for (let it = 0; it < 30; it++) {
+            for (const h of g.heads) headQ.set(h, K * Math.sqrt(Math.max(hp.get(h) || 0, 0)));
+            accumulate(headQ);
+            nodeP.set(g.source, sim.supplyP);
+            for (const node of g.order) {
+              if (node === g.source) continue;
+              const par = g.parent.get(node), pp = g.parentPipe.get(node);
+              nodeP.set(node, (nodeP.get(par) || 0)
+                - hfBar(pipeFlow.get(node) || 0, pp.len, C, pp.dia) - staticBar(dz(node)));
+            }
+            let maxd = 0;
+            for (const h of g.heads) {
+              const np = nodeP.get(h) || 0;
+              maxd = Math.max(maxd, Math.abs(np - (hp.get(h) || 0))); hp.set(h, np);
+            }
+            if (maxd < 1e-4) { converged = true; break; }
+          }
+          velocities();
+          _finishResult(nodeP, headQ, pipeFlow, pipeV, converged, null);
+        } else {
+          for (const h of g.heads) headQ.set(h, K * Math.sqrt(Math.max(sim.designP, 0)));
+          accumulate(headQ);
+          const reqP = new Map();
+          for (const node of rev) {
+            let need = g.heads.has(node) ? sim.designP : 0;
+            for (const ch of (g.children.get(node) || [])) {
+              const pp = g.parentPipe.get(ch);
+              need = Math.max(need, (reqP.get(ch) || 0)
+                + hfBar(pipeFlow.get(ch) || 0, pp.len, C, pp.dia) + staticBar(dz(ch)));
+            }
+            reqP.set(node, need);
+          }
+          const supplyReq = reqP.get(g.source) || 0;
+          nodeP.set(g.source, supplyReq);
+          for (const node of g.order) {
+            if (node === g.source) continue;
+            const par = g.parent.get(node), pp = g.parentPipe.get(node);
+            nodeP.set(node, (nodeP.get(par) || 0)
+              - hfBar(pipeFlow.get(node) || 0, pp.len, C, pp.dia) - staticBar(dz(node)));
+          }
+          velocities();
+          _finishResult(nodeP, headQ, pipeFlow, pipeV, true, supplyReq);
+        }
+      }
+
+      // ── 색상 램프 ──
+      function _velColor(v) {
+        const t = Math.max(0, Math.min(1, v / 4));
+        return new THREE.Color(0.2 + 0.8 * t, 0.62, 1 - 0.7 * t);   // 저속 파랑 → 고속 주황
+      }
+      function _pressColor(t) {
+        const c = new THREE.Color();
+        if (t < 0.5) { const u = t / 0.5; c.setRGB(1 - 0.15 * u, 0.2 + 0.6 * u, 0.15); }  // 저압 빨강→초록
+        else { const u = (t - 0.5) / 0.5; c.setRGB(0.85 - 0.85 * u, 0.8 - 0.25 * u, 0.15 + 0.8 * u); }  // →파랑
+        return c;
+      }
+      const _heatMatCache = {};
+      function _heatMat(t) {
+        const b = Math.round(Math.max(0, Math.min(1, t)) * 12);
+        if (!_heatMatCache[b]) {
+          const c = _pressColor(b / 12);
+          _heatMatCache[b] = new THREE.MeshPhongMaterial({
+            color: c, emissive: c, emissiveIntensity: 0.45, shininess: 60, specular: 0x222233,
+          });
+        }
+        return _heatMatCache[b];
+      }
+
+      // ── 파티클 (관내 흐름 + 헤드 방수) ──
+      function _disposePoints(p) {
+        if (!p) return;
+        if (p.parent) p.parent.remove(p);
+        if (p.geometry) p.geometry.dispose();
+        if (p.material) p.material.dispose();
+      }
+      function _spawnDrop(o, dir, vmag) {
+        const ang = Math.random() * Math.PI * 2, rad = Math.random() * 0.5;
+        return {
+          ox: o.x, oy: o.y, oz: o.z, x: o.x, y: o.y, z: o.z,
+          vx: Math.cos(ang) * rad * vmag, vy: Math.sin(ang) * rad * vmag,
+          vz: dir * vmag * (0.6 + Math.random() * 0.6),
+          life: Math.random() * 0.9, maxlife: 0.7 + Math.random() * 0.8, vmag, dir,
+        };
+      }
+      function buildParticles() {
+        _disposePoints(flowPts); flowPts = null; _flowMeta = null;
+        _disposePoints(sprayPts); sprayPts = null; _sprayMeta = null;
+        const g = sim.graph, r = sim.result;
+        if (!g || !r || !scene) return;
+        const edgeR = g.edgeR;
+        // 관내 흐름 패킷 — pipe 별 개수 ∝ 유량, 이동속도 ∝ 유속
+        const pipeList = [];
+        for (const [ch] of g.parentPipe) {
+          const q = r.pipeFlow.get(ch) || 0; if (q <= 1e-6) continue;
+          const a = g.pos.get(g.parent.get(ch)), b = g.pos.get(ch);
+          if (!a || !b) continue;
+          pipeList.push({ a, b, q, v: r.pipeV.get(ch) || 0 });
+        }
+        const totalQ = pipeList.reduce((s, p) => s + p.q, 0) || 1;
+        const packets = [];
+        const MAXP = 1500;
+        for (const pl of pipeList) {
+          const n = Math.min(120, Math.max(1, Math.round(MAXP * (pl.q / totalQ))));
+          for (let i = 0; i < n; i++) {
+            packets.push({ a: pl.a, b: pl.b, v: pl.v, t: Math.random(),
+              speed: Math.max(0.05, Math.min(2.5, pl.v / 2.5)) * 0.5 });
+          }
+        }
+        if (packets.length) {
+          const N = packets.length;
+          const posArr = new Float32Array(N * 3), colArr = new Float32Array(N * 3);
+          for (let i = 0; i < N; i++) {
+            const c = _velColor(packets[i].v);
+            colArr[i * 3] = c.r; colArr[i * 3 + 1] = c.g; colArr[i * 3 + 2] = c.b;
+          }
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+          geo.setAttribute("color", new THREE.BufferAttribute(colArr, 3));
+          const flowBase = Math.max(edgeR * 1.6, 1);   // 관경(edgeR)에 비례 — world 단위
+          flowPts = new THREE.Points(geo, new THREE.PointsMaterial({
+            size: flowBase * sim.particleScale, sizeAttenuation: true,
+            vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false,
+          }));
+          flowPts.userData.baseSize = flowBase;
+          flowPts.renderOrder = 5; scene.add(flowPts); _flowMeta = packets;
+          _writeFlowPositions();
+        }
+        // 헤드 방수 분사 — 헤드 별 파티클 ∝ 방수량, 방출세기 ∝ √q
+        const activeHeads = [...g.heads].filter(h => g.headTip.has(h) && (r.headQ.get(h) || 0) > 1e-6);
+        const totQh = activeHeads.reduce((s, h) => s + (r.headQ.get(h) || 0), 0) || 1;
+        const dir = (g.headZ < 0) ? -1 : 1;
+        const sprays = [];
+        const SPRAYCAP = 3000, PERHEAD = 60;
+        for (const h of activeHeads) {
+          const q = r.headQ.get(h) || 0;
+          const n = Math.min(PERHEAD, Math.max(4, Math.round(SPRAYCAP * (q / totQh))));
+          const o = g.headTip.get(h);
+          const vmag = Math.sqrt(Math.max(q, 0)) * edgeR * 0.05 + edgeR * 0.4;
+          for (let i = 0; i < n; i++) { const d = _spawnDrop(o, dir, vmag); d.g = g.gScene; sprays.push(d); }
+        }
+        if (sprays.length) {
+          const M = sprays.length;
+          const posArr = new Float32Array(M * 3), colArr = new Float32Array(M * 3);
+          const c = new THREE.Color(0x60cdf5);
+          for (let i = 0; i < M; i++) { colArr[i * 3] = c.r; colArr[i * 3 + 1] = c.g; colArr[i * 3 + 2] = c.b; }
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+          geo.setAttribute("color", new THREE.BufferAttribute(colArr, 3));
+          const sprayBase = Math.max(edgeR * 0.9, 0.6);   // 물방울 — 관보다 약간 작게, world 단위
+          sprayPts = new THREE.Points(geo, new THREE.PointsMaterial({
+            size: sprayBase * sim.particleScale, sizeAttenuation: true,
+            vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false,
+          }));
+          sprayPts.userData.baseSize = sprayBase;
+          sprayPts.renderOrder = 6; scene.add(sprayPts); _sprayMeta = sprays;
+          _writeSprayPositions();
+        }
+        _applyVizVisibility();
+      }
+      function _writeFlowPositions() {
+        if (!flowPts || !_flowMeta) return;
+        const arr = flowPts.geometry.attributes.position.array;
+        for (let i = 0; i < _flowMeta.length; i++) {
+          const p = _flowMeta[i], t = p.t;
+          arr[i * 3] = p.a.x + (p.b.x - p.a.x) * t;
+          arr[i * 3 + 1] = p.a.y + (p.b.y - p.a.y) * t;
+          arr[i * 3 + 2] = p.a.z + (p.b.z - p.a.z) * t;
+        }
+        flowPts.geometry.attributes.position.needsUpdate = true;
+      }
+      function _writeSprayPositions() {
+        if (!sprayPts || !_sprayMeta) return;
+        const arr = sprayPts.geometry.attributes.position.array;
+        for (let i = 0; i < _sprayMeta.length; i++) {
+          const s = _sprayMeta[i];
+          arr[i * 3] = s.x; arr[i * 3 + 1] = s.y; arr[i * 3 + 2] = s.z;
+        }
+        sprayPts.geometry.attributes.position.needsUpdate = true;
+      }
+      function _updateSpray(dt) {
+        for (const s of _sprayMeta) {
+          s.life += dt;
+          if (s.life >= s.maxlife) {
+            s.x = s.ox; s.y = s.oy; s.z = s.oz;
+            const ang = Math.random() * Math.PI * 2, rad = Math.random() * 0.5;
+            s.vx = Math.cos(ang) * rad * s.vmag; s.vy = Math.sin(ang) * rad * s.vmag;
+            s.vz = s.dir * s.vmag * (0.6 + Math.random() * 0.6); s.life = 0;
+          } else {
+            s.vz -= s.g * dt;  // 중력(−z)
+            s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
+          }
+        }
+        _writeSprayPositions();
+      }
+
+      // ── 히트맵 ──
+      function applyHeatmap(on) {
+        if (!nodeGroup || !edgeGroup) return;
+        const r = sim.result;
+        if (!on || !r) {
+          for (const m of nodeGroup.children) if (m.userData.baseMat) m.material = m.userData.baseMat;
+          for (const m of edgeGroup.children) if (m.userData.baseMat) m.material = m.userData.baseMat;
+          return;
+        }
+        const span = Math.max(r.pmax - r.pmin, 1e-6);
+        const tOf = (p) => (p - r.pmin) / span;
+        for (const m of nodeGroup.children) {
+          if (!m.userData.baseMat) continue;
+          let lab = m.userData.label;
+          if (lab && lab.endsWith("·head")) lab = lab.slice(0, -5);
+          const p = r.nodeP.get(lab);
+          m.material = (p == null) ? m.userData.baseMat : _heatMat(tOf(p));
+        }
+        for (const m of edgeGroup.children) {
+          if (!m.userData.baseMat) continue;
+          const pin = r.nodeP.get(m.userData.pin), pout = r.nodeP.get(m.userData.pout);
+          if (pin == null && pout == null) { m.material = m.userData.baseMat; continue; }
+          const p = Math.min(pin == null ? Infinity : pin, pout == null ? Infinity : pout);
+          m.material = _heatMat(tOf(p));
+        }
+      }
+
+      // ── 수치 오버레이 ──
+      function updateSimOverlay() {
+        if (!simOverlayBody) return;
+        const r = sim.result, g = sim.graph;
+        if (!r || !g) { simOverlayBody.innerHTML = ""; return; }
+        const row = (k, v) => `<div class="so-row"><span class="so-k">${_esc(k)}</span><span class="so-v">${_esc(v)}</span></div>`;
+        const rows = [];
+        rows.push(row("모드", sim.mode === "supply" ? "공급 지정" : "설계 역산"));
+        if (sim.mode === "supply") rows.push(row("공급압", sim.supplyP.toFixed(1) + " bar"));
+        else {
+          rows.push(row("필요 공급압", (r.supplyReq || 0).toFixed(2) + " bar"));
+          rows.push(row("최소방수압", sim.designP.toFixed(1) + " bar"));
+        }
+        rows.push(row("헤드 수", g.heads.size + " 개"));
+        rows.push(row("총 방수량", r.totalQ.toFixed(0) + " L/min"));
+        if (r.minHead.label) rows.push(row("최소압 헤드", r.minHead.label + " · " + r.minHead.P.toFixed(2) + " bar"));
+        if (r.remoteHead) rows.push(row("최원단 헤드", r.remoteHead));
+        let warn = "";
+        if (sim.mode === "supply") {
+          if (r.minHead.P < 0.1) warn = "⚠ 일부 헤드 잔압 ≤ 0 — 공급압 부족";
+          else if (r.totalQ > sim.supplyQ) warn = "⚠ 총 방수량이 가용유량(" + sim.supplyQ + ") 초과";
+        }
+        if (g.loopEdges > 0) warn = (warn ? warn + " · " : "") + "루프 " + g.loopEdges + "개 트리 근사";
+        if (!r.converged) warn = (warn ? warn + " · " : "") + "수렴 미달";
+        simOverlayBody.innerHTML = rows.join("") + (warn ? `<div class="so-warn">${_esc(warn)}</div>` : "");
+      }
+
+      // ── 제어 ──
+      function _applyVizVisibility() {
+        if (flowPts) flowPts.visible = sim.running && sim.viz.flow;
+        if (sprayPts) sprayPts.visible = sim.running && sim.viz.spray;
+        if (simOverlayEl) simOverlayEl.classList.toggle("is-visible",
+          sim.running && sim.viz.overlay && !!sim.result);
+      }
+      function _applyParticleScale() {
+        if (flowPts && flowPts.material && flowPts.userData.baseSize)
+          flowPts.material.size = flowPts.userData.baseSize * sim.particleScale;
+        if (sprayPts && sprayPts.material && sprayPts.userData.baseSize)
+          sprayPts.material.size = sprayPts.userData.baseSize * sim.particleScale;
+      }
+      function recomputeSim() {
+        if (!sim.graph) { sim.result = null; updateSimOverlay(); return; }
+        solveSim();
+        buildParticles();
+        updateSimOverlay();
+        applyHeatmap(sim.running && sim.viz.heat);
+      }
+      function startSim() {
+        if (!sim.graph) return;
+        sim.running = true;
+        recomputeSim();
+        _applyVizVisibility();
+      }
+      function stopSim() {
+        sim.running = false;
+        applyHeatmap(false);
+        _applyVizVisibility();
+      }
+      function updateSim(dt) {
+        if (!sim.running) return;
+        if (sim.viz.flow && flowPts && _flowMeta) {
+          for (const p of _flowMeta) { p.t += p.speed * dt; if (p.t > 1) p.t -= Math.floor(p.t); }
+          _writeFlowPositions();
+        }
+        if (sim.viz.spray && sprayPts && _sprayMeta) _updateSpray(dt);
+      }
+
+      // hover 시 노드 잔압 / pipe 유량 툴팁
+      function _onSimHover(ev) {
+        if (!isoTooltipEl) return;
+        if (!raycaster || !camera || !sim.running || !sim.result) {
+          isoTooltipEl.classList.remove("is-visible"); return;
+        }
+        const rect = canvas3d.getBoundingClientRect();
+        const mx = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+        const my = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera({ x: mx, y: my }, camera);
+        const targets = [];
+        if (nodeGroup) targets.push(...nodeGroup.children);
+        if (edgeGroup) targets.push(...edgeGroup.children);
+        const hits = raycaster.intersectObjects(targets, false);
+        if (!hits.length) { isoTooltipEl.classList.remove("is-visible"); return; }
+        const obj = hits[0].object, r = sim.result, g = sim.graph;
+        let html = null;
+        if (obj.userData.label != null) {
+          let lab = obj.userData.label;
+          if (lab.endsWith("·head")) lab = lab.slice(0, -5);
+          const p = r.nodeP.get(lab);
+          const isHead = g && g.heads.has(lab);
+          html = `<b>${_esc(lab)}</b>${isHead ? " ·헤드" : ""}<br>잔압 ${p != null ? p.toFixed(2) + " bar" : "—"}`;
+          if (isHead) { const q = r.headQ.get(lab); html += `<br>방수량 ${q != null ? q.toFixed(0) + " L/min" : "—"}`; }
+        } else if (obj.userData.pin != null && g) {
+          const pin = obj.userData.pin, pout = obj.userData.pout;
+          const child = (g.parent.get(pin) === pout) ? pin : pout;
+          const q = r.pipeFlow.get(child), v = r.pipeV.get(child);
+          html = `<b>${_esc(pin)}→${_esc(pout)}</b><br>유량 ${q != null ? q.toFixed(0) + " L/min" : "—"}`
+               + `<br>유속 ${v != null ? v.toFixed(2) + " m/s" : "—"}`;
+        }
+        if (!html) { isoTooltipEl.classList.remove("is-visible"); return; }
+        isoTooltipEl.innerHTML = html;
+        isoTooltipEl.style.left = (ev.clientX - rect.left + 14) + "px";
+        isoTooltipEl.style.top = (ev.clientY - rect.top + 14) + "px";
+        isoTooltipEl.classList.add("is-visible");
+      }
+
       function setOptionsFromUI() {
         const sZ = document.getElementById("iso-z-scale");
         const sN = document.getElementById("iso-node-size");
@@ -5251,6 +5944,71 @@
         togglesRedraw(cC, "colorByElev");
         if (btnFit) btnFit.addEventListener("click", fitToData);
         if (btnReset) btnReset.addEventListener("click", resetView);
+
+        // ── 시뮬레이션 컨트롤 ──
+        const btnRun = document.getElementById("sim-run");
+        if (btnRun) btnRun.addEventListener("click", () => {
+          if (sim.running) { stopSim(); btnRun.textContent = "▶ 작동"; btnRun.classList.remove("is-running"); }
+          else { startSim(); btnRun.textContent = "■ 정지"; btnRun.classList.add("is-running"); }
+        });
+        const mS = document.getElementById("sim-mode-supply");
+        const mD = document.getElementById("sim-mode-design");
+        const rowsS = document.getElementById("sim-rows-supply");
+        const rowsD = document.getElementById("sim-rows-design");
+        const setMode = (mode) => {
+          sim.mode = mode;
+          if (mS) mS.classList.toggle("is-active", mode === "supply");
+          if (mD) mD.classList.toggle("is-active", mode === "design");
+          if (rowsS) rowsS.classList.toggle("ic-hidden", mode !== "supply");
+          if (rowsD) rowsD.classList.toggle("ic-hidden", mode !== "design");
+          if (sim.running) recomputeSim();
+        };
+        if (mS) mS.addEventListener("click", () => setMode("supply"));
+        if (mD) mD.addEventListener("click", () => setMode("design"));
+
+        const bindSlider = (id, key, fmt) => {
+          const el = document.getElementById(id);
+          const val = document.getElementById(id + "-val");
+          if (!el) return;
+          el.addEventListener("input", () => {
+            sim[key] = parseFloat(el.value);
+            if (val) val.textContent = fmt(sim[key]);
+            if (sim.running) recomputeSim();
+          });
+        };
+        bindSlider("sim-supply-p", "supplyP", v => v.toFixed(1) + " bar");
+        bindSlider("sim-supply-q", "supplyQ", v => v.toFixed(0) + " L/min");
+        bindSlider("sim-design-p", "designP", v => v.toFixed(1) + " bar");
+        bindSlider("sim-k", "kFactor", v => String(v));
+        bindSlider("sim-c", "cOverride", v => String(v));
+        // 입자 크기 — 재계산 없이 material.size 만 즉시 갱신
+        const psEl = document.getElementById("sim-particle-scale");
+        const psVal = document.getElementById("sim-particle-scale-val");
+        if (psEl) psEl.addEventListener("input", () => {
+          sim.particleScale = parseFloat(psEl.value);
+          if (psVal) psVal.textContent = sim.particleScale.toFixed(1) + "×";
+          _applyParticleScale();
+        });
+
+        const bindViz = (id, key) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.addEventListener("change", () => {
+            sim.viz[key] = el.checked;
+            _applyVizVisibility();
+            if (key === "heat") applyHeatmap(sim.running && sim.viz.heat);
+          });
+        };
+        bindViz("sim-viz-flow", "flow");
+        bindViz("sim-viz-spray", "spray");
+        bindViz("sim-viz-heat", "heat");
+        bindViz("sim-viz-overlay", "overlay");
+
+        // hover 툴팁 — 노드 잔압 / pipe 유량
+        if (canvas3d) canvas3d.addEventListener("mousemove", _onSimHover);
+        if (canvas3d) canvas3d.addEventListener("mouseleave", () => {
+          if (isoTooltipEl) isoTooltipEl.classList.remove("is-visible");
+        });
       }
 
       function enter() {
@@ -5272,6 +6030,7 @@
           loadGeometry(state.combined_geometry);
           fitToData();
         }
+        _applyVizVisibility();
         start();
         return true;
       }
@@ -5285,6 +6044,8 @@
           controlsEl.setAttribute("aria-hidden", "true");
         }
         if (hintEl) hintEl.classList.remove("is-visible");
+        if (simOverlayEl) simOverlayEl.classList.remove("is-visible");
+        if (isoTooltipEl) isoTooltipEl.classList.remove("is-visible");
       }
 
       return { init, enter, exit, loadGeometry, resize, fitToData, resetView, dispose };
@@ -5494,7 +6255,8 @@
       const _built = !!state.combinedBuild;
       if (_cmbExpSdf) _cmbExpSdf.disabled = !_built;
       if (_cmbExpKfp) _cmbExpKfp.disabled = !(_built && state.combinedBuild && state.combinedBuild.download_url_kfp);
-      if (_cmbExpHas) _cmbExpHas.disabled = !(_built && state.combinedBuild && state.combinedBuild.download_url_has);
+      // HAS 출력 미지원 — 빌드 상태와 무관하게 항상 비활성(스타일/툴팁은 인라인 HTML).
+      if (_cmbExpHas) _cmbExpHas.disabled = true;
     }
     // 기계실 등 입력이 바뀌어 기존 통합 결과가 옛 데이터가 됐을 때 — 재빌드 유도.
     // (재빌드 전까지 통합 캔버스/3D 는 기계실 없는 옛 그래프 → "기계실 독립" 처럼 보임)

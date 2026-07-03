@@ -1,0 +1,229 @@
+{
+  "entities_sig": "af025fd5b7ddb485",
+  "n_entities": 1855,
+  "result": {
+    "bbox": {
+      "x_max": 505.145,
+      "x_min": 131.542,
+      "y_max": -2568.803,
+      "y_min": -3053.231
+    },
+    "bg_budget": 120000,
+    "bg_entities": 54,
+    "bg_skipped": false,
+    "counts": {
+      "layers": 15,
+      "total_entities": 1855
+    },
+    "dropped_types": {
+      "WIPEOUT": 1
+    },
+    "dxf_filename": "LH_306.dxf",
+    "dxf_token": "LH_306.dxf",
+    "layers": [
+      {
+        "auto_category": "OTHER",
+        "color": 7,
+        "count": 75,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "0",
+        "types": {
+          "I": 69,
+          "PL": 6
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "OTHER",
+        "color": 1,
+        "count": 1,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "0.내진_BRACE_4방향",
+        "types": {
+          "T": 1
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "OTHER",
+        "color": 1,
+        "count": 2,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "1",
+        "types": {
+          "C": 1,
+          "PL": 1
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "OTHER",
+        "color": 1,
+        "count": 4,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "BRACE_4방향",
+        "types": {
+          "H": 1,
+          "PL": 3
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "ARCH",
+        "color": 1,
+        "count": 7,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "DIM",
+        "types": {
+          "C": 1,
+          "L": 4,
+          "PL": 2
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "OTHER",
+        "color": 7,
+        "count": 12,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "Defpoints",
+        "types": {
+          "PL": 12
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "PIPE",
+        "color": 4,
+        "count": 301,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "PIPE",
+        "types": {
+          "A": 1,
+          "I": 1,
+          "L": 299
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "PIPE",
+        "color": 4,
+        "count": 54,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "PIPE11",
+        "types": {
+          "L": 54
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "OTHER",
+        "color": 6,
+        "count": 378,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "SYM",
+        "types": {
+          "A": 17,
+          "C": 26,
+          "I": 7,
+          "L": 322,
+          "S": 6
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "TEXT",
+        "color": 3,
+        "count": 62,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "TEXT",
+        "types": {
+          "T": 62
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "ARCH",
+        "color": 8,
+        "count": 47,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "arch",
+        "types": {
+          "L": 35,
+          "PL": 2,
+          "T": 10
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "OTHER",
+        "color": 161,
+        "count": 51,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "defpoint",
+        "types": {
+          "L": 2,
+          "PL": 49
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "TEXT",
+        "color": 3,
+        "count": 20,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "관경",
+        "types": {
+          "C": 4,
+          "I": 2,
+          "L": 6,
+          "PL": 2,
+          "T": 6
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "OTHER",
+        "color": 1,
+        "count": 10,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "지시선",
+        "types": {
+          "PL": 10
+        },
+        "visible": true
+      },
+      {
+        "auto_category": "HEAD",
+        "color": 4,
+        "count": 831,
+        "is_frozen": false,
+        "is_off": false,
+        "name": "헤드",
+        "types": {
+          "C": 180,
+          "L": 360,
+          "PL": 291
+        },
+        "visible": true
+      }
+    ],
+    "ok": true,
+    "type": "result"
+  },
+  "status": 200
+}

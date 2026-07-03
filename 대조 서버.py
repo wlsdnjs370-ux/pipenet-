@@ -4134,13 +4134,20 @@ def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
             {"label": str(n["label"]),
              "x": float(n.get("x", 0)), "y": float(n.get("y", 0)),
              "z": float(n.get("elevation", 0)),
-             "io": n.get("io_node", "No")}
+             "io": n.get("io_node", "No"),
+             # 아이소 3D 방수 시뮬레이션용 — Input 노드 공급압(Pa). 없으면 None.
+             "pressure_pa": (float(n["pressure_pa"])
+                             if n.get("pressure_pa") is not None else None)}
             for n in combined.nodes
         ],
         "pipes": [
             {"label": str(p.get("label", "")),
              "in": str(p["in"]), "out": str(p["out"]),
-             "dia": p.get("dia", 0)}
+             "dia": p.get("dia", 0),
+             # 아이소 3D 방수 시뮬레이션용 하젠-윌리엄스 파라미터.
+             "length": float(p.get("length", 0) or 0),   # m
+             "c": float(p.get("c", 120) or 120),          # Hazen-Williams C
+             "elev": float(p.get("elev", 0) or 0)}        # 상승고 m (in→out)
             for p in combined.pipes
         ],
         "pumps": [

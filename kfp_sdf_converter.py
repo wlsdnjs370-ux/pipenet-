@@ -250,8 +250,13 @@ def kfp_dict_to_network(data: dict) -> CommonNetwork:
     net = CommonNetwork(source_format="kfp")
 
     # ── 노드 (nodes + nodes_meta 통합)
-    coords = data.get("nodes", {})
-    metas = data.get("nodes_meta", {})
+    # 2.2-NODE-SCHEMA: nodes(좌표) + nodes_meta(속성) 분리.
+    # 4.0-NFPA13-EQL: nodes/nodes_meta 없이 nodes_meta_runtime 단일(좌표는 meta["coords"]).
+    # 두 포맷 모두 지원.
+    metas = data.get("nodes_meta") or data.get("nodes_meta_runtime", {})
+    coords = data.get("nodes")
+    if not coords:
+        coords = {nid: m.get("coords", [0.0, 0.0, 0.0]) for nid, m in metas.items()}
     for nid, xyz in coords.items():
         meta = metas.get(nid, {})
         # KFP type_id 종류 (17 파일 분석):
@@ -388,6 +393,18 @@ def kfp_dict_to_network(data: dict) -> CommonNetwork:
                 "category": cat.get("category_id"),
                 "is_check_valve": item.get("is_check_valve", False),
             })
+    # 4.0-NFPA13-EQL: fittings_library_v3 (DN별 등가길이 표). round-trip 은 배관별
+    # equivalent_length 를 직접 읽으므로 카탈로그는 참조용으로만 보존.
+    for item in data.get("fittings_library_v3", []) or []:
+        net.fitting_library.append({
+            "id": item.get("id"),
+            "display_name": item.get("name_en") or item.get("name_ko"),
+            "type_id": item.get("category"),
+            "L_over_D": None,
+            "equivalent_lengths": item.get("equivalent_lengths"),
+            "category": item.get("category"),
+            "is_check_valve": "check" in (item.get("category") or "").lower(),
+        })
     plib = data.get("pump_library", {}) or {}
     for pump in plib.get("pumps", []) or []:
         net.pump_library.append(dict(pump))
@@ -538,7 +555,9 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
     # K-solver 가 unknown key 만나면 node drop 가능 → 우리 내부 추적용 키는 제외.
     # pump_output 은 우리 내부 추적용(HAS pumpBlk ENodeId / KFP 토출 파이프 합성).
     # 참조 KFP 의 펌프 meta 엔 이 키가 없으므로 K-solver 노출 meta 에서 제외.
-    INTERNAL_RAW_KEYS = {"sdf_label", "io_node", "sdf_lib_item", "pump_name", "pump_output"}
+    # display_z_m 은 coords[2] 와 동치(파싱 시 line 289 에서 재구성) — 4.0 템플릿
+    # nodes_meta_runtime 에는 없으므로 출력 meta 에서 제외해 strict validator 와 정합.
+    INTERNAL_RAW_KEYS = {"sdf_label", "io_node", "sdf_lib_item", "pump_name", "pump_output", "display_z_m"}
 
     nodes = {}
     nodes_meta = {}
@@ -609,9 +628,23 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
             "pressure_setting_bar": None,
             "loss_coefficient": 0.0,
             "hole_diameter": 0.0,
-            "orifice_discharge_coeff": 0.0,   # ★ 전체 샘플 0.0 (0.65 default 비표준)
+            "orifice_discharge_coeff": 0.65,  # ★ 4.0 기본값 (orifice 노드만 의미 — 물리 표준 0.65)
             "pipe_dn": 0.0,
             "check_valve_direction": "",
+            # ── 4.0-NFPA13-EQL 추가 필드 (전체 노드 공통, 4.0 템플릿 기본값) ──
+            "category_id": "",
+            "hose_stream_flow_lps": 6.666666666666667,
+            "fdt_differential_ratio": 5.5,
+            "fdt_primary_water_gauge_bar": 5.0,
+            "fdt_p_initial_gauge_bar": 2.4,
+            "fdt_gas": "air",
+            "fdt_temp_c": 20.0,
+            "fdt_trip_pressure_gauge_bar": 0.0,
+            "fdt_interlock_mode": "single",
+            "fdt_accel_installed": True,
+            "fdt_accel_kind": "mechanical",
+            "fdt_accel_drop_bar": 0.3,
+            "fdt_accel_trip_time_s": 3.0,
         }
         # 원본 raw 메타로 덮어쓰기 (round-trip 보존). 단 내부 추적용 키 제외.
         meta.update({k: v for k, v in cn.raw.items() if k not in INTERNAL_RAW_KEYS})
@@ -890,13 +923,13 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
         }
 
     out = {
-        "nodes": nodes,
-        "node_types": node_types,
+        # ★ 4.0-NFPA13-EQL: 노드는 nodes_meta_runtime 단일 저장. 2.2 의 nodes(좌표)/
+        # node_types/nodes_meta 3중 미러는 4.0 이 읽지 않고 strict validator 가 거부할
+        # 수 있어 4.0 템플릿(ewqwqe.kfp)과 동일하게 제거. 좌표는 각 노드 meta["coords"].
         "pipe_data": pipe_data,
         "pipe_id_counter": max_pipe_n + 1,
         "node_counter": {"N": max_node_n + 1},
-        "nodes_meta": nodes_meta,
-        "nodes_meta_runtime": nodes_meta,  # KFP 의 runtime 캐시
+        "nodes_meta_runtime": nodes_meta,
         "design_settings": net.design_settings or {
             "min_required_pressure_bar": 1.0,
             "calculation_method": "H-W",
@@ -925,18 +958,9 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
         # 가 KFP 받자마자 hydraulic 계산 시작 가능하게 함.
         "pipe_library": _slf_pipe_lib or copy.deepcopy(_try_load_ksolver_libraries()["pipe"]),
         "nozzle_library": _nozzle_library,
-        "fittings_library": {
-            "schema_version": "2.0",
-            "categories": [
-                {
-                    "category_id": "fitting",
-                    "display_name": "Fitting",
-                    "is_system_protected": True,
-                    "type_id": "fitting",
-                    "items": copy.deepcopy(_try_load_ksolver_libraries()["fittings"].get("fittings", [])),
-                },
-            ],
-        },
+        # ★ 4.0-NFPA13-EQL: 피팅은 NFPA13 등가길이 카탈로그(fittings_library_v3).
+        # 2.2 의 L/D 기반 fittings_library 는 4.0 이 읽지 않음 → v3 로 교체.
+        "fittings_library_v3": _fittings_library_v3(),
         # ★ pump_library — pump 노드의 실제 곡선 데이터로 자동 채우기
         "pump_library": {
             "pumps": (list(_slf_pump_list) + list(net.pump_library) + [
@@ -957,7 +981,8 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
                  "shutoff_p": 0.0, "peak_q": 0.0, "peak_p": 0.0},
             ],
         },
-        "version": net.project_meta.get("_source_version", "2.2-NODE-SCHEMA"),
+        # ★ 솔버 4.0 전용 — 구버전(2.2)은 4.0 에서 열리지 않으므로 항상 4.0 으로 출력.
+        "version": "4.0-NFPA13-EQL",
         # ★ 전체 샘플 KFP 는 "TRIAL". "CONVERTED" 는 K-solver 가 미인식 → 라이센스
         # 검증 실패로 로드 거부 가능. TRIAL 통일.
         "license_tag": "TRIAL",
@@ -1956,6 +1981,26 @@ def _try_load_ksolver_libraries() -> dict:
     if out["fittings"] is None:
         out["fittings"] = {"fittings": []}
     return out
+
+
+_FITTINGS_V3_CACHE: list | None = None
+
+
+def _fittings_library_v3() -> list:
+    """4.0-NFPA13-EQL 피팅 카탈로그 — 번들 kfp_fittings_library_v3.json 로드(1회 캐시).
+
+    K-Fire_Solver 4.0 은 KFP 로드 시 fittings_library_v3(NFPA13 등가길이 표, DN별
+    equivalent_lengths)를 요구한다. 2.2 의 L/D 기반 fittings_library 는 4.0 이 안 읽음.
+    카탈로그는 ewqwqe.kfp(4.0 빈 템플릿)에서 추출한 권위 데이터.
+    """
+    global _FITTINGS_V3_CACHE
+    if _FITTINGS_V3_CACHE is None:
+        p = Path(__file__).parent / "kfp_fittings_library_v3.json"
+        try:
+            _FITTINGS_V3_CACHE = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            _FITTINGS_V3_CACHE = []
+    return copy.deepcopy(_FITTINGS_V3_CACHE)
 
 
 def _lookup_inner_d_mm(nominal_mm: int, standard: str) -> float:

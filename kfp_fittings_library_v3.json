@@ -1,0 +1,2122 @@
+[
+  {
+    "id": "ELBOW_45",
+    "name_ko": "45도 엘보",
+    "name_en": "45deg Elbow",
+    "category": "elbow_45",
+    "source": {
+      "kind": "NFPA13",
+      "edition": "2025",
+      "table": "28.2.4.4.1"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": 0.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": 0.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": 0.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": 0.6,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 0.6,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 0.9,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 0.9,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 1.2,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 1.5,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 2.1,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 2.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 3.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "300": {
+        "value": 4.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-04T00:00:00+00:00",
+      "updated_by": "system",
+      "revision": 1
+    }
+  },
+  {
+    "id": "ELBOW_90_STD",
+    "name_ko": "90도 표준 엘보",
+    "name_en": "90deg Standard Elbow",
+    "category": "elbow_90_standard",
+    "source": {
+      "kind": "NFPA13",
+      "edition": "2025",
+      "table": "28.2.4.4.1"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": 0.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": 0.6,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": 0.6,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": 0.9,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": 1.2,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 1.5,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 1.8,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 2.1,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 3.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 3.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 4.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 5.5,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 6.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "300": {
+        "value": 8.2,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": 9.0,
+        "origin": "USER_OVERRIDE",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:15:01+00:00",
+        "updated_by": "local"
+      },
+      "400": {
+        "value": 10.3,
+        "origin": "USER_OVERRIDE",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:15:04+00:00",
+        "updated_by": "local"
+      }
+    },
+    "notes": "",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-08T09:15:04+00:00",
+      "updated_by": "local",
+      "revision": 3
+    }
+  },
+  {
+    "id": "ELBOW_90_LONG",
+    "name_ko": "90도 롱턴 엘보",
+    "name_en": "90deg Long-Turn Elbow",
+    "category": "elbow_90_long",
+    "source": {
+      "kind": "NFPA13",
+      "edition": "2025",
+      "table": "28.2.4.4.1"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": 0.2,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": 0.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": 0.6,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": 0.6,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": 0.6,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 0.9,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 1.2,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 1.5,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 1.8,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 2.4,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 2.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 4.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 4.9,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "300": {
+        "value": 5.5,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-07T10:48:03+00:00",
+      "updated_by": "local",
+      "revision": 2
+    }
+  },
+  {
+    "id": "TEE_BRANCH",
+    "name_ko": "티 분기 (90도)",
+    "name_en": "Tee or Cross (Flow Turned 90deg)",
+    "category": "tee_branch_90",
+    "source": {
+      "kind": "NFPA13",
+      "edition": "2025",
+      "table": "28.2.4.4.1"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": 0.9,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": 1.2,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": 1.5,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": 1.8,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": 2.4,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 3.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 3.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 4.6,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 6.1,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 7.6,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 9.1,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 10.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 15.2,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "300": {
+        "value": 18.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": 20.1,
+        "origin": "USER_OVERRIDE",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:15:59+00:00",
+        "updated_by": "local"
+      },
+      "400": {
+        "value": 23.0,
+        "origin": "USER_OVERRIDE",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:16:03+00:00",
+        "updated_by": "local"
+      }
+    },
+    "notes": "",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-08T09:16:03+00:00",
+      "updated_by": "local",
+      "revision": 4
+    }
+  },
+  {
+    "id": "VALVE_BUTTERFLY",
+    "name_ko": "버터플라이 밸브",
+    "name_en": "Butterfly Valve",
+    "category": "butterfly_valve",
+    "source": {
+      "kind": "NFPA13",
+      "edition": "2025",
+      "table": "28.2.4.4.1"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 1.8,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 2.1,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 3.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 3.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 2.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 3.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 3.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 5.8,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "300": {
+        "value": 6.4,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-04T00:00:00+00:00",
+      "updated_by": "system",
+      "revision": 1
+    }
+  },
+  {
+    "id": "VALVE_GATE",
+    "name_ko": "게이트 밸브",
+    "name_en": "Gate Valve",
+    "category": "gate_valve",
+    "source": {
+      "kind": "NFPA13",
+      "edition": "2025",
+      "table": "28.2.4.4.1"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 0.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 0.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 0.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 0.6,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 0.6,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 0.9,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 1.2,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 1.5,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "300": {
+        "value": 1.8,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-07T10:48:00+00:00",
+      "updated_by": "local",
+      "revision": 2
+    }
+  },
+  {
+    "id": "VALVE_FLOW_SWITCH",
+    "name_ko": "베인형 유수검지장치",
+    "name_en": "Vane-Type Flow Switch",
+    "category": "flow_switch_vane",
+    "source": {
+      "kind": "NFPA13",
+      "edition": "2025",
+      "table": "28.2.4.4.1"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": 1.8,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": 2.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": 3.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 4.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 5.2,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 6.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 9.1,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "125": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 4.9,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 6.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 8.8,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "300": {
+        "value": 11.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-04T00:00:00+00:00",
+      "updated_by": "system",
+      "revision": 1
+    }
+  },
+  {
+    "id": "VALVE_SWING_CHECK",
+    "name_ko": "스윙 체크 밸브",
+    "name_en": "Swing Check Valve",
+    "category": "swing_check",
+    "source": {
+      "kind": "NFPA13",
+      "edition": "2025",
+      "table": "28.2.4.4.1"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": 1.5,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": 2.1,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": 2.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 3.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 4.3,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 4.9,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 6.7,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 8.2,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 10.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 14.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 17.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "300": {
+        "value": 20.0,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "NFPA_ORIGINAL",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-07T10:40:03+00:00",
+      "updated_by": "local",
+      "revision": 2
+    }
+  },
+  {
+    "id": "VALVE_ALARM",
+    "name_ko": "알람 밸브",
+    "name_en": "Alarm Valve",
+    "category": "alarm_valve",
+    "source": {
+      "kind": "USER",
+      "note": "사용자 직접 입력 필요"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 4.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:43:27+00:00",
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 6.8,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:43:41+00:00",
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 9.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:43:52+00:00",
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 13.0,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:44:08+00:00",
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 16.6,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:44:18+00:00",
+        "updated_by": "local"
+      },
+      "200": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "250": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "300": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-07T10:44:18+00:00",
+      "updated_by": "local",
+      "revision": 6
+    }
+  },
+  {
+    "id": "VALVE_PREACTION",
+    "name_ko": "준비작동식 밸브",
+    "name_en": "Preaction Valve",
+    "category": "preaction_valve",
+    "source": {
+      "kind": "USER",
+      "note": "사용자 직접 입력 필요"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 4.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:52:02+00:00",
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 6.8,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:52:41+00:00",
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 9.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:52:46+00:00",
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 13.0,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:52:49+00:00",
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 16.6,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:52:54+00:00",
+        "updated_by": "local"
+      },
+      "200": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:04:15+00:00",
+        "updated_by": "local"
+      },
+      "250": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:05:11+00:00",
+        "updated_by": "local"
+      },
+      "300": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-08T09:05:11+00:00",
+      "updated_by": "local",
+      "revision": 10
+    }
+  },
+  {
+    "id": "VALVE_DRY",
+    "name_ko": "건식 밸브",
+    "name_en": "Dry Pipe Valve",
+    "category": "dry_pipe_valve",
+    "source": {
+      "kind": "USER",
+      "note": "사용자 직접 입력 필요"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 4.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:52:00+00:00",
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 6.8,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:52:22+00:00",
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 9.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:52:28+00:00",
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 13.0,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:52:32+00:00",
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 16.6,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:52:36+00:00",
+        "updated_by": "local"
+      },
+      "200": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "250": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "300": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-07T10:52:36+00:00",
+      "updated_by": "local",
+      "revision": 6
+    }
+  },
+  {
+    "id": "VALVE_SMOLENSKY_CHECK",
+    "name_ko": "스모렌스키 체크밸브",
+    "name_en": "Smolensky Check Valve",
+    "category": "smolensky_check",
+    "source": {
+      "kind": "USER",
+      "note": "사용자 직접 입력 필요"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": 24.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:00:39+00:00",
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 31.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T08:57:29+00:00",
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 37.6,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T08:58:06+00:00",
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 46.8,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T08:58:17+00:00",
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 61.4,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T08:58:27+00:00",
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 76.9,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T08:58:40+00:00",
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 92.4,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T08:58:52+00:00",
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 121.6,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T08:59:04+00:00",
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 152.7,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T08:59:15+00:00",
+        "updated_by": "local"
+      },
+      "300": {
+        "value": 181.9,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T08:59:27+00:00",
+        "updated_by": "local"
+      },
+      "350": {
+        "value": 201.9,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T08:59:38+00:00",
+        "updated_by": "local"
+      },
+      "400": {
+        "value": 232.4,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T08:59:51+00:00",
+        "updated_by": "local"
+      }
+    },
+    "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-08T09:00:39+00:00",
+      "updated_by": "local",
+      "revision": 13
+    }
+  },
+  {
+    "id": "VALVE_GLOBE",
+    "name_ko": "글로브 밸브",
+    "name_en": "Globe Valve",
+    "category": "globe_valve",
+    "source": {
+      "kind": "USER",
+      "note": "사용자 직접 입력 필요"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": 5.4,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:01:03+00:00",
+        "updated_by": "local"
+      },
+      "20": {
+        "value": 7.1,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:01:13+00:00",
+        "updated_by": "local"
+      },
+      "25": {
+        "value": 9.1,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:01:23+00:00",
+        "updated_by": "local"
+      },
+      "32": {
+        "value": 11.9,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:01:37+00:00",
+        "updated_by": "local"
+      },
+      "40": {
+        "value": 13.9,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:01:45+00:00",
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 17.9,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:01:54+00:00",
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 21.3,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:02:05+00:00",
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 26.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:02:18+00:00",
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 34.8,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:02:28+00:00",
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 43.6,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:02:38+00:00",
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 52.4,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:04:10+00:00",
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 68.9,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:05:04+00:00",
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 86.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:06:00+00:00",
+        "updated_by": "local"
+      },
+      "300": {
+        "value": 103.1,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:06:12+00:00",
+        "updated_by": "local"
+      },
+      "350": {
+        "value": 114.4,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:06:32+00:00",
+        "updated_by": "local"
+      },
+      "400": {
+        "value": 131.7,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-08T09:06:43+00:00",
+        "updated_by": "local"
+      }
+    },
+    "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-08T09:06:43+00:00",
+      "updated_by": "local",
+      "revision": 18
+    }
+  },
+  {
+    "id": "VALVE_ANGLE",
+    "name_ko": "앵글 밸브",
+    "name_en": "Angle Valve",
+    "category": "angle_valve",
+    "source": {
+      "kind": "USER",
+      "note": "사용자 직접 입력 필요"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": 4.0,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:42:18+00:00",
+        "updated_by": "local"
+      },
+      "32": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": 6.1,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:42:41+00:00",
+        "updated_by": "local"
+      },
+      "50": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 9.4,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:42:57+00:00",
+        "updated_by": "local"
+      },
+      "80": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:43:38+00:00",
+        "updated_by": "local"
+      },
+      "100": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "125": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "150": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "200": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "250": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "300": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-07T10:43:38+00:00",
+      "updated_by": "local",
+      "revision": 5
+    }
+  },
+  {
+    "id": "VALVE_BALL",
+    "name_ko": "볼 밸브",
+    "name_en": "Ball Valve",
+    "category": "ball_valve",
+    "source": {
+      "kind": "USER",
+      "note": "사용자 직접 입력 필요"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "32": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "40": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 0.3,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T11:25:00+00:00",
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 0.3,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T11:25:05+00:00",
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 0.3,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T11:25:08+00:00",
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 0.6,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T11:25:13+00:00",
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 0.6,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T11:25:18+00:00",
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 0.9,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T11:25:21+00:00",
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 1.2,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T11:25:25+00:00",
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 1.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T11:25:28+00:00",
+        "updated_by": "local"
+      },
+      "300": {
+        "value": 1.8,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T11:25:31+00:00",
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+    "audit": {
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-07T11:25:31+00:00",
+      "updated_by": "local",
+      "revision": 10
+    }
+  },
+  {
+    "id": "bc507eb488a846c7ae08d1754d257594",
+    "name_ko": "스트레이너",
+    "name_en": "Strainer",
+    "category": "strainer",
+    "source": {
+      "kind": "USER",
+      "note": "user-added"
+    },
+    "equivalent_lengths": {
+      "15": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "20": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "25": {
+        "value": 8.3,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:45:57+00:00",
+        "updated_by": "local"
+      },
+      "32": {
+        "value": 8.8,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:46:07+00:00",
+        "updated_by": "local"
+      },
+      "40": {
+        "value": 10.0,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:46:16+00:00",
+        "updated_by": "local"
+      },
+      "50": {
+        "value": 13.7,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:48:06+00:00",
+        "updated_by": "local"
+      },
+      "65": {
+        "value": 13.2,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:46:59+00:00",
+        "updated_by": "local"
+      },
+      "80": {
+        "value": 23.4,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:47:04+00:00",
+        "updated_by": "local"
+      },
+      "100": {
+        "value": 29.7,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:47:12+00:00",
+        "updated_by": "local"
+      },
+      "125": {
+        "value": 36.5,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:47:20+00:00",
+        "updated_by": "local"
+      },
+      "150": {
+        "value": 46.7,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:47:28+00:00",
+        "updated_by": "local"
+      },
+      "200": {
+        "value": 84.2,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:47:58+00:00",
+        "updated_by": "local"
+      },
+      "250": {
+        "value": 147.4,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": "2026-05-07T10:47:54+00:00",
+        "updated_by": "local"
+      },
+      "300": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "350": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      },
+      "400": {
+        "value": null,
+        "origin": "USER_FILLED",
+        "original_value": null,
+        "updated_at": null,
+        "updated_by": "local"
+      }
+    },
+    "notes": "",
+    "audit": {
+      "created_at": "2026-05-07T10:45:45+00:00",
+      "created_by": "system",
+      "updated_at": "2026-05-07T10:48:06+00:00",
+      "updated_by": "local",
+      "revision": 16
+    }
+  }
+]

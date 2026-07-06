@@ -850,19 +850,19 @@ class PipenetGuideValidator:
         high_pressure_rows = [row for row in pipe_validation_rows if (row.max_pressure_kgcm2 or 0.0) >= 12.0]
         max_pipe_pressure = max((row.max_pressure_kgcm2 or 0.0 for row in pipe_validation_rows), default=0.0)
         if not high_pressure_rows:
-            results.append(RuleResult("PIPE.002", "PASS", "INFO", "meta", None, f"배관-고압구간 재질 확인: 1.2MPa(12.0kg/cm2G) 이상 구간이 없습니다. 최대 관압은 {max_pipe_pressure:.3f}kg/cm2G 입니다.", {"max_pipe_pressure_kgcm2": max_pipe_pressure}))
+            results.append(RuleResult("PIPE.002", "PASS", "INFO", "meta", None, f"배관-고압구간 재질 확인: 1.2MPa(12.0kg/cm2) 이상 구간이 없습니다. 최대 관압은 {max_pipe_pressure:.3f}kg/cm2 입니다.", {"max_pipe_pressure_kgcm2": max_pipe_pressure}))
             for row in pipe_validation_rows:
-                row.pipe_rule_results["PIPE.002"] = RuleResult("PIPE.002", "PASS", "INFO", "pipe", row.label, f"최대 관압 {row.max_pressure_kgcm2:.3f} kg/cm2G로 1.2MPa 미만", {"max_pressure_kgcm2": row.max_pressure_kgcm2})
+                row.pipe_rule_results["PIPE.002"] = RuleResult("PIPE.002", "PASS", "INFO", "pipe", row.label, f"최대 관압 {row.max_pressure_kgcm2:.3f} kg/cm2로 1.2MPa 미만", {"max_pressure_kgcm2": row.max_pressure_kgcm2})
         else:
             fail_rows = []
             for row in pipe_validation_rows:
                 if (row.max_pressure_kgcm2 or 0.0) >= 12.0:
                     ok = (row.material_name or "").strip().upper() == "KSD 3562"
-                    row.pipe_rule_results["PIPE.002"] = RuleResult("PIPE.002", "PASS" if ok else "FAIL", "ERROR" if not ok else "INFO", "pipe", row.label, f"Pipe {row.label}, 최대압력 {row.max_pressure_kgcm2:.3f}kg/cm2G, 현재 {row.material_name or '-'}", {"max_pressure_kgcm2": row.max_pressure_kgcm2, "material_name": row.material_name, "required_material": "KSD 3562"})
+                    row.pipe_rule_results["PIPE.002"] = RuleResult("PIPE.002", "PASS" if ok else "FAIL", "ERROR" if not ok else "INFO", "pipe", row.label, f"Pipe {row.label}, 최대압력 {row.max_pressure_kgcm2:.3f}kg/cm2, 현재 {row.material_name or '-'}", {"max_pressure_kgcm2": row.max_pressure_kgcm2, "material_name": row.material_name, "required_material": "KSD 3562"})
                     if not ok:
                         fail_rows.append(row)
                 else:
-                    row.pipe_rule_results["PIPE.002"] = RuleResult("PIPE.002", "PASS", "INFO", "pipe", row.label, f"최대 관압 {row.max_pressure_kgcm2:.3f} kg/cm2G로 1.2MPa 미만", {"max_pressure_kgcm2": row.max_pressure_kgcm2})
+                    row.pipe_rule_results["PIPE.002"] = RuleResult("PIPE.002", "PASS", "INFO", "pipe", row.label, f"최대 관압 {row.max_pressure_kgcm2:.3f} kg/cm2로 1.2MPa 미만", {"max_pressure_kgcm2": row.max_pressure_kgcm2})
             results.append(
                 RuleResult(
                     "PIPE.002",
@@ -870,7 +870,7 @@ class PipenetGuideValidator:
                     "ERROR" if fail_rows else "INFO",
                     "meta",
                     fail_rows[0].label if fail_rows else None,
-                    f"배관-고압구간 재질 불일치: Pipe {fail_rows[0].label}, 최대압력 {fail_rows[0].max_pressure_kgcm2:.3f}kg/cm2G, 현재 {fail_rows[0].material_name or '-'}, 요구 KSD3562" if fail_rows else f"배관-고압구간 재질 확인: 1.2MPa 이상 {len(high_pressure_rows)}개 구간이 모두 KSD3562입니다.",
+                    f"배관-고압구간 재질 불일치: Pipe {fail_rows[0].label}, 최대압력 {fail_rows[0].max_pressure_kgcm2:.3f}kg/cm2, 현재 {fail_rows[0].material_name or '-'}, 요구 KSD3562" if fail_rows else f"배관-고압구간 재질 확인: 1.2MPa 이상 {len(high_pressure_rows)}개 구간이 모두 KSD3562입니다.",
                     {"high_pressure_pipe_count": len(high_pressure_rows), "failed_pipe_labels": [row.label for row in fail_rows]},
                 )
             )
@@ -1402,7 +1402,7 @@ class PipenetGuideValidator:
         velocity_map = {row.label: row for row in velocity_checks}
 
         engineering_advice.append(
-            "최적화 전제: 헤드 최소 방수압 0.1MPa(1.0kg/cm²G), 헤드 유량, 배관 유속, C-Factor, 등가길이, Hazen-Williams 검산을 먼저 만족한 뒤 공학/경제 최적화를 검토합니다."
+            "최적화 전제: 헤드 최소 방수압 0.1MPa(1.0kg/cm²), 헤드 유량, 배관 유속, C-Factor, 등가길이, Hazen-Williams 검산을 먼저 만족한 뒤 공학/경제 최적화를 검토합니다."
         )
         engineering_advice.append(
             "공학 관점: 비용 증가 가능성을 감수하더라도 마찰손실 집중, 유속 여유 부족, 압력 안정성 부족, 피팅/특수설비 손실 집중을 줄이는 방향입니다."
@@ -1512,8 +1512,8 @@ class PipenetGuideValidator:
 
         if low_pressure_candidates:
             low_pressure_candidates.sort(key=lambda x: x[1])
-            top_items = ", ".join(f"Pipe {label}(출구압 {pressure:.3f}kg/cm²G)" for label, pressure in low_pressure_candidates[:8])
-            engineering_advice.append(f"출구압력이 1.2kg/cm²G 미만인 압력 여유 부족 후보가 {len(low_pressure_candidates)}개 있습니다. 주요 구간: {top_items}")
+            top_items = ", ".join(f"Pipe {label}(출구압 {pressure:.3f}kg/cm²)" for label, pressure in low_pressure_candidates[:8])
+            engineering_advice.append(f"출구압력이 1.2kg/cm² 미만인 압력 여유 부족 후보가 {len(low_pressure_candidates)}개 있습니다. 주요 구간: {top_items}")
             engineering_advice.append("조치: 말단 압력 안정성을 위해 해당 하류 계통의 관경 상향 또는 마찰손실 저감 조치를 우선 검토합니다.")
 
         engineering_advice.append("절충 원칙: 공학안은 손실과 유속을 안정화하지만 비용 증가가 따르므로, 먼저 피팅/특수설비 집중과 배관 경로를 점검한 뒤 관경 상향을 결정합니다.")
@@ -1540,8 +1540,8 @@ class PipenetGuideValidator:
 
         if pressure_surplus_nozzles:
             pressure_surplus_nozzles.sort(key=lambda x: x[1], reverse=True)
-            top_items = ", ".join(f"Head {label}({pressure:.3f}kg/cm²G)" for label, pressure in pressure_surplus_nozzles[:8])
-            economy_guide.append(f"헤드 압력 여유가 큰 후보가 {len(pressure_surplus_nozzles)}개 있습니다. 경제 목표는 약 1.1~1.2kg/cm²G 수준을 검토하되 최소 1.0kg/cm²G는 반드시 유지해야 합니다. 주요 헤드: {top_items}")
+            top_items = ", ".join(f"Head {label}({pressure:.3f}kg/cm²)" for label, pressure in pressure_surplus_nozzles[:8])
+            economy_guide.append(f"헤드 압력 여유가 큰 후보가 {len(pressure_surplus_nozzles)}개 있습니다. 경제 목표는 약 1.1~1.2kg/cm² 수준을 검토하되 최소 1.0kg/cm²는 반드시 유지해야 합니다. 주요 헤드: {top_items}")
             economy_guide.append("조치: 압력 여유가 큰 계통은 관경 한 단계 축소를 가정하고 Hazen-Williams 재계산, 유속 기준, 헤드 유량을 재확인합니다.")
 
         if cpvc_large_candidates:
@@ -1593,10 +1593,10 @@ class PipenetGuideValidator:
             results["PASS"].append(f"헤드 유량이 적합합니다. 최소 유량은 {min_flow:.2f} L/min 입니다.")
         if any(item.inlet_pressure_kgf_cm2 < self.MIN_HEAD_PRESSURE or item.inlet_pressure_kgf_cm2 > self.MAX_HEAD_PRESSURE for item in rows):
             results["FAIL"].append(
-                f"헤드 압력 범위를 벗어난 항목이 있습니다. 허용범위는 {self.MIN_HEAD_PRESSURE:.1f}~{self.MAX_HEAD_PRESSURE:.1f} kg/cm2G 입니다."
+                f"헤드 압력 범위를 벗어난 항목이 있습니다. 허용범위는 {self.MIN_HEAD_PRESSURE:.1f}~{self.MAX_HEAD_PRESSURE:.1f} kg/cm2 입니다."
             )
         else:
-            results["PASS"].append(f"헤드 압력이 적합합니다. 범위는 {min_pressure:.3f}~{max_pressure:.3f} kg/cm2G 입니다.")
+            results["PASS"].append(f"헤드 압력이 적합합니다. 범위는 {min_pressure:.3f}~{max_pressure:.3f} kg/cm2 입니다.")
         required_count = self._infer_required_head_count(rows)
         if required_count is not None:
             if len(rows) >= required_count:

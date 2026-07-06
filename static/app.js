@@ -127,7 +127,7 @@ const statsLabelMap = {
   equipment_count_from_report: "결과서 특수설비 수",
   valve_count_from_report: "결과서 감압밸브 수",
   min_nozzle_flow_lpm: "최소 헤드 유량 (L/min)",
-  min_nozzle_pressure_kgf_cm2: "최소 헤드 압력 (kg/cm²G)",
+  min_nozzle_pressure_kgf_cm2: "최소 헤드 압력 (kg/cm²)",
   max_branch_pipe_velocity_mps: "가지배관 최대 유속 (m/s)",
   max_other_pipe_velocity_mps: "그 밖의 배관 최대 유속 (m/s)",
   velocity_branch_checked_count: "가지배관 판정 수",
@@ -135,8 +135,8 @@ const statsLabelMap = {
   velocity_review_count: "유속 판정 검토 수",
   velocity_failed_count: "유속 기준 초과 수",
   worst_velocity_pipe_label: "최대 유속 배관",
-  max_pipe_pressure_kgcm2: "최대 관압 (kg/cm²G)",
-  high_pressure_pipe_count: "12.0kg/cm²G 이상 배관 수",
+  max_pipe_pressure_kgcm2: "최대 관압 (kg/cm²)",
+  high_pressure_pipe_count: "12.0kg/cm² 이상 배관 수",
   ksd3562_required_pipe_count: "KSD3562 요구 배관 수",
   c_factor_material_fail_count: "재질-C값 불일치 수",
   pipe_review_count: "배관 규칙 검토 수",
@@ -154,7 +154,7 @@ const tableConfigs = {
   },
   nozzles: {
     title: "헤드(FLOW THROUGH NOZZLES)",
-    columns: [["label", "헤드"], ["input_node", "입력 노드"], ["inlet_pressure_kgf_cm2", "압력(kg/cm²G)"], ["required_flow_lpm", "요구 유량"], ["actual_flow_lpm", "실제 유량"], ["deviation_percent", "편차(%)"]],
+    columns: [["label", "헤드"], ["input_node", "입력 노드"], ["inlet_pressure_kgf_cm2", "압력(kg/cm²)"], ["required_flow_lpm", "요구 유량"], ["actual_flow_lpm", "실제 유량"], ["deviation_percent", "편차(%)"]],
   },
   equipment: {
     title: "특수설비(SPECIAL EQUIPMENT)",
@@ -1358,18 +1358,18 @@ function buildRowLogicExplanation(tab, row) {
     const maxP = Number(row.max_pressure_limit_kgf_cm2 ?? 12);
     cards.criteria.push("헤드 검증은 실제 유량(actual_flow_lpm)과 입구압(inlet_pressure_kgf_cm2)을 기준으로 수행합니다.");
     cards.criteria.push(`유량 기준: ${fmtLogicNumber(minFlow, 1)} L/min 이상`);
-    cards.criteria.push(`압력 기준: ${fmtLogicNumber(minP, 1)} ~ ${fmtLogicNumber(maxP, 1)} kg/cm²G`);
+    cards.criteria.push(`압력 기준: ${fmtLogicNumber(minP, 1)} ~ ${fmtLogicNumber(maxP, 1)} kg/cm²`);
     cards.formula.push(`유량 판정식: actual_flow_lpm >= ${fmtLogicNumber(minFlow, 1)}`);
     cards.formula.push(`압력 판정식: ${fmtLogicNumber(minP, 1)} <= inlet_pressure <= ${fmtLogicNumber(maxP, 1)}`);
     cards.values.push(`실제 유량 = ${fmtLogicNumber(actualFlow)} L/min`);
-    cards.values.push(`실제 압력 = ${fmtLogicNumber(pressure)} kg/cm²G`);
+    cards.values.push(`실제 압력 = ${fmtLogicNumber(pressure)} kg/cm²`);
     cards.values.push(`결과서 요구 유량 = ${fmtLogicNumber(requiredFlow)} L/min`);
     if (row.highlight) {
       if (actualFlow < minFlow) {
         cards.conclusion.push(`빨강(기준 위반) 사유 1: ${fmtLogicNumber(actualFlow)} < ${fmtLogicNumber(minFlow, 1)} 이므로 최소 헤드 유량 기준에 미달합니다.`);
       }
       if (pressure < minP || pressure > maxP) {
-        cards.conclusion.push(`빨강(기준 위반) 사유 2: 압력 ${fmtLogicNumber(pressure)} kg/cm²G가 허용 범위 ${fmtLogicNumber(minP, 1)}~${fmtLogicNumber(maxP, 1)} kg/cm²G를 벗어났습니다.`);
+        cards.conclusion.push(`빨강(기준 위반) 사유 2: 압력 ${fmtLogicNumber(pressure)} kg/cm²가 허용 범위 ${fmtLogicNumber(minP, 1)}~${fmtLogicNumber(maxP, 1)} kg/cm²를 벗어났습니다.`);
       }
     } else {
       cards.conclusion.push("판정 결과: 유량과 압력이 모두 기준 범위 안에 있으므로 해당 헤드는 적합으로 판단됩니다.");
@@ -1425,15 +1425,15 @@ function buildRowLogicExplanation(tab, row) {
     const calcDrop = Number(row.calculated_pressure_drop_kgf_cm2 ?? (inlet - outlet));
     const tol = Number(row.pressure_drop_tolerance_kgf_cm2 ?? 0.05);
     const diff = Math.abs(calcDrop - reportDrop);
-    cards.criteria.push(`감압밸브 허용 기준: 편차 <= ${fmtLogicNumber(tol, 2)} kg/cm²G`);
+    cards.criteria.push(`감압밸브 허용 기준: 편차 <= ${fmtLogicNumber(tol, 2)} kg/cm²`);
     cards.formula.push("기본식: calculated_drop = inlet_pressure - outlet_pressure");
     cards.formula.push(`비교식: |calculated_drop - reported_drop| <= ${fmtLogicNumber(tol, 2)}`);
-    cards.values.push(`실제 계산: ${fmtLogicNumber(inlet)} - ${fmtLogicNumber(outlet)} = ${fmtLogicNumber(calcDrop)} kg/cm²G`);
-    cards.values.push(`편차 계산: |${fmtLogicNumber(calcDrop)} - ${fmtLogicNumber(reportDrop)}| = ${fmtLogicNumber(diff)} kg/cm²G`);
+    cards.values.push(`실제 계산: ${fmtLogicNumber(inlet)} - ${fmtLogicNumber(outlet)} = ${fmtLogicNumber(calcDrop)} kg/cm²`);
+    cards.values.push(`편차 계산: |${fmtLogicNumber(calcDrop)} - ${fmtLogicNumber(reportDrop)}| = ${fmtLogicNumber(diff)} kg/cm²`);
     if (row.highlight) {
-      cards.conclusion.push(`빨강(기준 위반): 편차 ${fmtLogicNumber(diff)} kg/cm²G가 허용 오차 ${fmtLogicNumber(tol, 2)} kg/cm²G를 초과하여 결과서 압력강하 값과 계산값이 일치하지 않습니다.`);
+      cards.conclusion.push(`빨강(기준 위반): 편차 ${fmtLogicNumber(diff)} kg/cm²가 허용 오차 ${fmtLogicNumber(tol, 2)} kg/cm²를 초과하여 결과서 압력강하 값과 계산값이 일치하지 않습니다.`);
     } else {
-      cards.conclusion.push(`판정 결과: 편차 ${fmtLogicNumber(diff)} kg/cm²G로 허용 오차 이내이므로 적합합니다.`);
+      cards.conclusion.push(`판정 결과: 편차 ${fmtLogicNumber(diff)} kg/cm²로 허용 오차 이내이므로 적합합니다.`);
     }
   }
   if (!cards.criteria.length && !cards.formula.length && !cards.values.length && !cards.conclusion.length) {
@@ -1473,7 +1473,7 @@ function criteriaGuideHtml() {
     </ul></section>
     <section class="criteria-section"><h4>3) 헤드(노즐) 기준</h4><ul>
       <li><strong>최소 유량</strong>: 80 L/min 이상</li>
-      <li><strong>압력 범위</strong>: 1.0 ~ 12.0 kg/cm²G</li>
+      <li><strong>압력 범위</strong>: 1.0 ~ 12.0 kg/cm²</li>
       <li>미충족 항목은 빨강(기준 위반)으로 표시됩니다.</li>
     </ul></section>
     <section class="criteria-section"><h4>4) 특수설비 등가길이 기준</h4><ul>

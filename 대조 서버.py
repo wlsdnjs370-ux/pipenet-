@@ -3905,7 +3905,8 @@ def remote30_system_parse():
         return jsonify({"ok": False, "message": str(exc)}), 400
     from remote30_prototype import parse_dxf_for_view
     try:
-        result = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
+        result = parse_dxf_for_view(dxf_path, include_hidden_layers=True,
+                                    skip_background_over_budget=True)
     except Exception as exc:  # noqa: BLE001
         return _err500(exc)
     result["ok"] = True
@@ -5111,11 +5112,13 @@ def remote30_system_extract():
     try:
         entities = _load_cached_view_entities(dxf_path)
         if entities is None:
-            entities = parse_dxf_for_view(dxf_path, include_hidden_layers=True)["entities"]
+            entities = parse_dxf_for_view(dxf_path, include_hidden_layers=True,
+                                          skip_background_over_budget=True)["entities"]
         if anno_path is not None:
             anno_ents = _load_cached_view_entities(anno_path)
             if anno_ents is None:
-                anno_ents = parse_dxf_for_view(anno_path, include_hidden_layers=True)["entities"]
+                anno_ents = parse_dxf_for_view(anno_path, include_hidden_layers=True,
+                                               skip_background_over_budget=True)["entities"]
             anno_text = [e for e in anno_ents if e.get("t") == "T"]
             entities = entities + anno_text
         riser = extract_system_path(entities, (px, py), (ax, ay),
@@ -5181,7 +5184,8 @@ def remote30_system_connection_review():
     try:
         entities = _load_cached_view_entities(dxf_path)
         if entities is None:
-            entities = parse_dxf_for_view(dxf_path, include_hidden_layers=True)["entities"]
+            entities = parse_dxf_for_view(dxf_path, include_hidden_layers=True,
+                                          skip_background_over_budget=True)["entities"]
         res = li.reconcile_entities(entities, model, feats, ml_cut=ml_cut)
         payload = li.serialize_result(res)
         payload["mode"] = mode
@@ -5239,7 +5243,8 @@ def remote30_machineroom_parse():
         return jsonify({"ok": False, "message": str(exc)}), 400
     from remote30_prototype import parse_dxf_for_view
     try:
-        result = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
+        result = parse_dxf_for_view(dxf_path, include_hidden_layers=True,
+                                    skip_background_over_budget=True)
     except Exception as exc:  # noqa: BLE001
         return _err500(exc)
     result["ok"] = True
@@ -5307,7 +5312,8 @@ def remote30_machineroom_extract():
     try:
         entities = _load_cached_view_entities(dxf_path)
         if entities is None:
-            entities = parse_dxf_for_view(dxf_path, include_hidden_layers=True)["entities"]
+            entities = parse_dxf_for_view(dxf_path, include_hidden_layers=True,
+                                          skip_background_over_budget=True)["entities"]
         mr = extract_machine_room_path(entities, (sx, sy), (cx, cy),
                                        layer_filter=pipe_layers,
                                        snap_tolerance_mm=snap_tol)

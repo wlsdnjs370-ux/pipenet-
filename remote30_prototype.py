@@ -120,6 +120,24 @@ except ImportError:
 PIPENET_CATEGORIES = {"PIPE", "HEAD", "TEXT", "ALARM"}
 KEEP_BASE_LAYERS = {"0"}  # INSERT BYLAYER 공통 + 도면 컨텍스트
 
+# ── 초대형 XREF 도면 예산 가드 (기계실/계통도 파싱) ──────────────────────────
+# 142MB LH 지하층배관도는 최상위 INSERT 61개를 폭발하면 leaf 597k개가 되는데
+# 그중 배관망 추출에 실제 쓰는 PIPE+HEAD 는 ~6.7k(1%)뿐이고 나머지 99% 는 배경.
+# 도면 전체가 PIPE 레이어 위의 단일 INSERT(소방배관) 안에 nested 돼 있어 미리보기
+# 경로의 '최상위 카테고리별 배경 분리' 가드로는 안 걸린다(그 블록이 PIPE로 분류되어
+# 통째 폭발). 그래서 폭발 도중 **leaf 단위**로 카테고리를 컷한다.
+#
+# 실측(2026-07-07, _bg_probe): ARCH/EXCLUDE 만 스킵하면 시간 이득 0 — ARCH 280k는
+# XREF 단순 LINE 이라 렌더가 거의 공짜다. 파싱 비용의 전부(112→37초, 75초)는 OTHER
+# 카테고리(LINE 173k + PL 111k + ARC 21k)에 있다. 즉 실질 단축은 OTHER 컷이 필수.
+# 대가: OTHER 의 line/PL 은 형태상 배관이 될 수도 있어(레이어명 불신 원칙,
+# [[lh-basement-fire-layer]]) 이론상 '키워드 미매칭 배관 레이어'가 숨을 수 있다. 단
+# (1) 예산(120k leaf) 초과하는 초대형 XREF 도면에서만 발동, (2) 배관 키워드 목록이
+# 넓고(SP/배관/소방/PIPE/PIPING/FIRE/HYD/가지관/FLEX), (3) 숨겨져도 추출이 조용히
+# 틀리는 게 아니라 '망 없음'으로 드러난다. 사용자 승인 하에 OTHER 포함(2026-07-07).
+BG_ENTITY_BUDGET = 120_000  # 폭발 예상 leaf 이 이 값을 넘으면 배경 leaf 스킵 발동
+_BG_SKIP_CATEGORIES = frozenset({"ARCH", "EXCLUDE", "OTHER"})
+
 
 def _categorize_layer(name: str) -> str:
     """Remote30Settings 기준 layer 카테고리. 가능하면 외부 모듈 사용.
@@ -533,7 +551,8 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
 
 
 def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
-                        keep_nested_insert_markers: bool = False) -> dict:
+                        keep_nested_insert_markers: bool = False,
+                        skip_background_over_budget: bool = False) -> dict:
     """계통도 등 '시각화 우선' 용 파싱 — parse_dxf_bundle 의 보강 버전.
 
     parse_dxf_bundle 과 차이:
@@ -584,6 +603,61 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
 
     MAX_DEPTH = 12  # 계통도는 nested 깊을 수 있음 — 약간 여유
 
+    # ── 예산 가드: 폭발 예상 leaf 수 추정 후 초과 시 배경(_BG_SKIP_CATEGORIES) leaf 스킵 ──
+    # 최상위 INSERT 를 블록정의 단위로만 세어(같은 블록 재INSERT 는 depth별 1회 memo)
+    # 렌더 없이 leaf 수를 O(예산×5) 로 유계 추정한다. 미리보기 경로의 _bg_leaf_estimate
+    # 와 동일한 알고리즘 — 단 여기선 최상위 분리 없이 전체 합을 기준으로 판정한다
+    # (LH 는 배관/배경이 한 최상위 INSERT 안에 섞여 최상위 카테고리로는 못 가름).
+    skip_cats: frozenset = frozenset()
+    bg_skipped = False
+    bg_leaf_estimate = 0
+    if skip_background_over_budget:
+        _ceiling = BG_ENTITY_BUDGET * 5
+        _memo: dict[tuple, int] = {}
+
+        def _block_leaves(block_name, d):
+            if d >= MAX_DEPTH or doc is None:
+                return 0
+            key = (block_name, d)
+            if key in _memo:
+                return _memo[key]
+            blk = doc.blocks.get(block_name)
+            total = 0
+            if blk is not None:
+                for child in blk:
+                    if child.dxftype() == "INSERT":
+                        total += _block_leaves(child.dxf.name, d + 1)
+                    else:
+                        total += 1
+                    if total >= _ceiling:
+                        total = _ceiling
+                        break
+            _memo[key] = total
+            return total
+
+        for _e in msp:
+            try:
+                if _e.dxftype() == "INSERT":
+                    bg_leaf_estimate += _block_leaves(_e.dxf.name, 0)
+                else:
+                    bg_leaf_estimate += 1
+            except Exception:
+                continue
+            if bg_leaf_estimate >= _ceiling:
+                break
+        if bg_leaf_estimate > BG_ENTITY_BUDGET:
+            skip_cats = _BG_SKIP_CATEGORIES
+            bg_skipped = True
+
+    _cat_cache: dict[str, str] = {}
+
+    def _skip_layer(layer_name: str) -> bool:
+        cat = _cat_cache.get(layer_name)
+        if cat is None:
+            cat = _categorize_layer(layer_name)
+            _cat_cache[layer_name] = cat
+        return cat in skip_cats
+
     def _render(e, matrix=None, layer_override=None, depth=0):
         etype = e.dxftype()
         own = getattr(e.dxf, "layer", "")
@@ -595,6 +669,11 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
         if not include_hidden_layers and layer in hidden_layers:
             return
         if int(getattr(e.dxf, "invisible", 0) or 0) == 1:
+            return
+        # ★ 예산 초과 시 배경 leaf 스킵 — INSERT 는 하위에 전경이 섞여 있을 수 있어
+        #   무조건 재귀하되(마커만 생략), 나머지 leaf 타입만 카테고리로 컷.
+        if skip_cats and etype != "INSERT" and _skip_layer(layer):
+            skipped["BG_BUDGET_SKIP"] += 1
             return
         try:
             if etype == "LINE":
@@ -826,6 +905,9 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
         "total_msp_entities": total_msp,
         "entity_count": len(entities),
         "hidden_layer_count": len(hidden_layers),
+        "bg_skipped": bg_skipped,
+        "bg_leaf_estimate": bg_leaf_estimate,
+        "bg_budget": BG_ENTITY_BUDGET,
     }
 
 

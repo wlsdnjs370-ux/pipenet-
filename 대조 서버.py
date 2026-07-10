@@ -491,7 +491,7 @@ EXPORT_SCHEMA = {
         "columns": [
             ("label", "헤드"),
             ("input_node", "입력 노드"),
-            ("inlet_pressure_kgf_cm2", "압력(kg/cm²G)"),
+            ("inlet_pressure_kgf_cm2", "압력(kg/cm²)"),
             ("required_flow_lpm", "요구 유량"),
             ("actual_flow_lpm", "실제 유량"),
             ("deviation_percent", "편차(%)"),
@@ -773,9 +773,9 @@ def _build_visualizations(validation: dict, report_path: Path, sdf_path: Path | 
         colors = ["#dc2626" if _to_float(r.get("actual_flow_lpm"), 0.0) < 80.0 else "#16a34a" for r in noz_rows]
         ax.scatter(pressures, flows, c=colors, alpha=0.85)
         ax.axhline(80.0, color="#dc2626", linestyle="--", linewidth=1.2, label="80 L/min")
-        ax.axvline(1.0, color="#f59e0b", linestyle="--", linewidth=1.2, label="1.0 kg/cm^2G")
+        ax.axvline(1.0, color="#f59e0b", linestyle="--", linewidth=1.2, label="1.0 kg/cm^2")
         ax.set_title("Nozzle Pressure-Flow Distribution")
-        ax.set_xlabel("Inlet Pressure (kg/cm^2G)")
+        ax.set_xlabel("Inlet Pressure (kg/cm^2)")
         ax.set_ylabel("Actual Flow (L/min)")
         ax.grid(alpha=0.25)
         ax.legend(loc="best")
@@ -3914,6 +3914,12 @@ SYSTEM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 MACHINEROOM_OUTPUT_DIR = BASE_DIR / "data" / "machineroom_runs"
 MACHINEROOM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# 통합 빌드 결과(CombinedTables) 캐시 — 브라우저 수동 편집 후 재출력(/combined/rebuild)이
+# 원본 망(fittings/equipment/nozzle 유량/펌프 곡선 등 geometry JSON 에 없는 리치 필드 포함)을
+# 재사용하도록 job_id → {"combined", "title"} 를 보관한다. 무한 증식 방지 위해 상한을 둔다.
+_COMBINED_JOBS: dict[str, dict] = {}
+_COMBINED_JOBS_CAP = 24
+
 
 def _emit_subnetwork_bundle(net, out_dir: Path, job_id: str, prefix: str,
                             project_title: str, *, coord_scale: float = 1.0) -> dict:
@@ -3955,8 +3961,7 @@ def _emit_subnetwork_bundle(net, out_dir: Path, job_id: str, prefix: str,
 
 
 def _bake_isometric_node_coords(nodes: list[dict], iso_z_scale: float = 1.0,
-                                head_labels: set | None = None,
-                                head_z_offset: float = 0.0) -> None:
+                                no_lift_labels: set | None = None) -> None:
     """통합망 노드 dict 의 (x,y) 를 30° 등각투영 좌표로 in-place 변환.
 
     등각 형태로 보이는 SDF/KFP/HAS 출력을 위해 emit 전에 적용한다. 노드 좌표는
@@ -3964,13 +3969,15 @@ def _bake_isometric_node_coords(nodes: list[dict], iso_z_scale: float = 1.0,
     has_converter.emit_has(isometric=True) 와 동일: X=(x−y)·cos30,
     Y=(x+y)·sin30 + (elev−eMid)·lift. lift 는 평면 대각선의 절반에 정규화.
 
-    head_labels/head_z_offset 가 주어지면 헤드 노드만 화면 Y 에 추가 돌출(상향 +,
-    하향 −)한다. 헤드는 elevation=0 이라 lift 로는 안 펼쳐지므로 별도 픽셀 오프셋.
+    no_lift_labels 노드(라이저/기계실 계통도)는 lift 를 건너뛴다 — schematic y 가
+    이미 수직을 인코딩하므로 elevation lift 를 다시 더하면 이중부호로 계통도가
+    구부러진다. 헤드 z-돌출은 여기서 적용하지 않는다(평면 Y 를 기울여 가지배관을
+    꼬이게 함; 3D 프리뷰·KFP/HAS 는 display_z 로 별도 돌출).
     """
     if not nodes:
         return
     COS30, SIN30 = 0.8660254037844387, 0.5
-    head_labels = head_labels or set()
+    no_lift = {str(l) for l in (no_lift_labels or set())}
     xs = [float(n.get("x", 0) or 0) for n in nodes]
     ys = [float(n.get("y", 0) or 0) for n in nodes]
     elevs = [float(n.get("elevation", 0) or 0) for n in nodes]
@@ -3983,10 +3990,9 @@ def _bake_isometric_node_coords(nodes: list[dict], iso_z_scale: float = 1.0,
         x = float(n.get("x", 0) or 0)
         y = float(n.get("y", 0) or 0)
         e = float(n.get("elevation", 0) or 0)
+        _lift = 0.0 if str(n.get("label")) in no_lift else (e - e_mid) * lift
         n["x"] = (x - y) * COS30
-        n["y"] = (x + y) * SIN30 + (e - e_mid) * lift
-        if head_z_offset and str(n.get("label")) in head_labels:
-            n["y"] += head_z_offset
+        n["y"] = (x + y) * SIN30 + _lift
 
 
 def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
@@ -4678,9 +4684,11 @@ def remote30_combined_build():
         # 등각 세트 — 노드 (x,y) 를 30° 등각투영으로 베이크한 사본에서 emit.
         # 표시 전용 변환이라 SDF/KFP/HAS 의 수리계산 결과는 평면 세트와 동일.
         combined_iso = _copy.deepcopy(combined)
+        # 라이저·기계실 계통도는 lift 제외 — schematic y 가 이미 수직을 인코딩하므로
+        # elevation lift 를 다시 더하면 이중부호로 계통도가 구부러진다. 헤드 z-돌출도
+        # 여기선 안 씀(평면 Y 를 기울여 가지배관을 꼬이게 함; 3D·KFP/HAS 는 display_z).
         _bake_isometric_node_coords(combined_iso.nodes, has_iso_z_scale,
-                                    head_labels=head_label_set,
-                                    head_z_offset=head_disp_z)
+                                    no_lift_labels=riser_collapse_labels | _mr_set)
         iso_bundle = _emit_bundle(combined_iso, "_iso")
 
         out_sdf, out_slf = plan_bundle["sdf"], plan_bundle["slf"]
@@ -4709,6 +4717,39 @@ def remote30_combined_build():
         warnings.warn(f"[combined] roles 사이드카 저장 실패 (미리보기 모양 복원 불가): {_rs_exc}",
                        RuntimeWarning, stacklevel=2)
 
+    # ── 수동 편집 재출력(/combined/rebuild)용 원본 망 캐시. deepcopy 로 보관해
+    #    이후 emit 부작용(좌표 베이크 등)이 캐시본을 오염시키지 않도록 격리한다.
+    #    z-aware 표시좌표(라이저 기둥 collapse + display_z)도 라벨별로 캐시한다 —
+    #    편집 재출력의 KFP/HAS 가 원본과 동일 비율이 되려면 display_z 가 필요하다
+    #    (없으면 변환기가 raw elevation[m]/x,y[mm] 단위 1000× 어긋나 라이저 폭주).
+    _zaware_map: dict[str, dict] = {}
+    try:
+        _zp, _zok = _collapse_riser_to_column(combined)
+        if _zok:
+            for _n in _zp.nodes:
+                _lb = str(_n.get("label"))
+                _zaware_map[_lb] = {
+                    "x": _n.get("x"), "y": _n.get("y"),
+                    "dz": _n.get("display_z"),
+                    "riser": _lb in riser_collapse_labels,
+                }
+    except Exception as _zexc:  # noqa: BLE001 — z-aware 캐시 실패는 KFP/HAS 만 영향
+        warnings.warn(f"[combined] z-aware 좌표 캐시 실패 (편집 KFP/HAS 비율 저하 가능): {_zexc}",
+                       RuntimeWarning, stacklevel=2)
+    try:
+        if len(_COMBINED_JOBS) >= _COMBINED_JOBS_CAP:
+            _COMBINED_JOBS.pop(next(iter(_COMBINED_JOBS)))  # 가장 오래된 항목 제거
+        _COMBINED_JOBS[job_id] = {
+            "combined": _copy.deepcopy(combined),
+            "title": title,
+            "zaware": _zaware_map,
+            "kfp_coord_scale": kfp_coord_scale,
+            "has_iso_z_scale": has_iso_z_scale,
+        }
+    except Exception as _cache_exc:  # noqa: BLE001 — 캐시 실패가 통합 출력을 막지 않도록
+        warnings.warn(f"[combined] rebuild 캐시 저장 실패 (편집 재출력 불가): {_cache_exc}",
+                       RuntimeWarning, stacklevel=2)
+
     return jsonify({
         "ok": True, "job_id": job_id, "sdf": out_sdf.name, "zip": out_zip.name,
         "nodes": len(combined.nodes), "pipes": len(combined.pipes),
@@ -4732,6 +4773,229 @@ def remote30_combined_build():
         "machine_room_attached": mr_attached,
         "geometry": geometry,
     })
+
+
+def _patch_combined_from_geometry(combined, geom: dict) -> None:
+    """캐시된 CombinedTables 를 브라우저 편집 geometry 로 in-place 패치한다.
+
+    편집 geometry(state.combined_geometry)는 노드(label,x,y,z,io,pressure_pa)와
+    배관(label,in,out,dia,length,c,elev)만 담는다. fittings/equipment/nozzle 유량 등
+    리치 필드는 combined 원본에 보존돼 있으므로, 여기서는 노드/배관만 덮어쓰고
+    삭제된 노드를 참조하는 nozzle/fitting/pump/valve 는 잘라낸다(SDF 무결성 유지).
+
+    좌표계: x,y = mm(int) / elevation·length·elev = m. 클라이언트와 동일.
+    """
+    g_nodes = {str(n.get("label")): n for n in (geom.get("nodes") or []) if n.get("label") is not None}
+    g_pipes = {str(p.get("label")): p for p in (geom.get("pipes") or []) if p.get("label")}
+
+    def _f(v, d=0.0):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return float(d)
+
+    # ── 노드: 유지/갱신 + 신규 추가, 편집본에 없는 노드는 삭제 ──
+    kept_nodes, seen = [], set()
+    for n in combined.nodes:
+        lbl = str(n.get("label"))
+        gn = g_nodes.get(lbl)
+        if gn is None:
+            continue  # 편집본에서 삭제됨
+        n["x"] = int(round(_f(gn.get("x", n.get("x", 0)))))
+        n["y"] = int(round(_f(gn.get("y", n.get("y", 0)))))
+        n["elevation"] = _f(gn.get("z", n.get("elevation", 0)))
+        if gn.get("io") is not None:
+            n["io_node"] = gn["io"]
+        if "pressure_pa" in gn:
+            n["pressure_pa"] = gn["pressure_pa"]
+        kept_nodes.append(n)
+        seen.add(lbl)
+    for lbl, gn in g_nodes.items():
+        if lbl in seen:
+            continue
+        kept_nodes.append({
+            "label": lbl,
+            "x": int(round(_f(gn.get("x", 0)))),
+            "y": int(round(_f(gn.get("y", 0)))),
+            "elevation": _f(gn.get("z", 0)),
+            "io_node": gn.get("io", "No"),
+            "pressure_pa": gn.get("pressure_pa"),
+        })
+    combined.nodes = kept_nodes
+    valid = {str(n.get("label")) for n in combined.nodes}
+
+    # 신규 배관 기본 type — 기존 배관 컨벤션을 따른다(없으면 "Pipe").
+    default_type = "Pipe"
+    for p in combined.pipes:
+        if p.get("type"):
+            default_type = p["type"]
+            break
+
+    # ── 배관: 유지/갱신 + 신규 추가, 삭제/끊긴 끝점 제거 ──
+    kept_pipes, seen_p = [], set()
+    for p in combined.pipes:
+        lbl = str(p.get("label", ""))
+        gp = g_pipes.get(lbl)
+        if gp is None:
+            continue  # 편집본에서 삭제됨
+        p["in"] = str(gp.get("in", p.get("in")))
+        p["out"] = str(gp.get("out", p.get("out")))
+        p["dia"] = int(round(_f(gp.get("dia", p.get("dia", 0)))))
+        p["length"] = _f(gp.get("length", p.get("length", 0)))
+        p["elev"] = _f(gp.get("elev", p.get("elev", 0)))
+        if gp.get("c") is not None:
+            p["c"] = gp["c"]
+        seen_p.add(lbl)
+        if p["in"] in valid and p["out"] in valid:
+            kept_pipes.append(p)
+    for lbl, gp in g_pipes.items():
+        if lbl in seen_p:
+            continue
+        pin, pout = str(gp.get("in", "")), str(gp.get("out", ""))
+        if pin not in valid or pout not in valid:
+            continue
+        kept_pipes.append({
+            "label": lbl, "in": pin, "out": pout, "type": default_type,
+            "dia": int(round(_f(gp.get("dia", 50)))),
+            "length": _f(gp.get("length", 0)),
+            "elev": _f(gp.get("elev", 0)),
+            "c": gp.get("c", 120),
+            "status": "", "group": "",
+        })
+    combined.pipes = kept_pipes
+
+    # ── 삭제된 노드를 참조하는 부속(nozzle/fitting/pump/valve) 정리 ──
+    def _nz_in(nz):
+        return str(nz.get("in") or nz.get("input_node") or nz.get("input") or "")
+    combined.nozzles = [nz for nz in combined.nozzles if _nz_in(nz) in valid]
+    if getattr(combined, "fittings", None):
+        combined.fittings = [f for f in combined.fittings
+                             if str(f.get("in", "")) in valid and str(f.get("out", "")) in valid]
+    combined.pumps = [pm for pm in combined.pumps
+                      if str(pm.get("in", "")) in valid and str(pm.get("out", "")) in valid]
+    combined.valves = [vv for vv in combined.valves
+                       if str(vv.get("in", "")) in valid and str(vv.get("out", "")) in valid]
+
+
+@app.post("/api/remote30/combined/rebuild")
+def remote30_combined_rebuild():
+    """브라우저에서 수동 편집한 통합망 geometry → SDF 재출력.
+
+    Body(JSON): { job_id, geometry:{nodes:[...], pipes:[...]} }
+      job_id   : 원본 통합 빌드의 job_id (_COMBINED_JOBS 캐시 키)
+      geometry : 편집된 state.combined_geometry (노드/배관만)
+
+    캐시된 원본 CombinedTables 를 deepcopy → geometry 로 패치 → emit_full_sdf 로
+    새 SDF 를 생성해 다운로드 URL 을 돌려준다. 패치본을 다시 캐시해 연속 편집을 지원.
+    """
+    import secrets
+    import copy as _copy
+    body = request.get_json(silent=True) or {}
+    src_job = (body.get("job_id") or "").strip()
+    geom = body.get("geometry") or {}
+    if not src_job:
+        return jsonify({"ok": False, "message": "job_id 가 필요합니다"}), 400
+    cache = _COMBINED_JOBS.get(src_job)
+    if not cache:
+        return jsonify({"ok": False,
+                        "message": f"통합 빌드 캐시를 찾을 수 없습니다 (job_id={src_job}). "
+                                   "배관망 통합을 다시 실행한 뒤 편집해 주세요."}), 404
+    if not geom.get("nodes") or not geom.get("pipes"):
+        return jsonify({"ok": False, "message": "편집된 geometry(nodes/pipes)가 필요합니다"}), 400
+
+    from remote30_full_network import emit_full_sdf
+    try:
+        combined = _copy.deepcopy(cache["combined"])
+        _patch_combined_from_geometry(combined, geom)
+        if not combined.nodes or not combined.pipes:
+            return jsonify({"ok": False, "message": "편집 결과 노드/배관이 비어 재출력할 수 없습니다"}), 400
+
+        new_job = secrets.token_hex(6)
+        _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
+        out_dir = COMBINED_OUTPUT_DIR / new_job
+        out_dir.mkdir(parents=True, exist_ok=True)
+        title = cache.get("title") or "Combined (edited)"
+        out_sdf = out_dir / f"combined_{new_job}_edited.sdf"
+        emit_full_sdf(combined, out_sdf, project_title=title)
+
+        # ── KFP/HAS 재출력 — 원본 빌드가 캐시한 z-aware 표시좌표(라이저 기둥 collapse
+        #    + display_z)를 라벨별로 재적용해 원본과 동일 비율로 emit 한다. 편집으로
+        #    옮긴 노드는 새 x,y 를 유지하되 display_z 는 캐시값(헤드 돌출·고도)을 쓴다.
+        #    신규 노드는 display_z 없음 → 헤드평면(0). 캐시 없으면 KFP/HAS 는 생략.
+        zaware = cache.get("zaware") or {}
+        kfp_scale = cache.get("kfp_coord_scale", 1.0)
+        has_zs = cache.get("has_iso_z_scale", 1.0)
+        out_kfp = out_dir / f"combined_{new_job}_edited.kfp"
+        out_has = out_dir / f"combined_{new_job}_edited.has"
+        kfp_ok = has_ok = False
+        try:
+            from remote30_prototype import emit_kfp as _emit_kfp, emit_has as _emit_has
+            # KFP/HAS 원본 SDF 선택 — 라이저 collapse 캐시(zaware)가 있으면 display_z 를
+            # 재적용한 z-aware SDF 를, 없으면(라이저 없는 헤드 전용망) 평면 SDF 를 그대로 쓴다.
+            z_tmp = None
+            if zaware:
+                z_net = _copy.deepcopy(combined)
+                for n in z_net.nodes:
+                    zc = zaware.get(str(n.get("label")))
+                    if not zc:
+                        continue
+                    if zc.get("riser"):  # 라이저는 캐시된 기둥 x,y 로 collapse
+                        if zc.get("x") is not None:
+                            n["x"] = zc["x"]
+                        if zc.get("y") is not None:
+                            n["y"] = zc["y"]
+                    if zc.get("dz") is not None:
+                        n["display_z"] = zc["dz"]
+                z_tmp = out_dir / f"combined_{new_job}_edited_z.sdf"
+                emit_full_sdf(z_net, z_tmp, project_title=title)
+                kfp_src = z_tmp
+            else:
+                kfp_src = out_sdf
+            try:
+                _emit_kfp(kfp_src, out_kfp, coord_scale=kfp_scale, display_geometry=True)
+                kfp_ok = out_kfp.is_file()
+            except Exception as _kexc:  # noqa: BLE001 — KFP 실패가 SDF 를 막지 않도록
+                warnings.warn(f"[combined/rebuild] KFP emit 실패 (SDF 정상): {_kexc}",
+                               RuntimeWarning, stacklevel=2)
+            try:
+                _emit_has(kfp_src, out_has, isometric=True, iso_z_scale=has_zs)
+                has_ok = out_has.is_file()
+            except Exception as _hexc:  # noqa: BLE001 — HAS 실패가 SDF 를 막지 않도록
+                warnings.warn(f"[combined/rebuild] HAS emit 실패 (SDF 정상): {_hexc}",
+                               RuntimeWarning, stacklevel=2)
+            if z_tmp is not None:  # 임시 z-aware SDF 정리(다운로드엔 평면 out_sdf 만)
+                for _tmp in (z_tmp, z_tmp.with_suffix(".slf")):
+                    try:
+                        if _tmp.is_file():
+                            _tmp.unlink()
+                    except OSError:
+                        pass
+        except Exception as _zexc:  # noqa: BLE001 — KFP/HAS 전체 실패도 SDF 는 유지
+            warnings.warn(f"[combined/rebuild] KFP/HAS 재출력 실패 (SDF 정상): {_zexc}",
+                           RuntimeWarning, stacklevel=2)
+
+        # 패치본을 새 job_id 로 캐시 — 연속 편집(편집→재출력→더 편집) 지원.
+        # z-aware/스케일도 승계해 이후 편집에서도 KFP/HAS 비율을 유지한다.
+        if len(_COMBINED_JOBS) >= _COMBINED_JOBS_CAP:
+            _COMBINED_JOBS.pop(next(iter(_COMBINED_JOBS)))
+        _COMBINED_JOBS[new_job] = {
+            "combined": _copy.deepcopy(combined), "title": title,
+            "zaware": zaware, "kfp_coord_scale": kfp_scale, "has_iso_z_scale": has_zs,
+        }
+
+        base = f"/api/remote30/combined/result/{new_job}"
+        return jsonify({
+            "ok": True, "job_id": new_job, "sdf": out_sdf.name,
+            "kfp": out_kfp.name if kfp_ok else None,
+            "has": out_has.name if has_ok else None,
+            "nodes": len(combined.nodes), "pipes": len(combined.pipes),
+            "nozzles": len(combined.nozzles),
+            "download_url_sdf": f"{base}/{out_sdf.name}",
+            "download_url_kfp": f"{base}/{out_kfp.name}" if kfp_ok else None,
+            "download_url_has": f"{base}/{out_has.name}" if has_ok else None,
+        })
+    except Exception as exc:  # noqa: BLE001
+        return _err500(exc)
 
 
 @app.get("/api/remote30/combined/result/<job_id>/<path:filename>")

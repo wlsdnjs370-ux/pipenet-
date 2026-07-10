@@ -279,6 +279,69 @@
     #iso-controls .ic-mode-tabs button { padding: 5px 6px; font-size: 0.68rem; }
     #iso-controls .ic-hidden { display: none !important; }
 
+    /* ─── 통합 배관망 편집 패널 (우상단) ─── */
+    #cmb-edit {
+      position: absolute; top: 56px; right: 14px;
+      display: none; flex-direction: column; gap: 9px;
+      width: 240px; max-height: calc(100% - 84px); overflow-y: auto;
+      background: rgba(15, 23, 42, 0.86);
+      border: 1px solid rgba(255,255,255,0.10);
+      padding: 12px 13px; border-radius: 11px;
+      backdrop-filter: blur(11px) saturate(1.4);
+      -webkit-backdrop-filter: blur(11px) saturate(1.4);
+      pointer-events: auto; z-index: 12;
+      font-size: 0.72rem; color: #cbd5e1;
+      box-shadow: 0 12px 32px -12px rgba(0,0,0,0.55);
+    }
+    #cmb-edit.is-visible { display: flex; }
+    #cmb-edit::-webkit-scrollbar { width: 7px; }
+    #cmb-edit::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    #cmb-edit .ce-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    #cmb-edit .ce-title { font-weight: 700; font-size: 0.8rem; color: #e2e8f0; }
+    #cmb-edit .ic-section {
+      font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: #7c8aa5;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 8px; margin-top: 2px;
+    }
+    #cmb-edit button {
+      background: rgba(51,65,85,0.6); color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;
+      padding: 6px 8px; font-size: 0.72rem; font-weight: 600; cursor: pointer;
+      font-family: var(--font-sans); transition: all var(--tr);
+    }
+    #cmb-edit button:hover { background: rgba(71,85,105,0.85); color: #fff; }
+    #cmb-edit button.is-active {
+      background: var(--accent); border-color: var(--accent); color: #fff;
+      box-shadow: 0 0 0 2px rgba(79,70,229,0.25);
+    }
+    #cmb-edit #ce-toggle.is-on { background: #059669; border-color: #059669; color: #fff; }
+    #cmb-edit .ce-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+    #cmb-edit .ce-tools button { flex: 1 1 30%; padding: 5px 4px; font-size: 0.68rem; }
+    #cmb-edit .ce-hidden { display: none !important; }
+    #cmb-edit .ce-hint { font-size: 0.66rem; color: #94a3b8; line-height: 1.4; }
+    #cmb-edit .ce-props .ce-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px;
+    }
+    #cmb-edit .ce-props label { flex: 1; white-space: nowrap; color: #cbd5e1; }
+    #cmb-edit .ce-props input, #cmb-edit .ce-props select {
+      flex: 1.3; min-width: 0; background: rgba(2,6,23,0.6); color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.14); border-radius: 5px; padding: 3px 6px;
+      font-size: 0.7rem; font-family: var(--font-mono, ui-monospace, monospace);
+    }
+    #cmb-edit .ce-props input:disabled { color: #94a3b8; }
+    #cmb-edit .ce-props .ce-empty { color: #64748b; font-style: italic; }
+    #cmb-edit .ce-props .ce-lock { flex: none; display: flex; align-items: center; gap: 5px; }
+    #cmb-edit .ce-props .ce-lock input { flex: none; accent-color: var(--accent); }
+    #cmb-edit .ce-stats { font-size: 0.68rem; color: #cbd5e1; font-family: var(--font-mono, ui-monospace, monospace); }
+    #cmb-edit .ic-btns { display: flex; gap: 6px; }
+    #cmb-edit .ic-btns button { flex: 1; }
+    #cmb-edit #ce-rebuild { background: rgba(37,99,235,0.55); border-color: rgba(59,130,246,0.5); }
+    #cmb-edit #ce-rebuild:disabled { opacity: 0.5; cursor: not-allowed; }
+    #cmb-edit .ce-ro { color: #93c5fd; font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.7rem; }
+    /* 3D(등각) 모드에서는 우상단 #iso-controls 와 겹치지 않도록 좌측(뷰전환 바 아래)으로 이동 */
+    #cmb-edit.iso-pos { right: auto; left: 14px; top: 104px; }
+
     /* ─── 방수 시뮬레이션 수치 오버레이 (좌하단) ─── */
     #sim-overlay {
       position: absolute; bottom: 14px; left: 14px;
@@ -685,7 +748,7 @@
       <strong>Remote 30 프로토타입</strong>
       <div class="mode-tabs">
         <button id="mode-btn-plane" class="is-active" data-mode="plane" title="평면도 DXF → 헤드망 추출 (기존)">평면도 추출</button>
-        <button id="mode-btn-system" data-mode="system" title="계통도 DXF → 라이저 + 펌프/AV 위치 지정">계통도 추출</button>
+        <button id="mode-btn-system" data-mode="system" title="계통도 DXF → 라이저 + 펌프/V 위치 지정">계통도 추출</button>
         <button id="mode-btn-machineroom" data-mode="machineroom" title="기계실(옥상수조) DXF → 수원 → 입상관 연결 경로 추출">기계실 추출</button>
         <button id="mode-btn-combined" data-mode="combined" title="평면도 + 계통도 + 기계실 결과를 결합해 완성 SDF">통합</button>
       </div>
@@ -782,6 +845,33 @@
       </div>
       <!-- 3D hover 툴팁 -->
       <div id="iso-tooltip"></div>
+
+      <!-- 통합 배관망 수동 편집 패널 -->
+      <div id="cmb-edit" aria-hidden="true">
+        <div class="ce-head">
+          <span class="ce-title">배관망 편집</span>
+          <button id="ce-toggle" type="button">편집 시작</button>
+        </div>
+        <div id="ce-body" class="ce-hidden">
+          <div class="ic-section">도구</div>
+          <div class="ce-tools">
+            <button data-tool="select" class="is-active" type="button">선택</button>
+            <button data-tool="move" type="button">이동</button>
+            <button data-tool="addnode" type="button">노드+</button>
+            <button data-tool="addpipe" type="button">배관+</button>
+            <button data-tool="delete" type="button">삭제</button>
+          </div>
+          <div id="ce-hint" class="ce-hint">노드·배관을 클릭해 선택하세요.</div>
+          <div class="ic-section">선택 속성</div>
+          <div id="ce-props" class="ce-props"><div class="ce-empty">선택된 요소 없음</div></div>
+          <div class="ic-section">변경</div>
+          <div id="ce-stats" class="ce-stats">편집 없음</div>
+          <div class="ic-btns">
+            <button id="ce-revert" type="button">원본 복원</button>
+            <button id="ce-rebuild" type="button" disabled>▶ 편집본 재출력</button>
+          </div>
+        </div>
+      </div>
 
       <div id="wb-empty" class="canvas-empty">
         <strong>DXF 파일을 업로드하세요</strong>
@@ -1031,20 +1121,20 @@
           <div style="margin: 10px 0; padding: 8px; background: #ffffff; border: 1px solid var(--line);">
             <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: var(--text-2);">위치 수동 지정 (필수)</div>
             <p class="info-line" style="margin-bottom: 8px; font-size: 0.72rem;">
-              계통도에서 <strong>펌프</strong> 와 <strong>알람밸브</strong> 위치를 캔버스 클릭으로 지정합니다.
-              알람밸브는 통합 모드에서 평면도 배관망의 연결점이 됩니다.
+              계통도에서 <strong>펌프</strong> 와 <strong>밸브</strong> 위치를 캔버스 클릭으로 지정합니다.
+              밸브는 통합 모드에서 평면도 배관망의 연결점이 됩니다.
             </p>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px;">
               <button id="sys-pick-pump" type="button" style="padding: 6px; background: #fff; border: 1px solid #10b981; font-size: 0.74rem; cursor: pointer;">⊕ 펌프 위치 클릭</button>
-              <button id="sys-pick-av" type="button" style="padding: 6px; background: #fff; border: 1px solid #ef4444; font-size: 0.74rem; cursor: pointer;">⊕ 알람밸브 클릭</button>
+              <button id="sys-pick-av" type="button" style="padding: 6px; background: #fff; border: 1px solid #ef4444; font-size: 0.74rem; cursor: pointer;">⊕ 밸브 클릭</button>
             </div>
-            <button id="sys-pick-mid" type="button" style="width: 100%; padding: 6px; margin-bottom: 6px; background: #fff; border: 1px solid #6366f1; font-size: 0.74rem; cursor: pointer;">⊕ 중간노드 추가 (P→AV 경유점)</button>
+            <button id="sys-pick-mid" type="button" style="width: 100%; padding: 6px; margin-bottom: 6px; background: #fff; border: 1px solid #6366f1; font-size: 0.74rem; cursor: pointer;">⊕ 중간노드 추가 (P→V 경유점)</button>
             <p class="info-line" style="margin: 0 0 6px; font-size: 0.7rem; color: var(--muted);">
               켜고 캔버스를 누를 때마다 경유점이 추가됩니다. 경로는 클릭한 순서대로 이 점들을 <strong>반드시 통과</strong>합니다.
             </p>
             <div style="font-size: 0.72rem; color: var(--muted); line-height: 1.5;">
               펌프: <span id="sys-pump-coord" style="font-family: ui-monospace, monospace; color: #065f46;">(미지정)</span><br>
-              AV : <span id="sys-av-coord" style="font-family: ui-monospace, monospace; color: #991b1b;">(미지정)</span><br>
+              V : <span id="sys-av-coord" style="font-family: ui-monospace, monospace; color: #991b1b;">(미지정)</span><br>
               중간노드: <span id="sys-mid-coord" style="font-family: ui-monospace, monospace; color: #3730a3;">(없음)</span>
             </div>
             <button id="sys-clear-marks" type="button" style="margin-top: 4px; padding: 3px 6px; background: transparent; border: 1px solid var(--line); font-size: 0.7rem; cursor: pointer;">↺ 모두 해제</button>
@@ -1052,7 +1142,7 @@
 
           <button id="sys-extract" class="run-btn" type="button" disabled style="background: #ffffff; color: var(--accent); border-color: var(--accent);">▶ 계통도 추출</button>
           <button id="sys-clean-network" type="button" style="width: 100%; margin-top: 6px; padding: 7px; background: #fff7ed; color: #9a3412; border: 1px dashed #f97316; font-size: 0.74rem; cursor: pointer;">⚡ 임시: 깨끗한 배관망 길이 추출 (계통도_LH_306_배관망추출.dxf)</button>
-          <p class="info-line" style="margin: 4px 0 0; font-size: 0.68rem; color: var(--muted);">펌프/AV 클릭 없이, 파일에 그려진 단일 배관망을 길이와 함께 그대로 띄웁니다 (튀는 추측선 없음). 길이는 도면 측정 단위.</p>
+          <p class="info-line" style="margin: 4px 0 0; font-size: 0.68rem; color: var(--muted);">펌프/V 클릭 없이, 파일에 그려진 단일 배관망을 길이와 함께 그대로 띄웁니다 (튀는 추측선 없음). 길이는 도면 측정 단위.</p>
         </section>
 
         <section>
@@ -1078,7 +1168,7 @@
         <section>
           <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">수리계산 파일 (계통도 단독)</h3>
           <p class="info-line" style="font-size: 0.7rem; color: var(--muted);">
-            계통도(펌프→AV 라이저) 구간만 PIPENET/K-Fire 입력 파일로 받습니다. 통합 없이 부분 검토용.
+            계통도(펌프→V 라이저) 구간만 PIPENET/K-Fire 입력 파일로 받습니다. 통합 없이 부분 검토용.
           </p>
           <button id="sys-emit" type="button" class="run-btn" disabled style="background:#ffffff;color:var(--accent);border-color:var(--accent);margin-top:4px;">▶ 수리계산 파일 생성</button>
           <p id="sys-emit-status" class="info-line" style="font-size: 0.7rem; min-height: 1em;"></p>
@@ -3048,7 +3138,7 @@
           const b = state.system_bbox || {};
           const bw = (b.x_max - b.x_min) || 0, bh = (b.y_max - b.y_min) || 0;
           _sysFileStatus.textContent = `✓ ${result.dxf_filename || f.name} — ${total.toLocaleString()} entity, ` +
-            `표시 영역 ${(bw/1000).toFixed(1)}m × ${(bh/1000).toFixed(1)}m. 펌프/AV 클릭으로 위치 지정 →` + _bgSkipNote(result, true);
+            `표시 영역 ${(bw/1000).toFixed(1)}m × ${(bh/1000).toFixed(1)}m. 펌프/V 클릭으로 위치 지정 →` + _bgSkipNote(result, true);
         }
         if (typeof _enableConnReview === "function") _enableConnReview();
         if (state.current_mode === "system") {
@@ -3399,7 +3489,7 @@
           const avMatched = fm.av_floor_idx != null;
           const fhM = (fm.floor_height_mm / 1000).toFixed(2);
           floorBody = `라벨 <strong>${fm.label_count}</strong>개 · 평균 층고 <strong>${fhM} m</strong>`;
-          floorBody += `<br>AV 위치 → ` + (avMatched
+          floorBody += `<br>V 위치 → ` + (avMatched
             ? `<strong style="color:#065f46;">${fm.av_floor_name || ("지상" + fm.av_floor_idx + "층")}</strong> (idx ${fm.av_floor_idx})`
             : `<span style="color:#b91c1c;">미식별</span>`);
           floorBody += `<br>노드 매칭률 <strong>${fm.nodes_with_floor}/${r.nodes.length}</strong>` +
@@ -3422,7 +3512,7 @@
         const first = r.nodes[0], last = r.nodes[r.nodes.length - 1];
         const fmtNode = (n) => {
           const fl = n.floor ? ` · ${n.floor.trim()}` : "";
-          const lab = (n.io_node === "Input") ? "P" : (n.label === r.av_node_label ? "AV" : n.label);
+          const lab = (n.io_node === "Input") ? "P" : (n.label === r.av_node_label ? "V" : n.label);
           return `<strong>${lab}</strong> · elev <strong>${(n.elevation >= 0 ? "+" : "") + n.elevation.toFixed(2)}m</strong>${fl}`;
         };
         let pathBody = fmtNode(first) + `<br>` +
@@ -3612,7 +3702,7 @@
 
     _sysExtractBtn.addEventListener("click", async () => {
       if (!state.system_pump_marker || !state.system_av_marker) {
-        alert("펌프와 알람밸브 위치를 모두 클릭으로 지정해주세요.");
+        alert("펌프와 밸브 위치를 모두 클릭으로 지정해주세요.");
         return;
       }
       _sysExtractBtn.disabled = true;
@@ -4558,7 +4648,7 @@
         const fill = (n.io_node === "Input") ? GRAPH_STYLE.color_pump
                    : (n.label === r.av_node_label) ? GRAPH_STYLE.color_av
                    : GRAPH_STYLE.color_riser;
-        const tag = ep ? ((n.io_node === "Input") ? "P" : "AV") : null;
+        const tag = ep ? ((n.io_node === "Input") ? "P" : "V") : null;
         _drawGraphNode(sx, sy, ep ? "endpoint" : "mid", fill, tag);
       }
     };
@@ -4693,7 +4783,7 @@
                    : isMR    ? GRAPH_STYLE.color_pump_extra
                    : isRiser ? GRAPH_STYLE.color_riser
                              : GRAPH_STYLE.color_head;
-        const tag = isInput ? "수원" : isRiserStart ? "라이저 시작" : isAV ? "AV" : null;
+        const tag = isInput ? "수원" : isRiserStart ? "라이저 시작" : isAV ? "V" : null;
         _drawGraphNode(sx, sy, ep ? "endpoint" : "mid", fill, tag);
       }
 
@@ -4719,7 +4809,7 @@
 
       // 좌하단 라벨
       ctx.fillStyle = "#e2e8f0"; ctx.font = "bold 12px ui-monospace";
-      ctx.fillText(`통합 배관망 — 기계실 평면망(연초록)+수리경로(초록)→라이저 시작·계통도(노랑)→AV(빨강)→평면도(시안)`, 12, h - 14);
+      ctx.fillText(`통합 배관망 — 기계실 평면망(연초록)+수리경로(초록)→라이저 시작·계통도(노랑)→V(빨강)→평면도(시안)`, 12, h - 14);
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -4757,6 +4847,14 @@
         result: null,        // 솔버 산출값
       };
       let _simGraph = null;  // loadGeometry 가 채우는 시뮬 그래프 (scene 좌표 + 물리 파라미터)
+      // ── 수동 편집(3D 노드 드래그) 상태 ──
+      //   head 노드만 scene.xy = mm.xy - (cx,cy) 로 항등 매핑 → 역변환 가능.
+      //   라이저/기계실 노드는 표시상 접히거나 합성 Z 라 3D 이동 불가(2D 평면에서 편집).
+      let _editCx = 0, _editCy = 0;   // loadGeometry 가 저장하는 XY 역변환 오프셋
+      let _editDrag = null;           // { mesh, label } 드래그 중
+      let _selMesh = null;            // 현재 선택 강조된 sphere
+      const _editPlane = (typeof THREE !== "undefined") ? new THREE.Plane() : null;
+      const _editPt = (typeof THREE !== "undefined") ? new THREE.Vector3() : null;
       let flowPts = null, sprayPts = null;   // THREE.Points 풀 (관내 흐름 / 방수 분사)
       let _flowMeta = null, _sprayMeta = null;
       const simOverlayEl = document.getElementById("sim-overlay");
@@ -4875,6 +4973,12 @@
 
         // 더블 클릭 → 클릭 지점으로 줌인/포커스 (빈 곳이면 전체 fit)
         canvas3d.addEventListener("dblclick", (e) => _focusAt(e));
+
+        // 수동 편집 — 노드 드래그. 캡처 단계 pointerdown 으로 OrbitControls 보다 먼저
+        // 가로채(head 노드 드래그 시 stopPropagation) 회전과 충돌하지 않게 한다.
+        canvas3d.addEventListener("pointerdown", _onEditDown, true);
+        window.addEventListener("pointermove", _onEditMove);
+        window.addEventListener("pointerup", _onEditUp);
 
         // 윈도우/패널 사이즈 변경 시 캔버스 리사이즈
         _resizeObserver = new ResizeObserver(() => resize());
@@ -5008,6 +5112,8 @@
         const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
         const bboxW = (maxX - minX) || 1, bboxH = (maxY - minY) || 1;
         const bboxDiag = Math.hypot(bboxW, bboxH);
+        // 편집용 XY 역변환 오프셋 저장 — head 노드 scene.x = mm.x - cx (centering 만).
+        _editCx = cx; _editCy = cy;
         // 도면 비례 자동 크기 (mm) — slider 는 그 위 배수 (default 1.0×).
         // 노드: bbox 의 0.6% 반경 (10m 도면 = 60mm), 엣지: 0.12% (10m = 12mm)
         const baseNode = bboxDiag * 0.006;
@@ -5262,6 +5368,16 @@
           }
         }
 
+        // 편집 중이면 재구성 후에도 선택 노드 강조를 복원 (scene 재빌드로 mesh 가 새로 생성됨)
+        _selMesh = null;
+        try {
+          if (typeof CombinedEditor !== "undefined" && CombinedEditor.isActive) {
+            const sl = CombinedEditor.selectedLabel ? CombinedEditor.selectedLabel() : null;
+            if (sl) for (const m of nodeGroup.children)
+              if (m.userData.label === sl) { m.scale.setScalar(1.4); _selMesh = m; }
+          }
+        } catch (_) {}
+
         // ─── 헤드 니플 스텁 (상향/하향 표시) ───
         // 각 헤드(스프링클러) 노드에서 짧은 수직 스텁을 ±z 로 그린다. 가지배관 본체는
         // z 그대로 두고(평면 유지) 헤드만 위(상향식)/아래(하향식)로 돌출 → 실 도면처럼
@@ -5429,6 +5545,68 @@
         controls.target.copy(pt);
         camera.position.copy(pt).add(offset);
         controls.update();
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      //  수동 편집 — 3D 노드 드래그 (head 노드만, 수평 XY 평면)
+      //  CombinedEditor 활성 시에만 동작. head 노드를 지면(노드 높이) 평면에서 끌어
+      //  scene→mm 역변환 후 CombinedEditor.commitNodeMove 로 g0 반영(관길이 자동 재계산).
+      // ═══════════════════════════════════════════════════════════════
+      function _editEnabled() {
+        return typeof CombinedEditor !== "undefined" && CombinedEditor.isActive && CombinedEditor.isActive();
+      }
+      function _pickNode(ev) {
+        if (!raycaster || !camera || !nodeGroup) return null;
+        const rect = canvas3d.getBoundingClientRect();
+        const mx = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+        const my = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera({ x: mx, y: my }, camera);
+        const hits = raycaster.intersectObjects(nodeGroup.children, false);
+        return hits.length ? hits[0].object : null;
+      }
+      function _highlight(mesh) {
+        if (_selMesh && _selMesh !== mesh) _selMesh.scale.setScalar(1.0);
+        _selMesh = mesh || null;
+        if (_selMesh) _selMesh.scale.setScalar(1.4);
+      }
+      function _onEditDown(ev) {
+        if (ev.button !== 0 || !_editEnabled()) return;
+        const mesh = _pickNode(ev);
+        if (!mesh) return;
+        const label = mesh.userData.label;
+        _highlight(mesh);
+        if (typeof CombinedEditor !== "undefined" && CombinedEditor.selectNode) CombinedEditor.selectNode(label);
+        if (mesh.userData.category !== "head") {
+          if (hintEl) hintEl.textContent = "라이저·기계실 노드는 3D에서 이동 불가 — 2D 평면 뷰에서 편집하세요.";
+          return;   // 선택만 하고 드래그는 막음(오비트는 허용)
+        }
+        // head 노드 → 드래그 시작. 캡처 단계에서 stopPropagation 으로 OrbitControls 차단.
+        ev.stopPropagation(); ev.preventDefault();
+        if (_editPlane) _editPlane.set(new THREE.Vector3(0, 0, 1), -mesh.position.z);
+        _editDrag = { mesh, label };
+        if (hintEl) hintEl.textContent = "노드 이동 중 — 놓으면 관길이가 자동 재계산됩니다.";
+      }
+      function _onEditMove(ev) {
+        if (!_editDrag || !_editPlane || !_editPt) return;
+        const rect = canvas3d.getBoundingClientRect();
+        const mx = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+        const my = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera({ x: mx, y: my }, camera);
+        if (raycaster.ray.intersectPlane(_editPlane, _editPt)) {
+          _editDrag.mesh.position.x = _editPt.x;
+          _editDrag.mesh.position.y = _editPt.y;
+        }
+      }
+      function _onEditUp() {
+        if (!_editDrag) return;
+        const m = _editDrag.mesh, label = _editDrag.label;
+        _editDrag = null;
+        // scene → mm 역변환 (head 노드 XY 항등: scene = mm - c)
+        const xMm = m.position.x + _editCx;
+        const yMm = m.position.y + _editCy;
+        // commitNodeMove → _afterChange → loadGeometry 재구성으로 엣지/좌표 스냅·강조 복원
+        if (typeof CombinedEditor !== "undefined" && CombinedEditor.commitNodeMove)
+          CombinedEditor.commitNodeMove(label, xMm, yMm);
       }
 
       // ═══════════════════════════════════════════════════════════════
@@ -6141,7 +6319,7 @@
       const pathDone = !!(state.system_riser) && state.system_revealed_pipes_count === null;
       if (!pathDone || state.system_pick_mode) {
         drawSystemMarker(state.system_pump_marker, "#10b981", "P", "PUMP");
-        drawSystemMarker(state.system_av_marker, "#ef4444", "A", "AV");
+        drawSystemMarker(state.system_av_marker, "#ef4444", "V", "V");
         (state.system_midnodes || []).forEach((m, i) => {
           drawSystemMarker(m, "#6366f1", String(i + 1), `경유 ${i + 1}`);
         });
@@ -6511,6 +6689,463 @@
       else if (mode === "plane") state.view.fitMode = "plane";  // 평면도는 기존 fitZoom 로직 그대로
       render();
     };
+
+    // ══════════════ 통합 배관망 수동 편집 엔진 (CombinedEditor) ══════════════
+    // 통합 geometry(state.combined_geometry) 를 브라우저에서 직접 편집한다.
+    //   · 2D 통합 캔버스에서 노드/배관을 선택·이동·추가·삭제 (Phase 1)
+    //   · 노드 이동 시 하젠-윌리엄스 관길이(length) 자동 재계산 + 배관별 length 잠금
+    //   · 편집은 메모리(g0 in-place)만 — 서버 재출력은 별도 버튼(Phase 3)
+    // 좌표계: x,y = mm / z(고도)·length·elev = m. plan 뷰만 역투영 가능 → 이동/노드추가는
+    // plan 뷰 전용. 선택/삭제/배관추가는 정투영 히트테스트로 두 뷰 모두 동작.
+    const CombinedEditor = (function () {
+      const S = {
+        active: false, tool: "select",
+        selected: null,        // {type:"node", label} | {type:"pipe", ref}
+        addFrom: null,         // 배관추가 첫 노드 라벨
+        dirty: false, _orig: null,
+        drag: null,            // {label} 이동 중
+        _dragMoved: false, _raf: null,
+      };
+      // DOM
+      const el = {}, ids = ["cmb-edit","ce-toggle","ce-body","ce-hint","ce-props","ce-stats","ce-revert","ce-rebuild"];
+
+      function _g0() { return state.combined_geometry; }
+      function _isPlan() { return state.combined_view !== "iso2d"; }
+      function _num(v) { return (v == null || !isFinite(+v)) ? "" : +(+v).toFixed(3); }
+      function _clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+      function _dp() { return _combinedDisplayAndProjector(_g0(), state.combined_view); }
+      function _toScreen(proj, x, y, z) {
+        const p = proj(x, y, z);
+        return [p[0] * state.view.zoom + state.view.panX, -p[1] * state.view.zoom + state.view.panY];
+      }
+      // plan 뷰 역투영: 화면 → 월드(mm)
+      function _screenToWorldPlan(sx, sy) {
+        return { x: (sx - state.view.panX) / state.view.zoom, y: (state.view.panY - sy) / state.view.zoom };
+      }
+      function _g0NodeByLabel(lbl) {
+        const g0 = _g0(); if (!g0) return null;
+        for (const n of g0.nodes) if (n.label === lbl) return n;
+        return null;
+      }
+      function _dispNodeByLabel(lbl) {
+        const { g } = _dp();
+        for (const n of g.nodes) if (n.label === lbl) return n;
+        return null;
+      }
+      // 히트테스트는 화면에 보이는 표시 geometry 기준(iso2d 는 라이저 접힘) → 라벨 반환
+      function _hitNode(sx, sy) {
+        const { g, proj } = _dp();
+        let best = null, bestD = 12;
+        for (const n of g.nodes) {
+          const [px, py] = _toScreen(proj, n.x, n.y, n.z);
+          const d = Math.hypot(px - sx, py - sy);
+          if (d < bestD) { bestD = d; best = n.label; }
+        }
+        return best;
+      }
+      function _segDist(px, py, x1, y1, x2, y2) {
+        const dx = x2 - x1, dy = y2 - y1, L2 = dx*dx + dy*dy;
+        let t = L2 ? ((px-x1)*dx + (py-y1)*dy) / L2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        return Math.hypot(px - (x1+t*dx), py - (y1+t*dy));
+      }
+      function _hitPipe(sx, sy) {
+        const g0 = _g0(); if (!g0) return null;
+        const { g, proj } = _dp();
+        const nm = new Map(); for (const n of g.nodes) nm.set(n.label, n);
+        let best = null, bestD = 8;
+        for (const p of g0.pipes) {
+          const a = nm.get(p.in), b = nm.get(p.out);
+          if (!a || !b) continue;
+          const [x1, y1] = _toScreen(proj, a.x, a.y, a.z);
+          const [x2, y2] = _toScreen(proj, b.x, b.y, b.z);
+          const d = _segDist(sx, sy, x1, y1, x2, y2);
+          if (d < bestD) { bestD = d; best = p; }
+        }
+        return best;
+      }
+
+      // ── 수리값 재계산 (하젠-윌리엄스 관길이는 3D 유클리드) ──
+      function _recalcPipe(p) {
+        const a = _g0NodeByLabel(p.in), b = _g0NodeByLabel(p.out);
+        if (!a || !b) return;
+        const dz = (b.z || 0) - (a.z || 0);   // m
+        p.elev = dz;
+        if (!p.length_locked) {
+          const dx = (b.x - a.x) / 1000, dy = (b.y - a.y) / 1000;  // mm→m
+          p.length = Math.hypot(dx, dy, dz);
+        }
+      }
+      function _recalcConnected(label) {
+        const g0 = _g0(); if (!g0) return;
+        for (const p of g0.pipes) if (p.in === label || p.out === label) _recalcPipe(p);
+      }
+
+      function _nextNodeLabel() {
+        const g0 = _g0(); let mx = 0;
+        for (const n of g0.nodes) { const v = parseInt(n.label, 10); if (isFinite(v) && v > mx) mx = v; }
+        let cand = mx + 1;
+        const used = new Set(g0.nodes.map(n => n.label));
+        while (used.has(String(cand))) cand++;
+        return String(cand);
+      }
+      function _nextPipeLabel() {
+        const g0 = _g0(); let mx = 0;
+        for (const p of g0.pipes) { const m = /^P?(\d+)$/.exec(p.label || ""); if (m) { const v = +m[1]; if (v > mx) mx = v; } }
+        let cand = mx + 1;
+        const used = new Set(g0.pipes.map(p => p.label));
+        while (used.has("P" + cand)) cand++;
+        return "P" + cand;
+      }
+
+      // ── CRUD ──
+      function moveNode(label, wx, wy) {
+        const n = _g0NodeByLabel(label); if (!n) return;
+        n.x = wx; n.y = wy;
+        _recalcConnected(label);
+      }
+      function addNode(wx, wy) {
+        const g0 = _g0(); const label = _nextNodeLabel();
+        g0.nodes.push({ label, x: wx, y: wy, z: 0, io: "No", pressure_pa: null });
+        S.selected = { type: "node", label };
+        return label;
+      }
+      function deleteNode(label) {
+        const g0 = _g0();
+        const touching = g0.pipes.filter(p => p.in === label || p.out === label).length;
+        if (touching && !confirm("이 노드에 연결된 배관 " + touching + "개도 함께 삭제됩니다. 계속할까요?")) return;
+        g0.nodes = g0.nodes.filter(n => n.label !== label);
+        g0.pipes = g0.pipes.filter(p => p.in !== label && p.out !== label);
+        if (S.selected && S.selected.type === "node" && S.selected.label === label) S.selected = null;
+      }
+      function addPipe(fromLbl, toLbl) {
+        if (fromLbl === toLbl) return;
+        const g0 = _g0();
+        const exists = g0.pipes.some(p =>
+          (p.in === fromLbl && p.out === toLbl) || (p.in === toLbl && p.out === fromLbl));
+        if (exists) { _hint("이미 연결된 배관입니다."); return; }
+        // 관경 기본값: 시작 노드에 붙은 기존 배관 중 하나를 복사, 없으면 50mm
+        let dia = 50;
+        const nb = g0.pipes.find(p => p.in === fromLbl || p.out === fromLbl || p.in === toLbl || p.out === toLbl);
+        if (nb && nb.dia) dia = nb.dia;
+        const p = { label: _nextPipeLabel(), in: fromLbl, out: toLbl, dia, c: 120, length: 0, elev: 0 };
+        _recalcPipe(p);
+        g0.pipes.push(p);
+        S.selected = { type: "pipe", ref: p };
+      }
+      function deletePipe(p) {
+        const g0 = _g0();
+        g0.pipes = g0.pipes.filter(x => x !== p);
+        if (S.selected && S.selected.type === "pipe" && S.selected.ref === p) S.selected = null;
+      }
+      function setNodeProps(label, patch) {
+        const n = _g0NodeByLabel(label); if (!n) return;
+        if (patch.x != null && isFinite(+patch.x)) n.x = +patch.x;
+        if (patch.y != null && isFinite(+patch.y)) n.y = +patch.y;
+        if (patch.z != null && isFinite(+patch.z)) n.z = +patch.z;
+        if (patch.io != null) n.io = patch.io;
+        _recalcConnected(label);
+      }
+      function setPipeProps(p, patch) {
+        if (patch.dia != null && isFinite(+patch.dia)) p.dia = +patch.dia;
+        if (patch.c != null && isFinite(+patch.c)) p.c = +patch.c;
+        if (patch.length_locked != null) p.length_locked = !!patch.length_locked;
+        if (patch.length != null && isFinite(+patch.length)) { p.length = +patch.length; p.length_locked = true; }
+        if (!p.length_locked) _recalcPipe(p);   // 잠금 해제 시 형상 기준 복원
+      }
+
+      // ── 변경 후 반영 (캐시 무효화 → 재렌더 → 3D 동기 → 패널) ──
+      function _afterChange() {
+        S.dirty = true;
+        _combinedDPCache = null;   // g0 in-place 변형 → 표시 캐시 강제 무효화
+        render();
+        if (state.current_mode === "iso" && typeof IsoViewer !== "undefined") {
+          try { IsoViewer.loadGeometry(_g0()); } catch (_) {}
+        }
+        _renderProps(); _renderStats();
+        if (el["ce-rebuild"]) el["ce-rebuild"].disabled = !S.dirty;
+      }
+
+      // ── 선택 오버레이 (render 래핑) ──
+      function drawOverlay() {
+        if (!S.active || state.current_mode !== "combined") return;
+        const g0 = _g0(); if (!g0) return;
+        const { proj } = _dp();
+        // addpipe 첫 노드
+        if (S.addFrom) {
+          const n = _g0NodeByLabel(S.addFrom);
+          if (n) { const [sx, sy] = _toScreen(proj, n.x, n.y, n.z);
+            ctx.save(); ctx.strokeStyle = "#22d3ee"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(sx, sy, 9, 0, Math.PI*2); ctx.stroke(); ctx.restore(); }
+        }
+        if (!S.selected) return;
+        ctx.save();
+        if (S.selected.type === "node") {
+          const n = _g0NodeByLabel(S.selected.label);
+          if (n) { const [sx, sy] = _toScreen(proj, n.x, n.y, n.z);
+            ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.arc(sx, sy, 10, 0, Math.PI*2); ctx.stroke(); }
+        } else if (S.selected.type === "pipe") {
+          const p = S.selected.ref;
+          const a = _g0NodeByLabel(p.in), b = _g0NodeByLabel(p.out);
+          if (a && b) {
+            const [x1, y1] = _toScreen(proj, a.x, a.y, a.z);
+            const [x2, y2] = _toScreen(proj, b.x, b.y, b.z);
+            ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 3.5; ctx.globalAlpha = 0.9;
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+
+      // ── 속성 패널 ──
+      function _hint(msg) { if (el["ce-hint"]) el["ce-hint"].textContent = msg; }
+      function _renderStats() {
+        const g0 = _g0();
+        if (!el["ce-stats"]) return;
+        if (!g0) { el["ce-stats"].textContent = "편집 없음"; return; }
+        el["ce-stats"].textContent = "노드 " + g0.nodes.length + " · 배관 " + g0.pipes.length + (S.dirty ? " · 편집됨" : "");
+      }
+      function _inputRow(label, id, val, attrs) {
+        return '<div class="ce-row"><label>' + label + '</label>' +
+               '<input id="' + id + '" ' + (attrs || "") + ' value="' + (val === "" ? "" : val) + '"></div>';
+      }
+      function _renderProps() {
+        const box = el["ce-props"]; if (!box) return;
+        const sel = S.selected;
+        if (!sel) { box.innerHTML = '<div class="ce-empty">선택된 요소 없음</div>'; return; }
+        if (sel.type === "node") {
+          const n = _g0NodeByLabel(sel.label);
+          if (!n) { box.innerHTML = '<div class="ce-empty">선택 노드 없음</div>'; return; }
+          box.innerHTML =
+            '<div class="ce-row"><label>노드</label><span class="ce-ro">' + n.label + '</span></div>' +
+            _inputRow("X (mm)", "ce-nx", _num(n.x), 'type="number" step="1"') +
+            _inputRow("Y (mm)", "ce-ny", _num(n.y), 'type="number" step="1"') +
+            _inputRow("고도 (m)", "ce-nz", _num(n.z), 'type="number" step="0.1"') +
+            '<div class="ce-row"><label>유형</label><select id="ce-nio">' +
+              ['No','Input','Output'].map(o => '<option value="'+o+'"'+(n.io===o?' selected':'')+'>'+o+'</option>').join('') +
+            '</select></div>';
+          const bind = (id, key) => { const e = document.getElementById(id); if (e) e.addEventListener("change", () => {
+            const patch = {}; patch[key] = (id === "ce-nio") ? e.value : e.value; setNodeProps(n.label, patch); _afterChange(); }); };
+          bind("ce-nx","x"); bind("ce-ny","y"); bind("ce-nz","z"); bind("ce-nio","io");
+        } else {
+          const p = sel.ref;
+          box.innerHTML =
+            '<div class="ce-row"><label>배관</label><span class="ce-ro">' + (p.label||"") + '</span></div>' +
+            '<div class="ce-row"><label>구간</label><span class="ce-ro">' + p.in + ' → ' + p.out + '</span></div>' +
+            _inputRow("관경 (mm)", "ce-pd", _num(p.dia), 'type="number" step="1"') +
+            _inputRow("C 계수", "ce-pc", _num(p.c), 'type="number" step="1"') +
+            _inputRow("길이 (m)", "ce-pl", _num(p.length), 'type="number" step="0.01"') +
+            '<div class="ce-row ce-lock"><label><input id="ce-plk" type="checkbox"' + (p.length_locked?' checked':'') + '> 길이 잠금</label></div>' +
+            '<div class="ce-row"><label>상승고 (m)</label><span class="ce-ro">' + _num(p.elev) + '</span></div>';
+          const g = (id) => document.getElementById(id);
+          if (g("ce-pd")) g("ce-pd").addEventListener("change", e => { setPipeProps(p, {dia:e.target.value}); _afterChange(); });
+          if (g("ce-pc")) g("ce-pc").addEventListener("change", e => { setPipeProps(p, {c:e.target.value}); _afterChange(); });
+          if (g("ce-pl")) g("ce-pl").addEventListener("change", e => { setPipeProps(p, {length:e.target.value}); _afterChange(); });
+          if (g("ce-plk")) g("ce-plk").addEventListener("change", e => { setPipeProps(p, {length_locked:e.target.checked}); _afterChange(); });
+        }
+      }
+
+      // ── 도구/모드 ──
+      function setTool(t) {
+        S.tool = t; S.addFrom = null;
+        for (const b of el["cmb-edit"].querySelectorAll(".ce-tools button"))
+          b.classList.toggle("is-active", b.dataset.tool === t);
+        const hints = { select:"노드·배관을 클릭해 선택하세요.", move:"노드를 드래그해 이동 (평면 뷰 전용).",
+          addnode:"빈 곳을 클릭해 노드 추가 (평면 뷰 전용).", addpipe:"시작 노드→끝 노드를 차례로 클릭.",
+          delete:"삭제할 노드·배관을 클릭하세요." };
+        _hint(hints[t] || "");
+      }
+      function start() {
+        if (!_g0()) return;
+        S._orig = _clone(_g0());
+        S.active = true; S.dirty = false; S.selected = null; S.addFrom = null;
+        el["ce-body"].classList.remove("ce-hidden");
+        el["ce-toggle"].textContent = "편집 종료";
+        el["ce-toggle"].classList.add("is-on");
+        setTool("select"); _renderProps(); _renderStats();
+        if (el["ce-rebuild"]) el["ce-rebuild"].disabled = true;
+        render();
+      }
+      function stop() {
+        S.active = false; S.selected = null; S.addFrom = null;
+        el["ce-body"].classList.add("ce-hidden");
+        el["ce-toggle"].textContent = "편집 시작";
+        el["ce-toggle"].classList.remove("is-on");
+        render();
+      }
+      function revert() {
+        if (!S._orig) return;
+        if (S.dirty && !confirm("편집 내용을 버리고 원본으로 되돌릴까요?")) return;
+        const g0 = _g0();
+        g0.nodes = _clone(S._orig.nodes);
+        g0.pipes = _clone(S._orig.pipes);
+        S.dirty = false; S.selected = null; S.addFrom = null;
+        _afterChange();
+      }
+
+      // ── 서버 재출력 (편집본 → SDF) ──
+      //   캐시된 원본 CombinedTables(job_id)를 서버에서 deepcopy·패치 → emit_full_sdf.
+      //   성공 시 새 job_id 로 체이닝(연속 편집)하고 SDF 를 즉시 다운로드한다.
+      async function _rebuild() {
+        const g0 = _g0();
+        if (!g0 || !g0.nodes || !g0.pipes) { alert("재출력할 통합 망이 없습니다."); return; }
+        const jobId = state.combinedBuild && state.combinedBuild.job_id;
+        if (!jobId) {
+          alert("서버 재출력은 '배관망 통합'으로 빌드한 결과에만 가능합니다.\n(불러온 망은 재출력 캐시가 없습니다 — 먼저 배관망 통합을 실행해 주세요.)");
+          return;
+        }
+        const btn = el["ce-rebuild"];
+        const prev = btn ? btn.textContent : "";
+        if (btn) { btn.disabled = true; btn.textContent = "재출력 중…"; }
+        try {
+          const res = await fetch("/api/remote30/combined/rebuild", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ job_id: jobId, geometry: { nodes: g0.nodes, pipes: g0.pipes } }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) {
+            alert("재출력 실패: " + (data.message || ("HTTP " + res.status)));
+            if (btn) { btn.textContent = prev; btn.disabled = !S.dirty; }
+            return;
+          }
+          // 패치본이 새 job_id 로 재캐시됨 → 연속 편집이 이 위에서 이어지도록 갱신.
+          // 편집본 다운로드 URL 을 combinedBuild 에 병합해 상단 SDF/KFP/HAS 내보내기
+          // 버튼이 편집본을 가리키게 한다. 편집은 평면 세트만 생성하므로 iso/zip
+          // 변형은 비워 평면 파일로 폴백(원본 미편집 파일을 받는 실수 방지).
+          Object.assign(state.combinedBuild, {
+            job_id: data.job_id,
+            download_url_sdf: data.download_url_sdf || null,
+            download_url_sdf_iso: null, download_url_sdf_zip: null, download_url_sdf_zip_iso: null,
+            download_url_kfp: data.download_url_kfp || null, download_url_kfp_iso: null,
+            download_url_has: data.download_url_has || null, download_url_has_iso: null,
+          });
+          // 상단 내보내기 버튼 활성화 — 편집본이 생겼으니 SDF/KFP/HAS 를 받을 수 있게
+          // 한다(표준 새로고침은 HAS 를 항상 비활성으로 두므로 여기서 직접 켠다).
+          try {
+            if (typeof _cmbExpSdf !== "undefined" && _cmbExpSdf)
+              _cmbExpSdf.disabled = !state.combinedBuild.download_url_sdf;
+            if (typeof _cmbExpKfp !== "undefined" && _cmbExpKfp)
+              _cmbExpKfp.disabled = !state.combinedBuild.download_url_kfp;
+            if (typeof _cmbExpHas !== "undefined" && _cmbExpHas)
+              _cmbExpHas.disabled = !state.combinedBuild.download_url_has;
+          } catch (_) {}
+          if (data.download_url_sdf) _cmbDownload(data.download_url_sdf);
+          S.dirty = false; S._orig = _clone(g0);
+          const _fmts = ["SDF"].concat(data.download_url_kfp ? ["KFP"] : [],
+                                       data.download_url_has ? ["HAS"] : []);
+          _hint("재출력 완료 — 노드 " + data.nodes + " · 배관 " + data.pipes +
+                (data.nozzles != null ? " · 헤드 " + data.nozzles : "") +
+                " (SDF 다운로드됨; " + _fmts.join("/") + " 는 상단 내보내기 버튼).");
+          if (btn) { btn.textContent = prev; btn.disabled = true; }
+        } catch (err) {
+          alert("재출력 요청 중 오류: " + (err && err.message ? err.message : err));
+          if (btn) { btn.textContent = prev; btn.disabled = !S.dirty; }
+        }
+      }
+
+      // ── 캔버스 인터랙션 ──
+      function _canEdit() { return S.active && state.current_mode === "combined" && _g0(); }
+      function _evtXY(e) {
+        const r = canvas.getBoundingClientRect();
+        return [e.clientX - r.left, e.clientY - r.top];
+      }
+      function _onClick(e) {
+        const dragged = S._dragMoved; S._dragMoved = false;
+        if (!_canEdit() || state._didDrag || dragged) return;
+        const [sx, sy] = _evtXY(e);
+        if (S.tool === "select") {
+          const nl = _hitNode(sx, sy);
+          if (nl) S.selected = { type: "node", label: nl };
+          else { const p = _hitPipe(sx, sy); S.selected = p ? { type: "pipe", ref: p } : null; }
+          _renderProps(); render();
+        } else if (S.tool === "addnode") {
+          if (!_isPlan()) { _hint("노드 추가는 평면 뷰에서만 가능합니다."); return; }
+          const w = _screenToWorldPlan(sx, sy); addNode(w.x, w.y); _afterChange();
+        } else if (S.tool === "addpipe") {
+          const nl = _hitNode(sx, sy);
+          if (!nl) { _hint("노드를 클릭하세요."); return; }
+          if (!S.addFrom) { S.addFrom = nl; _hint("끝 노드를 클릭하세요."); render(); }
+          else { addPipe(S.addFrom, nl); S.addFrom = null; _hint("배관 추가됨. 계속 추가하려면 시작 노드 클릭."); _afterChange(); }
+        } else if (S.tool === "delete") {
+          const nl = _hitNode(sx, sy);
+          if (nl) { deleteNode(nl); _afterChange(); return; }
+          const p = _hitPipe(sx, sy);
+          if (p) { deletePipe(p); _afterChange(); }
+        }
+      }
+      function _onMouseDownCapture(e) {
+        if (!_canEdit() || e.button !== 0) return;
+        if (S.tool !== "move") return;
+        if (!_isPlan()) { _hint("이동은 평면 뷰에서만 가능합니다."); return; }
+        const [sx, sy] = _evtXY(e);
+        const nl = _hitNode(sx, sy);
+        if (!nl) return;
+        // 팬 핸들러보다 먼저 가로채 노드 드래그로 전환
+        e.stopPropagation(); e.preventDefault();
+        S.drag = { label: nl }; S._dragMoved = false;
+        S.selected = { type: "node", label: nl }; _renderProps();
+      }
+      function _onMouseMove(e) {
+        if (!S.drag) return;
+        S._dragMoved = true;
+        const [sx, sy] = _evtXY(e);
+        const w = _screenToWorldPlan(sx, sy);
+        moveNode(S.drag.label, w.x, w.y);
+        if (!S._raf) S._raf = requestAnimationFrame(() => { S._raf = null; _combinedDPCache = null; render(); });
+      }
+      function _onMouseUp() {
+        if (!S.drag) return;
+        S.drag = null; S.dirty = true;
+        _afterChange();
+      }
+
+      // ── 패널 표시 동기화 ──
+      function sync() {
+        if (!el["cmb-edit"]) return;
+        const m = state.current_mode;
+        const show = !!state.combined_geometry && (m === "combined" || m === "iso");
+        el["cmb-edit"].classList.toggle("is-visible", show);
+        el["cmb-edit"].classList.toggle("iso-pos", m === "iso");  // 3D 는 좌측 배치
+        if (!show && S.active) stop();
+        _renderStats();
+      }
+
+      function init() {
+        for (const id of ids) el[id] = document.getElementById(id);
+        if (!el["cmb-edit"]) return;
+        el["ce-toggle"].addEventListener("click", () => (S.active ? stop() : start()));
+        for (const b of el["cmb-edit"].querySelectorAll(".ce-tools button"))
+          b.addEventListener("click", () => setTool(b.dataset.tool));
+        if (el["ce-revert"]) el["ce-revert"].addEventListener("click", revert);
+        if (el["ce-rebuild"]) el["ce-rebuild"].addEventListener("click", _rebuild);
+        // 캡처 단계 mousedown → 팬보다 먼저 노드 드래그 가로채기
+        canvas.addEventListener("mousedown", _onMouseDownCapture, true);
+        window.addEventListener("mousemove", _onMouseMove);
+        window.addEventListener("mouseup", _onMouseUp);
+        canvas.addEventListener("click", _onClick);
+        // render 래핑 → 선택 오버레이
+        const _r = render;
+        window.render = render = function () { _r(); try { drawOverlay(); } catch (_) {} };
+        // setMode / view 전환 시 패널 표시 동기화
+        const _sm = setMode;
+        setMode = function (m) { _sm(m); sync(); };
+        const _svs = _syncViewSwitch;
+        _syncViewSwitch = function () { _svs(); sync(); };
+        sync();
+      }
+
+      // 3D(IsoViewer)와의 연동 API — 등각 뷰에서 head 노드 드래그 시 호출된다.
+      function selectNode(label) { S.selected = { type: "node", label }; _renderProps(); }
+      function selectedLabel() { return (S.selected && S.selected.type === "node") ? S.selected.label : null; }
+      function commitNodeMove(label, xMm, yMm) { moveNode(label, xMm, yMm); _afterChange(); }
+
+      return { init, sync, start, stop, isActive: () => S.active,
+               selectNode, selectedLabel, commitNodeMove, _S: S };
+    })();
+    CombinedEditor.init();
 
     // ─── 포맷 미리보기 (.sdf / .kfp / .has) ───
     //   다운로드 전에 "그 포맷으로 내보낸 파일을 다시 읽으면 망이 어떻게 보이는지"

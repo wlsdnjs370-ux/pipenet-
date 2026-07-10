@@ -1211,6 +1211,141 @@ def _auto_pipe_layer_filter(entities: list[dict],
     return matched
 
 
+def _auto_pipe_layers_v2(entities: list[dict],
+                         keywords: tuple[str, ...] = SYSTEM_PIPE_LAYER_KEYWORDS,
+                         min_lines: int = 15,
+                         max_candidates: int = 25,
+                         ) -> tuple[set[str], dict]:
+    """배관 레이어 자동선택 — 키워드 prior 우선, 미스 시 헤드-앵커 연결성 fallback.
+
+    설계 원칙(2026-07-10 실측으로 확정):
+      - 키워드([[_auto_pipe_layer_filter]])가 매칭되면 **그 결과를 그대로 신뢰**한다.
+        키워드는 강한 도메인 prior 라 벽·치수 레이어를 애초에 안 고른다. 여기에
+        '연결성으로 더 성장'시키면 배관과 기하적으로 겹치는 초대형 noise 레이어(예:
+        대명동 단위세대의 'L4' 33k선)가 최대 컴포넌트를 부풀려 통째로 딸려온다 —
+        검증에서 확인된 회귀. 그래서 키워드 히트 시 성장 안 함(= 프로덕션 동작 유지).
+      - 키워드가 **완전히 빗나간** 도면(배관이 '0'·'FIRE'·일반 레이어에 작도)만
+        fallback 진입. 이때 build_system_graph 는 원래 '전체 LINE 사용'으로 떨어져
+        LH급 도면에서 590k 선을 통째로 물고 늘어졌다. 그 대신 헤드 근접도로 배관
+        레이어를 고른다([[lh-basement-fire-layer]] 원칙 — 레이어 이름이 아닌 시스템
+        (헤드)과의 연결성으로 판별). 벽은 헤드에 안 붙으므로 자연히 탈락.
+
+    벽 가드: ARCH/EXCLUDE 카테고리 레이어는 후보에서 제외. 단 벽이 이름 없는 OTHER
+    레이어('L4','0')로 작도되면 카테고리 가드로 못 거른다 → fallback 성장 단계에서
+    '레이어 자체가 헤드에 붙어야' 채택하는 head-adj 게이트로 2차 방어.
+
+    Returns (selected_layers, diag). diag 는 관측용(method/candidates/selected/comp).
+    """
+    # --- 키워드 prior: 히트하면 그대로 반환(성장 없음, 회귀 방지) ---
+    kw_all = _auto_pipe_layer_filter(entities, keywords)
+    all_line_ents = [en for en in entities if en.get("t") in ("L", "PL")]
+    kw_line_count = sum(1 for en in all_line_ents if en.get("l") in kw_all)
+    if kw_line_count >= min_lines:
+        return set(kw_all), {"method": "keyword", "candidates": sorted(kw_all),
+                             "selected": sorted(kw_all), "final_comp": None}
+
+    # --- fallback: 키워드 미스 → 헤드-앵커 연결성으로 배관 레이어 선택 ---
+    by_layer: dict[str, list[dict]] = defaultdict(list)
+    for en in all_line_ents:
+        l = en.get("l")
+        if l:
+            by_layer[l].append(en)
+
+    cand_layers = [l for l, ents in by_layer.items() if len(ents) >= min_lines]
+    cand_layers.sort(key=lambda l: len(by_layer[l]), reverse=True)
+    cand_layers = cand_layers[:max_candidates]
+    diag: dict = {"method": "fallback", "candidates": list(cand_layers),
+                  "selected": [], "final_comp": 0}
+    # 벽 가드 — ARCH/EXCLUDE 카테고리 제외.
+    nonwall = [l for l in cand_layers
+               if _categorize_layer(l) not in ("ARCH", "EXCLUDE")]
+    if not nonwall:
+        return set(), diag
+
+    cand_ents = [en for l in nonwall for en in by_layer[l]]
+    scale = _drawing_scale_ratio(cand_ents)
+    eps = SNAP_TOL_MM * scale
+    min_edge = MIN_PIPE_EDGE_MM * scale
+
+    def graph_of(ents: list[dict]) -> dict:
+        ni = _NodeIndex(epsilon_mm=eps) if scale < 1.0 else None
+        g, _ = _build_graph(ents, node_index=ni, min_edge_mm=min_edge)
+        return g
+
+    def largest(g: dict) -> int:
+        return max((len(c) for c in _connected_components(g)), default=0)
+
+    # 헤드 앵커 좌표 — 레이어의 배관성을 헤드 근접도로 판별.
+    head_pts: list[tuple[float, float]] = []
+    for en in entities:
+        if _categorize_layer(en.get("l") or "") != "HEAD":
+            continue
+        t = en.get("t")
+        if t == "I":
+            p = en.get("p")
+            if p:
+                head_pts.append((p[0], p[1]))
+        elif t == "C":
+            c = en.get("c")
+            if c:
+                head_pts.append((c[0], c[1]))
+    cell = max(eps * 4.0, 1.0)
+    head_cells = {(round(hx / cell), round(hy / cell)) for hx, hy in head_pts}
+    have_heads = bool(head_cells)
+
+    def head_adj(g: dict) -> int:
+        if not have_heads:
+            return 0
+        return sum(1 for (nx, ny) in g
+                   if (round(nx / cell), round(ny / cell)) in head_cells)
+
+    # 후보별 자체 그래프의 (head_adj, largest) 사전계산.
+    per_layer: dict[str, tuple[int, int]] = {}
+    for l in nonwall:
+        g = graph_of(by_layer[l])
+        per_layer[l] = (head_adj(g), largest(g))
+
+    # head-adj 게이트: 헤드가 있으면 헤드에 붙는 레이어만 배관 후보로 인정(벽 배제).
+    if have_heads:
+        eligible = [l for l in nonwall if per_layer[l][0] >= 2]
+    else:
+        eligible = list(nonwall)  # 헤드 없는 도면 — largest 만으로(약한 신호).
+    if not eligible:
+        return set(), diag
+
+    # seed = (head_adj, largest) 최대 레이어.
+    eligible.sort(key=lambda l: per_layer[l], reverse=True)
+    seed_layer = eligible[0]
+    if per_layer[seed_layer][1] < min_lines:
+        return set(), diag
+    selected = {seed_layer}
+    base_comp = per_layer[seed_layer][1]
+
+    # 탐욕적 융합 성장 — 합쳤을 때 최대 컴포넌트가 유의미하게 커지는(융합) 레이어만.
+    # eligible 로 이미 head-adj 게이트를 통과했으므로 초대형 벽/치수 noise 는 진입 불가.
+    remaining = [l for l in eligible if l not in selected]
+    while remaining:
+        best_gain = 0
+        best_layer = None
+        best_comp = base_comp
+        for l in remaining:
+            merged = [en for ll in (selected | {l}) for en in by_layer[ll]]
+            lc = largest(graph_of(merged))
+            if lc > base_comp + 2 and (lc - base_comp) > best_gain:
+                best_gain = lc - base_comp
+                best_layer = l
+                best_comp = lc
+        if best_layer is None:
+            break
+        selected.add(best_layer)
+        base_comp = best_comp
+        remaining.remove(best_layer)
+
+    diag["selected"] = sorted(selected)
+    diag["final_comp"] = base_comp
+    return selected, diag
+
+
 def _drawing_scale_ratio(line_ents: list[dict], ref_median_mm: float = 200.0) -> float:
     """배관 segment 스케일에서 그래프 허용치 비례계수(0<r≤1) 산출.
 
@@ -1262,8 +1397,9 @@ def build_system_graph(
         (graph, edge_len, stats) — stats 에 layer_filter 결과도 포함.
     """
     all_line_ents = [en for en in entities if en.get("t") in ("L", "PL")]
+    auto_diag: dict | None = None
     if layer_filter is None:
-        auto_matched = _auto_pipe_layer_filter(entities)
+        auto_matched, auto_diag = _auto_pipe_layers_v2(entities)
         line_ents = [en for en in all_line_ents if en.get("l") in auto_matched]
         filter_used = auto_matched
         fallback = False
@@ -1311,6 +1447,7 @@ def build_system_graph(
         ],
         "layer_filter_used": sorted(filter_used) if filter_used else None,
         "layer_filter_fallback_no_match": fallback,
+        "auto_layer_diag": auto_diag,
         "scale_ratio": round(scale_ratio, 6),
         "snap_eps_mm": round(snap_eps, 3),
         "min_edge_mm": round(min_edge, 3),

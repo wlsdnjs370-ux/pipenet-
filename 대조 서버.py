@@ -6739,6 +6739,112 @@ def remote30_result(run_id: str, kind: str):
     )
 
 
+@app.post("/api/remote30/export_cad")
+def remote30_export_cad():
+    """레이어 정리 결과를 CAD 포맷(.dxf/.dwg)으로 재출력.
+
+    워크벤치(건축 레이어 정리)에서 사용자가 체크로 남긴 레이어만 담아 원본 DXF 를
+    필터링해 내보낸다. inspect 단계의 dxf_token 으로 원본을 재사용(재업로드 불필요).
+
+    form:
+        dxf_token       inspect 가 발급한 토큰 (필수)
+        visible_layers  남길 레이어 이름 JSON 배열 (또는 콤마구분). 미지정 시 전체 유지.
+        format          "dxf"(기본) | "dwg"  — dwg 는 ODA File Converter 필요
+        filename        다운로드 파일명 stem (선택)
+    """
+    import ezdxf  # noqa: PLC0415
+
+    dxf_token = request.form.get("dxf_token", "").strip()
+    dxf_path = None
+    if dxf_token:
+        safe_token = secure_filename(dxf_token)
+        if safe_token and safe_token == dxf_token:
+            candidate = UPLOAD_DIR / safe_token
+            if candidate.exists() and candidate.suffix.lower() == ".dxf":
+                dxf_path = candidate
+    if dxf_path is None:
+        try:
+            dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
+        except ValueError as exc:
+            return jsonify({"ok": False, "message": str(exc)}), 400
+
+    raw_layers = request.form.get("visible_layers", "").strip()
+    kept: set[str] | None = None
+    if raw_layers:
+        try:
+            parsed = json.loads(raw_layers)
+            if isinstance(parsed, list):
+                kept = {str(x) for x in parsed}
+        except (ValueError, TypeError):
+            kept = {s.strip() for s in raw_layers.split(",") if s.strip()}
+
+    fmt = (request.form.get("format", "dxf") or "dxf").strip().lower()
+    if fmt not in {"dxf", "dwg"}:
+        fmt = "dxf"
+
+    try:
+        doc = ezdxf.readfile(str(dxf_path))
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "message": f"원본 DXF 읽기 실패: {exc}"}), 400
+
+    msp = doc.modelspace()
+    removed = 0
+    if kept is not None:
+        to_delete = [e for e in msp if str(getattr(e.dxf, "layer", "0")) not in kept]
+        for e in to_delete:
+            try:
+                msp.delete_entity(e)
+                removed += 1
+            except Exception:  # noqa: BLE001
+                pass
+        # 더 이상 참조되지 않는 레이어 정의 정리 (실패는 무시 — 블록 참조 등)
+        used = {str(getattr(e.dxf, "layer", "0")) for e in msp}
+        for layer in list(doc.layers):
+            name = str(layer.dxf.name)
+            if name in ("0", "Defpoints") or name in used or name in (kept or set()):
+                continue
+            try:
+                doc.layers.remove(name)
+            except Exception:  # noqa: BLE001
+                pass
+
+    stem = secure_filename(Path(request.form.get("filename", "") or dxf_path.stem).stem) or "cleaned"
+    stem = f"{stem[:76]}_cleaned"
+    out_path = REMOTE30_OUTPUT_DIR / f"{stem}.dxf"
+    try:
+        doc.saveas(str(out_path))
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "message": f"DXF 저장 실패: {exc}"}), 500
+
+    if fmt == "dwg":
+        from ezdxf.addons import odafc  # noqa: PLC0415
+        exe = _locate_oda_exe()
+        if exe:
+            try:
+                ezdxf.options.set("odafc-addon", "win_exec_path", exe)
+            except Exception:  # noqa: BLE001
+                pass
+        if not odafc.is_installed():
+            return jsonify({
+                "ok": False,
+                "message": "DWG 출력에는 ODA File Converter(무료)가 필요합니다. "
+                           "미설치 상태이니 DXF 로 내려받거나 ODA File Converter 설치 후 다시 시도하세요.",
+            }), 400
+        dwg_path = REMOTE30_OUTPUT_DIR / f"{stem}.dwg"
+        try:
+            odafc.export_dwg(doc, str(dwg_path), replace=True)
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"ok": False, "message": f"DWG 변환 실패: {exc}"}), 500
+        resp = send_file(dwg_path, mimetype="image/vnd.dwg",
+                         as_attachment=True, download_name=dwg_path.name)
+    else:
+        resp = send_file(out_path, mimetype="image/vnd.dxf",
+                         as_attachment=True, download_name=out_path.name)
+    resp.headers["X-Removed-Entities"] = str(removed)
+    resp.headers["X-Kept-Layers"] = str(len(kept) if kept is not None else "all")
+    return resp
+
+
 try:
     from server_patch import register_v4_routes
 except Exception:

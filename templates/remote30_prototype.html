@@ -2551,7 +2551,7 @@
       const desc = {
         add: "캔버스를 클릭하면 200×200mm 헤드가 추가됩니다.",
         delete: "캔버스에서 헤드 근처(250mm 이내) 클릭으로 삭제 마킹.",
-        zone: "캔버스에 드래그하면 영역(점선 사각형)이 추가됩니다 (여러 개 union).",
+        zone: "드래그로 세대(단위세대) 영역 지정 — 이 영역 안 헤드만 선정 + 영역 안 배관은 CPVC(C=150), 밖은 강관(C=120).",
         none: "편집 모드 해제. 캔버스 팬/줌 사용.",
       };
       editStatusEl.textContent = desc[mode] || "";
@@ -4764,7 +4764,9 @@
           }
         }
       }
-      const riserPairs = [], headPairs = [], mrPairs = [];
+      const riserPairs = [], headPairs = [], mrPairs = [], overPairs = [];
+      // 계산(유속) 오버레이 요약 — 그려지는 배관 기준 최대유속·상한초과 개수.
+      let _vMax = 0, _vOver = 0, _vHave = false;
       for (const p of g.pipes) {
         const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
         if (!a || !b) continue;
@@ -4772,6 +4774,11 @@
         const isMR = mrSet.has(p.in) || mrSet.has(p.out);
         const isRiser = riserSet.has(p.in) || riserSet.has(p.out);
         (isMR ? mrPairs : isRiser ? riserPairs : headPairs).push({a, b});
+        if (typeof p.velocity_mps === "number") {
+          _vHave = true;
+          if (p.velocity_mps > _vMax) _vMax = p.velocity_mps;
+        }
+        if (p.v_over === true) { overPairs.push({a, b}); _vOver++; }
       }
       // 기계실 전체 SP 배관망 (평면도 형상) — 수리경로 spine 뿐 아니라 전 배관을
       // 실제 x,y 로 렌더. plan_edges 는 mr 노드와 동일 변환된 좌표계 [x1,y1,x2,y2].
@@ -4795,6 +4802,23 @@
       _drawPipeGroup(headPairs,  GRAPH_STYLE.color_head,       toScreen);
       _drawPipeGroup(riserPairs, GRAPH_STYLE.color_riser,      toScreen);
       _drawPipeGroup(mrPairs,    GRAPH_STYLE.color_pump_extra, toScreen);
+
+      // 유속 상한 초과 배관 강조 — 백엔드 size_pipes_by_velocity 이후에도 남은 초과분.
+      // (정상 사이징이면 0개. 남으면 굵은 빨강으로 덮어 즉시 식별.)
+      if (overPairs.length) {
+        ctx.save();
+        ctx.strokeStyle = GRAPH_STYLE.color_av;
+        ctx.lineWidth = 3.5;
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        for (const {a, b} of overPairs) {
+          const [x1, y1] = toScreen(a.x, a.y, a.z);
+          const [x2, y2] = toScreen(b.x, b.y, b.z);
+          ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // 헤드 니플 스텁 (상향/하향) — 등각도에서만. 가지배관(z=0)은 그대로 두고 헤드만
       // 위(상향식)/아래(하향식)로 짧게 돌출. 평면 lift 가 0(전 노드 elev=0)이라 별도
@@ -4872,6 +4896,14 @@
       // 좌하단 라벨
       ctx.fillStyle = "#e2e8f0"; ctx.font = "bold 12px ui-monospace";
       ctx.fillText(`통합 배관망 — 기계실 평면망(연초록)+수리경로(초록)→라이저 시작·계통도(노랑)→V(빨강)→평면도(시안)`, 12, h - 14);
+
+      // 계산(유속) HUD — 백엔드 annotate_pipe_velocity 값. 초과 있으면 빨강 강조.
+      if (_vHave) {
+        const _vTxt = `계산(유속): 최대 ${_vMax.toFixed(2)} m/s · 상한초과 ${_vOver}개`;
+        ctx.font = "bold 12px ui-monospace";
+        ctx.fillStyle = _vOver ? GRAPH_STYLE.color_av : "#86efac";
+        ctx.fillText(_vTxt, 12, h - 32);
+      }
     }
 
     // ─────────────────────────────────────────────────────────────────

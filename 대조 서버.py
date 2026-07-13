@@ -4174,7 +4174,12 @@ def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
              # 아이소 3D 방수 시뮬레이션용 하젠-윌리엄스 파라미터.
              "length": float(p.get("length", 0) or 0),   # m
              "c": float(p.get("c", 120) or 120),          # Hazen-Williams C
-             "elev": float(p.get("elev", 0) or 0)}        # 상승고 m (in→out)
+             "elev": float(p.get("elev", 0) or 0),        # 상승고 m (in→out)
+             # 계산(유속) 오버레이 — annotate_pipe_velocity 가 stamp (표시 전용).
+             "flow_lpm": p.get("flow_lpm"),
+             "velocity_mps": p.get("velocity_mps"),
+             "v_limit": p.get("v_limit"),
+             "v_over": p.get("v_over")}
             for p in combined.pipes
         ],
         "pumps": [
@@ -4261,7 +4266,7 @@ def remote30_combined_build():
     from remote30_full_network import (
         stitch_riser_and_heads, emit_full_sdf,
         prepend_machine_room_to_riser, insert_source_pump,
-        normalize_pipe_bores, size_pipes_by_velocity,
+        normalize_pipe_bores, size_pipes_by_velocity, annotate_pipe_velocity,
     )
 
     # ── 가압 방식 — "gravity"(자연낙차/고가수조, 기본) | "pump"(펌프 가압).
@@ -4408,6 +4413,13 @@ def remote30_combined_build():
                 _vel["violations_before"], _vel["violations_after"])
         except Exception as _e:
             app.logger.warning("combined/build: velocity sizing skipped: %s", _e)
+        # ── 통합 뷰 계산(유속) 오버레이용 배관 stamp — 최종 내경 기준.
+        try:
+            _va = annotate_pipe_velocity(combined.nodes, combined.pipes, combined.nozzles)
+            app.logger.info("combined/build: velocity annotated, max %.2f m/s, over=%d",
+                            _va["max_velocity"], _va["violations"])
+        except Exception as _e:
+            app.logger.warning("combined/build: velocity annotate skipped: %s", _e)
         job_id = secrets.token_hex(6)
         _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
         out_dir = COMBINED_OUTPUT_DIR / job_id
@@ -4962,7 +4974,8 @@ def remote30_combined_rebuild():
     if not geom.get("nodes") or not geom.get("pipes"):
         return jsonify({"ok": False, "message": "편집된 geometry(nodes/pipes)가 필요합니다"}), 400
 
-    from remote30_full_network import emit_full_sdf, normalize_pipe_bores, size_pipes_by_velocity
+    from remote30_full_network import (emit_full_sdf, normalize_pipe_bores,
+                                        size_pipes_by_velocity, annotate_pipe_velocity)
     try:
         combined = _copy.deepcopy(cache["combined"])
         _patch_combined_from_geometry(combined, geom)
@@ -4984,6 +4997,10 @@ def remote30_combined_rebuild():
                 _vel["changed"], _vel["violations_before"], _vel["violations_after"])
         except Exception as _e:
             app.logger.warning("combined/rebuild: velocity sizing skipped: %s", _e)
+        try:
+            annotate_pipe_velocity(combined.nodes, combined.pipes, combined.nozzles)
+        except Exception as _e:
+            app.logger.warning("combined/rebuild: velocity annotate skipped: %s", _e)
 
         new_job = secrets.token_hex(6)
         _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
@@ -6428,7 +6445,7 @@ def remote30_extract():
         raw = request.form.get(key, "").strip()
         if raw:
             overrides[key] = [s.strip() for s in raw.split(",") if s.strip()]
-    for key in ("snap_tol", "head_to_pipe_tol", "diameter_text_search_radius", "cad_unit_to_m", "c_factor",
+    for key in ("snap_tol", "graph_closure_tol", "head_to_pipe_tol", "diameter_text_search_radius", "cad_unit_to_m", "c_factor",
                 "elevation_alarm_m", "elevation_head_m", "k_factor", "design_flow_per_head_lpm", "fallback_dia_mm"):
         raw = request.form.get(key, "").strip()
         if raw:

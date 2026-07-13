@@ -342,6 +342,100 @@ def size_pipes_by_velocity(
             "violations_after": vio_after}
 
 
+def annotate_pipe_velocity(
+    nodes: list[dict],
+    pipes: list[dict],
+    nozzles: list[dict],
+) -> dict:
+    """각 배관에 계산 유량·유속·상한초과 여부를 stamp (in-place, 표시 전용).
+
+    size_pipes_by_velocity 와 **동일한** 헤드유량 트리누적을 사용해(단일 진리원천)
+    통합 뷰가 그릴 값을 배관 dict 에 직접 기록한다. 사이징이 이미 유속을 상한
+    이하로 맞췄다면 v_over 는 전부 False 여야 하며, 이 오버레이는 그 사실을
+    앱 안에서 확인시켜 준다("계산 후 유속 초과" 검증).
+
+    기록 필드 (배관 dict):
+        flow_lpm    : 이 배관 통과 설계유량 [L/min]
+        velocity_mps: 계산 유속 [m/s] (현재 dia 기준)
+        v_limit     : 이 배관 호칭경의 유속 상한 [m/s] (≤50A 6, ≥65A 10)
+        v_over      : velocity_mps > v_limit 이면 True
+
+    Returns:
+        {"max_velocity": .., "violations": .., "pipes": 배관수} — 요약.
+    """
+    if not pipes:
+        return {"max_velocity": 0.0, "violations": 0, "pipes": 0}
+
+    head_flow: dict[str, float] = {}
+    for nz in (nozzles or []):
+        node = str(nz.get("in") or nz.get("input_node") or nz.get("input") or "")
+        if not node:
+            continue
+        try:
+            q = float(nz.get("flow_lmin", nz.get("flow_lpm", 80.0)) or 80.0)
+        except (TypeError, ValueError):
+            q = 80.0
+        head_flow[node] = head_flow.get(node, 0.0) + q
+
+    adj: dict[str, list[str]] = {}
+    for p in pipes:
+        a, b = str(p.get("in")), str(p.get("out"))
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+    source = next((str(n.get("label")) for n in nodes
+                   if str(n.get("io_node", "")).lower() == "input"), None)
+    if source is None or source not in adj:
+        source = str(pipes[0].get("in"))
+    depth: dict[str, int] = {source: 0}
+    queue = [source]
+    while queue:
+        cur = queue.pop(0)
+        for nb in adj.get(cur, ()):
+            if nb not in depth:
+                depth[nb] = depth[cur] + 1
+                queue.append(nb)
+
+    def _d(lbl: str) -> int:
+        return depth.get(str(lbl), 10 ** 9)
+
+    for p in pipes:
+        a, b = str(p.get("in")), str(p.get("out"))
+        p["_up"], p["_down"] = (a, b) if _d(a) <= _d(b) else (b, a)
+
+    subtree: dict[str, float] = dict(head_flow)
+    order = sorted(pipes, key=lambda p: _d(p["_down"]), reverse=True)
+    for p in order:
+        dn = p["_down"]
+        p["_flow"] = subtree.get(dn, 0.0)
+        subtree[p["_up"]] = subtree.get(p["_up"], 0.0) + subtree.get(dn, 0.0)
+
+    mx, viol = 0.0, 0
+    for p in pipes:
+        try:
+            dia = float(p.get("dia") or 0.0)
+        except (TypeError, ValueError):
+            dia = 0.0
+        q = float(p.get("_flow", 0.0))
+        v = _pipe_velocity_mps(q, dia)
+        lim = _velocity_limit_mps(dia)
+        over = bool(dia > 0 and v > lim + 1e-9)
+        p["flow_lpm"] = round(q, 1)
+        p["velocity_mps"] = (round(v, 2) if v != float("inf") else None)
+        p["v_limit"] = lim
+        p["v_over"] = over
+        if v != float("inf"):
+            mx = max(mx, v)
+        if over:
+            viol += 1
+
+    for p in pipes:
+        p.pop("_up", None)
+        p.pop("_down", None)
+        p.pop("_flow", None)
+
+    return {"max_velocity": round(mx, 2), "violations": viol, "pipes": len(pipes)}
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Zone 정의
 # ────────────────────────────────────────────────────────────────────────────

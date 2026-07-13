@@ -3143,13 +3143,41 @@ class PipeTables:
     meta: list[tuple[str, str]] = field(default_factory=list)
 
 
+# 배관 재질 — DXF 에 없는 설계 정보이므로 자동 분류하지 않는다. 기본은 강관(KSD 3507,
+# C=120). 사용자가 평면도에서 지정한 영역(zone=단위세대 내부) 안의 배관만 CPVC(C=150)로
+# 유지한다. 세대 배관은 통상 CPVC, 간선/입상관은 강관이라는 현장 관행을 사용자 영역
+# 지정으로 표현. C-factor(=roughness-or-c)가 PIPENET 마찰손실에 직접 반영되는 재질값.
+STEEL_PIPE_TYPE = "KSD 3507"
+STEEL_C_FACTOR = "120"
+CPVC_PIPE_TYPE = "CPVC2"
+CPVC_C_FACTOR = "150"
+
+
+def _point_in_zones(px: float, py: float,
+                    zones: list[tuple[float, float, float, float]] | None) -> bool:
+    """점이 zone(축정렬 사각형) union 안에 있으면 True. 좌표 순서 무관."""
+    if not zones:
+        return False
+    for (zx1, zy1, zx2, zy2) in zones:
+        lo_x, hi_x = (zx1, zx2) if zx1 <= zx2 else (zx2, zx1)
+        lo_y, hi_y = (zy1, zy2) if zy1 <= zy2 else (zy2, zy1)
+        if lo_x <= px <= hi_x and lo_y <= py <= hi_y:
+            return True
+    return False
+
+
 def build_input_tables(
     selection: SelectionResult,
     pipe_entities: list[dict] | None = None,
     *,
     project_title: str = "Remote 30 Prototype",
+    cpvc_zones: list[tuple[float, float, float, float]] | None = None,
 ) -> PipeTables:
-    """선정 결과 → 5 테이블. pipe_entities 가 있으면 FX(flexible) Equipment 도 추출."""
+    """선정 결과 → 5 테이블. pipe_entities 가 있으면 FX(flexible) Equipment 도 추출.
+
+    cpvc_zones: 이 영역(단위세대 내부) 안에 배관 중점이 들어오면 CPVC(C=150)로 표기.
+    비어있으면 전 배관 강관(C=120).
+    """
     tables = PipeTables()
     if not selection.heads or selection.source_pos is None:
         return tables
@@ -3300,6 +3328,7 @@ def build_input_tables(
     # Pipes + edge key → pipe label mapping
     edge_key_to_pipe: dict[tuple, str] = {}
     pipe_label_counter = 10
+    cpvc_pipe_count = 0
     for a, b, length_mm in selection.edges:
         la = pos_to_label[a]; lb = pos_to_label[b]
         try:
@@ -3311,16 +3340,23 @@ def build_input_tables(
         plabel = str(pipe_label_counter)
         edge_key_to_pipe[(min(a, b), max(a, b))] = plabel
         dia = _pipe_diameter(a, b)
+        # 배관 중점이 사용자 지정 CPVC 영역(단위세대) 안이면 CPVC, 아니면 강관.
+        mx, my = (a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0
+        if _point_in_zones(mx, my, cpvc_zones):
+            ptype, cfac = CPVC_PIPE_TYPE, CPVC_C_FACTOR
+            cpvc_pipe_count += 1
+        else:
+            ptype, cfac = STEEL_PIPE_TYPE, STEEL_C_FACTOR
         tables.pipes.append({
             "label": plabel,
             "in": la, "out": lb,
-            "type": "KSD 3507",
+            "type": ptype,
             "dia": dia,
             # PIPENET/K-solver 는 length=0 배관을 거부(특이행렬). 좌표가 거의 겹치는
             # 노드쌍(클러스터 잔여)은 round 후 0.0 이 되므로 10mm 하한 강제.
             "length": max(round(length_mm / 1000.0, 3), 0.01),
             "elev": 0.0,
-            "c": "120",
+            "c": cfac,
             "status": "Normal",
             "group": "Unset",
         })
@@ -3467,6 +3503,7 @@ def build_input_tables(
         ("선정 헤드 수", str(len(selection.heads))),
         ("subgraph 노드 수", str(len(label_to_pos))),
         ("subgraph 파이프 수", str(len(tables.pipes))),
+        (f"세대내부 CPVC 배관 (C={CPVC_C_FACTOR})", f"{cpvc_pipe_count} / 강관 {len(tables.pipes) - cpvc_pipe_count}"),
         ("Fittings", str(len(tables.fittings))),
         ("Equipment", str(len(tables.equipment))),
         ("알람밸브 좌표 (snap)", f"({selection.source_pos[0]:.1f}, {selection.source_pos[1]:.1f})"),
@@ -4221,7 +4258,8 @@ def run_stages_3_5(
 
     # Stage 5: 5 테이블 (기존 4)
     yield evt({"type": "stage", "stage": 5, "status": "running", "label": "Nodes/Pipes/Nozzles/Fittings/Equipment 테이블 생성"})
-    tables = build_input_tables(selection, pipe_entities=pipe_ents, project_title=dxf_path.stem)
+    tables = build_input_tables(selection, pipe_entities=pipe_ents, project_title=dxf_path.stem,
+                                cpvc_zones=zones)
     csv_dir = out_dir / "csv"
     csv_paths = write_csv_tables(tables, csv_dir, prefix=f"prototype_{job_id}")
     xlsx_path = out_dir / f"prototype_{job_id}.xlsx"

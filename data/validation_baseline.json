@@ -6,8 +6,8 @@
       "answer_sdf": "1-1. 업무시설 201동_28F (자연낙차)-RV03_NEW.sdf",
       "our": {
         "source": "our_extract",
-        "node_count": 6,
-        "pipe_count": 5,
+        "node_count": 15,
+        "pipe_count": 14,
         "nozzle_count": 0,
         "valve_count": 0,
         "total_length_m": 62.05,
@@ -15,12 +15,12 @@
         "elev_max_m": 45.8,
         "elev_span_m": 45.8,
         "bore_distribution_mm": {
-          "100": 5
+          "150": 14
         },
         "bore_length_mm": {
-          "100": 62.05
+          "150": 62.05
         },
-        "main_bore_mm": 100,
+        "main_bore_mm": 150,
         "main_bore_length_m": 62.05
       },
       "our_error": null,
@@ -79,18 +79,111 @@
         "main_bore_length_m": 115.03
       },
       "comparison": {
-        "node_ratio_our_vs_answer_full": 0.044,
-        "node_ratio_our_vs_answer_riser": 0.375,
-        "pipe_ratio_our_vs_answer_full": 0.048,
-        "pipe_ratio_our_vs_answer_riser": 0.333,
+        "node_ratio_our_vs_answer_full": 0.111,
+        "node_ratio_our_vs_answer_riser": 0.938,
+        "pipe_ratio_our_vs_answer_full": 0.135,
+        "pipe_ratio_our_vs_answer_riser": 0.933,
         "length_ratio_our_vs_answer_full": 0.253,
         "length_ratio_our_vs_answer_riser": 0.466,
         "length_diff_pct_vs_riser": -53.4,
         "elev_span_diff_m": -33.35,
-        "main_bore_match": false,
-        "our_main_bore_mm": 100,
+        "main_bore_match": true,
+        "our_main_bore_mm": 150,
         "answer_riser_main_bore_mm": 150,
-        "bore_diversity_iou_vs_riser": 0.0
+        "bore_diversity_iou_vs_riser": 0.5
+      }
+    },
+    {
+      "case": "양주옥정 101동 — 17F 자연낙차 (47 도면 학습 첫 검증)",
+      "dxf": "MF-016~ 계통도.dxf",
+      "answer_sdf": "02-2. 양주옥정 101동 자연낙차구간 17F_USER.sdf",
+      "our": {
+        "source": "our_extract",
+        "node_count": 4,
+        "pipe_count": 3,
+        "nozzle_count": 0,
+        "valve_count": 0,
+        "total_length_m": 56.9,
+        "elev_min_m": 0.0,
+        "elev_max_m": 54.8,
+        "elev_span_m": 54.8,
+        "bore_distribution_mm": {
+          "150": 3
+        },
+        "bore_length_mm": {
+          "150": 56.9
+        },
+        "main_bore_mm": 150,
+        "main_bore_length_m": 56.9
+      },
+      "our_error": null,
+      "answer_full": {
+        "source": "answer_full",
+        "node_count": 79,
+        "pipe_count": 68,
+        "nozzle_count": 10,
+        "valve_count": 0,
+        "total_length_m": 192.45,
+        "elev_min_m": -108.05,
+        "elev_max_m": 0.0,
+        "elev_span_m": 108.05,
+        "bore_distribution_mm": {
+          "150": 41,
+          "65": 3,
+          "80": 3,
+          "100": 1,
+          "25": 13,
+          "40": 1,
+          "50": 3,
+          "32": 3
+        },
+        "bore_length_mm": {
+          "150": 129.95,
+          "65": 5.4,
+          "80": 23.0,
+          "100": 4.5,
+          "25": 12.4,
+          "40": 2.5,
+          "50": 5.7,
+          "32": 9.0
+        },
+        "main_bore_mm": 150,
+        "main_bore_length_m": 129.95
+      },
+      "answer_riser_only": {
+        "source": "answer_riser_100mm+",
+        "node_count": 43,
+        "pipe_count": 42,
+        "nozzle_count": 0,
+        "valve_count": 0,
+        "total_length_m": 134.45,
+        "elev_min_m": -108.05,
+        "elev_max_m": 0.0,
+        "elev_span_m": 108.05,
+        "bore_distribution_mm": {
+          "150": 41,
+          "100": 1
+        },
+        "bore_length_mm": {
+          "150": 129.95,
+          "100": 4.5
+        },
+        "main_bore_mm": 150,
+        "main_bore_length_m": 129.95
+      },
+      "comparison": {
+        "node_ratio_our_vs_answer_full": 0.051,
+        "node_ratio_our_vs_answer_riser": 0.093,
+        "pipe_ratio_our_vs_answer_full": 0.044,
+        "pipe_ratio_our_vs_answer_riser": 0.071,
+        "length_ratio_our_vs_answer_full": 0.296,
+        "length_ratio_our_vs_answer_riser": 0.423,
+        "length_diff_pct_vs_riser": -57.7,
+        "elev_span_diff_m": -53.25,
+        "main_bore_match": true,
+        "our_main_bore_mm": 150,
+        "answer_riser_main_bore_mm": 150,
+        "bore_diversity_iou_vs_riser": 0.5
       }
     }
   ]

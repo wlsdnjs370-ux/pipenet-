@@ -1,984 +1,191 @@
-{
-  "title": "업데이트 기록",
-  "updated_at": "2026-04-14 14:48",
-  "items": [
-    {
-      "timestamp": "2026-04-14 14:48",
-      "date": "2026-04-14",
-      "title": "7번 모듈에 CAD-DXF 입력 및 헤드 위치 대조 기능 추가",
-      "summary": "SDF 단독 분석에서 확장하여 CAD 도면 DXF 파일을 함께 업로드하고, 도면상의 헤드 후보와 SDF 최원단 헤드 30개를 비교할 수 있게 했습니다.",
-      "details": [
-        "7번 SDF 스프링클러 배관 분석 모듈에 CAD 도면 파일(DXF, 선택) 업로드 입력 추가",
-        "DXF에서 CIRCLE 또는 INSERT 객체를 헤드 후보로 추출",
-        "SDF 최원단 헤드 좌표와 CAD 헤드 후보 좌표를 bounding box 정규화 후 최근접 매칭",
-        "정규화 오차가 큰 헤드 매칭은 불일치 후보로 표시",
-        "CAD 파일명, 헤드 후보 수, 비교 상태, 불일치 후보 수, 매칭 상세 테이블을 화면에 표시",
-        "현재 비교는 자동 1차 스크리닝이며, 최종 판정은 CAD 축척/회전/원점 보정 후 확인하도록 설계"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 14:35",
-      "date": "2026-04-14",
-      "title": "7번 SDF 스프링클러 배관 분석 모듈 추가",
-      "summary": "CAD-아이소매트릭 배관망 대조 모듈 아래에 SDF 파일만으로 알람밸브 기준 최원단 헤드, 배관 길이, 구경 축소, 분기티, 엘보 집중 구간을 분석하는 7번째 모듈을 추가했습니다.",
-      "details": [
-        "좌측 메뉴에 '7. SDF 스프링클러 배관 분석 모듈' 추가",
-        "SDF 업로드 전용 화면과 분석 실행 버튼 추가",
-        "SDF XML에서 Node, Pipe, Nozzle, Equipment, Fitting, Pipe-type 정보를 구조화",
-        "A/V 설비를 기준으로 알람밸브 추정 노드와 배관을 산정",
-        "A/V 기준 최원단 헤드 30개를 거리순으로 추출",
-        "배관 길이 대조 주의 구간, 구경 축소 지점, 분기 노드, 엘보/티 집중 구간, 수직 배관 확인 구간을 표로 표시",
-        "SDF 좌표 기반 배관망 SVG를 표시하고 길이 대조 주의 구간은 빨강, 구경 축소 대조 포인트는 주황, 최원단 헤드는 파랑으로 표시"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 13:18",
-      "date": "2026-04-14",
-      "title": "경제성 후보 맵 줌/드래그 조작 추가",
-      "summary": "Economy Optimization Candidate Map에도 Friction Loss Spike Map과 동일한 확대, 축소, 마우스 드래그 이동 기능을 연결했습니다.",
-      "details": [
-        "economy-visuals 영역에 줌 버튼 클릭 이벤트 연결",
-        "경제성 후보 맵 SVG에서 마우스를 누르고 이동하면 viewBox가 이동하도록 드래그 이벤트 추가",
-        "초록 경제성 후보 배관에 마우스를 올리거나 드래그할 때 간단 정보 툴팁이 표시되도록 연결",
-        "공학 맵과 경제성 맵이 동일한 조작 방식으로 동작하도록 정리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 13:13",
-      "date": "2026-04-14",
-      "title": "설계 최적화 리포트 문단 가독성 개선",
-      "summary": "2번 설계 최적화 가이드의 공학/경제 리포트 문단을 카드형 항목으로 띄워 보이게 조정했습니다.",
-      "details": [
-        "리포트 항목 사이 간격을 넓혀 문단이 붙어 보이지 않도록 조정",
-        "각 문단을 흰색 카드형 박스와 테두리로 구분",
-        "일반 문단에는 작은 검정 표시점을 추가해 문단 시작점을 명확히 표시",
-        "주요 구간 테이블 항목은 별도 테이블 카드 형태를 유지"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 13:09",
-      "date": "2026-04-14",
-      "title": "설계 최적화 맵 상단 배치",
-      "summary": "Friction Loss Spike Map과 Economy Optimization Candidate Map을 각각 공학 조치 카드와 경제성 확보 카드의 최상단에 배치했습니다.",
-      "details": [
-        "공학적 마찰손실 최적화 조치 카드에서 Friction Loss Spike Map을 텍스트 리포트보다 먼저 표시",
-        "Friction Loss Ratio by Pipe 그래프는 Friction Loss Spike Map 아래에 유지",
-        "시공사 경제성 확보 방안 카드에서 Economy Optimization Candidate Map을 텍스트 리포트보다 먼저 표시",
-        "두 카드 모두 시각화 자료를 먼저 보고 아래에서 세부 리포트를 읽는 흐름으로 정리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 13:05",
-      "date": "2026-04-14",
-      "title": "설계 최적화 리포트 주요 구간 표 변환",
-      "summary": "설계 최적화 가이드의 긴 주요 구간 나열 문장을 자동으로 작은 테이블 형태로 표시하도록 개선했습니다.",
-      "details": [
-        "공학적 마찰손실 최적화 조치와 시공사 경제성 확보 방안의 '주요 구간:' 뒤 Pipe 목록을 자동 파싱",
-        "Pipe 번호와 괄호 안 판정값을 구분, 번호, 판정값 3열 테이블로 표시",
-        "긴 후보 목록은 카드 내부에서 스크롤할 수 있도록 미니 테이블 스타일 적용",
-        "기존 리포트 문장 구조는 유지하면서 화면 가독성만 개선"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 12:58",
-      "date": "2026-04-14",
-      "title": "경제성 후보 맵 위치 조정",
-      "summary": "Economy Optimization Candidate Map을 공학 최적화 조치 영역이 아니라 우측 시공사 경제성 확보 방안 카드 내부에 표시되도록 이동했습니다.",
-      "details": [
-        "시공사 경제성 확보 방안 카드에 economy-visuals 전용 영역 추가",
-        "Friction Loss Spike Map은 좌측 공학적 마찰손실 최적화 조치 영역에 유지",
-        "Economy Optimization Candidate Map은 우측 경제성 확보 방안 영역에 별도 렌더링",
-        "공학 맵과 경제성 맵을 같은 메뉴 안에서 좌우 대조할 수 있도록 배치"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 12:52",
-      "date": "2026-04-14",
-      "title": "설계 최적화 맵 표시 기준 분리",
-      "summary": "Friction Loss Spike Map은 마찰손실 급증 전용 조건만 빨간색으로 표시하고, 경제성 검토 후보는 별도 네트워크 맵으로 분리했습니다.",
-      "details": [
-        "Friction Loss Spike Map의 빨간 배관 기준을 engineering_flag 전체가 아니라 m당 마찰손실 > 1.00 kg/cm²/m 조건으로 제한",
-        "결과 데이터 테이블에 공학 후보 사유와 경제성 후보 사유 컬럼을 추가",
-        "공학 후보 사유를 마찰손실, 변화율, 유속여유, 피팅집중, 압력여유로 세분화",
-        "경제성 후보 사유를 저유속 과설계, 주배관 관경축소, 가지배관 관경축소, CPVC 대구경 등으로 세분화",
-        "Economy Optimization Candidate Map을 추가해 경제성 검토 후보를 초록색 배관망으로 표시"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 12:35",
-      "date": "2026-04-14",
-      "title": "설계 최적화 가이드 공학/경제 리포트 로직 확장",
-      "summary": "2번 설계 최적화 가이드의 공학적 마찰손실 최적화 조치와 시공사 경제성 확보 방안에 법적 기준 PASS 전제, 공학 지표, 경제성 지표, 절충안 제시 로직을 반영했습니다.",
-      "details": [
-        "공학 리포트에 m당 마찰손실, 직전 배관 대비 변화율, 유속 여유율, 압력 여유, 피팅/특수설비 등가길이 비율을 반영",
-        "마찰손실 급증 배관은 구경 상향, 피팅 축소, 특수설비 위치 조정, 배관 경로 단순화 관점으로 안내",
-        "경제성 리포트에 저유속 과설계 후보, 주배관/가지배관 관경 축소 후보, 헤드 압력 여유 활용, CPVC 대구경 회피, 100A 초과 밸브 비용 후보를 반영",
-        "관경 축소 제안은 가지배관 6 m/s, 그 밖의 배관 10 m/s, 말단 방수압, 헤드 유량, Hazen-Williams 재계산 통과를 전제로 표시",
-        "루프/그리드 배관망, C-Factor 활용, 공학-경제 충돌 구간에 대한 절충 검토 문구를 추가"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 12:22",
-      "date": "2026-04-14",
-      "title": "6번 모듈 명칭 조치중 표기 변경",
-      "summary": "좌측 메뉴와 6번 패널 제목을 CAD-아이소매트릭 배관망 대조 모듈(조치중)으로 변경했습니다.",
-      "details": [
-        "좌측 메뉴의 6번 모듈 표시명 변경",
-        "6번 패널 내부 제목 변경",
-        "iframe title 속성도 동일한 명칭으로 정리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 12:18",
-      "date": "2026-04-14",
-      "title": "6번 모듈 필터 패널 닫기 버튼 추가",
-      "summary": "DXF/SDF 필터 패널 우측 상단에 X 닫기 버튼을 추가해 조작 패널과 겹친 상태에서도 필터 창을 즉시 닫을 수 있도록 개선했습니다.",
-      "details": [
-        "DXF 필터 패널 헤더에 닫기 버튼 추가",
-        "SDF 필터 패널에도 동일한 닫기 버튼 추가",
-        "필터 버튼으로 열고 X 버튼으로 닫는 명확한 조작 흐름을 추가",
-        "메인 iframe 버전을 20260414-1218로 갱신"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 12:12",
-      "date": "2026-04-14",
-      "title": "DXF 초기 파싱 속도 개선을 위한 graph 생성 지연 처리",
-      "summary": "6번 모듈에서 DXF 파일을 처음 열 때 서버가 전체 graph payload를 즉시 만들지 않도록 분리해 초기 파싱 부담을 줄였습니다.",
-      "details": [
-        "cad_engine.to_payload에 include_graph 옵션을 추가해 graph 생성 여부를 명시적으로 제어",
-        "/api/cad-module/dxf-parse 초기 업로드 응답에서는 graph 생성을 제외하고 entities, bounds, layers 중심으로 반환",
-        "Pipe 단위 대조 분석은 기존처럼 프론트에서 사용자가 선택한 영역 기준으로 필요 시점에 graph를 계산하도록 유지",
-        "기존 /api/cad-compare 경로는 호환성을 위해 include_graph=True로 유지"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 12:05",
-      "date": "2026-04-14",
-      "title": "6번 모듈 내부 코드 자가 최적화",
-      "summary": "CAD-아이소매트릭 배관망 대조 목적은 유지하면서 DXF 선택 정확도, 렌더링 안정성, 버튼 상태 갱신, 매칭 기준 관리 로직을 정리했습니다.",
-      "details": [
-        "DXF 배관망 선택 시 bbox 중심이 아니라 실제 선분/곡선까지의 거리 기준으로 가장 가까운 배관 edge를 선택하도록 개선",
-        "DXF 렌더링 루프에서 canvas 상태 저장·복원을 entity 단위로 보정해 투명도와 스타일이 다음 객체에 누수되지 않도록 정리",
-        "핵심 구성요소 대조 분석과 Pipe 단위 대조 분석 버튼의 활성/비활성 상태 갱신을 공통 함수로 통합",
-        "DXF endpoint tolerance, 구경 텍스트 귀속 거리, Pipe matching score 기준을 상수화해 후속 조정이 쉽도록 정리",
-        "메인 iframe 버전을 20260414-1205로 갱신해 최신 6번 모듈 코드가 로드되도록 처리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 11:48",
-      "date": "2026-04-14",
-      "title": "서버 반영 상태 확인 및 6번 모듈 캐시 갱신",
-      "summary": "메인 페이지에서 6번 CAD-아이소매트릭 배관망 대조 모듈의 최신 변경사항이 보이지 않던 문제를 확인하고 서버 재기동 및 iframe 캐시 파라미터를 갱신했습니다.",
-      "details": [
-        "메인 페이지 응답 HTML을 직접 확인해 오래된 iframe 파라미터가 내려가던 상태를 점검",
-        "cad-compare-module iframe 버전을 20260414-1131로 갱신해 브라우저 캐시 영향을 줄임",
-        "서버 프로세스를 재기동하고 최신 HTML에 Pipe 단위 대조 분석 및 흰색 각진 UI가 포함되는지 확인"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 11:42",
-      "date": "2026-04-14",
-      "title": "6번 모듈 DXF/SDF 조작 패널 가로형 배치",
-      "summary": "DXF 뷰어와 SDF 뷰어의 상단 조작 인터페이스를 세로형 카드에서 가로형 툴바 구조로 재배치했습니다.",
-      "details": [
-        "파일 열기, 이동 모드, 영역 선택, 객체 선택, 배관망 선택, 필터, 선택 영역 외 삭제 버튼을 한 줄 중심으로 배치",
-        "DXF와 SDF 조작 패널 폭을 넓혀 버튼이 세로로 길게 쌓이지 않도록 조정",
-        "좁은 화면에서는 자동으로 한 열 배치로 돌아가도록 반응형 보정"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 11:31",
-      "date": "2026-04-14",
-      "title": "6번 모듈 인터페이스 흰색 각진 카드형 디자인 적용",
-      "summary": "CAD-아이소매트릭 배관망 대조 모듈의 도면 캔버스를 제외한 조작 패널, 필터 패널, 하단 분석 버튼, 결과 모달을 메인 웹사이트와 같은 흰색 각진 사각형 계열로 재디자인했습니다.",
-      "details": [
-        "DXF/SDF 상단 조작 패널을 흰색 배경, 검정 테두리, 각진 사각형 형태로 변경",
-        "필터 패널과 줌 툴바를 메인 사이트 카드 스타일에 맞춰 흰색/회색 라인 계열로 정리",
-        "구성요소 대조 모달과 Pipe 단위 대조 모달의 어두운 카드 UI를 흰색 표 형태로 재정리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 11:18",
-      "date": "2026-04-14",
-      "title": "6번 모듈 Pipe 단위 대조 분석 1차 구현",
-      "summary": "DXF/SDF 선택 영역을 각각 그래프로 변환한 뒤 Pipe 단위 후보를 매칭하고 PASS/REVIEW/FAIL mismatch 리포트를 표시하는 기능을 추가했습니다.",
-      "details": [
-        "DXF 선택 영역의 LINE/LWPOLYLINE/ARC를 edge로 분해하고 endpoint cluster 기반 연결차수를 계산",
-        "SDF 선택 영역의 Pipe를 edge 그래프로 변환하고 pipe label, 길이, 구경, 연결차수를 비교 기준에 포함",
-        "두 선택 영역을 0~1 좌표계로 정규화한 뒤 중심점, 상대길이, 방향, 연결차수 기반 greedy matching 수행",
-        "Pipe 단위 대조 분석 버튼과 전용 결과 모달을 추가해 매칭률, DXF Edge 수, SDF Pipe 수, mismatch 목록을 표시"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 10:58",
-      "date": "2026-04-14",
-      "title": "DXF 객체 삭제 후 줌·필터 상태 유지 보정",
-      "summary": "6번 배관망 대조 모듈에서 DXF 객체를 Delete로 삭제하면 화면 배율과 레이어/객체 타입 필터가 초기화되던 문제를 보정했습니다.",
-      "details": [
-        "초기 파일 로딩 때만 필터 전체 선택을 적용하고 이후 갱신에서는 기존 체크 상태를 보존",
-        "DXF 객체 삭제 전후로 pan/zoom/bounds 상태와 필터 체크 상태를 함께 저장·복원",
-        "삭제 후 다음 렌더 프레임에서도 상태를 재복원해 중간 이벤트로 인한 초기화를 차단"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 10:44",
-      "date": "2026-04-14",
-      "title": "DXF 뷰어 줌 조작성 개선 및 뷰 유지 보정",
-      "summary": "6번 배관망 대조 모듈의 DXF/SDF 뷰어에 확대·축소 버튼과 화면 맞춤 기능을 추가하고, DXF 객체 삭제 뒤에도 현재 화면 배율과 위치가 유지되도록 보정했습니다.",
-      "details": [
-        "DXF/SDF 뷰어 우측 하단에 +, -, FIT 줌 툴바 추가",
-        "마우스 휠 줌 배율 변화를 완화하고 커서 기준 확대·축소 유지",
-        "DXF 객체 삭제 후 필터 재구성 과정에서도 기존 pan/zoom 상태 복원"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 10:18",
-      "date": "2026-04-14",
-      "title": "DXF ?? ?? ??? ??? ?? ??",
-      "summary": "6? ??? DXF ?? ??? endpoint ?? ?? ??/?? ???? ???? ??? ??? cad_engine? ??????.",
-      "details": [
-        "LINE / LWPOLYLINE / ARC? ???? path? ???? ? path? ???? ??? raw endpoint? ??",
-        "endpoint tolerance ? ???? ??? node cluster? ??? degree 1/2/3+ ???? terminal / inline / branch? ??",
-        "??? ???? attachment? ??? head / valve / text ??? nearest node ?? nearest edge? ???? graph payload? ??"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 09:46",
-      "date": "2026-04-14",
-      "title": "DXF ?? ?? ?? ?? ?? ??",
-      "summary": "6? ??? DXF ??? ?? ?? ??? Delete ? ?? ??? ???, ???? ?/?/??? ?? ??? ? ??? ??????.",
-      "details": [
-        "DXF ?? ??? ?? ?? ??? ????, ??? ???? ????? ???????? ??",
-        "?? ?? ???? Delete ? ?? ? ??? DXF ???? data.entities?? ???? ??? ?? ??",
-        "??? ?? ??? ???? ??? ?? ?? ??? ?? ???? ?? ??? ?? ??"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 09:32",
-      "date": "2026-04-14",
-      "title": "배관망 대조 모듈 드래그 입력 분리 보정",
-      "summary": "DXF 뷰어와 SDF 뷰어가 동시에 mousemove / mouseup을 받으면서 선택 박스가 겹치던 문제를 입력 소유권 방식으로 보정했습니다.",
-      "details": [
-        "Viewer.activePointerOwner 상태를 도입해 드래그를 먼저 시작한 뷰어만 해당 세션의 입력을 처리하도록 고정",
-        "DXF에서 영역 선택 중일 때 SDF가 따라 반응하지 않고, SDF에서 시작한 경우도 DXF가 간섭하지 않도록 분리",
-        "pan / select / network 모드 모두에서 pointer up 시점에 소유권을 해제하도록 정리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 09:24",
-      "date": "2026-04-14",
-      "title": "6번 모듈 Pipe 단위 대조 준비 로드맵 정리",
-      "summary": "6번 모듈을 단순 영역 유사도 비교에서 Pipe 단위 대조 모듈로 고도화하기 위한 단계별 개선 방향을 작업 기록에 추가했습니다.",
-      "details": [
-        "현재 약점을 사각형 선택 중심, DXF 의미 추정 중심, aggregate 점수 중심 구조로 정리",
-        "다음 단계 선행 작업을 DXF 배관 그래프화, DXF-SDF 기준점 정합, Pipe-to-Pipe matching, mismatch list UI 구축으로 정의",
-        "우선 적용 가능한 1차 개선은 필터링과 연결 배관망 선택으로 정해 실제 UI에 반영"
-      ]
-    },
-    {
-      "timestamp": "2026-04-14 09:10",
-      "date": "2026-04-14",
-      "title": "경축 DXF 필터 / 배관망 선택 보강",
-      "summary": "6번 모듈에 DXF/SDF 레이어 필터와 DXF 연결 배관망 선택 모드를 추가해 복잡한 건축 도면에서도 배관망만 좁혀 선택할 수 있도록 보강했습니다.",
-      "details": [
-        "DXF와 SDF 각각에 레이어 / 객체 타입 필터 패널을 추가해 건축선, 문자, 치수, 배관 선분을 분리해 볼 수 있도록 조정",
-        "DXF 뷰어에 배관망 선택 모드를 추가해 선분을 클릭하면 연결된 DXF 컴포넌트만 한 번에 선택되도록 보강",
-        "필터링된 상태에서 기존 영역 비교 / 선택 영역 외 삭제 / 핵심 구성요소 대조 분석 흐름이 계속 동작하도록 연동"
-      ]
-    },
-    {
-      "timestamp": "2026-04-13 21:00",
-      "date": "2026-04-13",
-      "title": "CAD-아이소메트릭 배관망 대조 모듈 점검 기록",
-      "summary": "6번 CAD-아이소메트릭 배관망 대조 모듈의 화면 구성과 동작 흐름을 21시 기준 작업 기록에 반영했습니다.",
-      "details": [
-        "DXF 뷰어와 SDF 아이소메트릭 뷰어의 병렬 표시 구조를 기준으로 모듈 상태를 정리",
-        "영역 선택, 화면 이동, 확대/축소, 필터 패널 등 기존 대조 모듈의 주요 조작 요소를 점검 항목으로 기록",
-        "현재 버그 조치 중인 모듈임을 감안해 기능 고도화 전 임시 업데이트 이력으로 반영"
-      ]
-    },
-    {
-      "timestamp": "2026-04-13 20:55",
-      "date": "2026-04-13",
-      "title": "배관망 대조 모듈 UI 개선 방향 정리",
-      "summary": "CAD 도면과 SDF 배관망을 비교하는 6번 모듈의 사용성 개선 방향을 작업 기록에 추가했습니다.",
-      "details": [
-        "좌측 DXF 도면, 우측 SDF 배관망을 동시에 확인하는 듀얼 뷰어 구조 유지",
-        "선택 영역 비교, 구성요소 수량 대조, 헤드/밸브/부속류 비교 흐름을 정리",
-        "도면-스케매틱 대조 결과를 추후 명시적 mismatch 목록으로 고도화할 수 있도록 기록"
-      ]
-    },
-    {
-      "timestamp": "2026-04-13 20:50",
-      "date": "2026-04-13",
-      "title": "CAD-아이소메트릭 대조 모듈 보완 작업 반영",
-      "summary": "6번 모듈의 DXF/SDF 파일 업로드, 화면 조작, 비교 분석 기능을 일부 손본 내용으로 업데이트 기록을 보강했습니다.",
-      "details": [
-        "DXF 파일 파싱 오류와 선택 영역 처리 문제를 점검한 이력을 업데이트 기록에 반영",
-        "SDF 아이소메트릭 배관망 표시 및 대조 분석 모듈의 유지보수 흐름을 기록",
-        "현재 조치 중인 버그가 남아 있어 기능 안정화 필요 항목으로 분류"
-      ]
-    },
-    {
-      "timestamp": "2026-04-13 11:04",
-      "date": "2026-04-13",
-      "title": "Friction Loss Spike Map 제목 정리",
-      "summary": "설계 최적화 가이드의 아이소매트릭 배관망 카드 제목을 Friction Loss Spike Map으로 정리했습니다.",
-      "details": [
-        "기존 파이프넷 아이소매트릭 배관망 제목을 Friction Loss Spike Map으로 변경",
-        "마찰손실 급증 배관을 강조하는 지도 성격에 맞춰 명칭 정리",
-        "빨간색 배관 강조 기능은 기존 동작을 유지"
-      ]
-    },
-    {
-      "timestamp": "2026-04-13 10:58",
-      "date": "2026-04-13",
-      "title": "공학 최적화 마찰손실 기준 0.15 kg/cm²/m로 상향",
-      "summary": "m당 마찰손실 급증 배관 판정 기준을 0.10에서 0.15 kg/cm²/m로 상향했습니다.",
-      "details": [
-        "pipenet_validator.py의 FRICTION_SPIKE 기준값을 0.15로 변경",
-        "Matplotlib 그래프 기준선을 Threshold 0.15로 변경",
-        "아이소매트릭 배관망의 빨간 배관 표시 조건도 0.15 초과로 일치",
-        "테이블 설명 모달의 기본 기준값도 0.15로 조정",
-        "샘플 기준 공학 후보 배관 54개, 그래프 급증 포인트 20개로 재계산 확인"
-      ]
-    },
-    {
-      "timestamp": "2026-04-13 10:51",
-      "date": "2026-04-13",
-      "title": "설계 최적화 가이드에 마찰손실 급증 배관망 추가",
-      "summary": "Friction Loss Ratio 그래프 아래에 SDF 기반 아이소매트릭 배관망을 추가하고 급증 배관을 빨간색으로 강조했습니다.",
-      "details": [
-        "기존 SDF 그래프 데이터를 설계 최적화 가이드 내부에서 재사용",
-        "engineering_flag가 적용된 배관 구간을 빨간색으로 표시",
-        "일반 배관, 헤드, 특수설비, 감압밸브는 회색 계열로 표시",
-        "일반 배관과 마찰손실 급증 배관을 구분하는 범례 추가"
-      ]
-    },
-    {
-      "timestamp": "2026-04-13 10:42",
-      "date": "2026-04-13",
-      "title": "Friction Loss Ratio 그래프 클릭 위치 보정",
-      "summary": "그래프의 빨간 삼각형과 클릭 영역이 어긋나던 문제를 Matplotlib 실제 좌표 기준으로 보정했습니다.",
-      "details": [
-        "대략적인 퍼센트 위치 계산 대신 Matplotlib 데이터 좌표를 픽셀 좌표로 변환",
-        "좌표 정합성을 유지하기 위해 해당 그래프는 tight bbox 저장을 사용하지 않도록 조정",
-        "보이는 삼각형은 작게 유지하고 동일 위치의 투명 클릭 영역으로 설명 모달 연결"
-      ]
-    },
-    {
-      "timestamp": "2026-04-13 10:35",
-      "date": "2026-04-13",
-      "title": "마찰손실 급증 그래프 상호작용 개선",
-      "summary": "Friction Loss Ratio by Pipe 그래프에 클릭 가능한 빨간 삼각형과 상세 원인/조치 카드 기능을 추가했습니다.",
-      "details": [
-        "각 배관의 m당 마찰손실을 직전 배관과 비교해 급증 포인트 산정",
-        "긴 배관 손실, 짧은 국부 손실, 높은 유속, 피팅/특수설비 등가길이 비중, 소구경 고유속 조건으로 원인 분류",
-        "구경 상향, 유속 저감, 피팅 축소, 특수설비 손실 저감, 배관 경로 단순화 조치안 제시",
-        "삼각형 클릭 시 기존 4칸 카드형 설명 모달로 연결"
-      ]
-    },
-    {
-      "timestamp": "2026-04-13 10:20",
-      "date": "2026-04-13",
-      "title": "Matplotlib 기반 마찰손실 비율 그래프 추가",
-      "summary": "공학적 마찰손실 최적화 조치 영역에 Friction Loss Ratio by Pipe 그래프를 추가했습니다.",
-      "details": [
-        "서버에서 engineering_visualizations 데이터를 생성해 insights 응답에 포함",
-        "friction_loss / base_length_m 값을 배관별 비율로 그래프화",
-        "Matplotlib 한글 폰트 깨짐을 피하기 위해 그래프 내부 텍스트는 영어로 유지",
-        "프론트엔드의 공학 최적화 카드 내부에 그래프 렌더링"
-      ]
-    },
-    {
-      "timestamp": "2026-04-10 11:21",
-      "date": "2026-04-10",
-      "title": "04월 10일 오전 작업 기준 정리",
-      "summary": "2026-04-10 오전 작업 기록은 오전 11시 22분 이전 변경사항까지만 표시하도록 정리했습니다.",
-      "details": [
-        "2026-04-10 기록은 04월 09일 기록과 분리해 관리",
-        "오전 11시 22분 이전 항목까지만 금일 기록으로 유지",
-        "이후 시각의 금일 항목은 업데이트 기록에서 제외"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 17:18",
-      "date": "2026-04-09",
-      "title": "배관 대제목 규칙 엔진 구현",
-      "summary": "PIPENET 결과물 검증의 4. 배관 항목을 단순 안내가 아니라 실제 규칙 엔진으로 확장했습니다.",
-      "details": [
-        "PIPE.001 도면-스케매틱 일치, PIPE.002 고압구간 KSD3562, PIPE.003 재질별 C값, PIPE.004 세대내 CPVC, PIPE.005 세대유입 65A, PIPE.006 헤드수별 구경정책 구조 추가",
-        "rules.pipe[] structured result 추가",
-        "tables.pipes에 material_name, pipe_type_id, max_pressure_kgcm2, 각 배관 규칙 상태값 추가",
-        "stats에 max_pipe_pressure_kgcm2, high_pressure_pipe_count, c_factor_material_fail_count, pipe_review_count 추가",
-        "샘플 결과서+SDF 기준 PIPE.002 PASS, PIPE.003 PASS, 나머지 4개 REVIEW 확인"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 17:14",
-      "date": "2026-04-09",
-      "title": "배관 테이블 열 구성 및 폭 재조정",
-      "summary": "배관 테이블과 HW 검산 상세 열의 가독성을 위해 열 순서와 배치를 재조정했습니다.",
-      "details": [
-        "HW 검산 상세 열 패널을 우측이 아닌 배관 테이블 아래로 이동",
-        "판정 사유 컬럼을 추가 열의 맨 오른쪽으로 이동",
-        "하류 헤드 수, 하류 교차분기, 유속 기준, 유속 적합 헤더를 줄바꿈 없이 가로 표기로 변경",
-        "테이블 셀 패딩과 폰트 크기를 축소해 인터페이스 내부에 더 잘 들어오도록 조정"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 17:10",
-      "date": "2026-04-09",
-      "title": "배관 테이블 노란색 표시 원인 분석",
-      "summary": "결과 데이터 테이블의 배관 행이 전부 노란색으로 보이던 이유를 REVIEW 규칙 상태 기준으로 확인했습니다.",
-      "details": [
-        "pipes row의 warn 플래그는 pipe_rule_results 내 REVIEW 상태가 하나라도 있으면 활성화됨",
-        "샘플에서는 PIPE.001, PIPE.004, PIPE.005, PIPE.006이 REVIEW라 대부분 배관 행이 노란색으로 표시됨",
-        "원인은 CAD 미입력, unit_internal metadata 없음, unit_inlet metadata 없음, design_policy.json 없음",
-        "즉 노란색은 실패가 아니라 추가 입력 부족으로 인한 판정보류 상태임을 정리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 16:55",
-      "date": "2026-04-09",
-      "title": "배관 topology 유속 판정 로직 완전 구현",
-      "summary": "배관 유속 규칙을 단순 구경 기준에서 topology 기반 branch/other 판정 방식으로 교체했습니다.",
-      "details": [
-        "PIPE CONFIGURATION과 NOZZLE CONFIGURATION으로 directed graph 구성",
-        "downstream nozzle count와 subtree cross split 판정 함수 추가",
-        "50A 이하이면서 하류 subtree에 multi-head split node가 없을 때만 branch(6.0 m/s)로 판정",
-        "50A 초과 또는 50A 이하라도 하류 subtree에 multi-head split node가 있으면 other(10.0 m/s)로 판정",
-        "ambiguity 발생 시 review로 분류하고 자동 PASS 처리하지 않도록 방어 로직 추가",
-        "샘플 결과서 기준 Pipe 37, 49, 77, 80, 97, 114 판정이 기대값과 일치함을 검증"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 16:54",
-      "date": "2026-04-09",
-      "title": "배관 테이블에 topology 판정 열 추가",
-      "summary": "결과 데이터 테이블의 배관 탭에 배관 역할, 하류 헤드 수, 하류 교차분기, 판정 사유를 표시하도록 확장했습니다.",
-      "details": [
-        "pipes 테이블 각 행에 pipe_role, downstream_nozzle_count, subtree_has_cross_split, velocity_ok, role_reason 추가",
-        "pipe_type 의미를 기존 bore 기반이 아니라 topology 기반 pipe_role로 교체",
-        "프론트 설명 카드도 서버가 내려준 pipe_role과 role_reason만 사용하도록 수정",
-        "평가 기준과 업데이트 기록 문구도 topology branch/other 기준에 맞춰 보정"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 16:53",
-      "date": "2026-04-09",
-      "title": "배관 역할·하류 헤드 수·하류 교차분기 빈칸 원인 수정",
-      "summary": "배관 topology 열이 빈칸 또는 - 로 보이던 문제의 원인을 프론트 포맷터와 구버전 서버 프로세스 중복 실행에서 찾아 수정했습니다.",
-      "details": [
-        "프론트 fmt()가 null/undefined를 공란으로 숨기고 있던 동작을 - 표시로 변경",
-        "로컬 validator 결과와 라이브 /api/validate 응답을 직접 비교해 실제 차이 확인",
-        "5050 포트를 오래된 run_server.py 프로세스가 계속 점유하고 있던 상태 발견",
-        "중복 서버 프로세스를 모두 종료하고 최신 코드 기준으로 단일 서버 재기동",
-        "재기동 후 라이브 /api/validate 응답에서 pipe_role, downstream_nozzle_count, subtree_has_cross_split 정상 포함 확인"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 14:53",
-      "date": "2026-04-09",
-      "title": "HW 검산 상세열 빈칸 표시 문제 수정",
-      "summary": "배관 테이블의 HW 검산 상세 열이 비어 보이던 문제를 실행 중 서버 프로세스 정리와 재기동으로 해결했습니다.",
-      "details": [
-        "실행 중 5050 서버가 이전 validator 결과를 계속 사용하던 상태 확인",
-        "업로드 저장본 기준 validator 직접 검증으로 실제 숫자값 생성 여부 확인",
-        "기존 서버 프로세스를 종료하고 새 서버 재기동 후 /api/validate 응답에서 HW 필드 정상 포함 확인"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 14:46",
-      "date": "2026-04-09",
-      "title": "배관 테이블 HW 상세 열 제목 및 열 순서 조정",
-      "summary": "결과 데이터 테이블의 추가 열을 HW 검산 중심으로 이해하기 쉽게 정리했습니다.",
-      "details": [
-        "배관 탭 추가 열 제목을 'HW 검산 상세 열'로 변경",
-        "결과서 마찰손실과 HW 재계산 마찰손실이 바로 이어서 보이도록 열 순서 조정",
-        "HW 절대오차, 상대오차, 검산 적합 여부를 인접 배치해 비교성을 높임"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 14:32",
-      "date": "2026-04-09",
-      "title": "공통 규칙 1번 하겐-윌리엄 검산 로직 추가",
-      "summary": "결과서의 Hazen-Williams 선언 여부와 배관별 마찰손실 재계산 검증을 서버에서 실제 수행하도록 구현했습니다.",
-      "details": [
-        "NUM 숫자 패턴을 scientific notation, trailing decimal, signed number 대응 형태로 확장",
-        "DESIGN INFORMATION, PIPE CONFIGURATION, DESIGNED DIAMETERS & FLOWRATES, SPECIAL EQUIPMENT, FLOW IN PIPES 파서 보강",
-        "COMMON.HW_DECLARED: Using the Hazen-Williams Equation 선언 존재 여부 PASS/FAIL 처리",
-        "COMMON.HW_RECALC: Length + Fitt.eq.lnth + Special Equipment equivalent length를 합산해 총 등가길이 계산",
-        "Act. Bore와 Flowrate를 사용해 하겐-윌리엄 식으로 Frict. Loss 재계산 후 결과서 값과 허용오차 비교",
-        "stats에 hw_declared, hw_checked_pipe_count, hw_failed_pipe_count, hw_max_abs_diff, hw_max_rel_diff, hw_worst_pipe_label 추가",
-        "pipes 테이블 각 행에 c_factor, base_length_m, fitting_eq_length_m, special_eq_length_m, total_length_m, actual_bore_mm, hw_expected_friction_loss, hw_abs_diff, hw_rel_diff, hw_formula_ok, hw_fail 추가",
-        "샘플 결과서 기준 107개 배관 전부 허용오차 이내 PASS 확인"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 11:07",
-      "date": "2026-04-09",
-      "title": "필터 판정 로직 4칸 카드형 모달 개편",
-      "summary": "색상 표시된 행을 클릭했을 때 나오는 설명창을 판정 기준, 계산식, 대입값, 최종 해석의 4칸 카드형 구조로 재구성했습니다.",
-      "details": [
-        "logic-modal-body를 단순 목록형에서 카드형 grid 컨테이너로 변경",
-        "PC에서는 2x2, 좁은 화면에서는 1열 카드로 반응형 배치",
-        "판정 기준, 계산식, 대입값, 최종 해석을 각각 별도 카드로 렌더링",
-        "카드별 배경색을 달리해 정보 구역이 한눈에 구분되도록 정리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 11:03",
-      "date": "2026-04-09",
-      "title": "필터 설명문 계산식·기준치 상세화",
-      "summary": "데이터 테이블의 필터 설명이 너무 러프하던 문제를 보완해 실제 판정 기준, 수식, 대입값, 초과/미달 해석까지 구체적으로 표시하도록 변경했습니다.",
-      "details": [
-        "배관: 50A 이하 6.0 m/s, 50A 초과 10.0 m/s 기준과 실제 유속 비교식을 명시",
-        "헤드: 최소 유량 80 L/min, 압력 1.0~12.0 kg/cm²G 기준을 실제 값과 함께 설명",
-        "특수설비: FX 13~21 m, A/V 12.9±0.1 m, P/V 10.1±0.1 m 기준과 편차 계산식 추가",
-        "감압밸브: inlet - outlet = calculated_drop 및 허용 오차 ±0.05 비교식 표시",
-        "공학 최적화 후보는 friction_loss / length, 경제성 후보는 유속 < 2.0 m/s AND 구경 > 25A 로직을 대입식으로 설명"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 10:54",
-      "date": "2026-04-09",
-      "title": "결과서 업로드 라벨 표기 정정",
-      "summary": "초기 화면 업로드 라벨이 여전히 결과서 파일(docx/pdf)로 보이던 문제를 템플릿과 프론트 기준 모두에서 결과서 파일(docx)로 통일했습니다.",
-      "details": [
-        "메인 템플릿의 report-file 라벨을 결과서 파일 (docx)로 수정",
-        "실행 중 서버가 예전 템플릿을 서빙하던 상태를 재시작으로 정리",
-        "프론트 스크립트에서도 동일 라벨을 강제로 결과서 파일 (docx)로 맞춤"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 10:36",
-      "date": "2026-04-09",
-      "title": "업데이트 기록 세분화 확장",
-      "summary": "기존 요약형 패치노트를 대화 순서 기준의 세부 작업 항목 단위로 다시 분해했습니다.",
-      "details": [
-        "기존 9개 수준의 묶음 기록을 수십 개 단위 세부 로그로 재작성",
-        "서버 로그에 남은 실제 시각은 그대로 사용",
-        "시각이 없는 과거 항목은 대화 순서 기준 재구성으로 정리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 10:22",
-      "date": "2026-04-09",
-      "title": "업데이트 기록 실시간 API화",
-      "summary": "업데이트 기록을 정적 문구가 아니라 서버 파일을 읽는 API 방식으로 바꿨습니다.",
-      "details": [
-        "/api/update-history 엔드포인트 추가",
-        "data/update_history.json 파일 기준으로 패치노트 응답",
-        "클릭 시 최신 파일을 다시 읽도록 프론트 연결"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 10:20",
-      "date": "2026-04-09",
-      "title": "업데이트 기록 모달 디자인 개편",
-      "summary": "패치노트 모달을 단순 목록에서 카드형 타임라인 UI로 변경했습니다.",
-      "details": [
-        "상단 요약 헤더 추가",
-        "날짜/제목/요약/세부내역 분리 표시",
-        "스크롤 가능한 패치노트 전용 레이아웃 적용"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:58",
-      "date": "2026-04-09",
-      "title": "상단 헤더에 업데이트 기록 버튼 추가",
-      "summary": "첫 인터페이스 우측 상단에 평가 기준 왼쪽 버튼으로 업데이트 기록을 추가했습니다.",
-      "details": [
-        "header-actions 영역 추가",
-        "updates-btn 추가",
-        "업데이트 기록 모달 구조 연결"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:52",
-      "date": "2026-04-09",
-      "title": "index.html 인코딩/템플릿 구조 재정비",
-      "summary": "헤더 버튼이 반영되지 않던 문제를 해결하기 위해 메인 템플릿을 UTF-8 기준으로 다시 정리했습니다.",
-      "details": [
-        "깨진 템플릿 텍스트 정리",
-        "header-top 구조 재작성",
-        "updates-modal 포함 전체 템플릿 재배치"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:46",
-      "date": "2026-04-09",
-      "title": "DXF 뷰어 텍스트 크기 최소화",
-      "summary": "CAD-아이소매트릭 대조 모듈의 DXF 텍스트가 너무 크게 보이던 문제를 줄였습니다.",
-      "details": [
-        "TEXT 렌더링 폰트 비율 축소",
-        "최소 표시 크기 축소",
-        "도면 가독성보다 배관 라인 우선 표시로 조정"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:42",
-      "date": "2026-04-09",
-      "title": "선택 영역 외 삭제 로직 보정",
-      "summary": "CAD/SDF 듀얼 뷰어에서 선택 영역 외 삭제 버튼이 실제로 동작하도록 구현했습니다.",
-      "details": [
-        "DXF crop() 구현",
-        "SDF crop() 구현",
-        "선택 후 view 재계산 및 선택 상태 초기화"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:39",
-      "date": "2026-04-09",
-      "title": "삭제 판정 기준 완화",
-      "summary": "완전 포함 기준 때문에 삭제가 안 된 것처럼 보이던 문제를 겹침 기준으로 바꿨습니다.",
-      "details": [
-        "bboxInside 중심 판정을 bboxOverlaps로 보완",
-        "DXF 엔티티와 SDF 배관 모두 겹침 판정 적용",
-        "실사용 선택 박스 체감 정확도 개선"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:36",
-      "date": "2026-04-09",
-      "title": "CAD 모듈 iframe 캐시 무효화",
-      "summary": "수정 사항이 반영되지 않는 것처럼 보이던 캐시 문제를 차단했습니다.",
-      "details": [
-        "/cad-compare-module 응답에 no-store 헤더 추가",
-        "iframe src에 버전 쿼리 추가",
-        "브라우저 강력 새로고침 의존도 감소"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:33",
-      "date": "2026-04-09",
-      "title": "DXF 파싱 방식을 서버 파싱으로 전환",
-      "summary": "브라우저 dxf-parser 대신 서버의 ezdxf 기반 파싱으로 변경했습니다.",
-      "details": [
-        "/api/cad-module/dxf-parse 추가",
-        "cad_engine.py의 DXFWorkspace 재사용",
-        "브라우저 파싱 오류 대신 서버 정규화 엔티티 렌더링 방식 도입"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:30",
-      "date": "2026-04-09",
-      "title": "CAD 대조 모듈 독립형 복원",
-      "summary": "6번 메뉴를 메인 서버 안의 독립 iframe 모듈로 다시 연결했습니다.",
-      "details": [
-        "cad_compare_module.html 템플릿 추가",
-        "/cad-compare-module 라우트 연결",
-        "메인 패널에서는 iframe만 로드하도록 분리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:24",
-      "date": "2026-04-09",
-      "title": "검진 통계 하단 테이블 분리",
-      "summary": "검진 통계 하단 표를 결과서 기준과 SDF 기준으로 좌우 분리했습니다.",
-      "details": [
-        "좌측: 결과서 파일(DOCX/PDF) 통계",
-        "우측: SDF 파일 통계",
-        "키 분류 로직 분리 적용"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:22",
-      "date": "2026-04-09",
-      "title": "검진 통계 레이아웃 재배치",
-      "summary": "Pipe Velocity와 Nozzle Pressure-Flow 차트를 상단 좌우로 배치하고 하단을 표 영역으로 분리했습니다.",
-      "details": [
-        "상단 좌측: Pipe Velocity Check",
-        "상단 우측: Nozzle Pressure-Flow",
-        "하단 좌우: 통계 표"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:20",
-      "date": "2026-04-09",
-      "title": "Matplotlib 시각화 텍스트 정리",
-      "summary": "차트 글씨 깨짐 문제를 줄이기 위해 그래프 텍스트를 영문/ASCII 중심으로 정리했습니다.",
-      "details": [
-        "한글 제목 제거",
-        "kg/cm²G 표기를 kg/cm^2G로 조정",
-        "폰트 fallback과 unicode minus 설정"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:17",
-      "date": "2026-04-09",
-      "title": "초기 화면에서 좌측 메뉴 항상 표시",
-      "summary": "검증 전에도 좌측 메뉴가 보이도록 바꾸고, 패널은 초기에는 숨김 처리했습니다.",
-      "details": [
-        "menu-sidebar hidden 제거",
-        "currentMenuPanel 초기값 null 처리",
-        "검증 실행 전 상세 패널 비표시 유지"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:15",
-      "date": "2026-04-09",
-      "title": "메뉴형 인터페이스 구조 적용",
-      "summary": "검증결과, 설계 최적화 가이드, 결과 데이터 테이블, 검진 통계, 상세리포트, CAD 대조 모듈을 메뉴형으로 분리했습니다.",
-      "details": [
-        "각 메뉴 클릭 시 해당 패널만 표시",
-        "기존 전체 패널 동시 노출 구조 제거",
-        "좌측 세로 메뉴 배치"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:13",
-      "date": "2026-04-09",
-      "title": "검진 통계 시각화 추가",
-      "summary": "검진 통계 영역에 그래프/통계표를 생성하는 로직을 추가했습니다.",
-      "details": [
-        "Pipe Velocity Check 그래프 생성",
-        "Nozzle Pressure-Flow 그래프 생성",
-        "통계 카드와 차트 카드 렌더링 추가"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:10",
-      "date": "2026-04-09",
-      "title": "설계 최적화 가이드 폭 통일",
-      "summary": "2번 패널의 가로 폭이 다른 메뉴와 달라 보이던 문제를 공통 폭 기준으로 조정했습니다.",
-      "details": [
-        ".menu-panel 폭 100% 고정",
-        ".insight-grid 폭/최소폭 고정",
-        ".insight-box min-width 조정"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 09:01",
-      "date": "2026-04-09",
-      "title": "SDF 그래프 강조 로직 보정",
-      "summary": "적합/부적합 메시지 클릭 시 관련 노드와 엣지만 색상 강조되도록 계속 보정했습니다.",
-      "details": [
-        "메시지 숫자 파싱 기반 관련 라벨 추적",
-        "파이프/노즐/설비/밸브별 선택 set 분리",
-        "관련 node 강조 표시 추가"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 08:57",
-      "date": "2026-04-09",
-      "title": "SDF 아이소매트릭 형상 표시 개선",
-      "summary": "파이프넷 느낌에 맞추기 위해 배관/헤드/밸브 심볼 크기와 선 두께를 반복 조정했습니다.",
-      "details": [
-        "헤드/밸브 크기 축소",
-        "선 두께 슬림화",
-        "범례 및 초기 비활성 표현 추가"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 08:54",
-      "date": "2026-04-09",
-      "title": "적합·부적합 버튼 상호작용 정교화",
-      "summary": "한 번에 여러 버튼이 눌리던 문제를 줄이고 다시 누르면 해제되도록 수정했습니다.",
-      "details": [
-        "단일 활성 상태 보장",
-        "같은 버튼 재클릭 시 비활성화",
-        "선택 상태와 그래프 강조 상태 동기화"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 08:50",
-      "date": "2026-04-09",
-      "title": "SDF x축 반전 문제 보정",
-      "summary": "아이소매트릭 배관망이 반대로 그려지던 문제를 좌표 변환으로 수정했습니다.",
-      "details": [
-        "renderNetworkGraph에서 축 변환 로직 조정",
-        "노드/설비/밸브 심볼 좌표 동기화",
-        "표시 방향 재검토"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 08:44",
-      "date": "2026-04-09",
-      "title": "결과 데이터 테이블 UX 개선",
-      "summary": "범례, 안내 문구, 열 클릭 설명 기능을 추가했습니다.",
-      "details": [
-        "빨강/노랑/파랑/초록 범례 추가",
-        "필터링된 열 클릭 시 사유 모달 표시",
-        "상단에 안내 문구 추가"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 08:37",
-      "date": "2026-04-09",
-      "title": "엑셀 다운로드 고도화",
-      "summary": "결과 데이터 테이블을 4개 시트로 분리해 다운로드하고 색상/선 스타일을 적용했습니다.",
-      "details": [
-        "배관/헤드/특수설비/감압밸브 시트 분리",
-        "경계선, 채우기색, 헤더 스타일 적용",
-        "CSV 대신 엑셀 파일 형태로 제공"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 08:30",
-      "date": "2026-04-09",
-      "title": "결과 데이터 테이블 열 분할",
-      "summary": "결과 데이터 테이블이 너무 넓어 보이던 문제를 기본 10열 + 추가 열 패널 구조로 바꿨습니다.",
-      "details": [
-        "기본 창은 10열까지만 표시",
-        "추가 열은 별도 패널에 스크롤 표시",
-        "테이블 메인/추가 영역 분리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 08:24",
-      "date": "2026-04-09",
-      "title": "평가 기준 버튼 및 기준 설명창 추가",
-      "summary": "메인 화면 우측 상단에 평가 기준 버튼을 만들고, 전체 검진 로직 설명창을 연결했습니다.",
-      "details": [
-        "criteria-btn 추가",
-        "criteria-modal 추가",
-        "전체 기준 1)~9) 설명 HTML 작성"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 08:18",
-      "date": "2026-04-09",
-      "title": "검증 기준 문구 수정",
-      "summary": "65A 이상 기준 문구를 50A 초과 기준으로 수정하고 실제 로직에도 반영했습니다.",
-      "details": [
-        "설명 문구: 65A 이상 -> 50A 초과",
-        "유속 제한: bore <= 50 ? 6 : 10 유지",
-        "표기와 실제 로직 불일치 해소"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 08:12",
-      "date": "2026-04-09",
-      "title": "서버 외부 접속 대응",
-      "summary": "다른 PC에서도 접속할 수 있도록 서버 바인딩 상태를 확인하고 링크 안내를 정리했습니다.",
-      "details": [
-        "0.0.0.0 바인딩 확인",
-        "사내망 IP 링크 안내",
-        "접속 불가 시 방화벽/포트 점검 안내"
-      ]
-    },
-    {
-      "timestamp": "2026-04-09 08:05",
-      "date": "2026-04-09",
-      "title": "설계 최적화 가이드 모듈 추가",
-      "summary": "시공사 경제성 확보 방안과 공학적 마찰손실 최적화 원칙을 별도 모듈로 분리했습니다.",
-      "details": [
-        "공학 최적화 후보 조건 추가",
-        "경제성 검토 후보 조건 추가",
-        "안내 문구 한국어 중심 정리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-08 21:30",
-      "date": "2026-04-08",
-      "title": "검진 결과 인터페이스 디자인 1차 개편",
-      "summary": "하얀색 각진 카드 스타일로 인터페이스를 정돈하고 결과표를 표처럼 보이게 바꿨습니다.",
-      "details": [
-        "화이트 박스형 카드 UI",
-        "테이블 중심 결과표",
-        "틀린 부분 색상 표시 시작"
-      ]
-    },
-    {
-      "timestamp": "2026-04-08 21:20",
-      "date": "2026-04-08",
-      "title": "헤드 유량편차 과다 평가 제거",
-      "summary": "사용자 요청에 따라 헤드 유량편차 과다 항목을 평가 대상에서 제외했습니다.",
-      "details": [
-        "헤드 편차 관련 fail/warn 제거",
-        "핵심 법규 기준 중심으로 재정리"
-      ]
-    },
-    {
-      "timestamp": "2026-04-08 21:09",
-      "date": "2026-04-08",
-      "title": "기본 검증 서버 최초 개시",
-      "summary": "결과서와 SDF를 업로드해 PIPENET 수리계산 검증을 수행하는 기본 서버와 메인 UI를 구성했습니다.",
-      "details": [
-        "Flask 기반 기본 서버 구성",
-        "결과서 업로드/검증 요청 흐름 연결",
-        "검증 결과, 테이블, 통계, 리포트 기본 패널 구성"
-      ]
-    },
-    {
-      "timestamp": "2026-04-08 20:55",
-      "date": "2026-04-08",
-      "title": "PDF/DOCX 검증 로직 연결",
-      "summary": "PIPENET 결과서에서 표 데이터를 추출해 검증하는 파이프라인을 연결했습니다.",
-      "details": [
-        "FLOW IN PIPES 추출",
-        "NOZZLES, SPECIAL EQUIPMENT, VALVES 추출",
-        "요약 통계 산출 구조 추가"
-      ]
-    },
-    {
-      "timestamp": "2026-04-08 20:48",
-      "date": "2026-04-08",
-      "title": "배관 유속 기준 차등 적용",
-      "summary": "50A 이하와 초과 구간의 유속 제한을 분리 적용하도록 검증 로직을 정리했습니다.",
-      "details": [
-        "50A 이하 6.0 m/s",
-        "50A 초과 10.0 m/s",
-        "배관 구경 기반 자동 판정"
-      ]
-    },
-    {
-      "timestamp": "2026-04-08 20:44",
-      "date": "2026-04-08",
-      "title": "특수설비 등가길이 검증 추가",
-      "summary": "FX, AV, PV 등가길이 기준을 반영한 검증 항목을 추가했습니다.",
-      "details": [
-        "FX 13~21m",
-        "AV 12.9m 기준",
-        "PV 10.1m 기준"
-      ]
-    },
-    {
-      "timestamp": "2026-04-08 20:40",
-      "date": "2026-04-08",
-      "title": "설계 최적화 가이드 로직 추가",
-      "summary": "법규 검증 외에 공학 최적화 및 경제성 검토 기준을 추가했습니다.",
-      "details": [
-        "마찰손실 급증 구간 탐지",
-        "저유속 과설계 구간 탐지",
-        "대구경 밸브 비용 급증 구간 가이드 추가"
-      ]
-    },
-    {
-      "timestamp": "2026-04-08 20:28",
-      "date": "2026-04-08",
-      "title": "한글 설명서 초안 작성",
-      "summary": "전체 프로그램 설명서를 DOCX/HWP로 작성하는 작업을 시작했습니다.",
-      "details": [
-        "참조 PDF 문체 반영",
-        "화면 캡처 예시 포함 준비",
-        "문자 깨짐 이슈 점검 시작"
-      ]
-    },
-    {
-      "timestamp": "2026-04-08 20:20",
-      "date": "2026-04-08",
-      "title": "설명서 인코딩 및 HWP 변환 보정",
-      "summary": "깨진 DOCX/HWP를 다시 만들고 자동 변환 흐름을 보정했습니다.",
-      "details": [
-        "UTF-8 기반 문서 재생성",
-        "잘못된 DOCX를 소스로 잡지 않도록 변환 스크립트 수정",
-        "HWP 재생성"
-      ]
-    },
-    {
-      "timestamp": "2026-04-08 20:12",
-      "date": "2026-04-08",
-      "title": "GitHub 업로드 및 저장소 정리 지원",
-      "summary": "사용자 GitHub 계정과 저장소 대상에 맞춰 업로드 방향을 정리했습니다.",
-      "details": [
-        "계정명 재확인",
-        "저장소 대상 URL 재확인",
-        "프로젝트명 기준 정리"
-      ]
+﻿[
+    {
+        "title":  "???? ??",
+        "updated_at":  "2026-04-28 14:32",
+        "items":  [
+                      {
+                          "timestamp":  "2026-04-28 14:32",
+                          "date":  "2026-04-28",
+                          "title":  "설계자동화 UI를 업로드-후-선택식 흐름으로 개편",
+                          "summary":  "설계자동화 인터페이스의 복잡한 초기 메뉴를 걷어내고, 업로드 전에는 DXF 업로드만 보이도록, 업로드 후에는 단계 버튼을 선택식으로 누르는 구조로 바꿨다.",
+                          "details":  [
+                                          "sprinkler_ai_agent_server_source_2026-04-27/extracted/index.html의 사이드바를 DXF 업로드 패널과 작업 메뉴 패널로 재구성",
+                                          "app-shell pre-upload / has-dxf 모드 추가",
+                                          "업로드 전에는 파이프라인, 캔버스, 우측 패널, 작업 메뉴를 숨기고 업로드만 표시",
+                                          "업로드 후에는 Zone 산정, 설계 조건, 헤드 자동배치, 배관망 생성, 수리계산, 규정 검증, 개선 제안, 결과 내보내기 버튼만 노출",
+                                          "설계자동화 앱 스크립트 참조를 app_v3.js에서 app.js로 정리하고 외부 서버 재기동"
+                                      ]
+                      },
+                      {
+                          "timestamp":  "2026-04-28 14:05",
+                          "date":  "2026-04-28",
+                          "title":  "Closed-vocabulary OCR synthetic training and deployment",
+                          "summary":  "Generated a synthetic OCR dataset for closed design labels, trained a lightweight classifier, and exposed it through a new v4 server API.",
+                          "details":  [
+                                          "Added scripts/generate_closed_vocab_ocr_dataset.py and scripts/train_closed_vocab_ocr.py",
+                                          "Generated data/closed_vocab_ocr_dataset with 67 tokens",
+                                          "Trained models/closed_vocab_ocr/model.pt with best validation accuracy near 99.9%",
+                                          "Added closed_vocab_ocr.py and /api/v4/ai/ocr-closed-vocab",
+                                          "Updated AI data requirement docs and machine-readable status file"
+                                      ]
+                      },
+                      {
+                          "timestamp":  "2026-04-28 13:25",
+                          "date":  "2026-04-28",
+                          "title":  "AI data requirements and status inventory",
+                          "summary":  "Documented the data needed for each AI module, recorded what is already available locally, and added a machine-readable status file for future training work.",
+                          "details":  [
+                                          "Added docs/ai_data_requirements_20260428.md",
+                                          "Added data/ai_data_status.json",
+                                          "Distinguished directly trainable modules from modules blocked by missing labels or runtime dependencies",
+                                          "Kept AI vision extractor path cached and connected to the server-side v4 flow"
+                                      ]
+                      },
+                      {
+                          "timestamp":  "2026-04-28 13:05",
+                          "date":  "2026-04-28",
+                          "title":  "AI triangle-head model training and deployment",
+                          "summary":  "Trained a new YOLO detector for triangle sprinkler heads and connected it to both the existing head-detection flow and the new v4 AI extraction path.",
+                          "details":  [
+                                          "Trained YOLO11n on data/triangle_head_dataset (700 train / 140 val)",
+                                          "Pinned weights at models/triangle_head_yolo_ai/weights/best.pt",
+                                          "Added ai_vision.py and /api/v4/ai/extract-from-dxf",
+                                          "Updated main server YOLO path selection to prefer the trained AI model",
+                                          "Extended pipeline_orchestrator stage 1 with AI head-count reporting"
+                                      ]
+                      },
+                      {
+                          "timestamp":  "2026-04-28 12:10",
+                          "date":  "2026-04-28",
+                          "title":  "Claude v4 규칙 엔진 통합",
+                          "summary":  "외부 설계 소스에서 NFTC/HB/PhD 규칙 엔진과 v4 파이프라인 API를 선별 도입하고, 기존 Flask 서버와 Pipenet 검증 로직은 유지한 채 추가형으로 결합했다.",
+                          "details":  [
+                                          "nftc_rules.py, hb_rules.py, phd_rules.py, auto_design.py, change_log.py, pipeline_orchestrator.py, pipenet_validator_v4.py, server_patch.py 추가",
+                                          "대조 서버.py에 register_v4_routes(app) 연동",
+                                          "/api/v4/status 포함 19개 v4 API 라우트 등록 확인",
+                                          "기존 templates/static 및 기존 검증 API는 변경하지 않고 유지"
+                                      ]
+                      },
+                      {
+                          "timestamp":  "2026-04-28 12:24",
+                          "date":  "2026-04-28",
+                          "title":  "v4 통합 구조 정리 문서화",
+                          "summary":  "Claude v4 규칙 모듈과 기존 서버의 역할 경계를 문서로 정리하고, 향후 문자열 정상화와 규칙 설정화 작업의 기준을 남겼다.",
+                          "details":  [
+                                          "docs/claude_v4_integration_notes_20260428.md 추가",
+                                          "채택 모듈과 유지 모듈의 경계 명시",
+                                          "v4 API는 추가형, 기존 UI/검증은 유지 원칙 문서화",
+                                          "다음 후속 작업으로 문자열 정상화, Case 1~5 설정화, 테스트 보강 항목 정리"
+                                      ]
+                      },
+                      {
+                          "timestamp":  "2026-04-28 11:05",
+                          "date":  "2026-04-28",
+                          "title":  "?? ??? ????? ?? ?? ??",
+                          "summary":  "?? ??? ????????????CAD-SDF ?? ?? ????? ?? ??? ??? ??? ??? ???, ?? ???(1~5 ??)??? ????? ??????.",
+                          "details":  [
+                                          "templates/index.html? validation-upload-card? ?? hidden ??? ??",
+                                          "static/app.js?? validation-suite-mode? ?? ??? ??? summary? ????? ?? ?? ?? ??",
+                                          "static/styles.css? home-mode, fullscreen-module-mode?? ??? ??? summary? ??? ??? ?? ??",
+                                          "?? ?? ??? ??? ?? app.js? styles.css ?? ??? ??"
+                                      ]
+                      },
+                      {
+                          "timestamp":  "2026-04-28 10:40",
+                          "date":  "2026-04-28",
+                          "title":  "?? ????? v2 ????? ??? ??",
+                          "summary":  "???? sprinkler_pipeline_v2 ??? ???? ?? ?? ??? 8?? ?????? ?? ????, ? ???? ?? ?? ??? ?? ??? ?? ?? ??? ??????.",
+                          "details":  [
+                                          "templates/sprinkler_pipeline.html? v2 ??? ???? ???? ?? partial? ?? ??",
+                                          "static/app.js? ??? ?? ??, ?? ??, ?? ?? ?? ??",
+                                          "1~8???? ?????, ????, ????, CAD-SDF ??, ?????, ???? ????? ?? ???? ?? ??",
+                                          "Case 1~5, N185, exclusion_mask, system_type, KSD ?? ?? ? ?? ?? ??? ?? ??? ????? ??"
+                                      ]
+                      },
+                      {
+                          "timestamp":  "2026-04-28 10:18",
+                          "date":  "2026-04-28",
+                          "title":  "????? ?? ???? ???",
+                          "summary":  "?? iframe ?? ?? ? ??? ????? ??? ?? ????? ???, ?? ???? ?? UI? ???? ??? ??? ??????.",
+                          "details":  [
+                                          "templates/index.html? sprinkler-pipeline-panel?? partial include ???? ??",
+                                          "templates/_sprinkler_pipeline_panel.html ?? ? pipeline-doc ?? ??? ??? ??",
+                                          "static/styles.css? ?? ????? ??? ?? ??? ??"
+                                      ]
+                      },
+                      {
+                          "timestamp":  "2026-04-27 17:52",
+                          "date":  "2026-04-27",
+                          "title":  "?? ??? 8? ????? ?? UI ??",
+                          "summary":  "?? ???? ?? ??, CAD-SDF ??, ?????, ??? ????? ? ???? ??? ? ??? ?? ??? ??????.",
+                          "details":  [
+                                          "?? ?? ?? ?? ?? ?? ??",
+                                          "8? ????? ??? ?? ??? ??? ?? ? iframe? ??",
+                                          "????, ??? ???, ????, ?????, ??? ????? ???? ?? ?? ?? ??"
+                                      ]
+                      },
+                      {
+                          "timestamp":  "2026-04-15 09:39",
+                          "date":  "2026-04-15",
+                          "title":  "?? ?? ??? ???? ?? ??",
+                          "summary":  "????, ??, ?????, CAD-SDF ?? ??? ? ?? ??? ? ??? ?? ????? ???, ???? ?? ?? ??? ??????.",
+                          "details":  [
+                                          "A4 ?? ??? ?? ???? ??",
+                                          "?? ?? ?? ?? ??? ??? ??",
+                                          "???? ?? ??? API ?? ?? ??"
+                                      ]
+                      },
+                      {
+                          "timestamp":  "2026-04-14 22:58",
+                          "date":  "2026-04-14",
+                          "title":  "CAD-SDF AI/GPU ?? ????? ??",
+                          "summary":  "YOLO head ??, SDF-guided bundle, FFT ?? ??, GPU ??? ?? ? CAD-SDF ?? ?????? ??????.",
+                          "details":  [
+                                          "?? ?? ?? ??? ??? ?? ??",
+                                          "?? ???? ?? ? segmentation fallback ?? ??",
+                                          "???????? ??? ?? ?? ??? ?? ??"
+                                      ]
+                      }
+                  ]
+    },
+    {
+        "timestamp":  "2026-04-28 16:35",
+        "title":  "설계자동화 1단계 객체 추출/HB 2.4.18 자동 마스킹 보강",
+        "details":  "DXF geometry payload(text/insert/hatch) 전송, stage1 object DB/exclusion mask/environment meta/cross-binding summary 생성, 한백 §2.4.18 제외영역 자동 판정 및 설계자동화 캔버스 오버레이 반영"
+    },
+    {
+        "timestamp":  "2026-04-29 09:32",
+        "title":  "설계자동화 화면 레이아웃 재정비",
+        "details":  "업로드 후 화면을 캔버스 중심으로 재배치하고 workflow 메뉴 패널, 지표 카드, 채팅 패널의 크기와 위치를 축소 조정해 겹침을 줄였으며, canvas-stage 래퍼를 도입해 실제 그리기 영역과 툴바를 분리"
+    },
+    {
+        "timestamp":  "2026-04-29 10:06",
+        "title":  "설계자동화 하단 도크 배치 및 한글 복구",
+        "details":  "업로드 후 작업 메뉴와 지표 카드를 화면 하단 도크로 재배치하고, index/app_chat/app 노출 문자열을 UTF-8 기준으로 정리해 깨진 한글을 복구"
+    },
+    {
+        "timestamp":  "2026-04-29 10:20",
+        "title":  "설계자동화 작업 도크 일체형 정리",
+        "details":  "지표 카드와 단계 버튼을 별도 오버레이가 아닌 하나의 하단 작업 도크로 통합하고 버튼 밀도, 카드 간격, 채팅 패널 위치를 재조정했으며 정적 자산 캐시 우회를 위해 버전 쿼리를 갱신"
+    },
+    {
+        "timestamp":  "2026-04-29 10:28",
+        "title":  "설계자동화 캔버스 렌더링 복구",
+        "details":  "canvas-stage 높이를 명시하고 DXF 업로드 후 requestAnimationFrame 시점에 resizeCanvas/resetView를 다시 호출하도록 조정해 업로드 후 도면이 보이지 않던 문제를 복구"
+    },
+    {
+        "timestamp":  "2026-04-29 10:41",
+        "title":  "설계자동화 진행바/정보 패널 복원",
+        "details":  "업로드 후 숨겨졌던 파이프라인 보드를 상단 축약 진행바로 복원하고, 로그/Zone 상태를 하단 정보 패널로 재배치했으며 정보 패널 접기 토글을 추가해 캔버스 면적과 작업 맥락을 함께 확보"
+    },
+    {
+        "timestamp":  "2026-04-29 10:52",
+        "title":  "설계자동화 템플릿 한글 정상화",
+        "details":  "index.html을 UTF-8 기준으로 다시 작성하고 캔버스 제외 라벨 문자열을 정리했으며 정적 서빙본과 버전 쿼리를 갱신하고 현재 설계자동화 소스 보관 ZIP을 생성"
+    },
+    {
+        "timestamp":  "2026-04-29 11:03",
+        "title":  "설계자동화 파이프라인 v5 반영",
+        "details":  "sprinkler_pipeline_v5 문서를 기준으로 단계명과 설명을 시스템 선정·압력대 진단·12 시나리오 수리계산·6대 hard+3대 불균형 검증·5종 대안 비교·Change Log 중심으로 재정리하고 NFTC/HB/PhD 3중 trace 문구를 UI 전반에 반영"
     }
-  ]
-}
+]

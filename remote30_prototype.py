@@ -1278,6 +1278,48 @@ def _collapse_collinear_nodes(
     return kept
 
 
+def _subdivide_path_by_floors(
+    path: list[tuple[float, float]],
+    floor_labels: list[tuple[float, float, int, str]],
+    min_gap_mm: float = 800.0,
+) -> list[tuple[float, float]]:
+    """(거의)수직 라이저 구간을 층 Y-레벨마다 노드로 분할 — 층 단위 편집을 위해.
+
+    수계산 중 계통도 층수/층고가 자주 바뀌므로(예: 27층→26층), 각 층을 discrete
+    노드로 남겨 해당 층만 빼고 위아래를 재연결할 수 있게 한다. collapse 가 직선 위
+    중간 노드를 지운 뒤 이 단계가 층 경계마다 깨끗한 노드를 다시 심는다.
+
+    각 층 라벨의 Y 를 경계로, 수직 segment 가 여러 층을 가로지르면 각 층 Y 교차점에
+    노드를 삽입(X 는 선형보간)한다. 층 라벨이 없으면 원본 그대로 반환(legacy no-op).
+    """
+    if len(path) < 2 or not floor_labels:
+        return list(path)
+    floor_ys = sorted({float(fy) for (_fx, fy, fidx, _n) in floor_labels if fidx != 99})
+    if not floor_ys:
+        return list(path)
+    out: list[tuple[float, float]] = [path[0]]
+    for i in range(len(path) - 1):
+        a, b = path[i], path[i + 1]
+        ax, ay = float(a[0]), float(a[1])
+        bx, by = float(b[0]), float(b[1])
+        seg_dx, seg_dy = abs(bx - ax), abs(by - ay)
+        ylo, yhi = min(ay, by), max(ay, by)
+        # 이 segment 를 가로지르는 층 Y (양 끝단 min_gap 안쪽 제외 — 끝점 중복 방지)
+        crossings = [fy for fy in floor_ys if ylo + min_gap_mm < fy < yhi - min_gap_mm]
+        # 수직 우세 + 충분히 긴 run 만 분할 (수평 가지관·짧은 fitting 은 건드리지 않음)
+        if crossings and seg_dy > seg_dx and seg_dy > min_gap_mm:
+            crossings.sort(reverse=(by < ay))   # 진행 방향대로
+            for fy in crossings:
+                t = (fy - ay) / (by - ay)
+                nx = ax + t * (bx - ax)
+                node = (int(round(nx)), int(round(fy)))
+                if node != out[-1]:
+                    out.append(node)
+        if b != out[-1]:
+            out.append(b)
+    return out
+
+
 def extract_system_path(
     entities: list[dict],
     pump_xy: tuple[float, float],
@@ -1379,6 +1421,10 @@ def extract_system_path(
     dia_text_pts = _extract_dia_text_points(entities)
     floor_labels = _extract_floor_labels(entities)
 
+    # 층 단위 편집을 위해 수직 라이저를 층 Y-레벨마다 노드로 분할.
+    # 층 라벨 없으면 no-op → 기존(legacy) path 그대로 유지.
+    path = _subdivide_path_by_floors(path, floor_labels)
+
     riser = _system_path_to_riser_dict(
         path, edge_len, pump_xy, av_xy,
         pump_snap_dist=pump_d, av_snap_dist=av_d, graph_stats=stats,
@@ -1453,13 +1499,13 @@ def _system_path_to_riser_dict(
     floor_height_mm = _estimate_floor_height_mm(floor_labels)
     av_floor_idx, av_floor_name = _floor_for_node_y(av_y_dxf, floor_labels)
 
-    def _elev_for_node(ny: float) -> tuple[float, str | None, bool]:
-        """노드 Y 의 (elev_m, floor_name, from_label) 반환. label 없으면 Y/1000 fallback."""
+    def _elev_for_node(ny: float) -> tuple[float, str | None, bool, int | None]:
+        """노드 Y 의 (elev_m, floor_name, from_label, floor_idx). label 없으면 Y/1000 fallback."""
         if floor_labels and av_floor_idx is not None:
             f_idx, f_name = _floor_for_node_y(ny, floor_labels)
             if f_idx is not None:
-                return ((f_idx - av_floor_idx) * floor_height_mm / 1000.0, f_name, True)
-        return ((ny - av_y_dxf) / 1000.0, None, False)
+                return ((f_idx - av_floor_idx) * floor_height_mm / 1000.0, f_name, True, f_idx)
+        return ((ny - av_y_dxf) / 1000.0, None, False, None)
 
     # 노드 — 라벨 컨벤션:
     #   첫 노드 "1" (Input/펌프), 마지막 노드 "10" (AV).
@@ -1473,7 +1519,7 @@ def _system_path_to_riser_dict(
             label, io = "10", "No"
         else:
             label, io = f"n{i + 1}", "No"
-        elev_m, floor_name, from_label = _elev_for_node(pt[1])
+        elev_m, floor_name, from_label, floor_idx = _elev_for_node(pt[1])
         if from_label:
             nodes_with_floor += 1
         node: dict = {
@@ -1485,6 +1531,8 @@ def _system_path_to_riser_dict(
         }
         if floor_name:
             node["floor"] = floor_name
+        if floor_idx is not None:
+            node["floor_idx"] = floor_idx
         if io == "Input":
             node["pressure_pa"] = 101325.0
         nodes.append(node)

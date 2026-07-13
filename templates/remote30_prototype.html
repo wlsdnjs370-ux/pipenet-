@@ -859,6 +859,8 @@
             <button data-tool="move" type="button">이동</button>
             <button data-tool="addnode" type="button">노드+</button>
             <button data-tool="addpipe" type="button">배관+</button>
+            <button data-tool="split" type="button">분리</button>
+            <button data-tool="merge" type="button">병합</button>
             <button data-tool="delete" type="button">삭제</button>
           </div>
           <div id="ce-hint" class="ce-hint">노드·배관을 클릭해 선택하세요.</div>
@@ -6702,6 +6704,7 @@
         active: false, tool: "select",
         selected: null,        // {type:"node", label} | {type:"pipe", ref}
         addFrom: null,         // 배관추가 첫 노드 라벨
+        mergeFrom: null,       // 병합 첫(사라질) 노드 라벨
         dirty: false, _orig: null,
         drag: null,            // {label} 이동 중
         _dragMoved: false, _raf: null,
@@ -6839,6 +6842,56 @@
         g0.pipes = g0.pipes.filter(x => x !== p);
         if (S.selected && S.selected.type === "pipe" && S.selected.ref === p) S.selected = null;
       }
+      // ── 노드 분리(split) — 한 노드를 같은 위치의 두 노드로 쪼갠다 (층 단위 편집용).
+      //   층 추가처럼 라이저 체인 중간에 노드를 끼워 넣을 때 사용: prev→N→next 에서
+      //   N 을 N,N2 로 분리하면 prev→N→N2→next 가 되고 N2 를 드래그해 새 층을 만든다.
+      //   하류(p.in===label) 배관을 새 노드로 이관 → 방향 보존. 없으면 절반 이관(분기 대응).
+      function splitNode(label) {
+        const g0 = _g0(); const n = _g0NodeByLabel(label); if (!n) return null;
+        const incident = g0.pipes.filter(p => p.in === label || p.out === label);
+        if (incident.length < 2) { _hint("분리하려면 노드에 배관이 2개 이상 연결돼 있어야 합니다."); return null; }
+        const nl = _nextNodeLabel();
+        const n2 = { label: nl, x: n.x, y: n.y, z: n.z, io: "No", pressure_pa: null };
+        if (n.floor != null) n2.floor = n.floor;             // 층 태그 상속
+        if (n.floor_idx != null) n2.floor_idx = n.floor_idx;
+        g0.nodes.push(n2);
+        let moved = 0;
+        for (const p of g0.pipes) { if (p.in === label) { p.in = nl; moved++; } }
+        if (moved === 0) {   // 하류 배관 부재(분기/말단) → 절반 이관으로 폴백
+          const half = Math.ceil(incident.length / 2);
+          for (const p of incident.slice(half)) {
+            if (p.in === label) p.in = nl; else if (p.out === label) p.out = nl;
+          }
+        }
+        addPipe(label, nl);   // 두 노드를 짧은 배관으로 연결(동일좌표 → 길이 0, 드래그로 벌림)
+        S.selected = { type: "node", label: nl };
+        return nl;
+      }
+      // ── 노드 병합(merge) — 노드 a 를 b 로 흡수 (a 제거, b 생존). 층 삭제(27→26층)의
+      //   재연결에 사용: 없앨 층 노드를 이웃 노드에 병합하면 체인이 자동으로 이어진다.
+      //   a 참조 배관을 b 로 재지정, 자기루프·중복 병렬 배관 제거.
+      function mergeNodes(aLbl, bLbl) {
+        if (aLbl === bLbl) return;
+        const g0 = _g0();
+        const a = _g0NodeByLabel(aLbl), b = _g0NodeByLabel(bLbl);
+        if (!a || !b) return;
+        for (const p of g0.pipes) { if (p.in === aLbl) p.in = bLbl; if (p.out === aLbl) p.out = bLbl; }
+        const seen = new Set(), kept = [];
+        for (const p of g0.pipes) {
+          if (p.in === p.out) continue;   // 자기루프(병합된 a–b 배관) 제거
+          const key = p.in < p.out ? p.in + "|" + p.out : p.out + "|" + p.in;
+          if (seen.has(key)) continue;    // 중복 병렬 배관 제거(첫 것 유지)
+          seen.add(key); kept.push(p);
+        }
+        g0.pipes = kept;
+        // 경계 속성 승계 — a 가 Input/공급압을 갖고 b 가 아니면 b 로 옮긴다.
+        if (a.io === "Input" && b.io !== "Input") {
+          b.io = "Input"; if (a.pressure_pa != null) b.pressure_pa = a.pressure_pa;
+        }
+        g0.nodes = g0.nodes.filter(nd => nd.label !== aLbl);
+        _recalcConnected(bLbl);
+        S.selected = { type: "node", label: bLbl };
+      }
       function setNodeProps(label, patch) {
         const n = _g0NodeByLabel(label); if (!n) return;
         if (patch.x != null && isFinite(+patch.x)) n.x = +patch.x;
@@ -6877,6 +6930,13 @@
           const n = _g0NodeByLabel(S.addFrom);
           if (n) { const [sx, sy] = _toScreen(proj, n.x, n.y, n.z);
             ctx.save(); ctx.strokeStyle = "#22d3ee"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(sx, sy, 9, 0, Math.PI*2); ctx.stroke(); ctx.restore(); }
+        }
+        // merge 첫(사라질) 노드 — 붉은 점선 링으로 표시
+        if (S.mergeFrom) {
+          const n = _g0NodeByLabel(S.mergeFrom);
+          if (n) { const [sx, sy] = _toScreen(proj, n.x, n.y, n.z);
+            ctx.save(); ctx.strokeStyle = "#f87171"; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
             ctx.beginPath(); ctx.arc(sx, sy, 9, 0, Math.PI*2); ctx.stroke(); ctx.restore(); }
         }
         if (!S.selected) return;
@@ -6920,6 +6980,7 @@
           if (!n) { box.innerHTML = '<div class="ce-empty">선택 노드 없음</div>'; return; }
           box.innerHTML =
             '<div class="ce-row"><label>노드</label><span class="ce-ro">' + n.label + '</span></div>' +
+            (n.floor ? '<div class="ce-row"><label>층</label><span class="ce-ro">' + n.floor + '</span></div>' : '') +
             _inputRow("X (mm)", "ce-nx", _num(n.x), 'type="number" step="1"') +
             _inputRow("Y (mm)", "ce-ny", _num(n.y), 'type="number" step="1"') +
             _inputRow("고도 (m)", "ce-nz", _num(n.z), 'type="number" step="0.1"') +
@@ -6949,18 +7010,20 @@
 
       // ── 도구/모드 ──
       function setTool(t) {
-        S.tool = t; S.addFrom = null;
+        S.tool = t; S.addFrom = null; S.mergeFrom = null;
         for (const b of el["cmb-edit"].querySelectorAll(".ce-tools button"))
           b.classList.toggle("is-active", b.dataset.tool === t);
         const hints = { select:"노드·배관을 클릭해 선택하세요.", move:"노드를 드래그해 이동 (평면 뷰 전용).",
           addnode:"빈 곳을 클릭해 노드 추가 (평면 뷰 전용).", addpipe:"시작 노드→끝 노드를 차례로 클릭.",
+          split:"분리할 노드를 클릭 — 같은 자리에 새 노드가 생겨 배관이 나뉩니다(층 추가).",
+          merge:"사라질 노드 → 남길 노드 순서로 클릭 (앞 노드가 뒤 노드로 병합; 층 삭제).",
           delete:"삭제할 노드·배관을 클릭하세요." };
         _hint(hints[t] || "");
       }
       function start() {
         if (!_g0()) return;
         S._orig = _clone(_g0());
-        S.active = true; S.dirty = false; S.selected = null; S.addFrom = null;
+        S.active = true; S.dirty = false; S.selected = null; S.addFrom = null; S.mergeFrom = null;
         el["ce-body"].classList.remove("ce-hidden");
         el["ce-toggle"].textContent = "편집 종료";
         el["ce-toggle"].classList.add("is-on");
@@ -6969,7 +7032,7 @@
         render();
       }
       function stop() {
-        S.active = false; S.selected = null; S.addFrom = null;
+        S.active = false; S.selected = null; S.addFrom = null; S.mergeFrom = null;
         el["ce-body"].classList.add("ce-hidden");
         el["ce-toggle"].textContent = "편집 시작";
         el["ce-toggle"].classList.remove("is-on");
@@ -7069,6 +7132,18 @@
           if (!nl) { _hint("노드를 클릭하세요."); return; }
           if (!S.addFrom) { S.addFrom = nl; _hint("끝 노드를 클릭하세요."); render(); }
           else { addPipe(S.addFrom, nl); S.addFrom = null; _hint("배관 추가됨. 계속 추가하려면 시작 노드 클릭."); _afterChange(); }
+        } else if (S.tool === "split") {
+          const nl = _hitNode(sx, sy);
+          if (!nl) { _hint("분리할 노드를 클릭하세요."); return; }
+          const created = splitNode(nl);
+          if (created) { _hint("노드 분리됨 (" + nl + " → " + created + "). 이동 도구로 새 노드를 벌리세요."); _afterChange(); }
+        } else if (S.tool === "merge") {
+          const nl = _hitNode(sx, sy);
+          if (!nl) { _hint("노드를 클릭하세요."); return; }
+          if (!S.mergeFrom) { S.mergeFrom = nl; _hint("남길 노드를 클릭하세요 (" + nl + " 가 여기로 병합)."); render(); return; }
+          if (nl === S.mergeFrom) { _hint("다른 노드를 클릭하세요 (같은 노드로는 병합 불가)."); return; }
+          mergeNodes(S.mergeFrom, nl); S.mergeFrom = null;
+          _hint("노드 병합됨. 계속하려면 사라질 노드부터 클릭."); _afterChange();
         } else if (S.tool === "delete") {
           const nl = _hitNode(sx, sy);
           if (nl) { deleteNode(nl); _afterChange(); return; }

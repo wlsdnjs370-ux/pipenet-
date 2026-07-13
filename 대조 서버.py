@@ -4072,40 +4072,57 @@ def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
     return moved
 
 
-# 답안 28F (GRAVITE_28F) 라이저 raw 좌표 (mm 도메인, 평면도와 단위 일치) — combined_build
-# 좌표 재매핑 기준. 계통도 노드를 이 좌표 + 헤드망 AV 오프셋으로 translate 한다.
-_ANSWER_28F_COORDS = {
-    "1":  (-10825,  -851),    # Input (옥상 수원)
-    "2":  (-11600,  -750),
-    "3":  (-11600,  -952),
-    "4":  (-11275, -1775),
-    "5":  (-11275, -3420),    # AV 직전
-    "10": (-11400, -3406),    # AV — 헤드망 source 와 정합
-}
+# 라이저 실좌표 정규화 폴백 상수 — 헤드망 크기를 못 구할 때 라이저를 그릴 기본 스팬(mm)
+# 및 헤드망 대비 라이저 도면 높이 비율. (하드코딩 답안 좌표 제거, 실좌표 스케일 정규화)
+_RISER_SCHEMATIC_SPAN_MM = 3000.0
+_RISER_HEIGHT_FRAC = 0.6
 
 
-def _remap_riser_to_head_av(system_riser: dict, head_av_node: dict, av_label: str):
-    """계통도 라이저 노드를 답안 28F raw 좌표 + 헤드망 AV 오프셋으로 재매핑 → RiserTables.
+def _remap_riser_to_head_av(system_riser: dict, head_av_node: dict, av_label: str,
+                            head_nodes: list[dict] | None = None):
+    """계통도 라이저를 실좌표 정규화 → 헤드망 AV 기준으로 배치 (RiserTables).
 
-    system_riser 노드 좌표(계통도 픽, 수십만 mm)와 헤드망 좌표(평면 DXF, 수만 mm)는
-    도메인이 달라 emit_sdf 정규화 시 라이저가 한쪽에 압축된다. 답안 28F 라이저 좌표를
-    차용하고 헤드망 AV 위치로 translate 해 단위·배치를 정합시킨다(라이저가 AV 위쪽에 배치).
+    계통도 픽 좌표(수십만 mm)와 헤드망 좌표(평면 DXF, 수만 mm)는 도메인이 달라 emit_sdf
+    정규화 시 라이저가 한쪽에 압축된다. 하드코딩 답안(28F) 좌표를 차용하던 방식을 버리고,
+    라이저 **자체의 상대 형상(층별 노드 전부 포함)** 을 유지한 채 헤드망 크기에 맞춰 균일
+    스케일하고, AV 노드를 헤드망 AV 위치에 정합시켜 라이저를 AV 위쪽에 배치한다.
+    → 층 단위 노드가 몇 개든, 어느 건물이든 일반화 (28F 전용 하드코딩 제거).
     좌표가 비숫자/누락이면 (KeyError, TypeError, ValueError) 를 올린다(호출자가 400 처리).
     """
     from remote30_full_network import RiserTables
+    nodes = system_riser["nodes"]
+    if not nodes:
+        raise ValueError("라이저 노드가 비어 있음")
     head_av_x = float(head_av_node["x"])
     head_av_y = float(head_av_node["y"])
-    answer_av_x, answer_av_y = _ANSWER_28F_COORDS["10"]
-    tx_off = head_av_x - answer_av_x
-    ty_off = head_av_y - answer_av_y
+
+    # 라이저 native 좌표에서 AV 위치 + 자체 bbox 스팬 산출.
+    src_av = next((n for n in nodes if str(n.get("label", "")) == str(av_label)), None)
+    if src_av is None:
+        src_av = nodes[-1]   # AV 라벨 부재 시 마지막 노드를 AV 로 간주(폴백)
+    src_av_x = float(src_av["x"])
+    src_av_y = float(src_av["y"])
+    xs = [float(n["x"]) for n in nodes]
+    ys = [float(n["y"]) for n in nodes]
+    riser_span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+
+    # 헤드망 특성 크기(bbox 대각선) — 라이저를 이 스케일의 일정 비율로 그려 joint
+    # 정규화 시 라이저·헤드망이 서로 압축되지 않게 한다. 없으면 폴백 스팬.
+    head_char = _RISER_SCHEMATIC_SPAN_MM
+    if head_nodes:
+        hxs = [float(n["x"]) for n in head_nodes if n.get("x") is not None]
+        hys = [float(n["y"]) for n in head_nodes if n.get("y") is not None]
+        if hxs and hys:
+            hd = math.hypot(max(hxs) - min(hxs), max(hys) - min(hys))
+            if hd > 1.0:
+                head_char = hd
+    scale = (head_char * _RISER_HEIGHT_FRAC) / riser_span
+
     remapped_nodes: list[dict] = []
-    for n in system_riser["nodes"]:
-        label = str(n.get("label", ""))
+    for n in nodes:
         new_n = dict(n)
-        if label in _ANSWER_28F_COORDS:
-            ax, ay = _ANSWER_28F_COORDS[label]
-            new_n["x"] = int(round(ax + tx_off))
-            new_n["y"] = int(round(ay + ty_off))
+        new_n["x"] = int(round(head_av_x + (float(n["x"]) - src_av_x) * scale))
+        new_n["y"] = int(round(head_av_y + (float(n["y"]) - src_av_y) * scale))
         remapped_nodes.append(new_n)
     return RiserTables(
         nodes=remapped_nodes,
@@ -4141,6 +4158,10 @@ def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
              "x": float(n.get("x", 0)), "y": float(n.get("y", 0)),
              "z": float(n.get("elevation", 0)),
              "io": n.get("io_node", "No"),
+             # 층 단위 편집용 태그 — 계통도 라이저 노드가 어느 층인지(있을 때만).
+             # 에디터가 층별 노드 분리/삭제/재연결에 사용하고 rebuild 왕복에서 보존한다.
+             "floor": n.get("floor"),
+             "floor_idx": (int(n["floor_idx"]) if n.get("floor_idx") is not None else None),
              # 아이소 3D 방수 시뮬레이션용 — Input 노드 공급압(Pa). 없으면 None.
              "pressure_pa": (float(n["pressure_pa"])
                              if n.get("pressure_pa") is not None else None)}
@@ -4303,18 +4324,19 @@ def remote30_combined_build():
         return _err500(exc)
 
     # ── 계통도 라이저 → RiserTables.
-    # ★ 좌표 재매핑: system_riser 의 노드 좌표(사용자 계통도 픽 — 수십만 mm) 와 헤드망 노드
+    # ★ 실좌표 정규화: system_riser 의 노드 좌표(사용자 계통도 픽 — 수십만 mm) 와 헤드망 노드
     # 좌표(평면도 DXF — 수만 mm)가 도메인이 달라 emit_sdf 의 정규화 시 라이저가 한쪽에 압축됨.
-    # 답안 28F 의 raw 라이저 좌표(평면도 mm 도메인)를 차용 + 헤드망 AV 위치로 translate
-    # → 라이저가 헤드망 AV 위쪽에 자연스럽게 배치, 좌표 단위 일치.
+    # 라이저 자체 형상(층별 노드 포함)을 헤드망 크기에 맞춰 균일 스케일 + 헤드망 AV 위치로
+    # translate → 라이저가 헤드망 AV 위쪽에 자연스럽게 배치, 좌표 단위 일치 (28F 하드코딩 제거).
     av_label = str(system_riser.get("av_node_label", "10"))
     head_av_node = next((n for n in head_tables.nodes if n["label"] == av_label), None)
     if head_av_node is None:
         return jsonify({"ok": False,
                         "message": f"헤드망에 AV(label={av_label}) 노드가 없음 — 평면도 추출 다시 확인"}), 500
-    # 좌표 재매핑 — head_av/노드 좌표가 비숫자·누락이면 500+traceback 대신 깔끔한 400.
+    # 좌표 정규화 — head_av/노드 좌표가 비숫자·누락이면 500+traceback 대신 깔끔한 400.
     try:
-        riser = _remap_riser_to_head_av(system_riser, head_av_node, av_label)
+        riser = _remap_riser_to_head_av(system_riser, head_av_node, av_label,
+                                        head_nodes=head_tables.nodes)
     except (KeyError, TypeError, ValueError) as exc:
         return jsonify({"ok": False,
                         "message": f"계통도/헤드망 노드 좌표가 올바르지 않습니다: {exc}"}), 400
@@ -4808,19 +4830,35 @@ def _patch_combined_from_geometry(combined, geom: dict) -> None:
             n["io_node"] = gn["io"]
         if "pressure_pa" in gn:
             n["pressure_pa"] = gn["pressure_pa"]
+        # 층 태그 — 편집본이 값을 실어 보내면 반영(분리 노드가 부모 층 상속 등), None 이면 제거.
+        if "floor" in gn:
+            if gn["floor"] is None:
+                n.pop("floor", None)
+            else:
+                n["floor"] = gn["floor"]
+        if "floor_idx" in gn:
+            if gn["floor_idx"] is None:
+                n.pop("floor_idx", None)
+            else:
+                n["floor_idx"] = int(gn["floor_idx"])
         kept_nodes.append(n)
         seen.add(lbl)
     for lbl, gn in g_nodes.items():
         if lbl in seen:
             continue
-        kept_nodes.append({
+        new_node = {
             "label": lbl,
             "x": int(round(_f(gn.get("x", 0)))),
             "y": int(round(_f(gn.get("y", 0)))),
             "elevation": _f(gn.get("z", 0)),
             "io_node": gn.get("io", "No"),
             "pressure_pa": gn.get("pressure_pa"),
-        })
+        }
+        if gn.get("floor") is not None:
+            new_node["floor"] = gn["floor"]
+        if gn.get("floor_idx") is not None:
+            new_node["floor_idx"] = int(gn["floor_idx"])
+        kept_nodes.append(new_node)
     combined.nodes = kept_nodes
     valid = {str(n.get("label")) for n in combined.nodes}
 

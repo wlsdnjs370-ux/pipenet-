@@ -4261,6 +4261,7 @@ def remote30_combined_build():
     from remote30_full_network import (
         stitch_riser_and_heads, emit_full_sdf,
         prepend_machine_room_to_riser, insert_source_pump,
+        normalize_pipe_bores,
     )
 
     # ── 가압 방식 — "gravity"(자연낙차/고가수조, 기본) | "pump"(펌프 가압).
@@ -4387,6 +4388,14 @@ def remote30_combined_build():
             rated_h = float(pump_spec.get("rated_h") or 100)
             count = int(pump_spec.get("count") or 1)
             insert_source_pump(combined, rated_q_lpm=rated_q, rated_h_m=rated_h, count=count)
+        # ── 내경 정규화: 상류(입상관)→하류(가지) 단조 비증가로 꼬임 해소 + 전 구간 한 치수 승급.
+        #   build 시 1회만 승급(bump_one_size=True). rebuild 는 승급 없이 detangle 만(멱등).
+        try:
+            _bore_ch = normalize_pipe_bores(
+                combined.nodes, combined.pipes, bump_one_size=True)
+            app.logger.info("combined/build: pipe bores normalized (+1 size), changed=%d", _bore_ch)
+        except Exception as _e:
+            app.logger.warning("combined/build: bore normalize skipped: %s", _e)
         job_id = secrets.token_hex(6)
         _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
         out_dir = COMBINED_OUTPUT_DIR / job_id
@@ -4941,12 +4950,18 @@ def remote30_combined_rebuild():
     if not geom.get("nodes") or not geom.get("pipes"):
         return jsonify({"ok": False, "message": "편집된 geometry(nodes/pipes)가 필요합니다"}), 400
 
-    from remote30_full_network import emit_full_sdf
+    from remote30_full_network import emit_full_sdf, normalize_pipe_bores
     try:
         combined = _copy.deepcopy(cache["combined"])
         _patch_combined_from_geometry(combined, geom)
         if not combined.nodes or not combined.pipes:
             return jsonify({"ok": False, "message": "편집 결과 노드/배관이 비어 재출력할 수 없습니다"}), 400
+        # ── 내경 꼬임 해소만(detangle) — 편집 후 상류<하류 역전 방지. 승급(+1)은 build 시 1회뿐이라
+        #    rebuild 에선 제외(멱등). 사용자 수동 편집을 얇게 줄이지 않고 상류만 ≥ 하류로 끌어올림.
+        try:
+            normalize_pipe_bores(combined.nodes, combined.pipes, bump_one_size=False)
+        except Exception as _e:
+            app.logger.warning("combined/rebuild: bore detangle skipped: %s", _e)
 
         new_job = secrets.token_hex(6)
         _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)

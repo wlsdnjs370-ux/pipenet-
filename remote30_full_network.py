@@ -45,6 +45,129 @@ KGF_CM2_TO_PA = 98066.5    # 1 kg/cm² (kgf/cm²) → Pa
 M_TO_PA = 9806.65          # 1 m 수두 → Pa (물 비중 1.0 기준)
 ATM_PA = 101325.0          # 1 기압 (boundary condition)
 
+# 호칭경 사다리 (KS/JIS A 계열, mm) — 오름차순. bore 정규화·한 치수 승급의 기준.
+PIPE_BORE_LADDER_MM = [25, 32, 40, 50, 65, 80, 100, 125, 150, 200]
+
+
+def _snap_bore_to_ladder(bore_mm: float) -> int:
+    """임의 내경(mm)을 사다리의 가장 가까운(단, 미만이면 올림) 호칭경으로 스냅.
+
+    수리 여유를 위해 사다리 값 미만은 바로 위 호칭으로 올린다 (내림 금지).
+    사다리 최대(200)를 넘으면 200 으로 클램프.
+    """
+    b = float(bore_mm)
+    for cand in PIPE_BORE_LADDER_MM:
+        if b <= cand + 1e-6:
+            return cand
+    return PIPE_BORE_LADDER_MM[-1]
+
+
+def _bump_one_size(bore_mm: int) -> int:
+    """사다리에서 한 치수 위 호칭경 반환 (최대치는 유지)."""
+    ladder = PIPE_BORE_LADDER_MM
+    snapped = _snap_bore_to_ladder(bore_mm)
+    idx = ladder.index(snapped)
+    return ladder[min(idx + 1, len(ladder) - 1)]
+
+
+def normalize_pipe_bores(
+    nodes: list[dict],
+    pipes: list[dict],
+    *,
+    bump_one_size: bool = False,
+) -> int:
+    """배관 내경을 트리 상류(입상관)→하류(가지) 단조 비증가로 정규화 (in-place).
+
+    문제: 세그먼트별 최근접-관경 TEXT 매칭은 트리 위치를 모른 채 내경을 배정해,
+    상류가 하류보다 얇아지는 '내경 꼬임'을 일으킨다.
+
+    조치:
+      1) source(io_node="Input")에서 hop 깊이를 BFS 로 계산해 각 파이프의
+         상류(depth 작은 쪽)/하류(depth 큰 쪽) 끝점을 판별.
+      2) 역방향 전파: 각 파이프 내경 = max(자기 내경, 자신이 먹이는 모든 하류
+         파이프 내경) → 상류로 갈수록 굵어짐이 보장 (단조 비증가, outward).
+         절대 얇게 줄이지 않음 (헤드 유량/압력 미달 방지와 일관).
+      3) 사다리(PIPE_BORE_LADDER_MM)로 스냅.
+      4) bump_one_size=True 면 전 구간 한 치수 승급 (build 시 1회만; rebuild 는 False).
+
+    Returns:
+        내경이 바뀐 파이프 수.
+    """
+    if not pipes:
+        return 0
+
+    # 인접: undirected (파이프는 양끝 label). depth 계산용.
+    adj: dict[str, list[str]] = {}
+    for p in pipes:
+        a, b = str(p.get("in")), str(p.get("out"))
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+
+    # source 선정: io_node=="Input" 우선, 없으면 depth 계산 불가 → 첫 파이프 in.
+    source = next((str(n.get("label")) for n in nodes
+                   if str(n.get("io_node", "")).lower() == "input"), None)
+    if source is None or source not in adj:
+        source = str(pipes[0].get("in"))
+
+    # BFS hop-depth (source=0).
+    depth: dict[str, int] = {source: 0}
+    queue = [source]
+    while queue:
+        cur = queue.pop(0)
+        for nb in adj.get(cur, ()):
+            if nb not in depth:
+                depth[nb] = depth[cur] + 1
+                queue.append(nb)
+
+    def _pipe_depth(lbl: str) -> int:
+        return depth.get(str(lbl), 10 ** 9)
+
+    # 각 파이프의 상류(up)/하류(down) 끝점을 depth 로 판별.
+    #   up = depth 작은 끝, down = depth 큰 끝.
+    for p in pipes:
+        a, b = str(p.get("in")), str(p.get("out"))
+        if _pipe_depth(a) <= _pipe_depth(b):
+            p["_up"], p["_down"] = a, b
+        else:
+            p["_up"], p["_down"] = b, a
+
+    # down-node 를 상류 끝으로 갖는 파이프들 = 그 파이프가 먹이는 하류 파이프.
+    feeds: dict[str, list[dict]] = {}
+    for p in pipes:
+        feeds.setdefault(p["_up"], []).append(p)
+
+    # 파이프를 하류(깊은 곳)부터 처리하도록 down-depth 내림차순 정렬 후 전파.
+    order = sorted(pipes, key=lambda p: _pipe_depth(p["_down"]), reverse=True)
+
+    def _cur_bore(p: dict) -> float:
+        try:
+            return float(p.get("dia") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    changed = 0
+    for p in order:
+        own = _cur_bore(p)
+        child_max = 0.0
+        for child in feeds.get(p["_down"], ()):  # p 의 하류 노드에서 뻗는 파이프들
+            child_max = max(child_max, _cur_bore(child))
+        raised = max(own, child_max)
+        snapped = _snap_bore_to_ladder(raised) if raised > 0 else _snap_bore_to_ladder(own)
+        if bump_one_size:
+            snapped = _bump_one_size(snapped)
+        new_val = int(snapped)
+        old_val = int(round(own)) if own else None
+        if new_val != old_val:
+            changed += 1
+        p["dia"] = new_val
+
+    # 임시 키 제거.
+    for p in pipes:
+        p.pop("_up", None)
+        p.pop("_down", None)
+
+    return changed
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Zone 정의

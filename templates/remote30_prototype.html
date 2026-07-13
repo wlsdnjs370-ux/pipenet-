@@ -1479,6 +1479,10 @@
       head_rank_4: null,                // Map<entity, rank> — AV 로부터 거리 순 (.size 필요해 WeakMap 불가)
       // 계통도 동적 추출 — null = 전부, 정수 = 처음 N pipe 까지
       system_revealed_pipes_count: null,
+      // 통합 배관망 순차 등장 — null = 전부, 정수 = source 로부터 BFS 순 처음 N pipe 까지.
+      // combined_reveal_order 는 그 순서(파이프 key "in>out" 배열, geometry 세팅 시 1회 계산).
+      combined_revealed_pipes_count: null,
+      combined_reveal_order: null,
       // 통합 뷰 모드 — "plan"(평면도) | "iso2d"(등각도). 3D 는 setMode("iso") 별도.
       combined_view: "plan",
     };
@@ -1711,6 +1715,18 @@
         state.machineroom_revealed_pipes_count = null; // 전체 표시
         if (state.current_mode === "machineroom") render();
         overlayInfoEl.textContent = `[기계실 완료] 수원 → 입상관 연결점 경로 추출됨`;
+      }},
+
+      // ─── 통합 배관망 순차 등장 (수원/펌프 → 입상관 → 가지 → 헤드 outward) ───
+      cmb_pipe_reveal: { budgetMs: 55, handler: (e) => {
+        state.combined_revealed_pipes_count = e.index + 1;
+        overlayInfoEl.textContent = `[통합] 배관 연결 ${e.index + 1} / ${e.total}`;
+        if (state.current_mode === "combined") render();
+      }},
+      cmb_reveal_done: { budgetMs: 400, handler: () => {
+        state.combined_revealed_pipes_count = null; // 전체 표시로 복귀
+        if (state.current_mode === "combined") render();
+        overlayInfoEl.textContent = `[통합 완료] 배관망 결합됨`;
       }},
     });
 
@@ -4672,6 +4688,33 @@
       }
     };
 
+    // 통합망 순차 등장 순서 — Input(수원/펌프) 에서 BFS. 각 파이프는 두 끝점 중
+    // 더 깊은(먼) 쪽이 처음 도달되는 시점에 등장 → 수원→입상관→가지→헤드로 자라남.
+    // 반환: 파이프 key("in>out") 배열, 등장 순. geometry 세팅 시 1회 계산해 캐시.
+    function _computeCombinedRevealOrder(g0) {
+      if (!g0 || !g0.pipes || !g0.pipes.length) return [];
+      const adj = new Map();
+      const push = (k, v) => { if (!adj.has(k)) adj.set(k, []); adj.get(k).push(v); };
+      for (const p of g0.pipes) { push(p.in, p.out); push(p.out, p.in); }
+      let src = null;
+      for (const n of g0.nodes) { if (n.io === "Input") { src = n.label; break; } }
+      if (src === null) src = g0.pipes[0].in;
+      const depth = new Map([[src, 0]]);
+      const q = [src];
+      while (q.length) {
+        const c = q.shift();
+        for (const nb of (adj.get(c) || [])) {
+          if (!depth.has(nb)) { depth.set(nb, depth.get(c) + 1); q.push(nb); }
+        }
+      }
+      const D = (l) => depth.has(l) ? depth.get(l) : 1e9;
+      // 파이프 등장 rank = 두 끝점 depth 중 큰 값(먼 끝이 닿는 순간). 안정 정렬.
+      return g0.pipes
+        .map((p, i) => ({ key: p.in + ">" + p.out, rank: Math.max(D(p.in), D(p.out)), i }))
+        .sort((a, b) => (a.rank - b.rank) || (a.i - b.i))
+        .map(o => o.key);
+    }
+
     function _renderCombinedMode() {
       const w = canvas.width / state.dpr;
       const h = canvas.height / state.dpr;
@@ -4707,10 +4750,25 @@
       // (m_k → "1", 입상관) 도 기계실 측에 묶어 "기계실이 라이저로 합류한다" 가 보이게 함.
       const mrSet = new Set(g.machine_room_labels || []);
       const pumpLbl = g.pump_junction_label;
+      // 순차 등장 게이트 — combined_revealed_pipes_count 가 정수면 등장 순 처음 N pipe 만.
+      // revealNodeSet = 등장한 파이프의 끝점 + Input(항상 표시) → 헤드 노드도 그때 나타남.
+      let revealPipeSet = null, revealNodeSet = null;
+      if (state.combined_revealed_pipes_count !== null && state.combined_reveal_order) {
+        const _n = state.combined_revealed_pipes_count;
+        revealPipeSet = new Set(state.combined_reveal_order.slice(0, _n));
+        revealNodeSet = new Set();
+        for (const nd of g.nodes) if (nd.io === "Input") revealNodeSet.add(nd.label);
+        for (const p of g.pipes) {
+          if (revealPipeSet.has(p.in + ">" + p.out)) {
+            revealNodeSet.add(p.in); revealNodeSet.add(p.out);
+          }
+        }
+      }
       const riserPairs = [], headPairs = [], mrPairs = [];
       for (const p of g.pipes) {
         const a = nodeMap.get(p.in), b = nodeMap.get(p.out);
         if (!a || !b) continue;
+        if (revealPipeSet && !revealPipeSet.has(p.in + ">" + p.out)) continue;
         const isMR = mrSet.has(p.in) || mrSet.has(p.out);
         const isRiser = riserSet.has(p.in) || riserSet.has(p.out);
         (isMR ? mrPairs : isRiser ? riserPairs : headPairs).push({a, b});
@@ -4718,7 +4776,7 @@
       // 기계실 전체 SP 배관망 (평면도 형상) — 수리경로 spine 뿐 아니라 전 배관을
       // 실제 x,y 로 렌더. plan_edges 는 mr 노드와 동일 변환된 좌표계 [x1,y1,x2,y2].
       // 가는 초록선으로 먼저 깔고, 그 위에 spine(mrPairs)을 굵게 덮어 경로를 강조.
-      const planEdges = g.machine_room_plan_edges || [];
+      const planEdges = revealPipeSet ? [] : (g.machine_room_plan_edges || []);
       if (planEdges.length) {
         ctx.save();
         ctx.strokeStyle = GRAPH_STYLE.color_pump_extra;
@@ -4757,6 +4815,7 @@
         for (const lbl of g.head_labels) {
           const n = nodeMap.get(lbl);
           if (!n) continue;
+          if (revealNodeSet && !revealNodeSet.has(lbl)) continue;
           const [sx, sy] = toScreen(n.x, n.y, n.z);
           const ty = sy + _dyPx;
           ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, ty); ctx.stroke();
@@ -4772,6 +4831,7 @@
       //     삽입되는 FP 요소(아래 g.pumps 로 별도 렌더)다. 이 노드는 기계실 배관이 라이저로
       //     합류하는 입상 시작점이라 "라이저 시작"으로 표기해 펌프 중복 착시를 없앤다.
       for (const n of g.nodes) {
+        if (revealNodeSet && !revealNodeSet.has(n.label)) continue;
         const [sx, sy] = toScreen(n.x, n.y, n.z);
         const isAV = (n.label === g.av_node_label);
         const isInput = (n.io === "Input");
@@ -6542,10 +6602,27 @@
         // 통합 배관망 캔버스 시각화 — geometry 저장 + 통합 모드로 캔버스 redraw
         if (data.geometry) {
           state.combined_geometry = data.geometry;
-          state.view.fitMode = null;  // 새 geometry → 다음 render 에서 자동 fit
-          render();
+          state.combined_reveal_order = _computeCombinedRevealOrder(data.geometry);
+          state.view.fitMode = null;  // 새 geometry → 다음 render 에서 자동 fit(전체 bbox)
+          // ── 순차 등장 애니메이션 — 수원/펌프 → 입상관 → 가지 → 헤드 outward.
+          //   iso/3D 모드에선 스킵(평면 전용 이펙트). 큐가 combined_revealed_pipes_count 를
+          //   증가시키며 프레임마다 render. 파이프 끝점 노드(헤드 포함)도 함께 등장.
+          //   fit 은 전체 노드 bbox 로 잡히므로(reveal 게이트와 무관) 화면이 튀지 않는다.
+          const _order = state.combined_reveal_order || [];
+          const _animate = (state.current_mode === "combined" && _order.length > 1);
+          state.combined_revealed_pipes_count = _animate ? 0 : null;
+          render();  // count=0 → 첫 프레임은 수원만, count=null → 전체
           // 통합 결과 도착 → 좌측 상단 뷰 전환 버튼 노출
           if (typeof _syncViewSwitch === "function") _syncViewSwitch();
+          if (_animate) {
+            const _total = _order.length;
+            // 총 ~3.5s 목표: 파이프당 budget = clamp(3500/N, 25ms, 90ms).
+            const _pbud = Math.max(25, Math.min(90, Math.round(3500 / _total)));
+            for (let i = 0; i < _total; i++) {
+              animQueue.enqueue({ type: "cmb_pipe_reveal", index: i, total: _total, _budgetMs: _pbud });
+            }
+            animQueue.enqueue({ type: "cmb_reveal_done" });
+          }
           // 현재 iso 모드 라면 새 geometry 반영
           if (state.current_mode === "iso" && typeof IsoViewer !== "undefined") {
             IsoViewer.loadGeometry(state.combined_geometry);
@@ -6581,6 +6658,8 @@
             return;
           }
           state.combined_geometry = data.geometry;
+          state.combined_revealed_pipes_count = null;  // 불러오기는 순차 등장 없이 전체 표시
+          state.combined_reveal_order = null;
           state.combinedBuild = null;   // 불러온 망은 export 빌드 결과가 아님(다운로드 비활성)
           state.preview_fmt = null;     // 미리보기는 빌드 job 이 있어야 함 → 해제
           state._liveGeometry = null;

@@ -4261,7 +4261,7 @@ def remote30_combined_build():
     from remote30_full_network import (
         stitch_riser_and_heads, emit_full_sdf,
         prepend_machine_room_to_riser, insert_source_pump,
-        normalize_pipe_bores,
+        normalize_pipe_bores, size_pipes_by_velocity,
     )
 
     # ── 가압 방식 — "gravity"(자연낙차/고가수조, 기본) | "pump"(펌프 가압).
@@ -4396,6 +4396,18 @@ def remote30_combined_build():
             app.logger.info("combined/build: pipe bores normalized (+1 size), changed=%d", _bore_ch)
         except Exception as _e:
             app.logger.warning("combined/build: bore normalize skipped: %s", _e)
+        # ── 유속 상한(≤50A 6 m/s, ≥65A 10 m/s) 보장: 과토출 대비 safety 여유를 두고
+        #   유량 기준 최소 내경으로 승급(never-shrink). 정규화 뒤에 두어 승급분을 보존.
+        try:
+            _vel = size_pipes_by_velocity(
+                combined.nodes, combined.pipes, combined.nozzles,
+                safety=1.2, keep_existing=True)
+            app.logger.info(
+                "combined/build: velocity sizing changed=%d, max v %.2f->%.2f, viol %d->%d",
+                _vel["changed"], _vel["max_velocity_before"], _vel["max_velocity_after"],
+                _vel["violations_before"], _vel["violations_after"])
+        except Exception as _e:
+            app.logger.warning("combined/build: velocity sizing skipped: %s", _e)
         job_id = secrets.token_hex(6)
         _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
         out_dir = COMBINED_OUTPUT_DIR / job_id
@@ -4950,7 +4962,7 @@ def remote30_combined_rebuild():
     if not geom.get("nodes") or not geom.get("pipes"):
         return jsonify({"ok": False, "message": "편집된 geometry(nodes/pipes)가 필요합니다"}), 400
 
-    from remote30_full_network import emit_full_sdf, normalize_pipe_bores
+    from remote30_full_network import emit_full_sdf, normalize_pipe_bores, size_pipes_by_velocity
     try:
         combined = _copy.deepcopy(cache["combined"])
         _patch_combined_from_geometry(combined, geom)
@@ -4962,6 +4974,16 @@ def remote30_combined_rebuild():
             normalize_pipe_bores(combined.nodes, combined.pipes, bump_one_size=False)
         except Exception as _e:
             app.logger.warning("combined/rebuild: bore detangle skipped: %s", _e)
+        # ── 유속 상한 보장(멱등, never-shrink): 편집으로 얇아진 구간이 유속 초과면 최소 내경으로 승급.
+        try:
+            _vel = size_pipes_by_velocity(
+                combined.nodes, combined.pipes, combined.nozzles,
+                safety=1.2, keep_existing=True)
+            app.logger.info(
+                "combined/rebuild: velocity sizing changed=%d, viol %d->%d",
+                _vel["changed"], _vel["violations_before"], _vel["violations_after"])
+        except Exception as _e:
+            app.logger.warning("combined/rebuild: velocity sizing skipped: %s", _e)
 
         new_job = secrets.token_hex(6)
         _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)

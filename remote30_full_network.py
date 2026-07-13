@@ -70,6 +70,40 @@ def _bump_one_size(bore_mm: int) -> int:
     return ladder[min(idx + 1, len(ladder) - 1)]
 
 
+# ── 유속(velocity) 기준 ─────────────────────────────────────────────────────
+# PIPENET/KFI 는 각 호칭경마다 허용 유속 상한을 두고 초과 시 경고한다. 답안 SDF 의
+# <Pipe-type> 이 그대로 쓰는 값: 50A 이하 = 6 m/s, 65A 이상 = 10 m/s
+# (스프링클러 화재안전기준: 가지배관 6 m/s·그 밖 배관 10 m/s 와 부합. 소형관=가지).
+_PI_OVER_4 = 0.7853981633974483
+
+
+def _velocity_limit_mps(dia_mm: float) -> float:
+    """호칭경별 허용 유속 상한 (m/s). ≤50A → 6, ≥65A → 10."""
+    return 6.0 if dia_mm <= 50 else 10.0
+
+
+def _pipe_velocity_mps(flow_lpm: float, dia_mm: float) -> float:
+    """유량(L/min)·내경(mm)에서 평균 유속(m/s). v = Q/A."""
+    if dia_mm <= 0:
+        return float("inf")
+    q_m3s = float(flow_lpm) / 60000.0        # L/min → m³/s
+    area = _PI_OVER_4 * (dia_mm / 1000.0) ** 2  # m²
+    return q_m3s / area if area > 0 else float("inf")
+
+
+def _smallest_bore_for_velocity(flow_lpm: float, safety: float = 1.0) -> int:
+    """주어진 유량에서 유속 상한을 만족하는 사다리 최소 호칭경(mm).
+
+    safety>1 이면 유량을 그만큼 부풀려(계산 후 과토출 여유) 더 굵게 잡는다.
+    사다리 최대(200A)로도 상한을 못 맞추면 200 반환(그 이상 호칭 없음).
+    """
+    q = float(flow_lpm) * float(safety)
+    for d in PIPE_BORE_LADDER_MM:
+        if _pipe_velocity_mps(q, d) <= _velocity_limit_mps(d):
+            return d
+    return PIPE_BORE_LADDER_MM[-1]
+
+
 def normalize_pipe_bores(
     nodes: list[dict],
     pipes: list[dict],
@@ -167,6 +201,145 @@ def normalize_pipe_bores(
         p.pop("_down", None)
 
     return changed
+
+
+def size_pipes_by_velocity(
+    nodes: list[dict],
+    pipes: list[dict],
+    nozzles: list[dict],
+    *,
+    safety: float = 1.2,
+    keep_existing: bool = True,
+) -> dict:
+    """헤드 유량을 누적해 각 배관을 유속 상한 이하가 되는 내경으로 사이즈 (in-place).
+
+    PIPENET 이 뱉는 "유속 초과" 경고는 각 배관의 계산 유속이 그 호칭경의 허용
+    상한(≤50A 6 m/s, ≥65A 10 m/s)을 넘을 때 뜬다. 이를 근본적으로 없애려면
+    배관마다 통과 유량에 맞는 내경을 골라야 한다.
+
+    알고리즘:
+      1) nozzle(헤드) 설계유량을 부착 노드에 매핑 (기본 80 L/min/헤드).
+      2) source(io_node="Input")에서 BFS 깊이 → 각 배관의 상류/하류 판별.
+      3) 하류→상류 누적: 배관 통과유량 = 그 배관 하류의 모든 헤드 유량 합.
+      4) 배관별 최소 호칭경 = 유속(유량×safety, d) ≤ 상한(d) 을 만족하는 사다리 최솟값.
+      5) keep_existing=True 면 기존 내경 미만으로 줄이지 않음(헤드 압력 여유 보존).
+      6) 상류≥하류 단조 비증가 강제(내경 꼬임 동시 해소).
+
+    Args:
+        safety: 계산 후 과토출(설계유량 초과) 대비 유량 할증. 1.2 = +20% 여유.
+        keep_existing: 현재 내경보다 작아지지 않게(never-shrink).
+
+    Returns:
+        {"changed": 변경 배관 수, "max_velocity_before": .., "max_velocity_after": ..,
+         "violations_before": .., "violations_after": ..} — 유속 검증 요약(safety 미적용 원유량 기준).
+    """
+    if not pipes:
+        return {"changed": 0, "max_velocity_before": 0.0, "max_velocity_after": 0.0,
+                "violations_before": 0, "violations_after": 0}
+
+    # 1) 헤드 유량 맵 (노드 라벨 → L/min 합).
+    head_flow: dict[str, float] = {}
+    for nz in (nozzles or []):
+        node = str(nz.get("in") or nz.get("input_node") or nz.get("input") or "")
+        if not node:
+            continue
+        try:
+            q = float(nz.get("flow_lmin", nz.get("flow_lpm", 80.0)) or 80.0)
+        except (TypeError, ValueError):
+            q = 80.0
+        head_flow[node] = head_flow.get(node, 0.0) + q
+
+    # 2) 인접 + BFS 깊이.
+    adj: dict[str, list[str]] = {}
+    for p in pipes:
+        a, b = str(p.get("in")), str(p.get("out"))
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+    source = next((str(n.get("label")) for n in nodes
+                   if str(n.get("io_node", "")).lower() == "input"), None)
+    if source is None or source not in adj:
+        source = str(pipes[0].get("in"))
+    depth: dict[str, int] = {source: 0}
+    queue = [source]
+    while queue:
+        cur = queue.pop(0)
+        for nb in adj.get(cur, ()):
+            if nb not in depth:
+                depth[nb] = depth[cur] + 1
+                queue.append(nb)
+
+    def _d(lbl: str) -> int:
+        return depth.get(str(lbl), 10 ** 9)
+
+    for p in pipes:
+        a, b = str(p.get("in")), str(p.get("out"))
+        if _d(a) <= _d(b):
+            p["_up"], p["_down"] = a, b
+        else:
+            p["_up"], p["_down"] = b, a
+
+    # 3) 하류부터 유량 누적. subtree[node] = 그 노드 아래(자신 포함) 헤드 유량 합.
+    subtree: dict[str, float] = dict(head_flow)
+    order = sorted(pipes, key=lambda p: _d(p["_down"]), reverse=True)
+    pipe_flow: dict[int, float] = {}
+    for p in order:
+        dn = p["_down"]
+        pipe_flow[id(p)] = subtree.get(dn, 0.0)
+        up = p["_up"]
+        subtree[up] = subtree.get(up, 0.0) + subtree.get(dn, 0.0)
+
+    def _cur(p: dict) -> float:
+        try:
+            return float(p.get("dia") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    # 유속 검증 요약(원유량 기준, safety 미적용) — before.
+    def _summarize(getdia) -> tuple[float, int]:
+        mx, viol = 0.0, 0
+        for p in pipes:
+            q = pipe_flow.get(id(p), 0.0)
+            d = getdia(p)
+            v = _pipe_velocity_mps(q, d)
+            if v > mx and v != float("inf"):
+                mx = v
+            if d > 0 and v > _velocity_limit_mps(d) + 1e-9:
+                viol += 1
+        return mx, viol
+    mv_before, vio_before = _summarize(_cur)
+
+    # 4~6) 배관별 유속 최소경 → never-shrink → 단조 비증가(하류부터).
+    feeds: dict[str, list[dict]] = {}
+    for p in pipes:
+        feeds.setdefault(p["_up"], []).append(p)
+
+    changed = 0
+    for p in order:
+        q = pipe_flow.get(id(p), 0.0)
+        vsize = _smallest_bore_for_velocity(q, safety)
+        base = vsize
+        if keep_existing:
+            base = max(base, _snap_bore_to_ladder(_cur(p)) if _cur(p) > 0 else vsize)
+        child_max = 0.0
+        for child in feeds.get(p["_down"], ()):  # 이미 사이즈된 하류 배관들
+            child_max = max(child_max, _cur(child))
+        new_val = int(_snap_bore_to_ladder(max(base, child_max)))
+        old_val = int(round(_cur(p))) if _cur(p) else None
+        if new_val != old_val:
+            changed += 1
+        p["dia"] = new_val
+
+    mv_after, vio_after = _summarize(_cur)
+
+    for p in pipes:
+        p.pop("_up", None)
+        p.pop("_down", None)
+
+    return {"changed": changed,
+            "max_velocity_before": round(mv_before, 2),
+            "max_velocity_after": round(mv_after, 2),
+            "violations_before": vio_before,
+            "violations_after": vio_after}
 
 
 # ────────────────────────────────────────────────────────────────────────────

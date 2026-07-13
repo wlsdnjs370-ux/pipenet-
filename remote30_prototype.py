@@ -146,10 +146,10 @@ def _categorize_layer(name: str) -> str:
             return "ARCH"
         return "OTHER"
     s = Remote30Settings()
+    # 콘텐츠(HEAD/ALARM/PIPE/TEXT) 신호가 ARCH 를 이긴다. EXCLUDE 만 최우선.
+    # arch-first 였을 때 "SHEET-TEXT" 등 콘텐츠 레이어가 건축으로 흡수되던 오류 방지.
     if layer_match(name, s.exclude_layer_keywords):
         return "EXCLUDE"
-    if layer_match(name, s.arch_layer_keywords):
-        return "ARCH"
     if layer_match(name, s.head_layer_keywords):
         return "HEAD"
     # ALARM 검사를 PIPE 보다 먼저 — "RISER" 가 "SP" 와 겹치지 않지만 우선순위 명시
@@ -159,6 +159,8 @@ def _categorize_layer(name: str) -> str:
         return "PIPE"
     if layer_match(name, s.text_layer_keywords):
         return "TEXT"
+    if layer_match(name, s.arch_layer_keywords):
+        return "ARCH"
     return "OTHER"
 
 

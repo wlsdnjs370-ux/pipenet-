@@ -114,9 +114,55 @@ class Remote30Settings:
 # =========================
 # 기본 유틸
 # =========================
+# 스크립트 전환(라틴/한글/숫자) 경계에서도 분리 → "SP배관" → ["SP","배관"],
+# "소화기CO2" → ["소화기","CO2"]. 도면 레이어명은 구분자 없이 한/영/숫자를
+# 붙여 쓰는 경우가 흔해(예: "소화(SP헤드)"), 이 분리가 없으면 "SP" 를 못 찾는다.
+_LAYER_TOKEN_RE = re.compile(r"[0-9]+|[A-Z]+|[가-힣]+")
+_KW_NON_TOKEN_RE = re.compile(r"[^0-9A-Z가-힣]")
+
+
+def _layer_tokens(name_upper: str):
+    return _LAYER_TOKEN_RE.findall(name_upper)
+
+
 def layer_match(layer_name, keywords):
-    layer_upper = str(layer_name).upper()
-    return any(k.upper() in layer_upper for k in keywords)
+    """레이어명이 키워드군에 속하는지 판정 (경계 인식).
+
+    naive substring 매칭은 짧은 키워드가 무관한 레이어를 삼키는 오분류를 낳는다
+    (예: PIPE "SP" 가 "A-SPACE"/"TRANSPARENT" 를, ALARM "AV" 가 "WAVE" 를 매칭).
+    규칙:
+      - 구분자 포함 키워드("A-", "SP-H", "ALARM_VALVE" 등) → substring 유지
+        (구분자 자체가 특이성을 주므로 안전, 기존 동작 보존).
+      - 순수 4글자 이상 키워드 → substring 유지 (SPRINKLER/WALL/RISER/소화기 등).
+      - 순수 3글자 이하 키워드 → 토큰 경계 매칭. 토큰이 키워드와 같거나,
+        키워드+숫자접미사(SP→SP1)거나, 토큰이 짧아(≤4자) 키워드를 포함(HSP/LSP⊃SP).
+        이러면 "SP1/SP-2/HSP/LSP/SP배관" 은 잡고 "SPACE/TRANSPARENT" 는 거른다.
+    """
+    name = str(layer_name).upper()
+    name_tokens = None
+    for k in keywords:
+        ku = str(k).upper()
+        if not ku:
+            continue
+        if _KW_NON_TOKEN_RE.search(ku) or len(ku) >= 4:
+            if ku in name:
+                return True
+            continue
+        if name_tokens is None:
+            name_tokens = _layer_tokens(name)
+        k_tokens = _layer_tokens(ku)
+        if not k_tokens:
+            continue
+        if len(k_tokens) == 1:
+            k1 = k_tokens[0]
+            for t in name_tokens:
+                if (t == k1
+                        or (t.startswith(k1) and t[len(k1):].isdigit())
+                        or (len(t) <= 4 and k1 in t)):
+                    return True
+        elif all(t in name_tokens for t in k_tokens):
+            return True
+    return False
 
 
 def _in_bbox(xy, bbox):
@@ -139,11 +185,11 @@ def _get_line_entities(msp, settings: Remote30Settings):
     bbox = settings.zone_bbox
     for e in msp:
         layer = e.dxf.layer if hasattr(e.dxf, "layer") else ""
-        if layer_match(layer, settings.arch_layer_keywords):
+        # pipe 신호가 arch 를 이긴다: 배관 레이어면 arch 키워드와 겹쳐도 유지.
+        # (arch-first 였을 때 "SP-SHEET" 류 배관 레이어가 통째로 버려지는 정리 오류.)
+        if not layer_match(layer, settings.pipe_layer_keywords):
             continue
         if layer_match(layer, settings.exclude_layer_keywords):
-            continue
-        if not layer_match(layer, settings.pipe_layer_keywords):
             continue
 
         etype = e.dxftype()
@@ -227,11 +273,10 @@ def _collect_supplementary_segments(msp, base_segments, text_items, settings: Re
             if e.dxftype() != "INSERT":
                 continue
             layer = e.dxf.layer if hasattr(e.dxf, "layer") else ""
-            if layer_match(layer, settings.exclude_layer_keywords):
-                continue
-            if layer_match(layer, settings.arch_layer_keywords):
-                continue
+            # pipe 신호 우선: 배관 레이어 INSERT 는 arch 겹쳐도 분해 대상.
             if not layer_match(layer, settings.pipe_layer_keywords):
+                continue
+            if layer_match(layer, settings.exclude_layer_keywords):
                 continue
             new_segs = _explode_insert_to_segments(e, settings)
             extra.extend(new_segs)
@@ -446,7 +491,10 @@ def _get_text_entities(msp, settings: Remote30Settings):
         if etype not in ["TEXT", "MTEXT"]:
             continue
         layer = e.dxf.layer if hasattr(e.dxf, "layer") else ""
-        if layer_match(layer, settings.arch_layer_keywords):
+        # text 신호가 arch 를 이긴다: 관경/TEXT 레이어면 arch 키워드 겹쳐도 유지.
+        # (예: "SHEET-TEXT" 레이어의 관경 TEXT 가 arch 로 버려지던 정리 오류.)
+        if layer_match(layer, settings.arch_layer_keywords) \
+                and not layer_match(layer, settings.text_layer_keywords):
             continue
 
         raw = e.dxf.text if etype == "TEXT" else e.text

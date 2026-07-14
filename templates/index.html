@@ -3,45 +3,560 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>HB Fire Fighting System Design</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260520-wb1">
+    <title>FNCADnet</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fonts/fonts.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=20260714-neural">
+    <!-- ?view=… 직접 진입 시 — app.js 로딩 전 home UI 깜박임 차단 -->
+    <script>
+      (function () {
+        try {
+          var v = new URLSearchParams(window.location.search).get("view");
+          if (v === "validation") document.documentElement.classList.add("entering-validation");
+        } catch (e) {}
+      })();
+    </script>
     <style>
-      /* 모듈 진입 후엔 상단 헤더 카드(브랜드 + Logout) 숨김 */
+      /* ?view=validation 직접 진입 시 home 깜박임 방지 — 단, #home-nav-btn 은 제외
+         (app.js 가 isHome 여부로 hidden 클래스 토글하여 모듈 내에서 보이도록 함) */
+      html.entering-validation .app-header,
+      html.entering-validation #home-panel,
+      html.entering-validation .workflow-svg { display: none !important; }
+      html.entering-validation .app-shell { padding-top: 0 !important; }
+    </style>
+    <style>
+      /* ─── 디자인 시스템 토큰 (FNCADnet — monochrome: 흑/백/짙은 네이비) ─── */
+      :root {
+        --c-navy: #0a1228;          /* 아주 짙은 네이비 */
+        --c-navy-light: #1a2548;    /* 동일계열, 호버용 */
+        --c-bg: #ffffff;
+        --c-surface: #ffffff;
+        --c-surface-soft: #fafbfc;
+        --c-border: #e2e8f0;
+        --c-border-strong: #cbd5e1;
+        --c-text: #000000;
+        --c-text-secondary: #0a1228;
+        --c-muted: #6b7280;
+        --c-accent: #0a1228;
+        --c-accent-hover: #000000;
+        --c-accent-soft: #ffffff;
+        --c-violet: #0a1228;
+        --c-cyan: #0a1228;
+        --c-emerald: #0a1228;
+        --c-amber: #0a1228;
+        --c-rose: #000000;
+
+        --grad-brand: var(--c-navy);
+        --grad-soft-bg: #ffffff;
+
+        /* 각진 직사각형 — 모든 radius 0 (border 는 얇은 슬레이트로 부드럽게) */
+        --r-sm: 0;
+        --r-md: 0;
+        --r-lg: 0;
+        --r-xl: 0;
+
+        /* shadow — 원복, 색상은 무채색이라 그대로 유지 가능 */
+        --sh-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+        --sh-md: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+        --sh-lg: 0 4px 12px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+        --sh-xl: 0 12px 32px -6px rgba(15, 23, 42, 0.10), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
+        --sh-glow: 0 4px 24px -4px rgba(10, 18, 40, 0.22);
+
+        --tr-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+        --tr: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+
+        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+      }
+
+      html, body {
+        font-family: var(--font-sans) !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        color: var(--c-text);
+        background: var(--c-bg);
+        letter-spacing: -0.005em;
+      }
+
+      /* ─── 헤더 (홈 화면 전용) ─── */
+      .app-header.header.card {
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-lg);
+        padding: 14px 20px;
+        box-shadow: var(--sh-sm);
+      }
+      .app-header .header-top {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 16px;
+      }
+      .app-header h1 {
+        margin: 0;
+        font-size: 1.1rem; font-weight: 700;
+        letter-spacing: -0.02em;
+        display: flex; align-items: center; gap: 10px;
+      }
+      .app-header h1::before {
+        content: '';
+        width: 28px; height: 28px;
+        border-radius: 0;
+        background-color: #0a1228;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M3 12h4l3-9 4 18 3-9h4'/></svg>");
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: 18px 18px;
+        box-shadow: 0 3px 10px -2px rgba(10, 18, 40, 0.40);
+      }
+      .app-header h1 .brand-name {
+        background: none;
+        -webkit-background-clip: initial; background-clip: initial;
+        -webkit-text-fill-color: #000000;
+        color: #000000;
+      }
+      .app-header .criteria-btn {
+        background: var(--c-surface) !important;
+        color: var(--c-text-secondary) !important;
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-md);
+        padding: 7px 12px;
+        font-size: 0.82rem; font-weight: 500;
+        transition: all var(--tr);
+        font-family: inherit;
+        letter-spacing: 0.005em;
+      }
+      .app-header .criteria-btn:hover {
+        background: var(--c-surface-soft) !important;
+        border-color: var(--c-rose) !important;
+        color: var(--c-rose) !important;
+      }
+
+      /* ─── 홈 패널 (워크플로우 + 모듈 카드) ─── */
+      #home-panel.home-panel.card {
+        background: transparent;
+        border: 0;
+        padding: 0;
+        box-shadow: none;
+        display: grid;
+        gap: 14px;
+      }
+
+      /* ─── 워크플로우 컨테이너 ─── */
+      .workflow-svg {
+        width: 100%; height: auto; max-height: 540px; display: block;
+        margin: 0;
+        background:
+          radial-gradient(ellipse at 18% 25%, rgba(82, 120, 189, 0.12) 0, transparent 42%),
+          radial-gradient(ellipse at 82% 75%, rgba(45, 73, 133, 0.10) 0, transparent 45%),
+          radial-gradient(ellipse at 50% 50%, rgba(26, 46, 92, 0.04) 0, transparent 60%),
+          linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-xl);
+        padding: 4px 10px;
+        box-sizing: border-box;
+        box-shadow: var(--sh-lg);
+        position: relative;
+        overflow: hidden;
+      }
+      .workflow-svg::before {
+        content: ''; position: absolute; inset: 0;
+        background:
+          linear-gradient(rgba(82, 120, 189, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(82, 120, 189, 0.045) 1px, transparent 1px);
+        background-size: 36px 36px;
+        mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, transparent 72%);
+        -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, transparent 72%);
+        pointer-events: none;
+        z-index: 0;
+      }
+      .workflow-svg svg { position: relative; z-index: 1; }
+
+      /* ─── 모듈 카드 (.home-module-btn 재정의) ─── */
+      .home-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px !important;
+      }
+      .home-module-btn {
+        position: relative;
+        background: #ffffff;
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-lg);
+        padding: 22px 22px 20px !important;
+        min-height: auto !important;
+        text-align: left;
+        cursor: pointer;
+        transition: all var(--tr);
+        display: flex !important;
+        flex-direction: column;
+        gap: 10px;
+        font-family: var(--font-sans) !important;
+        color: var(--c-text) !important;
+        box-shadow: var(--sh-sm);
+        overflow: hidden;
+        text-decoration: none;
+        -webkit-appearance: none;
+      }
+      a.home-module-btn, a.home-module-btn:visited { color: var(--c-text) !important; text-decoration: none; }
+      a.home-module-btn:focus-visible { outline: 3px solid rgba(10, 18, 40, 0.30); outline-offset: 2px; }
+      .home-module-btn::before {
+        content: ''; position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: #0a1228;
+        opacity: 0;
+        transition: opacity var(--tr);
+      }
+      .home-module-btn::after {
+        content: '→';
+        position: absolute;
+        top: 22px; right: 22px;
+        font-size: 1rem; line-height: 1;
+        color: var(--c-muted);
+        transition: all var(--tr);
+      }
+      .home-module-btn:hover {
+        border-color: #0a1228;
+        transform: translateY(-2px);
+        box-shadow: var(--sh-xl), var(--sh-glow);
+      }
+      .home-module-btn:hover::before { opacity: 1; }
+      .home-module-btn:hover::after { color: #0a1228; transform: translateX(4px); }
+      .home-module-btn:active { transform: translateY(-1px); }
+
+      .home-module-btn .module-chip {
+        display: inline-flex; align-items: center; gap: 6px;
+        align-self: flex-start;
+        font-size: 0.68rem !important; font-weight: 700;
+        letter-spacing: 0.16em;
+        color: #ffffff !important;
+        background: #0a1228;
+        padding: 4px 10px;
+        border-radius: 0;
+        text-transform: uppercase;
+        line-height: 1.2 !important;
+        margin: 0 !important;
+      }
+      .home-module-btn .module-chip::before {
+        content: ''; width: 6px; height: 6px;
+        border-radius: 0;
+        background: #ffffff;
+        box-shadow: none;
+      }
+      .home-module-btn strong {
+        font-size: 1.05rem !important;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--c-text);
+        line-height: 1.3;
+        padding-right: 28px;
+      }
+      .home-module-btn span {
+        font-size: 0.85rem !important;
+        line-height: 1.55 !important;
+        color: var(--c-text-secondary) !important;
+        margin-top: 2px;
+      }
+      /* ─── 모듈 진입 후엔 상단 헤더 카드 숨김 ─── */
       .app-shell:not(.home-mode) .app-header { display: none; }
 
-      /* 모듈 진입 시 좌상단에 떠있는 "처음으로" 버튼 */
+      /* ─── 플로팅 "처음으로" 버튼 (모듈 진입 시) ─── */
       #home-nav-btn.float-back-btn {
         position: fixed;
-        top: 14px;
-        left: 16px;
+        top: 14px; left: 16px;
         z-index: 1000;
-        padding: 8px 14px 8px 11px;
-        background: rgba(15, 23, 42, 0.92);
-        color: #f1f5f9;
-        border: 1px solid #334155;
-        border-radius: 8px;
-        font-size: 0.86rem;
+        padding: 8px 14px 8px 12px;
+        background: rgba(10, 18, 40, 0.85);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0;
+        font-size: 0.82rem;
         font-weight: 600;
+        font-family: var(--font-sans);
         cursor: pointer;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.22);
-        backdrop-filter: blur(8px);
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        font-family: inherit;
+        box-shadow: 0 6px 20px -4px rgba(10, 18, 40, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(14px) saturate(1.4);
+        -webkit-backdrop-filter: blur(14px) saturate(1.4);
+        display: inline-flex; align-items: center; gap: 7px;
         letter-spacing: 0.01em;
-        transition: transform 0.12s ease, background 0.12s ease;
+        transition: all var(--tr);
       }
-      #home-nav-btn.float-back-btn:hover { background: #1e293b; transform: translateY(-1px); }
-      #home-nav-btn.float-back-btn::before { content: "←"; font-size: 1rem; line-height: 1; opacity: 0.9; }
+      #home-nav-btn.float-back-btn:hover {
+        background: rgba(0, 0, 0, 0.92);
+        transform: translateY(-1px);
+        box-shadow: 0 10px 28px -4px rgba(10, 18, 40, 0.50);
+      }
+      #home-nav-btn.float-back-btn::before { content: "←"; font-size: 0.95rem; line-height: 1; opacity: 0.85; }
       #home-nav-btn.float-back-btn.hidden { display: none !important; }
 
-      /* iframe 모듈 진입 시 — 외부 페이지 스크롤바 + iframe 자체 스크롤바 제거 */
-      /* 사이드바 안쪽 스크롤바 하나만 남도록 통일 */
+      /* ─── 통합 검증 모듈 카드 정렬 (좌우상하 대칭) ─── */
+      /* 공통 카드 surface 통일 */
+      .app-shell.validation-suite-mode .card.menu-panel,
+      .app-shell.validation-suite-mode .validation-upload-card,
+      .app-shell.validation-suite-mode #summary {
+        background: var(--c-surface) !important;
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-lg) !important;
+        box-shadow: var(--sh-sm) !important;
+        padding: 20px 22px !important;
+        margin-bottom: 14px;
+      }
+
+      /* validation-nav (5개 탭 버튼 행) */
+      .app-shell.validation-suite-mode .validation-nav.card {
+        background: var(--c-surface) !important;
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-lg) !important;
+        box-shadow: var(--sh-sm) !important;
+        padding: 8px !important;
+        margin-bottom: 14px;
+      }
+      .app-shell.validation-suite-mode .validation-nav .validation-nav-row {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 4px;
+      }
+      .app-shell.validation-suite-mode .validation-nav .suite-btn {
+        background: transparent;
+        border: 0;
+        padding: 9px 12px;
+        border-radius: 7px;
+        font-size: 0.83rem;
+        font-weight: 500;
+        color: var(--c-text-secondary);
+        font-family: var(--font-sans);
+        cursor: pointer;
+        transition: all var(--tr);
+        letter-spacing: -0.005em;
+      }
+      .app-shell.validation-suite-mode .validation-nav .suite-btn:hover {
+        background: var(--c-surface-soft);
+        color: var(--c-text);
+      }
+      .app-shell.validation-suite-mode .validation-nav .suite-btn.active {
+        background: var(--c-accent);
+        color: #fff;
+        box-shadow: 0 1px 3px rgba(79, 70, 229, 0.30);
+        font-weight: 600;
+      }
+
+      /* 업로드 카드 — 결과서·SDF 두 칸이 아래 workspace 와 동일한 1:1 카드 비율,
+         "검증 실행" 버튼은 두 카드 아래로 별도 행 배치 */
+      .app-shell.validation-suite-mode .validation-upload-card .upload-form {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: stretch;
+      }
+      .app-shell.validation-suite-mode .validation-upload-card .field {
+        background: var(--c-surface-soft);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-md);
+        padding: 16px;
+        display: flex; flex-direction: column; gap: 10px;
+        min-width: 0;
+      }
+      .app-shell.validation-suite-mode .validation-upload-card .field label {
+        font-size: 0.85rem; font-weight: 700;
+        color: var(--c-text);
+        letter-spacing: -0.005em;
+      }
+      .app-shell.validation-suite-mode .validation-upload-card .field input {
+        padding: 9px 12px;
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-md);
+        background: var(--c-surface);
+        font-size: 0.85rem;
+        font-family: var(--font-sans);
+        transition: all var(--tr);
+        margin-top: auto;
+      }
+      .app-shell.validation-suite-mode .validation-upload-card .field input:hover { border-color: var(--c-border-strong); }
+      .app-shell.validation-suite-mode .validation-upload-card .field input:focus {
+        outline: none;
+        border-color: var(--c-accent);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+      }
+      .app-shell.validation-suite-mode .validation-upload-card button[type="submit"] {
+        grid-column: 1 / -1;
+        padding: 12px 24px;
+        background: var(--c-accent);
+        color: #fff;
+        border: 0;
+        border-radius: var(--r-md);
+        font-size: 0.92rem; font-weight: 600;
+        font-family: var(--font-sans);
+        cursor: pointer;
+        height: auto;
+        margin-top: 4px;
+        transition: all var(--tr);
+        box-shadow: 0 1px 3px rgba(79, 70, 229, 0.30);
+      }
+      .app-shell.validation-suite-mode .validation-upload-card button[type="submit"]:hover {
+        background: var(--c-accent-hover);
+        transform: translateY(-1px);
+        box-shadow: 0 3px 8px rgba(79, 70, 229, 0.40);
+      }
+      .app-shell.validation-suite-mode .validation-upload-card .status {
+        margin: 12px 0 0;
+        font-size: 0.8rem; color: var(--c-text-secondary);
+        padding-top: 12px; border-top: 1px solid var(--c-border);
+      }
+
+      /* workspace-panel — 좌우 동일 높이, 동일 카드 외관 */
+      .app-shell.validation-suite-mode #workspace-panel .workspace-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: stretch;
+      }
+      .app-shell.validation-suite-mode .workspace-left,
+      .app-shell.validation-suite-mode .workspace-right {
+        background: var(--c-surface-soft);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-md);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .app-shell.validation-suite-mode .panel-head,
+      .app-shell.validation-suite-mode .network-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        min-height: 32px;
+      }
+      .app-shell.validation-suite-mode .panel-head h2,
+      .app-shell.validation-suite-mode .network-head h2 {
+        margin: 0;
+        font-size: 0.95rem; font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--c-text);
+      }
+      .app-shell.validation-suite-mode .result-table-wrap {
+        flex: 1;
+        background: var(--c-surface);
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-md);
+        overflow: auto;
+        min-height: 520px;
+      }
+      .app-shell.validation-suite-mode .network-wrap {
+        flex: 1;
+        background: var(--c-surface) !important;
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-md);
+        height: auto !important;
+        min-height: 520px;
+      }
+      .app-shell.validation-suite-mode .network-tools {
+        display: flex; gap: 4px;
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-md);
+        padding: 3px;
+      }
+      .app-shell.validation-suite-mode .network-tools button {
+        padding: 3px 9px;
+        background: transparent;
+        border: 0;
+        border-radius: 4px;
+        font-size: 0.78rem;
+        font-family: var(--font-sans);
+        font-weight: 500;
+        color: var(--c-text-secondary);
+        cursor: pointer;
+        transition: all var(--tr);
+      }
+      .app-shell.validation-suite-mode .network-tools button:hover {
+        background: var(--c-surface-soft);
+        color: var(--c-text);
+      }
+      .app-shell.validation-suite-mode .network-legend {
+        display: flex; flex-wrap: wrap; gap: 12px;
+        padding: 10px 12px; margin-top: 10px;
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-md);
+      }
+      .app-shell.validation-suite-mode .network-legend-item {
+        font-size: 0.78rem; color: var(--c-text-secondary);
+        display: inline-flex; align-items: center; gap: 6px;
+      }
+      .app-shell.validation-suite-mode .section-note {
+        font-size: 0.75rem; color: var(--c-muted);
+        margin: 8px 0 0;
+      }
+
+      /* insight-panel — 공학적 + 경제성 카드 정렬 */
+      .app-shell.validation-suite-mode #insight-panel .insight-grid {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: stretch;
+      }
+      .app-shell.validation-suite-mode .insight-box {
+        background: var(--c-surface-soft);
+        border: 1px solid var(--c-border) !important;
+        border-radius: var(--r-md);
+        padding: 16px !important;
+        display: flex;
+        flex-direction: column;
+        min-height: 320px;
+      }
+      .app-shell.validation-suite-mode .insight-box h3 {
+        margin: 0 0 14px !important;
+        font-size: 0.92rem !important;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--c-text);
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--c-border);
+      }
+      .app-shell.validation-suite-mode .engineering-visuals { margin-bottom: 12px; }
+      .app-shell.validation-suite-mode .guide-list {
+        margin: 0; padding: 0; list-style: none;
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      .app-shell.validation-suite-mode .guide-list li {
+        background: var(--c-surface);
+        border: 1px solid var(--c-border);
+        border-radius: var(--r-sm);
+        padding: 10px 12px;
+        font-size: 0.83rem; line-height: 1.55;
+        color: var(--c-text);
+      }
+
+      /* h2 — 패널 헤더 일관 */
+      .app-shell.validation-suite-mode .card.menu-panel > h2 {
+        margin: 0 0 14px;
+        font-size: 1rem; font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--c-text);
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--c-border);
+      }
+
+      /* 반응형 — 좁은 화면 (1024px 이하) */
+      @media (max-width: 1024px) {
+        .app-shell.validation-suite-mode #workspace-panel .workspace-grid,
+        .app-shell.validation-suite-mode #insight-panel .insight-grid {
+          grid-template-columns: 1fr;
+        }
+        .app-shell.validation-suite-mode .validation-upload-card .upload-form {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* ─── iframe 모듈 진입 시 — 외부 페이지·iframe 자체 스크롤바 제거 ─── */
       body:has(.app-shell.fullscreen-module-mode) { overflow: hidden; }
       .app-shell.fullscreen-module-mode { padding: 0 !important; overflow: hidden !important; }
       .app-shell.fullscreen-module-mode .main-pane { gap: 0 !important; padding: 0 !important; }
-      .app-shell.fullscreen-module-mode .embedded-iframe-panel { padding: 0 !important; margin: 0 !important; min-height: 100vh; height: 100vh; overflow: hidden; }
+      .app-shell.fullscreen-module-mode .embedded-iframe-panel {
+        padding: 0 !important; margin: 0 !important;
+        min-height: 100vh; height: 100vh; overflow: hidden;
+        border: 0 !important; border-radius: 0 !important;
+      }
       .app-shell.fullscreen-module-mode .embedded-iframe-panel .module-iframe-full {
         height: 100vh !important; min-height: 100vh !important; border: 0; display: block;
       }
@@ -53,69 +568,293 @@
       <div class="main-pane">
         <header class="header card app-header">
           <div class="header-top">
-            <div>
-              <h1>HB Fire Fighting System Design</h1>
-            </div>
+            <h1><span class="brand-name">FNCADnet</span></h1>
             <div class="header-actions">
-              <a href="{{ url_for('logout') }}" class="criteria-btn" title="End current session and return to the login screen"
-                 style="background: #ffffff; color: #b91c1c; border-color: #fca5a5; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;"
+              <a href="{{ url_for('logout') }}" class="criteria-btn"
+                 title="End current session and return to the login screen"
+                 style="text-decoration: none;"
                  onclick="return confirm('Sign out?\nYou will need to enter the password again.');">
-                🔒 Logout
+                Sign out
               </a>
             </div>
           </div>
         </header>
 
         <section id="home-panel" class="card home-panel">
-          <div class="section-head">
-            <h2>모듈 선택</h2>
-            <p class="section-note">초기 화면에서 통합 검증 모듈과 개별 CAD/SDF·설계자동화 모듈을 바로 선택할 수 있습니다.</p>
-          </div>
+          <svg class="workflow-svg" viewBox="0 115 1280 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="FNCADnet workflow: DXF → Remote 30 → PIPENET → Validation → Report">
+            <defs>
+              <linearGradient id="wfFlow" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%"   stop-color="#1a2e5c"/>
+                <stop offset="25%"  stop-color="#2d4985"/>
+                <stop offset="50%"  stop-color="#5278bd"/>
+                <stop offset="75%"  stop-color="#2d4985"/>
+                <stop offset="100%" stop-color="#1a2e5c"/>
+              </linearGradient>
+              <radialGradient id="wfNodeFill" cx="0.35" cy="0.35" r="0.85">
+                <stop offset="0%"   stop-color="#ffffff"/>
+                <stop offset="100%" stop-color="#ffffff"/>
+              </radialGradient>
+              <radialGradient id="wfNodeFillHi" cx="0.35" cy="0.35" r="0.85">
+                <stop offset="0%"   stop-color="#ffffff"/>
+                <stop offset="100%" stop-color="#ffffff"/>
+              </radialGradient>
+              <filter id="wfGlow" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <marker id="wfArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#1a2e5c"/>
+              </marker>
+              <style>
+                .wf-edge      { fill:none; stroke:url(#wfFlow); stroke-width:1.8; opacity:0.55; }
+                .wf-edge.thin { stroke-width:1.1; opacity:0.32; }
+                .wf-edge.main { stroke-width:2.8; opacity:0.95; marker-end:url(#wfArrow); }
+                .wf-node circle.body { stroke:url(#wfFlow); stroke-width:2.8; filter:url(#wfGlow); }
+                .wf-node.fill        circle.body { fill:url(#wfNodeFill); }
+                .wf-node.highlighted circle.body { fill:url(#wfNodeFillHi); stroke-width:4; }
+                .wf-node text { fill:#111827; font-weight:700; font-size:18px; text-anchor:middle; dominant-baseline:middle; font-family:'Segoe UI',Arial,sans-serif; }
+                .wf-node .sub { font-weight:500; font-size:12.5px; fill:#0a1228; }
+                .wf-caption    { fill:#111827; font-size:15px; font-weight:600; text-anchor:middle; font-family:'Segoe UI',Arial,sans-serif; }
+                .wf-caption.module-tag { fill:#0a1228; font-size:11.5px; font-weight:700; letter-spacing:0.16em; }
+                .wf-subcaption { fill:#6b7280; font-size:12.5px; text-anchor:middle; font-family:'Segoe UI',Arial,sans-serif; }
+                .wf-neuron     { fill:#0a1228; opacity:0.7; }
+
+                /* Pulsing ring around highlighted module nodes */
+                @keyframes wfRing {
+                  0%   { r: 56; opacity: 0.55; stroke-width: 2; }
+                  100% { r: 92; opacity: 0;    stroke-width: 0.5; }
+                }
+                .wf-ring { fill:none; stroke:#0a1228; transform-origin:center; animation: wfRing 2.6s ease-out infinite; }
+                .wf-ring.delay { animation-delay: 1.3s; }
+
+                /* Breathing on all node bodies */
+                @keyframes wfBreathe {
+                  0%, 100% { r: 56; }
+                  50%      { r: 60; }
+                }
+                .wf-node circle.body { animation: wfBreathe 4.5s ease-in-out infinite; }
+                .wf-node.highlighted circle.body { animation-duration: 3.2s; }
+
+                /* Background floating particles */
+                @keyframes wfDrift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(14px, -10px); } }
+                @keyframes wfDrift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-12px, 12px); } }
+                .wf-bg-dot { fill:#0a1228; opacity:0.18; }
+                .wf-bg-dot.a { animation: wfDrift1 7s ease-in-out infinite; }
+                .wf-bg-dot.b { animation: wfDrift2 8.5s ease-in-out infinite; }
+
+                /* Animated gradient on main edges via dash march */
+                @keyframes wfDash { to { stroke-dashoffset: -36; } }
+                .wf-edge.main { stroke-dasharray: 10 5; animation: wfDash 1.6s linear infinite; }
+
+                /* Sub-spark dots (legacy) */
+                @keyframes wfPulse { 0%,100% { opacity:0.35; } 50% { opacity:1; } }
+                .wf-spark { fill:#0a1228; opacity:0.7; animation: wfPulse 2.4s ease-in-out infinite; }
+
+                /* Travelling particle (set via animateMotion below) */
+                .wf-particle { fill:#0a1228; filter:url(#wfGlow); }
+                .wf-particle.green { fill:#0a1228; }
+                .wf-particle.purple { fill:#0a1228; }
+              </style>
+            </defs>
+
+            <!-- ─── Background drifting particles ─── -->
+            <circle class="wf-bg-dot a" cx="240" cy="80"  r="3"/>
+            <circle class="wf-bg-dot b" cx="420" cy="340" r="4"/>
+            <circle class="wf-bg-dot a" cx="640" cy="60"  r="2.5"/>
+            <circle class="wf-bg-dot b" cx="820" cy="350" r="3.5"/>
+            <circle class="wf-bg-dot a" cx="1040" cy="70" r="3"/>
+            <circle class="wf-bg-dot b" cx="160" cy="335" r="2.5"/>
+            <circle class="wf-bg-dot a" cx="1200" cy="330" r="3"/>
+            <circle class="wf-bg-dot b" cx="540" cy="55"  r="2"/>
+            <circle class="wf-bg-dot a" cx="920" cy="345" r="2.5"/>
+
+            <!-- ─── Neural connections (per gap: 5 curves: 1 main + 4 faint synapses) ─── -->
+            <!-- Gap 1→2: node at (140,210) → (390,210) -->
+            <path class="wf-edge thin" d="M 195 175 C 265 120, 325 120, 335 175"/>
+            <path class="wf-edge thin" d="M 195 245 C 265 300, 325 300, 335 245"/>
+            <path class="wf-edge"      d="M 195 192 C 265 155, 325 155, 335 192"/>
+            <path class="wf-edge"      d="M 195 228 C 265 265, 325 265, 335 228"/>
+            <path id="wfEdge1" class="wf-edge main" d="M 195 210 C 265 210, 325 210, 335 210"/>
+
+            <!-- Gap 2→3: (390,210) → (640,210) -->
+            <path class="wf-edge thin" d="M 445 175 C 515 120, 575 120, 585 175"/>
+            <path class="wf-edge thin" d="M 445 245 C 515 300, 575 300, 585 245"/>
+            <path class="wf-edge"      d="M 445 192 C 515 155, 575 155, 585 192"/>
+            <path class="wf-edge"      d="M 445 228 C 515 265, 575 265, 585 228"/>
+            <path id="wfEdge2" class="wf-edge main" d="M 445 210 C 515 210, 575 210, 585 210"/>
+
+            <!-- Gap 3→4: (640,210) → (890,210) -->
+            <path class="wf-edge thin" d="M 695 175 C 765 120, 825 120, 835 175"/>
+            <path class="wf-edge thin" d="M 695 245 C 765 300, 825 300, 835 245"/>
+            <path class="wf-edge"      d="M 695 192 C 765 155, 825 155, 835 192"/>
+            <path class="wf-edge"      d="M 695 228 C 765 265, 825 265, 835 228"/>
+            <path id="wfEdge3" class="wf-edge main" d="M 695 210 C 765 210, 825 210, 835 210"/>
+
+            <!-- Gap 4→5: (890,210) → (1140,210) -->
+            <path class="wf-edge thin" d="M 945 175 C 1015 120, 1075 120, 1085 175"/>
+            <path class="wf-edge thin" d="M 945 245 C 1015 300, 1075 300, 1085 245"/>
+            <path class="wf-edge"      d="M 945 192 C 1015 155, 1075 155, 1085 192"/>
+            <path class="wf-edge"      d="M 945 228 C 1015 265, 1075 265, 1085 228"/>
+            <path id="wfEdge4" class="wf-edge main" d="M 945 210 C 1015 210, 1075 210, 1085 210"/>
+
+            <!-- Synapse neurons (small purple dots scattered on synapse lines) -->
+            <circle class="wf-neuron" cx="270" cy="142" r="2.5"/>
+            <circle class="wf-neuron" cx="270" cy="278" r="2.5"/>
+            <circle class="wf-neuron" cx="520" cy="142" r="2.5"/>
+            <circle class="wf-neuron" cx="520" cy="278" r="2.5"/>
+            <circle class="wf-neuron" cx="770" cy="142" r="2.5"/>
+            <circle class="wf-neuron" cx="770" cy="278" r="2.5"/>
+            <circle class="wf-neuron" cx="1020" cy="142" r="2.5"/>
+            <circle class="wf-neuron" cx="1020" cy="278" r="2.5"/>
+
+            <!-- Static pulse sparks (legacy decoration) -->
+            <circle class="wf-spark" cx="266" cy="210" r="3"/>
+            <circle class="wf-spark" cx="516" cy="210" r="3" style="animation-delay:0.6s"/>
+            <circle class="wf-spark" cx="766" cy="210" r="3" style="animation-delay:1.2s"/>
+            <circle class="wf-spark" cx="1016" cy="210" r="3" style="animation-delay:1.8s"/>
+
+            <!-- ─── Travelling particles (animateMotion along main edges) ─── -->
+            <!-- Edge 1 particles -->
+            <circle r="4" class="wf-particle">
+              <animateMotion dur="2.4s" repeatCount="indefinite" rotate="auto">
+                <mpath href="#wfEdge1"/>
+              </animateMotion>
+            </circle>
+            <circle r="3" class="wf-particle purple">
+              <animateMotion dur="2.4s" begin="0.8s" repeatCount="indefinite">
+                <mpath href="#wfEdge1"/>
+              </animateMotion>
+            </circle>
+            <circle r="2.5" class="wf-particle green">
+              <animateMotion dur="2.4s" begin="1.6s" repeatCount="indefinite">
+                <mpath href="#wfEdge1"/>
+              </animateMotion>
+            </circle>
+
+            <!-- Edge 2 particles -->
+            <circle r="4" class="wf-particle">
+              <animateMotion dur="2.2s" begin="0.2s" repeatCount="indefinite">
+                <mpath href="#wfEdge2"/>
+              </animateMotion>
+            </circle>
+            <circle r="3" class="wf-particle purple">
+              <animateMotion dur="2.2s" begin="1.0s" repeatCount="indefinite">
+                <mpath href="#wfEdge2"/>
+              </animateMotion>
+            </circle>
+            <circle r="2.5" class="wf-particle green">
+              <animateMotion dur="2.2s" begin="1.8s" repeatCount="indefinite">
+                <mpath href="#wfEdge2"/>
+              </animateMotion>
+            </circle>
+
+            <!-- Edge 3 particles -->
+            <circle r="4" class="wf-particle">
+              <animateMotion dur="2.3s" begin="0.4s" repeatCount="indefinite">
+                <mpath href="#wfEdge3"/>
+              </animateMotion>
+            </circle>
+            <circle r="3" class="wf-particle purple">
+              <animateMotion dur="2.3s" begin="1.2s" repeatCount="indefinite">
+                <mpath href="#wfEdge3"/>
+              </animateMotion>
+            </circle>
+            <circle r="2.5" class="wf-particle green">
+              <animateMotion dur="2.3s" begin="2.0s" repeatCount="indefinite">
+                <mpath href="#wfEdge3"/>
+              </animateMotion>
+            </circle>
+
+            <!-- Edge 4 particles -->
+            <circle r="4" class="wf-particle">
+              <animateMotion dur="2.1s" begin="0.6s" repeatCount="indefinite">
+                <mpath href="#wfEdge4"/>
+              </animateMotion>
+            </circle>
+            <circle r="3" class="wf-particle purple">
+              <animateMotion dur="2.1s" begin="1.4s" repeatCount="indefinite">
+                <mpath href="#wfEdge4"/>
+              </animateMotion>
+            </circle>
+            <circle r="2.5" class="wf-particle green">
+              <animateMotion dur="2.1s" begin="2.0s" repeatCount="indefinite">
+                <mpath href="#wfEdge4"/>
+              </animateMotion>
+            </circle>
+
+            <!-- ─── Stage nodes ─── -->
+            <!-- 1. DXF Input -->
+            <g class="wf-node fill" transform="translate(140, 210)">
+              <circle class="body" r="56"/>
+              <text y="-5">DXF</text>
+              <text class="sub" y="16">Drawing</text>
+            </g>
+            <text class="wf-caption" x="140" y="305">Drawing Upload</text>
+            <text class="wf-subcaption" x="140" y="326">CAD 도면 (.dxf)</text>
+
+            <!-- 2. Remote 30 (highlighted — Module A) — with pulse rings -->
+            <g transform="translate(390, 210)">
+              <circle class="wf-ring" r="56"/>
+              <circle class="wf-ring delay" r="56"/>
+            </g>
+            <g class="wf-node fill highlighted" transform="translate(390, 210)">
+              <circle class="body" r="56"/>
+              <text y="-5">Remote 30</text>
+              <text class="sub" y="16">Extractor</text>
+            </g>
+            <text class="wf-caption module-tag" x="390" y="288">MODULE A</text>
+            <text class="wf-caption" x="390" y="308">Remote 30 Prototype</text>
+            <text class="wf-subcaption" x="390" y="328">배관망·헤드 추출 + Worst-30 색출</text>
+
+            <!-- 3. PIPENET file -->
+            <g class="wf-node fill" transform="translate(640, 210)">
+              <circle class="body" r="56"/>
+              <text y="-5">PIPENET</text>
+              <text class="sub" y="16">.sdf / .slf</text>
+            </g>
+            <text class="wf-caption" x="640" y="305">PIPENET Files</text>
+            <text class="wf-subcaption" x="640" y="326">수리계산용 입력 산출</text>
+
+            <!-- 4. Validation (highlighted — Module B) — with pulse rings -->
+            <g transform="translate(890, 210)">
+              <circle class="wf-ring" r="56" style="animation-duration:2.4s"/>
+              <circle class="wf-ring delay" r="56" style="animation-duration:2.4s"/>
+            </g>
+            <g class="wf-node fill highlighted" transform="translate(890, 210)">
+              <circle class="body" r="56"/>
+              <text y="-5">Validation</text>
+              <text class="sub" y="16">Suite</text>
+            </g>
+            <text class="wf-caption module-tag" x="890" y="288">MODULE B</text>
+            <text class="wf-caption" x="890" y="308">Integrated Validation</text>
+            <text class="wf-subcaption" x="890" y="328">수리계산 결과 검진 + 가이드</text>
+
+            <!-- 5. Report -->
+            <g class="wf-node fill" transform="translate(1140, 210)">
+              <circle class="body" r="56"/>
+              <text y="-5">Report</text>
+              <text class="sub" y="16">Output</text>
+            </g>
+            <text class="wf-caption" x="1140" y="305">Audit Report</text>
+            <text class="wf-subcaption" x="1140" y="326">최적화 가이드 + 통계</text>
+          </svg>
+
           <div class="home-grid">
-            <button type="button" class="home-module-btn" data-panel="sprinkler-pipeline-panel">
-              <strong>스프링클러 자동 설계 파이프라인</strong>
-              <span>도면 객체 추출부터 PipeNet 변환, 수리계산, 재설계 루프, 최종 도면 승인까지 전체 흐름을 단계별로 확인합니다.</span>
-            </button>
-            <button type="button" class="home-module-btn" data-panel="design-automation-panel">
-              <strong>설계자동화 인터페이스</strong>
-              <span>Zone 설정, 헤드 자동배치, 배관망 생성까지 설계자동화 워크벤치로 바로 진입합니다.</span>
-            </button>
-            <button type="button" class="home-module-btn" data-panel="cad-compare-panel">
-              <strong>CAD-SDF 배관망 대조·분석 모듈</strong>
-              <span>DXF와 SDF를 대조해 배관망 차이와 구조 분석 결과를 확인합니다.</span>
-            </button>
-            <button type="button" class="home-module-btn" data-panel="cad-compare-panel-7">
-              <strong>CAD-SDF 배관망 대조·분석 모듈 복제</strong>
-              <span>복제 모듈과 아이소메트릭 검토 화면을 전체 화면으로 확인합니다.</span>
-            </button>
-            <button id="open-validation-suite-btn" type="button" class="home-module-btn">
-              <strong>통합 검증 모듈</strong>
-              <span>검증결과, 설계 최적화 가이드, 결과 데이터 테이블, 검진 통계, 상세리포트를 한 흐름으로 확인합니다.</span>
-            </button>
-            <button type="button" class="home-module-btn" data-panel="remote30-panel">
-              <strong>Remote 30 추출 모듈</strong>
-              <span>DXF에서 배관/헤드/관경을 추출하고 알람밸브 기준 최원단 30개 헤드를 선정해 Isometric PNG와 PIPENET 호환 Excel을 생성합니다.</span>
-            </button>
-            <button type="button" class="home-module-btn" data-panel="remote30-workbench-panel">
-              <strong>건축 레이어 정리</strong>
-              <span>DXF를 캔버스에 띄우고 레이어를 실시간으로 토글·재분류하면서 Remote 30 추출 → PIPENET SDF에 이르는 흐름을 한눈에 확인합니다.</span>
-            </button>
-            <button type="button" class="home-module-btn" data-panel="remote30-workbench-gnn-panel">
-              <strong>Remote 30 워크벤치 (GNN 버전)</strong>
-              <span>DXF→SDF 멀티모달 ML 파이프라인 — Stage 1 DXF 추출 / Stage 2 그래프 + GNN 정제 / Stage 3 SDF 검증. KIFSE 학회 publishable 수준 목표.</span>
-            </button>
-            <button type="button" class="home-module-btn" data-panel="remote30-prototype-panel">
-              <strong>Remote 30 프로토타입</strong>
-              <span>DXF 한 장 업로드 → 배관망 추출 → 가장 불리한 30 헤드 색출 → PIPENET 입력 XLSX/CSV → SDF 출력까지의 4-stage 전과정을 캔버스에 실시간 애니메이션으로 보여줍니다.</span>
-            </button>
-            <button type="button" class="home-module-btn" data-panel="remote30-overall-panel">
-              <strong>Remote 30 전체 배관망 총괄</strong>
-              <span>평면도(.dxf) + zone(HSP·LSP·LLSP) + 압력 분포표(또는 직접 입력) → 펌프·감압밸브·라이저까지 포함된 완성 PIPENET SDF 를 생성합니다. 프로토타입 모듈의 헤드망 로직을 재사용 + 라이저·펌프·PRV 템플릿을 추가합니다.</span>
-            </button>
-            <button type="button" class="home-module-btn" data-panel="kfp-sdf-converter-panel">
-              <strong>KFP ↔ SDF 변환기</strong>
-              <span>K-solver 의 .kfp 파일과 PIPENET Vision 의 .sdf 파일을 의미론적 동등성 (밸브/배관/헤드/피팅) 을 보존하며 양방향 변환합니다. 노드·파이프 토폴로지를 캔버스로 미리보기 + round-trip 손실 측정.</span>
-            </button>
+            <a class="home-module-btn" href="{{ url_for('remote30_prototype') }}">
+              <span class="module-chip">Module A</span>
+              <strong>Remote 30 Prototype</strong>
+              <span>Upload a single DXF → extract the piping network → identify the 30 hydraulically worst heads → emit PIPENET XLSX/CSV input → .sdf output. All 4 stages are animated live on the canvas.</span>
+            </a>
+            <a class="home-module-btn" href="{{ url_for('index') }}?view=validation">
+              <span class="module-chip">Module B</span>
+              <strong>Integrated Validation Module</strong>
+              <span>Run the validation suite end-to-end: hydraulic results, optimization guide, data tables, audit statistics, and the detailed report — all in one workflow.</span>
+            </a>
+            <a class="home-module-btn" href="{{ url_for('remote30_workbench') }}">
+              <span class="module-chip">Module C</span>
+              <strong>Architecture (DXF) Layer Cleanup</strong>
+              <span>Upload a DXF, then toggle layer visibility and reclassify layers (pipe / head / text / architecture) in real time on the canvas. Re-export the cleaned drawing as DXF or DWG.</span>
+            </a>
           </div>
         </section>
 
@@ -251,274 +990,13 @@
           <div id="report-output" class="report-grid"></div>
         </section>
 
-        <section id="cad-compare-panel" class="card hidden menu-panel module-fullscreen-panel">
-          <div class="module-shell-head">
-            <button type="button" class="criteria-btn back-home-btn">처음으로</button>
-          </div>
-          <div class="section-head">
-            <h2>CAD-SDF 배관망 대조·분석 모듈</h2>
-            <p class="section-note">DXF 도면과 SDF 아이소메트릭 배관망의 특정 영역을 선택하여 배관망 형상, 헤드 수, 배관 길이 일치 여부를 분석합니다.</p>
-          </div>
-          <iframe
-            id="cad-compare-frame"
-            class="module-iframe"
-            src="{{ url_for('cad_compare_module') }}?v=20260414-2336"
-            title="CAD-SDF 배관망 대조·분석 모듈"
-          ></iframe>
-          <div class="section-head fused-module-head">
-            <h2>SDF/CAD 구조 분석 보조 리포트</h2>
-            <p class="section-note">동일 SDF와 선택 CAD 파일을 기준으로 최원단 헤드 30개, 배관 길이·구경·분기 변화 대조와 CAD 자동 인식 후보를 함께 확인합니다.</p>
-          </div>
-          <div class="fused-analysis-actions">
-            <button id="sdf-analysis-run-btn" type="button" class="csv-btn" disabled>보조 리포트 다시 생성</button>
-            <p id="sdf-analysis-status" class="status">DXF/SDF 뷰어에서 파일을 업로드하면 보조 리포트가 자동 생성됩니다.</p>
-          </div>
-          <div id="sdf-analysis-output" class="sdf-analysis-output hidden"></div>
-        </section>
-
-        <section id="cad-compare-panel-7" class="card hidden menu-panel module-fullscreen-panel">
-          <div class="module-shell-head">
-            <button type="button" class="criteria-btn back-home-btn">처음으로</button>
-          </div>
-          <div class="section-head">
-            <h2>CAD-SDF 배관망 대조·분석 모듈 복제</h2>
-            <p class="section-note">6번 모듈의 테스트코드를 그대로 복제한 독립 모듈입니다. 별도 실험과 업데이트를 이 화면에서 진행합니다.</p>
-          </div>
-          <iframe
-            id="cad-compare-frame-7"
-            class="module-iframe module-iframe-full"
-            src="{{ url_for('cad_compare_module_7') }}?v=20260420-iso-preview"
-            title="CAD-SDF 배관망 대조·분석 모듈 복제"
-          ></iframe>
-        </section>
-
-        <section id="design-automation-panel" class="card hidden menu-panel module-fullscreen-panel embedded-iframe-panel">
-          <iframe
-            id="design-automation-frame"
-            class="module-iframe module-iframe-full"
-            src="{{ url_for('design_automation_module_8') }}?v=20260506-1"
-            title="설계자동화 인터페이스"
-          ></iframe>
-        </section>
-
-        <section id="remote30-workbench-panel" class="card hidden menu-panel module-fullscreen-panel embedded-iframe-panel">
-          <iframe
-            id="remote30-workbench-frame"
-            class="module-iframe module-iframe-full"
-            src="{{ url_for('remote30_workbench') }}?v=20260520-wb16"
-            title="건축 레이어 정리"
-          ></iframe>
-        </section>
-
-        <section id="remote30-workbench-gnn-panel" class="card hidden menu-panel module-fullscreen-panel embedded-iframe-panel">
-          <iframe
-            id="remote30-workbench-gnn-frame"
-            class="module-iframe module-iframe-full"
-            src="{{ url_for('remote30_workbench_gnn') }}?v=20260521-gnn2"
-            title="Remote 30 워크벤치 (GNN 버전)"
-          ></iframe>
-        </section>
-
         <section id="remote30-prototype-panel" class="card hidden menu-panel module-fullscreen-panel embedded-iframe-panel">
           <iframe
             id="remote30-prototype-frame"
             class="module-iframe module-iframe-full"
-            src="{{ url_for('remote30_prototype') }}?v=20260623-iso-mr-z"
+            src="{{ url_for('remote30_prototype') }}?v=20260529-combined-zip-geom"
             title="Remote 30 프로토타입"
           ></iframe>
-        </section>
-
-        <section id="remote30-overall-panel" class="card hidden menu-panel module-fullscreen-panel embedded-iframe-panel">
-          <iframe
-            id="remote30-overall-frame"
-            class="module-iframe module-iframe-full"
-            src="{{ url_for('remote30_overall') }}?v=20260528-overall4-riser-anchor"
-            title="Remote 30 전체 배관망 총괄"
-          ></iframe>
-        </section>
-
-        <section id="kfp-sdf-converter-panel" class="card hidden menu-panel module-fullscreen-panel embedded-iframe-panel">
-          <iframe
-            id="kfp-sdf-converter-frame"
-            class="module-iframe module-iframe-full"
-            src="{{ url_for('kfp_sdf_converter_page') }}?v=20260606-conv1"
-            title="KFP ↔ SDF 변환기"
-          ></iframe>
-        </section>
-
-        <section id="sprinkler-pipeline-panel" class="card hidden menu-panel module-fullscreen-panel pipeline-native-panel">
-          <div class="module-shell-head">
-            <button type="button" class="criteria-btn back-home-btn">처음으로</button>
-          </div>
-          <div class="section-head pipeline-panel-head">
-            <h2>스프링클러 자동 설계 파이프라인</h2>
-            <p class="section-note">도면 객체 추출, Zone 분할, 헤드 배치, 배관 라우팅, PipeNet 변환, 수리계산 검진, 재설계 루프, 최종 승인까지 설계 흐름을 앱 안에서 바로 검토합니다.</p>
-          </div>
-          <div class="pipeline-native-body">
-            {% include '_sprinkler_pipeline_panel.html' %}
-          </div>
-        </section>
-
-        <section id="remote30-panel" class="card hidden menu-panel module-fullscreen-panel pipeline-native-panel">
-          <div class="module-shell-head">
-            <button type="button" class="criteria-btn back-home-btn">처음으로</button>
-          </div>
-          <div class="section-head">
-            <h2>Remote 30 추출 모듈</h2>
-            <p class="section-note">DXF에서 배관/헤드/관경 문자를 추출하고, 알람밸브 기준 최원단 30개 헤드를 선정해 Isometric PNG와 PIPENET 호환 Excel을 생성합니다.</p>
-          </div>
-
-          <form id="remote30-form" class="remote30-shell" enctype="multipart/form-data">
-            <div class="remote30-grid">
-
-              <div class="remote30-card">
-                <h3>1. DXF 파일</h3>
-                <div class="field">
-                  <label for="remote30-dxf">업로드 (.dxf, 필수)</label>
-                  <input id="remote30-dxf" name="dxf_file" type="file" accept=".dxf" required>
-                </div>
-                <p class="help">한국 도면의 sprinkler 레이어 패턴(<code>-소화(SP가지관)</code>, <code>-소화(SP헤드하향)</code> 등)에 맞춰 자동 인식합니다.</p>
-              </div>
-
-              <div class="remote30-card">
-                <h3>2. 알람밸브 위치</h3>
-                <div class="remote30-radio-group">
-                  <label><input type="radio" name="alarm_mode" value="auto" checked><span>DXF 자동 검출</span></label>
-                  <label><input type="radio" name="alarm_mode" value="manual"><span>수동 입력</span></label>
-                </div>
-                <div id="remote30-alarm-manual" class="remote30-fields-2col" style="display:none;">
-                  <div class="field">
-                    <label for="remote30-alarm-x">X</label>
-                    <input id="remote30-alarm-x" type="number" step="any" name="alarm_x">
-                  </div>
-                  <div class="field">
-                    <label for="remote30-alarm-y">Y</label>
-                    <input id="remote30-alarm-y" type="number" step="any" name="alarm_y">
-                  </div>
-                </div>
-                <p class="help">자동 검출은 블록명/레이어/TEXT에서 ALARM/ALV 키워드를 탐색합니다. 실패 시 헤드 군집 centroid로 fallback.</p>
-              </div>
-
-              <div class="remote30-card">
-                <h3>3. Remote 선정 기준</h3>
-                <div class="remote30-radio-group">
-                  <label><input type="radio" name="remote_mode" value="length" checked><span>배관길이 기준 (단순 dijkstra)</span></label>
-                  <label><input type="radio" name="remote_mode" value="hydraulic"><span>Hydraulic remote (NFPA 13 design-area, 추천)</span></label>
-                </div>
-                <p class="help">Hydraulic 모드: 선정된 N개만 동시방수 가정 → Hazen-Williams (C=120) 마찰손실 + 정수두 합산. 가장 큰 손실 헤드 = 진짜 hydraulic remote.</p>
-              </div>
-
-              <div class="remote30-card">
-                <h3>4. Hydraulic 파라미터</h3>
-                <div class="remote30-fields-2col">
-                  <div class="field">
-                    <label for="remote30-elev-alarm">알람밸브 elev. (m)</label>
-                    <input id="remote30-elev-alarm" name="elevation_alarm_m" type="number" step="any" placeholder="기본 1.0">
-                  </div>
-                  <div class="field">
-                    <label for="remote30-elev-head">헤드 elev. (m)</label>
-                    <input id="remote30-elev-head" name="elevation_head_m" type="number" step="any" placeholder="기본 2.8">
-                  </div>
-                  <div class="field">
-                    <label for="remote30-kfactor">K-factor</label>
-                    <input id="remote30-kfactor" name="k_factor" type="number" step="any" placeholder="기본 80">
-                  </div>
-                  <div class="field">
-                    <label for="remote30-flow">유량 (LPM)</label>
-                    <input id="remote30-flow" name="design_flow_per_head_lpm" type="number" step="any" placeholder="기본 80">
-                  </div>
-                  <div class="field">
-                    <label for="remote30-fallback-dia">Fallback 직경 (mm)</label>
-                    <input id="remote30-fallback-dia" name="fallback_dia_mm" type="number" step="any" placeholder="기본 50">
-                  </div>
-                  <div class="field">
-                    <label for="remote30-count">선정 헤드 수</label>
-                    <input id="remote30-count" name="remote_head_count" type="number" step="1" placeholder="기본 30">
-                  </div>
-                </div>
-              </div>
-
-              <div class="remote30-card">
-                <h3>5. 출력 옵션</h3>
-                <label class="remote30-checkbox">
-                  <input type="checkbox" name="emit_sdf" value="1">
-                  <span>PIPENET SDF (XML) 파일도 생성</span>
-                </label>
-                <p class="help">PIPENET 호환 Excel은 항상 생성됩니다. SDF는 RV03_NEW.sdf와 동일 스키마.</p>
-              </div>
-
-              <div class="remote30-card">
-                <h3>6. 고급 설정</h3>
-                <details>
-                  <summary>레이어 키워드 / 허용오차 / 스케일</summary>
-                  <div class="field">
-                    <label for="remote30-pipe-kw">PIPE 레이어 키워드</label>
-                    <input id="remote30-pipe-kw" name="pipe_layer_keywords" type="text" placeholder="SP, 가지관, 후렉시블, 배관">
-                  </div>
-                  <div class="field">
-                    <label for="remote30-head-kw">HEAD 레이어 키워드</label>
-                    <input id="remote30-head-kw" name="head_layer_keywords" type="text" placeholder="헤드, 하향식, 헤드반경">
-                  </div>
-                  <div class="field">
-                    <label for="remote30-alarm-kw">ALARM VALVE 키워드</label>
-                    <input id="remote30-alarm-kw" name="alarm_valve_keywords" type="text" placeholder="ALARM, ALV, AV, 알람">
-                  </div>
-                  <div class="remote30-fields-3col">
-                    <div class="field">
-                      <label for="remote30-snap-tol">SNAP_TOL</label>
-                      <input id="remote30-snap-tol" name="snap_tol" type="number" step="any" placeholder="800">
-                    </div>
-                    <div class="field">
-                      <label for="remote30-closure-tol">GRAPH_CLOSURE_TOL</label>
-                      <input id="remote30-closure-tol" name="graph_closure_tol" type="number" step="any" placeholder="1500 (기본)">
-                    </div>
-                    <div class="field">
-                      <label for="remote30-head-tol">HEAD-PIPE 거리</label>
-                      <input id="remote30-head-tol" name="head_to_pipe_tol" type="number" step="any" placeholder="600">
-                    </div>
-                    <div class="field">
-                      <label for="remote30-dia-radius">관경 TEXT 반경</label>
-                      <input id="remote30-dia-radius" name="diameter_text_search_radius" type="number" step="any" placeholder="800">
-                    </div>
-                    <div class="field">
-                      <label for="remote30-scale">CAD→m 스케일</label>
-                      <input id="remote30-scale" name="cad_unit_to_m" type="number" step="any" placeholder="0.001">
-                    </div>
-                    <div class="field">
-                      <label for="remote30-cfactor">C-factor</label>
-                      <input id="remote30-cfactor" name="c_factor" type="number" step="any" placeholder="120">
-                    </div>
-                  </div>
-                </details>
-              </div>
-
-            </div>
-
-            <div class="remote30-actions-bar">
-              <button type="submit" id="remote30-submit-btn">Remote 30 추출 실행</button>
-              <span id="remote30-status" class="remote30-status-inline">DXF 파일을 선택하고 추출 실행을 눌러주세요.</span>
-            </div>
-          </form>
-
-          <section id="remote30-result" class="remote30-results hidden">
-            <h3>추출 결과</h3>
-            <div id="remote30-counts" class="remote30-stats"></div>
-            <div id="remote30-warnings"></div>
-            <div class="remote30-downloads">
-              <a id="remote30-xlsx-link" href="#" target="_blank" rel="noopener" class="criteria-btn hidden">PIPENET Excel 다운로드</a>
-              <a id="remote30-sdf-link" href="#" target="_blank" rel="noopener" class="criteria-btn hidden">PIPENET SDF 다운로드</a>
-            </div>
-            <div>
-              <h4>Remote 30 Isometric 미리보기</h4>
-              <div class="remote30-preview-wrap">
-                <img id="remote30-png" alt="Remote 30 Isometric">
-              </div>
-            </div>
-            <div>
-              <h4>선정 헤드 요약</h4>
-              <div id="remote30-summary-table" class="remote30-summary-table"></div>
-            </div>
-          </section>
         </section>
 
         <section id="feedback-panel" class="card hidden menu-panel feedback-page-panel module-fullscreen-panel">
@@ -619,5 +1097,36 @@
     </div>
 
     <script src="{{ url_for('static', filename='app.js') }}?v=20260520-wb1"></script>
+    <script>
+      // ?view=validation 진입 시 — app.js 직후 동기적으로 처리, 가드는 home 복귀까지 유지
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          if (params.get("view") !== "validation") return;
+
+          // 1. app.js 가 이미 로드·실행됨 → setActiveMenuPanel 동기 호출 가능
+          if (typeof window.setActiveMenuPanel === "function") {
+            window.setActiveMenuPanel("workspace-panel");
+          }
+
+          // 2. URL 을 즉시 / 로 교체 — 그래야 모듈 내에서 Ctrl+F5 / reload 시 홈으로 복귀
+          //    (UI 는 그대로 검진 화면 표시. 주소창만 / 로 바뀌어 새로고침 시 home 진입)
+          try {
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState({}, "", "/");
+            }
+          } catch (e) { /* no-op */ }
+
+          // 3. 가드 클래스(.entering-validation) 는 그대로 유지 → home UI 강제 숨김
+          // 4. "처음으로" 버튼 클릭 시점에 가드만 제거 (URL 은 이미 /)
+          var hbtn = document.getElementById("home-nav-btn");
+          if (hbtn) {
+            hbtn.addEventListener("click", function () {
+              document.documentElement.classList.remove("entering-validation");
+            });
+          }
+        } catch (e) { /* no-op */ }
+      })();
+    </script>
   </body>
 </html>

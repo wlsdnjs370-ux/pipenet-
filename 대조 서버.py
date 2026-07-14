@@ -221,87 +221,6 @@ def _sweep_old_upload_files(parent: Path, keep_dirs: set[str] | None = None) -> 
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# 잡 스토어 / 임시파일 수명 관리 — 24/7 구동 프로세스의 무한 누적 방지
-# ────────────────────────────────────────────────────────────────────────────
-# waitress 는 단일 프로세스 + 다중 스레드라 in-memory 잡 dict 가 영원히 산다.
-# 매 업로드마다 대용량(pipe_ents·detected_heads)이 적재되면 메모리가 무한 증가하고,
-# 산출물/업로드 디렉토리도 무한 누적된다. → 잡은 TTL/개수로 evict, 디렉토리는 mtime
-# TTL 로 주기적 sweep(rate-limited).
-_JOB_TTL_SECONDS = 12 * 3600       # 잡 메타 12시간 후 만료 (편집 세션 여유)
-_JOB_MAX_ENTRIES = 100             # 스토어당 최대 잡 수 (초과 시 오래된 것부터)
-_DIR_TTL_SECONDS = 24 * 3600       # 산출물/업로드 24시간 후 정리
-_DIR_SWEEP_INTERVAL = 1800         # 디렉토리 sweep 최소 간격(초) — 매 요청마다 안 돌게
-_jobs_lock = threading.Lock()
-_last_dir_sweep = [0.0]
-
-
-def _register_job(store: dict, job_id: str, data: dict) -> None:
-    """잡 등록 + 오래된/초과 잡 eviction (thread-safe).
-
-    읽기(`store.get`)는 GIL 하에서 원자적이라 lock 불필요하지만, 삽입+iterate-삭제는
-    경쟁이 생기므로 lock 으로 감싼다. 활성 잡(_created≈now)은 evict 대상이 아니다.
-    """
-    data["_created"] = time.time()
-    with _jobs_lock:
-        store[job_id] = data
-        now = time.time()
-        stale = [k for k, v in store.items()
-                 if now - v.get("_created", now) > _JOB_TTL_SECONDS]
-        for k in stale:
-            store.pop(k, None)
-        if len(store) > _JOB_MAX_ENTRIES:
-            ordered = sorted(store.items(), key=lambda kv: kv[1].get("_created", 0.0))
-            for k, _v in ordered[: len(store) - _JOB_MAX_ENTRIES]:
-                store.pop(k, None)
-
-
-def _sweep_old_run_dirs(*parents: Path) -> None:
-    """오래된 잡 산출물 디렉토리(자식) 정리 — opportunistic, rate-limited.
-
-    예외는 전부 삼킨다(정리 실패가 요청을 막으면 안 됨). 활성 잡 dir 은 방금 생성돼
-    mtime 이 최신이라 TTL 에 안 걸린다.
-    """
-    now = time.time()
-    with _jobs_lock:
-        if now - _last_dir_sweep[0] < _DIR_SWEEP_INTERVAL:
-            return
-        _last_dir_sweep[0] = now
-    for parent in parents:
-        try:
-            if not parent.is_dir():
-                continue
-            for child in list(parent.iterdir()):
-                try:
-                    if now - child.stat().st_mtime <= _DIR_TTL_SECONDS:
-                        continue
-                    if child.is_dir():
-                        shutil.rmtree(child, ignore_errors=True)
-                except OSError:
-                    pass
-        except OSError:
-            pass
-
-
-def _sweep_old_upload_files(parent: Path, keep_dirs: set[str] | None = None) -> None:
-    """오래된 업로드 *파일* 정리 — 디렉토리(예: cad_workspace)는 보존."""
-    keep = keep_dirs or {"cad_workspace"}
-    now = time.time()
-    try:
-        if not parent.is_dir():
-            return
-        for child in list(parent.iterdir()):
-            try:
-                if child.is_dir() or child.name in keep:
-                    continue
-                if now - child.stat().st_mtime > _DIR_TTL_SECONDS:
-                    child.unlink(missing_ok=True)
-            except OSError:
-                pass
-    except OSError:
-        pass
-
-
-# ────────────────────────────────────────────────────────────────────────────
 # JSON Provider 안전화 — complex / numpy / NaN / Path 등 추가 타입 지원
 # 통합 검증 모듈 등이 만드는 복소수 (예: eigenvalue, scipy 계산 결과) 가
 # jsonify 시 "Object of type complex is not JSON serializable" 로 실패하던 문제 해결.
@@ -794,9 +713,13 @@ def _err500(exc, *, message=None, **extra):
     message 미지정 시 str(exc)[:300]. extra 로 라우트별 추가 키(algorithm 등) 병합.
     """
     import traceback
+    tb_text = traceback.format_exc()
+    app.logger.error("Route error (%s): %s\n%s", request.path, exc, tb_text)
     body = {"ok": False,
-            "message": message if message is not None else str(exc)[:300],
-            "traceback": traceback.format_exc()[-1500:]}
+            "message": message if message is not None else str(exc)[:300]}
+    # 외부 노출 환경 — traceback 본문은 서버 로그로만. EXPOSE_TRACEBACK=1 시에만 클라이언트 노출.
+    if _os_for_auth.environ.get("EXPOSE_TRACEBACK") == "1":
+        body["traceback"] = tb_text[-1500:]
     body.update(extra)
     return jsonify(body), 500
 
@@ -2375,11 +2298,15 @@ def validate_files():
     except Exception as exc:
         # 어떤 예외도 잡아 JSON 으로 반환 — 절대 HTML 500 페이지로 빠지지 않게.
         import traceback as _tb
-        return jsonify({
+        _tb_text = _tb.format_exc()
+        app.logger.error("검증 오류 (%s): %s\n%s", request.path, exc, _tb_text)
+        _body = {
             "ok": False,
             "message": f"검증 중 오류가 발생했습니다: {type(exc).__name__}: {str(exc)[:300]}",
-            "traceback": _tb.format_exc()[-2000:],
-        }), 500
+        }
+        if _os_for_auth.environ.get("EXPOSE_TRACEBACK") == "1":
+            _body["traceback"] = _tb_text[-2000:]
+        return jsonify(_body), 500
 
     return jsonify(
         {
@@ -3418,8 +3345,12 @@ def kfp_sdf_convert():
                             headers={"Content-Disposition": 'attachment; filename="converted.kfp"'})
     except Exception as exc:
         import traceback
-        return jsonify({"ok": False, "message": f"변환 실패: {exc}",
-                        "traceback": traceback.format_exc()[-2000:]}), 400
+        _tb_text = traceback.format_exc()
+        app.logger.error("변환 오류 (%s): %s\n%s", request.path, exc, _tb_text)
+        _body = {"ok": False, "message": f"변환 실패: {exc}"}
+        if _os_for_auth.environ.get("EXPOSE_TRACEBACK") == "1":
+            _body["traceback"] = _tb_text[-2000:]
+        return jsonify(_body), 400
     finally:
         try: os.unlink(tmp_path)
         except OSError: pass
@@ -3970,8 +3901,11 @@ def remote30_overall_finalize_stream(job_id: str):
 
         except Exception as exc:  # noqa: BLE001
             import traceback
-            err = {"type": "error", "message": str(exc)[:500],
-                   "traceback": traceback.format_exc()[-1500:]}
+            _tb_text = traceback.format_exc()
+            app.logger.error("SSE 빌드 오류 (%s): %s\n%s", request.path, exc, _tb_text)
+            err = {"type": "error", "message": str(exc)[:500]}
+            if _os_for_auth.environ.get("EXPOSE_TRACEBACK") == "1":
+                err["traceback"] = _tb_text[-1500:]
             yield _emit(err)
 
     response = Response(_gen(), mimetype="text/event-stream")
@@ -4198,7 +4132,6 @@ def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
     반환: 재배치된 노드 수.
     """
     from collections import defaultdict as _dd, deque as _deque
-    import math as _math
 
     by_label = {str(n["label"]): n for n in nodes}
     root = str(root_label)
@@ -4795,7 +4728,6 @@ def remote30_combined_build():
                 return net_obj, False
             cx = float(av["x"])
             cy = int(round(float(av["y"])))
-            import math as _math
             z_net = _copy.deepcopy(net_obj)
 
             z_scale = 3.0  # 미리보기 opts.zScale 기본값 — 기둥 높이 배율(평면 대비).

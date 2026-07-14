@@ -3529,9 +3529,9 @@
       if (r.nodes && r.nodes.length >= 2) {
         const first = r.nodes[0], last = r.nodes[r.nodes.length - 1];
         const fmtNode = (n) => {
-          const fl = n.floor ? ` · ${n.floor.trim()}` : "";
+          const fl = n.floor ? ` · ${_esc(n.floor.trim())}` : "";
           const lab = (n.io_node === "Input") ? "P" : (n.label === r.av_node_label ? "V" : n.label);
-          return `<strong>${lab}</strong> · elev <strong>${(n.elevation >= 0 ? "+" : "") + n.elevation.toFixed(2)}m</strong>${fl}`;
+          return `<strong>${_esc(lab)}</strong> · elev <strong>${(n.elevation >= 0 ? "+" : "") + n.elevation.toFixed(2)}m</strong>${fl}`;
         };
         let pathBody = fmtNode(first) + `<br>` +
                        `<span style="color:#6b7280;">↓ 라이저 ${r.pipes.length} segment</span><br>` +
@@ -6630,7 +6630,7 @@
           ? `<br>&nbsp;&nbsp;<span style="color:#1e40af;">${_mrAttachText}</span>`
           : (state.machine_room ? `<br>&nbsp;&nbsp;<span style="color:#b45309;">⚠ 기계실 데이터는 있으나 연결 실패 — 라이저만 사용 (서버 로그 확인)</span>` : "");
         _cmbResultBox.innerHTML =
-          `✓ <strong>${data.title}</strong> 배관망 통합 완료 — 아래 [포맷 출력] 에서 내보내세요<br>` +
+          `✓ <strong>${_esc(data.title)}</strong> 배관망 통합 완료 — 아래 [포맷 출력] 에서 내보내세요<br>` +
           `&nbsp;&nbsp;Node ${data.nodes} / Pipe ${data.pipes} / Pump ${data.pumps} / Valve ${data.valves} / Nozzle ${data.nozzles}` + _mrLine + `<br>` +
           `<div style="margin-top:8px; padding:8px 10px; background:#ffffff; border:1px solid var(--line); font-size:0.72rem; color:#0a1228; line-height:1.5;">` +
           `<strong>⚠ PIPENET 사용 시</strong>: SDF 는 <strong>.zip 으로 받아 압축을 푼 후</strong> 폴더 안의 <code>.sdf</code> 를 여세요.<br>` +

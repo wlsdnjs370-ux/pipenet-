@@ -20,6 +20,13 @@ if exist ".venv\Scripts\activate.bat" (
 
 REM waitress 로 production 서버 실행 (loop 안에서 — 크래시 시 자동 재시작)
 :run
+REM ── 좀비 정리 — :5051 을 점유한 잔존 인스턴스가 있으면 그 PID 만 종료.
+REM    (PyCharm 콘솔 등 다른 python 은 건드리지 않음) 이게 없으면 좀비가 포트를
+REM    쥔 채 죽어 새 인스턴스가 영원히 바인드 실패 → 무한 재시작 루프에 빠진다.
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":5051 " ^| findstr "LISTENING"') do (
+    echo [%date% %time%] freeing port 5051 — killing stale PID %%P
+    taskkill /F /PID %%P >nul 2>&1
+)
 echo [%date% %time%] starting serve.py ...
 python serve.py
 echo [%date% %time%] serve.py exited with code %errorlevel%, restarting in 5s ...

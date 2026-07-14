@@ -1,0 +1,22 @@
+{
+  "by_type": {
+    "A": 60,
+    "C": 166,
+    "H": 184,
+    "L": 2973,
+    "PL": 210,
+    "T": 142
+  },
+  "entities_sig": "af2adeefb1fddcc7",
+  "layers": [
+    "0",
+    "FF",
+    "HSP",
+    "L6",
+    "LSP",
+    "TEX",
+    "수정"
+  ],
+  "n_ent": 3735,
+  "n_layers": 7
+}

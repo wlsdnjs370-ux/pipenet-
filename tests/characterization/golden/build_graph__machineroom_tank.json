@@ -1,0 +1,19 @@
+{
+  "edge_sig": "e26f15f19891f01e",
+  "edges": 45,
+  "nodes": 46,
+  "stats": {
+    "all_line_entity_count": 1523,
+    "bridges_applied": 7,
+    "components_after_bridge": 1,
+    "components_before_bridge": 8,
+    "edge_count": 45,
+    "forced_bridges": 0,
+    "layer_filter_fallback_no_match": false,
+    "line_entity_count": 38,
+    "min_edge_mm": 50.0,
+    "node_count": 46,
+    "scale_ratio": 1.0,
+    "snap_eps_mm": 50.0
+  }
+}

@@ -221,6 +221,87 @@ def _sweep_old_upload_files(parent: Path, keep_dirs: set[str] | None = None) -> 
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# 잡 스토어 / 임시파일 수명 관리 — 24/7 구동 프로세스의 무한 누적 방지
+# ────────────────────────────────────────────────────────────────────────────
+# waitress 는 단일 프로세스 + 다중 스레드라 in-memory 잡 dict 가 영원히 산다.
+# 매 업로드마다 대용량(pipe_ents·detected_heads)이 적재되면 메모리가 무한 증가하고,
+# 산출물/업로드 디렉토리도 무한 누적된다. → 잡은 TTL/개수로 evict, 디렉토리는 mtime
+# TTL 로 주기적 sweep(rate-limited).
+_JOB_TTL_SECONDS = 12 * 3600       # 잡 메타 12시간 후 만료 (편집 세션 여유)
+_JOB_MAX_ENTRIES = 100             # 스토어당 최대 잡 수 (초과 시 오래된 것부터)
+_DIR_TTL_SECONDS = 24 * 3600       # 산출물/업로드 24시간 후 정리
+_DIR_SWEEP_INTERVAL = 1800         # 디렉토리 sweep 최소 간격(초) — 매 요청마다 안 돌게
+_jobs_lock = threading.Lock()
+_last_dir_sweep = [0.0]
+
+
+def _register_job(store: dict, job_id: str, data: dict) -> None:
+    """잡 등록 + 오래된/초과 잡 eviction (thread-safe).
+
+    읽기(`store.get`)는 GIL 하에서 원자적이라 lock 불필요하지만, 삽입+iterate-삭제는
+    경쟁이 생기므로 lock 으로 감싼다. 활성 잡(_created≈now)은 evict 대상이 아니다.
+    """
+    data["_created"] = time.time()
+    with _jobs_lock:
+        store[job_id] = data
+        now = time.time()
+        stale = [k for k, v in store.items()
+                 if now - v.get("_created", now) > _JOB_TTL_SECONDS]
+        for k in stale:
+            store.pop(k, None)
+        if len(store) > _JOB_MAX_ENTRIES:
+            ordered = sorted(store.items(), key=lambda kv: kv[1].get("_created", 0.0))
+            for k, _v in ordered[: len(store) - _JOB_MAX_ENTRIES]:
+                store.pop(k, None)
+
+
+def _sweep_old_run_dirs(*parents: Path) -> None:
+    """오래된 잡 산출물 디렉토리(자식) 정리 — opportunistic, rate-limited.
+
+    예외는 전부 삼킨다(정리 실패가 요청을 막으면 안 됨). 활성 잡 dir 은 방금 생성돼
+    mtime 이 최신이라 TTL 에 안 걸린다.
+    """
+    now = time.time()
+    with _jobs_lock:
+        if now - _last_dir_sweep[0] < _DIR_SWEEP_INTERVAL:
+            return
+        _last_dir_sweep[0] = now
+    for parent in parents:
+        try:
+            if not parent.is_dir():
+                continue
+            for child in list(parent.iterdir()):
+                try:
+                    if now - child.stat().st_mtime <= _DIR_TTL_SECONDS:
+                        continue
+                    if child.is_dir():
+                        shutil.rmtree(child, ignore_errors=True)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
+
+def _sweep_old_upload_files(parent: Path, keep_dirs: set[str] | None = None) -> None:
+    """오래된 업로드 *파일* 정리 — 디렉토리(예: cad_workspace)는 보존."""
+    keep = keep_dirs or {"cad_workspace"}
+    now = time.time()
+    try:
+        if not parent.is_dir():
+            return
+        for child in list(parent.iterdir()):
+            try:
+                if child.is_dir() or child.name in keep:
+                    continue
+                if now - child.stat().st_mtime > _DIR_TTL_SECONDS:
+                    child.unlink(missing_ok=True)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # JSON Provider 안전화 — complex / numpy / NaN / Path 등 추가 타입 지원
 # 통합 검증 모듈 등이 만드는 복소수 (예: eigenvalue, scipy 계산 결과) 가
 # jsonify 시 "Object of type complex is not JSON serializable" 로 실패하던 문제 해결.
@@ -3776,16 +3857,26 @@ def remote30_overall_finalize_stream(job_id: str):
 
             # ── Stage 4 entities — prototype 캔버스가 "4 30 헤드" view 에 그릴 데이터.
             # prototype 의 run_stages_3_5 가 emit 하는 것과 동일 형식 (_subgraph / _subgraph_head / _alarm_valve).
+            from remote30_prototype import orthogonalize_edge_positions as _ortho_pos
+            _s4_ortho = _ortho_pos(
+                selection.edges,
+                head_points=[h.pos for h in selection.heads],
+                source_point=selection.source_pos)
+
+            def _s4_xy(p):
+                return _s4_ortho.get((round(float(p[0]), 3), round(float(p[1]), 3)),
+                                     (float(p[0]), float(p[1])))
             stage4_ents: list[dict] = []
             for ea, eb, _ in selection.edges:
+                pa, pb = _s4_xy(ea), _s4_xy(eb)
                 stage4_ents.append({"t": "L", "l": "_subgraph",
-                                     "p": [ea[0], ea[1], eb[0], eb[1]]})
+                                     "p": [pa[0], pa[1], pb[0], pb[1]]})
             for h in selection.heads:
                 stage4_ents.append({"t": "C", "l": "_subgraph_head",
-                                     "c": list(h.pos), "r": 80.0})
+                                     "c": list(_s4_xy(h.pos)), "r": 80.0})
             if selection.source_pos is not None:
                 stage4_ents.append({"t": "C", "l": "_alarm_valve",
-                                     "c": list(selection.source_pos), "r": 150.0})
+                                     "c": list(_s4_xy(selection.source_pos)), "r": 150.0})
             yield _emit({
                 "type": "entities", "stage": 4, "entities": stage4_ents,
                 "summary": {
@@ -4007,6 +4098,12 @@ SYSTEM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 MACHINEROOM_OUTPUT_DIR = BASE_DIR / "data" / "machineroom_runs"
 MACHINEROOM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# 통합 빌드 결과(CombinedTables) 캐시 — 브라우저 수동 편집 후 재출력(/combined/rebuild)이
+# 원본 망(fittings/equipment/nozzle 유량/펌프 곡선 등 geometry JSON 에 없는 리치 필드 포함)을
+# 재사용하도록 job_id → {"combined", "title"} 를 보관한다. 무한 증식 방지 위해 상한을 둔다.
+_COMBINED_JOBS: dict[str, dict] = {}
+_COMBINED_JOBS_CAP = 24
+
 
 def _emit_subnetwork_bundle(net, out_dir: Path, job_id: str, prefix: str,
                             project_title: str, *, coord_scale: float = 1.0) -> dict:
@@ -4048,8 +4145,7 @@ def _emit_subnetwork_bundle(net, out_dir: Path, job_id: str, prefix: str,
 
 
 def _bake_isometric_node_coords(nodes: list[dict], iso_z_scale: float = 1.0,
-                                head_labels: set | None = None,
-                                head_z_offset: float = 0.0) -> None:
+                                no_lift_labels: set | None = None) -> None:
     """통합망 노드 dict 의 (x,y) 를 30° 등각투영 좌표로 in-place 변환.
 
     등각 형태로 보이는 SDF/KFP/HAS 출력을 위해 emit 전에 적용한다. 노드 좌표는
@@ -4057,13 +4153,15 @@ def _bake_isometric_node_coords(nodes: list[dict], iso_z_scale: float = 1.0,
     has_converter.emit_has(isometric=True) 와 동일: X=(x−y)·cos30,
     Y=(x+y)·sin30 + (elev−eMid)·lift. lift 는 평면 대각선의 절반에 정규화.
 
-    head_labels/head_z_offset 가 주어지면 헤드 노드만 화면 Y 에 추가 돌출(상향 +,
-    하향 −)한다. 헤드는 elevation=0 이라 lift 로는 안 펼쳐지므로 별도 픽셀 오프셋.
+    no_lift_labels 노드(라이저/기계실 계통도)는 lift 를 건너뛴다 — schematic y 가
+    이미 수직을 인코딩하므로 elevation lift 를 다시 더하면 이중부호로 계통도가
+    구부러진다. 헤드 z-돌출은 여기서 적용하지 않는다(평면 Y 를 기울여 가지배관을
+    꼬이게 함; 3D 프리뷰·KFP/HAS 는 display_z 로 별도 돌출).
     """
     if not nodes:
         return
     COS30, SIN30 = 0.8660254037844387, 0.5
-    head_labels = head_labels or set()
+    no_lift = {str(l) for l in (no_lift_labels or set())}
     xs = [float(n.get("x", 0) or 0) for n in nodes]
     ys = [float(n.get("y", 0) or 0) for n in nodes]
     elevs = [float(n.get("elevation", 0) or 0) for n in nodes]
@@ -4076,25 +4174,23 @@ def _bake_isometric_node_coords(nodes: list[dict], iso_z_scale: float = 1.0,
         x = float(n.get("x", 0) or 0)
         y = float(n.get("y", 0) or 0)
         e = float(n.get("elevation", 0) or 0)
+        _lift = 0.0 if str(n.get("label")) in no_lift else (e - e_mid) * lift
         n["x"] = (x - y) * COS30
-        n["y"] = (x + y) * SIN30 + (e - e_mid) * lift
-        if head_z_offset and str(n.get("label")) in head_labels:
-            n["y"] += head_z_offset
+        n["y"] = (x + y) * SIN30 + _lift
 
 
 def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
-    """헤드평면(가지·교차배관)을 **실측 그대로 + 직교(0°/90°) 직선화**로 재배치 — 표시 (x,y) 만.
+    """헤드평면(가지·교차배관)을 **균일 격자 tree-packing**으로 재배치 — 표시 (x,y) 만.
 
-    추출 원본은 실 도면 좌표라 배관 방향이 거의 직각이지만, 미세한 사선·꺾임이 누적돼
-    평면도/등각도가 꼬여 보였다. 30° 배수 스냅·트리 재배치(빗·뱀)는 오히려 더 꼬였다.
-
-    해법(사용자 요청): **평면도 배관망을 그대로 가져온 뒤** 각 배관을 가장 가까운 직교
-    축(0°/90°)으로만 직선화한다. 실제 위치·길이를 보존하므로 모양이 유지되고, 평면
-    0°/90° 는 30° 등각투영에서 자동으로 30°/150° 가 되어 **등각도도 깔끔**해진다.
-      · AV(root)부터 BFS 스패닝 트리. root 는 **실위치 고정**.
-      · 각 edge: 실 변위(dx,dy) 중 **지배 성분만 유지**(|dx|≥|dy| → 가로, 아니면 세로),
-        부모의 (직선화된) 위치에서 그 성분 길이만큼 전파. 미세 사선이 직각으로 펴진다.
-      · 거리·스케일 보정·압축 없음 → 실 도면 비율 그대로(축소·붕괴 없음).
+    추출 원본을 그대로 두거나 edge 지배성분만 스냅하면, 형제 가지 서브트리의 폭 구간이
+    겹쳐 등각투영 시 가지배관이 서로 꼬이고 겹쳐 보였다. 해법: AV(root)부터 스패닝
+    트리를 만든 뒤 각 노드에서 자식 서브트리를 4직교 방향(직진→좌/우→후진)으로 팬아웃
+    하고, **각 서브트리의 실제 bounding box 만큼 간격을 확보**해 배치한다. 형제 서브트리
+    폭 구간이 완전히 분리되므로 평면 교차 0, 모든 segment 가 0°/90° → 30° 등각투영에서
+    30°/150° 격자가 되어 **등각도도 깔끔**해진다.
+      · root 는 **실위치 고정**, 각 자식은 실제 방위(부모→자식 벡터)에 가장 가까운 축에
+        1:1 배정 → 평면도의 방향감(동/서/남/북)이 유지돼 통합망이 평면도와 닮은 형태.
+      · 간격 STEP 은 실 도면 대표 edge 길이(중앙값) → 스케일 보존(붕괴·압축 없음).
 
     표시 좌표만 바꾼다. 파이프 length·elevation 등 수리값은 emit 단계에서 좌표와
     분리되어 직렬화되므로(emit_sdf 가 p["length"] 사용, 좌표거리 무관) **수리계산 결과
@@ -4136,63 +4232,163 @@ def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
             if v not in seen:
                 seen.add(v); children[u].append(v); order.append(v); q.append(v)
 
-    # 실위치에서 각 edge 의 지배 성분만 유지해 전파(직선화). root 는 실위치 고정.
-    pos = {root: _xy(root)}
+    # 균일 격자 tree-packing: 각 서브트리를 4직교 방향으로 팬아웃하고, 실제 bounding
+    # box 만큼 간격을 확보해 배치 → 형제 서브트리 폭 구간이 완전히 분리되어 교차 0.
+    # 간격 STEP 은 실 도면의 대표 edge 길이(중앙값)로 잡아 스케일을 보존(붕괴 방지).
+    size = {}
+    for u in reversed(order):
+        size[u] = 1 + sum(size[c] for c in children[u])
+
+    edge_lens = []
     for u in order:
-        px, py = pos[u]
         ux, uy = _xy(u)
         for c in children[u]:
             vx, vy = _xy(c)
-            dx = vx - ux; dy = vy - uy
-            if abs(dx) >= abs(dy):
-                pos[c] = (px + dx, py)        # 가로 지배 → 0° 직선
-            else:
-                pos[c] = (px, py + dy)        # 세로 지배 → 90° 직선
+            edge_lens.append(_math.hypot(vx - ux, vy - uy))
+    edge_lens.sort()
+    STEP = edge_lens[len(edge_lens) // 2] if edge_lens else 1.0
+    if STEP <= 0:
+        STEP = 1.0
+    PAD = STEP  # 균일 간격
+
+    OPP = {"+x": "-x", "-x": "+x", "+y": "-y", "-y": "+y"}
+    PERP = {"+x": ["+y", "-y"], "-x": ["+y", "-y"],
+            "+y": ["+x", "-x"], "-y": ["+x", "-x"]}
+    AXES = ("+x", "+y", "-x", "-y")
+    AX_ANG = {"+x": 0.0, "+y": 90.0, "-x": 180.0, "-y": 270.0}
+
+    def _ang_gap(a, b):
+        d = abs(a - b) % 360.0
+        return min(d, 360.0 - d)
+
+    from itertools import permutations as _perms
+
+    def _assign_dirs(node, incoming):
+        """각 자식을 실제 방위(부모→자식 벡터)에 가장 가까운 축에 1:1 배정.
+        가용 축 = 전체 4개(root) 또는 incoming 제외 3개. 자식 수 ≤ 가용 축이면 축이
+        겹치지 않는 배정 중 방위 오차 합이 최소인 것을 택함(트리 최대차수 4 → 항상 성립).
+        예외적으로 자식이 더 많으면 크기순 fallback(직진→좌/우→후진)."""
+        kids = children[node]
+        avail = list(AXES) if incoming is None else [ax for ax in AXES if ax != incoming]
+        ux, uy = _xy(node)
+        ang = {c: _math.degrees(_math.atan2(_xy(c)[1] - uy, _xy(c)[0] - ux)) % 360.0
+               for c in kids}
+        if len(kids) <= len(avail):
+            best, best_cost = None, float("inf")
+            for combo in _perms(avail, len(kids)):
+                cost = sum(_ang_gap(ang[kids[i]], AX_ANG[combo[i]])
+                           for i in range(len(kids)))
+                if cost < best_cost:
+                    best_cost, best = cost, combo
+            return dict(zip(kids, best))
+        base = list(avail) if incoming is None else [OPP[incoming]] + PERP[incoming] + [incoming]
+        ordered = sorted(kids, key=lambda c: size[c], reverse=True)
+        return {c: (base[i] if i < len(base) else base[-1]) for i, c in enumerate(ordered)}
+
+    def _layout(node, incoming):
+        """node 를 원점에 두고 서브트리 배치. 반환 (pos, bbox[minx,miny,maxx,maxy])."""
+        lpos = {node: (0.0, 0.0)}
+        bbox = [0.0, 0.0, 0.0, 0.0]
+        if not children[node]:
+            return lpos, bbox
+        assign = _assign_dirs(node, incoming)
+        # 큰 서브트리부터 배치(간격 균일). 축이 자식마다 유일하므로 순서는 교차에 무관.
+        for c in sorted(children[node], key=lambda c: size[c], reverse=True):
+            dr = assign[c]
+            csub, cbb = _layout(c, OPP[dr])
+            if dr == "+x":
+                base = bbox[2] + PAD + STEP; off = (base - cbb[0], 0.0)
+            elif dr == "-x":
+                base = bbox[0] - PAD - STEP; off = (base - cbb[2], 0.0)
+            elif dr == "+y":
+                base = bbox[3] + PAD + STEP; off = (0.0, base - cbb[1])
+            else:  # -y
+                base = bbox[1] - PAD - STEP; off = (0.0, base - cbb[3])
+            for n, (x, y) in csub.items():
+                nx, ny = x + off[0], y + off[1]
+                lpos[n] = (nx, ny)
+                bbox[0] = min(bbox[0], nx); bbox[1] = min(bbox[1], ny)
+                bbox[2] = max(bbox[2], nx); bbox[3] = max(bbox[3], ny)
+        return lpos, bbox
+
+    rx, ry = _xy(root)
+    import sys as _sys
+    _old_limit = _sys.getrecursionlimit()
+    _sys.setrecursionlimit(max(_old_limit, len(order) + 1000))
+    try:
+        pos, _ = _layout(root, None)   # root: 가용 축 4개, 자식마다 실제 방위로 배정
+    finally:
+        _sys.setrecursionlimit(_old_limit)
+
+    # 패킹 결과를 원 도면 스팬에 맞춰 균일 스케일 — 형태·간격비·교차0 불변(스케일 무관),
+    # 절대 스케일만 정합해 라이저/기계실(exclude, 미이동)과의 크기 붕괴/과확장 방지.
+    orig_xs = [_xy(u)[0] for u in seen]; orig_ys = [_xy(u)[1] for u in seen]
+    orig_span = max(max(orig_xs) - min(orig_xs), max(orig_ys) - min(orig_ys))
+    pk_xs = [p[0] for p in pos.values()]; pk_ys = [p[1] for p in pos.values()]
+    pk_span = max(max(pk_xs) - min(pk_xs), max(pk_ys) - min(pk_ys))
+    s = (orig_span / pk_span) if (pk_span > 0 and orig_span > 0) else 1.0
 
     moved = 0
-    for u in seen:
+    for u, (x, y) in pos.items():
         if u == root:
             continue
         nd = by_label[u]
-        nd["x"], nd["y"] = pos[u]
+        nd["x"], nd["y"] = x * s + rx, y * s + ry   # root 실위치 고정(pos[root]=(0,0))
         moved += 1
     return moved
 
 
-# 답안 28F (GRAVITE_28F) 라이저 raw 좌표 (mm 도메인, 평면도와 단위 일치) — combined_build
-# 좌표 재매핑 기준. 계통도 노드를 이 좌표 + 헤드망 AV 오프셋으로 translate 한다.
-_ANSWER_28F_COORDS = {
-    "1":  (-10825,  -851),    # Input (옥상 수원)
-    "2":  (-11600,  -750),
-    "3":  (-11600,  -952),
-    "4":  (-11275, -1775),
-    "5":  (-11275, -3420),    # AV 직전
-    "10": (-11400, -3406),    # AV — 헤드망 source 와 정합
-}
+# 라이저 실좌표 정규화 폴백 상수 — 헤드망 크기를 못 구할 때 라이저를 그릴 기본 스팬(mm)
+# 및 헤드망 대비 라이저 도면 높이 비율. (하드코딩 답안 좌표 제거, 실좌표 스케일 정규화)
+_RISER_SCHEMATIC_SPAN_MM = 3000.0
+_RISER_HEIGHT_FRAC = 0.6
 
 
-def _remap_riser_to_head_av(system_riser: dict, head_av_node: dict, av_label: str):
-    """계통도 라이저 노드를 답안 28F raw 좌표 + 헤드망 AV 오프셋으로 재매핑 → RiserTables.
+def _remap_riser_to_head_av(system_riser: dict, head_av_node: dict, av_label: str,
+                            head_nodes: list[dict] | None = None):
+    """계통도 라이저를 실좌표 정규화 → 헤드망 AV 기준으로 배치 (RiserTables).
 
-    system_riser 노드 좌표(계통도 픽, 수십만 mm)와 헤드망 좌표(평면 DXF, 수만 mm)는
-    도메인이 달라 emit_sdf 정규화 시 라이저가 한쪽에 압축된다. 답안 28F 라이저 좌표를
-    차용하고 헤드망 AV 위치로 translate 해 단위·배치를 정합시킨다(라이저가 AV 위쪽에 배치).
+    계통도 픽 좌표(수십만 mm)와 헤드망 좌표(평면 DXF, 수만 mm)는 도메인이 달라 emit_sdf
+    정규화 시 라이저가 한쪽에 압축된다. 하드코딩 답안(28F) 좌표를 차용하던 방식을 버리고,
+    라이저 **자체의 상대 형상(층별 노드 전부 포함)** 을 유지한 채 헤드망 크기에 맞춰 균일
+    스케일하고, AV 노드를 헤드망 AV 위치에 정합시켜 라이저를 AV 위쪽에 배치한다.
+    → 층 단위 노드가 몇 개든, 어느 건물이든 일반화 (28F 전용 하드코딩 제거).
     좌표가 비숫자/누락이면 (KeyError, TypeError, ValueError) 를 올린다(호출자가 400 처리).
     """
     from remote30_full_network import RiserTables
+    nodes = system_riser["nodes"]
+    if not nodes:
+        raise ValueError("라이저 노드가 비어 있음")
     head_av_x = float(head_av_node["x"])
     head_av_y = float(head_av_node["y"])
-    answer_av_x, answer_av_y = _ANSWER_28F_COORDS["10"]
-    tx_off = head_av_x - answer_av_x
-    ty_off = head_av_y - answer_av_y
+
+    # 라이저 native 좌표에서 AV 위치 + 자체 bbox 스팬 산출.
+    src_av = next((n for n in nodes if str(n.get("label", "")) == str(av_label)), None)
+    if src_av is None:
+        src_av = nodes[-1]   # AV 라벨 부재 시 마지막 노드를 AV 로 간주(폴백)
+    src_av_x = float(src_av["x"])
+    src_av_y = float(src_av["y"])
+    xs = [float(n["x"]) for n in nodes]
+    ys = [float(n["y"]) for n in nodes]
+    riser_span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+
+    # 헤드망 특성 크기(bbox 대각선) — 라이저를 이 스케일의 일정 비율로 그려 joint
+    # 정규화 시 라이저·헤드망이 서로 압축되지 않게 한다. 없으면 폴백 스팬.
+    head_char = _RISER_SCHEMATIC_SPAN_MM
+    if head_nodes:
+        hxs = [float(n["x"]) for n in head_nodes if n.get("x") is not None]
+        hys = [float(n["y"]) for n in head_nodes if n.get("y") is not None]
+        if hxs and hys:
+            hd = math.hypot(max(hxs) - min(hxs), max(hys) - min(hys))
+            if hd > 1.0:
+                head_char = hd
+    scale = (head_char * _RISER_HEIGHT_FRAC) / riser_span
+
     remapped_nodes: list[dict] = []
-    for n in system_riser["nodes"]:
-        label = str(n.get("label", ""))
+    for n in nodes:
         new_n = dict(n)
-        if label in _ANSWER_28F_COORDS:
-            ax, ay = _ANSWER_28F_COORDS[label]
-            new_n["x"] = int(round(ax + tx_off))
-            new_n["y"] = int(round(ay + ty_off))
+        new_n["x"] = int(round(head_av_x + (float(n["x"]) - src_av_x) * scale))
+        new_n["y"] = int(round(head_av_y + (float(n["y"]) - src_av_y) * scale))
         remapped_nodes.append(new_n)
     return RiserTables(
         nodes=remapped_nodes,
@@ -4227,13 +4423,29 @@ def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
             {"label": str(n["label"]),
              "x": float(n.get("x", 0)), "y": float(n.get("y", 0)),
              "z": float(n.get("elevation", 0)),
-             "io": n.get("io_node", "No")}
+             "io": n.get("io_node", "No"),
+             # 층 단위 편집용 태그 — 계통도 라이저 노드가 어느 층인지(있을 때만).
+             # 에디터가 층별 노드 분리/삭제/재연결에 사용하고 rebuild 왕복에서 보존한다.
+             "floor": n.get("floor"),
+             "floor_idx": (int(n["floor_idx"]) if n.get("floor_idx") is not None else None),
+             # 아이소 3D 방수 시뮬레이션용 — Input 노드 공급압(Pa). 없으면 None.
+             "pressure_pa": (float(n["pressure_pa"])
+                             if n.get("pressure_pa") is not None else None)}
             for n in combined.nodes
         ],
         "pipes": [
             {"label": str(p.get("label", "")),
              "in": str(p["in"]), "out": str(p["out"]),
-             "dia": p.get("dia", 0)}
+             "dia": p.get("dia", 0),
+             # 아이소 3D 방수 시뮬레이션용 하젠-윌리엄스 파라미터.
+             "length": float(p.get("length", 0) or 0),   # m
+             "c": float(p.get("c", 120) or 120),          # Hazen-Williams C
+             "elev": float(p.get("elev", 0) or 0),        # 상승고 m (in→out)
+             # 계산(유속) 오버레이 — annotate_pipe_velocity 가 stamp (표시 전용).
+             "flow_lpm": p.get("flow_lpm"),
+             "velocity_mps": p.get("velocity_mps"),
+             "v_limit": p.get("v_limit"),
+             "v_over": p.get("v_over")}
             for p in combined.pipes
         ],
         "pumps": [
@@ -4320,6 +4532,7 @@ def remote30_combined_build():
     from remote30_full_network import (
         stitch_riser_and_heads, emit_full_sdf,
         prepend_machine_room_to_riser, insert_source_pump,
+        normalize_pipe_bores, size_pipes_by_velocity, annotate_pipe_velocity,
     )
 
     # ── 가압 방식 — "gravity"(자연낙차/고가수조, 기본) | "pump"(펌프 가압).
@@ -4383,18 +4596,19 @@ def remote30_combined_build():
         return _err500(exc)
 
     # ── 계통도 라이저 → RiserTables.
-    # ★ 좌표 재매핑: system_riser 의 노드 좌표(사용자 계통도 픽 — 수십만 mm) 와 헤드망 노드
+    # ★ 실좌표 정규화: system_riser 의 노드 좌표(사용자 계통도 픽 — 수십만 mm) 와 헤드망 노드
     # 좌표(평면도 DXF — 수만 mm)가 도메인이 달라 emit_sdf 의 정규화 시 라이저가 한쪽에 압축됨.
-    # 답안 28F 의 raw 라이저 좌표(평면도 mm 도메인)를 차용 + 헤드망 AV 위치로 translate
-    # → 라이저가 헤드망 AV 위쪽에 자연스럽게 배치, 좌표 단위 일치.
+    # 라이저 자체 형상(층별 노드 포함)을 헤드망 크기에 맞춰 균일 스케일 + 헤드망 AV 위치로
+    # translate → 라이저가 헤드망 AV 위쪽에 자연스럽게 배치, 좌표 단위 일치 (28F 하드코딩 제거).
     av_label = str(system_riser.get("av_node_label", "10"))
     head_av_node = next((n for n in head_tables.nodes if n["label"] == av_label), None)
     if head_av_node is None:
         return jsonify({"ok": False,
                         "message": f"헤드망에 AV(label={av_label}) 노드가 없음 — 평면도 추출 다시 확인"}), 500
-    # 좌표 재매핑 — head_av/노드 좌표가 비숫자·누락이면 500+traceback 대신 깔끔한 400.
+    # 좌표 정규화 — head_av/노드 좌표가 비숫자·누락이면 500+traceback 대신 깔끔한 400.
     try:
-        riser = _remap_riser_to_head_av(system_riser, head_av_node, av_label)
+        riser = _remap_riser_to_head_av(system_riser, head_av_node, av_label,
+                                        head_nodes=head_tables.nodes)
     except (KeyError, TypeError, ValueError) as exc:
         return jsonify({"ok": False,
                         "message": f"계통도/헤드망 노드 좌표가 올바르지 않습니다: {exc}"}), 400
@@ -4445,6 +4659,33 @@ def remote30_combined_build():
             rated_h = float(pump_spec.get("rated_h") or 100)
             count = int(pump_spec.get("count") or 1)
             insert_source_pump(combined, rated_q_lpm=rated_q, rated_h_m=rated_h, count=count)
+        # ── 내경 정규화: 상류(입상관)→하류(가지) 단조 비증가로 꼬임 해소 + 전 구간 한 치수 승급.
+        #   build 시 1회만 승급(bump_one_size=True). rebuild 는 승급 없이 detangle 만(멱등).
+        try:
+            _bore_ch = normalize_pipe_bores(
+                combined.nodes, combined.pipes, bump_one_size=True)
+            app.logger.info("combined/build: pipe bores normalized (+1 size), changed=%d", _bore_ch)
+        except Exception as _e:
+            app.logger.warning("combined/build: bore normalize skipped: %s", _e)
+        # ── 유속 상한(≤50A 6 m/s, ≥65A 10 m/s) 보장: 과토출 대비 safety 여유를 두고
+        #   유량 기준 최소 내경으로 승급(never-shrink). 정규화 뒤에 두어 승급분을 보존.
+        try:
+            _vel = size_pipes_by_velocity(
+                combined.nodes, combined.pipes, combined.nozzles,
+                safety=1.2, keep_existing=True)
+            app.logger.info(
+                "combined/build: velocity sizing changed=%d, max v %.2f->%.2f, viol %d->%d",
+                _vel["changed"], _vel["max_velocity_before"], _vel["max_velocity_after"],
+                _vel["violations_before"], _vel["violations_after"])
+        except Exception as _e:
+            app.logger.warning("combined/build: velocity sizing skipped: %s", _e)
+        # ── 통합 뷰 계산(유속) 오버레이용 배관 stamp — 최종 내경 기준.
+        try:
+            _va = annotate_pipe_velocity(combined.nodes, combined.pipes, combined.nozzles)
+            app.logger.info("combined/build: velocity annotated, max %.2f m/s, over=%d",
+                            _va["max_velocity"], _va["violations"])
+        except Exception as _e:
+            app.logger.warning("combined/build: velocity annotate skipped: %s", _e)
         job_id = secrets.token_hex(6)
         _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
         out_dir = COMBINED_OUTPUT_DIR / job_id
@@ -4505,17 +4746,11 @@ def remote30_combined_build():
                               if _riser_elev_vals else 0.0)
         _auto_spread = _riser_elev_spread < 1.0
 
-        # 헤드평면(가지·교차배관) 스키매틱 트리 정돈 — 표시 (x,y) 만 변경.
-        # combined 를 단일 원천(single source of truth)으로 한 번만 정돈하면
-        # 미리보기 geometry·평면 KFP/HAS·iso KFP/HAS 모두에 전파된다(다운 후 재투영).
-        # 라이저(별도 수직 collapse)·기계실(군집 보존)은 제외. 수리값(length·elevation) 불변.
-        try:
-            _tidied = _tidy_head_plane_layout(
-                combined.nodes, combined.pipes, av_label,
-                riser_collapse_labels | _mr_set)
-            app.logger.info("combined/build: head-plane tidied nodes=%d", _tidied)
-        except Exception as _e:  # 정돈 실패는 치명적이지 않음 — 원좌표로 진행.
-            app.logger.warning("combined/build: head-plane tidy skipped: %s", _e)
+        # ── 평면 세트/미리보기 geometry 는 실 DXF 좌표를 쓴다(교차·주배관은 도면 그대로,
+        #    가지배관만 build_input_tables 에서 이미 직각 스냅됨). tree-packing 스키매틱
+        #    재배치는 평면을 도면과 동떨어진 기괴한 형태로 만들어 폐지 — 대신 iso(등각)
+        #    세트에만 tree-packing 을 적용해 아이소 꼬임을 방지한다(아래 combined_iso).
+        #    수리값(length·elevation)은 어느 경로든 불변.
 
         # ── 헤드(스프링클러) z 돌출 — 상향식(+)/하향식(−)을 표시 전용 display_z 로 베이크.
         #   헤드 = nozzle 부착(input) 노드. 돌출량은 평면 대각선 비율(head_z_frac)이라
@@ -4759,14 +4994,24 @@ def remote30_combined_build():
             return {"sdf": b_sdf, "slf": b_slf, "kfp": b_kfp, "has": b_has, "zip": b_zip,
                     "zip_sdf": b_zip_sdf, "kfp_ok": b_kfp_ok, "has_ok": b_has_ok}
 
-        # 평면 세트(원본 좌표) — 캔버스 geometry 와 동일한 평면도 좌표.
+        # 평면 세트(실 DXF 좌표) — 캔버스 geometry 와 동일한 평면도 좌표(가지만 직각화).
         plan_bundle = _emit_bundle(combined, "")
-        # 등각 세트 — 노드 (x,y) 를 30° 등각투영으로 베이크한 사본에서 emit.
-        # 표시 전용 변환이라 SDF/KFP/HAS 의 수리계산 결과는 평면 세트와 동일.
+        # 등각 세트 — 사본에 tree-packing 스키매틱 재배치 후 30° 등각투영 베이크.
+        # 등각은 헤드평면을 균일 격자로 재배치해야 아이소 꼬임이 안 생기므로(평면과 달리)
+        # 여기서만 정돈한다. 표시 전용 변환이라 SDF/KFP/HAS 의 수리계산 결과는 평면과 동일.
         combined_iso = _copy.deepcopy(combined)
+        try:
+            _tidied = _tidy_head_plane_layout(
+                combined_iso.nodes, combined_iso.pipes, av_label,
+                riser_collapse_labels | _mr_set)
+            app.logger.info("combined/build: iso head-plane tidied nodes=%d", _tidied)
+        except Exception as _e:  # 정돈 실패는 치명적이지 않음 — 원좌표로 진행.
+            app.logger.warning("combined/build: iso head-plane tidy skipped: %s", _e)
+        # 라이저·기계실 계통도는 lift 제외 — schematic y 가 이미 수직을 인코딩하므로
+        # elevation lift 를 다시 더하면 이중부호로 계통도가 구부러진다. 헤드 z-돌출도
+        # 여기선 안 씀(평면 Y 를 기울여 가지배관을 꼬이게 함; 3D·KFP/HAS 는 display_z).
         _bake_isometric_node_coords(combined_iso.nodes, has_iso_z_scale,
-                                    head_labels=head_label_set,
-                                    head_z_offset=head_disp_z)
+                                    no_lift_labels=riser_collapse_labels | _mr_set)
         iso_bundle = _emit_bundle(combined_iso, "_iso")
 
         out_sdf, out_slf = plan_bundle["sdf"], plan_bundle["slf"]
@@ -4795,6 +5040,39 @@ def remote30_combined_build():
         warnings.warn(f"[combined] roles 사이드카 저장 실패 (미리보기 모양 복원 불가): {_rs_exc}",
                        RuntimeWarning, stacklevel=2)
 
+    # ── 수동 편집 재출력(/combined/rebuild)용 원본 망 캐시. deepcopy 로 보관해
+    #    이후 emit 부작용(좌표 베이크 등)이 캐시본을 오염시키지 않도록 격리한다.
+    #    z-aware 표시좌표(라이저 기둥 collapse + display_z)도 라벨별로 캐시한다 —
+    #    편집 재출력의 KFP/HAS 가 원본과 동일 비율이 되려면 display_z 가 필요하다
+    #    (없으면 변환기가 raw elevation[m]/x,y[mm] 단위 1000× 어긋나 라이저 폭주).
+    _zaware_map: dict[str, dict] = {}
+    try:
+        _zp, _zok = _collapse_riser_to_column(combined)
+        if _zok:
+            for _n in _zp.nodes:
+                _lb = str(_n.get("label"))
+                _zaware_map[_lb] = {
+                    "x": _n.get("x"), "y": _n.get("y"),
+                    "dz": _n.get("display_z"),
+                    "riser": _lb in riser_collapse_labels,
+                }
+    except Exception as _zexc:  # noqa: BLE001 — z-aware 캐시 실패는 KFP/HAS 만 영향
+        warnings.warn(f"[combined] z-aware 좌표 캐시 실패 (편집 KFP/HAS 비율 저하 가능): {_zexc}",
+                       RuntimeWarning, stacklevel=2)
+    try:
+        if len(_COMBINED_JOBS) >= _COMBINED_JOBS_CAP:
+            _COMBINED_JOBS.pop(next(iter(_COMBINED_JOBS)))  # 가장 오래된 항목 제거
+        _COMBINED_JOBS[job_id] = {
+            "combined": _copy.deepcopy(combined),
+            "title": title,
+            "zaware": _zaware_map,
+            "kfp_coord_scale": kfp_coord_scale,
+            "has_iso_z_scale": has_iso_z_scale,
+        }
+    except Exception as _cache_exc:  # noqa: BLE001 — 캐시 실패가 통합 출력을 막지 않도록
+        warnings.warn(f"[combined] rebuild 캐시 저장 실패 (편집 재출력 불가): {_cache_exc}",
+                       RuntimeWarning, stacklevel=2)
+
     return jsonify({
         "ok": True, "job_id": job_id, "sdf": out_sdf.name, "zip": out_zip.name,
         "nodes": len(combined.nodes), "pipes": len(combined.pipes),
@@ -4818,6 +5096,266 @@ def remote30_combined_build():
         "machine_room_attached": mr_attached,
         "geometry": geometry,
     })
+
+
+def _patch_combined_from_geometry(combined, geom: dict) -> None:
+    """캐시된 CombinedTables 를 브라우저 편집 geometry 로 in-place 패치한다.
+
+    편집 geometry(state.combined_geometry)는 노드(label,x,y,z,io,pressure_pa)와
+    배관(label,in,out,dia,length,c,elev)만 담는다. fittings/equipment/nozzle 유량 등
+    리치 필드는 combined 원본에 보존돼 있으므로, 여기서는 노드/배관만 덮어쓰고
+    삭제된 노드를 참조하는 nozzle/fitting/pump/valve 는 잘라낸다(SDF 무결성 유지).
+
+    좌표계: x,y = mm(int) / elevation·length·elev = m. 클라이언트와 동일.
+    """
+    g_nodes = {str(n.get("label")): n for n in (geom.get("nodes") or []) if n.get("label") is not None}
+    g_pipes = {str(p.get("label")): p for p in (geom.get("pipes") or []) if p.get("label")}
+
+    def _f(v, d=0.0):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return float(d)
+
+    # ── 노드: 유지/갱신 + 신규 추가, 편집본에 없는 노드는 삭제 ──
+    kept_nodes, seen = [], set()
+    for n in combined.nodes:
+        lbl = str(n.get("label"))
+        gn = g_nodes.get(lbl)
+        if gn is None:
+            continue  # 편집본에서 삭제됨
+        n["x"] = int(round(_f(gn.get("x", n.get("x", 0)))))
+        n["y"] = int(round(_f(gn.get("y", n.get("y", 0)))))
+        n["elevation"] = _f(gn.get("z", n.get("elevation", 0)))
+        if gn.get("io") is not None:
+            n["io_node"] = gn["io"]
+        if "pressure_pa" in gn:
+            n["pressure_pa"] = gn["pressure_pa"]
+        # 층 태그 — 편집본이 값을 실어 보내면 반영(분리 노드가 부모 층 상속 등), None 이면 제거.
+        if "floor" in gn:
+            if gn["floor"] is None:
+                n.pop("floor", None)
+            else:
+                n["floor"] = gn["floor"]
+        if "floor_idx" in gn:
+            if gn["floor_idx"] is None:
+                n.pop("floor_idx", None)
+            else:
+                n["floor_idx"] = int(gn["floor_idx"])
+        kept_nodes.append(n)
+        seen.add(lbl)
+    for lbl, gn in g_nodes.items():
+        if lbl in seen:
+            continue
+        new_node = {
+            "label": lbl,
+            "x": int(round(_f(gn.get("x", 0)))),
+            "y": int(round(_f(gn.get("y", 0)))),
+            "elevation": _f(gn.get("z", 0)),
+            "io_node": gn.get("io", "No"),
+            "pressure_pa": gn.get("pressure_pa"),
+        }
+        if gn.get("floor") is not None:
+            new_node["floor"] = gn["floor"]
+        if gn.get("floor_idx") is not None:
+            new_node["floor_idx"] = int(gn["floor_idx"])
+        kept_nodes.append(new_node)
+    combined.nodes = kept_nodes
+    valid = {str(n.get("label")) for n in combined.nodes}
+
+    # 신규 배관 기본 type — 기존 배관 컨벤션을 따른다(없으면 "Pipe").
+    default_type = "Pipe"
+    for p in combined.pipes:
+        if p.get("type"):
+            default_type = p["type"]
+            break
+
+    # ── 배관: 유지/갱신 + 신규 추가, 삭제/끊긴 끝점 제거 ──
+    kept_pipes, seen_p = [], set()
+    for p in combined.pipes:
+        lbl = str(p.get("label", ""))
+        gp = g_pipes.get(lbl)
+        if gp is None:
+            continue  # 편집본에서 삭제됨
+        p["in"] = str(gp.get("in", p.get("in")))
+        p["out"] = str(gp.get("out", p.get("out")))
+        p["dia"] = int(round(_f(gp.get("dia", p.get("dia", 0)))))
+        p["length"] = _f(gp.get("length", p.get("length", 0)))
+        p["elev"] = _f(gp.get("elev", p.get("elev", 0)))
+        if gp.get("c") is not None:
+            p["c"] = gp["c"]
+        seen_p.add(lbl)
+        if p["in"] in valid and p["out"] in valid:
+            kept_pipes.append(p)
+    for lbl, gp in g_pipes.items():
+        if lbl in seen_p:
+            continue
+        pin, pout = str(gp.get("in", "")), str(gp.get("out", ""))
+        if pin not in valid or pout not in valid:
+            continue
+        kept_pipes.append({
+            "label": lbl, "in": pin, "out": pout, "type": default_type,
+            "dia": int(round(_f(gp.get("dia", 50)))),
+            "length": _f(gp.get("length", 0)),
+            "elev": _f(gp.get("elev", 0)),
+            "c": gp.get("c", 120),
+            "status": "", "group": "",
+        })
+    combined.pipes = kept_pipes
+
+    # ── 삭제된 노드를 참조하는 부속(nozzle/fitting/pump/valve) 정리 ──
+    def _nz_in(nz):
+        return str(nz.get("in") or nz.get("input_node") or nz.get("input") or "")
+    combined.nozzles = [nz for nz in combined.nozzles if _nz_in(nz) in valid]
+    if getattr(combined, "fittings", None):
+        combined.fittings = [f for f in combined.fittings
+                             if str(f.get("in", "")) in valid and str(f.get("out", "")) in valid]
+    combined.pumps = [pm for pm in combined.pumps
+                      if str(pm.get("in", "")) in valid and str(pm.get("out", "")) in valid]
+    combined.valves = [vv for vv in combined.valves
+                       if str(vv.get("in", "")) in valid and str(vv.get("out", "")) in valid]
+
+
+@app.post("/api/remote30/combined/rebuild")
+def remote30_combined_rebuild():
+    """브라우저에서 수동 편집한 통합망 geometry → SDF 재출력.
+
+    Body(JSON): { job_id, geometry:{nodes:[...], pipes:[...]} }
+      job_id   : 원본 통합 빌드의 job_id (_COMBINED_JOBS 캐시 키)
+      geometry : 편집된 state.combined_geometry (노드/배관만)
+
+    캐시된 원본 CombinedTables 를 deepcopy → geometry 로 패치 → emit_full_sdf 로
+    새 SDF 를 생성해 다운로드 URL 을 돌려준다. 패치본을 다시 캐시해 연속 편집을 지원.
+    """
+    import secrets
+    import copy as _copy
+    body = request.get_json(silent=True) or {}
+    src_job = (body.get("job_id") or "").strip()
+    geom = body.get("geometry") or {}
+    if not src_job:
+        return jsonify({"ok": False, "message": "job_id 가 필요합니다"}), 400
+    cache = _COMBINED_JOBS.get(src_job)
+    if not cache:
+        return jsonify({"ok": False,
+                        "message": f"통합 빌드 캐시를 찾을 수 없습니다 (job_id={src_job}). "
+                                   "배관망 통합을 다시 실행한 뒤 편집해 주세요."}), 404
+    if not geom.get("nodes") or not geom.get("pipes"):
+        return jsonify({"ok": False, "message": "편집된 geometry(nodes/pipes)가 필요합니다"}), 400
+
+    from remote30_full_network import (emit_full_sdf, normalize_pipe_bores,
+                                        size_pipes_by_velocity, annotate_pipe_velocity)
+    try:
+        combined = _copy.deepcopy(cache["combined"])
+        _patch_combined_from_geometry(combined, geom)
+        if not combined.nodes or not combined.pipes:
+            return jsonify({"ok": False, "message": "편집 결과 노드/배관이 비어 재출력할 수 없습니다"}), 400
+        # ── 내경 꼬임 해소만(detangle) — 편집 후 상류<하류 역전 방지. 승급(+1)은 build 시 1회뿐이라
+        #    rebuild 에선 제외(멱등). 사용자 수동 편집을 얇게 줄이지 않고 상류만 ≥ 하류로 끌어올림.
+        try:
+            normalize_pipe_bores(combined.nodes, combined.pipes, bump_one_size=False)
+        except Exception as _e:
+            app.logger.warning("combined/rebuild: bore detangle skipped: %s", _e)
+        # ── 유속 상한 보장(멱등, never-shrink): 편집으로 얇아진 구간이 유속 초과면 최소 내경으로 승급.
+        try:
+            _vel = size_pipes_by_velocity(
+                combined.nodes, combined.pipes, combined.nozzles,
+                safety=1.2, keep_existing=True)
+            app.logger.info(
+                "combined/rebuild: velocity sizing changed=%d, viol %d->%d",
+                _vel["changed"], _vel["violations_before"], _vel["violations_after"])
+        except Exception as _e:
+            app.logger.warning("combined/rebuild: velocity sizing skipped: %s", _e)
+        try:
+            annotate_pipe_velocity(combined.nodes, combined.pipes, combined.nozzles)
+        except Exception as _e:
+            app.logger.warning("combined/rebuild: velocity annotate skipped: %s", _e)
+
+        new_job = secrets.token_hex(6)
+        _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
+        out_dir = COMBINED_OUTPUT_DIR / new_job
+        out_dir.mkdir(parents=True, exist_ok=True)
+        title = cache.get("title") or "Combined (edited)"
+        out_sdf = out_dir / f"combined_{new_job}_edited.sdf"
+        emit_full_sdf(combined, out_sdf, project_title=title)
+
+        # ── KFP/HAS 재출력 — 원본 빌드가 캐시한 z-aware 표시좌표(라이저 기둥 collapse
+        #    + display_z)를 라벨별로 재적용해 원본과 동일 비율로 emit 한다. 편집으로
+        #    옮긴 노드는 새 x,y 를 유지하되 display_z 는 캐시값(헤드 돌출·고도)을 쓴다.
+        #    신규 노드는 display_z 없음 → 헤드평면(0). 캐시 없으면 KFP/HAS 는 생략.
+        zaware = cache.get("zaware") or {}
+        kfp_scale = cache.get("kfp_coord_scale", 1.0)
+        has_zs = cache.get("has_iso_z_scale", 1.0)
+        out_kfp = out_dir / f"combined_{new_job}_edited.kfp"
+        out_has = out_dir / f"combined_{new_job}_edited.has"
+        kfp_ok = has_ok = False
+        try:
+            from remote30_prototype import emit_kfp as _emit_kfp, emit_has as _emit_has
+            # KFP/HAS 원본 SDF 선택 — 라이저 collapse 캐시(zaware)가 있으면 display_z 를
+            # 재적용한 z-aware SDF 를, 없으면(라이저 없는 헤드 전용망) 평면 SDF 를 그대로 쓴다.
+            z_tmp = None
+            if zaware:
+                z_net = _copy.deepcopy(combined)
+                for n in z_net.nodes:
+                    zc = zaware.get(str(n.get("label")))
+                    if not zc:
+                        continue
+                    if zc.get("riser"):  # 라이저는 캐시된 기둥 x,y 로 collapse
+                        if zc.get("x") is not None:
+                            n["x"] = zc["x"]
+                        if zc.get("y") is not None:
+                            n["y"] = zc["y"]
+                    if zc.get("dz") is not None:
+                        n["display_z"] = zc["dz"]
+                z_tmp = out_dir / f"combined_{new_job}_edited_z.sdf"
+                emit_full_sdf(z_net, z_tmp, project_title=title)
+                kfp_src = z_tmp
+            else:
+                kfp_src = out_sdf
+            try:
+                _emit_kfp(kfp_src, out_kfp, coord_scale=kfp_scale, display_geometry=True)
+                kfp_ok = out_kfp.is_file()
+            except Exception as _kexc:  # noqa: BLE001 — KFP 실패가 SDF 를 막지 않도록
+                warnings.warn(f"[combined/rebuild] KFP emit 실패 (SDF 정상): {_kexc}",
+                               RuntimeWarning, stacklevel=2)
+            try:
+                _emit_has(kfp_src, out_has, isometric=True, iso_z_scale=has_zs)
+                has_ok = out_has.is_file()
+            except Exception as _hexc:  # noqa: BLE001 — HAS 실패가 SDF 를 막지 않도록
+                warnings.warn(f"[combined/rebuild] HAS emit 실패 (SDF 정상): {_hexc}",
+                               RuntimeWarning, stacklevel=2)
+            if z_tmp is not None:  # 임시 z-aware SDF 정리(다운로드엔 평면 out_sdf 만)
+                for _tmp in (z_tmp, z_tmp.with_suffix(".slf")):
+                    try:
+                        if _tmp.is_file():
+                            _tmp.unlink()
+                    except OSError:
+                        pass
+        except Exception as _zexc:  # noqa: BLE001 — KFP/HAS 전체 실패도 SDF 는 유지
+            warnings.warn(f"[combined/rebuild] KFP/HAS 재출력 실패 (SDF 정상): {_zexc}",
+                           RuntimeWarning, stacklevel=2)
+
+        # 패치본을 새 job_id 로 캐시 — 연속 편집(편집→재출력→더 편집) 지원.
+        # z-aware/스케일도 승계해 이후 편집에서도 KFP/HAS 비율을 유지한다.
+        if len(_COMBINED_JOBS) >= _COMBINED_JOBS_CAP:
+            _COMBINED_JOBS.pop(next(iter(_COMBINED_JOBS)))
+        _COMBINED_JOBS[new_job] = {
+            "combined": _copy.deepcopy(combined), "title": title,
+            "zaware": zaware, "kfp_coord_scale": kfp_scale, "has_iso_z_scale": has_zs,
+        }
+
+        base = f"/api/remote30/combined/result/{new_job}"
+        return jsonify({
+            "ok": True, "job_id": new_job, "sdf": out_sdf.name,
+            "kfp": out_kfp.name if kfp_ok else None,
+            "has": out_has.name if has_ok else None,
+            "nodes": len(combined.nodes), "pipes": len(combined.pipes),
+            "nozzles": len(combined.nozzles),
+            "download_url_sdf": f"{base}/{out_sdf.name}",
+            "download_url_kfp": f"{base}/{out_kfp.name}" if kfp_ok else None,
+            "download_url_has": f"{base}/{out_has.name}" if has_ok else None,
+        })
+    except Exception as exc:  # noqa: BLE001
+        return _err500(exc)
 
 
 @app.get("/api/remote30/combined/result/<job_id>/<path:filename>")
@@ -5679,16 +6217,18 @@ def remote30_inspect():
         cached = _cat_cache.get(name)
         if cached is not None:
             return cached
+        # 콘텐츠(HEAD/PIPE/TEXT) 신호가 ARCH 를 이긴다: "SHEET-TEXT" 처럼 arch 키워드가
+        # 섞인 콘텐츠 레이어를 건축으로 흡수(정리)해 버리는 오류 방지. EXCLUDE 만 최우선.
         if layer_match(name, _cat_settings.exclude_layer_keywords):
             cat = "EXCLUDE"
-        elif layer_match(name, _cat_settings.arch_layer_keywords):
-            cat = "ARCH"
         elif layer_match(name, _cat_settings.head_layer_keywords):
             cat = "HEAD"
         elif layer_match(name, _cat_settings.pipe_layer_keywords):
             cat = "PIPE"
         elif layer_match(name, _cat_settings.text_layer_keywords):
             cat = "TEXT"
+        elif layer_match(name, _cat_settings.arch_layer_keywords):
+            cat = "ARCH"
         else:
             cat = "OTHER"
         _cat_cache[name] = cat
@@ -6178,7 +6718,7 @@ def remote30_extract():
         raw = request.form.get(key, "").strip()
         if raw:
             overrides[key] = [s.strip() for s in raw.split(",") if s.strip()]
-    for key in ("snap_tol", "head_to_pipe_tol", "diameter_text_search_radius", "cad_unit_to_m", "c_factor",
+    for key in ("snap_tol", "graph_closure_tol", "head_to_pipe_tol", "diameter_text_search_radius", "cad_unit_to_m", "c_factor",
                 "elevation_alarm_m", "elevation_head_m", "k_factor", "design_flow_per_head_lpm", "fallback_dia_mm"):
         raw = request.form.get(key, "").strip()
         if raw:

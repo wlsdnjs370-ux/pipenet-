@@ -26,6 +26,9 @@ data/prototype_runs/
 data/remote30_outputs/
 data/feedback_uploads/
 data/exports/
+data/combined_runs/
+data/system_runs/
+data/machineroom_runs/
 data/_smoke*
 models/
 runs/
@@ -58,3 +61,11 @@ Thumbs.db
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# 대용량 / 루트 잔재 (2026-06-01) — repository 에는 두지 않음
+수리계산 참고용 도서.zip
+대명동201동 계통도_최소.dwg
+대명동201동 계통도_최소.dxf
+
+# 답안 라이브러리 (수리계산 참고용 도서) — 1.2GB+, repo 외부 보관
+data/reference_library/

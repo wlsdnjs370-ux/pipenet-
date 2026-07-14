@@ -1,0 +1,3685 @@
+{
+  "generated_at": "2026-06-01 20:03:47",
+  "total_seconds": 1428.8,
+  "aggregate": {
+    "parsed_ok_count": 47,
+    "parsed_fail_count": 0,
+    "parse_failures": [],
+    "totals": {
+      "entities": 15626482,
+      "layers": 1261,
+      "texts": 177271,
+      "dia_labels": 29794,
+      "floor_labels": 2428
+    },
+    "matched_layer_freq_top": {
+      "Spf": 16,
+      "Sp-head": 14,
+      "Sp-line": 12,
+      "In-hpipe": 11,
+      "Low Sprinkler": 9,
+      "PIPE": 8,
+      "RISER": 8,
+      "SC 1차(SP)": 7,
+      "High Sprinkler": 6,
+      "SP-LINE": 6,
+      "SP_ZONE": 6,
+      "LSP-2 (지하주차장)": 6,
+      "SP-L": 5,
+      "배수배관": 5,
+      "Mezzanine Sprinkler": 4,
+      "OPLSP-2": 4,
+      "F-Low Sprinkler": 4,
+      "pipe": 3,
+      "SP": 3,
+      "F-High Sprinkler": 3,
+      "F-Mezzanine Sprinkler": 3,
+      "SPF": 3,
+      "2. SP-2차메인": 2,
+      "2. SP-가지관-랙": 2,
+      "2. SP-드레인": 2,
+      "R(SP)": 2,
+      "Sp-main": 2,
+      "H FW(SP+H)": 1,
+      "MF10-007 소화설비 계통도$0$PIPE": 1,
+      "SP 저층부": 1,
+      "SP&H": 1,
+      "Sp-head DR": 1,
+      "Sp-line DR": 1,
+      "sp-head(dn72)": 1,
+      "SP-MAIN": 1,
+      "SP ZONE": 1
+    },
+    "candidate_new_pipe_layers": [
+      {
+        "layer": "F-고층부 스프링클러",
+        "doc_count": 9,
+        "total_lines": 764
+      },
+      {
+        "layer": "F-저층부 옥내소화전",
+        "doc_count": 6,
+        "total_lines": 784
+      },
+      {
+        "layer": "F-상수도소화전",
+        "doc_count": 1,
+        "total_lines": 12
+      },
+      {
+        "layer": "In-hyd",
+        "doc_count": 12,
+        "total_lines": 60079
+      },
+      {
+        "layer": "F-저층부 스프링클러",
+        "doc_count": 3,
+        "total_lines": 170
+      },
+      {
+        "layer": "장비(소화)",
+        "doc_count": 2,
+        "total_lines": 670
+      },
+      {
+        "layer": "In-hbox",
+        "doc_count": 4,
+        "total_lines": 1602
+      },
+      {
+        "layer": "F-고층부 옥내소화전",
+        "doc_count": 1,
+        "total_lines": 6
+      },
+      {
+        "layer": "In-hyd(판매)",
+        "doc_count": 1,
+        "total_lines": 6
+      },
+      {
+        "layer": "F-저층부 스프링클러(비주거)",
+        "doc_count": 4,
+        "total_lines": 870
+      },
+      {
+        "layer": "F-고층부 스프링클러(비주거)",
+        "doc_count": 6,
+        "total_lines": 779
+      },
+      {
+        "layer": "F-중층부 스프링클러(비주거)",
+        "doc_count": 6,
+        "total_lines": 777
+      },
+      {
+        "layer": "F-저층부 옥내소화전(비주거)",
+        "doc_count": 3,
+        "total_lines": 632
+      },
+      {
+        "layer": "F-고층부 옥내소화전(비주거)",
+        "doc_count": 4,
+        "total_lines": 504
+      },
+      {
+        "layer": "F-중층부 옥내소화전(비주거)",
+        "doc_count": 5,
+        "total_lines": 525
+      },
+      {
+        "layer": "F-중층부 스프링클러",
+        "doc_count": 1,
+        "total_lines": 24
+      }
+    ],
+    "top_insert_blocks": {
+      "POINT": 153358,
+      "SP01-04": 54837,
+      "SPCAP": 32643,
+      "K-160 헤드": 18523,
+      "HEADCON": 15193,
+      "HDCROSS": 12117,
+      "K-160 (조기반응)": 9042,
+      "K-200 헤드": 7039,
+      "SP01-02": 6031,
+      "HEADCOL": 4204,
+      "HEADCOR": 3980,
+      "PIPFRPT": 3541,
+      "A$C0BDD035C": 2507,
+      "M.D": 2368,
+      "SP01-05": 2194,
+      "EXTING1": 2192,
+      "down": 1747,
+      "up": 1729,
+      "A$C2C8623AC": 1696,
+      "Large Drop head-1": 1665,
+      "SPSU2": 1649,
+      "A$C5D766CA3": 1563,
+      "SP01-01": 1138,
+      "CONN": 1030,
+      "HEADCOL (3)": 883,
+      "DIMDOT": 862,
+      "GFL020C": 651,
+      "A$775064066241": 579,
+      "*U832": 536,
+      "*U834": 528,
+      "호스릴일반": 493,
+      "풍선2": 492,
+      "VALD01": 451,
+      "A$774897546742": 410,
+      "HEADCON (2)": 404,
+      "A$C412A2F09": 386,
+      "*U933": 352,
+      "ALAV150": 331,
+      "A$C78093F1E": 310,
+      "드렌처 하향 68": 308,
+      "LA": 299,
+      "A$506834916159": 278,
+      "A$506909816782": 278,
+      "XR-SHEET": 272,
+      "H": 268,
+      "IHD-02": 256,
+      "A$C57BD5E79": 221,
+      "송수구": 219,
+      "A$C5D187CE9": 218,
+      "L": 210
+    },
+    "pipe_word_freq": {
+      "Sprinkler": 29,
+      "SP": 22,
+      "Spf": 16,
+      "Sp-head": 15,
+      "Sp-line": 13,
+      "In-hpipe": 11,
+      "Low": 9,
+      "PIPE": 9,
+      "RISER": 8,
+      "ZONE": 7,
+      "SC": 7,
+      "High": 6,
+      "SP-LINE": 6,
+      "LSP-": 6,
+      "지하주차장": 6,
+      "SP-L": 5,
+      "배수배관": 5,
+      "Mezzanine": 4,
+      "OPLSP-": 4,
+      "F-Low": 4,
+      "pipe": 3,
+      "F-High": 3,
+      "F-Mezzanine": 3,
+      "SPF": 3,
+      "DR": 2,
+      "SP-": 2,
+      "차메인": 2,
+      "SP-가지관-랙": 2,
+      "SP-드레인": 2,
+      "Sp-main": 2,
+      "FW": 1,
+      "MF": 1,
+      "소화설비": 1,
+      "계통도": 1,
+      "저층부": 1,
+      "sp-head": 1,
+      "dn": 1,
+      "SP-MAIN": 1
+    }
+  },
+  "per_dxf": [
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\MF-001~  공통도면.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면",
+      "name": "MF-001~  공통도면.dxf",
+      "is_diagram": false,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 0.4,
+      "file_size_kb": 2320,
+      "entity_count": 4632,
+      "entity_types": {
+        "T": 2467,
+        "L": 1821,
+        "PL": 114,
+        "A": 93,
+        "C": 69,
+        "I": 39,
+        "H": 29
+      },
+      "layer_count": 17,
+      "bbox": {
+        "x_min": 5898118.739597896,
+        "y_min": -601667.3638598439,
+        "x_max": 6647842.823169356,
+        "y_max": -545194.7034082055
+      },
+      "line_layers_top": {
+        "0": 709,
+        "HBOX": 634,
+        "TABLE": 156,
+        "G-BORD-TEXT": 152,
+        "AG-GSYM": 130,
+        "tx": 77,
+        "Defpoints": 48,
+        "A-ANNO-TITL": 16,
+        "mark": 8,
+        "TEX(ENG)": 3,
+        "DIM": 2
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 18,
+        "XR-SHEET": 8,
+        "HEADCON": 6,
+        "SP01-04": 2,
+        "*X10": 1,
+        "OH11111": 1,
+        "K-factor 115": 1,
+        "A$C20CC1E92": 1,
+        "원격제어": 1
+      },
+      "text_count": 2467,
+      "text_distinct_values": 1081,
+      "dia_label_count": 78,
+      "floor_label_count": 393,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\MF-009 옥외 소화설비 평면도.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면",
+      "name": "MF-009 옥외 소화설비 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 0.5,
+      "file_size_kb": 1720,
+      "entity_count": 10697,
+      "entity_types": {
+        "L": 8573,
+        "A": 1196,
+        "C": 404,
+        "PL": 339,
+        "I": 87,
+        "T": 68,
+        "H": 27,
+        "S": 3
+      },
+      "layer_count": 34,
+      "bbox": {
+        "x_min": -756900.0000000014,
+        "y_min": -174969.40243963254,
+        "x_max": 707450.0000000005,
+        "y_max": 560978.9125259315
+      },
+      "line_layers_top": {
+        "HBOX": 8533,
+        "F-고층부 스프링클러": 76,
+        "지원동 드랜처 DR": 75,
+        "Low Sprinkler": 64,
+        "note": 47,
+        "F-저층부 옥내소화전": 41,
+        "F-상수도소화전": 12,
+        "EBOM": 11,
+        "M-FITTING": 8,
+        "Defpoints": 6,
+        "CON.1": 6,
+        "관경": 5,
+        "CW": 5,
+        "tx": 4,
+        "0": 4
+      },
+      "auto_matched_layers": [
+        "Low Sprinkler",
+        "PIPE"
+      ],
+      "insert_blocks_top": {
+        "SCHONG": 31,
+        "옥외소화전겸용 방수총": 21,
+        "PIPFRPT": 9,
+        "상수도소화전": 6,
+        "1E-1": 4,
+        "원격제어 방수총": 3,
+        "게이트밸브": 2,
+        "DOUBLE": 2,
+        "XR-배치도": 1,
+        "XR-SHEET": 1,
+        "OH11111": 1,
+        "A$C20CC1E92": 1,
+        "A$C07E7383A": 1,
+        "VALD01": 1,
+        "Z$W@#69284A26": 1,
+        "원격제어": 1,
+        "A$C4d7938cf": 1
+      },
+      "text_count": 68,
+      "text_distinct_values": 48,
+      "dia_label_count": 4,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": [
+        {
+          "layer": "F-고층부 스프링클러",
+          "lines": 76,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 옥내소화전",
+          "lines": 41,
+          "score": 1.0
+        },
+        {
+          "layer": "F-상수도소화전",
+          "lines": 12,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\MF-010~ 소화설비 흐름도, 소화설비 계통도, 부속실 제연설비 계통도.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면",
+      "name": "MF-010~ 소화설비 흐름도, 소화설비 계통도, 부속실 제연설비 계통도.dxf",
+      "is_diagram": true,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 2.5,
+      "file_size_kb": 8122,
+      "entity_count": 29780,
+      "entity_types": {
+        "L": 20636,
+        "PL": 3393,
+        "T": 1724,
+        "I": 1343,
+        "A": 1163,
+        "C": 1020,
+        "H": 393,
+        "S": 108
+      },
+      "layer_count": 57,
+      "bbox": {
+        "x_min": -193545060.5759389,
+        "y_min": -11695935.40809123,
+        "x_max": 8266765.775087874,
+        "y_max": -924452.1785690417
+      },
+      "line_layers_top": {
+        "DUCT-SA": 4733,
+        "In-hyd": 2350,
+        "duct": 2291,
+        "test": 2196,
+        "SP-LINE": 2163,
+        "DUCT-EA": 1800,
+        "Spf": 959,
+        "High Sprinkler": 887,
+        "MF-EQPM": 705,
+        "Sc": 682,
+        "지원동 드랜처 DR": 611,
+        "note": 563,
+        "F-저층부 옥내소화전": 489,
+        "AA-AXIS-DIMS": 404,
+        "A-AXIS-DIMS": 343
+      },
+      "auto_matched_layers": [
+        "High Sprinkler",
+        "In-hpipe",
+        "Low Sprinkler",
+        "SP-L",
+        "SP-LINE",
+        "Spf",
+        "pipe"
+      ],
+      "insert_blocks_top": {
+        "POINT": 307,
+        "A$C5DA709A6": 148,
+        "A$C4D7B2892": 120,
+        "A$774916926189": 104,
+        "*U8": 98,
+        "인랙 k-160": 97,
+        "k-160": 65,
+        "A$775098144583": 56,
+        "A$C260001CA": 46,
+        "A$C00C27486": 46,
+        "호스릴전용1": 38,
+        "k-200": 32,
+        "A$C7B071164": 31,
+        "A$C351D7EBC": 23,
+        "department connection": 16,
+        "A$C56B9505F": 11,
+        "A$775064066241": 11,
+        "XR-SHEET": 10,
+        "*U9": 10,
+        "A$C086A28C6": 9
+      },
+      "text_count": 1724,
+      "text_distinct_values": 325,
+      "dia_label_count": 113,
+      "floor_label_count": 15,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 2350,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 옥내소화전",
+          "lines": 489,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 스프링클러",
+          "lines": 151,
+          "score": 1.0
+        },
+        {
+          "layer": "F-고층부 스프링클러",
+          "lines": 125,
+          "score": 1.0
+        },
+        {
+          "layer": "장비(소화)",
+          "lines": 108,
+          "score": 1.0
+        },
+        {
+          "layer": "In-hbox",
+          "lines": 44,
+          "score": 1.0
+        },
+        {
+          "layer": "F-고층부 옥내소화전",
+          "lines": 6,
+          "score": 0.6
+        },
+        {
+          "layer": "In-hyd(판매)",
+          "lines": 6,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\MF-020~ 소화펌프 확대평면도.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면",
+      "name": "MF-020~ 소화펌프 확대평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 1.2,
+      "file_size_kb": 4231,
+      "entity_count": 14290,
+      "entity_types": {
+        "L": 11306,
+        "A": 1586,
+        "PL": 415,
+        "C": 353,
+        "I": 286,
+        "T": 265,
+        "S": 43,
+        "H": 36
+      },
+      "layer_count": 70,
+      "bbox": {
+        "x_min": -4578444.017556326,
+        "y_min": -1591369.619707168,
+        "x_max": -1511127.6642465035,
+        "y_max": -768177.0292948012
+      },
+      "line_layers_top": {
+        "pump": 5723,
+        "pipe": 1128,
+        "판매": 955,
+        "0": 842,
+        "1": 288,
+        "5c": 276,
+        "DIM": 216,
+        "2c": 208,
+        "8c": 199,
+        "P": 168,
+        "1e": 147,
+        "Spf": 124,
+        "OUT": 124,
+        "SP": 115,
+        "Sp-line": 115
+      },
+      "auto_matched_layers": [
+        "H FW(SP+H)",
+        "Low Sprinkler",
+        "MF10-007 소화설비 계통도$0$PIPE",
+        "SP",
+        "SP 저층부",
+        "SP&H",
+        "SP-L",
+        "Sp-line",
+        "Spf",
+        "pipe"
+      ],
+      "insert_blocks_top": {
+        "POINT": 156,
+        "HEADCON": 35,
+        "A$506834916159": 18,
+        "A$506909816782": 18,
+        "A$634712960308": 12,
+        "A$547051872507": 8,
+        "A$422936234892": 7,
+        "A$423018620234": 5,
+        "A$Cea0d63e5": 5,
+        "A$623286697337": 5,
+        "PIPFRPT": 4,
+        "031": 3,
+        "XR-평면도": 2,
+        "XR-SHEET": 2,
+        "os150s": 2,
+        "gl80s": 2,
+        "플로팅": 2
+      },
+      "text_count": 265,
+      "text_distinct_values": 137,
+      "dia_label_count": 48,
+      "floor_label_count": 7,
+      "candidate_pipe_layers": [
+        {
+          "layer": "F-저층부 옥내소화전",
+          "lines": 19,
+          "score": 0.6
+        },
+        {
+          "layer": "F-고층부 스프링클러",
+          "lines": 10,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\MF-101~ 지하1층~지상4층 소화설비 평면도.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면",
+      "name": "MF-101~ 지하1층~지상4층 소화설비 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 18.8,
+      "file_size_kb": 35568,
+      "entity_count": 588224,
+      "entity_types": {
+        "L": 291592,
+        "I": 108484,
+        "A": 94151,
+        "T": 41697,
+        "C": 39898,
+        "PL": 10222,
+        "H": 2148,
+        "S": 32
+      },
+      "layer_count": 45,
+      "bbox": {
+        "x_min": -27786763.3912638,
+        "y_min": -28818183.58810985,
+        "x_max": 27786763.39126379,
+        "y_max": 25288571.06768646
+      },
+      "line_layers_top": {
+        "Sp-line": 147104,
+        "LINE": 123442,
+        "Sp-head": 11207,
+        "fire check": 3817,
+        "In-hyd": 3660,
+        "FF-HEAD (68°C K161 UP)": 3140,
+        "소방검토": 2288,
+        "관경": 1538,
+        "tx": 865,
+        "Spf": 799,
+        "In-hpipe": 634,
+        "Sp-head DR": 426,
+        "HBOX": 420,
+        "6666": 354,
+        "TEST": 308
+      },
+      "auto_matched_layers": [
+        "In-hpipe",
+        "Low Sprinkler",
+        "SP-L",
+        "SP_ZONE",
+        "Sp-head",
+        "Sp-head DR",
+        "Sp-line",
+        "Sp-line DR",
+        "Spf",
+        "sp-head(dn72)"
+      ],
+      "insert_blocks_top": {
+        "POINT": 40256,
+        "K-160 헤드": 17359,
+        "SPCAP": 12886,
+        "K-160 (조기반응)": 9042,
+        "K-200 헤드": 7039,
+        "HDCROSS": 5797,
+        "HEADCON": 5280,
+        "HEADCOR": 2158,
+        "HEADCOL": 2101,
+        "SP01-04": 1590,
+        "PIPFRPT": 947,
+        "SP01-02": 715,
+        "EXTING1": 577,
+        "SPSU2": 521,
+        "A$C0BDD035C": 341,
+        "SP01-05": 334,
+        "CONN": 312,
+        "드렌처 하향 68": 308,
+        "호스릴일반": 247,
+        "드렌처 밸브(개방형)": 190
+      },
+      "text_count": 41697,
+      "text_distinct_values": 312,
+      "dia_label_count": 5603,
+      "floor_label_count": 56,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 3660,
+          "score": 1.0
+        },
+        {
+          "layer": "F-고층부 스프링클러",
+          "lines": 197,
+          "score": 1.0
+        },
+        {
+          "layer": "In-hbox",
+          "lines": 96,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 옥내소화전",
+          "lines": 68,
+          "score": 1.0
+        }
+      ]
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\MF-112~ 지상1층 랙(Building) 소화설비 평면도.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면",
+      "name": "MF-112~ 지상1층 랙(Building) 소화설비 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 14.1,
+      "file_size_kb": 23376,
+      "entity_count": 454257,
+      "entity_types": {
+        "L": 271501,
+        "A": 122116,
+        "PL": 39442,
+        "I": 12492,
+        "C": 4750,
+        "T": 2585,
+        "H": 1279,
+        "S": 92
+      },
+      "layer_count": 52,
+      "bbox": {
+        "x_min": -2196085.031888964,
+        "y_min": -2373814.39598184,
+        "x_max": 1419649.1694979104,
+        "y_max": -1915042.189692494
+      },
+      "line_layers_top": {
+        "인랙": 194721,
+        "FUR": 43144,
+        "LINE": 31494,
+        "2. SP-2차메인": 10220,
+        "Sp-line": 10148,
+        "DETAIL": 4158,
+        "0": 3906,
+        "2-FVA": 3840,
+        "2. 소방-인써트-시스템찬넬": 3123,
+        "PIPE": 1633,
+        "2. SP-가지관-랙": 1252,
+        "라인거리산출": 730,
+        "소방검토": 586,
+        "ARCHI": 423,
+        "A-AXIS-DIMS": 287
+      },
+      "auto_matched_layers": [
+        "2. SP-2차메인",
+        "2. SP-가지관-랙",
+        "2. SP-드레인",
+        "In-hpipe",
+        "Low Sprinkler",
+        "PIPE",
+        "R(SP)",
+        "SP-MAIN",
+        "SP_ZONE",
+        "Sp-head",
+        "Sp-line",
+        "Spf"
+      ],
+      "insert_blocks_top": {
+        "POINT": 6389,
+        "A$C5D766CA3": 1381,
+        "PIPFRPT": 1216,
+        "A$C2C8623AC": 1196,
+        "GFL020C": 651,
+        "K-160 헤드": 624,
+        "SPCAP": 246,
+        "HEADCON": 194,
+        "WHA050S": 106,
+        "A$C0BDD035C": 87,
+        "ubolt-150": 67,
+        "A$C185F6946": 64,
+        "c-sec": 63,
+        "A$C4C7D4123": 61,
+        "DRYV(2) 150": 34,
+        "HDCROSS": 26,
+        "*U47": 18,
+        "호스릴일반": 18,
+        "CONN": 18,
+        "SPSU2": 12
+      },
+      "text_count": 2585,
+      "text_distinct_values": 98,
+      "dia_label_count": 206,
+      "floor_label_count": 37,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 198,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 옥내소화전",
+          "lines": 162,
+          "score": 1.0
+        },
+        {
+          "layer": "F-고층부 스프링클러",
+          "lines": 7,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\MF-118  지상1층 소터 하부 평면도.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면",
+      "name": "MF-118  지상1층 소터 하부 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 0.3,
+      "file_size_kb": 1320,
+      "entity_count": 3937,
+      "entity_types": {
+        "L": 1546,
+        "I": 823,
+        "A": 732,
+        "T": 411,
+        "C": 405,
+        "PL": 20
+      },
+      "layer_count": 18,
+      "bbox": {
+        "x_min": -1591618.011220593,
+        "y_min": -2328670.019160033,
+        "x_max": -1108545.760506245,
+        "y_max": -2005197.893079063
+      },
+      "line_layers_top": {
+        "Sp-line": 1188,
+        "A-AXIS-DIMS": 150,
+        "RISER": 70,
+        "Sp-head": 48,
+        "A-AXIS-BUBL": 30,
+        "X_물류설비$0$A-AXIS-BUBL": 30,
+        "tx": 20,
+        "Defpoints": 18,
+        "A-ANNO-TITL": 6,
+        "SP_ZONE": 4,
+        "Spf": 2
+      },
+      "auto_matched_layers": [
+        "RISER",
+        "SP_ZONE",
+        "Sp-head",
+        "Sp-line",
+        "Spf"
+      ],
+      "insert_blocks_top": {
+        "POINT": 357,
+        "K-160 헤드": 267,
+        "SPCAP": 89,
+        "HEADCON": 89,
+        "SPSU2": 8,
+        "PIPFRPT": 5,
+        "down": 5,
+        "XR-평면도": 2,
+        "XR-SHEET": 1
+      },
+      "text_count": 411,
+      "text_distinct_values": 56,
+      "dia_label_count": 44,
+      "floor_label_count": 11,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\MF-119~  지상4층 랙(OSR) 소화설비 평면도.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면",
+      "name": "MF-119~  지상4층 랙(OSR) 소화설비 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 2.9,
+      "file_size_kb": 5385,
+      "entity_count": 70507,
+      "entity_types": {
+        "L": 42589,
+        "A": 18568,
+        "PL": 4555,
+        "I": 2190,
+        "C": 1746,
+        "H": 521,
+        "T": 289,
+        "S": 49
+      },
+      "layer_count": 37,
+      "bbox": {
+        "x_min": -1248078.0168524755,
+        "y_min": -1734698.850624053,
+        "x_max": 1276482.853427446,
+        "y_max": -1483882.592161996
+      },
+      "line_layers_top": {
+        "인랙": 25662,
+        "DETAIL": 4752,
+        "Sp-line": 4383,
+        "FUR": 3361,
+        "2. 소방-인써트-시스템찬넬": 2548,
+        "2-FVA": 1910,
+        "LINE": 1448,
+        "PIPE": 984,
+        "2. SP-2차메인": 808,
+        "2. SP-가지관-랙": 466,
+        "ARCHI": 403,
+        "A-AXIS-DIMS": 85,
+        "라인거리산출": 81,
+        "2. SP-드레인": 57,
+        "TEST": 41
+      },
+      "auto_matched_layers": [
+        "2. SP-2차메인",
+        "2. SP-가지관-랙",
+        "2. SP-드레인",
+        "PIPE",
+        "R(SP)",
+        "SP_ZONE",
+        "Sp-head",
+        "Sp-line",
+        "Spf"
+      ],
+      "insert_blocks_top": {
+        "POINT": 779,
+        "PIPFRPT": 504,
+        "A$C2C8623AC": 500,
+        "A$C5D766CA3": 182,
+        "c-sec": 54,
+        "WHA050S": 45,
+        "A$C1B554C02": 26,
+        "A$C185F6946": 26,
+        "WHA150S": 26,
+        "A$C4C7D4123": 25,
+        "DRYV(2) 150": 12,
+        "A$C0BDD035C": 4,
+        "SECTION1": 2,
+        "XR-SHEET": 2,
+        "XR-평면도": 1,
+        "A$C3AEC575D": 1,
+        "A$C73D70476": 1
+      },
+      "text_count": 289,
+      "text_distinct_values": 55,
+      "dia_label_count": 10,
+      "floor_label_count": 2,
+      "candidate_pipe_layers": [
+        {
+          "layer": "F-고층부 스프링클러",
+          "lines": 16,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\MF-121~ 지상4층 랙(Pallet Rack) 소화설비 평면도.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면",
+      "name": "MF-121~ 지상4층 랙(Pallet Rack) 소화설비 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 0.6,
+      "file_size_kb": 1721,
+      "entity_count": 6726,
+      "entity_types": {
+        "L": 1695,
+        "I": 1505,
+        "PL": 1442,
+        "A": 1218,
+        "C": 464,
+        "T": 402
+      },
+      "layer_count": 23,
+      "bbox": {
+        "x_min": -1253539.777039993,
+        "y_min": -5378518.631847687,
+        "x_max": 2146803.31136516,
+        "y_max": -1727309.498227146
+      },
+      "line_layers_top": {
+        "FUR": 1367,
+        "Sp-line": 1206,
+        "Sp-head": 366,
+        "A-AXIS-DIMS": 80,
+        "tx": 20,
+        "X_PLAN$0$A-AXIS-DIMS": 20,
+        "X_물류설비$0$A-AXIS-DIMS": 20,
+        "A-AXIS-BUBL": 16,
+        "Defpoints": 12,
+        "공통": 12,
+        "X_PLAN$0$A-AXIS-BUBL": 6,
+        "X_물류설비$0$A-AXIS-BUBL": 6,
+        "A-ANNO-TITL": 4,
+        "Spf": 2
+      },
+      "auto_matched_layers": [
+        "Sp-head",
+        "Sp-line",
+        "Spf"
+      ],
+      "insert_blocks_top": {
+        "POINT": 891,
+        "K-160 헤드": 273,
+        "HEADCON": 273,
+        "SPSU2": 61,
+        "XR-평면도": 2,
+        "XR-SHEET": 2,
+        "PIPFRPT": 2,
+        "A$C7b3ebc62": 1
+      },
+      "text_count": 402,
+      "text_distinct_values": 55,
+      "dia_label_count": 25,
+      "floor_label_count": 10,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\MF-201~ 소화설비 평면도(생활관).dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면",
+      "name": "MF-201~ 소화설비 평면도(생활관).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 2.7,
+      "file_size_kb": 4928,
+      "entity_count": 46114,
+      "entity_types": {
+        "L": 26069,
+        "I": 11796,
+        "A": 2611,
+        "PL": 2077,
+        "C": 1983,
+        "T": 1233,
+        "H": 345
+      },
+      "layer_count": 35,
+      "bbox": {
+        "x_min": -678180.1168627116,
+        "y_min": -603687.6211332902,
+        "x_max": 664050.1607500218,
+        "y_max": 1.0
+      },
+      "line_layers_top": {
+        "Sp-line": 14581,
+        "LINE": 7240,
+        "Sp-head": 4046,
+        "tx": 534,
+        "RISER": 456,
+        "In-hyd": 440,
+        "관경": 406,
+        "소방검토": 136,
+        "In-hpipe": 69,
+        "Defpoints": 42,
+        "6666": 41,
+        "TEST": 27,
+        "송수구": 24,
+        "Low Sprinkler": 17,
+        "Sp-main": 15
+      },
+      "auto_matched_layers": [
+        "In-hpipe",
+        "Low Sprinkler",
+        "RISER",
+        "SP-L",
+        "SP_ZONE",
+        "Sp-head",
+        "Sp-line",
+        "Sp-main",
+        "Spf"
+      ],
+      "insert_blocks_top": {
+        "POINT": 5645,
+        "SP01-04": 1548,
+        "HEADCON": 1101,
+        "SP01-02": 1021,
+        "SPCAP": 945,
+        "HEADCOL": 408,
+        "HDCROSS": 280,
+        "SP01-01": 273,
+        "HEADCOR": 186,
+        "EXTING1": 146,
+        "SPSU2": 34,
+        "CONN": 34,
+        "호스릴일반": 22,
+        "A$C0BDD035C": 20,
+        "A$C22CC3FA6": 19,
+        "SP01-05": 17,
+        "down": 16,
+        "up": 16,
+        "ALAV150": 14,
+        "PIPFRPT": 9
+      },
+      "text_count": 1233,
+      "text_distinct_values": 106,
+      "dia_label_count": 670,
+      "floor_label_count": 15,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 440,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 스프링클러",
+          "lines": 14,
+          "score": 0.6
+        },
+        {
+          "layer": "F-저층부 옥내소화전",
+          "lines": 5,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\XR\\XR-SHEET.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면\\XR",
+      "name": "XR-SHEET.dxf",
+      "is_diagram": false,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 8.0,
+      "file_size_kb": 25911,
+      "entity_count": 164,
+      "entity_types": {
+        "PL": 108,
+        "T": 31,
+        "L": 14,
+        "H": 10,
+        "I": 1
+      },
+      "layer_count": 12,
+      "bbox": {
+        "x_min": 252300.00000000035,
+        "y_min": 0.0,
+        "x_max": 504600.0000000007,
+        "y_max": 178199.99999999994
+      },
+      "line_layers_top": {
+        "Defpoints": 53,
+        "X_FORM$0$SHEET": 25,
+        "X_FORM$0$A-ELE-3": 15,
+        "X_FORM$0$무영CI": 12,
+        "X_FORM$0$A-ELE-252": 7,
+        "X_FORM$0$L-OUTLINE": 7,
+        "X_FORM$0$DEF": 1,
+        "X_FORM$0$A-TRENCH-8": 1,
+        "X_FORM$0$A-ELE-9": 1
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "X_FORM": 1
+      },
+      "text_count": 31,
+      "text_distinct_values": 31,
+      "dia_label_count": 0,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\XR\\XR-배치도.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면\\XR",
+      "name": "XR-배치도.dxf",
+      "is_diagram": false,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 11.1,
+      "file_size_kb": 35501,
+      "entity_count": 35215,
+      "entity_types": {
+        "L": 26439,
+        "PL": 6715,
+        "C": 785,
+        "A": 584,
+        "I": 362,
+        "T": 329,
+        "S": 1
+      },
+      "layer_count": 12,
+      "bbox": {
+        "x_min": -2583966.793808225,
+        "y_min": -6142000.173381524,
+        "x_max": 5570691.882871751,
+        "y_max": 4079573.716610666
+      },
+      "line_layers_top": {
+        "FUR": 17019,
+        "k": 14699,
+        "ARCHI": 736,
+        "X_PLAN$0$A-AXIS-DIMS": 304,
+        "X_CORE$0$A-AXIS-DIMS": 304,
+        "X_PLAN$0$A-AXIS-BUBL": 44,
+        "X_CORE$0$A-AXIS-BUBL": 44,
+        "0": 2,
+        "소방검토": 2
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 264,
+        "*U465": 44,
+        "*U375": 44,
+        "X_PLAN_O$0$축열_생활관_지상": 8,
+        "X_PLAN_O$0$축열_생활관_지상_1000_1": 2
+      },
+      "text_count": 329,
+      "text_distinct_values": 87,
+      "dia_label_count": 4,
+      "floor_label_count": 2,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\XR\\XR-생활관.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면\\XR",
+      "name": "XR-생활관.dxf",
+      "is_diagram": false,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 45.2,
+      "file_size_kb": 148536,
+      "entity_count": 400441,
+      "entity_types": {
+        "L": 278501,
+        "A": 107318,
+        "C": 7186,
+        "PL": 5713,
+        "T": 1079,
+        "I": 628,
+        "H": 16
+      },
+      "layer_count": 15,
+      "bbox": {
+        "x_min": -306145.1874615019,
+        "y_min": 35133.55840011608,
+        "x_max": 1207654.8125385,
+        "y_max": 172273.4908469449
+      },
+      "line_layers_top": {
+        "k": 138360,
+        "ARCHI": 84685,
+        "FUR": 59633,
+        "X_PLAN_O$0$A-AXIS-DIMS": 492,
+        "FIRE FS": 426,
+        "A-AXIS-DIMS": 274,
+        "X_PLAN_O$0$A-AXIS-BUBL": 108,
+        "X_PLAN_O$0$A-EJ-9": 86,
+        "Defpoints": 81,
+        "A-AXIS-BUBL": 60,
+        "260528_수정사항": 7,
+        "X_PLAN_O$0$A-INSUL-L-252": 2
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 472,
+        "*U302": 90,
+        "*U238": 54,
+        "*U303": 6,
+        "*U239": 2,
+        "X_PLAN_O$0$EJ_벽체_W200": 2,
+        "X_PLAN_O$0$EJ_외벽체_W200": 2
+      },
+      "text_count": 1079,
+      "text_distinct_values": 270,
+      "dia_label_count": 0,
+      "floor_label_count": 13,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\XR\\XR-생활관_내진.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면\\XR",
+      "name": "XR-생활관_내진.dxf",
+      "is_diagram": false,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 6.5,
+      "file_size_kb": 17376,
+      "entity_count": 37220,
+      "entity_types": {
+        "L": 24615,
+        "I": 5626,
+        "A": 2562,
+        "PL": 1991,
+        "C": 1702,
+        "T": 705,
+        "H": 19
+      },
+      "layer_count": 2,
+      "bbox": {
+        "x_min": -287015.6503562316,
+        "y_min": 0.0,
+        "x_max": 822319.115468641,
+        "y_max": 130309.7903071397
+      },
+      "line_layers_top": {
+        "내진": 26606
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 5617,
+        "HEADCOL": 3,
+        "A$C6AC06EFB": 3,
+        "XR-생활관": 1,
+        "SPCAP": 1,
+        "HEADCON": 1
+      },
+      "text_count": 705,
+      "text_distinct_values": 27,
+      "dia_label_count": 661,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\XR\\XR-평면도.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면\\XR",
+      "name": "XR-평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 290.6,
+      "file_size_kb": 1096569,
+      "entity_count": 3226918,
+      "entity_types": {
+        "L": 2787113,
+        "A": 358066,
+        "C": 36678,
+        "PL": 30222,
+        "I": 8208,
+        "T": 6294,
+        "S": 277,
+        "H": 60
+      },
+      "layer_count": 20,
+      "bbox": {
+        "x_min": -2586676.793790978,
+        "y_min": -6245357.582969165,
+        "x_max": 5559041.88287176,
+        "y_max": 3967276.307017885
+      },
+      "line_layers_top": {
+        "k": 1400058,
+        "FUR": 1110391,
+        "ARCHI": 277289,
+        "FIRE FS": 18197,
+        "X_PLAN$0$A-AXIS-DIMS": 3700,
+        "X_CORE$0$A-AXIS-DIMS": 3648,
+        "X_물류설비$0$A-AXIS-DIMS": 2432,
+        "X_PLAN$0$A-AXIS-BUBL": 536,
+        "X_CORE$0$A-AXIS-BUBL": 528,
+        "X_물류설비$0$A-AXIS-BUBL": 352,
+        "X_PLAN_O$0$A-AXIS-DIMS": 168,
+        "Defpoints": 32,
+        "소방검토": 4
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 6624,
+        "*U832": 536,
+        "*U834": 528,
+        "*U933": 352,
+        "X_PLAN_O$0$DIMDOT": 168
+      },
+      "text_count": 6294,
+      "text_distinct_values": 161,
+      "dia_label_count": 8,
+      "floor_label_count": 28,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "1. 저수조_아성다이소 양주허브센터\\도면\\XR\\XR-평면도_내진.dxf",
+      "project": "다이소",
+      "folder": "1. 저수조_아성다이소 양주허브센터\\도면\\XR",
+      "name": "XR-평면도_내진.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 60.5,
+      "file_size_kb": 147847,
+      "entity_count": 479522,
+      "entity_types": {
+        "L": 281042,
+        "A": 81997,
+        "I": 40203,
+        "T": 34107,
+        "C": 32423,
+        "PL": 9670,
+        "H": 56,
+        "S": 24
+      },
+      "layer_count": 9,
+      "bbox": {
+        "x_min": -581049.9999999983,
+        "y_min": -994457.4095876327,
+        "x_max": 2945150.000000001,
+        "y_max": 348468.0124526338
+      },
+      "line_layers_top": {
+        "내진": 290498,
+        "SP_ZONE": 93,
+        "HATCH": 55,
+        "공통": 46,
+        "송수구": 18,
+        "옥외": 2
+      },
+      "auto_matched_layers": [
+        "SP_ZONE"
+      ],
+      "insert_blocks_top": {
+        "POINT": 40199,
+        "PIPFRPT": 3,
+        "XR-평면도": 1
+      },
+      "text_count": 34107,
+      "text_distinct_values": 133,
+      "dia_label_count": 5584,
+      "floor_label_count": 37,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-001 공통도면.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-001 공통도면.dxf",
+      "is_diagram": false,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 0.9,
+      "file_size_kb": 4435,
+      "entity_count": 10783,
+      "entity_types": {
+        "T": 7452,
+        "L": 2570,
+        "PL": 574,
+        "I": 68,
+        "C": 64,
+        "H": 42,
+        "A": 13
+      },
+      "layer_count": 19,
+      "bbox": {
+        "x_min": -493190.569575689,
+        "y_min": -74868.34197517796,
+        "x_max": 1020158.802422726,
+        "y_max": 54637.65187009989
+      },
+      "line_layers_top": {
+        "0": 894,
+        "G-BORD-TEXT": 733,
+        "TABLE": 712,
+        "FTEXT": 258,
+        "tx": 173,
+        "AG-GSYM": 132,
+        "Defpoints": 118,
+        "HBOX": 48,
+        "A-ANNO-TITL": 32,
+        "mark": 20,
+        "TEX(ENG)": 13,
+        "A-HAT-252": 9,
+        "DIM": 2
+      },
+      "auto_matched_layers": [
+        "Spf"
+      ],
+      "insert_blocks_top": {
+        "POINT": 33,
+        "XR-SHEET": 16,
+        "HEADCON": 11,
+        "SP01-01": 3,
+        "SP01-04": 2,
+        "OH11111": 2,
+        "*X5": 1
+      },
+      "text_count": 7452,
+      "text_distinct_values": 2168,
+      "dia_label_count": 564,
+      "floor_label_count": 744,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-016~ 계통도.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-016~ 계통도.dxf",
+      "is_diagram": true,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 27.3,
+      "file_size_kb": 63546,
+      "entity_count": 460111,
+      "entity_types": {
+        "L": 325962,
+        "PL": 46922,
+        "A": 40619,
+        "C": 17706,
+        "T": 11187,
+        "I": 8658,
+        "H": 7074,
+        "S": 1983
+      },
+      "layer_count": 94,
+      "bbox": {
+        "x_min": -21560783.40393453,
+        "y_min": -920336.1324538846,
+        "x_max": 2153331.194560534,
+        "y_max": 285942.4920162023
+      },
+      "line_layers_top": {
+        "duct": 93512,
+        "Sp-line": 78864,
+        "06_G-ENP_심볼": 42016,
+        "In-hyd": 37564,
+        "0": 23956,
+        "4": 8416,
+        "A-DIM1": 7020,
+        "제연": 4918,
+        "Test": 4861,
+        "P": 4610,
+        "pipe": 4504,
+        "SP": 3607,
+        "외형선(ISO)": 3560,
+        "ARCHI": 3323,
+        "High Sprinkler": 2972
+      },
+      "auto_matched_layers": [
+        "High Sprinkler",
+        "In-hpipe",
+        "LSP-2 (지하주차장)",
+        "Low Sprinkler",
+        "Mezzanine Sprinkler",
+        "OPLSP-2",
+        "SC 1차(SP)",
+        "SP",
+        "Sp-line",
+        "Spf",
+        "pipe"
+      ],
+      "insert_blocks_top": {
+        "M.D": 2368,
+        "POINT": 2340,
+        "A$775064066241": 568,
+        "A$774897546742": 410,
+        "A$C412A2F09": 386,
+        "LA": 299,
+        "H": 268,
+        "A$C57BD5E79": 221,
+        "A$C5D187CE9": 218,
+        "L": 210,
+        "A$C42C36CE2": 202,
+        "A$774936608844": 192,
+        "M": 166,
+        "옥내소화전함": 117,
+        "INVERTER PANEL": 97,
+        "A$603688790537": 96,
+        "A$7748975467443": 68,
+        "HYB-01 (쌍구형)": 68,
+        "H(오피스텔)": 58,
+        "M(오피스텔)": 48
+      },
+      "text_count": 11187,
+      "text_distinct_values": 932,
+      "dia_label_count": 460,
+      "floor_label_count": 200,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 37564,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 스프링클러(비주거)",
+          "lines": 756,
+          "score": 1.0
+        },
+        {
+          "layer": "F-고층부 스프링클러(비주거)",
+          "lines": 679,
+          "score": 1.0
+        },
+        {
+          "layer": "In-hbox",
+          "lines": 664,
+          "score": 1.0
+        },
+        {
+          "layer": "F-중층부 스프링클러(비주거)",
+          "lines": 600,
+          "score": 1.0
+        },
+        {
+          "layer": "장비(소화)",
+          "lines": 562,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 옥내소화전(비주거)",
+          "lines": 545,
+          "score": 1.0
+        },
+        {
+          "layer": "F-고층부 옥내소화전(비주거)",
+          "lines": 424,
+          "score": 1.0
+        },
+        {
+          "layer": "F-중층부 옥내소화전(비주거)",
+          "lines": 393,
+          "score": 1.0
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-017 옥외 소화설비 평면도.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-017 옥외 소화설비 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 3.6,
+      "file_size_kb": 12053,
+      "entity_count": 21981,
+      "entity_types": {
+        "L": 15732,
+        "A": 3724,
+        "C": 900,
+        "I": 503,
+        "PL": 470,
+        "H": 293,
+        "T": 288,
+        "S": 71
+      },
+      "layer_count": 38,
+      "bbox": {
+        "x_min": -3682152.627775802,
+        "y_min": -2613009.063259498,
+        "x_max": 2175943.5142698395,
+        "y_max": 398566.4367308126
+      },
+      "line_layers_top": {
+        "피난": 12261,
+        "송수구": 1182,
+        "note": 948,
+        "SC 2차_고층부": 183,
+        "SC 1차(SP)": 128,
+        "F-Mezzanine Sprinkler": 109,
+        "F-Low Sprinkler": 107,
+        "F-Low Indoor Fire hydrant": 105,
+        "SC 1": 105,
+        "High Indoor Fire hydrant": 105,
+        "F-High Sprinkler": 105,
+        "F-Mezzanine Indoor Fire hydrant": 105,
+        "LH-2 (지하주차장)": 105,
+        "LSP-2 (지하주차장)": 105,
+        "SC 2차_중층부": 104
+      },
+      "auto_matched_layers": [
+        "F-High Sprinkler",
+        "F-Low Sprinkler",
+        "F-Mezzanine Sprinkler",
+        "LSP-2 (지하주차장)",
+        "OPLSP-2",
+        "SC 1차(SP)"
+      ],
+      "insert_blocks_top": {
+        "송수구": 219,
+        "PIPFRPT": 198,
+        "XR_소방차부서동선$0$zx$4A7B": 70,
+        "XR_기준도면(단위-동평면도)_오피스텔$0$240821_119OA_단위세대": 9,
+        "HBOX1": 3,
+        "XR_기준도면(단위-동평면도)_오피스텔$0$AUTOBLOCK_1690471008": 1,
+        "XR-배치도": 1,
+        "XR-SHEET": 1,
+        "A$Cf68b6903": 1
+      },
+      "text_count": 288,
+      "text_distinct_values": 63,
+      "dia_label_count": 0,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": [
+        {
+          "layer": "F-저층부 옥내소화전(비주거)",
+          "lines": 27,
+          "score": 0.6
+        },
+        {
+          "layer": "F-중층부 스프링클러(비주거)",
+          "lines": 23,
+          "score": 0.6
+        },
+        {
+          "layer": "F-고층부 스프링클러(비주거)",
+          "lines": 21,
+          "score": 0.6
+        },
+        {
+          "layer": "F-고층부 옥내소화전(비주거)",
+          "lines": 21,
+          "score": 0.6
+        },
+        {
+          "layer": "F-중층부 옥내소화전(비주거)",
+          "lines": 21,
+          "score": 0.6
+        },
+        {
+          "layer": "F-저층부 스프링클러(비주거)",
+          "lines": 21,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-033~ 소화펌프 확대 평면도(공동주택).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-033~ 소화펌프 확대 평면도(공동주택).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 5.1,
+      "file_size_kb": 19497,
+      "entity_count": 92267,
+      "entity_types": {
+        "L": 79837,
+        "PL": 3762,
+        "A": 3116,
+        "C": 2444,
+        "T": 1439,
+        "I": 1439,
+        "S": 135,
+        "H": 95
+      },
+      "layer_count": 37,
+      "bbox": {
+        "x_min": -1737432.310267383,
+        "y_min": -648285.7373839259,
+        "x_max": 510025.8089548514,
+        "y_max": 550565.2269724234
+      },
+      "line_layers_top": {
+        "Pump": 64911,
+        "DIM": 3240,
+        "LINE": 2896,
+        "소방장비": 2355,
+        "High Sprinkler": 2150,
+        "단열재": 1267,
+        "소방검토": 1143,
+        "Sp-line": 570,
+        "Mezzanine Indoor Fire hydrant": 522,
+        "Mezzanine Sprinkler": 496,
+        "Defpoints": 446,
+        "SC 2차_고층부": 423,
+        "SC 2차_중층부": 405,
+        "PIPE": 396,
+        "배수배관": 378
+      },
+      "auto_matched_layers": [
+        "High Sprinkler",
+        "LSP-2 (지하주차장)",
+        "Mezzanine Sprinkler",
+        "PIPE",
+        "Sp-line",
+        "Spf",
+        "배수배관"
+      ],
+      "insert_blocks_top": {
+        "HEADCON (2)": 278,
+        "A$506834916159": 188,
+        "A$506909816782": 188,
+        "POINT": 132,
+        "PIPFRPT": 95,
+        "A$C1EA0283D": 90,
+        "A$C4e481c80": 90,
+        "A$710751228855": 60,
+        "A$548467711911": 60,
+        "A$548487545212": 60,
+        "A$54850420022": 60,
+        "플로팅": 30,
+        "A$C31D010C7": 30,
+        "전자식수압개폐시스템": 30,
+        "XR-동 동평면도": 15,
+        "Auto$0092": 15,
+        "XR-SHEET": 8,
+        "A$C0BDD035C": 8,
+        "A$C6E5E26EA": 2
+      },
+      "text_count": 1439,
+      "text_distinct_values": 312,
+      "dia_label_count": 206,
+      "floor_label_count": 32,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-041~ 연결송수관 가압펌프 확대평면도(공동주택).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-041~ 연결송수관 가압펌프 확대평면도(공동주택).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 2.1,
+      "file_size_kb": 7163,
+      "entity_count": 29513,
+      "entity_types": {
+        "L": 23760,
+        "A": 1406,
+        "T": 1255,
+        "PL": 1203,
+        "C": 960,
+        "I": 494,
+        "S": 255,
+        "H": 180
+      },
+      "layer_count": 33,
+      "bbox": {
+        "x_min": -1306407.103202628,
+        "y_min": -595486.067510877,
+        "x_max": 269418.9426758522,
+        "y_max": 491831.7773399925
+      },
+      "line_layers_top": {
+        "Pump": 11528,
+        "소방장비": 4710,
+        "소방검토": 2880,
+        "Spf": 1441,
+        "duct": 975,
+        "A-DIM1": 495,
+        "SC 2차_고층부": 488,
+        "Defpoints": 406,
+        "단열재": 344,
+        "배수배관": 232,
+        "F-고층부 스프링클러": 198,
+        "관경": 176,
+        "0": 150,
+        "AS-치수": 128,
+        "NOTE": 120
+      },
+      "auto_matched_layers": [
+        "High Sprinkler",
+        "Mezzanine Sprinkler",
+        "SC 1차(SP)",
+        "Spf",
+        "배수배관"
+      ],
+      "insert_blocks_top": {
+        "POINT": 261,
+        "HEADCON (2)": 60,
+        "A$C1EA0283D": 30,
+        "A$506834916159": 30,
+        "A$506909816782": 30,
+        "Auto$0092": 30,
+        "XR-동 동평면도": 15,
+        "*U87": 15,
+        "A$555851279692": 15,
+        "XR-SHEET": 8
+      },
+      "text_count": 1255,
+      "text_distinct_values": 219,
+      "dia_label_count": 245,
+      "floor_label_count": 31,
+      "candidate_pipe_layers": [
+        {
+          "layer": "F-고층부 스프링클러",
+          "lines": 198,
+          "score": 1.0
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-049 소화펌프 확대 평면도(오피스텔).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-049 소화펌프 확대 평면도(오피스텔).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 1.1,
+      "file_size_kb": 3694,
+      "entity_count": 23650,
+      "entity_types": {
+        "L": 21077,
+        "A": 810,
+        "PL": 732,
+        "C": 436,
+        "I": 279,
+        "T": 271,
+        "S": 27,
+        "H": 18
+      },
+      "layer_count": 32,
+      "bbox": {
+        "x_min": -788004.4883788178,
+        "y_min": -1223096.481495257,
+        "x_max": 997845.5486410497,
+        "y_max": -42383.35218436911
+      },
+      "line_layers_top": {
+        "Pump": 12618,
+        "LINE": 6516,
+        "DIM": 648,
+        "소방장비": 459,
+        "High Sprinkler": 360,
+        "소방검토": 345,
+        "단열재": 147,
+        "Defpoints": 87,
+        "SC 2차_고층부": 72,
+        "배수배관": 69,
+        "SC 2차_중층부": 63,
+        "L(c)": 57,
+        "F-중층부 스프링클러(비주거)": 54,
+        "NOTE": 45,
+        "전자식압력스위치": 42
+      },
+      "auto_matched_layers": [
+        "High Sprinkler",
+        "Spf",
+        "배수배관"
+      ],
+      "insert_blocks_top": {
+        "HEADCON (2)": 60,
+        "A$506834916159": 36,
+        "A$506909816782": 36,
+        "POINT": 18,
+        "A$C0BDD035C": 18,
+        "A$C1EA0283D": 18,
+        "A$C4e481c80": 18,
+        "A$710751228855": 12,
+        "A$548467711911": 12,
+        "A$548487545212": 12,
+        "A$54850420022": 12,
+        "A$C31D010C7": 6,
+        "플로팅": 6,
+        "전자식수압개폐시스템": 6,
+        "XR-동 동평면도": 5,
+        "Auto$0092": 3,
+        "XR-SHEET": 1
+      },
+      "text_count": 271,
+      "text_distinct_values": 105,
+      "dia_label_count": 39,
+      "floor_label_count": 5,
+      "candidate_pipe_layers": [
+        {
+          "layer": "F-중층부 스프링클러(비주거)",
+          "lines": 54,
+          "score": 1.0
+        },
+        {
+          "layer": "F-중층부 옥내소화전(비주거)",
+          "lines": 36,
+          "score": 1.0
+        },
+        {
+          "layer": "F-고층부 옥내소화전(비주거)",
+          "lines": 30,
+          "score": 1.0
+        },
+        {
+          "layer": "F-고층부 스프링클러(비주거)",
+          "lines": 18,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-050~ 연결송수관 가압펌프 확대평면도(오피스텔).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-050~ 연결송수관 가압펌프 확대평면도(오피스텔).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 1.0,
+      "file_size_kb": 4165,
+      "entity_count": 13113,
+      "entity_types": {
+        "L": 9417,
+        "A": 2436,
+        "PL": 456,
+        "T": 315,
+        "C": 237,
+        "I": 111,
+        "S": 105,
+        "H": 36
+      },
+      "layer_count": 45,
+      "bbox": {
+        "x_min": -398161.7920305019,
+        "y_min": -1170463.660818591,
+        "x_max": 956913.3117178946,
+        "y_max": -97646.08319401753
+      },
+      "line_layers_top": {
+        "0": 2391,
+        "Pump": 2313,
+        "소방장비": 942,
+        "1": 720,
+        "소방검토": 576,
+        "OUT": 369,
+        "SP": 345,
+        "B": 312,
+        "Spf": 288,
+        "duct": 195,
+        "F-FBLINE": 174,
+        "A-DIM1": 162,
+        "D": 144,
+        "r": 144,
+        "SC 2차_고층부": 126
+      },
+      "auto_matched_layers": [
+        "SC 1차(SP)",
+        "SP",
+        "Spf",
+        "배수배관"
+      ],
+      "insert_blocks_top": {
+        "POINT": 54,
+        "031": 15,
+        "A$C1EA0283D": 6,
+        "HEADCON (2)": 6,
+        "Auto$0092": 6,
+        "A$506834916159": 6,
+        "A$506909816782": 6,
+        "XR-동 동평면도": 3,
+        "XR-SHEET": 3,
+        "*U51": 3,
+        "A$555851279692": 3
+      },
+      "text_count": 315,
+      "text_distinct_values": 112,
+      "dia_label_count": 52,
+      "floor_label_count": 9,
+      "candidate_pipe_layers": [
+        {
+          "layer": "F-고층부 스프링클러(비주거)",
+          "lines": 12,
+          "score": 0.6
+        },
+        {
+          "layer": "F-중층부 스프링클러(비주거)",
+          "lines": 9,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-101~105 지하5층~지하1층 소화설비 평면도.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-101~105 지하5층~지하1층 소화설비 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 23.3,
+      "file_size_kb": 57972,
+      "entity_count": 562257,
+      "entity_types": {
+        "L": 359343,
+        "I": 85274,
+        "PL": 62562,
+        "A": 24652,
+        "T": 13561,
+        "C": 10987,
+        "H": 5650,
+        "S": 228
+      },
+      "layer_count": 60,
+      "bbox": {
+        "x_min": -63971917.31936615,
+        "y_min": -59350619.22269741,
+        "x_max": 6078569.281095284,
+        "y_max": 60170229.55494824
+      },
+      "line_layers_top": {
+        "LINE": 163262,
+        "Sp-line": 156821,
+        "Sp-head": 65472,
+        "In-hyd": 10587,
+        "RISER": 9177,
+        "소방검토": 3012,
+        "In-hpipe": 2314,
+        "관경": 1875,
+        "송수구": 1302,
+        "SP-L": 1188,
+        "소방장비": 918,
+        "In-hbox": 798,
+        "6666": 692,
+        "tx": 630,
+        "TEST": 494
+      },
+      "auto_matched_layers": [
+        "F-High Sprinkler",
+        "F-Low Sprinkler",
+        "F-Mezzanine Sprinkler",
+        "In-hpipe",
+        "LSP-2 (지하주차장)",
+        "OPLSP-2",
+        "RISER",
+        "SC 1차(SP)",
+        "SP ZONE",
+        "SP-L",
+        "Sp-head",
+        "Sp-line"
+      ],
+      "insert_blocks_top": {
+        "SP01-04": 49044,
+        "SPCAP": 15625,
+        "HDCROSS": 5685,
+        "HEADCON": 5456,
+        "Large Drop head-1": 1665,
+        "SP01-05": 1312,
+        "EXTING1": 877,
+        "SP01-02": 804,
+        "SPSU2": 769,
+        "A$C0BDD035C": 451,
+        "CONN": 423,
+        "down": 370,
+        "PIPFRPT": 316,
+        "SP01-01": 285,
+        "up": 270,
+        "IHD-02": 256,
+        "A$C9f31cf96": 198,
+        "드라이펜던프 상하향식": 183,
+        "CONN(OP)": 174,
+        "방수기구함일체형": 156
+      },
+      "text_count": 13561,
+      "text_distinct_values": 296,
+      "dia_label_count": 8879,
+      "floor_label_count": 41,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 10587,
+          "score": 1.0
+        },
+        {
+          "layer": "In-hbox",
+          "lines": 798,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 스프링클러(비주거)",
+          "lines": 66,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 옥내소화전(비주거)",
+          "lines": 60,
+          "score": 1.0
+        },
+        {
+          "layer": "F-중층부 옥내소화전(비주거)",
+          "lines": 33,
+          "score": 1.0
+        },
+        {
+          "layer": "F-중층부 스프링클러(비주거)",
+          "lines": 31,
+          "score": 1.0
+        },
+        {
+          "layer": "F-고층부 스프링클러(비주거)",
+          "lines": 31,
+          "score": 1.0
+        },
+        {
+          "layer": "F-고층부 옥내소화전(비주거)",
+          "lines": 29,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-201~ 동 소화설비 평면도(공동주택).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-201~ 동 소화설비 평면도(공동주택).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 13.4,
+      "file_size_kb": 22548,
+      "entity_count": 593875,
+      "entity_types": {
+        "L": 510772,
+        "PL": 29583,
+        "A": 18435,
+        "I": 13937,
+        "T": 13691,
+        "C": 4852,
+        "H": 2507,
+        "S": 98
+      },
+      "layer_count": 58,
+      "bbox": {
+        "x_min": -2619813.871898364,
+        "y_min": -2364755.246365306,
+        "x_max": 1946458.312663116,
+        "y_max": 1583227.428475734
+      },
+      "line_layers_top": {
+        "LINE": 453586,
+        "RISER": 29406,
+        "SP-LINE": 11303,
+        "tx": 10072,
+        "소방검토": 8305,
+        "Sp-head": 5997,
+        "소방장비": 4590,
+        "In-hyd": 3181,
+        "SYM": 2177,
+        "ARCH": 1849,
+        "3-급탕관": 1620,
+        "관경": 1353,
+        "0": 979,
+        "In-hpipe": 720,
+        "DIM": 694
+      },
+      "auto_matched_layers": [
+        "High Sprinkler",
+        "In-hpipe",
+        "LSP-2 (지하주차장)",
+        "Low Sprinkler",
+        "Mezzanine Sprinkler",
+        "PIPE",
+        "RISER",
+        "SC 1차(SP)",
+        "SP-LINE",
+        "SPF",
+        "Sp-head",
+        "배수배관"
+      ],
+      "insert_blocks_top": {
+        "POINT": 3691,
+        "SP01-04": 1907,
+        "A$C0BDD035C": 1253,
+        "up": 1153,
+        "down": 1073,
+        "SPCAP": 955,
+        "HEADCOL": 667,
+        "VALD01": 405,
+        "EXTING1": 312,
+        "SP01-05": 295,
+        "HEADCOL (3)": 291,
+        "CONN": 231,
+        "ALAV150": 218,
+        "HEADCON": 170,
+        "PIPFRPT": 170,
+        "SP01-01": 153,
+        "호스릴일반": 137,
+        "XR-SHEET": 133,
+        "SPSU2": 108,
+        "A$C2C6C027A": 103
+      },
+      "text_count": 13691,
+      "text_distinct_values": 535,
+      "dia_label_count": 2052,
+      "floor_label_count": 276,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 3181,
+          "score": 1.0
+        },
+        {
+          "layer": "F-고층부 스프링클러",
+          "lines": 127,
+          "score": 1.0
+        },
+        {
+          "layer": "F-중층부 스프링클러",
+          "lines": 24,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-330~ 116동~118동 동 소화설비 평면도(오피스텔).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-330~ 116동~118동 동 소화설비 평면도(오피스텔).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 3.0,
+      "file_size_kb": 5118,
+      "entity_count": 138972,
+      "entity_types": {
+        "L": 117051,
+        "PL": 6801,
+        "I": 5307,
+        "A": 4251,
+        "T": 3369,
+        "C": 1520,
+        "H": 661,
+        "S": 12
+      },
+      "layer_count": 46,
+      "bbox": {
+        "x_min": -3191989.655626981,
+        "y_min": -2947104.870733824,
+        "x_max": 2763203.959745041,
+        "y_max": 1684874.984916947
+      },
+      "line_layers_top": {
+        "LINE": 101722,
+        "RISER": 6693,
+        "SP-LINE": 5233,
+        "tx": 2757,
+        "소방검토": 1963,
+        "Sp-head": 1860,
+        "In-hyd": 1077,
+        "소방장비": 918,
+        "관경": 258,
+        "3-급탕관": 180,
+        "Defpoints": 168,
+        "In-hpipe": 162,
+        "TEST": 101,
+        "SC 2차_중층부": 94,
+        "공통": 83
+      },
+      "auto_matched_layers": [
+        "F-High Sprinkler",
+        "F-Low Sprinkler",
+        "F-Mezzanine Sprinkler",
+        "In-hpipe",
+        "RISER",
+        "SC 1차(SP)",
+        "SP-LINE",
+        "SPF",
+        "Sp-head"
+      ],
+      "insert_blocks_top": {
+        "POINT": 2058,
+        "HEADCON": 627,
+        "SP01-04": 504,
+        "SPCAP": 348,
+        "A$C0BDD035C": 265,
+        "up": 261,
+        "down": 243,
+        "SP01-01": 232,
+        "SP01-05": 108,
+        "SP01-02": 105,
+        "EXTING1": 84,
+        "ALAV150": 57,
+        "CONNN": 54,
+        "VALD01": 45,
+        "PIPFRPT": 40,
+        "HEADCOL (3)": 39,
+        "SPSU2": 36,
+        "SC": 30,
+        "XR-SHEET": 27,
+        "호스릴일반": 24
+      },
+      "text_count": 3369,
+      "text_distinct_values": 194,
+      "dia_label_count": 610,
+      "floor_label_count": 51,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 1077,
+          "score": 1.0
+        },
+        {
+          "layer": "F-중층부 스프링클러(비주거)",
+          "lines": 60,
+          "score": 1.0
+        },
+        {
+          "layer": "F-중층부 옥내소화전(비주거)",
+          "lines": 42,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 스프링클러(비주거)",
+          "lines": 27,
+          "score": 0.6
+        },
+        {
+          "layer": "F-고층부 스프링클러(비주거)",
+          "lines": 18,
+          "score": 0.6
+        },
+        {
+          "layer": "F-고층부 스프링클러",
+          "lines": 8,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-401~ 단위세대 소화설비(기계) 평면도(공동주택).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-401~ 단위세대 소화설비(기계) 평면도(공동주택).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 0.8,
+      "file_size_kb": 2715,
+      "entity_count": 8975,
+      "entity_types": {
+        "L": 5098,
+        "I": 1412,
+        "A": 920,
+        "T": 590,
+        "PL": 585,
+        "C": 304,
+        "H": 66
+      },
+      "layer_count": 31,
+      "bbox": {
+        "x_min": 0.0,
+        "y_min": 0.0,
+        "x_max": 219809.5002360405,
+        "y_max": 119540.9610083429
+      },
+      "line_layers_top": {
+        "SP-LINE": 1552,
+        "SYM": 1284,
+        "ARCH": 992,
+        "0": 496,
+        "tx": 380,
+        "DIM": 376,
+        "Sp-head": 278,
+        "PIPE": 88,
+        "Defpoints": 46,
+        "TEX": 26,
+        "INSUL": 24,
+        "슬리브": 20,
+        "251022": 19,
+        "A-ANNO-TITL": 16,
+        "CONC": 16
+      },
+      "auto_matched_layers": [
+        "PIPE",
+        "SP-LINE",
+        "SPF",
+        "Sp-head"
+      ],
+      "insert_blocks_top": {
+        "POINT": 819,
+        "HEADCOL (3)": 273,
+        "A$C78093F1E": 154,
+        "SPCAP": 65,
+        "측벽(드라이펜던트)": 24,
+        "SP01-03": 16,
+        "XR-SHEET": 8,
+        "EXTING1": 8,
+        "주거용주방자동소화장치": 8,
+        "SPSU2": 8,
+        "SP01-01": 8,
+        "A$C6307280F": 8,
+        "측벽 고온형": 4,
+        "*X16": 4,
+        "*X17": 4,
+        "XR-단위세대 평면도 (공동주택)": 1
+      },
+      "text_count": 590,
+      "text_distinct_values": 75,
+      "dia_label_count": 100,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-409~ 단위세대 소화설비(기계) 평면도(오피스텔).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-409~ 단위세대 소화설비(기계) 평면도(오피스텔).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 0.9,
+      "file_size_kb": 3390,
+      "entity_count": 12567,
+      "entity_types": {
+        "L": 6555,
+        "I": 2084,
+        "A": 1396,
+        "PL": 1026,
+        "T": 863,
+        "C": 473,
+        "H": 170
+      },
+      "layer_count": 33,
+      "bbox": {
+        "x_min": 0.0,
+        "y_min": -9941.923972188102,
+        "x_max": 716396.0495939576,
+        "y_max": 572094.4952322673
+      },
+      "line_layers_top": {
+        "SP-LINE": 2335,
+        "SYM": 1677,
+        "ARCH": 1476,
+        "DIM": 552,
+        "Sp-head": 463,
+        "tx": 457,
+        "PIPE": 132,
+        "TEXT": 96,
+        "RISER": 87,
+        "Defpoints": 73,
+        "슬리브": 57,
+        "INSUL": 36,
+        "A-ANNO-TITL": 24,
+        "CONC": 24,
+        "251022": 20
+      },
+      "auto_matched_layers": [
+        "PIPE",
+        "RISER",
+        "SP-LINE",
+        "Sp-head"
+      ],
+      "insert_blocks_top": {
+        "POINT": 1194,
+        "HEADCOL (3)": 280,
+        "A$C78093F1E": 126,
+        "HEADCOR": 112,
+        "SPCAP": 80,
+        "측벽(드라이펜던트)": 66,
+        "A$C0E5E5E2A": 62,
+        "A$C78093F1EA": 35,
+        "SPSU2": 16,
+        "XR-SHEET": 12,
+        "EXTING1": 12,
+        "SP01-01": 12,
+        "SP01-03": 12,
+        "A$C6307280F": 12,
+        "*X16": 11,
+        "A$C3E513FE0": 9,
+        "주거용주방자동소화장치": 8,
+        "PIPFRPT": 6,
+        "A$C22CC3FA6": 6,
+        "up": 3
+      },
+      "text_count": 863,
+      "text_distinct_values": 93,
+      "dia_label_count": 155,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-501 주민공동시설 소화설비 평면도.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-501 주민공동시설 소화설비 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 2.0,
+      "file_size_kb": 10950,
+      "entity_count": 17667,
+      "entity_types": {
+        "L": 8931,
+        "I": 5270,
+        "C": 1645,
+        "A": 1152,
+        "T": 366,
+        "PL": 171,
+        "H": 132
+      },
+      "layer_count": 31,
+      "bbox": {
+        "x_min": -4166714.322329365,
+        "y_min": -172671.2745850077,
+        "x_max": 3541549.002274638,
+        "y_max": 790620.2529931025
+      },
+      "line_layers_top": {
+        "Sp-line": 5903,
+        "Sp-head": 1859,
+        "LINE": 724,
+        "In-hyd": 288,
+        "tx": 92,
+        "관경": 79,
+        "8": 40,
+        "In-hpipe": 34,
+        "소방검토": 14,
+        "6666": 14,
+        "zone": 12,
+        "Defpoints": 8,
+        "TEST": 6,
+        "공통": 6,
+        "공통 (확대)": 6
+      },
+      "auto_matched_layers": [
+        "In-hpipe",
+        "LSP-2 (지하주차장)",
+        "Sp-head",
+        "Sp-line",
+        "Spf"
+      ],
+      "insert_blocks_top": {
+        "POINT": 3047,
+        "HEADCON": 833,
+        "SP01-02": 811,
+        "SPCAP": 261,
+        "HEADCOR": 81,
+        "HEADCOL": 69,
+        "HDCROSS": 49,
+        "EXTING1": 34,
+        "SP01-05": 28,
+        "호스릴방수기구함일체형": 14,
+        "SPSU2": 14,
+        "CONN": 12,
+        "ALAV150": 4,
+        "SP01-04": 4,
+        "02-평면도(지하7층~지상4층)$0$A$C0BDD035C": 2,
+        "드라이펜던프 상하향식": 2,
+        "XR-주민공동시설 평면도": 1,
+        "XR-SHEET": 1,
+        "SP01-01": 1,
+        "KEYMAP": 1
+      },
+      "text_count": 366,
+      "text_distinct_values": 62,
+      "dia_label_count": 198,
+      "floor_label_count": 7,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 288,
+          "score": 1.0
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-501-1~ 주민공동시설 소화설비 확대평면도.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-501-1~ 주민공동시설 소화설비 확대평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 0.1,
+      "file_size_kb": 346,
+      "entity_count": 740,
+      "entity_types": {
+        "L": 340,
+        "I": 168,
+        "T": 104,
+        "PL": 82,
+        "C": 46
+      },
+      "layer_count": 8,
+      "bbox": {
+        "x_min": -3620729.559821563,
+        "y_min": -11113.93455796823,
+        "x_max": 406239.4323802914,
+        "y_max": 414758.5609921104
+      },
+      "line_layers_top": {
+        "A-DIM1": 360,
+        "A-SYM": 44,
+        "Defpoints": 12,
+        "A-ANNO-TITL": 4,
+        "MATCH LINE": 2
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 120,
+        "풍선2": 44,
+        "XR-SHEET": 2,
+        "MF-501 주민공동시설 소화설비 평면도": 2
+      },
+      "text_count": 104,
+      "text_distinct_values": 21,
+      "dia_label_count": 0,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-502~어린이집, 경로당, 관리사무소, 경비실 소화설비 평면도_수정.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-502~어린이집, 경로당, 관리사무소, 경비실 소화설비 평면도_수정.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 5.9,
+      "file_size_kb": 41106,
+      "entity_count": 35068,
+      "entity_types": {
+        "L": 19523,
+        "I": 8529,
+        "A": 2437,
+        "C": 1894,
+        "T": 1280,
+        "PL": 1067,
+        "H": 338
+      },
+      "layer_count": 54,
+      "bbox": {
+        "x_min": -220370.2619809338,
+        "y_min": -134997.9728095664,
+        "x_max": 462281.5249283637,
+        "y_max": 403126.5
+      },
+      "line_layers_top": {
+        "SP-LINE": 11853,
+        "Sp-head": 3332,
+        "LINE": 2896,
+        "tx": 516,
+        "8": 480,
+        "In-hyd": 319,
+        "RISER": 251,
+        "SYM": 159,
+        "관경": 138,
+        "Defpoints": 134,
+        "ARCH": 124,
+        "In-hpipe": 57,
+        "소방검토": 54,
+        "DIM": 47,
+        "A-ANNO-TITL": 36
+      },
+      "auto_matched_layers": [
+        "In-hpipe",
+        "OPLSP-2",
+        "PIPE",
+        "RISER",
+        "SP-LINE",
+        "Sp-head",
+        "Sp-main",
+        "Spf"
+      ],
+      "insert_blocks_top": {
+        "POINT": 4037,
+        "SP01-02": 1205,
+        "HEADCOR": 1193,
+        "SPCAP": 585,
+        "HEADCON": 566,
+        "HDCROSS": 154,
+        "A$C0E5E5E2A": 142,
+        "SP01-04": 119,
+        "SP01-01": 107,
+        "SP01-05": 100,
+        "EXTING1": 51,
+        "HEADCOL": 50,
+        "SPSU2": 37,
+        "A$C78093F1E": 30,
+        "XR-SHEET": 16,
+        "CONN(OP)": 16,
+        "XREF1": 12,
+        "호스릴방수기구함일체형": 11,
+        "드라이펜던프 상하향식": 10,
+        "down": 10
+      },
+      "text_count": 1280,
+      "text_distinct_values": 162,
+      "dia_label_count": 555,
+      "floor_label_count": 43,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 319,
+          "score": 1.0
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\MF-517~ 판매시설 소화설비 평면도.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD",
+      "name": "MF-517~ 판매시설 소화설비 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 4.3,
+      "file_size_kb": 19649,
+      "entity_count": 42134,
+      "entity_types": {
+        "L": 26865,
+        "I": 9004,
+        "A": 2440,
+        "C": 1735,
+        "T": 1056,
+        "PL": 903,
+        "H": 131
+      },
+      "layer_count": 35,
+      "bbox": {
+        "x_min": -3458661.492007664,
+        "y_min": -32225.34082507587,
+        "x_max": 421992.9965710483,
+        "y_max": 932376.9673013208
+      },
+      "line_layers_top": {
+        "LINE": 10860,
+        "Sp-line": 10369,
+        "Sp-head": 3105,
+        "A-DIM1": 950,
+        "RISER": 772,
+        "tx": 699,
+        "In-hyd": 325,
+        "소방검토": 202,
+        "Defpoints": 112,
+        "관경": 106,
+        "In-hpipe": 90,
+        "test": 42,
+        "A-SYM": 40,
+        "6666": 34,
+        "A-ANNO-TITL": 28
+      },
+      "auto_matched_layers": [
+        "F-Low Sprinkler",
+        "In-hpipe",
+        "Low Sprinkler",
+        "RISER",
+        "Sp-head",
+        "Sp-line"
+      ],
+      "insert_blocks_top": {
+        "POINT": 5049,
+        "SP01-02": 1370,
+        "HEADCOL": 886,
+        "SPCAP": 485,
+        "HEADCON": 463,
+        "HEADCOR": 250,
+        "HDCROSS": 126,
+        "EXTING1": 91,
+        "SP01-04": 39,
+        "down": 30,
+        "A$C0BDD035C": 30,
+        "up": 26,
+        "SPSU2": 22,
+        "호스릴일반": 20,
+        "ALAV150": 20,
+        "PIPFRPT": 17,
+        "CONN(OP)": 15,
+        "XR-SHEET": 10,
+        "SP01-01": 10,
+        "A$C2C6C027A": 10
+      },
+      "text_count": 1056,
+      "text_distinct_values": 122,
+      "dia_label_count": 315,
+      "floor_label_count": 26,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 325,
+          "score": 1.0
+        },
+        {
+          "layer": "F-저층부 스프링클러",
+          "lines": 5,
+          "score": 0.6
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-101~115동 동평면도(내진).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-101~115동 동평면도(내진).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 4.7,
+      "file_size_kb": 17779,
+      "entity_count": 67266,
+      "entity_types": {
+        "L": 60659,
+        "PL": 3265,
+        "A": 2115,
+        "T": 488,
+        "C": 401,
+        "I": 308,
+        "H": 30
+      },
+      "layer_count": 4,
+      "bbox": {
+        "x_min": -788004.4883788178,
+        "y_min": -1329371.84448289,
+        "x_max": 430094.76637602795,
+        "y_max": 702700.8199899462
+      },
+      "line_layers_top": {
+        "내진": 63834,
+        "In-hyd": 90
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 90,
+        "SP01-04": 60,
+        "SPCAP": 45,
+        "호스릴일반": 22,
+        "HEADCOL": 20,
+        "A$C2C6C027A": 15,
+        "호스릴방수기구함일체형": 15,
+        "SC": 15,
+        "ALAV150": 15,
+        "HEADCON": 10,
+        "XR-동 동평면도": 1
+      },
+      "text_count": 488,
+      "text_distinct_values": 33,
+      "dia_label_count": 140,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": [
+        {
+          "layer": "In-hyd",
+          "lines": 90,
+          "score": 1.0
+        }
+      ]
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-101~115동 동평면도.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-101~115동 동평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 456.1,
+      "file_size_kb": 1369422,
+      "entity_count": 4294168,
+      "entity_types": {
+        "L": 3428316,
+        "A": 562384,
+        "PL": 225265,
+        "C": 57409,
+        "I": 10404,
+        "T": 9929,
+        "H": 387,
+        "S": 74
+      },
+      "layer_count": 10,
+      "bbox": {
+        "x_min": -1370179.961541504,
+        "y_min": -1109057.771022894,
+        "x_max": 1660299.754298021,
+        "y_max": -210167.7508104675
+      },
+      "line_layers_top": {
+        "k": 1788428,
+        "FUR": 1163737,
+        "ARCHI": 676171,
+        "AS-치수": 13956,
+        "A-DIM": 10658,
+        "Defpoints": 547,
+        "X_부대시설-근린생활시설1-2층-사업승인2차$0$A-ELES": 43,
+        "XR-103$0$A-DOOR-GRAY": 41
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 10398,
+        "*U3447": 3,
+        "*U3445": 1,
+        "*U3444": 1,
+        "*U3446": 1
+      },
+      "text_count": 9929,
+      "text_distinct_values": 516,
+      "dia_label_count": 0,
+      "floor_label_count": 172,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-116~118동 동평면도(내진).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-116~118동 동평면도(내진).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 7.6,
+      "file_size_kb": 35278,
+      "entity_count": 116071,
+      "entity_types": {
+        "L": 95338,
+        "A": 10539,
+        "PL": 8444,
+        "I": 847,
+        "C": 558,
+        "T": 318,
+        "H": 27
+      },
+      "layer_count": 7,
+      "bbox": {
+        "x_min": 1072299.754295982,
+        "y_min": -2782775.421717259,
+        "x_max": 2795208.448123861,
+        "y_max": -779747.6080895575
+      },
+      "line_layers_top": {
+        "FUR": 75632,
+        "ARCHI": 14958,
+        "내진": 11988,
+        "A-DIM1": 1200,
+        "Defpoints": 4
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 612,
+        "HEADCON": 78,
+        "SP01-01": 54,
+        "A$C0BDD035C": 30,
+        "SPCAP": 27,
+        "SP01-04": 18,
+        "CONNN": 9,
+        "호스릴방수기구함일체형": 6,
+        "SC": 6,
+        "호스릴일반": 3,
+        "ALAV150": 3,
+        "116~118동 치수선(기준층)": 1
+      },
+      "text_count": 318,
+      "text_distinct_values": 70,
+      "dia_label_count": 54,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-116~118동 동평면도.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-116~118동 동평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 179.5,
+      "file_size_kb": 446374,
+      "entity_count": 1439895,
+      "entity_types": {
+        "L": 1122271,
+        "A": 166416,
+        "PL": 129239,
+        "C": 16755,
+        "T": 2521,
+        "I": 2315,
+        "H": 378
+      },
+      "layer_count": 10,
+      "bbox": {
+        "x_min": -1883994.244482881,
+        "y_min": -1138757.771012611,
+        "x_max": 1954299.754295983,
+        "y_max": -871457.7710126111
+      },
+      "line_layers_top": {
+        "k": 620045,
+        "FUR": 484401,
+        "ARCHI": 116432,
+        "XR-116동 기준층$0$F-KIT": 19960,
+        "XR-117$0$F-KIT": 4990,
+        "AS-치수": 3004,
+        "A-DIM": 2587,
+        "Defpoints": 63,
+        "XR-117$0$A-FUR1": 28
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 2253,
+        "XR-116동 기준층$0$A$C5f13bf97": 14,
+        "XR-116동 기준층$0$A$C2FFC46D1": 8,
+        "XR-116동 기준층$0$A$C49E812D8": 8,
+        "XR-116동 기준층$0$A$Cad3652c5": 8,
+        "XR-117$0$A$C5f13bf97": 4,
+        "X_119OB_TYPE$0$20180409_32585": 4,
+        "X_119OB_TYPE$0$20180406_63627": 3,
+        "XR-116동 기준층$0$C5f13bf97": 2,
+        "XR-116동 기준층$0$X_119OA_TYPE-C5f13bf97": 2,
+        "XR-117$0$awesr4yhgawer4hawe4rjhua4w5": 2,
+        "XR-117$0$A$C2FFC46D1": 2,
+        "XR-117$0$A$C49E812D8": 2,
+        "XR-117$0$A$Cad3652c5": 2,
+        "XR-117$0$119OA_기준층_가구": 1
+      },
+      "text_count": 2521,
+      "text_distinct_values": 195,
+      "dia_label_count": 0,
+      "floor_label_count": 38,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-SHEET.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-SHEET.dxf",
+      "is_diagram": false,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 0.1,
+      "file_size_kb": 549,
+      "entity_count": 147,
+      "entity_types": {
+        "L": 65,
+        "T": 57,
+        "PL": 24,
+        "I": 1
+      },
+      "layer_count": 5,
+      "bbox": {
+        "x_min": 692797.2297769077,
+        "y_min": 284621.4331924901,
+        "x_max": 1028797.2297769104,
+        "y_max": 522221.43319249083
+      },
+      "line_layers_top": {
+        "사업승인_Form(양주옥정)$0$Form_DEFPOINTS": 47,
+        "사업승인_Form(양주옥정)$0$Form": 42
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "사업승인_Form(양주옥정)": 1
+      },
+      "text_count": 57,
+      "text_distinct_values": 54,
+      "dia_label_count": 0,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-근생.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-근생.dxf",
+      "is_diagram": false,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 21.7,
+      "file_size_kb": 48097,
+      "entity_count": 194926,
+      "entity_types": {
+        "L": 154005,
+        "A": 32832,
+        "C": 3454,
+        "PL": 2822,
+        "T": 1126,
+        "I": 682,
+        "H": 5
+      },
+      "layer_count": 15,
+      "bbox": {
+        "x_min": -659815.9645283733,
+        "y_min": -24581.32323471202,
+        "x_max": 714017.3567103364,
+        "y_max": 237607.2914752714
+      },
+      "line_layers_top": {
+        "k": 74813,
+        "ARCHI": 56548,
+        "FUR": 23730,
+        "AS-치수": 864,
+        "A-DIM": 709,
+        "Defpoints": 52,
+        "A-SYM": 52,
+        "X_부대시설_근린생활시설1-2층$0$A-ELE4": 47,
+        "NOPLOT": 6,
+        "X_부대시설_근린생활시설1-2층$0$A-DOOR-GRAY": 4,
+        "X_부대시설_근린생활시설1-2층$0$A-DOOR": 2
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 648,
+        "풍선2": 33,
+        "zx$80FB": 1
+      },
+      "text_count": 1126,
+      "text_distinct_values": 462,
+      "dia_label_count": 0,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-단위세대 평면도 (공동주택)(내진).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-단위세대 평면도 (공동주택)(내진).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 9.0,
+      "file_size_kb": 15532,
+      "entity_count": 45163,
+      "entity_types": {
+        "L": 29617,
+        "PL": 8052,
+        "A": 3591,
+        "I": 1725,
+        "C": 1619,
+        "T": 529,
+        "H": 30
+      },
+      "layer_count": 10,
+      "bbox": {
+        "x_min": -206421.4189587671,
+        "y_min": 55391.099014315274,
+        "x_max": 253027.4692751819,
+        "y_max": 140250.09901520004
+      },
+      "line_layers_top": {
+        "FUR": 25359,
+        "ARCHI": 7870,
+        "내진": 1925,
+        "A-DIM": 1494,
+        "AS-치수": 936,
+        "Defpoints": 28,
+        "A-DIM_MC": 28,
+        "A-SYM": 28,
+        "Defpoint": 1
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 1725
+      },
+      "text_count": 529,
+      "text_distinct_values": 132,
+      "dia_label_count": 94,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-단위세대 평면도 (공동주택).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-단위세대 평면도 (공동주택).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 14.8,
+      "file_size_kb": 29483,
+      "entity_count": 80269,
+      "entity_types": {
+        "L": 52882,
+        "PL": 15766,
+        "A": 6929,
+        "C": 2889,
+        "I": 972,
+        "T": 819,
+        "H": 12
+      },
+      "layer_count": 9,
+      "bbox": {
+        "x_min": -206206.4875014848,
+        "y_min": 55191.099015252374,
+        "x_max": 253157.5003043715,
+        "y_max": 140406.0990151686
+      },
+      "line_layers_top": {
+        "k": 35819,
+        "FUR": 22651,
+        "ARCHI": 7694,
+        "A-DIM": 1470,
+        "AS-치수": 928,
+        "A-SYM": 46,
+        "A-DIM_MC": 32,
+        "Defpoints": 8
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 972
+      },
+      "text_count": 819,
+      "text_distinct_values": 148,
+      "dia_label_count": 0,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-단위세대 평면도(오피스텔)(내진).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-단위세대 평면도(오피스텔)(내진).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 6.6,
+      "file_size_kb": 15758,
+      "entity_count": 54542,
+      "entity_types": {
+        "L": 40374,
+        "A": 6490,
+        "PL": 3707,
+        "C": 1781,
+        "I": 1704,
+        "T": 436,
+        "H": 50
+      },
+      "layer_count": 9,
+      "bbox": {
+        "x_min": -600067.1220220407,
+        "y_min": 18520.21934706028,
+        "x_max": 617856.0496602007,
+        "y_max": 572094.4952322673
+      },
+      "line_layers_top": {
+        "FUR": 20840,
+        "ARCHI": 11373,
+        "XR-OP-U119A$0$F-KIT": 4990,
+        "내진": 4675,
+        "AS-치수": 1064,
+        "A-DIM": 976,
+        "A-SYM": 122,
+        "Defpoints": 24,
+        "Defpoints123": 17
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 1578,
+        "OT119B_DIM(2)": 24,
+        "OT119C_DIM(5)": 24,
+        "OT119A_DIM(3)": 20,
+        "OT119A_DIM(2)": 18,
+        "OT119B_DIM(4)": 18,
+        "OT119C_DIM(3)": 18,
+        "SPSU2": 3,
+        "XR_기준도면(단위-동평면도)_오피스텔$0$240905_119OB_중심선": 1
+      },
+      "text_count": 436,
+      "text_distinct_values": 126,
+      "dia_label_count": 104,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-단위세대 평면도(오피스텔).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-단위세대 평면도(오피스텔).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 13.4,
+      "file_size_kb": 32431,
+      "entity_count": 107540,
+      "entity_types": {
+        "L": 81471,
+        "A": 15092,
+        "PL": 5715,
+        "C": 3092,
+        "I": 1489,
+        "T": 669,
+        "H": 12
+      },
+      "layer_count": 7,
+      "bbox": {
+        "x_min": -600827.1639458255,
+        "y_min": 18520.21934706051,
+        "x_max": 617856.0496602007,
+        "y_max": 572094.4952322673
+      },
+      "line_layers_top": {
+        "k": 43012,
+        "FUR": 28849,
+        "ARCHI": 14283,
+        "A-DIM": 968,
+        "A-SYM": 54,
+        "Defpoints": 16,
+        "TEXT": 4
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 798,
+        "DIMDOT": 530,
+        "OT119B_DIM(5)": 24,
+        "OT119B_DIM(2)": 23,
+        "OT119A_DIM(3)": 20,
+        "OT119C_DIM(2)": 20,
+        "OT119A_DIM(2)": 18,
+        "OT119C_DIM(3)": 18,
+        "OT119B_DIM(4)": 18,
+        "OT119C_DIM(5)": 12,
+        "OT119A_DIM(4)": 7,
+        "XR_기준도면(단위-동평면도)_오피스텔$0$240905_119OB_중심선": 1
+      },
+      "text_count": 669,
+      "text_distinct_values": 121,
+      "dia_label_count": 0,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-배치도.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-배치도.dxf",
+      "is_diagram": false,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 2.6,
+      "file_size_kb": 7301,
+      "entity_count": 24788,
+      "entity_types": {
+        "L": 19497,
+        "A": 2430,
+        "PL": 2407,
+        "C": 244,
+        "T": 177,
+        "I": 30,
+        "S": 2,
+        "H": 1
+      },
+      "layer_count": 12,
+      "bbox": {
+        "x_min": -1056406.0477425826,
+        "y_min": -137324.44511756397,
+        "x_max": 1795620.720006235,
+        "y_max": 1426940.497005308
+      },
+      "line_layers_top": {
+        "FUR": 15847,
+        "ARCHI": 6035,
+        "text": 18,
+        "XR_도로$0$h-방호울타리": 2,
+        "Defpoints": 1,
+        "XR_도로$0$layer-252": 1
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "*U6": 14,
+        "XR_조경$0$A$C2f59d775": 8,
+        "*U3": 5,
+        "*U4": 2,
+        "250429 데크라인": 1
+      },
+      "text_count": 177,
+      "text_distinct_values": 70,
+      "dia_label_count": 0,
+      "floor_label_count": 104,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-어린이집, 경로당, 관리사무소, 경비실.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-어린이집, 경로당, 관리사무소, 경비실.dxf",
+      "is_diagram": false,
+      "is_plan": false,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 21.4,
+      "file_size_kb": 71742,
+      "entity_count": 308429,
+      "entity_types": {
+        "L": 253799,
+        "A": 46789,
+        "C": 3676,
+        "PL": 2471,
+        "T": 805,
+        "I": 751,
+        "S": 136,
+        "H": 2
+      },
+      "layer_count": 11,
+      "bbox": {
+        "x_min": -389870.3831513893,
+        "y_min": 83.21642116009752,
+        "x_max": 462010.5085535234,
+        "y_max": 416823.071648445
+      },
+      "line_layers_top": {
+        "k": 106412,
+        "ARCHI": 78042,
+        "FUR": 70985,
+        "A-DIM1": 682,
+        "0": 73,
+        "NOPLOT": 40,
+        "Defpoints": 20,
+        "Defpoint": 10,
+        "지하주차장(작업파일)-사업승인2차$0$A-장비": 4,
+        "대지경계$0$Defpoint": 2
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 417,
+        "DIMDOT": 332,
+        "g1100": 2
+      },
+      "text_count": 805,
+      "text_distinct_values": 327,
+      "dia_label_count": 0,
+      "floor_label_count": 11,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-주민공동시설 평면도.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-주민공동시설 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 12.5,
+      "file_size_kb": 43530,
+      "entity_count": 162746,
+      "entity_types": {
+        "L": 131964,
+        "A": 25543,
+        "C": 4566,
+        "T": 290,
+        "PL": 225,
+        "I": 154,
+        "H": 4
+      },
+      "layer_count": 10,
+      "bbox": {
+        "x_min": -3780761.2876235754,
+        "y_min": -810060.6847753484,
+        "x_max": 2855135.612696443,
+        "y_max": 1278594.2531470037
+      },
+      "line_layers_top": {
+        "k": 49873,
+        "ARCHI": 46298,
+        "FUR": 35708,
+        "AS-치수": 152,
+        "A-DIM1": 114,
+        "A-SYM": 40,
+        "NOPLOT": 3,
+        "X_부대시설$0$Defpoint": 1
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 114,
+        "풍선2": 40
+      },
+      "text_count": 290,
+      "text_distinct_values": 112,
+      "dia_label_count": 0,
+      "floor_label_count": 0,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-지하주차장 평면도(내진).dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-지하주차장 평면도(내진).dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 28.0,
+      "file_size_kb": 90776,
+      "entity_count": 383434,
+      "entity_types": {
+        "L": 340192,
+        "A": 18921,
+        "PL": 13025,
+        "T": 4041,
+        "C": 4033,
+        "I": 2187,
+        "S": 1010,
+        "H": 25
+      },
+      "layer_count": 12,
+      "bbox": {
+        "x_min": -5600707.392413924,
+        "y_min": 246851.0272774018,
+        "x_max": 5285458.203588761,
+        "y_max": 726466.8664298238
+      },
+      "line_layers_top": {
+        "ARCHI": 213323,
+        "내진": 70924,
+        "FUR": 65669,
+        "AS-치수": 1500,
+        "A-DIM": 1165,
+        "A-SYM": 375,
+        "f-s": 256,
+        "Defpoint": 5
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 1800,
+        "풍선2": 375,
+        "XR_기준도면(부대시설)$0$점자블럭-1": 12
+      },
+      "text_count": 4041,
+      "text_distinct_values": 163,
+      "dia_label_count": 1914,
+      "floor_label_count": 5,
+      "candidate_pipe_layers": []
+    },
+    {
+      "rel_path": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR\\XR-지하주차장 평면도.dxf",
+      "project": "양주옥정",
+      "folder": "2. 고가수조_양주옥정 중상1블럭\\CAD\\XR",
+      "name": "XR-지하주차장 평면도.dxf",
+      "is_diagram": false,
+      "is_plan": true,
+      "parse_ok": true,
+      "parse_error": "",
+      "parse_seconds": 75.2,
+      "file_size_kb": 228260,
+      "entity_count": 874781,
+      "entity_types": {
+        "L": 730309,
+        "A": 105260,
+        "PL": 24297,
+        "C": 9284,
+        "T": 4293,
+        "I": 1220,
+        "H": 84,
+        "S": 34
+      },
+      "layer_count": 18,
+      "bbox": {
+        "x_min": -5600707.392413924,
+        "y_min": 154566.8733826669,
+        "x_max": 3475678.3093674458,
+        "y_max": 980555.6004964237
+      },
+      "line_layers_top": {
+        "k": 386568,
+        "ARCHI": 271584,
+        "FUR": 92690,
+        "AS-치수": 1500,
+        "A-DIM": 1165,
+        "A-SYM": 375,
+        "A-FUR2": 277,
+        "Defpoint": 247,
+        "FIRE FS": 187,
+        "Defpoints": 7,
+        "260429": 6
+      },
+      "auto_matched_layers": [],
+      "insert_blocks_top": {
+        "POINT": 1126,
+        "XR_조경$0$XR_조경$0$XR_조경$0$A$C424E3458": 32,
+        "XR_조경$0$XR_조경$0$XR_조경$0$$0$XR_조경$0$소방차 전용구역": 32,
+        "*U4": 14,
+        "XR_조경$0$A$C2f59d775": 8,
+        "250424 지하주차장 치수열": 5,
+        "*U1": 2,
+        "A$C5b8ef655": 1
+      },
+      "text_count": 4293,
+      "text_distinct_values": 283,
+      "dia_label_count": 0,
+      "floor_label_count": 7,
+      "candidate_pipe_layers": []
+    }
+  ]
+}

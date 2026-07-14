@@ -1,0 +1,31 @@
+{
+  "by_type": {
+    "A": 18,
+    "C": 212,
+    "I": 79,
+    "L": 1082,
+    "PL": 378,
+    "S": 6,
+    "T": 79
+  },
+  "entities_sig": "270f5e537d785f7c",
+  "layers": [
+    "0",
+    "0.내진_BRACE_4방향",
+    "1",
+    "BRACE_4방향",
+    "DIM",
+    "Defpoints",
+    "PIPE",
+    "PIPE11",
+    "SYM",
+    "TEXT",
+    "arch",
+    "defpoint",
+    "관경",
+    "지시선",
+    "헤드"
+  ],
+  "n_ent": 1854,
+  "n_layers": 15
+}

@@ -3684,16 +3684,26 @@ def remote30_overall_finalize_stream(job_id: str):
 
             # ── Stage 4 entities — prototype 캔버스가 "4 30 헤드" view 에 그릴 데이터.
             # prototype 의 run_stages_3_5 가 emit 하는 것과 동일 형식 (_subgraph / _subgraph_head / _alarm_valve).
+            from remote30_prototype import orthogonalize_edge_positions as _ortho_pos
+            _s4_ortho = _ortho_pos(
+                selection.edges,
+                head_points=[h.pos for h in selection.heads],
+                source_point=selection.source_pos)
+
+            def _s4_xy(p):
+                return _s4_ortho.get((round(float(p[0]), 3), round(float(p[1]), 3)),
+                                     (float(p[0]), float(p[1])))
             stage4_ents: list[dict] = []
             for ea, eb, _ in selection.edges:
+                pa, pb = _s4_xy(ea), _s4_xy(eb)
                 stage4_ents.append({"t": "L", "l": "_subgraph",
-                                     "p": [ea[0], ea[1], eb[0], eb[1]]})
+                                     "p": [pa[0], pa[1], pb[0], pb[1]]})
             for h in selection.heads:
                 stage4_ents.append({"t": "C", "l": "_subgraph_head",
-                                     "c": list(h.pos), "r": 80.0})
+                                     "c": list(_s4_xy(h.pos)), "r": 80.0})
             if selection.source_pos is not None:
                 stage4_ents.append({"t": "C", "l": "_alarm_valve",
-                                     "c": list(selection.source_pos), "r": 150.0})
+                                     "c": list(_s4_xy(selection.source_pos)), "r": 150.0})
             yield _emit({
                 "type": "entities", "stage": 4, "entities": stage4_ents,
                 "summary": {
@@ -4004,7 +4014,8 @@ def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
     하고, **각 서브트리의 실제 bounding box 만큼 간격을 확보**해 배치한다. 형제 서브트리
     폭 구간이 완전히 분리되므로 평면 교차 0, 모든 segment 가 0°/90° → 30° 등각투영에서
     30°/150° 격자가 되어 **등각도도 깔끔**해진다.
-      · root 는 **실위치 고정**, 팬아웃 축은 실제 자식 분포 지배 방향에 맞춰 좌우감 보존.
+      · root 는 **실위치 고정**, 각 자식은 실제 방위(부모→자식 벡터)에 가장 가까운 축에
+        1:1 배정 → 평면도의 방향감(동/서/남/북)이 유지돼 통합망이 평면도와 닮은 형태.
       · 간격 STEP 은 실 도면 대표 edge 길이(중앙값) → 스케일 보존(붕괴·압축 없음).
 
     표시 좌표만 바꾼다. 파이프 length·elevation 등 수리값은 emit 단계에서 좌표와
@@ -4066,21 +4077,50 @@ def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
         STEP = 1.0
     PAD = STEP  # 균일 간격
 
-    DIRV = {"+x": (1.0, 0.0), "-x": (-1.0, 0.0), "+y": (0.0, 1.0), "-y": (0.0, -1.0)}
     OPP = {"+x": "-x", "-x": "+x", "+y": "-y", "-y": "+y"}
     PERP = {"+x": ["+y", "-y"], "-x": ["+y", "-y"],
             "+y": ["+x", "-x"], "-y": ["+x", "-x"]}
+    AXES = ("+x", "+y", "-x", "-y")
+    AX_ANG = {"+x": 0.0, "+y": 90.0, "-x": 180.0, "-y": 270.0}
+
+    def _ang_gap(a, b):
+        d = abs(a - b) % 360.0
+        return min(d, 360.0 - d)
+
+    from itertools import permutations as _perms
+
+    def _assign_dirs(node, incoming):
+        """각 자식을 실제 방위(부모→자식 벡터)에 가장 가까운 축에 1:1 배정.
+        가용 축 = 전체 4개(root) 또는 incoming 제외 3개. 자식 수 ≤ 가용 축이면 축이
+        겹치지 않는 배정 중 방위 오차 합이 최소인 것을 택함(트리 최대차수 4 → 항상 성립).
+        예외적으로 자식이 더 많으면 크기순 fallback(직진→좌/우→후진)."""
+        kids = children[node]
+        avail = list(AXES) if incoming is None else [ax for ax in AXES if ax != incoming]
+        ux, uy = _xy(node)
+        ang = {c: _math.degrees(_math.atan2(_xy(c)[1] - uy, _xy(c)[0] - ux)) % 360.0
+               for c in kids}
+        if len(kids) <= len(avail):
+            best, best_cost = None, float("inf")
+            for combo in _perms(avail, len(kids)):
+                cost = sum(_ang_gap(ang[kids[i]], AX_ANG[combo[i]])
+                           for i in range(len(kids)))
+                if cost < best_cost:
+                    best_cost, best = cost, combo
+            return dict(zip(kids, best))
+        base = list(avail) if incoming is None else [OPP[incoming]] + PERP[incoming] + [incoming]
+        ordered = sorted(kids, key=lambda c: size[c], reverse=True)
+        return {c: (base[i] if i < len(base) else base[-1]) for i, c in enumerate(ordered)}
 
     def _layout(node, incoming):
         """node 를 원점에 두고 서브트리 배치. 반환 (pos, bbox[minx,miny,maxx,maxy])."""
         lpos = {node: (0.0, 0.0)}
         bbox = [0.0, 0.0, 0.0, 0.0]
-        kids = sorted(children[node], key=lambda c: size[c], reverse=True)
-        if not kids:
+        if not children[node]:
             return lpos, bbox
-        avail = [OPP[incoming]] + PERP[incoming] + [incoming]  # 직진→좌/우→(최후)후진
-        for i, c in enumerate(kids):
-            dr = avail[i] if i < len(avail) else avail[-1]
+        assign = _assign_dirs(node, incoming)
+        # 큰 서브트리부터 배치(간격 균일). 축이 자식마다 유일하므로 순서는 교차에 무관.
+        for c in sorted(children[node], key=lambda c: size[c], reverse=True):
+            dr = assign[c]
             csub, cbb = _layout(c, OPP[dr])
             if dr == "+x":
                 base = bbox[2] + PAD + STEP; off = (base - cbb[0], 0.0)
@@ -4097,17 +4137,12 @@ def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
                 bbox[2] = max(bbox[2], nx); bbox[3] = max(bbox[3], ny)
         return lpos, bbox
 
-    # 루트 팬아웃 축을 실제 자식 분포의 지배 방향에 맞춰 전체 회전 최소화(좌우감 보존).
     rx, ry = _xy(root)
-    spread_x = sum(abs(_xy(c)[0] - rx) for c in children[root])
-    spread_y = sum(abs(_xy(c)[1] - ry) for c in children[root])
-    through = "+x" if spread_x >= spread_y else "+y"
-
     import sys as _sys
     _old_limit = _sys.getrecursionlimit()
     _sys.setrecursionlimit(max(_old_limit, len(order) + 1000))
     try:
-        pos, _ = _layout(root, OPP[through])
+        pos, _ = _layout(root, None)   # root: 가용 축 4개, 자식마다 실제 방위로 배정
     finally:
         _sys.setrecursionlimit(_old_limit)
 
@@ -4537,17 +4572,11 @@ def remote30_combined_build():
                               if _riser_elev_vals else 0.0)
         _auto_spread = _riser_elev_spread < 1.0
 
-        # 헤드평면(가지·교차배관) 스키매틱 트리 정돈 — 표시 (x,y) 만 변경.
-        # combined 를 단일 원천(single source of truth)으로 한 번만 정돈하면
-        # 미리보기 geometry·평면 KFP/HAS·iso KFP/HAS 모두에 전파된다(다운 후 재투영).
-        # 라이저(별도 수직 collapse)·기계실(군집 보존)은 제외. 수리값(length·elevation) 불변.
-        try:
-            _tidied = _tidy_head_plane_layout(
-                combined.nodes, combined.pipes, av_label,
-                riser_collapse_labels | _mr_set)
-            app.logger.info("combined/build: head-plane tidied nodes=%d", _tidied)
-        except Exception as _e:  # 정돈 실패는 치명적이지 않음 — 원좌표로 진행.
-            app.logger.warning("combined/build: head-plane tidy skipped: %s", _e)
+        # ── 평면 세트/미리보기 geometry 는 실 DXF 좌표를 쓴다(교차·주배관은 도면 그대로,
+        #    가지배관만 build_input_tables 에서 이미 직각 스냅됨). tree-packing 스키매틱
+        #    재배치는 평면을 도면과 동떨어진 기괴한 형태로 만들어 폐지 — 대신 iso(등각)
+        #    세트에만 tree-packing 을 적용해 아이소 꼬임을 방지한다(아래 combined_iso).
+        #    수리값(length·elevation)은 어느 경로든 불변.
 
         # ── 헤드(스프링클러) z 돌출 — 상향식(+)/하향식(−)을 표시 전용 display_z 로 베이크.
         #   헤드 = nozzle 부착(input) 노드. 돌출량은 평면 대각선 비율(head_z_frac)이라
@@ -4791,11 +4820,19 @@ def remote30_combined_build():
             return {"sdf": b_sdf, "slf": b_slf, "kfp": b_kfp, "has": b_has, "zip": b_zip,
                     "zip_sdf": b_zip_sdf, "kfp_ok": b_kfp_ok, "has_ok": b_has_ok}
 
-        # 평면 세트(원본 좌표) — 캔버스 geometry 와 동일한 평면도 좌표.
+        # 평면 세트(실 DXF 좌표) — 캔버스 geometry 와 동일한 평면도 좌표(가지만 직각화).
         plan_bundle = _emit_bundle(combined, "")
-        # 등각 세트 — 노드 (x,y) 를 30° 등각투영으로 베이크한 사본에서 emit.
-        # 표시 전용 변환이라 SDF/KFP/HAS 의 수리계산 결과는 평면 세트와 동일.
+        # 등각 세트 — 사본에 tree-packing 스키매틱 재배치 후 30° 등각투영 베이크.
+        # 등각은 헤드평면을 균일 격자로 재배치해야 아이소 꼬임이 안 생기므로(평면과 달리)
+        # 여기서만 정돈한다. 표시 전용 변환이라 SDF/KFP/HAS 의 수리계산 결과는 평면과 동일.
         combined_iso = _copy.deepcopy(combined)
+        try:
+            _tidied = _tidy_head_plane_layout(
+                combined_iso.nodes, combined_iso.pipes, av_label,
+                riser_collapse_labels | _mr_set)
+            app.logger.info("combined/build: iso head-plane tidied nodes=%d", _tidied)
+        except Exception as _e:  # 정돈 실패는 치명적이지 않음 — 원좌표로 진행.
+            app.logger.warning("combined/build: iso head-plane tidy skipped: %s", _e)
         # 라이저·기계실 계통도는 lift 제외 — schematic y 가 이미 수직을 인코딩하므로
         # elevation lift 를 다시 더하면 이중부호로 계통도가 구부러진다. 헤드 z-돌출도
         # 여기선 안 씀(평면 Y 를 기울여 가지배관을 꼬이게 함; 3D·KFP/HAS 는 display_z).

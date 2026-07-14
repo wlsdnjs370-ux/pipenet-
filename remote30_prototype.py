@@ -3166,6 +3166,200 @@ def _point_in_zones(px: float, py: float,
     return False
 
 
+# 가지배관 직각화 각도 임계값(deg) — 가지 edge 가 축(0/90°)에서 이 이내면 축정렬로
+# 스냅, 45° 근방(진짜 대각선)은 실좌표 유지. 표시 전용(length_mm·연결 불변).
+ORTHO_SNAP_TOL_DEG = 20.0
+
+
+def _classify_branch_edges(edges, head_points, source_point):
+    """소스 기준 트리에서 '가지배관' edge 를 판별한다.
+
+    교차·주배관(cross main)은 가지선을 여러 갈래로 분기시키는 spine 이고, 가지배관은
+    그 끝에 헤드가 달린 (분기 없는) 열이다. 규칙: 배관(부모 u→자식 v)의 하류 서브트리에
+    splitter(헤드를 가진 자식이 2개 이상인 노드)가 하나도 없으면 v 쪽은 가지선 → 가지배관.
+    splitter 가 있으면 교차배관.
+
+    반환: (branch_edge_keys: set[frozenset{ka,kb}], key_fn) — 가지 edge 키 집합.
+    head_points/source_point 가 없으면 빈 집합(=전부 비가지).
+    """
+    def _key(p):
+        return (round(float(p[0]), 3), round(float(p[1]), 3))
+    if source_point is None:
+        return set(), _key
+    from collections import deque as _deque
+    adj: dict = defaultdict(set)
+    for e in edges:
+        ka, kb = _key(e[0]), _key(e[1])
+        if ka != kb:
+            adj[ka].add(kb); adj[kb].add(ka)
+    root = _key(source_point)
+    if root not in adj:
+        return set(), _key
+    parent: dict = {root: None}
+    order: list = [root]
+    q = _deque([root])
+    while q:
+        u = q.popleft()
+        for v in adj[u]:
+            if v not in parent:
+                parent[v] = u; order.append(v); q.append(v)
+    children: dict = defaultdict(list)
+    for v, p in parent.items():
+        if p is not None:
+            children[p].append(v)
+    head_set = {_key(h) for h in (head_points or [])}
+    dh: dict = {}
+    for v in reversed(order):
+        c = 1 if v in head_set else 0
+        for ch in children[v]:
+            c += dh[ch]
+        dh[v] = c
+    # splitter 서브트리 판정 — 하류에서 헤드열이 2갈래+로 갈라지면 교차배관.
+    sub_split: dict = {}
+    for v in reversed(order):
+        head_bearing_kids = sum(1 for ch in children[v] if dh[ch] >= 1)
+        s = head_bearing_kids >= 2
+        for ch in children[v]:
+            s = s or sub_split[ch]
+        sub_split[v] = s
+    # ── 교차배관 spine(trunk) 추적: 소스에서 방향 연속성으로 직진하는 경로.
+    #    splitter 규칙만으론 마지막 분기 이후의 교차배관 tail 을 가지선과 구분 못 하므로
+    #    (tail 서브트리도 splitter 가 없음), 진행방향이 이어지는 간선을 trunk 로 표시한다.
+    TRUNK_TURN_TOL = math.radians(45.0)  # 45° 이상 꺾이면 trunk 종료(가지 진입).
+
+    def _dir(u, v):
+        return math.atan2(v[1] - u[1], v[0] - u[0])
+
+    def _angdiff(a, b):
+        return abs((a - b + math.pi) % (2.0 * math.pi) - math.pi)
+
+    trunk: set = set()
+    cur, inc = root, None
+    while True:
+        kids = children.get(cur, [])
+        if not kids:
+            break
+        if inc is None:
+            nxt = max(kids, key=lambda c: dh[c])       # 소스: 헤드 최다 방향으로 출발
+        else:
+            nxt = min(kids, key=lambda c: _angdiff(_dir(cur, c), inc))
+            if _angdiff(_dir(cur, nxt), inc) > TRUNK_TURN_TOL:
+                break                                   # 크게 꺾임 → trunk 끝(가지 시작)
+        trunk.add(frozenset((cur, nxt)))
+        inc = _dir(cur, nxt)
+        cur = nxt
+    branch: set = set()
+    for v in order:
+        u = parent[v]
+        if u is None:
+            continue
+        fe = frozenset((u, v))
+        if fe in trunk:               # 교차배관 spine — 고정
+            continue
+        if sub_split.get(v, True):    # 하류 분기 존재 — 교차배관
+            continue
+        branch.add(fe)                # 분기 없는 헤드열 = 가지배관
+    return branch, _key
+
+
+def orthogonalize_edge_positions(edges, *, head_points=None, source_point=None,
+                                 tol_deg: float = ORTHO_SNAP_TOL_DEG) -> dict:
+    """가지배관만 직각에 스냅한 표시좌표맵을 반환(표시 전용, 교차·주배관/소스 고정).
+
+    head_points·source_point 가 주어지면 트리에서 가지배관을 판별해(_classify_branch_edges)
+    가지 edge 만 축정렬 제약을 건다. 교차배관·소스 노드는 실 DXF 좌표에 고정(anchor).
+      · 근축 수평 가지 → 두 끝점 같은 Y, 근축 수직 가지 → 같은 X (X·Y 독립)
+      · 각 축-성분: 고정 노드 1개면 그 좌표로 정렬(tee 앵커), 0개면 평균, ≥2개면
+        충돌이므로 이동 안 함(실 DXF 유지).
+    45° 근방 가지·비가지 배관은 실좌표 유지. length_mm(유압 권위값) 불변.
+
+    head/source 미지정이면 모든 근축 edge 스냅(구 동작, 폴백).
+    반환: {(rx, ry): (x', y')}. 매칭 실패 시 호출측이 원좌표 사용.
+    """
+    branch_keys, _key = _classify_branch_edges(edges, head_points, source_point)
+    branch_only = bool(branch_keys) or (source_point is not None and head_points is not None)
+
+    orig: dict = {}
+    for e in edges:
+        a, b = e[0], e[1]
+        orig.setdefault(_key(a), (float(a[0]), float(a[1])))
+        orig.setdefault(_key(b), (float(b[0]), float(b[1])))
+    if not edges:
+        return dict(orig)
+
+    tol = math.radians(tol_deg)
+    parent_x = {k: k for k in orig}
+    parent_y = {k: k for k in orig}
+
+    def _find(par, k):
+        root = k
+        while par[root] != root:
+            root = par[root]
+        while par[k] != root:
+            par[k], k = root, par[k]
+        return root
+
+    def _union(par, i, j):
+        ri, rj = _find(par, i), _find(par, j)
+        if ri != rj:
+            par[ri] = rj
+
+    # 고정 노드 = 비가지(교차·주배관) edge 에 닿는 노드 + 소스. branch_only 아니면 고정 없음.
+    fixed: set = set()
+    if branch_only:
+        for e in edges:
+            ka, kb = _key(e[0]), _key(e[1])
+            if ka == kb:
+                continue
+            if frozenset((ka, kb)) not in branch_keys:
+                fixed.add(ka); fixed.add(kb)
+        if source_point is not None:
+            fixed.add(_key(source_point))
+
+    for e in edges:
+        a, b = e[0], e[1]
+        ka, kb = _key(a), _key(b)
+        if ka == kb:
+            continue
+        ang = math.atan2(float(b[1]) - float(a[1]), float(b[0]) - float(a[0])) % math.pi
+        d_h = min(ang, math.pi - ang)      # 수평축(0/π)까지 각거리
+        d_v = abs(ang - math.pi / 2.0)     # 수직축(π/2)까지 각거리
+        if branch_only:
+            if frozenset((ka, kb)) not in branch_keys:
+                continue  # 교차·주배관 — 스냅 안 함(실 DXF 고정)
+            # 가지배관은 가까운 축으로 무조건 정렬(0/90/180/270). tol 게이트 없음.
+            if d_h <= d_v:
+                _union(parent_y, ka, kb)   # 수평 → 같은 Y
+            else:
+                _union(parent_x, ka, kb)   # 수직 → 같은 X
+        elif d_h <= tol and d_h <= d_v:
+            _union(parent_y, ka, kb)       # (폴백) 근축 수평 → 같은 Y
+        elif d_v <= tol:
+            _union(parent_x, ka, kb)       # (폴백) 근축 수직 → 같은 X
+        # else: 대각선 — 스냅 안 함
+
+    def _solve(par, coord_idx):
+        groups: dict = defaultdict(list)
+        for k in orig:
+            groups[_find(par, k)].append(k)
+        out: dict = {}
+        for _r, members in groups.items():
+            fixed_vals = [orig[k][coord_idx] for k in members if k in fixed]
+            if len(fixed_vals) >= 2 and (max(fixed_vals) - min(fixed_vals)) > 1e-6:
+                target = None  # 고정 노드 충돌 → 이동 안 함(각자 실좌표)
+            elif fixed_vals:
+                target = fixed_vals[0]      # tee 앵커
+            else:
+                target = sum(orig[k][coord_idx] for k in members) / len(members)
+            for k in members:
+                out[k] = orig[k][coord_idx] if target is None else target
+        return out
+
+    sx = _solve(parent_x, 0)
+    sy = _solve(parent_y, 1)
+    return {k: (sx[k], sy[k]) for k in orig}
+
+
 def build_input_tables(
     selection: SelectionResult,
     pipe_entities: list[dict] | None = None,
@@ -3204,12 +3398,23 @@ def build_input_tables(
         lab = _label_node(snap)
         head_node_label[snap] = lab
 
-    # Nodes
+    # Nodes — 가지배관 표시좌표(x,y)만 직각화 스냅. 교차·주배관/소스는 실 DXF 고정.
+    # length·diameter 는 아래에서 raw DXF 좌표로 계산하므로 유압 결과 불변(표시 전용).
+    _ortho = orthogonalize_edge_positions(
+        selection.edges,
+        head_points=[h.pos for h in selection.heads],
+        source_point=selection.source_pos)
+
+    def _oxy(p):
+        return _ortho.get((round(float(p[0]), 3), round(float(p[1]), 3)),
+                          (float(p[0]), float(p[1])))
+
     for label, pos in label_to_pos.items():
         io_node = "Input" if label == src_label else "No"
+        ox, oy = _oxy(pos)
         tables.nodes.append({
             "label": label, "elevation": 2.8, "io_node": io_node,
-            "x": int(round(pos[0])), "y": int(round(pos[1])),
+            "x": int(round(ox)), "y": int(round(oy)),
         })
 
     # ====== Diameter 추론 — 3단계 알고리즘
@@ -4238,12 +4443,21 @@ def run_stages_3_5(
                                      k=k_heads, manual_source=alarm_xy,
                                      manual_heads=edited_heads, zones=zones)
     subgraph_ents = []
+    _sg_ortho = orthogonalize_edge_positions(
+        selection.edges,
+        head_points=[h.pos for h in selection.heads],
+        source_point=selection.source_pos)
+
+    def _sg_xy(p):
+        return _sg_ortho.get((round(float(p[0]), 3), round(float(p[1]), 3)),
+                             (float(p[0]), float(p[1])))
     for a, b, _len in selection.edges:
-        subgraph_ents.append({"t": "L", "l": "_subgraph", "p": [a[0], a[1], b[0], b[1]]})
+        pa, pb = _sg_xy(a), _sg_xy(b)
+        subgraph_ents.append({"t": "L", "l": "_subgraph", "p": [pa[0], pa[1], pb[0], pb[1]]})
     for h in selection.heads:
-        subgraph_ents.append({"t": "C", "l": "_subgraph_head", "c": list(h.pos), "r": 80.0})
+        subgraph_ents.append({"t": "C", "l": "_subgraph_head", "c": list(_sg_xy(h.pos)), "r": 80.0})
     if selection.source_pos is not None:
-        subgraph_ents.append({"t": "C", "l": "_alarm_valve", "c": list(selection.source_pos), "r": 150.0})
+        subgraph_ents.append({"t": "C", "l": "_alarm_valve", "c": list(_sg_xy(selection.source_pos)), "r": 150.0})
     yield evt({"type": "entities", "stage": 4, "entities": subgraph_ents,
                "summary": {
                    "selected_heads": len(selection.heads),

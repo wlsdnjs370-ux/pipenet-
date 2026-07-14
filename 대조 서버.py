@@ -3996,18 +3996,16 @@ def _bake_isometric_node_coords(nodes: list[dict], iso_z_scale: float = 1.0,
 
 
 def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
-    """헤드평면(가지·교차배관)을 **실측 그대로 + 직교(0°/90°) 직선화**로 재배치 — 표시 (x,y) 만.
+    """헤드평면(가지·교차배관)을 **균일 격자 tree-packing**으로 재배치 — 표시 (x,y) 만.
 
-    추출 원본은 실 도면 좌표라 배관 방향이 거의 직각이지만, 미세한 사선·꺾임이 누적돼
-    평면도/등각도가 꼬여 보였다. 30° 배수 스냅·트리 재배치(빗·뱀)는 오히려 더 꼬였다.
-
-    해법(사용자 요청): **평면도 배관망을 그대로 가져온 뒤** 각 배관을 가장 가까운 직교
-    축(0°/90°)으로만 직선화한다. 실제 위치·길이를 보존하므로 모양이 유지되고, 평면
-    0°/90° 는 30° 등각투영에서 자동으로 30°/150° 가 되어 **등각도도 깔끔**해진다.
-      · AV(root)부터 BFS 스패닝 트리. root 는 **실위치 고정**.
-      · 각 edge: 실 변위(dx,dy) 중 **지배 성분만 유지**(|dx|≥|dy| → 가로, 아니면 세로),
-        부모의 (직선화된) 위치에서 그 성분 길이만큼 전파. 미세 사선이 직각으로 펴진다.
-      · 거리·스케일 보정·압축 없음 → 실 도면 비율 그대로(축소·붕괴 없음).
+    추출 원본을 그대로 두거나 edge 지배성분만 스냅하면, 형제 가지 서브트리의 폭 구간이
+    겹쳐 등각투영 시 가지배관이 서로 꼬이고 겹쳐 보였다. 해법: AV(root)부터 스패닝
+    트리를 만든 뒤 각 노드에서 자식 서브트리를 4직교 방향(직진→좌/우→후진)으로 팬아웃
+    하고, **각 서브트리의 실제 bounding box 만큼 간격을 확보**해 배치한다. 형제 서브트리
+    폭 구간이 완전히 분리되므로 평면 교차 0, 모든 segment 가 0°/90° → 30° 등각투영에서
+    30°/150° 격자가 되어 **등각도도 깔끔**해진다.
+      · root 는 **실위치 고정**, 팬아웃 축은 실제 자식 분포 지배 방향에 맞춰 좌우감 보존.
+      · 간격 STEP 은 실 도면 대표 edge 길이(중앙값) → 스케일 보존(붕괴·압축 없음).
 
     표시 좌표만 바꾼다. 파이프 length·elevation 등 수리값은 emit 단계에서 좌표와
     분리되어 직렬화되므로(emit_sdf 가 p["length"] 사용, 좌표거리 무관) **수리계산 결과
@@ -4049,25 +4047,84 @@ def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
             if v not in seen:
                 seen.add(v); children[u].append(v); order.append(v); q.append(v)
 
-    # 실위치에서 각 edge 의 지배 성분만 유지해 전파(직선화). root 는 실위치 고정.
-    pos = {root: _xy(root)}
+    # 균일 격자 tree-packing: 각 서브트리를 4직교 방향으로 팬아웃하고, 실제 bounding
+    # box 만큼 간격을 확보해 배치 → 형제 서브트리 폭 구간이 완전히 분리되어 교차 0.
+    # 간격 STEP 은 실 도면의 대표 edge 길이(중앙값)로 잡아 스케일을 보존(붕괴 방지).
+    size = {}
+    for u in reversed(order):
+        size[u] = 1 + sum(size[c] for c in children[u])
+
+    edge_lens = []
     for u in order:
-        px, py = pos[u]
         ux, uy = _xy(u)
         for c in children[u]:
             vx, vy = _xy(c)
-            dx = vx - ux; dy = vy - uy
-            if abs(dx) >= abs(dy):
-                pos[c] = (px + dx, py)        # 가로 지배 → 0° 직선
-            else:
-                pos[c] = (px, py + dy)        # 세로 지배 → 90° 직선
+            edge_lens.append(_math.hypot(vx - ux, vy - uy))
+    edge_lens.sort()
+    STEP = edge_lens[len(edge_lens) // 2] if edge_lens else 1.0
+    if STEP <= 0:
+        STEP = 1.0
+    PAD = STEP  # 균일 간격
+
+    DIRV = {"+x": (1.0, 0.0), "-x": (-1.0, 0.0), "+y": (0.0, 1.0), "-y": (0.0, -1.0)}
+    OPP = {"+x": "-x", "-x": "+x", "+y": "-y", "-y": "+y"}
+    PERP = {"+x": ["+y", "-y"], "-x": ["+y", "-y"],
+            "+y": ["+x", "-x"], "-y": ["+x", "-x"]}
+
+    def _layout(node, incoming):
+        """node 를 원점에 두고 서브트리 배치. 반환 (pos, bbox[minx,miny,maxx,maxy])."""
+        lpos = {node: (0.0, 0.0)}
+        bbox = [0.0, 0.0, 0.0, 0.0]
+        kids = sorted(children[node], key=lambda c: size[c], reverse=True)
+        if not kids:
+            return lpos, bbox
+        avail = [OPP[incoming]] + PERP[incoming] + [incoming]  # 직진→좌/우→(최후)후진
+        for i, c in enumerate(kids):
+            dr = avail[i] if i < len(avail) else avail[-1]
+            csub, cbb = _layout(c, OPP[dr])
+            if dr == "+x":
+                base = bbox[2] + PAD + STEP; off = (base - cbb[0], 0.0)
+            elif dr == "-x":
+                base = bbox[0] - PAD - STEP; off = (base - cbb[2], 0.0)
+            elif dr == "+y":
+                base = bbox[3] + PAD + STEP; off = (0.0, base - cbb[1])
+            else:  # -y
+                base = bbox[1] - PAD - STEP; off = (0.0, base - cbb[3])
+            for n, (x, y) in csub.items():
+                nx, ny = x + off[0], y + off[1]
+                lpos[n] = (nx, ny)
+                bbox[0] = min(bbox[0], nx); bbox[1] = min(bbox[1], ny)
+                bbox[2] = max(bbox[2], nx); bbox[3] = max(bbox[3], ny)
+        return lpos, bbox
+
+    # 루트 팬아웃 축을 실제 자식 분포의 지배 방향에 맞춰 전체 회전 최소화(좌우감 보존).
+    rx, ry = _xy(root)
+    spread_x = sum(abs(_xy(c)[0] - rx) for c in children[root])
+    spread_y = sum(abs(_xy(c)[1] - ry) for c in children[root])
+    through = "+x" if spread_x >= spread_y else "+y"
+
+    import sys as _sys
+    _old_limit = _sys.getrecursionlimit()
+    _sys.setrecursionlimit(max(_old_limit, len(order) + 1000))
+    try:
+        pos, _ = _layout(root, OPP[through])
+    finally:
+        _sys.setrecursionlimit(_old_limit)
+
+    # 패킹 결과를 원 도면 스팬에 맞춰 균일 스케일 — 형태·간격비·교차0 불변(스케일 무관),
+    # 절대 스케일만 정합해 라이저/기계실(exclude, 미이동)과의 크기 붕괴/과확장 방지.
+    orig_xs = [_xy(u)[0] for u in seen]; orig_ys = [_xy(u)[1] for u in seen]
+    orig_span = max(max(orig_xs) - min(orig_xs), max(orig_ys) - min(orig_ys))
+    pk_xs = [p[0] for p in pos.values()]; pk_ys = [p[1] for p in pos.values()]
+    pk_span = max(max(pk_xs) - min(pk_xs), max(pk_ys) - min(pk_ys))
+    s = (orig_span / pk_span) if (pk_span > 0 and orig_span > 0) else 1.0
 
     moved = 0
-    for u in seen:
+    for u, (x, y) in pos.items():
         if u == root:
             continue
         nd = by_label[u]
-        nd["x"], nd["y"] = pos[u]
+        nd["x"], nd["y"] = x * s + rx, y * s + ry   # root 실위치 고정(pos[root]=(0,0))
         moved += 1
     return moved
 

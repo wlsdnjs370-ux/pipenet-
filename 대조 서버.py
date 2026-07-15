@@ -4466,6 +4466,7 @@ def remote30_combined_build():
         stitch_riser_and_heads, emit_full_sdf,
         prepend_machine_room_to_riser, insert_source_pump,
         normalize_pipe_bores, size_pipes_by_velocity, annotate_pipe_velocity,
+        size_combined_bores,
     )
 
     # ── 가압 방식 — "gravity"(자연낙차/고가수조, 기본) | "pump"(펌프 가압).
@@ -4592,26 +4593,22 @@ def remote30_combined_build():
             rated_h = float(pump_spec.get("rated_h") or 100)
             count = int(pump_spec.get("count") or 1)
             insert_source_pump(combined, rated_q_lpm=rated_q, rated_h_m=rated_h, count=count)
-        # ── 내경 정규화: 상류(입상관)→하류(가지) 단조 비증가로 꼬임 해소 + 전 구간 한 치수 승급.
-        #   build 시 1회만 승급(bump_one_size=True). rebuild 는 승급 없이 detangle 만(멱등).
+        # ── 역할별 내경 배정: 평면도=규약배관(별표1) 유지, 입상관=단일 균일경,
+        #   기계실=한 단계 굵게(펌프 방향). "가장 얇은 입상관 ≥ 평면도 최대경" 보장.
+        _mr_set = {str(l) for l in (machine_room_labels or [])}
+        _riser_pure = {str(n["label"]) for n in riser.nodes
+                       if str(n["label"]) not in _mr_set}
         try:
-            _bore_ch = normalize_pipe_bores(
-                combined.nodes, combined.pipes, bump_one_size=True)
-            app.logger.info("combined/build: pipe bores normalized (+1 size), changed=%d", _bore_ch)
-        except Exception as _e:
-            app.logger.warning("combined/build: bore normalize skipped: %s", _e)
-        # ── 유속 상한(≤50A 6 m/s, ≥65A 10 m/s) 보장: 과토출 대비 safety 여유를 두고
-        #   유량 기준 최소 내경으로 승급(never-shrink). 정규화 뒤에 두어 승급분을 보존.
-        try:
-            _vel = size_pipes_by_velocity(
+            _bore = size_combined_bores(
                 combined.nodes, combined.pipes, combined.nozzles,
-                safety=1.2, keep_existing=True)
+                riser_labels=_riser_pure,
+                machine_room_labels=machine_room_labels,
+                safety=1.2)
             app.logger.info(
-                "combined/build: velocity sizing changed=%d, max v %.2f->%.2f, viol %d->%d",
-                _vel["changed"], _vel["max_velocity_before"], _vel["max_velocity_after"],
-                _vel["violations_before"], _vel["violations_after"])
+                "combined/build: role bores set — plane_max=%dA riser=%dA mr=%dA changed=%d",
+                _bore["plane_max"], _bore["riser_bore"], _bore["mr_bore"], _bore["changed"])
         except Exception as _e:
-            app.logger.warning("combined/build: velocity sizing skipped: %s", _e)
+            app.logger.warning("combined/build: role bore sizing skipped: %s", _e)
         # ── 통합 뷰 계산(유속) 오버레이용 배관 stamp — 최종 내경 기준.
         try:
             _va = annotate_pipe_velocity(combined.nodes, combined.pipes, combined.nozzles)
@@ -5000,6 +4997,9 @@ def remote30_combined_build():
             "zaware": _zaware_map,
             "kfp_coord_scale": kfp_coord_scale,
             "has_iso_z_scale": has_iso_z_scale,
+            # 편집 재출력 시 역할별 내경 재배정용 라벨(입상관 순수 = MR 제외).
+            "riser_labels": [str(l) for l in (riser_labels - {str(m) for m in (machine_room_labels or [])})],
+            "machine_room_labels": [str(m) for m in (machine_room_labels or [])],
         }
     except Exception as _cache_exc:  # noqa: BLE001 — 캐시 실패가 통합 출력을 막지 않도록
         warnings.warn(f"[combined] rebuild 캐시 저장 실패 (편집 재출력 불가): {_cache_exc}",
@@ -5175,28 +5175,42 @@ def remote30_combined_rebuild():
         return jsonify({"ok": False, "message": "편집된 geometry(nodes/pipes)가 필요합니다"}), 400
 
     from remote30_full_network import (emit_full_sdf, normalize_pipe_bores,
-                                        size_pipes_by_velocity, annotate_pipe_velocity)
+                                        size_pipes_by_velocity, annotate_pipe_velocity,
+                                        size_combined_bores)
     try:
         combined = _copy.deepcopy(cache["combined"])
         _patch_combined_from_geometry(combined, geom)
         if not combined.nodes or not combined.pipes:
             return jsonify({"ok": False, "message": "편집 결과 노드/배관이 비어 재출력할 수 없습니다"}), 400
-        # ── 내경 꼬임 해소만(detangle) — 편집 후 상류<하류 역전 방지. 승급(+1)은 build 시 1회뿐이라
-        #    rebuild 에선 제외(멱등). 사용자 수동 편집을 얇게 줄이지 않고 상류만 ≥ 하류로 끌어올림.
-        try:
-            normalize_pipe_bores(combined.nodes, combined.pipes, bump_one_size=False)
-        except Exception as _e:
-            app.logger.warning("combined/rebuild: bore detangle skipped: %s", _e)
-        # ── 유속 상한 보장(멱등, never-shrink): 편집으로 얇아진 구간이 유속 초과면 최소 내경으로 승급.
-        try:
-            _vel = size_pipes_by_velocity(
-                combined.nodes, combined.pipes, combined.nozzles,
-                safety=1.2, keep_existing=True)
-            app.logger.info(
-                "combined/rebuild: velocity sizing changed=%d, viol %d->%d",
-                _vel["changed"], _vel["violations_before"], _vel["violations_after"])
-        except Exception as _e:
-            app.logger.warning("combined/rebuild: velocity sizing skipped: %s", _e)
+        # ── 역할별 내경 재배정(멱등): 평면도=규약 유지, 입상관=단일 균일경, 기계실=한 단계 굵게.
+        #    build 시 캐시한 라벨을 재사용. 구버전 캐시(라벨 없음)는 종전 정규화+유속으로 폴백.
+        _cached_riser = cache.get("riser_labels")
+        if _cached_riser is not None:
+            try:
+                _rb = size_combined_bores(
+                    combined.nodes, combined.pipes, combined.nozzles,
+                    riser_labels=_cached_riser,
+                    machine_room_labels=cache.get("machine_room_labels") or [],
+                    safety=1.2)
+                app.logger.info(
+                    "combined/rebuild: role bores — plane_max=%dA riser=%dA mr=%dA changed=%d",
+                    _rb["plane_max"], _rb["riser_bore"], _rb["mr_bore"], _rb["changed"])
+            except Exception as _e:
+                app.logger.warning("combined/rebuild: role bore sizing skipped: %s", _e)
+        else:
+            try:
+                normalize_pipe_bores(combined.nodes, combined.pipes, bump_one_size=False)
+            except Exception as _e:
+                app.logger.warning("combined/rebuild: bore detangle skipped: %s", _e)
+            try:
+                _vel = size_pipes_by_velocity(
+                    combined.nodes, combined.pipes, combined.nozzles,
+                    safety=1.2, keep_existing=True)
+                app.logger.info(
+                    "combined/rebuild: velocity sizing changed=%d, viol %d->%d",
+                    _vel["changed"], _vel["violations_before"], _vel["violations_after"])
+            except Exception as _e:
+                app.logger.warning("combined/rebuild: velocity sizing skipped: %s", _e)
         try:
             annotate_pipe_velocity(combined.nodes, combined.pipes, combined.nozzles)
         except Exception as _e:
@@ -5273,6 +5287,9 @@ def remote30_combined_rebuild():
         _COMBINED_JOBS[new_job] = {
             "combined": _copy.deepcopy(combined), "title": title,
             "zaware": zaware, "kfp_coord_scale": kfp_scale, "has_iso_z_scale": has_zs,
+            # 연속 편집을 위해 역할 라벨을 이월(구버전 캐시면 None → 폴백 유지).
+            "riser_labels": cache.get("riser_labels"),
+            "machine_room_labels": cache.get("machine_room_labels"),
         }
 
         base = f"/api/remote30/combined/result/{new_job}"

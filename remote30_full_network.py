@@ -342,6 +342,87 @@ def size_pipes_by_velocity(
             "violations_after": vio_after}
 
 
+def size_combined_bores(
+    nodes: list[dict],
+    pipes: list[dict],
+    nozzles: list[dict],
+    *,
+    riser_labels,
+    machine_room_labels=None,
+    safety: float = 1.2,
+) -> dict:
+    """역할별 내경 배정 (평면도=규약 유지 / 입상관=단일 균일경 / 기계실=한 단계 굵게).
+
+    - 평면도(헤드망): 이미 규약배관(별표1) 방식으로 산정된 dia 를 **건드리지 않음**.
+    - 계통도(입상관): 전 구간 동일한 단일 내경 R.
+        R = snap_up( max( 평면도 최대경, 유속최소경, 기존 라이저 최대경 ) )
+        → never-shrink, "가장 얇은 입상관 ≥ 평면도 최대경" 보장.
+    - 기계실(펌프 방향): bump_one_size(R) 로 라이저보다 한 단계 굵게.
+
+    반환: {plane_max, riser_bore, mr_bore, changed}
+    """
+    if not pipes:
+        return {"plane_max": 0, "riser_bore": 0, "mr_bore": 0, "changed": 0}
+    rl = {str(l) for l in (riser_labels or [])}
+    ml = {str(l) for l in (machine_room_labels or [])}
+    rl -= ml
+    all_lbl = {str(n.get("label")) for n in nodes}
+    plane_set = all_lbl - rl - ml
+
+    def _dia(p):
+        try:
+            return float(p.get("dia") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _role(p):
+        a, b = str(p.get("in")), str(p.get("out"))
+        if a in ml or b in ml:
+            return "mr"
+        if a in plane_set or b in plane_set:
+            return "plane"
+        return "riser"
+
+    roles = {id(p): _role(p) for p in pipes}
+    plane_pipes = [p for p in pipes if roles[id(p)] == "plane"]
+    riser_pipes = [p for p in pipes if roles[id(p)] == "riser"]
+    mr_pipes = [p for p in pipes if roles[id(p)] == "mr"]
+
+    total_flow = 0.0
+    for nz in (nozzles or []):
+        try:
+            total_flow += float(nz.get("flow_lmin", nz.get("flow_lpm", 80.0)) or 80.0)
+        except (TypeError, ValueError):
+            total_flow += 80.0
+
+    plane_max = max((_dia(p) for p in plane_pipes), default=0.0)
+    vel_min = float(_smallest_bore_for_velocity(total_flow, safety)) if total_flow > 0 else 0.0
+    changed = 0
+
+    if riser_pipes:
+        existing_riser_max = max((_dia(p) for p in riser_pipes), default=0.0)
+        riser_bore = _snap_bore_to_ladder(max(plane_max, vel_min, existing_riser_max))
+    else:
+        riser_bore = _snap_bore_to_ladder(max(plane_max, vel_min)) if (plane_max or vel_min) else 0
+    for p in riser_pipes:
+        if int(_dia(p)) != int(riser_bore):
+            changed += 1
+        p["dia"] = int(riser_bore)
+
+    mr_bore = 0
+    if mr_pipes:
+        existing_mr_max = max((_dia(p) for p in mr_pipes), default=0.0)
+        base = _bump_one_size(int(riser_bore)) if riser_bore else _snap_bore_to_ladder(max(plane_max, vel_min))
+        mr_bore = _snap_bore_to_ladder(max(base, existing_mr_max))
+        for p in mr_pipes:
+            if int(_dia(p)) != int(mr_bore):
+                changed += 1
+            p["dia"] = int(mr_bore)
+
+    return {"plane_max": int(plane_max), "riser_bore": int(riser_bore),
+            "mr_bore": int(mr_bore), "changed": changed}
+
+
 def annotate_pipe_velocity(
     nodes: list[dict],
     pipes: list[dict],

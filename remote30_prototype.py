@@ -3576,7 +3576,138 @@ def orthogonalize_edge_positions(edges, *, head_points=None, source_point=None,
 
     sx = _solve(parent_x, 0)
     sy = _solve(parent_y, 1)
-    return {k: (sx[k], sy[k]) for k in orig}
+    result = {k: (sx[k], sy[k]) for k in orig}
+    if branch_only and branch_keys:
+        result = _separate_overlapping_branches(
+            result, edges, branch_keys, fixed, _key)
+    return result
+
+
+def _separate_overlapping_branches(result, edges, branch_keys, fixed, key_fn,
+                                   *, min_overlap: float = 150.0,
+                                   max_passes: int = 6) -> dict:
+    """표시 전용: 서로 다른 가지 컴포넌트가 같은 축선에 겹쳐(루프처럼 보임) 그려지면
+    이동 가능한(비고정) 노드를 겹침 축의 수직 방향으로 한 레인만큼 밀어 해소한다.
+
+    고정(교차·주배관/소스) 노드는 절대 이동하지 않는다 → 고정 tee 로 연결되는 edge 는
+    짧은 사선(가지 분기 표시)이 될 수 있으나 병렬 드롭 두 줄이 각자 레인을 가져 겹침이
+    사라진다. length_mm(유압)은 raw 좌표로 계산되므로 불변.
+    """
+    from collections import deque as _deque
+    adj: dict = defaultdict(set)
+    for e in edges:
+        ka, kb = key_fn(e[0]), key_fn(e[1])
+        if ka == kb:
+            continue
+        if frozenset((ka, kb)) in branch_keys:
+            adj[ka].add(kb); adj[kb].add(ka)
+    if not adj:
+        return result
+
+    branch_edge_list = []
+    for e in edges:
+        ka, kb = key_fn(e[0]), key_fn(e[1])
+        if ka == kb or frozenset((ka, kb)) not in branch_keys:
+            continue
+        branch_edge_list.append((ka, kb))
+    if not branch_edge_list:
+        return result
+
+    # 각 컴포넌트를 고정 노드(교차·주배관 tee) 기준으로 뿌리내려 부모/자식·깊이를 구한다.
+    parent: dict = {}
+    depth: dict = {}
+    for n in adj:
+        if n in parent:
+            continue
+        comp = []
+        stack = [n]; seen_c: set = set()
+        while stack:
+            u = stack.pop()
+            if u in seen_c:
+                continue
+            seen_c.add(u); comp.append(u)
+            stack.extend(adj[u] - seen_c)
+        root = next((k for k in comp if k in fixed), comp[0])
+        parent[root] = None; depth[root] = 0
+        q = _deque([root])
+        while q:
+            u = q.popleft()
+            for v in adj[u]:
+                if v not in parent:
+                    parent[v] = u; depth[v] = depth[u] + 1; q.append(v)
+
+    # deep 노드(뿌리에서 먼 쪽)를 루트로 하는 서브트리(자유 노드만) — 이동 대상 후보.
+    def _subtree_free(deep, blocked):
+        out = []
+        stack = [deep]; local: set = {blocked}
+        while stack:
+            u = stack.pop()
+            if u in local:
+                continue
+            local.add(u)
+            if u not in fixed:
+                out.append(u)
+            for v in adj[u]:
+                if v not in local:
+                    stack.append(v)
+        return out
+
+    result = dict(result)
+    seg_lens = sorted(
+        math.hypot(result[kb][0] - result[ka][0], result[kb][1] - result[ka][1])
+        for ka, kb in branch_edge_list)
+    lane = min(max(seg_lens[len(seg_lens) // 2] * 0.5, 250.0), 1200.0)
+
+    def _collisions() -> list:
+        segs = []  # (edge_idx, orient, line, lo, hi)
+        for ei, (ka, kb) in enumerate(branch_edge_list):
+            (ax, ay), (bx, by) = result[ka], result[kb]
+            if abs(ax - bx) < 1.0 and abs(ay - by) >= 1.0:
+                segs.append((ei, 'V', (ax + bx) / 2, min(ay, by), max(ay, by)))
+            elif abs(ay - by) < 1.0 and abs(ax - bx) >= 1.0:
+                segs.append((ei, 'H', (ay + by) / 2, min(ax, bx), max(ax, bx)))
+        cols = []
+        for i in range(len(segs)):
+            ei, oi, li, loi, hii = segs[i]
+            for j in range(i + 1, len(segs)):
+                ej, oj, lj, loj, hij = segs[j]
+                if oi != oj or abs(li - lj) >= 1.0:
+                    continue
+                ov = min(hii, hij) - max(loi, loj)
+                if ov > min_overlap:
+                    cols.append((ei, ej, oi, ov))
+        return cols
+
+    def _mover_set(ei):
+        """edge ei 의 deep 서브트리(자유 노드)를 이동 후보로 — 고정 노드가 섞이면 None."""
+        ka, kb = branch_edge_list[ei]
+        deep, anchor = (ka, kb) if depth.get(ka, 0) >= depth.get(kb, 0) else (kb, ka)
+        if deep in fixed:
+            return None
+        return _subtree_free(deep, anchor)
+
+    for _ in range(max_passes):
+        cols = _collisions()
+        if not cols:
+            break
+        cols.sort(key=lambda t: -t[3])
+        ei, ej, axis, _ov = cols[0]
+        cand_i, cand_j = _mover_set(ei), _mover_set(ej)
+        # 더 작은(덜 앵커된) 서브트리를 민다. 둘 다 불가면 다음 후보로.
+        options = [c for c in (cand_i, cand_j) if c]
+        if not options:
+            break
+        move = min(options, key=len)
+        idx = 0 if axis == 'V' else 1
+        other = cand_j if move is cand_i else cand_i
+        line = (sum(result[k][idx] for k in other) / len(other)) if other else \
+            (result[branch_edge_list[ej if move is cand_i else ei][0]][idx])
+        mcen = sum(result[k][idx] for k in move) / len(move)
+        step = (1.0 if mcen >= line else -1.0) * lane
+        for k in move:
+            x, y = result[k]
+            result[k] = (x + step, y) if idx == 0 else (x, y + step)
+    return result
 
 
 def build_input_tables(

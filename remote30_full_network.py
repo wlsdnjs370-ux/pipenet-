@@ -353,16 +353,19 @@ def size_combined_bores(
 ) -> dict:
     """역할별 내경 배정 (평면도=규약 유지 / 입상관=단일 균일경 / 기계실=한 단계 굵게).
 
-    - 평면도(헤드망): 이미 규약배관(별표1) 방식으로 산정된 dia 를 **건드리지 않음**.
+    - 평면도(헤드망): 규약배관(별표1) 값을 **최소**로 유지하되, 유속이 상한
+        (≤50A 6·≥65A 10 m/s)을 넘는 구간(전량 통과 트렁크 등)은 유속 최소경으로
+        승급(never-shrink) → 유속 초과 0 을 근본 보장.
     - 계통도(입상관): 전 구간 동일한 단일 내경 R.
         R = snap_up( max( 평면도 최대경, 유속최소경, 기존 라이저 최대경 ) )
         → never-shrink, "가장 얇은 입상관 ≥ 평면도 최대경" 보장.
     - 기계실(펌프 방향): bump_one_size(R) 로 라이저보다 한 단계 굵게.
 
-    반환: {plane_max, riser_bore, mr_bore, changed}
+    반환: {plane_max, riser_bore, mr_bore, changed, violations_after, max_velocity_after}
     """
     if not pipes:
-        return {"plane_max": 0, "riser_bore": 0, "mr_bore": 0, "changed": 0}
+        return {"plane_max": 0, "riser_bore": 0, "mr_bore": 0, "changed": 0,
+                "violations_after": 0, "max_velocity_after": 0.0}
     rl = {str(l) for l in (riser_labels or [])}
     ml = {str(l) for l in (machine_room_labels or [])}
     rl -= ml
@@ -388,6 +391,11 @@ def size_combined_bores(
     riser_pipes = [p for p in pipes if roles[id(p)] == "riser"]
     mr_pipes = [p for p in pipes if roles[id(p)] == "mr"]
 
+    # 0) 유속 상한 flooring — 규약값을 최소로 유지하며 유속 초과 구간만 승급.
+    #    평면도 트렁크(전량 통과)의 유속 초과를 여기서 제거한다(never-shrink).
+    vel = size_pipes_by_velocity(nodes, pipes, nozzles,
+                                 safety=safety, keep_existing=True)
+
     total_flow = 0.0
     for nz in (nozzles or []):
         try:
@@ -395,6 +403,7 @@ def size_combined_bores(
         except (TypeError, ValueError):
             total_flow += 80.0
 
+    # plane_max 는 유속 flooring 이후 값(트렁크 승급분 포함).
     plane_max = max((_dia(p) for p in plane_pipes), default=0.0)
     vel_min = float(_smallest_bore_for_velocity(total_flow, safety)) if total_flow > 0 else 0.0
     changed = 0
@@ -420,7 +429,9 @@ def size_combined_bores(
             p["dia"] = int(mr_bore)
 
     return {"plane_max": int(plane_max), "riser_bore": int(riser_bore),
-            "mr_bore": int(mr_bore), "changed": changed}
+            "mr_bore": int(mr_bore), "changed": changed + int(vel.get("changed", 0)),
+            "violations_after": int(vel.get("violations_after", 0)),
+            "max_velocity_after": float(vel.get("max_velocity_after", 0.0))}
 
 
 def annotate_pipe_velocity(

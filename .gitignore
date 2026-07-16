@@ -69,3 +69,15 @@ Thumbs.db
 
 # 답안 라이브러리 (수리계산 참고용 도서) — 1.2GB+, repo 외부 보관
 data/reference_library/
+
+# 정리 산출물 / 임시·로그·대용량 (2026-07-16) — repo 에는 두지 않음
+_archive_tmp/
+backups/
+exports/
+calibration/_work/
+server_log.txt
+validate_test.json
+data/tmp_inspect_*/
+data/tmp_cad_compare_module.js
+data/문제샘플.zip
+수리계산 결과/

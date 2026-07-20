@@ -1,0 +1,2536 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XDSET version="1.0">
+	<DESCRIPTION>
+        Results returned from the Spray Calculator
+    </DESCRIPTION>
+	<INFO name="Calculator" value="Spray"/>
+	<INFO name="Title-1" value="Daemyeong-dong_Officetell 201 dong"/>
+	<INFO name="Title-2" value="GRAVITE_28F"/>
+	<INFO name="Title-3" value=""/>
+	<INFO name="Title-4" value=""/>
+	<INFO name="Time" value="14:16"/>
+	<INFO name="Date" value="29-Jun-2026"/>
+	<INFO name="Version" value="1.8"/>
+	<INFO name="Customer" value=""/>
+	<INFO name="Licence type" value="UNKNOWN"/>
+	<INFO name="Key number" value="Unavailable"/>
+	<INFO name="MUS Date" value="Unavailable"/>
+	<RESOURCE name="Control" ID="15">
+		<INFO name="Convergence accuracy" value="1.000000E-03"/>
+		<INFO name="Max iterations" value="500"/>
+		<INFO name="Elevation check tolerance" value="0.500000"/>
+		<INFO name="Design standard" value="NFPA"/>
+		<INFO name="Pressure model" value="Hazen-Williams"/>
+	</RESOURCE>
+	<RESOURCE name="Velocity pressure option" ID="21">
+		<INFO name="VP model" value="Ignore"/>
+		<PARAM name="Pressure loss include entrance" datatype="boolean" value="0"/>
+		<PARAM name="Pressure loss include exit" datatype="boolean" value="0"/>
+	</RESOURCE>
+	<RESOURCE name="Units" ID="25">
+		<INFO name="system" value="user"/>
+		<INFO name="flowType" value="volumetric"/>
+		<INFO name="length" value="metres"/>
+		<INFO name="diameter" value="milli.m."/>
+		<INFO name="area" value="sq.mm."/>
+		<INFO name="volume" value="cu.m"/>
+		<INFO name="pressure" value="kg/cm2 G"/>
+		<INFO name="pressureDifference" value="kg/cm2"/>
+		<INFO name="temperature" value="Kelvin"/>
+		<INFO name="velocity" value="m/sec"/>
+		<INFO name="flowrate" value="lit/min"/>
+		<INFO name="density" value="kg/cu.m"/>
+		<INFO name="viscosity" value="Pa.s"/>
+		<INFO name="power" value="Watts"/>
+		<INFO name="heat capacity" value="J/kg K"/>
+	</RESOURCE>
+	<RESOURCE name="Fluid" ID="41">
+		<PARAM name="Fluid class" datatype="int" value="1"/>
+		<PARAM name="Fluid name" datatype="char" arraysize="6" value="Liquid"/>
+		<PARAM name="Density" datatype="float" unit="density" value="998.2"/>
+		<PARAM name="Viscosity" datatype="float" unit="viscosity" value="1e-009"/>
+	</RESOURCE>
+	<RESOURCE name="Design information" ID="46">
+		<RESOURCE name="Pipe-type" ID="47">
+			<PARAM name="Pipe type" datatype="char" arraysize="8" value="KSD 3507"/>
+			<PARAM name="Lining type" datatype="char" arraysize="9" value="No lining"/>
+			<PARAM name="Thickness" datatype="double" unit="diameter" value="NaN"/>
+			<PARAM name="In use?" datatype="boolean" value="1"/>
+			<TABLE name="Sizes">
+				<FIELD name="Nominal bore" datatype="double" arraysize="1"/>
+				<FIELD name="Actual diameter" datatype="double" arraysize="1" unit="diameter"/>
+				<FIELD name="Maximum velocity" datatype="double" arraysize="1" unit="velocity"/>
+				<DATA>
+					<TABLEDATA>
+						<TR>
+							<TD>15.000000</TD><TD>1.64000001E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>20.000000</TD><TD>2.19000001E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>25.000000</TD><TD>2.75000017E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>32.000000</TD><TD>3.62000018E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>40.000000</TD><TD>4.21000011E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>50.000000</TD><TD>5.32000028E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>65.000000</TD><TD>6.90000057E-02</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>80.000000</TD><TD>8.10000002E-02</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>90.000000</TD><TD>9.35000032E-02</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>100.000000</TD><TD>0.10530001</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>125.00000</TD><TD>0.13010001</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>150.00000</TD><TD>0.15550001</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>200.00000</TD><TD>0.20460002</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>250.00000</TD><TD>0.25460002</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>300.00000</TD><TD>0.30450001</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>350.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>400.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>450.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>500.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>600.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>700.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>750.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>800.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>850.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>900.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>950.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1000.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1050.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1100.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1150.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1200.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+					</TABLEDATA>
+				</DATA>
+			</TABLE>
+		</RESOURCE>
+		<RESOURCE name="Pipe-type" ID="58">
+			<PARAM name="Pipe type" datatype="char" arraysize="8" value="KSD 3562"/>
+			<PARAM name="Lining type" datatype="char" arraysize="9" value="No lining"/>
+			<PARAM name="Thickness" datatype="double" unit="diameter" value="NaN"/>
+			<PARAM name="In use?" datatype="boolean" value="1"/>
+			<TABLE name="Sizes">
+				<FIELD name="Nominal bore" datatype="double" arraysize="1"/>
+				<FIELD name="Actual diameter" datatype="double" arraysize="1" unit="diameter"/>
+				<FIELD name="Maximum velocity" datatype="double" arraysize="1" unit="velocity"/>
+				<DATA>
+					<TABLEDATA>
+						<TR>
+							<TD>15.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>20.000000</TD><TD>2.14000009E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>25.000000</TD><TD>2.72000022E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>32.000000</TD><TD>3.55000012E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>40.000000</TD><TD>4.12000045E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>50.000000</TD><TD>5.27000017E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>65.000000</TD><TD>6.59000054E-02</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>80.000000</TD><TD>7.81000033E-02</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>90.000000</TD><TD>9.01999995E-02</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>100.000000</TD><TD>0.10230001</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>125.00000</TD><TD>0.12660000</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>150.00000</TD><TD>0.15100001</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>200.00000</TD><TD>0.19990000</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>250.00000</TD><TD>0.24880001</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>300.00000</TD><TD>0.29790002</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>350.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>400.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>450.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>500.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>600.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>700.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>750.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>800.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>850.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>900.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>950.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1000.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1050.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1100.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1150.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1200.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+					</TABLEDATA>
+				</DATA>
+			</TABLE>
+		</RESOURCE>
+		<RESOURCE name="Pipe-type" ID="69">
+			<PARAM name="Pipe type" datatype="char" arraysize="2" value="FX"/>
+			<PARAM name="Lining type" datatype="char" arraysize="9" value="No lining"/>
+			<PARAM name="Thickness" datatype="double" unit="diameter" value="NaN"/>
+			<PARAM name="In use?" datatype="boolean" value="1"/>
+			<TABLE name="Sizes">
+				<FIELD name="Nominal bore" datatype="double" arraysize="1"/>
+				<FIELD name="Actual diameter" datatype="double" arraysize="1" unit="diameter"/>
+				<FIELD name="Maximum velocity" datatype="double" arraysize="1" unit="velocity"/>
+				<DATA>
+					<TABLEDATA>
+						<TR>
+							<TD>15.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>20.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>25.000000</TD><TD>2.50000004E-02</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>32.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>40.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>50.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>65.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>80.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>90.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>100.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>125.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>150.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>200.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>250.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>300.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>350.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>400.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>450.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>500.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>600.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>700.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>750.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>800.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>850.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>900.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>950.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1000.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1050.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1100.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1150.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1200.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+					</TABLEDATA>
+				</DATA>
+			</TABLE>
+		</RESOURCE>
+		<RESOURCE name="Pipe-type" ID="80">
+			<PARAM name="Pipe type" datatype="char" arraysize="5" value="CPVC2"/>
+			<PARAM name="Lining type" datatype="char" arraysize="9" value="No lining"/>
+			<PARAM name="Thickness" datatype="double" unit="diameter" value="NaN"/>
+			<PARAM name="In use?" datatype="boolean" value="1"/>
+			<TABLE name="Sizes">
+				<FIELD name="Nominal bore" datatype="double" arraysize="1"/>
+				<FIELD name="Actual diameter" datatype="double" arraysize="1" unit="diameter"/>
+				<FIELD name="Maximum velocity" datatype="double" arraysize="1" unit="velocity"/>
+				<DATA>
+					<TABLEDATA>
+						<TR>
+							<TD>15.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>20.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>25.000000</TD><TD>2.80200019E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>32.000000</TD><TD>3.55000012E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>40.000000</TD><TD>4.06300016E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>50.000000</TD><TD>5.08800037E-02</TD><TD>6.0000000</TD>
+						</TR>
+						<TR>
+							<TD>65.000000</TD><TD>6.40000030E-02</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>80.000000</TD><TD>7.51000047E-02</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>90.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>100.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>125.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>150.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>200.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>250.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>300.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>350.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>400.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>450.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>500.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>600.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>700.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>750.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>800.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>850.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>900.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>950.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1000.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1050.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1100.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1150.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1200.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+					</TABLEDATA>
+				</DATA>
+			</TABLE>
+		</RESOURCE>
+		<RESOURCE name="Pipe-type" ID="91">
+			<PARAM name="Pipe type" datatype="char" arraysize="2" value="DP"/>
+			<PARAM name="Lining type" datatype="char" arraysize="9" value="No lining"/>
+			<PARAM name="Thickness" datatype="double" unit="diameter" value="NaN"/>
+			<PARAM name="In use?" datatype="boolean" value="1"/>
+			<TABLE name="Sizes">
+				<FIELD name="Nominal bore" datatype="double" arraysize="1"/>
+				<FIELD name="Actual diameter" datatype="double" arraysize="1" unit="diameter"/>
+				<FIELD name="Maximum velocity" datatype="double" arraysize="1" unit="velocity"/>
+				<DATA>
+					<TABLEDATA>
+						<TR>
+							<TD>15.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>20.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>25.000000</TD><TD>2.50000004E-02</TD><TD>10.0000000</TD>
+						</TR>
+						<TR>
+							<TD>32.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>40.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>50.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>65.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>80.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>90.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>100.000000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>125.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>150.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>200.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>250.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>300.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>350.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>400.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>450.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>500.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>600.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>700.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>750.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>800.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>850.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>900.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>950.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1000.00000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1050.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1100.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1150.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+						<TR>
+							<TD>1200.0000</TD><TD>NaN</TD><TD>NaN</TD>
+						</TR>
+					</TABLEDATA>
+				</DATA>
+			</TABLE>
+		</RESOURCE>
+	</RESOURCE>
+	<RESOURCE name="Pipes-input" ID="102">
+		<TABLE name="Pipes-input">
+			<DESCRIPTION>
+                Pipe configuration
+            </DESCRIPTION>
+			<FIELD name="Label" datatype="char" arraysize="12"/>
+			<FIELD name="Input node" datatype="char" arraysize="12"/>
+			<FIELD name="Output node" datatype="char" arraysize="12"/>
+			<FIELD name="Nominal bore" datatype="double" arraysize="1" unit="diameter"/>
+			<FIELD name="Length" datatype="double" arraysize="1" unit="length"/>
+			<FIELD name="Elevation" datatype="double" arraysize="1" unit="length"/>
+			<FIELD name="C-factor" datatype="double" arraysize="1"/>
+			<FIELD name="Fittings - equ. length" datatype="double" arraysize="1" unit="length"/>
+			<FIELD name="Break or block" datatype="boolean" arraysize="1"/>
+			<FIELD name="Type" datatype="char" arraysize="*"/>
+			<FIELD name="Lining" datatype="char" arraysize="*"/>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>    1</TD><TD>    1</TD><TD>    2</TD><TD>150.0</TD><TD>20.95</TD><TD>0.000</TD><TD>120.0</TD><TD>34.14</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>    2</TD><TD>    2</TD><TD>    3</TD><TD>150.0</TD><TD>3.750</TD><TD>-3.750</TD><TD>120.0</TD><TD>4.267</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>    3</TD><TD>    3</TD><TD>    4</TD><TD>150.0</TD><TD>14.93</TD><TD>0.000</TD><TD>120.0</TD><TD>25.60</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>    4</TD><TD>    4</TD><TD>    5</TD><TD>150.0</TD><TD>75.40</TD><TD>-75.40</TD><TD>120.0</TD><TD>9.144</TD><TD>0</TD><TD>KSD 3562</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>    5</TD><TD>   26</TD><TD>   21</TD><TD>65.00</TD><TD>3.970</TD><TD>0.000</TD><TD>150.0</TD><TD>2.763</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>    7</TD><TD>   98</TD><TD>   60</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>    8</TD><TD>    5</TD><TD>   10</TD><TD>125.0</TD><TD>1.500</TD><TD>1.0000</TD><TD>120.0</TD><TD>6.401</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>    9</TD><TD>   10</TD><TD>   11</TD><TD>125.0</TD><TD>1.800</TD><TD>1.800</TD><TD>120.0</TD><TD>7.620</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   10</TD><TD>   11</TD><TD>   23</TD><TD>125.0</TD><TD>1.040</TD><TD>0.000</TD><TD>120.0</TD><TD>7.620</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   11</TD><TD>   12</TD><TD>   13</TD><TD>125.0</TD><TD>2.040</TD><TD>0.000</TD><TD>120.0</TD><TD>3.658</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   12</TD><TD>   13</TD><TD>   14</TD><TD>125.0</TD><TD>2.680</TD><TD>0.000</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   13</TD><TD>   14</TD><TD>   15</TD><TD>125.0</TD><TD>0.6500</TD><TD>0.000</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   14</TD><TD>   15</TD><TD>   18</TD><TD>125.0</TD><TD>5.000</TD><TD>0.000</TD><TD>120.0</TD><TD>7.315</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   15</TD><TD>   16</TD><TD>   19</TD><TD>125.0</TD><TD>0.4000</TD><TD>0.000</TD><TD>120.0</TD><TD>7.620</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   16</TD><TD>   20</TD><TD>   17</TD><TD>80.00</TD><TD>8.740</TD><TD>0.000</TD><TD>120.0</TD><TD>4.572</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   17</TD><TD>   18</TD><TD>   16</TD><TD>125.0</TD><TD>0.3600</TD><TD>0.000</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   18</TD><TD>   19</TD><TD>   20</TD><TD>125.0</TD><TD>1.080</TD><TD>0.000</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   19</TD><TD>   17</TD><TD>   91</TD><TD>65.00</TD><TD>1.090</TD><TD>0.000</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   20</TD><TD>    6</TD><TD>   51</TD><TD>40.00</TD><TD>2.480</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   21</TD><TD>   23</TD><TD>   12</TD><TD>125.0</TD><TD>1.590</TD><TD>0.000</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   22</TD><TD>   27</TD><TD>   57</TD><TD>25.00</TD><TD>0.4200</TD><TD>0.000</TD><TD>150.0</TD><TD>0.000</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   23</TD><TD>  104</TD><TD>   76</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   24</TD><TD>    6</TD><TD>   92</TD><TD>25.00</TD><TD>0.4900</TD><TD>0.000</TD><TD>150.0</TD><TD>0.000</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   25</TD><TD>   19</TD><TD>   80</TD><TD>80.00</TD><TD>0.6200</TD><TD>0.000</TD><TD>120.0</TD><TD>4.572</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   26</TD><TD>   36</TD><TD>    9</TD><TD>32.00</TD><TD>0.4600</TD><TD>0.000</TD><TD>150.0</TD><TD>1.382</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   27</TD><TD>   17</TD><TD>   22</TD><TD>50.00</TD><TD>2.290</TD><TD>0.000</TD><TD>120.0</TD><TD>1.524</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   28</TD><TD>   21</TD><TD>   30</TD><TD>65.00</TD><TD>0.7900</TD><TD>0.000</TD><TD>150.0</TD><TD>0.000</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   29</TD><TD>   30</TD><TD>   86</TD><TD>65.00</TD><TD>1.240</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   30</TD><TD>   86</TD><TD>   33</TD><TD>65.00</TD><TD>0.5800</TD><TD>0.000</TD><TD>150.0</TD><TD>8.290</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   31</TD><TD>   22</TD><TD>   28</TD><TD>50.00</TD><TD>2.040</TD><TD>0.000</TD><TD>150.0</TD><TD>6.909</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   32</TD><TD>   33</TD><TD>   35</TD><TD>65.00</TD><TD>0.7300</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   33</TD><TD>   28</TD><TD>   32</TD><TD>40.00</TD><TD>1.040</TD><TD>0.000</TD><TD>150.0</TD><TD>3.685</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   34</TD><TD>   35</TD><TD>   36</TD><TD>65.00</TD><TD>2.440</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   35</TD><TD>   36</TD><TD>   37</TD><TD>65.00</TD><TD>0.3900</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   36</TD><TD>   37</TD><TD>   38</TD><TD>65.00</TD><TD>1.570</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   37</TD><TD>   38</TD><TD>   39</TD><TD>50.00</TD><TD>1.550</TD><TD>0.000</TD><TD>150.0</TD><TD>4.606</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   38</TD><TD>   39</TD><TD>   40</TD><TD>40.00</TD><TD>1.560</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   39</TD><TD>   40</TD><TD>   41</TD><TD>40.00</TD><TD>0.9500</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   40</TD><TD>   39</TD><TD>   42</TD><TD>32.00</TD><TD>0.8200</TD><TD>0.000</TD><TD>150.0</TD><TD>2.763</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   41</TD><TD>   42</TD><TD>   43</TD><TD>25.00</TD><TD>0.9600</TD><TD>0.000</TD><TD>150.0</TD><TD>0.000</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   42</TD><TD>   37</TD><TD>   44</TD><TD>32.00</TD><TD>1.900</TD><TD>0.000</TD><TD>150.0</TD><TD>2.763</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   43</TD><TD>   44</TD><TD>   31</TD><TD>25.00</TD><TD>0.3200</TD><TD>0.000</TD><TD>150.0</TD><TD>0.9211</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   44</TD><TD>   32</TD><TD>   34</TD><TD>32.00</TD><TD>1.370</TD><TD>0.000</TD><TD>150.0</TD><TD>2.763</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   45</TD><TD>   34</TD><TD>   47</TD><TD>25.00</TD><TD>1.700</TD><TD>0.000</TD><TD>150.0</TD><TD>0.9211</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   46</TD><TD>   35</TD><TD>   48</TD><TD>25.00</TD><TD>2.760</TD><TD>0.000</TD><TD>150.0</TD><TD>0.9211</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   47</TD><TD>   33</TD><TD>   49</TD><TD>32.00</TD><TD>1.700</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   48</TD><TD>   49</TD><TD>   50</TD><TD>25.00</TD><TD>1.410</TD><TD>0.000</TD><TD>150.0</TD><TD>0.9211</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   49</TD><TD>   86</TD><TD>    6</TD><TD>50.00</TD><TD>0.9900</TD><TD>0.000</TD><TD>150.0</TD><TD>4.606</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   50</TD><TD>   51</TD><TD>   52</TD><TD>32.00</TD><TD>0.7100</TD><TD>0.000</TD><TD>150.0</TD><TD>2.763</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   51</TD><TD>   52</TD><TD>   53</TD><TD>25.00</TD><TD>1.890</TD><TD>0.000</TD><TD>150.0</TD><TD>0.9211</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   52</TD><TD>   41</TD><TD>   54</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   53</TD><TD>   40</TD><TD>   55</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   54</TD><TD>   42</TD><TD>   56</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   55</TD><TD>   43</TD><TD>   27</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   56</TD><TD>   38</TD><TD>   58</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   57</TD><TD>   45</TD><TD>   59</TD><TD>25.00</TD><TD>0.4200</TD><TD>0.000</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>DP</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   58</TD><TD>   44</TD><TD>   98</TD><TD>25.00</TD><TD>0.6500</TD><TD>0.000</TD><TD>150.0</TD><TD>0.000</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   59</TD><TD>    9</TD><TD>   29</TD><TD>32.00</TD><TD>1.020</TD><TD>0.000</TD><TD>150.0</TD><TD>2.763</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   60</TD><TD>   47</TD><TD>   62</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   61</TD><TD>   34</TD><TD>   63</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   62</TD><TD>   48</TD><TD>   64</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   63</TD><TD>   28</TD><TD>   46</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   64</TD><TD>   49</TD><TD>   66</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   65</TD><TD>   50</TD><TD>   67</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   66</TD><TD>   51</TD><TD>   68</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   67</TD><TD>   52</TD><TD>   69</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   68</TD><TD>   53</TD><TD>   70</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   69</TD><TD>   92</TD><TD>   71</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   70</TD><TD>   32</TD><TD>   72</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   71</TD><TD>   80</TD><TD>   82</TD><TD>65.00</TD><TD>0.6200</TD><TD>0.000</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   72</TD><TD>   31</TD><TD>   45</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   73</TD><TD>   76</TD><TD>   79</TD><TD>25.00</TD><TD>0.4200</TD><TD>0.000</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>DP</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   74</TD><TD>   82</TD><TD>  107</TD><TD>65.00</TD><TD>11.03</TD><TD>0.000</TD><TD>150.0</TD><TD>13.82</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   75</TD><TD>  107</TD><TD>  108</TD><TD>65.00</TD><TD>1.330</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   77</TD><TD>   80</TD><TD>   84</TD><TD>50.00</TD><TD>1.820</TD><TD>0.000</TD><TD>120.0</TD><TD>1.524</TD><TD>0</TD><TD>KSD 3507</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   79</TD><TD>  108</TD><TD>  110</TD><TD>65.00</TD><TD>1.570</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   80</TD><TD>  110</TD><TD>  109</TD><TD>50.00</TD><TD>1.550</TD><TD>0.000</TD><TD>150.0</TD><TD>4.606</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   81</TD><TD>   91</TD><TD>   26</TD><TD>65.00</TD><TD>1.960</TD><TD>0.000</TD><TD>150.0</TD><TD>2.763</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   82</TD><TD>   29</TD><TD>   93</TD><TD>25.00</TD><TD>1.390</TD><TD>0.000</TD><TD>150.0</TD><TD>0.000</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   83</TD><TD>   29</TD><TD>   95</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   84</TD><TD>  106</TD><TD>   77</TD><TD>25.00</TD><TD>0.3200</TD><TD>0.000</TD><TD>150.0</TD><TD>0.9211</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   85</TD><TD>   93</TD><TD>   96</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   86</TD><TD>  107</TD><TD>   61</TD><TD>32.00</TD><TD>0.3900</TD><TD>0.000</TD><TD>150.0</TD><TD>0.4606</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   87</TD><TD>  109</TD><TD>  103</TD><TD>32.00</TD><TD>0.8200</TD><TD>0.000</TD><TD>150.0</TD><TD>2.763</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   88</TD><TD>  103</TD><TD>  104</TD><TD>25.00</TD><TD>0.9600</TD><TD>0.000</TD><TD>150.0</TD><TD>0.000</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   89</TD><TD>  109</TD><TD>   97</TD><TD>40.00</TD><TD>1.560</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   90</TD><TD>   77</TD><TD>  111</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   91</TD><TD>   61</TD><TD>   65</TD><TD>32.00</TD><TD>1.020</TD><TD>0.000</TD><TD>150.0</TD><TD>2.763</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   92</TD><TD>   97</TD><TD>  105</TD><TD>40.00</TD><TD>0.9500</TD><TD>0.000</TD><TD>150.0</TD><TD>5.527</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   93</TD><TD>  112</TD><TD>   94</TD><TD>25.00</TD><TD>1.700</TD><TD>0.000</TD><TD>150.0</TD><TD>0.9211</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   94</TD><TD>   84</TD><TD>   85</TD><TD>50.00</TD><TD>2.040</TD><TD>0.000</TD><TD>150.0</TD><TD>2.303</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   95</TD><TD>  108</TD><TD>  106</TD><TD>32.00</TD><TD>1.900</TD><TD>0.000</TD><TD>150.0</TD><TD>2.763</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   96</TD><TD>   85</TD><TD>   88</TD><TD>40.00</TD><TD>1.040</TD><TD>0.000</TD><TD>150.0</TD><TD>0.000</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   97</TD><TD>   88</TD><TD>  112</TD><TD>32.00</TD><TD>1.370</TD><TD>0.000</TD><TD>150.0</TD><TD>2.763</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   98</TD><TD>   65</TD><TD>   75</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>   99</TD><TD>   99</TD><TD>   74</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>  105</TD><TD>  105</TD><TD>   78</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>  107</TD><TD>   97</TD><TD>   83</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>  109</TD><TD>  111</TD><TD>   24</TD><TD>25.00</TD><TD>0.4200</TD><TD>0.000</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>DP</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>  110</TD><TD>  103</TD><TD>   87</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>  111</TD><TD>  106</TD><TD>   99</TD><TD>25.00</TD><TD>0.6500</TD><TD>0.000</TD><TD>150.0</TD><TD>0.000</TD><TD>0</TD><TD>CPVC2</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>  112</TD><TD>  110</TD><TD>   73</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>  113</TD><TD>   94</TD><TD>   25</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+					<TR>
+						<TD>  114</TD><TD>  112</TD><TD>   81</TD><TD>25.00</TD><TD>0.7000</TD><TD>-1.0000E-01</TD><TD>120.0</TD><TD>0.000</TD><TD>0</TD><TD>FX</TD><TD>No lining
+</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+		<TABLE name="Pipe-fittings">
+			<DESCRIPTION>
+                Pipe fittings
+            </DESCRIPTION>
+			<FIELD name="Label" datatype="char" arraysize="12"/>
+			<GROUP name="Type 1">
+				<FIELD name="Count" datatype="int" arraysize="1"/>
+				<FIELD name="Equiv. length" datatype="double" arraysize="1" unit="length"/>
+			</GROUP>
+			<GROUP name="Type 2">
+				<FIELD name="Count" datatype="int" arraysize="1"/>
+				<FIELD name="Equiv. length" datatype="double" arraysize="1" unit="length"/>
+			</GROUP>
+			<GROUP name="Type 3">
+				<FIELD name="Count" datatype="int" arraysize="1"/>
+				<FIELD name="Equiv. length" datatype="double" arraysize="1" unit="length"/>
+			</GROUP>
+			<GROUP name="Type 4">
+				<FIELD name="Count" datatype="int" arraysize="1"/>
+				<FIELD name="Equiv. length" datatype="double" arraysize="1" unit="length"/>
+			</GROUP>
+			<GROUP name="Type 5">
+				<FIELD name="Count" datatype="int" arraysize="1"/>
+				<FIELD name="Equiv. length" datatype="double" arraysize="1" unit="length"/>
+			</GROUP>
+			<GROUP name="Type 6">
+				<FIELD name="Count" datatype="int" arraysize="1"/>
+				<FIELD name="Equiv. length" datatype="double" arraysize="1" unit="length"/>
+			</GROUP>
+			<GROUP name="Type 7">
+				<FIELD name="Count" datatype="int" arraysize="1"/>
+				<FIELD name="Equiv. length" datatype="double" arraysize="1" unit="length"/>
+			</GROUP>
+			<GROUP name="Type 8">
+				<FIELD name="Count" datatype="int" arraysize="1"/>
+				<FIELD name="Equiv. length" datatype="double" arraysize="1" unit="length"/>
+			</GROUP>
+			<GROUP name="Type 9">
+				<FIELD name="Count" datatype="int" arraysize="1"/>
+				<FIELD name="Equiv. length" datatype="double" arraysize="1" unit="length"/>
+			</GROUP>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>1</TD><TD>0</TD><TD>0.00000</TD><TD>8</TD><TD>4.26720</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>2</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>4.26720</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>3</TD><TD>0</TD><TD>0.00000</TD><TD>6</TD><TD>4.26720</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>4</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>9.14400</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>5</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>8</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>3.65760</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.74320</TD>
+					</TR>
+					<TR>
+						<TD>9</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>7.62000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>10</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>7.62000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>11</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>3.65760</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>14</TD><TD>0</TD><TD>0.00000</TD><TD>2</TD><TD>3.65760</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>15</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>7.62000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>16</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>4.57200</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>20</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>1.84229</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>3.68458</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>25</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>4.57200</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>26</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>1.38172</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>27</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>1.52400</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>29</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>5.52688</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>30</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>5.52688</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>31</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.30287</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>4.60573</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>32</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>5.52688</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>33</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>3.68458</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>34</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>5.52688</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>35</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>5.52688</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>36</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>5.52688</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>37</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>4.60573</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>38</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>1.84229</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>3.68458</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>39</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>1.84229</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>3.68458</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>40</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>42</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>43</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>0.921146</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>44</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>45</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>0.921146</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>46</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>0.921146</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>47</TD><TD>0</TD><TD>0.00000</TD><TD>2</TD><TD>1.38172</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>48</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>0.921146</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>49</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>4.60573</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>50</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>51</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>0.921146</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>59</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>74</TD><TD>0</TD><TD>0.00000</TD><TD>3</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>5.52688</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>75</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>5.52688</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>77</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>1.52400</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>79</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>5.52688</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>80</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>4.60573</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>81</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>84</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>0.921146</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>86</TD><TD>1</TD><TD>0.460573</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>87</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>89</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>1.84229</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>3.68458</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>91</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>92</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>1.84229</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>3.68458</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>93</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>0.921146</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>94</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.30287</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>95</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+					<TR>
+						<TD>97</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>1</TD><TD>2.76344</TD><TD>0</TD><TD>0.00000
+</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD><TD>0</TD><TD>0.00000</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+	</RESOURCE>
+	<RESOURCE name="Spray-nozzles-input" ID="150">
+		<TABLE name="Spray-nozzles-input">
+			<DESCRIPTION>
+                Nozzle configuration
+            </DESCRIPTION>
+			<FIELD name="Label" datatype="char" arraysize="12"/>
+			<FIELD name="Input node" datatype="char" arraysize="12"/>
+			<FIELD name="Nozzle type" datatype="char" arraysize="30"/>
+			<FIELD name="K-factor" datatype="double" arraysize="1"/>
+			<FIELD name="Required flow" datatype="double" arraysize="1" unit="flowrate"/>
+			<FIELD name="Minimum pressure" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Maximum pressure" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Nozzle on" datatype="boolean" arraysize="1"/>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>    1</TD><TD>   54</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    2</TD><TD>   55</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    3</TD><TD>   56</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    4</TD><TD>   57</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    5</TD><TD>   58</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    6</TD><TD>   59</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    7</TD><TD>   60</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    8</TD><TD>   95</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    9</TD><TD>   62</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   10</TD><TD>   63</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   11</TD><TD>   64</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   12</TD><TD>   96</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   13</TD><TD>   66</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   14</TD><TD>   67</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   15</TD><TD>   70</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   16</TD><TD>   69</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   17</TD><TD>   68</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   18</TD><TD>   46</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   19</TD><TD>   72</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   20</TD><TD>   71</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   21</TD><TD>   78</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   22</TD><TD>   83</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   23</TD><TD>   87</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   24</TD><TD>   79</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   25</TD><TD>   73</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   26</TD><TD>   24</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   27</TD><TD>   74</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   28</TD><TD>   75</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   29</TD><TD>   25</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   30</TD><TD>   81</TD><TD>INDOOR HYDRANT</TD><TD>79.999992</TD><TD>1.33333332E-03</TD><TD>199391.50</TD><TD>1278123.0</TD><TD>1</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+	</RESOURCE>
+	<RESOURCE name="Equipment" ID="163">
+		<TABLE name="Equipment">
+			<DESCRIPTION>
+                Special equipment
+            </DESCRIPTION>
+			<FIELD name="Label" datatype="char" arraysize="12"/>
+			<FIELD name="Pipe label" datatype="char" arraysize="12"/>
+			<FIELD name="Equivalent length" datatype="double" arraysize="1" unit="length"/>
+			<FIELD name="Decription" datatype="char" arraysize="32"/>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>    1</TD><TD>    9</TD><TD>0.12000E+01</TD><TD>A/V</TD>
+					</TR>
+					<TR>
+						<TD>    2</TD><TD>   52</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>    3</TD><TD>   53</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>    4</TD><TD>   54</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>    5</TD><TD>   56</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>    6</TD><TD>    7</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>    7</TD><TD>   83</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>    8</TD><TD>   60</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>    9</TD><TD>   61</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   10</TD><TD>   62</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   11</TD><TD>   85</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   12</TD><TD>   65</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   13</TD><TD>   64</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   14</TD><TD>   66</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   15</TD><TD>   67</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   16</TD><TD>   68</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   17</TD><TD>   69</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   18</TD><TD>   63</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   19</TD><TD>   70</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   20</TD><TD>   99</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   21</TD><TD>   55</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   22</TD><TD>   72</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   23</TD><TD>   98</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   24</TD><TD>  105</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   25</TD><TD>   23</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   26</TD><TD>  107</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   27</TD><TD>   90</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   28</TD><TD>  110</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   30</TD><TD>  112</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   31</TD><TD>  113</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+					<TR>
+						<TD>   32</TD><TD>  114</TD><TD>0.56200E+01</TD><TD>FX</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+	</RESOURCE>
+	<RESOURCE name="Pipe-sizing" ID="172">
+		<TABLE name="Pipe-sizing">
+			<DESCRIPTION>
+                Calculated pipe sizes
+            </DESCRIPTION>
+			<FIELD name="Label" datatype="char" arraysize="12"/>
+			<FIELD name="Bore" datatype="double" arraysize="1" unit="diameter"/>
+			<DATA>
+				<TABLEDATA>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+	</RESOURCE>
+	<RESOURCE name="Pipes-results" ID="179">
+		<TABLE name="Pipes-results">
+			<DESCRIPTION>
+                Flow in pipes
+            </DESCRIPTION>
+			<FIELD name="Label" datatype="char" arraysize="12"/>
+			<FIELD name="Input node" datatype="char" arraysize="12"/>
+			<FIELD name="Output node" datatype="char" arraysize="12"/>
+			<FIELD name="Inlet pressure" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Outlet pressure" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Friction loss" datatype="double" arraysize="1" unit="pressureDifference"/>
+			<FIELD name="Velocity" datatype="double" arraysize="1" unit="velocity"/>
+			<FIELD name="Flow" datatype="double" arraysize="1" unit="flowrate"/>
+			<FIELD name="Density" datatype="double" arraysize="1" unit="density"/>
+			<FIELD name="Velocity pressure" datatype="double" arraysize="1" unit="pressureDifference"/>
+			<FIELD name="Inlet normal pressure" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Outlet normal pressure" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Inlet total pressure 1" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Outlet total pressure 1" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Inlet normal pressure 1" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Outlet normal pressure 1" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Static head loss" datatype="double" arraysize="1" unit="pressureDifference"/>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>    1</TD><TD>    1</TD><TD>    2</TD><TD>0.0000000</TD><TD>-37002.000</TD><TD>37002.000</TD><TD>3.1067512</TD><TD>5.90007082E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>    2</TD><TD>    2</TD><TD>    3</TD><TD>-37002.000</TD><TD>-5678.0000</TD><TD>5384.7422</TD><TD>3.1067512</TD><TD>5.90007082E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-36708.742</TD>
+					</TR>
+					<TR>
+						<TD>    3</TD><TD>    3</TD><TD>    4</TD><TD>-5678.0000</TD><TD>-32904.000</TD><TD>27226.000</TD><TD>3.1067512</TD><TD>5.90007082E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>    4</TD><TD>    4</TD><TD>    5</TD><TD>-32904.000</TD><TD>639668.00</TD><TD>65518.438</TD><TD>3.2946813</TD><TD>5.90007082E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-738090.44</TD>
+					</TR>
+					<TR>
+						<TD>    5</TD><TD>   26</TD><TD>   21</TD><TD>387493.50</TD><TD>335294.50</TD><TD>52199.000</TD><TD>8.3107500</TD><TD>2.67356113E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>    7</TD><TD>   98</TD><TD>   60</TD><TD>178244.50</TD><TD>140145.00</TD><TD>39078.398</TD><TD>3.2471142</TD><TD>1.59392355E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>    8</TD><TD>    5</TD><TD>   10</TD><TD>639668.00</TD><TD>617230.50</TD><TD>12648.502</TD><TD>4.4382596</TD><TD>5.90007119E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>9788.9980</TD>
+					</TR>
+					<TR>
+						<TD>    9</TD><TD>   10</TD><TD>   11</TD><TD>617230.50</TD><TD>582609.00</TD><TD>17001.305</TD><TD>4.4382596</TD><TD>5.90007119E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>17620.195</TD>
+					</TR>
+					<TR>
+						<TD>   10</TD><TD>   11</TD><TD>   23</TD><TD>582609.00</TD><TD>568745.00</TD><TD>13864.000</TD><TD>4.4382596</TD><TD>5.90007119E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   11</TD><TD>   12</TD><TD>   13</TD><TD>566199.50</TD><TD>557078.00</TD><TD>9121.5000</TD><TD>4.4382596</TD><TD>5.90007119E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   12</TD><TD>   13</TD><TD>   14</TD><TD>557078.00</TD><TD>552788.00</TD><TD>4290.0000</TD><TD>4.4382596</TD><TD>5.90007119E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   13</TD><TD>   14</TD><TD>   15</TD><TD>552788.00</TD><TD>551747.00</TD><TD>1041.0000</TD><TD>4.4382596</TD><TD>5.90007119E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   14</TD><TD>   15</TD><TD>   18</TD><TD>551747.00</TD><TD>532031.50</TD><TD>19715.500</TD><TD>4.4382596</TD><TD>5.90007119E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   15</TD><TD>   16</TD><TD>   19</TD><TD>531455.50</TD><TD>518616.00</TD><TD>12839.500</TD><TD>4.4382596</TD><TD>5.90007119E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   16</TD><TD>   20</TD><TD>   17</TD><TD>517930.00</TD><TD>432962.50</TD><TD>84967.500</TD><TD>6.9465699</TD><TD>3.57956588E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   17</TD><TD>   18</TD><TD>   16</TD><TD>532031.50</TD><TD>531455.50</TD><TD>576.00000</TD><TD>4.4382596</TD><TD>5.90007119E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   18</TD><TD>   19</TD><TD>   20</TD><TD>518616.00</TD><TD>517930.00</TD><TD>686.00000</TD><TD>2.6926866</TD><TD>3.57956588E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   19</TD><TD>   17</TD><TD>   91</TD><TD>432962.50</TD><TD>424110.50</TD><TD>8852.0000</TD><TD>7.1499333</TD><TD>2.67356131E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   20</TD><TD>    6</TD><TD>   51</TD><TD>264633.00</TD><TD>235391.00</TD><TD>29242.000</TD><TD>4.1504102</TD><TD>5.38114365E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   21</TD><TD>   23</TD><TD>   12</TD><TD>568745.00</TD><TD>566199.50</TD><TD>2545.5000</TD><TD>4.4382596</TD><TD>5.90007119E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   22</TD><TD>   27</TD><TD>   57</TD><TD>130431.50</TD><TD>129515.00</TD><TD>916.50000</TD><TD>2.4849224</TD><TD>1.53228326E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   23</TD><TD>  104</TD><TD>   76</TD><TD>337091.00</TD><TD>267987.50</TD><TD>70082.398</TD><TD>4.4510131</TD><TD>2.18488602E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   24</TD><TD>    6</TD><TD>   92</TD><TD>264633.00</TD><TD>262976.50</TD><TD>1656.5000</TD><TD>3.1467817</TD><TD>1.94040698E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   25</TD><TD>   19</TD><TD>   80</TD><TD>518616.00</TD><TD>503748.00</TD><TD>14868.000</TD><TD>4.5032144</TD><TD>2.32050531E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   26</TD><TD>   36</TD><TD>    9</TD><TD>200923.50</TD><TD>195855.00</TD><TD>5068.5000</TD><TD>3.2708206</TD><TD>3.23745213E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   27</TD><TD>   17</TD><TD>   22</TD><TD>432962.50</TD><TD>418110.00</TD><TD>14852.500</TD><TD>4.0758400</TD><TD>9.06004477E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   28</TD><TD>   21</TD><TD>   30</TD><TD>335294.50</TD><TD>329170.00</TD><TD>6124.5000</TD><TD>8.3107500</TD><TD>2.67356113E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   29</TD><TD>   30</TD><TD>   86</TD><TD>329170.00</TD><TD>276711.50</TD><TD>52458.500</TD><TD>8.3107500</TD><TD>2.67356113E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   30</TD><TD>   86</TD><TD>   33</TD><TD>276711.50</TD><TD>238673.50</TD><TD>38038.000</TD><TD>6.0348501</TD><TD>1.94140617E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   31</TD><TD>   22</TD><TD>   28</TD><TD>418110.00</TD><TD>389455.50</TD><TD>28654.500</TD><TD>4.4560099</TD><TD>9.06004384E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   32</TD><TD>   33</TD><TD>   35</TD><TD>238673.50</TD><TD>220069.00</TD><TD>18604.500</TD><TD>4.9513707</TD><TD>1.59285180E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   33</TD><TD>   28</TD><TD>   32</TD><TD>389455.50</TD><TD>363616.50</TD><TD>25839.000</TD><TD>5.1620073</TD><TD>6.69271266E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   34</TD><TD>   35</TD><TD>   36</TD><TD>220069.00</TD><TD>200923.50</TD><TD>19145.500</TD><TD>4.4130974</TD><TD>1.41968969E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   35</TD><TD>   36</TD><TD>   37</TD><TD>200923.50</TD><TD>192114.50</TD><TD>8809.0000</TD><TD>3.4067371</TD><TD>1.09594436E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   36</TD><TD>   37</TD><TD>   38</TD><TD>192114.50</TD><TD>186497.00</TD><TD>5617.5000</TD><TD>2.4212663</TD><TD>7.78919319E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   37</TD><TD>   38</TD><TD>   39</TD><TD>186497.00</TD><TD>176854.50</TD><TD>9642.5000</TD><TD>3.0288858</TD><TD>6.15838822E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   38</TD><TD>   39</TD><TD>   40</TD><TD>176854.50</TD><TD>167641.50</TD><TD>9213.0000</TD><TD>2.3753676</TD><TD>3.07974243E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   39</TD><TD>   40</TD><TD>   41</TD><TD>167641.50</TD><TD>165321.00</TD><TD>2320.5000</TD><TD>1.1835024</TD><TD>1.53444987E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   40</TD><TD>   39</TD><TD>   42</TD><TD>176854.50</TD><TD>167871.50</TD><TD>8983.0000</TD><TD>3.1103771</TD><TD>3.07864533E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   41</TD><TD>   42</TD><TD>   43</TD><TD>167871.50</TD><TD>165776.00</TD><TD>2095.5000</TD><TD>2.4849224</TD><TD>1.53228326E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   42</TD><TD>   37</TD><TD>   44</TD><TD>192114.50</TD><TD>179770.50</TD><TD>12344.000</TD><TD>3.2029271</TD><TD>3.17025115E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   43</TD><TD>   44</TD><TD>   31</TD><TD>179770.50</TD><TD>176915.50</TD><TD>2855.0000</TD><TD>2.5563495</TD><TD>1.57632749E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   44</TD><TD>   32</TD><TD>   34</TD><TD>363616.50</TD><TD>343485.00</TD><TD>20131.500</TD><TD>4.4517221</TD><TD>4.40630596E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   45</TD><TD>   34</TD><TD>   47</TD><TD>343485.00</TD><TD>332446.50</TD><TD>11038.500</TD><TD>3.5433223</TD><TD>2.18492677E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   46</TD><TD>   35</TD><TD>   48</TD><TD>220069.00</TD><TD>209990.50</TD><TD>10078.500</TD><TD>2.8081906</TD><TD>1.73162087E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   47</TD><TD>   33</TD><TD>   49</TD><TD>238673.50</TD><TD>215869.50</TD><TD>22804.000</TD><TD>3.5214696</TD><TD>3.48554389E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   48</TD><TD>   49</TD><TD>   50</TD><TD>215869.50</TD><TD>209501.00</TD><TD>6368.5000</TD><TD>2.8048704</TD><TD>1.72957347E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   49</TD><TD>   86</TD><TD>    6</TD><TD>276711.50</TD><TD>264633.00</TD><TD>12078.500</TD><TD>3.6009653</TD><TD>7.32155098E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   50</TD><TD>   51</TD><TD>   52</TD><TD>235391.00</TD><TD>224072.00</TD><TD>11319.000</TD><TD>3.5831215</TD><TD>3.54656694E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   51</TD><TD>   52</TD><TD>   53</TD><TD>224072.00</TD><TD>216163.00</TD><TD>7909.0000</TD><TD>2.8496182</TD><TD>1.75716646E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   52</TD><TD>   41</TD><TD>   54</TD><TD>165321.00</TD><TD>129881.50</TD><TD>36418.398</TD><TD>3.1259556</TD><TD>1.53444998E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   53</TD><TD>   40</TD><TD>   55</TD><TD>167641.50</TD><TD>131723.50</TD><TD>36896.898</TD><TD>3.1480436</TD><TD>1.54529244E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   54</TD><TD>   42</TD><TD>   56</TD><TD>167871.50</TD><TD>131906.00</TD><TD>36944.398</TD><TD>3.1502230</TD><TD>1.54636218E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   55</TD><TD>   43</TD><TD>   27</TD><TD>165776.00</TD><TD>130431.50</TD><TD>36323.398</TD><TD>3.1215415</TD><TD>1.53228315E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   56</TD><TD>   38</TD><TD>   58</TD><TD>186497.00</TD><TD>146705.50</TD><TD>40770.398</TD><TD>3.3222497</TD><TD>1.63080555E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   57</TD><TD>   45</TD><TD>   59</TD><TD>139612.00</TD><TD>137067.50</TD><TD>2544.5000</TD><TD>3.2112679</TD><TD>1.57632760E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   58</TD><TD>   44</TD><TD>   98</TD><TD>179770.50</TD><TD>178244.50</TD><TD>1526.0000</TD><TD>2.5848851</TD><TD>1.59392343E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   59</TD><TD>    9</TD><TD>   29</TD><TD>195855.00</TD><TD>185443.50</TD><TD>10411.500</TD><TD>3.2708206</TD><TD>3.23745213E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   60</TD><TD>   47</TD><TD>   62</TD><TD>332446.50</TD><TD>263340.00</TD><TD>70085.398</TD><TD>4.4510961</TD><TD>2.18492677E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   61</TD><TD>   34</TD><TD>   63</TD><TD>343485.00</TD><TD>272200.50</TD><TD>72263.398</TD><TD>4.5253568</TD><TD>2.22137943E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   62</TD><TD>   48</TD><TD>   64</TD><TD>209990.50</TD><TD>165405.00</TD><TD>45564.398</TD><TD>3.5276289</TD><TD>1.73162087E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   63</TD><TD>   28</TD><TD>   46</TD><TD>389455.50</TD><TD>309144.00</TD><TD>81290.398</TD><TD>4.8226867</TD><TD>2.36733095E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   64</TD><TD>   49</TD><TD>   66</TD><TD>215869.50</TD><TD>170089.50</TD><TD>46758.898</TD><TD>3.5772331</TD><TD>1.75597030E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   65</TD><TD>   50</TD><TD>   67</TD><TD>209501.00</TD><TD>165014.00</TD><TD>45465.898</TD><TD>3.5234580</TD><TD>1.72957347E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   66</TD><TD>   51</TD><TD>   68</TD><TD>235391.00</TD><TD>185658.50</TD><TD>50711.398</TD><TD>3.7373683</TD><TD>1.83457648E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   67</TD><TD>   52</TD><TD>   69</TD><TD>224072.00</TD><TD>176627.50</TD><TD>48423.398</TD><TD>3.6453364</TD><TD>1.78940035E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   68</TD><TD>   53</TD><TD>   70</TD><TD>216163.00</TD><TD>170321.50</TD><TD>46820.398</TD><TD>3.5796700</TD><TD>1.75716646E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   69</TD><TD>   92</TD><TD>   71</TD><TD>262976.50</TD><TD>207696.50</TD><TD>56258.898</TD><TD>3.9529645</TD><TD>1.94040698E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   70</TD><TD>   32</TD><TD>   72</TD><TD>363616.50</TD><TD>288370.00</TD><TD>76225.398</TD><TD>4.6578293</TD><TD>2.28640670E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   71</TD><TD>   80</TD><TD>   82</TD><TD>503748.00</TD><TD>501307.00</TD><TD>2441.0000</TD><TD>4.8329687</TD><TD>1.80718303E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   72</TD><TD>   31</TD><TD>   45</TD><TD>176915.50</TD><TD>139612.00</TD><TD>38282.398</TD><TD>3.2112679</TD><TD>1.57632760E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   73</TD><TD>   76</TD><TD>   79</TD><TD>267987.50</TD><TD>263330.00</TD><TD>4657.5000</TD><TD>4.4510131</TD><TD>2.18488602E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   74</TD><TD>   82</TD><TD>  107</TD><TD>501307.00</TD><TD>407924.50</TD><TD>93382.500</TD><TD>5.6176181</TD><TD>1.80718284E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   75</TD><TD>  107</TD><TD>  108</TD><TD>407924.50</TD><TD>388129.00</TD><TD>19795.500</TD><TD>4.8711562</TD><TD>1.56704672E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   77</TD><TD>   80</TD><TD>   84</TD><TD>503748.00</TD><TD>499196.00</TD><TD>4552.0000</TD><TD>2.3092813</TD><TD>5.13322186E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   79</TD><TD>  108</TD><TD>  110</TD><TD>388129.00</TD><TD>377237.00</TD><TD>10892.000</TD><TD>3.4619384</TD><TD>1.11370264E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   80</TD><TD>  110</TD><TD>  109</TD><TD>377237.00</TD><TD>358529.50</TD><TD>18707.500</TD><TD>4.3318615</TD><TD>8.80762283E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   81</TD><TD>   91</TD><TD>   26</TD><TD>424110.50</TD><TD>387493.50</TD><TD>36617.000</TD><TD>8.3107500</TD><TD>2.67356113E-02</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   82</TD><TD>   29</TD><TD>   93</TD><TD>185443.50</TD><TD>182113.00</TD><TD>3330.5000</TD><TD>2.6130853</TD><TD>1.61131262E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   83</TD><TD>   29</TD><TD>   95</TD><TD>185443.50</TD><TD>145867.50</TD><TD>40554.898</TD><TD>3.3127437</TD><TD>1.62613927E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   84</TD><TD>  106</TD><TD>   77</TD><TD>364189.50</TD><TD>358650.00</TD><TD>5539.5000</TD><TD>3.6563892</TD><TD>2.25464744E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   85</TD><TD>   93</TD><TD>   96</TD><TD>182113.00</TD><TD>143219.50</TD><TD>39872.398</TD><TD>3.2825389</TD><TD>1.61131262E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   86</TD><TD>  107</TD><TD>   61</TD><TD>407924.50</TD><TD>406577.00</TD><TD>1347.5000</TD><TD>2.4261127</TD><TD>2.40136171E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   87</TD><TD>  109</TD><TD>  103</TD><TD>358529.50</TD><TD>341133.50</TD><TD>17396.000</TD><TD>4.4438868</TD><TD>4.39855084E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   88</TD><TD>  103</TD><TD>  104</TD><TD>341133.50</TD><TD>337091.00</TD><TD>4042.5000</TD><TD>3.5432563</TD><TD>2.18488602E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   89</TD><TD>  109</TD><TD>   97</TD><TD>358529.50</TD><TD>340621.50</TD><TD>17908.000</TD><TD>3.4006631</TD><TD>4.40907152E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   90</TD><TD>   77</TD><TD>  111</TD><TD>358650.00</TD><TD>285350.50</TD><TD>74278.398</TD><TD>4.5931301</TD><TD>2.25464767E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   91</TD><TD>   61</TD><TD>   65</TD><TD>406577.00</TD><TD>400582.50</TD><TD>5994.5000</TD><TD>2.4261127</TD><TD>2.40136171E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   92</TD><TD>   97</TD><TD>  105</TD><TD>340621.50</TD><TD>336110.00</TD><TD>4511.5000</TD><TD>1.6945895</TD><TD>2.19709100E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   93</TD><TD>  112</TD><TD>   94</TD><TD>464152.00</TD><TD>449507.00</TD><TD>14645.000</TD><TD>4.1284895</TD><TD>2.54575978E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   94</TD><TD>   84</TD><TD>   85</TD><TD>499196.00</TD><TD>494335.00</TD><TD>4861.0000</TD><TD>2.5246775</TD><TD>5.13322232E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   95</TD><TD>  108</TD><TD>  106</TD><TD>388129.00</TD><TD>364189.50</TD><TD>23939.500</TD><TD>4.5801687</TD><TD>4.53344220E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   96</TD><TD>   85</TD><TD>   88</TD><TD>494335.00</TD><TD>490853.50</TD><TD>3481.5000</TD><TD>3.9591913</TD><TD>5.13322186E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   97</TD><TD>   88</TD><TD>  112</TD><TD>490853.50</TD><TD>464152.00</TD><TD>26701.500</TD><TD>5.1861305</TD><TD>5.13322232E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>   98</TD><TD>   65</TD><TD>   75</TD><TD>400582.50</TD><TD>318096.00</TD><TD>83465.398</TD><TD>4.8920135</TD><TD>2.40136171E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>   99</TD><TD>   99</TD><TD>   74</TD><TD>361230.50</TD><TD>286453.00</TD><TD>75756.398</TD><TD>4.6423221</TD><TD>2.27879453E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>  105</TD><TD>  105</TD><TD>   78</TD><TD>336110.00</TD><TD>266280.50</TD><TD>70808.398</TD><TD>4.4758773</TD><TD>2.19709123E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>  107</TD><TD>   97</TD><TD>   83</TD><TD>340621.50</TD><TD>269902.00</TD><TD>71698.398</TD><TD>4.5062094</TD><TD>2.21198052E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>  109</TD><TD>  111</TD><TD>   24</TD><TD>285350.50</TD><TD>280414.50</TD><TD>4936.0000</TD><TD>4.5931301</TD><TD>2.25464767E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>  110</TD><TD>  103</TD><TD>   87</TD><TD>341133.50</TD><TD>270313.00</TD><TD>71799.398</TD><TD>4.5096402</TD><TD>2.21366459E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>  111</TD><TD>  106</TD><TD>   99</TD><TD>364189.50</TD><TD>361230.50</TD><TD>2959.0000</TD><TD>3.6955490</TD><TD>2.27879453E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>0.0000000</TD>
+					</TR>
+					<TR>
+						<TD>  112</TD><TD>  110</TD><TD>   73</TD><TD>377237.00</TD><TD>299318.00</TD><TD>78897.898</TD><TD>4.7454214</TD><TD>2.32940330E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>  113</TD><TD>   94</TD><TD>   25</TD><TD>449507.00</TD><TD>357501.50</TD><TD>92984.398</TD><TD>5.1861792</TD><TD>2.54575978E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+					<TR>
+						<TD>  114</TD><TD>  112</TD><TD>   81</TD><TD>464152.00</TD><TD>369310.00</TD><TD>95820.898</TD><TD>5.2711344</TD><TD>2.58746208E-03</TD><TD>998.20001</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>NaN</TD><TD>-978.89984</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+	</RESOURCE>
+	<RESOURCE name="Spray-nozzles-results" ID="201">
+		<TABLE name="Spray-nozzles-results">
+			<DESCRIPTION>
+                Flow through nozzles
+            </DESCRIPTION>
+			<FIELD name="Label" datatype="char" arraysize="12"/>
+			<FIELD name="Input label" datatype="char" arraysize="12"/>
+			<FIELD name="Elevation" datatype="double" arraysize="1" unit="length"/>
+			<FIELD name="Inlet pressure" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Required flow" datatype="double" arraysize="1" unit="flowrate"/>
+			<FIELD name="Deviation" datatype="double" arraysize="1"/>
+			<FIELD name="Calculated flow" datatype="double" arraysize="1" unit="flowrate"/>
+			<FIELD name="Nozzle on" datatype="boolean" arraysize="1"/>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>    1</TD><TD>   54</TD><TD>-76.450005</TD><TD>129881.50</TD><TD>1.33333332E-03</TD><TD>15.083753</TD><TD>1.53444998E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    2</TD><TD>   55</TD><TD>-76.450005</TD><TD>131723.50</TD><TD>1.33333332E-03</TD><TD>15.896930</TD><TD>1.54529244E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    3</TD><TD>   56</TD><TD>-76.450005</TD><TD>131906.00</TD><TD>1.33333332E-03</TD><TD>15.977163</TD><TD>1.54636218E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    4</TD><TD>   57</TD><TD>-76.450005</TD><TD>129515.00</TD><TD>1.33333332E-03</TD><TD>14.921247</TD><TD>1.53228326E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    5</TD><TD>   58</TD><TD>-76.450005</TD><TD>146705.50</TD><TD>1.33333332E-03</TD><TD>22.310419</TD><TD>1.63080555E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    6</TD><TD>   59</TD><TD>-76.450005</TD><TD>137067.50</TD><TD>1.33333332E-03</TD><TD>18.224573</TD><TD>1.57632760E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    7</TD><TD>   60</TD><TD>-76.450005</TD><TD>140145.00</TD><TD>1.33333332E-03</TD><TD>19.544268</TD><TD>1.59392355E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    8</TD><TD>   95</TD><TD>-76.450005</TD><TD>145867.50</TD><TD>1.33333332E-03</TD><TD>21.960449</TD><TD>1.62613939E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>    9</TD><TD>   62</TD><TD>-76.450005</TD><TD>263340.00</TD><TD>1.33333332E-03</TD><TD>63.869514</TD><TD>2.18492700E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   10</TD><TD>   63</TD><TD>-76.450005</TD><TD>272200.50</TD><TD>1.33333332E-03</TD><TD>66.603447</TD><TD>2.22137943E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   11</TD><TD>   64</TD><TD>-76.450005</TD><TD>165405.00</TD><TD>1.33333332E-03</TD><TD>29.871557</TD><TD>1.73162075E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   12</TD><TD>   96</TD><TD>-76.450005</TD><TD>143219.50</TD><TD>1.33333332E-03</TD><TD>20.848446</TD><TD>1.61131262E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   13</TD><TD>   66</TD><TD>-76.450005</TD><TD>170089.50</TD><TD>1.33333332E-03</TD><TD>31.697769</TD><TD>1.75597030E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   14</TD><TD>   67</TD><TD>-76.450005</TD><TD>165014.00</TD><TD>1.33333332E-03</TD><TD>29.718008</TD><TD>1.72957347E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   15</TD><TD>   70</TD><TD>-76.450005</TD><TD>170321.50</TD><TD>1.33333332E-03</TD><TD>31.787491</TD><TD>1.75716658E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   16</TD><TD>   69</TD><TD>-76.450005</TD><TD>176627.50</TD><TD>1.33333332E-03</TD><TD>34.205036</TD><TD>1.78940047E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   17</TD><TD>   68</TD><TD>-76.450005</TD><TD>185658.50</TD><TD>1.33333332E-03</TD><TD>37.593231</TD><TD>1.83457648E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   18</TD><TD>   46</TD><TD>-76.450005</TD><TD>309144.00</TD><TD>1.33333332E-03</TD><TD>77.549820</TD><TD>2.36733095E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   19</TD><TD>   72</TD><TD>-76.450005</TD><TD>288370.00</TD><TD>1.33333332E-03</TD><TD>71.480507</TD><TD>2.28640670E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   20</TD><TD>   71</TD><TD>-76.450005</TD><TD>207696.50</TD><TD>1.33333332E-03</TD><TD>45.530529</TD><TD>1.94040709E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   21</TD><TD>   78</TD><TD>-76.450005</TD><TD>266280.50</TD><TD>1.33333332E-03</TD><TD>64.781837</TD><TD>2.19709123E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   22</TD><TD>   83</TD><TD>-76.450005</TD><TD>269902.00</TD><TD>1.33333332E-03</TD><TD>65.898537</TD><TD>2.21198052E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   23</TD><TD>   87</TD><TD>-76.450005</TD><TD>270313.00</TD><TD>1.33333332E-03</TD><TD>66.024857</TD><TD>2.21366482E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   24</TD><TD>   79</TD><TD>-76.450005</TD><TD>263330.00</TD><TD>1.33333332E-03</TD><TD>63.866444</TD><TD>2.18488602E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   25</TD><TD>   73</TD><TD>-76.450005</TD><TD>299318.00</TD><TD>1.33333332E-03</TD><TD>74.705238</TD><TD>2.32940330E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   26</TD><TD>   24</TD><TD>-76.450005</TD><TD>280414.50</TD><TD>1.33333332E-03</TD><TD>69.098564</TD><TD>2.25464767E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   27</TD><TD>   74</TD><TD>-76.450005</TD><TD>286453.00</TD><TD>1.33333332E-03</TD><TD>70.909615</TD><TD>2.27879500E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   28</TD><TD>   75</TD><TD>-76.450005</TD><TD>318096.00</TD><TD>1.33333332E-03</TD><TD>80.102119</TD><TD>2.40136171E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   29</TD><TD>   25</TD><TD>-76.450005</TD><TD>357501.50</TD><TD>1.33333332E-03</TD><TD>90.931992</TD><TD>2.54575978E-03</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>   30</TD><TD>   81</TD><TD>-76.450005</TD><TD>369310.00</TD><TD>1.33333332E-03</TD><TD>94.059654</TD><TD>2.58746208E-03</TD><TD>1</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+	</RESOURCE>
+	<RESOURCE name="Node pressures" ID="214">
+		<DESCRIPTION>
+            Pressures at all nodes
+        </DESCRIPTION>
+		<TABLE name="Node pressures">
+			<FIELD name="Label" datatype="char" arraysize="12"/>
+			<FIELD name="Elevation" datatype="double" arraysize="1" unit="length"/>
+			<FIELD name="Pressure" datatype="double" arraysize="1" unit="pressure"/>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>    5</TD><TD>-79.150001526</TD><TD>740993.00000</TD>
+					</TR>
+					<TR>
+						<TD>   10</TD><TD>-78.150001526</TD><TD>718555.50000</TD>
+					</TR>
+					<TR>
+						<TD>   11</TD><TD>-76.349998474</TD><TD>683934.00000</TD>
+					</TR>
+					<TR>
+						<TD>   23</TD><TD>-76.349998474</TD><TD>670070.00000</TD>
+					</TR>
+					<TR>
+						<TD>   12</TD><TD>-76.349998474</TD><TD>667524.50000</TD>
+					</TR>
+					<TR>
+						<TD>   13</TD><TD>-76.349998474</TD><TD>658403.00000</TD>
+					</TR>
+					<TR>
+						<TD>   14</TD><TD>-76.349998474</TD><TD>654113.00000</TD>
+					</TR>
+					<TR>
+						<TD>   15</TD><TD>-76.349998474</TD><TD>653072.00000</TD>
+					</TR>
+					<TR>
+						<TD>   18</TD><TD>-76.349998474</TD><TD>633356.50000</TD>
+					</TR>
+					<TR>
+						<TD>   16</TD><TD>-76.349998474</TD><TD>632780.50000</TD>
+					</TR>
+					<TR>
+						<TD>   19</TD><TD>-76.349998474</TD><TD>619941.00000</TD>
+					</TR>
+					<TR>
+						<TD>   20</TD><TD>-76.349998474</TD><TD>619255.00000</TD>
+					</TR>
+					<TR>
+						<TD>   17</TD><TD>-76.349998474</TD><TD>534287.50000</TD>
+					</TR>
+					<TR>
+						<TD>   22</TD><TD>-76.349998474</TD><TD>519435.00000</TD>
+					</TR>
+					<TR>
+						<TD>   80</TD><TD>-76.349998474</TD><TD>605073.00000</TD>
+					</TR>
+					<TR>
+						<TD>   82</TD><TD>-76.349998474</TD><TD>602632.00000</TD>
+					</TR>
+					<TR>
+						<TD>   84</TD><TD>-76.349998474</TD><TD>600521.00000</TD>
+					</TR>
+					<TR>
+						<TD>   91</TD><TD>-76.349998474</TD><TD>525435.50000</TD>
+					</TR>
+					<TR>
+						<TD>    1</TD><TD>0.0000000000</TD><TD>101325.00000</TD>
+					</TR>
+					<TR>
+						<TD>    2</TD><TD>0.0000000000</TD><TD>64323.000000</TD>
+					</TR>
+					<TR>
+						<TD>    3</TD><TD>-3.7500000000</TD><TD>95647.000000</TD>
+					</TR>
+					<TR>
+						<TD>    4</TD><TD>-3.7500000000</TD><TD>68421.000000</TD>
+					</TR>
+					<TR>
+						<TD>   31</TD><TD>-76.349998474</TD><TD>278240.50000</TD>
+					</TR>
+					<TR>
+						<TD>   45</TD><TD>-76.450004578</TD><TD>240937.00000</TD>
+					</TR>
+					<TR>
+						<TD>   77</TD><TD>-76.349998474</TD><TD>459975.00000</TD>
+					</TR>
+					<TR>
+						<TD>  111</TD><TD>-76.450004578</TD><TD>386675.50000</TD>
+					</TR>
+					<TR>
+						<TD>  104</TD><TD>-76.349998474</TD><TD>438416.00000</TD>
+					</TR>
+					<TR>
+						<TD>   76</TD><TD>-76.450004578</TD><TD>369312.50000</TD>
+					</TR>
+					<TR>
+						<TD>   43</TD><TD>-76.349998474</TD><TD>267101.00000</TD>
+					</TR>
+					<TR>
+						<TD>   27</TD><TD>-76.450004578</TD><TD>231756.50000</TD>
+					</TR>
+					<TR>
+						<TD>   41</TD><TD>-76.349998474</TD><TD>266646.00000</TD>
+					</TR>
+					<TR>
+						<TD>   54</TD><TD>-76.450004578</TD><TD>231206.50000</TD>
+					</TR>
+					<TR>
+						<TD>   40</TD><TD>-76.349998474</TD><TD>268966.50000</TD>
+					</TR>
+					<TR>
+						<TD>   55</TD><TD>-76.450004578</TD><TD>233048.50000</TD>
+					</TR>
+					<TR>
+						<TD>   42</TD><TD>-76.349998474</TD><TD>269196.50000</TD>
+					</TR>
+					<TR>
+						<TD>   56</TD><TD>-76.450004578</TD><TD>233231.00000</TD>
+					</TR>
+					<TR>
+						<TD>   38</TD><TD>-76.349998474</TD><TD>287822.00000</TD>
+					</TR>
+					<TR>
+						<TD>   58</TD><TD>-76.450004578</TD><TD>248030.50000</TD>
+					</TR>
+					<TR>
+						<TD>   47</TD><TD>-76.349998474</TD><TD>433771.50000</TD>
+					</TR>
+					<TR>
+						<TD>   62</TD><TD>-76.450004578</TD><TD>364665.00000</TD>
+					</TR>
+					<TR>
+						<TD>   34</TD><TD>-76.349998474</TD><TD>444810.00000</TD>
+					</TR>
+					<TR>
+						<TD>   63</TD><TD>-76.450004578</TD><TD>373525.50000</TD>
+					</TR>
+					<TR>
+						<TD>   48</TD><TD>-76.349998474</TD><TD>311315.50000</TD>
+					</TR>
+					<TR>
+						<TD>   64</TD><TD>-76.450004578</TD><TD>266730.00000</TD>
+					</TR>
+					<TR>
+						<TD>   49</TD><TD>-76.349998474</TD><TD>317194.50000</TD>
+					</TR>
+					<TR>
+						<TD>   66</TD><TD>-76.450004578</TD><TD>271414.50000</TD>
+					</TR>
+					<TR>
+						<TD>   50</TD><TD>-76.349998474</TD><TD>310826.00000</TD>
+					</TR>
+					<TR>
+						<TD>   67</TD><TD>-76.450004578</TD><TD>266339.00000</TD>
+					</TR>
+					<TR>
+						<TD>   51</TD><TD>-76.349998474</TD><TD>336716.00000</TD>
+					</TR>
+					<TR>
+						<TD>   68</TD><TD>-76.450004578</TD><TD>286983.50000</TD>
+					</TR>
+					<TR>
+						<TD>   52</TD><TD>-76.349998474</TD><TD>325397.00000</TD>
+					</TR>
+					<TR>
+						<TD>   69</TD><TD>-76.450004578</TD><TD>277952.50000</TD>
+					</TR>
+					<TR>
+						<TD>   53</TD><TD>-76.349998474</TD><TD>317488.00000</TD>
+					</TR>
+					<TR>
+						<TD>   70</TD><TD>-76.450004578</TD><TD>271646.50000</TD>
+					</TR>
+					<TR>
+						<TD>   92</TD><TD>-76.349998474</TD><TD>364301.50000</TD>
+					</TR>
+					<TR>
+						<TD>   71</TD><TD>-76.450004578</TD><TD>309021.50000</TD>
+					</TR>
+					<TR>
+						<TD>   28</TD><TD>-76.349998474</TD><TD>490780.50000</TD>
+					</TR>
+					<TR>
+						<TD>   46</TD><TD>-76.450004578</TD><TD>410469.00000</TD>
+					</TR>
+					<TR>
+						<TD>   32</TD><TD>-76.349998474</TD><TD>464941.50000</TD>
+					</TR>
+					<TR>
+						<TD>   72</TD><TD>-76.450004578</TD><TD>389695.00000</TD>
+					</TR>
+					<TR>
+						<TD>   94</TD><TD>-76.349998474</TD><TD>550832.00000</TD>
+					</TR>
+					<TR>
+						<TD>   25</TD><TD>-76.450004578</TD><TD>458826.50000</TD>
+					</TR>
+					<TR>
+						<TD>  110</TD><TD>-76.349998474</TD><TD>478562.00000</TD>
+					</TR>
+					<TR>
+						<TD>   73</TD><TD>-76.450004578</TD><TD>400643.00000</TD>
+					</TR>
+					<TR>
+						<TD>   97</TD><TD>-76.349998474</TD><TD>441946.50000</TD>
+					</TR>
+					<TR>
+						<TD>   83</TD><TD>-76.450004578</TD><TD>371227.00000</TD>
+					</TR>
+					<TR>
+						<TD>  105</TD><TD>-76.349998474</TD><TD>437435.00000</TD>
+					</TR>
+					<TR>
+						<TD>   78</TD><TD>-76.450004578</TD><TD>367605.50000</TD>
+					</TR>
+					<TR>
+						<TD>  103</TD><TD>-76.349998474</TD><TD>442458.50000</TD>
+					</TR>
+					<TR>
+						<TD>   87</TD><TD>-76.450004578</TD><TD>371638.00000</TD>
+					</TR>
+					<TR>
+						<TD>  112</TD><TD>-76.349998474</TD><TD>565477.00000</TD>
+					</TR>
+					<TR>
+						<TD>   81</TD><TD>-76.450004578</TD><TD>470635.00000</TD>
+					</TR>
+					<TR>
+						<TD>   29</TD><TD>-76.349998474</TD><TD>286768.50000</TD>
+					</TR>
+					<TR>
+						<TD>   95</TD><TD>-76.450004578</TD><TD>247192.50000</TD>
+					</TR>
+					<TR>
+						<TD>   93</TD><TD>-76.349998474</TD><TD>283438.00000</TD>
+					</TR>
+					<TR>
+						<TD>   96</TD><TD>-76.450004578</TD><TD>244544.50000</TD>
+					</TR>
+					<TR>
+						<TD>   65</TD><TD>-76.349998474</TD><TD>501907.50000</TD>
+					</TR>
+					<TR>
+						<TD>   75</TD><TD>-76.450004578</TD><TD>419421.00000</TD>
+					</TR>
+					<TR>
+						<TD>   98</TD><TD>-76.349998474</TD><TD>279569.50000</TD>
+					</TR>
+					<TR>
+						<TD>   60</TD><TD>-76.450004578</TD><TD>241470.00000</TD>
+					</TR>
+					<TR>
+						<TD>   99</TD><TD>-76.349998474</TD><TD>462555.50000</TD>
+					</TR>
+					<TR>
+						<TD>   74</TD><TD>-76.450004578</TD><TD>387778.00000</TD>
+					</TR>
+					<TR>
+						<TD>   57</TD><TD>-76.450004578</TD><TD>230840.00000</TD>
+					</TR>
+					<TR>
+						<TD>   26</TD><TD>-76.349998474</TD><TD>488818.50000</TD>
+					</TR>
+					<TR>
+						<TD>   21</TD><TD>-76.349998474</TD><TD>436619.50000</TD>
+					</TR>
+					<TR>
+						<TD>   30</TD><TD>-76.349998474</TD><TD>430495.00000</TD>
+					</TR>
+					<TR>
+						<TD>   86</TD><TD>-76.349998474</TD><TD>378036.50000</TD>
+					</TR>
+					<TR>
+						<TD>   33</TD><TD>-76.349998474</TD><TD>339998.50000</TD>
+					</TR>
+					<TR>
+						<TD>   35</TD><TD>-76.349998474</TD><TD>321394.00000</TD>
+					</TR>
+					<TR>
+						<TD>   36</TD><TD>-76.349998474</TD><TD>302248.50000</TD>
+					</TR>
+					<TR>
+						<TD>   37</TD><TD>-76.349998474</TD><TD>293439.50000</TD>
+					</TR>
+					<TR>
+						<TD>   39</TD><TD>-76.349998474</TD><TD>278179.50000</TD>
+					</TR>
+					<TR>
+						<TD>   44</TD><TD>-76.349998474</TD><TD>281095.50000</TD>
+					</TR>
+					<TR>
+						<TD>    6</TD><TD>-76.349998474</TD><TD>365958.00000</TD>
+					</TR>
+					<TR>
+						<TD>  109</TD><TD>-76.349998474</TD><TD>459854.50000</TD>
+					</TR>
+					<TR>
+						<TD>  106</TD><TD>-76.349998474</TD><TD>465514.50000</TD>
+					</TR>
+					<TR>
+						<TD>  108</TD><TD>-76.349998474</TD><TD>489454.00000</TD>
+					</TR>
+					<TR>
+						<TD>  107</TD><TD>-76.349998474</TD><TD>509249.50000</TD>
+					</TR>
+					<TR>
+						<TD>   85</TD><TD>-76.349998474</TD><TD>595660.00000</TD>
+					</TR>
+					<TR>
+						<TD>   88</TD><TD>-76.349998474</TD><TD>592178.50000</TD>
+					</TR>
+					<TR>
+						<TD>    9</TD><TD>-76.349998474</TD><TD>297180.00000</TD>
+					</TR>
+					<TR>
+						<TD>   61</TD><TD>-76.349998474</TD><TD>507902.00000</TD>
+					</TR>
+					<TR>
+						<TD>   59</TD><TD>-76.450004578</TD><TD>238392.50000</TD>
+					</TR>
+					<TR>
+						<TD>   24</TD><TD>-76.450004578</TD><TD>381739.50000</TD>
+					</TR>
+					<TR>
+						<TD>   79</TD><TD>-76.450004578</TD><TD>364655.00000</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+	</RESOURCE>
+	<RESOURCE name="Input-nodes" ID="222">
+		<DESCRIPTION>
+            Flow at input nodes
+        </DESCRIPTION>
+		<TABLE name="Input-nodes">
+			<FIELD name="Label" datatype="char" arraysize="12"/>
+			<FIELD name="Pressure" datatype="double" arraysize="1" unit="pressure"/>
+			<FIELD name="Flow" datatype="double" arraysize="1" unit="flowrate"/>
+			<FIELD name="K-factor" datatype="double" arraysize="1" unit="K-factor"/>
+			<FIELD name="Pressure spec," datatype="boolean" arraysize="1"/>
+			<FIELD name="Flow spec," datatype="boolean" arraysize="1"/>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>    1</TD><TD>0.0000000000</TD><TD>5.90007082E-02</TD><TD>0.0000000</TD><TD>1</TD><TD>0</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+	</RESOURCE>
+	<RESOURCE name="NFPA-Report-Flows" ID="233">
+		<DESCRIPTION>
+            Flow at input nodes for NFPA Report
+        </DESCRIPTION>
+		<TABLE name="NFPA-Input-nodes">
+			<FIELD name="Label" datatype="char" arraysize="12"/>
+			<FIELD name="Flow" datatype="double" arraysize="1" unit="flowrate"/>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>    1</TD><TD>5.90007081628E-02</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+	</RESOURCE>
+	<RESOURCE name="Materials" ID="240">
+		<DESCRIPTION>
+            Materials take-off
+        </DESCRIPTION>
+		<RESOURCE name="Schedule" ID="242">
+			<DESCRIPTION>
+                Details for schedule KSD 3507
+            </DESCRIPTION>
+			<TABLE name="Pipe lengths">
+				<FIELD name="Nominal bore - mm" datatype="double" arraysize="1"/>
+				<FIELD name="Total length" datatype="double" arraysize="1" unit="length"/>
+				<DATA>
+					<TABLEDATA>
+						<TR>
+							<TD>50.0000</TD><TD>4.11000</TD>
+						</TR>
+						<TR>
+							<TD>65.0000</TD><TD>1.71000</TD>
+						</TR>
+						<TR>
+							<TD>80.0000</TD><TD>9.36000</TD>
+						</TR>
+						<TR>
+							<TD>125.000</TD><TD>18.1400</TD>
+						</TR>
+						<TR>
+							<TD>150.000</TD><TD>39.6300</TD>
+						</TR>
+					</TABLEDATA>
+				</DATA>
+			</TABLE>
+		</RESOURCE>
+		<RESOURCE name="Schedule" ID="249">
+			<DESCRIPTION>
+                Details for schedule KSD 3562
+            </DESCRIPTION>
+			<TABLE name="Pipe lengths">
+				<FIELD name="Nominal bore - mm" datatype="double" arraysize="1"/>
+				<FIELD name="Total length" datatype="double" arraysize="1" unit="length"/>
+				<DATA>
+					<TABLEDATA>
+						<TR>
+							<TD>150.000</TD><TD>75.4000</TD>
+						</TR>
+					</TABLEDATA>
+				</DATA>
+			</TABLE>
+		</RESOURCE>
+		<RESOURCE name="Schedule" ID="256">
+			<DESCRIPTION>
+                Details for schedule FX
+            </DESCRIPTION>
+			<TABLE name="Pipe lengths">
+				<FIELD name="Nominal bore - mm" datatype="double" arraysize="1"/>
+				<FIELD name="Total length" datatype="double" arraysize="1" unit="length"/>
+				<DATA>
+					<TABLEDATA>
+						<TR>
+							<TD>25.0000</TD><TD>21.0000</TD>
+						</TR>
+					</TABLEDATA>
+				</DATA>
+			</TABLE>
+		</RESOURCE>
+		<RESOURCE name="Schedule" ID="263">
+			<DESCRIPTION>
+                Details for schedule CPVC2
+            </DESCRIPTION>
+			<TABLE name="Pipe lengths">
+				<FIELD name="Nominal bore - mm" datatype="double" arraysize="1"/>
+				<FIELD name="Total length" datatype="double" arraysize="1" unit="length"/>
+				<DATA>
+					<TABLEDATA>
+						<TR>
+							<TD>25.0000</TD><TD>15.6200</TD>
+						</TR>
+						<TR>
+							<TD>32.0000</TD><TD>13.4800</TD>
+						</TR>
+						<TR>
+							<TD>40.0000</TD><TD>9.58000</TD>
+						</TR>
+						<TR>
+							<TD>50.0000</TD><TD>8.17000</TD>
+						</TR>
+						<TR>
+							<TD>65.0000</TD><TD>27.6000</TD>
+						</TR>
+					</TABLEDATA>
+				</DATA>
+			</TABLE>
+		</RESOURCE>
+		<RESOURCE name="Schedule" ID="270">
+			<DESCRIPTION>
+                Details for schedule DP
+            </DESCRIPTION>
+			<TABLE name="Pipe lengths">
+				<FIELD name="Nominal bore - mm" datatype="double" arraysize="1"/>
+				<FIELD name="Total length" datatype="double" arraysize="1" unit="length"/>
+				<DATA>
+					<TABLEDATA>
+						<TR>
+							<TD>25.0000</TD><TD>1.26000</TD>
+						</TR>
+					</TABLEDATA>
+				</DATA>
+			</TABLE>
+		</RESOURCE>
+		<TABLE name="Nozzles">
+			<FIELD name="Type" datatype="char" arraysize="30"/>
+			<FIELD name="K-Factor" datatype="double" arraysize="1"/>
+			<FIELD name="Min. flow" datatype="double" arraysize="1" unit="flowrate"/>
+			<FIELD name="Max. flow" datatype="double" arraysize="1" unit="flowrate"/>
+			<FIELD name="Number" datatype="int" arraysize="1"/>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>SP-HEAD</TD>
+						<TD>80.0000</TD>
+						<TD>199392.</TD>
+						<TD>1.278123E+06</TD>
+						<TD>30</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+		<TABLE name="Fittings">
+			<FIELD name="Fitting Nominal size" datatype="double" arraysize="1" unit="diameter"/>
+			<FIELD name="45 Deg Elbow" datatype="int" arraysize="1"/>
+			<FIELD name=" 90 Deg Standard Elbow" datatype="int" arraysize="1"/>
+			<FIELD name="90 Deg Long Radius Elbow" datatype="int" arraysize="1"/>
+			<FIELD name="Tee or Cross (Flow Turned Thro 90 Deg)" datatype="int" arraysize="1"/>
+			<FIELD name="Gate Valve" datatype="int" arraysize="1"/>
+			<FIELD name="Swing Check Valve" datatype="int" arraysize="1"/>
+			<FIELD name="Non-Return Valve" datatype="int" arraysize="1"/>
+			<FIELD name="Ball Valve" datatype="int" arraysize="1"/>
+			<FIELD name="Butterfly Valve" datatype="int" arraysize="1"/>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>25.000</TD><TD>0</TD><TD>7</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD>
+					</TR>
+					<TR>
+						<TD>32.000</TD><TD>1</TD><TD>3</TD><TD>0</TD><TD>10</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD>
+					</TR>
+					<TR>
+						<TD>40.000</TD><TD>0</TD><TD>5</TD><TD>0</TD><TD>6</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD>
+					</TR>
+					<TR>
+						<TD>50.000</TD><TD>0</TD><TD>4</TD><TD>0</TD><TD>4</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD>
+					</TR>
+					<TR>
+						<TD>65.000</TD><TD>0</TD><TD>6</TD><TD>0</TD><TD>9</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD>
+					</TR>
+					<TR>
+						<TD>80.000</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>2</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD>
+					</TR>
+					<TR>
+						<TD>125.000</TD><TD>0</TD><TD>4</TD><TD>0</TD><TD>3</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>1</TD>
+					</TR>
+					<TR>
+						<TD>150.000</TD><TD>0</TD><TD>15</TD><TD>0</TD><TD>1</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD><TD>0</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+		<TABLE name="Other Equipment">
+			<FIELD name="Type" datatype="char" arraysize="*"/>
+			<FIELD name="Number" datatype="int" arraysize="1"/>
+			<DATA>
+				<TABLEDATA>
+					<TR>
+						<TD>Pumps</TD><TD>0</TD>
+					</TR>
+					<TR>
+						<TD>Orifice Plates</TD><TD>0</TD>
+					</TR>
+					<TR>
+						<TD>Deluge valves</TD><TD>0</TD>
+					</TR>
+					<TR>
+						<TD>Non-Return Valves</TD><TD>0</TD>
+					</TR>
+					<TR>
+						<TD>Elastomeric Valves</TD><TD>0</TD>
+					</TR>
+					<TR>
+						<TD>Special equipment</TD><TD>31</TD>
+					</TR>
+				</TABLEDATA>
+			</DATA>
+		</TABLE>
+	</RESOURCE>
+</XDSET>

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Library SYSTEM "Library.dtd">
+<Library>
+	<Schedule-section>
+		<Schedule poisson-ratio="Unset" youngs-modulus="Unset">
+			<Item-name>KSD 3507</Item-name>
+			<Description/>
+			<Metric-definition roughness="0.04572">
+				<Size-definition external="Unset" internal="16.4" nominal="15"/>
+				<Size-definition external="Unset" internal="21.9" nominal="20"/>
+				<Size-definition external="Unset" internal="27.5" nominal="25"/>
+				<Size-definition external="Unset" internal="36.2" nominal="32"/>
+				<Size-definition external="Unset" internal="42.1" nominal="40"/>
+				<Size-definition external="Unset" internal="53.2" nominal="50"/>
+				<Size-definition external="Unset" internal="69" nominal="65"/>
+				<Size-definition external="Unset" internal="81" nominal="80"/>
+				<Size-definition external="Unset" internal="93.5" nominal="90"/>
+				<Size-definition external="Unset" internal="105.3" nominal="100"/>
+				<Size-definition external="Unset" internal="130.1" nominal="125"/>
+				<Size-definition external="Unset" internal="155.5" nominal="150"/>
+				<Size-definition external="Unset" internal="204.6" nominal="200"/>
+				<Size-definition external="Unset" internal="254.6" nominal="250"/>
+				<Size-definition external="Unset" internal="304.5" nominal="300"/>
+			</Metric-definition>
+		</Schedule>
+		<Schedule poisson-ratio="Unset" youngs-modulus="Unset">
+			<Item-name>KSD 3562</Item-name>
+			<Description/>
+			<Metric-definition roughness="0.04572">
+				<Size-definition external="Unset" internal="21.4" nominal="20"/>
+				<Size-definition external="Unset" internal="27.2" nominal="25"/>
+				<Size-definition external="Unset" internal="35.5" nominal="32"/>
+				<Size-definition external="Unset" internal="41.2" nominal="40"/>
+				<Size-definition external="Unset" internal="52.7" nominal="50"/>
+				<Size-definition external="Unset" internal="65.9" nominal="65"/>
+				<Size-definition external="Unset" internal="78.1" nominal="80"/>
+				<Size-definition external="Unset" internal="90.2" nominal="90"/>
+				<Size-definition external="Unset" internal="102.3" nominal="100"/>
+				<Size-definition external="Unset" internal="126.6" nominal="125"/>
+				<Size-definition external="Unset" internal="151" nominal="150"/>
+				<Size-definition external="Unset" internal="199.9" nominal="200"/>
+				<Size-definition external="Unset" internal="248.8" nominal="250"/>
+				<Size-definition external="Unset" internal="297.9" nominal="300"/>
+			</Metric-definition>
+		</Schedule>
+		<Schedule poisson-ratio="Unset" youngs-modulus="Unset">
+			<Item-name>KSD 3576</Item-name>
+			<Description/>
+			<Metric-definition roughness="0.04572">
+				<Size-definition external="Unset" internal="17.5" nominal="15"/>
+				<Size-definition external="Unset" internal="23" nominal="20"/>
+				<Size-definition external="Unset" internal="28.4" nominal="25"/>
+				<Size-definition external="Unset" internal="37.1" nominal="32"/>
+				<Size-definition external="Unset" internal="43" nominal="40"/>
+				<Size-definition external="Unset" internal="54.9" nominal="50"/>
+				<Size-definition external="Unset" internal="70.3" nominal="65"/>
+				<Size-definition external="Unset" internal="83.1" nominal="80"/>
+				<Size-definition external="Unset" internal="95.6" nominal="90"/>
+				<Size-definition external="Unset" internal="108.3" nominal="100"/>
+				<Size-definition external="Unset" internal="133" nominal="125"/>
+				<Size-definition external="Unset" internal="158.4" nominal="150"/>
+				<Size-definition external="Unset" internal="208.3" nominal="200"/>
+				<Size-definition external="Unset" internal="259.4" nominal="250"/>
+				<Size-definition external="Unset" internal="309.5" nominal="300"/>
+			</Metric-definition>
+		</Schedule>
+		<Schedule poisson-ratio="Unset" youngs-modulus="Unset">
+			<Item-name>DP</Item-name>
+			<Description>DP</Description>
+			<Metric-definition roughness="0.04572">
+				<Size-definition external="Unset" internal="25" nominal="25"/>
+			</Metric-definition>
+		</Schedule>
+		<Schedule poisson-ratio="Unset" youngs-modulus="Unset">
+			<Item-name>CPVC</Item-name>
+			<Description>CPVC</Description>
+			<Metric-definition roughness="0.065">
+				<Size-definition external="Unset" internal="27.9" nominal="25"/>
+				<Size-definition external="Unset" internal="35.4" nominal="32"/>
+				<Size-definition external="Unset" internal="40.5" nominal="40"/>
+				<Size-definition external="Unset" internal="50.8" nominal="50"/>
+				<Size-definition external="Unset" internal="61.4" nominal="65"/>
+				<Size-definition external="Unset" internal="74.8" nominal="80"/>
+			</Metric-definition>
+		</Schedule>
+		<Schedule poisson-ratio="Unset" youngs-modulus="Unset">
+			<Item-name>FX</Item-name>
+			<Description>FX</Description>
+			<Metric-definition roughness="0.04572">
+				<Size-definition external="Unset" internal="21.6" nominal="20"/>
+			</Metric-definition>
+		</Schedule>
+	</Schedule-section>
+	<Fitting-section>
+	</Fitting-section>
+	<Pump-section>
+		<Pump-definition curve-type="quadratic" flowrate-unit="l-min" max-degeneration-factor="0" max-flow="0.0725" min-degeneration-factor="0" min-flow="0" pressure-unit="metres">
+			<Item-name>SP_162M_2900LPM</Item-name>
+			<Description>SP_162M_2900LPM</Description>
+			<Set-of-pump-points>
+				<Pump-point flow="0" pressure="1888264.71"/>
+				<Pump-point flow="0.01125" pressure="1872308.1"/>
+				<Pump-point flow="0.0241666667" pressure="1810145.82"/>
+				<Pump-point flow="0.0483333333" pressure="1585872.17"/>
+				<Pump-point flow="0.055" pressure="1512647.95"/>
+				<Pump-point flow="0.0633333333" pressure="1370996.28"/>
+				<Pump-point flow="0.0725" pressure="1260866.27"/>
+			</Set-of-pump-points>
+		</Pump-definition>
+	</Pump-section>
+	<Control-valve-section>
+	</Control-valve-section>
+	<Fluid-section>
+	</Fluid-section>
+	<Nozzle-section>
+		<Nozzle-definition k-value="4.25773276e-006" maximum-pressure="1278123" minimum-pressure="199391.5" spray-angle="0">
+			<Item-name>SP-HEAD</Item-name>
+			<Description>SP-HEAD</Description>
+		</Nozzle-definition>
+		<Nozzle-definition k-value="5.30619945e-006" maximum-pressure="2062655" minimum-pressure="101325" spray-angle="0">
+			<Item-name>INDOOR HYDRANT</Item-name>
+			<Description>IH</Description>
+		</Nozzle-definition>
+	</Nozzle-section>
+	<Deluge-valve-section>
+	</Deluge-valve-section>
+	<Lining-section>
+	</Lining-section>
+	<TurboPump-section>
+	</TurboPump-section>
+	<Inertial-pump-section>
+	</Inertial-pump-section>
+	<Pressure-loss-section>
+	</Pressure-loss-section>
+	<Tanks-section>
+	</Tanks-section>
+	<Nozzles-section>
+	</Nozzles-section>
+	<Lagging-section>
+	</Lagging-section>
+	<Binary-Interaction-Data-section>
+	</Binary-Interaction-Data-section>
+</Library>

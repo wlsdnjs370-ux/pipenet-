@@ -272,7 +272,7 @@ class SprinklerPipelineV4:
             payload = workspace.to_payload(include_network_entities=True, include_network_summary=True)
             entity_count = len(payload.get("entities") or [])
             try:
-                ai_result = get_cached_ai_vision_extractor(str(Path(__file__).resolve().parent)).enhance_from_payload(
+                ai_result = get_cached_ai_vision_extractor(str(Path(__file__).resolve().parent.parent)).enhance_from_payload(
                     dxf_path=dxf_path,
                     cad_payload=payload,
                 )

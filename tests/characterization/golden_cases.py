@@ -20,7 +20,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _CAL = REPO_ROOT / "calibration"
-for _p in (str(REPO_ROOT), str(_CAL)):
+_CORE = REPO_ROOT / "core"
+for _p in (str(REPO_ROOT), str(_CAL), str(_CORE)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -28,7 +29,7 @@ for _p in (str(REPO_ROOT), str(_CAL)):
 FIXTURES = {
     "plane_daemyeong": "samples/dxf/대명동201동 단위세대_layer정리.dxf",
     "system_daemyeong_min": "data/sample_problem/대명동201동 계통도_최소.dxf",
-    "system_lh306": "계통도_LH_306.dxf",
+    "system_lh306": "samples/dxf/계통도_LH_306.dxf",
     "fitting_tee": "samples/dxf/분기티.dxf",
     "machineroom_tank": "data/sample_problem/옥상수조.dxf",
 }
@@ -209,7 +210,7 @@ REF_SDF_31 = "3-1형_자연낙차_LSP_4F_OA_지하층포함_120m~200m미만_6.6K
 def _case_analyze_sdf():
     def run():
         mod = _server_mod()
-        res = mod._analyze_sdf_sprinkler_network(REPO_ROOT / REF_SDF_31)
+        res = mod._analyze_sdf_sprinkler_network(REPO_ROOT / "assets" / REF_SDF_31)
         return _normalize_response(res)
     return run
 

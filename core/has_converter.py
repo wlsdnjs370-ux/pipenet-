@@ -48,7 +48,7 @@ from kfp_sdf_converter import (
 # 스켈레톤 템플릿 — 붙임 샘플(.has) 재사용
 # ────────────────────────────────────────────────────────────────────────────
 
-_MOD_ROOT = Path(__file__).resolve().parent
+_MOD_ROOT = Path(__file__).resolve().parent.parent  # core/ 하위 → repo root
 
 
 def _template_path() -> Path:

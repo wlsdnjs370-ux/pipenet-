@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+# ── core/ 라이브러리 경로 (repo 정리: 루트 라이브러리 → core/ 이동) ──
+import sys as _sys
+from pathlib import Path as _Path
+_CORE = _Path(__file__).resolve().parent / "core"
+if _CORE.is_dir() and str(_CORE) not in _sys.path:
+    _sys.path.insert(0, str(_CORE))
+
 import base64
 import gzip
 import hashlib
@@ -5565,8 +5572,8 @@ def remote30_system_clean_network():
 
     Form/JSON (모두 선택):
         scale_mm_per_unit — 도면 1단위 = 실제 mm (기본 1.0, 용지 스케일이면 작게 나옴).
-    파일 경로: env REMOTE30_CLEAN_SYSTEM_DXF 우선, 없으면 프로젝트 루트
-        계통도_LH_306_배관망추출.dxf.
+    파일 경로: env REMOTE30_CLEAN_SYSTEM_DXF 우선, 없으면
+        samples/dxf/계통도_LH_306_배관망추출.dxf.
     """
     scale = 1.0
     raw_scale = None
@@ -5581,7 +5588,7 @@ def remote30_system_clean_network():
         scale = 1.0
 
     clean_path = os.environ.get("REMOTE30_CLEAN_SYSTEM_DXF")
-    clean_file = Path(clean_path) if clean_path else (BASE_DIR / "계통도_LH_306_배관망추출.dxf")
+    clean_file = Path(clean_path) if clean_path else (BASE_DIR / "samples" / "dxf" / "계통도_LH_306_배관망추출.dxf")
     if not clean_file.is_file():
         return jsonify({"ok": False,
                         "message": f"깨끗한 배관망 파일 없음: {clean_file}. "

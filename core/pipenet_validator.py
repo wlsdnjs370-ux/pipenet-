@@ -213,7 +213,7 @@ class ElastomericValveRow:
 
 
 class PipenetGuideValidator:
-    BASE_DIR = Path(__file__).resolve().parent
+    BASE_DIR = Path(__file__).resolve().parent.parent  # core/ 하위 → repo root
     BRANCH_PIPE_LIMIT_MM = 50.0
     BRANCH_PIPE_V_LIMIT = 6.0
     MAIN_PIPE_V_LIMIT = 10.0

@@ -21,6 +21,13 @@ Stages
 
 from __future__ import annotations
 
+# ── core/ 라이브러리 경로 (repo 정리: 루트 라이브러리 → core/ 이동) ──
+import sys as _sys
+from pathlib import Path as _Path
+_CORE = _Path(__file__).resolve().parent / "core"
+if _CORE.is_dir() and str(_CORE) not in _sys.path:
+    _sys.path.insert(0, str(_CORE))
+
 import csv
 import heapq
 import math
@@ -117,8 +124,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-PIPENET_CATEGORIES = {"PIPE", "HEAD", "TEXT", "ALARM"}
-KEEP_BASE_LAYERS = {"0"}  # INSERT BYLAYER 공통 + 도면 컨텍스트
+from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, HEAD_BRIDGE_MAX_MM, SOURCE_BRIDGE_MAX_MM, MIN_PIPE_EDGE_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG)  # noqa: E501  (Phase2b core)
 
 # ── 초대형 XREF 도면 예산 가드 (기계실/계통도 파싱) ──────────────────────────
 # 142MB LH 지하층배관도는 최상위 INSERT 61개를 폭발하면 leaf 597k개가 되는데
@@ -1043,24 +1049,7 @@ SYSTEM_PIPE_LAYER_KEYWORDS: tuple[str, ...] = (
 )
 
 # v2 — TEXT 라벨 파싱 (직경 + 층)
-_DIA_TEXT_PATTERNS = (
-    re.compile(r"\b(\d{2,3})\s*A\b"),                  # 25A
-    re.compile(r"^\s*(\d{2,3})\s*$"),                  # 순수 숫자
-    re.compile(r"[Øø]\s*(\d{2,3})"),                   # Ø25
-    re.compile(r"DN\s*(\d{2,3})"),                     # DN25
-    re.compile(r"(?<![0-9])(\d{2,3})\s*mm(?![0-9])"),  # 25mm
-)
-_DIA_TEXT_NOISE_KW = ("호스", "방수구", "소화전", "옥내", "HOSE", "EA", "KG",
-                      "SET", "SCALE", "PUMP", "펌프", "TANK", "탱크", "SIZE")
-_VALID_DIA_MM = frozenset((15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300))
 
-_FLOOR_LABEL_PATTERNS = (
-    (re.compile(r"지상\s*(\d{1,2})\s*층"), "ground"),     # 지상N층 → +N
-    (re.compile(r"지하\s*(\d{1,2})\s*층"), "basement"),   # 지하N층 → -N
-    (re.compile(r"B\s*(\d{1,2})\s*F", re.I), "basement"),  # B1F → -1
-    (re.compile(r"(?<![A-Za-z])(\d{1,2})\s*F(?![A-Za-z])"), "ground"),  # 5F → +5
-)
-_FLOOR_LABEL_SPECIAL = {"옥상": 99, "옥탑": 99, "ROOF": 99, "R/F": 99, "RF": 99}
 
 
 def _extract_dia_text_points(entities: list[dict]) -> list[tuple[float, float, int, str]]:
@@ -1161,16 +1150,7 @@ def _floor_for_node_y(node_y: float,
     return None, None
 
 
-def _point_to_segment_dist(px: float, py: float,
-                            ax: float, ay: float,
-                            bx: float, by: float) -> float:
-    """점 (px,py) ↔ segment [a,b] 최단 거리."""
-    dx, dy = bx - ax, by - ay
-    if dx == 0 and dy == 0:
-        return math.hypot(px - ax, py - ay)
-    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
-    cx, cy = ax + t * dx, ay + t * dy
-    return math.hypot(px - cx, py - cy)
+from remote30_graph import (_point_to_segment_dist, _round_pt, _NodeIndex, _is_triangle_shape, _edge_dir, _midpoint, _dijkstra_from, _shortest_path, _nearest_graph_node, _connected_components)  # noqa: E501  (Phase2b core)
 
 
 def _match_diameter_for_segment(
@@ -2033,7 +2013,6 @@ def _network_to_riser_dict(
 # SP 배관이 탱크 토출구 근처(실측 252mm)에 끝점을 가지므로 수원 스냅은 그대로 동작.
 # 도면별 레이어명이 달라 layer_filter 미지정 시 존재하는 것만 추려 쓰고,
 # 매칭 0건이면 build_system_graph 의 키워드 자동 필터 사용.
-MACHINE_ROOM_SP_LAYERS = {"-소화(SP-고)", "-소화(SP-저)"}
 
 
 def extract_machine_room_path(
@@ -2264,7 +2243,6 @@ def filter_pipenet_only(bundle: ParsedDxfBundle) -> list[dict]:
 # 2) Stage 2 — G₀ 그래프 빌드 + 가장 불리한 K 헤드 + subgraph 추출
 # ────────────────────────────────────────────────────────────────────────────
 
-SNAP_TOL_MM = 50.0
 # 50mm: DN50 (최소 호칭경) 미만 거리는 배관 토폴로지상 같은 점으로 간주.
 # 부동소수점 오차 + DWG→DXF 변환 누적 오차 + CAD 작업자 미세 오차 모두 흡수.
 # 이전 5mm 는 대명동/다이소 작업엔 문제 없었으나, 좌표 절댓값이 큰 도면
@@ -2272,67 +2250,19 @@ SNAP_TOL_MM = 50.0
 # 끝점들이 안 만나서 그래프가 3,058 component 로 쪼개지는 사고 발생.
 # 50mm 는 토폴로지 분석에 영향 없음 (호칭경 단위가 50/65/80/100mm 라 50mm
 # 이내 차이는 의미 없음). 격자 snap 아니라 _NodeIndex cluster 반경.
-HEAD_BRIDGE_MAX_MM = 5000.0  # 헤드 INSERT 좌표 ↔ 가장 가까운 그래프 노드 brigde 허용 거리.
 # 5m: 메자닌/대형 도면 (예: MF-125) 의 헤드가 배관 라인과 천장고 차이로 멀리 떨어진 경우 보호.
-SOURCE_BRIDGE_MAX_MM = 25000.0  # 알람밸브 (source) ↔ 배관망 nearest bridge 허용 (25m).
 # 알람밸브는 라이저 (수직 입상관) 위에 위치 — 평면도상 가지관과 거리가 멀 수 있음.
 # 25m 이내면 알람밸브 위치 그대로 source 로 사용 → 그래프 component 통합 효과.
 ESTIMATED_BRIDGE_MM = 2000.0  # 이 길이 초과 강제 bridge = 추정(도면에 없는 wormhole).
 # 2m 이하 gap 은 fitting/도면오차로 보고 실배관 연속으로 취급(경로에 사용). 초과분은 추정
 # bridge(노란 점선)로 보고 Dijkstra penalty → 실배관 대안이 있으면 망 생성에서 회피.
-MIN_PIPE_EDGE_MM = 50.0
 # 50mm 미만 LINE/PL/ARC segment 는 그래프 edge 로 사용 안 함.
 # 헤드 부속(HEADCON, HDCROSS, SPCAP 등), 치수 보조선, 텍스트 underline 등
 # 평면도에는 보이지만 배관망 토폴로지에는 노이즈인 짧은 segment 제거.
-CLOSED_PL_TOL_MM = 5.0  # PL 의 첫점과 마지막점이 이 거리 안이면 closed polygon 으로 간주 → 그래프 제외
 
 
-def _round_pt(x: float, y: float, tol: float = SNAP_TOL_MM) -> tuple[float, float]:
-    """격자 정렬 좌표 — HeadCandidate dedup, Counter 키 등 동등성 비교용.
-
-    그래프 노드 키로는 더 이상 사용 안 함 (_NodeIndex 가 raw 좌표 기반 cluster 처리).
-    """
-    return (round(x / tol) * tol, round(y / tol) * tol)
 
 
-class _NodeIndex:
-    """Grid-bucket 기반 epsilon-tolerant endpoint cluster.
-
-    Snap 격자(round-to-grid)의 대안. raw 좌표를 노드 키로 그대로 보존하면서,
-    epsilon 반경 안에 기존 노드가 있으면 그 노드 좌표를 반환 (없으면 신규 등록).
-
-    이점:
-      - 노드 좌표 = raw → Stage 3 시각화가 격자 정렬 안 됨 → 비뚤어짐 없음
-      - 격자 경계 분리 위험 없음 (cluster 가 9 bucket neighborhood 검색)
-      - 같은 raw 좌표는 항상 같은 tuple value → dict hash 일관
-    """
-
-    __slots__ = ("eps", "_eps_sq", "_cell", "_bucket")
-
-    def __init__(self, epsilon_mm: float = SNAP_TOL_MM):
-        self.eps = epsilon_mm
-        self._eps_sq = epsilon_mm * epsilon_mm
-        self._cell = epsilon_mm
-        self._bucket: dict[tuple[int, int], list[tuple[float, float]]] = defaultdict(list)
-
-    def canonical(self, x: float, y: float) -> tuple[float, float]:
-        """epsilon 안에 기존 노드 있으면 그 좌표, 없으면 (x, y) 신규 등록."""
-        kx = int(x // self._cell)
-        ky = int(y // self._cell)
-        best = None
-        bestd = float("inf")
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                for pt in self._bucket.get((kx + dx, ky + dy), ()):
-                    d = (pt[0] - x) ** 2 + (pt[1] - y) ** 2
-                    if d < bestd and d <= self._eps_sq:
-                        bestd = d
-                        best = pt
-        if best is not None:
-            return best
-        new_pt = (x, y)
-        self._bucket[(kx, ky)].append(new_pt)
-        return new_pt
 
 
 @dataclass(slots=True)
@@ -2392,16 +2322,6 @@ class HeadDetection:
     layer: str = ""
 
 
-def _is_triangle_shape(pts: list, tol: float = 2.0) -> bool:
-    """HATCH path 의 점 시퀀스가 삼각형 (3 고유 정점) 인지 — closed loop 의 시작/끝 중복 무시."""
-    if not pts or len(pts) < 3:
-        return False
-    unique: list[tuple[float, float]] = []
-    for p in pts:
-        x, y = float(p[0]), float(p[1])
-        if not any(abs(x - u[0]) < tol and abs(y - u[1]) < tol for u in unique):
-            unique.append((x, y))
-    return len(unique) == 3
 
 
 def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str]) -> list[HeadDetection]:
@@ -2647,22 +2567,10 @@ def _build_graph(
 # 시각적으로 꼬임/겹침. 이 모듈은 4-cycle (u-v-w-x) 중 두 변이 평행하고 (rail)
 # 나머지 두 변이 짧으면 (rung, 관 cap/cross-fitting) ladder 로 식별, midline 하나로 합성.
 
-LADDER_MAX_RUNG_MM = 300.0     # rung (짧은 cross 변) 최대 길이. 단위세대 도면 기준.
-LADDER_MIN_RAIL_RATIO = 3.0    # rail / rung 평균 길이 비. 정사각형 (=1) 은 합성 안 됨.
-LADDER_PARALLEL_COS = 0.985    # 두 rail 의 방향 cos 유사도 임계값 (≈ 10도 안)
-LADDER_MAX_ITER = 10           # collapse 반복 횟수 (합성 후 새 ladder 생길 수 있음)
 
 
-def _edge_dir(p: tuple, q: tuple) -> tuple[float, float]:
-    dx, dy = q[0] - p[0], q[1] - p[1]
-    n = math.hypot(dx, dy)
-    if n == 0.0:
-        return (0.0, 0.0)
-    return (dx / n, dy / n)
 
 
-def _midpoint(p: tuple, q: tuple) -> tuple[float, float]:
-    return ((p[0] + q[0]) / 2, (p[1] + q[1]) / 2)
 
 
 def _find_ladder_4cycles(
@@ -2999,102 +2907,12 @@ def _find_source(pipe_entities: list[dict], layer_categories: dict[str, str]) ->
     return None, "auto_junction"
 
 
-def _dijkstra_from(graph: dict, edge_len: dict, src: tuple[float, float]) -> dict[tuple[float, float], float]:
-    """단순 Dijkstra — 모든 노드까지의 거리."""
-    dist: dict[tuple[float, float], float] = {src: 0.0}
-    pq: list[tuple[float, tuple[float, float]]] = [(0.0, src)]
-    while pq:
-        d, u = heapq.heappop(pq)
-        if d > dist.get(u, float("inf")):
-            continue
-        for v in graph.get(u, ()):
-            key = (min(u, v), max(u, v))
-            w = edge_len.get(key, math.hypot(v[0] - u[0], v[1] - u[1]))
-            nd = d + w
-            if nd < dist.get(v, float("inf")):
-                dist[v] = nd
-                heapq.heappush(pq, (nd, v))
-    return dist
 
 
-def _shortest_path(graph: dict, edge_len: dict, src: tuple[float, float], tgt: tuple[float, float],
-                   penalty_keys: set | None = None, penalty_mm: float = 1.0e9) -> list[tuple[float, float]]:
-    """src → tgt 최단 경로 (vertex 시퀀스).
-
-    penalty_keys: 거대 가중치를 더할 edge 키 집합 (rounded-int 좌표쌍 (min,max)).
-        force_connect 가 만든 추정 bridge(도면에 없는 직선 wormhole)를 여기에 넣으면
-        Dijkstra 가 실측 배관 경로를 우선하고, 추정 bridge 는 다른 대안이 전혀 없을 때만
-        (최소 개수로) 사용한다 → 도면을 가로지르는 "엉뚱한 경로" 방지. 단, 작은 gap 을
-        메우는 단계 bridge(≤tolerance)는 실배관 연속으로 보고 penalty 대상에서 제외.
-    """
-    if src == tgt:
-        return [src]
-    penalty_keys = penalty_keys or set()
-    dist = {src: 0.0}
-    prev: dict = {}
-    pq = [(0.0, src)]
-    while pq:
-        d, u = heapq.heappop(pq)
-        if u == tgt:
-            break
-        if d > dist.get(u, float("inf")):
-            continue
-        for v in graph.get(u, ()):
-            key = (min(u, v), max(u, v))
-            w = edge_len.get(key, math.hypot(v[0] - u[0], v[1] - u[1]))
-            if penalty_keys:
-                ru = (int(round(u[0])), int(round(u[1])))
-                rv = (int(round(v[0])), int(round(v[1])))
-                if (min(ru, rv), max(ru, rv)) in penalty_keys:
-                    w += penalty_mm
-            nd = d + w
-            if nd < dist.get(v, float("inf")):
-                dist[v] = nd
-                prev[v] = u
-                heapq.heappush(pq, (nd, v))
-    if tgt not in prev and tgt != src:
-        return []
-    # backtrack
-    out = [tgt]
-    while out[-1] in prev:
-        out.append(prev[out[-1]])
-    out.reverse()
-    return out if out and out[0] == src else []
 
 
-def _nearest_graph_node(graph: dict, pt: tuple[float, float]) -> tuple[float, float] | None:
-    """그래프 노드 중 pt 와 가장 가까운 노드. 같은 좌표면 그대로."""
-    if pt in graph:
-        return pt
-    best = None
-    bestd = float("inf")
-    for n in graph:
-        d = (n[0] - pt[0]) ** 2 + (n[1] - pt[1]) ** 2
-        if d < bestd:
-            bestd = d
-            best = n
-    return best
 
 
-def _connected_components(graph: dict) -> list[set]:
-    """그래프의 connected component 들."""
-    seen = set()
-    comps = []
-    for start in graph:
-        if start in seen:
-            continue
-        stack = [start]
-        comp = set()
-        while stack:
-            u = stack.pop()
-            if u in seen:
-                continue
-            seen.add(u); comp.add(u)
-            for v in graph.get(u, ()):
-                if v not in seen:
-                    stack.append(v)
-        comps.append(comp)
-    return comps
 
 
 def _bridge_components(
@@ -3122,18 +2940,24 @@ def _bridge_components(
         main = max(comps, key=len)
         others = [c for c in comps if c is not main]
         bridges = 0
+        main_pts = list(main)  # 반복 set 순회 대신 로컬 리스트 (동일 순서 argmin 보존)
         for comp in others:
-            # comp 의 각 노드에서 main 의 가장 가까운 노드 찾기 (작은 comp 기준 O(|comp|*|main|))
+            # comp 의 각 노드에서 main 의 가장 가까운 노드 찾기 (작은 comp 기준 O(|comp|*|main|)).
+            # 내부 루프는 제곱거리로 비교(단조 → argmin·tie-break 동일) → hypot 호출 제거.
             best = None
-            bestd = float("inf")
+            bestd2 = float("inf")
             for u in comp:
-                for v in main:
-                    d = math.hypot(u[0] - v[0], u[1] - v[1])
-                    if d < bestd:
-                        bestd = d
+                ux = u[0]; uy = u[1]
+                for v in main_pts:
+                    dx = ux - v[0]; dy = uy - v[1]
+                    d2 = dx * dx + dy * dy
+                    if d2 < bestd2:
+                        bestd2 = d2
                         best = (u, v)
-            if best and bestd <= max_bridge_mm:
+            if best:
                 u, v = best
+                bestd = math.hypot(u[0] - v[0], u[1] - v[1])  # 최종 1회 — 저장값 동일 보존
+            if best and bestd <= max_bridge_mm:
                 graph[u].add(v); graph[v].add(u)
                 key = (min(u, v), max(u, v))
                 edge_len[key] = bestd
@@ -3389,10 +3213,6 @@ class PipeTables:
 # C=120). 사용자가 평면도에서 지정한 영역(zone=단위세대 내부) 안의 배관만 CPVC(C=150)로
 # 유지한다. 세대 배관은 통상 CPVC, 간선/입상관은 강관이라는 현장 관행을 사용자 영역
 # 지정으로 표현. C-factor(=roughness-or-c)가 PIPENET 마찰손실에 직접 반영되는 재질값.
-STEEL_PIPE_TYPE = "KSD 3507"
-STEEL_C_FACTOR = "120"
-CPVC_PIPE_TYPE = "CPVC2"
-CPVC_C_FACTOR = "150"
 
 
 def _point_in_zones(px: float, py: float,
@@ -3410,7 +3230,6 @@ def _point_in_zones(px: float, py: float,
 
 # 가지배관 직각화 각도 임계값(deg) — 가지 edge 가 축(0/90°)에서 이 이내면 축정렬로
 # 스냅, 45° 근방(진짜 대각선)은 실좌표 유지. 표시 전용(length_mm·연결 불변).
-ORTHO_SNAP_TOL_DEG = 20.0
 
 
 def _classify_branch_edges(edges, head_points, source_point):

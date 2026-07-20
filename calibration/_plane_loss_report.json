@@ -1,0 +1,443 @@
+{
+  "dxf": "C:\\Users\\admin\\PycharmProjects\\JupyterProject-domain\\samples\\dxf\\대명동201동 단위세대_layer정리.dxf",
+  "entities": 42440,
+  "layers": 25,
+  "after_filter": 2524,
+  "layer_detail": [
+    {
+      "layer": "L4",
+      "category": "OTHER",
+      "kept": false,
+      "count": 39276,
+      "types": {
+        "T": 123,
+        "L": 20636,
+        "A": 6064,
+        "C": 468,
+        "PL": 11800,
+        "H": 15,
+        "S": 170
+      },
+      "line_len_mm": 4348290,
+      "bbox": [
+        244505,
+        -243859,
+        287700,
+        -221384
+      ]
+    },
+    {
+      "layer": "-소화(SP가지관)",
+      "category": "PIPE",
+      "kept": true,
+      "count": 1162,
+      "types": {
+        "L": 987,
+        "I": 175
+      },
+      "line_len_mm": 316192,
+      "bbox": [
+        245470,
+        -242894,
+        284240,
+        -222348
+      ]
+    },
+    {
+      "layer": "0",
+      "category": "OTHER",
+      "kept": true,
+      "count": 678,
+      "types": {
+        "I": 83,
+        "L": 521,
+        "PL": 16,
+        "C": 16,
+        "A": 21,
+        "H": 14,
+        "S": 7
+      },
+      "line_len_mm": 286754,
+      "bbox": [
+        -122717,
+        -4697280,
+        673949,
+        48428
+      ]
+    },
+    {
+      "layer": "SHEET",
+      "category": "ARCH",
+      "kept": false,
+      "count": 356,
+      "types": {
+        "PL": 42,
+        "T": 29,
+        "H": 2,
+        "L": 283
+      },
+      "line_len_mm": 539981,
+      "bbox": [
+        240070,
+        -258150,
+        303070,
+        -213600
+      ]
+    },
+    {
+      "layer": "-소화(SP헤드하향)",
+      "category": "HEAD",
+      "kept": true,
+      "count": 352,
+      "types": {
+        "I": 111,
+        "C": 125,
+        "H": 111,
+        "L": 5
+      },
+      "line_len_mm": 0,
+      "bbox": [
+        245211,
+        -243153,
+        284122,
+        -222089
+      ]
+    },
+    {
+      "layer": "TEX",
+      "category": "TEXT",
+      "kept": true,
+      "count": 194,
+      "types": {
+        "T": 194
+      },
+      "line_len_mm": 0,
+      "bbox": [
+        245362,
+        -255701,
+        294823,
+        -222582
+      ]
+    },
+    {
+      "layer": "L2",
+      "category": "OTHER",
+      "kept": false,
+      "count": 85,
+      "types": {
+        "L": 54,
+        "PL": 1,
+        "A": 5,
+        "C": 25
+      },
+      "line_len_mm": 19114,
+      "bbox": [
+        250045,
+        -255746,
+        288477,
+        -226924
+      ]
+    },
+    {
+      "layer": "SP 후렉시블",
+      "category": "PIPE",
+      "kept": true,
+      "count": 85,
+      "types": {
+        "PL": 85
+      },
+      "line_len_mm": 57271,
+      "bbox": [
+        245273,
+        -243091,
+        284691,
+        -222151
+      ]
+    },
+    {
+      "layer": "L1",
+      "category": "OTHER",
+      "kept": false,
+      "count": 65,
+      "types": {
+        "L": 44,
+        "C": 18,
+        "S": 2,
+        "H": 1
+      },
+      "line_len_mm": 237154,
+      "bbox": [
+        272667,
+        -249944,
+        295701,
+        -226112
+      ]
+    },
+    {
+      "layer": "L6",
+      "category": "OTHER",
+      "kept": false,
+      "count": 40,
+      "types": {
+        "L": 40
+      },
+      "line_len_mm": 3839,
+      "bbox": [
+        288067,
+        -247376,
+        288712,
+        -244898
+      ]
+    },
+    {
+      "layer": "옥내소화전",
+      "category": "EXCLUDE",
+      "kept": false,
+      "count": 38,
+      "types": {
+        "C": 10,
+        "L": 26,
+        "H": 2
+      },
+      "line_len_mm": 7053,
+      "bbox": [
+        262911,
+        -230961,
+        288321,
+        -227314
+      ]
+    },
+    {
+      "layer": "-소화(배관-SP 2차)",
+      "category": "PIPE",
+      "kept": true,
+      "count": 24,
+      "types": {
+        "L": 24
+      },
+      "line_len_mm": 47274,
+      "bbox": [
+        252903,
+        -235713,
+        273982,
+        -229737
+      ]
+    },
+    {
+      "layer": "L3",
+      "category": "OTHER",
+      "kept": false,
+      "count": 18,
+      "types": {
+        "L": 18
+      },
+      "line_len_mm": 26704,
+      "bbox": [
+        250207,
+        -247140,
+        295701,
+        -222595
+      ]
+    },
+    {
+      "layer": "소화기",
+      "category": "EXCLUDE",
+      "kept": false,
+      "count": 16,
+      "types": {
+        "I": 2,
+        "C": 4,
+        "L": 8,
+        "T": 2
+      },
+      "line_len_mm": 1024,
+      "bbox": [
+        264339,
+        -242118,
+        288418,
+        -232316
+      ]
+    },
+    {
+      "layer": "소화기CO2",
+      "category": "EXCLUDE",
+      "kept": false,
+      "count": 8,
+      "types": {
+        "I": 2,
+        "T": 2,
+        "PL": 4
+      },
+      "line_len_mm": 5500,
+      "bbox": [
+        264975,
+        -249743,
+        288421,
+        -230161
+      ]
+    },
+    {
+      "layer": "SHEET-TEXT",
+      "category": "TEXT",
+      "kept": true,
+      "count": 7,
+      "types": {
+        "T": 7
+      },
+      "line_len_mm": 0,
+      "bbox": [
+        296528,
+        -256286,
+        298588,
+        -244388
+      ]
+    },
+    {
+      "layer": "자동식3.0",
+      "category": "EXCLUDE",
+      "kept": false,
+      "count": 6,
+      "types": {
+        "I": 6
+      },
+      "line_len_mm": 0,
+      "bbox": [
+        251341,
+        -240617,
+        288201,
+        -228242
+      ]
+    },
+    {
+      "layer": "소화기1.5",
+      "category": "EXCLUDE",
+      "kept": false,
+      "count": 6,
+      "types": {
+        "I": 6
+      },
+      "line_len_mm": 0,
+      "bbox": [
+        251692,
+        -239417,
+        288201,
+        -227652
+      ]
+    },
+    {
+      "layer": "XR-SHEET$0$SHEET-TEXT",
+      "category": "TEXT",
+      "kept": true,
+      "count": 5,
+      "types": {
+        "T": 5
+      },
+      "line_len_mm": 0,
+      "bbox": [
+        297907,
+        -255205,
+        298363,
+        -216972
+      ]
+    },
+    {
+      "layer": "SP 배관  변경",
+      "category": "PIPE",
+      "kept": true,
+      "count": 5,
+      "types": {
+        "L": 5
+      },
+      "line_len_mm": 668,
+      "bbox": [
+        250929,
+        -237435,
+        275495,
+        -227808
+      ]
+    },
+    {
+      "layer": "헤드반경1",
+      "category": "HEAD",
+      "kept": true,
+      "count": 5,
+      "types": {
+        "I": 1,
+        "L": 1,
+        "T": 1,
+        "S": 1,
+        "C": 1
+      },
+      "line_len_mm": 2600,
+      "bbox": [
+        250769,
+        -237127,
+        253266,
+        -236405
+      ]
+    },
+    {
+      "layer": "1.93℃하향식",
+      "category": "HEAD",
+      "kept": true,
+      "count": 4,
+      "types": {
+        "I": 1,
+        "PL": 1,
+        "C": 2
+      },
+      "line_len_mm": 90,
+      "bbox": [
+        288201,
+        -234662,
+        288201,
+        -234572
+      ]
+    },
+    {
+      "layer": "1.68℃하향식",
+      "category": "HEAD",
+      "kept": true,
+      "count": 3,
+      "types": {
+        "I": 1,
+        "PL": 1,
+        "C": 1
+      },
+      "line_len_mm": 84,
+      "bbox": [
+        288201,
+        -233459,
+        288201,
+        -233375
+      ]
+    },
+    {
+      "layer": "AREA",
+      "category": "ARCH",
+      "kept": false,
+      "count": 1,
+      "types": {
+        "T": 1
+      },
+      "line_len_mm": 0,
+      "bbox": [
+        240820,
+        -220197,
+        240820,
+        -220197
+      ]
+    },
+    {
+      "layer": "아파트",
+      "category": "OTHER",
+      "kept": false,
+      "count": 1,
+      "types": {
+        "C": 1
+      },
+      "line_len_mm": 0,
+      "bbox": null
+    }
+  ]
+}

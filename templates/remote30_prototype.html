@@ -4553,10 +4553,16 @@
     // pipe 그룹 (단일 선) — toScreen 은 함수, pipes 는 [{a:{x,y}, b:{x,y}}, ...]
     function _drawPipeGroup(pairs, baseHex, toScreen) {
       ctx.strokeStyle = baseHex; ctx.lineWidth = GRAPH_STYLE.pipe_width;
-      for (const {a, b} of pairs) {
+      for (const {a, b, bend} of pairs) {
         const [x1, y1] = toScreen(a.x, a.y, a.z);
         const [x2, y2] = toScreen(b.x, b.y, b.z);
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x1, y1);
+        // 표시 전용 L-벤드 웨이포인트 — 가지배관 대각선을 직각 꺾임으로 그림.
+        if (bend && bend.length === 2) {
+          const [mx, my] = toScreen(bend[0], bend[1], a.z);
+          ctx.lineTo(mx, my);
+        }
+        ctx.lineTo(x2, y2); ctx.stroke();
       }
     }
     // 노드 (endpoint 또는 중간) — color 결정 + 흰 외곽 + 채움 + 라벨 (endpoint 만).
@@ -4778,7 +4784,7 @@
         if (revealPipeSet && !revealPipeSet.has(p.in + ">" + p.out)) continue;
         const isMR = mrSet.has(p.in) || mrSet.has(p.out);
         const isRiser = riserSet.has(p.in) || riserSet.has(p.out);
-        (isMR ? mrPairs : isRiser ? riserPairs : headPairs).push({a, b});
+        (isMR ? mrPairs : isRiser ? riserPairs : headPairs).push({a, b, bend: p.bend});
         if (typeof p.velocity_mps === "number") {
           _vHave = true;
           if (p.velocity_mps > _vMax) _vMax = p.velocity_mps;

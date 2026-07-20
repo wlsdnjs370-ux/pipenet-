@@ -3825,6 +3825,7 @@ def remote30_overall_finalize_stream(job_id: str):
                 selection,
                 pipe_entities=job.get("pipe_ents", []),
                 project_title=Path(job["dxf_path"]).stem,
+                cpvc_zones=job["edit"]["zones"] if job["edit"]["zones"] else None,
             )
             yield _emit({"type": "overall_progress", "phase": "stage_a_tables_done",
                          "head_nodes": len(head_tables.nodes),
@@ -4378,7 +4379,9 @@ def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
              "flow_lpm": p.get("flow_lpm"),
              "velocity_mps": p.get("velocity_mps"),
              "v_limit": p.get("v_limit"),
-             "v_over": p.get("v_over")}
+             "v_over": p.get("v_over"),
+             # 표시 전용 L-벤드 웨이포인트 [x,y] — 가지배관 대각선 직각화(있을 때만).
+             "bend": p.get("bend")}
             for p in combined.pipes
         ],
         "pumps": [
@@ -4525,6 +4528,7 @@ def remote30_combined_build():
             selection,
             pipe_entities=plane_job.get("pipe_ents", []),
             project_title=Path(plane_job["dxf_path"]).stem,
+            cpvc_zones=zones if zones else None,
         )
     except Exception as exc:  # noqa: BLE001
         return _err500(exc)
@@ -4923,7 +4927,13 @@ def remote30_combined_build():
             return {"sdf": b_sdf, "slf": b_slf, "kfp": b_kfp, "has": b_has, "zip": b_zip,
                     "zip_sdf": b_zip_sdf, "kfp_ok": b_kfp_ok, "has_ok": b_has_ok}
 
-        # 평면 세트(실 DXF 좌표) — 캔버스 geometry 와 동일한 평면도 좌표(가지만 직각화).
+        # 통합 평면(2D) 뷰는 tree-packing 스키매틱 재배치를 적용하지 않고 실 DXF 추출
+        # (평면도) 좌표를 그대로 답습한다 — 사용자 요청: "형상이 평면도 모습 그대로".
+        # (등각/3D 사본만 아래에서 tree-packing 으로 정돈해 아이소 꼬임 방지.)
+        # orthogonalize L-벤드 웨이포인트는 평면 직선 렌더를 위해 제거(표시 전용, 유압 불변).
+        for _p in combined.pipes:
+            _p.pop("bend", None)
+        # 평면 세트 — 실 DXF 추출 좌표(캔버스 geometry 와 동일).
         plan_bundle = _emit_bundle(combined, "")
         # 등각 세트 — 사본에 tree-packing 스키매틱 재배치 후 30° 등각투영 베이크.
         # 등각은 헤드평면을 균일 격자로 재배치해야 아이소 꼬임이 안 생기므로(평면과 달리)

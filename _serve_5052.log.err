@@ -1,0 +1,8 @@
+C:\Users\admin\PycharmProjects\JupyterProject-domain\대조 서버.py:4937: RuntimeWarning: [combined] HAS emit 실패 (SDF 는 정상): HAS 스켈레톤 템플릿(.has)을 찾을 수 없음 \u2014 REMOTE30_HAS_TEMPLATE 환경변수로 지정하거나 'C:\Users\admin\PycharmProjects\JupyterProject-domain\scripts' 에 .has 샘플을 두세요.
+  plan_bundle = _emit_bundle(combined, "")
+C:\Users\admin\PycharmProjects\JupyterProject-domain\대조 서버.py:4954: RuntimeWarning: [combined_iso] HAS emit 실패 (SDF 는 정상): HAS 스켈레톤 템플릿(.has)을 찾을 수 없음 \u2014 REMOTE30_HAS_TEMPLATE 환경변수로 지정하거나 'C:\Users\admin\PycharmProjects\JupyterProject-domain\scripts' 에 .has 샘플을 두세요.
+  iso_bundle = _emit_bundle(combined_iso, "_iso")
+C:\Users\admin\PycharmProjects\JupyterProject-domain\대조 서버.py:4937: RuntimeWarning: [combined] HAS emit 실패 (SDF 는 정상): HAS 스켈레톤 템플릿(.has)을 찾을 수 없음 \u2014 REMOTE30_HAS_TEMPLATE 환경변수로 지정하거나 'C:\Users\admin\PycharmProjects\JupyterProject-domain\scripts' 에 .has 샘플을 두세요.
+  plan_bundle = _emit_bundle(combined, "")
+C:\Users\admin\PycharmProjects\JupyterProject-domain\대조 서버.py:4954: RuntimeWarning: [combined_iso] HAS emit 실패 (SDF 는 정상): HAS 스켈레톤 템플릿(.has)을 찾을 수 없음 \u2014 REMOTE30_HAS_TEMPLATE 환경변수로 지정하거나 'C:\Users\admin\PycharmProjects\JupyterProject-domain\scripts' 에 .has 샘플을 두세요.
+  iso_bundle = _emit_bundle(combined_iso, "_iso")

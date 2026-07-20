@@ -1,3 +1,15 @@
+# ==========================================================
+# 배관망_추출_모듈 — 도메인 서버 기준 전체 소스 번들
+# 생성: 2026-07-06 18:50  (JupyterProject-domain @ commit)
+# 구성 파일: remote30_prototype.py, remote30_full_network.py, sprinkler_remote30_extractor.py, remote30_ml.py, head_detector.py
+# ==========================================================
+
+
+
+# ======================================================================
+# FILE: remote30_prototype.py   (4228 lines)
+# ======================================================================
+
 """Remote 30 프로토타입 — DXF 한 장 → 4-stage 파이프라인 (배관망 → 30 헤드 → CSV/XLSX → SDF).
 
 각 stage 는 JSON 직렬화 가능한 진행 이벤트를 yield 한다. 호출자(서버) 가 이걸 SSE 로 클라이언트에 흘림.
@@ -32,7 +44,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 from xml.dom import minidom
 
 import ezdxf
@@ -120,24 +132,6 @@ except ImportError:
 PIPENET_CATEGORIES = {"PIPE", "HEAD", "TEXT", "ALARM"}
 KEEP_BASE_LAYERS = {"0"}  # INSERT BYLAYER 공통 + 도면 컨텍스트
 
-# ── 초대형 XREF 도면 예산 가드 (기계실/계통도 파싱) ──────────────────────────
-# 142MB LH 지하층배관도는 최상위 INSERT 61개를 폭발하면 leaf 597k개가 되는데
-# 그중 배관망 추출에 실제 쓰는 PIPE+HEAD 는 ~6.7k(1%)뿐이고 나머지 99% 는 배경.
-# 도면 전체가 PIPE 레이어 위의 단일 INSERT(소방배관) 안에 nested 돼 있어 미리보기
-# 경로의 '최상위 카테고리별 배경 분리' 가드로는 안 걸린다(그 블록이 PIPE로 분류되어
-# 통째 폭발). 그래서 폭발 도중 **leaf 단위**로 카테고리를 컷한다.
-#
-# 실측(2026-07-07, _bg_probe): ARCH/EXCLUDE 만 스킵하면 시간 이득 0 — ARCH 280k는
-# XREF 단순 LINE 이라 렌더가 거의 공짜다. 파싱 비용의 전부(112→37초, 75초)는 OTHER
-# 카테고리(LINE 173k + PL 111k + ARC 21k)에 있다. 즉 실질 단축은 OTHER 컷이 필수.
-# 대가: OTHER 의 line/PL 은 형태상 배관이 될 수도 있어(레이어명 불신 원칙,
-# [[lh-basement-fire-layer]]) 이론상 '키워드 미매칭 배관 레이어'가 숨을 수 있다. 단
-# (1) 예산(120k leaf) 초과하는 초대형 XREF 도면에서만 발동, (2) 배관 키워드 목록이
-# 넓고(SP/배관/소방/PIPE/PIPING/FIRE/HYD/가지관/FLEX), (3) 숨겨져도 추출이 조용히
-# 틀리는 게 아니라 '망 없음'으로 드러난다. 사용자 승인 하에 OTHER 포함(2026-07-07).
-BG_ENTITY_BUDGET = 120_000  # 폭발 예상 leaf 이 이 값을 넘으면 배경 leaf 스킵 발동
-_BG_SKIP_CATEGORIES = frozenset({"ARCH", "EXCLUDE", "OTHER"})
-
 
 def _categorize_layer(name: str) -> str:
     """Remote30Settings 기준 layer 카테고리. 가능하면 외부 모듈 사용.
@@ -164,10 +158,10 @@ def _categorize_layer(name: str) -> str:
             return "ARCH"
         return "OTHER"
     s = Remote30Settings()
-    # 콘텐츠(HEAD/ALARM/PIPE/TEXT) 신호가 ARCH 를 이긴다. EXCLUDE 만 최우선.
-    # arch-first 였을 때 "SHEET-TEXT" 등 콘텐츠 레이어가 건축으로 흡수되던 오류 방지.
     if layer_match(name, s.exclude_layer_keywords):
         return "EXCLUDE"
+    if layer_match(name, s.arch_layer_keywords):
+        return "ARCH"
     if layer_match(name, s.head_layer_keywords):
         return "HEAD"
     # ALARM 검사를 PIPE 보다 먼저 — "RISER" 가 "SP" 와 겹치지 않지만 우선순위 명시
@@ -177,8 +171,6 @@ def _categorize_layer(name: str) -> str:
         return "PIPE"
     if layer_match(name, s.text_layer_keywords):
         return "TEXT"
-    if layer_match(name, s.arch_layer_keywords):
-        return "ARCH"
     return "OTHER"
 
 
@@ -553,8 +545,7 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
 
 
 def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
-                        keep_nested_insert_markers: bool = False,
-                        skip_background_over_budget: bool = False) -> dict:
+                        keep_nested_insert_markers: bool = False) -> dict:
     """계통도 등 '시각화 우선' 용 파싱 — parse_dxf_bundle 의 보강 버전.
 
     parse_dxf_bundle 과 차이:
@@ -605,61 +596,6 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
 
     MAX_DEPTH = 12  # 계통도는 nested 깊을 수 있음 — 약간 여유
 
-    # ── 예산 가드: 폭발 예상 leaf 수 추정 후 초과 시 배경(_BG_SKIP_CATEGORIES) leaf 스킵 ──
-    # 최상위 INSERT 를 블록정의 단위로만 세어(같은 블록 재INSERT 는 depth별 1회 memo)
-    # 렌더 없이 leaf 수를 O(예산×5) 로 유계 추정한다. 미리보기 경로의 _bg_leaf_estimate
-    # 와 동일한 알고리즘 — 단 여기선 최상위 분리 없이 전체 합을 기준으로 판정한다
-    # (LH 는 배관/배경이 한 최상위 INSERT 안에 섞여 최상위 카테고리로는 못 가름).
-    skip_cats: frozenset = frozenset()
-    bg_skipped = False
-    bg_leaf_estimate = 0
-    if skip_background_over_budget:
-        _ceiling = BG_ENTITY_BUDGET * 5
-        _memo: dict[tuple, int] = {}
-
-        def _block_leaves(block_name, d):
-            if d >= MAX_DEPTH or doc is None:
-                return 0
-            key = (block_name, d)
-            if key in _memo:
-                return _memo[key]
-            blk = doc.blocks.get(block_name)
-            total = 0
-            if blk is not None:
-                for child in blk:
-                    if child.dxftype() == "INSERT":
-                        total += _block_leaves(child.dxf.name, d + 1)
-                    else:
-                        total += 1
-                    if total >= _ceiling:
-                        total = _ceiling
-                        break
-            _memo[key] = total
-            return total
-
-        for _e in msp:
-            try:
-                if _e.dxftype() == "INSERT":
-                    bg_leaf_estimate += _block_leaves(_e.dxf.name, 0)
-                else:
-                    bg_leaf_estimate += 1
-            except Exception:
-                continue
-            if bg_leaf_estimate >= _ceiling:
-                break
-        if bg_leaf_estimate > BG_ENTITY_BUDGET:
-            skip_cats = _BG_SKIP_CATEGORIES
-            bg_skipped = True
-
-    _cat_cache: dict[str, str] = {}
-
-    def _skip_layer(layer_name: str) -> bool:
-        cat = _cat_cache.get(layer_name)
-        if cat is None:
-            cat = _categorize_layer(layer_name)
-            _cat_cache[layer_name] = cat
-        return cat in skip_cats
-
     def _render(e, matrix=None, layer_override=None, depth=0):
         etype = e.dxftype()
         own = getattr(e.dxf, "layer", "")
@@ -671,11 +607,6 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
         if not include_hidden_layers and layer in hidden_layers:
             return
         if int(getattr(e.dxf, "invisible", 0) or 0) == 1:
-            return
-        # ★ 예산 초과 시 배경 leaf 스킵 — INSERT 는 하위에 전경이 섞여 있을 수 있어
-        #   무조건 재귀하되(마커만 생략), 나머지 leaf 타입만 카테고리로 컷.
-        if skip_cats and etype != "INSERT" and _skip_layer(layer):
-            skipped["BG_BUDGET_SKIP"] += 1
             return
         try:
             if etype == "LINE":
@@ -907,9 +838,6 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
         "total_msp_entities": total_msp,
         "entity_count": len(entities),
         "hidden_layer_count": len(hidden_layers),
-        "bg_skipped": bg_skipped,
-        "bg_leaf_estimate": bg_leaf_estimate,
-        "bg_budget": BG_ENTITY_BUDGET,
     }
 
 
@@ -1213,141 +1141,6 @@ def _auto_pipe_layer_filter(entities: list[dict],
     return matched
 
 
-def _auto_pipe_layers_v2(entities: list[dict],
-                         keywords: tuple[str, ...] = SYSTEM_PIPE_LAYER_KEYWORDS,
-                         min_lines: int = 15,
-                         max_candidates: int = 25,
-                         ) -> tuple[set[str], dict]:
-    """배관 레이어 자동선택 — 키워드 prior 우선, 미스 시 헤드-앵커 연결성 fallback.
-
-    설계 원칙(2026-07-10 실측으로 확정):
-      - 키워드([[_auto_pipe_layer_filter]])가 매칭되면 **그 결과를 그대로 신뢰**한다.
-        키워드는 강한 도메인 prior 라 벽·치수 레이어를 애초에 안 고른다. 여기에
-        '연결성으로 더 성장'시키면 배관과 기하적으로 겹치는 초대형 noise 레이어(예:
-        대명동 단위세대의 'L4' 33k선)가 최대 컴포넌트를 부풀려 통째로 딸려온다 —
-        검증에서 확인된 회귀. 그래서 키워드 히트 시 성장 안 함(= 프로덕션 동작 유지).
-      - 키워드가 **완전히 빗나간** 도면(배관이 '0'·'FIRE'·일반 레이어에 작도)만
-        fallback 진입. 이때 build_system_graph 는 원래 '전체 LINE 사용'으로 떨어져
-        LH급 도면에서 590k 선을 통째로 물고 늘어졌다. 그 대신 헤드 근접도로 배관
-        레이어를 고른다([[lh-basement-fire-layer]] 원칙 — 레이어 이름이 아닌 시스템
-        (헤드)과의 연결성으로 판별). 벽은 헤드에 안 붙으므로 자연히 탈락.
-
-    벽 가드: ARCH/EXCLUDE 카테고리 레이어는 후보에서 제외. 단 벽이 이름 없는 OTHER
-    레이어('L4','0')로 작도되면 카테고리 가드로 못 거른다 → fallback 성장 단계에서
-    '레이어 자체가 헤드에 붙어야' 채택하는 head-adj 게이트로 2차 방어.
-
-    Returns (selected_layers, diag). diag 는 관측용(method/candidates/selected/comp).
-    """
-    # --- 키워드 prior: 히트하면 그대로 반환(성장 없음, 회귀 방지) ---
-    kw_all = _auto_pipe_layer_filter(entities, keywords)
-    all_line_ents = [en for en in entities if en.get("t") in ("L", "PL")]
-    kw_line_count = sum(1 for en in all_line_ents if en.get("l") in kw_all)
-    if kw_line_count >= min_lines:
-        return set(kw_all), {"method": "keyword", "candidates": sorted(kw_all),
-                             "selected": sorted(kw_all), "final_comp": None}
-
-    # --- fallback: 키워드 미스 → 헤드-앵커 연결성으로 배관 레이어 선택 ---
-    by_layer: dict[str, list[dict]] = defaultdict(list)
-    for en in all_line_ents:
-        l = en.get("l")
-        if l:
-            by_layer[l].append(en)
-
-    cand_layers = [l for l, ents in by_layer.items() if len(ents) >= min_lines]
-    cand_layers.sort(key=lambda l: len(by_layer[l]), reverse=True)
-    cand_layers = cand_layers[:max_candidates]
-    diag: dict = {"method": "fallback", "candidates": list(cand_layers),
-                  "selected": [], "final_comp": 0}
-    # 벽 가드 — ARCH/EXCLUDE 카테고리 제외.
-    nonwall = [l for l in cand_layers
-               if _categorize_layer(l) not in ("ARCH", "EXCLUDE")]
-    if not nonwall:
-        return set(), diag
-
-    cand_ents = [en for l in nonwall for en in by_layer[l]]
-    scale = _drawing_scale_ratio(cand_ents)
-    eps = SNAP_TOL_MM * scale
-    min_edge = MIN_PIPE_EDGE_MM * scale
-
-    def graph_of(ents: list[dict]) -> dict:
-        ni = _NodeIndex(epsilon_mm=eps) if scale < 1.0 else None
-        g, _ = _build_graph(ents, node_index=ni, min_edge_mm=min_edge)
-        return g
-
-    def largest(g: dict) -> int:
-        return max((len(c) for c in _connected_components(g)), default=0)
-
-    # 헤드 앵커 좌표 — 레이어의 배관성을 헤드 근접도로 판별.
-    head_pts: list[tuple[float, float]] = []
-    for en in entities:
-        if _categorize_layer(en.get("l") or "") != "HEAD":
-            continue
-        t = en.get("t")
-        if t == "I":
-            p = en.get("p")
-            if p:
-                head_pts.append((p[0], p[1]))
-        elif t == "C":
-            c = en.get("c")
-            if c:
-                head_pts.append((c[0], c[1]))
-    cell = max(eps * 4.0, 1.0)
-    head_cells = {(round(hx / cell), round(hy / cell)) for hx, hy in head_pts}
-    have_heads = bool(head_cells)
-
-    def head_adj(g: dict) -> int:
-        if not have_heads:
-            return 0
-        return sum(1 for (nx, ny) in g
-                   if (round(nx / cell), round(ny / cell)) in head_cells)
-
-    # 후보별 자체 그래프의 (head_adj, largest) 사전계산.
-    per_layer: dict[str, tuple[int, int]] = {}
-    for l in nonwall:
-        g = graph_of(by_layer[l])
-        per_layer[l] = (head_adj(g), largest(g))
-
-    # head-adj 게이트: 헤드가 있으면 헤드에 붙는 레이어만 배관 후보로 인정(벽 배제).
-    if have_heads:
-        eligible = [l for l in nonwall if per_layer[l][0] >= 2]
-    else:
-        eligible = list(nonwall)  # 헤드 없는 도면 — largest 만으로(약한 신호).
-    if not eligible:
-        return set(), diag
-
-    # seed = (head_adj, largest) 최대 레이어.
-    eligible.sort(key=lambda l: per_layer[l], reverse=True)
-    seed_layer = eligible[0]
-    if per_layer[seed_layer][1] < min_lines:
-        return set(), diag
-    selected = {seed_layer}
-    base_comp = per_layer[seed_layer][1]
-
-    # 탐욕적 융합 성장 — 합쳤을 때 최대 컴포넌트가 유의미하게 커지는(융합) 레이어만.
-    # eligible 로 이미 head-adj 게이트를 통과했으므로 초대형 벽/치수 noise 는 진입 불가.
-    remaining = [l for l in eligible if l not in selected]
-    while remaining:
-        best_gain = 0
-        best_layer = None
-        best_comp = base_comp
-        for l in remaining:
-            merged = [en for ll in (selected | {l}) for en in by_layer[ll]]
-            lc = largest(graph_of(merged))
-            if lc > base_comp + 2 and (lc - base_comp) > best_gain:
-                best_gain = lc - base_comp
-                best_layer = l
-                best_comp = lc
-        if best_layer is None:
-            break
-        selected.add(best_layer)
-        base_comp = best_comp
-        remaining.remove(best_layer)
-
-    diag["selected"] = sorted(selected)
-    diag["final_comp"] = base_comp
-    return selected, diag
-
-
 def _drawing_scale_ratio(line_ents: list[dict], ref_median_mm: float = 200.0) -> float:
     """배관 segment 스케일에서 그래프 허용치 비례계수(0<r≤1) 산출.
 
@@ -1399,9 +1192,8 @@ def build_system_graph(
         (graph, edge_len, stats) — stats 에 layer_filter 결과도 포함.
     """
     all_line_ents = [en for en in entities if en.get("t") in ("L", "PL")]
-    auto_diag: dict | None = None
     if layer_filter is None:
-        auto_matched, auto_diag = _auto_pipe_layers_v2(entities)
+        auto_matched = _auto_pipe_layer_filter(entities)
         line_ents = [en for en in all_line_ents if en.get("l") in auto_matched]
         filter_used = auto_matched
         fallback = False
@@ -1449,7 +1241,6 @@ def build_system_graph(
         ],
         "layer_filter_used": sorted(filter_used) if filter_used else None,
         "layer_filter_fallback_no_match": fallback,
-        "auto_layer_diag": auto_diag,
         "scale_ratio": round(scale_ratio, 6),
         "snap_eps_mm": round(snap_eps, 3),
         "min_edge_mm": round(min_edge, 3),
@@ -1497,48 +1288,6 @@ def _collapse_collinear_nodes(
         kept.append(cur)
     kept.append(path[-1])
     return kept
-
-
-def _subdivide_path_by_floors(
-    path: list[tuple[float, float]],
-    floor_labels: list[tuple[float, float, int, str]],
-    min_gap_mm: float = 800.0,
-) -> list[tuple[float, float]]:
-    """(거의)수직 라이저 구간을 층 Y-레벨마다 노드로 분할 — 층 단위 편집을 위해.
-
-    수계산 중 계통도 층수/층고가 자주 바뀌므로(예: 27층→26층), 각 층을 discrete
-    노드로 남겨 해당 층만 빼고 위아래를 재연결할 수 있게 한다. collapse 가 직선 위
-    중간 노드를 지운 뒤 이 단계가 층 경계마다 깨끗한 노드를 다시 심는다.
-
-    각 층 라벨의 Y 를 경계로, 수직 segment 가 여러 층을 가로지르면 각 층 Y 교차점에
-    노드를 삽입(X 는 선형보간)한다. 층 라벨이 없으면 원본 그대로 반환(legacy no-op).
-    """
-    if len(path) < 2 or not floor_labels:
-        return list(path)
-    floor_ys = sorted({float(fy) for (_fx, fy, fidx, _n) in floor_labels if fidx != 99})
-    if not floor_ys:
-        return list(path)
-    out: list[tuple[float, float]] = [path[0]]
-    for i in range(len(path) - 1):
-        a, b = path[i], path[i + 1]
-        ax, ay = float(a[0]), float(a[1])
-        bx, by = float(b[0]), float(b[1])
-        seg_dx, seg_dy = abs(bx - ax), abs(by - ay)
-        ylo, yhi = min(ay, by), max(ay, by)
-        # 이 segment 를 가로지르는 층 Y (양 끝단 min_gap 안쪽 제외 — 끝점 중복 방지)
-        crossings = [fy for fy in floor_ys if ylo + min_gap_mm < fy < yhi - min_gap_mm]
-        # 수직 우세 + 충분히 긴 run 만 분할 (수평 가지관·짧은 fitting 은 건드리지 않음)
-        if crossings and seg_dy > seg_dx and seg_dy > min_gap_mm:
-            crossings.sort(reverse=(by < ay))   # 진행 방향대로
-            for fy in crossings:
-                t = (fy - ay) / (by - ay)
-                nx = ax + t * (bx - ax)
-                node = (int(round(nx)), int(round(fy)))
-                if node != out[-1]:
-                    out.append(node)
-        if b != out[-1]:
-            out.append(b)
-    return out
 
 
 def extract_system_path(
@@ -1642,10 +1391,6 @@ def extract_system_path(
     dia_text_pts = _extract_dia_text_points(entities)
     floor_labels = _extract_floor_labels(entities)
 
-    # 층 단위 편집을 위해 수직 라이저를 층 Y-레벨마다 노드로 분할.
-    # 층 라벨 없으면 no-op → 기존(legacy) path 그대로 유지.
-    path = _subdivide_path_by_floors(path, floor_labels)
-
     riser = _system_path_to_riser_dict(
         path, edge_len, pump_xy, av_xy,
         pump_snap_dist=pump_d, av_snap_dist=av_d, graph_stats=stats,
@@ -1720,13 +1465,13 @@ def _system_path_to_riser_dict(
     floor_height_mm = _estimate_floor_height_mm(floor_labels)
     av_floor_idx, av_floor_name = _floor_for_node_y(av_y_dxf, floor_labels)
 
-    def _elev_for_node(ny: float) -> tuple[float, str | None, bool, int | None]:
-        """노드 Y 의 (elev_m, floor_name, from_label, floor_idx). label 없으면 Y/1000 fallback."""
+    def _elev_for_node(ny: float) -> tuple[float, str | None, bool]:
+        """노드 Y 의 (elev_m, floor_name, from_label) 반환. label 없으면 Y/1000 fallback."""
         if floor_labels and av_floor_idx is not None:
             f_idx, f_name = _floor_for_node_y(ny, floor_labels)
             if f_idx is not None:
-                return ((f_idx - av_floor_idx) * floor_height_mm / 1000.0, f_name, True, f_idx)
-        return ((ny - av_y_dxf) / 1000.0, None, False, None)
+                return ((f_idx - av_floor_idx) * floor_height_mm / 1000.0, f_name, True)
+        return ((ny - av_y_dxf) / 1000.0, None, False)
 
     # 노드 — 라벨 컨벤션:
     #   첫 노드 "1" (Input/펌프), 마지막 노드 "10" (AV).
@@ -1740,7 +1485,7 @@ def _system_path_to_riser_dict(
             label, io = "10", "No"
         else:
             label, io = f"n{i + 1}", "No"
-        elev_m, floor_name, from_label, floor_idx = _elev_for_node(pt[1])
+        elev_m, floor_name, from_label = _elev_for_node(pt[1])
         if from_label:
             nodes_with_floor += 1
         node: dict = {
@@ -1752,8 +1497,6 @@ def _system_path_to_riser_dict(
         }
         if floor_name:
             node["floor"] = floor_name
-        if floor_idx is not None:
-            node["floor_idx"] = floor_idx
         if io == "Input":
             node["pressure_pa"] = 101325.0
         nodes.append(node)
@@ -2277,9 +2020,6 @@ HEAD_BRIDGE_MAX_MM = 5000.0  # 헤드 INSERT 좌표 ↔ 가장 가까운 그래�
 SOURCE_BRIDGE_MAX_MM = 25000.0  # 알람밸브 (source) ↔ 배관망 nearest bridge 허용 (25m).
 # 알람밸브는 라이저 (수직 입상관) 위에 위치 — 평면도상 가지관과 거리가 멀 수 있음.
 # 25m 이내면 알람밸브 위치 그대로 source 로 사용 → 그래프 component 통합 효과.
-ESTIMATED_BRIDGE_MM = 2000.0  # 이 길이 초과 강제 bridge = 추정(도면에 없는 wormhole).
-# 2m 이하 gap 은 fitting/도면오차로 보고 실배관 연속으로 취급(경로에 사용). 초과분은 추정
-# bridge(노란 점선)로 보고 Dijkstra penalty → 실배관 대안이 있으면 망 생성에서 회피.
 MIN_PIPE_EDGE_MM = 50.0
 # 50mm 미만 LINE/PL/ARC segment 는 그래프 edge 로 사용 안 함.
 # 헤드 부속(HEADCON, HDCROSS, SPCAP 등), 치수 보조선, 텍스트 underline 등
@@ -2854,8 +2594,6 @@ def force_spanning_tree(
     graph: dict[tuple, set[tuple]],
     edge_len: dict[tuple, float],
     source: tuple | None = None,
-    penalty_keys: set | None = None,
-    penalty_mm: float = 1.0e9,
 ) -> tuple[set, set]:
     """그래프를 (각 component 마다) shortest-path spanning tree 로 강제 변환.
 
@@ -2864,15 +2602,10 @@ def force_spanning_tree(
         edge_len: edge 길이 dict (in-place 수정 — 제거된 edge 도 같이 pop)
         source: AV (또는 시작 노드). 이 노드가 속한 component 는 source 가 root.
                 다른 component 는 임의 root (가장 작은 좌표 노드).
-        penalty_keys: (min,max) 키 집합. 이 edge 는 SPT weight 에 penalty_mm 를 더해
-                실배관보다 후순위 → 실배관 대안이 있으면 트리에서 배제(=removed).
-                추정 bridge/헤드 drop 을 넣으면 트리 spine 이 실배관 위주로 구성되고
-                bridge 는 유일 연결일 때만 살아남아 "링처럼 가로지르는" 표시가 준다.
 
     Returns:
         (tree_edges, removed_edges) — 각각 (min, max) 키 set.
     """
-    penalty_keys = penalty_keys or set()
     tree_edges: set[tuple] = set()
     visited: set[tuple] = set()
 
@@ -2901,8 +2634,6 @@ def force_spanning_tree(
                 w = edge_len.get(e_key)
                 if w is None:
                     w = math.hypot(u[0] - v[0], u[1] - v[1])
-                if e_key in penalty_keys:
-                    w += penalty_mm
                 nd = d + w
                 if nd < dist.get(v, float("inf")):
                     dist[v] = nd
@@ -3165,18 +2896,8 @@ def select_worst30_heads(
     # 짧은 거리부터 단계적으로 brigde — 가까운 endpoint 우선 + 점점 멀리.
     # 5m / 10m 추가: 측지좌표 도면 (예: MF-125) 처럼 SP-LINE 끝점들이 멀리
     # 떨어진 경우 (변환 누적 오차 + 도면 분할 작업) component 통합 위해.
-    # 추정(강제) bridge 를 추적 → 긴 것(ESTIMATED_BRIDGE_MM 초과)은 경로에서 회피.
-    _bridge_keys: set = set()
     for tol in (200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0):
-        _bridge_components(graph, edge_len, max_bridge_mm=tol, bridge_edges_out=_bridge_keys)
-    # span 이 gap 한도를 넘는 강제 bridge = 도면에 없는 추정 연결(노란 점선). Dijkstra
-    # penalty_keys(int-rounded (min,max)) 로 넘겨 실배관 대안이 있으면 망 생성에서 배제.
-    estimated_bridge_penalty: set = set()
-    for (u, v) in _bridge_keys:
-        if math.hypot(u[0] - v[0], u[1] - v[1]) > ESTIMATED_BRIDGE_MM:
-            ru = (int(round(u[0])), int(round(u[1])))
-            rv = (int(round(v[0])), int(round(v[1])))
-            estimated_bridge_penalty.add((min(ru, rv), max(ru, rv)))
+        _bridge_components(graph, edge_len, max_bridge_mm=tol)
     # 가지식 트리 강제 (SPT) — Stage 3 와 같은 토폴로지. SPT root 는 SDF source.
     # (source 가 이 시점에 아직 미결정 → 일단 None 으로 호출, component 별 임의 root.
     #  source 결정 후 트리가 SDF path 계산에 사용됨.)
@@ -3267,8 +2988,7 @@ def select_worst30_heads(
     sub_edges: list[tuple[tuple[float, float], tuple[float, float], float]] = []
     sub_nodes: set[tuple[float, float]] = {src}
     for _, head_node, _ in top_k:
-        path = _shortest_path(graph, edge_len, src, head_node,
-                              penalty_keys=estimated_bridge_penalty)
+        path = _shortest_path(graph, edge_len, src, head_node)
         for a, b in zip(path, path[1:]):
             key = (min(a, b), max(a, b))
             if key in sub_edges_seen:
@@ -3385,366 +3105,13 @@ class PipeTables:
     meta: list[tuple[str, str]] = field(default_factory=list)
 
 
-# 배관 재질 — DXF 에 없는 설계 정보이므로 자동 분류하지 않는다. 기본은 강관(KSD 3507,
-# C=120). 사용자가 평면도에서 지정한 영역(zone=단위세대 내부) 안의 배관만 CPVC(C=150)로
-# 유지한다. 세대 배관은 통상 CPVC, 간선/입상관은 강관이라는 현장 관행을 사용자 영역
-# 지정으로 표현. C-factor(=roughness-or-c)가 PIPENET 마찰손실에 직접 반영되는 재질값.
-STEEL_PIPE_TYPE = "KSD 3507"
-STEEL_C_FACTOR = "120"
-CPVC_PIPE_TYPE = "CPVC2"
-CPVC_C_FACTOR = "150"
-
-
-def _point_in_zones(px: float, py: float,
-                    zones: list[tuple[float, float, float, float]] | None) -> bool:
-    """점이 zone(축정렬 사각형) union 안에 있으면 True. 좌표 순서 무관."""
-    if not zones:
-        return False
-    for (zx1, zy1, zx2, zy2) in zones:
-        lo_x, hi_x = (zx1, zx2) if zx1 <= zx2 else (zx2, zx1)
-        lo_y, hi_y = (zy1, zy2) if zy1 <= zy2 else (zy2, zy1)
-        if lo_x <= px <= hi_x and lo_y <= py <= hi_y:
-            return True
-    return False
-
-
-# 가지배관 직각화 각도 임계값(deg) — 가지 edge 가 축(0/90°)에서 이 이내면 축정렬로
-# 스냅, 45° 근방(진짜 대각선)은 실좌표 유지. 표시 전용(length_mm·연결 불변).
-ORTHO_SNAP_TOL_DEG = 20.0
-
-
-def _classify_branch_edges(edges, head_points, source_point):
-    """소스 기준 트리에서 '가지배관' edge 를 판별한다.
-
-    교차·주배관(cross main)은 가지선을 여러 갈래로 분기시키는 spine 이고, 가지배관은
-    그 끝에 헤드가 달린 (분기 없는) 열이다. 규칙: 배관(부모 u→자식 v)의 하류 서브트리에
-    splitter(헤드를 가진 자식이 2개 이상인 노드)가 하나도 없으면 v 쪽은 가지선 → 가지배관.
-    splitter 가 있으면 교차배관.
-
-    반환: (branch_edge_keys: set[frozenset{ka,kb}], key_fn) — 가지 edge 키 집합.
-    head_points/source_point 가 없으면 빈 집합(=전부 비가지).
-    """
-    def _key(p):
-        return (round(float(p[0]), 3), round(float(p[1]), 3))
-    if source_point is None:
-        return set(), _key
-    from collections import deque as _deque
-    adj: dict = defaultdict(set)
-    for e in edges:
-        ka, kb = _key(e[0]), _key(e[1])
-        if ka != kb:
-            adj[ka].add(kb); adj[kb].add(ka)
-    root = _key(source_point)
-    if root not in adj:
-        return set(), _key
-    parent: dict = {root: None}
-    order: list = [root]
-    q = _deque([root])
-    while q:
-        u = q.popleft()
-        for v in adj[u]:
-            if v not in parent:
-                parent[v] = u; order.append(v); q.append(v)
-    children: dict = defaultdict(list)
-    for v, p in parent.items():
-        if p is not None:
-            children[p].append(v)
-    head_set = {_key(h) for h in (head_points or [])}
-    dh: dict = {}
-    for v in reversed(order):
-        c = 1 if v in head_set else 0
-        for ch in children[v]:
-            c += dh[ch]
-        dh[v] = c
-    # splitter 서브트리 판정 — 하류에서 헤드열이 2갈래+로 갈라지면 교차배관.
-    sub_split: dict = {}
-    for v in reversed(order):
-        head_bearing_kids = sum(1 for ch in children[v] if dh[ch] >= 1)
-        s = head_bearing_kids >= 2
-        for ch in children[v]:
-            s = s or sub_split[ch]
-        sub_split[v] = s
-    # ── 교차배관 spine(trunk) 추적: 소스에서 방향 연속성으로 직진하는 경로.
-    #    splitter 규칙만으론 마지막 분기 이후의 교차배관 tail 을 가지선과 구분 못 하므로
-    #    (tail 서브트리도 splitter 가 없음), 진행방향이 이어지는 간선을 trunk 로 표시한다.
-    TRUNK_TURN_TOL = math.radians(45.0)  # 45° 이상 꺾이면 trunk 종료(가지 진입).
-
-    def _dir(u, v):
-        return math.atan2(v[1] - u[1], v[0] - u[0])
-
-    def _angdiff(a, b):
-        return abs((a - b + math.pi) % (2.0 * math.pi) - math.pi)
-
-    trunk: set = set()
-    cur, inc = root, None
-    while True:
-        kids = children.get(cur, [])
-        if not kids:
-            break
-        if inc is None:
-            nxt = max(kids, key=lambda c: dh[c])       # 소스: 헤드 최다 방향으로 출발
-        else:
-            nxt = min(kids, key=lambda c: _angdiff(_dir(cur, c), inc))
-            if _angdiff(_dir(cur, nxt), inc) > TRUNK_TURN_TOL:
-                break                                   # 크게 꺾임 → trunk 끝(가지 시작)
-        trunk.add(frozenset((cur, nxt)))
-        inc = _dir(cur, nxt)
-        cur = nxt
-    branch: set = set()
-    for v in order:
-        u = parent[v]
-        if u is None:
-            continue
-        fe = frozenset((u, v))
-        if fe in trunk:               # 교차배관 spine — 고정
-            continue
-        if sub_split.get(v, True):    # 하류 분기 존재 — 교차배관
-            continue
-        branch.add(fe)                # 분기 없는 헤드열 = 가지배관
-    return branch, _key
-
-
-def orthogonalize_edge_positions(edges, *, head_points=None, source_point=None,
-                                 tol_deg: float = ORTHO_SNAP_TOL_DEG) -> dict:
-    """가지배관만 직각에 스냅한 표시좌표맵을 반환(표시 전용, 교차·주배관/소스 고정).
-
-    head_points·source_point 가 주어지면 트리에서 가지배관을 판별해(_classify_branch_edges)
-    가지 edge 만 축정렬 제약을 건다. 교차배관·소스 노드는 실 DXF 좌표에 고정(anchor).
-      · 근축 수평 가지 → 두 끝점 같은 Y, 근축 수직 가지 → 같은 X (X·Y 독립)
-      · 각 축-성분: 고정 노드 1개면 그 좌표로 정렬(tee 앵커), 0개면 평균, ≥2개면
-        충돌이므로 이동 안 함(실 DXF 유지).
-    45° 근방 가지·비가지 배관은 실좌표 유지. length_mm(유압 권위값) 불변.
-
-    head/source 미지정이면 모든 근축 edge 스냅(구 동작, 폴백).
-    반환: {(rx, ry): (x', y')}. 매칭 실패 시 호출측이 원좌표 사용.
-    """
-    branch_keys, _key = _classify_branch_edges(edges, head_points, source_point)
-    branch_only = bool(branch_keys) or (source_point is not None and head_points is not None)
-
-    orig: dict = {}
-    for e in edges:
-        a, b = e[0], e[1]
-        orig.setdefault(_key(a), (float(a[0]), float(a[1])))
-        orig.setdefault(_key(b), (float(b[0]), float(b[1])))
-    if not edges:
-        return dict(orig)
-
-    tol = math.radians(tol_deg)
-    parent_x = {k: k for k in orig}
-    parent_y = {k: k for k in orig}
-
-    def _find(par, k):
-        root = k
-        while par[root] != root:
-            root = par[root]
-        while par[k] != root:
-            par[k], k = root, par[k]
-        return root
-
-    def _union(par, i, j):
-        ri, rj = _find(par, i), _find(par, j)
-        if ri != rj:
-            par[ri] = rj
-
-    # 고정 노드 = 비가지(교차·주배관) edge 에 닿는 노드 + 소스. branch_only 아니면 고정 없음.
-    fixed: set = set()
-    if branch_only:
-        for e in edges:
-            ka, kb = _key(e[0]), _key(e[1])
-            if ka == kb:
-                continue
-            if frozenset((ka, kb)) not in branch_keys:
-                fixed.add(ka); fixed.add(kb)
-        if source_point is not None:
-            fixed.add(_key(source_point))
-
-    for e in edges:
-        a, b = e[0], e[1]
-        ka, kb = _key(a), _key(b)
-        if ka == kb:
-            continue
-        ang = math.atan2(float(b[1]) - float(a[1]), float(b[0]) - float(a[0])) % math.pi
-        d_h = min(ang, math.pi - ang)      # 수평축(0/π)까지 각거리
-        d_v = abs(ang - math.pi / 2.0)     # 수직축(π/2)까지 각거리
-        if branch_only:
-            if frozenset((ka, kb)) not in branch_keys:
-                continue  # 교차·주배관 — 스냅 안 함(실 DXF 고정)
-            # 가지배관은 가까운 축으로 무조건 정렬(0/90/180/270). tol 게이트 없음.
-            if d_h <= d_v:
-                _union(parent_y, ka, kb)   # 수평 → 같은 Y
-            else:
-                _union(parent_x, ka, kb)   # 수직 → 같은 X
-        elif d_h <= tol and d_h <= d_v:
-            _union(parent_y, ka, kb)       # (폴백) 근축 수평 → 같은 Y
-        elif d_v <= tol:
-            _union(parent_x, ka, kb)       # (폴백) 근축 수직 → 같은 X
-        # else: 대각선 — 스냅 안 함
-
-    def _solve(par, coord_idx):
-        groups: dict = defaultdict(list)
-        for k in orig:
-            groups[_find(par, k)].append(k)
-        out: dict = {}
-        for _r, members in groups.items():
-            fixed_vals = [orig[k][coord_idx] for k in members if k in fixed]
-            if len(fixed_vals) >= 2 and (max(fixed_vals) - min(fixed_vals)) > 1e-6:
-                target = None  # 고정 노드 충돌 → 이동 안 함(각자 실좌표)
-            elif fixed_vals:
-                target = fixed_vals[0]      # tee 앵커
-            else:
-                target = sum(orig[k][coord_idx] for k in members) / len(members)
-            for k in members:
-                out[k] = orig[k][coord_idx] if target is None else target
-        return out
-
-    sx = _solve(parent_x, 0)
-    sy = _solve(parent_y, 1)
-    result = {k: (sx[k], sy[k]) for k in orig}
-    if branch_only and branch_keys:
-        result = _separate_overlapping_branches(
-            result, edges, branch_keys, fixed, _key)
-    return result
-
-
-def _separate_overlapping_branches(result, edges, branch_keys, fixed, key_fn,
-                                   *, min_overlap: float = 150.0,
-                                   max_passes: int = 6) -> dict:
-    """표시 전용: 서로 다른 가지 컴포넌트가 같은 축선에 겹쳐(루프처럼 보임) 그려지면
-    이동 가능한(비고정) 노드를 겹침 축의 수직 방향으로 한 레인만큼 밀어 해소한다.
-
-    고정(교차·주배관/소스) 노드는 절대 이동하지 않는다 → 고정 tee 로 연결되는 edge 는
-    짧은 사선(가지 분기 표시)이 될 수 있으나 병렬 드롭 두 줄이 각자 레인을 가져 겹침이
-    사라진다. length_mm(유압)은 raw 좌표로 계산되므로 불변.
-    """
-    from collections import deque as _deque
-    adj: dict = defaultdict(set)
-    for e in edges:
-        ka, kb = key_fn(e[0]), key_fn(e[1])
-        if ka == kb:
-            continue
-        if frozenset((ka, kb)) in branch_keys:
-            adj[ka].add(kb); adj[kb].add(ka)
-    if not adj:
-        return result
-
-    branch_edge_list = []
-    for e in edges:
-        ka, kb = key_fn(e[0]), key_fn(e[1])
-        if ka == kb or frozenset((ka, kb)) not in branch_keys:
-            continue
-        branch_edge_list.append((ka, kb))
-    if not branch_edge_list:
-        return result
-
-    # 각 컴포넌트를 고정 노드(교차·주배관 tee) 기준으로 뿌리내려 부모/자식·깊이를 구한다.
-    parent: dict = {}
-    depth: dict = {}
-    for n in adj:
-        if n in parent:
-            continue
-        comp = []
-        stack = [n]; seen_c: set = set()
-        while stack:
-            u = stack.pop()
-            if u in seen_c:
-                continue
-            seen_c.add(u); comp.append(u)
-            stack.extend(adj[u] - seen_c)
-        root = next((k for k in comp if k in fixed), comp[0])
-        parent[root] = None; depth[root] = 0
-        q = _deque([root])
-        while q:
-            u = q.popleft()
-            for v in adj[u]:
-                if v not in parent:
-                    parent[v] = u; depth[v] = depth[u] + 1; q.append(v)
-
-    # deep 노드(뿌리에서 먼 쪽)를 루트로 하는 서브트리(자유 노드만) — 이동 대상 후보.
-    def _subtree_free(deep, blocked):
-        out = []
-        stack = [deep]; local: set = {blocked}
-        while stack:
-            u = stack.pop()
-            if u in local:
-                continue
-            local.add(u)
-            if u not in fixed:
-                out.append(u)
-            for v in adj[u]:
-                if v not in local:
-                    stack.append(v)
-        return out
-
-    result = dict(result)
-    seg_lens = sorted(
-        math.hypot(result[kb][0] - result[ka][0], result[kb][1] - result[ka][1])
-        for ka, kb in branch_edge_list)
-    lane = min(max(seg_lens[len(seg_lens) // 2] * 0.5, 250.0), 1200.0)
-
-    def _collisions() -> list:
-        segs = []  # (edge_idx, orient, line, lo, hi)
-        for ei, (ka, kb) in enumerate(branch_edge_list):
-            (ax, ay), (bx, by) = result[ka], result[kb]
-            if abs(ax - bx) < 1.0 and abs(ay - by) >= 1.0:
-                segs.append((ei, 'V', (ax + bx) / 2, min(ay, by), max(ay, by)))
-            elif abs(ay - by) < 1.0 and abs(ax - bx) >= 1.0:
-                segs.append((ei, 'H', (ay + by) / 2, min(ax, bx), max(ax, bx)))
-        cols = []
-        for i in range(len(segs)):
-            ei, oi, li, loi, hii = segs[i]
-            for j in range(i + 1, len(segs)):
-                ej, oj, lj, loj, hij = segs[j]
-                if oi != oj or abs(li - lj) >= 1.0:
-                    continue
-                ov = min(hii, hij) - max(loi, loj)
-                if ov > min_overlap:
-                    cols.append((ei, ej, oi, ov))
-        return cols
-
-    def _mover_set(ei):
-        """edge ei 의 deep 서브트리(자유 노드)를 이동 후보로 — 고정 노드가 섞이면 None."""
-        ka, kb = branch_edge_list[ei]
-        deep, anchor = (ka, kb) if depth.get(ka, 0) >= depth.get(kb, 0) else (kb, ka)
-        if deep in fixed:
-            return None
-        return _subtree_free(deep, anchor)
-
-    for _ in range(max_passes):
-        cols = _collisions()
-        if not cols:
-            break
-        cols.sort(key=lambda t: -t[3])
-        ei, ej, axis, _ov = cols[0]
-        cand_i, cand_j = _mover_set(ei), _mover_set(ej)
-        # 더 작은(덜 앵커된) 서브트리를 민다. 둘 다 불가면 다음 후보로.
-        options = [c for c in (cand_i, cand_j) if c]
-        if not options:
-            break
-        move = min(options, key=len)
-        idx = 0 if axis == 'V' else 1
-        other = cand_j if move is cand_i else cand_i
-        line = (sum(result[k][idx] for k in other) / len(other)) if other else \
-            (result[branch_edge_list[ej if move is cand_i else ei][0]][idx])
-        mcen = sum(result[k][idx] for k in move) / len(move)
-        step = (1.0 if mcen >= line else -1.0) * lane
-        for k in move:
-            x, y = result[k]
-            result[k] = (x + step, y) if idx == 0 else (x, y + step)
-    return result
-
-
 def build_input_tables(
     selection: SelectionResult,
     pipe_entities: list[dict] | None = None,
     *,
     project_title: str = "Remote 30 Prototype",
-    cpvc_zones: list[tuple[float, float, float, float]] | None = None,
 ) -> PipeTables:
-    """선정 결과 → 5 테이블. pipe_entities 가 있으면 FX(flexible) Equipment 도 추출.
-
-    cpvc_zones: 이 영역(단위세대 내부) 안에 배관 중점이 들어오면 CPVC(C=150)로 표기.
-    비어있으면 전 배관 강관(C=120).
-    """
+    """선정 결과 → 5 테이블. pipe_entities 가 있으면 FX(flexible) Equipment 도 추출."""
     tables = PipeTables()
     if not selection.heads or selection.source_pos is None:
         return tables
@@ -3771,26 +3138,12 @@ def build_input_tables(
         lab = _label_node(snap)
         head_node_label[snap] = lab
 
-    # Nodes — 가지배관 표시좌표(x,y)만 직각화 스냅. 교차·주배관/소스는 실 DXF 고정.
-    # length·diameter 는 아래에서 raw DXF 좌표로 계산하므로 유압 결과 불변(표시 전용).
-    _ortho = orthogonalize_edge_positions(
-        selection.edges,
-        head_points=[h.pos for h in selection.heads],
-        source_point=selection.source_pos)
-    # de-overlap 표시 후 남는 가지배관 대각선 → L-벤드(직각 꺾임)로 그리기 위한 분류.
-    _branch_keys, _bkey = _classify_branch_edges(
-        selection.edges, [h.pos for h in selection.heads], selection.source_pos)
-
-    def _oxy(p):
-        return _ortho.get((round(float(p[0]), 3), round(float(p[1]), 3)),
-                          (float(p[0]), float(p[1])))
-
+    # Nodes
     for label, pos in label_to_pos.items():
         io_node = "Input" if label == src_label else "No"
-        ox, oy = _oxy(pos)
         tables.nodes.append({
             "label": label, "elevation": 2.8, "io_node": io_node,
-            "x": int(round(ox)), "y": int(round(oy)),
+            "x": int(round(pos[0])), "y": int(round(pos[1])),
         })
 
     # ====== Diameter 추론 — 3단계 알고리즘
@@ -3909,7 +3262,6 @@ def build_input_tables(
     # Pipes + edge key → pipe label mapping
     edge_key_to_pipe: dict[tuple, str] = {}
     pipe_label_counter = 10
-    cpvc_pipe_count = 0
     for a, b, length_mm in selection.edges:
         la = pos_to_label[a]; lb = pos_to_label[b]
         try:
@@ -3921,43 +3273,19 @@ def build_input_tables(
         plabel = str(pipe_label_counter)
         edge_key_to_pipe[(min(a, b), max(a, b))] = plabel
         dia = _pipe_diameter(a, b)
-        # 배관 중점이 사용자 지정 CPVC 영역(단위세대) 안이면 CPVC, 아니면 강관.
-        mx, my = (a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0
-        if _point_in_zones(mx, my, cpvc_zones):
-            ptype, cfac = CPVC_PIPE_TYPE, CPVC_C_FACTOR
-            cpvc_pipe_count += 1
-        else:
-            ptype, cfac = STEEL_PIPE_TYPE, STEEL_C_FACTOR
-        pipe_dict = {
+        tables.pipes.append({
             "label": plabel,
             "in": la, "out": lb,
-            "type": ptype,
+            "type": "KSD 3507",
             "dia": dia,
             # PIPENET/K-solver 는 length=0 배관을 거부(특이행렬). 좌표가 거의 겹치는
             # 노드쌍(클러스터 잔여)은 round 후 0.0 이 되므로 10mm 하한 강제.
             "length": max(round(length_mm / 1000.0, 3), 0.01),
             "elev": 0.0,
-            "c": cfac,
+            "c": "120",
             "status": "Normal",
             "group": "Unset",
-        }
-        # 표시 전용 L-벤드 — _separate_overlapping_branches 가 가지 서브트리를 옆으로
-        # 밀어 겹침을 없애면 고정 tee 로 이어지는 가지배관이 살짝 기운 대각선이 된다.
-        # 그 대각선을 직각 꺾임(상류 쪽 짧은 다리 + 병렬 드롭)으로 표시해 정리한다.
-        # length/dia 는 raw 좌표 기반이라 유압 결과 불변 — bend 는 표시좌표(ortho)뿐.
-        if frozenset((_bkey(a), _bkey(b))) in _branch_keys:
-            axd, ayd = _oxy(a); bxd, byd = _oxy(b)
-            ddx, ddy = abs(axd - bxd), abs(ayd - byd)
-            if ddx > 2.0 and ddy > 2.0:
-                if parent_map.get(b) == a:
-                    up, dn = (axd, ayd), (bxd, byd)
-                elif parent_map.get(a) == b:
-                    up, dn = (bxd, byd), (axd, ayd)
-                else:
-                    up, dn = (axd, ayd), (bxd, byd)
-                corner = (dn[0], up[1]) if ddy >= ddx else (up[0], dn[1])
-                pipe_dict["bend"] = [int(round(corner[0])), int(round(corner[1]))]
-        tables.pipes.append(pipe_dict)
+        })
         pipe_label_counter += 1
 
     # Nozzles
@@ -4101,7 +3429,6 @@ def build_input_tables(
         ("선정 헤드 수", str(len(selection.heads))),
         ("subgraph 노드 수", str(len(label_to_pos))),
         ("subgraph 파이프 수", str(len(tables.pipes))),
-        (f"세대내부 CPVC 배관 (C={CPVC_C_FACTOR})", f"{cpvc_pipe_count} / 강관 {len(tables.pipes) - cpvc_pipe_count}"),
         ("Fittings", str(len(tables.fittings))),
         ("Equipment", str(len(tables.equipment))),
         ("알람밸브 좌표 (snap)", f"({selection.source_pos[0]:.1f}, {selection.source_pos[1]:.1f})"),
@@ -4317,11 +3644,6 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
             rel_position=float(e["rel_pos"]),
         ))
 
-    # CPVC(단위세대) 로 표기된 배관 label 집합 — 아래 SDF 후처리에서 KSD 3507
-    # Pipe-set → CPVC2 Pipe-set 으로 <Pipe> 요소를 이동시킬 때 사용(재질별 schedule 분리).
-    cpvc_labels = {str(p["label"]) for p in tables.pipes
-                   if str(p.get("type", "")) == CPVC_PIPE_TYPE}
-
     for p in tables.pipes:
         pid = str(p["label"])
         network.add_pipe(PnPipe(
@@ -4443,8 +3765,7 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
         ]),
         ("DP", "120", [(0.025, 10)]),
         ("CPVC2", "150", [
-            (0.015, 6), (0.02, 6), (0.025, 6), (0.032, 6), (0.04, 6), (0.05, 6),
-            (0.065, 10), (0.08, 10), (0.09, 10), (0.1, 10),
+            (0.025, 6), (0.032, 6), (0.04, 6), (0.05, 6), (0.065, 10), (0.08, 10),
         ]),
         ("FX", "120", [(0.025, 10)]),
     ]
@@ -4506,21 +3827,6 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
             _new_ps.append(_make_pipe_type(_name, _cf, _sizes))
             _links.insert(_insert_at, _new_ps)
             _insert_at += 1
-        # ── 재질 분리: CPVC(단위세대) 배관을 KSD 3507 Pipe-set 에서 CPVC2 Pipe-set 으로 이동.
-        # label 기준 이동(assign 단계 type=CPVC2) — c-factor 문자열 매칭보다 견고. 유압 불변
-        # (length/bore/c 는 <Pipe> 속성 그대로 이동, schedule 바인딩만 CPVC2 로 바뀜).
-        if cpvc_labels:
-            _cpvc_ps = None
-            for _ps in _links.iter("Pipe-set"):
-                _nm = _ps.find("Pipe-type/Name")
-                if _nm is not None and _nm.text == "CPVC2":
-                    _cpvc_ps = _ps
-                    break
-            if _cpvc_ps is not None:
-                for _pipe_el in list(_populated.findall("Pipe")):
-                    if _pipe_el.get("label") in cpvc_labels:
-                        _populated.remove(_pipe_el)
-                        _cpvc_ps.append(_pipe_el)
         break
 
     write_sdf_tree(_tree, out_path)
@@ -4718,12 +4024,7 @@ def run_stages_0_2(
         spt_source = node_index.canonical(float(alarm_xy[0]), float(alarm_xy[1]))
         if spt_source not in graph:
             spt_source = _nearest_graph_node(graph, spt_source)
-    # 추정 연결(bridge·헤드 drop)을 SPT weight 에서 후순위로 → 트리 spine 은 실배관
-    # 위주. 실배관 대안이 있는 추정 edge 는 트리에서 빠지고(=removed), 유일 연결일
-    # 때만 살아남아 "링처럼 가로지르는" 추정선이 준다.
-    tree_edges_set, removed_cycle_edges = force_spanning_tree(
-        graph, edge_len, source=spt_source,
-        penalty_keys=(bridge_edges | head_drop_edges))
+    tree_edges_set, removed_cycle_edges = force_spanning_tree(graph, edge_len, source=spt_source)
     # SPT 가 일부 bridge/drop edge 도 제거할 수 있음 — 살아남은 것만 유효
     bridge_edges &= tree_edges_set
     head_drop_edges &= tree_edges_set
@@ -4750,10 +4051,10 @@ def run_stages_0_2(
             else:
                 layer = "_graph_edge"
             graph_ents.append({"t": "L", "l": layer, "p": [u[0], u[1], v[0], v[1]]})
-    # 2) 제거된 cycle edge — 트리를 닫아 루프를 만드는 간선이라 화면에 그리지 않는다
-    #    (배관망 그래프는 "하나의 길·분기 허용·루프 금지" = 순수 스패닝 트리로만 표시).
-    #    개수는 summary 로만 보고.
-    cycle_emitted = len(removed_cycle_edges)
+    # 2) 제거된 cycle edge — 별도 카테고리 (회색 매우 흐릿, 참고용)
+    for (u, v) in removed_cycle_edges:
+        graph_ents.append({"t": "L", "l": "_graph_removed_cycle", "p": [u[0], u[1], v[0], v[1]]})
+        cycle_emitted += 1
     # junction 노드 (차수 ≥ 3) 만 점으로
     junction_count = 0
     for n, neighbors in graph.items():
@@ -4862,21 +4163,12 @@ def run_stages_3_5(
                                      k=k_heads, manual_source=alarm_xy,
                                      manual_heads=edited_heads, zones=zones)
     subgraph_ents = []
-    _sg_ortho = orthogonalize_edge_positions(
-        selection.edges,
-        head_points=[h.pos for h in selection.heads],
-        source_point=selection.source_pos)
-
-    def _sg_xy(p):
-        return _sg_ortho.get((round(float(p[0]), 3), round(float(p[1]), 3)),
-                             (float(p[0]), float(p[1])))
     for a, b, _len in selection.edges:
-        pa, pb = _sg_xy(a), _sg_xy(b)
-        subgraph_ents.append({"t": "L", "l": "_subgraph", "p": [pa[0], pa[1], pb[0], pb[1]]})
+        subgraph_ents.append({"t": "L", "l": "_subgraph", "p": [a[0], a[1], b[0], b[1]]})
     for h in selection.heads:
-        subgraph_ents.append({"t": "C", "l": "_subgraph_head", "c": list(_sg_xy(h.pos)), "r": 80.0})
+        subgraph_ents.append({"t": "C", "l": "_subgraph_head", "c": list(h.pos), "r": 80.0})
     if selection.source_pos is not None:
-        subgraph_ents.append({"t": "C", "l": "_alarm_valve", "c": list(_sg_xy(selection.source_pos)), "r": 150.0})
+        subgraph_ents.append({"t": "C", "l": "_alarm_valve", "c": list(selection.source_pos), "r": 150.0})
     yield evt({"type": "entities", "stage": 4, "entities": subgraph_ents,
                "summary": {
                    "selected_heads": len(selection.heads),
@@ -4891,8 +4183,7 @@ def run_stages_3_5(
 
     # Stage 5: 5 테이블 (기존 4)
     yield evt({"type": "stage", "stage": 5, "status": "running", "label": "Nodes/Pipes/Nozzles/Fittings/Equipment 테이블 생성"})
-    tables = build_input_tables(selection, pipe_entities=pipe_ents, project_title=dxf_path.stem,
-                                cpvc_zones=zones)
+    tables = build_input_tables(selection, pipe_entities=pipe_ents, project_title=dxf_path.stem)
     csv_dir = out_dir / "csv"
     csv_paths = write_csv_tables(tables, csv_dir, prefix=f"prototype_{job_id}")
     xlsx_path = out_dir / f"prototype_{job_id}.xlsx"
@@ -4946,3 +4237,3682 @@ def run_stages_3_5(
         outputs["zip"] = zip_path.name
     yield evt({"type": "done", "outputs": outputs, "out_dir": str(out_dir)})
 
+
+
+# ======================================================================
+# FILE: remote30_full_network.py   (1428 lines)
+# ======================================================================
+
+"""Remote 30 전체 배관망 총괄 모듈 (10번 모듈 백엔드).
+
+기존 ``remote30_prototype`` 의 헤드망 추출 로직(Stage A)을 재사용하고,
+zone별 라이저 템플릿(Stage B), 라이저↔헤드망 stitch(Stage C),
+PIPENET-native 후처리 + Pump-fan/Elastomeric-valve 직렬화(Stage D) 를
+추가하여 펌프 → 감압밸브 → 알람밸브 → 헤드 30개 전 구간 SDF 를 생성한다.
+
+흐름::
+
+    OverallInputs (DXF + ZoneSpec + (선택) BuildingPressureProfile)
+            │
+            ├── Stage A — run_stages_0_2 (remote30_prototype 재사용)
+            │                 → PipeTables (헤드망)
+            │
+            ├── Stage B — build_riser(zone_spec, profile)
+            │                 → RiserTables (펌프/PRV/라이저)
+            │
+            ├── Stage C — stitch_riser_and_heads(riser, head_tables)
+            │                 → CombinedTables
+            │
+            └── Stage D — emit_full_sdf(combined, out_path)
+                              → 완성 SDF + 동봉 SLF
+
+신규 attribute (vs prototype 의 PipeTables)::
+
+    RiserTables.pumps   — <Pump-fan> 직렬화용 dict 리스트
+    RiserTables.valves  — <Elastomeric-valve> 직렬화용 dict 리스트
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any, Iterator
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 상수
+# ────────────────────────────────────────────────────────────────────────────
+
+KGF_CM2_TO_PA = 98066.5    # 1 kg/cm² (kgf/cm²) → Pa
+M_TO_PA = 9806.65          # 1 m 수두 → Pa (물 비중 1.0 기준)
+ATM_PA = 101325.0          # 1 기압 (boundary condition)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Zone 정의
+# ────────────────────────────────────────────────────────────────────────────
+
+class ZoneType(Enum):
+    """처리 가능한 zone 타입 — 답안 SDF 의 라이저 구조에서 도출.
+
+    압력분포표(예: 대명동 201동 PDF)의 각 행 → ZoneType 매핑::
+
+        옥상 + 27F~49F          → HSP_PUMP        (펌프식 부스터)
+        25F~26F                 → LSP_GRAVITY     (감압 없음, 자연낙차)
+        2F~24F (24F 1차 PRV)    → LSP_1STAGE      (1차 감압)
+        1F~B4 (1.5F 2차 PRV)    → LLSP_2STAGE     (1차 + 2차 감압)
+    """
+    HSP_PUMP = "hsp_pump"
+    LSP_GRAVITY = "lsp_gravity"
+    LSP_1STAGE = "lsp_1stage"
+    LLSP_2STAGE = "llsp_2stage"
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 데이터 모델
+# ────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class FloorRow:
+    """압력분포표의 한 행 (옥상~B4 까지 1층 1행)."""
+    floor_label: str          # "옥상층", "49층", "1층", "B1층" 등
+    height_m: float           # 층고 (m)
+    head_drop_m: float        # 누적 낙차 (m, 옥상 수원 기준)
+    after_prv_m: float | None = None  # 감압 이후 수두 (m) — 감압 구간만
+    note: str = ""            # 비고 ("자연낙차시작점", "1차 감압밸브 사용구간" 등)
+
+
+@dataclass
+class BuildingPressureProfile:
+    """빌딩 전체 압력 흐름 표 — 옥상부터 최하층까지 1행씩.
+
+    CSV/엑셀 업로드 또는 사용자 직접 입력 폼으로 생성. 없을 수도 있음 (선택적).
+    """
+    building_name: str = ""
+    floors: list[FloorRow] = field(default_factory=list)
+
+    def find_by_label(self, floor_label: str) -> FloorRow | None:
+        for row in self.floors:
+            if row.floor_label == floor_label:
+                return row
+        return None
+
+    @classmethod
+    def from_csv(cls, csv_path: Path, *, building_name: str = "") -> "BuildingPressureProfile":
+        """CSV 파서 — 컬럼: floor_label, height_m, head_drop_m, after_prv_m, note.
+
+        헤더 행은 한글/영문 모두 허용 (구분/층고/낙차압/감압이후/비고).
+        """
+        rows: list[FloorRow] = []
+        # 한글 컬럼명 → 영문 키 매핑 (PDF 표 헤더에 맞춤)
+        KCOL = {
+            "구분": "floor_label", "층": "floor_label",
+            "층고": "height_m",
+            "낙차압": "head_drop_m", "낙차": "head_drop_m",
+            "감압이후": "after_prv_m", "감압후": "after_prv_m",
+            "비고": "note",
+        }
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as fp:
+            reader = csv.DictReader(fp)
+            for raw in reader:
+                # 한글 헤더면 매핑 적용
+                norm: dict[str, Any] = {}
+                for k, v in raw.items():
+                    key = KCOL.get((k or "").strip(), (k or "").strip())
+                    norm[key] = (v or "").strip()
+                if not norm.get("floor_label"):
+                    continue
+                try:
+                    rows.append(FloorRow(
+                        floor_label=norm["floor_label"],
+                        height_m=float(norm.get("height_m") or 0),
+                        head_drop_m=float(norm.get("head_drop_m") or 0),
+                        after_prv_m=(float(norm["after_prv_m"]) if norm.get("after_prv_m") else None),
+                        note=norm.get("note", "") or "",
+                    ))
+                except (ValueError, KeyError):
+                    continue
+        return cls(building_name=building_name, floors=rows)
+
+    @classmethod
+    def from_xlsx(cls, xlsx_path: Path, *, sheet: str | int = 0,
+                  building_name: str = "") -> "BuildingPressureProfile":
+        """엑셀(.xlsx) 파서 — 첫 시트 또는 지정 시트의 같은 컬럼 구조."""
+        from openpyxl import load_workbook
+        wb = load_workbook(xlsx_path, read_only=True, data_only=True)
+        ws = wb[sheet] if isinstance(sheet, str) else wb.worksheets[sheet]
+        header_row = next(ws.iter_rows(values_only=True))
+        KCOL = {
+            "구분": "floor_label", "층": "floor_label",
+            "층고": "height_m",
+            "낙차압": "head_drop_m", "낙차": "head_drop_m",
+            "감압이후": "after_prv_m", "감압후": "after_prv_m",
+            "비고": "note",
+        }
+        col_idx = {KCOL.get((str(h) or "").strip(), (str(h) or "").strip()): i
+                   for i, h in enumerate(header_row) if h is not None}
+        rows: list[FloorRow] = []
+        for r in ws.iter_rows(min_row=2, values_only=True):
+            if not r:
+                continue
+            def _get(key, default=None):
+                i = col_idx.get(key)
+                return r[i] if i is not None and i < len(r) else default
+            label = _get("floor_label")
+            if not label:
+                continue
+            try:
+                rows.append(FloorRow(
+                    floor_label=str(label),
+                    height_m=float(_get("height_m") or 0),
+                    head_drop_m=float(_get("head_drop_m") or 0),
+                    after_prv_m=(float(_get("after_prv_m")) if _get("after_prv_m") is not None else None),
+                    note=str(_get("note") or ""),
+                ))
+            except (ValueError, TypeError):
+                continue
+        wb.close()
+        return cls(building_name=building_name, floors=rows)
+
+
+@dataclass
+class ZoneSpec:
+    """처리 대상 zone 의 사양. 사용자 입력 (라디오 + 폼).
+
+    필드 의미::
+
+        zone_type             — ZoneType (HSP_PUMP / LSP_GRAVITY / LSP_1STAGE / LLSP_2STAGE)
+        target_floor          — 추출 대상 층 ("16층" — Stage A 헤드망과 동일)
+        prv1_target_pa        — 1차 PRV 출구압 (Pa). 자연낙차 + 감압 zone 에서.
+        prv2_target_pa        — 2차 PRV 출구압 (Pa). LLSP_2STAGE 만.
+        pump_library_name     — Library-pump 의 SLF Pump-definition 이름.
+                                기본 "SP_162M_2900LPM" (표준 SLF 와 정합).
+        pump_count            — Pump-fan 개수 (HSP 보통 2개 = 1차+2차 부스터)
+
+    압력분포표가 있으면 prv1/prv2 target 은 표에서 자동 도출 가능, 없으면 직접 입력.
+    """
+    zone_type: ZoneType
+    target_floor: str = ""
+    prv1_target_pa: float | None = None
+    prv2_target_pa: float | None = None
+    pump_library_name: str = "SP_162M_2900LPM"
+    pump_count: int = 2
+
+
+@dataclass
+class OverallInputs:
+    """모듈 10 의 입력 일체."""
+    dxf_path: Path
+    zone_spec: ZoneSpec
+    profile: BuildingPressureProfile | None = None
+    alarm_xy: tuple[float, float] | None = None
+    job_id: str = ""
+    project_title: str = "Remote 30 전체 배관망 총괄"
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# RiserTables — Stage B 산출 / Stage C 입력
+# ────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class RiserTables:
+    """라이저(펌프~AV) 구간의 PipeTables 확장.
+
+    prototype.PipeTables 와 호환되는 nodes/pipes 형식 + pumps/valves 추가.
+    각 dict 의 키는 emit_sdf 의 직렬화에 그대로 쓰일 수 있도록 PIPENET 속성명에 맞춤.
+    """
+    nodes: list[dict] = field(default_factory=list)
+    pipes: list[dict] = field(default_factory=list)
+    pumps: list[dict] = field(default_factory=list)   # Pump-fan 직렬화용
+    valves: list[dict] = field(default_factory=list)  # Elastomeric-valve 직렬화용
+    av_node_label: str = ""  # 라이저 끝점 = 헤드망 source 와 stitch 할 노드 라벨
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Stage A — 헤드망 추출 (remote30_prototype 재사용)
+# ────────────────────────────────────────────────────────────────────────────
+
+def run_stage_a(inputs: OverallInputs) -> Iterator[dict]:
+    """Stage A — 평면도 DXF → 헤드 30개 + 배관망 추출 이벤트 스트림.
+
+    호출 측(서버)은 마지막 ``stage2_complete`` 이벤트의 데이터를 보관 후
+    사용자 헤드 편집 단계 → run_stages_3_5 → build_input_tables 까지 진행한다.
+    """
+    from remote30_prototype import run_stages_0_2
+    yield from run_stages_0_2(
+        dxf_path=inputs.dxf_path,
+        job_id=inputs.job_id,
+        alarm_xy=inputs.alarm_xy,
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Stage B — zone별 라이저 템플릿
+# ────────────────────────────────────────────────────────────────────────────
+#
+# 좌표 처리 방침:
+# PIPENET SDF 의 Position x/y 는 isometric 시각 표시용일 뿐 수리계산엔 무관하다.
+# emit_sdf 의 _xform 이 모든 노드 좌표를 bbox 중심 (0,0) + 약 3000 unit 으로 정규화하므로
+# 라이저 노드 좌표의 절댓값은 의미가 없고 상대 배치(라이저 수직 진행, AV 가 적절한 위치)
+# 만 유지하면 된다. 그러므로 빌딩 무관 logical 좌표계로 정의 — 모든 빌딩에서 동작.
+#
+# Logical 좌표 (mm 단위, 옥상 수원을 (0, 0) 으로):
+#   Input(1)            (   0,    0)    옥상 수원
+#   N2                  (-500, -100)    옥상 수평 분기
+#   N3                  (-500, -300)    옥상 → 라이저 진입 (수직 강하 시작)
+#   N4                  (-300, -1500)   라이저 중간 (수평 우회)
+#   N7                  (-300, -2800)   PRV 진입 직전
+#   N8 (PRV in)         (-200, -2900)
+#   N89 (PRV out)       (-100, -2950)
+#   N5 (AV 직전)         (-300, -3300)
+#   N10 (AV ★)          ( 100, -3300)   헤드망 source 와 stitch
+#   N87 (2차 PRV in)    ( -50, -3100)   LLSP_2STAGE 만
+#   N88 (2차 PRV out)   (  50, -3150)
+#   N100 (Pump Input)   ( 200,   100)   HSP_PUMP 만 (Input 1 보다 더 위)
+#
+# v1 구현 (대명동 201동 답안 SDF) 의 좌표는 git history 에서 확인 가능.
+#
+# 라이저 노드 라벨 컨벤션 (답안과 정합)::
+#     1   : Input 노드 (옥상 수원, 1기압 boundary)
+#     2,3,4,7  : 라이저 중간 노드 (옥상→하강→PRV 직전)
+#     8   : 1차 PRV in
+#     89  : 1차 PRV out
+#     5   : AV 직전 노드
+#     10  : AV 노드 (헤드망 source 와 stitch)
+#     87  : 2차 PRV in (LLSP_2STAGE 만)
+#     88  : 2차 PRV out (LLSP_2STAGE 만)
+#     100 : Pump-fan 전 Input (HSP_PUMP 만 — Input 라벨이 1 → 100 으로 옮김)
+#
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _node(label: str, elev: float, x: float, y: float, *,
+          io_node: str = "No", pressure_pa: float | None = None) -> dict:
+    """라이저 노드 dict — remote30_prototype.PipeTables.nodes 호환 형식."""
+    d: dict = {
+        "label": label, "elevation": elev, "io_node": io_node,
+        "x": int(round(x)), "y": int(round(y)),
+    }
+    if pressure_pa is not None:
+        d["pressure_pa"] = pressure_pa  # Input node 의 <Calculation-spec pressure="..."/>
+    return d
+
+
+def _pipe(label: str, in_lbl: str, out_lbl: str, bore_mm: int,
+          length_m: float, rise_m: float = 0.0, c_factor: str = "120") -> dict:
+    """라이저 파이프 dict — remote30_prototype.PipeTables.pipes 호환."""
+    return {
+        "label": label, "in": in_lbl, "out": out_lbl, "type": "KSD 3507",
+        "dia": bore_mm, "length": round(length_m, 2), "elev": rise_m,
+        "c": c_factor, "status": "Normal", "group": "Unset",
+    }
+
+
+def _pump_fan(label: str, in_lbl: str, out_lbl: str, *,
+              library_pump: str, efficiency: int = 100, status: int = 1) -> dict:
+    """Pump-fan dict — emit_full_sdf 가 <Pump-fan> 으로 직렬화."""
+    return {
+        "label": label, "in": in_lbl, "out": out_lbl,
+        "efficiency": efficiency, "status": status,
+        "library_pump": library_pump,
+        "percentage_open": 1,
+    }
+
+
+def _pressure_valve(label: str, in_lbl: str, out_lbl: str, *,
+                    target_pa: float, valve_type: str = "output") -> dict:
+    """Elastomeric-valve dict — emit_full_sdf 가 <Elastomeric-valve> 로 직렬화."""
+    return {
+        "label": label, "in": in_lbl, "out": out_lbl,
+        "target_value": float(target_pa), "type": valve_type,
+    }
+
+
+def _elev_at_floor(profile: BuildingPressureProfile | None, floor_label: str,
+                   fallback: float = 0.0) -> float:
+    """압력표에서 층 라벨의 누적 낙차 (m) → SDF elevation (음수)."""
+    if profile is not None:
+        row = profile.find_by_label(floor_label)
+        if row is not None:
+            return -float(row.head_drop_m)
+    return fallback
+
+
+# ── 라이저 logical 좌표 — 빌딩 무관. emit_sdf 의 _xform 이 정규화.
+_COORDS_INPUT      = (   0,     0)    # 옥상 수원
+_COORDS_N2         = (-500,  -100)    # 옥상 수평 분기
+_COORDS_N3         = (-500,  -300)    # 옥상 → 라이저 진입
+_COORDS_N4         = (-300, -1500)    # 라이저 중간 (수평 우회)
+_COORDS_N7         = (-300, -2800)    # PRV 진입 직전
+_COORDS_PRV_IN     = (-200, -2900)    # 노드 8 (1차 PRV in)
+_COORDS_PRV_OUT    = (-100, -2950)    # 노드 89 (1차 PRV out)
+_COORDS_PRV2_IN    = ( -50, -3100)    # 노드 87 (2차 PRV in, LLSP)
+_COORDS_PRV2_OUT   = (  50, -3150)    # 노드 88 (2차 PRV out, LLSP)
+_COORDS_N5_AV_PREV = (-300, -3300)    # AV 직전
+_COORDS_AV         = ( 100, -3300)    # 노드 10 (헤드망 source ★)
+_COORDS_PUMP_INPUT = ( 200,   100)    # HSP Pump-fan 앞 Input(100), Input(1) 보다 위
+
+
+def build_riser_lsp_1stage(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
+    """LSP 1차감압 라이저 — 자연낙차 + PRV 1개.
+
+    노드: Input(1, elev=0) → 2 → 3 → 4 → 7 → 8(PRV in) → 89(PRV out) → 5 → 10(AV)
+    파이프: 1→2, 2→3, 3→4, 4→7, 7→8, 89→5, 5→10
+    Elastomeric-valve: 8 → 89 (target = spec.prv1_target_pa)
+    """
+    if spec.prv1_target_pa is None:
+        raise ValueError("LSP_1STAGE 는 prv1_target_pa 가 필요합니다 (kg/cm² 또는 m 수두 → Pa).")
+    elev_av = _elev_at_floor(profile, spec.target_floor, fallback=-98.45)
+    elev_prv = -73.35  # PRV 위치 (옥상 -73m) — 답안 16F 기준 고정값 (24F 1차 감압 위치)
+    elev_top = -3.75   # 옥상 수직 분기 위치
+    return RiserTables(
+        nodes=[
+            _node("1",  0.0,        *_COORDS_INPUT,    io_node="Input", pressure_pa=ATM_PA),
+            _node("2",  0.0,        *_COORDS_N2),
+            _node("3",  elev_top,   *_COORDS_N3),
+            _node("4",  elev_top,   *_COORDS_N4),
+            _node("7",  elev_prv,   *_COORDS_N7),
+            _node("8",  elev_prv,   *_COORDS_PRV_IN),
+            _node("89", elev_prv,   *_COORDS_PRV_OUT),
+            _node("5",  elev_av - 1.0, *_COORDS_N5_AV_PREV),
+            _node("10", elev_av,    *_COORDS_AV),
+        ],
+        pipes=[
+            _pipe("r1", "1", "2",   150, 20.95, 0.0),
+            _pipe("r2", "2", "3",   150,  3.75, elev_top - 0.0),
+            _pipe("r3", "3", "4",   150, 14.93, 0.0),
+            _pipe("r4", "4", "7",   150, abs(elev_prv - elev_top), elev_prv - elev_top),
+            _pipe("r5", "7", "8",   150,  0.5,  0.0),
+            _pipe("r6", "89","5",   150, abs(elev_av - 1.0 - elev_prv), (elev_av - 1.0) - elev_prv),
+            _pipe("r7", "5", "10",  125,  1.5,  1.0),
+        ],
+        pumps=[],
+        valves=[
+            _pressure_valve("1", "8", "89", target_pa=spec.prv1_target_pa),
+        ],
+        av_node_label="10",
+    )
+
+
+def build_riser_hsp_pump(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
+    """HSP 펌프식 라이저 — 자연낙차 부족 → Pump-fan 부스터 + PRV 1개.
+
+    노드: Input(100, elev=0) → [Pump-fan 100→1] → 1 → 2 → 3 → 4 → 7 → 8(PRV in) → 89(PRV out) → 5 → 10(AV)
+    Pump-fan: 100 → 1 (Library-pump = spec.pump_library_name, count=spec.pump_count)
+    """
+    if spec.prv1_target_pa is None:
+        raise ValueError("HSP_PUMP 는 prv1_target_pa 가 필요합니다.")
+    # HSP 는 고층부라 elev_av 가 양수 (옥상보다 위)가 아니라 옥상 근처. 답안 29F = -64.2m 정도
+    elev_av = _elev_at_floor(profile, spec.target_floor, fallback=-67.1)
+    elev_prv = -10.0   # HSP 1차 PRV 위치 (옥상 직하단 보통)
+    elev_top = -3.75
+    nodes = [
+        _node("100", 0.0, *_COORDS_PUMP_INPUT, io_node="Input", pressure_pa=ATM_PA),
+        _node("1",   0.0,        *_COORDS_INPUT),
+        _node("2",   0.0,        *_COORDS_N2),
+        _node("3",   elev_top,   *_COORDS_N3),
+        _node("4",   elev_top,   *_COORDS_N4),
+        _node("7",   elev_prv,   *_COORDS_N7),
+        _node("8",   elev_prv,   *_COORDS_PRV_IN),
+        _node("89",  elev_prv,   *_COORDS_PRV_OUT),
+        _node("5",   elev_av - 1.0, *_COORDS_N5_AV_PREV),
+        _node("10",  elev_av,    *_COORDS_AV),
+    ]
+    pipes = [
+        _pipe("r1", "1", "2",   150, 20.95, 0.0),
+        _pipe("r2", "2", "3",   150,  3.75, elev_top),
+        _pipe("r3", "3", "4",   150, 14.93, 0.0),
+        _pipe("r4", "4", "7",   150, abs(elev_prv - elev_top), elev_prv - elev_top),
+        _pipe("r5", "7", "8",   150,  0.5,  0.0),
+        _pipe("r6", "89","5",   150, abs(elev_av - 1.0 - elev_prv), (elev_av - 1.0) - elev_prv),
+        _pipe("r7", "5", "10",  125,  1.5,  1.0),
+    ]
+    pumps = [
+        _pump_fan(str(i + 1), "100", "1", library_pump=spec.pump_library_name)
+        for i in range(max(1, spec.pump_count))
+    ]
+    return RiserTables(
+        nodes=nodes, pipes=pipes, pumps=pumps,
+        valves=[_pressure_valve("1", "8", "89", target_pa=spec.prv1_target_pa)],
+        av_node_label="10",
+    )
+
+
+def build_riser_llsp_2stage(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
+    """LLSP 2차감압 라이저 — 자연낙차 + 1차 PRV + 2차 PRV (지하주차장).
+
+    노드: ... 89(1차 PRV out) → 87(2차 PRV in) → 88(2차 PRV out) → 5 → 10(AV)
+    Elastomeric-valve: 8→89 (1차, target=prv1_target_pa), 87→88 (2차, target=prv2_target_pa)
+    """
+    if spec.prv1_target_pa is None or spec.prv2_target_pa is None:
+        raise ValueError("LLSP_2STAGE 는 prv1_target_pa, prv2_target_pa 모두 필요합니다.")
+    elev_av = _elev_at_floor(profile, spec.target_floor, fallback=-159.6)  # B1 = -159.6m
+    elev_prv1 = -73.35   # 1차 PRV (옥상 -73m)
+    elev_prv2 = -145.4   # 2차 PRV (1.5F, 옥상 -145m)
+    elev_top = -3.75
+    nodes = [
+        _node("1",  0.0,         *_COORDS_INPUT,    io_node="Input", pressure_pa=ATM_PA),
+        _node("2",  0.0,         *_COORDS_N2),
+        _node("3",  elev_top,    *_COORDS_N3),
+        _node("4",  elev_top,    *_COORDS_N4),
+        _node("7",  elev_prv1,   *_COORDS_N7),
+        _node("8",  elev_prv1,   *_COORDS_PRV_IN),
+        _node("89", elev_prv1,   *_COORDS_PRV_OUT),
+        _node("87", elev_prv2,   *_COORDS_PRV2_IN),
+        _node("88", elev_prv2,   *_COORDS_PRV2_OUT),
+        _node("5",  elev_av - 1.0, *_COORDS_N5_AV_PREV),
+        _node("10", elev_av,     *_COORDS_AV),
+    ]
+    pipes = [
+        _pipe("r1", "1", "2",   150, 20.95, 0.0),
+        _pipe("r2", "2", "3",   150,  3.75, elev_top),
+        _pipe("r3", "3", "4",   150, 14.93, 0.0),
+        _pipe("r4", "4", "7",   150, abs(elev_prv1 - elev_top), elev_prv1 - elev_top),
+        _pipe("r5", "7", "8",   150,  0.5,  0.0),
+        _pipe("r6", "89", "87", 150, abs(elev_prv2 - elev_prv1), elev_prv2 - elev_prv1),
+        _pipe("r7", "88", "5",  150, abs(elev_av - 1.0 - elev_prv2), (elev_av - 1.0) - elev_prv2),
+        _pipe("r8", "5", "10",  125,  1.5,  1.0),
+    ]
+    return RiserTables(
+        nodes=nodes, pipes=pipes, pumps=[],
+        valves=[
+            _pressure_valve("1", "8", "89", target_pa=spec.prv1_target_pa),
+            _pressure_valve("2", "87", "88", target_pa=spec.prv2_target_pa),
+        ],
+        av_node_label="10",
+    )
+
+
+def build_riser(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
+    """zone 분기 라우터."""
+    if spec.zone_type == ZoneType.HSP_PUMP:
+        return build_riser_hsp_pump(spec, profile)
+    if spec.zone_type == ZoneType.LSP_1STAGE:
+        return build_riser_lsp_1stage(spec, profile)
+    if spec.zone_type == ZoneType.LLSP_2STAGE:
+        return build_riser_llsp_2stage(spec, profile)
+    if spec.zone_type == ZoneType.LSP_GRAVITY:
+        # 자연낙차 감압 없음 — LSP_1STAGE 의 PRV 만 제거한 변형
+        rt = build_riser_lsp_1stage(
+            ZoneSpec(zone_type=ZoneType.LSP_1STAGE, target_floor=spec.target_floor,
+                     prv1_target_pa=ATM_PA),  # dummy — valves 비울 거니까 무시
+            profile,
+        )
+        rt.valves = []
+        # PRV 자리 노드 8, 89 도 제거하고 7 → 5 직결
+        rt.nodes = [n for n in rt.nodes if n["label"] not in ("8", "89")]
+        rt.pipes = [p for p in rt.pipes if p["in"] not in ("7", "89") or p["out"] not in ("8", "5")]
+        rt.pipes.append(_pipe("r_g", "7", "5", 150, 30.0, -30.0))  # 7 → 5 직결 단순화
+        return rt
+    raise ValueError(f"Unknown zone_type: {spec.zone_type}")
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Stage C — 라이저 ↔ 헤드망 stitch
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class CombinedTables:
+    """라이저 + 헤드망 결합 결과 — emit_full_sdf 입력."""
+    nodes: list[dict] = field(default_factory=list)
+    pipes: list[dict] = field(default_factory=list)
+    nozzles: list[dict] = field(default_factory=list)
+    fittings: list[dict] = field(default_factory=list)
+    equipment: list[dict] = field(default_factory=list)
+    pumps: list[dict] = field(default_factory=list)
+    valves: list[dict] = field(default_factory=list)
+    meta: list[tuple[str, str]] = field(default_factory=list)
+    # 기계실 전체 평면 배관망 edge (시각화 전용, SDF 미포함). [[x1,y1,x2,y2], ...]
+    machine_room_plan_edges: list[list[float]] = field(default_factory=list)
+
+
+def _layout_riser_as_schematic(
+    riser_nodes: list[dict],
+    anchor_xy: tuple[float, float],
+    head_yspan: float = 5000.0,
+    descend: bool = False,
+) -> list[dict]:
+    """라이저 노드를 PIPENET schematic 의 수직 막대 형태로 재배치.
+
+    실제 계통도 DXF 의 라이저는 수십 m (60km mm) 길이라 헤드망 (5-10m schematic)
+    과 통합하면 라이저가 너무 거대해서 그래프가 깨져 보임. PIPENET 답안처럼
+    라이저는 헤드 군집 위로 수직 막대 (5m 정도) 로 배치해 한 화면에 깔끔히 보이게.
+
+    Layout:
+        - 모든 노드 X = anchor_xy[0] (수직 막대)
+        - AV (마지막 노드) = anchor_xy 위치 (= 헤드 군집 가로 중앙 위)
+        - 펌프 (첫 노드) = (anchor_xy[0], anchor_xy[1] + 라이저 yspan)
+        - 중간 노드 = 균등 간격으로 사이 배치
+
+    Args:
+        riser_nodes: 라이저 노드 리스트. 인덱스 0 = 펌프, 마지막 = AV.
+        anchor_xy: 막대 하단(AV) 을 놓을 좌표. 헤드망 source 노드 실좌표를 넘겨
+            AV 를 source 에 정합하면 둘을 잇는 헤드 첫 배관(선언 길이 ~0)이
+            긴 선으로 늘어나지 않음.
+        head_yspan: 헤드망 bbox 의 y 범위 — 라이저 막대 길이는 이의 80%.
+        descend: 펌프 가압(B1 펌프실) 모드. True 면 막대를 AV(헤드망) **아래**로
+            내려, 펌프/수원이 화면 최하부에 오도록 한다(물이 B1→위로 가압되는
+            물리 배치). 기본 False = 옥상수조(자연낙차) — 수원이 위.
+    """
+    n = len(riser_nodes)
+    if n < 2:
+        return list(riser_nodes)
+    riser_yspan = max(2000.0, head_yspan * 0.8)
+    step_y = riser_yspan / (n - 1)
+    target_x = float(anchor_xy[0])
+    target_y_av = float(anchor_xy[1])
+    # 자연낙차: 수원 위(+). 펌프 가압: 수원 아래(-).
+    y_dir = -1.0 if descend else 1.0
+
+    out: list[dict] = []
+    for i, node in enumerate(riser_nodes):
+        # i=0: 펌프/수원, i=n-1: AV (head_av 위치, 막대 끝점)
+        rank_from_av = (n - 1) - i
+        out.append({
+            **node,
+            "x": int(round(target_x)),
+            "y": int(round(target_y_av + y_dir * rank_from_av * step_y)),
+        })
+    return out
+
+
+def _layout_machine_room_plan(
+    mr_nodes: list[dict],
+    plan_edges: list[list[float]] | None,
+    pump_xy: tuple[float, float],
+    head_yspan: float = 5000.0,
+    below: bool = False,
+) -> tuple[list[dict], list[list[float]]]:
+    """기계실(옥상수조) 전체 평면 배관망을 실제 x, y 형상 그대로 배치 — schematic 금지.
+
+    기계실 DXF 는 평면도(옥상층 소방배관 평면도)라 실제 2D 배관망 형상을 가진다.
+    라이저(계통도)처럼 수직 막대로 모사하면 그 형상이 뭉개지므로, 헤드망(평면도)
+    과 동일하게 실제 x, y 로 보여준다. 수리계산 경로(mr_nodes, m*) 뿐 아니라 전체
+    SP 배관망 edge(plan_edges)까지 **동일 변환**으로 배치해 완전한 평면도로 렌더.
+
+        1. 경로 노드 + 전체 edge 끝점을 합친 bbox 기준 균등 스케일(aspect 보존),
+           헤드 군집과 비슷한 크기로.
+        2. bbox 하단(min y)을 펌프 위쪽(gap)에, 가로 중앙을 펌프 x 에 정렬.
+           → 평면 군집이 라이저 막대 위에 떠 펌프와 brige edge 로 이어져 보임.
+
+    Args:
+        mr_nodes: 수리경로 노드(라벨 m*). 실제 DXF x, y 보유(원점 미변환 raw).
+        plan_edges: 기계실 전체 SP 배관망 edge [[x1,y1,x2,y2], ...] (raw DXF).
+        pump_xy: 펌프 junction(라이저 "1")의 schematic 좌표 — 부착 기준점.
+        head_yspan: 헤드망 y-span — 기계실 평면 크기·gap 산정 기준.
+
+    Returns:
+        (laid_nodes, laid_edges) — 동일 변환 적용된 경로 노드 + 전체망 edge.
+    """
+    pe = plan_edges or []
+    pts: list[tuple[float, float]] = [
+        (float(n.get("x", 0.0)), float(n.get("y", 0.0))) for n in mr_nodes
+    ]
+    for e in pe:
+        pts.append((float(e[0]), float(e[1])))
+        pts.append((float(e[2]), float(e[3])))
+    if not pts:
+        return list(mr_nodes), []
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    x_min, x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)
+    w = x_max - x_min
+    h = y_max - y_min
+    diag = max((w * w + h * h) ** 0.5, 1.0)
+    target = max(2000.0, head_yspan * 0.7)   # 헤드 군집과 비슷한 크기로
+    scale = target / diag
+    cx = (x_min + x_max) / 2.0
+    gap = max(800.0, head_yspan * 0.12)       # 펌프와 기계실 군집 사이 간격
+    px, py = float(pump_xy[0]), float(pump_xy[1])
+
+    def _tf(x: float, y: float) -> tuple[float, float]:
+        # 자연낙차(옥상수조): 펌프 위쪽(+). 펌프 가압(B1): 펌프 아래쪽(-).
+        if below:
+            return ((x - cx) * scale + px, py - gap - (y_max - y) * scale)
+        return ((x - cx) * scale + px, (y - y_min) * scale + py + gap)
+
+    laid_nodes: list[dict] = []
+    for n in mr_nodes:
+        nx, ny = _tf(float(n.get("x", 0.0)), float(n.get("y", 0.0)))
+        laid_nodes.append({**n, "x": int(round(nx)), "y": int(round(ny))})
+    laid_edges: list[list[float]] = []
+    for e in pe:
+        x1, y1 = _tf(float(e[0]), float(e[1]))
+        x2, y2 = _tf(float(e[2]), float(e[3]))
+        laid_edges.append([int(round(x1)), int(round(y1)),
+                           int(round(x2)), int(round(y2))])
+    return laid_nodes, laid_edges
+
+
+def stitch_riser_and_heads(
+    riser: RiserTables,
+    head_tables: Any,
+    machine_room_labels: set[str] | list[str] | None = None,
+    pump_junction_label: str | None = None,
+    machine_room_plan_edges: list[list[float]] | None = None,
+    machine_room_at_bottom: bool = False,
+) -> CombinedTables:
+    """라이저 끝점(AV node) ↔ 헤드망 source(=같은 label) 결합 + schematic 좌표 정렬.
+
+    Args:
+        riser: Stage B 산출 (legacy template) 또는 extract_system_path 결과.
+        head_tables: remote30_prototype.PipeTables 인스턴스.
+
+    Returns:
+        CombinedTables — 좌표가 정렬된 한 schematic.
+
+    충돌 처리:
+        라이저 노드 라벨 = {1..9, ...} + AV(10) — 또는 v1 path: {1, n2..nN, 10}
+        헤드망 노드 라벨 = {10, 11, 12, ...} (10 이 source = AV)
+        AV(10) 만 공통 — 라이저 쪽 노드만 유지, 헤드망 사본은 skip.
+
+    좌표 정렬 (PIPENET answer schematic 스타일):
+        legacy 28F 템플릿은 6 노드의 작은 schematic 좌표 (0~15K 범위) 를 affine
+        변환으로 사용자 클릭 위치에 맞춤. v1 path 는 실제 DXF 절대 좌표 (수십m)
+        를 그대로 써서 통합 시 라이저가 헤드망보다 훨씬 거대해 보임.
+
+        해결: 라이저를 _layout_riser_as_schematic 로 헤드 AV 위치 위 수직 막대
+        로 재배치. 라이저 막대 길이는 헤드 bbox y-span 의 80%. 결과는 답안 SDF
+        의 schematic 처럼 한 시각 영역 안에 컴팩트하게 부착.
+    """
+    av_lbl = riser.av_node_label
+    riser_av_node = next((n for n in riser.nodes if n["label"] == av_lbl), None)
+    if riser_av_node is None:
+        raise ValueError(f"라이저에 AV 노드(label={av_lbl})가 없음")
+
+    head_av_node = next((n for n in head_tables.nodes if n["label"] == av_lbl), None)
+
+    # 헤드망 bbox 계산 (라이저 schematic 크기 결정용)
+    head_xs = [float(nd.get("x", 0.0)) for nd in head_tables.nodes if "x" in nd]
+    head_ys = [float(nd.get("y", 0.0)) for nd in head_tables.nodes if "y" in nd]
+    head_yspan = (max(head_ys) - min(head_ys)) if head_ys else 5000.0
+
+    # 노드를 진짜 라이저(계통도) 와 기계실(평면도) 로 분리.
+    #   - 라이저: 실제 좌표가 수십 m 라 schematic 수직 막대로 재배치.
+    #   - 기계실: 평면도이므로 실제 x, y 형상을 유지(평면 군집). 막대로 뭉개지 않음.
+    mr_set = {str(l) for l in (machine_room_labels or [])}
+    true_riser_nodes = [n for n in riser.nodes if str(n["label"]) not in mr_set]
+    mr_nodes = [n for n in riser.nodes if str(n["label"]) in mr_set]
+
+    # 라이저 좌표 schematic 재배치 — AV(막대 하단)를 헤드망 source 노드 실좌표에 snap.
+    #   AV 노드는 (1) 라이저 막대 하단이자 (2) 헤드망 첫 메인(파이프 av_lbl)의 source 로
+    #   같은 논리 분기점이다. 막대를 헤드 군집 중앙 위에 띄우면 AV 가 헤드 source 위치에서
+    #   떨어져, 그 둘을 잇는 헤드 첫 배관(선언 길이 ~0)이 두 좌표계를 가로지르는 긴 선으로
+    #   그려졌다. → anchor 를 head_av_node 좌표로 잡아 AV 를 source 에 정합, 연결선을 0 으로.
+    if head_av_node is not None and head_xs and head_ys:
+        try:
+            anchor_xy = (float(head_av_node["x"]), float(head_av_node["y"]))
+            translated_riser_nodes = _layout_riser_as_schematic(
+                true_riser_nodes, anchor_xy, head_yspan=head_yspan,
+                descend=machine_room_at_bottom,
+            )
+        except (KeyError, TypeError, ValueError):
+            translated_riser_nodes = list(true_riser_nodes)
+    else:
+        translated_riser_nodes = list(true_riser_nodes)
+
+    # 기계실 평면 배치 — 펌프 junction("1")의 schematic 좌표에 부착, 실제 x,y 형상 유지.
+    #   수리경로 노드(mr_nodes) + 전체 SP 배관망 edge(plan_edges)를 **동일 변환**으로
+    #   배치해 완전한 평면도로 렌더. plan_laid 는 시각화 전용(SDF 미포함).
+    plan_laid: list[list[float]] = []
+    if mr_nodes and pump_junction_label is not None:
+        pump_node = next((n for n in translated_riser_nodes
+                          if str(n["label"]) == str(pump_junction_label)), None)
+        if pump_node is not None:
+            try:
+                pump_xy = (float(pump_node["x"]), float(pump_node["y"]))
+                mr_laid, plan_laid = _layout_machine_room_plan(
+                    mr_nodes, machine_room_plan_edges, pump_xy, head_yspan=head_yspan,
+                    below=machine_room_at_bottom,
+                )
+            except (KeyError, TypeError, ValueError):
+                mr_laid = list(mr_nodes)
+                plan_laid = []
+        else:
+            mr_laid = list(mr_nodes)
+    else:
+        mr_laid = list(mr_nodes)
+
+    translated_riser_nodes = translated_riser_nodes + mr_laid
+
+    # 헤드망 노드 10 의 elevation → 라이저 AV elevation 으로 일치
+    head_nodes_filtered = []
+    for n in head_tables.nodes:
+        if n["label"] == av_lbl:
+            # AV 는 라이저 쪽에서 이미 포함 — 헤드망 쪽 사본 skip
+            continue
+        head_nodes_filtered.append(n)
+
+    # 파이프 라벨 전역 유일화 — 계통도·평면도·기계실이 전부 r1.. 컨벤션을 쓰므로
+    # 합치면 라벨이 충돌한다. parse_sdf 의 plabel_to_pid 는 라벨 문자열로 keying 해
+    # 같은 라벨 두 파이프를 한 K-solver pid 로 접어버려 KFP 토폴로지가 붕괴된다.
+    # → 충돌하는 두 번째 이후 항목만 개명(원본 dict 불변, 사본 생성).
+    combined_pipes: list[dict] = []
+    seen_pipe_labels: set[str] = set()
+    for p in (list(riser.pipes) + list(head_tables.pipes)):
+        lbl = str(p.get("label", ""))
+        if lbl and lbl not in seen_pipe_labels:
+            seen_pipe_labels.add(lbl)
+            combined_pipes.append(p)
+            continue
+        base = lbl or "p"
+        k = 2
+        new_lbl = f"{base}_{k}"
+        while new_lbl in seen_pipe_labels:
+            k += 1
+            new_lbl = f"{base}_{k}"
+        seen_pipe_labels.add(new_lbl)
+        combined_pipes.append({**p, "label": new_lbl})
+
+    # ── 표준 소화배관 밸브(Fitting) 주입.
+    # 라이저 빌더는 fitting 을 생성하지 않아(통합 fitting 은 head_tables.fittings 만),
+    # 정답 SDF 의 펌프 토출부 개폐/체크밸브·알람밸브 1차측 버터플라이가 통째로 빠진다.
+    # 화재안전기준 표준 배치를 결정론적으로 부착한다:
+    #   · 수원/펌프 토출 배관(Input 경계 노드 직결): gate + check
+    #   · 알람밸브 배관(A/V Equipment 보유): butterfly
+    # (정답 2. Pipenet_hand.sdf 의 pipe"1"=gate+check, pipe"9"[A/V]=butterfly 와 정합.)
+    combined_fittings = list(head_tables.fittings)
+
+    def _pipe_by_label(lbl: str) -> dict | None:
+        return next((p for p in combined_pipes if str(p["label"]) == str(lbl)), None)
+
+    def _add_valve(pipe: dict, vtype: str) -> None:
+        combined_fittings.append({
+            "pipe": pipe["label"], "in": pipe["in"], "out": pipe["out"],
+            "type": vtype, "count": "1",
+        })
+
+    av_eq = next((e for e in head_tables.equipment
+                  if str(e.get("desc", "")).upper() == "A/V" and e.get("pipe")), None)
+    if av_eq is not None:
+        av_pipe = _pipe_by_label(av_eq["pipe"]) or next(
+            (p for p in combined_pipes
+             if str(p["in"]) == str(av_eq.get("in")) and str(p["out"]) == str(av_eq.get("out"))),
+            None)
+        if av_pipe is not None:
+            _add_valve(av_pipe, "butterfly")
+
+    input_label = next((str(n["label"]) for n in (translated_riser_nodes + head_nodes_filtered)
+                        if str(n.get("io_node", "")).lower() == "input"), None)
+    if input_label is not None:
+        src_pipe = next((p for p in combined_pipes
+                         if str(p["in"]) == input_label or str(p["out"]) == input_label), None)
+        if src_pipe is not None:
+            _add_valve(src_pipe, "gate")
+            _add_valve(src_pipe, "check")
+
+    return CombinedTables(
+        nodes=translated_riser_nodes + head_nodes_filtered,
+        pipes=combined_pipes,
+        nozzles=list(head_tables.nozzles),
+        fittings=combined_fittings,
+        equipment=list(head_tables.equipment),
+        pumps=list(riser.pumps),
+        valves=list(riser.valves),
+        meta=list(getattr(head_tables, "meta", [])),
+        machine_room_plan_edges=plan_laid,
+    )
+
+
+def prepend_machine_room_to_riser(
+    machine_room: dict, riser: RiserTables, *,
+    at_bottom: bool = False, source_drop_below_lowest_m: float = 0.0,
+) -> tuple[RiserTables, bool]:
+    """기계실 경로를 라이저 Input 노드 앞에 prepend → 확장 RiserTables.
+
+    수원 경계가 라이저 top('1')이 아니라 그보다 상류인 기계실 수면(m1)으로 이동한다.
+    기계실 경로 = 수원(m1, Input) → 입상관 연결점(mK). mK 를 라이저 Input 노드와
+    병합하고 라이저 Input 은 일반 분기로 강등(경계는 이제 m1 하나). 이렇게 기계실부
+    배관의 마찰손실과 고저차가 통합망 수리계산에 반영된다.
+
+    좌표 정합 (x, y): 기계실 노드의 raw DXF x, y 는 그대로 보존한다. 통합 캔버스
+    배치는 stitch 단계의 _layout_machine_room_plan 이 수리경로 노드 + 전체 SP
+    배관망 edge(plan_edges, 동일 raw 좌표계)를 한 변환으로 묶어 펌프 위에 부착하므로,
+    여기서 미리 translation 하면 오히려 plan_edges 와 어긋난다. → x, y 무변환.
+
+    elevation (가압방식에 따라 기준이 다름 — 수리결과를 바꾸는 핵심):
+      • at_bottom=False (고가수조/자연낙차): 기계실(옥상수조)은 라이저 top 과
+        동일한 옥상 레벨(수평)이므로 기계실 노드 elev 를 라이저 Input(옥상) elev 로
+        offset. 수원이 망 최상부 → 자연낙차로 하류에 양압 공급.
+      • at_bottom=True (펌프 가압): 기계실/수원이 최하부(예: B1)다. 라이저 Input
+        (옥상)이 아니라 **라이저 최저 고도(=서비스 최저층, 보통 AV)** 를 기준으로
+        삼되, ``source_drop_below_lowest_m`` 만큼 그 아래로 더 내려 수원을 둔다.
+        도면(DXF)에는 z 가 없어 기계실의 실제 깊이를 추출할 수 없으므로, 이 깊이는
+        사용자가 가압방식 패널에서 직접 입력한다(미지정 시 0 = 최저헤드와 동일 고도).
+        그 결과 수원→최저헤드 사이에 ``source_drop_below_lowest_m`` 만큼의 양(+)의
+        정수두(lift)가 생겨 펌프가 극복해야 할 실양정으로 계산에 반영된다.
+        (옥상 기준이면 이 lift 가 0 으로 사라져 펌프 실양정이 과소평가됨.)
+
+    Args:
+        source_drop_below_lowest_m: at_bottom 일 때만 사용. 수원(기계실)이 라이저
+            최저 노드보다 몇 m 더 아래에 있는지(>0). 헤드 대비 실제 흡입 고저차.
+
+    반환: (확장 RiserTables, attached) — attached 는 실제 병합 성공 여부.
+    machine_room 가 비었거나 라이저 Input 을 못 찾으면 (원본 riser, False) 반환(안전).
+    """
+    mr_nodes = list(machine_room.get("nodes", []))
+    mr_pipes = list(machine_room.get("pipes", []))
+    if not mr_nodes or not mr_pipes:
+        return riser, False
+
+    conn_label = str(machine_room.get("conn_node_label") or mr_nodes[-1]["label"])
+
+    riser_input = next(
+        (n for n in riser.nodes if str(n.get("io_node", "")).lower() == "input"), None)
+    if riser_input is None:
+        riser_input = next((n for n in riser.nodes if str(n["label"]) == "1"), None)
+    if riser_input is None:
+        return riser, False  # 정합 불가 — 기계실 skip
+    riser_input_label = str(riser_input["label"])
+    riser_input_elev = float(riser_input.get("elevation", 0.0))
+
+    # 기계실 고도 기준(offset) — 가압방식에 따라 분기.
+    #  · 고가수조: 라이저 Input(옥상) 고도. 수원이 최상부.
+    #  · 펌프 가압(at_bottom): 라이저 최저 고도에서 source_drop_below_lowest_m 만큼
+    #    더 아래. 수원이 최저헤드보다 아래 → 양(+)의 실양정(lift)이 계산에 반영됨.
+    if at_bottom:
+        lowest = min(
+            (float(n.get("elevation", 0.0)) for n in riser.nodes),
+            default=riser_input_elev,
+        )
+        mr_ref_elev = lowest - abs(float(source_drop_below_lowest_m))
+    else:
+        mr_ref_elev = riser_input_elev
+
+    # 기계실 노드: x,y 는 raw DXF 좌표 그대로(무변환 — plan_edges 와 동일 좌표계 유지),
+    # elev 는 mr_ref_elev 기준으로 offset + conn 노드(mK) 제거(병합)
+    new_mr_nodes: list[dict] = []
+    for n in mr_nodes:
+        if str(n["label"]) == conn_label:
+            continue  # mK ≡ riser_input — 중복 제거
+        nn = dict(n)
+        nn["elevation"] = round(mr_ref_elev + float(n.get("elevation", 0.0)), 3)
+        new_mr_nodes.append(nn)
+
+    # 기계실 pipe: conn(mK) 향하던 끝점을 riser_input_label 로 재지정
+    new_mr_pipes: list[dict] = []
+    for p in mr_pipes:
+        pp = dict(p)
+        if str(pp.get("out")) == conn_label:
+            pp["out"] = riser_input_label
+        if str(pp.get("in")) == conn_label:
+            pp["in"] = riser_input_label
+        new_mr_pipes.append(pp)
+
+    # 라이저 Input 강등: Input→No, pressure 제거 (경계는 이제 m1)
+    new_riser_nodes: list[dict] = []
+    for n in riser.nodes:
+        nn = dict(n)
+        if str(n["label"]) == riser_input_label:
+            nn["io_node"] = "No"
+            nn.pop("pressure_pa", None)
+        new_riser_nodes.append(nn)
+
+    return RiserTables(
+        nodes=new_mr_nodes + new_riser_nodes,
+        pipes=new_mr_pipes + list(riser.pipes),
+        pumps=list(riser.pumps),
+        valves=list(riser.valves),
+        av_node_label=riser.av_node_label,
+    ), True
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 펌프 가압 방식 — 통합망 수원(Input 경계) 직후 펌프 요소 삽입
+# ────────────────────────────────────────────────────────────────────────────
+
+# 화재안전기준(NFPC 103) 펌프 성능시험 곡선 기준:
+#   체절운전(Q=0)      : 양정 ≤ 정격양정의 140%
+#   정격(Q=정격)        : 정격양정
+#   150% 유량(Q=1.5정격): 양정 ≥ 정격양정의 65%
+PUMP_SHUTOFF_HEAD_RATIO = 1.40
+PUMP_OVERLOAD_Q_RATIO = 1.50
+PUMP_OVERLOAD_HEAD_RATIO = 0.65
+
+
+def insert_source_pump(
+    combined: CombinedTables,
+    *,
+    rated_q_lpm: float,
+    rated_h_m: float,
+    count: int = 1,
+    pump_name: str = "FP",
+    efficiency: int = 100,
+) -> CombinedTables:
+    """통합망 수원(Input 경계) 직후에 펌프 요소를 삽입한다 (펌프 가압 방식).
+
+    물리 모델: 수원(Input, 대기압) → [Pump-fan] → 토출노드 → (기존 배관).
+    수원에서 출발하던 모든 파이프의 시작점을 새 토출노드로 옮기고, 펌프 요소가
+    수원→토출노드를 잇는다. 수원 노드는 그대로 대기압 경계(Calculation-spec)로
+    남으므로 parse_sdf 의 pressure_bar 가 None 이 아니어서 펌프 양정이 boundary
+    압력으로 잘못 주입되는 일이 없다.
+
+    화재안전기준 표준 3점 성능곡선(체절 140% / 정격 / 150% 65%)을 펌프 dict 에
+    담아 emit_full_sdf 의 Pump-fan attribute + has_converter 의 pumpFlowDataTable
+    로 전파한다. 이로써 SDF/KFP/HAS 모두 동일 곡선으로 연산 가능해진다.
+
+    Args:
+        combined: stitch_riser_and_heads 산출. in-place 로 펌프/토출노드 추가.
+        rated_q_lpm: 정격 토출량 (L/min).
+        rated_h_m:   정격 양정 (m).
+        count:       병렬 펌프 개수 (기본 1 — 운전 듀티 펌프 1대).
+        pump_name:   Library-pump / HAS PumpType 이름 (기본 "FP").
+
+    Returns:
+        combined (동일 객체) — 펌프/토출노드가 추가됨.
+
+    Raises:
+        ValueError: 통합망에 Input 경계 노드가 없을 때.
+    """
+    src = next((n for n in combined.nodes
+                if str(n.get("io_node", "")).lower() == "input"), None)
+    if src is None:
+        raise ValueError("통합망에 Input 경계 노드(수원)가 없어 펌프를 삽입할 수 없습니다.")
+    src_label = str(src["label"])
+
+    # 토출 노드 — 수원과 같은 고도(수평), 경계 아님. 라벨 유일 보장.
+    existing = {str(n["label"]) for n in combined.nodes}
+    disch_label = f"{src_label}_pd"
+    _k = 1
+    while disch_label in existing:
+        _k += 1
+        disch_label = f"{src_label}_pd{_k}"
+    disch = {
+        "label": disch_label,
+        "x": int(src.get("x", 0)) + 400,   # 캔버스에서 펌프가 보이도록 약간 오프셋
+        "y": int(src.get("y", 0)),
+        "elevation": float(src.get("elevation", 0.0)),
+        "io_node": "No",
+    }
+    combined.nodes.append(disch)
+
+    # 수원에서 나가던 파이프(in==수원)의 시작점을 토출노드로 재지정.
+    # (트리 root 인 수원은 모든 배관이 out 방향 → in==src 만 검사하면 충분)
+    for p in combined.pipes:
+        if str(p.get("in")) == src_label:
+            p["in"] = disch_label
+
+    q = float(rated_q_lpm)
+    h = float(rated_h_m)
+    shutoff_h = round(h * PUMP_SHUTOFF_HEAD_RATIO, 3)
+    peak_q = round(q * PUMP_OVERLOAD_Q_RATIO, 3)
+    peak_h = round(h * PUMP_OVERLOAD_HEAD_RATIO, 3)
+
+    # 소화펌프는 주+예비(또는 N대) 구성이나, 예비는 동시 운전하지 않는 신뢰성
+    # 이중화 → 수리계산은 운전 듀티 1대 곡선으로 한다(화재안전기준). 같은 in/out
+    # 노드에 N개 Pump-fan 을 직렬화하면 PIPENET/KFP 가 N대 병렬 = N배 용량으로
+    # 잘못 계산하므로, Pump-fan 은 단 하나만 만들고 대수는 count 메타로 보존한다.
+    n_pumps = max(1, int(count))
+    combined.pumps.append({
+        "label": pump_name,
+        "in": src_label,
+        "out": disch_label,
+        "efficiency": int(efficiency),
+        "status": 1,
+        "library_pump": pump_name,
+        "percentage_open": 1,
+        "pump_type": pump_name,
+        "count": n_pumps,            # 설치 대수(주+예비) — 표시/문서용, 수리계산 비반영
+        # 성능곡선 (정격 + 체절 + 150% 과부하) — m / L·min 단위
+        "rated_q": q,
+        "rated_h": h,
+        "shutoff_h": shutoff_h,
+        "peak_q": peak_q,
+        "peak_h": peak_h,
+    })
+    return combined
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Stage D — emit_full_sdf (PIPENET-native 후처리 + Pump-fan / Elastomeric-valve)
+# ────────────────────────────────────────────────────────────────────────────
+
+# 물 ρg (kg/m³ × m/s²) — 양정(m) → 압력(Pa). 표준 SLF 펌프점과 동일 계수.
+# M_TO_PA 와 같은 물리량(1 m 수두 → Pa). 의미가 다른 두 이름이라 alias 로 단일화.
+_WATER_RHO_G = M_TO_PA
+
+
+def _harden_slf_for_combined(
+    slf_path: Path,
+    opt_flow_by_lib: dict[str, float],
+    pumps: list[dict],
+) -> None:
+    """동봉 SLF 라이브러리를 통합망에 맞게 보정 — PIPENET 연산 경고/에러 제거.
+
+    1) Nozzle 최소운전압력 ↓ : 표준 SLF 의 SP-HEAD minimum-pressure 가 헤드
+       설계유량(optimum flow)에 해당하는 압력 (Q/k)² 보다 높으면 모든 헤드에
+       "optimum flow below minimum operating pressure" 경고가 발생한다. 각
+       노즐 정의의 minimum-pressure 를 설계유량 압력의 90% 이하로 낮춘다.
+    2) Pump 라이브러리 주입 : Pump-fan 이 참조하는 library_pump(예 "FP") 가
+       SLF Pump-section 에 없으면 곡선 범위가 미정의되어 "Minimum flowrate
+       should be less than maximum" 에러가 난다. NFPC 3점 곡선(체절 140% /
+       정격 / 150% 65%)으로 Pump-definition 을 만들어 주입한다.
+
+    SLF 는 DOCTYPE(<!DOCTYPE Library SYSTEM "Library.dtd">) 를 요구하므로
+    ElementTree 직렬화 후 XML 선언 + DOCTYPE 를 직접 앞에 붙여 보존한다.
+    """
+    import xml.etree.ElementTree as ET
+    if not slf_path.is_file():
+        return
+    try:
+        tree = ET.parse(slf_path)
+    except ET.ParseError:
+        return
+    root = tree.getroot()
+    changed = False
+
+    # ── (1) 노즐 최소운전압력 보정
+    for ndef in root.iter("Nozzle-definition"):
+        name_el = ndef.find("Item-name")
+        lib = (name_el.text or "").strip() if name_el is not None else ""
+        q_opt = opt_flow_by_lib.get(lib)
+        if not q_opt:
+            continue
+        try:
+            k = float(ndef.get("k-value", "0"))
+        except ValueError:
+            k = 0.0
+        if k <= 0:
+            continue
+        p_opt = (q_opt / k) ** 2  # 설계유량에 필요한 노즐 압력 (Pa)
+        try:
+            p_min = float(ndef.get("minimum-pressure", "0"))
+        except ValueError:
+            p_min = 0.0
+        if p_min > p_opt:
+            ndef.set("minimum-pressure", f"{p_opt * 0.9:.2f}")
+            changed = True
+
+    # ── (2) 펌프 라이브러리 주입
+    pump_sec = root.find("Pump-section")
+    if pump_sec is not None and pumps:
+        existing = {
+            (pd.find("Item-name").text or "").strip()
+            for pd in pump_sec.findall("Pump-definition")
+            if pd.find("Item-name") is not None
+        }
+        seen: set[str] = set()
+        for pump in pumps:
+            lib = str(pump.get("library_pump", "")).strip()
+            if not lib or lib in existing or lib in seen:
+                continue
+            q = float(pump.get("rated_q", 0) or 0)  # L/min
+            h = float(pump.get("rated_h", 0) or 0)  # m
+            if q <= 0 or h <= 0:
+                continue
+            seen.add(lib)
+            q_si = q / 60000.0  # L/min → m³/s
+            peak_q = float(pump.get("peak_q", q * PUMP_OVERLOAD_Q_RATIO) or q * PUMP_OVERLOAD_Q_RATIO)
+            peak_q_si = peak_q / 60000.0
+            shutoff_h = float(pump.get("shutoff_h", h * PUMP_SHUTOFF_HEAD_RATIO) or h * PUMP_SHUTOFF_HEAD_RATIO)
+            peak_h = float(pump.get("peak_h", h * PUMP_OVERLOAD_HEAD_RATIO) or h * PUMP_OVERLOAD_HEAD_RATIO)
+            pdef = ET.SubElement(pump_sec, "Pump-definition", {
+                "curve-type": "quadratic",
+                "flowrate-unit": "l-min",
+                "max-degeneration-factor": "0",
+                "max-flow": f"{peak_q_si:.9g}",
+                "min-degeneration-factor": "0",
+                "min-flow": "0",
+                "pressure-unit": "metres",
+            })
+            ET.SubElement(pdef, "Item-name").text = lib
+            ET.SubElement(pdef, "Description").text = lib
+            pts = ET.SubElement(pdef, "Set-of-pump-points")
+            # 압력은 평문 소수로 (과학표기 e+06 회피 — 표준 SLF 펌프점 포맷과 정합).
+            ET.SubElement(pts, "Pump-point", {"flow": "0", "pressure": f"{shutoff_h * _WATER_RHO_G:.2f}"})
+            ET.SubElement(pts, "Pump-point", {"flow": f"{q_si:.9g}", "pressure": f"{h * _WATER_RHO_G:.2f}"})
+            ET.SubElement(pts, "Pump-point", {"flow": f"{peak_q_si:.9g}", "pressure": f"{peak_h * _WATER_RHO_G:.2f}"})
+            changed = True
+
+    if changed:
+        body = ET.tostring(root, encoding="unicode")
+        slf_path.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE Library SYSTEM "Library.dtd">\n' + body,
+            encoding="utf-8",
+        )
+
+
+def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
+                  project_title: str = "Remote 30 전체 배관망 총괄") -> Path:
+    """완성 SDF 직렬화.
+
+    1단계: ``remote30_prototype.emit_sdf`` 호출 — PIPENET-native 후처리
+           (빈 Pipe-set placeholder, 6 schedule embed, SLF 동봉, Template Graphics)
+           가 모두 그대로 적용됨.
+    2단계: 결과 SDF 를 다시 열어:
+           - Input 노드에 ``<Calculation-spec pressure="ATM_PA"/>`` 추가
+           - ``<Pump-fan>`` element 추가 (combined.pumps)
+           - ``<Elastomeric-valve>`` element 추가 (combined.valves)
+    """
+    from remote30_prototype import emit_sdf, PipeTables, write_sdf_tree
+
+    # 1단계: PipeTables 로 캐스팅 후 emit_sdf 호출
+    tables = PipeTables(
+        nodes=list(combined.nodes),
+        pipes=list(combined.pipes),
+        nozzles=list(combined.nozzles),
+        fittings=list(combined.fittings),
+        equipment=list(combined.equipment),
+        meta=list(combined.meta),
+    )
+    emit_sdf(tables, out_path, project_title=project_title)
+
+    # 2단계: SDF 재오픈 → Pump-fan / Elastomeric-valve / Calculation-spec 추가
+    import xml.etree.ElementTree as ET
+    tree = ET.parse(out_path)
+    root = tree.getroot()
+
+    # Input 노드에 boundary pressure 명시 (Calculation-spec)
+    pressure_by_label: dict[str, float] = {
+        n["label"]: float(n["pressure_pa"])
+        for n in combined.nodes if n.get("pressure_pa") is not None
+    }
+    for node_el in root.iter("Node"):
+        lbl = node_el.get("label", "")
+        if lbl in pressure_by_label and node_el.find("Calculation-spec") is None:
+            ET.SubElement(node_el, "Calculation-spec",
+                          {"pressure": str(int(pressure_by_label[lbl]))})
+
+    # Links 안에 Pump-fan + Elastomeric-valve 삽입 (Nozzle 다음, 또는 끝쪽)
+    for links in root.iter("Links"):
+        for pump in combined.pumps:
+            pf_attrib = {
+                "efficiency": str(pump["efficiency"]),
+                "input": pump["in"],
+                "label": pump["label"],
+                "output": pump["out"],
+                "status": str(pump["status"]),
+            }
+            # 성능곡선이 있으면 attribute 로 직렬화 → parse_sdf 가 읽어 .has/KFP 로 전파.
+            # rated-p/shutoff-p/peak-p 는 양정[m]. rated-p-unit="metres" 로 명시 →
+            # parse_sdf 가 bar 로 정규화(KFP→SDF 의 bar 와 구분). (수원 노드는 이미
+            # 대기압 boundary 라 parse_sdf 의 pressure_bar fallback 은 발동하지 않음.)
+            if pump.get("rated_q") and pump.get("rated_h"):
+                pf_attrib.update({
+                    "rated-q": f"{float(pump['rated_q']):g}",
+                    "rated-p": f"{float(pump['rated_h']):g}",
+                    "rated-p-unit": "metres",
+                    "shutoff-p": f"{float(pump.get('shutoff_h', float(pump['rated_h']) * 1.4)):g}",
+                    "peak-q": f"{float(pump.get('peak_q', float(pump['rated_q']) * 1.5)):g}",
+                    "peak-p": f"{float(pump.get('peak_h', float(pump['rated_h']) * 0.65)):g}",
+                })
+            pf = ET.Element("Pump-fan", pf_attrib)
+            ET.SubElement(pf, "Description")
+            lib = ET.SubElement(pf, "Library-pump")
+            lib.text = pump["library_pump"]
+            ET.SubElement(pf, "Pump-setting",
+                          {"percentage-open": str(pump["percentage_open"])})
+            links.append(pf)
+
+        for v in combined.valves:
+            ev = ET.Element("Elastomeric-valve", {
+                "input": v["in"],
+                "label": v["label"],
+                "output": v["out"],
+                "target-value": f"{v['target_value']:.6g}",
+                "type": v["type"],
+            })
+            links.append(ev)
+        break  # 첫 Links 만
+
+    write_sdf_tree(tree, out_path)
+
+    # 동봉 SLF 보정 — 노즐 최소운전압력 / 펌프 곡선 라이브러리 (PIPENET 연산 경고·에러 제거).
+    # SDF 가 PIPENET 에 넘기는 실제 optimum flow(<Flow-define flow=>) 를 라이브러리별로
+    # 모아 SLF 의 minimum-pressure 와 비교 보정한다.
+    opt_flow_by_lib: dict[str, float] = {}
+    for nz_el in root.iter("Nozzle"):
+        fd = nz_el.find("Flow-define")
+        li = nz_el.find("Library-item")
+        if fd is None or li is None:
+            continue
+        lib = (li.text or "").strip()
+        try:
+            q = float(fd.get("flow", "0"))
+        except ValueError:
+            continue
+        if lib and q > 0:
+            opt_flow_by_lib[lib] = min(opt_flow_by_lib.get(lib, q), q)
+    _harden_slf_for_combined(out_path.with_suffix(".slf"), opt_flow_by_lib, list(combined.pumps))
+    return out_path
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 통합 파이프라인 — 한 번에 모든 Stage 진행 (서버 API 에서 호출)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def run_full_pipeline(inputs: OverallInputs, head_tables: Any, out_path: Path) -> Path:
+    """Stage B + C + D 일괄 실행. Stage A 는 별도 (서버 측에서 사용자 헤드 편집 단계 필요).
+
+    Args:
+        inputs: OverallInputs (zone_spec, profile, project_title 사용).
+        head_tables: remote30_prototype.PipeTables — Stage A 의 결과.
+        out_path: 출력 SDF 경로.
+    """
+    riser = build_riser(inputs.zone_spec, inputs.profile)
+    combined = stitch_riser_and_heads(riser, head_tables)
+    return emit_full_sdf(combined, out_path, project_title=inputs.project_title)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 직접 입력 폼 → ZoneSpec / BuildingPressureProfile 변환
+# ────────────────────────────────────────────────────────────────────────────
+
+def zone_spec_from_form(form: dict[str, Any]) -> ZoneSpec:
+    """HTML 폼 데이터 → ZoneSpec.
+
+    필수 폼 필드::
+
+        zone_type           : "hsp_pump" / "lsp_1stage" / "llsp_2stage" / "lsp_gravity"
+        target_floor        : "16층" 등 라벨
+
+    선택 폼 필드 (감압 zone)::
+
+        prv1_target_kgf     : 1차 PRV 출구압 (kg/cm²) — Pa 변환됨
+        prv2_target_kgf     : 2차 PRV 출구압 (kg/cm²) — LLSP_2STAGE 만
+        prv1_target_m       : 1차 PRV 출구압 (m 수두) — kg/cm² 와 둘 중 하나만
+        prv2_target_m       : 2차 PRV 출구압 (m 수두)
+        pump_library_name   : Library-pump 이름 (HSP_PUMP, 기본 SP_162M_2900LPM)
+        pump_count          : Pump-fan 개수 (HSP_PUMP, 기본 2)
+    """
+    zone_type = ZoneType(form.get("zone_type", "lsp_1stage"))
+
+    def _to_pa(kgf_key: str, m_key: str) -> float | None:
+        kgf = form.get(kgf_key, "")
+        m = form.get(m_key, "")
+        if kgf:
+            try:
+                return float(kgf) * KGF_CM2_TO_PA
+            except ValueError:
+                pass
+        if m:
+            try:
+                return float(m) * M_TO_PA
+            except ValueError:
+                pass
+        return None
+
+    return ZoneSpec(
+        zone_type=zone_type,
+        target_floor=str(form.get("target_floor", "")).strip(),
+        prv1_target_pa=_to_pa("prv1_target_kgf", "prv1_target_m"),
+        prv2_target_pa=_to_pa("prv2_target_kgf", "prv2_target_m"),
+        pump_library_name=str(form.get("pump_library_name", "SP_162M_2900LPM")).strip(),
+        pump_count=int(form.get("pump_count", 2)),
+    )
+
+
+def parse_system_diagram_dxf(dxf_path: Path, *, default_height_m: float = 2.9,
+                              roof_height_m: float = 6.0) -> BuildingPressureProfile:
+    """계통도 DXF 의 텍스트 라벨 → BuildingPressureProfile 자동 추정.
+
+    추출 패턴 (대명동 201동 계통도 분석 기반):
+        "지상N층"   → "N층" label
+        "지하N층"   → "지하N층" label
+        "옥상", "PH", "PH N F"  → "옥상층" label
+        "Nf" / "NF" / "NFL"  (fallback)
+
+    elevation 계산:
+        TEXT 의 Y 좌표를 정렬 (큰 Y = 위쪽) → 최상부부터 default_height_m 씩 누적.
+        도면의 Y 단위가 도면별로 달라 직접 사용은 불안정. 층고는 default 로 채우고
+        사용자가 검토/수정.
+
+    Args:
+        dxf_path: 계통도 DXF.
+        default_height_m: 표준 층고 (기본 2.9m).
+        roof_height_m: 옥상층의 층고 (기본 6m — PDF 압력표 기준).
+
+    Returns:
+        BuildingPressureProfile — 최상부 → 최하부 순. 비어있을 수도 (라벨 0건).
+    """
+    import re
+    try:
+        import ezdxf as _ezdxf
+    except ImportError as exc:
+        raise RuntimeError("ezdxf 가 설치되지 않아 계통도 DXF 파싱 불가") from exc
+
+    doc = _ezdxf.readfile(str(dxf_path))
+    msp = doc.modelspace()
+
+    PAT_ABOVE = re.compile(r"지상\s*(\d+)\s*층")
+    PAT_BELOW = re.compile(r"지하\s*(\d+)\s*층")
+    PAT_ROOF  = re.compile(r"옥상|PH(?:\s*\d+)?\s*F?")
+    PAT_NF    = re.compile(r"^\s*(\d{1,2})\s*F\s*$")
+
+    candidates: list[tuple[str, float]] = []
+    for e in msp:
+        if e.dxftype() not in ("TEXT", "MTEXT"):
+            continue
+        try:
+            v = e.dxf.text if e.dxftype() == "TEXT" else e.text
+        except Exception:
+            continue
+        if not v or not v.strip():
+            continue
+        v = v.strip()
+        try:
+            pos = e.dxf.insert
+            y = float(pos.y)
+        except Exception:
+            continue
+        if (m := PAT_ABOVE.search(v)):
+            candidates.append((f"{m.group(1)}층", y))
+            continue
+        if (m := PAT_BELOW.search(v)):
+            candidates.append((f"지하{m.group(1)}층", y))
+            continue
+        if (m := PAT_NF.search(v)):
+            candidates.append((f"{m.group(1)}층", y))
+            continue
+        if PAT_ROOF.search(v):
+            candidates.append(("옥상층", y))
+
+    # 같은 label 중복 시 가장 큰 Y 사용 (도면 상단 라벨이 가장 신뢰)
+    by_label: dict[str, float] = {}
+    for label, y in candidates:
+        if label not in by_label or y > by_label[label]:
+            by_label[label] = y
+
+    # Y 내림차순 정렬 — 최상부 (Y 큰 것) → 최하부
+    sorted_floors = sorted(by_label.items(), key=lambda kv: -kv[1])
+
+    rows: list[FloorRow] = []
+    cumulative_drop = 0.0
+    for i, (label, _y) in enumerate(sorted_floors):
+        height = roof_height_m if label == "옥상층" else default_height_m
+        if i > 0:
+            cumulative_drop += height
+        rows.append(FloorRow(
+            floor_label=label,
+            height_m=height,
+            head_drop_m=round(cumulative_drop, 1),
+            note="(계통도 자동 추출 — 층고/낙차 검토 필요)",
+        ))
+
+    return BuildingPressureProfile(
+        building_name=dxf_path.stem,
+        floors=rows,
+    )
+
+
+def profile_from_form(form: dict[str, Any]) -> BuildingPressureProfile | None:
+    """HTML 폼의 row 배열(JSON) → BuildingPressureProfile.
+
+    폼 필드 ``pressure_table_json`` 이 있으면 파싱, 없으면 None.
+    JSON 형식 예::
+
+        [{"floor_label": "옥상층", "height_m": 6,   "head_drop_m": 3.1},
+         {"floor_label": "49층",   "height_m": 3.1, "head_drop_m": 6.2},
+         ...]
+    """
+    raw = form.get("pressure_table_json", "").strip()
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    rows = [FloorRow(
+        floor_label=str(d.get("floor_label", "")).strip(),
+        height_m=float(d.get("height_m", 0) or 0),
+        head_drop_m=float(d.get("head_drop_m", 0) or 0),
+        after_prv_m=(float(d["after_prv_m"]) if d.get("after_prv_m") not in (None, "") else None),
+        note=str(d.get("note", "") or ""),
+    ) for d in data if d.get("floor_label")]
+    return BuildingPressureProfile(
+        building_name=str(form.get("building_name", "")).strip(),
+        floors=rows,
+    )
+
+
+# ======================================================================
+# FILE: sprinkler_remote30_extractor.py   (1575 lines)
+# ======================================================================
+
+# sprinkler_remote30_extractor.py
+# 목적:
+# 1) DXF에서 건축 배경 레이어를 제외하고 스프링클러 배관/헤드/관경문자만 추출
+# 2) 알람밸브 기준 연결 배관망을 그래프로 구성
+# 3) 알람밸브로부터 배관길이 기준 최원단 구역을 찾고, 상호 인접한 헤드 30개 선정
+# 4) 실제 CAD 평면 형상을 유지한 Remote 30 Isometric PNG와 Excel Schedule 생성
+#
+# 사용 패키지: ezdxf, shapely, networkx, pandas, openpyxl, matplotlib, scipy
+#
+# 서버 통합용 함수형 API:
+#   run_remote30_extraction(dxf_path, alarm_xy=None, out_dir=..., overrides=None) -> dict
+
+from __future__ import annotations
+
+import math
+import re
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+import ezdxf
+import networkx as nx
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+
+DEFAULT_PIPE_LAYER_KEYWORDS = ["SP", "SPR", "SPRINKLER", "배관", "소방", "가지관", "후렉시블", "후렉", "FLEX"]
+DEFAULT_HEAD_LAYER_KEYWORDS = ["HEAD", "헤드", "SP-H", "SPR_HEAD", "하향식", "하향", "상향식", "상향", "헤드반경"]
+DEFAULT_TEXT_LAYER_KEYWORDS = ["TEXT", "문자", "관경", "SP", "TEX"]
+DEFAULT_ARCH_LAYER_KEYWORDS = ["A-", "ARCH", "WALL", "DOOR", "WINDOW", "건축", "가구", "DIM", "SHEET", "AREA"]
+DEFAULT_ALARM_VALVE_KEYWORDS = [
+    # ★ 짧은 키워드 (2~3글자) 는 layer_match 가 substring 매칭이라 위험 ↑.
+    # 예: "AV" 가 WAVE/PAVED/SAVE/TRAVEL 까지 매칭. "ALV" 도 VALVE 매칭.
+    # 평면도 렌더링에서 ALARM 으로 오분류되는 레이어가 화면에서 사라지는 버그 원인.
+    # 안전한 4글자 이상 키워드만 사용.
+    "ALARM", "알람", "알람밸브", "ALARM_VALVE", "ALARMVALVE",
+    # 라이저 (입상관) 레이어 — 알람밸브 INSERT 가 라이저 레이어에 함께 있는 도면 흔함
+    # (예: 다이소 세종허브센터 MF-125 의 "RISER" 레이어).
+    "RISER", "라이저", "STAND-PIPE", "STANDPIPE", "STAND_PIPE",
+]
+# 소화기 / 옥내소화전 / 자동식 기기 등 — sprinkler 와 무관하므로 PIPE/HEAD 매칭에서 제외해야 함
+DEFAULT_EXCLUDE_LAYER_KEYWORDS = ["소화기", "옥내소화전", "자동식", "CO2"]
+
+DEFAULT_SNAP_TOL = 300.0
+DEFAULT_HEAD_TO_PIPE_TOL = 800.0
+DEFAULT_DIAMETER_TEXT_SEARCH_RADIUS = 1500.0
+DEFAULT_REMOTE_HEAD_COUNT = 30
+DEFAULT_CAD_UNIT_TO_M = 0.001  # 도면이 mm 기준이라는 가정 (인치면 0.0254 등)
+DEFAULT_C_FACTOR = 120.0       # 일반 강관 기본 C값
+DEFAULT_NOZZLE_LIBRARY_ITEM = "SP-HEAD"
+
+# PIPENET 표준 명목지름 (m) — pipenet_converter.models.SUPPORTED_DIAMETERS_M 와 동일
+PIPENET_SUPPORTED_DIAMETERS_M = {
+    "25A": 0.025, "32A": 0.032, "40A": 0.040, "50A": 0.050,
+    "65A": 0.065, "80A": 0.080, "100A": 0.100, "125A": 0.125,
+    "150A": 0.150, "200A": 0.200,
+}
+
+
+def diameter_mm_to_label(dia_mm) -> str:
+    if dia_mm is None:
+        return ""
+    target_m = round(float(dia_mm) / 1000.0, 6)
+    for label, value in PIPENET_SUPPORTED_DIAMETERS_M.items():
+        if round(value, 6) == target_m:
+            return label
+    return ""
+
+
+@dataclass
+class Remote30Settings:
+    pipe_layer_keywords: list = field(default_factory=lambda: list(DEFAULT_PIPE_LAYER_KEYWORDS))
+    head_layer_keywords: list = field(default_factory=lambda: list(DEFAULT_HEAD_LAYER_KEYWORDS))
+    text_layer_keywords: list = field(default_factory=lambda: list(DEFAULT_TEXT_LAYER_KEYWORDS))
+    arch_layer_keywords: list = field(default_factory=lambda: list(DEFAULT_ARCH_LAYER_KEYWORDS))
+    alarm_valve_keywords: list = field(default_factory=lambda: list(DEFAULT_ALARM_VALVE_KEYWORDS))
+    exclude_layer_keywords: list = field(default_factory=lambda: list(DEFAULT_EXCLUDE_LAYER_KEYWORDS))
+    snap_tol: float = DEFAULT_SNAP_TOL
+    head_to_pipe_tol: float = DEFAULT_HEAD_TO_PIPE_TOL
+    diameter_text_search_radius: float = DEFAULT_DIAMETER_TEXT_SEARCH_RADIUS
+    remote_head_count: int = DEFAULT_REMOTE_HEAD_COUNT
+    cad_unit_to_m: float = DEFAULT_CAD_UNIT_TO_M
+    c_factor: float = DEFAULT_C_FACTOR
+    nozzle_library_item: str = DEFAULT_NOZZLE_LIBRARY_ITEM
+    # === Hydraulic remote 계산용 ===
+    remote_mode: str = "length"  # "length" | "hydraulic"
+    elevation_alarm_m: float = 1.0     # 알람밸브 elevation (RV03_NEW 기준 1m)
+    elevation_head_m: float = 2.7      # 헤드 elevation (천장, RV03_NEW 기준 2.7m 다수)
+    # 자연낙차 / 옥상수원 가정 — 알람밸브-단위세대 사이 가상 수직 트렁크
+    # 답안지 RV03_NEW: 92.8m + 40.6m + ... = 약 137m 수직 강하
+    # DXF 에는 없는 도메인 정보. 0 이면 비활성 (평면 추출만)
+    natural_fall_height_m: float = 0.0  # 옥상수원 → 단위세대 사이 자연낙차 높이 (m)
+    natural_fall_trunk_bore_mm: float = 150.0  # 트렁크 직경
+    natural_fall_n_stages: int = 2     # 트렁크를 몇 단(stage)으로 나눌지 (rise 분배)
+    k_factor: float = 80.0             # K-factor (L/min / sqrt(bar))
+    design_flow_per_head_lpm: float = 80.0  # 1방수당 유량 (LPM, NFTC 80LPM @ K=80, P=1bar)
+    fallback_dia_mm: float = 50.0      # 관경 TEXT 누락 시 사용할 fallback 직경 (50A 강관 기본)
+    branch_leaf_dia_mm: float = 25.0   # degree=1 끝가지(leaf) edge 의 추정 직경 (가지관 25A)
+    emit_sdf: bool = False             # PIPENET SDF XML 파일 동시 출력
+    emit_csv: bool = False             # PIPENET 4 tables 를 CSV 4개 파일로 동시 출력
+    # === 누락 보완 휴리스틱 ===
+    explode_inserts: bool = True       # INSERT 블록 분해해서 내부 line/arc 도 추출 (tee/elbow fitting)
+    include_lines_near_diameter_text: bool = True   # 관경 TEXT 반경 안 layer-무관 LINE 자동 포함
+    near_text_search_radius: float = 500.0          # TEXT 근접 LINE 포함 반경 (보수적으로)
+    near_text_max_line_length: float = 8000.0       # 너무 긴 LINE(>8m)은 노이즈 가능성 → 제외
+    graph_closure_tol: float = 1500.0  # degree=1 끝점 → 가까운 line 끝/중간 자동 snap 허용 거리 (0이면 비활성)
+    # === Zone 영역 제한 (워크벤치) ===
+    zone_bbox: tuple = None            # (x_min, y_min, x_max, y_max) — 이 영역 안 entity 만 사용 (None=전체)
+
+
+# =========================
+# 기본 유틸
+# =========================
+def layer_match(layer_name, keywords):
+    layer_upper = str(layer_name).upper()
+    return any(k.upper() in layer_upper for k in keywords)
+
+
+def _in_bbox(xy, bbox):
+    """xy 가 bbox 안에 있는지. bbox=None 이면 항상 True."""
+    if bbox is None:
+        return True
+    x, y = xy
+    return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
+
+
+def _seg_in_bbox(p1, p2, bbox):
+    """segment 의 어느 한쪽 끝이라도 bbox 안에 있으면 True."""
+    if bbox is None:
+        return True
+    return _in_bbox(p1, bbox) or _in_bbox(p2, bbox)
+
+
+def _get_line_entities(msp, settings: Remote30Settings):
+    segments = []
+    bbox = settings.zone_bbox
+    for e in msp:
+        layer = e.dxf.layer if hasattr(e.dxf, "layer") else ""
+        if layer_match(layer, settings.arch_layer_keywords):
+            continue
+        if layer_match(layer, settings.exclude_layer_keywords):
+            continue
+        if not layer_match(layer, settings.pipe_layer_keywords):
+            continue
+
+        etype = e.dxftype()
+        if etype == "LINE":
+            p1 = (float(e.dxf.start.x), float(e.dxf.start.y))
+            p2 = (float(e.dxf.end.x), float(e.dxf.end.y))
+            if not _seg_in_bbox(p1, p2, bbox):
+                continue
+            segments.append({"layer": layer, "p1": p1, "p2": p2})
+        elif etype == "LWPOLYLINE":
+            pts = [(float(p[0]), float(p[1])) for p in e.get_points()]
+            for a, b in zip(pts[:-1], pts[1:]):
+                if _seg_in_bbox(a, b, bbox):
+                    segments.append({"layer": layer, "p1": a, "p2": b})
+        elif etype == "POLYLINE":
+            pts = [(float(v.dxf.location.x), float(v.dxf.location.y)) for v in e.vertices]
+            for a, b in zip(pts[:-1], pts[1:]):
+                if _seg_in_bbox(a, b, bbox):
+                    segments.append({"layer": layer, "p1": a, "p2": b})
+        elif etype == "ARC":
+            # 90도 elbow 등 곡선 배관/fitting — chord (start→end) 로 근사
+            cx, cy = float(e.dxf.center.x), float(e.dxf.center.y)
+            r = float(e.dxf.radius)
+            sa = math.radians(float(e.dxf.start_angle))
+            ea = math.radians(float(e.dxf.end_angle))
+            p1 = (cx + r * math.cos(sa), cy + r * math.sin(sa))
+            p2 = (cx + r * math.cos(ea), cy + r * math.sin(ea))
+            if not _seg_in_bbox(p1, p2, bbox):
+                continue
+            segments.append({"layer": layer, "p1": p1, "p2": p2})
+    return segments
+
+
+def _explode_insert_to_segments(insert_entity, settings: Remote30Settings):
+    """INSERT 블록을 virtual_entities() 로 분해해 내부 LINE/ARC/LWPOLYLINE 을 segment 로 변환.
+    parent INSERT 의 layer 가 pipe-layer 매칭일 때만 호출하는 것을 권장.
+    """
+    out = []
+    parent_layer = insert_entity.dxf.layer if hasattr(insert_entity.dxf, "layer") else ""
+    try:
+        for v in insert_entity.virtual_entities():
+            etype = v.dxftype()
+            vlayer = v.dxf.layer if hasattr(v.dxf, "layer") else ""
+            effective_layer = vlayer if (vlayer and vlayer not in ("0",)) else parent_layer
+            if layer_match(effective_layer, settings.exclude_layer_keywords):
+                continue
+            if layer_match(effective_layer, settings.arch_layer_keywords):
+                continue
+            if etype == "LINE":
+                p1 = (float(v.dxf.start.x), float(v.dxf.start.y))
+                p2 = (float(v.dxf.end.x), float(v.dxf.end.y))
+                out.append({"layer": parent_layer, "p1": p1, "p2": p2, "source": "INSERT-exploded"})
+            elif etype == "ARC":
+                cx, cy = float(v.dxf.center.x), float(v.dxf.center.y)
+                r = float(v.dxf.radius)
+                sa = math.radians(float(v.dxf.start_angle))
+                ea = math.radians(float(v.dxf.end_angle))
+                p1 = (cx + r * math.cos(sa), cy + r * math.sin(sa))
+                p2 = (cx + r * math.cos(ea), cy + r * math.sin(ea))
+                out.append({"layer": parent_layer, "p1": p1, "p2": p2, "source": "INSERT-exploded"})
+            elif etype == "LWPOLYLINE":
+                pts = [(float(p[0]), float(p[1])) for p in v.get_points()]
+                for a, b in zip(pts[:-1], pts[1:]):
+                    out.append({"layer": parent_layer, "p1": a, "p2": b, "source": "INSERT-exploded"})
+    except Exception:
+        pass
+    return out
+
+
+def _collect_supplementary_segments(msp, base_segments, text_items, settings: Remote30Settings):
+    """누락 보완 휴리스틱:
+    (1) pipe-layer INSERT 분해 (tee/elbow fitting 내부 line)
+    (2) 관경 TEXT 반경 안의 LINE 자동 포함 (layer 무관, arch/exclude 만 제외)
+    returns: 추가 segment 리스트
+    """
+    extra = []
+    counts = {"insert_exploded": 0, "near_text_line": 0}
+
+    if settings.explode_inserts:
+        for e in msp:
+            if e.dxftype() != "INSERT":
+                continue
+            layer = e.dxf.layer if hasattr(e.dxf, "layer") else ""
+            if layer_match(layer, settings.exclude_layer_keywords):
+                continue
+            if layer_match(layer, settings.arch_layer_keywords):
+                continue
+            if not layer_match(layer, settings.pipe_layer_keywords):
+                continue
+            new_segs = _explode_insert_to_segments(e, settings)
+            extra.extend(new_segs)
+            counts["insert_exploded"] += len(new_segs)
+
+    if settings.include_lines_near_diameter_text and text_items:
+        text_xys = [t["xy"] for t in text_items]
+        radius = settings.near_text_search_radius
+        radius_sq = radius * radius
+        max_len = settings.near_text_max_line_length
+        # 이미 잡힌 segment 중복 회피용 set
+        existing_set = {(round(s["p1"][0], 2), round(s["p1"][1], 2),
+                         round(s["p2"][0], 2), round(s["p2"][1], 2)) for s in base_segments}
+        # 기존 pipe segment 끝점 + 중간점 — 추가 LINE이 기존 네트워크와 연결성 있어야 진짜 pipe
+        existing_endpoints = []
+        for s in base_segments:
+            existing_endpoints.append(s["p1"])
+            existing_endpoints.append(s["p2"])
+        connectivity_tol = radius  # 기존 끝점 반경 안에 들어와야 함
+
+        for e in msp:
+            if e.dxftype() != "LINE":
+                continue
+            layer = e.dxf.layer if hasattr(e.dxf, "layer") else ""
+            if layer_match(layer, settings.arch_layer_keywords):
+                continue
+            if layer_match(layer, settings.exclude_layer_keywords):
+                continue
+            if layer_match(layer, settings.pipe_layer_keywords):
+                continue  # 이미 base 에 포함
+            p1 = (float(e.dxf.start.x), float(e.dxf.start.y))
+            p2 = (float(e.dxf.end.x), float(e.dxf.end.y))
+            # 너무 긴 LINE 은 건축물/도면 외곽선일 가능성 — 제외
+            if math.dist(p1, p2) > max_len:
+                continue
+            mid = ((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2)
+            # 조건 1: 관경 TEXT 가까이
+            near_text = False
+            for tx, ty in text_xys:
+                dx = mid[0] - tx
+                dy = mid[1] - ty
+                if dx * dx + dy * dy <= radius_sq:
+                    near_text = True
+                    break
+            if not near_text:
+                continue
+            # 조건 2: LINE 끝점이 기존 pipe 네트워크와 가까워야 (연결성)
+            connected = False
+            for ep in existing_endpoints:
+                if math.dist(p1, ep) <= connectivity_tol or math.dist(p2, ep) <= connectivity_tol:
+                    connected = True
+                    break
+            if not connected:
+                continue
+            key = (round(p1[0], 2), round(p1[1], 2), round(p2[0], 2), round(p2[1], 2))
+            if key in existing_set:
+                continue
+            existing_set.add(key)
+            extra.append({"layer": layer, "p1": p1, "p2": p2, "source": "near-text"})
+            counts["near_text_line"] += 1
+    return extra, counts
+
+
+def _close_graph_gaps(G, node_coords, settings: Remote30Settings):
+    """그래프 closure: degree==1 끝점이 다른 노드/segment 끝과 N 거리 안이면 가짜 edge 로 연결.
+    원본 segment 가 아니므로 dia=None, source='closure', weight=실제 거리.
+    """
+    if settings.graph_closure_tol <= 0:
+        return 0
+    closure_tol = settings.graph_closure_tol
+    closure_tol_sq = closure_tol * closure_tol
+
+    leaf_nodes = [n for n in G.nodes() if G.degree(n) == 1]
+    added = 0
+    for u in leaf_nodes:
+        ux, uy = node_coords[u]
+        best = None
+        best_d_sq = closure_tol_sq + 1
+        for v, (vx, vy) in enumerate(node_coords):
+            if v == u:
+                continue
+            if G.has_edge(u, v):
+                continue
+            dx = ux - vx
+            dy = uy - vy
+            d_sq = dx * dx + dy * dy
+            if d_sq < best_d_sq:
+                best_d_sq = d_sq
+                best = v
+        if best is not None and best_d_sq <= closure_tol_sq:
+            d = math.sqrt(best_d_sq)
+            raw_p1 = (float(node_coords[u][0]), float(node_coords[u][1]))
+            raw_p2 = (float(node_coords[best][0]), float(node_coords[best][1]))
+            G.add_edge(u, best, weight=d, pipe_no=f"PC{added:04d}", length=d, dia=None,
+                       layer="<closure>", raw_p1=raw_p1, raw_p2=raw_p2, is_closure=True)
+            added += 1
+    return added
+
+
+def _refine_edge_diameters(G, settings: Remote30Settings):
+    """edge dia 가 None 인 경우 그래프 구조로 추정:
+       - degree=1 (leaf) 양쪽 끝 edge → branch_leaf_dia_mm (가지관 25A)
+       - 짧은 edge (head 부근) → 가지관 25A
+       - 그 외 → fallback_dia_mm (50A)
+    """
+    fdia = settings.fallback_dia_mm
+    bdia = settings.branch_leaf_dia_mm
+    short_len_threshold = 1.5  # 1.5m 보다 짧은 edge 는 가지말단으로 가정
+    scale = settings.cad_unit_to_m
+    refined = 0
+    for u, v, data in G.edges(data=True):
+        if data.get("dia"):
+            continue  # TEXT 매칭 결과 보존
+        length_m = data.get("length", 0) * scale
+        deg_u = G.degree(u); deg_v = G.degree(v)
+        if deg_u == 1 or deg_v == 1:
+            # leaf edge - 가지관 말단
+            data["dia"] = bdia
+            refined += 1
+        elif length_m < short_len_threshold:
+            data["dia"] = bdia
+            refined += 1
+        else:
+            data["dia"] = fdia
+    return refined
+
+
+def _bridge_components(G, node_coords, alarm_node):
+    """알람밸브가 속한 main component 와 다른 모든 component 를 가장 가까운 노드쌍으로
+    가짜 edge 로 연결한다. 결과: 모든 헤드가 알람밸브와 한 connected graph 에 속함.
+    """
+    if G.number_of_edges() == 0 or G.number_of_nodes() == 0:
+        return 0
+    components = list(nx.connected_components(G))
+    if len(components) <= 1:
+        return 0
+    main = next((c for c in components if alarm_node in c), None)
+    if main is None:
+        # 알람밸브가 어떤 component 에도 없으면 가장 큰 component 를 main
+        main = max(components, key=len)
+    main_nodes = list(main)
+    added = 0
+    for comp in components:
+        if comp is main:
+            continue
+        # comp 의 각 노드에서 main 의 가장 가까운 노드 (최소 거리 쌍)
+        best_u, best_v, best_d = None, None, float("inf")
+        for u in comp:
+            ux, uy = node_coords[u]
+            for v in main_nodes:
+                vx, vy = node_coords[v]
+                d = math.hypot(ux - vx, uy - vy)
+                if d < best_d:
+                    best_d = d; best_u = u; best_v = v
+        if best_u is not None:
+            raw_p1 = (float(node_coords[best_u][0]), float(node_coords[best_u][1]))
+            raw_p2 = (float(node_coords[best_v][0]), float(node_coords[best_v][1]))
+            G.add_edge(
+                best_u, best_v,
+                weight=best_d, pipe_no=f"PB{added:04d}",
+                length=best_d, dia=None, layer="<auto-bridge>",
+                raw_p1=raw_p1, raw_p2=raw_p2, is_closure=True,
+            )
+            added += 1
+            main_nodes.extend(comp)  # 다음 comp는 이제 main+comp 둘 다와 비교
+    return added
+
+
+def _force_attach_orphan_heads(orphan_heads, G, node_coords, settings: Remote30Settings):
+    """head_to_pipe_tol 초과로 부착 실패한 헤드들을 강제 부착.
+    각 헤드 좌표를 새 노드로 추가하고, 가장 가까운 기존 노드와 가짜 edge 로 연결.
+    """
+    added_edges = 0
+    new_attached = []
+    if not orphan_heads or not node_coords:
+        return new_attached, added_edges
+    for i, h in enumerate(orphan_heads, 1):
+        xy = h["xy"]
+        # 가장 가까운 기존 노드
+        nearest_idx = _nearest_node_id(xy, node_coords)
+        d = math.dist(xy, node_coords[nearest_idx])
+        # 새 노드 추가 (헤드 위치 그대로)
+        new_node_idx = len(node_coords)
+        node_coords.append((float(xy[0]), float(xy[1])))
+        G.add_node(new_node_idx, xy=(float(xy[0]), float(xy[1])))
+        # 가짜 edge 로 연결
+        raw_p1 = (float(xy[0]), float(xy[1]))
+        raw_p2 = (float(node_coords[nearest_idx][0]), float(node_coords[nearest_idx][1]))
+        G.add_edge(
+            new_node_idx, nearest_idx,
+            weight=d, pipe_no=f"PH{i:04d}",
+            length=d, dia=None, layer="<head-bridge>",
+            raw_p1=raw_p1, raw_p2=raw_p2, is_closure=True,
+        )
+        added_edges += 1
+        new_attached.append({
+            "Head No": f"OH{i:03d}",
+            "Node": new_node_idx,
+            "Node Name": f"N{new_node_idx:04d}",
+            "X": float(xy[0]), "Y": float(xy[1]),
+            "Attach Distance": round(d, 2),
+            "Layer": h.get("layer"), "Block": h.get("block"),
+        })
+    return new_attached, added_edges
+
+
+def _get_text_entities(msp, settings: Remote30Settings):
+    texts = []
+    bbox = settings.zone_bbox
+    for e in msp:
+        etype = e.dxftype()
+        if etype not in ["TEXT", "MTEXT"]:
+            continue
+        layer = e.dxf.layer if hasattr(e.dxf, "layer") else ""
+        if layer_match(layer, settings.arch_layer_keywords):
+            continue
+
+        raw = e.dxf.text if etype == "TEXT" else e.text
+        raw = str(raw).strip()
+
+        m = re.search(r"\b(20|25|32|40|50|65|80|100|125|150|200)\b", raw)
+        if not m:
+            continue
+
+        xy = (float(e.dxf.insert.x), float(e.dxf.insert.y))
+        if not _in_bbox(xy, bbox):
+            continue
+        texts.append({"xy": xy, "text": raw, "dia": int(m.group(1)), "layer": layer})
+    return texts
+
+
+def _get_head_candidates(msp, settings: Remote30Settings):
+    heads = []
+    bbox = settings.zone_bbox
+    for e in msp:
+        layer = e.dxf.layer if hasattr(e.dxf, "layer") else ""
+        if layer_match(layer, settings.exclude_layer_keywords):
+            continue
+        etype = e.dxftype()
+        if etype == "INSERT":
+            name = e.dxf.name
+            if layer_match(layer, settings.head_layer_keywords) or layer_match(name, settings.head_layer_keywords):
+                xy = (float(e.dxf.insert.x), float(e.dxf.insert.y))
+                if not _in_bbox(xy, bbox):
+                    continue
+                heads.append({"xy": xy, "layer": layer, "block": name})
+        elif etype == "CIRCLE":
+            if layer_match(layer, settings.head_layer_keywords):
+                xy = (float(e.dxf.center.x), float(e.dxf.center.y))
+                if not _in_bbox(xy, bbox):
+                    continue
+                heads.append({"xy": xy, "layer": layer, "block": "CIRCLE_HEAD"})
+    return heads
+
+
+def detect_alarm_valve_xy(msp, settings: Remote30Settings) -> Optional[tuple]:
+    """DXF에서 알람밸브 위치를 자동 검출. INSERT 블록명/레이어 우선, 그다음 TEXT."""
+    for e in msp:
+        if e.dxftype() != "INSERT":
+            continue
+        layer = e.dxf.layer if hasattr(e.dxf, "layer") else ""
+        name = e.dxf.name
+        if layer_match(layer, settings.alarm_valve_keywords) or layer_match(name, settings.alarm_valve_keywords):
+            return (float(e.dxf.insert.x), float(e.dxf.insert.y))
+
+    for e in msp:
+        etype = e.dxftype()
+        if etype not in ["TEXT", "MTEXT"]:
+            continue
+        layer = e.dxf.layer if hasattr(e.dxf, "layer") else ""
+        raw = e.dxf.text if etype == "TEXT" else e.text
+        raw = str(raw).strip()
+        if layer_match(layer, settings.alarm_valve_keywords) or layer_match(raw, settings.alarm_valve_keywords):
+            return (float(e.dxf.insert.x), float(e.dxf.insert.y))
+    return None
+
+
+def _snap_points(points, tol):
+    snapped = []
+    node_coords = []
+    for p in points:
+        found = None
+        for i, q in enumerate(node_coords):
+            if math.dist(p, q) <= tol:
+                found = i
+                break
+        if found is None:
+            node_coords.append(p)
+            snapped.append(len(node_coords) - 1)
+        else:
+            snapped.append(found)
+    return snapped, node_coords
+
+
+def _nearest_node_id(xy, node_coords):
+    dists = [math.dist(xy, n) for n in node_coords]
+    return int(min(range(len(dists)), key=lambda i: dists[i]))
+
+
+def _assign_pipe_diameter(pipe_mid, text_items, search_radius):
+    if not text_items:
+        return None
+    best = None
+    best_dist = 10**18
+    for t in text_items:
+        dist = math.dist(pipe_mid, t["xy"])
+        if dist < best_dist and dist <= search_radius:
+            best = t
+            best_dist = dist
+    return best["dia"] if best else None
+
+
+def _build_pipe_graph(segments, text_items, settings: Remote30Settings):
+    all_pts = []
+    for s in segments:
+        all_pts.append(s["p1"])
+        all_pts.append(s["p2"])
+
+    snapped_ids, node_coords = _snap_points(all_pts, settings.snap_tol)
+
+    G = nx.Graph()
+    for i, xy in enumerate(node_coords):
+        G.add_node(i, xy=xy)
+
+    pipe_records = []
+    sid = 0
+    for idx, s in enumerate(segments):
+        n1 = snapped_ids[2 * idx]
+        n2 = snapped_ids[2 * idx + 1]
+        if n1 == n2:
+            continue
+
+        # raw 좌표 = 원본 segment 의 실제 끝점 (시각화 일탈 방지)
+        raw_p1 = (float(s["p1"][0]), float(s["p1"][1]))
+        raw_p2 = (float(s["p2"][0]), float(s["p2"][1]))
+        # 노드 끝점이 n1,n2 순서대로 매칭되도록 raw 좌표도 정렬
+        # n1 은 첫 끝점(2*idx) 에 대응 = s["p1"]
+        # n2 는 두 번째 끝점(2*idx+1) 에 대응 = s["p2"]
+        length = math.dist(raw_p1, raw_p2)
+        mid = ((raw_p1[0] + raw_p2[0]) / 2, (raw_p1[1] + raw_p2[1]) / 2)
+        dia = _assign_pipe_diameter(mid, text_items, settings.diameter_text_search_radius)
+
+        sid += 1
+        pipe_no = f"P{sid:04d}"
+
+        # 이미 같은 (n1,n2) edge 가 있는 경우 — 첫 번째 raw 좌표 유지 (가장 가까운 segment 의 좌표)
+        if G.has_edge(n1, n2):
+            existing = G.get_edge_data(n1, n2)
+            # 더 짧은 length 의 raw 를 유지 (snap 후 가장 정확한 원본)
+            if existing.get("length", float("inf")) <= length:
+                continue
+        G.add_edge(
+            n1, n2,
+            weight=length, pipe_no=pipe_no, length=length, dia=dia, layer=s["layer"],
+            raw_p1=raw_p1, raw_p2=raw_p2,
+        )
+
+        pipe_records.append({
+            "Pipe No": pipe_no,
+            "From Node": f"N{n1:04d}",
+            "To Node": f"N{n2:04d}",
+            "Dia(mm)": dia,
+            "Length(CAD unit)": round(length, 2),
+            "Layer": s["layer"],
+        })
+    return G, node_coords, pipe_records
+
+
+def _attach_heads_to_graph(heads, G, node_coords, settings: Remote30Settings):
+    attached = []
+    for i, h in enumerate(heads, 1):
+        xy = h["xy"]
+        n = _nearest_node_id(xy, node_coords)
+        dist = math.dist(xy, node_coords[n])
+        if dist <= settings.head_to_pipe_tol:
+            attached.append({
+                "Head No": f"H{i:03d}",
+                "Node": n,
+                "Node Name": f"N{n:04d}",
+                "X": xy[0],
+                "Y": xy[1],
+                "Attach Distance": round(dist, 2),
+                "Layer": h.get("layer"),
+                "Block": h.get("block"),
+            })
+    return attached
+
+
+def hw_friction_loss_kgcm2(q_lpm: float, length_m: float, c_factor: float, bore_mm: float) -> float:
+    """Hazen-Williams 마찰손실 (pipenet_validator.py:757 와 동일 공식).
+    returns: kgf/cm² (= 0.1 MPa = 10 mH2O ≈ 0.9806 bar)
+    """
+    if bore_mm <= 0 or length_m <= 0 or q_lpm <= 0 or c_factor <= 0:
+        return 0.0
+    dp_mpa = 6.174e4 * (q_lpm ** 1.85) * length_m / ((c_factor ** 1.85) * (bore_mm ** 4.87))
+    return dp_mpa / 0.1
+
+
+def _compute_head_paths_and_branch_load(G, alarm_node, attached_heads):
+    """각 헤드별 alarm→head 경로를 계산하고, 각 edge에 매달린 헤드 수를 카운트.
+    트리(분기) 가정으로 동시방수 시 pipe별 유량 ≈ (그 pipe 아래 매달린 헤드 수) × flow_per_head.
+    """
+    from collections import Counter as _Counter
+    lengths = nx.single_source_dijkstra_path_length(G, alarm_node, weight="weight")
+    head_paths = {}
+    for h in attached_heads:
+        n = h["Node"]
+        if n in lengths and n != alarm_node:
+            try:
+                head_paths[n] = nx.shortest_path(G, alarm_node, n, weight="weight")
+            except nx.NetworkXNoPath:
+                continue
+    edge_head_count = _Counter()
+    for n, path in head_paths.items():
+        for a, b in zip(path[:-1], path[1:]):
+            edge_head_count[frozenset((a, b))] += 1
+    return head_paths, edge_head_count, lengths
+
+
+def _compute_hydraulic_loss_per_head(G, head_paths, edge_head_count, settings: Remote30Settings) -> dict:
+    """각 헤드별 alarm→head 경로의 friction loss + static head (kgf/cm²) 계산.
+    returns: {node_id: {'friction': float, 'static': float, 'total': float, 'path_length_m': float}}
+    """
+    flow_per_head = settings.design_flow_per_head_lpm
+    c = settings.c_factor
+    scale = settings.cad_unit_to_m
+    static_head_m = settings.elevation_head_m - settings.elevation_alarm_m
+    static_head_kgcm2 = static_head_m * 0.0980665  # 1 mH2O ≈ 0.0980665 kgf/cm²
+
+    out = {}
+    for n, path in head_paths.items():
+        friction = 0.0
+        path_len = 0.0
+        for a, b in zip(path[:-1], path[1:]):
+            ed = G.get_edge_data(a, b)
+            length_m = ed.get("length", 0.0) * scale
+            dia_mm = ed.get("dia") or settings.fallback_dia_mm
+            n_below = edge_head_count[frozenset((a, b))]
+            q_lpm = n_below * flow_per_head
+            friction += hw_friction_loss_kgcm2(q_lpm, length_m, c, dia_mm)
+            path_len += length_m
+        out[n] = {
+            "friction": friction,
+            "static": static_head_kgcm2,
+            "total": friction + static_head_kgcm2,
+            "path_length_m": path_len,
+        }
+    return out
+
+
+def _select_remote_hydraulic(G, node_coords, attached_heads, alarm_xy, settings: Remote30Settings):
+    """Hydraulic 모드: 선정 자체는 length 모드와 같이 배관망 경로 거리 기준 상위 N개.
+    선정된 N개만 동시방수한다고 가정하고 hydraulic loss(마찰 + 정수두)를 계산해서
+    정보(Friction/Static/Total Loss, Path Length(m))를 각 헤드에 첨부한다.
+
+    설계 결정 — 변위(평면거리) 군집은 제거한다.
+    사용자 요구: "배관망을 하나의 길로 삼아서 그 거리들 중 가장 먼 30개".
+    """
+    # === Pass 1: 배관망 경로 거리(dijkstra) 기준 상위 N개 선정 ===
+    selected, alarm_node, path_edges = _select_remote_contiguous(
+        G, node_coords, attached_heads, alarm_xy, settings
+    )
+    if not selected:
+        return [], alarm_node, set()
+
+    # === Pass 2: 선정된 N개만 동시방수한다고 가정하고 hydraulic loss 계산 ===
+    head_paths, edge_head_count, _ = _compute_head_paths_and_branch_load(G, alarm_node, selected)
+    hydra = _compute_hydraulic_loss_per_head(G, head_paths, edge_head_count, settings)
+
+    for h in selected:
+        n = h["Node"]
+        if n in hydra:
+            h["Friction Loss(kgcm2)"] = hydra[n]["friction"]
+            h["Static Head(kgcm2)"] = hydra[n]["static"]
+            h["Total Loss(kgcm2)"] = hydra[n]["total"]
+            h["Path Length(m)"] = hydra[n]["path_length_m"]
+
+    # 표시 순서: 배관 경로 거리 먼 순 (RH01 = 가장 먼 헤드)
+    selected.sort(key=lambda x: -x["Distance from AV(CAD unit)"])
+    for idx, h in enumerate(selected, 1):
+        h["Remote Head No"] = f"RH{idx:02d}"
+
+    # path_edges 재구성 (번호 변경 후)
+    path_edges = set()
+    for h in selected:
+        try:
+            path = nx.shortest_path(G, alarm_node, h["Node"], weight="weight")
+            for a, b in zip(path[:-1], path[1:]):
+                path_edges.add(tuple(sorted((a, b))))
+        except nx.NetworkXNoPath:
+            continue
+
+    return selected, alarm_node, path_edges
+
+
+def _select_remote_contiguous(G, node_coords, attached_heads, alarm_xy, settings: Remote30Settings):
+    """배관망 경로 거리(dijkstra) 기준 상위 N개 헤드를 선정.
+    평면거리(변위) 군집은 사용하지 않는다 — 사용자 요구: "배관망을 하나의 길로 삼아서 가장 먼 30개".
+    """
+    alarm_node = _nearest_node_id(alarm_xy, node_coords)
+    lengths = nx.single_source_dijkstra_path_length(G, alarm_node, weight="weight")
+
+    enriched = []
+    for h in attached_heads:
+        n = h["Node"]
+        if n not in lengths or n == alarm_node:
+            continue
+        item = dict(h)
+        item["Distance from AV(CAD unit)"] = lengths[n]
+        # 'Plan distance to farthest' 는 더 이상 선정 기준이 아니지만 기존 export 와 호환을 위해 0 으로 채움
+        item["Plan distance to farthest"] = 0.0
+        enriched.append(item)
+
+    if not enriched:
+        return [], alarm_node, set()
+
+    # 배관망 경로 거리(=dijkstra) 큰 순으로 상위 N 개
+    selected = sorted(enriched, key=lambda x: -x["Distance from AV(CAD unit)"])[: settings.remote_head_count]
+    for idx, h in enumerate(selected, 1):
+        h["Remote Head No"] = f"RH{idx:02d}"
+
+    path_edges = set()
+    for h in selected:
+        try:
+            path = nx.shortest_path(G, alarm_node, h["Node"], weight="weight")
+            for a, b in zip(path[:-1], path[1:]):
+                path_edges.add(tuple(sorted((a, b))))
+        except nx.NetworkXNoPath:
+            continue
+
+    return selected, alarm_node, path_edges
+
+
+def _plot_extracted_isometric(G, node_coords, selected_heads, alarm_node, path_edges, out_png):
+    plt.figure(figsize=(16, 11))
+    ax = plt.gca()
+
+    for a, b in path_edges:
+        x1, y1 = node_coords[a]
+        x2, y2 = node_coords[b]
+        ed = G.get_edge_data(a, b)
+        dia = ed.get("dia")
+        pipe_no = ed.get("pipe_no")
+
+        ax.plot([x1, x2], [y1, y2], linewidth=2.2, color="black")
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        label = f"{pipe_no}"
+        if dia:
+            label += f" / {dia}A"
+        ax.text(mx, my, label, fontsize=7, color="blue")
+        ax.text(x1, y1, f"N{a:04d}", fontsize=6, color="green")
+        ax.text(x2, y2, f"N{b:04d}", fontsize=6, color="green")
+
+    avx, avy = node_coords[alarm_node]
+    ax.scatter([avx], [avy], s=180, marker="s", color="red")
+    ax.text(avx, avy, "ALARM VALVE", fontsize=10, color="red", fontweight="bold")
+
+    for h in selected_heads:
+        x, y = h["X"], h["Y"]
+        ax.scatter([x], [y], s=80, facecolors="yellow", edgecolors="black")
+        ax.text(x, y, h["Remote Head No"], fontsize=8, color="red", fontweight="bold")
+
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_title("Remote 30 Sprinkler Heads - Actual CAD Shape Extraction")
+    ax.axis("off")
+    plt.tight_layout()
+    plt.savefig(out_png, dpi=220)
+    plt.close()
+
+
+def build_pipenet_tables(G, node_coords, selected_heads, path_edges, alarm_node, settings: Remote30Settings):
+    """PIPENET 호환 4-시트 dict (Excel + SDF + 워크벤치 미리보기 공통)."""
+    scale = settings.cad_unit_to_m
+
+    used_nodes = set()
+    for a, b in path_edges:
+        used_nodes.add(a)
+        used_nodes.add(b)
+    used_nodes.add(alarm_node)
+
+    head_nodes_to_id = {h["Node"]: h["Remote Head No"] for h in selected_heads}
+
+    pipenet_node_rows = []
+    for n in sorted(used_nodes):
+        x_cad, y_cad = node_coords[n]
+        if n == alarm_node:
+            ntype = "source"
+            src = "alarm_valve"
+            elev = settings.elevation_alarm_m
+        elif n in head_nodes_to_id:
+            ntype = "nozzle"
+            src = head_nodes_to_id[n]
+            elev = settings.elevation_head_m
+        else:
+            ntype = "junction"
+            src = "DXF"
+            elev = settings.elevation_head_m
+        pipenet_node_rows.append({
+            "node_id": f"N{n:04d}",
+            "x": round(x_cad * scale, 6),
+            "y": round(y_cad * scale, 6),
+            "z": elev,
+            "node_type": ntype,
+            "source": src,
+        })
+
+    pipenet_pipe_rows = []
+    for a, b in sorted(path_edges):
+        ed = G.get_edge_data(a, b)
+        dia_mm = ed.get("dia")
+        dia_m = (float(dia_mm) / 1000.0) if dia_mm else (settings.fallback_dia_mm / 1000.0)
+        pipenet_pipe_rows.append({
+            "pipe_id": ed.get("pipe_no") or f"P{a:04d}_{b:04d}",
+            "from_node": f"N{a:04d}",
+            "to_node": f"N{b:04d}",
+            "diameter_m": dia_m,
+            "diameter_label": diameter_mm_to_label(dia_mm),
+            "length_m": round(ed.get("length", 0.0) * scale, 6),
+            "rise_m": 0.0,
+            "c_factor": settings.c_factor,
+            "material": "",
+            "status": "normal",
+        })
+
+    pipenet_nozzle_rows = []
+    for h in selected_heads:
+        rh_no = h["Remote Head No"]
+        pipenet_nozzle_rows.append({
+            "nozzle_id": rh_no,
+            "input_node": h["Node Name"],
+            "output_node": f"OUT_{rh_no}",
+            "flow_m3s": round(settings.design_flow_per_head_lpm / 60000.0, 8),
+            "status": 1,
+            "library_item": settings.nozzle_library_item,
+        })
+
+    pipenet_valve_rows = [{
+        "valve_id": "AV01",
+        "input_node": f"N{alarm_node:04d}",
+        "output_node": f"N{alarm_node:04d}",
+        "valve_type": "alarm",
+        "target_value": None,
+    }]
+
+    return {
+        "nodes": pipenet_node_rows,
+        "pipes": pipenet_pipe_rows,
+        "nozzles": pipenet_nozzle_rows,
+        "valves": pipenet_valve_rows,
+    }
+
+
+def _export_excel(G, node_coords, pipe_records, selected_heads, path_edges, alarm_node, settings: Remote30Settings, out_xlsx, tables=None):
+    if tables is None:
+        tables = build_pipenet_tables(G, node_coords, selected_heads, path_edges, alarm_node, settings)
+    scale = settings.cad_unit_to_m
+    pipenet_node_rows = tables["nodes"]
+    pipenet_pipe_rows = tables["pipes"]
+    pipenet_nozzle_rows = tables["nozzles"]
+    pipenet_valve_rows = tables["valves"]
+
+    extracted_pipe_rows = []
+    for a, b in sorted(path_edges):
+        ed = G.get_edge_data(a, b)
+        extracted_pipe_rows.append({
+            "Pipe No": ed.get("pipe_no"),
+            "From Node": f"N{a:04d}",
+            "To Node": f"N{b:04d}",
+            "Dia(mm)": ed.get("dia"),
+            "Length(CAD unit)": round(ed.get("length"), 2),
+            "Length(m)": round(ed.get("length", 0.0) * scale, 4),
+            "Layer": ed.get("layer"),
+        })
+
+    head_rows = []
+    for h in selected_heads:
+        head_rows.append({
+            "Remote Head No": h["Remote Head No"],
+            "Original Head No": h["Head No"],
+            "Node": h["Node Name"],
+            "X(CAD)": h["X"],
+            "Y(CAD)": h["Y"],
+            "X(m)": round(h["X"] * scale, 4),
+            "Y(m)": round(h["Y"] * scale, 4),
+            "Distance from AV(CAD unit)": round(h["Distance from AV(CAD unit)"], 2),
+            "Distance from AV(m)": round(h["Distance from AV(CAD unit)"] * scale, 4),
+            "Plan distance to farthest(CAD unit)": round(h["Plan distance to farthest"], 2),
+            "Layer": h["Layer"],
+            "Block": h["Block"],
+        })
+
+    pipenet_node_cols = ["node_id", "x", "y", "z", "node_type", "source"]
+    pipenet_pipe_cols = ["pipe_id", "from_node", "to_node", "diameter_m", "diameter_label",
+                         "length_m", "rise_m", "c_factor", "material", "status"]
+    pipenet_nozzle_cols = ["nozzle_id", "input_node", "output_node", "flow_m3s", "status", "library_item"]
+    pipenet_valve_cols = ["valve_id", "input_node", "output_node", "valve_type", "target_value"]
+
+    with pd.ExcelWriter(out_xlsx, engine="openpyxl") as writer:
+        pd.DataFrame(pipenet_node_rows, columns=pipenet_node_cols).to_excel(writer, sheet_name="network_3d_nodes", index=False)
+        pd.DataFrame(pipenet_pipe_rows, columns=pipenet_pipe_cols).to_excel(writer, sheet_name="network_3d_pipes", index=False)
+        pd.DataFrame(pipenet_nozzle_rows, columns=pipenet_nozzle_cols).to_excel(writer, sheet_name="network_3d_nozzles", index=False)
+        pd.DataFrame(pipenet_valve_rows, columns=pipenet_valve_cols).to_excel(writer, sheet_name="network_3d_valves", index=False)
+
+        pd.DataFrame(head_rows).to_excel(writer, sheet_name="Remote 30 Heads", index=False)
+        pd.DataFrame(extracted_pipe_rows).to_excel(writer, sheet_name="Selected Pipes (CAD)", index=False)
+        pd.DataFrame(pipe_records).to_excel(writer, sheet_name="All Extracted Pipes", index=False)
+
+        assumptions = pd.DataFrame(
+            [
+                ["Remote 기준", "알람밸브로부터 배관길이 기준 최장거리"],
+                ["헤드 선정", "최원단 헤드를 기준으로 동일세대/인접 헤드 30개 군집 선정"],
+                ["동떨어진 헤드 제외", "최원단 헤드와 평면 좌표거리 기준 인접성 우선"],
+                ["관경", "배관 인근 숫자 TEXT에서 25/32/40/50/65/80/100/125/150 등 추출"],
+                ["CAD 단위→m 스케일", f"{scale} (mm=0.001, m=1.0, inch=0.0254 등)"],
+                ["C-factor", f"{settings.c_factor} (강관 기본값)"],
+                ["PIPENET 시트", "network_3d_nodes / pipes / nozzles / valves 4종 - pipenet_converter import 호환"],
+                ["주의", "CAD 축척, layer/block 명칭, K-factor(flow_m3s)는 실제 도면/스펙에 맞게 후처리 필요"],
+            ],
+            columns=["항목", "내용"],
+        )
+        assumptions.to_excel(writer, sheet_name="Assumptions", index=False)
+
+
+def build_sdf_xml(tables: dict, settings: Remote30Settings, *, title: str = "Remote 30 Auto-Extracted") -> str:
+    """PIPENET tables dict → SDF XML 문자열.
+    인라인 편집된 tables 로도 호출 가능 (워크벤치 SDF 재생성).
+    """
+    import xml.etree.ElementTree as ET
+    from xml.dom import minidom
+
+    project = ET.Element("Project", version="1.11.0  (3604)")
+    network = ET.SubElement(project, "Network-spray")
+    ET.SubElement(network, "Title").text = title
+    ET.SubElement(network, "Network-description").text = " "
+
+    attrs = ET.SubElement(network, "Attributes")
+    units = ET.SubElement(attrs, "Units", type="user-defined")
+    ET.SubElement(units, "Length-unit", display="2", precision="2", unit="metres")
+    ET.SubElement(units, "Diameter-unit", display="3", precision="3", unit="millimetres")
+    ET.SubElement(units, "Pressure-unit", display="0", precision="1", unit="kg-f-cm2-g")
+    ET.SubElement(units, "Velocity-unit", display="2", precision="2", unit="m-s")
+    ET.SubElement(units, "Volumetric-flow-unit", display="1", precision="1", unit="l-min")
+
+    ET.SubElement(attrs, "Fluid-fixed-user", density="998.2", **{"vapour-pressure": "3.62070676e+205", "viscosity": "1e-09"})
+    design = ET.SubElement(
+        attrs, "Design-options",
+        **{
+            "analysis-phase": "1", "design-phase": "0", "design-rules": "NFPA",
+            "pressure-equation": "hazen-williams", "specification-type": "user-defined",
+        },
+    )
+    flow_m3s_default = settings.design_flow_per_head_lpm / 60000.0
+    ET.SubElement(design, "Nozzle-specification", flowrate=f"{flow_m3s_default:.11f}", label="")
+    ET.SubElement(attrs, "Defaults", elevation="0", friction="Unset", **{"nozzle-flowrate": f"{flow_m3s_default:.11f}"})
+
+    # Nodes
+    nodes_el = ET.SubElement(network, "Nodes")
+    node_label_map = {}
+    for idx, row in enumerate(tables["nodes"], 1):
+        label = str(idx)
+        node_label_map[row["node_id"]] = label
+        node_el = ET.SubElement(
+            nodes_el, "Node",
+            elevation=f"{float(row.get('z', 0.0)):g}",
+            **{"io-node": "No"},
+            label=label,
+        )
+        # x/y 는 PIPENET 좌표(metres). build 시 cad_unit_to_m 이미 곱해진 상태.
+        # SDF 의 Position 은 mm 단위로 저장 (RV03_NEW 참고).
+        x_mm = float(row.get("x", 0.0)) * 1000.0
+        y_mm = float(row.get("y", 0.0)) * 1000.0
+        ET.SubElement(node_el, "Position", x=f"{x_mm:g}", y=f"{y_mm:g}")
+
+    # Pipes
+    pipes_el = ET.SubElement(network, "Pipes")
+    for row in tables["pipes"]:
+        from_label = node_label_map.get(row["from_node"], "0")
+        to_label = node_label_map.get(row["to_node"], "0")
+        ET.SubElement(
+            pipes_el, "Pipe",
+            bore=f"{float(row.get('diameter_m', 0.0)):g}",
+            input=from_label,
+            label=str(row.get("pipe_id", "P")),
+            length=f"{float(row.get('length_m', 0.0)):.3f}",
+            output=to_label,
+            rise=f"{float(row.get('rise_m', 0.0)):g}",
+            **{"roughness-or-c": f"{float(row.get('c_factor', settings.c_factor)):g}"},
+            status=str(row.get("status", "normal")),
+        )
+
+    # Nozzles
+    nozzles_el = ET.SubElement(network, "Nozzles")
+    for row in tables["nozzles"]:
+        in_label = node_label_map.get(row["input_node"], "0")
+        nozzle_label_raw = str(row.get("nozzle_id", ""))
+        nozzle_label = nozzle_label_raw.replace("RH", "").lstrip("0") or "1"
+        ET.SubElement(
+            nozzles_el, "Nozzle",
+            input=in_label,
+            label=nozzle_label,
+            output=str(row.get("output_node", f"@/{nozzle_label}")),
+            status=str(row.get("status", "1")),
+        )
+
+    # === Graphics 블록 — PIPENET isometric 표시용 ===
+    # 답안지 RV03_NEW.sdf 구조 모방. 이 블록 없으면 PIPENET 에서 테이블만 보임.
+    graphics = ET.SubElement(network, "Graphics")
+    display_opts = ET.SubElement(graphics, "Display-options")
+    ET.SubElement(display_opts, "Grid-options",
+                  displayed="1", grid="isometric", snap="1", style="points")
+    ET.SubElement(display_opts, "Label-display",
+                  arrows="1", **{"dec-limit": "0", "dec-limitno": "1", "display-font": "20",
+                                 "dry": "0", "fittings": "0", "force-labels": "0",
+                                 "force-legend": "1", "forces": "0", "label-all": "0",
+                                 "link-labels": "1", "node-labels": "0", "print-font": "48"})
+    ET.SubElement(display_opts, "Results-display",
+                  **{"flow-arrows": "1", "links": "1", "nodes": "0"})
+    ET.SubElement(display_opts, "Background", colour="white")
+    ET.SubElement(display_opts, "Line-thickness", line="1")
+    ET.SubElement(display_opts, "Tool-tips", on="0")
+
+    link_schemes = ET.SubElement(graphics, "Link-schemes", **{"select-name": "Pipe velocity"})
+    for tag in ["Default-link-scheme", "Pipe-bore-scheme", "Pipe-length-scheme",
+                "Pipe-mass-flow-scheme", "Pipe-pressure-difference-scheme",
+                "Pipe-pressure-gradient-scheme", "Pipe-type-scheme", "Pipe-velocity-scheme",
+                "Pipe-volumetric-flow-scheme"]:
+        ET.SubElement(link_schemes, tag,
+                      **{"auto-classify": "1", "reversed": "0", "use-modulus": "0"})
+
+    node_schemes = ET.SubElement(graphics, "Node-schemes", **{"select-name": "None"})
+    for tag in ["Default-node-scheme", "Node-elevation-scheme", "Node-pressure-scheme",
+                "Nozzle-calculated-deviation-scheme", "Nozzle-calculated-flow-scheme",
+                "Nozzle-calculated-pressure-scheme", "Nozzle-required-flow-scheme",
+                "Nozzle-type-scheme"]:
+        attrs = {"auto-classify": "1", "reversed": "0", "use-modulus": "0"}
+        if tag == "Node-pressure-scheme":
+            attrs["graduated"] = "#000000"
+            attrs["reversed"] = "1"
+        ET.SubElement(node_schemes, tag, **attrs)
+
+    raw = ET.tostring(project, encoding="utf-8")
+    pretty = minidom.parseString(raw).toprettyxml(indent="\t", encoding="UTF-8")
+    text = pretty.decode("utf-8")
+    text = text.replace(
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE Project SYSTEM "spray.dtd">',
+        1,
+    )
+    return text
+
+
+def _inject_natural_fall_trunk(tables: dict, settings: Remote30Settings) -> dict:
+    """자연낙차 옥상수원 → 단위세대 알람밸브 사이의 가상 수직 트렁크 추가.
+    답안지 RV03_NEW.sdf 처럼 92.8m + 40.6m 등 큰 rise 의 trunk pipe 를 자동 생성.
+    PIPENET 도메인 가정 (DXF 평면도에는 없는 정보).
+    """
+    fall_h = float(settings.natural_fall_height_m)
+    if fall_h <= 0:
+        return tables
+    n_stages = max(1, int(settings.natural_fall_n_stages))
+    bore_mm = float(settings.natural_fall_trunk_bore_mm)
+    bore_m = bore_mm / 1000.0
+    c = settings.c_factor
+
+    # 기존 알람밸브 node (node_type="source") 찾기
+    src_node = next((n for n in tables["nodes"] if n["node_type"] == "source"), None)
+    if src_node is None:
+        return tables
+    src_id = src_node["node_id"]
+    src_x = float(src_node["x"]); src_y = float(src_node["y"]); src_z = float(src_node["z"])
+
+    # n_stages 개의 가상 node 를 src 위 fall_h 높이부터 등간격으로 배치
+    # 최상단을 새 source (옥상 수원) 로 변경하고, 기존 src 는 junction 으로 강등
+    new_nodes = []
+    stage_height = fall_h / n_stages
+    new_node_ids = []
+    for i in range(n_stages):
+        nid = f"TRUNK{i+1:02d}"
+        # i=0 가 가장 아래(기존 src 바로 위), i=n_stages-1 가 최상단 (수원)
+        z = src_z + stage_height * (i + 1)
+        node_type = "source" if i == n_stages - 1 else "junction"
+        source_tag = "rooftop_reservoir" if i == n_stages - 1 else "trunk"
+        new_nodes.append({
+            "node_id": nid, "x": src_x, "y": src_y, "z": z,
+            "node_type": node_type, "source": source_tag,
+        })
+        new_node_ids.append(nid)
+
+    # 기존 src 를 junction 으로 강등 (수원 → 알람밸브 라인의 끝점)
+    src_node["node_type"] = "junction"
+    src_node["source"] = "alarm_valve"
+
+    # 트렁크 pipe 추가: 수원 (TRUNK_top) → ... → 기존 src
+    new_pipes = []
+    # 최상단 → 중간 → ... → src 순서로 연결
+    for i in range(n_stages):
+        if i == 0:
+            # TRUNK01 → 기존 알람밸브
+            from_node = new_node_ids[0]; to_node = src_id
+        else:
+            from_node = new_node_ids[i]; to_node = new_node_ids[i - 1]
+        new_pipes.append({
+            "pipe_id": f"TPIPE{i+1:02d}",
+            "from_node": from_node, "to_node": to_node,
+            "diameter_m": bore_m, "diameter_label": diameter_mm_to_label(bore_mm),
+            "length_m": stage_height, "rise_m": -stage_height,
+            "c_factor": c, "material": "", "status": "normal",
+        })
+
+    # 최종: 새 nodes/pipes 를 기존 위에 추가
+    tables["nodes"] = new_nodes + tables["nodes"]
+    tables["pipes"] = new_pipes + tables["pipes"]
+    return tables
+
+
+def export_pipenet_csv(tables: dict, out_dir: Path, base_name: str = "network_3d") -> list:
+    """PIPENET 4 tables 를 CSV 파일 4개로 저장 (pipenet_converter.export_tables 와 동일 스키마).
+    Returns: 생성된 파일 경로 리스트
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written = []
+    schema = {
+        "nodes":   ["node_id", "x", "y", "z", "node_type", "source"],
+        "pipes":   ["pipe_id", "from_node", "to_node", "diameter_m", "diameter_label",
+                    "length_m", "rise_m", "c_factor", "material", "status"],
+        "nozzles": ["nozzle_id", "input_node", "output_node", "flow_m3s", "status", "library_item"],
+        "valves":  ["valve_id", "input_node", "output_node", "valve_type", "target_value"],
+    }
+    for key, cols in schema.items():
+        path = out_dir / f"{base_name}_{key}.csv"
+        rows = tables.get(key, []) or []
+        df = pd.DataFrame(rows, columns=cols)
+        df.to_csv(path, index=False, encoding="utf-8-sig")
+        written.append(path)
+    return written
+
+
+def _export_sdf(G, node_coords, selected_heads, path_edges, alarm_node, settings: Remote30Settings, out_sdf, tables=None):
+    """RV03_NEW.sdf 와 동일한 PIPENET XML 스키마로 출력 (파일로 저장)."""
+    if tables is None:
+        tables = build_pipenet_tables(G, node_coords, selected_heads, path_edges, alarm_node, settings)
+    text = build_sdf_xml(tables, settings)
+    Path(out_sdf).write_text(text, encoding="utf-8")
+    return  # 아래의 옛 구현은 사용하지 않으므로 즉시 return
+
+    import xml.etree.ElementTree as ET
+    from xml.dom import minidom
+
+    scale = settings.cad_unit_to_m
+
+    used_nodes = set()
+    for a, b in path_edges:
+        used_nodes.add(a)
+        used_nodes.add(b)
+    used_nodes.add(alarm_node)
+    head_nodes_to_id = {h["Node"]: h["Remote Head No"] for h in selected_heads}
+
+    # SDF label 매핑 — RV03_NEW 는 정수 label 사용
+    sorted_nodes = sorted(used_nodes)
+    node_label_map = {n: str(i + 1) for i, n in enumerate(sorted_nodes)}
+
+    project = ET.Element("Project", version="1.11.0  (3604)")
+    network = ET.SubElement(project, "Network-spray")
+    ET.SubElement(network, "Title").text = "Remote 30 Auto-Extracted"
+    ET.SubElement(network, "Network-description").text = " "
+
+    attrs = ET.SubElement(network, "Attributes")
+    units = ET.SubElement(attrs, "Units", type="user-defined")
+    ET.SubElement(units, "Length-unit", display="2", precision="2", unit="metres")
+    ET.SubElement(units, "Diameter-unit", display="3", precision="3", unit="millimetres")
+    ET.SubElement(units, "Pressure-unit", display="0", precision="1", unit="kg-f-cm2-g")
+    ET.SubElement(units, "Velocity-unit", display="2", precision="2", unit="m-s")
+    ET.SubElement(units, "Volumetric-flow-unit", display="1", precision="1", unit="l-min")
+
+    ET.SubElement(attrs, "Fluid-fixed-user", density="998.2", **{"vapour-pressure": "3.62070676e+205", "viscosity": "1e-09"})
+    design = ET.SubElement(
+        attrs, "Design-options",
+        **{
+            "analysis-phase": "1", "design-phase": "0", "design-rules": "NFPA",
+            "pressure-equation": "hazen-williams", "specification-type": "user-defined",
+        },
+    )
+    # NFTC 80 LPM @ K=80 = 1.333e-3 m^3/s
+    flow_m3s = settings.design_flow_per_head_lpm / 60000.0
+    ET.SubElement(design, "Nozzle-specification", flowrate=f"{flow_m3s:.11f}", label="")
+    ET.SubElement(
+        attrs, "Defaults",
+        elevation="0", friction="Unset", **{"nozzle-flowrate": f"{flow_m3s:.11f}"},
+    )
+
+    nodes_el = ET.SubElement(network, "Nodes")
+    for n in sorted_nodes:
+        if n == alarm_node:
+            elev = settings.elevation_alarm_m
+        elif n in head_nodes_to_id:
+            elev = settings.elevation_head_m
+        else:
+            elev = settings.elevation_head_m
+        node_el = ET.SubElement(
+            nodes_el, "Node",
+            elevation=f"{elev:g}", **{"io-node": "No"}, label=node_label_map[n],
+        )
+        x_cad, y_cad = node_coords[n]
+        ET.SubElement(node_el, "Position", x=f"{x_cad:g}", y=f"{y_cad:g}")
+
+    pipes_el = ET.SubElement(network, "Pipes")
+    pipe_label = 0
+    for a, b in sorted(path_edges):
+        ed = G.get_edge_data(a, b)
+        dia_mm = ed.get("dia") or settings.fallback_dia_mm
+        bore_m = float(dia_mm) / 1000.0
+        length_m = ed.get("length", 0.0) * scale
+        pipe_label += 1
+        ET.SubElement(
+            pipes_el, "Pipe",
+            bore=f"{bore_m:g}",
+            input=node_label_map[a],
+            label=str(pipe_label),
+            length=f"{length_m:.3f}",
+            output=node_label_map[b],
+            rise="0",
+            **{"roughness-or-c": f"{settings.c_factor:g}"},
+            status="normal",
+        )
+
+    nozzles_el = ET.SubElement(network, "Nozzles")
+    for h in selected_heads:
+        n = h["Node"]
+        rh_no = h["Remote Head No"]
+        nozzle_label = rh_no.replace("RH", "").lstrip("0") or "1"
+        ET.SubElement(
+            nozzles_el, "Nozzle",
+            input=node_label_map[n],
+            label=nozzle_label,
+            output=f"@/{nozzle_label}",
+            status="1",
+        )
+
+    # 정렬된 XML 출력
+    raw = ET.tostring(project, encoding="utf-8")
+    pretty = minidom.parseString(raw).toprettyxml(indent="\t", encoding="UTF-8")
+    # PIPENET 의 DOCTYPE 라인 삽입
+    pretty_text = pretty.decode("utf-8")
+    pretty_text = pretty_text.replace(
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE Project SYSTEM "spray.dtd">',
+        1,
+    )
+    Path(out_sdf).write_text(pretty_text, encoding="utf-8")
+
+
+def run_remote30_extraction(
+    dxf_path,
+    alarm_xy: Optional[tuple] = None,
+    out_dir: Optional[Path] = None,
+    overrides: Optional[dict] = None,
+    override_heads: Optional[list] = None,
+    override_pipes: Optional[list] = None,
+) -> dict:
+    """
+    서버용 메인 엔트리.
+    Returns: { run_id, png_path, xlsx_path, alarm_xy, alarm_source,
+               counts: {segments, texts, heads, nodes, edges, attached_heads, selected},
+               summary, warnings }
+    """
+    dxf_path = Path(dxf_path)
+    if out_dir is None:
+        out_dir = Path("output_remote30")
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    settings = Remote30Settings()
+    if overrides:
+        for k, v in overrides.items():
+            if hasattr(settings, k) and v is not None:
+                setattr(settings, k, v)
+
+    warnings = []
+    run_id = uuid.uuid4().hex[:12]
+
+    doc = ezdxf.readfile(str(dxf_path))
+    msp = doc.modelspace()
+
+    segments = _get_line_entities(msp, settings)
+    text_items = _get_text_entities(msp, settings)
+    if override_heads is not None:
+        # 사용자가 워크벤치에서 확정한 헤드 좌표 리스트로 대체 (Layer 매칭 우회)
+        heads = []
+        for h in override_heads:
+            try:
+                x = float(h["x"]); y = float(h["y"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            heads.append({
+                "xy": (x, y),
+                "layer": str(h.get("layer", "<user>")),
+                "block": str(h.get("block", h.get("origin", "MANUAL"))),
+            })
+    else:
+        heads = _get_head_candidates(msp, settings)
+
+    # === 누락 보완: INSERT 분해 + 관경 TEXT 근접 LINE ===
+    extra_segments, extra_counts = _collect_supplementary_segments(msp, segments, text_items, settings)
+    if extra_segments:
+        segments.extend(extra_segments)
+
+    # === 사용자가 워크벤치에서 수동 추가한 배관 ===
+    user_pipe_count = 0
+    if override_pipes:
+        for p in override_pipes:
+            try:
+                x1 = float(p["x1"]); y1 = float(p["y1"])
+                x2 = float(p["x2"]); y2 = float(p["y2"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            segments.append({
+                "layer": str(p.get("layer", "<user-pipe>")),
+                "p1": (x1, y1), "p2": (x2, y2),
+                "source": "manual",
+            })
+            user_pipe_count += 1
+    extra_counts["user_pipes"] = user_pipe_count
+
+    if not segments:
+        warnings.append("배관 선분이 추출되지 않았습니다. PIPE_LAYER_KEYWORDS 확인 필요")
+    if not heads:
+        warnings.append("헤드 후보가 추출되지 않았습니다. HEAD_LAYER_KEYWORDS 확인 필요")
+
+    alarm_source = "manual"
+    if alarm_xy is None:
+        detected = detect_alarm_valve_xy(msp, settings)
+        if detected is not None:
+            alarm_xy = detected
+            alarm_source = "auto"
+        else:
+            alarm_xy = (0.0, 0.0)
+            alarm_source = "fallback_origin"
+            warnings.append("알람밸브 자동 검출 실패 — 좌표 (0,0) 사용. 수동 입력 권장")
+
+    G, node_coords, pipe_records = _build_pipe_graph(segments, text_items, settings)
+    # === 그래프 closure (degree==1 끝점 자동 snap) ===
+    closure_added = _close_graph_gaps(G, node_coords, settings)
+    attached_heads = _attach_heads_to_graph(heads, G, node_coords, settings)
+    # 미부착 헤드가 많으면 head_to_pipe_tol 을 늘려 2차 시도
+    if len(attached_heads) < len(heads) * 0.8:
+        original_tol = settings.head_to_pipe_tol
+        settings.head_to_pipe_tol = max(settings.head_to_pipe_tol * 2, settings.graph_closure_tol)
+        attached_heads = _attach_heads_to_graph(heads, G, node_coords, settings)
+        warnings.append(
+            f"미부착 헤드 비율 높음 → head_to_pipe_tol 을 {original_tol:.0f} → {settings.head_to_pipe_tol:.0f} 로 자동 증가. "
+            f"이후 부착 {len(attached_heads)}/{len(heads)}"
+        )
+    # === 그래도 부착 못 한 헤드 → 강제 부착 (새 노드 + 가짜 edge) ===
+    attached_xys = {(h["X"], h["Y"]) for h in attached_heads}
+    orphan_heads = [h for h in heads if h.get("xy") not in attached_xys]
+    if orphan_heads:
+        forced, fadd = _force_attach_orphan_heads(orphan_heads, G, node_coords, settings)
+        if forced:
+            attached_heads.extend(forced)
+            warnings.append(f"부착 실패 헤드 {len(orphan_heads)}개 → 강제 부착 (가짜 edge {fadd}개 추가)")
+
+    # 알람밸브 노드가 외딴 component에 있는지 진단 — 헤드와 같은 component에 있어야 hydraulic 가능
+    if G.number_of_edges() > 0 and attached_heads:
+        components = list(nx.connected_components(G))
+        # 가장 많은 헤드가 부착된 component를 "main component" 로 정의
+        head_node_set = {h["Node"] for h in attached_heads}
+        comp_head_counts = [(len(comp & head_node_set), comp) for comp in components]
+        comp_head_counts.sort(key=lambda x: -x[0])
+        main_head_count, main_comp = comp_head_counts[0]
+        av_idx = _nearest_node_id(alarm_xy, node_coords)
+        if av_idx not in main_comp:
+            warnings.append(
+                f"알람밸브 노드가 외딴 component에 있습니다 (해당 component 헤드 0개). "
+                f"가장 많은 헤드({main_head_count}개)가 모인 component의 centroid 노드로 알람밸브를 옮겨 재계산합니다."
+            )
+            xs = [node_coords[n][0] for n in main_comp]
+            ys = [node_coords[n][1] for n in main_comp]
+            centroid = (sum(xs) / len(xs), sum(ys) / len(ys))
+            # main component 안에서 centroid에 가장 가까운 노드 선택
+            best = min(main_comp, key=lambda n: math.dist(centroid, node_coords[n]))
+            alarm_xy = node_coords[best]
+            alarm_source = "fallback_main_component"
+
+    # === 모든 component 를 알람밸브 component 에 강제 연결 (auto-bridge) ===
+    # 결과: 모든 헤드 ↔ 알람밸브 path 보장
+    bridge_added = 0
+    if G.number_of_edges() > 0:
+        av_idx_final = _nearest_node_id(alarm_xy, node_coords)
+        bridge_added = _bridge_components(G, node_coords, av_idx_final)
+        if bridge_added > 0:
+            warnings.append(f"끊긴 component {bridge_added}개를 알람밸브에 강제 연결 (가짜 edge 추가)")
+
+    # === edge dia 가 None 인 경우 그래프 구조로 추정 (leaf=25A, 짧음=25A, 그 외=50A) ===
+    dia_refined = _refine_edge_diameters(G, settings)
+    if dia_refined > 0:
+        warnings.append(f"관경 TEXT 미매칭 edge {dia_refined}개에 구조 기반 직경 추정 적용")
+
+    # 자동 zone 추천은 비활성 (사용자가 워크벤치에서 zone 박스 직접 그리는 것이 더 정확)
+    # zone_bbox 가 지정돼 있으면 그 zone 안 attached_heads 만 사용 (path expansion 효과 ↑)
+    user_zone_applied = False
+    if settings.zone_bbox is not None and attached_heads:
+        zb = settings.zone_bbox
+        attached_in_zone = [h for h in attached_heads
+                            if zb[0] <= h["X"] <= zb[2] and zb[1] <= h["Y"] <= zb[3]]
+        if len(attached_in_zone) >= settings.remote_head_count:
+            attached_heads = attached_in_zone
+            user_zone_applied = True
+            warnings.append(f"사용자 zone 적용 → zone 안 attached_heads {len(attached_heads)}개")
+
+    if settings.remote_mode == "hydraulic":
+        selected, alarm_node, path_edges = _select_remote_hydraulic(
+            G, node_coords, attached_heads, alarm_xy, settings
+        )
+    else:
+        selected, alarm_node, path_edges = _select_remote_contiguous(
+            G, node_coords, attached_heads, alarm_xy, settings
+        )
+
+    # === Path 가지 확장 — 사용자 zone 박스 안일 때만 (zone heads union) ===
+    # 답안지처럼 풍부한 가지 그래프를 만들려면 zone 안 모든 헤드의 path 가 필요.
+    # zone 이 없으면 selected 30 union 만 (도면 전체 추출 시 trunk 위주가 됨).
+    if user_zone_applied and selected and path_edges:
+        expanded = set(path_edges)
+        for h in attached_heads:
+            n = h["Node"]
+            if n == alarm_node:
+                continue
+            try:
+                p = nx.shortest_path(G, alarm_node, n, weight="weight")
+                for a, b in zip(p[:-1], p[1:]):
+                    expanded.add(tuple(sorted((a, b))))
+            except nx.NetworkXNoPath:
+                continue
+        new_added = len(expanded) - len(path_edges)
+        if new_added > 0:
+            warnings.append(f"Path 가지 확장: zone 안 {len(attached_heads)}개 헤드 union → +{new_added} edges")
+        path_edges = expanded
+
+    out_png = out_dir / f"remote30_{run_id}.png"
+    out_xlsx = out_dir / f"remote30_{run_id}.xlsx"
+    out_sdf = out_dir / f"remote30_{run_id}.sdf"
+    out_csv_dir = out_dir / f"remote30_{run_id}_csv"
+
+    sdf_tables = None
+    csv_paths = []
+    if selected:
+        sdf_tables = build_pipenet_tables(G, node_coords, selected, path_edges, alarm_node, settings)
+
+        # === 자연낙차 가상 트렁크 추가 ===
+        # 답안지 RV03_NEW 처럼 옥상 수원 ↔ 단위세대 사이의 큰 수직 강하 배관을 시뮬레이션
+        if settings.natural_fall_height_m > 0:
+            sdf_tables = _inject_natural_fall_trunk(sdf_tables, settings)
+            warnings.append(
+                f"자연낙차 트렁크 추가: {settings.natural_fall_height_m}m 강하 "
+                f"({settings.natural_fall_n_stages} 단, bore={settings.natural_fall_trunk_bore_mm}mm)"
+            )
+        _plot_extracted_isometric(G, node_coords, selected, alarm_node, path_edges, out_png)
+        _export_excel(G, node_coords, pipe_records, selected, path_edges, alarm_node, settings, out_xlsx, tables=sdf_tables)
+        if settings.emit_sdf:
+            _export_sdf(G, node_coords, selected, path_edges, alarm_node, settings, out_sdf, tables=sdf_tables)
+        if settings.emit_csv:
+            csv_paths = export_pipenet_csv(sdf_tables, out_csv_dir, base_name=f"remote30_{run_id}")
+    else:
+        warnings.append("선정 가능한 Remote 30 헤드가 없습니다. 배관/헤드 추출 결과를 확인하세요")
+
+    counts = {
+        "segments": len(segments),
+        "texts": len(text_items),
+        "heads": len(heads),
+        "nodes": G.number_of_nodes(),
+        "edges": G.number_of_edges(),
+        "attached_heads": len(attached_heads),
+        "selected": len(selected),
+        "supplementary_insert_exploded": extra_counts.get("insert_exploded", 0),
+        "supplementary_near_text_line": extra_counts.get("near_text_line", 0),
+        "graph_closure_edges": closure_added,
+        "auto_bridge_edges": bridge_added,
+        "orphan_heads_forced": len(orphan_heads) if orphan_heads else 0,
+    }
+
+    summary_rows = []
+    for h in selected:
+        row = {
+            "remote_head_no": h["Remote Head No"],
+            "node": h["Node Name"],
+            "x": h["X"],
+            "y": h["Y"],
+            "distance_from_av": round(h["Distance from AV(CAD unit)"], 2),
+        }
+        if "Total Loss(kgcm2)" in h:
+            row["friction_loss_kgcm2"] = round(h["Friction Loss(kgcm2)"], 4)
+            row["static_head_kgcm2"] = round(h["Static Head(kgcm2)"], 4)
+            row["total_loss_kgcm2"] = round(h["Total Loss(kgcm2)"], 4)
+            row["path_length_m"] = round(h["Path Length(m)"], 3)
+        summary_rows.append(row)
+
+    # 워크벤치 캔버스 오버레이용 좌표 노출
+    alarm_node_xy = list(node_coords[alarm_node]) if (selected and node_coords) else list(alarm_xy)
+    selected_heads_xy = [
+        {"rh_no": h["Remote Head No"], "x": h["X"], "y": h["Y"],
+         "total_loss": h.get("Total Loss(kgcm2)"),
+         "distance_av": h.get("Distance from AV(CAD unit)")}
+        for h in selected
+    ]
+    # path_edges_xy: 원본 배관 segment 의 raw 좌표 사용 → 시각화 일탈 방지
+    # closure(가짜) edge 는 별도 표시 가능하도록 5번째 값 origin 추가
+    path_edges_xy = []
+    for a, b in sorted(path_edges):
+        ed = G.get_edge_data(a, b) or {}
+        rp1 = ed.get("raw_p1")
+        rp2 = ed.get("raw_p2")
+        if rp1 is None or rp2 is None:
+            # raw 가 없는 경우 (이전 데이터) → snap 노드 좌표 fallback
+            x1, y1 = node_coords[a]
+            x2, y2 = node_coords[b]
+        else:
+            x1, y1 = rp1
+            x2, y2 = rp2
+        is_closure = bool(ed.get("is_closure"))
+        path_edges_xy.append([x1, y1, x2, y2, "closure" if is_closure else "pipe"])
+
+    return {
+        "run_id": run_id,
+        "png_path": str(out_png) if selected else None,
+        "xlsx_path": str(out_xlsx) if selected else None,
+        "sdf_path": str(out_sdf) if (selected and settings.emit_sdf) else None,
+        "csv_paths": [str(p) for p in csv_paths] if csv_paths else [],
+        "csv_dir": str(out_csv_dir) if (selected and settings.emit_csv) else None,
+        "alarm_xy": [alarm_xy[0], alarm_xy[1]],
+        "alarm_node_xy": alarm_node_xy,
+        "alarm_source": alarm_source,
+        "remote_mode": settings.remote_mode,
+        "counts": counts,
+        "summary": summary_rows,
+        "warnings": warnings,
+        "selected_heads_xy": selected_heads_xy,
+        "path_edges_xy": path_edges_xy,
+        "sdf_tables": sdf_tables,
+    }
+
+
+# ======================================================================
+# FILE: remote30_ml.py   (391 lines)
+# ======================================================================
+
+"""Remote 30 ML 헤드 검출 - 타일 분할 + 고해상도 추론.
+
+head_detector.TriangleHeadYoloDetector 는 PNG 1280×1280 으로 도면 전체를 압축하는데,
+한국 sprinkler 도면(예: 대명동201동 = 800m × 4.7Mm 단위)에서는 헤드 심볼이
+픽셀 미만으로 깨져 거의 검출되지 않는다.
+
+이 모듈은 도면을 NxN 타일로 분할하고 각 타일을 독립적으로 1280px PNG 로 렌더해서
+YOLO 추론한 뒤, world-coord 결과를 병합한다. 헤드 심볼이 충분한 픽셀을 갖게 됨.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from head_detector import (
+    render_entities,
+    merge_boxes,
+    TriangleHeadYoloDetector,
+)
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
+HEAD_TEMPLATES_DIR = Path("data/head_templates")
+ALARM_TEMPLATES_DIR = Path("data/alarm_templates")
+
+# 학습된 sprinkler 다중 클래스 모델 우선. 없으면 fallback to triangle_head_yolo.
+SPRINKLER_YOLO_MODEL_CANDIDATES = [
+    Path("models/sprinkler_yolo/weights/best.pt"),
+    Path("models/triangle_head_yolo_ai/weights/best.pt"),
+    Path("models/triangle_head_yolo/weights/best.pt"),
+]
+
+
+def resolve_sprinkler_model_path() -> Path | None:
+    """sprinkler_yolo 모델이 학습돼 있으면 우선 사용, 없으면 triangle_head_yolo fallback."""
+    for p in SPRINKLER_YOLO_MODEL_CANDIDATES:
+        if p.exists():
+            return p
+    return None
+
+
+def _entity_world_bbox(entity: dict) -> tuple[float, float, float, float] | None:
+    """Entity 의 world bbox (minX, minY, maxX, maxY) 반환. INSERT 등 점 entity 는 작은 사각."""
+    t = entity.get("type")
+    try:
+        if t == "LINE":
+            x1 = float(entity["start"]["x"]); y1 = float(entity["start"]["y"])
+            x2 = float(entity["end"]["x"]); y2 = float(entity["end"]["y"])
+            return (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
+        if t == "LWPOLYLINE":
+            pts = entity.get("points") or []
+            if not pts:
+                return None
+            xs = [float(p["x"]) for p in pts]
+            ys = [float(p["y"]) for p in pts]
+            return (min(xs), min(ys), max(xs), max(ys))
+        if t in ("CIRCLE", "ARC"):
+            cx = float(entity["center"]["x"]); cy = float(entity["center"]["y"])
+            r = float(entity["radius"])
+            return (cx - r, cy - r, cx + r, cy + r)
+    except (KeyError, TypeError, ValueError):
+        return None
+    return None
+
+
+def _rect_overlaps(rect: tuple[float, float, float, float], box: tuple[float, float, float, float]) -> bool:
+    return not (rect[2] < box[0] or box[2] < rect[0] or rect[3] < box[1] or box[3] < rect[1])
+
+
+def detect_heads_with_tiles(
+    *,
+    entities: list[dict[str, Any]],
+    rect: dict[str, float],
+    visible_layers: set[str],
+    model_path: Path,
+    tile_grid: int = 2,
+    tile_px: int = 1280,
+    overlap: float = 0.10,
+    conf: float = 0.18,
+    iou: float = 0.35,
+    class_names: list[str] | None = None,
+) -> dict[str, Any]:
+    """타일 분할 YOLO 헤드 검출.
+
+    Returns:
+        {
+          'boxes': [{'minX','minY','maxX','maxY'}, ...],  # world-coord bbox 병합 결과
+          'tiles': N,           # 처리한 타일 수
+          'tile_grid': tile_grid,
+          'tile_px': tile_px,
+          'image_count': 실제 추론한 PNG 수
+        }
+    """
+    if cv2 is None:
+        raise RuntimeError("OpenCV(cv2) 미설치 - 타일 추론 불가")
+    detector = TriangleHeadYoloDetector(Path(model_path))
+    if not detector.available:
+        raise RuntimeError("YOLO 모델 가중치를 로드할 수 없습니다 (head_detector.TriangleHeadYoloDetector.available=False)")
+
+    if tile_grid < 1:
+        tile_grid = 1
+    tile_grid = min(tile_grid, 8)  # 안전 상한 (8x8 = 64 타일)
+    tile_px = max(640, min(int(tile_px), 4096))
+
+    minX = float(rect["minX"]); minY = float(rect["minY"])
+    maxX = float(rect["maxX"]); maxY = float(rect["maxY"])
+    dx = (maxX - minX) / tile_grid
+    dy = (maxY - minY) / tile_grid
+
+    all_boxes: list[dict[str, float]] = []
+    image_count = 0
+
+    for i in range(tile_grid):
+        for j in range(tile_grid):
+            tile_minX = minX + i * dx - overlap * dx
+            tile_minY = minY + j * dy - overlap * dy
+            tile_maxX = minX + (i + 1) * dx + overlap * dx
+            tile_maxY = minY + (j + 1) * dy + overlap * dy
+            tile_rect = {"minX": tile_minX, "minY": tile_minY, "maxX": tile_maxX, "maxY": tile_maxY}
+            tile_bounds = (tile_minX, tile_minY, tile_maxX, tile_maxY)
+
+            tile_entities = []
+            for e in entities:
+                ebbox = _entity_world_bbox(e)
+                if ebbox is None:
+                    continue
+                if _rect_overlaps(tile_bounds, ebbox):
+                    tile_entities.append(e)
+            if len(tile_entities) < 5:
+                continue  # 거의 빈 타일은 스킵 (배경뿐)
+
+            render = render_entities(tile_entities, tile_rect, visible_layers, width=tile_px, height=tile_px)
+            if render is None:
+                continue
+            image, transform = render
+            rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            result = detector.model.predict(
+                source=rgb, imgsz=tile_px, conf=conf, iou=iou, device="cpu", verbose=False,
+            )[0]
+            image_count += 1
+            if result.boxes is None:
+                continue
+            xyxy_arr = result.boxes.xyxy.detach().cpu().numpy().tolist()
+            cls_arr = result.boxes.cls.detach().cpu().numpy().tolist() if result.boxes.cls is not None else [0] * len(xyxy_arr)
+            conf_arr = result.boxes.conf.detach().cpu().numpy().tolist() if result.boxes.conf is not None else [1.0] * len(xyxy_arr)
+            for xyxy, c, cf in zip(xyxy_arr, cls_arr, conf_arr):
+                x1, y1, x2, y2 = [int(round(v)) for v in xyxy]
+                box_world = transform.image_to_world_box(x1, y1, x2, y2)
+                box_world["cls"] = int(c)
+                box_world["conf"] = float(cf)
+                all_boxes.append(box_world)
+
+    # 클래스별 분리해서 merge (다른 클래스끼리 합치지 않음)
+    classes_seen = sorted({b.get("cls", 0) for b in all_boxes})
+    merged_all: list[dict] = []
+    for cls in classes_seen:
+        cls_boxes = [b for b in all_boxes if b.get("cls", 0) == cls]
+        merged = merge_boxes(cls_boxes, center_distance=200.0)
+        for m in merged:
+            m["cls"] = cls
+        merged_all.extend(merged)
+
+    return {
+        "boxes": merged_all,
+        "tiles": tile_grid * tile_grid,
+        "tile_grid": tile_grid,
+        "tile_px": tile_px,
+        "image_count": image_count,
+        "raw_detections": len(all_boxes),
+        "class_names": class_names or [],
+    }
+
+
+# ============================================================
+# Phase 1: 색상 기반 검출 (직접 도면 DXF → 색상 마스크)
+# ============================================================
+def detect_by_color_on_dxf(
+    *,
+    entities: list[dict[str, Any]],
+    rect: dict[str, float],
+    visible_layers: set[str],
+    tile_grid: int = 3,
+    tile_px: int = 1600,
+    overlap: float = 0.10,
+    color_specs: list[dict] | None = None,
+    min_area_px: int = 8,
+    max_area_px: int = 800,
+) -> dict[str, Any]:
+    """DXF entity 를 컬러로 PNG 렌더 후 HSV 마스크로 빨강/노랑 헤드 심볼 검출.
+
+    Red triangle/dot, Yellow circle 같은 sprinkler 표준 심볼은 매우 일관된 색상이라
+    HSV 임계값 + contour detection 만으로도 정확히 잡을 수 있다.
+
+    color_specs: [{"name", "hsv_low", "hsv_high"}] — 기본은 빨강 + 노랑
+    """
+    if cv2 is None:
+        raise RuntimeError("OpenCV(cv2) 미설치")
+    import numpy as _np
+
+    if color_specs is None:
+        color_specs = [
+            {"name": "red", "hsv_low": (0, 120, 80),   "hsv_high": (10, 255, 255)},
+            {"name": "red2", "hsv_low": (170, 120, 80), "hsv_high": (180, 255, 255)},
+            {"name": "yellow", "hsv_low": (20, 120, 120), "hsv_high": (35, 255, 255)},
+        ]
+
+    minX = float(rect["minX"]); minY = float(rect["minY"])
+    maxX = float(rect["maxX"]); maxY = float(rect["maxY"])
+    dx = (maxX - minX) / tile_grid
+    dy = (maxY - minY) / tile_grid
+
+    all_detections: list[dict] = []
+    image_count = 0
+
+    for i in range(tile_grid):
+        for j in range(tile_grid):
+            tile_rect = {
+                "minX": minX + i * dx - overlap * dx,
+                "minY": minY + j * dy - overlap * dy,
+                "maxX": minX + (i + 1) * dx + overlap * dx,
+                "maxY": minY + (j + 1) * dy + overlap * dy,
+            }
+            tile_bounds = (tile_rect["minX"], tile_rect["minY"], tile_rect["maxX"], tile_rect["maxY"])
+
+            tile_entities = []
+            for e in entities:
+                ebbox = _entity_world_bbox(e)
+                if ebbox is None: continue
+                if _rect_overlaps(tile_bounds, ebbox):
+                    tile_entities.append(e)
+            if len(tile_entities) < 5:
+                continue
+
+            # 컬러 PNG 렌더 — entity 의 color 정보 사용
+            color_img = _render_entities_color(tile_entities, tile_rect, visible_layers, tile_px)
+            if color_img is None:
+                continue
+            image_count += 1
+            hsv = cv2.cvtColor(color_img, cv2.COLOR_BGR2HSV)
+
+            # 각 색상 마스크 → contour → 검출
+            combined_mask = _np.zeros(hsv.shape[:2], dtype=_np.uint8)
+            for spec in color_specs:
+                low = _np.array(spec["hsv_low"], dtype=_np.uint8)
+                high = _np.array(spec["hsv_high"], dtype=_np.uint8)
+                m = cv2.inRange(hsv, low, high)
+                combined_mask = cv2.bitwise_or(combined_mask, m)
+
+            # morph: 작은 노이즈 제거 + 가까운 픽셀 묶기
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel)
+            combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel)
+
+            contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for c in contours:
+                area = cv2.contourArea(c)
+                if area < min_area_px or area > max_area_px:
+                    continue
+                x, y, w, h = cv2.boundingRect(c)
+                # 검출된 픽셀 좌표 → world 좌표 (tile 의 inverse transform 사용)
+                from head_detector import render_entities as _render
+                world_w = max(tile_rect["maxX"] - tile_rect["minX"], 1.0)
+                world_h = max(tile_rect["maxY"] - tile_rect["minY"], 1.0)
+                scale_px = min((tile_px - 32) / world_w, (tile_px - 32) / world_h)
+                pad_x = (tile_px - world_w * scale_px) / 2
+                pad_y = (tile_px - world_h * scale_px) / 2
+                # render_entities 는 y를 위→아래로 뒤집어 그림. inverse:
+                wx_min = tile_rect["minX"] + (x - pad_x) / scale_px
+                wx_max = tile_rect["minX"] + (x + w - pad_x) / scale_px
+                wy_max = tile_rect["maxY"] - (y - pad_y) / scale_px
+                wy_min = tile_rect["maxY"] - (y + h - pad_y) / scale_px
+                all_detections.append({
+                    "minX": min(wx_min, wx_max), "minY": min(wy_min, wy_max),
+                    "maxX": max(wx_min, wx_max), "maxY": max(wy_min, wy_max),
+                })
+
+    merged = merge_boxes(all_detections, center_distance=200.0)
+    return {
+        "boxes": merged,
+        "tiles": tile_grid * tile_grid,
+        "tile_grid": tile_grid,
+        "tile_px": tile_px,
+        "image_count": image_count,
+        "raw_detections": len(all_detections),
+    }
+
+
+def _render_entities_color(entities, rect, visible_layers, tile_px):
+    """entity 의 DXF color index 를 BGR 색상으로 변환해 컬러 PNG 렌더.
+    sprinkler 도면의 빨간 헤드/노란 헤드를 색상 마스크로 잡기 위해 필요.
+    DXF ACI(Auto CAD Color Index) → BGR 매핑.
+    """
+    if cv2 is None:
+        return None
+    import numpy as _np
+    minX = float(rect["minX"]); minY = float(rect["minY"])
+    maxX = float(rect["maxX"]); maxY = float(rect["maxY"])
+    world_w = max(maxX - minX, 1.0); world_h = max(maxY - minY, 1.0)
+    scale = min((tile_px - 32) / world_w, (tile_px - 32) / world_h)
+    if scale <= 0:
+        return None
+    pad_x = (tile_px - world_w * scale) / 2
+    pad_y = (tile_px - world_h * scale) / 2
+    # 어두운 배경 (DXF AutoCAD 기본 배경과 비슷)
+    image = _np.full((tile_px, tile_px, 3), 30, dtype=_np.uint8)
+
+    def w2i(x, y):
+        return (int(round(pad_x + (x - minX) * scale)), int(round(tile_px - pad_y - (y - minY) * scale)))
+
+    def color_for(layer_name):
+        """layer 이름에서 색상 추론 — sprinkler 도면 관례."""
+        s = str(layer_name)
+        if "헤드" in s or "HEAD" in s.upper() or "SP-H" in s.upper():
+            return (0, 0, 255)  # red BGR
+        if "하향식" in s or "1.68" in s or "1.93" in s:
+            return (0, 0, 255)  # red - downward heads
+        if "헤드반경" in s or "반경" in s:
+            return (0, 255, 255)  # yellow
+        if "알람" in s or "ALARM" in s.upper() or "ALV" in s.upper():
+            return (0, 0, 255)
+        return (200, 200, 200)  # gray for other
+
+    for entity in entities:
+        if visible_layers and entity.get("layer") not in visible_layers:
+            continue
+        bgr = color_for(entity.get("layer", ""))
+        etype = entity.get("type")
+        try:
+            if etype == "LINE":
+                p1 = w2i(entity["start"]["x"], entity["start"]["y"])
+                p2 = w2i(entity["end"]["x"], entity["end"]["y"])
+                cv2.line(image, p1, p2, bgr, 2, cv2.LINE_AA)
+            elif etype == "LWPOLYLINE":
+                pts = _np.array([w2i(p["x"], p["y"]) for p in entity.get("points", [])], dtype=_np.int32)
+                if len(pts) >= 2:
+                    cv2.polylines(image, [pts], bool(entity.get("closed")), bgr, 2, cv2.LINE_AA)
+            elif etype == "CIRCLE":
+                c = w2i(entity["center"]["x"], entity["center"]["y"])
+                r = max(int(round(float(entity["radius"]) * scale)), 1)
+                # 헤드 layer 의 원은 색칠. 일반 layer 의 원은 윤곽선만
+                if "헤드" in str(entity.get("layer", "")) or "반경" in str(entity.get("layer", "")):
+                    cv2.circle(image, c, r, bgr, -1)  # filled
+                else:
+                    cv2.circle(image, c, r, bgr, 2, cv2.LINE_AA)
+            elif etype == "ARC":
+                c = w2i(entity["center"]["x"], entity["center"]["y"])
+                r = max(int(round(float(entity["radius"]) * scale)), 1)
+                cv2.ellipse(image, c, (r, r), 0, -float(entity["endAngle"]), -float(entity["startAngle"]), bgr, 2, cv2.LINE_AA)
+        except Exception:
+            continue
+    return image
+
+
+def detect_heads_by_layer_insert(
+    *,
+    msp,
+    settings,
+    layer_match_fn,
+) -> list[dict]:
+    """가장 신뢰성 높은 헤드 검출:
+    HEAD layer 의 INSERT 또는 CIRCLE entity 위치를 직접 사용.
+    DXF 의 ground truth — 모델/매칭 없이도 100% 정확.
+
+    이 함수는 layer 분류에 의존하므로 워크벤치에서 사용자가 카테고리 수정한 후 호출하면 정확함.
+    """
+    heads = []
+    for e in msp:
+        layer = e.dxf.layer if hasattr(e.dxf, "layer") else ""
+        if layer_match_fn(layer, settings.exclude_layer_keywords):
+            continue
+        if not layer_match_fn(layer, settings.head_layer_keywords):
+            continue
+        etype = e.dxftype()
+        if etype == "INSERT":
+            heads.append({
+                "x": float(e.dxf.insert.x), "y": float(e.dxf.insert.y),
+                "source": f"INSERT[{e.dxf.name}]@{layer}",
+            })
+        elif etype == "CIRCLE":
+            heads.append({
+                "x": float(e.dxf.center.x), "y": float(e.dxf.center.y),
+                "source": f"CIRCLE@{layer}",
+            })
+    return heads
+
+
+# ======================================================================
+# FILE: head_detector.py   (265 lines)
+# ======================================================================
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+try:
+    import torch
+except Exception:  # pragma: no cover - optional at runtime
+    torch = None
+
+try:
+    from ultralytics import YOLO
+    # 외부 익명 사용통계(analytics) 전송 차단 — 사내 기밀 격리 환경(LH) 요구사항.
+    # ultralytics 기본값 sync=True 는 익명 통계를 외부로 전송. 영구 비활성화한다.
+    try:
+        from ultralytics import settings as _ul_settings
+        if _ul_settings.get("sync", True):
+            _ul_settings.update({"sync": False})
+    except Exception:  # pragma: no cover
+        pass
+except Exception:  # pragma: no cover - optional at runtime
+    YOLO = None
+
+
+@dataclass
+class RenderTransform:
+    min_x: float
+    min_y: float
+    scale: float
+    width: int
+    height: int
+    pad_x: float
+    pad_y: float
+
+    def world_to_image(self, x: float, y: float) -> tuple[int, int]:
+        ix = int(round((x - self.min_x) * self.scale + self.pad_x))
+        iy = int(round(self.height - ((y - self.min_y) * self.scale + self.pad_y)))
+        return ix, iy
+
+    def image_to_world_box(self, x1: int, y1: int, x2: int, y2: int) -> dict[str, float]:
+        min_x = (x1 - self.pad_x) / self.scale + self.min_x
+        max_x = (x2 - self.pad_x) / self.scale + self.min_x
+        max_y = self.min_y + ((self.height - y1) - self.pad_y) / self.scale
+        min_y = self.min_y + ((self.height - y2) - self.pad_y) / self.scale
+        return {"minX": min_x, "minY": min_y, "maxX": max_x, "maxY": max_y}
+
+
+def render_entities(
+    entities: list[dict],
+    rect: dict[str, float],
+    visible_layers: set[str],
+    width: int = 1280,
+    height: int = 1280,
+) -> tuple[np.ndarray, RenderTransform] | None:
+    min_x = float(rect["minX"])
+    min_y = float(rect["minY"])
+    max_x = float(rect["maxX"])
+    max_y = float(rect["maxY"])
+    world_w = max(max_x - min_x, 1.0)
+    world_h = max(max_y - min_y, 1.0)
+    scale = min((width - 32) / world_w, (height - 32) / world_h)
+    if scale <= 0:
+        return None
+    pad_x = (width - world_w * scale) / 2
+    pad_y = (height - world_h * scale) / 2
+    transform = RenderTransform(min_x=min_x, min_y=min_y, scale=scale, width=width, height=height, pad_x=pad_x, pad_y=pad_y)
+    image = np.zeros((height, width), dtype=np.uint8)
+
+    for entity in entities:
+        if visible_layers and entity.get("layer") not in visible_layers:
+            continue
+        entity_type = entity.get("type")
+        if entity_type == "LINE":
+            p1 = transform.world_to_image(entity["start"]["x"], entity["start"]["y"])
+            p2 = transform.world_to_image(entity["end"]["x"], entity["end"]["y"])
+            cv2.line(image, p1, p2, 255, 2, cv2.LINE_AA)
+        elif entity_type == "LWPOLYLINE":
+            pts = np.array([transform.world_to_image(point["x"], point["y"]) for point in entity.get("points", [])], dtype=np.int32)
+            if len(pts) >= 2:
+                cv2.polylines(image, [pts], bool(entity.get("closed")), 255, 2, cv2.LINE_AA)
+        elif entity_type == "CIRCLE":
+            center = transform.world_to_image(entity["center"]["x"], entity["center"]["y"])
+            radius = max(int(round(float(entity["radius"]) * scale)), 1)
+            cv2.circle(image, center, radius, 255, 2, cv2.LINE_AA)
+        elif entity_type == "ARC":
+            center = transform.world_to_image(entity["center"]["x"], entity["center"]["y"])
+            radius = max(int(round(float(entity["radius"]) * scale)), 1)
+            cv2.ellipse(
+                image,
+                center,
+                (radius, radius),
+                0,
+                -float(entity["endAngle"]),
+                -float(entity["startAngle"]),
+                255,
+                2,
+                cv2.LINE_AA,
+            )
+    return image, transform
+
+
+def merge_boxes(boxes: list[dict[str, float]], center_distance: float = 220.0) -> list[dict[str, float]]:
+    merged: list[dict[str, float]] = []
+    for box in boxes:
+        found = None
+        for other in merged:
+            if world_overlap(box, other) or world_center_distance(box, other) < center_distance:
+                found = other
+                break
+        if found is None:
+            merged.append(dict(box))
+        else:
+            found["minX"] = min(found["minX"], box["minX"])
+            found["minY"] = min(found["minY"], box["minY"])
+            found["maxX"] = max(found["maxX"], box["maxX"])
+            found["maxY"] = max(found["maxY"], box["maxY"])
+    return merged
+
+
+def world_overlap(left: dict[str, float], right: dict[str, float]) -> bool:
+    return not (
+        left["maxX"] < right["minX"]
+        or right["maxX"] < left["minX"]
+        or left["maxY"] < right["minY"]
+        or right["maxY"] < left["minY"]
+    )
+
+
+def world_center_distance(left: dict[str, float], right: dict[str, float]) -> float:
+    lx = (left["minX"] + left["maxX"]) / 2
+    ly = (left["minY"] + left["maxY"]) / 2
+    rx = (right["minX"] + right["maxX"]) / 2
+    ry = (right["minY"] + right["maxY"]) / 2
+    return float(np.hypot(lx - rx, ly - ry))
+
+
+class TriangleHeadTemplateDetector:
+    def __init__(self, template_dir: Path) -> None:
+        self.templates = self._load_templates(template_dir)
+
+    def _load_templates(self, template_dir: Path) -> list[np.ndarray]:
+        templates: list[np.ndarray] = []
+        for path in sorted(template_dir.glob("*.png")):
+            image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+            if image is None:
+                continue
+            _, thresh = cv2.threshold(image, 16, 255, cv2.THRESH_BINARY)
+            coords = cv2.findNonZero(thresh)
+            if coords is None:
+                continue
+            x, y, w, h = cv2.boundingRect(coords)
+            cropped = thresh[y:y + h, x:x + w]
+            edges = cv2.Canny(cropped, 40, 120)
+            if edges.size > 0:
+                templates.append(edges)
+        return templates
+
+    def detect(self, entities: list[dict], rect: dict[str, float], visible_layers: set[str]) -> list[dict[str, float]]:
+        if not self.templates:
+            return []
+        render = render_entities(entities, rect, visible_layers, width=1024, height=1024)
+        if render is None:
+            return []
+        image, transform = render
+        edges = cv2.Canny(image, 40, 120)
+        detections = self._match_templates(edges)
+        world_boxes = [transform.image_to_world_box(*box) for box in detections]
+        return merge_boxes(world_boxes, center_distance=350.0)
+
+    def _match_templates(self, edges: np.ndarray) -> list[tuple[int, int, int, int]]:
+        candidates: list[tuple[int, int, int, int, float]] = []
+        scales = (0.6, 0.8, 1.0, 1.2, 1.4, 1.8)
+        for template in self.templates:
+            for scale in scales:
+                resized = cv2.resize(template, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
+                th, tw = resized.shape[:2]
+                if th < 12 or tw < 12 or th >= edges.shape[0] or tw >= edges.shape[1]:
+                    continue
+                result = cv2.matchTemplate(edges, resized, cv2.TM_CCOEFF_NORMED)
+                ys, xs = np.where(result >= 0.42)
+                for x, y in zip(xs.tolist(), ys.tolist()):
+                    score = float(result[y, x])
+                    candidates.append((x, y, x + tw, y + th, score))
+        candidates.sort(key=lambda item: item[4], reverse=True)
+        selected: list[tuple[int, int, int, int]] = []
+        for x1, y1, x2, y2, _score in candidates:
+            candidate = (x1, y1, x2, y2)
+            if any(box_iou(candidate, other) > 0.2 or box_center_distance(candidate, other) < 28 for other in selected):
+                continue
+            selected.append(candidate)
+        return selected
+
+
+class TriangleHeadYoloDetector:
+    def __init__(self, model_path: Path) -> None:
+        self.model_path = model_path
+        self.model = None
+        if YOLO is not None and model_path.exists():
+            self.model = YOLO(str(model_path))
+
+    @property
+    def available(self) -> bool:
+        return self.model is not None
+
+    def detect(self, entities: list[dict], rect: dict[str, float], visible_layers: set[str]) -> list[dict[str, float]]:
+        if self.model is None:
+            return []
+        render = render_entities(entities, rect, visible_layers, width=1280, height=1280)
+        if render is None:
+            return []
+        image, transform = render
+        rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        device = 0 if torch is not None and torch.cuda.is_available() else "cpu"
+        result = self.model.predict(
+            source=rgb,
+            imgsz=1280,
+            conf=0.18,
+            iou=0.35,
+            device=device,
+            verbose=False,
+        )[0]
+        boxes: list[dict[str, float]] = []
+        if result.boxes is not None:
+            for xyxy in result.boxes.xyxy.detach().cpu().numpy().tolist():
+                x1, y1, x2, y2 = [int(round(v)) for v in xyxy]
+                boxes.append(transform.image_to_world_box(x1, y1, x2, y2))
+        return merge_boxes(boxes, center_distance=240.0)
+
+
+class TriangleHeadDetector:
+    def __init__(self, template_dir: Path, model_path: Path) -> None:
+        self.template_detector = TriangleHeadTemplateDetector(template_dir)
+        self.yolo_detector = TriangleHeadYoloDetector(model_path)
+
+    def detect(self, entities: list[dict], rect: dict[str, float], visible_layers: set[str]) -> list[dict[str, float]]:
+        detections: list[dict[str, float]] = []
+        if self.yolo_detector.available:
+            detections.extend(self.yolo_detector.detect(entities, rect, visible_layers))
+        detections.extend(self.template_detector.detect(entities, rect, visible_layers))
+        return merge_boxes(detections, center_distance=260.0)
+
+
+def box_iou(left: tuple[int, int, int, int], right: tuple[int, int, int, int]) -> float:
+    x1 = max(left[0], right[0])
+    y1 = max(left[1], right[1])
+    x2 = min(left[2], right[2])
+    y2 = min(left[3], right[3])
+    inter = max(0, x2 - x1) * max(0, y2 - y1)
+    if inter == 0:
+        return 0.0
+    area_l = (left[2] - left[0]) * (left[3] - left[1])
+    area_r = (right[2] - right[0]) * (right[3] - right[1])
+    return inter / max(area_l + area_r - inter, 1)
+
+
+def box_center_distance(left: tuple[int, int, int, int], right: tuple[int, int, int, int]) -> float:
+    lx = (left[0] + left[2]) / 2
+    ly = (left[1] + left[3]) / 2
+    rx = (right[0] + right[2]) / 2
+    ry = (right[1] + right[3]) / 2
+    return float(np.hypot(lx - rx, ly - ry))

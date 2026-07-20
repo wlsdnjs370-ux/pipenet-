@@ -81,3 +81,24 @@ data/tmp_inspect_*/
 data/tmp_cad_compare_module.js
 data/문제샘플.zip
 수리계산 결과/
+
+# 모델·데이터 아티팩트 (소스 아님, 대용량) — 소스 .py 만 추적
+*.joblib
+calibration/models/
+pipenet_converter/data/
+pipenet_converter/outputs/
+pipenet_converter/.pytest_cache/
+pipenet_converter/*.pdf
+pipenet_converter/*.kfp
+pipenet_converter/*.kfr
+
+# 벤더 배포본 (K-solver PyInstaller 번들)
+K-Fire_Solver/
+*.lnk
+
+# 대용량 도면 샘플 아카이브 (소스 아님)
+samples/archives/
+samples/dwg/
+data/gnn_outputs/
+data/gnn_training/
+data/closed_vocab_ocr_dataset/

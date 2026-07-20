@@ -1,0 +1,15 @@
+project_name: daiso_4f_warehouse
+plan_dxf: ../data/input/MF-110~113 지상4층 상부 소방시설 확대평면도.dxf
+layer_map: ../data/input/layer_map_daiso_4f.csv
+block_map: ../data/input/block_map_daiso_4f.csv
+elevation_rules: ../data/input/elevation_rules_daiso_4f.csv
+system_edges: ../data/input/system_edges_daiso_4f.csv
+connection_map: ../data/input/connection_map_daiso_4f.json
+template_sdf: ../data/input/1-1. 다이소 세종허브센터 지상4층 창고.sdf
+reference_sdf: ../data/input/1-1. 다이소 세종허브센터 지상4층 창고.sdf
+output_dir: ../outputs/daiso_4f_config_run
+snap_tolerance: 50.0
+head_attach_tolerance: 600.0
+cad_unit_scale_to_m: 0.001
+default_diameter_m: 0.032
+input_node_id: INPUT

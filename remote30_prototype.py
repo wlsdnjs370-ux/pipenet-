@@ -2709,18 +2709,24 @@ def _bridge_components(
         main = max(comps, key=len)
         others = [c for c in comps if c is not main]
         bridges = 0
+        main_pts = list(main)  # 반복 set 순회 대신 로컬 리스트 (동일 순서 argmin 보존)
         for comp in others:
-            # comp 의 각 노드에서 main 의 가장 가까운 노드 찾기 (작은 comp 기준 O(|comp|*|main|))
+            # comp 의 각 노드에서 main 의 가장 가까운 노드 찾기 (작은 comp 기준 O(|comp|*|main|)).
+            # 내부 루프는 제곱거리로 비교(단조 → argmin·tie-break 동일) → hypot 호출 제거.
             best = None
-            bestd = float("inf")
+            bestd2 = float("inf")
             for u in comp:
-                for v in main:
-                    d = math.hypot(u[0] - v[0], u[1] - v[1])
-                    if d < bestd:
-                        bestd = d
+                ux = u[0]; uy = u[1]
+                for v in main_pts:
+                    dx = ux - v[0]; dy = uy - v[1]
+                    d2 = dx * dx + dy * dy
+                    if d2 < bestd2:
+                        bestd2 = d2
                         best = (u, v)
-            if best and bestd <= max_bridge_mm:
+            if best:
                 u, v = best
+                bestd = math.hypot(u[0] - v[0], u[1] - v[1])  # 최종 1회 — 저장값 동일 보존
+            if best and bestd <= max_bridge_mm:
                 graph[u].add(v); graph[v].add(u)
                 key = (min(u, v), max(u, v))
                 edge_len[key] = bestd

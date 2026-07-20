@@ -18,13 +18,18 @@ if exist ".venv\Scripts\activate.bat" (
     call venv\Scripts\activate.bat
 )
 
+REM ── 서버 포트 결정: serve.py 와 동일하게 .env 의 PORT 우선, 없으면 5051 ──
+REM    (하드코딩하면 .env PORT 와 어긋나 좀비 정리가 엉뚱한 포트를 죽인다)
+set "PORT=5051"
+if exist ".env" for /f "usebackq tokens=1,* delims==" %%A in (".env") do if /i "%%A"=="PORT" set "PORT=%%B"
+
 REM waitress 로 production 서버 실행 (loop 안에서 — 크래시 시 자동 재시작)
 :run
-REM ── 좀비 정리 — :5051 을 점유한 잔존 인스턴스가 있으면 그 PID 만 종료.
+REM ── 좀비 정리 — :%PORT% 을 점유한 잔존 인스턴스가 있으면 그 PID 만 종료.
 REM    (PyCharm 콘솔 등 다른 python 은 건드리지 않음) 이게 없으면 좀비가 포트를
 REM    쥔 채 죽어 새 인스턴스가 영원히 바인드 실패 → 무한 재시작 루프에 빠진다.
-for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":5051 " ^| findstr "LISTENING"') do (
-    echo [%date% %time%] freeing port 5051 — killing stale PID %%P
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%PORT% " ^| findstr "LISTENING"') do (
+    echo [%date% %time%] freeing port %PORT% — killing stale PID %%P
     taskkill /F /PID %%P >nul 2>&1
 )
 echo [%date% %time%] starting serve.py ...

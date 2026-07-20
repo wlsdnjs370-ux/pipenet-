@@ -1,0 +1,698 @@
+[
+  {
+    "endpoint": "index",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/"
+  },
+  {
+    "endpoint": "cad_compare",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/cad-compare"
+  },
+  {
+    "endpoint": "cad_module_dxf_parse",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/cad-module/dxf-parse"
+  },
+  {
+    "endpoint": "cad_sdf_ai_region_match",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/cad-sdf-ai-region-match"
+  },
+  {
+    "endpoint": "export_xlsx",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/export-xlsx"
+  },
+  {
+    "endpoint": "download_feedback_attachment",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/feedback-attachments/<path:filename>"
+  },
+  {
+    "endpoint": "create_feedback_post",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/feedback-posts"
+  },
+  {
+    "endpoint": "feedback_posts",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/feedback-posts"
+  },
+  {
+    "endpoint": "kfp_sdf_convert",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/kfp_sdf/convert"
+  },
+  {
+    "endpoint": "kfp_sdf_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/kfp_sdf/preview"
+  },
+  {
+    "endpoint": "remote30_auto_process",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/auto_process"
+  },
+  {
+    "endpoint": "remote30_combined_build",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/combined/build"
+  },
+  {
+    "endpoint": "remote30_combined_preview",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/combined/preview/<job_id>/<fmt>"
+  },
+  {
+    "endpoint": "remote30_combined_rebuild",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/combined/rebuild"
+  },
+  {
+    "endpoint": "remote30_combined_result",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/combined/result/<job_id>/<path:filename>"
+  },
+  {
+    "endpoint": "remote30_export_cad",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/export_cad"
+  },
+  {
+    "endpoint": "remote30_extract",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/extract"
+  },
+  {
+    "endpoint": "remote30_gnn_result",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/gnn/result/<run_id>/<path:filename>"
+  },
+  {
+    "endpoint": "remote30_gnn_run",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/gnn/run"
+  },
+  {
+    "endpoint": "remote30_has_parse",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/has/parse"
+  },
+  {
+    "endpoint": "remote30_inspect",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/inspect"
+  },
+  {
+    "endpoint": "remote30_machineroom_emit",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/machineroom/emit"
+  },
+  {
+    "endpoint": "remote30_machineroom_extract",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/machineroom/extract"
+  },
+  {
+    "endpoint": "remote30_machineroom_parse",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/machineroom/parse"
+  },
+  {
+    "endpoint": "remote30_machineroom_result",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/machineroom/result/<job_id>/<path:filename>"
+  },
+  {
+    "endpoint": "remote30_ml_detect",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/ml-detect"
+  },
+  {
+    "endpoint": "remote30_overall_finalize",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/overall/finalize/<job_id>"
+  },
+  {
+    "endpoint": "remote30_overall_finalize_stream",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/overall/finalize_stream/<job_id>"
+  },
+  {
+    "endpoint": "remote30_overall_parse_system_diagram",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/overall/parse-system-diagram"
+  },
+  {
+    "endpoint": "remote30_overall_result",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/overall/result/<job_id>/<path:filename>"
+  },
+  {
+    "endpoint": "remote30_overall_run",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/overall/run"
+  },
+  {
+    "endpoint": "remote30_overall_stream",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/overall/stream/<job_id>"
+  },
+  {
+    "endpoint": "remote30_prototype_finalize",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/prototype/finalize/<job_id>"
+  },
+  {
+    "endpoint": "remote30_prototype_finalize_stream",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/prototype/finalize_stream/<job_id>"
+  },
+  {
+    "endpoint": "remote30_prototype_result",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/prototype/result/<job_id>/<path:filename>"
+  },
+  {
+    "endpoint": "remote30_prototype_run",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/prototype/run"
+  },
+  {
+    "endpoint": "remote30_prototype_stream",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/prototype/stream/<job_id>"
+  },
+  {
+    "endpoint": "remote30_result",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/result/<run_id>/<kind>"
+  },
+  {
+    "endpoint": "remote30_sdf_from_tables",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/sdf-from-tables"
+  },
+  {
+    "endpoint": "remote30_system_clean_network",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/system/clean_network"
+  },
+  {
+    "endpoint": "remote30_system_connection_review",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/system/connection_review"
+  },
+  {
+    "endpoint": "remote30_system_emit",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/system/emit"
+  },
+  {
+    "endpoint": "remote30_system_extract",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/system/extract"
+  },
+  {
+    "endpoint": "remote30_system_parse",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/system/parse"
+  },
+  {
+    "endpoint": "remote30_system_result",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/system/result/<job_id>/<path:filename>"
+  },
+  {
+    "endpoint": "sdf_sprinkler_analysis",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/sdf-sprinkler-analysis"
+  },
+  {
+    "endpoint": "update_history",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/update-history"
+  },
+  {
+    "endpoint": "v4_ai_extract_from_dxf",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/ai/extract-from-dxf"
+  },
+  {
+    "endpoint": "v4_ai_ocr_closed_vocab",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/ai/ocr-closed-vocab"
+  },
+  {
+    "endpoint": "v4_alternatives_generate",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/alternatives-generate"
+  },
+  {
+    "endpoint": "v4_auto_design",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/auto-design"
+  },
+  {
+    "endpoint": "v4_change_log",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/v4/change-log/<project>"
+  },
+  {
+    "endpoint": "v4_hb_case",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/hb/case"
+  },
+  {
+    "endpoint": "v4_hb_pipe_material",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/hb/pipe-material"
+  },
+  {
+    "endpoint": "v4_hb_system_type",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/hb/system-type"
+  },
+  {
+    "endpoint": "v4_head_placement",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/head-placement"
+  },
+  {
+    "endpoint": "v4_imbalance_evaluate",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/imbalance-evaluate"
+  },
+  {
+    "endpoint": "v4_nftc_combined_supply",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/nftc/combined-supply"
+  },
+  {
+    "endpoint": "v4_nftc_esfr_branch",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/nftc/esfr-branch"
+  },
+  {
+    "endpoint": "v4_nftc_horizontal_distance",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/nftc/horizontal-distance"
+  },
+  {
+    "endpoint": "v4_nftc_reference_count",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/nftc/reference-count"
+  },
+  {
+    "endpoint": "v4_nftc_temperature_rating",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/nftc/temperature-rating"
+  },
+  {
+    "endpoint": "v4_pipe_routing",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/pipe-routing"
+  },
+  {
+    "endpoint": "v4_scenarios_generate",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/scenarios-generate"
+  },
+  {
+    "endpoint": "v4_status",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/v4/status"
+  },
+  {
+    "endpoint": "v4_trace",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/v4/trace/<project>"
+  },
+  {
+    "endpoint": "v4_validate_scenarios",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/validate-scenarios"
+  },
+  {
+    "endpoint": "v4_zone_partition",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/v4/zone-partition"
+  },
+  {
+    "endpoint": "validate_files",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/validate"
+  },
+  {
+    "endpoint": "cad_compare_module",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/cad-compare-module"
+  },
+  {
+    "endpoint": "cad_compare_module_7",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/cad-compare-module-7"
+  },
+  {
+    "endpoint": "design_automation_module_8",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/design-automation-module-8"
+  },
+  {
+    "endpoint": "kfp_sdf_converter_page",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/kfp-sdf-converter"
+  },
+  {
+    "endpoint": "login_page",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/login"
+  },
+  {
+    "endpoint": "login_submit",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/login"
+  },
+  {
+    "endpoint": "logout",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/logout"
+  },
+  {
+    "endpoint": "print_report",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/print-report/<path:filename>"
+  },
+  {
+    "endpoint": "remote30_overall",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/remote30-overall"
+  },
+  {
+    "endpoint": "remote30_prototype",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/remote30-prototype"
+  },
+  {
+    "endpoint": "remote30_workbench",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/remote30-workbench"
+  },
+  {
+    "endpoint": "remote30_workbench_gnn",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/remote30-workbench-gnn"
+  },
+  {
+    "endpoint": "sprinkler_pipeline",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/sprinkler-pipeline"
+  },
+  {
+    "endpoint": "static",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/static/<path:filename>"
+  }
+]

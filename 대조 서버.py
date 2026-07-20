@@ -3,9 +3,13 @@ from __future__ import annotations
 # ── core/ 라이브러리 경로 (repo 정리: 루트 라이브러리 → core/ 이동) ──
 import sys as _sys
 from pathlib import Path as _Path
-_CORE = _Path(__file__).resolve().parent / "core"
-if _CORE.is_dir() and str(_CORE) not in _sys.path:
-    _sys.path.insert(0, str(_CORE))
+_BASE = _Path(__file__).resolve().parent
+_CORE = _BASE / "core"
+# repo 루트 자체도 경로에 둔다 — routes/ 도메인 패키지 import 를 위해
+# (spec_from_file_location 로 로드될 때 부모 디렉토리가 sys.path 에 없을 수 있음).
+for _p in (str(_BASE), str(_CORE)):
+    if _p and _Path(_p).is_dir() and _p not in _sys.path:
+        _sys.path.insert(0, _p)
 
 import base64
 import gzip
@@ -288,36 +292,7 @@ def _require_login_gate():
     return redirect(url_for("login_page", next=request.path))
 
 
-@app.get("/login")
-def login_page():
-    if session.get("authed"):
-        nxt = request.args.get("next", "/")
-        return redirect(nxt or "/")
-    response = make_response(render_template("login.html", error=None, next_path=request.args.get("next", "/")))
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-@app.post("/login")
-def login_submit():
-    pw = (request.form.get("password") or "").strip()
-    nxt = (request.form.get("next") or "/").strip() or "/"
-    # safety — open redirect 방지 (외부 URL 금지)
-    if not nxt.startswith("/") or nxt.startswith("//"):
-        nxt = "/"
-    if pw == LOGIN_PASSWORD:
-        session["authed"] = True
-        session.permanent = True  # 세션 영구 (기본 31일)
-        return redirect(nxt)
-    response = make_response(render_template("login.html", error="Incorrect password.", next_path=nxt))
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-@app.get("/logout")
-def logout():
-    session.pop("authed", None)
-    return redirect(url_for("login_page"))
+# 인증 라우트(login/logout)는 routes/auth.py 로 분리 — 파일 끝에서 register().
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -7220,6 +7195,12 @@ except Exception:
 
 if register_v4_routes is not None:
     register_v4_routes(app)
+
+# ── 도메인 라우트 모듈 등록 (Phase 2: 도메인/기능 축 분리) ──────────────────
+# server_patch.register_v4_routes 와 동일한 register(app) 패턴. 엔드포인트명은
+# 접두사 없이 보존되어 url_for·템플릿·route 인벤토리가 리팩토링 전후 동일하다.
+import routes.auth as _routes_auth
+_routes_auth.register(app, login_password=LOGIN_PASSWORD)
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from werkzeug.utils import secure_filename
 
+from cad_match import _cad_layer_weight
 from pipenet_validator import PipenetGuideValidator
 
 
@@ -460,22 +461,6 @@ def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH,
             "equipment": equipment,
             "valves": valves,
         }
-
-    def _cad_layer_weight(layer: str | None, profile: dict | None = None) -> float:
-        profile = profile or {}
-        norm = _normalize_layer_name(layer)
-        positive = {_normalize_layer_name(x) for x in profile.get("positive_layers", [])}
-        suppressed = {_normalize_layer_name(x) for x in profile.get("suppressed_layers", [])}
-        keywords = [_normalize_layer_name(x) for x in profile.get("positive_keywords", ["SP", "소화", "배관", "후렉", "SPRINKLER", "FIRE"])]
-        if norm in positive:
-            return 5.0
-        if any(keyword and keyword in norm for keyword in keywords):
-            return 3.0
-        if norm in suppressed:
-            return -3.0
-        if norm in {"0", "L1", "L2", "L3", "L4", "DEFPOINTS"}:
-            return -1.5
-        return 0.0
 
     def _build_cad_sdf_learning_profile(cad: dict, sdf: dict, source_sdf: Path | None = None, source_cad: Path | None = None) -> dict:
         entities = cad.get("drawing_entities") or []

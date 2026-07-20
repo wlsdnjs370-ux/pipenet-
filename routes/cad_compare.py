@@ -13,22 +13,10 @@ from pathlib import Path
 
 from flask import jsonify, make_response, render_template, request
 
+from cad_match import _torch_device_info
+
 
 def register(app, *, BASE_DIR, UPLOAD_DIR, _AI_MATCH_MAX_EDGES, _ai_edge_features, _compact_cad_graph_for_sdf, _component_similarity_stats, _edge_length, _recompute_edge_degrees, _save_upload):
-
-    def _torch_device_info() -> dict:
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                return {
-                    "device": "cuda",
-                    "gpu_enabled": True,
-                    "gpu_name": torch.cuda.get_device_name(0),
-                }
-            return {"device": "cpu", "gpu_enabled": False, "gpu_name": None}
-        except Exception as exc:
-            return {"device": "unavailable", "gpu_enabled": False, "gpu_name": None, "error": str(exc)}
 
     def _sdf_counts_only(sdf_path: Path | None) -> dict:
         if sdf_path is None or not sdf_path.exists():

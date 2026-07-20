@@ -1723,7 +1723,7 @@ def _resolve_standard_slf() -> Path | None:
         cand = cand.resolve() if cand.is_absolute() else (Path.cwd() / cand).resolve()
         if cand.is_file():
             return cand
-    cand = (Path(__file__).parent / STANDARD_SLF_FILENAME).resolve()
+    cand = (Path(__file__).parent / "assets" / STANDARD_SLF_FILENAME).resolve()
     return cand if cand.is_file() else None
 
 
@@ -1995,7 +1995,7 @@ def _fittings_library_v3() -> list:
     """
     global _FITTINGS_V3_CACHE
     if _FITTINGS_V3_CACHE is None:
-        p = Path(__file__).parent / "kfp_fittings_library_v3.json"
+        p = Path(__file__).parent / "assets" / "kfp_fittings_library_v3.json"
         try:
             _FITTINGS_V3_CACHE = json.loads(p.read_text(encoding="utf-8"))
         except Exception:

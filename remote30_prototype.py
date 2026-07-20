@@ -21,6 +21,13 @@ Stages
 
 from __future__ import annotations
 
+# ── core/ 라이브러리 경로 (repo 정리: 루트 라이브러리 → core/ 이동) ──
+import sys as _sys
+from pathlib import Path as _Path
+_CORE = _Path(__file__).resolve().parent / "core"
+if _CORE.is_dir() and str(_CORE) not in _sys.path:
+    _sys.path.insert(0, str(_CORE))
+
 import csv
 import heapq
 import math
@@ -86,7 +93,7 @@ def _resolve_asset(env_var: str, default_filename: str, *, role: str) -> Path | 
             RuntimeWarning, stacklevel=3,
         )
 
-    candidate = (_MODULE_DIR / default_filename).resolve()
+    candidate = (_MODULE_DIR / "assets" / default_filename).resolve()
     if candidate.is_file():
         return candidate
     return None

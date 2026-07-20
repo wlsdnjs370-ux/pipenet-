@@ -63,11 +63,11 @@ DEFAULT_CANDIDATES = [
     "data/sample_problem/대명동201동 계통도.dxf",
     "data/sample_problem/대명동201동 계통도_최소.dxf",
     # LH306 — 평면도/배관망 (계통도는 파탄 baseline)
-    "LH306동_평면도.dxf",
-    "LH306동_배관망.dxf",
-    "LH306동.dxf",
-    "계통도_LH_306.dxf",            # baseline (파탄)
-    "계통도_LH_306_배관망추출.dxf",  # 손그림 11선
+    "samples/dxf/LH306동_평면도.dxf",
+    "samples/dxf/LH306동_배관망.dxf",
+    "samples/dxf/LH306동.dxf",
+    "samples/dxf/계통도_LH_306.dxf",            # baseline (파탄)
+    "samples/dxf/계통도_LH_306_배관망추출.dxf",  # 손그림 11선
     # 작은 fitting 테스트
     "samples/dxf/분기티.dxf",
 ]

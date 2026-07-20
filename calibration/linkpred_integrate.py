@@ -47,7 +47,7 @@ import joblib  # noqa: E402
 DEFAULT_DXF = [
     "data/sample_problem/대명동201동 계통도_최소.dxf",
     "data/sample_problem/대명동201동 계통도.dxf",
-    "계통도_LH_306.dxf",
+    "samples/dxf/계통도_LH_306.dxf",
 ]
 BRIDGE_TOLERANCES_MM = (200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0)
 

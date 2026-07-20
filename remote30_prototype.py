@@ -124,8 +124,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-PIPENET_CATEGORIES = {"PIPE", "HEAD", "TEXT", "ALARM"}
-KEEP_BASE_LAYERS = {"0"}  # INSERT BYLAYER 공통 + 도면 컨텍스트
+from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, HEAD_BRIDGE_MAX_MM, SOURCE_BRIDGE_MAX_MM, MIN_PIPE_EDGE_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG)  # noqa: E501  (Phase2b core)
 
 
 def _categorize_layer(name: str) -> str:
@@ -968,24 +967,7 @@ SYSTEM_PIPE_LAYER_KEYWORDS: tuple[str, ...] = (
 )
 
 # v2 — TEXT 라벨 파싱 (직경 + 층)
-_DIA_TEXT_PATTERNS = (
-    re.compile(r"\b(\d{2,3})\s*A\b"),                  # 25A
-    re.compile(r"^\s*(\d{2,3})\s*$"),                  # 순수 숫자
-    re.compile(r"[Øø]\s*(\d{2,3})"),                   # Ø25
-    re.compile(r"DN\s*(\d{2,3})"),                     # DN25
-    re.compile(r"(?<![0-9])(\d{2,3})\s*mm(?![0-9])"),  # 25mm
-)
-_DIA_TEXT_NOISE_KW = ("호스", "방수구", "소화전", "옥내", "HOSE", "EA", "KG",
-                      "SET", "SCALE", "PUMP", "펌프", "TANK", "탱크", "SIZE")
-_VALID_DIA_MM = frozenset((15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300))
 
-_FLOOR_LABEL_PATTERNS = (
-    (re.compile(r"지상\s*(\d{1,2})\s*층"), "ground"),     # 지상N층 → +N
-    (re.compile(r"지하\s*(\d{1,2})\s*층"), "basement"),   # 지하N층 → -N
-    (re.compile(r"B\s*(\d{1,2})\s*F", re.I), "basement"),  # B1F → -1
-    (re.compile(r"(?<![A-Za-z])(\d{1,2})\s*F(?![A-Za-z])"), "ground"),  # 5F → +5
-)
-_FLOOR_LABEL_SPECIAL = {"옥상": 99, "옥탑": 99, "ROOF": 99, "R/F": 99, "RF": 99}
 
 
 def _extract_dia_text_points(entities: list[dict]) -> list[tuple[float, float, int, str]]:
@@ -1821,7 +1803,6 @@ def _network_to_riser_dict(
 # SP 배관이 탱크 토출구 근처(실측 252mm)에 끝점을 가지므로 수원 스냅은 그대로 동작.
 # 도면별 레이어명이 달라 layer_filter 미지정 시 존재하는 것만 추려 쓰고,
 # 매칭 0건이면 build_system_graph 의 키워드 자동 필터 사용.
-MACHINE_ROOM_SP_LAYERS = {"-소화(SP-고)", "-소화(SP-저)"}
 
 
 def extract_machine_room_path(
@@ -2052,7 +2033,6 @@ def filter_pipenet_only(bundle: ParsedDxfBundle) -> list[dict]:
 # 2) Stage 2 — G₀ 그래프 빌드 + 가장 불리한 K 헤드 + subgraph 추출
 # ────────────────────────────────────────────────────────────────────────────
 
-SNAP_TOL_MM = 50.0
 # 50mm: DN50 (최소 호칭경) 미만 거리는 배관 토폴로지상 같은 점으로 간주.
 # 부동소수점 오차 + DWG→DXF 변환 누적 오차 + CAD 작업자 미세 오차 모두 흡수.
 # 이전 5mm 는 대명동/다이소 작업엔 문제 없었으나, 좌표 절댓값이 큰 도면
@@ -2060,16 +2040,12 @@ SNAP_TOL_MM = 50.0
 # 끝점들이 안 만나서 그래프가 3,058 component 로 쪼개지는 사고 발생.
 # 50mm 는 토폴로지 분석에 영향 없음 (호칭경 단위가 50/65/80/100mm 라 50mm
 # 이내 차이는 의미 없음). 격자 snap 아니라 _NodeIndex cluster 반경.
-HEAD_BRIDGE_MAX_MM = 5000.0  # 헤드 INSERT 좌표 ↔ 가장 가까운 그래프 노드 brigde 허용 거리.
 # 5m: 메자닌/대형 도면 (예: MF-125) 의 헤드가 배관 라인과 천장고 차이로 멀리 떨어진 경우 보호.
-SOURCE_BRIDGE_MAX_MM = 25000.0  # 알람밸브 (source) ↔ 배관망 nearest bridge 허용 (25m).
 # 알람밸브는 라이저 (수직 입상관) 위에 위치 — 평면도상 가지관과 거리가 멀 수 있음.
 # 25m 이내면 알람밸브 위치 그대로 source 로 사용 → 그래프 component 통합 효과.
-MIN_PIPE_EDGE_MM = 50.0
 # 50mm 미만 LINE/PL/ARC segment 는 그래프 edge 로 사용 안 함.
 # 헤드 부속(HEADCON, HDCROSS, SPCAP 등), 치수 보조선, 텍스트 underline 등
 # 평면도에는 보이지만 배관망 토폴로지에는 노이즈인 짧은 segment 제거.
-CLOSED_PL_TOL_MM = 5.0  # PL 의 첫점과 마지막점이 이 거리 안이면 closed polygon 으로 간주 → 그래프 제외
 
 
 def _round_pt(x: float, y: float, tol: float = SNAP_TOL_MM) -> tuple[float, float]:
@@ -2432,10 +2408,6 @@ def _build_graph(
 # 시각적으로 꼬임/겹침. 이 모듈은 4-cycle (u-v-w-x) 중 두 변이 평행하고 (rail)
 # 나머지 두 변이 짧으면 (rung, 관 cap/cross-fitting) ladder 로 식별, midline 하나로 합성.
 
-LADDER_MAX_RUNG_MM = 300.0     # rung (짧은 cross 변) 최대 길이. 단위세대 도면 기준.
-LADDER_MIN_RAIL_RATIO = 3.0    # rail / rung 평균 길이 비. 정사각형 (=1) 은 합성 안 됨.
-LADDER_PARALLEL_COS = 0.985    # 두 rail 의 방향 cos 유사도 임계값 (≈ 10도 안)
-LADDER_MAX_ITER = 10           # collapse 반복 횟수 (합성 후 새 ladder 생길 수 있음)
 
 
 def _edge_dir(p: tuple, q: tuple) -> tuple[float, float]:
@@ -3154,10 +3126,6 @@ class PipeTables:
 # C=120). 사용자가 평면도에서 지정한 영역(zone=단위세대 내부) 안의 배관만 CPVC(C=150)로
 # 유지한다. 세대 배관은 통상 CPVC, 간선/입상관은 강관이라는 현장 관행을 사용자 영역
 # 지정으로 표현. C-factor(=roughness-or-c)가 PIPENET 마찰손실에 직접 반영되는 재질값.
-STEEL_PIPE_TYPE = "KSD 3507"
-STEEL_C_FACTOR = "120"
-CPVC_PIPE_TYPE = "CPVC2"
-CPVC_C_FACTOR = "150"
 
 
 def _point_in_zones(px: float, py: float,
@@ -3175,7 +3143,6 @@ def _point_in_zones(px: float, py: float,
 
 # 가지배관 직각화 각도 임계값(deg) — 가지 edge 가 축(0/90°)에서 이 이내면 축정렬로
 # 스냅, 45° 근방(진짜 대각선)은 실좌표 유지. 표시 전용(length_mm·연결 불변).
-ORTHO_SNAP_TOL_DEG = 20.0
 
 
 def _classify_branch_edges(edges, head_points, source_point):

@@ -124,7 +124,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, HEAD_BRIDGE_MAX_MM, SOURCE_BRIDGE_MAX_MM, MIN_PIPE_EDGE_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, HEAD_BRIDGE_MAX_MM, SOURCE_BRIDGE_MAX_MM, MIN_PIPE_EDGE_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 
 def _categorize_layer(name: str) -> str:
@@ -3690,6 +3690,182 @@ def write_sdf_tree(tree: "ET.ElementTree", out_path: Path) -> None:
     )
 
 
+def _materialize_fx_pipes(tables: "PipeTables") -> tuple["PipeTables", dict, dict]:
+    """FX 등가길이 Equipment 를 참조 SDF 구조(실배관 + 등가길이)로 확장.
+
+    변환(각 FX Equipment E, 부모 파이프 P, 헤드노드 H 에 대해):
+      1. 새 노드 F 삽입 (좌표=H, 표고=H_elev - FX_RISE_M → F→H 표고차 = FX_RISE_M).
+      2. P 의 끝점 중 H 인 것을 F 로 리디렉트 (P: ...→F).
+      3. FX 파이프 FXP(F→H) 추가: 호칭경=nominal_dn, 길이=phys_len_m,
+         rise=FX_RISE_M, C=c_factor, type=FX_<기하> 스케줄명(SLF Item-name 겸용).
+      4. 등가길이 Equipment E 를 FXP 로 이동 (eq_len 불변 — 실배관 위에 얹는 추가 등가길이).
+    노즐(in=H)은 그대로 H 에 남는다 → 흐름: ...→F→(FXP)→H→(nozzle)→토출.
+
+    반환: (변환된 tables 복사본,
+           {FX파이프 label: 스케줄명},
+           {스케줄명: (nominal_dn, inner_dia_mm, c_factor)}).
+    호칭경이 같아도 내경이 다르면(예 A사 21.6 vs B사 21.5) 별개 스케줄로 분리된다.
+    원본 tables 는 변경하지 않는다(deepcopy).
+    """
+    import copy as _copy
+    t = PipeTables(
+        nodes=_copy.deepcopy(tables.nodes),
+        pipes=_copy.deepcopy(tables.pipes),
+        nozzles=_copy.deepcopy(tables.nozzles),
+        fittings=_copy.deepcopy(tables.fittings),
+        equipment=_copy.deepcopy(tables.equipment),
+        meta=list(tables.meta),
+    )
+    head_nodes = {str(nz["in"]) for nz in t.nozzles}
+    node_by_label = {str(n["label"]): n for n in t.nodes}
+    pipe_by_label = {str(p["label"]): p for p in t.pipes}
+
+    def _next_int_label(existing: set) -> int:
+        mx = 0
+        for lb in existing:
+            try:
+                v = int(float(lb))
+            except (TypeError, ValueError):
+                continue
+            if v > mx:
+                mx = v
+        return mx + 1
+
+    node_ctr = _next_int_label(set(node_by_label))
+    pipe_ctr = _next_int_label(set(pipe_by_label))
+
+    fx_pipe_sched: dict[str, str] = {}
+    fx_geoms: dict[str, tuple] = {}
+
+    for eq in t.equipment:
+        if str(eq.get("desc")) != "FX":
+            continue
+        prof = FX_SPEC_PROFILES.get(str(eq.get("spec_ref"))) or FX_SPEC_PROFILES[FX_DEFAULT_PROFILE]
+        p = pipe_by_label.get(str(eq.get("pipe")))
+        if p is None:
+            continue
+        p_in, p_out = str(p["in"]), str(p["out"])
+        if p_out in head_nodes:
+            head = p_out
+        elif p_in in head_nodes:
+            head = p_in
+        else:
+            # 헤드노드 특정 실패 → 변환 생략(종전대로 부모파이프에 등가길이만 — 안전 fallback)
+            continue
+        h_node = node_by_label.get(head)
+        if h_node is None:
+            continue
+
+        nominal_dn = int(prof["nominal_dn"])
+        inner_dia = float(prof["inner_dia_mm"])
+        c_factor = float(prof["c_factor"])
+        phys_len = float(prof["phys_len_m"])
+        sched = fx_schedule_name(nominal_dn, inner_dia)
+
+        # 1) 새 노드 F
+        f_label = str(node_ctr); node_ctr += 1
+        f_node = {
+            "label": f_label,
+            "elevation": float(h_node.get("elevation", 0.0) or 0.0) - FX_RISE_M,
+            "io_node": "No",
+            "x": h_node["x"], "y": h_node["y"],
+        }
+        if "display_z" in h_node:
+            f_node["display_z"] = h_node["display_z"]
+        t.nodes.append(f_node)
+        node_by_label[f_label] = f_node
+
+        # 2) 부모 파이프 P 의 head 끝점 → F
+        if str(p["out"]) == head:
+            p["out"] = f_label
+        else:
+            p["in"] = f_label
+
+        # 3) FX 파이프 FXP(F→H)
+        fxp_label = str(pipe_ctr); pipe_ctr += 1
+        fxp = {
+            "label": fxp_label,
+            "in": f_label, "out": head,
+            "type": sched,
+            "dia": nominal_dn,          # 호칭경(mm) → bore. 내경은 SLF FX 스케줄 lookup.
+            "length": phys_len,
+            "elev": FX_RISE_M,
+            "c": c_factor,
+            "status": "Normal",
+            "group": "Unset",
+        }
+        t.pipes.append(fxp)
+        pipe_by_label[fxp_label] = fxp
+
+        # 4) 등가길이 Equipment 를 FXP 로 이동 (eq_len 불변)
+        eq["pipe"] = fxp_label
+        eq["in"] = f_label
+        eq["out"] = head
+
+        fx_pipe_sched[fxp_label] = sched
+        fx_geoms[sched] = (nominal_dn, inner_dia, c_factor)
+
+    return t, fx_pipe_sched, fx_geoms
+
+
+def _rewrite_slf_fx_schedules(slf_path: Path, fx_geoms: dict) -> None:
+    """동봉 SLF 의 정적 <FX> 스케줄을 사용된 규격 기하별 FX_<기하> 스케줄로 치환.
+
+    fx_geoms: {스케줄명: (nominal_dn, inner_dia_mm, c_factor)}.
+    각 스케줄 = <Item-name>스케줄명, roughness=FX_SCHEDULE_ROUGHNESS,
+    Size-definition internal=inner_dia_mm nominal=nominal_dn 1행.
+    SLF DOCTYPE(<!DOCTYPE Library SYSTEM "Library.dtd">) 를 직접 붙여 보존(_harden_slf_for_combined 동일 패턴).
+    """
+    import xml.etree.ElementTree as _ET
+    if not slf_path.is_file() or not fx_geoms:
+        return
+    try:
+        tree = _ET.parse(slf_path)
+    except _ET.ParseError:
+        return
+    root = tree.getroot()
+    sec = root.find("Schedule-section")
+    if sec is None:
+        return
+    # 정적 FX 스케줄(Item-name == "FX") 위치를 찾아 제거 → 그 자리에 규격별 스케줄 삽입.
+    children = list(sec)
+    fx_idx = len(children)
+    for i, sch in enumerate(children):
+        name_el = sch.find("Item-name")
+        if name_el is not None and (name_el.text or "").strip() == "FX":
+            fx_idx = i
+            sec.remove(sch)
+            break
+    existing = {
+        (s.find("Item-name").text or "").strip()
+        for s in sec.findall("Schedule") if s.find("Item-name") is not None
+    }
+    insert_at = fx_idx
+    for sched_name, geom in fx_geoms.items():
+        nominal_dn, inner_dia = int(geom[0]), float(geom[1])
+        if sched_name in existing:
+            continue
+        sch = _ET.Element("Schedule", {"poisson-ratio": "Unset", "youngs-modulus": "Unset"})
+        _ET.SubElement(sch, "Item-name").text = sched_name
+        _ET.SubElement(sch, "Description").text = sched_name
+        md = _ET.SubElement(sch, "Metric-definition", {"roughness": ("%g" % FX_SCHEDULE_ROUGHNESS)})
+        _ET.SubElement(md, "Size-definition", {
+            "external": "Unset",
+            "internal": ("%g" % inner_dia),
+            "nominal": str(nominal_dn),
+        })
+        sec.insert(insert_at, sch)
+        insert_at += 1
+        existing.add(sched_name)
+
+    body = _ET.tostring(root, encoding="unicode")
+    slf_path.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE Library SYSTEM "Library.dtd">\n' + body,
+        encoding="utf-8",
+    )
+
+
 def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote 30 Prototype") -> Path:
     """PIPENET SDF emit — pipenet_converter.sdf_writer 의 template_path 활용.
 
@@ -3737,6 +3913,11 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
         PipeNetwork,
     )
     from pipenet_converter.sdf_writer import write_sdf as _write_sdf
+
+    # ── FX 실배관 materialize: 등가길이 Equipment → 실배관(FX_<기하>)+등가길이 로 확장.
+    # 이후 모든 노드/파이프 처리는 확장된 복사본(tables) 기준. fx_pipe_sched/fx_geoms 는
+    # 후처리에서 FX 파이프를 전용 Pipe-set 으로 분리 + SLF FX 스케줄 동적 생성에 사용.
+    tables, _fx_pipe_sched, _fx_geoms = _materialize_fx_pipes(tables)
 
     network = PipeNetwork(title=project_title)
 
@@ -3854,6 +4035,10 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
     slf_dst = out_path.parent / slf_name
     if ref_slf is not None and ref_slf.is_file():
         _shutil.copy2(ref_slf, slf_dst)
+        # FX 스케줄 동적 재작성 — 정적 SLF 의 단일 <FX> 를 실제 사용된 규격 기하별
+        # FX_<기하> 스케줄 N개로 치환(내경=inner_dia_mm, 호칭=nominal_dn).
+        if _fx_geoms:
+            _rewrite_slf_fx_schedules(slf_dst, _fx_geoms)
     else:
         warnings.warn(
             f"[remote30_prototype.emit_sdf] 표준 SLF 라이브러리를 찾을 수 없음. "
@@ -3910,7 +4095,7 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
         ("CPVC2", "150", [
             (0.025, 6), (0.032, 6), (0.04, 6), (0.05, 6), (0.065, 10), (0.08, 10),
         ]),
-        ("FX", "120", [(0.025, 10)]),
+        # FX 는 정적 정의 대신 규격 기하별 FX_<기하> Pipe-set 을 아래에서 동적 생성한다.
     ]
 
     def _make_pipe_type(name: str, c_factor: str, sizes: list) -> "_ET.Element":
@@ -3928,8 +4113,38 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
             })
         return pt
 
+    # ── FX 실배관 전용 Pipe-set 분리 — writer 는 모든 파이프를 단일 Pipe-set 에 담으므로,
+    # FX 파이프(호칭경↔내경이 FX_<기하> 스케줄에 바인딩돼야 함)를 기하별 전용 Pipe-set 으로
+    # 이동한다. 아래 KSD 3507 삽입 루프보다 먼저 실행 → 남은 main Pipe-set 만 KSD 3507 이 됨.
+    if _fx_pipe_sched:
+        for _links in _root.iter("Links"):
+            _main_ps = None
+            for _ps in _links.findall("Pipe-set"):
+                if _ps.find("Pipe") is not None:
+                    _main_ps = _ps
+                    break
+            if _main_ps is None:
+                break
+            _by_sched: dict = {}
+            for _pipe in list(_main_ps.findall("Pipe")):
+                _sn = _fx_pipe_sched.get(_pipe.get("label"))
+                if _sn is None:
+                    continue
+                _main_ps.remove(_pipe)
+                _by_sched.setdefault(_sn, []).append(_pipe)
+            _ins = list(_links).index(_main_ps) + 1
+            for _sn, _pipes in _by_sched.items():
+                _nominal, _inner, _c = _fx_geoms[_sn]
+                _fx_ps = _ET.Element("Pipe-set")
+                _fx_ps.append(_make_pipe_type(_sn, ("%g" % _c), [(round(int(_nominal) / 1000.0, 6), 10)]))
+                for _pipe in _pipes:
+                    _fx_ps.append(_pipe)
+                _links.insert(_ins, _fx_ps)
+                _ins += 1
+            break
+
     # 현재 모든 추론 파이프는 KSD 3507. populated Pipe-set 에는 KSD 3507 Pipe-type 만 삽입한다.
-    # 나머지 5 schedule 은 별도 Pipe-set (Pipe-type 만, Pipe 없음) 으로 정의해 PIPENET UI 의 schedule
+    # 나머지 schedule 은 별도 Pipe-set (Pipe-type 만, Pipe 없음) 으로 정의해 PIPENET UI 의 schedule
     # 선택 드롭다운에 노출 — 추후 분류 로직 (task #8) 이 들어오면 해당 schedule Pipe-set 으로 Pipe 이동.
     for _ps in _root.iter("Pipe-set"):
         if _ps.find("Pipe") is None:

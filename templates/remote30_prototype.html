@@ -617,6 +617,37 @@
     #fx-table tr.fx-row:hover td { background: var(--panel-soft); }
     #fx-table tr.fx-loc-active td { background: #fee2e2 !important; }
     #fx-table tr.fx-loc-active td:first-child { box-shadow: inset 3px 0 0 #ef4444; }
+    /* 엑셀식 다중 선택 (드래그) */
+    #fx-table tr.fx-selected td { background: #dbeafe !important; }
+    #fx-table tr.fx-selected td:first-child { box-shadow: inset 3px 0 0 #2563eb; }
+    #fx-table.fx-selecting { user-select: none; }
+    /* 우클릭 컨텍스트 메뉴 (규격 변경) */
+    #fx-ctxmenu {
+      display: none; position: fixed; z-index: 5000; min-width: 148px;
+      background: var(--panel, #fff); border: 1px solid var(--line); border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28); padding: 4px; font-size: 0.78rem;
+    }
+    #fx-ctxmenu.is-open { display: block; }
+    #fx-ctxmenu .fx-ctx-item {
+      position: relative; padding: 7px 10px; border-radius: 5px; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text);
+    }
+    #fx-ctxmenu .fx-ctx-item:hover { background: #eff6ff; }
+    #fx-ctxmenu .fx-ctx-count { color: var(--muted); font-size: 0.7rem; }
+    #fx-ctxmenu .fx-ctx-sub {
+      display: none; position: absolute; top: -5px; left: 100%; margin-left: 2px; min-width: 168px;
+      background: var(--panel, #fff); border: 1px solid var(--line); border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28); padding: 4px;
+      max-height: 60vh; overflow: auto;
+    }
+    #fx-ctxmenu .fx-ctx-item.has-sub:hover > .fx-ctx-sub,
+    #fx-ctxmenu .fx-ctx-item.is-sub-open > .fx-ctx-sub { display: block; }
+    #fx-ctxmenu .fx-ctx-opt {
+      padding: 7px 10px; border-radius: 5px; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text);
+    }
+    #fx-ctxmenu .fx-ctx-opt:hover { background: #eff6ff; }
+    #fx-ctxmenu .fx-ctx-opt .fx-ctx-eq { color: var(--muted); font-size: 0.7rem; }
     /* FX 검토·편집 트리거 버튼 */
     #fx-open-btn {
       display: none; margin-top: 8px; padding: 8px 12px; width: 100%;
@@ -3069,6 +3100,10 @@
       let nodeCoord = new Map();   // label → [x, y]  (world 좌표, Nodes 테이블)
       let headSet = new Set();     // 헤드 노드 label (Nozzles 테이블 in-node)
       let hasData = false;
+      // 엑셀식 다중 선택 상태 (row index Set) + 드래그 진행 플래그
+      const selected = new Set();
+      let selecting = false, dragAnchor = null, dragged = false;
+      let ctxMenu = null;          // 우클릭 규격변경 컨텍스트 메뉴 DOM (init 시 1회 생성)
 
       const esc = (s) => String(s == null ? "" : s)
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -3097,6 +3132,8 @@
           if (nz && nz.in != null) headSet.add(String(nz.in));
         }
         hasData = true;
+        selected.clear(); selecting = false; dragAnchor = null; dragged = false;
+        hideCtxMenu();
         warnEl.style.display = "none"; warnEl.innerHTML = "";
         renderRows();
         finBtn.disabled = false;
@@ -3213,11 +3250,9 @@
           r.source = r.source === "manual" ? "supplemented" : r.source;
           markOverride(i); renderRows();
         }));
-        // 행 클릭 → 캔버스 위치 표시 (입력/선택/버튼 조작 시에는 무시)
-        tableEl.querySelectorAll("tr.fx-row").forEach(tr => tr.addEventListener("click", (e) => {
-          if (e.target.closest("input, select, button")) return;
-          locate(+tr.dataset.i, tr);
-        }));
+        // 선택 시각 상태 복원 (re-render 후에도 유지). 클릭/드래그/우클릭 핸들러는
+        // tableEl 위임(initTableSelection)으로 1회만 등록되므로 여기서 재등록하지 않는다.
+        renderSelection();
       }
 
       applyBtn.addEventListener("click", () => {
@@ -3276,6 +3311,144 @@
         };
         es3.onerror = () => { es3.close(); };
       });
+
+      // ── 엑셀식 다중 선택 + 우클릭 규격변경 ─────────────────────────────
+      // 선택 시각 상태 복원 (renderRows 후 bind() 에서 호출)
+      function renderSelection() {
+        tableEl.querySelectorAll("tr.fx-row").forEach(tr => {
+          tr.classList.toggle("fx-selected", selected.has(+tr.dataset.i));
+        });
+      }
+
+      function hideCtxMenu() {
+        if (!ctxMenu) return;
+        ctxMenu.classList.remove("is-open");
+        const it = ctxMenu.querySelector(".fx-ctx-item.has-sub");
+        if (it) it.classList.remove("is-sub-open");
+      }
+
+      function showCtxMenu(x, y) {
+        if (!ctxMenu) return;
+        // 선택된 편집가능(비 A/V) 행 수 표시
+        let cnt = 0;
+        selected.forEach(i => { if (rows[i] && !isAv(rows[i])) cnt++; });
+        const cntEl = ctxMenu.querySelector(".fx-ctx-count");
+        if (cntEl) cntEl.textContent = `${cnt}개`;
+        // 규격 옵션(서브메뉴) 을 현재 profiles 로 채운다 (사내표준/A사/B사 …)
+        const sub = ctxMenu.querySelector(".fx-ctx-sub");
+        sub.innerHTML = Object.keys(profiles).map(k => {
+          const p = profiles[k];
+          const eq = (p && p.eq_len_m != null) ? Number(p.eq_len_m).toFixed(1) : "—";
+          return `<div class="fx-ctx-opt" data-key="${esc(k)}"><span>${esc(k)}</span><span class="fx-ctx-eq">${eq} m</span></div>`;
+        }).join("") || `<div class="fx-ctx-opt" style="color:var(--muted);cursor:default;">규격 없음</div>`;
+        ctxMenu.classList.add("is-open");
+        // 화면 밖으로 나가지 않게 클램프
+        const mw = ctxMenu.offsetWidth, mh = ctxMenu.offsetHeight;
+        ctxMenu.style.left = Math.max(4, Math.min(x, window.innerWidth - mw - 8)) + "px";
+        ctxMenu.style.top = Math.max(4, Math.min(y, window.innerHeight - mh - 8)) + "px";
+      }
+
+      // 선택된 모든 행의 규격을 specKey 로 일괄 변경 (A/V 는 제외)
+      function applySpecToSelected(specKey) {
+        const p = profiles[specKey];
+        if (!p) return;
+        selected.forEach(i => {
+          const r = rows[i];
+          if (!r || isAv(r)) return;
+          r.spec_ref = specKey;
+          r.eq_len = p.eq_len_m;
+          markOverride(i);
+        });
+        hideCtxMenu();
+        renderRows();   // 재렌더 (fx-ovr 반영). 선택 클래스는 bind()→renderSelection 로 유지
+      }
+
+      function initTableSelection() {
+        // 컨텍스트 메뉴 DOM 1회 생성 (오버레이 밖 body 에 붙여 pointer-events 문제 회피)
+        ctxMenu = document.createElement("div");
+        ctxMenu.id = "fx-ctxmenu";
+        ctxMenu.innerHTML =
+          `<div class="fx-ctx-item has-sub">` +
+            `<span>규격 변경 <span class="fx-ctx-count"></span></span><span>▸</span>` +
+            `<div class="fx-ctx-sub"></div>` +
+          `</div>`;
+        document.body.appendChild(ctxMenu);
+        // "규격 변경" 항목 클릭 → 서브메뉴 고정 노출 (hover 실패 대비, 사용자 "누르면")
+        ctxMenu.querySelector(".fx-ctx-item.has-sub").addEventListener("click", (e) => {
+          if (e.target.closest(".fx-ctx-sub")) return;   // 옵션 클릭은 아래에서 처리
+          e.currentTarget.classList.toggle("is-sub-open");
+        });
+        ctxMenu.querySelector(".fx-ctx-sub").addEventListener("click", (e) => {
+          const opt = e.target.closest(".fx-ctx-opt");
+          if (opt && opt.dataset.key) applySpecToSelected(opt.dataset.key);
+        });
+
+        let dragBase = new Set();
+        const rowIndexAt = (target) => {
+          const tr = target.closest && target.closest("tr.fx-row");
+          return tr ? +tr.dataset.i : null;
+        };
+        const applyDragSelection = (cur) => {
+          selected.clear();
+          dragBase.forEach(k => selected.add(k));
+          const lo = Math.min(dragAnchor, cur), hi = Math.max(dragAnchor, cur);
+          for (let k = lo; k <= hi; k++) selected.add(k);
+          renderSelection();
+        };
+
+        // 드래그 선택 시작 (편집 컨트롤 위에서는 선택 안 함)
+        tableEl.addEventListener("mousedown", (e) => {
+          if (e.button !== 0) return;
+          if (e.target.closest("input, select, button, textarea")) return;
+          const i = rowIndexAt(e.target);
+          if (i == null) return;
+          hideCtxMenu();
+          selecting = true; dragged = false; dragAnchor = i;
+          dragBase = (e.ctrlKey || e.metaKey) ? new Set(selected) : new Set();
+          applyDragSelection(i);
+          tableEl.classList.add("fx-selecting");
+          e.preventDefault();   // 텍스트 드래그 선택 방지
+        });
+        tableEl.addEventListener("mousemove", (e) => {
+          if (!selecting) return;
+          const i = rowIndexAt(e.target);
+          if (i == null) return;
+          if (i !== dragAnchor) dragged = true;
+          applyDragSelection(i);
+        });
+        document.addEventListener("mouseup", () => {
+          if (!selecting) return;
+          selecting = false;
+          tableEl.classList.remove("fx-selecting");
+          // 순수 단일 클릭(드래그 없음) → 캔버스 위치 표시 (기존 동작 유지)
+          if (!dragged && selected.size === 1) {
+            const only = selected.values().next().value;
+            locate(only, tableEl.querySelector(`tr.fx-row[data-i="${only}"]`));
+          }
+        });
+
+        // 우클릭 → 규격변경 메뉴 (선택 밖 행이면 그 행만 선택)
+        tableEl.addEventListener("contextmenu", (e) => {
+          const i = rowIndexAt(e.target);
+          if (i == null) return;
+          e.preventDefault();
+          if (!selected.has(i)) { selected.clear(); selected.add(i); renderSelection(); }
+          showCtxMenu(e.clientX, e.clientY);
+        });
+
+        // 메뉴 바깥 클릭 → 닫기
+        document.addEventListener("mousedown", (e) => {
+          if (ctxMenu && ctxMenu.classList.contains("is-open") && !ctxMenu.contains(e.target)) hideCtxMenu();
+        });
+        // Esc → 메뉴만 닫기 (창 닫힘 방지: overlay Esc 핸들러보다 먼저 등록되어 선점)
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && ctxMenu && ctxMenu.classList.contains("is-open")) {
+            hideCtxMenu();
+            e.stopImmediatePropagation();
+          }
+        });
+      }
+      initTableSelection();
 
       // 헤더 드래그로 창 이동 (닫기 버튼은 제외). 크기 조절은 CSS resize:both (우하단 모서리).
       (function enableDrag() {

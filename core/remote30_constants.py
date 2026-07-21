@@ -90,5 +90,26 @@ FX_SPEC_PROFILES: dict[str, dict] = {
 FX_DEFAULT_PROFILE = "사내표준"
 AV_EQ_LEN_M = 12.9             # 알람밸브 등가길이 (기존값 상수화만, 값 변경 없음)
 
+# ── FX 실배관 materialize 상수 (Stage-6 방출부에서 사용) ──────────────
+# 참조 SDF(201동)의 FX 파이프: <Pipe bore=".." length="0.7" rise="-0.1" roughness-or-c="120">
+# 내부에 등가길이 Equipment 를 담는 구조. 아래 값은 그 참조와 정합.
+FX_SCHEDULE_ROUGHNESS = 0.065  # SLF Metric-definition roughness (Colebrook 전용, C=120 계산엔 무영향 — 참고값)
+FX_RISE_M = -0.1               # FX 파이프 rise(입->출 표고차). 참조 SDF 하드코드값.
+
+
+def fx_schedule_name(nominal_dn: int, inner_dia_mm: float) -> str:
+    """규격 기하 → PIPENET-safe ASCII 스케줄명. (한글/공백 없이 SLF Item-name 겸용)
+
+    예: (25, 28.0) → "FX_25A_28",  (20, 21.6) → "FX_20A_216",  (20, 21.5) → "FX_20A_215".
+    호칭경이 같아도 내경이 다르면 별개 스케줄로 구분된다.
+    """
+    inner_str = ("%g" % float(inner_dia_mm)).replace(".", "")
+    return f"FX_{int(nominal_dn)}A_{inner_str}"
+
+
+def fx_geometry_key(profile: dict) -> tuple[int, float]:
+    """FX 프로파일 → dedup 키 (nominal_dn, inner_dia_mm). 같은 기하는 스케줄 1개로 병합."""
+    return (int(profile["nominal_dn"]), float(profile["inner_dia_mm"]))
+
 
 

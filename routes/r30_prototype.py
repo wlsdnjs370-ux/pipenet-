@@ -166,6 +166,62 @@ def register(app, *, _save_upload, _register_job, _serve_run_file,
                     user_deleted_indices=job["edit"]["deleted_indices"],
                     zones=job["edit"]["zones"],
                 ):
+                    # 신축배관(FX) 검토 게이트 — stage2_complete 저장 방식과 동일하게
+                    # tables/fx_review 를 job state 에 저장하고 이벤트는 그대로 프론트에 전달.
+                    if evt.get("type") == "stage5_complete":
+                        job["tables"] = evt["tables"]
+                        job["project_title"] = evt.get("project_title", "")
+                        job["fx_review"] = evt.get("fx_review", {})
+                    yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+            except Exception as exc:  # noqa: BLE001
+                err = {"type": "error", "message": str(exc)[:500]}
+                yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
+
+        response = Response(_gen(), mimetype="text/event-stream")
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["X-Accel-Buffering"] = "no"
+        return response
+
+    @app.post("/api/remote30/prototype/fx/finalize/<job_id>")
+    def remote30_prototype_fx_finalize(job_id: str):
+        """신축배관(FX) 검토 편집 결과 수신 — 헤드 편집 finalize 와 동일 컨벤션.
+
+        body (JSON):
+            equipment: [ {label, spec_ref, eq_len, source, override_flag, override_note, ...}, ... ]
+                       생략/null 이면 원본 그대로 emit (편집 없이 확정 = 회귀 없음).
+        저장만 하고 실제 emit 은 fx/finalize_stream 에서 스트리밍.
+        """
+        job = _PROTOTYPE_JOBS.get(job_id)
+        if not job:
+            return jsonify({"ok": False, "message": f"unknown job_id {job_id}"}), 404
+        if "tables" not in job:
+            return jsonify({"ok": False, "message": "stage5 (테이블 생성) 가 아직 끝나지 않았습니다."}), 400
+        body = request.get_json(silent=True) or {}
+        edited = body.get("equipment")
+        job["fx_edit"] = edited if isinstance(edited, list) else None
+        return jsonify({"ok": True, "job_id": job_id,
+                        "edited": (len(job["fx_edit"]) if job["fx_edit"] is not None else 0),
+                        "mode": ("edited" if job["fx_edit"] is not None else "original")})
+
+    @app.get("/api/remote30/prototype/fx/finalize_stream/<job_id>")
+    def remote30_prototype_fx_finalize_stream(job_id: str):
+        """Stage 6 (SDF emit) SSE — fx/finalize() 호출 후 구독."""
+        job = _PROTOTYPE_JOBS.get(job_id)
+        if not job:
+            return jsonify({"ok": False, "message": f"unknown job_id {job_id}"}), 404
+        if "tables" not in job:
+            return jsonify({"ok": False, "message": "stage5 결과가 없습니다. finalize_stream 을 먼저 완료하세요."}), 400
+
+        from remote30_prototype import run_stage_6_emit, PipeTables
+
+        def _gen():
+            try:
+                tables = PipeTables.from_dict(job["tables"])
+                for evt in run_stage_6_emit(
+                    Path(job["out_dir"]), job_id, tables,
+                    edited_equipment=job.get("fx_edit"),
+                    project_title=job.get("project_title") or Path(job["dxf_path"]).stem,
+                ):
                     yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
             except Exception as exc:  # noqa: BLE001
                 err = {"type": "error", "message": str(exc)[:500]}

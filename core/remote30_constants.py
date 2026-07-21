@@ -44,4 +44,51 @@ CPVC_C_FACTOR = "150"
 ORTHO_SNAP_TOL_DEG = 20.0
 
 
+# ── 신축배관(FX) 규격 프로파일 — "표 1" (원본 규격표) ──────────────
+# 값은 여기에만 존재한다. build_input_tables 등 사용처는 반드시 이 dict를 참조.
+# 프로파일 추가 시 여기에만 항목을 늘린다.
+# 설계사별 신축배관 입력유형(신축배관 테이블.pptx) 중 eq_len 이 정상 입력된 5종만 등재.
+#   제외: C사·D사(등가길이 별도 안잡음 → FX 손실 0), G사(C값 조작 22.4 — 가드레일 위반).
+# phys_len_m 는 참고용 — 파이프 기하(도면 거리)에 이미 포함되므로 eq_len/길이에 가산 금지.
+FX_SPEC_PROFILES: dict[str, dict] = {
+    "사내표준": {              # 구 F사 유형 — 한백 사내표준 (2026-07 확정)
+        "eq_len_m": 22.4,     # Equipment 등가길이
+        "nominal_dn": 25,     # 25A — 말단 파이프 최소 호칭경과 정합
+        "inner_dia_mm": 28.0, # SLF Size-definition 검증 대상
+        "c_factor": 120,
+        "phys_len_m": 0.7,    # 참고용. 가산 금지.
+    },
+    "A사": {
+        "eq_len_m": 15.6,
+        "nominal_dn": 20,
+        "inner_dia_mm": 21.6,
+        "c_factor": 120,
+        "phys_len_m": 0.7,
+    },
+    "B사": {
+        "eq_len_m": 11.5,
+        "nominal_dn": 20,
+        "inner_dia_mm": 21.5,
+        "c_factor": 120,
+        "phys_len_m": 0.6,
+    },
+    "E사": {
+        "eq_len_m": 20.0,
+        "nominal_dn": 20,
+        "inner_dia_mm": 21.6,
+        "c_factor": 120,
+        "phys_len_m": 1.0,
+    },
+    "H사": {
+        "eq_len_m": 7.8,
+        "nominal_dn": 20,
+        "inner_dia_mm": 21.6,
+        "c_factor": 120,
+        "phys_len_m": 0.7,
+    },
+}
+FX_DEFAULT_PROFILE = "사내표준"
+AV_EQ_LEN_M = 12.9             # 알람밸브 등가길이 (기존값 상수화만, 값 변경 없음)
+
+
 

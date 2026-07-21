@@ -1684,7 +1684,7 @@ def _pretty_xml(elem: ET.Element) -> str:
 # 생성한다. 사용자가 .slf 를 모든 출력 포맷의 고정 권위 라이브러리로 지정.
 # ────────────────────────────────────────────────────────────────────────────
 
-STANDARD_SLF_FILENAME = "2. Pipenet_hand.slf"
+STANDARD_SLF_FILENAME = "2. Pipenet_hand_FX28.slf"
 
 # .slf Schedule Item-name → K-Fire_Solver 표준 7종명. K-solver 가 KFP 를 받자마자
 # 매칭하도록 대응 표준이 있는 건 그 이름을 쓴다. FX/DP 는 K-solver 대응 표준이 없어

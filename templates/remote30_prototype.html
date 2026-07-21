@@ -612,6 +612,43 @@
     #fx-table tr.fx-ovr td:first-child { box-shadow: inset 3px 0 0 #f97316; }
     #fx-table .fx-spec-fixed { color: var(--muted); font-size: 0.68rem; }
     #fx-table input, #fx-table select { font-size: 0.7rem; padding: 2px 4px; border: 1px solid var(--line); border-radius: 3px; }
+    /* 행 클릭 → 캔버스 위치 표시 (파이프넷식) */
+    #fx-table tr.fx-row { cursor: pointer; }
+    #fx-table tr.fx-row:hover td { background: var(--panel-soft); }
+    #fx-table tr.fx-loc-active td { background: #fee2e2 !important; }
+    #fx-table tr.fx-loc-active td:first-child { box-shadow: inset 3px 0 0 #ef4444; }
+    /* FX 검토·편집 트리거 버튼 */
+    #fx-open-btn {
+      display: none; margin-top: 8px; padding: 8px 12px; width: 100%;
+      background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 6px;
+      font-size: 0.8rem; font-weight: 700; cursor: pointer;
+    }
+    #fx-open-btn:hover { background: #dbeafe; }
+    #fx-open-btn .fx-open-badge { font-weight: 400; color: var(--muted); font-size: 0.72rem; }
+    /* FX 검토 창 — 우측 도킹 플로팅 (캔버스 클릭 통과, 파이프넷식) */
+    #fx-modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 4000;
+      pointer-events: none;   /* 창 밖 클릭은 캔버스로 통과 */
+    }
+    #fx-modal-overlay.is-open { display: block; }
+    #fx-review-section {
+      pointer-events: auto;   /* 창 자체는 상호작용 */
+      position: absolute; top: 16px; left: 16px; bottom: 16px;
+      width: min(540px, 46vw); display: flex; flex-direction: column;
+      background: var(--panel, #fff); border: 1px solid var(--line); border-radius: 10px;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+      padding: 16px 18px; overflow: hidden;
+    }
+    #fx-review-section .fx-modal-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px;
+    }
+    #fx-review-section .fx-modal-head h3 { margin: 0; font-size: 0.95rem; font-weight: 700; }
+    #fx-modal-close {
+      border: none; background: transparent; font-size: 1.3rem; line-height: 1;
+      color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 5px;
+    }
+    #fx-modal-close:hover { background: var(--panel-soft); color: var(--text); }
+    #fx-review-section #fx-table { flex: 1 1 auto; min-height: 0; }
     .tabs { display: flex; gap: 3px; margin-top: 8px; padding: 3px; background: var(--panel-soft); border: 1px solid var(--line); border-radius: 7px; }
     .tab-btn {
       padding: 5px 10px;
@@ -1109,21 +1146,10 @@
         <div class="table-preview" id="preview-table"></div>
       </section>
 
-      <!-- ───── 신축배관(FX) 검토 게이트 ───── -->
-      <section id="fx-review-section" data-endpoint-prefix="/api/remote30/prototype" style="display:none;">
-        <h3 style="margin: 0 0 4px; font-size: 0.85rem; font-weight: 700;">신축배관(FX) 검토 · 편집</h3>
-        <p class="info-line" style="font-size: 0.72rem; color: var(--muted); margin: 0 0 6px;">
-          각 헤드(말단)에 자동 주입된 신축배관 등가길이입니다. FX는 형식승인 고정 제품이므로
-          기본값을 유지하되, 설계사 규격이 다르면 아래에서 수정하세요. 수정한 행은 <strong>수동(override)</strong> 으로 표시됩니다.
-        </p>
-        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
-          <button id="fx-apply-standard" type="button" style="padding:5px 9px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:0.72rem; cursor:pointer; border-radius:4px;">전체 사내표준 적용</button>
-          <span id="fx-summary" class="info-line" style="font-size:0.72rem; color:var(--muted); align-self:center;"></span>
-        </div>
-        <div id="fx-warnings" style="display:none; font-size:0.72rem; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; padding:5px 8px; margin-bottom:6px;"></div>
-        <div class="table-preview" id="fx-table" style="max-height:340px; overflow:auto;"></div>
-        <button id="fx-finalize-btn" type="button" class="run-btn" style="margin-top:8px;">✓ 확정 후 SDF 생성 (Stage 6)</button>
-      </section>
+      <!-- ───── 신축배관(FX) 검토 게이트 — 트리거 버튼 (창은 body 끝 모달) ───── -->
+      <button id="fx-open-btn" type="button">
+        🔧 신축배관(FX) 검토 · 편집 <span class="fx-open-badge"></span>
+      </button>
       </div>
       <!-- ───── /mode-panel-plane ───── -->
 
@@ -1450,6 +1476,28 @@
       </div>
       <!-- ───── /mode-panel-combined ───── -->
     </aside>
+  </div>
+
+  <!-- ───── 신축배관(FX) 검토 · 편집 모달 창 ───── -->
+  <div id="fx-modal-overlay">
+    <section id="fx-review-section" data-endpoint-prefix="/api/remote30/prototype">
+      <div class="fx-modal-head">
+        <h3>신축배관(FX) 검토 · 편집</h3>
+        <button id="fx-modal-close" type="button" title="닫기 (Esc)" aria-label="닫기">×</button>
+      </div>
+      <p class="info-line" style="font-size: 0.72rem; color: var(--muted); margin: 0 0 6px;">
+        각 헤드(말단)에 자동 주입된 신축배관 등가길이입니다. FX는 형식승인 고정 제품이므로
+        기본값을 유지하되, 설계사 규격이 다르면 아래에서 수정하세요. 수정한 행은 <strong>수동(override)</strong> 으로 표시됩니다.
+        <br><strong style="color:#b91c1c;">행을 클릭하면 캔버스에서 해당 신축배관 위치를 빨간 점선으로 표시합니다.</strong>
+      </p>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+        <button id="fx-apply-standard" type="button" style="padding:5px 9px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:0.72rem; cursor:pointer; border-radius:4px;">전체 사내표준 적용</button>
+        <span id="fx-summary" class="info-line" style="font-size:0.72rem; color:var(--muted); align-self:center;"></span>
+      </div>
+      <div id="fx-warnings" style="display:none; font-size:0.72rem; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; padding:5px 8px; margin-bottom:6px;"></div>
+      <div class="table-preview" id="fx-table" style="overflow:auto;"></div>
+      <button id="fx-finalize-btn" type="button" class="run-btn" style="margin-top:8px; flex:0 0 auto;">✓ 확정 후 SDF 생성 (Stage 6)</button>
+    </section>
   </div>
 
   <script>
@@ -2032,6 +2080,59 @@
     function render() {
       _renderEntities();
       drawAlarmMarker();
+      drawFxHighlight();
+    }
+
+    // FX(신축배관) 위치 하이라이트 — 검토 모달에서 행 클릭 시 설정됨.
+    // state.fx_highlight = { seg: [[x1,y1],[x2,y2]]|null, marker: [mx,my]|null, label: str }
+    // (a) 헤드 노드 빨간 점선 마커 + 리더, (b) FX 세그먼트 빨간 점선.
+    function drawFxHighlight() {
+      const hl = state.fx_highlight;
+      if (!hl) return;
+      ctx.save();
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      // (b) 세그먼트 빨간 점선
+      if (hl.seg) {
+        const [ax, ay] = worldToScreen(hl.seg[0][0], hl.seg[0][1]);
+        const [bx, by] = worldToScreen(hl.seg[1][0], hl.seg[1][1]);
+        ctx.setLineDash([7, 4]);
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 2.4;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      }
+      // (a) 헤드 노드 마커 — 빨간 점선 원 + 십자 + 리더 라벨
+      if (hl.marker) {
+        const [sx, sy] = worldToScreen(hl.marker[0], hl.marker[1]);
+        const R = 13;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        // 십자 (정확한 지점)
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(sx - R - 5, sy); ctx.lineTo(sx + R + 5, sy);
+        ctx.moveTo(sx, sy - R - 5); ctx.lineTo(sx, sy + R + 5);
+        ctx.stroke();
+        ctx.fillStyle = "#ef4444";
+        ctx.beginPath(); ctx.arc(sx, sy, 2, 0, Math.PI * 2); ctx.fill();
+        // 라벨 배지 (FX #n)
+        if (hl.label) {
+          const txt = "FX " + hl.label;
+          ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
+          const tw = ctx.measureText(txt).width;
+          const bx = sx + R + 8, by = sy - R - 18;
+          ctx.fillStyle = "#ef4444";
+          ctx.beginPath();
+          const pad = 5, bh = 16, bw = tw + pad * 2;
+          if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, 4); else ctx.rect(bx, by, bw, bh);
+          ctx.fill();
+          ctx.fillStyle = "#fff";
+          ctx.textBaseline = "middle";
+          ctx.fillText(txt, bx + pad, by + bh / 2 + 0.5);
+        }
+      }
+      ctx.restore();
     }
 
     function drawAlarmMarker() {
@@ -2753,7 +2854,10 @@
         el.classList.add("is-disabled"); el.href = "#";
       }
       document.getElementById("preview-section").style.display = "none";
-      document.getElementById("fx-review-section").style.display = "none";
+      // FX 검토 창/버튼 초기화 (이전 실행 잔여 제거)
+      document.getElementById("fx-modal-overlay").classList.remove("is-open");
+      document.getElementById("fx-open-btn").style.display = "none";
+      if (state.fx_highlight) { state.fx_highlight = null; }
 
       // POST run
       const fd = new FormData();
@@ -2902,7 +3006,7 @@
         document.getElementById("preview-section").style.display = "block";
         renderTablesPreview(evt.tables, evt.counts);
       } else if (evt.type === "stage5_complete") {
-        FxReview.open(evt.fx_review);
+        FxReview.open(evt.fx_review, evt.tables);
       } else if (evt.type === "warning") {
         FxReview.addWarning(evt.message || "");
       } else if (evt.type === "awaiting_finalize") {
@@ -2946,6 +3050,9 @@
     // ====== 신축배관(FX) 검토 편집기 ======
     const FxReview = (() => {
       const sec = document.getElementById("fx-review-section");
+      const overlay = document.getElementById("fx-modal-overlay");
+      const openBtn = document.getElementById("fx-open-btn");
+      const closeBtn = document.getElementById("fx-modal-close");
       const tableEl = document.getElementById("fx-table");
       const summaryEl = document.getElementById("fx-summary");
       const warnEl = document.getElementById("fx-warnings");
@@ -2953,6 +3060,9 @@
       const finBtn = document.getElementById("fx-finalize-btn");
       const prefix = sec.getAttribute("data-endpoint-prefix");
       let profiles = {}, defaultProfile = "사내표준", rows = [];
+      let nodeCoord = new Map();   // label → [x, y]  (world 좌표, Nodes 테이블)
+      let headSet = new Set();     // 헤드 노드 label (Nozzles 테이블 in-node)
+      let hasData = false;
 
       const esc = (s) => String(s == null ? "" : s)
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -2960,7 +3070,7 @@
       const isFx = (r) => (r.spec_ref in profiles);
       const isAv = (r) => (r.spec_ref === "AV_STD" || (r.label && String(r.label).indexOf("A/V") >= 0));
 
-      function open(fxReview) {
+      function open(fxReview, tables) {
         profiles = (fxReview && fxReview.profiles) || {};
         defaultProfile = (fxReview && fxReview.default_profile) || "사내표준";
         // 편집 상태를 담을 작업 사본 (원본 참조 보존용 _base)
@@ -2968,12 +3078,98 @@
           _base_eq: (e.eq_len != null ? Number(e.eq_len) : null),
           _base_spec: e.spec_ref,
         }));
+        // 캔버스 위치 표시용 좌표 맵 — Nodes(label→x,y) + 헤드셋(Nozzles in-node)
+        nodeCoord = new Map();
+        headSet = new Set();
+        const t = tables || {};
+        for (const n of (t.nodes || [])) {
+          if (n && n.label != null && n.x != null && n.y != null) {
+            nodeCoord.set(String(n.label), [Number(n.x), Number(n.y)]);
+          }
+        }
+        for (const nz of (t.nozzles || [])) {
+          if (nz && nz.in != null) headSet.add(String(nz.in));
+        }
+        hasData = true;
         warnEl.style.display = "none"; warnEl.innerHTML = "";
-        render();
-        sec.style.display = "block";
+        renderRows();
         finBtn.disabled = false;
         finBtn.textContent = "✓ 확정 후 SDF 생성 (Stage 6)";
-        sec.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        // 트리거 버튼 노출 + 첫 회 자동으로 창 띄우기
+        openBtn.style.display = "block";
+        const badge = openBtn.querySelector(".fx-open-badge");
+        if (badge) badge.textContent = `(FX ${rows.filter(r => !isAv(r)).length}개)`;
+        show();
+      }
+
+      function show() {
+        if (!hasData) return;
+        overlay.classList.add("is-open");
+      }
+
+      function close() {
+        overlay.classList.remove("is-open");
+        clearHighlight();
+      }
+
+      function clearHighlight() {
+        if (state.fx_highlight) { state.fx_highlight = null; render(); }
+        tableEl.querySelectorAll("tr.fx-loc-active").forEach(tr => tr.classList.remove("fx-loc-active"));
+      }
+
+      // 행 클릭 → 캔버스에 해당 FX 위치 표시 (a: 헤드 마커, b: 세그먼트, c: 자동 팬/줌)
+      function locate(i, trEl) {
+        const r = rows[i];
+        if (!r) return;
+        const A = nodeCoord.get(String(r.in));
+        const B = nodeCoord.get(String(r.out));
+        if (!A && !B) return;   // 좌표를 못 찾으면 무시
+        // 헤드 노드 = in/out 중 헤드셋에 속한 쪽, 없으면 좌표가 있는 쪽(끝단)
+        let marker = null;
+        if (A && headSet.has(String(r.in))) marker = A;
+        else if (B && headSet.has(String(r.out))) marker = B;
+        else marker = B || A;
+        const seg = (A && B) ? [A, B] : null;
+        state.fx_highlight = { seg, marker, label: String(r.label || "") };
+        focusHighlight(seg, marker);
+        render();
+        tableEl.querySelectorAll("tr.fx-loc-active").forEach(tr => tr.classList.remove("fx-loc-active"));
+        if (trEl) trEl.classList.add("fx-loc-active");
+      }
+
+      // (c) 표시 지점으로 캔버스 자동 이동/확대 — bbox 를 화면 중앙에 여유있게.
+      function focusHighlight(seg, marker) {
+        const pts = [];
+        if (seg) { pts.push(seg[0], seg[1]); }
+        if (marker) pts.push(marker);
+        if (!pts.length) return;
+        const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+        let minx = Math.min(...xs), maxx = Math.max(...xs);
+        let miny = Math.min(...ys), maxy = Math.max(...ys);
+        const rect = canvas.getBoundingClientRect();
+        const w = rect.width, h = rect.height;
+        // 도킹 창이 가리지 않는 '보이는 캔버스 영역'(창 오른쪽~캔버스 우단)에 하이라이트 배치.
+        let visLeft = 0, visRight = w;
+        if (overlay.classList.contains("is-open")) {
+          const secRect = sec.getBoundingClientRect();
+          const panelRightInCanvas = secRect.right - rect.left;  // 캔버스 좌표계 px
+          visLeft = Math.min(w - 120, Math.max(0, panelRightInCanvas + 12));
+        }
+        const availW = Math.max(120, visRight - visLeft);
+        const visCenterX = (visLeft + visRight) / 2;   // 보이는 영역의 가로 중심 (screen px)
+        // 대상 bbox 에 최소 크기 보장(단일 점이면 주변 반경) + 화면의 일부만 채우도록 여유.
+        const span = Math.max(maxx - minx, maxy - miny, 1);
+        const padW = span * 1.8 + 1;
+        minx -= padW; maxx += padW; miny -= padW; maxy += padW;
+        const bw = maxx - minx, bh = maxy - miny;
+        const margin = 40;
+        let z = Math.min((availW - 2 * margin) / bw, (h - 2 * margin) / bh);
+        // 과도 확대 방지 — 현재 fitZoom 의 8배 상한(있으면)
+        if (state.view.fitZoom) z = Math.min(z, state.view.fitZoom * 8);
+        const cx = (minx + maxx) / 2, cy = (miny + maxy) / 2;
+        state.view.zoom = z;
+        state.view.panX = visCenterX - cx * z;
+        state.view.panY = h / 2 + cy * z;
       }
 
       function specCell(r, idx) {
@@ -2987,7 +3183,7 @@
         return `<select class="fx-spec" data-i="${idx}">${opts}<option value="__custom__"${r.spec_ref === "__custom__" ? " selected" : ""}>직접 입력</option></select>`;
       }
 
-      function render() {
+      function renderRows() {
         let fxN = 0, avN = 0, ovrN = 0;
         const trs = rows.map((r, i) => {
           if (isAv(r)) avN++; else fxN++;
@@ -3028,7 +3224,7 @@
           const i = +e.target.dataset.i, v = e.target.value;
           rows[i].spec_ref = v;
           if (v in profiles) rows[i].eq_len = profiles[v].eq_len_m; // 규격 선택 시 등가길이 자동 채움
-          markOverride(i); render();
+          markOverride(i); renderRows();
         }));
         tableEl.querySelectorAll(".fx-eqlen").forEach(inp => inp.addEventListener("input", (e) => {
           const i = +e.target.dataset.i;
@@ -3044,7 +3240,12 @@
           r.spec_ref = r._base_spec; r.eq_len = r._base_eq;
           r.override_flag = false; r.override_note = "";
           r.source = r.source === "manual" ? "supplemented" : r.source;
-          markOverride(i); render();
+          markOverride(i); renderRows();
+        }));
+        // 행 클릭 → 캔버스 위치 표시 (입력/선택/버튼 조작 시에는 무시)
+        tableEl.querySelectorAll("tr.fx-row").forEach(tr => tr.addEventListener("click", (e) => {
+          if (e.target.closest("input, select, button")) return;
+          locate(+tr.dataset.i, tr);
         }));
       }
 
@@ -3057,7 +3258,7 @@
           r.eq_len = p.eq_len_m;
           markOverride(i);
         });
-        render();
+        renderRows();
       });
 
       function validate() {
@@ -3103,6 +3304,13 @@
           else if (evt.type === "error") { es3.close(); finBtn.disabled = false; finBtn.textContent = "✓ 확정 후 SDF 생성 (Stage 6)"; }
         };
         es3.onerror = () => { es3.close(); };
+      });
+
+      // 창 열고/닫기 — 트리거 버튼 · 닫기(×) · Esc
+      openBtn.addEventListener("click", show);
+      closeBtn.addEventListener("click", close);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && overlay.classList.contains("is-open")) close();
       });
 
       return { open, addWarning };

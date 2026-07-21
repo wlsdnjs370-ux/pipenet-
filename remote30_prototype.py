@@ -64,7 +64,7 @@ from ezdxf.math import Matrix44, Vec3
 
 _MODULE_DIR = Path(__file__).resolve().parent
 TEMPLATE_SDF_FILENAME = "3-1형_자연낙차_LSP_4F_OA_지하층포함_120m~200m미만_6.6K로 감압_알람밸브.sdf"
-STANDARD_SLF_FILENAME = "2. Pipenet_hand.slf"
+STANDARD_SLF_FILENAME = "2. Pipenet_hand_FX28.slf"
 
 
 def _resolve_asset(env_var: str, default_filename: str, *, role: str) -> Path | None:
@@ -124,7 +124,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, HEAD_BRIDGE_MAX_MM, SOURCE_BRIDGE_MAX_MM, MIN_PIPE_EDGE_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, HEAD_BRIDGE_MAX_MM, SOURCE_BRIDGE_MAX_MM, MIN_PIPE_EDGE_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M)  # noqa: E501  (Phase2b core)
 
 # ── 초대형 XREF 도면 예산 가드 (기계실/계통도 파싱) ──────────────────────────
 # 142MB LH 지하층배관도는 최상위 INSERT 61개를 폭발하면 leaf 597k개가 되는데
@@ -3208,6 +3208,29 @@ class PipeTables:
     equipment: list[dict] = field(default_factory=list)  # [{pipe,in,out,label,desc,eq_len,rel_pos}]
     meta: list[tuple[str, str]] = field(default_factory=list)
 
+    def as_dict(self) -> dict:
+        """JSON 직렬화용 dict. job state 저장 / SSE 이벤트 payload 에 사용.
+
+        meta 는 tuple 리스트라 JSON round-trip 시 list 로 바뀌므로 from_dict 에서 복원.
+        """
+        return {
+            "nodes": self.nodes, "pipes": self.pipes, "nozzles": self.nozzles,
+            "fittings": self.fittings, "equipment": self.equipment,
+            "meta": [list(m) for m in self.meta],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "PipeTables":
+        """as_dict() 역변환. meta 는 (key, value) tuple 로 되돌린다."""
+        return cls(
+            nodes=list(d.get("nodes") or []),
+            pipes=list(d.get("pipes") or []),
+            nozzles=list(d.get("nozzles") or []),
+            fittings=list(d.get("fittings") or []),
+            equipment=list(d.get("equipment") or []),
+            meta=[tuple(m) for m in (d.get("meta") or [])],
+        )
+
 
 # 배관 재질 — DXF 에 없는 설계 정보이므로 자동 분류하지 않는다. 기본은 강관(KSD 3507,
 # C=120). 사용자가 평면도에서 지정한 영역(zone=단위세대 내부) 안의 배관만 CPVC(C=150)로
@@ -3871,17 +3894,22 @@ def build_input_tables(
             if already:
                 continue
             fx_count += 1
-            # FX 등가길이 — 도면의 물리 길이가 아니라 KFI 인정/제품 스펙 기준의 고정값.
-            # 권위 레퍼런스(2. Pipenet_hand) 기준 15.62m 채택. 도면 물리길이는 fx_len 으로
-            # 별도 계산되지만 검증/디버깅용으로만 메타에 남기고 eq_len 에는 쓰지 않음.
+            # FX 등가길이 — 도면의 물리 길이가 아니라 형식승인/제품 스펙 기준의 고정값.
+            # 한백 사내표준(구 F사 유형) 22.4m 채택 (FX_SPEC_PROFILES 참조). 도면 물리길이는
+            # fx_len_mm 으로 별도 계산해 drawing_len_mm(QA/대사용)에만 기록하고 eq_len 에는 쓰지 않음.
             fx_len_mm = 0.0
             for p0, p1 in zip(pts, pts[1:]):
                 fx_len_mm += math.hypot(p1[0] - p0[0], p1[1] - p0[1])
             tables.equipment.append({
                 "pipe": attached_pipe["label"], "in": attached_pipe["in"], "out": attached_pipe["out"],
                 "label": str(fx_count + 1), "desc": "FX",
-                "eq_len": 15.62,
+                "eq_len": FX_SPEC_PROFILES[FX_DEFAULT_PROFILE]["eq_len_m"],
                 "rel_pos": 0.5,
+                "spec_ref": FX_DEFAULT_PROFILE,
+                "source": "extracted",
+                "override_flag": False,
+                "override_note": "",
+                "drawing_len_mm": round(fx_len_mm, 1),
             })
 
     # 1.5) FX 보충 — 헤드 30개 모두 FX 1개씩 (참조 패턴: 각 head 에 FX flexible 1개)
@@ -3900,7 +3928,12 @@ def build_input_tables(
         tables.equipment.append({
             "pipe": attached_pipe["label"], "in": attached_pipe["in"], "out": attached_pipe["out"],
             "label": str(fx_count + 1), "desc": "FX",
-            "eq_len": 15.62, "rel_pos": 0.5,
+            "eq_len": FX_SPEC_PROFILES[FX_DEFAULT_PROFILE]["eq_len_m"], "rel_pos": 0.5,
+            "spec_ref": FX_DEFAULT_PROFILE,
+            "source": "supplemented",
+            "override_flag": False,
+            "override_note": "",
+            "drawing_len_mm": None,
         })
 
     # 2) 알람밸브 (A/V) — src_label 이 in/out 인 첫 pipe 에 부착
@@ -3909,7 +3942,12 @@ def build_input_tables(
         tables.equipment.insert(0, {
             "pipe": av_pipe["label"], "in": av_pipe["in"], "out": av_pipe["out"],
             "label": "1", "desc": "A/V",
-            "eq_len": 12.9, "rel_pos": 0.5,
+            "eq_len": AV_EQ_LEN_M, "rel_pos": 0.5,
+            "spec_ref": "AV_STD",
+            "source": "supplemented",
+            "override_flag": False,
+            "override_note": "",
+            "drawing_len_mm": None,
         })
 
     # Meta
@@ -3944,7 +3982,8 @@ def write_csv_tables(tables: PipeTables, out_dir: Path, prefix: str) -> dict[str
         "nozzles": ["Label", "Input node", "Output", "Status", "Library item", "Flow (m³/s)", "Flow (L/min)"],
         "fittings": ["Pipe label", "Input node", "Output node", "Fitting type", "Count"],
         "equipment": ["Pipe label", "Input node", "Output node", "Equipment label", "Description",
-                      "Equivalent length (m)", "Rel-position"],
+                      "Equivalent length (m)", "Rel-position",
+                      "Spec profile", "Source", "Override", "Override note", "Drawing length (mm)"],
     }
     rows_map = {
         "nodes": [[n["label"], n["elevation"], n["io_node"], n["x"], n["y"], None] for n in tables.nodes],
@@ -3952,7 +3991,9 @@ def write_csv_tables(tables: PipeTables, out_dir: Path, prefix: str) -> dict[str
                    p["c"], p["status"], p["group"], None, None] for p in tables.pipes],
         "nozzles": [[n["label"], n["in"], n["out"], n["status"], n["lib"], n["flow_m3s"], n["flow_lmin"]] for n in tables.nozzles],
         "fittings": [[f["pipe"], f["in"], f["out"], f["type"], f["count"]] for f in tables.fittings],
-        "equipment": [[e["pipe"], e["in"], e["out"], e["label"], e["desc"], e["eq_len"], e["rel_pos"]] for e in tables.equipment],
+        "equipment": [[e["pipe"], e["in"], e["out"], e["label"], e["desc"], e["eq_len"], e["rel_pos"],
+                       e.get("spec_ref", ""), e.get("source", ""), e.get("override_flag", False),
+                       e.get("override_note", ""), e.get("drawing_len_mm")] for e in tables.equipment],
     }
     for name in ("nodes", "pipes", "nozzles", "fittings", "equipment"):
         p = out_dir / f"{prefix}_{name}.csv"
@@ -3983,8 +4024,11 @@ def write_xlsx_tables(tables: PipeTables, out_path: Path) -> Path:
         ("Fittings", ["Pipe label", "Input node", "Output node", "Fitting type", "Count"],
          [[f["pipe"], f["in"], f["out"], f["type"], f["count"]] for f in tables.fittings]),
         ("Equipment", ["Pipe label", "Input node", "Output node", "Equipment label", "Description",
-                       "Equivalent length (m)", "Rel-position"],
-         [[e["pipe"], e["in"], e["out"], e["label"], e["desc"], e["eq_len"], e["rel_pos"]] for e in tables.equipment]),
+                       "Equivalent length (m)", "Rel-position",
+                       "Spec profile", "Source", "Override", "Override note", "Drawing length (mm)"],
+         [[e["pipe"], e["in"], e["out"], e["label"], e["desc"], e["eq_len"], e["rel_pos"],
+           e.get("spec_ref", ""), e.get("source", ""), e.get("override_flag", False),
+           e.get("override_note", ""), e.get("drawing_len_mm")] for e in tables.equipment]),
         ("Meta", ["항목", "내용"], [[k, v] for k, v in tables.meta]),
     ]
     for name, header, rows in sheet_specs:
@@ -4730,10 +4774,119 @@ def run_stages_3_5(
     yield evt({"type": "stage", "stage": 5, "status": "done",
                "label": f"5 테이블 생성 완료 — Pipes {len(tables.pipes)} / Nodes {len(tables.nodes)} / Nozzles {len(tables.nozzles)}"})
 
-    # Stage 6: SDF (기존 5) + .slf 동봉 + 결과 zip
+    # 신축배관(FX) 검토 게이트 — stage 6(emit) 는 run_stage_6_emit 으로 분리했다.
+    # 헤드 편집 게이트(stage2_complete)와 동일한 패턴: 서버가 이 payload 를 job state 에
+    # 저장 → 웹 편집기(신축배관 검토 패널) → POST .../fx/finalize → run_stage_6_emit.
+    yield evt({"type": "stage5_complete",
+               "tables": tables.as_dict(),
+               "project_title": dxf_path.stem,
+               "fx_review": {
+                   "equipment": tables.equipment,   # 전량 — [:8] 캡 금지
+                   "profiles": FX_SPEC_PROFILES,     # 편집기 드롭다운용
+                   "default_profile": FX_DEFAULT_PROFILE,
+               }})
+
+
+def _validate_edited_equipment(edited: list[dict], original: list[dict]) -> tuple[list[dict], list[dict]]:
+    """웹 편집 결과를 검증·정규화하여 (equipment, warnings) 반환.
+
+    규칙(prompt Task 3):
+      - eq_len 은 float > 0 (아니면 ValueError → 확정 차단)
+      - spec_ref 는 FX_SPEC_PROFILES 에 존재하거나 override_flag=True 여야 함
+      - 사용자가 값을 바꾼 행은 source="manual", override_flag=True 강제
+      - 프로파일 기준 ±50% 초과 편차는 warning 이벤트로 통지하되 차단 안 함
+    original 은 label 기준으로 매칭해 '변경 여부'를 판정한다.
+    """
+    orig_by_label = {e.get("label"): e for e in original}
+    out_rows: list[dict] = []
+    warns: list[dict] = []
+    for row in edited:
+        r = dict(row)
+        label = r.get("label")
+        # eq_len 검증
+        try:
+            eq = float(r.get("eq_len"))
+        except (TypeError, ValueError):
+            raise ValueError(f"FX 등가길이(eq_len)가 숫자가 아님: {label!r} → {r.get('eq_len')!r}")
+        if not (eq > 0):
+            raise ValueError(f"FX 등가길이(eq_len)는 0보다 커야 함: {label!r} → {eq}")
+        r["eq_len"] = eq
+
+        spec_ref = r.get("spec_ref")
+        base = orig_by_label.get(label)
+        # 값이 원본과 달라졌는지 판정 (eq_len 또는 spec_ref 변경)
+        changed = False
+        if base is not None:
+            try:
+                base_eq = float(base.get("eq_len"))
+            except (TypeError, ValueError):
+                base_eq = None
+            if base_eq is None or abs(base_eq - eq) > 1e-6:
+                changed = True
+            if base.get("spec_ref") != spec_ref:
+                changed = True
+        else:
+            changed = True  # 원본에 없던 행(수동 추가)
+
+        if changed:
+            r["source"] = "manual"
+            r["override_flag"] = True
+        else:
+            r.setdefault("source", base.get("source") if base else "supplemented")
+            r.setdefault("override_flag", bool(r.get("override_flag", False)))
+
+        # spec_ref 유효성 — 알려진 프로파일이 아니면 override_flag 필수
+        if spec_ref not in FX_SPEC_PROFILES and spec_ref != "AV_STD":
+            if not r.get("override_flag"):
+                raise ValueError(
+                    f"규격(spec_ref)이 미등록({spec_ref!r})인데 override_flag 가 아님: {label!r}. "
+                    f"직접 입력 시 override 로 표시해야 함.")
+
+        # ±50% 편차 경고 (프로파일 기준값이 있을 때만)
+        prof = FX_SPEC_PROFILES.get(spec_ref)
+        if prof is not None:
+            ref_eq = prof["eq_len_m"]
+            if ref_eq > 0 and abs(eq - ref_eq) / ref_eq > 0.5:
+                warns.append({
+                    "type": "warning", "label": label, "spec_ref": spec_ref,
+                    "eq_len": eq, "ref_eq_len": ref_eq,
+                    "message": f"{label}: 등가길이 {eq}m 가 규격({spec_ref}) 기준 {ref_eq}m 대비 ±50% 초과. 확인 요망.",
+                })
+        out_rows.append(r)
+    return out_rows, warns
+
+
+def run_stage_6_emit(
+    out_dir: Path,
+    job_id: str,
+    tables: PipeTables,
+    edited_equipment: list[dict] | None = None,
+    *,
+    project_title: str = "Remote 30 Prototype",
+) -> Iterator[dict]:
+    """Stage 6 (SDF emit + SLF 동봉 + KFP + zip) — 신축배관 검토 게이트 이후 단계.
+
+    edited_equipment 가 오면 검증(_validate_edited_equipment) 후 tables.equipment 를 교체.
+    None 이면 원본 그대로 emit (편집 없이 확정 = 회귀 없음).
+    """
+    t0 = time.time()
+    def evt(d):
+        d.setdefault("elapsed_ms", int((time.time() - t0) * 1000))
+        return d
+
+    if edited_equipment is not None:
+        try:
+            new_equipment, warns = _validate_edited_equipment(edited_equipment, tables.equipment)
+        except ValueError as _ve:
+            yield evt({"type": "error", "stage": 6, "message": str(_ve)})
+            return
+        for w in warns:
+            yield evt(dict(w))
+        tables.equipment = new_equipment
+
     yield evt({"type": "stage", "stage": 6, "status": "running", "label": "PIPENET SDF emit + .slf 동봉 + zip 묶음"})
     sdf_path = out_dir / f"prototype_{job_id}.sdf"
-    emit_sdf(tables, sdf_path, project_title=dxf_path.stem)
+    emit_sdf(tables, sdf_path, project_title=project_title)
     slf_path = sdf_path.with_suffix(".slf")
     # KFP (K-Fire Solver) — 최종 SDF 를 그대로 변환. 실패해도 SDF 출력은 유지.
     kfp_path = out_dir / f"prototype_{job_id}.kfp"
@@ -4752,11 +4905,16 @@ def run_stages_3_5(
                "label": f"SDF {sdf_path.stat().st_size/1024:.1f}KB{_slf_label}{_kfp_label} + ZIP {zip_path.stat().st_size/1024:.1f}KB"})
 
     outputs = {
-        "xlsx": xlsx_path.name, "sdf": sdf_path.name,
-        "csv_nodes": csv_paths["nodes"].name, "csv_pipes": csv_paths["pipes"].name,
-        "csv_nozzles": csv_paths["nozzles"].name, "csv_fittings": csv_paths["fittings"].name,
-        "csv_equipment": csv_paths["equipment"].name,
+        "sdf": sdf_path.name,
     }
+    xlsx_path = out_dir / f"prototype_{job_id}.xlsx"
+    if xlsx_path.is_file():
+        outputs["xlsx"] = xlsx_path.name
+    csv_dir = out_dir / "csv"
+    for _k in ("nodes", "pipes", "nozzles", "fittings", "equipment"):
+        _cp = csv_dir / f"prototype_{job_id}_{_k}.csv"
+        if _cp.is_file():
+            outputs[f"csv_{_k}"] = _cp.name
     if slf_path.is_file():
         outputs["slf"] = slf_path.name
     if kfp_ok:
@@ -4764,4 +4922,40 @@ def run_stages_3_5(
     if zip_path.is_file():
         outputs["zip"] = zip_path.name
     yield evt({"type": "done", "outputs": outputs, "out_dir": str(out_dir)})
+
+
+def run_stages_3_6(
+    dxf_path: Path,
+    out_dir: Path,
+    job_id: str,
+    pipe_ents: list[dict],
+    layer_categories: dict[str, str],
+    detected_heads_pos: list[tuple[float, float]],
+    *,
+    k_heads: int = 30,
+    alarm_xy: tuple[float, float] | None = None,
+    user_added_heads: list[tuple[float, float]] | None = None,
+    user_deleted_indices: list[int] | None = None,
+    zones: list[tuple[float, float, float, float]] | None = None,
+) -> Iterator[dict]:
+    """하위호환 원샷 래퍼 — 기존 run_stages_3_5(스테이지 3~6 일괄) 동작 재현.
+
+    stage5_complete 게이트 없이 테이블 생성 후 곧바로 emit 까지 실행한다. FX 편집을
+    거치지 않는 자동/배치 경로가 있으면 이 함수를 쓴다. 웹 게이트 경로는
+    run_stages_3_5 → (편집) → run_stage_6_emit 을 쓴다.
+    """
+    tables: PipeTables | None = None
+    for ev in run_stages_3_5(
+        dxf_path, out_dir, job_id, pipe_ents, layer_categories, detected_heads_pos,
+        k_heads=k_heads, alarm_xy=alarm_xy, user_added_heads=user_added_heads,
+        user_deleted_indices=user_deleted_indices, zones=zones,
+    ):
+        if ev.get("type") == "stage5_complete":
+            tables = PipeTables.from_dict(ev["tables"])
+            continue  # 게이트 이벤트는 원샷 경로에서 소비만 하고 재전달하지 않음
+        yield ev
+    if tables is None:
+        return
+    yield from run_stage_6_emit(out_dir, job_id, tables,
+                                edited_equipment=None, project_title=dxf_path.stem)
 

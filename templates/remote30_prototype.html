@@ -604,6 +604,14 @@
     }
     .table-preview td { padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; color: var(--text); }
     .table-preview tr:last-child td { border-bottom: 0; }
+    /* 신축배관(FX) 검토 편집기 */
+    #fx-table .fx-tbl { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+    #fx-table .fx-tbl th { position: sticky; top: 0; background: var(--panel-soft); padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; font-weight: 600; color: var(--text-2); }
+    #fx-table .fx-tbl td { padding: 4px 6px; border-bottom: 1px solid var(--line); color: var(--text); vertical-align: top; }
+    #fx-table tr.fx-ovr { background: #fff7ed; }
+    #fx-table tr.fx-ovr td:first-child { box-shadow: inset 3px 0 0 #f97316; }
+    #fx-table .fx-spec-fixed { color: var(--muted); font-size: 0.68rem; }
+    #fx-table input, #fx-table select { font-size: 0.7rem; padding: 2px 4px; border: 1px solid var(--line); border-radius: 3px; }
     .tabs { display: flex; gap: 3px; margin-top: 8px; padding: 3px; background: var(--panel-soft); border: 1px solid var(--line); border-radius: 7px; }
     .tab-btn {
       padding: 5px 10px;
@@ -1099,6 +1107,22 @@
           <button class="tab-btn" data-tab="equipment">Equipment</button>
         </div>
         <div class="table-preview" id="preview-table"></div>
+      </section>
+
+      <!-- ───── 신축배관(FX) 검토 게이트 ───── -->
+      <section id="fx-review-section" data-endpoint-prefix="/api/remote30/prototype" style="display:none;">
+        <h3 style="margin: 0 0 4px; font-size: 0.85rem; font-weight: 700;">신축배관(FX) 검토 · 편집</h3>
+        <p class="info-line" style="font-size: 0.72rem; color: var(--muted); margin: 0 0 6px;">
+          각 헤드(말단)에 자동 주입된 신축배관 등가길이입니다. FX는 형식승인 고정 제품이므로
+          기본값을 유지하되, 설계사 규격이 다르면 아래에서 수정하세요. 수정한 행은 <strong>수동(override)</strong> 으로 표시됩니다.
+        </p>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+          <button id="fx-apply-standard" type="button" style="padding:5px 9px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:0.72rem; cursor:pointer; border-radius:4px;">전체 사내표준 적용</button>
+          <span id="fx-summary" class="info-line" style="font-size:0.72rem; color:var(--muted); align-self:center;"></span>
+        </div>
+        <div id="fx-warnings" style="display:none; font-size:0.72rem; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; padding:5px 8px; margin-bottom:6px;"></div>
+        <div class="table-preview" id="fx-table" style="max-height:340px; overflow:auto;"></div>
+        <button id="fx-finalize-btn" type="button" class="run-btn" style="margin-top:8px;">✓ 확정 후 SDF 생성 (Stage 6)</button>
       </section>
       </div>
       <!-- ───── /mode-panel-plane ───── -->
@@ -2691,7 +2715,9 @@
       es2.onmessage = (e) => {
         let evt; try { evt = JSON.parse(e.data); } catch { return; }
         handleEvent(evt);
-        if (evt.type === "done" || evt.type === "error") { es2.close(); finalizeBtn.textContent = "✓ 완료"; }
+        // 신축배관 검토 게이트 — finalize_stream 은 stage5_complete 로 종료(더 이상 done 아님).
+        if (evt.type === "stage5_complete") { es2.close(); finalizeBtn.textContent = "✓ 테이블 생성 — FX 검토"; }
+        else if (evt.type === "error") { es2.close(); finalizeBtn.textContent = "✓ 완료"; }
       };
       es2.onerror = () => { es2.close(); };
     });
@@ -2732,6 +2758,7 @@
         el.classList.add("is-disabled"); el.href = "#";
       }
       document.getElementById("preview-section").style.display = "none";
+      document.getElementById("fx-review-section").style.display = "none";
 
       // POST run
       const fd = new FormData();
@@ -2879,6 +2906,10 @@
       } else if (evt.type === "tables_preview") {
         document.getElementById("preview-section").style.display = "block";
         renderTablesPreview(evt.tables, evt.counts);
+      } else if (evt.type === "stage5_complete") {
+        FxReview.open(evt.fx_review);
+      } else if (evt.type === "warning") {
+        FxReview.addWarning(evt.message || "");
       } else if (evt.type === "awaiting_finalize") {
         overlayInfoEl.textContent = `[Stage 2 완료 — 헤드 ${evt.head_count}개. 편집 후 배관망 완성 클릭]`;
         runBtn.disabled = false;
@@ -2916,6 +2947,171 @@
         alert("파이프라인 오류: " + evt.message);
       }
     }
+
+    // ====== 신축배관(FX) 검토 편집기 ======
+    const FxReview = (() => {
+      const sec = document.getElementById("fx-review-section");
+      const tableEl = document.getElementById("fx-table");
+      const summaryEl = document.getElementById("fx-summary");
+      const warnEl = document.getElementById("fx-warnings");
+      const applyBtn = document.getElementById("fx-apply-standard");
+      const finBtn = document.getElementById("fx-finalize-btn");
+      const prefix = sec.getAttribute("data-endpoint-prefix");
+      let profiles = {}, defaultProfile = "사내표준", rows = [];
+
+      const esc = (s) => String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      const isFx = (r) => (r.spec_ref in profiles);
+      const isAv = (r) => (r.spec_ref === "AV_STD" || (r.label && String(r.label).indexOf("A/V") >= 0));
+
+      function open(fxReview) {
+        profiles = (fxReview && fxReview.profiles) || {};
+        defaultProfile = (fxReview && fxReview.default_profile) || "사내표준";
+        // 편집 상태를 담을 작업 사본 (원본 참조 보존용 _base)
+        rows = ((fxReview && fxReview.equipment) || []).map(e => Object.assign({}, e, {
+          _base_eq: (e.eq_len != null ? Number(e.eq_len) : null),
+          _base_spec: e.spec_ref,
+        }));
+        warnEl.style.display = "none"; warnEl.innerHTML = "";
+        render();
+        sec.style.display = "block";
+        finBtn.disabled = false;
+        finBtn.textContent = "✓ 확정 후 SDF 생성 (Stage 6)";
+        sec.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      function specCell(r, idx) {
+        if (!isFx(r) && !isAv(r)) {
+          // 알 수 없는 규격 — 직접입력 취급
+          return `<span class="fx-spec-fixed">직접입력</span>`;
+        }
+        if (isAv(r)) return `<span class="fx-spec-fixed">A/V(고정)</span>`;
+        const opts = Object.keys(profiles).map(k =>
+          `<option value="${esc(k)}"${k === r.spec_ref ? " selected" : ""}>${esc(k)}</option>`).join("");
+        return `<select class="fx-spec" data-i="${idx}">${opts}<option value="__custom__"${r.spec_ref === "__custom__" ? " selected" : ""}>직접 입력</option></select>`;
+      }
+
+      function render() {
+        let fxN = 0, avN = 0, ovrN = 0;
+        const trs = rows.map((r, i) => {
+          if (isAv(r)) avN++; else fxN++;
+          const ovr = !!r.override_flag;
+          if (ovr) ovrN++;
+          const drawing = (r.drawing_len_mm != null) ? Number(r.drawing_len_mm).toFixed(0) : "—";
+          const srcBadge = { extracted: "도면추출", supplemented: "자동보충", manual: "수동" }[r.source] || esc(r.source || "");
+          const srcColor = { extracted: "#065f46", supplemented: "#92400e", manual: "#b91c1c" }[r.source] || "#334155";
+          return `<tr class="fx-row${ovr ? " fx-ovr" : ""}" data-i="${i}">
+            <td><strong>${esc(r.label || "")}</strong><br><span style="color:var(--muted);font-size:0.68rem;">${esc(r.desc || "")}</span></td>
+            <td style="font-family:ui-monospace,monospace;font-size:0.68rem;">${esc(r.in || "")}→${esc(r.out || "")}<br>${esc(r.pipe || "")}</td>
+            <td><span style="color:${srcColor};font-weight:600;">${srcBadge}</span></td>
+            <td>${specCell(r, i)}</td>
+            <td><input class="fx-eqlen" data-i="${i}" type="number" step="0.1" min="0" value="${r.eq_len != null ? esc(r.eq_len) : ""}" style="width:64px;"></td>
+            <td style="text-align:right;color:var(--muted);">${drawing}</td>
+            <td><input class="fx-note" data-i="${i}" type="text" value="${esc(r.override_note || "")}" placeholder="사유(선택)" style="width:120px;"></td>
+            <td><button class="fx-reset" data-i="${i}" type="button" title="프로파일 값으로 초기화" style="font-size:0.66rem;padding:2px 5px;cursor:pointer;">↺</button></td>
+          </tr>`;
+        }).join("");
+        tableEl.innerHTML = `<table class="fx-tbl"><thead><tr>
+          <th>FX # / Desc</th><th>헤드/파이프</th><th>출처</th><th>규격</th>
+          <th>등가길이(m)</th><th>도면물리(mm)</th><th>비고</th><th></th></tr></thead>
+          <tbody>${trs}</tbody></table>`;
+        summaryEl.textContent = `FX ${fxN}개 · A/V ${avN}개 · 수동수정 ${ovrN}개`;
+        bind();
+      }
+
+      function markOverride(i) {
+        const r = rows[i];
+        const eqChanged = (r._base_eq == null) || (Math.abs(Number(r.eq_len) - r._base_eq) > 1e-6);
+        const specChanged = (r.spec_ref !== r._base_spec);
+        r.override_flag = eqChanged || specChanged;
+        if (r.override_flag) r.source = "manual";
+      }
+
+      function bind() {
+        tableEl.querySelectorAll(".fx-spec").forEach(sel => sel.addEventListener("change", (e) => {
+          const i = +e.target.dataset.i, v = e.target.value;
+          rows[i].spec_ref = v;
+          if (v in profiles) rows[i].eq_len = profiles[v].eq_len_m; // 규격 선택 시 등가길이 자동 채움
+          markOverride(i); render();
+        }));
+        tableEl.querySelectorAll(".fx-eqlen").forEach(inp => inp.addEventListener("input", (e) => {
+          const i = +e.target.dataset.i;
+          rows[i].eq_len = e.target.value === "" ? "" : Number(e.target.value);
+          markOverride(i);
+          e.target.closest("tr").classList.toggle("fx-ovr", !!rows[i].override_flag);
+        }));
+        tableEl.querySelectorAll(".fx-note").forEach(inp => inp.addEventListener("input", (e) => {
+          rows[+e.target.dataset.i].override_note = e.target.value;
+        }));
+        tableEl.querySelectorAll(".fx-reset").forEach(btn => btn.addEventListener("click", (e) => {
+          const i = +e.target.dataset.i, r = rows[i];
+          r.spec_ref = r._base_spec; r.eq_len = r._base_eq;
+          r.override_flag = false; r.override_note = "";
+          r.source = r.source === "manual" ? "supplemented" : r.source;
+          markOverride(i); render();
+        }));
+      }
+
+      applyBtn.addEventListener("click", () => {
+        const p = profiles[defaultProfile];
+        if (!p) return;
+        rows.forEach((r, i) => {
+          if (isAv(r)) return;             // A/V 는 제외
+          r.spec_ref = defaultProfile;
+          r.eq_len = p.eq_len_m;
+          markOverride(i);
+        });
+        render();
+      });
+
+      function validate() {
+        const errs = [];
+        for (const r of rows) {
+          const v = Number(r.eq_len);
+          if (r.eq_len === "" || !Number.isFinite(v) || v <= 0) {
+            errs.push(`${r.label}: 등가길이가 비었거나 0 이하`);
+          }
+        }
+        return errs;
+      }
+
+      function addWarning(msg) {
+        if (!msg) return;
+        warnEl.style.display = "block";
+        const d = document.createElement("div");
+        d.textContent = "⚠ " + msg;
+        warnEl.appendChild(d);
+      }
+
+      finBtn.addEventListener("click", async () => {
+        const errs = validate();
+        if (errs.length) { alert("확정 불가:\n" + errs.join("\n")); return; }
+        warnEl.style.display = "none"; warnEl.innerHTML = "";
+        finBtn.disabled = true; finBtn.textContent = "▶ Stage 6 생성 중...";
+        // 서버로 보낼 equipment — 내부 _base_* 필드 제거
+        const payload = rows.map(r => {
+          const o = Object.assign({}, r); delete o._base_eq; delete o._base_spec; return o;
+        });
+        const jobId = state.jobId;
+        const rr = await fetch(`${prefix}/fx/finalize/${jobId}`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ equipment: payload }),
+        });
+        const jj = await rr.json();
+        if (!jj.ok) { alert("FX finalize 실패: " + jj.message); finBtn.disabled = false; finBtn.textContent = "✓ 확정 후 SDF 생성 (Stage 6)"; return; }
+        const es3 = new EventSource(`${prefix}/fx/finalize_stream/${jobId}`);
+        es3.onmessage = (e) => {
+          let evt; try { evt = JSON.parse(e.data); } catch { return; }
+          handleEvent(evt);
+          if (evt.type === "done") { es3.close(); finBtn.textContent = "✓ 완료"; }
+          else if (evt.type === "error") { es3.close(); finBtn.disabled = false; finBtn.textContent = "✓ 확정 후 SDF 생성 (Stage 6)"; }
+        };
+        es3.onerror = () => { es3.close(); };
+      });
+
+      return { open, addWarning };
+    })();
 
     function renderTablesPreview(tables, counts) {
       const tabs = document.querySelectorAll("#preview-tabs .tab-btn");

@@ -2615,6 +2615,64 @@ def remote30_prototype_finalize_stream(job_id: str):
                 user_deleted_indices=job["edit"]["deleted_indices"],
                 zones=job["edit"]["zones"],
             ):
+                # 신축배관(FX) 검토 게이트 — stage2_complete 저장 방식과 동일하게
+                # tables/fx_review 를 job state 에 저장하고 이벤트는 그대로 프론트에 전달.
+                if evt.get("type") == "stage5_complete":
+                    job["tables"] = evt["tables"]
+                    job["project_title"] = evt.get("project_title", "")
+                    job["fx_review"] = evt.get("fx_review", {})
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        except Exception as exc:  # noqa: BLE001
+            err = {"type": "error", "message": str(exc)[:500]}
+            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
+
+    response = Response(_gen(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
+
+
+@app.post("/api/remote30/prototype/fx/finalize/<job_id>")
+def remote30_prototype_fx_finalize(job_id: str):
+    """신축배관(FX) 검토 편집 결과 수신 — 헤드 편집 finalize 와 동일 컨벤션.
+
+    body (JSON):
+        equipment: [ {label, spec_ref, eq_len, source, override_flag, override_note, ...}, ... ]
+                   생략/null 이면 원본 그대로 emit (편집 없이 확정 = 회귀 없음).
+    저장만 하고 실제 emit 은 fx/finalize_stream 에서 스트리밍.
+    """
+    job = _PROTOTYPE_JOBS.get(job_id)
+    if not job:
+        return jsonify({"ok": False, "message": f"unknown job_id {job_id}"}), 404
+    if "tables" not in job:
+        return jsonify({"ok": False, "message": "stage5 (테이블 생성) 가 아직 끝나지 않았습니다."}), 400
+    body = request.get_json(silent=True) or {}
+    edited = body.get("equipment")
+    job["fx_edit"] = edited if isinstance(edited, list) else None
+    return jsonify({"ok": True, "job_id": job_id,
+                    "edited": (len(job["fx_edit"]) if job["fx_edit"] is not None else 0),
+                    "mode": ("edited" if job["fx_edit"] is not None else "original")})
+
+
+@app.get("/api/remote30/prototype/fx/finalize_stream/<job_id>")
+def remote30_prototype_fx_finalize_stream(job_id: str):
+    """Stage 6 (SDF emit) SSE — fx/finalize() 호출 후 구독."""
+    job = _PROTOTYPE_JOBS.get(job_id)
+    if not job:
+        return jsonify({"ok": False, "message": f"unknown job_id {job_id}"}), 404
+    if "tables" not in job:
+        return jsonify({"ok": False, "message": "stage5 결과가 없습니다. finalize_stream 을 먼저 완료하세요."}), 400
+
+    from remote30_prototype import run_stage_6_emit, PipeTables
+
+    def _gen():
+        try:
+            tables = PipeTables.from_dict(job["tables"])
+            for evt in run_stage_6_emit(
+                Path(job["out_dir"]), job_id, tables,
+                edited_equipment=job.get("fx_edit"),
+                project_title=job.get("project_title") or Path(job["dxf_path"]).stem,
+            ):
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
         except Exception as exc:  # noqa: BLE001
             err = {"type": "error", "message": str(exc)[:500]}
@@ -2851,30 +2909,12 @@ def remote30_overall_finalize_stream(job_id: str):
         return jsonify({"ok": False, "message": "finalize() 먼저 호출하세요."}), 400
 
     from remote30_prototype import select_worst30_heads, build_input_tables
-    from remote30_full_network import (
-        zone_spec_from_form, profile_from_form, BuildingPressureProfile,
-        build_riser, stitch_riser_and_heads, emit_full_sdf,
-    )
 
     def _emit(payload: dict) -> str:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     def _gen():
         try:
-            spec = zone_spec_from_form(job["spec_form"])
-            # 압력표 우선순위: csv → xlsx → form JSON
-            profile: BuildingPressureProfile | None = None
-            if job.get("pressure_table_csv"):
-                profile = BuildingPressureProfile.from_csv(
-                    Path(job["pressure_table_csv"]),
-                    building_name=job["spec_form"].get("building_name", ""))
-            elif job.get("pressure_table_xlsx"):
-                profile = BuildingPressureProfile.from_xlsx(
-                    Path(job["pressure_table_xlsx"]),
-                    building_name=job["spec_form"].get("building_name", ""))
-            else:
-                profile = profile_from_form(job["spec_form"])
-
             # ── Stage A 마무리: 헤드 선정 (사용자 edit 반영) + PipeTables 생성
             yield _emit({"type": "overall_progress", "phase": "stage_a_select",
                          "msg": "헤드 선정 (사용자 편집 반영)"})
@@ -2944,6 +2984,108 @@ def remote30_overall_finalize_stream(job_id: str):
                          "head_nodes": len(head_tables.nodes),
                          "head_pipes": len(head_tables.pipes),
                          "head_nozzles": len(head_tables.nozzles)})
+
+            # ── 신축배관(FX) 검토 게이트 — prototype 과 동일한 2단 게이트.
+            # 라이저/stitch/emit 은 fx/finalize_stream 으로 분리했다. head_tables 를
+            # job state 에 저장 → 웹 편집기(FX 검토 패널) → POST .../fx/finalize.
+            from core.remote30_constants import FX_SPEC_PROFILES, FX_DEFAULT_PROFILE
+            job["head_tables"] = head_tables.as_dict()
+            job["overall_project_stem"] = Path(job["dxf_path"]).stem
+            job["fx_review"] = {
+                "equipment": head_tables.equipment,   # 헤드망 FX/AV — 전량, 편집 대상
+                "profiles": FX_SPEC_PROFILES,
+                "default_profile": FX_DEFAULT_PROFILE,
+            }
+            yield _emit({"type": "stage5_complete",
+                         "tables": job["head_tables"],
+                         "project_title": job["overall_project_stem"],
+                         "fx_review": job["fx_review"]})
+
+        except Exception as exc:  # noqa: BLE001
+            import traceback
+            _tb_text = traceback.format_exc()
+            app.logger.error("SSE 빌드 오류 (%s): %s\n%s", request.path, exc, _tb_text)
+            err = {"type": "error", "message": str(exc)[:500]}
+            if _os_for_auth.environ.get("EXPOSE_TRACEBACK") == "1":
+                err["traceback"] = _tb_text[-1500:]
+            yield _emit(err)
+
+    response = Response(_gen(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
+
+
+@app.post("/api/remote30/overall/fx/finalize/<job_id>")
+def remote30_overall_fx_finalize(job_id: str):
+    """신축배관(FX) 검토 편집 결과 수신 (통합 플로우) — prototype 과 동일 컨벤션.
+
+    body (JSON): equipment: [...] | null (null/생략 = 원본 그대로 emit)
+    저장만 하고 실제 라이저·stitch·emit_full_sdf 는 fx/finalize_stream 에서 스트리밍.
+    """
+    job = _OVERALL_JOBS.get(job_id)
+    if not job:
+        return jsonify({"ok": False, "message": f"unknown job_id {job_id}"}), 404
+    if "head_tables" not in job:
+        return jsonify({"ok": False, "message": "stage5 (헤드망 테이블) 가 아직 끝나지 않았습니다."}), 400
+    body = request.get_json(silent=True) or {}
+    edited = body.get("equipment")
+    job["fx_edit"] = edited if isinstance(edited, list) else None
+    return jsonify({"ok": True, "job_id": job_id,
+                    "edited": (len(job["fx_edit"]) if job["fx_edit"] is not None else 0),
+                    "mode": ("edited" if job["fx_edit"] is not None else "original")})
+
+
+@app.get("/api/remote30/overall/fx/finalize_stream/<job_id>")
+def remote30_overall_fx_finalize_stream(job_id: str):
+    """Stage B(라이저)~D(emit_full_sdf) SSE — fx/finalize() 호출 후 구독.
+
+    head_tables 를 job state 에서 복원하고, FX 편집이 있으면 검증 후 equipment 교체.
+    spec/profile/riser 는 job form 에서 결정적으로 재계산한다.
+    """
+    job = _OVERALL_JOBS.get(job_id)
+    if not job:
+        return jsonify({"ok": False, "message": f"unknown job_id {job_id}"}), 404
+    if "head_tables" not in job:
+        return jsonify({"ok": False, "message": "stage5 결과가 없습니다. finalize_stream 을 먼저 완료하세요."}), 400
+
+    from remote30_prototype import PipeTables, _validate_edited_equipment
+    from remote30_full_network import (
+        zone_spec_from_form, profile_from_form, BuildingPressureProfile,
+        build_riser, stitch_riser_and_heads, emit_full_sdf,
+    )
+
+    def _emit(payload: dict) -> str:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    def _gen():
+        try:
+            head_tables = PipeTables.from_dict(job["head_tables"])
+            # ── FX 편집 적용 (헤드망 equipment 만) + 검증
+            fx_edit = job.get("fx_edit")
+            if fx_edit is not None:
+                try:
+                    new_equipment, warns = _validate_edited_equipment(fx_edit, head_tables.equipment)
+                except ValueError as _ve:
+                    yield _emit({"type": "error", "message": str(_ve)})
+                    return
+                for w in warns:
+                    yield _emit(dict(w))
+                head_tables.equipment = new_equipment
+
+            spec = zone_spec_from_form(job["spec_form"])
+            # 압력표 우선순위: csv → xlsx → form JSON
+            profile: BuildingPressureProfile | None = None
+            if job.get("pressure_table_csv"):
+                profile = BuildingPressureProfile.from_csv(
+                    Path(job["pressure_table_csv"]),
+                    building_name=job["spec_form"].get("building_name", ""))
+            elif job.get("pressure_table_xlsx"):
+                profile = BuildingPressureProfile.from_xlsx(
+                    Path(job["pressure_table_xlsx"]),
+                    building_name=job["spec_form"].get("building_name", ""))
+            else:
+                profile = profile_from_form(job["spec_form"])
 
             # ── Stage B: 라이저
             yield _emit({"type": "overall_progress", "phase": "stage_b",

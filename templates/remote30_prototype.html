@@ -633,14 +633,20 @@
     #fx-modal-overlay.is-open { display: block; }
     #fx-review-section {
       pointer-events: auto;   /* 창 자체는 상호작용 */
-      position: absolute; top: 16px; left: 16px; bottom: 16px;
-      width: min(540px, 46vw); display: flex; flex-direction: column;
+      position: absolute; top: 16px; left: 16px;
+      width: min(540px, 46vw); height: calc(100vh - 32px);
+      min-width: 320px; min-height: 220px;
+      max-width: calc(100vw - 24px); max-height: calc(100vh - 20px);
+      display: flex; flex-direction: column;
       background: var(--panel, #fff); border: 1px solid var(--line); border-radius: 10px;
       box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
       padding: 16px 18px; overflow: hidden;
+      resize: both;   /* 우하단 모서리 드래그로 크기 조절 */
     }
     #fx-review-section .fx-modal-head {
       display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px;
+      cursor: move;   /* 헤더 드래그로 창 이동 */
+      user-select: none;
     }
     #fx-review-section .fx-modal-head h3 { margin: 0; font-size: 0.95rem; font-weight: 700; }
     #fx-modal-close {
@@ -3136,45 +3142,10 @@
         else marker = B || A;
         const seg = (A && B) ? [A, B] : null;
         state.fx_highlight = { seg, marker, label: String(r.label || "") };
-        focusHighlight(seg, marker);
+        // 카메라(줌/팬)는 고정 — 현재 보고 있는 화면 위에 하이라이트만 그린다.
         render();
         tableEl.querySelectorAll("tr.fx-loc-active").forEach(tr => tr.classList.remove("fx-loc-active"));
         if (trEl) trEl.classList.add("fx-loc-active");
-      }
-
-      // (c) 표시 지점으로 캔버스 자동 이동/확대 — bbox 를 화면 중앙에 여유있게.
-      function focusHighlight(seg, marker) {
-        const pts = [];
-        if (seg) { pts.push(seg[0], seg[1]); }
-        if (marker) pts.push(marker);
-        if (!pts.length) return;
-        const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-        let minx = Math.min(...xs), maxx = Math.max(...xs);
-        let miny = Math.min(...ys), maxy = Math.max(...ys);
-        const rect = canvas.getBoundingClientRect();
-        const w = rect.width, h = rect.height;
-        // 도킹 창이 가리지 않는 '보이는 캔버스 영역'(창 오른쪽~캔버스 우단)에 하이라이트 배치.
-        let visLeft = 0, visRight = w;
-        if (overlay.classList.contains("is-open")) {
-          const secRect = sec.getBoundingClientRect();
-          const panelRightInCanvas = secRect.right - rect.left;  // 캔버스 좌표계 px
-          visLeft = Math.min(w - 120, Math.max(0, panelRightInCanvas + 12));
-        }
-        const availW = Math.max(120, visRight - visLeft);
-        const visCenterX = (visLeft + visRight) / 2;   // 보이는 영역의 가로 중심 (screen px)
-        // 대상 bbox 에 최소 크기 보장(단일 점이면 주변 반경) + 화면의 일부만 채우도록 여유.
-        const span = Math.max(maxx - minx, maxy - miny, 1);
-        const padW = span * 1.8 + 1;
-        minx -= padW; maxx += padW; miny -= padW; maxy += padW;
-        const bw = maxx - minx, bh = maxy - miny;
-        const margin = 40;
-        let z = Math.min((availW - 2 * margin) / bw, (h - 2 * margin) / bh);
-        // 과도 확대 방지 — 현재 fitZoom 의 8배 상한(있으면)
-        if (state.view.fitZoom) z = Math.min(z, state.view.fitZoom * 8);
-        const cx = (minx + maxx) / 2, cy = (miny + maxy) / 2;
-        state.view.zoom = z;
-        state.view.panX = visCenterX - cx * z;
-        state.view.panY = h / 2 + cy * z;
       }
 
       function specCell(r, idx) {
@@ -3310,6 +3281,38 @@
         };
         es3.onerror = () => { es3.close(); };
       });
+
+      // 헤더 드래그로 창 이동 (닫기 버튼은 제외). 크기 조절은 CSS resize:both (우하단 모서리).
+      (function enableDrag() {
+        const head = sec.querySelector(".fx-modal-head");
+        if (!head) return;
+        let dragging = false, sx = 0, sy = 0, startLeft = 0, startTop = 0;
+        head.addEventListener("mousedown", (e) => {
+          if (e.target.closest("button")) return;   // 닫기(×) 등 버튼 클릭은 이동 아님
+          const r = sec.getBoundingClientRect();
+          startLeft = r.left; startTop = r.top;
+          sx = e.clientX; sy = e.clientY;
+          dragging = true;
+          document.body.style.userSelect = "none";
+          e.preventDefault();
+        });
+        document.addEventListener("mousemove", (e) => {
+          if (!dragging) return;
+          const w = sec.offsetWidth, h = sec.offsetHeight;
+          let nl = startLeft + (e.clientX - sx);
+          let nt = startTop + (e.clientY - sy);
+          // 화면 밖으로 완전히 사라지지 않도록 클램프 (일부는 항상 잡히게)
+          nl = Math.max(-w + 120, Math.min(window.innerWidth - 80, nl));
+          nt = Math.max(0, Math.min(window.innerHeight - 40, nt));
+          sec.style.left = nl + "px";
+          sec.style.top = nt + "px";
+        });
+        document.addEventListener("mouseup", () => {
+          if (!dragging) return;
+          dragging = false;
+          document.body.style.userSelect = "";
+        });
+      })();
 
       // 창 열고/닫기 — 트리거 버튼 · 닫기(×) · Esc
       openBtn.addEventListener("click", show);

@@ -2756,24 +2756,42 @@ def _bridge_components(
         main = max(comps, key=len)
         others = [c for c in comps if c is not main]
         bridges = 0
-        main_pts = list(main)  # 반복 set 순회 대신 로컬 리스트 (동일 순서 argmin 보존)
+        # 공간 격자 인덱스 — cell = max_bridge_mm. tol 이내 후보는 반드시
+        # 자기 셀의 3x3 이웃 안에 있으므로, 브루트포스 O(|comp|*|main|) 를
+        # 근사 O(|comp|) 로 줄인다 (조각난 대형 도면에서 분→초).
+        # 결과는 브루트포스와 "바이트 동일" — 등거리 tie 는 원본과 같이
+        #   ① 같은 u 안에서는 main 반복순서(main_index) 가 앞선 v,
+        #   ② u 간에는 먼저 최소를 달성한 u (strict < 비교) 를 택해 재현.
+        inv = 1.0 / max_bridge_mm
+        grid: dict[tuple[int, int], list] = defaultdict(list)
+        main_index: dict = {}
+        for i, v in enumerate(main):
+            grid[(int(math.floor(v[0] * inv)), int(math.floor(v[1] * inv)))].append(v)
+            main_index[v] = i
+        tol2 = max_bridge_mm * max_bridge_mm
         for comp in others:
-            # comp 의 각 노드에서 main 의 가장 가까운 노드 찾기 (작은 comp 기준 O(|comp|*|main|)).
-            # 내부 루프는 제곱거리로 비교(단조 → argmin·tie-break 동일) → hypot 호출 제거.
+            # comp 의 각 노드에서 tol 이내 가장 가까운 main 노드 (제곱거리 비교).
             best = None
             bestd2 = float("inf")
             for u in comp:
                 ux = u[0]; uy = u[1]
-                for v in main_pts:
-                    dx = ux - v[0]; dy = uy - v[1]
-                    d2 = dx * dx + dy * dy
-                    if d2 < bestd2:
-                        bestd2 = d2
-                        best = (u, v)
-            if best:
+                cgx = int(math.floor(ux * inv)); cgy = int(math.floor(uy * inv))
+                u_best_v = None; u_best_d2 = float("inf"); u_best_idx = -1
+                for dgx in (-1, 0, 1):
+                    for dgy in (-1, 0, 1):
+                        for v in grid.get((cgx + dgx, cgy + dgy), ()):
+                            dx = ux - v[0]; dy = uy - v[1]
+                            d2 = dx * dx + dy * dy
+                            if d2 < u_best_d2:
+                                u_best_d2 = d2; u_best_v = v; u_best_idx = main_index[v]
+                            elif d2 == u_best_d2 and main_index[v] < u_best_idx:
+                                u_best_v = v; u_best_idx = main_index[v]
+                if u_best_v is not None and u_best_d2 < bestd2:  # strict → 앞선 u 우선
+                    bestd2 = u_best_d2
+                    best = (u, u_best_v)
+            if best is not None and bestd2 <= tol2:
                 u, v = best
                 bestd = math.hypot(u[0] - v[0], u[1] - v[1])  # 최종 1회 — 저장값 동일 보존
-            if best and bestd <= max_bridge_mm:
                 graph[u].add(v); graph[v].add(u)
                 key = (min(u, v), max(u, v))
                 edge_len[key] = bestd
@@ -2793,24 +2811,34 @@ def select_worst30_heads(
     manual_source: tuple[float, float] | None = None,
     manual_heads: list[tuple[float, float]] | None = None,
     zones: list[tuple[float, float, float, float]] | None = None,
+    progress_cb=None,
 ) -> SelectionResult:
     """가장 불리한 K 헤드 + 경로 선정.
 
     manual_heads: 명시되면 자동 검출 대신 이 리스트 사용 (사용자 편집 후)
     zones: [(x1,y1,x2,y2), ...] 영역 union. 비어있지 않으면 그 안의 헤드만 후보로.
+    progress_cb: 있으면 진행상황 콜백 progress_cb(fraction:0~1, label:str).
+        서브단계 경계에서만 호출 — 산출 데이터는 건드리지 않아 결과 불변.
     """
+    _pcb = progress_cb if callable(progress_cb) else (lambda f, m: None)
+    _pcb(0.0, "배관망 그래프 구성 중")
     graph, edge_len = _build_graph(pipe_entities, layer_categories=layer_categories)
     # 평행 ladder collapse — Stage 3 시각화와 같은 토폴로지로 정렬.
     collapse_parallel_ladders(graph, edge_len)
+    _pcb(0.05, "평행 배관 정리 완료")
     # 짧은 거리부터 단계적으로 brigde — 가까운 endpoint 우선 + 점점 멀리.
     # 5m / 10m 추가: 측지좌표 도면 (예: MF-125) 처럼 SP-LINE 끝점들이 멀리
     # 떨어진 경우 (변환 누적 오차 + 도면 분할 작업) component 통합 위해.
-    for tol in (200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0):
+    _bridge_tols = (200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0)
+    for _bi, tol in enumerate(_bridge_tols, 1):
         _bridge_components(graph, edge_len, max_bridge_mm=tol)
+        _pcb(0.05 + 0.65 * _bi / len(_bridge_tols),
+             f"조각난 배관 연결 {_bi}/{len(_bridge_tols)} (≤{int(tol)}mm)")
     # 가지식 트리 강제 (SPT) — Stage 3 와 같은 토폴로지. SPT root 는 SDF source.
     # (source 가 이 시점에 아직 미결정 → 일단 None 으로 호출, component 별 임의 root.
     #  source 결정 후 트리가 SDF path 계산에 사용됨.)
     force_spanning_tree(graph, edge_len, source=None)
+    _pcb(0.72, "가지식 트리 정렬 완료 — 알람밸브 식별")
     if manual_heads is not None:
         # 사용자가 편집한 헤드 목록 사용
         heads = [HeadCandidate(pos=_round_pt(x, y), raw=(x, y), block_name="(user)", layer="_user")
@@ -2864,9 +2892,67 @@ def select_worst30_heads(
             src_fallback = True
             src_kind = src_kind + ":fallback_far"
 
+    # 헤드 최근접-노드 스냅 — 헤드 수천 개 × O(|graph|) 전수스캔이면 대형 도면에서
+    # 수십 초~분. 격자 인덱스(cell = HEAD_BRIDGE_MAX_MM)로 근사 O(1) 질의로 대체.
+    # 헤드 삽입 전 pipe-network 노드로만 그리드를 만든다(헤드끼리 스냅 방지).
+    # node_order = graph 반복순서. 원본 _nearest_graph_node 는 `for n in graph`
+    # strict < 스캔이라 등거리 시 graph 순서상 앞 노드를 택함 — 이를 재현해 동점 해소.
+    _hg_inv = 1.0 / HEAD_BRIDGE_MAX_MM
+    _hgrid: dict[tuple[int, int], list] = defaultdict(list)
+    _hnode_order: dict = {}
+    for _i, _n in enumerate(graph):
+        _hgrid[(int(math.floor(_n[0] * _hg_inv)), int(math.floor(_n[1] * _hg_inv)))].append(_n)
+        _hnode_order[_n] = _i
+    _hnext_order = len(_hnode_order)  # 다음 삽입 노드의 graph 순서 인덱스
+
+    def _hgrid_add(n):
+        """헤드가 graph 에 삽입되면 그리드/순서에도 반영 — 원본은 graph 가
+        커지며 뒤 헤드가 앞서 추가된 헤드 노드에 스냅될 수 있다(성장 그래프)."""
+        nonlocal _hnext_order
+        if n in _hnode_order:
+            return
+        _hgrid[(int(math.floor(n[0] * _hg_inv)), int(math.floor(n[1] * _hg_inv)))].append(n)
+        _hnode_order[n] = _hnext_order
+        _hnext_order += 1
+
+    def _nearest_via_grid(pt, max_dist=None):
+        """격자 이웃 링을 넓혀가며 pt 최근접 노드. max_dist 지정 시 그 이내만.
+        등거리는 _hnode_order(=graph 순서) 앞선 노드 — 원본과 동일."""
+        px, py = pt[0], pt[1]
+        cgx = int(math.floor(px * _hg_inv)); cgy = int(math.floor(py * _hg_inv))
+        best = None; bestd2 = float("inf"); best_ord = float("inf")
+        r = 0
+        while True:
+            for gx in range(cgx - r, cgx + r + 1):
+                for gy in range(cgy - r, cgy + r + 1):
+                    if max(abs(gx - cgx), abs(gy - cgy)) != r:
+                        continue  # 껍질(ring)만
+                    for v in _hgrid.get((gx, gy), ()):
+                        dx = px - v[0]; dy = py - v[1]; d2 = dx * dx + dy * dy
+                        if d2 < bestd2:
+                            bestd2 = d2; best = v; best_ord = _hnode_order[v]
+                        elif d2 == bestd2:
+                            o = _hnode_order[v]
+                            if o < best_ord:
+                                best = v; best_ord = o
+            reach = r * HEAD_BRIDGE_MAX_MM  # 이 링까지 커버한 최소 반경
+            if max_dist is not None and reach > max_dist:
+                break  # 더 넓혀도 max_dist 밖 → 없음
+            # strict > : 등거리(경계) 노드가 다음 링에 있을 수 있어 한 링 더 스캔 보장.
+            if best is not None and reach > math.sqrt(bestd2):
+                break
+            r += 1
+            if r > 4096:
+                break  # 안전장치(사실상 도달 안 함)
+        if max_dist is not None and best is not None and bestd2 > max_dist * max_dist:
+            return None
+        return best
+
     # 헤드 좌표 → 가장 가까운 그래프 노드로 강제 연결 (HEAD_BRIDGE_MAX_MM 이내)
     for h in heads:
-        nearest = _nearest_graph_node(graph, h.pos)
+        if h.pos in graph:
+            continue  # 원본 _nearest_graph_node: pt in graph → pt(d=0) → 스킵
+        nearest = _nearest_via_grid(h.pos, max_dist=HEAD_BRIDGE_MAX_MM)
         if nearest is None:
             continue
         d = math.hypot(h.pos[0] - nearest[0], h.pos[1] - nearest[1])
@@ -2874,13 +2960,15 @@ def select_worst30_heads(
             graph.setdefault(h.pos, set()).add(nearest)
             graph[nearest].add(h.pos)
             edge_len[(min(h.pos, nearest), max(h.pos, nearest))] = d
+            _hgrid_add(h.pos)  # 성장 그래프 — 뒤 헤드가 이 노드에 스냅 가능
 
+    _pcb(0.76, "알람밸브→전체 헤드 거리 계산 중")
     dist_map = _dijkstra_from(graph, edge_len, src)
 
     # head 후보들을 그래프 노드로 스냅 후 거리 정렬 — 도달 불가도 가능한 한 포함
     head_with_d: list[tuple[HeadCandidate, tuple[float, float], float]] = []
     for h in heads:
-        node = h.pos if h.pos in graph else _nearest_graph_node(graph, h.pos)
+        node = h.pos if h.pos in graph else _nearest_via_grid(h.pos, max_dist=HEAD_BRIDGE_MAX_MM)
         if node is None:
             continue
         d = dist_map.get(node, float("inf"))
@@ -2896,7 +2984,8 @@ def select_worst30_heads(
     sub_edges_seen: set[tuple[tuple[float, float], tuple[float, float]]] = set()
     sub_edges: list[tuple[tuple[float, float], tuple[float, float], float]] = []
     sub_nodes: set[tuple[float, float]] = {src}
-    for _, head_node, _ in top_k:
+    _n_top = len(top_k)
+    for _si, (_, head_node, _) in enumerate(top_k, 1):
         path = _shortest_path(graph, edge_len, src, head_node)
         for a, b in zip(path, path[1:]):
             key = (min(a, b), max(a, b))
@@ -2905,6 +2994,9 @@ def select_worst30_heads(
             sub_edges_seen.add(key)
             sub_edges.append((a, b, edge_len.get(key, math.hypot(b[0] - a[0], b[1] - a[1]))))
             sub_nodes.add(a); sub_nodes.add(b)
+        if _si % 3 == 0 or _si == _n_top:
+            _pcb(0.78 + 0.20 * _si / max(1, _n_top),
+                 f"가장 불리한 경로 추적 {_si}/{_n_top}")
 
     # ====== Collinear merge — 직선상 degree-2 노드 제거 ======
     # source / heads / 차수≥3 노드는 절대 보존, 직선상 degree-2 노드만 흡수
@@ -2986,6 +3078,7 @@ def select_worst30_heads(
             merged_edges.append((n, m, L))
     merged_nodes = sorted(sub_adj.keys())
 
+    _pcb(1.0, "선정 완료")
     return SelectionResult(
         source_pos=src,
         source_kind=src_kind,
@@ -4564,9 +4657,39 @@ def run_stages_3_5(
     zone_info = f"영역 {len(zones)}개" if zones else "전체"
     yield evt({"type": "stage", "stage": 4, "status": "running",
                "label": f"가장 불리한 {k_heads} 헤드 선정 (알람밸브 {src_label}, {zone_info}, 편집 후 {len(edited_heads)} 헤드 후보)"})
-    selection = select_worst30_heads(pipe_ents, layer_categories,
-                                     k=k_heads, manual_source=alarm_xy,
-                                     manual_heads=edited_heads, zones=zones)
+    # 대용량 도면에서 select_worst30_heads 는 수십 초 걸릴 수 있어, 워커 스레드에서
+    # 실행하고 progress_cb → 큐 → substep SSE 로 진행바를 채운다. 계산 로직은
+    # 콜백만 받을 뿐 그대로라 산출물은 불변(골든 통과).
+    import queue as _queue, threading as _threading
+    _pq: _queue.Queue = _queue.Queue()
+    _box: dict = {}
+
+    def _sel_cb(frac, msg):
+        _pq.put((float(frac), str(msg)))
+
+    def _sel_run():
+        try:
+            _box["r"] = select_worst30_heads(
+                pipe_ents, layer_categories, k=k_heads, manual_source=alarm_xy,
+                manual_heads=edited_heads, zones=zones, progress_cb=_sel_cb)
+        except BaseException as _e:  # noqa: BLE001 — 워커 예외를 메인으로 전달
+            _box["e"] = _e
+        finally:
+            _pq.put(None)
+
+    _th = _threading.Thread(target=_sel_run, name="select_worst30", daemon=True)
+    _th.start()
+    while True:
+        _item = _pq.get()
+        if _item is None:
+            break
+        _frac, _msg = _item
+        yield evt({"type": "substep", "stage": 4,
+                   "progress": round(_frac, 3), "label": _msg})
+    _th.join()
+    if "e" in _box:
+        raise _box["e"]
+    selection = _box["r"]
     subgraph_ents = []
     _sg_ortho = orthogonalize_edge_positions(
         selection.edges,

@@ -33,6 +33,10 @@ data/parse_cache/
 data/_smoke*
 models/
 runs/
+
+# 대용량 참고 도면(수십~수백 MB) — 저장소에 넣지 않음 (실수 커밋 08efde0 회수)
+수리계산 참고용 도서/
+samples/dxf/B1F 현장조사 소화설비 평면도.dxf
 *.pt
 *.onnx
 *.h5

@@ -29,9 +29,12 @@ if _CORE.is_dir() and str(_CORE) not in _sys.path:
     _sys.path.insert(0, str(_CORE))
 
 import csv
+import gzip
+import hashlib
 import heapq
 import math
 import os
+import pickle
 import re
 import time
 import warnings
@@ -537,6 +540,50 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
             "is_frozen": info.get("is_frozen", False),
             "visible": not (info.get("is_off", False) or info.get("is_frozen", False) or info.get("color", 7) < 0),
         })
+    return bundle
+
+
+# 파싱 결과 디스크 캐시 — 초대형 도면(예: 126MB B1F = readfile 35s + 폭발 9s ≈ 44s)을
+# 같은 파일 재업로드마다 재파싱하던 비용 제거. 업로드는 매번 새 temp 경로/mtime 이라
+# 경로·mtime 키는 무의미 → 파일 내용 해시로 dedup. 파싱 로직이 바뀌면
+# _PARSE_CACHE_VERSION 을 올려 기존 캐시를 무효화한다. 캐시 실패는 전부 조용히 무시
+# (기능/정확도엔 영향 없음, 속도만 손해). 저장 위치는 gitignore 된 data/ 하위.
+_PARSE_CACHE_VERSION = 1
+_PARSE_CACHE_DIR = _Path(__file__).resolve().parent / "data" / "parse_cache"
+
+
+def _file_content_key(dxf_path: Path) -> str:
+    h = hashlib.blake2b(digest_size=16)
+    with open(dxf_path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def parse_dxf_bundle_cached(dxf_path: Path) -> ParsedDxfBundle:
+    """parse_dxf_bundle 을 파일 내용 해시 키로 디스크 캐시해 재파싱을 건너뛴다."""
+    try:
+        key = _file_content_key(dxf_path)
+    except OSError:
+        return parse_dxf_bundle(dxf_path)
+    cache_path = _PARSE_CACHE_DIR / f"v{_PARSE_CACHE_VERSION}_{key}.pkl.gz"
+    if cache_path.is_file():
+        try:
+            with gzip.open(cache_path, "rb") as f:
+                obj = pickle.load(f)
+            if isinstance(obj, ParsedDxfBundle):
+                return obj
+        except Exception:
+            pass  # 손상/구버전 캐시 → 아래에서 재파싱
+    bundle = parse_dxf_bundle(dxf_path)
+    try:
+        _PARSE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = cache_path.with_suffix(".gz.tmp")
+        with gzip.open(tmp, "wb") as f:
+            pickle.dump(bundle, f, protocol=pickle.HIGHEST_PROTOCOL)
+        tmp.replace(cache_path)
+    except Exception:
+        pass  # 캐시 저장 실패는 무시
     return bundle
 
 
@@ -4280,7 +4327,7 @@ def run_stages_0_2(
 
     # Stage 0: 파싱
     yield evt({"type": "stage", "stage": 0, "status": "running", "label": "DXF 파싱"})
-    bundle = parse_dxf_bundle(dxf_path)
+    bundle = parse_dxf_bundle_cached(dxf_path)
     layer_categories = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
     yield evt({"type": "entities", "stage": 0,
                "entities": bundle.entities,

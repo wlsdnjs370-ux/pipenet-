@@ -29,6 +29,7 @@ data/exports/
 data/combined_runs/
 data/system_runs/
 data/machineroom_runs/
+data/parse_cache/
 data/_smoke*
 models/
 runs/

@@ -2226,13 +2226,22 @@
           ctx.drawImage(GL.canvas, 0, 0);
           ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
           // 2D 오버레이 — 텍스트(T)·인서트(I)·솔리드(S) 만 (소량). 라인류는 이미 GL 이 그림.
+          // 매 프레임 전체(초대형은 수십만) 순회 대신 T/I/S 만 1회 버킷 분리해 캐시 —
+          // ents 배열이 교체될 때만(새 도면/새 stage 데이터) 재빌드. pan/zoom 스터터 제거.
+          if (state._ovSrc !== ents) {
+            const _tx = [], _sym = [];
+            for (const en of ents) {
+              if (en.t === "T") _tx.push(en);
+              else if (en.t === "I" || en.t === "S") _sym.push(en);
+            }
+            state._ovSrc = ents; state._ovTexts = _tx; state._ovSymbols = _sym;
+          }
           if (state.view.zoom >= 0.005) {
             ctx.fillStyle = CAT_COLORS.TEXT;
             ctx.font = "10px ui-monospace, monospace";
-            for (const en of ents) if (en.t === "T") { const [sx, sy] = worldToScreen(en.p[0], en.p[1]); ctx.fillText(en.v, sx, sy); }
+            for (const en of state._ovTexts) { const [sx, sy] = worldToScreen(en.p[0], en.p[1]); ctx.fillText(en.v, sx, sy); }
           }
-          for (const en of ents) {
-            if (en.t !== "I" && en.t !== "S") continue;
+          for (const en of state._ovSymbols) {
             const cat = state.layer_cat[en.l] || "OTHER";
             const col = CAT_COLORS[cat] || "#888";
             ctx.fillStyle = col; ctx.strokeStyle = col;

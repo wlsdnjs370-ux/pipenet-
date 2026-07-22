@@ -1528,7 +1528,7 @@
         <br><strong style="color:#b91c1c;">행을 클릭하면 캔버스에서 해당 신축배관 위치를 빨간 점선으로 표시합니다.</strong>
       </p>
       <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
-        <button id="fx-apply-standard" type="button" style="padding:5px 9px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:0.72rem; cursor:pointer; border-radius:4px;">전체 사내표준 적용</button>
+        <button id="fx-apply-standard" type="button" style="padding:5px 9px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:0.72rem; cursor:pointer; border-radius:4px;">전체 평균 적용</button>
         <span id="fx-summary" class="info-line" style="font-size:0.72rem; color:var(--muted); align-self:center;"></span>
       </div>
       <div id="fx-warnings" style="display:none; font-size:0.72rem; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; padding:5px 8px; margin-bottom:6px;"></div>
@@ -3096,7 +3096,7 @@
       const applyBtn = document.getElementById("fx-apply-standard");
       const finBtn = document.getElementById("fx-finalize-btn");
       const prefix = sec.getAttribute("data-endpoint-prefix");
-      let profiles = {}, defaultProfile = "사내표준", rows = [];
+      let profiles = {}, defaultProfile = "평균", rows = [];
       let nodeCoord = new Map();   // label → [x, y]  (world 좌표, Nodes 테이블)
       let headSet = new Set();     // 헤드 노드 label (Nozzles 테이블 in-node)
       let hasData = false;
@@ -3113,7 +3113,7 @@
 
       function open(fxReview, tables) {
         profiles = (fxReview && fxReview.profiles) || {};
-        defaultProfile = (fxReview && fxReview.default_profile) || "사내표준";
+        defaultProfile = (fxReview && fxReview.default_profile) || "평균";
         // 편집 상태를 담을 작업 사본 (원본 참조 보존용 _base)
         rows = ((fxReview && fxReview.equipment) || []).map(e => Object.assign({}, e, {
           _base_eq: (e.eq_len != null ? Number(e.eq_len) : null),
@@ -3334,7 +3334,7 @@
         selected.forEach(i => { if (rows[i] && !isAv(rows[i])) cnt++; });
         const cntEl = ctxMenu.querySelector(".fx-ctx-count");
         if (cntEl) cntEl.textContent = `${cnt}개`;
-        // 규격 옵션(서브메뉴) 을 현재 profiles 로 채운다 (사내표준/A사/B사 …)
+        // 규격 옵션(서브메뉴) 을 현재 profiles 로 채운다 (평균 …)
         const sub = ctxMenu.querySelector(".fx-ctx-sub");
         sub.innerHTML = Object.keys(profiles).map(k => {
           const p = profiles[k];

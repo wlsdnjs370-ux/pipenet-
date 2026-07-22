@@ -2,9 +2,9 @@
 """FX Task7 수용검증 — prototype 전체 플로우(0-2 → 3-5 → fx emit) 를 test client 로 구동.
 
 no-edit(원본 확정) 경로로 돌려서:
-  * 30 head 각각 FX eq_len=22.4 / spec_ref=사내표준
+  * 30 head 각각 FX eq_len=15.6 / spec_ref=평균
   * 산출물 xlsx/csv/slf/kfp/zip 존재
-  * 동봉 SLF = FX28 (FX 25A internal=28)
+  * 동봉 SLF = FX_20A_216 (FX 20A internal=21.6)
 을 확인. 편집(override) 반영은 별도 검증.
 """
 from __future__ import annotations
@@ -80,9 +80,9 @@ def main():
     av_rows = [e for e in equipment if e.get("desc") in ("AV", "A/V")]
     print(f"FX rows: {len(fx_rows)}  AV rows: {len(av_rows)}")
     bad = [e for e in fx_rows
-           if abs(float(e["eq_len"]) - 22.4) > 1e-6 or e.get("spec_ref") != "사내표준"]
+           if abs(float(e["eq_len"]) - 15.6) > 1e-6 or e.get("spec_ref") != "평균"]
     assert not bad, f"기본 프로파일 아닌 FX 행 {len(bad)}개: {bad[:2]}"
-    print(f"  ✓ 전 FX 행 eq_len=22.4 / spec_ref=사내표준")
+    print(f"  ✓ 전 FX 행 eq_len=15.6 / spec_ref=평균")
 
     # 5) fx/finalize (원본 확정 = 편집 없음)
     r = c.post(f"/api/remote30/prototype/fx/finalize/{job_id}", json={})
@@ -111,17 +111,18 @@ def main():
         for want in (".xlsx", ".csv", ".slf", ".kfp", ".sdf", ".zip"):
             hit = list(out_dir.glob(f"*{want}"))
             print(f"    {want}: {'OK' if hit else 'MISSING'}", hit[0].name if hit else "")
-        # 동봉 SLF 가 FX28 인지 (FX 25A internal=28)
+        # 동봉 SLF 가 FX_20A_216 인지 (FX 20A internal=21.6)
         slf = next(iter(out_dir.glob("*.slf")), None)
         if slf:
             import xml.etree.ElementTree as ET
             root = ET.parse(slf).getroot()
             for sch in root.iter("Schedule"):
-                if sch.find("Item-name").text == "FX":
+                nm = sch.find("Item-name")
+                if nm is not None and (nm.text or "").startswith("FX"):
                     for sd in sch.iter("Size-definition"):
-                        if sd.get("nominal") == "25":
-                            print(f"    bundled SLF FX 25A internal = {sd.get('internal')} "
-                                  f"({'FX28 OK' if sd.get('internal') in ('28','28.0') else 'NOT 28!'})")
+                        if sd.get("nominal") == "20":
+                            print(f"    bundled SLF {nm.text} 20A internal = {sd.get('internal')} "
+                                  f"({'FX216 OK' if sd.get('internal') in ('21.6',) else 'NOT 21.6!'})")
     print("\nDONE ✓")
 
 

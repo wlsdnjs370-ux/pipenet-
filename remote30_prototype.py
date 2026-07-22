@@ -3502,7 +3502,7 @@ def build_input_tables(
                 continue
             fx_count += 1
             # FX 등가길이 — 도면의 물리 길이가 아니라 형식승인/제품 스펙 기준의 고정값.
-            # 한백 사내표준(구 F사 유형) 22.4m 채택 (FX_SPEC_PROFILES 참조). 도면 물리길이는
+            # 기본 프리셋 "평균"(구 A사 유형, 15.6m) 채택 (FX_SPEC_PROFILES 참조). 도면 물리길이는
             # fx_len_mm 으로 별도 계산해 drawing_len_mm(QA/대사용)에만 기록하고 eq_len 에는 쓰지 않음.
             fx_len_mm = 0.0
             for p0, p1 in zip(pts, pts[1:]):

@@ -550,6 +550,25 @@
     .stage-desc { font-size: 0.72rem; color: var(--text-2); margin-top: 3px; line-height: 1.5; }
     .stage-elapsed { font-size: 0.7rem; color: var(--muted); font-family: var(--font-mono); white-space: nowrap; padding-top: 3px; }
 
+    /* Stage 4 진행바 — 서브단계(bridge/경로추적)를 채워 "설치바" 형태로 표시 */
+    .stage-progress { display: none; margin-top: 7px; }
+    .stage-row.is-running .stage-progress.has-substep { display: block; }
+    .stage-progress-track {
+      height: 6px; border-radius: 3px; overflow: hidden;
+      background: rgba(10, 18, 40, 0.10);
+    }
+    .stage-progress-fill {
+      height: 100%; width: 0%;
+      background: #0a1228;
+      border-radius: 3px;
+      transition: width 0.35s ease;
+    }
+    .stage-progress-label {
+      font-size: 0.68rem; color: var(--text-2); margin-top: 4px;
+      font-family: var(--font-mono);
+      display: flex; justify-content: space-between; gap: 8px;
+    }
+
     .summary-box {
       margin-top: 10px; padding: 10px 12px;
       background: var(--panel-soft);
@@ -1129,6 +1148,15 @@
             <div>
               <div class="stage-title" id="stage4-title">가장 불리한 30 헤드 + 경로 색출</div>
               <div class="stage-desc">알람밸브 자동 식별 → Dijkstra → top-K + subgraph union</div>
+              <div class="stage-progress" id="stage4-progress">
+                <div class="stage-progress-track">
+                  <div class="stage-progress-fill" id="stage4-progress-fill"></div>
+                </div>
+                <div class="stage-progress-label">
+                  <span id="stage4-progress-msg">준비 중…</span>
+                  <span id="stage4-progress-pct">0%</span>
+                </div>
+              </div>
             </div>
             <div class="stage-elapsed" id="stage-elapsed-4">—</div>
           </div>
@@ -2943,6 +2971,14 @@
         const elapsedEl = document.getElementById("stage-elapsed-" + evt.stage);
         if (evt.status === "running") {
           row.classList.add("is-running"); row.classList.remove("is-done");
+          if (evt.stage === 4) {
+            const fill = document.getElementById("stage4-progress-fill");
+            const pct = document.getElementById("stage4-progress-pct");
+            const msg = document.getElementById("stage4-progress-msg");
+            if (fill) fill.style.width = "0%";
+            if (pct) pct.textContent = "0%";
+            if (msg) msg.textContent = "준비 중…";
+          }
         } else if (evt.status === "done") {
           row.classList.remove("is-running");
           row.classList.add("is-done");
@@ -2950,6 +2986,19 @@
           row.querySelector(".stage-desc").textContent = evt.label;
         }
         overlayInfoEl.textContent = `[Stage ${evt.stage}] ${evt.label || ""}`;
+      } else if (evt.type === "substep") {
+        if (evt.stage === 4) {
+          const cont = document.getElementById("stage4-progress");
+          const fill = document.getElementById("stage4-progress-fill");
+          const pct = document.getElementById("stage4-progress-pct");
+          const msg = document.getElementById("stage4-progress-msg");
+          const p = Math.max(0, Math.min(100, Math.round((evt.progress || 0) * 100)));
+          if (cont) cont.classList.add("has-substep");
+          if (fill) fill.style.width = p + "%";
+          if (pct) pct.textContent = p + "%";
+          if (msg) msg.textContent = evt.label || "";
+          overlayInfoEl.textContent = `[Stage 4] ${evt.label || ""} (${p}%)`;
+        }
       } else if (evt.type === "entities") {
         state.stage_entities[evt.stage] = evt.entities;
         if (evt.layers) {

@@ -2,10 +2,10 @@
 """FX materialize e2e (domain-slim) — prototype 전체 플로우로 SDF+SLF 정합 확인.
 
 no-edit(원본 확정) 경로로 돌려서:
-  * 30 head 각각 FX eq_len=22.4 / spec_ref=사내표준
+  * 30 head 각각 FX eq_len=15.6 / spec_ref=평균
   * 산출물 xlsx/csv/slf/kfp/sdf/zip 존재
-  * 동봉 SLF = FX 25A internal=28
-  * SDF FX_25A_28 Pipe-set (bore 0.025 / len 0.7 / rise -0.1 / C 120)
+  * 동봉 SLF = FX 20A internal=21.6
+  * SDF FX_20A_216 Pipe-set (bore 0.02 / len 0.7 / rise -0.1 / C 120)
 을 확인.
 """
 from __future__ import annotations
@@ -75,9 +75,9 @@ def main():
     fx_rows = [e for e in equipment if e.get("desc") == "FX"]
     print(f"FX rows: {len(fx_rows)}")
     bad = [e for e in fx_rows
-           if abs(float(e["eq_len"]) - 22.4) > 1e-6 or e.get("spec_ref") != "사내표준"]
+           if abs(float(e["eq_len"]) - 15.6) > 1e-6 or e.get("spec_ref") != "평균"]
     assert not bad, f"기본 프로파일 아닌 FX 행 {len(bad)}개: {bad[:2]}"
-    print("  OK 전 FX 행 eq_len=22.4 / spec_ref=사내표준")
+    print("  OK 전 FX 행 eq_len=15.6 / spec_ref=평균")
 
     r = c.post(f"/api/remote30/prototype/fx/finalize/{job_id}", json={})
     assert r.status_code == 200, r.get_data(as_text=True)[:300]

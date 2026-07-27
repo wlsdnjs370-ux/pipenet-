@@ -232,6 +232,23 @@
     "rule": "/api/remote30/overall/finalize_stream/<job_id>"
   },
   {
+    "endpoint": "remote30_overall_fx_finalize",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/overall/fx/finalize/<job_id>"
+  },
+  {
+    "endpoint": "remote30_overall_fx_finalize_stream",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/overall/fx/finalize_stream/<job_id>"
+  },
+  {
     "endpoint": "remote30_overall_parse_system_diagram",
     "methods": [
       "OPTIONS",
@@ -281,6 +298,23 @@
       "OPTIONS"
     ],
     "rule": "/api/remote30/prototype/finalize_stream/<job_id>"
+  },
+  {
+    "endpoint": "remote30_prototype_fx_finalize",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/prototype/fx/finalize/<job_id>"
+  },
+  {
+    "endpoint": "remote30_prototype_fx_finalize_stream",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/remote30/prototype/fx/finalize_stream/<job_id>"
   },
   {
     "endpoint": "remote30_prototype_result",

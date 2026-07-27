@@ -143,10 +143,18 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
 
         from remote30_prototype import run_stages_0_2
 
+        bz_raw = request.args.get("branch_zones")
+        if bz_raw:
+            try:
+                job["branch_zones"] = [tuple(z) for z in json.loads(bz_raw)]
+            except (ValueError, TypeError):
+                pass
+
         def _gen():
             try:
                 for evt in run_stages_0_2(Path(job["dxf_path"]), job_id,
-                                           alarm_xy=job.get("alarm_xy")):
+                                           alarm_xy=job.get("alarm_xy"),
+                                           branch_zones=job.get("branch_zones")):
                     if evt.get("type") == "entities" and evt.get("stage") == 1:
                         job["pipe_ents"] = evt["entities"]
                     elif evt.get("type") == "entities" and evt.get("stage") == 0:
@@ -186,6 +194,8 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
             "added_heads": [tuple(p) for p in body.get("added_heads", [])],
             "deleted_indices": [int(i) for i in body.get("deleted_indices", [])],
             "zones": [tuple(z) for z in body.get("zones", [])],
+            "branch_zones": [tuple(z) for z in body.get("branch_zones",
+                                                        job.get("branch_zones") or [])],
         }
         ax, ay = body.get("alarm_x"), body.get("alarm_y")
         if ax is not None and ay is not None:
@@ -237,6 +247,7 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                     manual_heads=manual_heads if (manual_heads or job["edit"]["deleted_indices"]
                                                   or job["edit"]["added_heads"]) else None,
                     zones=job["edit"]["zones"] if job["edit"]["zones"] else None,
+                    branch_zones=job["edit"].get("branch_zones") or None,
                 )
                 yield _emit({"type": "overall_progress", "phase": "stage_a_select_done",
                              "heads": len(selection.heads),

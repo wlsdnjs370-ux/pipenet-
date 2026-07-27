@@ -1003,6 +1003,10 @@
           <span>실배관 (가지식 트리)</span>
         </div>
         <div class="legend-row">
+          <svg width="34" height="6"><line x1="1" y1="3" x2="33" y2="3" stroke="#a855f7" stroke-width="1.6" stroke-dasharray="8,4"/></svg>
+          <span>추정 용접 (방향 복원)</span>
+        </div>
+        <div class="legend-row">
           <svg width="34" height="6"><line x1="1" y1="3" x2="33" y2="3" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="8,4"/></svg>
           <span>추정 bridge (강제 연결)</span>
         </div>
@@ -1095,6 +1099,11 @@
           <button id="wb-mode-zone" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid #1e40af; font-size: 0.75rem; cursor: pointer;">▭ 영역 지정 (드래그)</button>
           <button id="wb-zones-clear" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">↺ 영역 전체 해제</button>
         </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px;">
+          <button id="wb-mode-branchzone" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid #d97706; font-size: 0.75rem; cursor: pointer;">◨ 분기영역 지정 (드래그)</button>
+          <button id="wb-branchzones-clear" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">↺ 분기영역 해제</button>
+        </div>
+        <button id="wb-branchzone-apply" type="button" style="width: 100%; padding: 5px; background: #fffbeb; color: #92400e; border: 1px solid #d97706; font-size: 0.72rem; cursor: pointer; margin-bottom: 8px;">↻ 분기영역 적용 — 배관망 재구성</button>
         <button id="wb-mode-cancel" type="button" style="width: 100%; padding: 5px; background: #f3f4f6; color: var(--muted); border: 1px solid var(--line); font-size: 0.72rem; cursor: pointer; margin-bottom: 8px;">✗ 편집 모드 해제 (캔버스 팬/줌)</button>
 
         <p id="wb-edit-status" class="info-line" style="font-size: 0.72rem; min-height: 1.2em;">캔버스에서 모드 버튼을 누른 뒤 클릭/드래그하세요.</p>
@@ -1596,8 +1605,10 @@
       user_added_heads: [], // [[x,y], ...]
       user_deleted_indices: new Set(),
       zones: [],            // [[x1,y1,x2,y2], ...]
-      edit_mode: "none",    // none|add|delete|zone|alarm_pick
+      branch_zones: [],     // [[x1,y1,x2,y2], ...] 분기영역 — 영역 밖 단일경로 강제
+      edit_mode: "none",    // none|add|delete|zone|branchzone|alarm_pick
       zone_drag: null,      // {start_wx, start_wy} 드래그 진행 중일 때
+      branch_zone_drag: null, // 분기영역 드래그 진행 중일 때
       alarm_marker: null,   // {x, y, source: 'manual'|'auto'} — 알람밸브 위치 시각 마커
       current_stage_view: 0,
       bbox: null,
@@ -2353,6 +2364,21 @@
           ctx.strokeStyle = "#60a5fa"; ctx.lineWidth = 1.4;
           ctx.strokeRect(Math.min(a, c), Math.min(b, d), Math.abs(c - a), Math.abs(d - b));
         }
+        // 분기영역 (점선 주황 사각형) — 영역 밖 단일경로 강제 범위
+        ctx.setLineDash([10, 5]);
+        ctx.strokeStyle = "#d97706"; ctx.lineWidth = 2.0;
+        for (const [zx1, zy1, zx2, zy2] of state.branch_zones) {
+          const [sx1, sy1] = worldToScreen(zx1, zy1);
+          const [sx2, sy2] = worldToScreen(zx2, zy2);
+          ctx.strokeRect(Math.min(sx1, sx2), Math.min(sy1, sy2), Math.abs(sx2 - sx1), Math.abs(sy2 - sy1));
+        }
+        if (state.branch_zone_drag) {
+          const { sx, sy, ex, ey } = state.branch_zone_drag;
+          const [a, b] = worldToScreen(sx, sy);
+          const [c, d] = worldToScreen(ex, ey);
+          ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 1.6;
+          ctx.strokeRect(Math.min(a, c), Math.min(b, d), Math.abs(c - a), Math.abs(d - b));
+        }
         ctx.setLineDash([]);
         return;
       }
@@ -2374,6 +2400,14 @@
         // 실배관 edge — cyan 실선 (가지식 트리 본체)
         ctx.strokeStyle = "#06b6d4"; ctx.lineWidth = 1.8;
         for (const en of ents) if (en.l === "_graph_edge") drawEntity(en);
+        // 분기영역 루프 edge — emerald 실선 (계산은 트리라 제거됐지만 실제 배관이므로 표시)
+        ctx.strokeStyle = "#059669"; ctx.lineWidth = 1.8;
+        for (const en of ents) if (en.l === "_graph_loop") drawEntity(en);
+        // 추정 용접 edge — violet 점선 (끊긴 직선 배관을 축 방향으로 이어붙인 복원, 실배관 아님)
+        ctx.strokeStyle = "#a855f7"; ctx.lineWidth = 1.6;
+        ctx.setLineDash([8, 4]);
+        for (const en of ents) if (en.l === "_graph_weld") drawEntity(en);
+        ctx.setLineDash([]);
         // 추정 bridge edge — amber 점선 (끊긴 component 를 알고리즘이 강제 연결, 실배관 아님)
         ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 1.4;
         ctx.setLineDash([8, 4]);
@@ -2395,6 +2429,15 @@
         // attach point (배관망 측) — 빨간 작은 원
         ctx.strokeStyle = "#ef4444"; ctx.fillStyle = "#ef4444"; ctx.lineWidth = 1.2;
         for (const en of ents) if (en.l === "_alarm_attach") drawEntity(en);
+        // 분기영역 경계 (점선 주황) — 재구성 시 영역 밖 단일경로 기준 표시
+        ctx.setLineDash([10, 5]);
+        ctx.strokeStyle = "#d97706"; ctx.lineWidth = 2.0;
+        for (const [zx1, zy1, zx2, zy2] of state.branch_zones) {
+          const [sx1, sy1] = worldToScreen(zx1, zy1);
+          const [sx2, sy2] = worldToScreen(zx2, zy2);
+          ctx.strokeRect(Math.min(sx1, sx2), Math.min(sy1, sy2), Math.abs(sx2 - sx1), Math.abs(sy2 - sy1));
+        }
+        ctx.setLineDash([]);
         return;
       }
 
@@ -2735,8 +2778,11 @@
     const modeZoneBtn = document.getElementById("wb-mode-zone");
     const modeCancelBtn = document.getElementById("wb-mode-cancel");
     const zonesClearBtn = document.getElementById("wb-zones-clear");
-    const modeBtns = { add: modeAddBtn, delete: modeDeleteBtn, zone: modeZoneBtn };
-    const modeColors = { add: "#16a34a", delete: "#dc2626", zone: "#1e40af" };
+    const modeBranchZoneBtn = document.getElementById("wb-mode-branchzone");
+    const branchZonesClearBtn = document.getElementById("wb-branchzones-clear");
+    const branchZoneApplyBtn = document.getElementById("wb-branchzone-apply");
+    const modeBtns = { add: modeAddBtn, delete: modeDeleteBtn, zone: modeZoneBtn, branchzone: modeBranchZoneBtn };
+    const modeColors = { add: "#16a34a", delete: "#dc2626", zone: "#1e40af", branchzone: "#d97706" };
 
     function setEditMode(mode) {
       if (typeof setPickMode === "function") setPickMode(false);
@@ -2751,6 +2797,7 @@
         add: "캔버스를 클릭하면 200×200mm 헤드가 추가됩니다.",
         delete: "캔버스에서 헤드 근처(250mm 이내) 클릭으로 삭제 마킹.",
         zone: "드래그로 세대(단위세대) 영역 지정 — 이 영역 안 헤드만 선정 + 영역 안 배관은 CPVC(C=150), 밖은 강관(C=120).",
+        branchzone: "드래그로 분기영역(교차배관 범위) 지정 — 영역 밖은 주배관 단일경로만, 영역 안 루프는 실선 표시. [배관망 재구성] 으로 적용.",
         none: "편집 모드 해제. 캔버스 팬/줌 사용.",
       };
       editStatusEl.textContent = desc[mode] || "";
@@ -2758,8 +2805,11 @@
     modeAddBtn.addEventListener("click", () => setEditMode(state.edit_mode === "add" ? "none" : "add"));
     modeDeleteBtn.addEventListener("click", () => setEditMode(state.edit_mode === "delete" ? "none" : "delete"));
     modeZoneBtn.addEventListener("click", () => setEditMode(state.edit_mode === "zone" ? "none" : "zone"));
+    modeBranchZoneBtn.addEventListener("click", () => setEditMode(state.edit_mode === "branchzone" ? "none" : "branchzone"));
     modeCancelBtn.addEventListener("click", () => setEditMode("none"));
     zonesClearBtn.addEventListener("click", () => { state.zones = []; updateEditCounts(); render(); });
+    branchZonesClearBtn.addEventListener("click", () => { state.branch_zones = []; updateEditCounts(); render(); });
+    if (branchZoneApplyBtn) branchZoneApplyBtn.addEventListener("click", () => rebuildWithBranchZones());
 
     function updateEditCounts() {
       const det = state.detected_heads.length;
@@ -2851,6 +2901,73 @@
       render();
     });
 
+    // 분기영역 드래그 — zone 드래그와 동일 패턴, edit_mode==="branchzone"
+    canvas.addEventListener("mousedown", (e) => {
+      if (state.current_mode !== "plane" || state.edit_mode !== "branchzone") return;
+      const rect = canvas.getBoundingClientRect();
+      const wx = (e.clientX - rect.left - state.view.panX) / state.view.zoom;
+      const wy = -(e.clientY - rect.top - state.view.panY) / state.view.zoom;
+      state.branch_zone_drag = { sx: wx, sy: wy, ex: wx, ey: wy };
+      state.drag = null;
+      e.stopPropagation();
+    }, true);
+    window.addEventListener("mousemove", (e) => {
+      if (!state.branch_zone_drag) return;
+      const rect = canvas.getBoundingClientRect();
+      state.branch_zone_drag.ex = (e.clientX - rect.left - state.view.panX) / state.view.zoom;
+      state.branch_zone_drag.ey = -(e.clientY - rect.top - state.view.panY) / state.view.zoom;
+      render();
+    });
+    window.addEventListener("mouseup", () => {
+      if (!state.branch_zone_drag) return;
+      const { sx, sy, ex, ey } = state.branch_zone_drag;
+      if (Math.abs(ex - sx) > 50 && Math.abs(ey - sy) > 50) {
+        state.branch_zones.push([sx, sy, ex, ey]);
+        editStatusEl.textContent = `분기영역 ${state.branch_zones.length}개 — [배관망 재구성] 을 눌러 적용하세요.`;
+        updateEditCounts();
+      }
+      state.branch_zone_drag = null;
+      render();
+    });
+
+    // 분기영역 적용 — Stage 0~2 스트림을 branch_zones 쿼리와 함께 재구독해 배관망 재구성.
+    // 서버가 영역 밖을 source→영역 단일 corridor 로 제한하고 영역 안 루프를 _graph_loop
+    // (실선)로 재방출한다. 헤드 편집/영역(zone) 상태는 유지된다.
+    function rebuildWithBranchZones() {
+      if (!state.jobId) { alert("먼저 배관망을 생성하세요."); return; }
+      if (!state.branch_zones.length) { alert("분기영역을 먼저 드래그로 지정하세요."); return; }
+      // 분기영역 corridor 는 source(알람밸브)가 필수 — 입력필드 우선, 없으면 캔버스
+      // 마커. 둘 다 없으면(B1F 처럼 자동검출도 실패) 제한이 불가능하므로 안내.
+      let axv = alarmXEl.value.trim(), ayv = alarmYEl.value.trim();
+      if ((!axv || !ayv) && state.alarm_marker) { axv = String(state.alarm_marker.x); ayv = String(state.alarm_marker.y); }
+      if (!axv || !ayv) {
+        alert("분기영역은 급수원(알람밸브) 위치가 필요합니다.\n먼저 [알람밸브 위치 지정] 으로 급수원을 찍은 뒤 다시 적용하세요.");
+        return;
+      }
+      branchZoneApplyBtn.disabled = true;
+      const _label = branchZoneApplyBtn.textContent;
+      branchZoneApplyBtn.textContent = "↻ 재구성 중...";
+      const q = encodeURIComponent(JSON.stringify(state.branch_zones));
+      const aq = `&alarm_x=${encodeURIComponent(axv)}&alarm_y=${encodeURIComponent(ayv)}`;
+      const es = new EventSource(`/api/remote30/prototype/stream/${state.jobId}?branch_zones=${q}${aq}`);
+      es.onmessage = (e) => {
+        let evt; try { evt = JSON.parse(e.data); } catch { return; }
+        handleEvent(evt);
+        if (evt.type === "awaiting_finalize" || evt.type === "error") {
+          es.close();
+          branchZoneApplyBtn.disabled = false;
+          branchZoneApplyBtn.textContent = _label;
+          if (evt.type === "awaiting_finalize")
+            editStatusEl.textContent = "분기영역 적용 완료 — 영역 밖은 단일 주배관, 영역 안 루프는 초록 실선.";
+        }
+      };
+      es.onerror = () => {
+        es.close();
+        branchZoneApplyBtn.disabled = false;
+        branchZoneApplyBtn.textContent = _label;
+      };
+    }
+
     // 배관망 완성 — finalize POST + finalize_stream 구독
     finalizeBtn.addEventListener("click", async () => {
       if (!state.jobId) return;
@@ -2864,6 +2981,7 @@
         added_heads: state.user_added_heads,
         deleted_indices: Array.from(state.user_deleted_indices),
         zones: state.zones,
+        branch_zones: state.branch_zones,
       };
       const ax = alarmXEl.value.trim(), ay = alarmYEl.value.trim();
       if (ax && ay) { payload.alarm_x = ax; payload.alarm_y = ay; }
@@ -2919,6 +3037,7 @@
       state.user_added_heads = [];
       state.user_deleted_indices = new Set();
       state.zones = [];
+      state.branch_zones = [];
       finalizeBtn.disabled = true;
       finalizeBtn.textContent = "▶ 배관망 완성 (Stage 3~5 진행)";
       setEditMode("none");
@@ -7207,6 +7326,7 @@
           added_heads: state.user_added_heads,
           deleted_indices: Array.from(state.user_deleted_indices),
           zones: state.zones,
+          branch_zones: state.branch_zones,
         };
         if (ax && ay) { planeEdit.alarm_x = ax; planeEdit.alarm_y = ay; }
         const _press = (document.querySelector('input[name="cmb-press"]:checked') || {}).value || "gravity";

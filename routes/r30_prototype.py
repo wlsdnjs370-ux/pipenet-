@@ -67,10 +67,31 @@ def register(app, *, _save_upload, _register_job, _serve_run_file,
 
         from remote30_prototype import run_stages_0_2
 
+        # 분기영역 — 사용자가 Stage-3 에서 드래그 후 스트림 재구독 시 쿼리로 전달.
+        # job 에 저장해 이후 finalize 에서도 재사용. 미지정이면 종전대로 전체 렌더.
+        bz_raw = request.args.get("branch_zones")
+        if bz_raw:
+            try:
+                job["branch_zones"] = [tuple(z) for z in json.loads(bz_raw)]
+            except (ValueError, TypeError):
+                pass
+
+        # 알람밸브 좌표 override — 분기영역 corridor 는 source(알람밸브) 가 필수인데,
+        # 사용자가 빌드 후 캔버스/입력필드로 지정한 좌표는 job["alarm_xy"](빌드 시점값)
+        # 에 반영돼 있지 않다. rebuild 재구독 시 쿼리로 받아 job 에 갱신해 반영한다.
+        ax_raw = request.args.get("alarm_x")
+        ay_raw = request.args.get("alarm_y")
+        if ax_raw and ay_raw:
+            try:
+                job["alarm_xy"] = (float(ax_raw), float(ay_raw))
+            except (ValueError, TypeError):
+                pass
+
         def _gen():
             try:
                 for evt in run_stages_0_2(Path(job["dxf_path"]), job_id,
-                                           alarm_xy=job.get("alarm_xy")):
+                                           alarm_xy=job.get("alarm_xy"),
+                                           branch_zones=job.get("branch_zones")):
                     # 마지막 awaiting_finalize 이벤트 직전에 detected_heads 데이터를 job 에 저장
                     if evt.get("type") == "entities" and evt.get("stage") == 1:
                         job["pipe_ents"] = evt["entities"]
@@ -119,6 +140,9 @@ def register(app, *, _save_upload, _register_job, _serve_run_file,
             "added_heads": [tuple(p) for p in body.get("added_heads", [])],
             "deleted_indices": [int(i) for i in body.get("deleted_indices", [])],
             "zones": [tuple(z) for z in body.get("zones", [])],
+            # 분기영역 — body 우선, 없으면 스트림 재구독 때 저장해둔 job 값 재사용.
+            "branch_zones": [tuple(z) for z in body.get("branch_zones",
+                                                        job.get("branch_zones") or [])],
         }
         # alarm_xy 갱신 (사용자가 후속으로 변경했을 수 있음)
         ax, ay = body.get("alarm_x"), body.get("alarm_y")
@@ -165,6 +189,7 @@ def register(app, *, _save_upload, _register_job, _serve_run_file,
                     user_added_heads=job["edit"]["added_heads"],
                     user_deleted_indices=job["edit"]["deleted_indices"],
                     zones=job["edit"]["zones"],
+                    branch_zones=job["edit"].get("branch_zones") or None,
                 ):
                     # 신축배관(FX) 검토 게이트 — stage2_complete 저장 방식과 동일하게
                     # tables/fx_review 를 job state 에 저장하고 이벤트는 그대로 프론트에 전달.

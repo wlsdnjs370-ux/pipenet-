@@ -506,6 +506,8 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         added = [tuple(p) for p in plane_edit.get("added_heads", [])]
         deleted = set(int(i) for i in plane_edit.get("deleted_indices", []))
         zones = [tuple(z) for z in plane_edit.get("zones", [])]
+        branch_zones = [tuple(z) for z in plane_edit.get("branch_zones",
+                                                         plane_job.get("branch_zones") or [])]
         alarm_xy = plane_job.get("alarm_xy")
         ax, ay = plane_edit.get("alarm_x"), plane_edit.get("alarm_y")
         if ax is not None and ay is not None:
@@ -571,6 +573,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                 manual_source=alarm_xy,
                 manual_heads=manual_heads if (manual_heads or deleted or added) else None,
                 zones=zones if zones else None,
+                branch_zones=branch_zones if branch_zones else None,
                 **({"k": k_heads} if k_heads is not None else {}),
             )
             head_tables = build_input_tables(

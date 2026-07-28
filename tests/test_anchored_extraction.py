@@ -385,3 +385,41 @@ def test_w5_candidates_exclude_negative_types(tampered):
     kinds = sorted(c["t"] for c in cands)
     # LINE 3 + 열린 LWPOLYLINE 1 — SPLINE 0개, 닫힌 PL 0개, W 밖 LINE 0개
     assert kinds == ["L", "L", "L", "PL"]
+
+
+# ── W6 수용 기준: 관경 텍스트 위생 ──────────────────────────────────────────
+
+def test_w6_extractor_dia_text_constants():
+    from sprinkler_remote30_extractor import _match_dia_text
+    assert _match_dia_text("NO.20") is None    # 구 naive \b 정규식이면 20 으로 오인
+    assert _match_dia_text("25A") == 25
+    assert _match_dia_text("Ø65") == 65
+    assert _match_dia_text("50") == 50         # 순수 숫자
+    assert _match_dia_text("옥내소화전 50") is None  # 노이즈 키워드
+
+
+def test_w6_anchor_window_excludes_legend_dia_text():
+    ents = [
+        {"t": "L", "l": "SP", "p": [0.0, 0.0, 10000.0, 0.0]},
+        {"t": "L", "l": "SP", "p": [2000.0, 0.0, 2000.0, 3000.0]},
+        {"t": "L", "l": "SP", "p": [8000.0, 0.0, 8000.0, 3000.0]},
+    ]
+    layer_cat = {"SP": "PIPE"}
+    audit = {}
+    res = rp.select_worst30_heads_anchored(
+        ents, layer_cat, alarm_xy=TAMPER_ALARM,
+        head_region=HeadRegion.from_polygon(TAMPER_REGION),
+        manual_heads=TAMPER_HEADS, audit_out=audit)
+    texts = [
+        {"t": "T", "v": "50", "p": [2100.0, 1500.0]},        # W 안 — 유효 후보
+        {"t": "T", "v": "25A", "p": [288201.0, -233417.0]},  # 범례 좌표대 — W 밖
+    ]
+
+    def _cand_count(tables):
+        return int(dict(tables.meta)["Diameter 텍스트 후보 수 (도면)"])
+
+    t_plain = rp.build_input_tables(res, pipe_entities=ents + texts)
+    t_win = rp.build_input_tables(res, pipe_entities=ents + texts,
+                                  anchor_window=audit["anchor_window"])
+    assert _cand_count(t_plain) == 2   # 제한 없음 — 범례 관경 문자 유입(오염)
+    assert _cand_count(t_win) == 1     # W 제한 — 범례 관경 문자 제외

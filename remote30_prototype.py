@@ -3765,6 +3765,9 @@ def select_worst30_heads_anchored(
     _region_pts = getattr(head_region, "pts", None)
     _W = (_AnchorWindow(_region_pts, (float(alarm_xy[0]), float(alarm_xy[1])))
           if _region_pts else None)
+    # W6 — 호출측이 build_input_tables(anchor_window=...) 에 그대로 전달할 수 있게
+    # 작업창을 노출 (객체 — JSON 직렬화 대상 아님, W7 스키마 밖).
+    audit["anchor_window"] = _W
     # ① 헤드 — region 게이트(W1) 통과한 최종 승인 후보만 (그래프와 무관 — 선확정)
     if manual_heads is not None:
         heads = [HeadCandidate(pos=_round_pt(x, y), raw=(x, y), block_name="(user)", layer="_user")
@@ -4099,11 +4102,15 @@ def build_input_tables(
     *,
     project_title: str = "Remote 30 Prototype",
     cpvc_zones: list[tuple[float, float, float, float]] | None = None,
+    anchor_window=None,
 ) -> PipeTables:
     """선정 결과 → 5 테이블. pipe_entities 가 있으면 FX(flexible) Equipment 도 추출.
 
     cpvc_zones: 이 영역(단위세대 내부) 안에 배관 중점이 들어오면 CPVC(C=150)로 표기.
     비어있으면 전 배관 강관(C=120).
+    anchor_window: anchored 모드의 작업창 W(contains(pt) 노출 객체). 지정 시 관경
+        텍스트 후보를 W 내부로 제한 — 범례 표(x≈288k)의 관경 문자 오염 차단(W6).
+        None(비-anchored)이면 기존과 동일.
     """
     tables = PipeTables()
     if not selection.heads or selection.source_pos is None:
@@ -4176,6 +4183,10 @@ def build_input_tables(
                 continue
             if any(nw in v for nw in NOISE_KEYWORDS):
                 continue  # 옥내소화전 / 헤드 라벨 / 스펙 표 등 노이즈
+            # W6 — anchored 작업창 밖 관경 문자(범례 표 등) 후보 배제
+            if anchor_window is not None and not anchor_window.contains(
+                    (float(en["p"][0]), float(en["p"][1]))):
+                continue
             for pat in DIA_PATTERNS:
                 m = pat.search(v)
                 if not m:

@@ -27,6 +27,7 @@ if _CORE.is_dir() and str(_CORE) not in _sys.path:
     _sys.path.insert(0, str(_CORE))
 
 from remote30_graph import HeadRegion
+from remote30_constants import _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM
 
 import ezdxf
 import networkx as nx
@@ -497,6 +498,28 @@ def _force_attach_orphan_heads(orphan_heads, G, node_coords, settings: Remote30S
     return new_attached, added_edges
 
 
+def _match_dia_text(raw) -> Optional[int]:
+    """관경 라벨 판정 — remote30_constants 패턴/노이즈/유효값 단일 소스 참조 (W6).
+
+    naive `\\b(20|25|…)\\b` 정규식은 'NO.20' 같은 도면 번호까지 관경으로 오인했다.
+    remote30_prototype._extract_dia_text_points 와 동일 의미론 (구현 이원화 청산).
+    """
+    v = str(raw or "").strip()
+    if not v or any(nw in v for nw in _DIA_TEXT_NOISE_KW):
+        return None
+    for pat in _DIA_TEXT_PATTERNS:
+        m = pat.search(v)
+        if not m:
+            continue
+        try:
+            d = int(m.group(1))
+        except ValueError:
+            continue
+        if d in _VALID_DIA_MM:
+            return d
+    return None
+
+
 def _get_text_entities(msp, settings: Remote30Settings):
     texts = []
     bbox = settings.zone_bbox
@@ -514,14 +537,14 @@ def _get_text_entities(msp, settings: Remote30Settings):
         raw = e.dxf.text if etype == "TEXT" else e.text
         raw = str(raw).strip()
 
-        m = re.search(r"\b(20|25|32|40|50|65|80|100|125|150|200)\b", raw)
-        if not m:
+        dia = _match_dia_text(raw)
+        if dia is None:
             continue
 
         xy = (float(e.dxf.insert.x), float(e.dxf.insert.y))
         if not _in_bbox(xy, bbox):
             continue
-        texts.append({"xy": xy, "text": raw, "dia": int(m.group(1)), "layer": layer})
+        texts.append({"xy": xy, "text": raw, "dia": dia, "layer": layer})
     return texts
 
 

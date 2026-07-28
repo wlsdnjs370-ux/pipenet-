@@ -2149,7 +2149,8 @@ class HeadDetection:
 
 
 
-def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str]) -> list[HeadDetection]:
+def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str],
+                 region=None) -> list[HeadDetection]:
     """도면 내 모든 헤드 후보 인식 — 다중 신호 결합 + 근접 클러스터링.
 
     인식 규칙
@@ -2161,6 +2162,11 @@ def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str]) ->
     R5) **layer-agnostic 삼각형 HATCH** — 3 고유 정점 + bbox < 1500mm 면 confidence 0.72
         (드라이팬던트 헤드 마커 — 참조 elbow/측벽 DXF 처럼 HEAD 레이어 아닌 곳도 검출)
     R4) 클러스터링 — 250mm 이내 후보들을 1 헤드로 통합 (cue 가 여러 개일수록 confidence ↑)
+
+    region: anchored 모드의 헤드 영역 게이트. ``contains((x, y)) -> bool`` 프로토콜
+        객체(→W4 HeadRegion). 지정 시 **최종 승인 후보에만** point-in-region 판정을
+        적용해 범례 표본·인접 세대 헤드를 배제한다. R1~R5 신호 계산·클러스터링은
+        불변이며 ``region=None`` 이면 기존과 완전 동일.
     """
     candidates: list[HeadDetection] = []
 
@@ -2252,7 +2258,45 @@ def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str]) ->
             kind=kinds if len(cluster) == 1 else f"cluster({len(cluster)}):{kinds}",
             confidence=conf, block_name=best.block_name, layer=best.layer,
         ))
+    if region is not None:
+        # anchored 영역 게이트 — 클러스터링까지 끝난 최종 승인 후보에만 적용.
+        out = [h for h in out if region.contains(h.pos)]
     return out
+
+
+def find_unreachable_region_heads(
+    graph: dict,
+    source: tuple[float, float] | None,
+    heads: list[HeadDetection],
+    max_attach_mm: float = HEAD_BRIDGE_MAX_MM,
+) -> list[tuple[float, float]]:
+    """region 승인 헤드 중 source 에서 도달 불가한 헤드 좌표 목록.
+
+    anchored 모드 진단 — 조용한 drop 금지: 미도달 헤드는 추출 결함 신호라
+    audit(→W7)에 기록한다. 판정은 파이프라인의 헤드 부착 규칙과 동일하게
+    최근접 그래프 노드(HEAD_BRIDGE_MAX_MM 이내)를 쓰되, 그 노드가 source 와
+    같은 연결 컴포넌트가 아니면 미도달로 본다.
+    """
+    if source is None or source not in graph:
+        return [h.pos for h in heads]
+    comp = {source}
+    stack = [source]
+    while stack:
+        n = stack.pop()
+        for m in graph.get(n, ()):
+            if m not in comp:
+                comp.add(m)
+                stack.append(m)
+    unreachable: list[tuple[float, float]] = []
+    for h in heads:
+        near = _nearest_graph_node(graph, h.pos)
+        if near is None:
+            unreachable.append(h.pos)
+            continue
+        d = math.hypot(h.pos[0] - near[0], h.pos[1] - near[1])
+        if d > max_attach_mm or near not in comp:
+            unreachable.append(h.pos)
+    return unreachable
 
 
 @dataclass(slots=True)

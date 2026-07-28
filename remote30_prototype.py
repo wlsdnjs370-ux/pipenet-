@@ -3669,6 +3669,64 @@ def bridge_targeted(
     return total
 
 
+def collect_spatial_reselect_segments(dxf_path, layer_categories: dict[str, str],
+                                      window) -> list[dict]:
+    """W5 — S140 조건부 재선별의 공간 한정 실시예.
+
+    1차 명목 수집(filter_pipenet_only)이 region 승인 헤드 도달망을 만들지 못한
+    경우에만 호출된다(anchored 전용, 플래그 기본 off). 작업창 W(window) **내부**의
+    OTHER 카테고리 레이어에서 LINE/ARC/LWPOLYLINE 만 저-prior 후보로 승인한다.
+
+    SPLINE/ELLIPSE/3DFACE/DIMENSION/HATCH/닫힌 PL(CLOSED_PL_TOL_MM)은 음성
+    유형 — 승인 금지. 파서(parse_dxf_bundle)는 SPLINE/ELLIPSE 를 PL 로 평탄화해
+    entity dict 수준에서 원 유형을 구분할 수 없으므로(태그 추가는 골든
+    entities_sig 를 깨 비트동일 위반), DXF 원본을 ezdxf 로 직접 스캔해 실제
+    dxftype 으로 판정한다(BLOCKED.md #5).
+
+    반환: pipe_entities 형식 dict 리스트 — 모든 정점이 W 안인 segment 만.
+    """
+    doc = ezdxf.readfile(str(dxf_path))
+    msp = doc.modelspace()
+    out: list[dict] = []
+    for e in msp:
+        layer = str(getattr(e.dxf, "layer", "") or "")
+        if layer_categories.get(layer, "OTHER") != "OTHER":
+            continue
+        et = e.dxftype()
+        if et == "LINE":
+            p1 = (float(e.dxf.start.x), float(e.dxf.start.y))
+            p2 = (float(e.dxf.end.x), float(e.dxf.end.y))
+            if window.contains(p1) and window.contains(p2):
+                out.append({"t": "L", "l": layer,
+                            "p": [p1[0], p1[1], p2[0], p2[1]]})
+        elif et == "ARC":
+            cx, cy = float(e.dxf.center.x), float(e.dxf.center.y)
+            r = float(e.dxf.radius)
+            sa, ea = float(e.dxf.start_angle), float(e.dxf.end_angle)
+            pa = (cx + r * math.cos(math.radians(sa)),
+                  cy + r * math.sin(math.radians(sa)))
+            pb = (cx + r * math.cos(math.radians(ea)),
+                  cy + r * math.sin(math.radians(ea)))
+            if window.contains(pa) and window.contains(pb):
+                out.append({"t": "A", "l": layer, "c": [cx, cy], "r": r,
+                            "a": [sa, ea]})
+        elif et == "LWPOLYLINE":
+            pts = [(float(p[0]), float(p[1])) for p in e.get_points()]
+            if len(pts) < 2:
+                continue
+            closed = bool(e.closed) or (
+                len(pts) >= 3
+                and math.hypot(pts[0][0] - pts[-1][0],
+                               pts[0][1] - pts[-1][1]) <= CLOSED_PL_TOL_MM)
+            if closed:
+                continue  # 닫힌 PL = 심볼/외곽선 — 음성 유형
+            if all(window.contains(p) for p in pts):
+                out.append({"t": "PL", "l": layer,
+                            "p": [[p[0], p[1]] for p in pts]})
+        # 그 외 dxftype (SPLINE/ELLIPSE/3DFACE/DIMENSION/HATCH 등) — 음성 유형
+    return out
+
+
 def select_worst30_heads_anchored(
     pipe_entities: list[dict],
     layer_categories: dict[str, str],
@@ -3677,9 +3735,11 @@ def select_worst30_heads_anchored(
     k: int = 30,
     manual_heads: list[tuple[float, float]] | None = None,
     zones: list[tuple[float, float, float, float]] | None = None,
-    branch_zones: list[tuple[float, float, float, float]] | None = None,
+    branch_zones: "list[tuple[float, float, float, float]] | HeadRegion | None" = None,
     audit_out: dict | None = None,
     progress_cb=None,
+    spatial_reselect: bool = False,
+    dxf_path=None,
 ) -> SelectionResult:
     """2앵커 anchored 선정(§1 계약) — ``alarm_xy``·``head_region`` 필수.
 
@@ -3691,6 +3751,9 @@ def select_worst30_heads_anchored(
       ④ corridor 제한·SPT·후반부는 기존 경로와 동일 primitive 공유
     force_connect(무제한 봉합)는 이 경로에서 호출 금지 — 기계실(탱크) 추출 전용.
     audit_out: 지정 시 source_attach/bridges/heads(unreachable 포함) 근거 기록(→W7).
+    spatial_reselect: W5 공간한정 조건부 재선별 플래그(기본 off). 1차 명목 수집
+        결과로 region 승인 헤드 도달망 구성에 실패한 경우에만 발동하며,
+        dxf_path(원본 DXF) 가 필요하다.
     """
     if alarm_xy is None:
         raise ValueError("anchored: alarm_xy(수동 알람밸브 좌표) 필수")
@@ -3698,17 +3761,11 @@ def select_worst30_heads_anchored(
         raise ValueError("anchored: head_region(헤드 영역 다각형) 필수")
     audit = audit_out if audit_out is not None else {}
     _pcb = progress_cb if callable(progress_cb) else (lambda f, m: None)
-    _pcb(0.0, "배관망 그래프 구성 중")
-    graph, edge_len = _build_graph(pipe_entities, layer_categories=layer_categories)
-    collapse_parallel_ladders(graph, edge_len)
-    _diag = _graph_diag(graph)
-    _penalty_keys: set = set()
-    _weld_dangling_endpoints(graph, edge_len,
-                             weld_tol=_adaptive_weld_tol(_diag),
-                             weld_cone_deg=_WELD_CONE_DEG,
-                             weld_edges_out=_penalty_keys)
-    _pcb(0.05, "평행 배관 정리 완료")
-    # ① 헤드 — region 게이트(W1) 통과한 최종 승인 후보만
+    # 작업창 W (§1) — W3 브릿지 양단 한정·W5 재선별 공간 한정에 공용
+    _region_pts = getattr(head_region, "pts", None)
+    _W = (_AnchorWindow(_region_pts, (float(alarm_xy[0]), float(alarm_xy[1])))
+          if _region_pts else None)
+    # ① 헤드 — region 게이트(W1) 통과한 최종 승인 후보만 (그래프와 무관 — 선확정)
     if manual_heads is not None:
         heads = [HeadCandidate(pos=_round_pt(x, y), raw=(x, y), block_name="(user)", layer="_user")
                  for x, y in manual_heads if head_region.contains((x, y))]
@@ -3719,6 +3776,45 @@ def select_worst30_heads_anchored(
     if len(heads) < k:
         k = len(heads)
     audit.setdefault("heads", {})["detected_in_region"] = len(heads)
+    _pcb(0.0, "배관망 그래프 구성 중")
+    _idx = _NodeIndex()
+    graph, edge_len = _build_graph(pipe_entities, node_index=_idx,
+                                   layer_categories=layer_categories)
+    # ── W5: 공간한정 조건부 재선별 (S140 조건부 재선별의 공간 한정 실시예) ──
+    # 발동 조건: 플래그 on **그리고** 1차 명목 수집(filter_pipenet_only) 그래프가
+    # region 승인 헤드에 도달하지 못할 때만 (헤드 최근접 노드 없음/HEAD_BRIDGE_MAX 밖).
+    if spatial_reselect and heads and _W is not None and dxf_path is not None:
+        _attachable = any(
+            (_nn := _nearest_graph_node(graph, h.pos)) is not None
+            and math.hypot(_nn[0] - h.pos[0], _nn[1] - h.pos[1]) <= HEAD_BRIDGE_MAX_MM
+            for h in heads)
+        if not _attachable:
+            _pcb(0.03, "공간한정 조건부 재선별 중")
+            resel = collect_spatial_reselect_segments(dxf_path, layer_categories, _W)
+            g2, el2 = _build_graph(resel, node_index=_idx, layer_categories=None)
+            new_keys = [kk for kk in el2 if kk not in edge_len]
+            for u, nbs in g2.items():
+                graph[u] |= nbs
+            for kk, _L in el2.items():
+                prev = edge_len.get(kk)
+                if prev is None or _L < prev:
+                    edge_len[kk] = _L
+            # 승인된 비명목 edge 태깅 → audit 점유율 집계(→W7 nonnominal)
+            _nn_len = float(sum(el2[kk] for kk in new_keys))
+            _total_len = float(sum(edge_len.values()))
+            audit["nonnominal"] = {
+                "edge_count": len(new_keys),
+                "len_mm": _nn_len,
+                "ratio": (_nn_len / _total_len) if _total_len else 0.0,
+            }
+    collapse_parallel_ladders(graph, edge_len)
+    _diag = _graph_diag(graph)
+    _penalty_keys: set = set()
+    _weld_dangling_endpoints(graph, edge_len,
+                             weld_tol=_adaptive_weld_tol(_diag),
+                             weld_cone_deg=_WELD_CONE_DEG,
+                             weld_edges_out=_penalty_keys)
+    _pcb(0.05, "평행 배관 정리 완료")
     _pcb(0.1, "알람밸브 결합 중")
     # ② 소스 — attach_source(W2). 헤드 보유 컴포넌트 우선, blind nearest 금지.
     src_raw = _round_pt(float(alarm_xy[0]), float(alarm_xy[1]))
@@ -3732,8 +3828,6 @@ def select_worst30_heads_anchored(
     #    브릿지 양단은 작업창 W 안으로 한정 — 앵커가 봉합 방향을 유도(§0).
     #    도면 현실상 배관 컴포넌트가 세대 경계를 넘어 이어지므로(예: 대명동
     #    comp12, x 252k→262k) W 제한 없이는 동측 지점에서 봉합될 수 있다.
-    _region_pts = getattr(head_region, "pts", None)
-    _W = _AnchorWindow(_region_pts, src_raw) if _region_pts else None
     bridge_targeted(graph, edge_len, src, heads, _adaptive_bridge_tols(_diag),
                     bridge_edges_out=_penalty_keys, audit=audit, within=_W)
     _pcb(0.7, "표적 브릿지 완료")

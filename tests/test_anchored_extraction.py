@@ -15,6 +15,7 @@ import math
 import sys
 from pathlib import Path
 
+import ezdxf
 import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -306,3 +307,81 @@ def test_w4_restrict_lshape_excludes_neighbor_node():
     rn2 = rp._restrict_to_branch_region(g2, el2, src, [(0.0, 0.0, 10000.0, 10000.0)])
     assert notch in rn2
     assert (min(b, notch), max(b, notch)) in el2
+
+
+# ── W5 수용 기준: 공간한정 조건부 재선별 (플래그, 기본 off) ──────────────────
+# 변조 fixture — 레이어명을 전부 무의미 문자열로 치환한 도면 (ezdxf 생성).
+# 1차 명목 수집(filter_pipenet_only)으로는 아무 entity 도 못 얻는다.
+
+TAMPER_REGION = [(-500.0, -500.0), (10500.0, -500.0),
+                 (10500.0, 3500.0), (-500.0, 3500.0)]
+TAMPER_HEADS = [(2000.0, 3000.0), (8000.0, 3000.0)]
+TAMPER_ALARM = (0.0, 0.0)
+
+
+def _make_tampered_dxf(path):
+    doc = ezdxf.new()
+    for name in ("XQZW1", "XQZW2", "XQZW3"):
+        doc.layers.add(name)
+    msp = doc.modelspace()
+    # 배관 comb (주관 + 가지 2개) — 무의미 레이어명 → OTHER 로 분류됨
+    msp.add_line((0, 0), (10000, 0), dxfattribs={"layer": "XQZW1"})
+    msp.add_line((2000, 0), (2000, 3000), dxfattribs={"layer": "XQZW1"})
+    msp.add_line((8000, 0), (8000, 3000), dxfattribs={"layer": "XQZW1"})
+    # 열린 LWPOLYLINE — 승인 대상 유형
+    msp.add_lwpolyline([(10000, 0), (10000, 2000)], dxfattribs={"layer": "XQZW2"})
+    # SPLINE — W 안이라도 음성 유형 (승인 금지)
+    msp.add_spline([(1000, 1000), (3000, 2500), (5000, 1200)],
+                   dxfattribs={"layer": "XQZW2"})
+    # 닫힌 LWPOLYLINE (박스) — 음성 유형
+    msp.add_lwpolyline([(4000, 500), (4500, 500), (4500, 1000), (4000, 1000)],
+                       close=True, dxfattribs={"layer": "XQZW3"})
+    # W 밖 LINE — 공간 한정으로 제외돼야 함
+    msp.add_line((50000, 0), (60000, 0), dxfattribs={"layer": "XQZW1"})
+    doc.saveas(path)
+    return path
+
+
+@pytest.fixture()
+def tampered(tmp_path):
+    path = _make_tampered_dxf(tmp_path / "tampered.dxf")
+    bundle = rp.parse_dxf_bundle(path)
+    layer_cat = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
+    pipe_ents = rp.filter_pipenet_only(bundle)
+    return path, layer_cat, pipe_ents
+
+
+def test_w5_flag_off_fails(tampered):
+    path, layer_cat, pipe_ents = tampered
+    assert all(layer_cat.get(n) == "OTHER" for n in ("XQZW1", "XQZW2", "XQZW3"))
+    assert not pipe_ents  # 1차 명목 수집 결과 없음
+    # 플래그 off(기본) — 재선별 미발동, 명목 수집만으로는 소스 결합 실패
+    with pytest.raises(ValueError):
+        rp.select_worst30_heads_anchored(
+            pipe_ents, layer_cat, alarm_xy=TAMPER_ALARM,
+            head_region=HeadRegion.from_polygon(TAMPER_REGION),
+            manual_heads=TAMPER_HEADS)
+
+
+def test_w5_reselect_succeeds_without_spline(tampered):
+    path, layer_cat, pipe_ents = tampered
+    audit = {}
+    res = rp.select_worst30_heads_anchored(
+        pipe_ents, layer_cat, alarm_xy=TAMPER_ALARM,
+        head_region=HeadRegion.from_polygon(TAMPER_REGION),
+        manual_heads=TAMPER_HEADS,
+        spatial_reselect=True, dxf_path=path, audit_out=audit)
+    assert len(res.heads) == 2, "재선별로 추출이 성공해야 함"
+    nn = audit["nonnominal"]
+    assert nn["edge_count"] >= 4 and nn["len_mm"] > 0 and nn["ratio"] > 0
+    # 공간 한정: W 밖 LINE(x 50k~60k) 유입 금지
+    assert all(n[0] <= 20000.0 for n in res.nodes_in_subgraph)
+
+
+def test_w5_candidates_exclude_negative_types(tampered):
+    path, layer_cat, _ = tampered
+    win = rp._AnchorWindow(TAMPER_REGION, TAMPER_ALARM)
+    cands = rp.collect_spatial_reselect_segments(path, layer_cat, win)
+    kinds = sorted(c["t"] for c in cands)
+    # LINE 3 + 열린 LWPOLYLINE 1 — SPLINE 0개, 닫힌 PL 0개, W 밖 LINE 0개
+    assert kinds == ["L", "L", "L", "PL"]

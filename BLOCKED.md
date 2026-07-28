@@ -41,7 +41,19 @@
   헤드 보유 컴포넌트)·tol 계단·merge-and-reevaluate 는 지시서 그대로.
   head_region 이 `.pts` 를 노출하지 않으면 W 제한 없이 동작(W4 HeadRegion 이 정식화).
 
-## 5. fixture 파일명 불일치 (해소됨 — 기록용)
+## 5. W5 — 음성 유형(SPLINE 등) 판정 전제와 파서 현실 불일치
+- **항목**: W5 (공간한정 조건부 재선별)
+- **질문**: 지시서는 재선별 범위에서 "SPLINE/ELLIPSE/… 음성 유형 승인 금지"를
+  요구하나, 파서(parse_dxf_bundle)는 SPLINE/ELLIPSE 를 flattening 해 "PL" 타입
+  dict 로 담으므로 파이프라인 입력(entity dict) 수준에서는 원 dxftype 을 구분할
+  수 없음. entity dict 에 원천 태그를 추가하면 골든 characterization 의
+  entities_sig(raw dict 해시)가 바뀌어 비-anchored 비트동일 요구를 위반.
+- **임시 우회**: 예 — 재선별 헬퍼(collect_spatial_reselect_segments)가 DXF
+  원본을 ezdxf 로 직접 스캔해 실제 dxftype 으로 승인/음성 판정. 이 때문에
+  anchored 함수에 dxf_path 인자가 추가됨(재선별 발동 시에만 사용). 블록(INSERT)
+  내부의 OTHER 선분은 이 스캔 범위 밖 — 저-prior 후보 특성상 수용.
+
+## 6. fixture 파일명 불일치 (해소됨 — 기록용)
 - **항목**: §0 검증 도면
 - **질문**: 지시서의 `1__입력도면_대명동_단위세대_평면도.dxf` 는 저장소에 없음.
 - **임시 우회**: 불필요 — 증거로 확정. `samples/dxf/대명동201동 단위세대_layer정리.dxf` 가

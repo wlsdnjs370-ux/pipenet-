@@ -2299,6 +2299,82 @@ def find_unreachable_region_heads(
     return unreachable
 
 
+def attach_source(
+    alarm_xy: tuple[float, float],
+    graph: dict,
+    comp_of: dict,
+    accepted_heads: list,
+    edge_len: dict,
+    audit: dict,
+) -> tuple[tuple[float, float], tuple | None]:
+    """anchored 소스 결합(W2) — blind ``_nearest_graph_node`` 단독 폴백 금지.
+
+    1순위 후보 = region 내 승인 헤드를 1개 이상 보유한 컴포넌트의 노드들.
+    그중 최근접에 부착. ``SOURCE_BRIDGE_MAX_MM`` 내에 없으면 무헤드 컴포넌트까지
+    1단계 완화(escalation=1)하되 거리 상한은 유지. 그래도 없으면 anchored 실패 —
+    명시적 에러(ValueError). 선택 근거(거리·컴포넌트 헤드 수·완화 단계)는
+    ``audit['source_attach']`` 에 기록한다.
+
+    accepted_heads: HeadDetection 목록(또는 (x, y) 좌표 목록).
+    반환: (source 노드, 접속 edge 키 또는 None). alarm_xy 가 기존 노드와 1e-3 이상
+    떨어져 있으면 alarm_xy 를 그래프 노드로 추가하고 최근접 후보 노드와 edge 로
+    잇는다(기존 canonical 부착과 동일 방식) — 이 edge 는 추정연결이라 호출부에서
+    라우팅 penalty 대상으로 등록해야 한다.
+    """
+    ax, ay = float(alarm_xy[0]), float(alarm_xy[1])
+    head_count: dict = {}
+    for h in accepted_heads:
+        pos = h.pos if hasattr(h, "pos") else (float(h[0]), float(h[1]))
+        near = _nearest_graph_node(graph, pos)
+        if near is None:
+            continue
+        if math.hypot(pos[0] - near[0], pos[1] - near[1]) <= HEAD_BRIDGE_MAX_MM:
+            cid = comp_of.get(near)
+            if cid is not None:
+                head_count[cid] = head_count.get(cid, 0) + 1
+
+    def _nearest_in(pred) -> tuple:
+        best, best_d = None, float("inf")
+        for n in graph:
+            if not pred(comp_of.get(n)):
+                continue
+            d = math.hypot(n[0] - ax, n[1] - ay)
+            if d < best_d:
+                best, best_d = n, d
+        return best, best_d
+
+    stages = (
+        (0, "head_component_nearest", lambda cid: cid in head_count),
+        (1, "any_component_nearest", lambda cid: True),
+    )
+    for escalation, method, pred in stages:
+        node, d = _nearest_in(pred)
+        if node is None or d > SOURCE_BRIDGE_MAX_MM:
+            continue
+        audit["source_attach"] = {
+            "dist_mm": d,
+            "method": method,
+            "escalation": escalation,
+            "comp_head_count": head_count.get(comp_of.get(node), 0),
+        }
+        if d <= 1e-3:
+            return node, None
+        src = (ax, ay)
+        graph.setdefault(src, set()).add(node)
+        graph[node].add(src)
+        key = (min(src, node), max(src, node))
+        edge_len[key] = d
+        return src, key
+    audit["source_attach"] = {
+        "dist_mm": None, "method": "failed", "escalation": len(stages),
+        "comp_head_count": 0,
+    }
+    raise ValueError(
+        f"anchored 소스 결합 실패 — alarm_xy=({ax}, {ay}) 반경 "
+        f"{SOURCE_BRIDGE_MAX_MM:.0f}mm 안에 부착 가능한 컴포넌트 없음"
+    )
+
+
 @dataclass(slots=True)
 class SelectionResult:
     source_pos: tuple[float, float] | None

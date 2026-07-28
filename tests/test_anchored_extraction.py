@@ -147,3 +147,49 @@ def test_w1_find_unreachable_region_heads():
     assert orphan.pos in out
     # source 가 그래프에 없으면 전원 미도달 (조용한 drop 금지)
     assert rp.find_unreachable_region_heads({}, None, [reachable]) == [reachable.pos]
+
+
+# ── W2 수용 기준: attach_source (합성 그래프) ──────────────────────────────
+
+def _w2_graph():
+    """102mm 무헤드 고립 조각 vs 606mm 승인 헤드 보유 본망 (지시서 §0 실측 재현)."""
+    n1, n2 = (102.0, 0.0), (202.0, 0.0)                      # 고립 노이즈 조각
+    m1, m2, m3 = (606.0, 0.0), (1606.0, 0.0), (2606.0, 0.0)  # 본망
+    graph = {n1: {n2}, n2: {n1}, m1: {m2}, m2: {m1, m3}, m3: {m2}}
+    edge_len = {(n1, n2): 100.0, (m1, m2): 1000.0, (m2, m3): 1000.0}
+    comp_of = {n1: 0, n2: 0, m1: 1, m2: 1, m3: 1}
+    head = HeadDetection(pos=(1600.0, 50.0), bbox=(1599, 49, 1601, 51),
+                         kind="t", confidence=0.9)
+    return graph, edge_len, comp_of, head
+
+
+def test_w2_attach_source_prefers_head_component():
+    graph, edge_len, comp_of, head = _w2_graph()
+    audit = {}
+    src, key = rp.attach_source((0.0, 0.0), graph, comp_of, [head], edge_len, audit)
+    # blind nearest 였다면 (102,0) — 헤드 보유 본망 (606,0) 에 부착되어야 함
+    assert src == (0.0, 0.0)
+    assert (606.0, 0.0) in graph[src]
+    assert (102.0, 0.0) not in graph[src]
+    sa = audit["source_attach"]
+    assert sa["escalation"] == 0 and sa["method"] == "head_component_nearest"
+    assert abs(sa["dist_mm"] - 606.0) < 1e-6 and sa["comp_head_count"] == 1
+    assert key in edge_len and abs(edge_len[key] - 606.0) < 1e-6
+
+
+def test_w2_attach_source_escalates_without_heads():
+    graph, edge_len, comp_of, _head = _w2_graph()
+    audit = {}
+    src, _key = rp.attach_source((0.0, 0.0), graph, comp_of, [], edge_len, audit)
+    # 승인 헤드가 없으면 1단계 완화 — 거리 상한 내 최근접(고립 조각 102mm)
+    assert (102.0, 0.0) in graph[src]
+    assert audit["source_attach"]["escalation"] == 1
+
+
+def test_w2_attach_source_fails_beyond_cap():
+    far = (10_000_000.0, 0.0)
+    graph = {far: set()}
+    audit = {}
+    with pytest.raises(ValueError):
+        rp.attach_source((0.0, 0.0), graph, {far: 0}, [], {}, audit)
+    assert audit["source_attach"]["method"] == "failed"

@@ -193,3 +193,62 @@ def test_w2_attach_source_fails_beyond_cap():
     with pytest.raises(ValueError):
         rp.attach_source((0.0, 0.0), graph, {far: 0}, [], {}, audit)
     assert audit["source_attach"]["method"] == "failed"
+
+
+# ── W3 수용 기준: 표적 브릿지 ──────────────────────────────────────────────
+
+def test_w3_bridge_targeted_only_head_components():
+    s1, s2 = (0.0, 0.0), (1000.0, 0.0)              # comp(source)
+    n1, n2 = (1100.0, 20.0), (1200.0, 20.0)         # 무헤드 노이즈 조각 (102mm)
+    h1, h2 = (1300.0, 0.0), (2300.0, 0.0)           # 승인 헤드 보유 컴포넌트 (300mm)
+    graph = {s1: {s2}, s2: {s1}, n1: {n2}, n2: {n1}, h1: {h2}, h2: {h1}}
+    edge_len = {(s1, s2): 1000.0, (n1, n2): 100.0, (h1, h2): 1000.0}
+    head = HeadDetection(pos=(2290.0, 10.0), bbox=(2289, 9, 2291, 11),
+                         kind="t", confidence=0.9)
+    audit = {}
+    bridges = set()
+    total = rp.bridge_targeted(graph, edge_len, s1, [head], (200.0, 500.0),
+                               bridge_edges_out=bridges, audit=audit)
+    # 헤드 보유 컴포넌트만 봉합 — 더 가까운(102mm) 무헤드 조각은 어떤 tol 에서도 금지
+    assert total == 1
+    assert h1 in graph[s2]
+    assert graph[n1] == {n2} and graph[n2] == {n1}
+    assert audit["bridges"][0]["tol"] == 500.0
+    assert audit["bridges"][0]["p1_in_source_comp"] is True
+    assert len(bridges) == 1
+
+
+def test_w3_anchored_fixture_excludes_other_units(pipe_ents, layer_categories):
+    region = PolyRegion(WEST_UNIT_POLY)
+    gated = rp.detect_heads(pipe_ents, layer_categories, region=region)
+    assert gated
+    cx = sum(h.pos[0] for h in gated) / len(gated)
+    cy = sum(h.pos[1] for h in gated) / len(gated)
+    audit = {}
+    res = rp.select_worst30_heads_anchored(pipe_ents, layer_categories,
+                                           alarm_xy=(cx, cy), head_region=region,
+                                           audit_out=audit)
+    assert res.heads, "anchored 선정 결과 헤드 없음"
+    assert res.source_kind == "manual_anchored"
+    # 최종망(SPT 후)에 다른 세대의 노드 0개 — 동측 세대(x≥255,000)·범례(x≈288,000) 배제
+    for n in res.nodes_in_subgraph:
+        assert n[0] < 255000.0, f"다른 세대 노드 포함: {n}"
+    for h in res.heads:
+        assert region.contains(h.pos), f"region 밖 헤드 선정: {h.pos}"
+    # 모든 bridge 양단이 comp(source) 성장 이력에 속함 — audit 로 검증
+    for b in audit.get("bridges", []):
+        assert b["p1_in_source_comp"] is True
+    assert audit["source_attach"]["method"] in (
+        "head_component_nearest", "any_component_nearest")
+    assert "unreachable" in audit["heads"]
+
+
+def test_w3_anchored_requires_both_anchors(pipe_ents, layer_categories):
+    with pytest.raises(ValueError):
+        rp.select_worst30_heads_anchored(pipe_ents, layer_categories,
+                                         alarm_xy=None,
+                                         head_region=PolyRegion(WEST_UNIT_POLY))
+    with pytest.raises(ValueError):
+        rp.select_worst30_heads_anchored(pipe_ents, layer_categories,
+                                         alarm_xy=(250000.0, -232000.0),
+                                         head_region=None)

@@ -1085,6 +1085,10 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             "title": title,
             "machine_room_attached": mr_attached,
             "geometry": geometry,
+            # W7 — anchored 실행일 때만 추출 근거 리포트 직렬화.
+            # 비-anchored(현행 select_worst30_heads)에선 키 자체가 없음 → 응답 불변.
+            **({"extraction_audit": selection.audit.to_json_dict()}
+               if getattr(selection, "audit", None) is not None else {}),
         })
 
     @app.post("/api/remote30/combined/rebuild")

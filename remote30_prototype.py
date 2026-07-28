@@ -2393,6 +2393,45 @@ class SelectionResult:
     source_bridge_dist_mm: float = 0.0
     # 한도(SOURCE_BRIDGE_MAX_MM) 초과로 source 를 nearest 로 fallback 한 경우 True.
     source_fallback: bool = False
+    # anchored 실행의 추출 근거 리포트(W7). 비-anchored 경로에선 항상 None.
+    audit: "ExtractionAudit | None" = None
+
+
+@dataclass(slots=True)
+class ExtractionAudit:
+    """anchored 추출 근거 리포트(W7) — 파이프라인 audit 축적 dict 의 정식 스키마.
+
+    기존 자료구조(weld/bridge/head-drop edge 키 set, attach_source·bridge_targeted
+    의 audit 기록)를 그대로 재사용해 채운다 — 중복 계산 금지.
+    """
+    heads: dict = field(default_factory=dict)          # {detected_in_region, attached, unreachable:[[x,y],...]}
+    bridges: list = field(default_factory=list)        # [{p1,p2,len_mm,tol,layers,p1_in_source_comp}]
+    welds: list = field(default_factory=list)          # [{p1,p2,len_mm}]
+    head_drops: list = field(default_factory=list)     # [{p1,p2,len_mm}]
+    nonnominal: dict = field(default_factory=dict)     # {edge_count,len_mm,ratio}
+    corridor: dict = field(default_factory=dict)       # {node_count,len_mm}
+    source_attach: dict = field(default_factory=dict)  # {dist_mm,method,escalation,...}
+
+    @classmethod
+    def from_audit_dict(cls, audit: dict) -> "ExtractionAudit":
+        """축적 dict → 스키마 정규화. anchor_window(W6, 객체) 등 비직렬화 항목 제외."""
+        return cls(
+            heads=dict(audit.get("heads") or {}),
+            bridges=list(audit.get("bridges") or []),
+            welds=list(audit.get("welds") or []),
+            head_drops=list(audit.get("head_drops") or []),
+            nonnominal=dict(audit.get("nonnominal") or
+                            {"edge_count": 0, "len_mm": 0.0, "ratio": 0.0}),
+            corridor=dict(audit.get("corridor") or {"node_count": 0, "len_mm": 0.0}),
+            source_attach=dict(audit.get("source_attach") or {}),
+        )
+
+    def to_json_dict(self) -> dict:
+        return {
+            "heads": self.heads, "bridges": self.bridges, "welds": self.welds,
+            "head_drops": self.head_drops, "nonnominal": self.nonnominal,
+            "corridor": self.corridor, "source_attach": self.source_attach,
+        }
 
 
 def _build_graph(
@@ -3324,11 +3363,14 @@ def _finalize_selection(
     _pcb,
     src_bridge_dist_mm: float,
     src_fallback: bool,
+    head_drop_out: set | None = None,
 ) -> SelectionResult:
     """SPT 이후 공통 후반부 — 헤드 스냅→거리정렬→top-K→subgraph→collinear 병합.
 
     select_worst30_heads 에서 순수 코드 이동(동작 불변). anchored 경로
     (select_worst30_heads_anchored)와 공유하기 위해 분리.
+    head_drop_out: 주어지면 헤드 스냅으로 추가된 head-drop edge (min,max) 키 누적
+        (→W7 audit. 기본 None=기존 동작 불변).
     """
     # 헤드 최근접-노드 스냅 — 헤드 수천 개 × O(|graph|) 전수스캔이면 대형 도면에서
     # 수십 초~분. 격자 인덱스(cell = HEAD_BRIDGE_MAX_MM)로 근사 O(1) 질의로 대체.
@@ -3398,6 +3440,8 @@ def _finalize_selection(
             graph.setdefault(h.pos, set()).add(nearest)
             graph[nearest].add(h.pos)
             edge_len[(min(h.pos, nearest), max(h.pos, nearest))] = d
+            if head_drop_out is not None:
+                head_drop_out.add((min(h.pos, nearest), max(h.pos, nearest)))
             _hgrid_add(h.pos)  # 성장 그래프 — 뒤 헤드가 이 노드에 스냅 가능
 
     _pcb(0.76, "알람밸브→전체 헤드 거리 계산 중")
@@ -3661,9 +3705,12 @@ def bridge_targeted(
             if bridge_edges_out is not None:
                 bridge_edges_out.add(key)
             if audit is not None:
+                # layers: 그래프 수준(좌표·길이만)에선 원 entity layer 가 소실돼
+                # 복원 불가 — null 기록 (BLOCKED.md #7)
                 audit.setdefault("bridges", []).append({
                     "p1": [v[0], v[1]], "p2": [u[0], u[1]],
-                    "len_mm": d, "tol": tol, "p1_in_source_comp": True,
+                    "len_mm": d, "tol": tol, "layers": None,
+                    "p1_in_source_comp": True,
                 })
             total += 1
     return total
@@ -3813,10 +3860,14 @@ def select_worst30_heads_anchored(
     collapse_parallel_ladders(graph, edge_len)
     _diag = _graph_diag(graph)
     _penalty_keys: set = set()
+    _weld_keys: set = set()  # W7 — weld 만 별도 수집 (audit welds 항목)
     _weld_dangling_endpoints(graph, edge_len,
                              weld_tol=_adaptive_weld_tol(_diag),
                              weld_cone_deg=_WELD_CONE_DEG,
-                             weld_edges_out=_penalty_keys)
+                             weld_edges_out=_weld_keys)
+    _penalty_keys |= _weld_keys
+    audit["welds"] = [{"p1": [kk[0][0], kk[0][1]], "p2": [kk[1][0], kk[1][1]],
+                       "len_mm": edge_len.get(kk, 0.0)} for kk in sorted(_weld_keys)]
     _pcb(0.05, "평행 배관 정리 완료")
     _pcb(0.1, "알람밸브 결합 중")
     # ② 소스 — attach_source(W2). 헤드 보유 컴포넌트 우선, blind nearest 금지.
@@ -3838,12 +3889,33 @@ def select_worst30_heads_anchored(
     audit["heads"]["unreachable"] = [
         [p[0], p[1]] for p in find_unreachable_region_heads(graph, src, heads)
     ]
+    audit["heads"]["attached"] = len(heads) - len(audit["heads"]["unreachable"])
     # ④ corridor 제한 → SPT → 공통 후반부 (기존 primitive 그대로)
-    _restrict_to_branch_region(graph, edge_len, src, branch_zones,
-                               penalty_keys=_penalty_keys)
+    region_nodes = _restrict_to_branch_region(graph, edge_len, src, branch_zones,
+                                              penalty_keys=_penalty_keys)
+    # W7 — corridor 집계: 제한 후 영역 밖에 남은 edge = source→영역 corridor
+    # (분기영역 미지정/no-op 이면 0). 별도 경로 탐색 없음 — 제한 결과 재사용.
+    if region_nodes:
+        _cor_keys: set = set()
+        for _u, _nbs in graph.items():
+            for _v in _nbs:
+                if _u not in region_nodes or _v not in region_nodes:
+                    _cor_keys.add((min(_u, _v), max(_u, _v)))
+        _cor_nodes = {n for kk in _cor_keys for n in kk}
+        audit["corridor"] = {"node_count": len(_cor_nodes),
+                             "len_mm": float(sum(edge_len.get(kk, 0.0)
+                                                 for kk in _cor_keys))}
+    else:
+        audit["corridor"] = {"node_count": 0, "len_mm": 0.0}
     force_spanning_tree(graph, edge_len, source=src, penalty_keys=_penalty_keys)
-    return _finalize_selection(graph, edge_len, src, "manual_anchored", heads, k, _pcb,
-                               src_bridge_dist_mm, False)
+    _hd_keys: set = set()
+    res = _finalize_selection(graph, edge_len, src, "manual_anchored", heads, k, _pcb,
+                              src_bridge_dist_mm, False, head_drop_out=_hd_keys)
+    audit["head_drops"] = [{"p1": [kk[0][0], kk[0][1]], "p2": [kk[1][0], kk[1][1]],
+                            "len_mm": edge_len.get(kk, 0.0)} for kk in sorted(_hd_keys)]
+    # W7 — 축적 dict → 정식 스키마. 반환값에 포함 (r30_combined 가 JSON 직렬화)
+    res.audit = ExtractionAudit.from_audit_dict(audit)
+    return res
 
 
 # ────────────────────────────────────────────────────────────────────────────

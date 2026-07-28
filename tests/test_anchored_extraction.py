@@ -423,3 +423,41 @@ def test_w6_anchor_window_excludes_legend_dia_text():
                                   anchor_window=audit["anchor_window"])
     assert _cand_count(t_plain) == 2   # 제한 없음 — 범례 관경 문자 유입(오염)
     assert _cand_count(t_win) == 1     # W 제한 — 범례 관경 문자 제외
+
+
+# ── W7 수용 기준: ExtractionAudit 리포트 ────────────────────────────────────
+
+def test_w7_audit_schema_on_fixture(pipe_ents, layer_categories):
+    import json as _json
+    region = HeadRegion.from_polygon(WEST_UNIT_POLY)
+    gated = rp.detect_heads(pipe_ents, layer_categories, region=region)
+    cx = sum(h.pos[0] for h in gated) / len(gated)
+    cy = sum(h.pos[1] for h in gated) / len(gated)
+    res = rp.select_worst30_heads_anchored(pipe_ents, layer_categories,
+                                           alarm_xy=(cx, cy), head_region=region)
+    aud = res.audit
+    assert isinstance(aud, rp.ExtractionAudit)
+    j = _json.loads(_json.dumps(aud.to_json_dict()))   # JSON 직렬화 계약
+    assert set(j) == {"heads", "bridges", "welds", "head_drops",
+                      "nonnominal", "corridor", "source_attach"}
+    assert j["heads"]["detected_in_region"] == len(gated)
+    assert j["heads"]["attached"] + len(j["heads"]["unreachable"]) == len(gated)
+    assert {"dist_mm", "method", "escalation"} <= set(j["source_attach"])
+    # W3 의 bridge 검증이 audit 로 수행됨 — 스키마 + 소스컴포넌트 성장 이력
+    for b in j["bridges"]:
+        assert {"p1", "p2", "len_mm", "layers"} <= set(b)
+        assert b["p1_in_source_comp"] is True
+    for e in j["welds"] + j["head_drops"]:
+        assert {"p1", "p2", "len_mm"} <= set(e)
+        assert e["len_mm"] > 0
+    assert j["head_drops"], "헤드 스냅(head-drop) 기록이 있어야 함"
+    assert {"edge_count", "len_mm", "ratio"} <= set(j["nonnominal"])
+    assert {"node_count", "len_mm"} <= set(j["corridor"])
+    # 재선별 미발동 → nonnominal 0, 분기영역 미지정 → corridor 0
+    assert j["nonnominal"]["edge_count"] == 0
+    assert j["corridor"]["node_count"] == 0
+
+
+def test_w7_nonanchored_audit_none(pipe_ents, layer_categories):
+    sel = rp.select_worst30_heads(pipe_ents, layer_categories)
+    assert sel.audit is None   # 비-anchored 응답에 extraction_audit 키 미노출 전제

@@ -53,6 +53,15 @@
   anchored 함수에 dxf_path 인자가 추가됨(재선별 발동 시에만 사용). 블록(INSERT)
   내부의 OTHER 선분은 이 스캔 범위 밖 — 저-prior 후보 특성상 수용.
 
+## 6-1. W7 — bridges "layers" 필드는 그래프 수준에서 복원 불가
+- **항목**: W7 (ExtractionAudit)
+- **질문**: 스키마의 `bridges [{p1, p2, len_mm, layers}]` 중 `layers` — 브릿지는
+  그래프(노드 좌표 + edge 길이만 보유) 수준에서 생성되므로 양단이 유래한 원
+  entity 의 layer 정보가 이미 소실됨. 노드→layer 역매핑을 만들려면 _build_graph
+  변경(골든 위험) 또는 중복 자료구조 신설이 필요.
+- **임시 우회**: 예 — `layers: null` 로 스키마 자리만 채워 기록. 추후 필요 시
+  _build_graph 에 선택적 node→layer 출력 kwarg 를 추가해 채울 수 있음.
+
 ## 6. fixture 파일명 불일치 (해소됨 — 기록용)
 - **항목**: §0 검증 도면
 - **질문**: 지시서의 `1__입력도면_대명동_단위세대_평면도.dxf` 는 저장소에 없음.

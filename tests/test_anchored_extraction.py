@@ -22,7 +22,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 import remote30_prototype as rp  # noqa: E402
-from remote30_prototype import HeadDetection  # noqa: E402
+from remote30_prototype import HeadDetection, HeadRegion  # noqa: E402
 
 FIXTURE = _ROOT / "samples" / "dxf" / "대명동201동 단위세대_layer정리.dxf"
 
@@ -36,26 +36,6 @@ WEST_UNIT_POLY = [
     (253500.0, -221500.0),
     (244500.0, -221500.0),
 ]
-
-
-class PolyRegion:
-    """테스트용 최소 region — contains((x, y)) 프로토콜 (→W4 HeadRegion 로 대체)."""
-
-    def __init__(self, pts: list[tuple[float, float]]):
-        self.pts = pts
-
-    def contains(self, pt) -> bool:
-        x, y = float(pt[0]), float(pt[1])
-        inside = False
-        n = len(self.pts)
-        for i in range(n):
-            x1, y1 = self.pts[i]
-            x2, y2 = self.pts[(i + 1) % n]
-            if (y1 > y) != (y2 > y):
-                xin = (x2 - x1) * (y - y1) / (y2 - y1) + x1
-                if x < xin:
-                    inside = not inside
-        return inside
 
 
 @pytest.fixture(scope="module")
@@ -107,7 +87,7 @@ def test_r2_raw_circles_approved(pipe_ents, layer_categories):
 # ── W1 수용 기준 ────────────────────────────────────────────────────────────
 
 def test_w1_region_gate_excludes_legend(pipe_ents, layer_categories):
-    region = PolyRegion(WEST_UNIT_POLY)
+    region = HeadRegion.from_polygon(WEST_UNIT_POLY)
     heads = rp.detect_heads(pipe_ents, layer_categories, region=region)
     assert heads, "서쪽 세대 region 안에 승인 헤드가 있어야 함"
     for lx, ly in LEGEND_XY:
@@ -219,7 +199,7 @@ def test_w3_bridge_targeted_only_head_components():
 
 
 def test_w3_anchored_fixture_excludes_other_units(pipe_ents, layer_categories):
-    region = PolyRegion(WEST_UNIT_POLY)
+    region = HeadRegion.from_polygon(WEST_UNIT_POLY)
     gated = rp.detect_heads(pipe_ents, layer_categories, region=region)
     assert gated
     cx = sum(h.pos[0] for h in gated) / len(gated)
@@ -247,8 +227,82 @@ def test_w3_anchored_requires_both_anchors(pipe_ents, layer_categories):
     with pytest.raises(ValueError):
         rp.select_worst30_heads_anchored(pipe_ents, layer_categories,
                                          alarm_xy=None,
-                                         head_region=PolyRegion(WEST_UNIT_POLY))
+                                         head_region=HeadRegion.from_polygon(WEST_UNIT_POLY))
     with pytest.raises(ValueError):
         rp.select_worst30_heads_anchored(pipe_ents, layer_categories,
                                          alarm_xy=(250000.0, -232000.0),
                                          head_region=None)
+
+
+# ── W4 수용 기준: HeadRegion 영역 표현 통일 ──────────────────────────────────
+
+# L자형 다각형 — bbox(rect union)는 (0,0)~(10000,10000) 이지만 notch(우상단)는 밖
+L_POLY = [(0.0, 0.0), (10000.0, 0.0), (10000.0, 4000.0),
+          (4000.0, 4000.0), (4000.0, 10000.0), (0.0, 10000.0)]
+
+
+def test_w4_headregion_rect_regression():
+    # 기존 branch_zones in_region 판정과 동일: min/max 정규화 + 경계 포함(<=)
+    r = HeadRegion.from_rects([(10.0, 10.0, 0.0, 0.0)])  # 역순 rect 도 정규화
+    assert r.contains((5.0, 5.0))
+    assert r.contains((0.0, 10.0))     # 경계 포함
+    assert not r.contains((10.1, 5.0))
+    assert not HeadRegion.from_rects([])   # 빈 region 은 falsy (no-op 게이트용)
+    d = r.dilate(2.0)                  # margin 누적, 원본 불변
+    assert d.contains((11.5, 5.0))
+    assert not r.contains((11.5, 5.0))
+
+
+def test_w4_headregion_lshape_excludes_rect_union_point():
+    region = HeadRegion.from_polygon(L_POLY)
+    assert region.contains((2000.0, 8000.0))   # 세로 다리 안
+    assert region.contains((8000.0, 2000.0))   # 가로 다리 안
+    # 사각형 union(bbox) 이었다면 물었을 notch 점 — 다각형에선 제외
+    assert not region.contains((8000.0, 8000.0))
+    assert HeadRegion.from_rects([(0.0, 0.0, 10000.0, 10000.0)]).contains((8000.0, 8000.0))
+    # dilate 는 다각형 경계 팽창 (Minkowski 원판)
+    assert region.dilate(500.0).contains((10400.0, 2000.0))
+    assert not region.dilate(500.0).contains((8000.0, 8000.0))
+
+
+def test_w4_restrict_lshape_excludes_neighbor_node():
+    """L자형 region 을 _restrict_to_branch_region 에 직접 투입 —
+    rect-union 이면 물었을 notch(이웃) 노드·가지가 제거되는지."""
+    g: dict = {}
+    el: dict = {}
+
+    def add(u, v):
+        g.setdefault(u, set()).add(v)
+        g.setdefault(v, set()).add(u)
+        el[(min(u, v), max(u, v))] = math.hypot(u[0] - v[0], u[1] - v[1])
+
+    src = (-2000.0, 2000.0)     # 영역 밖 source
+    a = (2000.0, 2000.0)        # L 안 (가로 다리)
+    b = (8000.0, 2000.0)        # L 안
+    notch = (8000.0, 8000.0)    # L 밖 (bbox 안) — 이웃 세대 노드
+    add(src, a)
+    add(a, b)
+    add(b, notch)
+
+    region_nodes = rp._restrict_to_branch_region(
+        g, el, src, HeadRegion.from_polygon(L_POLY))
+    assert a in region_nodes and b in region_nodes
+    assert notch not in region_nodes
+    assert (min(b, notch), max(b, notch)) not in el   # notch 가지 제거
+    assert (min(a, b), max(a, b)) in el               # 영역 안 edge 보존
+    assert (min(src, a), max(src, a)) in el           # corridor 보존
+    # rect-list 입력 경로 회귀 — 동일 bbox rect 는 notch 를 물고 있어야 함(기존 의미론)
+    g2: dict = {}
+    el2: dict = {}
+
+    def add2(u, v):
+        g2.setdefault(u, set()).add(v)
+        g2.setdefault(v, set()).add(u)
+        el2[(min(u, v), max(u, v))] = math.hypot(u[0] - v[0], u[1] - v[1])
+
+    add2(src, a)
+    add2(a, b)
+    add2(b, notch)
+    rn2 = rp._restrict_to_branch_region(g2, el2, src, [(0.0, 0.0, 10000.0, 10000.0)])
+    assert notch in rn2
+    assert (min(b, notch), max(b, notch)) in el2

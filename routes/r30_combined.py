@@ -516,7 +516,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             except (TypeError, ValueError):
                 pass
 
-        from remote30_prototype import select_worst30_heads, build_input_tables
+        from remote30_prototype import select_worst30_heads, build_input_tables, HeadRegion
         from remote30_full_network import (
             stitch_riser_and_heads, emit_full_sdf,
             prepend_machine_room_to_riser, insert_source_pump,
@@ -573,7 +573,8 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                 manual_source=alarm_xy,
                 manual_heads=manual_heads if (manual_heads or deleted or added) else None,
                 zones=zones if zones else None,
-                branch_zones=branch_zones if branch_zones else None,
+                # W4: rect 입력 → HeadRegion 승격 (영역 표현 통일)
+                branch_zones=HeadRegion.from_rects(branch_zones) if branch_zones else None,
                 **({"k": k_heads} if k_heads is not None else {}),
             )
             head_tables = build_input_tables(

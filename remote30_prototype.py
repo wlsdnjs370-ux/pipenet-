@@ -1115,7 +1115,7 @@ def _floor_for_node_y(node_y: float,
     return None, None
 
 
-from remote30_graph import (_point_to_segment_dist, _round_pt, _NodeIndex, _is_triangle_shape, _edge_dir, _midpoint, _dijkstra_from, _shortest_path, _nearest_graph_node, _connected_components)  # noqa: E501  (Phase2b core)
+from remote30_graph import (_point_to_segment_dist, _round_pt, _NodeIndex, _is_triangle_shape, _edge_dir, _midpoint, _dijkstra_from, _shortest_path, _nearest_graph_node, _connected_components, HeadRegion)  # noqa: E501  (Phase2b core)
 
 
 def _match_diameter_for_segment(
@@ -2867,7 +2867,7 @@ def _restrict_to_branch_region(
     graph: dict[tuple, set[tuple]],
     edge_len: dict[tuple, float],
     source: tuple | None,
-    branch_zones: list[tuple[float, float, float, float]] | None,
+    branch_zones: "list[tuple[float, float, float, float]] | HeadRegion | None",
     penalty_keys: set | None = None,
 ) -> set:
     """분기영역(branch_zones) 지정 시 그래프를 in-place 로 제한한다.
@@ -2888,13 +2888,12 @@ def _restrict_to_branch_region(
     if not branch_zones or source is None or source not in graph:
         return set()
 
-    def in_region(pt) -> bool:
-        for (x1, y1, x2, y2) in branch_zones:
-            lo_x, hi_x = (x1, x2) if x1 <= x2 else (x2, x1)
-            lo_y, hi_y = (y1, y2) if y1 <= y2 else (y2, y1)
-            if lo_x <= pt[0] <= hi_x and lo_y <= pt[1] <= hi_y:
-                return True
-        return False
+    # W4: 영역 표현 통일 — rect list 는 HeadRegion.from_rects 로 승격.
+    # 내부 의미론 불변: in_region 판정만 HeadRegion.contains 에 위임
+    # (min/max 정규화 + 경계 포함 <= — 기존 판정과 비트동일).
+    region = (branch_zones if isinstance(branch_zones, HeadRegion)
+              else HeadRegion.from_rects(branch_zones))
+    in_region = region.contains
 
     region_nodes = {n for n in graph if in_region(n)}
     if not region_nodes:

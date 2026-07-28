@@ -183,3 +183,87 @@ def _connected_components(graph: dict) -> list[set]:
                     stack.append(v)
         comps.append(comp)
     return comps
+
+
+class HeadRegion:
+    """헤드 영역 표현 통일(W4) — rect union 또는 임의 다각형 + 팽창 margin.
+
+    # [문서정합] 작업지시서 W4는 "shapely Polygon 기반 — extractor가 이미 shapely
+    # 의존"이라 명시하나 실제로는 shapely 미설치·저장소 무의존 (BLOCKED.md #1).
+    # 동일 API(from_rects/from_polygon/contains/dilate)의 순수 파이썬 구현.
+
+    - rect 는 (x1,y1,x2,y2). 생성 시 min/max 정규화 — 기존 branch_zones in_region
+      판정(경계 포함 <=)과 비트동일.
+    - dilate(mm) 는 margin 누적한 새 인스턴스 반환 (rect: 변 팽창, polygon:
+      경계까지 거리 <= margin 판정 — Minkowski 원판 팽창).
+    - pts: 정점 리스트 노출 (_AnchorWindow convex hull 입력용).
+    """
+
+    __slots__ = ("_rects", "_poly", "_margin")
+
+    def __init__(self, rects=None, poly=None, margin_mm: float = 0.0):
+        self._rects = [
+            (min(float(x1), float(x2)), min(float(y1), float(y2)),
+             max(float(x1), float(x2)), max(float(y1), float(y2)))
+            for (x1, y1, x2, y2) in (rects or [])
+        ]
+        self._poly = [(float(x), float(y)) for x, y in (poly or [])]
+        self._margin = float(margin_mm)
+
+    @classmethod
+    def from_rects(cls, rects: list) -> "HeadRegion":
+        """사각형 union 승격 — rect = (x1,y1,x2,y2), 순서 무관."""
+        return cls(rects=rects)
+
+    @classmethod
+    def from_polygon(cls, pts: list) -> "HeadRegion":
+        """임의 다각형(L자형 등) — 정점 [(x,y), ...]."""
+        return cls(poly=pts)
+
+    @property
+    def pts(self) -> list:
+        """정점 리스트 — convex hull(작업창 W) 입력용."""
+        if self._poly:
+            return list(self._poly)
+        out = []
+        for (x1, y1, x2, y2) in self._rects:
+            out += [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+        return out
+
+    def __bool__(self) -> bool:
+        return bool(self._rects or self._poly)
+
+    def dilate(self, mm: float) -> "HeadRegion":
+        return HeadRegion(rects=self._rects, poly=self._poly,
+                          margin_mm=self._margin + float(mm))
+
+    def _poly_inside(self, x: float, y: float) -> bool:
+        p = self._poly
+        inside = False
+        for i in range(len(p)):
+            x1, y1 = p[i]
+            x2, y2 = p[(i + 1) % len(p)]
+            if (y1 > y) != (y2 > y):
+                xin = (x2 - x1) * (y - y1) / (y2 - y1) + x1
+                if x < xin:
+                    inside = not inside
+        return inside
+
+    def contains(self, pt) -> bool:
+        x, y = float(pt[0]), float(pt[1])
+        m = self._margin
+        for (x1, y1, x2, y2) in self._rects:
+            if x1 - m <= x <= x2 + m and y1 - m <= y <= y2 + m:
+                return True
+        if len(self._poly) >= 3:
+            if self._poly_inside(x, y):
+                return True
+            if m > 0:
+                p = self._poly
+                return any(
+                    _point_to_segment_dist(x, y, p[i][0], p[i][1],
+                                           p[(i + 1) % len(p)][0],
+                                           p[(i + 1) % len(p)][1]) <= m
+                    for i in range(len(p))
+                )
+        return False

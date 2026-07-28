@@ -16,8 +16,17 @@ import math
 import re
 import uuid
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
+
+# ── core/ 라이브러리 경로 (repo 정리: 루트 라이브러리 → core/ 이동) ──
+import sys as _sys
+_CORE = Path(__file__).resolve().parent / "core"
+if _CORE.is_dir() and str(_CORE) not in _sys.path:
+    _sys.path.insert(0, str(_CORE))
+
+from remote30_graph import HeadRegion
 
 import ezdxf
 import networkx as nx
@@ -165,12 +174,17 @@ def layer_match(layer_name, keywords):
     return False
 
 
+@lru_cache(maxsize=8)
+def _bbox_region(bbox) -> HeadRegion:
+    """zone_bbox(x_min,y_min,x_max,y_max) → HeadRegion 승격 (W4 영역 표현 통일)."""
+    return HeadRegion.from_rects([bbox])
+
+
 def _in_bbox(xy, bbox):
-    """xy 가 bbox 안에 있는지. bbox=None 이면 항상 True."""
+    """xy 가 bbox 안에 있는지. bbox=None 이면 항상 True. 판정은 HeadRegion 위임(W4)."""
     if bbox is None:
         return True
-    x, y = xy
-    return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
+    return _bbox_region(tuple(bbox)).contains(xy)
 
 
 def _seg_in_bbox(p1, p2, bbox):
@@ -1491,7 +1505,7 @@ def run_remote30_extraction(
     if settings.zone_bbox is not None and attached_heads:
         zb = settings.zone_bbox
         attached_in_zone = [h for h in attached_heads
-                            if zb[0] <= h["X"] <= zb[2] and zb[1] <= h["Y"] <= zb[3]]
+                            if _in_bbox((h["X"], h["Y"]), zb)]
         if len(attached_in_zone) >= settings.remote_head_count:
             attached_heads = attached_in_zone
             user_zone_applied = True

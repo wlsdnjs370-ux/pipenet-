@@ -1286,6 +1286,16 @@
             </div>
           </div>
 
+          <div style="margin: 8px 0; padding: 6px 8px; background: #f8fafc; border: 1px solid var(--line);">
+            <label style="display:flex; gap:6px; align-items:flex-start; font-size:0.74rem;">
+              <input id="cmb-load-mode" type="checkbox" style="margin-top:2px;">
+              <span>급수 미기여 구간 제거 <span style="color:var(--muted);">(유량 누적 기반)</span></span>
+            </label>
+            <p class="info-line" style="font-size: 0.66rem; margin: 4px 0 0; color: var(--muted);">
+              헤드로 물이 가지 않는 구간(드레인·시험배관·막다른 가지)을 담당 헤드 수 0 기준으로 정리합니다.
+              단일 수원 + 가지식 배관 전제이며, 전제를 벗어나면 자동으로 기존 방식으로 되돌아갑니다(리포트에 기록).
+            </p>
+          </div>
           <button id="cmb-merge" class="run-btn" type="button" disabled style="width:100%; background: #ffffff; color: var(--accent); border-color: var(--accent);">▶ 배관망 통합</button>
           <p class="info-line" style="font-size: 0.7rem; margin-top: 4px; color: var(--muted);">알람밸브 노드 기준으로 평면도(X·Y) + 계통도 라이저 + 기계실(옥상수조) 을 하나의 배관망으로 결합합니다.</p>
         </section>
@@ -6984,6 +6994,7 @@
           kfp_coord_scale: Math.min(Math.max(Math.abs(parseFloat((document.getElementById("cmb-kfp-scale") || {}).value) || 1.0), 0.05), 20),
           head_orientation: (document.querySelector('input[name="cmb-head-dir"]:checked') || {}).value || "pendent",
           head_z_frac: Math.abs(parseFloat((document.getElementById("cmb-head-zfrac") || {}).value) || 4) / 100,
+          load_mode: !!(document.getElementById("cmb-load-mode") || {}).checked,
         };
         // 불리한 헤드 개수 N — 평면도(wb-n-heads)에서 고른 값을 통합망에도 적용.
         // 미입력이면 finalize 때 저장된 state.k_heads, 그것도 없으면 서버 기본(30).
@@ -7018,9 +7029,22 @@
         const _mrLine = data.machine_room_attached
           ? `<br>&nbsp;&nbsp;<span style="color:#1e40af;">${_mrAttachText}</span>`
           : (state.machine_room ? `<br>&nbsp;&nbsp;<span style="color:#b45309;">⚠ 기계실 데이터는 있으나 연결 실패 — 라이저만 사용 (서버 로그 확인)</span>` : "");
+        // 급수 미기여 구간 제거 결과 — 숫자만 싣는다(서버 문자열 삽입 없음).
+        let _loadLine = "";
+        if (_buildBody.load_mode && !data.extraction_audit) {
+          // 2앵커 경로(알람밸브 좌표 + 헤드 영역)가 아니면 서버가 이 옵션을 쓰지 않는다.
+          _loadLine = `<br>&nbsp;&nbsp;<span style="color:#b45309;">⚠ 급수 미기여 구간 제거 미적용 — 알람밸브 좌표와 헤드 영역이 모두 있어야 적용됩니다</span>`;
+        } else if (_buildBody.load_mode) {
+          const _fb = data.extraction_audit.fallback || {};
+          const _pr = data.extraction_audit.pruned || {};
+          _loadLine = _fb.triggered
+            ? `<br>&nbsp;&nbsp;<span style="color:#b45309;">⚠ 급수 미기여 구간 제거 미적용 — 전제 불충족으로 기존 방식 사용 (상세는 추출 리포트)</span>`
+            : `<br>&nbsp;&nbsp;<span style="color:#166534;">✂ 급수 미기여 구간 ${Number(_pr.dead_edge_count) || 0}개 / ` +
+              `${((Number(_pr.dead_len_mm) || 0) / 1000).toFixed(1)}m 제거</span>`;
+        }
         _cmbResultBox.innerHTML =
           `✓ <strong>${data.title}</strong> 배관망 통합 완료 — 아래 [포맷 출력] 에서 내보내세요<br>` +
-          `&nbsp;&nbsp;Node ${data.nodes} / Pipe ${data.pipes} / Pump ${data.pumps} / Valve ${data.valves} / Nozzle ${data.nozzles}` + _mrLine + `<br>` +
+          `&nbsp;&nbsp;Node ${data.nodes} / Pipe ${data.pipes} / Pump ${data.pumps} / Valve ${data.valves} / Nozzle ${data.nozzles}` + _mrLine + _loadLine + `<br>` +
           `<div style="margin-top:8px; padding:8px 10px; background:#ffffff; border:1px solid var(--line); font-size:0.72rem; color:#0a1228; line-height:1.5;">` +
           `<strong>⚠ PIPENET 사용 시</strong>: SDF 는 <strong>.zip 으로 받아 압축을 푼 후</strong> 폴더 안의 <code>.sdf</code> 를 여세요.<br>` +
           `(압축 안에서 .sdf 를 바로 열면 .slf 라이브러리 분리로 내경(Internal) 이 Unset 으로 표시되고 "pipe bore must be given" 오류 발생.)` +

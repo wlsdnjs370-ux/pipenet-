@@ -5168,7 +5168,10 @@
         if (!a || !b) continue;
         if (revealPipeSet && !revealPipeSet.has(p.in + ">" + p.out)) continue;
         const isMR = mrSet.has(p.in) || mrSet.has(p.out);
-        const isRiser = riserSet.has(p.in) || riserSet.has(p.out);
+        // AV 는 라이저·평면도가 공유하는 단 하나의 노드라 riserSet 에도 들어 있다.
+        // 한쪽 끝만 보면 평면도 첫 배관(AV→가지)까지 라이저 색이 돼, 노란 계통도가
+        // V 마커를 지나 평면도로 더 뻗은 것처럼 보인다(= 밸브가 두 곳처럼 보임).
+        const isRiser = riserSet.has(p.in) && riserSet.has(p.out);
         (isMR ? mrPairs : isRiser ? riserPairs : headPairs).push({a, b});
         if (typeof p.velocity_mps === "number") {
           _vHave = true;
@@ -5792,7 +5795,8 @@
           const b = nodeMap.get(p.out);
           if (!a || !b) continue;
           const isMR = mrSet.has(p.in) || mrSet.has(p.out);
-          const isRiser = riserSet.has(p.in) || riserSet.has(p.out);
+          // 공유 노드 AV 가 riserSet 에 있어, 한쪽 끝만 보면 평면도 첫 배관까지 라이저 색이 된다.
+          const isRiser = riserSet.has(p.in) && riserSet.has(p.out);
           let color = isMR ? COLOR.machineroom : isRiser ? COLOR.riser : COLOR.head;
           if (opts.colorByElev) {
             const ta = nodeMeta.get(p.in)?.elevT ?? 0.5;

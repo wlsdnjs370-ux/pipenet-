@@ -7610,16 +7610,16 @@
             return;
           }
           // 패치본이 새 job_id 로 재캐시됨 → 연속 편집이 이 위에서 이어지도록 갱신.
-          // 편집본 다운로드 URL 을 combinedBuild 에 병합해 상단 SDF/KFP/HAS 내보내기
-          // 버튼이 편집본을 가리키게 한다. 편집은 평면 세트만 생성하므로 iso/zip
-          // 변형은 비워 평면 파일로 폴백(원본 미편집 파일을 받는 실수 방지).
-          Object.assign(state.combinedBuild, {
-            job_id: data.job_id,
-            download_url_sdf: data.download_url_sdf || null,
-            download_url_sdf_iso: null, download_url_sdf_zip: null, download_url_sdf_zip_iso: null,
-            download_url_kfp: data.download_url_kfp || null, download_url_kfp_iso: null,
-            download_url_has: data.download_url_has || null, download_url_has_iso: null,
-          });
+          // 재출력은 빌드와 동일한 전 세트(평면·등각 × SDF+SLF/KFP/HAS/ZIP)를 내므로
+          // 응답의 download_url_* 를 전부 갈아끼운다. 응답에 없는 키는 null 로 지워야
+          // 원본(미편집) 파일이 남아 잘못 다운로드되는 일이 없다.
+          for (const k of Object.keys(state.combinedBuild)) {
+            if (k.startsWith("download_url_")) state.combinedBuild[k] = null;
+          }
+          state.combinedBuild.job_id = data.job_id;
+          for (const [k, v] of Object.entries(data)) {
+            if (k.startsWith("download_url_")) state.combinedBuild[k] = v || null;
+          }
           // 상단 내보내기 버튼 활성화 — 편집본이 생겼으니 SDF/KFP/HAS 를 받을 수 있게
           // 한다(표준 새로고침은 HAS 를 항상 비활성으로 두므로 여기서 직접 켠다).
           try {
@@ -7630,7 +7630,13 @@
             if (typeof _cmbExpHas !== "undefined" && _cmbExpHas)
               _cmbExpHas.disabled = !state.combinedBuild.download_url_has;
           } catch (_) {}
-          if (data.download_url_sdf) _cmbDownload(data.download_url_sdf);
+          // 자동 다운로드도 상단 SDF 버튼과 같은 규칙 — PIPENET 은 .slf 가 같은 폴더에
+          // 있어야 내경 lookup 이 되므로 쌍 ZIP 을, 그리고 선택된 좌표계(평면/등각)를 따른다.
+          {
+            const _d = state.combinedBuild;
+            const _b = _d.download_url_sdf_zip ? "download_url_sdf_zip" : "download_url_sdf";
+            _cmbDownload(_cmbFormUrl(_d, _b));
+          }
           S.dirty = false; S._orig = _clone(g0);
           const _fmts = ["SDF"].concat(data.download_url_kfp ? ["KFP"] : [],
                                        data.download_url_has ? ["HAS"] : []);

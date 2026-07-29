@@ -3762,7 +3762,7 @@ def remote30_combined_build():
                                     select_worst30_heads_anchored,
                                     build_input_tables, HeadRegion)
     from remote30_full_network import (
-        stitch_riser_and_heads, emit_full_sdf,
+        stitch_riser_and_heads,
         prepend_machine_room_to_riser, insert_source_pump,
         normalize_pipe_bores, size_combined_bores,
     )
@@ -3960,9 +3960,7 @@ def remote30_combined_build():
                  or system_riser.get("title")
                  or "Combined")
 
-        import zipfile as _zipfile
         import copy as _copy
-        from remote30_prototype import emit_kfp as _emit_kfp, emit_has as _emit_has
 
         # ── z-aware 도구(K-solver/HASS)용 라이저 "참 3D 축정렬" 좌표 — KFP/HAS 만 적용.
         # 라이저 막대는 schematic 으로 y 가 인위적으로 펼쳐져 있다(_layout_riser_as_schematic).
@@ -4182,79 +4180,17 @@ def remote30_combined_build():
                     n["display_z"] = _ez
             return z_net, True
 
-        def _emit_bundle(net_obj, suffix: str) -> dict:
-            """net_obj → SDF(+SLF)/KFP/HAS/ZIP 한 세트 생성. suffix 로 평면("")/등각("_iso") 구분.
+        def _plan_z_net():
+            # KFP/HAS 의 z 사본은 평면·등각 두 세트 모두 등각 베이크 안 된 원본
+            # combined 에서 파생한다. emit 이 노드 dict 를 건드리므로 매번 새로 만든다.
+            _n, _ok = _collapse_riser_to_column(combined)
+            return _n if _ok else None
 
-            net_obj 의 노드 좌표를 그대로 베이크하므로, 등각 세트는 호출 전에
-            _bake_isometric_node_coords 로 (x,y) 를 등각투영해 넘긴다. HAS 는 좌표가
-            이미 정해져 있으니 isometric=False (이중 투영 방지).
-            """
-            b_sdf = out_dir / f"combined_{job_id}{suffix}.sdf"
-            emit_full_sdf(net_obj, b_sdf, project_title=title)
-            b_slf = out_dir / f"combined_{job_id}{suffix}.slf"
-            # ── KFP 와 HAS 는 표시 규약이 다르다(둘 다 등각 베이크 안 된 원본 combined
-            #    에서 파생, 라이저만 수직 기둥으로 collapse — z_net):
-            #  · KFP: 참 3D 직교좌표 [x,y,z]. 노드 z = display_z(라이저=기둥, 헤드평면=0).
-            #    K-Fire Solver 가 화면에서 자체 등각투영하므로 우리는 베이크하지 않는다.
-            #  · HAS: HASS 는 InsertionPoint 2D 좌표를 **그대로** 표시(재투영 안 함, 참조
-            #    계통도도 30° 베이크본). 따라서 emit_has(isometric=True) 로 display_z 를
-            #    화면 Y 에 lift 베이크해야 라이저가 기둥으로 보인다. Height(수리표고)는
-            #    elevation_m 분리 보존. (SDF 는 PIPENET 2D 스키매틱 — net_obj 좌표 그대로.)
-            z_sdf = b_sdf
-            z_net, _z_done = _collapse_riser_to_column(combined)
-            if _z_done:
-                z_sdf = out_dir / f"combined_{job_id}{suffix}_z.sdf"
-                try:
-                    emit_full_sdf(z_net, z_sdf, project_title=title)
-                except Exception as _z_exc:  # noqa: BLE001 — 사본 실패 시 원본 좌표로 폴백
-                    warnings.warn(f"[combined{suffix}] z-aware SDF emit 실패 (원본 좌표 사용): {_z_exc}", RuntimeWarning, stacklevel=2)
-                    z_sdf = b_sdf
-            b_kfp = out_dir / f"combined_{job_id}{suffix}.kfp"
-            b_kfp_ok = False
-            try:
-                # 통합망 KFP — 미리보기와 동일한 스키매틱 표시좌표(라이저=기둥,
-                # display_z)로 비율 일치. length_m·elevation_m 는 실값 보존(수리 권위값).
-                _emit_kfp(z_sdf, b_kfp, coord_scale=kfp_coord_scale,
-                          display_geometry=True)
-                b_kfp_ok = b_kfp.is_file()
-            except Exception as _kfp_exc:  # noqa: BLE001 — KFP 실패가 통합 출력을 막지 않도록
-                warnings.warn(f"[combined{suffix}] KFP emit 실패 (SDF 는 정상): {_kfp_exc}", RuntimeWarning, stacklevel=2)
-            b_has = out_dir / f"combined_{job_id}{suffix}.has"
-            b_has_ok = False
-            try:
-                _emit_has(z_sdf, b_has, isometric=True, iso_z_scale=has_iso_z_scale)
-                b_has_ok = b_has.is_file()
-            except Exception as _has_exc:  # noqa: BLE001 — HAS 실패가 통합 출력을 막지 않도록
-                warnings.warn(f"[combined{suffix}] HAS emit 실패 (SDF 는 정상): {_has_exc}", RuntimeWarning, stacklevel=2)
-            # 임시 z-aware SDF/SLF 정리 — ZIP·다운로드에는 원본 b_sdf 만 포함.
-            if z_sdf != b_sdf:
-                for _tmp in (z_sdf, z_sdf.with_suffix(".slf")):
-                    try:
-                        if _tmp.is_file():
-                            _tmp.unlink()
-                    except OSError:
-                        pass
-            # 전체 ZIP — SDF + SLF + KFP + HAS 를 한 번에 (모든 포맷 묶음).
-            b_zip = out_dir / f"combined_{job_id}{suffix}.zip"
-            with _zipfile.ZipFile(b_zip, "w", _zipfile.ZIP_DEFLATED) as zf:
-                zf.write(b_sdf, arcname=b_sdf.name)
-                if b_slf.is_file():
-                    zf.write(b_slf, arcname=b_slf.name)
-                if b_kfp_ok:
-                    zf.write(b_kfp, arcname=b_kfp.name)
-                if b_has_ok:
-                    zf.write(b_has, arcname=b_has.name)
-            # PIPENET-native ZIP — .sdf + .slf 만. PIPENET 은 두 파일이 같은 폴더에
-            # 있어야 호칭경↔내경 lookup 이 되므로 SDF 버튼은 이 쌍을 묶어 내보낸다
-            # (KFP/HAS 가 딸려나오지 않도록). .xml 결과파일은 PIPENET 이 연산 후 생성하는
-            # 산출물이라 입력 번들에 포함하지 않는다.
-            b_zip_sdf = out_dir / f"combined_{job_id}{suffix}_pipenet.zip"
-            with _zipfile.ZipFile(b_zip_sdf, "w", _zipfile.ZIP_DEFLATED) as zf:
-                zf.write(b_sdf, arcname=b_sdf.name)
-                if b_slf.is_file():
-                    zf.write(b_slf, arcname=b_slf.name)
-            return {"sdf": b_sdf, "slf": b_slf, "kfp": b_kfp, "has": b_has, "zip": b_zip,
-                    "zip_sdf": b_zip_sdf, "kfp_ok": b_kfp_ok, "has_ok": b_has_ok}
+        def _emit_bundle(net_obj, suffix: str) -> dict:
+            return _emit_format_bundle(
+                net_obj, out_dir, f"combined_{job_id}{suffix}",
+                title=title, tag=f"combined{suffix}", z_net_fn=_plan_z_net,
+                kfp_coord_scale=kfp_coord_scale, has_iso_z_scale=has_iso_z_scale)
 
         # 통합 평면(2D) 뷰는 tree-packing 스키매틱 재배치를 적용하지 않고 실 DXF 추출
         # (평면도) 좌표를 그대로 답습한다 — 사용자 요청: "형상이 평면도 모습 그대로".
@@ -4281,11 +4217,6 @@ def remote30_combined_build():
         _bake_isometric_node_coords(combined_iso.nodes, has_iso_z_scale,
                                     no_lift_labels=riser_collapse_labels | _mr_set)
         iso_bundle = _emit_bundle(combined_iso, "_iso")
-
-        out_sdf, out_slf = plan_bundle["sdf"], plan_bundle["slf"]
-        out_kfp, out_has, out_zip = plan_bundle["kfp"], plan_bundle["has"], plan_bundle["zip"]
-        out_zip_sdf = plan_bundle["zip_sdf"]
-        kfp_ok, has_ok = plan_bundle["kfp_ok"], plan_bundle["has_ok"]
     except Exception as exc:  # noqa: BLE001
         return _err500(exc)
 
@@ -4339,30 +4270,24 @@ def remote30_combined_build():
             # 편집 재출력 시 역할별 내경 재배정용 라벨(입상관 순수 = MR 제외).
             "riser_labels": [str(l) for l in (riser_labels - {str(m) for m in (machine_room_labels or [])})],
             "machine_room_labels": [str(m) for m in (machine_room_labels or [])],
+            # 편집 재출력의 등각 세트가 빌드와 같은 기준으로 베이크되도록 —
+            # 재배치 루트(AV)와 lift 제외 대상(라이저·기계실)을 그대로 승계.
+            "av_label": av_label,
+            "no_lift_labels": sorted(riser_collapse_labels | _mr_set),
         }
     except Exception as _cache_exc:  # noqa: BLE001 — 캐시 실패가 통합 출력을 막지 않도록
         warnings.warn(f"[combined] rebuild 캐시 저장 실패 (편집 재출력 불가): {_cache_exc}",
                        RuntimeWarning, stacklevel=2)
 
     return jsonify({
-        "ok": True, "job_id": job_id, "sdf": out_sdf.name, "zip": out_zip.name,
+        "ok": True, "job_id": job_id,
+        "sdf": plan_bundle["sdf"].name, "zip": plan_bundle["zip"].name,
         "nodes": len(combined.nodes), "pipes": len(combined.pipes),
         "pumps": len(combined.pumps), "valves": len(combined.valves),
         "nozzles": len(combined.nozzles),
-        # 평면 세트
-        "download_url_sdf": f"/api/remote30/combined/result/{job_id}/{out_sdf.name}",
-        "download_url_slf": f"/api/remote30/combined/result/{job_id}/{out_slf.name}" if out_slf.is_file() else None,
-        "download_url_kfp": f"/api/remote30/combined/result/{job_id}/{out_kfp.name}" if kfp_ok else None,
-        "download_url_has": f"/api/remote30/combined/result/{job_id}/{out_has.name}" if has_ok else None,
-        "download_url_zip": f"/api/remote30/combined/result/{job_id}/{out_zip.name}",
-        "download_url_sdf_zip": f"/api/remote30/combined/result/{job_id}/{out_zip_sdf.name}",
-        # 등각 세트 (30° 등각투영 좌표 베이크)
-        "download_url_sdf_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['sdf'].name}",
-        "download_url_slf_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['slf'].name}" if iso_bundle["slf"].is_file() else None,
-        "download_url_kfp_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['kfp'].name}" if iso_bundle["kfp_ok"] else None,
-        "download_url_has_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['has'].name}" if iso_bundle["has_ok"] else None,
-        "download_url_zip_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['zip'].name}",
-        "download_url_sdf_zip_iso": f"/api/remote30/combined/result/{job_id}/{iso_bundle['zip_sdf'].name}",
+        # 평면 세트 + 등각 세트(30° 등각투영 좌표 베이크)
+        **_bundle_urls(plan_bundle, f"/api/remote30/combined/result/{job_id}"),
+        **_bundle_urls(iso_bundle, f"/api/remote30/combined/result/{job_id}", "_iso"),
         "title": title,
         "machine_room_attached": mr_attached,
         "geometry": geometry,
@@ -4372,6 +4297,100 @@ def remote30_combined_build():
         **({"extraction_audit": selection.audit.to_json_dict()}
            if getattr(selection, "audit", None) is not None else {}),
     })
+
+
+def _emit_format_bundle(net_obj, out_dir: Path, stem: str, *, title: str, tag: str,
+                        z_net_fn=None, kfp_coord_scale: float = 1.0,
+                        has_iso_z_scale: float = 1.0) -> dict:
+    """net_obj → SDF(+동봉 SLF)/KFP/HAS/ZIP 한 세트. 빌드·편집 재출력이 공유한다.
+
+    등각 세트는 호출 전에 _bake_isometric_node_coords 로 (x,y) 를 등각투영해 넘긴다.
+
+    z_net_fn 은 KFP/HAS 전용 표시좌표 사본(라이저를 수직 기둥으로 collapse)을 새로
+    만들어 주는 콜러블 — emit 이 노드 dict 를 건드리므로 호출마다 새 사본이어야 한다.
+    KFP 와 HAS 는 표시 규약이 다르다:
+      · KFP: 참 3D 직교좌표. K-Fire Solver 가 화면에서 자체 등각투영하므로 베이크 안 함.
+      · HAS: HASS 는 InsertionPoint 2D 좌표를 그대로 표시(재투영 안 함) → isometric=True
+        로 display_z 를 화면 Y 에 lift 베이크해야 라이저가 기둥으로 보인다.
+      · SDF: PIPENET 2D 스키매틱 — net_obj 좌표 그대로.
+    """
+    import zipfile as _zipfile
+    from remote30_full_network import emit_full_sdf
+    from remote30_prototype import emit_kfp as _emit_kfp, emit_has as _emit_has
+
+    b_sdf = out_dir / f"{stem}.sdf"
+    emit_full_sdf(net_obj, b_sdf, project_title=title)
+    # PIPENET 은 .sdf 옆의 .slf 로 호칭경↔내경을 lookup 한다 — emit_sdf 가 표준
+    # 라이브러리를 같은 이름으로 동봉하므로, 다운로드도 반드시 이 쌍으로 나가야 한다.
+    b_slf = b_sdf.with_suffix(".slf")
+    z_sdf = b_sdf
+    z_net = z_net_fn() if z_net_fn is not None else None
+    if z_net is not None:
+        z_sdf = out_dir / f"{stem}_z.sdf"
+        try:
+            emit_full_sdf(z_net, z_sdf, project_title=title)
+        except Exception as _z_exc:  # noqa: BLE001 — 사본 실패 시 원본 좌표로 폴백
+            warnings.warn(f"[{tag}] z-aware SDF emit 실패 (원본 좌표 사용): {_z_exc}",
+                          RuntimeWarning, stacklevel=2)
+            z_sdf = b_sdf
+    b_kfp = out_dir / f"{stem}.kfp"
+    kfp_ok = False
+    try:
+        _emit_kfp(z_sdf, b_kfp, coord_scale=kfp_coord_scale, display_geometry=True)
+        kfp_ok = b_kfp.is_file()
+    except Exception as _kfp_exc:  # noqa: BLE001 — KFP 실패가 SDF 출력을 막지 않도록
+        warnings.warn(f"[{tag}] KFP emit 실패 (SDF 는 정상): {_kfp_exc}",
+                      RuntimeWarning, stacklevel=2)
+    b_has = out_dir / f"{stem}.has"
+    has_ok = False
+    try:
+        _emit_has(z_sdf, b_has, isometric=True, iso_z_scale=has_iso_z_scale)
+        has_ok = b_has.is_file()
+    except Exception as _has_exc:  # noqa: BLE001 — HAS 실패가 SDF 출력을 막지 않도록
+        warnings.warn(f"[{tag}] HAS emit 실패 (SDF 는 정상): {_has_exc}",
+                      RuntimeWarning, stacklevel=2)
+    # 임시 z-aware SDF/SLF 정리 — ZIP·다운로드에는 원본 b_sdf 만 포함.
+    if z_sdf != b_sdf:
+        for _tmp in (z_sdf, z_sdf.with_suffix(".slf")):
+            try:
+                _tmp.unlink()
+            except OSError:
+                pass
+    # 전체 ZIP — SDF + SLF + KFP + HAS 를 한 번에 (모든 포맷 묶음).
+    b_zip = out_dir / f"{stem}.zip"
+    with _zipfile.ZipFile(b_zip, "w", _zipfile.ZIP_DEFLATED) as zf:
+        zf.write(b_sdf, arcname=b_sdf.name)
+        if b_slf.is_file():
+            zf.write(b_slf, arcname=b_slf.name)
+        if kfp_ok:
+            zf.write(b_kfp, arcname=b_kfp.name)
+        if has_ok:
+            zf.write(b_has, arcname=b_has.name)
+    # PIPENET-native ZIP — .sdf + .slf 만. PIPENET 은 두 파일이 같은 폴더에 있어야
+    # 호칭경↔내경 lookup 이 되므로 SDF 버튼은 이 쌍을 묶어 내보낸다(KFP/HAS 제외).
+    # .xml 결과파일은 PIPENET 이 연산 후 만드는 산출물이라 입력 번들에 넣지 않는다.
+    b_zip_sdf = out_dir / f"{stem}_pipenet.zip"
+    with _zipfile.ZipFile(b_zip_sdf, "w", _zipfile.ZIP_DEFLATED) as zf:
+        zf.write(b_sdf, arcname=b_sdf.name)
+        if b_slf.is_file():
+            zf.write(b_slf, arcname=b_slf.name)
+    return {"sdf": b_sdf, "slf": b_slf, "kfp": b_kfp, "has": b_has, "zip": b_zip,
+            "zip_sdf": b_zip_sdf, "kfp_ok": kfp_ok, "has_ok": has_ok}
+
+
+def _bundle_urls(bundle: dict, base: str, suffix: str = "") -> dict:
+    """_emit_format_bundle 결과 → 다운로드 URL dict (없는 포맷은 None)."""
+    return {
+        f"download_url_sdf{suffix}": f"{base}/{bundle['sdf'].name}",
+        f"download_url_slf{suffix}": (f"{base}/{bundle['slf'].name}"
+                                      if bundle["slf"].is_file() else None),
+        f"download_url_kfp{suffix}": (f"{base}/{bundle['kfp'].name}"
+                                      if bundle["kfp_ok"] else None),
+        f"download_url_has{suffix}": (f"{base}/{bundle['has'].name}"
+                                      if bundle["has_ok"] else None),
+        f"download_url_zip{suffix}": f"{base}/{bundle['zip'].name}",
+        f"download_url_sdf_zip{suffix}": f"{base}/{bundle['zip_sdf'].name}",
+    }
 
 
 def _patch_combined_from_geometry(combined, geom: dict) -> None:
@@ -4518,8 +4537,7 @@ def remote30_combined_rebuild():
     if not geom.get("nodes") or not geom.get("pipes"):
         return jsonify({"ok": False, "message": "편집된 geometry(nodes/pipes)가 필요합니다"}), 400
 
-    from remote30_full_network import (emit_full_sdf, normalize_pipe_bores,
-                                        size_combined_bores)
+    from remote30_full_network import normalize_pipe_bores, size_combined_bores
     from hydraulic_solver import converge_bores_by_velocity
     try:
         combined = _copy.deepcopy(cache["combined"])
@@ -4565,67 +4583,56 @@ def remote30_combined_rebuild():
         out_dir = COMBINED_OUTPUT_DIR / new_job
         out_dir.mkdir(parents=True, exist_ok=True)
         title = cache.get("title") or "Combined (edited)"
-        out_sdf = out_dir / f"combined_{new_job}_edited.sdf"
-        emit_full_sdf(combined, out_sdf, project_title=title)
-
-        # ── KFP/HAS 재출력 — 원본 빌드가 캐시한 z-aware 표시좌표(라이저 기둥 collapse
-        #    + display_z)를 라벨별로 재적용해 원본과 동일 비율로 emit 한다. 편집으로
-        #    옮긴 노드는 새 x,y 를 유지하되 display_z 는 캐시값(헤드 돌출·고도)을 쓴다.
-        #    신규 노드는 display_z 없음 → 헤드평면(0). 캐시 없으면 KFP/HAS 는 생략.
+        # ── 원본 빌드가 캐시한 z-aware 표시좌표(라이저 기둥 collapse + display_z)를
+        #    라벨별로 재적용해 KFP/HAS 가 원본과 동일 비율이 되게 한다. 편집으로 옮긴
+        #    노드는 새 x,y 를 유지하되 display_z 는 캐시값(헤드 돌출·고도)을 쓴다.
+        #    신규 노드는 display_z 없음 → 헤드평면(0). 캐시 없으면 평면 좌표 그대로.
         zaware = cache.get("zaware") or {}
         kfp_scale = cache.get("kfp_coord_scale", 1.0)
         has_zs = cache.get("has_iso_z_scale", 1.0)
-        out_kfp = out_dir / f"combined_{new_job}_edited.kfp"
-        out_has = out_dir / f"combined_{new_job}_edited.has"
-        kfp_ok = has_ok = False
-        try:
-            from remote30_prototype import emit_kfp as _emit_kfp, emit_has as _emit_has
-            # KFP/HAS 원본 SDF 선택 — 라이저 collapse 캐시(zaware)가 있으면 display_z 를
-            # 재적용한 z-aware SDF 를, 없으면(라이저 없는 헤드 전용망) 평면 SDF 를 그대로 쓴다.
-            z_tmp = None
-            if zaware:
-                z_net = _copy.deepcopy(combined)
-                for n in z_net.nodes:
-                    zc = zaware.get(str(n.get("label")))
-                    if not zc:
-                        continue
-                    if zc.get("riser"):  # 라이저는 캐시된 기둥 x,y 로 collapse
-                        if zc.get("x") is not None:
-                            n["x"] = zc["x"]
-                        if zc.get("y") is not None:
-                            n["y"] = zc["y"]
-                    if zc.get("dz") is not None:
-                        n["display_z"] = zc["dz"]
-                z_tmp = out_dir / f"combined_{new_job}_edited_z.sdf"
-                emit_full_sdf(z_net, z_tmp, project_title=title)
-                kfp_src = z_tmp
-            else:
-                kfp_src = out_sdf
+
+        def _edited_z_net():
+            if not zaware:
+                return None
+            z_net = _copy.deepcopy(combined)
+            for n in z_net.nodes:
+                zc = zaware.get(str(n.get("label")))
+                if not zc:
+                    continue
+                if zc.get("riser"):  # 라이저는 캐시된 기둥 x,y 로 collapse
+                    if zc.get("x") is not None:
+                        n["x"] = zc["x"]
+                    if zc.get("y") is not None:
+                        n["y"] = zc["y"]
+                if zc.get("dz") is not None:
+                    n["display_z"] = zc["dz"]
+            return z_net
+
+        # 편집본도 빌드와 같은 전체 세트(평면·등각 × SDF+SLF/KFP/HAS/ZIP)를 낸다 —
+        # SDF 만 내면 PIPENET 이 짝 .slf 를 못 찾아 내경이 Unset 이 되고, 등각 세트가
+        # 없으면 등각 다운로드가 조용히 평면으로 떨어진다.
+        plan_bundle = _emit_format_bundle(
+            combined, out_dir, f"combined_{new_job}", title=title,
+            tag="combined/rebuild", z_net_fn=_edited_z_net,
+            kfp_coord_scale=kfp_scale, has_iso_z_scale=has_zs)
+
+        combined_iso = _copy.deepcopy(combined)
+        no_lift = set(cache.get("no_lift_labels") or ())
+        av_label = cache.get("av_label")
+        if av_label is not None:
             try:
-                _emit_kfp(kfp_src, out_kfp, coord_scale=kfp_scale, display_geometry=True)
-                kfp_ok = out_kfp.is_file()
-            except Exception as _kexc:  # noqa: BLE001 — KFP 실패가 SDF 를 막지 않도록
-                warnings.warn(f"[combined/rebuild] KFP emit 실패 (SDF 정상): {_kexc}",
-                               RuntimeWarning, stacklevel=2)
-            try:
-                _emit_has(kfp_src, out_has, isometric=True, iso_z_scale=has_zs)
-                has_ok = out_has.is_file()
-            except Exception as _hexc:  # noqa: BLE001 — HAS 실패가 SDF 를 막지 않도록
-                warnings.warn(f"[combined/rebuild] HAS emit 실패 (SDF 정상): {_hexc}",
-                               RuntimeWarning, stacklevel=2)
-            if z_tmp is not None:  # 임시 z-aware SDF 정리(다운로드엔 평면 out_sdf 만)
-                for _tmp in (z_tmp, z_tmp.with_suffix(".slf")):
-                    try:
-                        if _tmp.is_file():
-                            _tmp.unlink()
-                    except OSError:
-                        pass
-        except Exception as _zexc:  # noqa: BLE001 — KFP/HAS 전체 실패도 SDF 는 유지
-            warnings.warn(f"[combined/rebuild] KFP/HAS 재출력 실패 (SDF 정상): {_zexc}",
-                           RuntimeWarning, stacklevel=2)
+                _tidy_head_plane_layout(combined_iso.nodes, combined_iso.pipes,
+                                        av_label, no_lift)
+            except Exception as _e:  # 정돈 실패는 치명적이지 않음 — 원좌표로 진행.
+                app.logger.warning("combined/rebuild: iso head-plane tidy skipped: %s", _e)
+        _bake_isometric_node_coords(combined_iso.nodes, has_zs, no_lift_labels=no_lift)
+        iso_bundle = _emit_format_bundle(
+            combined_iso, out_dir, f"combined_{new_job}_iso", title=title,
+            tag="combined/rebuild_iso", z_net_fn=_edited_z_net,
+            kfp_coord_scale=kfp_scale, has_iso_z_scale=has_zs)
 
         # 패치본을 새 job_id 로 캐시 — 연속 편집(편집→재출력→더 편집) 지원.
-        # z-aware/스케일도 승계해 이후 편집에서도 KFP/HAS 비율을 유지한다.
+        # z-aware/스케일·등각 기준 라벨도 승계해 이후 편집에서도 비율을 유지한다.
         if len(_COMBINED_JOBS) >= _COMBINED_JOBS_CAP:
             _COMBINED_JOBS.pop(next(iter(_COMBINED_JOBS)))
         _COMBINED_JOBS[new_job] = {
@@ -4634,18 +4641,18 @@ def remote30_combined_rebuild():
             # 연속 편집을 위해 역할 라벨을 이월(구버전 캐시면 None → 폴백 유지).
             "riser_labels": cache.get("riser_labels"),
             "machine_room_labels": cache.get("machine_room_labels"),
+            "av_label": av_label, "no_lift_labels": sorted(no_lift),
         }
 
         base = f"/api/remote30/combined/result/{new_job}"
         return jsonify({
-            "ok": True, "job_id": new_job, "sdf": out_sdf.name,
-            "kfp": out_kfp.name if kfp_ok else None,
-            "has": out_has.name if has_ok else None,
+            "ok": True, "job_id": new_job, "sdf": plan_bundle["sdf"].name,
+            "kfp": plan_bundle["kfp"].name if plan_bundle["kfp_ok"] else None,
+            "has": plan_bundle["has"].name if plan_bundle["has_ok"] else None,
             "nodes": len(combined.nodes), "pipes": len(combined.pipes),
             "nozzles": len(combined.nozzles),
-            "download_url_sdf": f"{base}/{out_sdf.name}",
-            "download_url_kfp": f"{base}/{out_kfp.name}" if kfp_ok else None,
-            "download_url_has": f"{base}/{out_has.name}" if has_ok else None,
+            **_bundle_urls(plan_bundle, base),
+            **_bundle_urls(iso_bundle, base, "_iso"),
             "velocity_report": velocity_report,
         })
     except Exception as exc:  # noqa: BLE001

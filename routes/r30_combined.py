@@ -18,18 +18,25 @@ from werkzeug.utils import secure_filename
 
 
 def _bake_isometric_node_coords(nodes: list[dict], iso_z_scale: float = 1.0,
-                                no_lift_labels: set | None = None) -> None:
+                                no_lift_labels: set | None = None,
+                                ref_label: str | None = None) -> None:
     """통합망 노드 dict 의 (x,y) 를 30° 등각투영 좌표로 in-place 변환.
 
     등각 형태로 보이는 SDF/KFP/HAS 출력을 위해 emit 전에 적용한다. 노드 좌표는
     표시 전용(수리계산은 length·elevation 사용)이라 결과는 불변. 공식은
     has_converter.emit_has(isometric=True) 와 동일: X=(x−y)·cos30,
-    Y=(x+y)·sin30 + (elev−eMid)·lift. lift 는 평면 대각선의 절반에 정규화.
+    Y=(x+y)·sin30 + (elev−eRef)·lift. lift 는 평면 대각선의 절반에 정규화.
 
     no_lift_labels 노드(라이저/기계실 계통도)는 lift 를 건너뛴다 — schematic y 가
     이미 수직을 인코딩하므로 elevation lift 를 다시 더하면 이중부호로 계통도가
     구부러진다. 헤드 z-돌출은 여기서 적용하지 않는다(평면 Y 를 기울여 가지배관을
     꼬이게 함; 3D 프리뷰·KFP/HAS 는 display_z 로 별도 돌출).
+
+    ref_label 은 lift 의 영점 — 보통 AV(알람밸브). AV 는 lift 제외 집합에 속해
+    Y 가 안 움직이는데, 그에 매달린 헤드평면만 (elev−eRef)·lift 만큼 밀리면 두 망이
+    AV 한 점에서 찢어진다(대명동 실측 약 11.6m). 영점을 bbox 중앙이 아니라 AV 표고로
+    잡으면 이음매에서 lift 가 정확히 0 이 되어 양쪽 밸브가 같은 자리에 겹친다.
+    미지정이면 종전대로 bbox 중앙(e_mid).
     """
     if not nodes:
         return
@@ -39,7 +46,12 @@ def _bake_isometric_node_coords(nodes: list[dict], iso_z_scale: float = 1.0,
     ys = [float(n.get("y", 0) or 0) for n in nodes]
     elevs = [float(n.get("elevation", 0) or 0) for n in nodes]
     e_min, e_max = min(elevs), max(elevs)
-    e_mid = (e_min + e_max) / 2.0
+    e_ref = (e_min + e_max) / 2.0
+    if ref_label is not None:
+        _ref_node = next((n for n in nodes
+                          if str(n.get("label")) == str(ref_label)), None)
+        if _ref_node is not None:
+            e_ref = float(_ref_node.get("elevation", 0) or 0)
     e_range = e_max - e_min
     diag = math.hypot(max(xs) - min(xs), max(ys) - min(ys)) if xs else 0.0
     lift = (diag * 0.5 * iso_z_scale / e_range) if e_range > 0 else 0.0
@@ -47,7 +59,7 @@ def _bake_isometric_node_coords(nodes: list[dict], iso_z_scale: float = 1.0,
         x = float(n.get("x", 0) or 0)
         y = float(n.get("y", 0) or 0)
         e = float(n.get("elevation", 0) or 0)
-        _lift = 0.0 if str(n.get("label")) in no_lift else (e - e_mid) * lift
+        _lift = 0.0 if str(n.get("label")) in no_lift else (e - e_ref) * lift
         n["x"] = (x - y) * COS30
         n["y"] = (x + y) * SIN30 + _lift
 
@@ -1054,7 +1066,8 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             # elevation lift 를 다시 더하면 이중부호로 계통도가 구부러진다. 헤드 z-돌출도
             # 여기선 안 씀(평면 Y 를 기울여 가지배관을 꼬이게 함; 3D·KFP/HAS 는 display_z).
             _bake_isometric_node_coords(combined_iso.nodes, has_iso_z_scale,
-                                        no_lift_labels=riser_collapse_labels | _mr_set)
+                                        no_lift_labels=riser_collapse_labels | _mr_set,
+                                        ref_label=av_label)
             iso_bundle = _emit_bundle(combined_iso, "_iso")
 
         except Exception as exc:  # noqa: BLE001
@@ -1235,7 +1248,8 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                                             av_label, no_lift)
                 except Exception as _e:  # 정돈 실패는 치명적이지 않음 — 원좌표로 진행.
                     app.logger.warning("combined/rebuild: iso head-plane tidy skipped: %s", _e)
-            _bake_isometric_node_coords(combined_iso.nodes, has_zs, no_lift_labels=no_lift)
+            _bake_isometric_node_coords(combined_iso.nodes, has_zs, no_lift_labels=no_lift,
+                                        ref_label=av_label)
             iso_bundle = _emit_format_bundle(
                 combined_iso, out_dir, f"combined_{new_job}_iso", title=title,
                 tag="combined/rebuild_iso", z_net_fn=_edited_z_net,

@@ -3813,6 +3813,12 @@ def remote30_combined_build():
         "branch_zones": branch_region,
         **({"k": k_heads} if k_heads is not None else {}),
     }
+    # 유량 누적 기반 가지치기(L4) — 기본 off. on 이면 부하 0 구간(드레인·시험배관·
+    # 막다른 가지)을 제거한다. 적용 한계는 docs/load_extraction.md 참조.
+    load_mode = bool(body.get("load_mode", False))
+    on_residual_cycle = str(body.get("on_residual_cycle") or "preserve").strip()
+    if on_residual_cycle not in ("preserve", "force_tree"):
+        on_residual_cycle = "preserve"
     # 2앵커(anchored) 경로는 알람밸브 좌표 + 헤드 영역이 모두 있을 때만 — 둘 중
     # 하나라도 없으면 앵커를 세울 수 없어 기존 비-anchored 경로를 그대로 쓴다.
     use_anchored = bool(alarm_xy) and bool(zones)
@@ -3824,6 +3830,8 @@ def remote30_combined_build():
                 head_region=HeadRegion.from_rects(zones),
                 zones=zones,
                 tee_split=True,
+                load_mode=load_mode,
+                on_residual_cycle=on_residual_cycle,
                 audit_out=anchored_audit,
                 **_sel_kw,
             )

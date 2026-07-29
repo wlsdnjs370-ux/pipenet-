@@ -2632,6 +2632,12 @@ class ExtractionAudit:
     water: dict = field(default_factory=dict)
     # T분기 edge-split 근거. sym_mm 은 "접속=기호" 관측 증거일 뿐 판정에 쓰지 않는다.
     tee_splits: list = field(default_factory=list)  # [{p,edge,gap_mm,sym_mm}]
+    # 유량 누적 기반 가지치기(L5). load_mode off 면 전부 기본값.
+    load: dict = field(default_factory=dict)            # {min,max,median}
+    pruned: dict = field(default_factory=dict)          # {dead_edge_count,dead_len_mm,cycle_cut_count}
+    residual_cycles: dict = field(default_factory=dict)  # {count,policy}
+    unreachable_heads: list = field(default_factory=list)  # [[x,y],...]
+    fallback: dict = field(default_factory=dict)        # {triggered,reason}
 
     @classmethod
     def from_audit_dict(cls, audit: dict) -> "ExtractionAudit":
@@ -2649,6 +2655,17 @@ class ExtractionAudit:
                        {"dead_edge_count": 0, "dead_len_mm": 0.0, "dead_ratio": 0.0,
                         "watered_edge_count": 0, "heads_routed": 0}),
             tee_splits=list(audit.get("tee_splits") or []),
+            load=dict(audit.get("load") or
+                      {"min": 0, "max": 0, "median": 0.0}),
+            # "edges" 상세 기록은 응답 JSON 비대화 방지를 위해 집계만 싣는다.
+            pruned={k: (audit.get("pruned") or {}).get(k, v) for k, v in
+                    (("dead_edge_count", 0), ("dead_len_mm", 0.0),
+                     ("cycle_cut_count", 0))},
+            residual_cycles=dict(audit.get("residual_cycles") or
+                                 {"count": 0, "policy": "off"}),
+            unreachable_heads=list(audit.get("unreachable_heads") or []),
+            fallback=dict(audit.get("fallback") or
+                          {"triggered": False, "reason": ""}),
         )
 
     def to_json_dict(self) -> dict:
@@ -2657,6 +2674,10 @@ class ExtractionAudit:
             "head_drops": self.head_drops, "nonnominal": self.nonnominal,
             "corridor": self.corridor, "source_attach": self.source_attach,
             "water": self.water, "tee_splits": self.tee_splits,
+            "load": self.load, "pruned": self.pruned,
+            "residual_cycles": self.residual_cycles,
+            "unreachable_heads": self.unreachable_heads,
+            "fallback": self.fallback,
         }
 
 
@@ -3151,6 +3172,143 @@ def water_load_audit(
             "watered_edge_count": watered, "heads_routed": routed}
 
 
+def compute_edge_load(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    source: tuple | None,
+    heads: list,
+    penalty_keys: set | None = None,
+    max_attach_mm: float = HEAD_BRIDGE_MAX_MM,
+    parents: dict[tuple, tuple] | None = None,
+    unreachable_out: list | None = None,
+) -> dict[tuple, int]:
+    """유량 누적(flow accumulation) — 간선별 담당 헤드 수.
+
+    수문학에서 지형도로 하천망을 뽑는 절차와 같은 기법이다: ① 흐름 방향 결정
+    (여기선 소스 기준 최단경로 트리) ② 상류 단말 누적 ③ 임계치 절단(→L2).
+    루트 있는 트리에서 각 간선 아래 서브트리의 단말 수는 **후위순회 1회 O(V+E)**
+    로 전부 구해진다 — 헤드마다 소스까지 거슬러 오르면 O(단말 수 × 깊이)라
+    대형 도면에서 갈린다(`water_load_audit` 가 그 방식이며 계측 전용이다).
+
+    이 누적값의 정체는 **담당 헤드 수** — NFPC 103 별표1 '가'칸이 최소 호칭경을
+    정할 때 쓰는 바로 그 값이다. 추출 판정과 관경 결정이 같은 양을 쓴다(→L3).
+
+    parents: S310 이 이미 구한 최단경로 부모 맵이 있으면 넘겨 재계산을 피한다.
+    unreachable_out: 지정 시 소스 미도달(또는 부착 한도 초과) 헤드 좌표를 수집.
+        조용히 버리지 않는다 — 추출 결함 신호다.
+    반환: `graph` 의 **모든** 간선 키에 대한 부하. 트리에 속하지 않는 간선
+        (사이클을 닫는 간선, 소스와 다른 컴포넌트)의 부하는 0.
+    """
+    load: dict[tuple, int] = {
+        (min(u, v), max(u, v)) for u, nbs in graph.items() for v in nbs
+    }
+    load = dict.fromkeys(load, 0)
+    if source is None or source not in graph:
+        if unreachable_out is not None:
+            unreachable_out.extend(
+                h.pos if hasattr(h, "pos") else (float(h[0]), float(h[1]))
+                for h in heads)
+        return load
+    if parents is None:
+        parents = _shortest_path_parents(graph, edge_len, source, penalty_keys)
+
+    terminals: dict[tuple, int] = defaultdict(int)
+    for h in heads:
+        pos = h.pos if hasattr(h, "pos") else (float(h[0]), float(h[1]))
+        near = _nearest_graph_node(graph, pos)
+        if (near is None
+                or math.hypot(pos[0] - near[0], pos[1] - near[1]) > max_attach_mm
+                or (near != source and near not in parents)):
+            if unreachable_out is not None:
+                unreachable_out.append(pos)
+            continue
+        terminals[near] += 1
+
+    children: dict[tuple, list] = defaultdict(list)
+    for v, u in parents.items():
+        children[u].append(v)
+    # 부모가 항상 자식보다 먼저 나오는 DFS 순서 → 뒤집으면 후위순회.
+    order: list = []
+    stack = [source]
+    while stack:
+        n = stack.pop()
+        order.append(n)
+        stack.extend(children.get(n, ()))
+    subtree: dict[tuple, int] = {}
+    for n in reversed(order):
+        cnt = terminals.get(n, 0)
+        for ch in children.get(n, ()):
+            cnt += subtree[ch]
+        subtree[n] = cnt
+        p = parents.get(n)
+        if p is not None:
+            load[(min(p, n), max(p, n))] = cnt
+    return load
+
+
+def prune_by_load(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    load: dict[tuple, int],
+    audit: dict | None = None,
+    on_residual_cycle: str = "preserve",
+    edge_layers: dict[tuple, str] | None = None,
+    source: tuple | None = None,
+    penalty_keys: set | None = None,
+) -> set:
+    """부하 0 간선을 쓸어내고(mark-and-sweep) 남은 사이클을 정책대로 처리한다.
+
+    `force_spanning_tree` 와 달리 절단 기준이 위상이 아니라 **물이 흐르는지** 다.
+    도달 가능하지만 어떤 헤드에도 기여하지 않는 구간(드레인·시험배관·막다른 가지·
+    표기 잔재)은 SPT 에 남지만 여기선 부하 0 이라 제거된다.
+
+    # [문서정합] 실제 채택한 절단 기준. 명세서 초안의 SPT 강제와 다르다
+    # — docs/load_extraction.md §5·§8.
+
+    사이클 규칙: 사이클을 이루는 간선 중 부하 최소값이 0 일 때만 그 간선을 자르고,
+    최소값이 1 이상이면 실제 격자배관이므로 보존한다. 이 조건은 "부하 0 간선 제거"
+    와 절단 대상이 정확히 같으므로(간선이 잘리는 필요충분조건이 부하 0) 1 단계로
+    한 번에 처리한다 — 별도 사이클 열거는 절단 대상을 바꾸지 않는다.
+
+    `on_residual_cycle`: 모든 변의 부하가 1 이상이라 남은 사이클의 처리.
+        ``"preserve"``(기본) 보존 / ``"force_tree"`` `force_spanning_tree` 호출.
+    `edge_layers`: 간선 키 → 레이어명. 그래프 자료구조에는 레이어가 없어(§3 자료구조
+        변경 금지) 호출측이 줄 때만 audit 에 남긴다.
+    반환: 제거된 간선 키 집합.
+    """
+    dead = sorted(k for k in load if load[k] == 0
+                  and k[1] in graph.get(k[0], ()))
+    records = []
+    dead_len = 0.0
+    for k in dead:
+        L = float(edge_len.get(k, 0.0))
+        dead_len += L
+        rec = {"p1": [k[0][0], k[0][1]], "p2": [k[1][0], k[1][1]], "len_mm": L}
+        if edge_layers is not None:
+            rec["layer"] = edge_layers.get(k, "")
+        records.append(rec)
+        graph[k[0]].discard(k[1])
+        graph[k[1]].discard(k[0])
+        edge_len.pop(k, None)
+
+    # 남은 사이클 수 = 순환수(E - V + C). 사이클을 열거하지 않고 센다.
+    nodes = [n for n in graph if graph[n]]
+    n_edge = sum(len(graph[n]) for n in nodes) // 2
+    n_comp = sum(1 for c in _connected_components(graph) if len(c) > 1)
+    residual = n_edge - len(nodes) + n_comp
+    cycle_cut = 0
+    if residual > 0 and on_residual_cycle == "force_tree":
+        _tree, removed = force_spanning_tree(graph, edge_len, source, penalty_keys)
+        cycle_cut = len(removed)
+        residual = 0
+
+    if audit is not None:
+        audit["pruned"] = {"dead_edge_count": len(dead), "dead_len_mm": dead_len,
+                           "cycle_cut_count": cycle_cut, "edges": records}
+        audit["residual_cycles"] = {"count": residual, "policy": on_residual_cycle}
+    return set(dead)
+
+
 def force_spanning_tree(
     graph: dict[tuple, set[tuple]],
     edge_len: dict[tuple, float],
@@ -3160,6 +3318,10 @@ def force_spanning_tree(
     """그래프를 (각 component 마다) min-weight shortest-path spanning tree 로 변환.
 
     트리 간선 선택 규칙은 `_shortest_path_parents` 참조.
+
+    # [문서정합] 명세서 초안이 청구 메커니즘으로 기재한 "가지식 트리 강제(Dijkstra
+    # SPT)" 가 이 함수다. 실제 채택 기준은 `prune_by_load` 의 부하 0 절단이며 죽은
+    # 배관 처리에서 결과가 갈린다 — docs/load_extraction.md §5·§8.
 
     Args:
         graph: 무방향 그래프 (in-place 수정됨 — cycle edge 제거)
@@ -4186,6 +4348,8 @@ def select_worst30_heads_anchored(
     spatial_reselect: bool = False,
     tee_split: bool = False,
     dxf_path=None,
+    load_mode: bool = False,
+    on_residual_cycle: str = "preserve",
 ) -> SelectionResult:
     """2앵커 anchored 선정(§1 계약) — ``alarm_xy``·``head_region`` 필수.
 
@@ -4202,6 +4366,11 @@ def select_worst30_heads_anchored(
         dxf_path(원본 DXF) 가 필요하다.
     tee_split: T분기 edge-split 플래그(기본 off). weld 이전에 실행돼 weld 가
         발명해야 할 연결을 줄인다(→audit tee_splits).
+    load_mode: 유량 누적 기반 가지치기 플래그(기본 off). off 면 기존 force_spanning_tree
+        경로 그대로. on 이면 corridor 제한 뒤 compute_edge_load → prune_by_load 로
+        부하 0 간선(드레인·시험배관·막다른 가지)을 제거한다.
+    on_residual_cycle: load_mode 에서 잔여 사이클 정책 — "preserve" | "force_tree".
+        force_tree 일 때만 force_spanning_tree 가 호출된다.
     """
     if alarm_xy is None:
         raise ValueError("anchored: alarm_xy(수동 알람밸브 좌표) 필수")
@@ -4323,7 +4492,28 @@ def select_worst30_heads_anchored(
                                                  for kk in _cor_keys))}
     else:
         audit["corridor"] = {"node_count": 0, "len_mm": 0.0}
-    force_spanning_tree(graph, edge_len, source=src, penalty_keys=_penalty_keys)
+    if load_mode and src is None:
+        # §1 전제 위반(단일 소스 없음) — 부하가 전부 0 이 되어 망 전체를 지운다.
+        audit["fallback"] = {"triggered": True,
+                             "reason": "source 미결합 — 부하 정의 불가"}
+        load_mode = False
+    if load_mode:
+        _unreach: list = []
+        _load = compute_edge_load(graph, edge_len, src, heads,
+                                  penalty_keys=_penalty_keys,
+                                  unreachable_out=_unreach)
+        prune_by_load(graph, edge_len, _load, audit,
+                      on_residual_cycle=on_residual_cycle, source=src,
+                      penalty_keys=_penalty_keys)
+        _alive = sorted(_load.get(kk, 0) for kk in edge_len)
+        audit["load"] = {
+            "min": _alive[0] if _alive else 0,
+            "max": _alive[-1] if _alive else 0,
+            "median": float(_alive[len(_alive) // 2]) if _alive else 0.0,
+        }
+        audit["unreachable_heads"] = [[p[0], p[1]] for p in _unreach]
+    else:
+        force_spanning_tree(graph, edge_len, source=src, penalty_keys=_penalty_keys)
     _hd_keys: set = set()
     res = _finalize_selection(graph, edge_len, src, "manual_anchored", heads, k, _pcb,
                               src_bridge_dist_mm, False, head_drop_out=_hd_keys)
@@ -4945,21 +5135,19 @@ def build_input_tables(
         return 150
 
     # ── 위 rooted traversal 의 트리 → pipe 별 downstream 헤드 수
-    selected_head_set = {h.pos for h in selection.heads}
-    subtree_count: dict = {}
-    def _subtree_calc(n):
-        cnt = 1 if n in selected_head_set else 0
-        for c in children_of[n]:
-            cnt += _subtree_calc(c)
-        subtree_count[n] = cnt
-        return cnt
-    if src_pos is not None:
-        _subtree_calc(src_pos)
+    # 담당 헤드 수 = 유량 누적값. 추출 소속 판정과 별표1 최소 호칭경이 같은 양을 쓴다.
+    _sel_graph: dict = defaultdict(set)
+    _sel_len: dict = {}
+    for _a, _b, _L in selection.edges:
+        _sel_graph[_a].add(_b)
+        _sel_graph[_b].add(_a)
+        _sel_len[(min(_a, _b), max(_a, _b))] = _L
+    _edge_load = compute_edge_load(
+        _sel_graph, _sel_len, src_pos, [h.pos for h in selection.heads],
+        parents={n: p for n, p in parent_map.items() if p is not None})
 
     def _downstream_heads(a, b) -> int:
-        if parent_map.get(b) == a: return subtree_count.get(b, 0)
-        if parent_map.get(a) == b: return subtree_count.get(a, 0)
-        return 0
+        return _edge_load.get((min(a, b), max(a, b)), 0)
 
     def _point_seg_dist(px, py, ax, ay, bx, by) -> float:
         dx, dy = bx - ax, by - ay

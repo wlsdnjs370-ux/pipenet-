@@ -3828,6 +3828,15 @@
       for (const e of (g.machine_room_plan_edges || [])) {
         pts.push(proj(e[0], e[1], null)); pts.push(proj(e[2], e[3], null));
       }
+      // 3차원 그리드는 노드 bbox 를 눈금 단위로 바깥 스냅 → 격자 8 모서리도 fit 에 포함
+      const gs = _combinedGridSpec(g, state.combined_view);
+      if (gs) {
+        for (const gx of [gs.x0, gs.x1]) {
+          for (const gy of [gs.y0, gs.y1]) {
+            for (const gz of [gs.z0, gs.z1]) pts.push(proj(gx, gy, gz));
+          }
+        }
+      }
       const xs = pts.map(p => p[0]);
       const ys = pts.map(p => p[1]);
       const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -3842,6 +3851,122 @@
       state.view.panX = w / 2 - (minX + maxX) / 2 * z;
       state.view.panY = h / 2 + (minY + maxY) / 2 * z;
       state.view.fitMode = "combined";
+    }
+
+    // ─── 통합 화면 3차원 그리드 (K-solver 식) ────────────────────────────────
+    // 눈금 간격 — span 을 약 10 등분하는 1/2/5×10^k 값.
+    function _gridStep(span) {
+      if (!(span > 0) || !isFinite(span)) return 1;
+      const raw = span / 10;
+      const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+      const n = raw / mag;
+      return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+    }
+    // lo~hi 를 덮는 눈금값 배열. 누적 오차 방지로 index 기반 계산, 상한 64선.
+    function _gridTicks(lo, hi, step) {
+      const start = Math.floor(lo / step) * step;
+      const n = Math.min(64, Math.ceil((hi - start) / step) + 1);
+      const out = [];
+      for (let i = 0; i < n; i++) out.push(start + i * step);
+      return out;
+    }
+
+    // 노드 bbox 를 감싸는 격자 눈금. (g, mode) 가 같으면 캐시 재사용 — 매 pan·zoom
+    // 재계산 방지. 평면도(plan)는 투영이 z 를 무시하므로 3차원 성분 없음.
+    let _combinedGridCache = null;
+    function _combinedGridSpec(g, mode) {
+      if (_combinedGridCache && _combinedGridCache.g === g && _combinedGridCache.mode === mode) {
+        return _combinedGridCache.spec;
+      }
+      let spec = null;
+      const nodes = g.nodes || [];
+      if (nodes.length) {
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+        const acc = (x, y) => {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        };
+        for (const n of nodes) {
+          acc(n.x, n.y);
+          if (n.z != null && isFinite(n.z)) {
+            if (n.z < minZ) minZ = n.z;
+            if (n.z > maxZ) maxZ = n.z;
+          }
+        }
+        for (const e of (g.machine_room_plan_edges || [])) { acc(e[0], e[1]); acc(e[2], e[3]); }
+        if (isFinite(minX) && isFinite(minY)) {
+          if (!isFinite(minZ)) { minZ = 0; maxZ = 0; }
+          const step = _gridStep(Math.max(maxX - minX, maxY - minY));
+          const xt = _gridTicks(minX, maxX, step), yt = _gridTicks(minY, maxY, step);
+          const has3d = (mode === "iso2d") && (maxZ > minZ);
+          const zt = has3d ? _gridTicks(minZ, maxZ, _gridStep(maxZ - minZ)) : [minZ];
+          spec = {
+            step, xt, yt, zt, has3d,
+            x0: xt[0], x1: xt[xt.length - 1],
+            y0: yt[0], y1: yt[yt.length - 1],
+            z0: zt[0], z1: zt[zt.length - 1],
+          };
+        }
+      }
+      _combinedGridCache = { g, mode, spec };
+      return spec;
+    }
+
+    // 바닥(z=최저) 격자 + 뒤쪽 두 벽(x-z, y-z) 격자를 배관망과 동일한 투영기로 그린다
+    // → 줌·팬·등각 lift 를 그대로 따라간다. 앞아래 모서리를 기점으로 X/Y/Z 축을 뻗어
+    // 방향 기준을 준다. 표시 전용 — 수리계산과 무관.
+    function _drawCombinedGrid(g, mode, toScreen) {
+      const spec = _combinedGridSpec(g, mode);
+      if (!spec) return;
+      const { step, xt, yt, zt, has3d, x0, x1, y0, y1, z0, z1 } = spec;
+
+      const line = (ax, ay, az, bx, by, bz) => {
+        const [sx, sy] = toScreen(ax, ay, az);
+        const [tx, ty] = toScreen(bx, by, bz);
+        ctx.moveTo(sx, sy); ctx.lineTo(tx, ty);
+      };
+
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "#334155";
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      for (const x of xt) line(x, y0, z0, x, y1, z0);
+      for (const y of yt) line(x0, y, z0, x1, y, z0);
+      ctx.stroke();
+
+      if (has3d) {
+        // 뒤쪽(화면 위쪽) 두 면 — x+y 가 클수록 위로 투영되므로 y=y1 / x=x1 이 뒤.
+        ctx.globalAlpha = 0.3;
+        ctx.beginPath();
+        for (const x of xt) line(x, y1, z0, x, y1, z1);
+        for (const y of yt) line(x1, y, z0, x1, y, z1);
+        for (const z of zt) { line(x0, y1, z, x1, y1, z); line(x1, y0, z, x1, y1, z); }
+        ctx.stroke();
+      }
+
+      ctx.globalAlpha = 0.95;
+      ctx.lineWidth = 1.6;
+      ctx.font = "11px ui-monospace";
+      const axis = (bx, by, bz, color, label) => {
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.beginPath(); line(x0, y0, z0, bx, by, bz); ctx.stroke();
+        const [lx, ly] = toScreen(bx, by, bz);
+        ctx.fillText(label, lx + 6, ly + 4);
+      };
+      axis(x1, y0, z0, "#f87171", "X");
+      axis(x0, y1, z0, "#4ade80", "Y");
+      if (has3d) axis(x0, y0, z1, "#60a5fa", "Z");
+
+      const [ox, oy] = toScreen(x0, y0, z0);
+      ctx.fillStyle = "#94a3b8";
+      ctx.globalAlpha = 0.75;
+      ctx.fillText(`격자 ${Number(step.toPrecision(4))}`, ox + 8, oy + 16);
+      ctx.restore();
     }
 
     // 펌프/AV 픽 모드 토글
@@ -5039,6 +5164,9 @@
         const [px, py] = _proj(x, y, z);
         return [px * state.view.zoom + state.view.panX, -py * state.view.zoom + state.view.panY];
       };
+
+      // 배관망보다 먼저 — 3차원 그리드/축을 배경으로 깔고 그 위에 망을 덮는다.
+      _drawCombinedGrid(g, state.combined_view, toScreen);
 
       // 파이프 — 3 단계 색 구분: 기계실(초록) → 계통도/라이저(노랑) → 평면도/헤드(시안).
       // 기계실 edge 는 끝점 중 하나가 기계실 노드(mrSet). 단, 기계실↔라이저 시작 연결배관

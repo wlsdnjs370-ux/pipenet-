@@ -521,29 +521,32 @@ def test_v4_water_in_anchored_audit(pipe_ents, layer_categories):
 
 # ── P1 수용 기준: T분기 edge-split ──────────────────────────────────────────
 
+TEE_GAP = 5.0  # 가지관 끝점이 주배관에 못미치는 거리. TEE_SPLIT_MAX_MM 미만이어야 한다.
+
+
 def _tee_graph(*branch_feet):
-    """수평 주배관 a-b 와, 그 위 지정 위치에 20mm 못미쳐 끝나는 가지관들."""
+    """수평 주배관 a-b 와, 그 위 지정 위치에 TEE_GAP 만큼 못미쳐 끝나는 가지관들."""
     a, b = (0.0, 0.0), (4000.0, 0.0)
     graph = {a: {b}, b: {a}}
     edge_len = {(a, b): 4000.0}
     for x, sign in branch_feet:
-        u, v = (x, 20.0 * sign), (x, 1000.0 * sign)
+        u, v = (x, TEE_GAP * sign), (x, 1000.0 * sign)
         graph[u] = {v}; graph[v] = {u}
-        edge_len[(min(u, v), max(u, v))] = 980.0
+        edge_len[(min(u, v), max(u, v))] = 1000.0 - TEE_GAP
     return graph, edge_len, a, b
 
 
 def test_p1_tee_split_at_midspan():
     graph, edge_len, a, b = _tee_graph((2000.0, 1))
-    u = (2000.0, 20.0)
+    u = (2000.0, TEE_GAP)
     rec: list = []
     assert rp._split_tee_branches(graph, edge_len, splits_out=rec) == 1
     assert (a, b) not in edge_len and b not in graph[a]
     assert graph[u] == {(2000.0, 1000.0), a, b}
     assert (a, u) in edge_len and (u, b) in edge_len
     # 분기점은 수선발이 아니라 끝점 u 자신 — 새 좌표를 만들지 않는다
-    assert abs(edge_len[(a, u)] - math.hypot(2000.0, 20.0)) < 1e-9
-    assert rec[0]["p"] == [2000.0, 20.0] and abs(rec[0]["gap_mm"] - 20.0) < 1e-9
+    assert abs(edge_len[(a, u)] - math.hypot(2000.0, TEE_GAP)) < 1e-9
+    assert rec[0]["p"] == [2000.0, TEE_GAP] and abs(rec[0]["gap_mm"] - TEE_GAP) < 1e-9
 
 
 def test_p1_tee_split_skips_endpoint_proximity():
@@ -555,14 +558,14 @@ def test_p1_tee_split_skips_endpoint_proximity():
 
 def test_p1_tee_split_far_gap_untouched():
     graph, edge_len, a, b = _tee_graph((2000.0, 1))
-    assert rp._split_tee_branches(graph, edge_len, max_gap_mm=10.0) == 0
+    assert rp._split_tee_branches(graph, edge_len, max_gap_mm=TEE_GAP / 2.0) == 0
     assert (a, b) in edge_len
 
 
 def test_p1_tee_split_two_branches_same_trunk():
     """한 주배관에 가지 둘 — 앞선 split 으로 생긴 조각에 다시 붙어 체인이 된다."""
     graph, edge_len, a, b = _tee_graph((1000.0, 1), (3000.0, -1))
-    u1, u2 = (1000.0, 20.0), (3000.0, -20.0)
+    u1, u2 = (1000.0, TEE_GAP), (3000.0, -TEE_GAP)
     assert rp._split_tee_branches(graph, edge_len) == 2
     assert (a, b) not in edge_len and (u1, b) not in edge_len
     assert graph[u1] == {(1000.0, 1000.0), a, u2}

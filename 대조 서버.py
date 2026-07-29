@@ -2975,33 +2975,14 @@ def remote30_overall_finalize_stream(job_id: str):
                          "edges": len(selection.edges),
                          "nodes_in_subgraph": len(selection.nodes_in_subgraph)})
 
-            # ── Stage 4 entities — prototype 캔버스가 "4 30 헤드" view 에 그릴 데이터.
-            # prototype 의 run_stages_3_5 가 emit 하는 것과 동일 형식 (_subgraph / _subgraph_head / _alarm_valve).
-            from remote30_prototype import orthogonalize_edge_positions as _ortho_pos
-            _s4_ortho = _ortho_pos(
-                selection.edges,
-                head_points=[h.pos for h in selection.heads],
-                source_point=selection.source_pos)
-
-            def _s4_xy(p):
-                return _s4_ortho.get((round(float(p[0]), 3), round(float(p[1]), 3)),
-                                     (float(p[0]), float(p[1])))
-            stage4_ents: list[dict] = []
-            for ea, eb, _ in selection.edges:
-                pa, pb = _s4_xy(ea), _s4_xy(eb)
-                stage4_ents.append({"t": "L", "l": "_subgraph",
-                                     "p": [pa[0], pa[1], pb[0], pb[1]]})
-            for h in selection.heads:
-                stage4_ents.append({"t": "C", "l": "_subgraph_head",
-                                     "c": list(_s4_xy(h.pos)), "r": 80.0})
-            if selection.source_pos is not None:
-                stage4_ents.append({"t": "C", "l": "_alarm_valve",
-                                     "c": list(_s4_xy(selection.source_pos)), "r": 150.0})
+            from remote30_prototype import build_stage4_entities
+            stage4_ents = build_stage4_entities(selection)
             yield _emit({
                 "type": "entities", "stage": 4, "entities": stage4_ents,
                 "summary": {
                     "selected_heads": len(selection.heads),
                     "subgraph_edges": len(selection.edges),
+                    "off_tree_edges": sum(1 for e in stage4_ents if e.get("x")),
                     "source_pos": list(selection.source_pos) if selection.source_pos else None,
                     "source_kind": selection.source_kind,
                 },

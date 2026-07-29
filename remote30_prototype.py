@@ -2415,6 +2415,12 @@ class ExtractionAudit:
     water: dict = field(default_factory=dict)
     # T분기 edge-split 근거. sym_mm 은 "접속=기호" 관측 증거일 뿐 판정에 쓰지 않는다.
     tee_splits: list = field(default_factory=list)  # [{p,edge,gap_mm,sym_mm}]
+    # 유량 누적 기반 가지치기(L5). load_mode off 면 전부 기본값.
+    load: dict = field(default_factory=dict)            # {min,max,median}
+    pruned: dict = field(default_factory=dict)          # {dead_edge_count,dead_len_mm,cycle_cut_count}
+    residual_cycles: dict = field(default_factory=dict)  # {count,policy}
+    unreachable_heads: list = field(default_factory=list)  # [[x,y],...]
+    fallback: dict = field(default_factory=dict)        # {triggered,reason}
 
     @classmethod
     def from_audit_dict(cls, audit: dict) -> "ExtractionAudit":
@@ -2432,6 +2438,17 @@ class ExtractionAudit:
                        {"dead_edge_count": 0, "dead_len_mm": 0.0, "dead_ratio": 0.0,
                         "watered_edge_count": 0, "heads_routed": 0}),
             tee_splits=list(audit.get("tee_splits") or []),
+            load=dict(audit.get("load") or
+                      {"min": 0, "max": 0, "median": 0.0}),
+            # "edges" 상세 기록은 응답 JSON 비대화 방지를 위해 집계만 싣는다.
+            pruned={k: (audit.get("pruned") or {}).get(k, v) for k, v in
+                    (("dead_edge_count", 0), ("dead_len_mm", 0.0),
+                     ("cycle_cut_count", 0))},
+            residual_cycles=dict(audit.get("residual_cycles") or
+                                 {"count": 0, "policy": "off"}),
+            unreachable_heads=list(audit.get("unreachable_heads") or []),
+            fallback=dict(audit.get("fallback") or
+                          {"triggered": False, "reason": ""}),
         )
 
     def to_json_dict(self) -> dict:
@@ -2440,6 +2457,10 @@ class ExtractionAudit:
             "head_drops": self.head_drops, "nonnominal": self.nonnominal,
             "corridor": self.corridor, "source_attach": self.source_attach,
             "water": self.water, "tee_splits": self.tee_splits,
+            "load": self.load, "pruned": self.pruned,
+            "residual_cycles": self.residual_cycles,
+            "unreachable_heads": self.unreachable_heads,
+            "fallback": self.fallback,
         }
 
 
@@ -4247,12 +4268,26 @@ def select_worst30_heads_anchored(
                                                  for kk in _cor_keys))}
     else:
         audit["corridor"] = {"node_count": 0, "len_mm": 0.0}
+    if load_mode and src is None:
+        # §1 전제 위반(단일 소스 없음) — 부하가 전부 0 이 되어 망 전체를 지운다.
+        audit["fallback"] = {"triggered": True,
+                             "reason": "source 미결합 — 부하 정의 불가"}
+        load_mode = False
     if load_mode:
+        _unreach: list = []
         _load = compute_edge_load(graph, edge_len, src, heads,
-                                  penalty_keys=_penalty_keys)
+                                  penalty_keys=_penalty_keys,
+                                  unreachable_out=_unreach)
         prune_by_load(graph, edge_len, _load, audit,
                       on_residual_cycle=on_residual_cycle, source=src,
                       penalty_keys=_penalty_keys)
+        _alive = sorted(_load.get(kk, 0) for kk in edge_len)
+        audit["load"] = {
+            "min": _alive[0] if _alive else 0,
+            "max": _alive[-1] if _alive else 0,
+            "median": float(_alive[len(_alive) // 2]) if _alive else 0.0,
+        }
+        audit["unreachable_heads"] = [[p[0], p[1]] for p in _unreach]
     else:
         force_spanning_tree(graph, edge_len, source=src, penalty_keys=_penalty_keys)
     _hd_keys: set = set()

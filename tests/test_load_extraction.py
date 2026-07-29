@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import json
 import math
 import random
 import sys
@@ -196,6 +197,25 @@ def test_l4_no_attached_head_is_lost_by_pruning():
     assert audit["heads"]["attached"] == audit["heads"]["detected_in_region"]
     assert audit["pruned"]["dead_edge_count"] > 0
     assert audit["residual_cycles"] == {"count": 0, "policy": "preserve"}
+
+
+def test_l5_audit_json_schema_is_filled():
+    """audit JSON 이 L5 스키마대로 채워지고 그대로 직렬화된다."""
+    sel, _ = _anchored(True)
+    j = json.loads(json.dumps(sel.audit.to_json_dict()))
+    assert j["load"]["min"] >= 1
+    assert j["load"]["max"] >= j["load"]["median"] >= j["load"]["min"]
+    assert set(j["pruned"]) == {"dead_edge_count", "dead_len_mm", "cycle_cut_count"}
+    assert set(j["residual_cycles"]) == {"count", "policy"}
+    assert j["unreachable_heads"] == []
+    assert j["fallback"] == {"triggered": False, "reason": ""}
+
+
+def test_l5_audit_defaults_when_load_mode_off():
+    sel, _ = _anchored(False)
+    j = sel.audit.to_json_dict()
+    assert j["pruned"]["dead_edge_count"] == 0
+    assert j["residual_cycles"] == {"count": 0, "policy": "off"}
 
 
 def test_l1_nontree_edges_are_zero():

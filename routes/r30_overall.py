@@ -254,8 +254,6 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                              "edges": len(selection.edges),
                              "nodes_in_subgraph": len(selection.nodes_in_subgraph)})
 
-                # ── Stage 4 entities — prototype 캔버스가 "4 30 헤드" view 에 그릴 데이터.
-                # prototype 의 run_stages_3_5 가 emit 하는 것과 동일 형식 (_subgraph / _subgraph_head / _alarm_valve).
                 from remote30_prototype import build_stage4_entities
                 stage4_ents = build_stage4_entities(selection)
                 yield _emit({

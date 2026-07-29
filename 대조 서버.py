@@ -3887,6 +3887,7 @@ def remote30_combined_build():
     mr_attached = False
     machine_room_labels: list[str] = []
     pump_junction_label: str | None = None
+    machine_room_conn_xy: tuple[float, float] | None = None
     if machine_room and machine_room.get("nodes") and machine_room.get("pipes"):
         # 펌프 junction = 기계실이 병합되는 라이저 Input ("1"). prepend 후엔
         # io 가 No 로 강등되므로 prepend 전에 미리 라벨을 기록해 둔다. 캔버스에서
@@ -3901,6 +3902,12 @@ def remote30_combined_build():
                     or machine_room["nodes"][-1]["label"])
         machine_room_labels = [str(n["label"]) for n in machine_room["nodes"]
                                if str(n["label"]) != _conn]
+        # mK 의 raw 좌표 = 기계실 평면을 펌프 노드에 정합시킬 영점.
+        _conn_node = next((n for n in machine_room["nodes"]
+                           if str(n["label"]) == _conn), None)
+        if _conn_node is not None:
+            machine_room_conn_xy = (float(_conn_node.get("x", 0.0)),
+                                    float(_conn_node.get("y", 0.0)))
         try:
             riser, mr_attached = prepend_machine_room_to_riser(
                 machine_room, riser,
@@ -3911,6 +3918,7 @@ def remote30_combined_build():
         if not mr_attached:
             machine_room_labels = []
             pump_junction_label = None
+            machine_room_conn_xy = None
 
     # ── Stitch + emit
     try:
@@ -3920,6 +3928,7 @@ def remote30_combined_build():
             pump_junction_label=pump_junction_label,
             machine_room_plan_edges=(machine_room.get("plan_edges") if mr_attached else None),
             machine_room_at_bottom=is_pump,
+            machine_room_conn_xy=machine_room_conn_xy,
         )
         # ── 가압 방식: 펌프 선택 시 수원 경계에 펌프 삽입 (자연낙차는 기본값, 무변경)
         if is_pump:

@@ -140,6 +140,64 @@ def test_l2_force_tree_policy_breaks_residual_cycle():
     assert len(edge_len) == 3
 
 
+# ── L4 통합 (대명동 201동 단위세대) ────────────────────────────────────────
+
+_FIXTURE = _ROOT / "samples/dxf/대명동201동 단위세대_layer정리.dxf"
+_WEST_UNIT_POLY = [
+    (244500.0, -243500.0), (253500.0, -243500.0),
+    (253500.0, -221500.0), (244500.0, -221500.0),
+]
+_runs: dict = {}
+
+
+def _anchored(load_mode: bool):
+    if load_mode in _runs:
+        return _runs[load_mode]
+    bundle = rp.parse_dxf_bundle(_FIXTURE)
+    layer_cat = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
+    ents = rp.filter_pipenet_only(bundle)
+    region = rp.HeadRegion.from_polygon(_WEST_UNIT_POLY)
+    gated = rp.detect_heads(ents, layer_cat, region=region)
+    cx = sum(h.pos[0] for h in gated) / len(gated)
+    cy = sum(h.pos[1] for h in gated) / len(gated)
+    audit: dict = {}
+    sel = rp.select_worst30_heads_anchored(
+        ents, layer_cat, alarm_xy=(cx, cy), head_region=region,
+        audit_out=audit, load_mode=load_mode)
+    _runs[load_mode] = (sel, audit)
+    return _runs[load_mode]
+
+
+def _final_load(sel):
+    graph, edge_len = _mkgraph([(a, b) for a, b, _L in sel.edges])
+    parent_map, _d, _o = rp.rooted_traversal(sel.source_pos, sel.edges)
+    parents = {n: p for n, p in parent_map.items() if p is not None}
+    return rp.compute_edge_load(graph, edge_len, sel.source_pos,
+                                [h.pos for h in sel.heads], parents=parents)
+
+
+def test_l4_load_mode_does_not_change_selection():
+    """부하 기반 가지치기를 켜도 대명동 최종 선정망은 그대로 (회귀 없음)."""
+    off, _ = _anchored(False)
+    on, _ = _anchored(True)
+    assert {(a, b) for a, b, _L in on.edges} == {(a, b) for a, b, _L in off.edges}
+    assert [h.pos for h in on.heads] == [h.pos for h in off.heads]
+
+
+def test_l4_every_final_edge_carries_at_least_one_head():
+    sel, _ = _anchored(True)
+    load = _final_load(sel)
+    assert min(load.values()) >= 1
+
+
+def test_l4_no_attached_head_is_lost_by_pruning():
+    _sel, audit = _anchored(True)
+    assert audit["heads"]["unreachable"] == []
+    assert audit["heads"]["attached"] == audit["heads"]["detected_in_region"]
+    assert audit["pruned"]["dead_edge_count"] > 0
+    assert audit["residual_cycles"] == {"count": 0, "policy": "preserve"}
+
+
 def test_l1_nontree_edges_are_zero():
     """사이클을 닫는 비트리 간선의 부하는 0."""
     #  S ─ A ─ B ─ H2   +  A ─ B 를 우회하는 긴 변 (A ─ C ─ B)

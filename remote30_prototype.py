@@ -4103,6 +4103,8 @@ def select_worst30_heads_anchored(
     spatial_reselect: bool = False,
     tee_split: bool = False,
     dxf_path=None,
+    load_mode: bool = False,
+    on_residual_cycle: str = "preserve",
 ) -> SelectionResult:
     """2앵커 anchored 선정(§1 계약) — ``alarm_xy``·``head_region`` 필수.
 
@@ -4119,6 +4121,11 @@ def select_worst30_heads_anchored(
         dxf_path(원본 DXF) 가 필요하다.
     tee_split: T분기 edge-split 플래그(기본 off). weld 이전에 실행돼 weld 가
         발명해야 할 연결을 줄인다(→audit tee_splits).
+    load_mode: 유량 누적 기반 가지치기 플래그(기본 off). off 면 기존 force_spanning_tree
+        경로 그대로. on 이면 corridor 제한 뒤 compute_edge_load → prune_by_load 로
+        부하 0 간선(드레인·시험배관·막다른 가지)을 제거한다.
+    on_residual_cycle: load_mode 에서 잔여 사이클 정책 — "preserve" | "force_tree".
+        force_tree 일 때만 force_spanning_tree 가 호출된다.
     """
     if alarm_xy is None:
         raise ValueError("anchored: alarm_xy(수동 알람밸브 좌표) 필수")
@@ -4240,7 +4247,14 @@ def select_worst30_heads_anchored(
                                                  for kk in _cor_keys))}
     else:
         audit["corridor"] = {"node_count": 0, "len_mm": 0.0}
-    force_spanning_tree(graph, edge_len, source=src, penalty_keys=_penalty_keys)
+    if load_mode:
+        _load = compute_edge_load(graph, edge_len, src, heads,
+                                  penalty_keys=_penalty_keys)
+        prune_by_load(graph, edge_len, _load, audit,
+                      on_residual_cycle=on_residual_cycle, source=src,
+                      penalty_keys=_penalty_keys)
+    else:
+        force_spanning_tree(graph, edge_len, source=src, penalty_keys=_penalty_keys)
     _hd_keys: set = set()
     res = _finalize_selection(graph, edge_len, src, "manual_anchored", heads, k, _pcb,
                               src_bridge_dist_mm, False, head_drop_out=_hd_keys)

@@ -1217,12 +1217,24 @@ def stitch_riser_and_heads(
 
     translated_riser_nodes = translated_riser_nodes + mr_laid
 
-    # 헤드망 노드 10 의 elevation → 라이저 AV elevation 으로 일치
+    # 헤드망 표고를 라이저 표고계로 rebase — AV 는 두 추출의 유일한 공통 노드이므로
+    # 그 지점의 z 가 양쪽에서 완전히 같아야 한다. 평면도 추출은 전 노드에 평탄한
+    # 상대표고를 주고 계통도 추출은 수원=0 기준이라, 그대로 합치면 AV 를 잇는 배관
+    # 하나에 두 기준점 차이만큼의 가짜 낙차가 실린다(대명동 실측 80.95m).
+    # 배관의 "elev" 는 구간 낙차(delta)라 기준 이동의 영향을 받지 않는다.
+    # head_tables 는 캐시되어 재사용되므로 사본으로 만든다.
+    head_elev_shift = 0.0
+    if head_av_node is not None:
+        head_elev_shift = (float(riser_av_node.get("elevation", 0.0))
+                           - float(head_av_node.get("elevation", 0.0)))
     head_nodes_filtered = []
     for n in head_tables.nodes:
         if n["label"] == av_lbl:
             # AV 는 라이저 쪽에서 이미 포함 — 헤드망 쪽 사본 skip
             continue
+        if head_elev_shift:
+            n = {**n, "elevation": round(float(n.get("elevation", 0.0))
+                                         + head_elev_shift, 3)}
         head_nodes_filtered.append(n)
 
     # 파이프 라벨 전역 유일화 — 계통도·평면도·기계실이 전부 r1.. 컨벤션을 쓰므로

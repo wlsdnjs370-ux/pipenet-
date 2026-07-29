@@ -2934,6 +2934,80 @@ def water_load_audit(
             "watered_edge_count": watered, "heads_routed": routed}
 
 
+def compute_edge_load(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    source: tuple | None,
+    heads: list,
+    penalty_keys: set | None = None,
+    max_attach_mm: float = HEAD_BRIDGE_MAX_MM,
+    parents: dict[tuple, tuple] | None = None,
+    unreachable_out: list | None = None,
+) -> dict[tuple, int]:
+    """유량 누적(flow accumulation) — 간선별 담당 헤드 수.
+
+    수문학에서 지형도로 하천망을 뽑는 절차와 같은 기법이다: ① 흐름 방향 결정
+    (여기선 소스 기준 최단경로 트리) ② 상류 단말 누적 ③ 임계치 절단(→L2).
+    루트 있는 트리에서 각 간선 아래 서브트리의 단말 수는 **후위순회 1회 O(V+E)**
+    로 전부 구해진다 — 헤드마다 소스까지 거슬러 오르면 O(단말 수 × 깊이)라
+    대형 도면에서 갈린다(`water_load_audit` 가 그 방식이며 계측 전용이다).
+
+    이 누적값의 정체는 **담당 헤드 수** — NFPC 103 별표1 '가'칸이 최소 호칭경을
+    정할 때 쓰는 바로 그 값이다. 추출 판정과 관경 결정이 같은 양을 쓴다(→L3).
+
+    parents: S310 이 이미 구한 최단경로 부모 맵이 있으면 넘겨 재계산을 피한다.
+    unreachable_out: 지정 시 소스 미도달(또는 부착 한도 초과) 헤드 좌표를 수집.
+        조용히 버리지 않는다 — 추출 결함 신호다.
+    반환: `graph` 의 **모든** 간선 키에 대한 부하. 트리에 속하지 않는 간선
+        (사이클을 닫는 간선, 소스와 다른 컴포넌트)의 부하는 0.
+    """
+    load: dict[tuple, int] = {
+        (min(u, v), max(u, v)) for u, nbs in graph.items() for v in nbs
+    }
+    load = dict.fromkeys(load, 0)
+    if source is None or source not in graph:
+        if unreachable_out is not None:
+            unreachable_out.extend(
+                h.pos if hasattr(h, "pos") else (float(h[0]), float(h[1]))
+                for h in heads)
+        return load
+    if parents is None:
+        parents = _shortest_path_parents(graph, edge_len, source, penalty_keys)
+
+    terminals: dict[tuple, int] = defaultdict(int)
+    for h in heads:
+        pos = h.pos if hasattr(h, "pos") else (float(h[0]), float(h[1]))
+        near = _nearest_graph_node(graph, pos)
+        if (near is None
+                or math.hypot(pos[0] - near[0], pos[1] - near[1]) > max_attach_mm
+                or (near != source and near not in parents)):
+            if unreachable_out is not None:
+                unreachable_out.append(pos)
+            continue
+        terminals[near] += 1
+
+    children: dict[tuple, list] = defaultdict(list)
+    for v, u in parents.items():
+        children[u].append(v)
+    # 부모가 항상 자식보다 먼저 나오는 DFS 순서 → 뒤집으면 후위순회.
+    order: list = []
+    stack = [source]
+    while stack:
+        n = stack.pop()
+        order.append(n)
+        stack.extend(children.get(n, ()))
+    subtree: dict[tuple, int] = {}
+    for n in reversed(order):
+        cnt = terminals.get(n, 0)
+        for ch in children.get(n, ()):
+            cnt += subtree[ch]
+        subtree[n] = cnt
+        p = parents.get(n)
+        if p is not None:
+            load[(min(p, n), max(p, n))] = cnt
+    return load
+
+
 def force_spanning_tree(
     graph: dict[tuple, set[tuple]],
     edge_len: dict[tuple, float],

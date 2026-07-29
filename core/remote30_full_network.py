@@ -702,7 +702,7 @@ def _layout_machine_room_plan(
     plan_edges: list[list[float]] | None,
     pump_xy: tuple[float, float],
     head_yspan: float = 5000.0,
-    below: bool = False,
+    conn_raw_xy: tuple[float, float] | None = None,
 ) -> tuple[list[dict], list[list[float]]]:
     """기계실(옥상수조) 전체 평면 배관망을 실제 x, y 형상 그대로 배치 — schematic 금지.
 
@@ -713,14 +713,18 @@ def _layout_machine_room_plan(
 
         1. 경로 노드 + 전체 edge 끝점을 합친 bbox 기준 균등 스케일(aspect 보존),
            헤드 군집과 비슷한 크기로.
-        2. bbox 하단(min y)을 펌프 위쪽(gap)에, 가로 중앙을 펌프 x 에 정렬.
-           → 평면 군집이 라이저 막대 위에 떠 펌프와 brige edge 로 이어져 보임.
+        2. 입상관 연결점(mK)의 raw 좌표를 펌프 노드 좌표로 보내는 평행이동.
+           mK 는 라이저 Input 과 병합돼 사라진 노드라, 그 자리가 곧 펌프 노드다.
+           bbox 중앙을 펌프에 맞추고 gap 만큼 띄우던 종전 방식은 이음매를 도면
+           대각의 18% 만큼 벌려(대명동 실측) 두 망을 잇는 배관이 긴 사선으로
+           그려졌다. 연결점을 영점으로 잡으면 이음매가 정확히 0 이 된다.
 
     Args:
         mr_nodes: 수리경로 노드(라벨 m*). 실제 DXF x, y 보유(원점 미변환 raw).
         plan_edges: 기계실 전체 SP 배관망 edge [[x1,y1,x2,y2], ...] (raw DXF).
         pump_xy: 펌프 junction(라이저 "1")의 schematic 좌표 — 부착 기준점.
-        head_yspan: 헤드망 y-span — 기계실 평면 크기·gap 산정 기준.
+        head_yspan: 헤드망 y-span — 기계실 평면 크기 산정 기준.
+        conn_raw_xy: 입상관 연결점(mK)의 raw DXF 좌표. 미지정이면 bbox 중앙.
 
     Returns:
         (laid_nodes, laid_edges) — 동일 변환 적용된 경로 노드 + 전체망 edge.
@@ -743,15 +747,14 @@ def _layout_machine_room_plan(
     diag = max((w * w + h * h) ** 0.5, 1.0)
     target = max(2000.0, head_yspan * 0.7)   # 헤드 군집과 비슷한 크기로
     scale = target / diag
-    cx = (x_min + x_max) / 2.0
-    gap = max(800.0, head_yspan * 0.12)       # 펌프와 기계실 군집 사이 간격
+    if conn_raw_xy is not None:
+        ax, ay = float(conn_raw_xy[0]), float(conn_raw_xy[1])
+    else:
+        ax, ay = (x_min + x_max) / 2.0, (y_min + y_max) / 2.0
     px, py = float(pump_xy[0]), float(pump_xy[1])
 
     def _tf(x: float, y: float) -> tuple[float, float]:
-        # 자연낙차(옥상수조): 펌프 위쪽(+). 펌프 가압(B1): 펌프 아래쪽(-).
-        if below:
-            return ((x - cx) * scale + px, py - gap - (y_max - y) * scale)
-        return ((x - cx) * scale + px, (y - y_min) * scale + py + gap)
+        return ((x - ax) * scale + px, (y - ay) * scale + py)
 
     laid_nodes: list[dict] = []
     for n in mr_nodes:
@@ -773,6 +776,7 @@ def stitch_riser_and_heads(
     pump_junction_label: str | None = None,
     machine_room_plan_edges: list[list[float]] | None = None,
     machine_room_at_bottom: bool = False,
+    machine_room_conn_xy: tuple[float, float] | None = None,
 ) -> CombinedTables:
     """라이저 끝점(AV node) ↔ 헤드망 source(=같은 label) 결합 + schematic 좌표 정렬.
 
@@ -845,7 +849,7 @@ def stitch_riser_and_heads(
                 pump_xy = (float(pump_node["x"]), float(pump_node["y"]))
                 mr_laid, plan_laid = _layout_machine_room_plan(
                     mr_nodes, machine_room_plan_edges, pump_xy, head_yspan=head_yspan,
-                    below=machine_room_at_bottom,
+                    conn_raw_xy=machine_room_conn_xy,
                 )
             except (KeyError, TypeError, ValueError):
                 mr_laid = list(mr_nodes)

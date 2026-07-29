@@ -3008,6 +3008,66 @@ def compute_edge_load(
     return load
 
 
+def prune_by_load(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    load: dict[tuple, int],
+    audit: dict | None = None,
+    on_residual_cycle: str = "preserve",
+    edge_layers: dict[tuple, str] | None = None,
+    source: tuple | None = None,
+    penalty_keys: set | None = None,
+) -> set:
+    """부하 0 간선을 쓸어내고(mark-and-sweep) 남은 사이클을 정책대로 처리한다.
+
+    `force_spanning_tree` 와 달리 절단 기준이 위상이 아니라 **물이 흐르는지** 다.
+    도달 가능하지만 어떤 헤드에도 기여하지 않는 구간(드레인·시험배관·막다른 가지·
+    표기 잔재)은 SPT 에 남지만 여기선 부하 0 이라 제거된다.
+
+    사이클 규칙: 사이클을 이루는 간선 중 부하 최소값이 0 일 때만 그 간선을 자르고,
+    최소값이 1 이상이면 실제 격자배관이므로 보존한다. 이 조건은 "부하 0 간선 제거"
+    와 절단 대상이 정확히 같으므로(간선이 잘리는 필요충분조건이 부하 0) 1 단계로
+    한 번에 처리한다 — 별도 사이클 열거는 절단 대상을 바꾸지 않는다.
+
+    `on_residual_cycle`: 모든 변의 부하가 1 이상이라 남은 사이클의 처리.
+        ``"preserve"``(기본) 보존 / ``"force_tree"`` `force_spanning_tree` 호출.
+    `edge_layers`: 간선 키 → 레이어명. 그래프 자료구조에는 레이어가 없어(§3 자료구조
+        변경 금지) 호출측이 줄 때만 audit 에 남긴다.
+    반환: 제거된 간선 키 집합.
+    """
+    dead = sorted(k for k in load if load[k] == 0
+                  and k[1] in graph.get(k[0], ()))
+    records = []
+    dead_len = 0.0
+    for k in dead:
+        L = float(edge_len.get(k, 0.0))
+        dead_len += L
+        rec = {"p1": [k[0][0], k[0][1]], "p2": [k[1][0], k[1][1]], "len_mm": L}
+        if edge_layers is not None:
+            rec["layer"] = edge_layers.get(k, "")
+        records.append(rec)
+        graph[k[0]].discard(k[1])
+        graph[k[1]].discard(k[0])
+        edge_len.pop(k, None)
+
+    # 남은 사이클 수 = 순환수(E - V + C). 사이클을 열거하지 않고 센다.
+    nodes = [n for n in graph if graph[n]]
+    n_edge = sum(len(graph[n]) for n in nodes) // 2
+    n_comp = sum(1 for c in _connected_components(graph) if len(c) > 1)
+    residual = n_edge - len(nodes) + n_comp
+    cycle_cut = 0
+    if residual > 0 and on_residual_cycle == "force_tree":
+        _tree, removed = force_spanning_tree(graph, edge_len, source, penalty_keys)
+        cycle_cut = len(removed)
+        residual = 0
+
+    if audit is not None:
+        audit["pruned"] = {"dead_edge_count": len(dead), "dead_len_mm": dead_len,
+                           "cycle_cut_count": cycle_cut, "edges": records}
+        audit["residual_cycles"] = {"count": residual, "policy": on_residual_cycle}
+    return set(dead)
+
+
 def force_spanning_tree(
     graph: dict[tuple, set[tuple]],
     edge_len: dict[tuple, float],

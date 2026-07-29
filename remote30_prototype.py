@@ -2411,6 +2411,8 @@ class ExtractionAudit:
     nonnominal: dict = field(default_factory=dict)     # {edge_count,len_mm,ratio}
     corridor: dict = field(default_factory=dict)       # {node_count,len_mm}
     source_attach: dict = field(default_factory=dict)  # {dist_mm,method,escalation,...}
+    # 급수 감사 — {dead_edge_count,dead_len_mm,dead_ratio,watered_edge_count,heads_routed}
+    water: dict = field(default_factory=dict)
 
     @classmethod
     def from_audit_dict(cls, audit: dict) -> "ExtractionAudit":
@@ -2424,6 +2426,9 @@ class ExtractionAudit:
                             {"edge_count": 0, "len_mm": 0.0, "ratio": 0.0}),
             corridor=dict(audit.get("corridor") or {"node_count": 0, "len_mm": 0.0}),
             source_attach=dict(audit.get("source_attach") or {}),
+            water=dict(audit.get("water") or
+                       {"dead_edge_count": 0, "dead_len_mm": 0.0, "dead_ratio": 0.0,
+                        "watered_edge_count": 0, "heads_routed": 0}),
         )
 
     def to_json_dict(self) -> dict:
@@ -2431,6 +2436,7 @@ class ExtractionAudit:
             "heads": self.heads, "bridges": self.bridges, "welds": self.welds,
             "head_drops": self.head_drops, "nonnominal": self.nonnominal,
             "corridor": self.corridor, "source_attach": self.source_attach,
+            "water": self.water,
         }
 
 
@@ -2786,40 +2792,30 @@ def _adaptive_bridge_tols(diag: float) -> list[float]:
 # - 제거된 edge 들은 별도 set 으로 반환 → 시각화에서 cycle 자리 표시 가능
 
 
-def force_spanning_tree(
+def _shortest_path_parents(
     graph: dict[tuple, set[tuple]],
     edge_len: dict[tuple, float],
-    source: tuple | None = None,
+    root: tuple,
     penalty_keys: set | None = None,
-) -> tuple[set, set]:
-    """그래프를 (각 component 마다) min-weight shortest-path spanning tree 로 변환.
+) -> dict[tuple, tuple]:
+    """root 기준 min-weight 최단경로 부모 맵 {node: parent}. root 는 키에 없음.
 
-    핵심: 트리 간선(부모)은 그 노드로 오는 tight-edge(최단경로 선행자 간선) 중
-    **가장 가벼운 것**으로 고른다. 단순 Dijkstra SPT 는 relax 순서에 따라 무거운
-    shortcut 간선이 부모로 남아 밸브 근처에 가짜 hub(조기분기)를 만드는데, tight-edge
-    최소 가중치 부모를 쓰면 그런 가짜 분기가 사라져 주배관이 하나의 선으로 정돈된다
-    (대명동 junction 235→116; B1F snaking 없음).
+    부모는 그 노드로 오는 tight-edge(최단경로 선행자 간선) 중 **가장 가벼운 것**으로
+    고른다. 단순 Dijkstra 선행자는 relax 순서에 따라 무거운 shortcut 간선이 부모로
+    남아 밸브 근처에 가짜 hub(조기분기)를 만드는데, tight-edge 최소 가중치 부모를
+    쓰면 그런 가짜 분기가 사라져 주배관이 하나의 선으로 정돈된다
+    (대명동 junction 235→116; B1F snaking 없음). 결과는 relax 순서와 무관.
 
     penalty_keys: 추정연결(weld/bridge 등) edge 키 집합. 주어지면 라우팅 비용을
-        **사전식(추정edge 개수, 실길이)** 으로 정렬해 트리가 실배관을 우선 선택한다.
+        **사전식(추정edge 개수, 실길이)** 으로 정렬해 실배관을 우선 선택한다.
         추정 직선은 기하학적으로 짧아 순수 길이 기준으론 도면을 가로지르는
         지름길(wormhole)로 선택돼 경로가 꼬이는데, "추정 edge 를 하나라도 덜 밟는
         경로"를 항상 우선하면 실배관이 있으면 그쪽으로 돈다(추정 없이 도달 불가한
-        구간만 추정 사용). **거리(수리계산)는 이후 트리 위에서 실 edge_len 으로 재므로
-        물리 거리는 보존.** 미지정 시 (추정 개수 항상 0) 순수 길이 기준 = 기존 동작
-        불변(바이트 동일). 가법 penalty(거대 상수) 대신 사전식을 쓰는 이유: 거대 상수는
-        누적 거리를 폭증시켜 tight-edge 상대 허용치를 무너뜨려 트리가 끊긴다.
-
-    Args:
-        graph: 무방향 그래프 (in-place 수정됨 — cycle edge 제거)
-        edge_len: edge 길이 dict (in-place 수정 — 제거된 edge 도 같이 pop)
-        source: AV (또는 시작 노드). 이 노드가 속한 component 는 source 가 root.
-                다른 component 는 임의 root (가장 작은 좌표 노드).
-
-    Returns:
-        (tree_edges, removed_edges) — 각각 (min, max) 키 set.
+        구간만 추정 사용). **거리(수리계산)는 이후 실 edge_len 으로 재므로 물리
+        거리는 보존.** 미지정 시 (추정 개수 항상 0) 순수 길이 기준. 가법 penalty
+        (거대 상수) 대신 사전식을 쓰는 이유: 거대 상수는 누적 거리를 폭증시켜
+        tight-edge 상대 허용치를 무너뜨려 트리가 끊긴다.
     """
-    tree_edges: set[tuple] = set()
     _pk = penalty_keys or set()
 
     def _w(u, v):
@@ -2830,60 +2826,142 @@ def force_spanning_tree(
         """이 edge 가 추정연결이면 1, 실배관이면 0 (사전식 라우팅 1차 키)."""
         return 1 if (_pk and (min(u, v), max(u, v)) in _pk) else 0
 
-    comps = _connected_components(graph)
-    for comp in comps:
+    _INF = (float("inf"), float("inf"))
+    dist: dict[tuple, tuple] = {root: (0, 0.0)}
+    pq: list[tuple] = [(0, 0.0, root)]
+    while pq:
+        pc, d, u = heapq.heappop(pq)
+        if (pc, d) > dist[u]:
+            continue
+        for v in graph.get(u, ()):
+            npc = pc + _pen(u, v)
+            nd = d + _w(u, v)
+            if (npc, nd) < dist.get(v, _INF):
+                dist[v] = (npc, nd)
+                heapq.heappush(pq, (npc, nd, v))
+    # tight 판정: 추정 개수는 정확히 일치, 실길이는 상대 tol 이내(부동소수 오차).
+    tol = 1e-6
+    parents: dict[tuple, tuple] = {}
+    for v, (pcv, dvl) in dist.items():
+        if v == root:
+            continue
+        best_u = None
+        best_w = float("inf")
+        for u in graph.get(v, ()):
+            du = dist.get(u)
+            if du is None:
+                continue
+            pcu, dul = du
+            w = _w(u, v)
+            if pcu + _pen(u, v) == pcv and dul + w <= dvl + tol * (1.0 + abs(dvl)):
+                if w < best_w or (w == best_w and (best_u is None or u < best_u)):
+                    best_w = w
+                    best_u = u
+        if best_u is not None:
+            parents[v] = best_u
+    return parents
+
+
+def water_load_audit(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    source: tuple | None,
+    heads: list,
+    penalty_keys: set | None = None,
+    max_attach_mm: float = HEAD_BRIDGE_MAX_MM,
+) -> dict:
+    """급수 감사 — 각 edge 가 몇 개의 승인 헤드에 물을 보내는지 계측(POC3 water_cleanup).
+
+    source→각 헤드 최단경로(force_spanning_tree 와 동일한 사전식 비용)를 겹쳐 edge 별
+    급수 부하를 센다. 부하 0 인 edge = 어떤 헤드에도 기여하지 않는 구간 —
+    드레인·시험배관·표기 잔재 후보이자 추출 결함 신호다.
+
+    집계 범위는 **source 도달 가능 컴포넌트로 한정**한다. 이 시점의 graph 는 도면
+    전체(타 세대망·노이즈 조각 포함)를 담고 있어, 전역으로 재면 "우리 망과 무관한
+    별개 컴포넌트"가 전부 부하 0 으로 잡혀 비율이 무의미해진다(대명동 실측 89%).
+
+    **계측 전용** — graph/edge_len 을 수정하지 않는다. 부하 0 을 곧바로 삭제하면 안 되는
+    이유는 최단경로만 겹치므로 루프의 대체 경로가 0 으로 잡히기 때문(영역 내 루프는
+    보존 정책). 실제 가지치기는 실측 dead_ratio 를 본 뒤 별도 결정.
+
+    SPT 이전(사이클 보유 상태)에 재는 것이 전제 — SPT 후에는 사이클 edge 가 이미
+    제거돼 루프/드레인이 관측 대상에서 사라진다.
+    """
+    empty = {"dead_edge_count": 0, "dead_len_mm": 0.0, "dead_ratio": 0.0,
+             "watered_edge_count": 0, "heads_routed": 0}
+    if source is None or source not in graph:
+        return empty
+    parents = _shortest_path_parents(graph, edge_len, source, penalty_keys)
+    load: dict[tuple, int] = defaultdict(int)
+    routed = 0
+    for h in heads:
+        pos = h.pos if hasattr(h, "pos") else (float(h[0]), float(h[1]))
+        near = _nearest_graph_node(graph, pos)
+        if near is None or math.hypot(pos[0] - near[0], pos[1] - near[1]) > max_attach_mm:
+            continue
+        if near != source and near not in parents:
+            continue  # source 와 다른 컴포넌트 — 미도달 헤드로 이미 보고됨
+        routed += 1
+        v = near
+        seen = {v}
+        while v in parents:
+            u = parents[v]
+            load[(min(u, v), max(u, v))] += 1
+            if u in seen:
+                break
+            seen.add(u)
+            v = u
+    dead_n = 0
+    dead_len = 0.0
+    total_len = 0.0
+    watered = 0
+    reachable = set(parents)
+    reachable.add(source)
+    for key in {(min(u, v), max(u, v)) for u, nbs in graph.items() for v in nbs
+                if u in reachable}:
+        L = edge_len.get(key, 0.0)
+        total_len += L
+        if load.get(key):
+            watered += 1
+        else:
+            dead_n += 1
+            dead_len += L
+    return {"dead_edge_count": dead_n, "dead_len_mm": dead_len,
+            "dead_ratio": (dead_len / total_len) if total_len else 0.0,
+            "watered_edge_count": watered, "heads_routed": routed}
+
+
+def force_spanning_tree(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    source: tuple | None = None,
+    penalty_keys: set | None = None,
+) -> tuple[set, set]:
+    """그래프를 (각 component 마다) min-weight shortest-path spanning tree 로 변환.
+
+    트리 간선 선택 규칙은 `_shortest_path_parents` 참조.
+
+    Args:
+        graph: 무방향 그래프 (in-place 수정됨 — cycle edge 제거)
+        edge_len: edge 길이 dict (in-place 수정 — 제거된 edge 도 같이 pop)
+        source: AV (또는 시작 노드). 이 노드가 속한 component 는 source 가 root.
+                다른 component 는 임의 root (가장 작은 좌표 노드).
+        penalty_keys: 추정연결 edge 키 집합 (사전식 라우팅). 미지정 시 순수 길이
+                기준 = 기존 동작 불변(바이트 동일).
+
+    Returns:
+        (tree_edges, removed_edges) — 각각 (min, max) 키 set.
+    """
+    tree_edges: set[tuple] = set()
+    for comp in _connected_components(graph):
         if not comp:
             continue
-        # 이 component 의 root 선택
         if source is not None and source in comp:
             root = source
         else:
             root = min(comp, key=lambda p: (p[0], p[1]))  # deterministic
-
-        # 1) 사전식 Dijkstra — 비용 (추정edge 개수, 실길이). 추정 개수가 항상 0 이면
-        #    (penalty 미지정) 순수 길이 Dijkstra 와 완전 동일.
-        _INF = (float("inf"), float("inf"))
-        dist: dict[tuple, tuple] = {root: (0, 0.0)}
-        pq: list[tuple] = [(0, 0.0, root)]
-        while pq:
-            pc, d, u = heapq.heappop(pq)
-            if (pc, d) > dist[u]:
-                continue
-            for v in graph.get(u, ()):
-                if v not in comp:
-                    continue
-                npc = pc + _pen(u, v)
-                nd = d + _w(u, v)
-                if (npc, nd) < dist.get(v, _INF):
-                    dist[v] = (npc, nd)
-                    heapq.heappush(pq, (npc, nd, v))
-        # 2) min-weight tight-edge 부모 선택 — 최단비용 불변, 가짜 hub 제거.
-        #    tight 판정: 추정 개수는 정확히 일치, 실길이는 상대 tol 이내(부동소수 오차).
-        tol = 1e-6
-        for v in comp:
-            if v == root:
-                continue
-            dv = dist.get(v)
-            if dv is None:
-                continue
-            pcv, dvl = dv
-            best_u = None
-            best_w = float("inf")
-            for u in graph.get(v, ()):
-                du = dist.get(u)
-                if du is None:
-                    continue
-                pcu, dul = du
-                w = _w(u, v)
-                npc = pcu + _pen(u, v)
-                nd = dul + w
-                # tight: u 가 v 의 최단(사전식)경로 선행자
-                if npc == pcv and nd <= dvl + tol * (1.0 + abs(dvl)):
-                    if w < best_w or (w == best_w and (best_u is None or u < best_u)):
-                        best_w = w
-                        best_u = u
-            if best_u is not None:
-                tree_edges.add((min(v, best_u), max(v, best_u)))
+        for v, u in _shortest_path_parents(graph, edge_len, root, penalty_keys).items():
+            tree_edges.add((min(v, u), max(v, u)))
 
     # 전체 edge 수집 → tree 외는 제거 대상
     all_edges: set[tuple] = set()
@@ -3890,6 +3968,9 @@ def select_worst30_heads_anchored(
         [p[0], p[1]] for p in find_unreachable_region_heads(graph, src, heads)
     ]
     audit["heads"]["attached"] = len(heads) - len(audit["heads"]["unreachable"])
+    # 급수 감사 — corridor 제한·SPT 이전(사이클 보유 상태)에 재야 루프/드레인이 보인다.
+    audit["water"] = water_load_audit(graph, edge_len, src, heads,
+                                      penalty_keys=_penalty_keys)
     # ④ corridor 제한 → SPT → 공통 후반부 (기존 primitive 그대로)
     region_nodes = _restrict_to_branch_region(graph, edge_len, src, branch_zones,
                                               penalty_keys=_penalty_keys)

@@ -439,7 +439,7 @@ def test_w7_audit_schema_on_fixture(pipe_ents, layer_categories):
     assert isinstance(aud, rp.ExtractionAudit)
     j = _json.loads(_json.dumps(aud.to_json_dict()))   # JSON 직렬화 계약
     assert set(j) == {"heads", "bridges", "welds", "head_drops",
-                      "nonnominal", "corridor", "source_attach"}
+                      "nonnominal", "corridor", "source_attach", "water"}
     assert j["heads"]["detected_in_region"] == len(gated)
     assert j["heads"]["attached"] + len(j["heads"]["unreachable"]) == len(gated)
     assert {"dist_mm", "method", "escalation"} <= set(j["source_attach"])
@@ -461,3 +461,59 @@ def test_w7_audit_schema_on_fixture(pipe_ents, layer_categories):
 def test_w7_nonanchored_audit_none(pipe_ents, layer_categories):
     sel = rp.select_worst30_heads(pipe_ents, layer_categories)
     assert sel.audit is None   # 비-anchored 응답에 extraction_audit 키 미노출 전제
+
+
+# ── V4 수용 기준: water_load_audit 급수 감사 ────────────────────────────────
+
+def _v4_graph():
+    """급수 간선 2개(s→a→b, 헤드 부착) + 비급수 드레인 가지 1개(a→c)."""
+    s, a, b, c = (0.0, 0.0), (1000.0, 0.0), (2000.0, 0.0), (1000.0, 3000.0)
+    graph = {s: {a}, a: {s, b, c}, b: {a}, c: {a}}
+    edge_len = {(s, a): 1000.0, (a, b): 1000.0, (a, c): 3000.0}
+    head = HeadDetection(pos=(2000.0, 50.0), bbox=(1999, 49, 2001, 51),
+                         kind="t", confidence=0.9)
+    return graph, edge_len, s, [head]
+
+
+def test_v4_water_marks_unwatered_branch():
+    graph, edge_len, s, heads = _v4_graph()
+    before = ({k: set(v) for k, v in graph.items()}, dict(edge_len))
+    w = rp.water_load_audit(graph, edge_len, s, heads)
+    assert w["heads_routed"] == 1
+    assert w["watered_edge_count"] == 2          # s→a, a→b
+    assert w["dead_edge_count"] == 1             # a→c (드레인)
+    assert abs(w["dead_len_mm"] - 3000.0) < 1e-6
+    assert abs(w["dead_ratio"] - 3000.0 / 5000.0) < 1e-9
+    # 계측 전용 — 그래프를 수정하면 안 됨
+    assert ({k: set(v) for k, v in graph.items()}, dict(edge_len)) == before
+
+
+def test_v4_water_loop_alternate_path_counted_dead():
+    """루프의 대체 경로는 부하 0 으로 잡힌다 — 삭제 금지 근거(계측만 하는 이유)."""
+    graph, edge_len, s, heads = _v4_graph()
+    b, c = (2000.0, 0.0), (1000.0, 3000.0)
+    graph[b].add(c); graph[c].add(b)             # a-b-c 루프 폐합
+    edge_len[(b, c)] = 4000.0
+    w = rp.water_load_audit(graph, edge_len, s, heads)
+    assert w["heads_routed"] == 1
+    assert w["dead_edge_count"] == 2             # a→c, b→c 둘 다 부하 0
+    assert 0.0 < w["dead_ratio"] < 1.0
+
+
+def test_v4_water_no_source():
+    graph, edge_len, _s, heads = _v4_graph()
+    w = rp.water_load_audit(graph, edge_len, None, heads)
+    assert w["heads_routed"] == 0 and w["dead_ratio"] == 0.0
+
+
+def test_v4_water_in_anchored_audit(pipe_ents, layer_categories):
+    region = HeadRegion.from_polygon(WEST_UNIT_POLY)
+    gated = rp.detect_heads(pipe_ents, layer_categories, region=region)
+    cx = sum(h.pos[0] for h in gated) / len(gated)
+    cy = sum(h.pos[1] for h in gated) / len(gated)
+    res = rp.select_worst30_heads_anchored(pipe_ents, layer_categories,
+                                           alarm_xy=(cx, cy), head_region=region)
+    w = res.audit.to_json_dict()["water"]
+    assert w["heads_routed"] == res.audit.heads["attached"]
+    assert w["watered_edge_count"] > 0
+    assert 0.0 <= w["dead_ratio"] <= 1.0

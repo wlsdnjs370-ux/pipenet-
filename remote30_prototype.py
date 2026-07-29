@@ -4728,21 +4728,19 @@ def build_input_tables(
         return 150
 
     # ── 위 rooted traversal 의 트리 → pipe 별 downstream 헤드 수
-    selected_head_set = {h.pos for h in selection.heads}
-    subtree_count: dict = {}
-    def _subtree_calc(n):
-        cnt = 1 if n in selected_head_set else 0
-        for c in children_of[n]:
-            cnt += _subtree_calc(c)
-        subtree_count[n] = cnt
-        return cnt
-    if src_pos is not None:
-        _subtree_calc(src_pos)
+    # 담당 헤드 수 = 유량 누적값. 추출 소속 판정과 별표1 최소 호칭경이 같은 양을 쓴다.
+    _sel_graph: dict = defaultdict(set)
+    _sel_len: dict = {}
+    for _a, _b, _L in selection.edges:
+        _sel_graph[_a].add(_b)
+        _sel_graph[_b].add(_a)
+        _sel_len[(min(_a, _b), max(_a, _b))] = _L
+    _edge_load = compute_edge_load(
+        _sel_graph, _sel_len, src_pos, [h.pos for h in selection.heads],
+        parents={n: p for n, p in parent_map.items() if p is not None})
 
     def _downstream_heads(a, b) -> int:
-        if parent_map.get(b) == a: return subtree_count.get(b, 0)
-        if parent_map.get(a) == b: return subtree_count.get(a, 0)
-        return 0
+        return _edge_load.get((min(a, b), max(a, b)), 0)
 
     def _point_seg_dist(px, py, ax, ay, bx, by) -> float:
         dx, dy = bx - ax, by - ay

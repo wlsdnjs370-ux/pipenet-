@@ -127,7 +127,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, HEAD_BRIDGE_MAX_MM, SOURCE_BRIDGE_MAX_MM, MIN_PIPE_EDGE_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, HEAD_BRIDGE_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 # ── 초대형 XREF 도면 예산 가드 (기계실/계통도 파싱) ──────────────────────────
 # 142MB LH 지하층배관도는 최상위 INSERT 61개를 폭발하면 leaf 597k개가 되는데
@@ -1192,7 +1192,7 @@ def _floor_for_node_y(node_y: float,
     return None, None
 
 
-from remote30_graph import (_point_to_segment_dist, _round_pt, _NodeIndex, _is_triangle_shape, _edge_dir, _midpoint, _dijkstra_from, _shortest_path, _nearest_graph_node, _connected_components)  # noqa: E501  (Phase2b core)
+from remote30_graph import (_point_to_segment_dist, _round_pt, _NodeIndex, _is_triangle_shape, _edge_dir, _midpoint, _dijkstra_from, _shortest_path, _nearest_graph_node, _connected_components, HeadRegion)  # noqa: E501  (Phase2b core)
 
 
 def _match_diameter_for_segment(
@@ -1589,6 +1589,8 @@ def extract_system_path(
     if not entities:
         raise ValueError("계통도 entity 비어있음 — DXF 파싱 결과 확인 필요")
 
+    # force_connect(무제한 봉합)는 계통도/기계실 추출 전용 — anchored 평면도 경로
+    # (select_worst30_heads_anchored)에서는 호출 금지 (W3: 표적 브릿지로 대체).
     graph, edge_len, stats = build_system_graph(entities, layer_filter=layer_filter,
                                                 force_connect=True)
     if not graph:
@@ -2093,6 +2095,8 @@ def extract_machine_room_path(
         present = {en.get("l") for en in entities}
         lf = {ly for ly in MACHINE_ROOM_SP_LAYERS if ly in present} or None
 
+    # force_connect(무제한 봉합)는 기계실 추출 전용 — anchored 평면도 경로에서는
+    # 호출 금지 (W3: 표적 브릿지로 대체).
     graph, edge_len, stats = build_system_graph(entities, layer_filter=lf,
                                                 force_connect=True)
     if not graph:
@@ -2366,7 +2370,8 @@ class HeadDetection:
 
 
 
-def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str]) -> list[HeadDetection]:
+def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str],
+                 region=None) -> list[HeadDetection]:
     """도면 내 모든 헤드 후보 인식 — 다중 신호 결합 + 근접 클러스터링.
 
     인식 규칙
@@ -2378,6 +2383,11 @@ def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str]) ->
     R5) **layer-agnostic 삼각형 HATCH** — 3 고유 정점 + bbox < 1500mm 면 confidence 0.72
         (드라이팬던트 헤드 마커 — 참조 elbow/측벽 DXF 처럼 HEAD 레이어 아닌 곳도 검출)
     R4) 클러스터링 — 250mm 이내 후보들을 1 헤드로 통합 (cue 가 여러 개일수록 confidence ↑)
+
+    region: anchored 모드의 헤드 영역 게이트. ``contains((x, y)) -> bool`` 프로토콜
+        객체(→W4 HeadRegion). 지정 시 **최종 승인 후보에만** point-in-region 판정을
+        적용해 범례 표본·인접 세대 헤드를 배제한다. R1~R5 신호 계산·클러스터링은
+        불변이며 ``region=None`` 이면 기존과 완전 동일.
     """
     candidates: list[HeadDetection] = []
 
@@ -2469,7 +2479,121 @@ def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str]) ->
             kind=kinds if len(cluster) == 1 else f"cluster({len(cluster)}):{kinds}",
             confidence=conf, block_name=best.block_name, layer=best.layer,
         ))
+    if region is not None:
+        # anchored 영역 게이트 — 클러스터링까지 끝난 최종 승인 후보에만 적용.
+        out = [h for h in out if region.contains(h.pos)]
     return out
+
+
+def find_unreachable_region_heads(
+    graph: dict,
+    source: tuple[float, float] | None,
+    heads: list[HeadDetection],
+    max_attach_mm: float = HEAD_BRIDGE_MAX_MM,
+) -> list[tuple[float, float]]:
+    """region 승인 헤드 중 source 에서 도달 불가한 헤드 좌표 목록.
+
+    anchored 모드 진단 — 조용한 drop 금지: 미도달 헤드는 추출 결함 신호라
+    audit(→W7)에 기록한다. 판정은 파이프라인의 헤드 부착 규칙과 동일하게
+    최근접 그래프 노드(HEAD_BRIDGE_MAX_MM 이내)를 쓰되, 그 노드가 source 와
+    같은 연결 컴포넌트가 아니면 미도달로 본다.
+    """
+    if source is None or source not in graph:
+        return [h.pos for h in heads]
+    comp = {source}
+    stack = [source]
+    while stack:
+        n = stack.pop()
+        for m in graph.get(n, ()):
+            if m not in comp:
+                comp.add(m)
+                stack.append(m)
+    unreachable: list[tuple[float, float]] = []
+    for h in heads:
+        near = _nearest_graph_node(graph, h.pos)
+        if near is None:
+            unreachable.append(h.pos)
+            continue
+        d = math.hypot(h.pos[0] - near[0], h.pos[1] - near[1])
+        if d > max_attach_mm or near not in comp:
+            unreachable.append(h.pos)
+    return unreachable
+
+
+def attach_source(
+    alarm_xy: tuple[float, float],
+    graph: dict,
+    comp_of: dict,
+    accepted_heads: list,
+    edge_len: dict,
+    audit: dict,
+) -> tuple[tuple[float, float], tuple | None]:
+    """anchored 소스 결합(W2) — blind ``_nearest_graph_node`` 단독 폴백 금지.
+
+    1순위 후보 = region 내 승인 헤드를 1개 이상 보유한 컴포넌트의 노드들.
+    그중 최근접에 부착. ``SOURCE_BRIDGE_MAX_MM`` 내에 없으면 무헤드 컴포넌트까지
+    1단계 완화(escalation=1)하되 거리 상한은 유지. 그래도 없으면 anchored 실패 —
+    명시적 에러(ValueError). 선택 근거(거리·컴포넌트 헤드 수·완화 단계)는
+    ``audit['source_attach']`` 에 기록한다.
+
+    accepted_heads: HeadDetection 목록(또는 (x, y) 좌표 목록).
+    반환: (source 노드, 접속 edge 키 또는 None). alarm_xy 가 기존 노드와 1e-3 이상
+    떨어져 있으면 alarm_xy 를 그래프 노드로 추가하고 최근접 후보 노드와 edge 로
+    잇는다(기존 canonical 부착과 동일 방식) — 이 edge 는 추정연결이라 호출부에서
+    라우팅 penalty 대상으로 등록해야 한다.
+    """
+    ax, ay = float(alarm_xy[0]), float(alarm_xy[1])
+    head_count: dict = {}
+    for h in accepted_heads:
+        pos = h.pos if hasattr(h, "pos") else (float(h[0]), float(h[1]))
+        near = _nearest_graph_node(graph, pos)
+        if near is None:
+            continue
+        if math.hypot(pos[0] - near[0], pos[1] - near[1]) <= HEAD_BRIDGE_MAX_MM:
+            cid = comp_of.get(near)
+            if cid is not None:
+                head_count[cid] = head_count.get(cid, 0) + 1
+
+    def _nearest_in(pred) -> tuple:
+        best, best_d = None, float("inf")
+        for n in graph:
+            if not pred(comp_of.get(n)):
+                continue
+            d = math.hypot(n[0] - ax, n[1] - ay)
+            if d < best_d:
+                best, best_d = n, d
+        return best, best_d
+
+    stages = (
+        (0, "head_component_nearest", lambda cid: cid in head_count),
+        (1, "any_component_nearest", lambda cid: True),
+    )
+    for escalation, method, pred in stages:
+        node, d = _nearest_in(pred)
+        if node is None or d > SOURCE_BRIDGE_MAX_MM:
+            continue
+        audit["source_attach"] = {
+            "dist_mm": d,
+            "method": method,
+            "escalation": escalation,
+            "comp_head_count": head_count.get(comp_of.get(node), 0),
+        }
+        if d <= 1e-3:
+            return node, None
+        src = (ax, ay)
+        graph.setdefault(src, set()).add(node)
+        graph[node].add(src)
+        key = (min(src, node), max(src, node))
+        edge_len[key] = d
+        return src, key
+    audit["source_attach"] = {
+        "dist_mm": None, "method": "failed", "escalation": len(stages),
+        "comp_head_count": 0,
+    }
+    raise ValueError(
+        f"anchored 소스 결합 실패 — alarm_xy=({ax}, {ay}) 반경 "
+        f"{SOURCE_BRIDGE_MAX_MM:.0f}mm 안에 부착 가능한 컴포넌트 없음"
+    )
 
 
 @dataclass(slots=True)
@@ -2486,6 +2610,54 @@ class SelectionResult:
     source_bridge_dist_mm: float = 0.0
     # 한도(SOURCE_BRIDGE_MAX_MM) 초과로 source 를 nearest 로 fallback 한 경우 True.
     source_fallback: bool = False
+    # anchored 실행의 추출 근거 리포트(W7). 비-anchored 경로에선 항상 None.
+    audit: "ExtractionAudit | None" = None
+
+
+@dataclass(slots=True)
+class ExtractionAudit:
+    """anchored 추출 근거 리포트(W7) — 파이프라인 audit 축적 dict 의 정식 스키마.
+
+    기존 자료구조(weld/bridge/head-drop edge 키 set, attach_source·bridge_targeted
+    의 audit 기록)를 그대로 재사용해 채운다 — 중복 계산 금지.
+    """
+    heads: dict = field(default_factory=dict)          # {detected_in_region, attached, unreachable:[[x,y],...]}
+    bridges: list = field(default_factory=list)        # [{p1,p2,len_mm,tol,layers,p1_in_source_comp}]
+    welds: list = field(default_factory=list)          # [{p1,p2,len_mm}]
+    head_drops: list = field(default_factory=list)     # [{p1,p2,len_mm}]
+    nonnominal: dict = field(default_factory=dict)     # {edge_count,len_mm,ratio}
+    corridor: dict = field(default_factory=dict)       # {node_count,len_mm}
+    source_attach: dict = field(default_factory=dict)  # {dist_mm,method,escalation,...}
+    # 급수 감사 — {dead_edge_count,dead_len_mm,dead_ratio,watered_edge_count,heads_routed}
+    water: dict = field(default_factory=dict)
+    # T분기 edge-split 근거. sym_mm 은 "접속=기호" 관측 증거일 뿐 판정에 쓰지 않는다.
+    tee_splits: list = field(default_factory=list)  # [{p,edge,gap_mm,sym_mm}]
+
+    @classmethod
+    def from_audit_dict(cls, audit: dict) -> "ExtractionAudit":
+        """축적 dict → 스키마 정규화. anchor_window(W6, 객체) 등 비직렬화 항목 제외."""
+        return cls(
+            heads=dict(audit.get("heads") or {}),
+            bridges=list(audit.get("bridges") or []),
+            welds=list(audit.get("welds") or []),
+            head_drops=list(audit.get("head_drops") or []),
+            nonnominal=dict(audit.get("nonnominal") or
+                            {"edge_count": 0, "len_mm": 0.0, "ratio": 0.0}),
+            corridor=dict(audit.get("corridor") or {"node_count": 0, "len_mm": 0.0}),
+            source_attach=dict(audit.get("source_attach") or {}),
+            water=dict(audit.get("water") or
+                       {"dead_edge_count": 0, "dead_len_mm": 0.0, "dead_ratio": 0.0,
+                        "watered_edge_count": 0, "heads_routed": 0}),
+            tee_splits=list(audit.get("tee_splits") or []),
+        )
+
+    def to_json_dict(self) -> dict:
+        return {
+            "heads": self.heads, "bridges": self.bridges, "welds": self.welds,
+            "head_drops": self.head_drops, "nonnominal": self.nonnominal,
+            "corridor": self.corridor, "source_attach": self.source_attach,
+            "water": self.water, "tee_splits": self.tee_splits,
+        }
 
 
 def _build_graph(
@@ -2840,40 +3012,30 @@ def _adaptive_bridge_tols(diag: float) -> list[float]:
 # - 제거된 edge 들은 별도 set 으로 반환 → 시각화에서 cycle 자리 표시 가능
 
 
-def force_spanning_tree(
+def _shortest_path_parents(
     graph: dict[tuple, set[tuple]],
     edge_len: dict[tuple, float],
-    source: tuple | None = None,
+    root: tuple,
     penalty_keys: set | None = None,
-) -> tuple[set, set]:
-    """그래프를 (각 component 마다) min-weight shortest-path spanning tree 로 변환.
+) -> dict[tuple, tuple]:
+    """root 기준 min-weight 최단경로 부모 맵 {node: parent}. root 는 키에 없음.
 
-    핵심: 트리 간선(부모)은 그 노드로 오는 tight-edge(최단경로 선행자 간선) 중
-    **가장 가벼운 것**으로 고른다. 단순 Dijkstra SPT 는 relax 순서에 따라 무거운
-    shortcut 간선이 부모로 남아 밸브 근처에 가짜 hub(조기분기)를 만드는데, tight-edge
-    최소 가중치 부모를 쓰면 그런 가짜 분기가 사라져 주배관이 하나의 선으로 정돈된다
-    (대명동 junction 235→116; B1F snaking 없음).
+    부모는 그 노드로 오는 tight-edge(최단경로 선행자 간선) 중 **가장 가벼운 것**으로
+    고른다. 단순 Dijkstra 선행자는 relax 순서에 따라 무거운 shortcut 간선이 부모로
+    남아 밸브 근처에 가짜 hub(조기분기)를 만드는데, tight-edge 최소 가중치 부모를
+    쓰면 그런 가짜 분기가 사라져 주배관이 하나의 선으로 정돈된다
+    (대명동 junction 235→116; B1F snaking 없음). 결과는 relax 순서와 무관.
 
     penalty_keys: 추정연결(weld/bridge 등) edge 키 집합. 주어지면 라우팅 비용을
-        **사전식(추정edge 개수, 실길이)** 으로 정렬해 트리가 실배관을 우선 선택한다.
+        **사전식(추정edge 개수, 실길이)** 으로 정렬해 실배관을 우선 선택한다.
         추정 직선은 기하학적으로 짧아 순수 길이 기준으론 도면을 가로지르는
         지름길(wormhole)로 선택돼 경로가 꼬이는데, "추정 edge 를 하나라도 덜 밟는
         경로"를 항상 우선하면 실배관이 있으면 그쪽으로 돈다(추정 없이 도달 불가한
-        구간만 추정 사용). **거리(수리계산)는 이후 트리 위에서 실 edge_len 으로 재므로
-        물리 거리는 보존.** 미지정 시 (추정 개수 항상 0) 순수 길이 기준 = 기존 동작
-        불변(바이트 동일). 가법 penalty(거대 상수) 대신 사전식을 쓰는 이유: 거대 상수는
-        누적 거리를 폭증시켜 tight-edge 상대 허용치를 무너뜨려 트리가 끊긴다.
-
-    Args:
-        graph: 무방향 그래프 (in-place 수정됨 — cycle edge 제거)
-        edge_len: edge 길이 dict (in-place 수정 — 제거된 edge 도 같이 pop)
-        source: AV (또는 시작 노드). 이 노드가 속한 component 는 source 가 root.
-                다른 component 는 임의 root (가장 작은 좌표 노드).
-
-    Returns:
-        (tree_edges, removed_edges) — 각각 (min, max) 키 set.
+        구간만 추정 사용). **거리(수리계산)는 이후 실 edge_len 으로 재므로 물리
+        거리는 보존.** 미지정 시 (추정 개수 항상 0) 순수 길이 기준. 가법 penalty
+        (거대 상수) 대신 사전식을 쓰는 이유: 거대 상수는 누적 거리를 폭증시켜
+        tight-edge 상대 허용치를 무너뜨려 트리가 끊긴다.
     """
-    tree_edges: set[tuple] = set()
     _pk = penalty_keys or set()
 
     def _w(u, v):
@@ -2884,60 +3046,142 @@ def force_spanning_tree(
         """이 edge 가 추정연결이면 1, 실배관이면 0 (사전식 라우팅 1차 키)."""
         return 1 if (_pk and (min(u, v), max(u, v)) in _pk) else 0
 
-    comps = _connected_components(graph)
-    for comp in comps:
+    _INF = (float("inf"), float("inf"))
+    dist: dict[tuple, tuple] = {root: (0, 0.0)}
+    pq: list[tuple] = [(0, 0.0, root)]
+    while pq:
+        pc, d, u = heapq.heappop(pq)
+        if (pc, d) > dist[u]:
+            continue
+        for v in graph.get(u, ()):
+            npc = pc + _pen(u, v)
+            nd = d + _w(u, v)
+            if (npc, nd) < dist.get(v, _INF):
+                dist[v] = (npc, nd)
+                heapq.heappush(pq, (npc, nd, v))
+    # tight 판정: 추정 개수는 정확히 일치, 실길이는 상대 tol 이내(부동소수 오차).
+    tol = 1e-6
+    parents: dict[tuple, tuple] = {}
+    for v, (pcv, dvl) in dist.items():
+        if v == root:
+            continue
+        best_u = None
+        best_w = float("inf")
+        for u in graph.get(v, ()):
+            du = dist.get(u)
+            if du is None:
+                continue
+            pcu, dul = du
+            w = _w(u, v)
+            if pcu + _pen(u, v) == pcv and dul + w <= dvl + tol * (1.0 + abs(dvl)):
+                if w < best_w or (w == best_w and (best_u is None or u < best_u)):
+                    best_w = w
+                    best_u = u
+        if best_u is not None:
+            parents[v] = best_u
+    return parents
+
+
+def water_load_audit(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    source: tuple | None,
+    heads: list,
+    penalty_keys: set | None = None,
+    max_attach_mm: float = HEAD_BRIDGE_MAX_MM,
+) -> dict:
+    """급수 감사 — 각 edge 가 몇 개의 승인 헤드에 물을 보내는지 계측(POC3 water_cleanup).
+
+    source→각 헤드 최단경로(force_spanning_tree 와 동일한 사전식 비용)를 겹쳐 edge 별
+    급수 부하를 센다. 부하 0 인 edge = 어떤 헤드에도 기여하지 않는 구간 —
+    드레인·시험배관·표기 잔재 후보이자 추출 결함 신호다.
+
+    집계 범위는 **source 도달 가능 컴포넌트로 한정**한다. 이 시점의 graph 는 도면
+    전체(타 세대망·노이즈 조각 포함)를 담고 있어, 전역으로 재면 "우리 망과 무관한
+    별개 컴포넌트"가 전부 부하 0 으로 잡혀 비율이 무의미해진다(대명동 실측 89%).
+
+    **계측 전용** — graph/edge_len 을 수정하지 않는다. 부하 0 을 곧바로 삭제하면 안 되는
+    이유는 최단경로만 겹치므로 루프의 대체 경로가 0 으로 잡히기 때문(영역 내 루프는
+    보존 정책). 실제 가지치기는 실측 dead_ratio 를 본 뒤 별도 결정.
+
+    SPT 이전(사이클 보유 상태)에 재는 것이 전제 — SPT 후에는 사이클 edge 가 이미
+    제거돼 루프/드레인이 관측 대상에서 사라진다.
+    """
+    empty = {"dead_edge_count": 0, "dead_len_mm": 0.0, "dead_ratio": 0.0,
+             "watered_edge_count": 0, "heads_routed": 0}
+    if source is None or source not in graph:
+        return empty
+    parents = _shortest_path_parents(graph, edge_len, source, penalty_keys)
+    load: dict[tuple, int] = defaultdict(int)
+    routed = 0
+    for h in heads:
+        pos = h.pos if hasattr(h, "pos") else (float(h[0]), float(h[1]))
+        near = _nearest_graph_node(graph, pos)
+        if near is None or math.hypot(pos[0] - near[0], pos[1] - near[1]) > max_attach_mm:
+            continue
+        if near != source and near not in parents:
+            continue  # source 와 다른 컴포넌트 — 미도달 헤드로 이미 보고됨
+        routed += 1
+        v = near
+        seen = {v}
+        while v in parents:
+            u = parents[v]
+            load[(min(u, v), max(u, v))] += 1
+            if u in seen:
+                break
+            seen.add(u)
+            v = u
+    dead_n = 0
+    dead_len = 0.0
+    total_len = 0.0
+    watered = 0
+    reachable = set(parents)
+    reachable.add(source)
+    for key in {(min(u, v), max(u, v)) for u, nbs in graph.items() for v in nbs
+                if u in reachable}:
+        L = edge_len.get(key, 0.0)
+        total_len += L
+        if load.get(key):
+            watered += 1
+        else:
+            dead_n += 1
+            dead_len += L
+    return {"dead_edge_count": dead_n, "dead_len_mm": dead_len,
+            "dead_ratio": (dead_len / total_len) if total_len else 0.0,
+            "watered_edge_count": watered, "heads_routed": routed}
+
+
+def force_spanning_tree(
+    graph: dict[tuple, set[tuple]],
+    edge_len: dict[tuple, float],
+    source: tuple | None = None,
+    penalty_keys: set | None = None,
+) -> tuple[set, set]:
+    """그래프를 (각 component 마다) min-weight shortest-path spanning tree 로 변환.
+
+    트리 간선 선택 규칙은 `_shortest_path_parents` 참조.
+
+    Args:
+        graph: 무방향 그래프 (in-place 수정됨 — cycle edge 제거)
+        edge_len: edge 길이 dict (in-place 수정 — 제거된 edge 도 같이 pop)
+        source: AV (또는 시작 노드). 이 노드가 속한 component 는 source 가 root.
+                다른 component 는 임의 root (가장 작은 좌표 노드).
+        penalty_keys: 추정연결 edge 키 집합 (사전식 라우팅). 미지정 시 순수 길이
+                기준 = 기존 동작 불변(바이트 동일).
+
+    Returns:
+        (tree_edges, removed_edges) — 각각 (min, max) 키 set.
+    """
+    tree_edges: set[tuple] = set()
+    for comp in _connected_components(graph):
         if not comp:
             continue
-        # 이 component 의 root 선택
         if source is not None and source in comp:
             root = source
         else:
             root = min(comp, key=lambda p: (p[0], p[1]))  # deterministic
-
-        # 1) 사전식 Dijkstra — 비용 (추정edge 개수, 실길이). 추정 개수가 항상 0 이면
-        #    (penalty 미지정) 순수 길이 Dijkstra 와 완전 동일.
-        _INF = (float("inf"), float("inf"))
-        dist: dict[tuple, tuple] = {root: (0, 0.0)}
-        pq: list[tuple] = [(0, 0.0, root)]
-        while pq:
-            pc, d, u = heapq.heappop(pq)
-            if (pc, d) > dist[u]:
-                continue
-            for v in graph.get(u, ()):
-                if v not in comp:
-                    continue
-                npc = pc + _pen(u, v)
-                nd = d + _w(u, v)
-                if (npc, nd) < dist.get(v, _INF):
-                    dist[v] = (npc, nd)
-                    heapq.heappush(pq, (npc, nd, v))
-        # 2) min-weight tight-edge 부모 선택 — 최단비용 불변, 가짜 hub 제거.
-        #    tight 판정: 추정 개수는 정확히 일치, 실길이는 상대 tol 이내(부동소수 오차).
-        tol = 1e-6
-        for v in comp:
-            if v == root:
-                continue
-            dv = dist.get(v)
-            if dv is None:
-                continue
-            pcv, dvl = dv
-            best_u = None
-            best_w = float("inf")
-            for u in graph.get(v, ()):
-                du = dist.get(u)
-                if du is None:
-                    continue
-                pcu, dul = du
-                w = _w(u, v)
-                npc = pcu + _pen(u, v)
-                nd = dul + w
-                # tight: u 가 v 의 최단(사전식)경로 선행자
-                if npc == pcv and nd <= dvl + tol * (1.0 + abs(dvl)):
-                    if w < best_w or (w == best_w and (best_u is None or u < best_u)):
-                        best_w = w
-                        best_u = u
-            if best_u is not None:
-                tree_edges.add((min(v, best_u), max(v, best_u)))
+        for v, u in _shortest_path_parents(graph, edge_len, root, penalty_keys).items():
+            tree_edges.add((min(v, u), max(v, u)))
 
     # 전체 edge 수집 → tree 외는 제거 대상
     all_edges: set[tuple] = set()
@@ -2960,7 +3204,7 @@ def _restrict_to_branch_region(
     graph: dict[tuple, set[tuple]],
     edge_len: dict[tuple, float],
     source: tuple | None,
-    branch_zones: list[tuple[float, float, float, float]] | None,
+    branch_zones: "list[tuple[float, float, float, float]] | HeadRegion | None",
     penalty_keys: set | None = None,
 ) -> set:
     """분기영역(branch_zones) 지정 시 그래프를 in-place 로 제한한다.
@@ -2981,13 +3225,12 @@ def _restrict_to_branch_region(
     if not branch_zones or source is None or source not in graph:
         return set()
 
-    def in_region(pt) -> bool:
-        for (x1, y1, x2, y2) in branch_zones:
-            lo_x, hi_x = (x1, x2) if x1 <= x2 else (x2, x1)
-            lo_y, hi_y = (y1, y2) if y1 <= y2 else (y2, y1)
-            if lo_x <= pt[0] <= hi_x and lo_y <= pt[1] <= hi_y:
-                return True
-        return False
+    # W4: 영역 표현 통일 — rect list 는 HeadRegion.from_rects 로 승격.
+    # 내부 의미론 불변: in_region 판정만 HeadRegion.contains 에 위임
+    # (min/max 정규화 + 경계 포함 <= — 기존 판정과 비트동일).
+    region = (branch_zones if isinstance(branch_zones, HeadRegion)
+              else HeadRegion.from_rects(branch_zones))
+    in_region = region.contains
 
     region_nodes = {n for n in graph if in_region(n)}
     if not region_nodes:
@@ -3051,7 +3294,8 @@ def _restrict_to_branch_region(
     return region_nodes
 
 
-def _find_head_candidates(pipe_entities: list[dict], layer_categories: dict[str, str]) -> list[HeadCandidate]:
+def _find_head_candidates(pipe_entities: list[dict], layer_categories: dict[str, str],
+                          region=None) -> list[HeadCandidate]:
     """자동 헤드 후보 — Stage 2 ``detect_heads`` 결과를 그대로 사용.
 
     과거엔 HEAD 레이어의 INSERT/CIRCLE 만 모으는 별도 단순 로직이었으나, 그러면
@@ -3059,8 +3303,9 @@ def _find_head_candidates(pipe_entities: list[dict], layer_categories: dict[str,
     드라이팬던트·근접 클러스터링 포함)과 자동 fallback 경로가 어긋났다(예: 대명동
     32 vs 28). select_worst30_heads 가 manual_heads 없이 호출될 때도 동일 집합을
     쓰도록 detect_heads 로 위임한다. raw=pos (클러스터 대표 cue 좌표).
+    region: anchored 영역 게이트 — detect_heads 로 그대로 전달(W1). None 이면 불변.
     """
-    detections = detect_heads(pipe_entities, layer_categories)
+    detections = detect_heads(pipe_entities, layer_categories, region=region)
     return [
         HeadCandidate(pos=_round_pt(d.pos[0], d.pos[1]), raw=d.pos,
                       block_name=d.block_name or f"({d.kind})", layer=d.layer)
@@ -3199,6 +3444,106 @@ def _bridge_components(
         if bridges == 0:
             break
     return total
+
+
+def _split_tee_branches(
+    graph: dict,
+    edge_len: dict,
+    max_gap_mm: float = TEE_SPLIT_MAX_MM,
+    min_edge_mm: float = MIN_PIPE_EDGE_MM,
+    splits_out: list | None = None,
+) -> int:
+    """T분기 복원 — 느슨한 끝점이 다른 배관 *중간* 에 닿는 곳에서 그 배관을 쪼갠다.
+
+    _weld_dangling_endpoints 는 노드↔노드만 잇고 edge 를 쪼갤 수 없다. 실제 도면의
+    가지관은 주배관 끝점이 아니라 중간에서 갈라지므로(T분기), weld 는 ① 엉뚱한
+    조각에 붙이거나 ② 같은 배관이라도 그 *끝점* 에 붙여 배관 길이를 부풀린다
+    (대명동 서측 세대 실측: 후보 47건 중 오접합 32건 / 제 edge 에 붙은 12건도
+    중앙값 1.1m·합계 10.7m 의 가공 배관을 만든다).
+
+    끝점 u 에서 edge (a,b) 내부로 내린 수선발이 max_gap_mm 안이면 (a,b) 를 지우고
+    (a,u),(u,b) 로 대체한다. 분기점은 수선발이 아니라 u 자신 — 둘의 거리가
+    max_gap_mm(≤ _NodeIndex epsilon) 안이라 이미 같은 노드로 취급되는 위치이고,
+    새 좌표를 만들지 않아 raw DXF 좌표 보존 원칙이 지켜진다.
+
+    안전장치:
+      - degree-1 노드만 소스 (배관 중간점끼리 엮이는 사고 방지)
+      - u 가 그 edge 의 끝점이거나 이미 인접이면 제외 (weld 영역)
+      - 쪼갠 두 조각 모두 min_edge_mm 이상 — 최소길이 미만 edge 생성 금지
+      - 새 edge 는 실배관이므로 추정연결(penalty) 아님
+    splits_out: 주어지면 [{"p", "edge", "gap_mm"}] 기록 (audit 근거용).
+    반환: 쪼갠 edge 수.
+    """
+    if max_gap_mm <= 0:
+        return 0
+    cell = max(500.0, max_gap_mm * 10.0)
+    inv = 1.0 / cell
+    grid: dict[tuple[int, int], list] = defaultdict(list)
+
+    def _register(key: tuple) -> None:
+        # 셀 절반 간격 표본 등록 — 3x3 조회와 합쳐 max_gap 안의 구간을 놓치지 않는다.
+        (ax, ay), (bx, by) = key
+        n = int(math.hypot(bx - ax, by - ay) * 2.0 * inv) + 1
+        for i in range(n + 1):
+            t = i / n
+            grid[(int(math.floor((ax + t * (bx - ax)) * inv)),
+                  int(math.floor((ay + t * (by - ay)) * inv)))].append(key)
+
+    for key in edge_len:
+        _register(key)
+
+    splits = 0
+    for u in sorted(n for n, nb in graph.items() if len(nb) == 1):
+        nb = graph.get(u)
+        if not nb or len(nb) != 1:
+            continue
+        ux, uy = u[0], u[1]
+        cgx = int(math.floor(ux * inv)); cgy = int(math.floor(uy * inv))
+        cands: list = []
+        for dgx in (-1, 0, 1):
+            for dgy in (-1, 0, 1):
+                cands.extend(grid.get((cgx + dgx, cgy + dgy), ()))
+        best = None; best_d = float("inf")
+        for key in cands:
+            a, b = key
+            if key not in edge_len or b not in graph.get(a, ()):
+                continue  # 앞선 split 으로 사라진 edge
+            if u == a or u == b or a in nb or b in nb:
+                continue
+            abx = b[0] - a[0]; aby = b[1] - a[1]
+            L2 = abx * abx + aby * aby
+            if L2 < 1e-9:
+                continue
+            t = ((ux - a[0]) * abx + (uy - a[1]) * aby) / L2
+            if not (0.0 < t < 1.0):
+                continue  # 수선발이 edge 밖 — 끝점 접속(weld 영역)
+            d = math.hypot(ux - (a[0] + t * abx), uy - (a[1] + t * aby))
+            if d > max_gap_mm:
+                continue
+            if best is not None and (d, key) >= (best_d, best):
+                continue  # 동점은 edge 키 순으로 결정적 해소
+            if (math.hypot(ux - a[0], uy - a[1]) < min_edge_mm
+                    or math.hypot(ux - b[0], uy - b[1]) < min_edge_mm):
+                continue
+            best = key; best_d = d
+        if best is None:
+            continue
+        a, b = best
+        graph[a].discard(b); graph[b].discard(a)
+        del edge_len[best]
+        for v in (a, b):
+            graph[u].add(v); graph[v].add(u)
+            k2 = (min(u, v), max(u, v))
+            L = math.hypot(ux - v[0], uy - v[1])
+            prev = edge_len.get(k2)
+            if prev is None or L < prev:
+                edge_len[k2] = L
+            _register(k2)
+        if splits_out is not None:
+            splits_out.append({"p": [ux, uy], "gap_mm": best_d,
+                               "edge": [[a[0], a[1]], [b[0], b[1]]]})
+        splits += 1
+    return splits
 
 
 def _weld_dangling_endpoints(
@@ -3402,6 +3747,29 @@ def select_worst30_heads(
     # penalty_keys: 추정연결은 라우팅 비용에 penalty — 트리가 실배관 우선 선택.
     force_spanning_tree(graph, edge_len, source=src, penalty_keys=_penalty_keys)
 
+    return _finalize_selection(graph, edge_len, src, src_kind, heads, k, _pcb,
+                               src_bridge_dist_mm, src_fallback)
+
+
+def _finalize_selection(
+    graph: dict,
+    edge_len: dict,
+    src: tuple[float, float],
+    src_kind: str,
+    heads: list,
+    k: int,
+    _pcb,
+    src_bridge_dist_mm: float,
+    src_fallback: bool,
+    head_drop_out: set | None = None,
+) -> SelectionResult:
+    """SPT 이후 공통 후반부 — 헤드 스냅→거리정렬→top-K→subgraph→collinear 병합.
+
+    select_worst30_heads 에서 순수 코드 이동(동작 불변). anchored 경로
+    (select_worst30_heads_anchored)와 공유하기 위해 분리.
+    head_drop_out: 주어지면 헤드 스냅으로 추가된 head-drop edge (min,max) 키 누적
+        (→W7 audit. 기본 None=기존 동작 불변).
+    """
     # 헤드 최근접-노드 스냅 — 헤드 수천 개 × O(|graph|) 전수스캔이면 대형 도면에서
     # 수십 초~분. 격자 인덱스(cell = HEAD_BRIDGE_MAX_MM)로 근사 O(1) 질의로 대체.
     # 헤드 삽입 전 pipe-network 노드로만 그리드를 만든다(헤드끼리 스냅 방지).
@@ -3470,6 +3838,8 @@ def select_worst30_heads(
             graph.setdefault(h.pos, set()).add(nearest)
             graph[nearest].add(h.pos)
             edge_len[(min(h.pos, nearest), max(h.pos, nearest))] = d
+            if head_drop_out is not None:
+                head_drop_out.add((min(h.pos, nearest), max(h.pos, nearest)))
             _hgrid_add(h.pos)  # 성장 그래프 — 뒤 헤드가 이 노드에 스냅 가능
 
     _pcb(0.76, "알람밸브→전체 헤드 거리 계산 중")
@@ -3600,6 +3970,368 @@ def select_worst30_heads(
         source_bridge_dist_mm=src_bridge_dist_mm,
         source_fallback=src_fallback,
     )
+
+
+class _AnchorWindow:
+    """anchored 작업창 W(§1) — convex_hull(head_region ∪ {alarm_xy}) 을
+    ANCHOR_W_MARGIN_MM 만큼 팽창한 다각형. contains(pt) 프로토콜 제공.
+
+    head_region 은 정점 리스트(pts)를 노출해야 한다(→W4 HeadRegion 이 정식화).
+    팽창 판정은 "hull 내부 or hull 경계까지 거리 ≤ margin" — 순수 파이썬
+    (shapely 미의존, BLOCKED.md #1).
+    """
+
+    def __init__(self, region_pts: list, alarm_xy: tuple[float, float],
+                 margin_mm: float = ANCHOR_W_MARGIN_MM):
+        pts = [(float(p[0]), float(p[1])) for p in region_pts]
+        pts.append((float(alarm_xy[0]), float(alarm_xy[1])))
+        self.hull = self._convex_hull(pts)
+        self.margin = float(margin_mm)
+
+    @staticmethod
+    def _convex_hull(pts: list) -> list:
+        """Andrew monotone chain — CCW hull 정점 리스트."""
+        pts = sorted(set(pts))
+        if len(pts) <= 2:
+            return pts
+
+        def cross(o, a, b):
+            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+        lower: list = []
+        for p in pts:
+            while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+                lower.pop()
+            lower.append(p)
+        upper: list = []
+        for p in reversed(pts):
+            while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+                upper.pop()
+            upper.append(p)
+        return lower[:-1] + upper[:-1]
+
+    def contains(self, pt) -> bool:
+        x, y = float(pt[0]), float(pt[1])
+        h = self.hull
+        if len(h) < 3:
+            return any(math.hypot(x - p[0], y - p[1]) <= self.margin for p in h)
+        inside = False
+        for i in range(len(h)):
+            x1, y1 = h[i]
+            x2, y2 = h[(i + 1) % len(h)]
+            if (y1 > y) != (y2 > y):
+                xin = (x2 - x1) * (y - y1) / (y2 - y1) + x1
+                if x < xin:
+                    inside = not inside
+        if inside:
+            return True
+        return any(
+            _point_to_segment_dist(x, y, h[i][0], h[i][1],
+                                   h[(i + 1) % len(h)][0], h[(i + 1) % len(h)][1]) <= self.margin
+            for i in range(len(h))
+        )
+
+
+def bridge_targeted(
+    graph: dict,
+    edge_len: dict,
+    source: tuple[float, float],
+    accepted_heads: list,
+    tols,
+    bridge_edges_out: set | None = None,
+    audit: dict | None = None,
+    within=None,
+) -> int:
+    """anchored 표적 브릿지(W3) — 전역 ``_bridge_components`` 계단식 대체.
+
+    봉합 후보 쌍을 comp(source) ↔ {region 내 승인 헤드 보유 컴포넌트} 로만 한정.
+    tol 계단(도면비례)과 병합 후 재평가 루프는 전역 브릿지와 동일 원리이나,
+    헤드 게이트를 통과하지 못한 컴포넌트(인접 세대망·범례·노이즈 조각)는 어떤
+    tol 에서도 봉합되지 않는다 — 세대 간 가짜 봉합 차단.
+
+    audit 지정 시 bridge 마다 p1(comp(source) 쪽)·p2(헤드 컴포넌트 쪽)·len_mm·tol·
+    p1_in_source_comp 를 기록. p1 소속은 봉합 시점의 comp(source) 성장 이력 기준이라
+    "모든 bridge 양단이 comp(source) 성장 이력에 속함"을 audit 로 검증 가능.
+    within: 지정 시 봉합 양단 모두 이 영역(작업창 W) 안이어야 한다 — 세대를
+        가로지르는 대형 컴포넌트가 W 밖 지점에서 봉합돼 동측 우회 경로가 생기는
+        것을 차단(앵커가 봉합 방향을 유도한다는 §0 설계 원칙).
+    반환: 추가한 bridge 수.
+    """
+    total = 0
+    for tol in tols:
+        tol2 = tol * tol
+        while True:  # 병합 후 재평가 — comp(source) 가 자라며 사거리가 좁혀진다
+            comps = _connected_components(graph)
+            comp_of = {n: i for i, c in enumerate(comps) for n in c}
+            sc = comp_of.get(source)
+            if sc is None:
+                return total
+            src_comp = comps[sc]
+            head_cids: set = set()
+            for h in accepted_heads:
+                pos = h.pos if hasattr(h, "pos") else (float(h[0]), float(h[1]))
+                near = _nearest_graph_node(graph, pos)
+                if near is None:
+                    continue
+                if math.hypot(pos[0] - near[0], pos[1] - near[1]) <= HEAD_BRIDGE_MAX_MM:
+                    cid = comp_of[near]
+                    if cid != sc:
+                        head_cids.add(cid)
+            if not head_cids:
+                return total  # 승인 헤드 보유 컴포넌트 전부 병합 완료
+            src_nodes = (list(src_comp) if within is None
+                         else [v for v in src_comp if within.contains(v)])
+            best = None
+            bestd2 = tol2
+            for cid in head_cids:
+                cand = (comps[cid] if within is None
+                        else [u for u in comps[cid] if within.contains(u)])
+                for u in cand:
+                    for v in src_nodes:
+                        dx = u[0] - v[0]; dy = u[1] - v[1]
+                        d2 = dx * dx + dy * dy
+                        if d2 <= bestd2 and (best is None or d2 < bestd2):
+                            bestd2 = d2
+                            best = (u, v)
+            if best is None:
+                break  # 이 tol 로는 더 못 잇는다 — 다음 tol 로 완화
+            u, v = best
+            d = math.hypot(u[0] - v[0], u[1] - v[1])
+            graph[u].add(v); graph[v].add(u)
+            key = (min(u, v), max(u, v))
+            edge_len[key] = d
+            if bridge_edges_out is not None:
+                bridge_edges_out.add(key)
+            if audit is not None:
+                # layers: 그래프 수준(좌표·길이만)에선 원 entity layer 가 소실돼
+                # 복원 불가 — null 기록 (BLOCKED.md #7)
+                audit.setdefault("bridges", []).append({
+                    "p1": [v[0], v[1]], "p2": [u[0], u[1]],
+                    "len_mm": d, "tol": tol, "layers": None,
+                    "p1_in_source_comp": True,
+                })
+            total += 1
+    return total
+
+
+def collect_spatial_reselect_segments(dxf_path, layer_categories: dict[str, str],
+                                      window) -> list[dict]:
+    """W5 — S140 조건부 재선별의 공간 한정 실시예.
+
+    1차 명목 수집(filter_pipenet_only)이 region 승인 헤드 도달망을 만들지 못한
+    경우에만 호출된다(anchored 전용, 플래그 기본 off). 작업창 W(window) **내부**의
+    OTHER 카테고리 레이어에서 LINE/ARC/LWPOLYLINE 만 저-prior 후보로 승인한다.
+
+    SPLINE/ELLIPSE/3DFACE/DIMENSION/HATCH/닫힌 PL(CLOSED_PL_TOL_MM)은 음성
+    유형 — 승인 금지. 파서(parse_dxf_bundle)는 SPLINE/ELLIPSE 를 PL 로 평탄화해
+    entity dict 수준에서 원 유형을 구분할 수 없으므로(태그 추가는 골든
+    entities_sig 를 깨 비트동일 위반), DXF 원본을 ezdxf 로 직접 스캔해 실제
+    dxftype 으로 판정한다(BLOCKED.md #5).
+
+    반환: pipe_entities 형식 dict 리스트 — 모든 정점이 W 안인 segment 만.
+    """
+    doc = ezdxf.readfile(str(dxf_path))
+    msp = doc.modelspace()
+    out: list[dict] = []
+    for e in msp:
+        layer = str(getattr(e.dxf, "layer", "") or "")
+        if layer_categories.get(layer, "OTHER") != "OTHER":
+            continue
+        et = e.dxftype()
+        if et == "LINE":
+            p1 = (float(e.dxf.start.x), float(e.dxf.start.y))
+            p2 = (float(e.dxf.end.x), float(e.dxf.end.y))
+            if window.contains(p1) and window.contains(p2):
+                out.append({"t": "L", "l": layer,
+                            "p": [p1[0], p1[1], p2[0], p2[1]]})
+        elif et == "ARC":
+            cx, cy = float(e.dxf.center.x), float(e.dxf.center.y)
+            r = float(e.dxf.radius)
+            sa, ea = float(e.dxf.start_angle), float(e.dxf.end_angle)
+            pa = (cx + r * math.cos(math.radians(sa)),
+                  cy + r * math.sin(math.radians(sa)))
+            pb = (cx + r * math.cos(math.radians(ea)),
+                  cy + r * math.sin(math.radians(ea)))
+            if window.contains(pa) and window.contains(pb):
+                out.append({"t": "A", "l": layer, "c": [cx, cy], "r": r,
+                            "a": [sa, ea]})
+        elif et == "LWPOLYLINE":
+            pts = [(float(p[0]), float(p[1])) for p in e.get_points()]
+            if len(pts) < 2:
+                continue
+            closed = bool(e.closed) or (
+                len(pts) >= 3
+                and math.hypot(pts[0][0] - pts[-1][0],
+                               pts[0][1] - pts[-1][1]) <= CLOSED_PL_TOL_MM)
+            if closed:
+                continue  # 닫힌 PL = 심볼/외곽선 — 음성 유형
+            if all(window.contains(p) for p in pts):
+                out.append({"t": "PL", "l": layer,
+                            "p": [[p[0], p[1]] for p in pts]})
+        # 그 외 dxftype (SPLINE/ELLIPSE/3DFACE/DIMENSION/HATCH 등) — 음성 유형
+    return out
+
+
+def select_worst30_heads_anchored(
+    pipe_entities: list[dict],
+    layer_categories: dict[str, str],
+    alarm_xy: tuple[float, float],
+    head_region,
+    k: int = 30,
+    manual_heads: list[tuple[float, float]] | None = None,
+    zones: list[tuple[float, float, float, float]] | None = None,
+    branch_zones: "list[tuple[float, float, float, float]] | HeadRegion | None" = None,
+    audit_out: dict | None = None,
+    progress_cb=None,
+    spatial_reselect: bool = False,
+    tee_split: bool = False,
+    dxf_path=None,
+) -> SelectionResult:
+    """2앵커 anchored 선정(§1 계약) — ``alarm_xy``·``head_region`` 필수.
+
+    비-anchored 경로(select_worst30_heads)는 손대지 않고 보존(골든 불변) — 신규
+    로직은 전부 이 anchored 전용 함수에서만 발동한다. 순서가 다르다:
+      ① 헤드를 region 게이트(W1) 후 먼저 확정
+      ② 소스를 attach_source(W2)로 헤드 보유 컴포넌트에 결합 (blind nearest 금지)
+      ③ 전역 _bridge_components 계단식 대신 표적 브릿지(W3)
+      ④ corridor 제한·SPT·후반부는 기존 경로와 동일 primitive 공유
+    force_connect(무제한 봉합)는 이 경로에서 호출 금지 — 기계실(탱크) 추출 전용.
+    audit_out: 지정 시 source_attach/bridges/heads(unreachable 포함) 근거 기록(→W7).
+    spatial_reselect: W5 공간한정 조건부 재선별 플래그(기본 off). 1차 명목 수집
+        결과로 region 승인 헤드 도달망 구성에 실패한 경우에만 발동하며,
+        dxf_path(원본 DXF) 가 필요하다.
+    tee_split: T분기 edge-split 플래그(기본 off). weld 이전에 실행돼 weld 가
+        발명해야 할 연결을 줄인다(→audit tee_splits).
+    """
+    if alarm_xy is None:
+        raise ValueError("anchored: alarm_xy(수동 알람밸브 좌표) 필수")
+    if head_region is None:
+        raise ValueError("anchored: head_region(헤드 영역 다각형) 필수")
+    audit = audit_out if audit_out is not None else {}
+    _pcb = progress_cb if callable(progress_cb) else (lambda f, m: None)
+    # 작업창 W (§1) — W3 브릿지 양단 한정·W5 재선별 공간 한정에 공용
+    _region_pts = getattr(head_region, "pts", None)
+    _W = (_AnchorWindow(_region_pts, (float(alarm_xy[0]), float(alarm_xy[1])))
+          if _region_pts else None)
+    # W6 — 호출측이 build_input_tables(anchor_window=...) 에 그대로 전달할 수 있게
+    # 작업창을 노출 (객체 — JSON 직렬화 대상 아님, W7 스키마 밖).
+    audit["anchor_window"] = _W
+    # ① 헤드 — region 게이트(W1) 통과한 최종 승인 후보만 (그래프와 무관 — 선확정)
+    if manual_heads is not None:
+        heads = [HeadCandidate(pos=_round_pt(x, y), raw=(x, y), block_name="(user)", layer="_user")
+                 for x, y in manual_heads if head_region.contains((x, y))]
+    else:
+        heads = _find_head_candidates(pipe_entities, layer_categories, region=head_region)
+    if zones:
+        heads = [h for h in heads if _point_in_zones(h.pos[0], h.pos[1], zones)]
+    if len(heads) < k:
+        k = len(heads)
+    audit.setdefault("heads", {})["detected_in_region"] = len(heads)
+    _pcb(0.0, "배관망 그래프 구성 중")
+    _idx = _NodeIndex()
+    graph, edge_len = _build_graph(pipe_entities, node_index=_idx,
+                                   layer_categories=layer_categories)
+    # ── W5: 공간한정 조건부 재선별 (S140 조건부 재선별의 공간 한정 실시예) ──
+    # 발동 조건: 플래그 on **그리고** 1차 명목 수집(filter_pipenet_only) 그래프가
+    # region 승인 헤드에 도달하지 못할 때만 (헤드 최근접 노드 없음/HEAD_BRIDGE_MAX 밖).
+    if spatial_reselect and heads and _W is not None and dxf_path is not None:
+        _attachable = any(
+            (_nn := _nearest_graph_node(graph, h.pos)) is not None
+            and math.hypot(_nn[0] - h.pos[0], _nn[1] - h.pos[1]) <= HEAD_BRIDGE_MAX_MM
+            for h in heads)
+        if not _attachable:
+            _pcb(0.03, "공간한정 조건부 재선별 중")
+            resel = collect_spatial_reselect_segments(dxf_path, layer_categories, _W)
+            g2, el2 = _build_graph(resel, node_index=_idx, layer_categories=None)
+            new_keys = [kk for kk in el2 if kk not in edge_len]
+            for u, nbs in g2.items():
+                graph[u] |= nbs
+            for kk, _L in el2.items():
+                prev = edge_len.get(kk)
+                if prev is None or _L < prev:
+                    edge_len[kk] = _L
+            # 승인된 비명목 edge 태깅 → audit 점유율 집계(→W7 nonnominal)
+            _nn_len = float(sum(el2[kk] for kk in new_keys))
+            _total_len = float(sum(edge_len.values()))
+            audit["nonnominal"] = {
+                "edge_count": len(new_keys),
+                "len_mm": _nn_len,
+                "ratio": (_nn_len / _total_len) if _total_len else 0.0,
+            }
+    collapse_parallel_ladders(graph, edge_len)
+    # T분기 복원은 weld 이전 — 주배관 중간에 닿는 가지관을 제자리에서 접속시켜
+    # weld 가 엉뚱한 조각/끝점에 붙이는 오접합을 애초에 없앤다.
+    if tee_split:
+        _tee: list = []
+        _split_tee_branches(graph, edge_len, splits_out=_tee)
+        _syms = [(en["p"][0], en["p"][1]) for en in pipe_entities
+                 if en["t"] == "I"
+                 and layer_categories.get(en.get("l", ""), "OTHER") != "HEAD"]
+        for rec in _tee:
+            rec["sym_mm"] = min((math.hypot(rec["p"][0] - sx, rec["p"][1] - sy)
+                                 for sx, sy in _syms), default=None)
+        audit["tee_splits"] = _tee
+    _diag = _graph_diag(graph)
+    _penalty_keys: set = set()
+    _weld_keys: set = set()  # W7 — weld 만 별도 수집 (audit welds 항목)
+    _weld_dangling_endpoints(graph, edge_len,
+                             weld_tol=_adaptive_weld_tol(_diag),
+                             weld_cone_deg=_WELD_CONE_DEG,
+                             weld_edges_out=_weld_keys)
+    _penalty_keys |= _weld_keys
+    audit["welds"] = [{"p1": [kk[0][0], kk[0][1]], "p2": [kk[1][0], kk[1][1]],
+                       "len_mm": edge_len.get(kk, 0.0)} for kk in sorted(_weld_keys)]
+    _pcb(0.05, "평행 배관 정리 완료")
+    _pcb(0.1, "알람밸브 결합 중")
+    # ② 소스 — attach_source(W2). 헤드 보유 컴포넌트 우선, blind nearest 금지.
+    src_raw = _round_pt(float(alarm_xy[0]), float(alarm_xy[1]))
+    comps = _connected_components(graph)
+    comp_of = {n: i for i, c in enumerate(comps) for n in c}
+    src, attach_key = attach_source(src_raw, graph, comp_of, heads, edge_len, audit)
+    if attach_key is not None:
+        _penalty_keys.add(attach_key)  # source 접속선도 추정연결 — 라우팅 penalty
+    src_bridge_dist_mm = float(audit["source_attach"]["dist_mm"] or 0.0)
+    # ③ 표적 브릿지(W3) — tol 계단은 비-anchored 와 동일(도면 스케일 비례).
+    #    브릿지 양단은 작업창 W 안으로 한정 — 앵커가 봉합 방향을 유도(§0).
+    #    도면 현실상 배관 컴포넌트가 세대 경계를 넘어 이어지므로(예: 대명동
+    #    comp12, x 252k→262k) W 제한 없이는 동측 지점에서 봉합될 수 있다.
+    bridge_targeted(graph, edge_len, src, heads, _adaptive_bridge_tols(_diag),
+                    bridge_edges_out=_penalty_keys, audit=audit, within=_W)
+    _pcb(0.7, "표적 브릿지 완료")
+    # 미도달 헤드 보고(W1.2) — 조용한 drop 금지: 추출 결함 신호로 audit 에 기록
+    audit["heads"]["unreachable"] = [
+        [p[0], p[1]] for p in find_unreachable_region_heads(graph, src, heads)
+    ]
+    audit["heads"]["attached"] = len(heads) - len(audit["heads"]["unreachable"])
+    # 급수 감사 — corridor 제한·SPT 이전(사이클 보유 상태)에 재야 루프/드레인이 보인다.
+    audit["water"] = water_load_audit(graph, edge_len, src, heads,
+                                      penalty_keys=_penalty_keys)
+    # ④ corridor 제한 → SPT → 공통 후반부 (기존 primitive 그대로)
+    region_nodes = _restrict_to_branch_region(graph, edge_len, src, branch_zones,
+                                              penalty_keys=_penalty_keys)
+    # W7 — corridor 집계: 제한 후 영역 밖에 남은 edge = source→영역 corridor
+    # (분기영역 미지정/no-op 이면 0). 별도 경로 탐색 없음 — 제한 결과 재사용.
+    if region_nodes:
+        _cor_keys: set = set()
+        for _u, _nbs in graph.items():
+            for _v in _nbs:
+                if _u not in region_nodes or _v not in region_nodes:
+                    _cor_keys.add((min(_u, _v), max(_u, _v)))
+        _cor_nodes = {n for kk in _cor_keys for n in kk}
+        audit["corridor"] = {"node_count": len(_cor_nodes),
+                             "len_mm": float(sum(edge_len.get(kk, 0.0)
+                                                 for kk in _cor_keys))}
+    else:
+        audit["corridor"] = {"node_count": 0, "len_mm": 0.0}
+    force_spanning_tree(graph, edge_len, source=src, penalty_keys=_penalty_keys)
+    _hd_keys: set = set()
+    res = _finalize_selection(graph, edge_len, src, "manual_anchored", heads, k, _pcb,
+                              src_bridge_dist_mm, False, head_drop_out=_hd_keys)
+    audit["head_drops"] = [{"p1": [kk[0][0], kk[0][1]], "p2": [kk[1][0], kk[1][1]],
+                            "len_mm": edge_len.get(kk, 0.0)} for kk in sorted(_hd_keys)]
+    # W7 — 축적 dict → 정식 스키마. 반환값에 포함 (r30_combined 가 JSON 직렬화)
+    res.audit = ExtractionAudit.from_audit_dict(audit)
+    return res
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -3989,11 +4721,15 @@ def build_input_tables(
     *,
     project_title: str = "Remote 30 Prototype",
     cpvc_zones: list[tuple[float, float, float, float]] | None = None,
+    anchor_window=None,
 ) -> PipeTables:
     """선정 결과 → 5 테이블. pipe_entities 가 있으면 FX(flexible) Equipment 도 추출.
 
     cpvc_zones: 이 영역(단위세대 내부) 안에 배관 중점이 들어오면 CPVC(C=150)로 표기.
     비어있으면 전 배관 강관(C=120).
+    anchor_window: anchored 모드의 작업창 W(contains(pt) 노출 객체). 지정 시 관경
+        텍스트 후보를 W 내부로 제한 — 범례 표(x≈288k)의 관경 문자 오염 차단(W6).
+        None(비-anchored)이면 기존과 동일.
     """
     tables = PipeTables()
     if not selection.heads or selection.source_pos is None:
@@ -4069,6 +4805,10 @@ def build_input_tables(
                 continue
             if any(nw in v for nw in NOISE_KEYWORDS):
                 continue  # 옥내소화전 / 헤드 라벨 / 스펙 표 등 노이즈
+            # W6 — anchored 작업창 밖 관경 문자(범례 표 등) 후보 배제
+            if anchor_window is not None and not anchor_window.contains(
+                    (float(en["p"][0]), float(en["p"][1]))):
+                continue
             for pat in DIA_PATTERNS:
                 m = pat.search(v)
                 if not m:

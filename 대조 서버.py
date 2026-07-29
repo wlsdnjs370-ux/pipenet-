@@ -3757,7 +3757,9 @@ def remote30_combined_build():
         except (TypeError, ValueError):
             pass
 
-    from remote30_prototype import select_worst30_heads, build_input_tables
+    from remote30_prototype import (select_worst30_heads,
+                                    select_worst30_heads_anchored,
+                                    build_input_tables, HeadRegion)
     from remote30_full_network import (
         stitch_riser_and_heads, emit_full_sdf,
         prepend_machine_room_to_riser, insert_source_pump,
@@ -3808,21 +3810,42 @@ def remote30_combined_build():
     manual_heads = [p for i, p in enumerate(detected_pos) if i not in deleted]
     manual_heads.extend(added)
 
+    # W4: rect 입력 → HeadRegion 승격 (영역 표현 통일)
+    branch_region = HeadRegion.from_rects(branch_zones) if branch_zones else None
+    _sel_kw = {
+        "pipe_entities": plane_job.get("pipe_ents", []),
+        "layer_categories": plane_job.get("layer_cat", {}),
+        "manual_heads": manual_heads if (manual_heads or deleted or added) else None,
+        "branch_zones": branch_region,
+        **({"k": k_heads} if k_heads is not None else {}),
+    }
+    # 2앵커(anchored) 경로는 알람밸브 좌표 + 헤드 영역이 모두 있을 때만 — 둘 중
+    # 하나라도 없으면 앵커를 세울 수 없어 기존 비-anchored 경로를 그대로 쓴다.
+    use_anchored = bool(alarm_xy) and bool(zones)
+    anchored_audit: dict = {}
     try:
-        selection = select_worst30_heads(
-            pipe_entities=plane_job.get("pipe_ents", []),
-            layer_categories=plane_job.get("layer_cat", {}),
-            manual_source=alarm_xy,
-            manual_heads=manual_heads if (manual_heads or deleted or added) else None,
-            zones=zones if zones else None,
-            branch_zones=branch_zones if branch_zones else None,
-            **({"k": k_heads} if k_heads is not None else {}),
-        )
+        if use_anchored:
+            selection = select_worst30_heads_anchored(
+                alarm_xy=alarm_xy,
+                head_region=HeadRegion.from_rects(zones),
+                zones=zones,
+                tee_split=True,
+                audit_out=anchored_audit,
+                **_sel_kw,
+            )
+        else:
+            selection = select_worst30_heads(
+                manual_source=alarm_xy,
+                zones=zones if zones else None,
+                **_sel_kw,
+            )
         head_tables = build_input_tables(
             selection,
             pipe_entities=plane_job.get("pipe_ents", []),
             project_title=Path(plane_job["dxf_path"]).stem,
             cpvc_zones=zones if zones else None,
+            # W6 — anchored 작업창 밖(범례 표 등)의 관경 문자 오염 차단
+            anchor_window=anchored_audit.get("anchor_window"),
         )
     except Exception as exc:  # noqa: BLE001
         return _err500(exc)
@@ -4331,6 +4354,10 @@ def remote30_combined_build():
         "title": title,
         "machine_room_attached": mr_attached,
         "geometry": geometry,
+        # W7 — anchored 실행일 때만 추출 근거 리포트 직렬화.
+        # 비-anchored(현행 select_worst30_heads)에선 키 자체가 없음 → 응답 불변.
+        **({"extraction_audit": selection.audit.to_json_dict()}
+           if getattr(selection, "audit", None) is not None else {}),
     })
 
 

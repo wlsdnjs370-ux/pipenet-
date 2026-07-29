@@ -16,8 +16,18 @@ import math
 import re
 import uuid
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
+
+# ── core/ 라이브러리 경로 (repo 정리: 루트 라이브러리 → core/ 이동) ──
+import sys as _sys
+_CORE = Path(__file__).resolve().parent / "core"
+if _CORE.is_dir() and str(_CORE) not in _sys.path:
+    _sys.path.insert(0, str(_CORE))
+
+from remote30_graph import HeadRegion
+from remote30_constants import _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM
 
 import ezdxf
 import networkx as nx
@@ -165,12 +175,17 @@ def layer_match(layer_name, keywords):
     return False
 
 
+@lru_cache(maxsize=8)
+def _bbox_region(bbox) -> HeadRegion:
+    """zone_bbox(x_min,y_min,x_max,y_max) → HeadRegion 승격 (W4 영역 표현 통일)."""
+    return HeadRegion.from_rects([bbox])
+
+
 def _in_bbox(xy, bbox):
-    """xy 가 bbox 안에 있는지. bbox=None 이면 항상 True."""
+    """xy 가 bbox 안에 있는지. bbox=None 이면 항상 True. 판정은 HeadRegion 위임(W4)."""
     if bbox is None:
         return True
-    x, y = xy
-    return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
+    return _bbox_region(tuple(bbox)).contains(xy)
 
 
 def _seg_in_bbox(p1, p2, bbox):
@@ -483,6 +498,28 @@ def _force_attach_orphan_heads(orphan_heads, G, node_coords, settings: Remote30S
     return new_attached, added_edges
 
 
+def _match_dia_text(raw) -> Optional[int]:
+    """관경 라벨 판정 — remote30_constants 패턴/노이즈/유효값 단일 소스 참조 (W6).
+
+    naive `\\b(20|25|…)\\b` 정규식은 'NO.20' 같은 도면 번호까지 관경으로 오인했다.
+    remote30_prototype._extract_dia_text_points 와 동일 의미론 (구현 이원화 청산).
+    """
+    v = str(raw or "").strip()
+    if not v or any(nw in v for nw in _DIA_TEXT_NOISE_KW):
+        return None
+    for pat in _DIA_TEXT_PATTERNS:
+        m = pat.search(v)
+        if not m:
+            continue
+        try:
+            d = int(m.group(1))
+        except ValueError:
+            continue
+        if d in _VALID_DIA_MM:
+            return d
+    return None
+
+
 def _get_text_entities(msp, settings: Remote30Settings):
     texts = []
     bbox = settings.zone_bbox
@@ -500,14 +537,14 @@ def _get_text_entities(msp, settings: Remote30Settings):
         raw = e.dxf.text if etype == "TEXT" else e.text
         raw = str(raw).strip()
 
-        m = re.search(r"\b(20|25|32|40|50|65|80|100|125|150|200)\b", raw)
-        if not m:
+        dia = _match_dia_text(raw)
+        if dia is None:
             continue
 
         xy = (float(e.dxf.insert.x), float(e.dxf.insert.y))
         if not _in_bbox(xy, bbox):
             continue
-        texts.append({"xy": xy, "text": raw, "dia": int(m.group(1)), "layer": layer})
+        texts.append({"xy": xy, "text": raw, "dia": dia, "layer": layer})
     return texts
 
 
@@ -1491,7 +1528,7 @@ def run_remote30_extraction(
     if settings.zone_bbox is not None and attached_heads:
         zb = settings.zone_bbox
         attached_in_zone = [h for h in attached_heads
-                            if zb[0] <= h["X"] <= zb[2] and zb[1] <= h["Y"] <= zb[3]]
+                            if _in_bbox((h["X"], h["Y"]), zb)]
         if len(attached_in_zone) >= settings.remote_head_count:
             attached_heads = attached_in_zone
             user_zone_applied = True

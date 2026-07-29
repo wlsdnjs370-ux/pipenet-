@@ -31,7 +31,17 @@ MACHINE_ROOM_SP_LAYERS = {"-소화(SP-고)", "-소화(SP-저)"}
 SNAP_TOL_MM = 50.0
 HEAD_BRIDGE_MAX_MM = 5000.0  # 헤드 INSERT 좌표 ↔ 가장 가까운 그래프 노드 brigde 허용 거리.
 SOURCE_BRIDGE_MAX_MM = 25000.0  # 알람밸브 (source) ↔ 배관망 nearest bridge 허용 (25m).
+ANCHOR_W_MARGIN_MM = 3000.0  # anchored 작업창 W = convex_hull(head_region ∪ {alarm_xy}) 팽창 여유.
 MIN_PIPE_EDGE_MM = 50.0
+# 느슨한 끝점 ↔ 다른 edge 내부(수선발) 거리가 이 안이면 T분기로 보고 edge 를 쪼갠다.
+# 도면 스케일 비례(적응형) 금지 — 이 갭은 CAD 작도 정밀도이지 도면 크기의 함수가 아니다.
+# 4개 도면 실측(대각선 45m~784m)에서 갭 분포가 동일하게 양봉이었다: 정확한 T분기는
+# ≤5mm 에 몰리고, 20mm 를 넘으면 평행 2줄 배관의 rail 간격 같은 다른 집단이 섞인다
+# (B1F 는 20→50mm 에서만 +481건, 50→100mm 에서 +34,811건). 대명동 산출물은 2~50mm 에서
+# 완전히 동일하고 100mm 에서 붕괴(배출망 73.5m→100.9m)하므로, 네 도면의 공통 골짜기인
+# 20mm 를 택한다. 상한은 SNAP_TOL_MM — 분기점을 수선발이 아닌 끝점 u 로 잡는 근거가
+# "둘이 노드 동등성 epsilon 안"이라, 그 값을 넘으면 전제 자체가 깨진다.
+TEE_SPLIT_MAX_MM = 20.0
 CLOSED_PL_TOL_MM = 5.0  # PL 의 첫점과 마지막점이 이 거리 안이면 closed polygon 으로 간주 → 그래프 제외
 LADDER_MAX_RUNG_MM = 300.0     # rung (짧은 cross 변) 최대 길이. 단위세대 도면 기준.
 LADDER_MIN_RAIL_RATIO = 3.0    # rail / rung 평균 길이 비. 정사각형 (=1) 은 합성 안 됨.

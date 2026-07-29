@@ -253,11 +253,12 @@ def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
              "length": float(p.get("length", 0) or 0),   # m
              "c": float(p.get("c", 120) or 120),          # Hazen-Williams C
              "elev": float(p.get("elev", 0) or 0),        # 상승고 m (in→out)
-             # 계산(유속) 오버레이 — annotate_pipe_velocity 가 stamp (표시 전용).
+             # 계산(유속) 오버레이 — 유속 수렴 사이징이 stamp (표시 전용).
              "flow_lpm": p.get("flow_lpm"),
              "velocity_mps": p.get("velocity_mps"),
              "v_limit": p.get("v_limit"),
-             "v_over": p.get("v_over")}
+             "v_over": p.get("v_over"),
+             "pipe_role": p.get("pipe_role")}
             for p in combined.pipes
         ],
         "pumps": [
@@ -522,8 +523,9 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         from remote30_full_network import (
             stitch_riser_and_heads, emit_full_sdf,
             prepend_machine_room_to_riser, insert_source_pump,
-            normalize_pipe_bores, size_pipes_by_velocity, annotate_pipe_velocity,
+            normalize_pipe_bores,
         )
+        from hydraulic_solver import converge_bores_by_velocity
 
         # ── 가압 방식 — "gravity"(자연낙차/고가수조, 기본) | "pump"(펌프 가압).
         # 펌프 가압이면 (1) 기계실/수원을 망 최하부로 배치·재고도(고저차 lift 반영),
@@ -679,25 +681,24 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                 app.logger.info("combined/build: pipe bores normalized (+1 size), changed=%d", _bore_ch)
             except Exception as _e:
                 app.logger.warning("combined/build: bore normalize skipped: %s", _e)
-            # ── 유속 상한(≤50A 6 m/s, ≥65A 10 m/s) 보장: 과토출 대비 safety 여유를 두고
-            #   유량 기준 최소 내경으로 승급(never-shrink). 정규화 뒤에 두어 승급분을 보존.
+            # ── 유속 상한(가지 6, 그 외 10 m/s) 보장: 망을 직접 풀어 헤드 과토출 유량을
+            #   얻고 초과 구간을 한 치수씩 올리는 것을 더 바뀌지 않을 때까지 반복(never-shrink).
+            #   도면 관경 + 규약 최소경만으로는 실제 해석에서 유속이 넘던 문제의 해소책.
+            #   각 배관에 flow/velocity/limit/role 을 stamp 하므로 별도 annotate 는 불필요.
+            velocity_report = None
             try:
-                _vel = size_pipes_by_velocity(
+                velocity_report = converge_bores_by_velocity(
                     combined.nodes, combined.pipes, combined.nozzles,
-                    safety=1.2, keep_existing=True)
+                    equipment=combined.equipment, keep_existing=True)
                 app.logger.info(
-                    "combined/build: velocity sizing changed=%d, max v %.2f->%.2f, viol %d->%d",
-                    _vel["changed"], _vel["max_velocity_before"], _vel["max_velocity_after"],
-                    _vel["violations_before"], _vel["violations_after"])
+                    "combined/build: velocity converged in %d passes, changed=%d, "
+                    "max v %.2f->%.2f, viol %d->%d, 과토출 x%.2f",
+                    velocity_report["iterations"], velocity_report["changed"],
+                    velocity_report["max_velocity_before"], velocity_report["max_velocity_after"],
+                    velocity_report["violations_before"], velocity_report["violations_after"],
+                    velocity_report["overdischarge_ratio_max"])
             except Exception as _e:
-                app.logger.warning("combined/build: velocity sizing skipped: %s", _e)
-            # ── 통합 뷰 계산(유속) 오버레이용 배관 stamp — 최종 내경 기준.
-            try:
-                _va = annotate_pipe_velocity(combined.nodes, combined.pipes, combined.nozzles)
-                app.logger.info("combined/build: velocity annotated, max %.2f m/s, over=%d",
-                                _va["max_velocity"], _va["violations"])
-            except Exception as _e:
-                app.logger.warning("combined/build: velocity annotate skipped: %s", _e)
+                app.logger.warning("combined/build: velocity convergence skipped: %s", _e)
             job_id = secrets.token_hex(6)
             _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
             out_dir = COMBINED_OUTPUT_DIR / job_id
@@ -1107,6 +1108,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             "title": title,
             "machine_room_attached": mr_attached,
             "geometry": geometry,
+            "velocity_report": velocity_report,
             # W7 — anchored 실행일 때만 추출 근거 리포트 직렬화.
             # 비-anchored(현행 select_worst30_heads)에선 키 자체가 없음 → 응답 불변.
             **({"extraction_audit": selection.audit.to_json_dict()}
@@ -1139,8 +1141,8 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         if not geom.get("nodes") or not geom.get("pipes"):
             return jsonify({"ok": False, "message": "편집된 geometry(nodes/pipes)가 필요합니다"}), 400
 
-        from remote30_full_network import (emit_full_sdf, normalize_pipe_bores,
-                                            size_pipes_by_velocity, annotate_pipe_velocity)
+        from remote30_full_network import emit_full_sdf, normalize_pipe_bores
+        from hydraulic_solver import converge_bores_by_velocity
         try:
             combined = _copy.deepcopy(cache["combined"])
             _patch_combined_from_geometry(combined, geom)
@@ -1152,20 +1154,19 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                 normalize_pipe_bores(combined.nodes, combined.pipes, bump_one_size=False)
             except Exception as _e:
                 app.logger.warning("combined/rebuild: bore detangle skipped: %s", _e)
-            # ── 유속 상한 보장(멱등, never-shrink): 편집으로 얇아진 구간이 유속 초과면 최소 내경으로 승급.
+            # ── 유속 상한 보장(멱등, never-shrink): 편집으로 얇아진 구간이 과토출 유량 기준
+            #    유속 초과면 수렴할 때까지 승급.
+            velocity_report = None
             try:
-                _vel = size_pipes_by_velocity(
+                velocity_report = converge_bores_by_velocity(
                     combined.nodes, combined.pipes, combined.nozzles,
-                    safety=1.2, keep_existing=True)
+                    equipment=combined.equipment, keep_existing=True)
                 app.logger.info(
-                    "combined/rebuild: velocity sizing changed=%d, viol %d->%d",
-                    _vel["changed"], _vel["violations_before"], _vel["violations_after"])
+                    "combined/rebuild: velocity converged in %d passes, changed=%d, viol %d->%d",
+                    velocity_report["iterations"], velocity_report["changed"],
+                    velocity_report["violations_before"], velocity_report["violations_after"])
             except Exception as _e:
-                app.logger.warning("combined/rebuild: velocity sizing skipped: %s", _e)
-            try:
-                annotate_pipe_velocity(combined.nodes, combined.pipes, combined.nozzles)
-            except Exception as _e:
-                app.logger.warning("combined/rebuild: velocity annotate skipped: %s", _e)
+                app.logger.warning("combined/rebuild: velocity convergence skipped: %s", _e)
 
             new_job = secrets.token_hex(6)
             _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
@@ -1250,6 +1251,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                 "download_url_sdf": f"{base}/{out_sdf.name}",
                 "download_url_kfp": f"{base}/{out_kfp.name}" if kfp_ok else None,
                 "download_url_has": f"{base}/{out_has.name}" if has_ok else None,
+                "velocity_report": velocity_report,
             })
         except Exception as exc:  # noqa: BLE001
             return _err500(exc)

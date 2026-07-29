@@ -4715,6 +4715,101 @@ def _separate_overlapping_branches(result, edges, branch_keys, fixed, key_fn,
     return result
 
 
+def rooted_traversal(source_pos, edges):
+    """source(알람밸브) 를 root 로 한 BFS — (parent, depth, order) 반환.
+
+    이웃 순회는 edges 삽입순 그대로. SPT 후엔 트리라 부모가 유일하지만 루프(분기영역)·
+    헤드 drop 이 남으면 순서를 바꿀 때 부모가 달라져 관경 추론(하류 헤드 수)까지 흔들린다.
+    """
+    adj: dict = defaultdict(list)
+    for a, b, _ in edges:
+        adj[a].append(b)
+        adj[b].append(a)
+    parent: dict = {source_pos: None}
+    depth: dict = {source_pos: 0}
+    order: list = [source_pos]
+    i = 0
+    while i < len(order):
+        cur = order[i]
+        i += 1
+        for nb in adj[cur]:
+            if nb not in parent:
+                parent[nb] = cur
+                depth[nb] = depth[cur] + 1
+                order.append(nb)
+    return parent, depth, order
+
+
+def traversal_ordered_edges(edges, parent, order):
+    """edges 를 AV→말단 BFS 순·부모→자식 방향으로 정렬 — (상류, 하류, 길이, off_tree).
+
+    트리에 못 들어간 edge(루프 잔여)는 맨 뒤로 몰린다 = "길이 잘못 트인" 후보.
+    """
+    idx = {p: i for i, p in enumerate(order)}
+    far = len(idx) + 1
+
+    def _rank(item):
+        i, (ea, eb, _l) = item
+        if parent.get(eb) == ea:
+            return (0, idx.get(eb, far), i)
+        if parent.get(ea) == eb:
+            return (0, idx.get(ea, far), i)
+        return (1, min(idx.get(ea, far), idx.get(eb, far)), i)
+
+    out = []
+    for a, b, length in [e for _, e in sorted(enumerate(edges), key=_rank)]:
+        off = False
+        if parent.get(a) == b:          # 부모가 b → 흐름은 b→a
+            a, b = b, a
+        elif parent.get(b) != a:        # off-tree → 얕은 쪽을 상류로
+            off = True
+            if idx.get(a, far) > idx.get(b, far):
+                a, b = b, a
+        out.append((a, b, length, off))
+    return out
+
+
+def build_stage4_entities(selection: SelectionResult) -> list[dict]:
+    """Stage 4 캔버스 엔티티 — AV→말단 traversal 순서로 정렬해서 낸다.
+
+    계통도·기계실은 시작노드→끝노드 순서대로 배관이 그려지는데 평면도만 edge 삽입순이라
+    한꺼번에 나타났다. edge 는 부모→자식 순(d=깊이), 트리 밖 edge 는 x=1 로 뒤에 붙는다.
+    헤드에는 자기 노드에 도달하는 edge 순번 i 를 달아, 망이 뻗어나가다 그 자리에서 켜진다.
+    """
+    ents: list[dict] = []
+    ortho = orthogonalize_edge_positions(
+        selection.edges,
+        head_points=[h.pos for h in selection.heads],
+        source_point=selection.source_pos)
+
+    def _xy(p):
+        return ortho.get((round(float(p[0]), 3), round(float(p[1]), 3)),
+                         (float(p[0]), float(p[1])))
+
+    src = selection.source_pos
+    depth: dict = {}
+    if src is None:
+        ordered = [(a, b, ln, False) for a, b, ln in selection.edges]
+    else:
+        parent, depth, order = rooted_traversal(src, selection.edges)
+        ordered = traversal_ordered_edges(selection.edges, parent, order)
+    arrival: dict = {}
+    for k, (a, b, _ln, off) in enumerate(ordered):
+        pa, pb = _xy(a), _xy(b)
+        en = {"t": "L", "l": "_subgraph", "p": [pa[0], pa[1], pb[0], pb[1]],
+              "d": depth.get(b, 0)}
+        if off:
+            en["x"] = 1
+        ents.append(en)
+        arrival.setdefault(b, k)
+    for h in selection.heads:
+        ents.append({"t": "C", "l": "_subgraph_head", "c": list(_xy(h.pos)),
+                     "r": 80.0, "i": arrival.get(h.pos, 0)})
+    if src is not None:
+        ents.append({"t": "C", "l": "_alarm_valve", "c": list(_xy(src)), "r": 150.0})
+    return ents
+
+
 def build_input_tables(
     selection: SelectionResult,
     pipe_entities: list[dict] | None = None,
@@ -4742,23 +4837,7 @@ def build_input_tables(
     # → 표를 위에서 아래로 읽으면 물이 흐르는 순서가 되고, 트리에 못 들어간
     # edge(아래 off_tree_count)가 곧 "길이 잘못 트인" 후보로 드러난다.
     src_pos = selection.source_pos
-    adj_sub: dict = defaultdict(list)
-    for ea, eb, _ in selection.edges:
-        adj_sub[ea].append(eb); adj_sub[eb].append(ea)
-    # 이웃 순회 순서는 selection.edges 삽입순 그대로 — SPT 후 그래프는 트리라
-    # 부모가 유일하지만, 루프(분기영역)·헤드drop 이 남은 경우 순서를 바꾸면
-    # 부모가 달라져 관경 추론(하류 헤드 수)까지 흔들린다.
-    parent_map: dict = {src_pos: None}
-    _bfs_depth: dict = {src_pos: 0}
-    bfs_order: list = [src_pos]
-    _qi = 0
-    while _qi < len(bfs_order):
-        cur = bfs_order[_qi]; _qi += 1
-        for nb in adj_sub[cur]:
-            if nb not in parent_map:
-                parent_map[nb] = cur
-                _bfs_depth[nb] = _bfs_depth[cur] + 1
-                bfs_order.append(nb)
+    parent_map, _bfs_depth, bfs_order = rooted_traversal(src_pos, selection.edges)
     children_of: dict = defaultdict(list)
     for nd, pr in parent_map.items():
         if pr is not None:
@@ -4914,30 +4993,13 @@ def build_input_tables(
     # Pipes — BFS 순(AV→말단)으로 정렬해 부모→자식 방향으로 낸다.
     # 트리에 못 들어간 edge(루프 잔여)는 뒤로 몰아 배치 → 표 꼬리가 곧
     # "길이 잘못 트인" 후보 목록.
-    bfs_index = {p: i for i, p in enumerate(bfs_order)}
-    _far = len(bfs_index) + 1
-
-    def _edge_rank(item) -> tuple:
-        idx, (ea, eb, _l) = item
-        if parent_map.get(eb) == ea:
-            return (0, bfs_index.get(eb, _far), idx)
-        if parent_map.get(ea) == eb:
-            return (0, bfs_index.get(ea, _far), idx)
-        return (1, min(bfs_index.get(ea, _far), bfs_index.get(eb, _far)), idx)
-
-    ordered_edges = [e for _, e in sorted(enumerate(selection.edges), key=_edge_rank)]
-    off_tree_count = sum(1 for ea, eb, _l in selection.edges
-                         if parent_map.get(eb) != ea and parent_map.get(ea) != eb)
+    ordered_edges = traversal_ordered_edges(selection.edges, parent_map, bfs_order)
+    off_tree_count = sum(1 for *_, off in ordered_edges if off)
 
     edge_key_to_pipe: dict[tuple, str] = {}
     pipe_label_counter = 10
     cpvc_pipe_count = 0
-    for a, b, length_mm in ordered_edges:
-        if parent_map.get(a) == b:          # 부모가 b → 흐름은 b→a
-            a, b = b, a
-        elif parent_map.get(b) != a:        # off-tree → 얕은 쪽을 상류로
-            if bfs_index.get(a, _far) > bfs_index.get(b, _far):
-                a, b = b, a
+    for a, b, length_mm, _off in ordered_edges:
         la = pos_to_label[a]; lb = pos_to_label[b]
         plabel = str(pipe_label_counter)
         edge_key_to_pipe[(min(a, b), max(a, b))] = plabel
@@ -6201,26 +6263,12 @@ def run_stages_3_5(
     if "e" in _box:
         raise _box["e"]
     selection = _box["r"]
-    subgraph_ents = []
-    _sg_ortho = orthogonalize_edge_positions(
-        selection.edges,
-        head_points=[h.pos for h in selection.heads],
-        source_point=selection.source_pos)
-
-    def _sg_xy(p):
-        return _sg_ortho.get((round(float(p[0]), 3), round(float(p[1]), 3)),
-                             (float(p[0]), float(p[1])))
-    for a, b, _len in selection.edges:
-        pa, pb = _sg_xy(a), _sg_xy(b)
-        subgraph_ents.append({"t": "L", "l": "_subgraph", "p": [pa[0], pa[1], pb[0], pb[1]]})
-    for h in selection.heads:
-        subgraph_ents.append({"t": "C", "l": "_subgraph_head", "c": list(_sg_xy(h.pos)), "r": 80.0})
-    if selection.source_pos is not None:
-        subgraph_ents.append({"t": "C", "l": "_alarm_valve", "c": list(_sg_xy(selection.source_pos)), "r": 150.0})
+    subgraph_ents = build_stage4_entities(selection)
     yield evt({"type": "entities", "stage": 4, "entities": subgraph_ents,
                "summary": {
                    "selected_heads": len(selection.heads),
                    "subgraph_edges": len(selection.edges),
+                   "off_tree_edges": sum(1 for e in subgraph_ents if e.get("x")),
                    "subgraph_nodes": len(selection.nodes_in_subgraph),
                    "max_distance_m": round(max(selection.distances) / 1000.0, 2) if selection.distances else 0,
                    "source_kind": selection.source_kind,

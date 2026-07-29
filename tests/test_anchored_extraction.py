@@ -438,8 +438,8 @@ def test_w7_audit_schema_on_fixture(pipe_ents, layer_categories):
     aud = res.audit
     assert isinstance(aud, rp.ExtractionAudit)
     j = _json.loads(_json.dumps(aud.to_json_dict()))   # JSON 직렬화 계약
-    assert set(j) == {"heads", "bridges", "welds", "head_drops",
-                      "nonnominal", "corridor", "source_attach", "water"}
+    assert set(j) == {"heads", "bridges", "welds", "head_drops", "nonnominal",
+                      "corridor", "source_attach", "water", "tee_splits"}
     assert j["heads"]["detected_in_region"] == len(gated)
     assert j["heads"]["attached"] + len(j["heads"]["unreachable"]) == len(gated)
     assert {"dist_mm", "method", "escalation"} <= set(j["source_attach"])
@@ -517,3 +517,83 @@ def test_v4_water_in_anchored_audit(pipe_ents, layer_categories):
     assert w["heads_routed"] == res.audit.heads["attached"]
     assert w["watered_edge_count"] > 0
     assert 0.0 <= w["dead_ratio"] <= 1.0
+
+
+# ── P1 수용 기준: T분기 edge-split ──────────────────────────────────────────
+
+def _tee_graph(*branch_feet):
+    """수평 주배관 a-b 와, 그 위 지정 위치에 20mm 못미쳐 끝나는 가지관들."""
+    a, b = (0.0, 0.0), (4000.0, 0.0)
+    graph = {a: {b}, b: {a}}
+    edge_len = {(a, b): 4000.0}
+    for x, sign in branch_feet:
+        u, v = (x, 20.0 * sign), (x, 1000.0 * sign)
+        graph[u] = {v}; graph[v] = {u}
+        edge_len[(min(u, v), max(u, v))] = 980.0
+    return graph, edge_len, a, b
+
+
+def test_p1_tee_split_at_midspan():
+    graph, edge_len, a, b = _tee_graph((2000.0, 1))
+    u = (2000.0, 20.0)
+    rec: list = []
+    assert rp._split_tee_branches(graph, edge_len, splits_out=rec) == 1
+    assert (a, b) not in edge_len and b not in graph[a]
+    assert graph[u] == {(2000.0, 1000.0), a, b}
+    assert (a, u) in edge_len and (u, b) in edge_len
+    # 분기점은 수선발이 아니라 끝점 u 자신 — 새 좌표를 만들지 않는다
+    assert abs(edge_len[(a, u)] - math.hypot(2000.0, 20.0)) < 1e-9
+    assert rec[0]["p"] == [2000.0, 20.0] and abs(rec[0]["gap_mm"] - 20.0) < 1e-9
+
+
+def test_p1_tee_split_skips_endpoint_proximity():
+    """수선발이 주배관 끝점 코앞이면 T분기가 아니라 끝점 접속 — weld 에 맡긴다."""
+    graph, edge_len, a, b = _tee_graph((30.0, 1))
+    assert rp._split_tee_branches(graph, edge_len) == 0
+    assert (a, b) in edge_len
+
+
+def test_p1_tee_split_far_gap_untouched():
+    graph, edge_len, a, b = _tee_graph((2000.0, 1))
+    assert rp._split_tee_branches(graph, edge_len, max_gap_mm=10.0) == 0
+    assert (a, b) in edge_len
+
+
+def test_p1_tee_split_two_branches_same_trunk():
+    """한 주배관에 가지 둘 — 앞선 split 으로 생긴 조각에 다시 붙어 체인이 된다."""
+    graph, edge_len, a, b = _tee_graph((1000.0, 1), (3000.0, -1))
+    u1, u2 = (1000.0, 20.0), (3000.0, -20.0)
+    assert rp._split_tee_branches(graph, edge_len) == 2
+    assert (a, b) not in edge_len and (u1, b) not in edge_len
+    assert graph[u1] == {(1000.0, 1000.0), a, u2}
+    assert graph[u2] == {(3000.0, -1000.0), u1, b}
+
+
+def test_p1_tee_split_off_by_default(pipe_ents, layer_categories):
+    region = HeadRegion.from_polygon(WEST_UNIT_POLY)
+    gated = rp.detect_heads(pipe_ents, layer_categories, region=region)
+    cx = sum(h.pos[0] for h in gated) / len(gated)
+    cy = sum(h.pos[1] for h in gated) / len(gated)
+    res = rp.select_worst30_heads_anchored(pipe_ents, layer_categories,
+                                           alarm_xy=(cx, cy), head_region=region)
+    assert res.audit.tee_splits == []
+
+
+def test_p1_tee_split_on_fixture_replaces_welds(pipe_ents, layer_categories):
+    region = HeadRegion.from_polygon(WEST_UNIT_POLY)
+    gated = rp.detect_heads(pipe_ents, layer_categories, region=region)
+    cx = sum(h.pos[0] for h in gated) / len(gated)
+    cy = sum(h.pos[1] for h in gated) / len(gated)
+
+    def run(flag):
+        return rp.select_worst30_heads_anchored(
+            pipe_ents, layer_categories, alarm_xy=(cx, cy),
+            head_region=region, tee_split=flag).audit
+
+    base, tee = run(False), run(True)
+    assert tee.tee_splits, "대명동 fixture 에 T분기 후보가 있어야 함"
+    for r in tee.tee_splits:
+        assert set(r) == {"p", "edge", "gap_mm", "sym_mm"}
+        assert 0.0 <= r["gap_mm"] <= rp.TEE_SPLIT_MAX_MM
+    # 제자리 접속으로 대체되므로 weld 가 발명하는 연결이 줄어야 한다
+    assert len(tee.welds) < len(base.welds)

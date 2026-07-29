@@ -127,7 +127,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, HEAD_BRIDGE_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, HEAD_BRIDGE_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 
 def _categorize_layer(name: str) -> str:
@@ -2413,6 +2413,8 @@ class ExtractionAudit:
     source_attach: dict = field(default_factory=dict)  # {dist_mm,method,escalation,...}
     # 급수 감사 — {dead_edge_count,dead_len_mm,dead_ratio,watered_edge_count,heads_routed}
     water: dict = field(default_factory=dict)
+    # T분기 edge-split 근거. sym_mm 은 "접속=기호" 관측 증거일 뿐 판정에 쓰지 않는다.
+    tee_splits: list = field(default_factory=list)  # [{p,edge,gap_mm,sym_mm}]
 
     @classmethod
     def from_audit_dict(cls, audit: dict) -> "ExtractionAudit":
@@ -2429,6 +2431,7 @@ class ExtractionAudit:
             water=dict(audit.get("water") or
                        {"dead_edge_count": 0, "dead_len_mm": 0.0, "dead_ratio": 0.0,
                         "watered_edge_count": 0, "heads_routed": 0}),
+            tee_splits=list(audit.get("tee_splits") or []),
         )
 
     def to_json_dict(self) -> dict:
@@ -2436,7 +2439,7 @@ class ExtractionAudit:
             "heads": self.heads, "bridges": self.bridges, "welds": self.welds,
             "head_drops": self.head_drops, "nonnominal": self.nonnominal,
             "corridor": self.corridor, "source_attach": self.source_attach,
-            "water": self.water,
+            "water": self.water, "tee_splits": self.tee_splits,
         }
 
 
@@ -3226,6 +3229,106 @@ def _bridge_components(
     return total
 
 
+def _split_tee_branches(
+    graph: dict,
+    edge_len: dict,
+    max_gap_mm: float = TEE_SPLIT_MAX_MM,
+    min_edge_mm: float = MIN_PIPE_EDGE_MM,
+    splits_out: list | None = None,
+) -> int:
+    """T분기 복원 — 느슨한 끝점이 다른 배관 *중간* 에 닿는 곳에서 그 배관을 쪼갠다.
+
+    _weld_dangling_endpoints 는 노드↔노드만 잇고 edge 를 쪼갤 수 없다. 실제 도면의
+    가지관은 주배관 끝점이 아니라 중간에서 갈라지므로(T분기), weld 는 ① 엉뚱한
+    조각에 붙이거나 ② 같은 배관이라도 그 *끝점* 에 붙여 배관 길이를 부풀린다
+    (대명동 서측 세대 실측: 후보 47건 중 오접합 32건 / 제 edge 에 붙은 12건도
+    중앙값 1.1m·합계 10.7m 의 가공 배관을 만든다).
+
+    끝점 u 에서 edge (a,b) 내부로 내린 수선발이 max_gap_mm 안이면 (a,b) 를 지우고
+    (a,u),(u,b) 로 대체한다. 분기점은 수선발이 아니라 u 자신 — 둘의 거리가
+    max_gap_mm(≤ _NodeIndex epsilon) 안이라 이미 같은 노드로 취급되는 위치이고,
+    새 좌표를 만들지 않아 raw DXF 좌표 보존 원칙이 지켜진다.
+
+    안전장치:
+      - degree-1 노드만 소스 (배관 중간점끼리 엮이는 사고 방지)
+      - u 가 그 edge 의 끝점이거나 이미 인접이면 제외 (weld 영역)
+      - 쪼갠 두 조각 모두 min_edge_mm 이상 — 최소길이 미만 edge 생성 금지
+      - 새 edge 는 실배관이므로 추정연결(penalty) 아님
+    splits_out: 주어지면 [{"p", "edge", "gap_mm"}] 기록 (audit 근거용).
+    반환: 쪼갠 edge 수.
+    """
+    if max_gap_mm <= 0:
+        return 0
+    cell = max(500.0, max_gap_mm * 10.0)
+    inv = 1.0 / cell
+    grid: dict[tuple[int, int], list] = defaultdict(list)
+
+    def _register(key: tuple) -> None:
+        # 셀 절반 간격 표본 등록 — 3x3 조회와 합쳐 max_gap 안의 구간을 놓치지 않는다.
+        (ax, ay), (bx, by) = key
+        n = int(math.hypot(bx - ax, by - ay) * 2.0 * inv) + 1
+        for i in range(n + 1):
+            t = i / n
+            grid[(int(math.floor((ax + t * (bx - ax)) * inv)),
+                  int(math.floor((ay + t * (by - ay)) * inv)))].append(key)
+
+    for key in edge_len:
+        _register(key)
+
+    splits = 0
+    for u in sorted(n for n, nb in graph.items() if len(nb) == 1):
+        nb = graph.get(u)
+        if not nb or len(nb) != 1:
+            continue
+        ux, uy = u[0], u[1]
+        cgx = int(math.floor(ux * inv)); cgy = int(math.floor(uy * inv))
+        cands: list = []
+        for dgx in (-1, 0, 1):
+            for dgy in (-1, 0, 1):
+                cands.extend(grid.get((cgx + dgx, cgy + dgy), ()))
+        best = None; best_d = float("inf")
+        for key in cands:
+            a, b = key
+            if key not in edge_len or b not in graph.get(a, ()):
+                continue  # 앞선 split 으로 사라진 edge
+            if u == a or u == b or a in nb or b in nb:
+                continue
+            abx = b[0] - a[0]; aby = b[1] - a[1]
+            L2 = abx * abx + aby * aby
+            if L2 < 1e-9:
+                continue
+            t = ((ux - a[0]) * abx + (uy - a[1]) * aby) / L2
+            if not (0.0 < t < 1.0):
+                continue  # 수선발이 edge 밖 — 끝점 접속(weld 영역)
+            d = math.hypot(ux - (a[0] + t * abx), uy - (a[1] + t * aby))
+            if d > max_gap_mm:
+                continue
+            if best is not None and (d, key) >= (best_d, best):
+                continue  # 동점은 edge 키 순으로 결정적 해소
+            if (math.hypot(ux - a[0], uy - a[1]) < min_edge_mm
+                    or math.hypot(ux - b[0], uy - b[1]) < min_edge_mm):
+                continue
+            best = key; best_d = d
+        if best is None:
+            continue
+        a, b = best
+        graph[a].discard(b); graph[b].discard(a)
+        del edge_len[best]
+        for v in (a, b):
+            graph[u].add(v); graph[v].add(u)
+            k2 = (min(u, v), max(u, v))
+            L = math.hypot(ux - v[0], uy - v[1])
+            prev = edge_len.get(k2)
+            if prev is None or L < prev:
+                edge_len[k2] = L
+            _register(k2)
+        if splits_out is not None:
+            splits_out.append({"p": [ux, uy], "gap_mm": best_d,
+                               "edge": [[a[0], a[1]], [b[0], b[1]]]})
+        splits += 1
+    return splits
+
+
 def _weld_dangling_endpoints(
     graph: dict,
     edge_len: dict,
@@ -3864,6 +3967,7 @@ def select_worst30_heads_anchored(
     audit_out: dict | None = None,
     progress_cb=None,
     spatial_reselect: bool = False,
+    tee_split: bool = False,
     dxf_path=None,
 ) -> SelectionResult:
     """2앵커 anchored 선정(§1 계약) — ``alarm_xy``·``head_region`` 필수.
@@ -3879,6 +3983,8 @@ def select_worst30_heads_anchored(
     spatial_reselect: W5 공간한정 조건부 재선별 플래그(기본 off). 1차 명목 수집
         결과로 region 승인 헤드 도달망 구성에 실패한 경우에만 발동하며,
         dxf_path(원본 DXF) 가 필요하다.
+    tee_split: T분기 edge-split 플래그(기본 off). weld 이전에 실행돼 weld 가
+        발명해야 할 연결을 줄인다(→audit tee_splits).
     """
     if alarm_xy is None:
         raise ValueError("anchored: alarm_xy(수동 알람밸브 좌표) 필수")
@@ -3936,6 +4042,18 @@ def select_worst30_heads_anchored(
                 "ratio": (_nn_len / _total_len) if _total_len else 0.0,
             }
     collapse_parallel_ladders(graph, edge_len)
+    # T분기 복원은 weld 이전 — 주배관 중간에 닿는 가지관을 제자리에서 접속시켜
+    # weld 가 엉뚱한 조각/끝점에 붙이는 오접합을 애초에 없앤다.
+    if tee_split:
+        _tee: list = []
+        _split_tee_branches(graph, edge_len, splits_out=_tee)
+        _syms = [(en["p"][0], en["p"][1]) for en in pipe_entities
+                 if en["t"] == "I"
+                 and layer_categories.get(en.get("l", ""), "OTHER") != "HEAD"]
+        for rec in _tee:
+            rec["sym_mm"] = min((math.hypot(rec["p"][0] - sx, rec["p"][1] - sy)
+                                 for sx, sy in _syms), default=None)
+        audit["tee_splits"] = _tee
     _diag = _graph_diag(graph)
     _penalty_keys: set = set()
     _weld_keys: set = set()  # W7 — weld 만 별도 수집 (audit welds 항목)

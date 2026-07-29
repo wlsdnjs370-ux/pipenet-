@@ -33,6 +33,7 @@ HEAD_BRIDGE_MAX_MM = 5000.0  # 헤드 INSERT 좌표 ↔ 가장 가까운 그래�
 SOURCE_BRIDGE_MAX_MM = 25000.0  # 알람밸브 (source) ↔ 배관망 nearest bridge 허용 (25m).
 ANCHOR_W_MARGIN_MM = 3000.0  # anchored 작업창 W = convex_hull(head_region ∪ {alarm_xy}) 팽창 여유.
 MIN_PIPE_EDGE_MM = 50.0
+TEE_SPLIT_MAX_MM = 50.0  # 느슨한 끝점 ↔ 다른 edge 내부(수선발) 거리가 이 안이면 T분기로 보고 edge 를 쪼갠다.
 CLOSED_PL_TOL_MM = 5.0  # PL 의 첫점과 마지막점이 이 거리 안이면 closed polygon 으로 간주 → 그래프 제외
 LADDER_MAX_RUNG_MM = 300.0     # rung (짧은 cross 변) 최대 길이. 단위세대 도면 기준.
 LADDER_MIN_RAIL_RATIO = 3.0    # rail / rung 평균 길이 비. 정사각형 (=1) 은 합성 안 됨.

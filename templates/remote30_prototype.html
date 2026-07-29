@@ -7058,6 +7058,7 @@
         // 통합 배관망 캔버스 시각화 — geometry 저장 + 통합 모드로 캔버스 redraw
         if (data.geometry) {
           state.combined_geometry = data.geometry;
+          state.combined_view = "iso2d";  // 통합 직후 기본 위상 = 등각도 (평면 전환은 뷰 버튼)
           state.combined_reveal_order = _computeCombinedRevealOrder(data.geometry);
           state.view.fitMode = null;  // 새 geometry → 다음 render 에서 자동 fit(전체 bbox)
           // ── 순차 등장 애니메이션 — 수원/펌프 → 입상관 → 가지 → 헤드 outward.

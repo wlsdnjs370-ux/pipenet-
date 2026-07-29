@@ -1111,21 +1111,6 @@
           </div>
 
           <button id="sys-extract" class="run-btn" type="button" disabled style="background: #ffffff; color: var(--accent); border-color: var(--accent);">▶ 계통도 추출</button>
-          <button id="sys-clean-network" type="button" style="width: 100%; margin-top: 6px; padding: 7px; background: #fff7ed; color: #9a3412; border: 1px dashed #f97316; font-size: 0.74rem; cursor: pointer;">⚡ 임시: 깨끗한 배관망 길이 추출 (계통도_LH_306_배관망추출.dxf)</button>
-          <p class="info-line" style="margin: 4px 0 0; font-size: 0.68rem; color: var(--muted);">펌프/V 클릭 없이, 파일에 그려진 단일 배관망을 길이와 함께 그대로 띄웁니다 (튀는 추측선 없음). 길이는 도면 측정 단위.</p>
-        </section>
-
-        <section>
-          <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">연결 검수 (휴리스틱 × AI)</h3>
-          <p class="info-line" style="font-size: 0.7rem; color: var(--muted);">
-            끊긴 배관 끝단의 복원 연결 후보를 거리 휴리스틱과 AI(link-prediction) 합의로 등급화합니다.
-            <strong>계산망은 바꾸지 않는</strong> 검수용 오버레이입니다 — 점선은 모두 알고리즘 추정 연결.
-          </p>
-          <button id="sys-conn-review" type="button" disabled style="width: 100%; padding: 7px; background: #faf5ff; color: #6b21a8; border: 1px dashed #a855f7; font-size: 0.74rem; cursor: pointer;">🔍 연결 복원 후보 검수</button>
-          <label style="display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.72rem; cursor: pointer;">
-            <input id="sys-conn-overlay-toggle" type="checkbox" checked> 검수 오버레이 표시
-          </label>
-          <div id="sys-conn-box" class="info-line" style="font-size: 0.72rem; margin-top: 4px;"></div>
         </section>
 
         <section>
@@ -1135,20 +1120,6 @@
           </div>
         </section>
 
-        <section>
-          <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">수리계산 파일 (계통도 단독)</h3>
-          <p class="info-line" style="font-size: 0.7rem; color: var(--muted);">
-            계통도(펌프→V 라이저) 구간만 PIPENET/K-Fire 입력 파일로 받습니다. 통합 없이 부분 검토용.
-          </p>
-          <button id="sys-emit" type="button" class="run-btn" disabled style="background:#ffffff;color:var(--accent);border-color:var(--accent);margin-top:4px;">▶ 수리계산 파일 생성</button>
-          <p id="sys-emit-status" class="info-line" style="font-size: 0.7rem; min-height: 1em;"></p>
-          <div class="download-grid">
-            <a id="sys-dl-zip" class="download-btn is-disabled" href="#" target="_blank" title="SDF + SLF + KFP 일체 — PIPENET 사용 시 권장">.zip (전체)</a>
-            <a id="sys-dl-sdf" class="download-btn is-disabled" href="#" target="_blank">.sdf</a>
-            <a id="sys-dl-slf" class="download-btn is-disabled" href="#" target="_blank" title="PIPENET 라이브러리 — .sdf 와 같은 폴더 필요">.slf</a>
-            <a id="sys-dl-kfp" class="download-btn is-disabled" href="#" target="_blank" title="K-Fire Solver 입력">.kfp</a>
-          </div>
-        </section>
       </div>
       <!-- ───── /mode-panel-system ───── -->
 
@@ -1693,7 +1664,6 @@
         if (typeof _updateSystemResultCard === "function" && state._sys_extract_last) {
           _updateSystemResultCard(state._sys_extract_last);
         }
-        if (typeof _resetSysEmit === "function") _resetSysEmit(true);
         overlayInfoEl.textContent = `[계통도 완료] pump → AV 경로 추출됨`;
       }},
 
@@ -3614,10 +3584,7 @@
       if (!f) return;
       state.system_uploaded_file = f;
       { const _b = document.getElementById("sys-clear-dxf"); if (_b) _b.disabled = false; }
-      state.system_riser = null;  // 새 도면 — 이전 추출/다운로드 무효화
-      state.system_conn_review = null;  // 새 도면 — 이전 연결검수 무효화
-      if (typeof _renderConnReviewBox === "function") { _sysConnBox.innerHTML = ""; }
-      if (typeof _resetSysEmit === "function") _resetSysEmit(false);
+      state.system_riser = null;  // 새 도면 — 이전 추출 무효화
       const sizeMb = (f.size / 1024 / 1024).toFixed(1);
       _sysFileStatus.textContent = `⏳ ${f.name} (${sizeMb} MB) 로딩 중...`;
       BootOverlay.show(`Reading ${f.name} (${sizeMb} MB)`);
@@ -3697,7 +3664,6 @@
           _sysFileStatus.textContent = `✓ ${result.dxf_filename || f.name} — ${total.toLocaleString()} entity, ` +
             `표시 영역 ${(bw/1000).toFixed(1)}m × ${(bh/1000).toFixed(1)}m. 펌프/V 클릭으로 위치 지정 →` + _bgSkipNote(result, true);
         }
-        if (typeof _enableConnReview === "function") _enableConnReview();
         if (state.current_mode === "system") {
           // robust bbox 로 최종 1회 fit — 스트리밍 중 raw bbox(작게) 보이던 걸 본 도면에 맞춤
           fitSystemCanvas();
@@ -3724,7 +3690,6 @@
         }
         state.system_annotation_file = f;
         state.system_riser = null;  // 결합 조건 변경 — 이전 추출 무효화
-        if (typeof _resetSysEmit === "function") _resetSysEmit(false);
         if (_sysAnnoStatus) _sysAnnoStatus.textContent = `✓ 주석 결합: ${f.name} — 추출 시 관경·층 라벨을 끌어옵니다.`;
       });
     }
@@ -3920,7 +3885,6 @@
       state.system_bbox = null;
       state.system_bbox_full = null;
       state.system_riser = null;
-      state.system_conn_review = null;
       state.system_revealed_pipes_count = null;
       state.system_pump_marker = null;
       state.system_av_marker = null;
@@ -3932,9 +3896,6 @@
       _sysAvCoord.textContent = "(미지정)";
       if (typeof _renderSysMidCoord === "function") _renderSysMidCoord();
       updateSystemExtractBtn();
-      if (typeof _resetSysEmit === "function") _resetSysEmit(false);
-      if (typeof _enableConnReview === "function") _enableConnReview();
-      if (typeof _sysConnBox !== "undefined" && _sysConnBox) _sysConnBox.innerHTML = "";
       if (_sysClearDxfBtn) _sysClearDxfBtn.disabled = true;
       _sysFileStatus.textContent = "계통도 도면을 업로드하면 캔버스에 표시됩니다.";
       const _annoInput = document.getElementById("sys-anno-dxf");
@@ -4000,8 +3961,6 @@
       const r = data.riser;
       const algoLabel = data.algorithm === "legacy_template"
         ? "정답 템플릿 (28F MSP affine)"
-        : data.algorithm === "clean_network"
-        ? "깨끗한 배관망 (임시 — 전체 망 측정)"
         : "DXF 경로 추출 v1";
 
       const sec = (title, body, color) => {
@@ -4134,129 +4093,6 @@
       animQueue.enqueue({ type: "sys_extract_done" });
     }
 
-    // 임시 — 깨끗한 배관망 파일에서 강제로 길이 추출 (펌프/AV 클릭 불필요)
-    const _sysCleanBtn = document.getElementById("sys-clean-network");
-    if (_sysCleanBtn) {
-      _sysCleanBtn.addEventListener("click", async () => {
-        _sysCleanBtn.disabled = true;
-        const _orig = _sysCleanBtn.textContent;
-        _sysCleanBtn.textContent = "⏳ 깨끗한 배관망 추출 중...";
-        animQueue.clear();
-        LayerPanel.reset();
-        LayerPanel.show();
-        BootOverlay.show("Loading clean pipe network");
-        state.system_revealed_pipes_count = null;
-        state.system_riser = null;
-        if (typeof _resetSysEmit === "function") _resetSysEmit(false);
-        if (state.current_mode === "system") render();
-        try {
-          const res = await fetch("/api/remote30/system/clean_network", { method: "POST" });
-          const data = await res.json();
-          BootOverlay.hide();
-          if (!data.ok) {
-            LayerPanel.hide();
-            alert("깨끗한 배관망 추출 실패: " + (data.message || "unknown"));
-            return;
-          }
-          // 깨끗한 파일은 업로드 안 했을 수 있으므로 — 망 bbox 로 뷰 fit.
-          const edges = data.riser.network_edges || [];
-          if (edges.length) {
-            let xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
-            for (const e of edges) {
-              xmin = Math.min(xmin, e[0], e[2]); xmax = Math.max(xmax, e[0], e[2]);
-              ymin = Math.min(ymin, e[1], e[3]); ymax = Math.max(ymax, e[1], e[3]);
-            }
-            state.system_bbox = { x_min: xmin, y_min: ymin, x_max: xmax, y_max: ymax };
-            fitSystemCanvas();
-          }
-          _revealSystemRiser(data);
-        } catch (err) {
-          BootOverlay.hide();
-          LayerPanel.hide();
-          alert("네트워크 오류: " + err.message);
-        } finally {
-          _sysCleanBtn.disabled = false;
-          _sysCleanBtn.textContent = _orig;
-        }
-      });
-    }
-
-    // ── 연결 복원 검수 (휴리스틱 × AI link-prediction 합의 등급화) ──
-    // advisory overlay — 계산망은 바꾸지 않고, 끊긴 끝단 복원 후보를 등급별 점선으로 표시.
-    state.system_conn_review = null;       // serialize_result() JSON
-    state.system_conn_overlay = true;      // 오버레이 표시 토글
-    const _sysConnBtn = document.getElementById("sys-conn-review");
-    const _sysConnBox = document.getElementById("sys-conn-box");
-    const _sysConnToggle = document.getElementById("sys-conn-overlay-toggle");
-    // 등급 → 색 (verification: 추정연결은 점선 + 등급별 색)
-    const CONN_GRADE_STYLE = {
-      A:        { color: "#16a34a", label: "A 합의" },
-      CONFLICT: { color: "#dc2626", label: "충돌" },
-      B:        { color: "#9a3412", label: "B 휴리스틱" },
-      C:        { color: "#7c3aed", label: "C AI단독" },
-    };
-
-    function _enableConnReview() {
-      if (_sysConnBtn) _sysConnBtn.disabled = !state.system_uploaded_file;
-    }
-
-    if (_sysConnToggle) {
-      _sysConnToggle.addEventListener("change", () => {
-        state.system_conn_overlay = _sysConnToggle.checked;
-        if (state.current_mode === "system") render();
-      });
-    }
-
-    function _renderConnReviewBox(j) {
-      if (!_sysConnBox) return;
-      if (!j || j.empty) {
-        _sysConnBox.innerHTML = `<span style="color:var(--muted);">복원 후보 없음 (끝단/세그먼트 부족).</span>`;
-        return;
-      }
-      const c = j.counts || {};
-      const chip = (k) => {
-        const s = CONN_GRADE_STYLE[k];
-        return `<span style="display:inline-block;margin:2px 4px 0 0;padding:1px 6px;border-radius:8px;` +
-               `border:1px dashed ${s.color};color:${s.color};font-weight:700;">${s.label} ${c[k] || 0}</span>`;
-      };
-      _sysConnBox.innerHTML =
-        `<div style="margin-bottom:3px;color:#0a1228;">끝단 ${c.n_tip} · 본관 ${c.n_seg} · 휴리스틱 bridge ${c.H}</div>` +
-        chip("A") + chip("CONFLICT") + chip("B") + chip("C") +
-        `<div style="margin-top:4px;color:var(--muted);font-size:0.68rem;">` +
-        `충돌(빨강)=AI가 휴리스틱 끝점-스냅을 교정한 끝단 → 최우선 검수. 모든 선은 추정(점선).</div>`;
-    }
-
-    if (_sysConnBtn) {
-      _sysConnBtn.addEventListener("click", async () => {
-        if (!state.system_uploaded_file) {
-          alert("계통도 DXF 를 먼저 업로드해주세요.");
-          return;
-        }
-        _sysConnBtn.disabled = true;
-        const _orig = _sysConnBtn.textContent;
-        _sysConnBtn.textContent = "⏳ 연결 후보 분석 중...";
-        try {
-          const fd = new FormData();
-          await appendUpload(fd, "system_dxf_file", state.system_uploaded_file);
-          const res = await fetch("/api/remote30/system/connection_review", { method: "POST", body: fd });
-          const j = await res.json();
-          if (!j.ok) {
-            alert("연결 검수 실패: " + (j.message || "unknown"));
-            return;
-          }
-          state.system_conn_review = j;
-          _renderConnReviewBox(j);
-          if (state.current_mode === "system") render();
-        } catch (err) {
-          alert("네트워크 오류: " + err.message);
-        } finally {
-          _sysConnBtn.disabled = false;
-          _sysConnBtn.textContent = _orig;
-          _enableConnReview();
-        }
-      });
-    }
-
     _sysExtractBtn.addEventListener("click", async () => {
       if (!state.system_pump_marker || !state.system_av_marker) {
         alert("펌프와 밸브 위치를 모두 클릭으로 지정해주세요.");
@@ -4271,7 +4107,6 @@
       BootOverlay.show("Analyzing CAD system diagram");
       state.system_revealed_pipes_count = null;
       state.system_riser = null;  // 이전 path 지움 (재실행 대비)
-      if (typeof _resetSysEmit === "function") _resetSysEmit(false);  // 이전 다운로드 링크/버튼 초기화
       if (state.current_mode === "system") render();
       try {
         let data = await _runSystemExtract(false);
@@ -4961,47 +4796,6 @@
       }
     }
 
-    // 계통도 단독 emit
-    const _sysEmitBtn = document.getElementById("sys-emit");
-    const _sysEmitStatus = document.getElementById("sys-emit-status");
-    function _resetSysEmit(enableBtn) {
-      if (_sysEmitBtn) _sysEmitBtn.disabled = !enableBtn;
-      if (_sysEmitStatus) _sysEmitStatus.textContent = "";
-      ["sys-dl-zip", "sys-dl-sdf", "sys-dl-slf", "sys-dl-kfp"].forEach(id => _setEmitLink(id, null));
-    }
-    if (_sysEmitBtn) _sysEmitBtn.addEventListener("click", async () => {
-      if (!state.system_riser) {
-        alert("계통도 추출을 먼저 실행하세요.");
-        return;
-      }
-      _sysEmitBtn.disabled = true;
-      _sysEmitBtn.textContent = "⏳ 생성 중...";
-      if (_sysEmitStatus) _sysEmitStatus.textContent = "수리계산 파일 생성 중...";
-      try {
-        const res = await fetch("/api/remote30/system/emit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ riser: state.system_riser }),
-        });
-        const data = await res.json();
-        if (!data.ok) {
-          if (_sysEmitStatus) _sysEmitStatus.textContent = "❌ " + (data.message || "생성 실패");
-          return;
-        }
-        _setEmitLink("sys-dl-zip", data.download_url_zip);
-        _setEmitLink("sys-dl-sdf", data.download_url_sdf);
-        _setEmitLink("sys-dl-slf", data.download_url_slf);
-        _setEmitLink("sys-dl-kfp", data.download_url_kfp);
-        if (_sysEmitStatus) _sysEmitStatus.textContent =
-          `✓ 생성 완료 — 노드 ${data.nodes} · 파이프 ${data.pipes}. 아래에서 다운로드.`;
-      } catch (err) {
-        if (_sysEmitStatus) _sysEmitStatus.textContent = "❌ 네트워크 오류: " + err.message;
-      } finally {
-        _sysEmitBtn.disabled = false;
-        _sysEmitBtn.textContent = "▶ 수리계산 파일 생성";
-      }
-    });
-
     // 기계실 단독 emit
     const _mrEmitBtn = document.getElementById("mr-emit");
     const _mrEmitStatus = document.getElementById("mr-emit-status");
@@ -5112,47 +4906,9 @@
     // 캔버스 system 모드에 라이저 시각화 추가 — _renderSystemMode 후처리.
     // 동적 추출: state.system_revealed_pipes_count (int) 까지만 그림.
     // 그래프 스타일은 공통 GRAPH_STYLE / 헬퍼 사용.
-    // 연결복원 검수 오버레이 — A/CONFLICT/B/C 등급별 점선(추정연결) + 끝단 마커.
-    // riser 유무와 무관하게 그린다(검수는 추출 전에도 가능). worldToScreen 사용.
-    function _drawConnReviewOverlay() {
-      const j = state.system_conn_review;
-      if (!j || !state.system_conn_overlay || j.empty) return;
-      const seg = (items, key, dash) => {
-        const s = CONN_GRADE_STYLE[key];
-        if (!items || !items.length) return;
-        ctx.save();
-        ctx.strokeStyle = s.color;
-        ctx.lineWidth = 1.8;
-        ctx.setLineDash(dash);
-        ctx.globalAlpha = 0.95;
-        ctx.beginPath();
-        for (const it of items) {
-          const [x1, y1] = worldToScreen(it.a[0], it.a[1]);
-          const [x2, y2] = worldToScreen(it.b[0], it.b[1]);
-          ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-        }
-        ctx.stroke();
-        ctx.restore();
-        // 끝단(a) 점
-        ctx.save();
-        ctx.fillStyle = s.color;
-        for (const it of items) {
-          const [x1, y1] = worldToScreen(it.a[0], it.a[1]);
-          ctx.beginPath(); ctx.arc(x1, y1, 3, 0, Math.PI * 2); ctx.fill();
-        }
-        ctx.restore();
-      };
-      // 그리기 순서: B(배경) → C → A → CONFLICT(최상단 강조)
-      seg(j.B, "B", [4, 3]);
-      seg(j.C, "C", [6, 3]);
-      seg(j.A, "A", [2, 2]);
-      seg(j.CONFLICT, "CONFLICT", [8, 4]);
-    }
-
     const _origRenderSystemMode = _renderSystemMode;
     _renderSystemMode = function() {
       _origRenderSystemMode();
-      _drawConnReviewOverlay();
       if (!state.system_riser) return;
       const r = state.system_riser;
       const nodeMap = new Map();

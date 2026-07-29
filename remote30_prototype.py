@@ -3045,6 +3045,9 @@ def prune_by_load(
     도달 가능하지만 어떤 헤드에도 기여하지 않는 구간(드레인·시험배관·막다른 가지·
     표기 잔재)은 SPT 에 남지만 여기선 부하 0 이라 제거된다.
 
+    # [문서정합] 실제 채택한 절단 기준. 명세서 초안의 SPT 강제와 다르다
+    # — docs/load_extraction.md §5·§8.
+
     사이클 규칙: 사이클을 이루는 간선 중 부하 최소값이 0 일 때만 그 간선을 자르고,
     최소값이 1 이상이면 실제 격자배관이므로 보존한다. 이 조건은 "부하 0 간선 제거"
     와 절단 대상이 정확히 같으므로(간선이 잘리는 필요충분조건이 부하 0) 1 단계로
@@ -3098,6 +3101,10 @@ def force_spanning_tree(
     """그래프를 (각 component 마다) min-weight shortest-path spanning tree 로 변환.
 
     트리 간선 선택 규칙은 `_shortest_path_parents` 참조.
+
+    # [문서정합] 명세서 초안이 청구 메커니즘으로 기재한 "가지식 트리 강제(Dijkstra
+    # SPT)" 가 이 함수다. 실제 채택 기준은 `prune_by_load` 의 부하 0 절단이며 죽은
+    # 배관 처리에서 결과가 갈린다 — docs/load_extraction.md §5·§8.
 
     Args:
         graph: 무방향 그래프 (in-place 수정됨 — cycle edge 제거)

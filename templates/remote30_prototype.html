@@ -511,64 +511,6 @@
       font-family: var(--font-mono);
     }
 
-    /* ─── Stage timeline ─── */
-    .stage-timeline { padding: 0; margin: 0 -18px -14px; border-top: 1px solid var(--line); }
-    .stage-row {
-      display: grid; grid-template-columns: 28px 1fr auto; gap: 12px;
-      padding: 12px 18px;
-      border-bottom: 1px solid var(--line);
-      align-items: flex-start;
-      transition: background var(--tr);
-    }
-    .stage-row:last-child { border-bottom: 0; }
-    .stage-row.is-running { background: var(--accent-soft); }
-    .stage-row.is-done { background: var(--ok-soft); }
-    .stage-row.is-error { background: var(--bad-soft); }
-    .stage-dot {
-      width: 24px; height: 24px; border-radius: 50%;
-      background: #fff;
-      color: #0a1228;
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 0.75rem;
-      border: 1.5px solid #0a1228;
-      transition: all var(--tr);
-      flex-shrink: 0;
-      font-family: var(--font-mono);
-    }
-    .stage-row.is-running .stage-dot {
-      background: #0a1228; color: #fff; border-color: #0a1228;
-      animation: pulse 1.4s ease-in-out infinite;
-      box-shadow: 0 0 0 4px rgba(10, 18, 40, 0.18);
-    }
-    .stage-row.is-done .stage-dot { background: #0a1228; color: #fff; border-color: #0a1228; }
-    .stage-row.is-error .stage-dot { background: #000000; color: #fff; border-color: #000000; }
-    @keyframes pulse {
-      0%, 100% { box-shadow: 0 0 0 4px rgba(10, 18, 40, 0.18); }
-      50%      { box-shadow: 0 0 0 8px rgba(10, 18, 40, 0.10); }
-    }
-    .stage-title { font-weight: 600; font-size: 0.83rem; color: var(--text); letter-spacing: -0.005em; }
-    .stage-desc { font-size: 0.72rem; color: var(--text-2); margin-top: 3px; line-height: 1.5; }
-    .stage-elapsed { font-size: 0.7rem; color: var(--muted); font-family: var(--font-mono); white-space: nowrap; padding-top: 3px; }
-
-    /* Stage 4 진행바 — 서브단계(bridge/경로추적)를 채워 "설치바" 형태로 표시 */
-    .stage-progress { display: none; margin-top: 7px; }
-    .stage-row.is-running .stage-progress.has-substep { display: block; }
-    .stage-progress-track {
-      height: 6px; border-radius: 3px; overflow: hidden;
-      background: rgba(10, 18, 40, 0.10);
-    }
-    .stage-progress-fill {
-      height: 100%; width: 0%;
-      background: #0a1228;
-      border-radius: 3px;
-      transition: width 0.35s ease;
-    }
-    .stage-progress-label {
-      font-size: 0.68rem; color: var(--text-2); margin-top: 4px;
-      font-family: var(--font-mono);
-      display: flex; justify-content: space-between; gap: 8px;
-    }
-
     .summary-box {
       margin-top: 10px; padding: 10px 12px;
       background: var(--panel-soft);
@@ -705,21 +647,6 @@
     }
     #fx-modal-close:hover { background: var(--panel-soft); color: var(--text); }
     #fx-review-section #fx-table { flex: 1 1 auto; min-height: 0; }
-    .tabs { display: flex; gap: 3px; margin-top: 8px; padding: 3px; background: var(--panel-soft); border: 1px solid var(--line); border-radius: 7px; }
-    .tab-btn {
-      padding: 5px 10px;
-      background: transparent;
-      border: 0;
-      font-size: 0.72rem; cursor: pointer;
-      font-family: var(--font-sans);
-      border-radius: 5px;
-      transition: all var(--tr);
-      color: var(--text-2);
-      font-weight: 500;
-    }
-    .tab-btn:hover { color: var(--text); }
-    .tab-btn.is-active { background: #fff; color: var(--accent); box-shadow: var(--sh-sm); font-weight: 600; }
-
     /* ─── Boot overlay (S0 — Initializing CAD engine) ─── */
     .boot-overlay {
       position: absolute; inset: 0; z-index: 1000;
@@ -1092,18 +1019,18 @@
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px;">
-          <button id="wb-mode-add" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid #16a34a; font-size: 0.75rem; cursor: pointer;">＋ 헤드 추가</button>
-          <button id="wb-mode-delete" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid #dc2626; font-size: 0.75rem; cursor: pointer;">− 헤드 삭제</button>
+          <button id="wb-mode-add" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">＋ 헤드 추가</button>
+          <button id="wb-mode-delete" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">− 헤드 삭제</button>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px;">
-          <button id="wb-mode-zone" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid #1e40af; font-size: 0.75rem; cursor: pointer;">▭ 영역 지정 (드래그)</button>
+          <button id="wb-mode-zone" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">▭ 영역 지정 (드래그)</button>
           <button id="wb-zones-clear" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">↺ 영역 전체 해제</button>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px;">
-          <button id="wb-mode-branchzone" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid #d97706; font-size: 0.75rem; cursor: pointer;">◨ 분기영역 지정 (드래그)</button>
+          <button id="wb-mode-branchzone" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">◨ 분기영역 지정 (드래그)</button>
           <button id="wb-branchzones-clear" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">↺ 분기영역 해제</button>
         </div>
-        <button id="wb-branchzone-apply" type="button" style="width: 100%; padding: 5px; background: #fffbeb; color: #92400e; border: 1px solid #d97706; font-size: 0.72rem; cursor: pointer; margin-bottom: 8px;">↻ 분기영역 적용 — 배관망 재구성</button>
+        <button id="wb-branchzone-apply" type="button" style="width: 100%; padding: 5px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.72rem; cursor: pointer; margin-bottom: 8px;">↻ 분기영역 적용 — 배관망 재구성</button>
         <button id="wb-mode-cancel" type="button" style="width: 100%; padding: 5px; background: #f3f4f6; color: var(--muted); border: 1px solid var(--line); font-size: 0.72rem; cursor: pointer; margin-bottom: 8px;">✗ 편집 모드 해제 (캔버스 팬/줌)</button>
 
         <p id="wb-edit-status" class="info-line" style="font-size: 0.72rem; min-height: 1.2em;">캔버스에서 모드 버튼을 누른 뒤 클릭/드래그하세요.</p>
@@ -1115,77 +1042,6 @@
         </div>
 
         <button id="wb-finalize" type="button" style="width: 100%; padding: 12px; background: #1e40af; color: #fff; border: 1px solid #1e40af; font-weight: 700; cursor: pointer; font-size: 0.95rem;" disabled>▶ 배관망 완성 (Stage 3~5 진행)</button>
-      </section>
-
-      <section>
-        <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">실시간 파이프라인</h3>
-        <div class="stage-timeline">
-          <div id="stage-row-0" class="stage-row">
-            <div class="stage-dot" style="border:2px solid var(--s0)">0</div>
-            <div>
-              <div class="stage-title">DXF 파싱 + 매트릭스 보정</div>
-              <div class="stage-desc">ezdxf modelspace 읽기, INSERT mirror transform 적용, hidden 레이어 차단</div>
-            </div>
-            <div class="stage-elapsed" id="stage-elapsed-0">—</div>
-          </div>
-          <div id="stage-row-1" class="stage-row">
-            <div class="stage-dot" style="border:2px solid var(--s1)">1</div>
-            <div>
-              <div class="stage-title">배관망만 추출</div>
-              <div class="stage-desc">PIPE/HEAD/TEXT + "0" + L1-4 카테고리만 통과 (건축·소화기·외부 시트 제거)</div>
-            </div>
-            <div class="stage-elapsed" id="stage-elapsed-1">—</div>
-          </div>
-          <div id="stage-row-2" class="stage-row">
-            <div class="stage-dot" style="border:2px solid #0a1228">2</div>
-            <div>
-              <div class="stage-title">전체 헤드 후보 바운딩박스 인식</div>
-              <div class="stage-desc">HEAD 카테고리의 INSERT(block-name match) + CIRCLE 시그니처 + HATCH 삼각형 → 250mm 근접 클러스터링</div>
-            </div>
-            <div class="stage-elapsed" id="stage-elapsed-2">—</div>
-          </div>
-          <div id="stage-row-3" class="stage-row">
-            <div class="stage-dot" style="border:2px solid #0a1228">3</div>
-            <div>
-              <div class="stage-title">전체 배관망 인식 (그래프 시각화)</div>
-              <div class="stage-desc">snap + 컴포넌트 bridge + 헤드 drop line 적용된 내부 그래프 — 불리한 헤드 선정의 거리 계산이 사용하는 정확한 길</div>
-            </div>
-            <div class="stage-elapsed" id="stage-elapsed-3">—</div>
-          </div>
-          <div id="stage-row-4" class="stage-row">
-            <div class="stage-dot" style="border:2px solid var(--s2)">4</div>
-            <div>
-              <div class="stage-title" id="stage4-title">가장 불리한 30 헤드 + 경로 색출</div>
-              <div class="stage-desc">알람밸브 자동 식별 → Dijkstra → top-K + subgraph union</div>
-              <div class="stage-progress" id="stage4-progress">
-                <div class="stage-progress-track">
-                  <div class="stage-progress-fill" id="stage4-progress-fill"></div>
-                </div>
-                <div class="stage-progress-label">
-                  <span id="stage4-progress-msg">준비 중…</span>
-                  <span id="stage4-progress-pct">0%</span>
-                </div>
-              </div>
-            </div>
-            <div class="stage-elapsed" id="stage-elapsed-4">—</div>
-          </div>
-          <div id="stage-row-5" class="stage-row">
-            <div class="stage-dot" style="border:2px solid var(--s3)">5</div>
-            <div>
-              <div class="stage-title">PIPENET 5 테이블 + Meta (XLSX/CSV)</div>
-              <div class="stage-desc">Nodes / Pipes / Nozzles / Fittings / Equipment</div>
-            </div>
-            <div class="stage-elapsed" id="stage-elapsed-5">—</div>
-          </div>
-          <div id="stage-row-6" class="stage-row">
-            <div class="stage-dot" style="border:2px solid var(--s4)">6</div>
-            <div>
-              <div class="stage-title">PIPENET SDF emit</div>
-              <div class="stage-desc">Project &gt; Network-spray &gt; Nodes/Pipes/Nozzles/Components/Graphics XML</div>
-            </div>
-            <div class="stage-elapsed" id="stage-elapsed-6">—</div>
-          </div>
-        </div>
       </section>
 
       <section>
@@ -1206,18 +1062,6 @@
           <a id="dl-csv-fittings" class="download-btn is-disabled" href="#" target="_blank">CSV Fittings</a>
           <a id="dl-csv-equipment" class="download-btn is-disabled" href="#" target="_blank">CSV Equipment</a>
         </div>
-      </section>
-
-      <section id="preview-section" style="display:none;">
-        <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">테이블 프리뷰 (상위 8행)</h3>
-        <div class="tabs" id="preview-tabs">
-          <button class="tab-btn is-active" data-tab="nodes">Nodes</button>
-          <button class="tab-btn" data-tab="pipes">Pipes</button>
-          <button class="tab-btn" data-tab="nozzles">Nozzles</button>
-          <button class="tab-btn" data-tab="fittings">Fittings</button>
-          <button class="tab-btn" data-tab="equipment">Equipment</button>
-        </div>
-        <div class="table-preview" id="preview-table"></div>
       </section>
 
       <!-- ───── 신축배관(FX) 검토 게이트 — 트리거 버튼 (창은 body 끝 모달) ───── -->
@@ -2990,8 +2834,6 @@
       if (Number.isFinite(nHeads) && nHeads >= 1) {
         payload.n_heads = nHeads;
         state.k_heads = nHeads;
-        const t4 = document.getElementById("stage4-title");
-        if (t4) t4.textContent = `가장 불리한 ${nHeads} 헤드 + 경로 색출`;
       }
       const r = await fetch(`/api/remote30/prototype/finalize/${state.jobId}`, {
         method: "POST", headers: {"Content-Type": "application/json"},
@@ -3024,13 +2866,6 @@
       state.revealed_heads_4 = null;
       state.subgraph_alpha_4 = 1.0;
       state.head_rank_4 = null;
-      // reset stage rows
-      for (let i = 0; i <= 6; i++) {
-        const row = document.getElementById("stage-row-" + i);
-        if (!row) continue;
-        row.classList.remove("is-running", "is-done", "is-error");
-        document.getElementById("stage-elapsed-" + i).textContent = "—";
-      }
       // 헤드 편집 섹션 숨김 + 리셋
       headEditSection.style.display = "none";
       state.detected_heads = [];
@@ -3046,7 +2881,6 @@
         const el = document.getElementById(id);
         el.classList.add("is-disabled"); el.href = "#";
       }
-      document.getElementById("preview-section").style.display = "none";
       // FX 검토 창/버튼 초기화 (이전 실행 잔여 제거)
       document.getElementById("fx-modal-overlay").classList.remove("is-open");
       document.getElementById("fx-open-btn").style.display = "none";
@@ -3081,36 +2915,10 @@
 
     function handleEvent(evt) {
       if (evt.type === "stage") {
-        const row = document.getElementById("stage-row-" + evt.stage);
-        const elapsedEl = document.getElementById("stage-elapsed-" + evt.stage);
-        if (evt.status === "running") {
-          row.classList.add("is-running"); row.classList.remove("is-done");
-          if (evt.stage === 4) {
-            const fill = document.getElementById("stage4-progress-fill");
-            const pct = document.getElementById("stage4-progress-pct");
-            const msg = document.getElementById("stage4-progress-msg");
-            if (fill) fill.style.width = "0%";
-            if (pct) pct.textContent = "0%";
-            if (msg) msg.textContent = "준비 중…";
-          }
-        } else if (evt.status === "done") {
-          row.classList.remove("is-running");
-          row.classList.add("is-done");
-          elapsedEl.textContent = (evt.elapsed_ms / 1000).toFixed(1) + "s";
-          row.querySelector(".stage-desc").textContent = evt.label;
-        }
         overlayInfoEl.textContent = `[Stage ${evt.stage}] ${evt.label || ""}`;
       } else if (evt.type === "substep") {
         if (evt.stage === 4) {
-          const cont = document.getElementById("stage4-progress");
-          const fill = document.getElementById("stage4-progress-fill");
-          const pct = document.getElementById("stage4-progress-pct");
-          const msg = document.getElementById("stage4-progress-msg");
           const p = Math.max(0, Math.min(100, Math.round((evt.progress || 0) * 100)));
-          if (cont) cont.classList.add("has-substep");
-          if (fill) fill.style.width = p + "%";
-          if (pct) pct.textContent = p + "%";
-          if (msg) msg.textContent = evt.label || "";
           overlayInfoEl.textContent = `[Stage 4] ${evt.label || ""} (${p}%)`;
         }
       } else if (evt.type === "entities") {
@@ -3216,9 +3024,6 @@
         // 버튼 활성화
         const btn = stageButtons[evt.stage];
         if (btn) btn.disabled = false;
-      } else if (evt.type === "tables_preview") {
-        document.getElementById("preview-section").style.display = "block";
-        renderTablesPreview(evt.tables, evt.counts);
       } else if (evt.type === "stage5_complete") {
         FxReview.open(evt.fx_review, evt.tables);
       } else if (evt.type === "warning") {
@@ -3668,29 +3473,6 @@
 
       return { open, addWarning };
     })();
-
-    function renderTablesPreview(tables, counts) {
-      const tabs = document.querySelectorAll("#preview-tabs .tab-btn");
-      const target = document.getElementById("preview-table");
-      function show(key) {
-        tabs.forEach(t => t.classList.toggle("is-active", t.dataset.tab === key));
-        const rows = tables[key] || [];
-        if (!rows.length) { target.innerHTML = "<p style='padding:8px; color:var(--muted); font-size:0.75rem;'>(비어있음)</p>"; return; }
-        const cols = Object.keys(rows[0]);
-        let h = "<table><thead><tr>";
-        for (const c of cols) h += `<th>${c}</th>`;
-        h += "</tr></thead><tbody>";
-        for (const r of rows) {
-          h += "<tr>";
-          for (const c of cols) h += `<td>${String(r[c] ?? "")}</td>`;
-          h += "</tr>";
-        }
-        h += `</tbody></table><div style="padding:4px 8px; color:var(--muted); font-size:0.7rem;">전체 ${counts[key]} 행 중 ${rows.length} 행 표시</div>`;
-        target.innerHTML = h;
-      }
-      tabs.forEach(t => t.addEventListener("click", () => show(t.dataset.tab)));
-      show("nodes");
-    }
 
     resizeCanvas();
 

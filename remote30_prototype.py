@@ -4387,7 +4387,36 @@ def build_input_tables(
     if not selection.heads or selection.source_pos is None:
         return tables
 
-    # 노드 라벨링 — 알람밸브 = 10, 나머지 1 부터 순차
+    # ── AV(source) 를 root 로 한 rooted traversal.
+    # 계통도(extract_system_path)·기계실(extract_machine_room_path)은 시작노드에서
+    # 끝노드로 뻗는 순서 그대로 테이블을 내는데, 평면도만 순서·방향이 임의였다.
+    # 여기서 BFS 를 한 번 돌려 라벨 번호·행 순서·배관 방향을 모두 이 순서에 맞춘다
+    # → 표를 위에서 아래로 읽으면 물이 흐르는 순서가 되고, 트리에 못 들어간
+    # edge(아래 _off_tree)가 곧 "길이 잘못 트인" 후보로 드러난다.
+    src_pos = selection.source_pos
+    adj_sub: dict = defaultdict(list)
+    for ea, eb, _ in selection.edges:
+        adj_sub[ea].append(eb); adj_sub[eb].append(ea)
+    # 이웃 순회 순서는 selection.edges 삽입순 그대로 — SPT 후 그래프는 트리라
+    # 부모가 유일하지만, 루프(분기영역)·헤드drop 이 남은 경우 순서를 바꾸면
+    # 부모가 달라져 관경 추론(하류 헤드 수)까지 흔들린다.
+    parent_map: dict = {src_pos: None}
+    _bfs_depth: dict = {src_pos: 0}
+    bfs_order: list = [src_pos]
+    _qi = 0
+    while _qi < len(bfs_order):
+        cur = bfs_order[_qi]; _qi += 1
+        for nb in adj_sub[cur]:
+            if nb not in parent_map:
+                parent_map[nb] = cur
+                _bfs_depth[nb] = _bfs_depth[cur] + 1
+                bfs_order.append(nb)
+    children_of: dict = defaultdict(list)
+    for nd, pr in parent_map.items():
+        if pr is not None:
+            children_of[pr].append(nd)
+
+    # 노드 라벨링 — 알람밸브 = 10, 나머지는 AV 에서 멀어지는 BFS 순
     pos_to_label: dict[tuple[float, float], str] = {}
     label_to_pos: dict[str, tuple[float, float]] = {}
     counter = [10]
@@ -4400,8 +4429,10 @@ def build_input_tables(
         label_to_pos[lab] = pos
         return lab
 
-    src_label = _label_node(selection.source_pos)
-    for n in selection.nodes_in_subgraph:
+    src_label = _label_node(src_pos)
+    for n in bfs_order[1:]:
+        _label_node(n)
+    for n in selection.nodes_in_subgraph:   # BFS 미도달(고립 성분)은 뒤에
         _label_node(n)
     head_node_label: dict[tuple[float, float], str] = {}
     for h, dist in zip(selection.heads, selection.distances):
@@ -4483,23 +4514,7 @@ def build_input_tables(
         if head_count <= 160: return 125
         return 150
 
-    # ── subgraph 안 src 부터의 BFS tree → pipe 별 downstream 헤드 수
-    src_pos = selection.source_pos
-    adj_sub: dict = defaultdict(list)
-    for ea, eb, _ in selection.edges:
-        adj_sub[ea].append(eb); adj_sub[eb].append(ea)
-    parent_map: dict = {src_pos: None}
-    bfs_q: list = [src_pos]
-    while bfs_q:
-        cur = bfs_q.pop(0)
-        for nb in adj_sub[cur]:
-            if nb not in parent_map:
-                parent_map[nb] = cur
-                bfs_q.append(nb)
-    children_of: dict = defaultdict(list)
-    for nd, pr in parent_map.items():
-        if pr is not None:
-            children_of[pr].append(nd)
+    # ── 위 rooted traversal 의 트리 → pipe 별 downstream 헤드 수
     selected_head_set = {h.pos for h in selection.heads}
     subtree_count: dict = {}
     def _subtree_calc(n):
@@ -4545,18 +4560,34 @@ def build_input_tables(
         diameter_source_counter["text"] += 1
         return best_text
 
-    # Pipes + edge key → pipe label mapping
+    # Pipes — BFS 순(AV→말단)으로 정렬해 부모→자식 방향으로 낸다.
+    # 트리에 못 들어간 edge(루프 잔여)는 뒤로 몰아 배치 → 표 꼬리가 곧
+    # "길이 잘못 트인" 후보 목록.
+    bfs_index = {p: i for i, p in enumerate(bfs_order)}
+    _far = len(bfs_index) + 1
+
+    def _edge_rank(item) -> tuple:
+        idx, (ea, eb, _l) = item
+        if parent_map.get(eb) == ea:
+            return (0, bfs_index.get(eb, _far), idx)
+        if parent_map.get(ea) == eb:
+            return (0, bfs_index.get(ea, _far), idx)
+        return (1, min(bfs_index.get(ea, _far), bfs_index.get(eb, _far)), idx)
+
+    ordered_edges = [e for _, e in sorted(enumerate(selection.edges), key=_edge_rank)]
+    off_tree_count = sum(1 for ea, eb, _l in selection.edges
+                         if parent_map.get(eb) != ea and parent_map.get(ea) != eb)
+
     edge_key_to_pipe: dict[tuple, str] = {}
     pipe_label_counter = 10
     cpvc_pipe_count = 0
-    for a, b, length_mm in selection.edges:
+    for a, b, length_mm in ordered_edges:
+        if parent_map.get(a) == b:          # 부모가 b → 흐름은 b→a
+            a, b = b, a
+        elif parent_map.get(b) != a:        # off-tree → 얕은 쪽을 상류로
+            if bfs_index.get(a, _far) > bfs_index.get(b, _far):
+                a, b = b, a
         la = pos_to_label[a]; lb = pos_to_label[b]
-        try:
-            la_i, lb_i = int(la), int(lb)
-            if la_i > lb_i:
-                la, lb = lb, la
-        except ValueError:
-            pass
         plabel = str(pipe_label_counter)
         edge_key_to_pipe[(min(a, b), max(a, b))] = plabel
         dia = _pipe_diameter(a, b)
@@ -4747,6 +4778,10 @@ def build_input_tables(
         ("Diameter 추론 — NFPC 별표 1 보강 (text<min)", str(diameter_source_counter.get("nfpc_min", 0))),
         ("Diameter 추론 — NFPC 별표 1 fallback (text 미매칭)", str(diameter_source_counter.get("nfpc_fallback", 0))),
         ("Diameter 텍스트 후보 수 (도면)", str(len(dia_text_pts))),
+        ("traversal 도달 노드 / 미도달", f"{len(bfs_order)} / {len(label_to_pos) - len(bfs_order)}"),
+        ("traversal 최대 깊이", str(max(_bfs_depth.values()) if _bfs_depth else 0)),
+        ("traversal 분기 노드 수", str(sum(1 for c in children_of.values() if len(c) >= 2))),
+        ("트리 밖 edge (오배선 후보)", str(off_tree_count)),
     ]
     return tables
 

@@ -1664,8 +1664,8 @@
         setStageView(2);
       }},
       head_reveal: { budgetMs: 70, handler: (e) => {
-        state.revealed_heads_count = e.index + 1;
-        overlayInfoEl.textContent = `[Stage 2] 헤드 검출 ${e.index + 1} / ${e.total}`;
+        state.revealed_heads_count = e.count;
+        overlayInfoEl.textContent = `[Stage 2] 헤드 검출 ${e.count} / ${e.total}`;
         render();
       }},
       stage2_done: { budgetMs: 500, handler: () => {
@@ -3142,10 +3142,14 @@
           animQueue.enqueue({ type: "stage2_intro" });
           animQueue.enqueue({ type: "stage2_switch" });
           const _total = state.detected_heads.length;
-          // Stage 2 reveal 총 ~3-5s 목표: 헤드당 budget = clamp(2500ms / N, 35ms, 120ms)
-          const _hbud = Math.max(35, Math.min(120, Math.round(3500 / Math.max(1, _total))));
-          for (let i = 0; i < _total; i++) {
-            animQueue.enqueue({ type: "head_reveal", index: i, total: _total, _budgetMs: _hbud });
+          // 한 스텝마다 배관망 ghost 까지 통째로 다시 그리므로, 헤드 1개당 1스텝이면
+          // 큰 도면에서 O(N²) 가 된다(3000 헤드 = 26초). 스텝 수에 상한을 두면
+          // reveal 시간이 헤드 수와 무관해지고, 작은 도면은 종전과 동일하게 한 개씩 뜬다.
+          const _steps = Math.min(_total, 120);
+          const _hbud = Math.max(35, Math.min(120, Math.round(3500 / Math.max(1, _steps))));
+          for (let s = 1; s <= _steps; s++) {
+            animQueue.enqueue({ type: "head_reveal", total: _total, _budgetMs: _hbud,
+                                count: Math.round(_total * s / _steps) });
           }
           animQueue.enqueue({ type: "stage2_done" });
         }

@@ -1,7 +1,8 @@
-# 직교화(O2)와 루프 금지 게이트(O1)
+# 직교화(O2)·평면화(O3)와 루프 금지 게이트(O1)
 
-추출된 배관망을 **모든 간선이 축평행(교차각 90°)인 트리**로 정규화한다.
-`remote30_prototype.orthogonalize_edges` + `_finalize_selection` 의 union-find 게이트.
+추출된 배관망을 **모든 간선이 축평행(교차각 90°)이고 화면에도 닫힌 영역이 없는
+트리**로 정규화한다. `remote30_prototype.orthogonalize_edges` +
+`planarize_edges` + `_finalize_selection` 의 union-find 게이트.
 
 ## 왜 필요한가
 
@@ -19,7 +20,7 @@
 `ELBOW_MERGE_TOL_DEG = 95°` / `SHORT_SEG_MM = 500mm` 조건으로 **직각 코너를 흡수**해
 대각선 한 줄로 바꾼다. 길이는 실제 경로 합이라 맞지만 형상이 무너진다.
 
-## 두 단계
+## 세 단계
 
 ### ① 축 스냅
 
@@ -42,9 +43,33 @@
 - **새 부속을 만들지 않는다.** 직교화는 형상 표현의 변경이지 배관 변경이 아니다.
   병합이 흡수해 둔 elbow(`elbow_fittings`)는 등가길이 부속이라 어느 세그먼트에
   달아도 수리적으로 동일하므로 살아남은 세그먼트로 옮긴다.
-- 긴 성분을 먼저 진행하는 코너를 우선 택한다 — 주배관 방향을 유지한 뒤 끝에서
-  꺾는 실제 배선에 가깝다. 그 자리가 이미 점유돼 있으면 반대쪽 코너를 쓴다.
+- **코너는 이미 놓인 형상과 덜 부딪히는 쪽을 고른다**(`_ortho_leg_penalty`).
+  같은 축선 위 겹침 100 · 노드 관통 10 · 직교 교차 1 로 가중한다 — 배관 두 줄이
+  포개진 자리가 가장 나쁘고, 층이 다른 배관이 스쳐 지나가는 교차가 가장 가볍다.
+  자유도가 낮은 짧은 대각선부터 자리를 잡고 동점이면 좌표순이라 결정적이다.
+  동점일 때만 "긴 성분 먼저" 코너를 쓴다 — 주배관 방향을 유지한 뒤 끝에서 꺾는
+  실제 배선에 가깝다. 실측상 이 충돌 회피가 뒤따르는 ③의 중복 제거를 28건 → 17건
+  으로 줄여 배관 2757mm 를 더 살린다.
 - 노드 1개 + 간선 1개를 함께 늘리므로 **사이클을 만들 수 없다.**
+
+### ③ 평면화 + 재트리화 (`planarize_edges`)
+
+그래프가 트리여도 간선이 노드나 다른 간선을 **관통**하면 화면에는 닫힌 영역이 생겨
+루프로 읽힌다. 둘 다 실제로 잘못된 형상이다 — 관통 지점은 있어야 할 티가 빠진
+자리이고, 같은 축선 위 겹침은 배관 두 줄이 포개진 자리다.
+
+1. 간선 내부에 놓인 노드와 직교 교차점마다 **절단**해 실제 분기로 만든다.
+   (같은 축선 겹침은 상대 끝점이 노드 검사에 걸려 함께 잘린다.)
+2. 완전히 포개진 중복 세그먼트는 **짧은 쪽 한 줄만** 남긴다.
+3. 절단으로 생긴 사이클을 소스 기준 `force_spanning_tree` 로 잘라 트리로 되돌린다.
+4. 그 절단이 남긴 급수 대상 없는 막다른 조각을 `keep`(소스·헤드)이 아닌 잎부터
+   되짚어 제거한다. 입력 배관망의 잎은 모두 헤드이므로 여기서 사라지는 것은
+   평면화가 만든 조각뿐이다.
+
+**총 연장은 보존되지 않는다.** ①②까지는 정확히 보존되지만 ③은 포개진 중복·우회
+배관과 죽은 조각을 걷어내므로 줄어든다. 대명동 서측 실측 **79248.813 → 65406.836mm
+(−17.5%)** — 중복 17 · 사이클 5 · 막다른 조각 8 간선. 사라진 노드에 붙어 있던
+추정-edge(브릿지·용접·head-drop) 기록은 그릴 자리가 없으므로 함께 제거된다.
 
 ## 루프 금지 게이트(O1)
 
@@ -59,18 +84,22 @@
 
 - 모든 간선이 축평행
 - 독립 사이클 수 `E − V + C` = 0
-- 총 연장 보존 (대명동 실측 오차 0.000000%)
+- **노드 관통 0 · 직교 교차 0 · 축선 겹침 0** — 화면에 닫힌 영역이 없다
+- ①② 는 총 연장 보존, ③ 은 감소만 한다(증가 금지)
 - `source_pos` · 헤드 좌표 · `distances` 완전 동일
 - 0 길이 세그먼트 없음
-- 추정-edge(브릿지·용접·head-drop) 좌표가 스냅을 따라간다 — 프론트가 최종망 위에
-  점선으로 겹쳐 그리므로 어긋나면 표시가 깨진다
+- 추정-edge(브릿지·용접·head-drop) 좌표가 최종망 위의 점이다 — 스냅으로 옮겨진
+  좌표는 따라가고, 평면화가 걷어낸 자리를 가리키는 기록은 빠진다
 
 ## 끄는 법
 
-`select_worst30_heads_anchored(..., ortho=False)`. 감사 기록은
-`ExtractionAudit.ortho` (`snapped_nodes` / `max_shift_mm` / `snap_reverted_nodes` /
-`snap_skipped_classes` / `split_edges` / `unresolved_diagonals` /
-`edges_before` / `edges_after` / `cycle_edges_dropped`).
+`select_worst30_heads_anchored(..., ortho=False)` — ①②③ 이 모두 꺼진다.
+감사 기록은 `ExtractionAudit.ortho` (`snapped_nodes` / `max_shift_mm` /
+`snap_reverted_nodes` / `snap_skipped_classes` / `split_edges` /
+`unresolved_diagonals` / `edges_before` / `edges_after` / `cycle_edges_dropped`),
+평면화는 그 아래 `ortho.planar` (`cuts` / `duplicate_edges` /
+`cycle_edges_dropped` / `dead_stubs_dropped` / `edges_after` / `len_before_mm` /
+`len_after_mm`).
 
 ## 알려진 부작용
 

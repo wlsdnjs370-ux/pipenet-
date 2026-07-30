@@ -31,6 +31,39 @@ def _is_ortho(edges) -> bool:
     return all(abs(b[0] - a[0]) <= TOL or abs(b[1] - a[1]) <= TOL for a, b, _L in edges)
 
 
+def _span(p, q):
+    """축평행 세그먼트 → (수평인가, 고정좌표, 하한, 상한)."""
+    if abs(p[1] - q[1]) <= TOL:
+        return (True, p[1], min(p[0], q[0]), max(p[0], q[0]))
+    return (False, p[0], min(p[1], q[1]), max(p[1], q[1]))
+
+
+def _planarity_defects(edges) -> tuple[int, int, int]:
+    """(노드 관통, 직교 교차, 축선 겹침) — 셋 다 0 이어야 화면에 닫힌 영역이 없다."""
+    spans = [_span(a, b) for a, b, _L in edges]
+    nodes = {n for a, b, _L in edges for n in (a, b)}
+    thru = cross = overlap = 0
+    for i, (h1, f1, lo1, hi1) in enumerate(spans):
+        a1, b1, _L1 = edges[i]
+        for n in nodes:
+            if n == a1 or n == b1:
+                continue
+            off, along = (n[1], n[0]) if h1 else (n[0], n[1])
+            if abs(off - f1) <= TOL and lo1 + TOL < along < hi1 - TOL:
+                thru += 1
+        for j in range(i + 1, len(spans)):
+            a2, b2, _L2 = edges[j]
+            if {a1, b1} & {a2, b2}:
+                continue
+            h2, f2, lo2, hi2 = spans[j]
+            if h1 != h2:
+                if lo1 <= f2 <= hi1 and lo2 <= f1 <= hi2:
+                    cross += 1
+            elif abs(f1 - f2) <= TOL and min(hi1, hi2) - max(lo1, lo2) > TOL:
+                overlap += 1
+    return thru, cross, overlap
+
+
 def _independent_cycles(edges) -> int:
     """E - V + C. 0 이면 숲(단일 성분이면 트리)."""
     adj: dict = {}
@@ -157,11 +190,23 @@ def test_pipeline_is_a_tree(anchored):
     assert _independent_cycles(on.edges) == 0
 
 
-def test_pipeline_total_length_preserved(anchored):
-    off, on, _ao, _an = anchored
+def test_pipeline_is_plane_embedded(anchored):
+    """간선이 노드를 관통하거나 서로 교차·중첩하지 않는다 — 화면에 닫힌 영역 없음."""
+    _off, on, _ao, _an = anchored
+    assert _planarity_defects(on.edges) == (0, 0, 0)
+
+
+def test_pipeline_planarization_only_removes_length(anchored):
+    """평면화는 포개진 중복·우회 배관을 걷어내므로 총연장이 줄기만 한다."""
+    off, on, _ao, an = anchored
     lo = sum(L for _a, _b, L in off.edges)
     ln = sum(L for _a, _b, L in on.edges)
-    assert ln == pytest.approx(lo, rel=1e-9)
+    assert ln < lo
+    p = an["ortho"]["planar"]
+    # 감사값은 0.001mm 로 반올림 — 직교화까지는 길이가 보존된다.
+    assert p["len_before_mm"] == pytest.approx(lo, abs=1e-3)
+    assert p["len_after_mm"] == pytest.approx(ln, abs=1e-3)
+    assert p["duplicate_edges"] + p["cycle_edges_dropped"] + p["dead_stubs_dropped"] > 0
 
 
 def test_pipeline_anchors_and_distances_unchanged(anchored):
@@ -184,22 +229,27 @@ def test_pipeline_ortho_audit_recorded(anchored):
     assert "node_map" not in o          # 좌표 재매핑용 내부 값은 리포트에서 제거됨
 
 
-def test_estimated_edge_coords_follow_snap(anchored):
-    """브릿지·용접·head-drop 이 최종망 위에 있었다면 스냅 후에도 있어야 한다.
+def test_no_estimated_edge_points_at_empty_space(anchored):
+    """브릿지·용접·head-drop 이 최종망에 없는 좌표를 가리키면 안 된다.
 
-    프론트가 이 좌표를 최종망 위에 점선으로 겹쳐 그리므로, 스냅으로 노드만 옮기고
-    좌표를 그대로 두면 표시가 어긋난다. 병합으로 이미 사라진 노드는 대상이 아니다.
+    프론트가 이 좌표를 최종망 위에 점선으로 겹쳐 그린다. 스냅이 노드를 옮겼는데
+    좌표를 그대로 두면 빈 자리에 점선이 뜨고, 평면화가 걷어낸 중복 배관에 붙어
+    있던 연결은 아예 그릴 자리가 없다(그런 기록은 빠져야 한다).
+    병합으로 이미 사라져 원래부터 최종망 밖이던 좌표는 대상이 아니다.
     """
     off, on, ao, an = anchored
     nodes_off = {n for a, b, _L in off.edges for n in (a, b)}
     nodes_on = {n for a, b, _L in on.edges for n in (a, b)}
     checked = 0
     for key in ("bridges", "welds", "head_drops"):
-        for rec_off, rec_on in zip(ao.get(key) or [], an.get(key) or []):
+        on_pts = {(r[pk][0], r[pk][1]) for r in (an.get(key) or [])
+                  for pk in ("p1", "p2")}
+        for rec in ao.get(key) or []:
             for pk in ("p1", "p2"):
-                if (rec_off[pk][0], rec_off[pk][1]) not in nodes_off:
+                p = (rec[pk][0], rec[pk][1])
+                if p not in nodes_off:
                     continue
                 checked += 1
-                assert (rec_on[pk][0], rec_on[pk][1]) in nodes_on, \
-                    f"{key}.{pk} 좌표가 직교화 노드 이동을 따라가지 않음"
+                assert p not in on_pts or p in nodes_on, \
+                    f"{key}.{pk} {p} 가 최종망에 없는데 그대로 남아 있음"
     assert checked > 0, "검사 대상 추정-edge 끝점이 하나도 없음 — 테스트 무의미"

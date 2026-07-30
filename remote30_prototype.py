@@ -127,7 +127,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 # ── 초대형 XREF 도면 예산 가드 (기계실/계통도 파싱) ──────────────────────────
 # 142MB LH 지하층배관도는 최상위 INSERT 61개를 폭발하면 leaf 597k개가 되는데
@@ -2694,6 +2694,8 @@ class ExtractionAudit:
     water: dict = field(default_factory=dict)
     # T분기 edge-split 근거. sym_mm 은 "접속=기호" 관측 증거일 뿐 판정에 쓰지 않는다.
     tee_splits: list = field(default_factory=list)  # [{p,edge,gap_mm,sym_mm}]
+    # 헤드 기호가 끊어놓은 동일선상 배관 접속 근거(R7).
+    head_gap_joins: list = field(default_factory=list)  # [{a,b,gap_mm}]
     # 유량 누적 기반 가지치기(L5). load_mode off 면 전부 기본값.
     load: dict = field(default_factory=dict)            # {min,max,median}
     pruned: dict = field(default_factory=dict)          # {dead_edge_count,dead_len_mm,cycle_cut_count}
@@ -2723,6 +2725,7 @@ class ExtractionAudit:
                        {"dead_edge_count": 0, "dead_len_mm": 0.0, "dead_ratio": 0.0,
                         "watered_edge_count": 0, "heads_routed": 0}),
             tee_splits=list(audit.get("tee_splits") or []),
+            head_gap_joins=list(audit.get("head_gap_joins") or []),
             load=dict(audit.get("load") or
                       {"min": 0, "max": 0, "median": 0.0}),
             # "edges" 상세 기록은 응답 JSON 비대화 방지를 위해 집계만 싣는다.
@@ -2744,6 +2747,7 @@ class ExtractionAudit:
             "head_drops": self.head_drops, "nonnominal": self.nonnominal,
             "corridor": self.corridor, "source_attach": self.source_attach,
             "water": self.water, "tee_splits": self.tee_splits,
+            "head_gap_joins": self.head_gap_joins,
             "load": self.load, "pruned": self.pruned,
             "residual_cycles": self.residual_cycles,
             "unreachable_heads": self.unreachable_heads,
@@ -4100,6 +4104,127 @@ def _split_tee_branches(
     return splits
 
 
+def _axis_index(p, q, tol_mm: float) -> int:
+    """p→q 가 축평행이면 축 번호(0=세로, 1=가로), 아니면 -1."""
+    dx = abs(q[0] - p[0])
+    dy = abs(q[1] - p[1])
+    if dx <= tol_mm and dy > tol_mm:
+        return 0
+    if dy <= tol_mm and dx > tol_mm:
+        return 1
+    return -1
+
+
+def _join_head_gap_endpoints(
+    graph: dict,
+    edge_len: dict,
+    head_pts,
+    max_gap_mm: float = HEAD_GAP_JOIN_MAX_MM,
+    tol_mm: float = HEAD_GAP_JOIN_TOL_MM,
+    joins_out: list | None = None,
+) -> int:
+    """헤드 기호가 끊어놓은 동일선상 배관을 잇는다 — 추정이 아니라 작도 규약 해석.
+
+    일부 도면은 가지관 런을 헤드마다 끊어 그리고 그 틈에 헤드 기호를 넣는다. 틈은
+    이음매 간격보다 넓어(B1F 실측 200~400mm vs ``auto_snap_eps`` 상한 200mm) 끝점
+    클러스터로 안 붙고, 끊긴 두 조각이 *같은 축* 이라 T분기 복원에도 안 걸린다.
+    그래서 헤드가 달린 가지관 전체가 헤드 개수만큼의 조각으로 남는다.
+
+    세 조건을 **모두** 만족하는 끝점쌍만 잇는다:
+      1. 같은 축 — 간극과 양쪽 인접 간선이 모두 같은 축에 평행
+      2. 동일선상 — 축직교 오프셋이 ``tol_mm`` 이내이고 두 간선이 서로 반대로
+         뻗음(런의 연속이지 되꺾임이 아님)
+      3. 사이에 헤드 — 간극 구간 안에 그 선 위(오프셋 ``tol_mm`` 이내) 헤드가 있음
+
+    ③ 이 없으면 그냥 "가까운 두 끝점"이라 추정 연결이 된다. 실측에서 ①②만 만족하는
+    85쌍 중 10쌍이 여기서 걸러졌다. 이미 이어진 조각끼리는 잇지 않아 루프를 만들지
+    않는다.
+    """
+    if max_gap_mm <= 0 or not head_pts:
+        return 0
+    ends = [n for n, nb in graph.items() if len(nb) == 1]
+    if not ends:
+        return 0
+    inv = 1.0 / max_gap_mm
+    egrid: dict[tuple[int, int], list] = defaultdict(list)
+    for n in ends:
+        egrid[(int(math.floor(n[0] * inv)), int(math.floor(n[1] * inv)))].append(n)
+    hgrid: dict[tuple[int, int], list] = defaultdict(list)
+    for hp in head_pts:
+        hgrid[(int(math.floor(hp[0] * inv)), int(math.floor(hp[1] * inv)))].append(hp)
+
+    parent: dict = {}
+
+    def _find(x):
+        root = x
+        while parent.get(root, root) != root:
+            root = parent[root]
+        while parent.get(x, x) != x:
+            parent[x], x = root, parent[x]
+        return root
+
+    for a, b in edge_len:
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    pairs: list = []
+    seen: set = set()
+    for u in ends:
+        wu = next(iter(graph[u]))
+        cgx = int(math.floor(u[0] * inv))
+        cgy = int(math.floor(u[1] * inv))
+        cells = [(cgx + dx, cgy + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)]
+        near_heads = [hp for c in cells for hp in hgrid.get(c, ())]
+        if not near_heads:
+            continue
+        for v in (n for c in cells for n in egrid.get(c, ())):
+            key = (min(u, v), max(u, v))
+            if v == u or key in seen:
+                continue
+            seen.add(key)
+            gx = v[0] - u[0]
+            gy = v[1] - u[1]
+            g = math.hypot(gx, gy)
+            if not (0.0 < g <= max_gap_mm):
+                continue
+            axis = _axis_index(u, v, tol_mm)
+            if axis < 0:
+                continue
+            wv = next(iter(graph[v]))
+            if (_axis_index(u, wu, tol_mm) != axis
+                    or _axis_index(v, wv, tol_mm) != axis):
+                continue
+            # 양쪽 간선이 간극 반대로 뻗어야 런의 연속이다.
+            if ((wu[0] - u[0]) * gx + (wu[1] - u[1]) * gy >= 0
+                    or (wv[0] - v[0]) * gx + (wv[1] - v[1]) * gy <= 0):
+                continue
+            if not any(
+                0.0 < ((hp[0] - u[0]) * gx + (hp[1] - u[1]) * gy) < g * g
+                and abs((hp[0] - u[0]) * gy - (hp[1] - u[1]) * gx) <= tol_mm * g
+                for hp in near_heads
+            ):
+                continue
+            pairs.append((g, key))
+
+    joins = 0
+    for g, key in sorted(pairs):
+        u, v = key
+        if len(graph.get(u, ())) != 1 or len(graph.get(v, ())) != 1:
+            continue  # 앞선 접속으로 더 이상 끝점이 아님
+        ru, rv = _find(u), _find(v)
+        if ru == rv:
+            continue  # 이미 이어진 조각 — 루프 금지
+        parent[ru] = rv
+        graph[u].add(v)
+        graph[v].add(u)
+        edge_len[key] = g
+        if joins_out is not None:
+            joins_out.append({"a": [u[0], u[1]], "b": [v[0], v[1]], "gap_mm": g})
+        joins += 1
+    return joins
+
+
 def auto_snap_eps(
     pipe_entities: list[dict],
     layer_categories: dict[str, str] | None = None,
@@ -4205,6 +4330,8 @@ def select_worst30_heads(
     # K 도 적응형 — 헤드 수 부족하면 있는 만큼
     if len(heads) < k:
         k = len(heads)
+    # 헤드 기호가 끊어놓은 동일선상 배관 접속 — 헤드 확정 뒤라야 판정할 수 있다.
+    _join_head_gap_endpoints(graph, edge_len, [h.pos for h in heads])
     if manual_source is not None:
         src_raw = _round_pt(manual_source[0], manual_source[1])
         src_kind = "manual"
@@ -4744,6 +4871,11 @@ def select_worst30_heads_anchored(
         rec["sym_mm"] = min((math.hypot(rec["p"][0] - sx, rec["p"][1] - sy)
                              for sx, sy in _syms), default=None)
     audit["tee_splits"] = _tee
+    # 헤드 기호가 끊어놓은 동일선상 배관 접속 — 작도 규약 해석(추정 연결 아님).
+    _hjoin: list = []
+    _join_head_gap_endpoints(graph, edge_len, [h.pos for h in heads],
+                             joins_out=_hjoin)
+    audit["head_gap_joins"] = _hjoin
     # 배관↔배관 추정연결(용접·브리지)은 폐지 — 남는 추정은 기호↔배관 결합선뿐.
     _penalty_keys: set = set()
     _pcb(0.1, "알람밸브 결합 중")
@@ -6519,6 +6651,9 @@ def run_stages_0_2(
     ladders_collapsed = collapse_parallel_ladders(graph, edge_len)
     # T분기 복원 — 실배관 접속. 배관↔배관 추정연결(용접·브리지)은 쓰지 않는다.
     tee_splits = _split_tee_branches(graph, edge_len)
+    # 헤드 기호가 끊어놓은 동일선상 배관 접속 — 작도 규약 해석(추정 연결 아님).
+    head_gap_joins = _join_head_gap_endpoints(
+        graph, edge_len, [h.pos for h in head_detections])
     # head_drop_edges: 헤드 INSERT 좌표 ↔ 배관 nearest 노드 직선 (실제 배관 아님)
     # — 기호↔배관 결합선이라 시각적으로 구분 렌더.
     # 헤드 drop line — 헤드 INSERT 좌표를 같은 NodeIndex 로 canonicalize
@@ -6659,6 +6794,7 @@ def run_stages_0_2(
         "components": len(comps),
         "snap_eps_mm": snap_eps,
         "tee_splits": tee_splits,
+        "head_gap_joins": head_gap_joins,
         "unreachable_head_count": unreached_heads,
         "ladders_collapsed": ladders_collapsed,
         "removed_cycle_edges": cycle_emitted,
@@ -6674,6 +6810,7 @@ def run_stages_0_2(
         f" / 헤드 drop {head_drop_emitted} / 분기 {junction_count}개"
         f" / 이음매 {snap_eps:.0f}mm · T분기 {tee_splits}"
         f" / ladder 합성 {ladders_collapsed} / cycle 제거 {cycle_emitted}"
+        + (f" · 헤드틈 접속 {head_gap_joins}" if head_gap_joins else "")
         + (f" / 루프 {loop_emitted}" if loop_emitted else "")
     )
     if src_raw_pt is not None:

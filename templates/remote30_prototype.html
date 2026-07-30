@@ -113,6 +113,35 @@
       letter-spacing: 0.01em;
     }
     .stage3-legend.is-visible { display: block; }
+    /* ─── Stage 4 추적 재생 바 — AV→말단 전개를 되감고 멈춰 세우며 확인 ─── */
+    .trace-bar {
+      position: absolute; left: 14px; right: 14px; bottom: 14px;
+      display: none; align-items: center; gap: 10px;
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 10px; padding: 8px 12px;
+      color: #e2e8f0; font-size: 0.74rem; font-family: var(--font-sans);
+      backdrop-filter: blur(10px) saturate(1.4);
+      -webkit-backdrop-filter: blur(10px) saturate(1.4);
+    }
+    .trace-bar.is-visible { display: flex; }
+    .trace-bar button {
+      background: rgba(30, 41, 59, 0.9); color: #cbd5e1;
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;
+      padding: 3px 9px; font-size: 0.78rem; cursor: pointer; line-height: 1.5;
+    }
+    .trace-bar button:hover { background: rgba(51, 65, 85, 0.95); color: #fff; }
+    .trace-bar select {
+      background: rgba(30, 41, 59, 0.9); color: #cbd5e1;
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;
+      padding: 3px 6px; font-size: 0.72rem;
+    }
+    .trace-bar input[type="range"] { flex: 1; min-width: 80px; accent-color: #fde047; }
+    .trace-bar label { display: flex; align-items: center; gap: 4px; white-space: nowrap; cursor: pointer; }
+    #trace-readout {
+      min-width: 310px; font-variant-numeric: tabular-nums;
+      color: #fde047; white-space: nowrap;
+    }
     /* ─── 아이소메트릭 3D — 옵션 패널 + 안내 + 캔버스 ─── */
     /* specificity: .canvas-pane canvas (0,1,1) 보다 높여야 display 가 적용됨.
        (.canvas-pane 의 'canvas { display: block }' 가 단일 class .iso-canvas 를 덮어쓰는
@@ -922,6 +951,27 @@
       </div>
       <div id="wb-stage-badge" class="stage-badge" style="display:none;"></div>
 
+      <!-- ─── Stage 4 추적 재생 바 — 알람밸브에서 말단까지 따라가며 검증 ─── -->
+      <div id="trace-bar" class="trace-bar" aria-hidden="true">
+        <button id="trace-restart" type="button" title="처음부터">⏮</button>
+        <button id="trace-prev" type="button" title="이전 배관">◀</button>
+        <button id="trace-play" type="button" title="재생 / 일시정지">▶</button>
+        <button id="trace-next" type="button" title="다음 배관">▶|</button>
+        <select id="trace-speed" title="추적 속도">
+          <option value="0.5">0.5×</option>
+          <option value="1">1×</option>
+          <option value="2" selected>2×</option>
+          <option value="4">4×</option>
+          <option value="8">8×</option>
+          <option value="16">16×</option>
+        </select>
+        <label title="선단을 화면 중앙에 두고 확대해 따라간다">
+          <input id="trace-follow" type="checkbox"> 선단 따라가기
+        </label>
+        <input id="trace-scrub" type="range" min="0" max="0" value="0" step="1">
+        <span id="trace-readout">대기 중</span>
+      </div>
+
       <!-- ─── Stage 3 배관망 그래프 범례 ─── -->
       <div id="wb-stage3-legend" class="stage3-legend" aria-hidden="true">
         <div class="legend-title">배관망 그래프 범례</div>
@@ -1580,7 +1630,7 @@
         }
       }
     };
-    lpSkipBtnEl.addEventListener("click", () => animQueue.flush());
+    lpSkipBtnEl.addEventListener("click", () => { animQueue.flush(); TracePlayer.finish(); });
 
     // 큐 핸들러 등록. PR2+ 에서 graph_step / rank_assigned 추가.
     const animQueue = new AnimationQueue({
@@ -1632,15 +1682,10 @@
         state.revealed_edges_4 = 0;
         setStageView(4);
       }},
-      edge_reach: { budgetMs: 40, handler: (e) => {
-        state.revealed_edges_4 = e.index + 1;
-        overlayInfoEl.textContent = `[Stage 4] 배관 ${e.index + 1} / ${e.total} — 깊이 ${e.depth}`;
-        render();
-      }},
-      stage4_done: { budgetMs: 500, handler: () => {
-        state.revealed_edges_4 = null;
-        render();
-        overlayInfoEl.textContent = `[Stage 4 완료] 알람밸브 → 헤드 경로 전개 완료`;
+      // 재생 페이스는 큐가 아니라 TracePlayer 가 쥔다 — 되감기·일시정지·스텝이 필요해서다.
+      stage4_trace: { budgetMs: 200, handler: () => {
+        overlayInfoEl.textContent = "[Stage 4] 알람밸브 → 말단 추적 중 — 아래 바로 멈추고 되감을 수 있습니다";
+        TracePlayer.start(state.stage_entities[4] || []);
       }},
 
       // ─── 계통도 동적 추출 (평면도의 stage 시리즈와 동일 패턴) ───
@@ -2351,6 +2396,143 @@
     }
 
     // ====== Stage view 토글 ======
+    // ══════════════ Stage 4 추적 재생 — AV → 말단 ══════════════
+    // 완성된 30 헤드망을 한 장으로 뱉으면 경로가 맞는지 확인할 방법이 없다.
+    // 서버가 보낸 traversal 순서(부모→자식)를 실시간 재생하되, 멈추고 되감고
+    // 한 배관씩 짚을 수 있어야 "길을 잘못 튼" 지점을 그 자리에서 특정할 수 있다.
+    const TracePlayer = (() => {
+      const barEl     = document.getElementById("trace-bar");
+      const playBtn   = document.getElementById("trace-play");
+      const scrubEl   = document.getElementById("trace-scrub");
+      const speedEl   = document.getElementById("trace-speed");
+      const followEl  = document.getElementById("trace-follow");
+      const readoutEl = document.getElementById("trace-readout");
+      const BASE_MS = 90;   // 1× 기준 배관 1개당 체류 시간
+
+      let edges = [], heads = [], cum = [], total = 0;
+      let idx = 0, playing = false, rafId = null, lastT = 0, acc = 0;
+
+      const _key = (x, y) => `${Math.round(x * 10)},${Math.round(y * 10)}`;
+
+      function load(ents) {
+        edges = ents.filter(en => en.l === "_subgraph");
+        heads = ents.filter(en => en.l === "_subgraph_head");
+        total = edges.length;
+        // AV 부터의 누적거리 — edge 가 부모→자식 순이라 상류 끝점 누적에 실길이를 더하면 된다.
+        // 트리 밖 edge 는 상류가 아직 안 알려져 null = "누적 못 잼" 으로 남는다.
+        const at = new Map();
+        const av = ents.find(en => en.l === "_alarm_valve");
+        if (av) at.set(_key(av.c[0], av.c[1]), 0);
+        cum = new Array(total);
+        for (let k = 0; k < total; k++) {
+          const p = edges[k].p;
+          const up = at.get(_key(p[0], p[1]));
+          const d = (up == null) ? null : up + (edges[k].m || 0);
+          cum[k] = d;
+          const dk = _key(p[2], p[3]);
+          if (d != null && !at.has(dk)) at.set(dk, d);
+        }
+        idx = 0;
+        scrubEl.max = String(total);
+        _apply(0);
+      }
+
+      function _follow(en) {
+        const rect = canvas.getBoundingClientRect();
+        const lx = en.p[2], ly = en.p[3];
+        const fit = state.view.fitZoom;
+        let forced = false;
+        if (fit && state.view.zoom < fit * 4) { state.view.zoom = fit * 4; forced = true; }
+        if (!forced) {
+          const [sx, sy] = worldToScreen(lx, ly);
+          const mx = rect.width * 0.25, my = rect.height * 0.25;
+          if (sx > mx && sx < rect.width - mx && sy > my && sy < rect.height - my) return;
+        }
+        state.view.panX = rect.width / 2 - lx * state.view.zoom;
+        state.view.panY = rect.height / 2 + ly * state.view.zoom;
+      }
+
+      function _readout() {
+        if (!total) { readoutEl.textContent = "추적할 배관 없음"; return; }
+        if (idx <= 0) {
+          readoutEl.textContent = `대기 — 알람밸브에서 시작 (배관 ${total}개)`;
+          return;
+        }
+        const en = edges[idx - 1], d = cum[idx - 1];
+        let reachedHeads = 0, justDm = null;
+        for (const h of heads) {
+          if (h.i < idx) reachedHeads++;
+          if (h.i === idx - 1 && justDm == null) justDm = (h.dm == null ? -1 : h.dm);
+        }
+        let s = `배관 ${idx}/${total} · 깊이 ${en.d || 0}`
+              + ` · AV→선단 ${d == null ? "—" : (d / 1000).toFixed(1) + " m"}`
+              + ` · 헤드 ${reachedHeads}/${heads.length}`;
+        if (en.x) s += " · ⚠ 트리 밖(오배선 후보)";
+        if (justDm != null) {
+          s += justDm < 0 ? " · ▣ 헤드 도달"
+                          : ` · ▣ 헤드 도달 ${(justDm / 1000).toFixed(1)} m`;
+        }
+        readoutEl.textContent = s;
+      }
+
+      function _apply(n) {
+        idx = Math.max(0, Math.min(total, n));
+        // 끝까지 가면 null = 완성망 (선단 하이라이트 없이 통상 렌더)
+        state.revealed_edges_4 = (idx >= total) ? null : idx;
+        scrubEl.value = String(idx);
+        if (followEl.checked && idx > 0) _follow(edges[idx - 1]);
+        _readout();
+        render();
+      }
+
+      function _tick(now) {
+        if (!playing) { rafId = null; return; }
+        acc += (now - lastT) * parseFloat(speedEl.value || "1");
+        lastT = now;
+        let n = idx;
+        while (acc >= BASE_MS && n < total) { acc -= BASE_MS; n++; }
+        if (n !== idx) _apply(n);
+        if (idx >= total) { pause(); overlayInfoEl.textContent = "[Stage 4] 알람밸브 → 말단 추적 완료"; return; }
+        rafId = requestAnimationFrame(_tick);
+      }
+
+      function play() {
+        if (!total) return;
+        if (idx >= total) _apply(0);   // 끝에서 누르면 처음부터 다시
+        playing = true;
+        playBtn.textContent = "⏸";
+        lastT = performance.now();
+        acc = 0;
+        if (!rafId) rafId = requestAnimationFrame(_tick);
+      }
+      function pause() {
+        playing = false;
+        playBtn.textContent = "▶";
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      }
+
+      function show(v) {
+        const on = !!v && total > 0;
+        barEl.classList.toggle("is-visible", on);
+        barEl.setAttribute("aria-hidden", on ? "false" : "true");
+      }
+
+      playBtn.addEventListener("click", () => playing ? pause() : play());
+      document.getElementById("trace-restart").addEventListener("click", () => { pause(); _apply(0); });
+      document.getElementById("trace-prev").addEventListener("click", () => { pause(); _apply(idx - 1); });
+      document.getElementById("trace-next").addEventListener("click", () => { pause(); _apply(idx + 1); });
+      scrubEl.addEventListener("input", () => { pause(); _apply(parseInt(scrubEl.value, 10) || 0); });
+      followEl.addEventListener("change", () => { if (followEl.checked && idx > 0) { _follow(edges[idx - 1]); render(); } });
+
+      return {
+        start(ents) { load(ents); show(true); play(); },
+        finish() { pause(); _apply(total); },
+        stop() { pause(); edges = []; heads = []; total = 0; show(false); },
+        show,
+        get total() { return total; },
+      };
+    })();
+
     stageButtons.forEach((btn, idx) => {
       btn.addEventListener("click", () => {
         if (!state.stage_entities[idx] || !state.stage_entities[idx].length) return;
@@ -2377,6 +2559,9 @@
         legendEl.classList.toggle("is-visible", idx === 3);
         legendEl.setAttribute("aria-hidden", idx === 3 ? "false" : "true");
       }
+      // 추적 재생 바는 Stage 4 에서만. 다른 뷰로 나가면 재생을 멈춘다.
+      if (idx !== 4) TracePlayer.finish();
+      TracePlayer.show(idx === 4);
       render();
     }
 
@@ -2553,6 +2738,7 @@
       state.current_stage_view = 0;
       state.revealed_heads_count = null;
       state.revealed_edges_4 = null;
+      TracePlayer.stop();
       state._glOwner = null;
       state.view.fitZoom = null;
       state.jobId = null;
@@ -2778,6 +2964,7 @@
       finalizeBtn.textContent = "▶ Stage 3~5 진행 중...";
       // Stage 4 reveal 상태 리셋 (이전 finalize 결과 잔류 방지)
       state.revealed_edges_4 = null;
+      TracePlayer.stop();
       const payload = {
         added_heads: state.user_added_heads,
         deleted_indices: Array.from(state.user_deleted_indices),
@@ -2821,6 +3008,7 @@
       BootOverlay.show("Parsing DXF entities");
       state.revealed_heads_count = null;
       state.revealed_edges_4 = null;
+      TracePlayer.stop();
       // 헤드 편집 섹션 숨김 + 리셋
       headEditSection.style.display = "none";
       state.detected_heads = [];
@@ -2944,17 +3132,9 @@
         // Stage 4: AV(root) → 말단 헤드로 뻗는 traversal 순차 전개.
         // 엔티티 배열이 이미 서버 traversal 순이라 그 순서대로 큐에 넣기만 하면 된다.
         if (evt.stage === 4 && state.stage_entities[4].length) {
-          const edges4 = state.stage_entities[4].filter(en => en.l === "_subgraph");
           animQueue.enqueue({ type: "stage4_intro" });
           animQueue.enqueue({ type: "stage4_switch" });
-          const _t4 = edges4.length;
-          // 총 ~4s 목표: edge 당 budget = clamp(4000/N, 20ms, 120ms)
-          const _b4 = Math.max(20, Math.min(120, Math.round(4000 / Math.max(1, _t4))));
-          for (let i = 0; i < _t4; i++) {
-            animQueue.enqueue({ type: "edge_reach", index: i, total: _t4,
-                                depth: edges4[i].d || 0, _budgetMs: _b4 });
-          }
-          animQueue.enqueue({ type: "stage4_done" });
+          animQueue.enqueue({ type: "stage4_trace" });
         }
         // 버튼 활성화
         const btn = stageButtons[evt.stage];

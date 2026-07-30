@@ -5865,6 +5865,7 @@ def build_stage4_entities(selection: SelectionResult) -> list[dict]:
     계통도·기계실은 시작노드→끝노드 순서대로 배관이 그려지는데 평면도만 edge 삽입순이라
     한꺼번에 나타났다. edge 는 부모→자식 순(d=깊이), 트리 밖 edge 는 x=1 로 뒤에 붙는다.
     헤드에는 자기 노드에 도달하는 edge 순번 i 를 달아, 망이 뻗어나가다 그 자리에서 켜진다.
+    추적 재생이 근거 수치를 같이 읽어주도록 edge 에 실길이 m(mm), 헤드에 AV 거리 dm(mm).
     """
     ents: list[dict] = []
     ortho = orthogonalize_edge_positions(
@@ -5886,15 +5887,21 @@ def build_stage4_entities(selection: SelectionResult) -> list[dict]:
     arrival: dict = {}
     for k, (a, b, _ln, off) in enumerate(ordered):
         pa, pb = _xy(a), _xy(b)
+        # m = 직교화 전 실제 배관 길이. 화면 좌표로 재면 직교화 오차가 섞여
+        # 추적 재생의 누적거리가 최불리 판정 근거와 어긋난다.
         en = {"t": "L", "l": "_subgraph", "p": [pa[0], pa[1], pb[0], pb[1]],
-              "d": depth.get(b, 0)}
+              "d": depth.get(b, 0), "m": round(float(_ln), 1)}
         if off:
             en["x"] = 1
         ents.append(en)
         arrival.setdefault(b, k)
-    for h in selection.heads:
-        ents.append({"t": "C", "l": "_subgraph_head", "c": list(_xy(h.pos)),
-                     "r": 80.0, "i": arrival.get(h.pos, 0)})
+    dists = selection.distances or []
+    for j, h in enumerate(selection.heads):
+        en = {"t": "C", "l": "_subgraph_head", "c": list(_xy(h.pos)),
+              "r": 80.0, "i": arrival.get(h.pos, 0)}
+        if j < len(dists):
+            en["dm"] = round(float(dists[j]), 1)
+        ents.append(en)
     if src is not None:
         ents.append({"t": "C", "l": "_alarm_valve", "c": list(_xy(src)), "r": 150.0})
     return ents

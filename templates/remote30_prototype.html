@@ -3055,11 +3055,10 @@
         renderRows();
         finBtn.disabled = false;
         finBtn.textContent = "✓ 확정 후 SDF 생성 (Stage 6)";
-        // 트리거 버튼 노출 + 첫 회 자동으로 창 띄우기
+        // 트리거 버튼만 노출 — 창은 사용자가 열 때만 뜬다.
         openBtn.style.display = "block";
         const badge = openBtn.querySelector(".fx-open-badge");
         if (badge) badge.textContent = `(FX ${rows.filter(r => !isAv(r)).length}개)`;
-        show();
       }
 
       function show() {

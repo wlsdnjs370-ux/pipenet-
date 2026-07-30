@@ -121,7 +121,7 @@ def test_w1_find_unreachable_region_heads():
 
     reachable = _head(900.0, 100.0)          # source 컴포넌트에 부착
     foreign = _head(50900.0, 100.0)          # 다른 컴포넌트 최근접
-    orphan = _head(200000.0, 0.0)            # HEAD_BRIDGE_MAX_MM 밖
+    orphan = _head(200000.0, 0.0)            # HEAD_DROP_MAX_MM 밖
     out = rp.find_unreachable_region_heads(graph, a, [reachable, foreign, orphan])
     assert reachable.pos not in out
     assert foreign.pos in out
@@ -153,7 +153,7 @@ def test_w2_attach_source_prefers_head_component():
     assert (606.0, 0.0) in graph[src]
     assert (102.0, 0.0) not in graph[src]
     sa = audit["source_attach"]
-    assert sa["escalation"] == 0 and sa["method"] == "head_component_nearest"
+    assert sa["escalation"] == 0 and sa["method"] == "head_component_most_heads"
     assert abs(sa["dist_mm"] - 606.0) < 1e-6 and sa["comp_head_count"] == 1
     assert key in edge_len and abs(edge_len[key] - 606.0) < 1e-6
 
@@ -176,29 +176,6 @@ def test_w2_attach_source_fails_beyond_cap():
     assert audit["source_attach"]["method"] == "failed"
 
 
-# ── W3 수용 기준: 표적 브릿지 ──────────────────────────────────────────────
-
-def test_w3_bridge_targeted_only_head_components():
-    s1, s2 = (0.0, 0.0), (1000.0, 0.0)              # comp(source)
-    n1, n2 = (1100.0, 20.0), (1200.0, 20.0)         # 무헤드 노이즈 조각 (102mm)
-    h1, h2 = (1300.0, 0.0), (2300.0, 0.0)           # 승인 헤드 보유 컴포넌트 (300mm)
-    graph = {s1: {s2}, s2: {s1}, n1: {n2}, n2: {n1}, h1: {h2}, h2: {h1}}
-    edge_len = {(s1, s2): 1000.0, (n1, n2): 100.0, (h1, h2): 1000.0}
-    head = HeadDetection(pos=(2290.0, 10.0), bbox=(2289, 9, 2291, 11),
-                         kind="t", confidence=0.9)
-    audit = {}
-    bridges = set()
-    total = rp.bridge_targeted(graph, edge_len, s1, [head], (200.0, 500.0),
-                               bridge_edges_out=bridges, audit=audit)
-    # 헤드 보유 컴포넌트만 봉합 — 더 가까운(102mm) 무헤드 조각은 어떤 tol 에서도 금지
-    assert total == 1
-    assert h1 in graph[s2]
-    assert graph[n1] == {n2} and graph[n2] == {n1}
-    assert audit["bridges"][0]["tol"] == 500.0
-    assert audit["bridges"][0]["p1_in_source_comp"] is True
-    assert len(bridges) == 1
-
-
 def test_w3_anchored_fixture_excludes_other_units(pipe_ents, layer_categories):
     region = HeadRegion.from_polygon(WEST_UNIT_POLY)
     gated = rp.detect_heads(pipe_ents, layer_categories, region=region)
@@ -211,16 +188,15 @@ def test_w3_anchored_fixture_excludes_other_units(pipe_ents, layer_categories):
                                            audit_out=audit)
     assert res.heads, "anchored 선정 결과 헤드 없음"
     assert res.source_kind == "manual_anchored"
-    # 최종망(SPT 후)에 다른 세대의 노드 0개 — 동측 세대(x≥255,000)·범례(x≈288,000) 배제
+    # 범례(x≈288,000) 는 최종망에 없어야 한다. 서측(x<255,000) 으로 완전히 가둘 수는
+    # 없다 — 추정 연결을 폐지한 뒤 서측 가지 일부는 공용 주배관(동측 우회)을 실제로
+    # 타야 소스에 닿는다. 그 경유 노드는 실배관이므로 남는 게 맞다.
     for n in res.nodes_in_subgraph:
-        assert n[0] < 255000.0, f"다른 세대 노드 포함: {n}"
+        assert n[0] < 270000.0, f"다른 세대 노드 포함: {n}"
     for h in res.heads:
         assert region.contains(h.pos), f"region 밖 헤드 선정: {h.pos}"
-    # 모든 bridge 양단이 comp(source) 성장 이력에 속함 — audit 로 검증
-    for b in audit.get("bridges", []):
-        assert b["p1_in_source_comp"] is True
     assert audit["source_attach"]["method"] in (
-        "head_component_nearest", "any_component_nearest")
+        "head_component_most_heads", "any_component_nearest")
     assert "unreachable" in audit["heads"]
 
 
@@ -438,18 +414,25 @@ def test_w7_audit_schema_on_fixture(pipe_ents, layer_categories):
     aud = res.audit
     assert isinstance(aud, rp.ExtractionAudit)
     j = _json.loads(_json.dumps(aud.to_json_dict()))   # JSON 직렬화 계약
-    assert set(j) == {"heads", "bridges", "welds", "head_drops", "nonnominal",
+    assert set(j) == {"heads", "snap_eps", "fragments", "head_drops", "nonnominal",
                       "corridor", "source_attach", "water", "tee_splits",
                       "load", "pruned", "residual_cycles", "unreachable_heads",
                       "fallback", "ortho"}
     assert j["heads"]["detected_in_region"] == len(gated)
     assert j["heads"]["attached"] + len(j["heads"]["unreachable"]) == len(gated)
     assert {"dist_mm", "method", "escalation"} <= set(j["source_attach"])
-    # W3 의 bridge 검증이 audit 로 수행됨 — 스키마 + 소스컴포넌트 성장 이력
-    for b in j["bridges"]:
-        assert {"p1", "p2", "len_mm", "layers"} <= set(b)
-        assert b["p1_in_source_comp"] is True
-    for e in j["welds"] + j["head_drops"]:
+    # 이음매 간격은 도면에서 실측한다 — 채택값과 후보별 근거가 남아야 함
+    assert j["snap_eps"]["chosen_mm"] in rp.SNAP_EPS_CANDIDATES_MM
+    assert any(t["kept"] for t in j["snap_eps"]["trials"])
+    for t in j["snap_eps"]["trials"]:
+        assert {"eps_mm", "largest_component", "components", "len_mm",
+                "kept"} == set(t)
+    # 안 붙은 조각은 봉합하지 않는다 — 몇 조각이 얼마나 남았는지 정직하게 보고
+    assert {"count", "attached_nodes", "detached_nodes",
+            "detached_len_mm"} == set(j["fragments"])
+    assert j["fragments"]["count"] >= 1
+    assert j["fragments"]["attached_nodes"] > 0
+    for e in j["head_drops"]:
         assert {"p1", "p2", "len_mm"} <= set(e)
         assert e["len_mm"] > 0
     assert j["head_drops"], "헤드 스냅(head-drop) 기록이 있어야 함"
@@ -574,31 +557,15 @@ def test_p1_tee_split_two_branches_same_trunk():
     assert graph[u2] == {(3000.0, -1000.0), u1, b}
 
 
-def test_p1_tee_split_off_by_default(pipe_ents, layer_categories):
+def test_p1_tee_split_always_on_in_anchored(pipe_ents, layer_categories):
+    """추정 연결이 없는 지금 T분기가 유일한 실배관 접속 복원 수단 — 끌 수 없다."""
     region = HeadRegion.from_polygon(WEST_UNIT_POLY)
     gated = rp.detect_heads(pipe_ents, layer_categories, region=region)
     cx = sum(h.pos[0] for h in gated) / len(gated)
     cy = sum(h.pos[1] for h in gated) / len(gated)
-    res = rp.select_worst30_heads_anchored(pipe_ents, layer_categories,
-                                           alarm_xy=(cx, cy), head_region=region)
-    assert res.audit.tee_splits == []
-
-
-def test_p1_tee_split_on_fixture_replaces_welds(pipe_ents, layer_categories):
-    region = HeadRegion.from_polygon(WEST_UNIT_POLY)
-    gated = rp.detect_heads(pipe_ents, layer_categories, region=region)
-    cx = sum(h.pos[0] for h in gated) / len(gated)
-    cy = sum(h.pos[1] for h in gated) / len(gated)
-
-    def run(flag):
-        return rp.select_worst30_heads_anchored(
-            pipe_ents, layer_categories, alarm_xy=(cx, cy),
-            head_region=region, tee_split=flag).audit
-
-    base, tee = run(False), run(True)
-    assert tee.tee_splits, "대명동 fixture 에 T분기 후보가 있어야 함"
-    for r in tee.tee_splits:
+    aud = rp.select_worst30_heads_anchored(
+        pipe_ents, layer_categories, alarm_xy=(cx, cy), head_region=region).audit
+    assert aud.tee_splits, "대명동 fixture 에 T분기 후보가 있어야 함"
+    for r in aud.tee_splits:
         assert set(r) == {"p", "edge", "gap_mm", "sym_mm"}
         assert 0.0 <= r["gap_mm"] <= rp.TEE_SPLIT_MAX_MM
-    # 제자리 접속으로 대체되므로 weld 가 발명하는 연결이 줄어야 한다
-    assert len(tee.welds) < len(base.welds)

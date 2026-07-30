@@ -930,14 +930,6 @@
           <span>실배관 (가지식 트리)</span>
         </div>
         <div class="legend-row">
-          <svg width="34" height="6"><line x1="1" y1="3" x2="33" y2="3" stroke="#a855f7" stroke-width="1.6" stroke-dasharray="8,4"/></svg>
-          <span>추정 용접 (방향 복원)</span>
-        </div>
-        <div class="legend-row">
-          <svg width="34" height="6"><line x1="1" y1="3" x2="33" y2="3" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="8,4"/></svg>
-          <span>추정 bridge (강제 연결)</span>
-        </div>
-        <div class="legend-row">
           <svg width="34" height="6"><line x1="1" y1="3" x2="33" y2="3" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="3,3"/></svg>
           <span>헤드 drop-line</span>
         </div>
@@ -2191,7 +2183,7 @@
         return;
       }
 
-      // Stage 3 — 가지식 트리 — 실배관 / bridge / 헤드 drop / 제거된 cycle 4종 구분
+      // Stage 3 — 가지식 트리 — 실배관 / 헤드 drop / 제거된 cycle 3종 구분
       if (state.current_stage_view === 3) {
         const ghost = state.stage_entities[1] || [];
         ctx.globalAlpha = 0.18;
@@ -2211,16 +2203,6 @@
         // 분기영역 루프 edge — emerald 실선 (계산은 트리라 제거됐지만 실제 배관이므로 표시)
         ctx.strokeStyle = "#059669"; ctx.lineWidth = 1.8;
         for (const en of ents) if (en.l === "_graph_loop") drawEntity(en);
-        // 추정 용접 edge — violet 점선 (끊긴 직선 배관을 축 방향으로 이어붙인 복원, 실배관 아님)
-        ctx.strokeStyle = "#a855f7"; ctx.lineWidth = 1.6;
-        ctx.setLineDash([8, 4]);
-        for (const en of ents) if (en.l === "_graph_weld") drawEntity(en);
-        ctx.setLineDash([]);
-        // 추정 bridge edge — amber 점선 (끊긴 component 를 알고리즘이 강제 연결, 실배관 아님)
-        ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 1.4;
-        ctx.setLineDash([8, 4]);
-        for (const en of ents) if (en.l === "_graph_bridge") drawEntity(en);
-        ctx.setLineDash([]);
         // 헤드 drop edge — slate 짧은 점선 (헤드 INSERT ↔ 가장 가까운 배관 노드)
         ctx.strokeStyle = "#94a3b8"; ctx.lineWidth = 1.0;
         ctx.setLineDash([3, 3]);
@@ -7042,9 +7024,26 @@
             : `<br>&nbsp;&nbsp;<span style="color:#166534;">✂ 급수 미기여 구간 ${Number(_pr.dead_edge_count) || 0}개 / ` +
               `${((Number(_pr.dead_len_mm) || 0) / 1000).toFixed(1)}m 제거</span>`;
         }
+        // 실배관만으로 판단한 결과 — 소스에 안 닿는 조각은 봉합하지 않고 그대로 알린다.
+        let _fragLine = "";
+        if (data.extraction_audit) {
+          const _fr = data.extraction_audit.fragments || {};
+          const _uh = (data.extraction_audit.heads || {}).unreachable || [];
+          const _dn = Number(_fr.detached_nodes) || 0;
+          if (_dn > 0 || _uh.length) {
+            _fragLine = `<br>&nbsp;&nbsp;<span style="color:#b45309;">⚠ 실배관 기준 — 소스 미연결 조각 ` +
+              `${_dn}점 / ${((Number(_fr.detached_len_mm) || 0) / 1000).toFixed(1)}m, ` +
+              `미도달 헤드 ${_uh.length}개 (추정 연결로 잇지 않음)</span>`;
+          }
+          // 층이 다른 배관이 스쳐 지나가는지 티인지 평면 좌표로는 못 가린다 — 자르지 않고 알린다.
+          const _xc = Number(((data.extraction_audit.ortho || {}).planar || {}).unmarked_crossings) || 0;
+          if (_xc > 0) {
+            _fragLine += `<br>&nbsp;&nbsp;<span style="color:#b45309;">⚠ 층 미상 교차 ${_xc}곳 — 티로 잇지 않고 그대로 둠 (실제 분기면 수동 확인 필요)</span>`;
+          }
+        }
         _cmbResultBox.innerHTML =
           `✓ <strong>${data.title}</strong> 배관망 통합 완료 — 아래 [포맷 출력] 에서 내보내세요<br>` +
-          `&nbsp;&nbsp;Node ${data.nodes} / Pipe ${data.pipes} / Pump ${data.pumps} / Valve ${data.valves} / Nozzle ${data.nozzles}` + _mrLine + _loadLine + `<br>` +
+          `&nbsp;&nbsp;Node ${data.nodes} / Pipe ${data.pipes} / Pump ${data.pumps} / Valve ${data.valves} / Nozzle ${data.nozzles}` + _mrLine + _loadLine + _fragLine + `<br>` +
           `<div style="margin-top:8px; padding:8px 10px; background:#ffffff; border:1px solid var(--line); font-size:0.72rem; color:#0a1228; line-height:1.5;">` +
           `<strong>⚠ PIPENET 사용 시</strong>: SDF 는 <strong>.zip 으로 받아 압축을 푼 후</strong> 폴더 안의 <code>.sdf</code> 를 여세요.<br>` +
           `(압축 안에서 .sdf 를 바로 열면 .slf 라이브러리 분리로 내경(Internal) 이 Unset 으로 표시되고 "pipe bore must be given" 오류 발생.)` +

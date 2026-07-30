@@ -29,7 +29,17 @@ _FLOOR_LABEL_PATTERNS = (
 _FLOOR_LABEL_SPECIAL = {"옥상": 99, "옥탑": 99, "ROOF": 99, "R/F": 99, "RF": 99}
 MACHINE_ROOM_SP_LAYERS = {"-소화(SP-고)", "-소화(SP-저)"}
 SNAP_TOL_MM = 50.0
+# auto_snap_eps 후보 — 도면별 이음매 간격 실측용. 하한은 SNAP_TOL_MM(종전 고정값),
+# 상한 200mm 는 정상 배관 간 최소 이격보다 작아 서로 다른 배관을 병합하지 않는 선.
+SNAP_EPS_CANDIDATES_MM = (50.0, 60.0, 75.0, 90.0, 110.0, 130.0, 160.0, 200.0)
+# 과대 병합 안전판 — 총 연장이 기준 대비 이 비율 밑이면 그 후보는 버린다.
+SNAP_EPS_MIN_LEN_RATIO = 0.90
 HEAD_BRIDGE_MAX_MM = 5000.0  # 헤드 INSERT 좌표 ↔ 가장 가까운 그래프 노드 brigde 허용 거리.
+# 헤드 기호 ↔ 배관 결합선(drop line) 상한. 이건 배관이 아니라 "기호가 어느 배관에
+# 달렸는가" 의 판정이므로 기호 도시 오차 수준이어야 한다. 대명동 서측 실측 분포가
+# 중앙 25mm 인데 상한 5000mm 를 쓰면 수 m 떨어진 남의 가지에 헤드가 붙는다.
+# 넘는 헤드는 붙이지 않고 unreachable 로 보고한다 — 추정 연결 폐지 원칙.
+HEAD_DROP_MAX_MM = 300.0
 SOURCE_BRIDGE_MAX_MM = 25000.0  # 알람밸브 (source) ↔ 배관망 nearest bridge 허용 (25m).
 ANCHOR_W_MARGIN_MM = 3000.0  # anchored 작업창 W = convex_hull(head_region ∪ {alarm_xy}) 팽창 여유.
 MIN_PIPE_EDGE_MM = 50.0

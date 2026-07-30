@@ -756,29 +756,65 @@ def test_r8_crossing_tee_multiple_cuts_on_one_edge():
     assert len(edge_len) - len(graph) + 1 == 0  # 트리 유지 (루프 0)
 
 
-def test_r8c_head_gate_rejects_headless_crossing():
-    """양쪽 조각 모두 헤드 0개 — 스프링클러 증거 없는 교차는 무시."""
+# ── R8d: 부속 기호 × 역할 게이트 ────────────────────────────────────────────
+# _cross_graph 의 교차점과, 가로/세로 각 간선에만 걸리는 헤드 좌표.
+_XP = (2000.0, 1000.0)
+_HEAD_ON_H = (3000.0, 1000.0 + rp.HEAD_DROP_MAX_MM * 0.5)
+_HEAD_ON_V = (2000.0 + rp.HEAD_DROP_MAX_MM * 0.5, 1500.0)
+
+
+def test_r8d_symbol_gate_allows_headless_mains():
+    """양쪽 다 헤드 없는 주관 — 주관끼리는 기호 없이 맞물려 그린다."""
+    graph, edge_len = _cross_graph()
+    assert rp._split_crossing_tees(graph, edge_len, head_pts=[], fitting_pts=[]) == 1
+    assert len(rp._connected_components(graph)) == 1
+
+
+def test_r8d_symbol_gate_rejects_branch_pair_without_symbol():
+    """가지관끼리 교차인데 부속 기호가 없다 = 스쳐 지나감 — 말단 꼬임의 원인."""
     graph, edge_len = _cross_graph()
     before = dict(edge_len)
-    assert rp._split_crossing_tees(graph, edge_len, head_pts=[]) == 0
+    assert rp._split_crossing_tees(
+        graph, edge_len, head_pts=[_HEAD_ON_H, _HEAD_ON_V], fitting_pts=[]) == 0
     assert edge_len == before
     assert len(rp._connected_components(graph)) == 2
 
 
-def test_r8c_head_gate_accepts_one_sided_head():
-    """한쪽 조각에만 헤드가 있어도 접속 — 헤드 없는 주관 합류 허용."""
+def test_r8d_symbol_gate_accepts_branch_pair_with_symbol():
     graph, edge_len = _cross_graph()
-    head = (2000.0, 6000.0 + rp.HEAD_DROP_MAX_MM * 0.5)  # 세로 가지관 끝 근처
-    assert rp._split_crossing_tees(graph, edge_len, head_pts=[head]) == 1
+    assert rp._split_crossing_tees(
+        graph, edge_len, head_pts=[_HEAD_ON_H, _HEAD_ON_V], fitting_pts=[_XP]) == 1
     assert len(rp._connected_components(graph)) == 1
 
 
-def test_r8c_head_gate_ignores_far_head():
-    """HEAD_DROP_MAX_MM 밖의 헤드는 증거가 아니다."""
+def test_r8d_far_symbol_is_not_evidence():
+    """CROSS_TEE_SYMBOL_TOL_MM 밖의 기호는 이 교차의 것이 아니다."""
     graph, edge_len = _cross_graph()
-    head = (2000.0, 6000.0 + rp.HEAD_DROP_MAX_MM * 3)
-    assert rp._split_crossing_tees(graph, edge_len, head_pts=[head]) == 0
-    assert len(rp._connected_components(graph)) == 2
+    far = (_XP[0] + rp.CROSS_TEE_SYMBOL_TOL_MM * 2, _XP[1])
+    assert rp._split_crossing_tees(
+        graph, edge_len, head_pts=[_HEAD_ON_H, _HEAD_ON_V], fitting_pts=[far]) == 0
+
+
+def test_r8d_branch_off_main_needs_symbol_or_endpoint():
+    """가지관 × 주관 — 기호도 끝점도 없으면 접속 근거가 없다."""
+    graph, edge_len = _cross_graph()
+    assert rp._split_crossing_tees(
+        graph, edge_len, head_pts=[_HEAD_ON_V], fitting_pts=[]) == 0
+
+
+def test_r8d_endpoint_is_evidence_without_symbol():
+    """교차점이 배관 끝 근처면 스쳐 지나감이 아니라 진짜 T — 기호 없이도 인정."""
+    graph: dict = {}
+    edge_len: dict = {}
+    x = rp.CROSS_TEE_END_TOL_MM * 0.75  # 가로 배관 끝점에서 이 거리
+    _add_edge(graph, edge_len, (0.0, 1000.0), (5000.0, 1000.0))
+    _add_edge(graph, edge_len, (5000.0, 1000.0), (9000.0, 1000.0))
+    _add_edge(graph, edge_len, (x, 0.0), (x, 3000.0))
+    _add_edge(graph, edge_len, (x, 3000.0), (x, 6000.0))
+    head = (x + rp.HEAD_DROP_MAX_MM * 0.5, 1500.0)
+    assert rp._split_crossing_tees(
+        graph, edge_len, head_pts=[head], fitting_pts=[]) == 1
+    assert len(rp._connected_components(graph)) == 1
 
 
 # ── R9: 겹쳐 그린 중복 선분 제거 ────────────────────────────────────────────

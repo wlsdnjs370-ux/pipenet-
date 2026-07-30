@@ -441,7 +441,7 @@ def test_w7_audit_schema_on_fixture(pipe_ents, layer_categories):
     assert set(j) == {"heads", "bridges", "welds", "head_drops", "nonnominal",
                       "corridor", "source_attach", "water", "tee_splits",
                       "load", "pruned", "residual_cycles", "unreachable_heads",
-                      "fallback"}
+                      "fallback", "ortho"}
     assert j["heads"]["detected_in_region"] == len(gated)
     assert j["heads"]["attached"] + len(j["heads"]["unreachable"]) == len(gated)
     assert {"dist_mm", "method", "escalation"} <= set(j["source_attach"])

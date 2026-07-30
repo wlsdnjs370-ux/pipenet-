@@ -572,7 +572,7 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
 # 경로·mtime 키는 무의미 → 파일 내용 해시로 dedup. 파싱 로직이 바뀌면
 # _PARSE_CACHE_VERSION 을 올려 기존 캐시를 무효화한다. 캐시 실패는 전부 조용히 무시
 # (기능/정확도엔 영향 없음, 속도만 손해). 저장 위치는 gitignore 된 data/ 하위.
-_PARSE_CACHE_VERSION = 3  # 3: 헤드 틈 지문 배관 레이어 승격 + promoted_layers 필드
+_PARSE_CACHE_VERSION = 4  # 4: 헤드 틈 지문 승격 단위를 레이어 → 연결된 entity 로 축소
 _PARSE_CACHE_DIR = _Path(__file__).resolve().parent / "data" / "parse_cache"
 
 
@@ -2286,7 +2286,7 @@ def _machine_room_path_to_dict(
 
 
 def _promote_headgap_pipe_layers(bundle: ParsedDxfBundle) -> list[dict]:
-    """헤드 틈 지문이 있는 레이어를 PIPE 로 승격 — 이름 아닌 지오메트리로 판별.
+    """헤드 틈 지문이 잡힌 배관 런을 PIPE 로 승격 — 이름 아닌 지오메트리로 판별.
 
     레이어 이름은 작도자 마음이다. B1F 업로드본은 가지관 한 줄(연장 85.6m)이 통째로
     ``현장조사#셔터`` 레이어에 그려져 있어서 이름 기반 분류가 OTHER 로 떨어뜨리고,
@@ -2300,8 +2300,21 @@ def _promote_headgap_pipe_layers(bundle: ParsedDxfBundle) -> list[dict]:
     LH지하) 전 레이어 중 이 지문이 잡히는 비배관 레이어는 ``현장조사#셔터`` 하나(15건)
     이고 건축·밸브·소화전·치수·PIT 는 전부 0건이다. 대명동·LH 는 승격 대상이 없다.
 
+    승격 단위는 레이어가 아니라 **entity** 다. 오분류 레이어에는 배관과 도면선이 섞여
+    있다 — B1F 의 ``현장조사#셔터`` 는 지문이 잡힌 가지관(y=210361) 옆 263mm 아래로
+    헤드 없는 41.1m 셔터선이 나란히 지나간다. 레이어를 통째로 올리면 이 선이 그래프에
+    들어오고, ``_split_crossing_tees`` 가 그 위를 지나가는 입상관마다 티를 만들어
+    없는 부속을 5개 만들어냈다. 그래서 지문이 잡힌 entity 에서 **끝점을 공유하며
+    이어지는 것들만** 함께 올린다 — 노드를 공유하지 않고 교차만 하는 선은 무시.
+    (연결 확장은 오분류 레이어에 배관망 전체가 그려진 경우 주관·입상관을 놓치지
+    않기 위한 것이다. 지문 entity 만 올리면 헤드 없는 주관이 잘려 나간다.)
+
+    승격분은 원 레이어에서 떼어 ``"<원이름> (배관 승격)"`` 파생 레이어로 옮긴다.
+    필터·그래프·레이어 패널이 전부 레이어 키 기반이라 이게 유일한 부분 승격 표현이고,
+    사용자가 패널에서 무엇이 올라갔는지 그대로 볼 수 있다.
+
     EXCLUDE 는 건드리지 않는다 — 설정 키워드로 사용자가 명시해 뺀 레이어다.
-    반환: 승격 기록 ``[{"layer", "prev_category", "headgap_count"}]``.
+    반환: ``[{"layer", "pipe_layer", "prev_category", "headgap_count", "entity_count"}]``.
     """
     layer_cat = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
     candidates = {name for name, cat in layer_cat.items()
@@ -2324,7 +2337,9 @@ def _promote_headgap_pipe_layers(bundle: ParsedDxfBundle) -> list[dict]:
             head_lane[(axis, round(h.pos[1 - run] / tol))].append(h.pos[run])
 
     lanes: dict = defaultdict(lambda: defaultdict(list))
-    for en in bundle.entities:
+    layer_ents: dict[str, list[int]] = defaultdict(list)
+    verts: dict[int, list[tuple[float, float]]] = {}
+    for ei, en in enumerate(bundle.entities):
         layer = en["l"]
         if layer not in candidates:
             continue
@@ -2335,6 +2350,10 @@ def _promote_headgap_pipe_layers(bundle: ParsedDxfBundle) -> list[dict]:
             segs = list(zip(pts, pts[1:]))
         else:
             continue
+        if not segs:
+            continue
+        layer_ents[layer].append(ei)
+        verts[ei] = [segs[0][0]] + [b for _a, b in segs]
         for a, b in segs:
             if math.hypot(b[0] - a[0], b[1] - a[1]) < MIN_PIPE_EDGE_MM:
                 continue
@@ -2344,29 +2363,58 @@ def _promote_headgap_pipe_layers(bundle: ParsedDxfBundle) -> list[dict]:
             run = 1 if axis == 0 else 0
             off = (a[1 - run] + b[1 - run]) * 0.5
             lanes[layer][(axis, round(off / CROSS_TEE_AXIS_TOL_MM))].append(
-                (min(a[run], b[run]), max(a[run], b[run])))
+                (min(a[run], b[run]), max(a[run], b[run]), ei))
 
     promoted = []
     for layer, by_lane in lanes.items():
         hits = 0
+        seed: set[int] = set()
         for (axis, bucket), spans in by_lane.items():
             spans.sort()
             hr = round(bucket * CROSS_TEE_AXIS_TOL_MM / tol)
             hs = [v for d in (-1, 0, 1) for v in head_lane.get((axis, hr + d), ())]
-            for (_lo1, hi1), (lo2, _hi2) in zip(spans, spans[1:]):
+            for (_lo1, hi1, e1), (lo2, _hi2, e2) in zip(spans, spans[1:]):
                 gap = lo2 - hi1
                 if not (CROSS_TEE_AXIS_TOL_MM < gap <= HEAD_GAP_JOIN_MAX_MM):
                     continue
                 mid = (hi1 + lo2) * 0.5
                 if any(abs(v - mid) <= tol for v in hs):
                     hits += 1
-        if hits >= HEADGAP_PIPE_PROMOTE_MIN:
-            promoted.append({"layer": layer, "prev_category": layer_cat[layer],
-                             "headgap_count": hits})
-    names = {rec["layer"] for rec in promoted}
-    for ly in bundle.layers:
-        if ly["name"] in names:
-            ly["auto_category"] = "PIPE"
+                    seed.update((e1, e2))
+        if hits < HEADGAP_PIPE_PROMOTE_MIN:
+            continue
+
+        idx = _NodeIndex()
+        at_node: dict[tuple[float, float], set[int]] = defaultdict(set)
+        for ei in layer_ents[layer]:
+            for x, y in verts[ei]:
+                at_node[idx.canonical(x, y)].add(ei)
+        members = set(seed)
+        stack = list(seed)
+        while stack:
+            for x, y in verts[stack.pop()]:
+                for nb in at_node[idx.canonical(x, y)]:
+                    if nb not in members:
+                        members.add(nb)
+                        stack.append(nb)
+
+        pipe_name = f"{layer} (배관 승격)"
+        while pipe_name in layer_cat:
+            pipe_name += "'"
+        for ei in members:
+            bundle.entities[ei]["l"] = pipe_name
+        src = next(ly for ly in bundle.layers if ly["name"] == layer)
+        src["count"] -= len(members)
+        bundle.layers.append(dict(src, name=pipe_name, count=len(members),
+                                  auto_category="PIPE"))
+        bundle.layer_counts[layer] = src["count"]
+        bundle.layer_counts[pipe_name] = len(members)
+        layer_cat[pipe_name] = "PIPE"
+        promoted.append({"layer": layer, "pipe_layer": pipe_name,
+                         "prev_category": src["auto_category"],
+                         "headgap_count": hits, "entity_count": len(members)})
+    if promoted:
+        bundle.layers.sort(key=lambda ly: ly["name"])
     return promoted
 
 
@@ -6904,7 +6952,8 @@ def run_stages_0_2(
     yield evt({"type": "entities", "stage": 1, "entities": pipe_ents,
                "summary": {"entity_count": len(pipe_ents)}})
     _promo = "".join(
-        f" · 헤드 틈 지문으로 {r['layer']}({r['prev_category']}) 배관 승격 {r['headgap_count']}건"
+        f" · 헤드 틈 지문 {r['headgap_count']}건으로 {r['layer']}({r['prev_category']})"
+        f" 중 {r['entity_count']} entity 배관 승격"
         for r in bundle.promoted_layers)
     yield evt({"type": "stage", "stage": 1, "status": "done",
                "label": f"배관망 추출 완료 — {len(pipe_ents):,} entity{_promo}"})

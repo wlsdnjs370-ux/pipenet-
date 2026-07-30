@@ -2695,6 +2695,8 @@ class ExtractionAudit:
     water: dict = field(default_factory=dict)
     # T분기 edge-split 근거. sym_mm 은 "접속=기호" 관측 증거일 뿐 판정에 쓰지 않는다.
     tee_splits: list = field(default_factory=list)  # [{p,edge,gap_mm,sym_mm}]
+    # 겹쳐 그린 중복 선분 제거 근거(R9) — 헤드틈 접속을 막던 차수 오염.
+    covered_drops: list = field(default_factory=list)   # [{a,b,len_mm}]
     # 헤드 기호가 끊어놓은 동일선상 배관 접속 근거(R7).
     head_gap_joins: list = field(default_factory=list)  # [{a,b,gap_mm}]
     # 관통 교차를 티로 해석해 절단한 근거(R8) — 합류하는 교차만.
@@ -2728,6 +2730,7 @@ class ExtractionAudit:
                        {"dead_edge_count": 0, "dead_len_mm": 0.0, "dead_ratio": 0.0,
                         "watered_edge_count": 0, "heads_routed": 0}),
             tee_splits=list(audit.get("tee_splits") or []),
+            covered_drops=list(audit.get("covered_drops") or []),
             head_gap_joins=list(audit.get("head_gap_joins") or []),
             crossing_tees=list(audit.get("crossing_tees") or []),
             load=dict(audit.get("load") or
@@ -2751,6 +2754,7 @@ class ExtractionAudit:
             "head_drops": self.head_drops, "nonnominal": self.nonnominal,
             "corridor": self.corridor, "source_attach": self.source_attach,
             "water": self.water, "tee_splits": self.tee_splits,
+            "covered_drops": self.covered_drops,
             "head_gap_joins": self.head_gap_joins,
             "crossing_tees": self.crossing_tees,
             "load": self.load, "pruned": self.pruned,
@@ -4339,6 +4343,76 @@ def _split_crossing_tees(
     return accepted
 
 
+def _drop_covered_edges(
+    graph: dict,
+    edge_len: dict,
+    tol_mm: float = CROSS_TEE_AXIS_TOL_MM,
+    drops_out: list | None = None,
+) -> int:
+    """다른 간선 위에 통째로 덮여 있는 축평행 간선을 지운다 — 겹쳐 그린 중복 선분.
+
+    같은 배관을 두 번 그은 도면이 있다. 긴 선 위에 짧은 선이 완전히 포개져 있어
+    배관이 늘어나지도 새로 이어지지도 않지만, 포개진 선의 끝점이 긴 선의 끝점에
+    붙으면서 그 끝점의 차수를 1 에서 2 로 올린다. ``_join_head_gap_endpoints`` 는
+    차수 1 인 노드만 런의 끝으로 보므로, 중복 선분 하나가 멀쩡한 헤드 틈 접속을
+    통째로 막는다. B1F 는 이것 때문에 세대 가지관 20 개가 주망에서 떨어져 있었다.
+
+    덮는 간선과 공유하지 않는 끝점이 모두 차수 1 일 때만 지운다 — 그 끝점에 다른
+    배관이 걸려 있으면 지우는 순간 고아가 되는데, 포개진 위치는 덮는 간선의 노드가
+    아니라 중간이라 옮겨 붙일 자리가 없다. 실측상 B1F 는 20 건 전부, 대명동은 111 건
+    중 95 건이 이 조건을 만족한다.
+
+    실측 근거 — B1F 의 덮인 간선은 20 건 전부 정확히 300mm(헤드 틈 폭과 같다)이고
+    지우면 최대망 헤드가 68 → 98 개로 는다. 대명동(111 건, 대부분 87~88mm 기호 획) ·
+    LH306(4 건) · LH지하(0 건) 는 지워도 조각 수도 헤드 수도 그대로다 — 이미 다른
+    경로로 이어져 있어 잃을 연결이 없다.
+
+    drops_out: 주어지면 [{"a", "b", "len_mm"}] 기록.
+    반환: 지운 간선 수.
+    """
+    lanes: dict = defaultdict(list)
+    for key in edge_len:
+        a, b = key
+        axis = _axis_index(a, b, tol_mm)
+        if axis < 0:
+            continue
+        # axis 1(가로) 이면 y 가 레인, 진행 좌표는 x. 세로는 반대.
+        off, run = (a[1] + b[1]) * 0.5, 0
+        if axis == 0:
+            off, run = (a[0] + b[0]) * 0.5, 1
+        lanes[(axis, int(off // tol_mm))].append(
+            (min(a[run], b[run]), max(a[run], b[run]), key))
+    if not lanes:
+        return 0
+
+    doomed: list = []
+    for (axis, r), items in lanes.items():
+        # 오프셋 반올림 경계에서 갈라진 같은 선을 놓치지 않도록 이웃 레인까지 본다.
+        pool = items + lanes.get((axis, r + 1), []) + lanes.get((axis, r - 1), [])
+        for lo, hi, key in items:
+            for lo2, hi2, key2 in pool:
+                if key2 == key or (hi - lo) >= (hi2 - lo2):
+                    continue
+                if lo2 - tol_mm <= lo and hi <= hi2 + tol_mm and all(
+                        len(graph[n]) == 1 for n in key if n not in key2):
+                    doomed.append(key)
+                    break
+
+    for key in doomed:
+        a, b = key
+        graph[a].discard(b)
+        graph[b].discard(a)
+        if not graph[a]:
+            del graph[a]
+        if b in graph and not graph[b]:
+            del graph[b]
+        if drops_out is not None:
+            drops_out.append({"a": [a[0], a[1]], "b": [b[0], b[1]],
+                              "len_mm": edge_len[key]})
+        del edge_len[key]
+    return len(doomed)
+
+
 def auto_snap_eps(
     pipe_entities: list[dict],
     layer_categories: dict[str, str] | None = None,
@@ -4444,6 +4518,8 @@ def select_worst30_heads(
     # K 도 적응형 — 헤드 수 부족하면 있는 만큼
     if len(heads) < k:
         k = len(heads)
+    # 겹쳐 그린 중복 선분 제거 — 헤드틈 접속 판정 전이라야 끝점 차수가 맞다.
+    _drop_covered_edges(graph, edge_len)
     # 헤드 기호가 끊어놓은 동일선상 배관 접속 — 헤드 확정 뒤라야 판정할 수 있다.
     _join_head_gap_endpoints(graph, edge_len, [h.pos for h in heads])
     _split_crossing_tees(graph, edge_len)
@@ -4986,6 +5062,10 @@ def select_worst30_heads_anchored(
         rec["sym_mm"] = min((math.hypot(rec["p"][0] - sx, rec["p"][1] - sy)
                              for sx, sy in _syms), default=None)
     audit["tee_splits"] = _tee
+    # 겹쳐 그린 중복 선분 제거 — 헤드틈 접속 판정 전이라야 끝점 차수가 맞다.
+    _covdrop: list = []
+    _drop_covered_edges(graph, edge_len, drops_out=_covdrop)
+    audit["covered_drops"] = _covdrop
     # 헤드 기호가 끊어놓은 동일선상 배관 접속 — 작도 규약 해석(추정 연결 아님).
     _hjoin: list = []
     _join_head_gap_endpoints(graph, edge_len, [h.pos for h in heads],
@@ -6770,6 +6850,8 @@ def run_stages_0_2(
     ladders_collapsed = collapse_parallel_ladders(graph, edge_len)
     # T분기 복원 — 실배관 접속. 배관↔배관 추정연결(용접·브리지)은 쓰지 않는다.
     tee_splits = _split_tee_branches(graph, edge_len)
+    # 겹쳐 그린 중복 선분 제거 — 헤드틈 접속 판정 전이라야 끝점 차수가 맞다.
+    covered_drops = _drop_covered_edges(graph, edge_len)
     # 헤드 기호가 끊어놓은 동일선상 배관 접속 — 작도 규약 해석(추정 연결 아님).
     head_gap_joins = _join_head_gap_endpoints(
         graph, edge_len, [h.pos for h in head_detections])
@@ -6915,6 +6997,7 @@ def run_stages_0_2(
         "components": len(comps),
         "snap_eps_mm": snap_eps,
         "tee_splits": tee_splits,
+        "covered_drops": covered_drops,
         "head_gap_joins": head_gap_joins,
         "crossing_tees": crossing_tees,
         "unreachable_head_count": unreached_heads,
@@ -6932,6 +7015,7 @@ def run_stages_0_2(
         f" / 헤드 drop {head_drop_emitted} / 분기 {junction_count}개"
         f" / 이음매 {snap_eps:.0f}mm · T분기 {tee_splits}"
         f" / ladder 합성 {ladders_collapsed} / cycle 제거 {cycle_emitted}"
+        + (f" · 중복 선분 {covered_drops}" if covered_drops else "")
         + (f" · 헤드틈 접속 {head_gap_joins}" if head_gap_joins else "")
         + (f" · 관통 티 {crossing_tees}" if crossing_tees else "")
         + (f" / 루프 {loop_emitted}" if loop_emitted else "")

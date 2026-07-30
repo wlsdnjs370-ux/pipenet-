@@ -435,7 +435,7 @@ def test_w7_audit_schema_on_fixture(pipe_ents, layer_categories):
     j = _json.loads(_json.dumps(aud.to_json_dict()))   # JSON 직렬화 계약
     assert set(j) == {"heads", "snap_eps", "fragments", "head_drops", "nonnominal",
                       "corridor", "source_attach", "water", "tee_splits",
-                      "head_gap_joins", "crossing_tees",
+                      "covered_drops", "head_gap_joins", "crossing_tees",
                       "load", "pruned", "residual_cycles",
                       "unreachable_heads", "fallback", "ortho"}
     assert j["heads"]["detected_in_region"] == len(gated)
@@ -754,3 +754,60 @@ def test_r8_crossing_tee_multiple_cuts_on_one_edge():
     assert rp._split_crossing_tees(graph, edge_len) == 2
     assert len(rp._connected_components(graph)) == 1
     assert len(edge_len) - len(graph) + 1 == 0  # 트리 유지 (루프 0)
+
+
+# ── R9: 겹쳐 그린 중복 선분 제거 ────────────────────────────────────────────
+
+def _overlap_graph():
+    """긴 세로 런의 위쪽 300mm 에 짧은 선분이 통째로 포개져 있다."""
+    graph: dict = {}
+    edge_len: dict = {}
+    _add_edge(graph, edge_len, (0.0, 0.0), (0.0, 2400.0))
+    _add_edge(graph, edge_len, (0.0, 2100.0), (0.0, 2400.0))
+    return graph, edge_len
+
+
+def test_r9_drops_covered_duplicate():
+    graph, edge_len = _overlap_graph()
+    drops: list = []
+    assert rp._drop_covered_edges(graph, edge_len, drops_out=drops) == 1
+    assert list(edge_len) == [((0.0, 0.0), (0.0, 2400.0))]
+    assert drops[0]["len_mm"] == 300.0
+    assert (0.0, 2100.0) not in graph
+    assert len(graph[(0.0, 2400.0)]) == 1  # 런의 끝 — 헤드틈 접속 후보로 복귀
+
+
+def test_r9_keeps_covered_edge_carrying_a_branch():
+    """포개진 선분의 자유 끝점에 다른 배관이 걸려 있으면 지우지 않는다."""
+    graph, edge_len = _overlap_graph()
+    _add_edge(graph, edge_len, (0.0, 2100.0), (1500.0, 2100.0))
+    assert rp._drop_covered_edges(graph, edge_len) == 0
+
+
+def test_r9_keeps_merely_touching_edges():
+    """끝점만 잇닿은 연속 런은 덮인 게 아니다."""
+    graph: dict = {}
+    edge_len: dict = {}
+    _add_edge(graph, edge_len, (0.0, 0.0), (0.0, 2400.0))
+    _add_edge(graph, edge_len, (0.0, 2400.0), (0.0, 2700.0))
+    assert rp._drop_covered_edges(graph, edge_len) == 0
+
+
+def test_r9_keeps_parallel_offset_run():
+    """같은 축이라도 오프셋이 허용치를 넘으면 다른 배관이다."""
+    graph: dict = {}
+    edge_len: dict = {}
+    _add_edge(graph, edge_len, (0.0, 0.0), (0.0, 2400.0))
+    _add_edge(graph, edge_len, (500.0, 2100.0), (500.0, 2400.0))
+    assert rp._drop_covered_edges(graph, edge_len) == 0
+
+
+def test_r9_unblocks_head_gap_join():
+    """중복 선분이 막고 있던 헤드틈 접속이 제거 후 성립한다."""
+    graph, edge_len = _overlap_graph()
+    _add_edge(graph, edge_len, (0.0, 2700.0), (0.0, 5100.0))
+    heads = [(0.0, 2550.0)]
+    assert rp._join_head_gap_endpoints(graph, edge_len, heads) == 0
+    assert rp._drop_covered_edges(graph, edge_len) == 1
+    assert rp._join_head_gap_endpoints(graph, edge_len, heads) == 1
+    assert len(rp._connected_components(graph)) == 1

@@ -62,6 +62,10 @@ HEAD_GAP_JOIN_MAX_MM = 400.0
 # 1mm 미만 · 헤드 오프셋 0mm 로 사실상 정확히 일치하며, 1~20mm 구간은 5532쌍 중 7쌍뿐
 # 이라 값에 둔감하다. 기호 도시 오차를 감안해 MIN_PIPE_EDGE_MM 수준으로 둔다.
 HEAD_GAP_JOIN_TOL_MM = 50.0
+# 관통 교차(끝점이 어느 쪽에도 얹히지 않은 직교 X)를 티로 해석할 때의 축평행 허용치.
+# 교차점 좌표를 두 선에서 그대로 합성하므로 허용치가 크면 선에서 벗어난 자리에 접속이
+# 생긴다. 실측 배관은 축 오차 1mm 미만이라 좁게 잡아도 잃는 게 없다.
+CROSS_TEE_AXIS_TOL_MM = 5.0
 CLOSED_PL_TOL_MM = 5.0  # PL 의 첫점과 마지막점이 이 거리 안이면 closed polygon 으로 간주 → 그래프 제외
 LADDER_MAX_RUNG_MM = 300.0     # rung (짧은 cross 변) 최대 길이. 단위세대 도면 기준.
 LADDER_MIN_RAIL_RATIO = 3.0    # rail / rung 평균 길이 비. 정사각형 (=1) 은 합성 안 됨.

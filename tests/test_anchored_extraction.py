@@ -435,7 +435,8 @@ def test_w7_audit_schema_on_fixture(pipe_ents, layer_categories):
     j = _json.loads(_json.dumps(aud.to_json_dict()))   # JSON 직렬화 계약
     assert set(j) == {"heads", "snap_eps", "fragments", "head_drops", "nonnominal",
                       "corridor", "source_attach", "water", "tee_splits",
-                      "head_gap_joins", "load", "pruned", "residual_cycles",
+                      "head_gap_joins", "crossing_tees",
+                      "load", "pruned", "residual_cycles",
                       "unreachable_heads", "fallback", "ortho"}
     assert j["heads"]["detected_in_region"] == len(gated)
     assert j["heads"]["attached"] + len(j["heads"]["unreachable"]) == len(gated)
@@ -676,3 +677,80 @@ def test_r7_head_gap_join_chain_three_pieces():
     assert rp._join_head_gap_endpoints(graph, edge_len,
                                        [(0.0, 1150.0), (0.0, 2450.0)]) == 2
     assert len(rp._connected_components(graph)) == 1
+
+
+# ── R8: 관통 교차 티 복원 ───────────────────────────────────────────────────
+
+def _add_edge(graph: dict, edge_len: dict, a, b) -> None:
+    graph.setdefault(a, set()).add(b)
+    graph.setdefault(b, set()).add(a)
+    edge_len[(min(a, b), max(a, b))] = math.hypot(b[0] - a[0], b[1] - a[1])
+
+
+def _cross_graph(with_stub: bool = True):
+    """세로 가지관이 가로 주배관 중간을 관통. 양쪽 다 3노드 이상(비고립)."""
+    graph: dict = {}
+    edge_len: dict = {}
+    _add_edge(graph, edge_len, (0.0, 1000.0), (5000.0, 1000.0))       # 가로 주배관
+    _add_edge(graph, edge_len, (5000.0, 1000.0), (9000.0, 1000.0))
+    _add_edge(graph, edge_len, (2000.0, 0.0), (2000.0, 3000.0))       # 세로 가지관
+    if with_stub:
+        _add_edge(graph, edge_len, (2000.0, 3000.0), (2000.0, 6000.0))
+    return graph, edge_len
+
+
+def test_r8_crossing_tee_merges_two_components():
+    graph, edge_len = _cross_graph()
+    assert len(rp._connected_components(graph)) == 2
+    cuts: list = []
+    assert rp._split_crossing_tees(graph, edge_len, cuts_out=cuts) == 1
+    assert len(rp._connected_components(graph)) == 1
+    assert cuts[0]["p"] == [2000.0, 1000.0]
+    # 교차점에서 네 갈래 — 가로·세로 둘 다 쪼개졌다
+    assert len(graph[(2000.0, 1000.0)]) == 4
+
+
+def test_r8_crossing_tee_never_creates_loop():
+    """이미 이어진 두 배관의 교차는 스쳐 지나감과 구분 불가 — 손대지 않는다."""
+    graph, edge_len = _cross_graph()
+    _add_edge(graph, edge_len, (2000.0, 6000.0), (9000.0, 1000.0))  # 우회로로 연결
+    assert len(rp._connected_components(graph)) == 1
+    before = dict(edge_len)
+    assert rp._split_crossing_tees(graph, edge_len) == 0
+    assert edge_len == before
+
+
+def test_r8_crossing_tee_skips_lone_segment():
+    """고립 선분(노드 2개)은 배관이 아니라 표시 획 — 절단 대상 아님."""
+    graph, edge_len = _cross_graph(with_stub=False)
+    graph.pop((2000.0, 3000.0))
+    graph[(2000.0, 0.0)].clear()
+    edge_len.clear()
+    _add_edge(graph, edge_len, (0.0, 1000.0), (5000.0, 1000.0))
+    _add_edge(graph, edge_len, (5000.0, 1000.0), (9000.0, 1000.0))
+    _add_edge(graph, edge_len, (2000.0, 900.0), (2000.0, 1100.0))  # 십자 기호 획
+    assert rp._split_crossing_tees(graph, edge_len) == 0
+
+
+def test_r8_crossing_tee_skips_near_endpoint():
+    """끝점 근처 교차는 _split_tee_branches 담당 — 최소길이 미만 토막 금지."""
+    graph, edge_len = _cross_graph()
+    graph.clear(); edge_len.clear()
+    _add_edge(graph, edge_len, (0.0, 1000.0), (5000.0, 1000.0))
+    _add_edge(graph, edge_len, (5000.0, 1000.0), (9000.0, 1000.0))
+    _add_edge(graph, edge_len, (10.0, 0.0), (10.0, 3000.0))   # 가로 끝에서 10mm
+    _add_edge(graph, edge_len, (10.0, 3000.0), (10.0, 6000.0))
+    assert rp._split_crossing_tees(graph, edge_len) == 0
+
+
+def test_r8_crossing_tee_multiple_cuts_on_one_edge():
+    """한 주배관을 두 가지관이 각각 관통 — 둘 다 접속된다."""
+    graph: dict = {}
+    edge_len: dict = {}
+    _add_edge(graph, edge_len, (0.0, 1000.0), (9000.0, 1000.0))
+    for x in (2000.0, 6000.0):
+        _add_edge(graph, edge_len, (x, 0.0), (x, 3000.0))
+        _add_edge(graph, edge_len, (x, 3000.0), (x, 6000.0))
+    assert rp._split_crossing_tees(graph, edge_len) == 2
+    assert len(rp._connected_components(graph)) == 1
+    assert len(edge_len) - len(graph) + 1 == 0  # 트리 유지 (루프 0)

@@ -28,6 +28,7 @@ _CORE = _Path(__file__).resolve().parent / "core"
 if _CORE.is_dir() and str(_CORE) not in _sys.path:
     _sys.path.insert(0, str(_CORE))
 
+import bisect
 import csv
 import gzip
 import hashlib
@@ -127,7 +128,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 # ── 초대형 XREF 도면 예산 가드 (기계실/계통도 파싱) ──────────────────────────
 # 142MB LH 지하층배관도는 최상위 INSERT 61개를 폭발하면 leaf 597k개가 되는데
@@ -2696,6 +2697,8 @@ class ExtractionAudit:
     tee_splits: list = field(default_factory=list)  # [{p,edge,gap_mm,sym_mm}]
     # 헤드 기호가 끊어놓은 동일선상 배관 접속 근거(R7).
     head_gap_joins: list = field(default_factory=list)  # [{a,b,gap_mm}]
+    # 관통 교차를 티로 해석해 절단한 근거(R8) — 합류하는 교차만.
+    crossing_tees: list = field(default_factory=list)   # [{p,h,v}]
     # 유량 누적 기반 가지치기(L5). load_mode off 면 전부 기본값.
     load: dict = field(default_factory=dict)            # {min,max,median}
     pruned: dict = field(default_factory=dict)          # {dead_edge_count,dead_len_mm,cycle_cut_count}
@@ -2726,6 +2729,7 @@ class ExtractionAudit:
                         "watered_edge_count": 0, "heads_routed": 0}),
             tee_splits=list(audit.get("tee_splits") or []),
             head_gap_joins=list(audit.get("head_gap_joins") or []),
+            crossing_tees=list(audit.get("crossing_tees") or []),
             load=dict(audit.get("load") or
                       {"min": 0, "max": 0, "median": 0.0}),
             # "edges" 상세 기록은 응답 JSON 비대화 방지를 위해 집계만 싣는다.
@@ -2748,6 +2752,7 @@ class ExtractionAudit:
             "corridor": self.corridor, "source_attach": self.source_attach,
             "water": self.water, "tee_splits": self.tee_splits,
             "head_gap_joins": self.head_gap_joins,
+            "crossing_tees": self.crossing_tees,
             "load": self.load, "pruned": self.pruned,
             "residual_cycles": self.residual_cycles,
             "unreachable_heads": self.unreachable_heads,
@@ -4225,6 +4230,115 @@ def _join_head_gap_endpoints(
     return joins
 
 
+def _split_crossing_tees(
+    graph: dict,
+    edge_len: dict,
+    axis_tol_mm: float = CROSS_TEE_AXIS_TOL_MM,
+    margin_mm: float = MIN_PIPE_EDGE_MM,
+    cuts_out: list | None = None,
+) -> int:
+    """관통 교차를 티로 해석해 절단·접속한다 — 단, 합류하는 교차만.
+
+    일부 도면은 가지관을 주배관 *중간을 가로질러* 그린다. 끝점이 어느 쪽에도
+    얹혀 있지 않은 순수 X 교차라 끝점 클러스터도 ``_split_tee_branches``(끝점→배관
+    중간)도 잡지 못한다. B1F 는 이 때문에 세대 가지관 전체가 주망에서 떨어져 있었다.
+
+    평면화 X 절단은 R5 에서 폐지했다 — "끝점이 안 걸친 직교 교차가 티인지 층이 달라
+    스쳐 지나가는 것인지 평면 좌표만으로는 못 가린다"가 이유였다. 그 반론을 두 게이트로
+    답한다:
+
+      1. **합류** — 두 간선이 서로 다른 연결요소일 때만 절단한다. 이 교차가 유일한
+         연결 경로라 잇지 않으면 한쪽이 영영 고아로 남는다는 뜻이고, 절단해도 루프가
+         절대 생기지 않는다. 반대로 이미 이어진 두 배관의 교차는 스쳐 지나감과 구분이
+         안 되므로 그대로 둔다. 실측이 이 구분을 뒷받침한다 — B1F 는 교차 285곳 중
+         283곳이 합류(도면이 이 교차로만 연결됨), 대명동은 9곳 중 1곳뿐이고 나머지
+         8곳은 절단하면 없던 루프가 8개 생긴다(= 스쳐 지나가는 배관).
+      2. **배관일 것** — 어느 배관과도 안 이어진 데다 길이가 기호 크기
+         (``HEAD_GAP_JOIN_MAX_MM``) 이하인 선분은 배관망 조각이 아니라 표시 획이다.
+         B1F 의 합류 교차 262곳 중 244곳이 137~288mm 짜리 고립 선분(LINE 으로 그린
+         헤드 십자 기호)이고, 남는 18곳은 839mm 이상의 실배관이다. 길이 조건을 함께
+         걸어야 통째로 한 선분인 긴 주배관을 잘못 배제하지 않는다.
+
+    끝점 근처(``margin_mm`` 안) 교차는 제외한다 — 최소길이 미만 토막을 만들지 않고,
+    그 영역은 이미 ``_split_tee_branches`` 담당이다.
+    cuts_out: 주어지면 [{"p", "h", "v"}] 기록 (audit 근거용).
+    반환: 절단·접속한 교차 수.
+    """
+    hs: list = []
+    vs: list = []
+    for key in edge_len:
+        a, b = key
+        axis = _axis_index(a, b, axis_tol_mm)
+        if axis == 1:
+            hs.append((min(a[0], b[0]), max(a[0], b[0]), (a[1] + b[1]) * 0.5, key))
+        elif axis == 0:
+            vs.append((min(a[1], b[1]), max(a[1], b[1]), (a[0] + b[0]) * 0.5, key))
+    if not hs or not vs:
+        return 0
+
+    vs.sort(key=lambda t: t[2])
+    vxs = [t[2] for t in vs]
+    found: list = []
+    for x0, x1, y, hk in hs:
+        lo = bisect.bisect_left(vxs, x0 + margin_mm)
+        hi = bisect.bisect_right(vxs, x1 - margin_mm)
+        for y0, y1, x, vk in vs[lo:hi]:
+            if y0 + margin_mm <= y <= y1 - margin_mm:
+                found.append(((x, y), hk, vk))
+    if not found:
+        return 0
+
+    comps = _connected_components(graph)
+    comp_of = {n: i for i, c in enumerate(comps) for n in c}
+    parent: dict = {}
+
+    def _find(x):
+        while parent.get(x, x) != x:
+            parent[x] = parent.get(parent[x], parent[x])
+            x = parent[x]
+        return x
+
+    for a, b in edge_len:
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    def _is_mark(key) -> bool:
+        # 다른 배관과 이어지지도 않고 기호 크기를 넘지도 않는 선분 = 표시 획.
+        return (len(comps[comp_of[key[0]]]) < 3
+                and edge_len[key] <= HEAD_GAP_JOIN_MAX_MM)
+
+    cuts: dict = defaultdict(set)
+    accepted = 0
+    for p, hk, vk in sorted(found):
+        if _is_mark(hk) or _is_mark(vk):
+            continue  # 배관이 아니라 표시 획
+        ra, rb = _find(hk[0]), _find(vk[0])
+        if ra == rb:
+            continue  # 이미 이어진 배관끼리의 교차 — 스쳐 지나감과 구분 불가
+        parent[ra] = rb
+        cuts[hk].add(p)
+        cuts[vk].add(p)
+        accepted += 1
+        if cuts_out is not None:
+            cuts_out.append({"p": [p[0], p[1]],
+                             "h": [[hk[0][0], hk[0][1]], [hk[1][0], hk[1][1]]],
+                             "v": [[vk[0][0], vk[0][1]], [vk[1][0], vk[1][1]]]})
+
+    # 한 간선이 여러 번 교차될 수 있으므로 간선별로 교차점을 모아 한꺼번에 쪼갠다.
+    for key, pts in cuts.items():
+        a, b = key
+        graph[a].discard(b)
+        graph[b].discard(a)
+        del edge_len[key]
+        chain = [a] + sorted(pts, key=lambda q: (q[0] - a[0]) ** 2 + (q[1] - a[1]) ** 2) + [b]
+        for u, v in zip(chain, chain[1:]):
+            graph.setdefault(u, set()).add(v)
+            graph.setdefault(v, set()).add(u)
+            edge_len[(min(u, v), max(u, v))] = math.hypot(v[0] - u[0], v[1] - u[1])
+    return accepted
+
+
 def auto_snap_eps(
     pipe_entities: list[dict],
     layer_categories: dict[str, str] | None = None,
@@ -4332,6 +4446,7 @@ def select_worst30_heads(
         k = len(heads)
     # 헤드 기호가 끊어놓은 동일선상 배관 접속 — 헤드 확정 뒤라야 판정할 수 있다.
     _join_head_gap_endpoints(graph, edge_len, [h.pos for h in heads])
+    _split_crossing_tees(graph, edge_len)
     if manual_source is not None:
         src_raw = _round_pt(manual_source[0], manual_source[1])
         src_kind = "manual"
@@ -4876,6 +4991,10 @@ def select_worst30_heads_anchored(
     _join_head_gap_endpoints(graph, edge_len, [h.pos for h in heads],
                              joins_out=_hjoin)
     audit["head_gap_joins"] = _hjoin
+    # 관통 교차 티 복원 — 합류하는 교차만(루프 안 생김).
+    _xtee: list = []
+    _split_crossing_tees(graph, edge_len, cuts_out=_xtee)
+    audit["crossing_tees"] = _xtee
     # 배관↔배관 추정연결(용접·브리지)은 폐지 — 남는 추정은 기호↔배관 결합선뿐.
     _penalty_keys: set = set()
     _pcb(0.1, "알람밸브 결합 중")
@@ -6654,6 +6773,8 @@ def run_stages_0_2(
     # 헤드 기호가 끊어놓은 동일선상 배관 접속 — 작도 규약 해석(추정 연결 아님).
     head_gap_joins = _join_head_gap_endpoints(
         graph, edge_len, [h.pos for h in head_detections])
+    # 관통 교차 티 복원 — 합류하는 교차만(루프 안 생김).
+    crossing_tees = _split_crossing_tees(graph, edge_len)
     # head_drop_edges: 헤드 INSERT 좌표 ↔ 배관 nearest 노드 직선 (실제 배관 아님)
     # — 기호↔배관 결합선이라 시각적으로 구분 렌더.
     # 헤드 drop line — 헤드 INSERT 좌표를 같은 NodeIndex 로 canonicalize
@@ -6795,6 +6916,7 @@ def run_stages_0_2(
         "snap_eps_mm": snap_eps,
         "tee_splits": tee_splits,
         "head_gap_joins": head_gap_joins,
+        "crossing_tees": crossing_tees,
         "unreachable_head_count": unreached_heads,
         "ladders_collapsed": ladders_collapsed,
         "removed_cycle_edges": cycle_emitted,
@@ -6811,6 +6933,7 @@ def run_stages_0_2(
         f" / 이음매 {snap_eps:.0f}mm · T분기 {tee_splits}"
         f" / ladder 합성 {ladders_collapsed} / cycle 제거 {cycle_emitted}"
         + (f" · 헤드틈 접속 {head_gap_joins}" if head_gap_joins else "")
+        + (f" · 관통 티 {crossing_tees}" if crossing_tees else "")
         + (f" / 루프 {loop_emitted}" if loop_emitted else "")
     )
     if src_raw_pt is not None:

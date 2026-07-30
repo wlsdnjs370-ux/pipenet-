@@ -161,10 +161,29 @@ def test_w2_attach_source_prefers_head_component():
 def test_w2_attach_source_escalates_without_heads():
     graph, edge_len, comp_of, _head = _w2_graph()
     audit = {}
-    src, _key = rp.attach_source((0.0, 0.0), graph, comp_of, [], edge_len, audit)
-    # 승인 헤드가 없으면 1단계 완화 — 거리 상한 내 최근접(고립 조각 102mm)
-    assert (102.0, 0.0) in graph[src]
+    comp_len = {0: 100.0, 1: 2000.0}
+    src, _key = rp.attach_source((0.0, 0.0), graph, comp_of, [], edge_len, audit,
+                                 comp_len=comp_len)
+    # 승인 헤드가 없어도 최근접(102mm 노이즈 조각)이 아니라 연장이 긴 본망에 붙는다
+    assert (606.0, 0.0) in graph[src]
+    assert (102.0, 0.0) not in graph[src]
     assert audit["source_attach"]["escalation"] == 1
+
+
+def test_w2_attach_source_splits_pipe_interior():
+    """알람밸브가 배관 *중간* 옆에 서면 그 배관을 쪼개 붙는다 — 끝점까지 끌려가지 않음."""
+    a, b = (0.0, 0.0), (10000.0, 0.0)
+    graph = {a: {b}, b: {a}}
+    edge_len = {(a, b): 10000.0}
+    audit = {}
+    src, key = rp.attach_source((5000.0, 800.0), graph, {a: 0, b: 0}, [],
+                                edge_len, audit)
+    foot = (5000.0, 0.0)
+    assert foot in graph[src] and graph[foot] == {a, b, src}
+    assert (a, b) not in edge_len
+    assert audit["source_attach"]["attached_to"] == "pipe_interior"
+    assert abs(audit["source_attach"]["dist_mm"] - 800.0) < 1e-6
+    assert key in edge_len
 
 
 def test_w2_attach_source_fails_beyond_cap():

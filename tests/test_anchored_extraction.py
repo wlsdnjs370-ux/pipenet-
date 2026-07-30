@@ -756,6 +756,31 @@ def test_r8_crossing_tee_multiple_cuts_on_one_edge():
     assert len(edge_len) - len(graph) + 1 == 0  # 트리 유지 (루프 0)
 
 
+def test_r8c_head_gate_rejects_headless_crossing():
+    """양쪽 조각 모두 헤드 0개 — 스프링클러 증거 없는 교차는 무시."""
+    graph, edge_len = _cross_graph()
+    before = dict(edge_len)
+    assert rp._split_crossing_tees(graph, edge_len, head_pts=[]) == 0
+    assert edge_len == before
+    assert len(rp._connected_components(graph)) == 2
+
+
+def test_r8c_head_gate_accepts_one_sided_head():
+    """한쪽 조각에만 헤드가 있어도 접속 — 헤드 없는 주관 합류 허용."""
+    graph, edge_len = _cross_graph()
+    head = (2000.0, 6000.0 + rp.HEAD_DROP_MAX_MM * 0.5)  # 세로 가지관 끝 근처
+    assert rp._split_crossing_tees(graph, edge_len, head_pts=[head]) == 1
+    assert len(rp._connected_components(graph)) == 1
+
+
+def test_r8c_head_gate_ignores_far_head():
+    """HEAD_DROP_MAX_MM 밖의 헤드는 증거가 아니다."""
+    graph, edge_len = _cross_graph()
+    head = (2000.0, 6000.0 + rp.HEAD_DROP_MAX_MM * 3)
+    assert rp._split_crossing_tees(graph, edge_len, head_pts=[head]) == 0
+    assert len(rp._connected_components(graph)) == 2
+
+
 # ── R9: 겹쳐 그린 중복 선분 제거 ────────────────────────────────────────────
 
 def _overlap_graph():

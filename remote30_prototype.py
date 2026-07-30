@@ -2421,6 +2421,10 @@ class ExtractionAudit:
     residual_cycles: dict = field(default_factory=dict)  # {count,policy}
     unreachable_heads: list = field(default_factory=list)  # [[x,y],...]
     fallback: dict = field(default_factory=dict)        # {triggered,reason}
+    # 형상 정규화 — 직교화(O2) 집계 + 루프 금지 게이트(O1)가 버린 사이클 간선 수.
+    # {snapped_nodes,max_shift_mm,snap_reverted_nodes,snap_skipped_classes,
+    #  split_edges,unresolved_diagonals,edges_before,edges_after,cycle_edges_dropped}
+    ortho: dict = field(default_factory=dict)
 
     @classmethod
     def from_audit_dict(cls, audit: dict) -> "ExtractionAudit":
@@ -2449,6 +2453,7 @@ class ExtractionAudit:
             unreachable_heads=list(audit.get("unreachable_heads") or []),
             fallback=dict(audit.get("fallback") or
                           {"triggered": False, "reason": ""}),
+            ortho=dict(audit.get("ortho") or {}),
         )
 
     def to_json_dict(self) -> dict:
@@ -2460,7 +2465,7 @@ class ExtractionAudit:
             "load": self.load, "pruned": self.pruned,
             "residual_cycles": self.residual_cycles,
             "unreachable_heads": self.unreachable_heads,
-            "fallback": self.fallback,
+            "fallback": self.fallback, "ortho": self.ortho,
         }
 
 
@@ -3145,6 +3150,154 @@ def force_spanning_tree(
     return tree_edges, removed_edges
 
 
+# 축 스냅 허용 오차 — 짧은 성분이 이 값 이하로 어긋난 간선은 작도 오차로 보고
+# 좌표를 축선에 맞춘다. 그 이상은 실제 대각 배관으로 보고 L자로 분해한다.
+ORTHO_SNAP_EPS_MM = 25.0
+_ORTHO_TOL = 1e-9
+
+
+def orthogonalize_edges(
+    edges: list[tuple[tuple[float, float], tuple[float, float], float]],
+    anchors: set[tuple[float, float]],
+    elbow_fittings: dict | None = None,
+    snap_eps_mm: float = ORTHO_SNAP_EPS_MM,
+    audit: dict | None = None,
+) -> tuple[list, dict, dict]:
+    """배관망을 축평행(모든 교차각 90°) 간선만으로 재구성한다.
+
+    실제 스프링클러 배관은 건물 그리드를 따라 직각으로 돌지만, 추출 결과에는 두 종류의
+    대각선이 섞인다 — ⓐ 작도 오차로 몇 mm 어긋난 간선 ⓑ collinear merge 가 직각 코너를
+    흡수해 만들어낸 대각선(길이는 실제 경로 합이라 맞지만 형상이 무너진 것).
+
+    ① 축 스냅  짧은 성분이 snap_eps_mm 이하인 간선은 양 끝 좌표를 같은 축선으로 모은다.
+       좌표값 단위 union-find 라 한 축선에 걸친 노드가 통째로 정렬된다.
+    ② L자 분해  남은 대각 간선에 코너 노드를 넣어 축평행 2개로 쪼갠다. 길이는 원 길이를
+       성분비로 배분하므로 **간선 길이 합이 정확히 보존**된다 — 관경 산정 결과 불변.
+
+    anchors(소스·헤드)는 절대 이동하지 않는다. 앵커가 서로 다른 축선을 요구하는 클래스,
+    또는 이동 폭이 4·eps 를 넘는 연쇄 클래스는 스냅을 포기하고 ②로 넘긴다.
+
+    Returns:
+        (new_edges, new_elbow_fittings, node_map) — node_map 은 옛 좌표 → 새 좌표.
+    """
+    nodes = {n for a, b, _L in edges for n in (a, b)}
+
+    # ── ① 축 스냅 ──────────────────────────────────────────────────────────
+    def _find(par: dict, v: float) -> float:
+        root = v
+        while par[root] != root:
+            root = par[root]
+        while par[v] != root:
+            par[v], v = root, par[v]
+        return root
+
+    def _union(par: dict, u: float, v: float) -> None:
+        par.setdefault(u, u)
+        par.setdefault(v, v)
+        ru, rv = _find(par, u), _find(par, v)
+        if ru != rv:
+            par[ru] = rv
+
+    par_x: dict[float, float] = {}
+    par_y: dict[float, float] = {}
+    for a, b, _L in edges:
+        dx, dy = abs(a[0] - b[0]), abs(a[1] - b[1])
+        if dx <= _ORTHO_TOL or dy <= _ORTHO_TOL or min(dx, dy) > snap_eps_mm:
+            continue
+        # 수평에 가까우면 두 끝의 y 를, 수직에 가까우면 x 를 한 값으로 모은다.
+        if dx >= dy:
+            _union(par_y, a[1], b[1])
+        else:
+            _union(par_x, a[0], b[0])
+
+    skipped = Counter()
+
+    def _reps(par: dict, pinned: set[float]) -> dict[float, float]:
+        classes: dict[float, list[float]] = defaultdict(list)
+        for v in par:
+            classes[_find(par, v)].append(v)
+        rep: dict[float, float] = {}
+        for members in classes.values():
+            fixed = {m for m in members if m in pinned}
+            if len(fixed) > 1:
+                skipped["anchor_conflict"] += 1
+                continue
+            if max(members) - min(members) > 4 * snap_eps_mm:
+                skipped["chain_drift"] += 1
+                continue
+            target = next(iter(fixed)) if fixed else sum(members) / len(members)
+            for m in members:
+                rep[m] = target
+        return rep
+
+    rep_x = _reps(par_x, {p[0] for p in anchors})
+    rep_y = _reps(par_y, {p[1] for p in anchors})
+    # 서로 다른 노드가 한 점으로 겹치면 위상이 바뀐다. 겹친 노드만 제자리로 되돌리고
+    # 다시 확인한다 — 전면 취소하면 몇 mm 어긋남까지 ②로 넘어가 0mm 세그먼트가 생긴다.
+    reverted: set = set()
+    for _ in range(len(rep_x) + len(rep_y) + 1):
+        node_map = {n: (rep_x.get(n[0], n[0]), rep_y.get(n[1], n[1])) for n in nodes}
+        clash: dict = defaultdict(list)
+        for n, m in node_map.items():
+            clash[m].append(n)
+        collided = [n for group in clash.values() if len(group) > 1 for n in group]
+        if not collided:
+            break
+        reverted.update(collided)
+        for n in collided:
+            rep_x.pop(n[0], None)
+            rep_y.pop(n[1], None)
+    moved = sum(1 for n, m in node_map.items() if n != m)
+    max_shift = max((math.dist(n, m) for n, m in node_map.items()), default=0.0)
+
+    # ── ② L자 분해 ─────────────────────────────────────────────────────────
+    src_elbows = elbow_fittings or {}
+    occupied = set(node_map.values())
+    new_edges: list = []
+    new_elbows: dict = defaultdict(list)
+    split = unresolved = 0
+
+    for a, b, L in edges:
+        na, nb = node_map[a], node_map[b]
+        carried = src_elbows.get((min(a, b), max(a, b)))
+        dx, dy = nb[0] - na[0], nb[1] - na[1]
+        corner = None
+        if abs(dx) > _ORTHO_TOL and abs(dy) > _ORTHO_TOL:
+            # 긴 성분을 먼저 진행 — 주배관 방향을 유지한 뒤 끝에서 꺾는 실제 배선에 가깝다.
+            cands = ([(nb[0], na[1]), (na[0], nb[1])] if abs(dx) >= abs(dy)
+                     else [(na[0], nb[1]), (nb[0], na[1])])
+            corner = next((c for c in cands if c not in occupied), None)
+            if corner is None:
+                unresolved += 1
+        if corner is None:
+            new_edges.append((na, nb, L))
+            if carried:
+                new_elbows[(min(na, nb), max(na, nb))].extend(carried)
+            continue
+        occupied.add(corner)
+        first = abs(corner[0] - na[0]) + abs(corner[1] - na[1])
+        l1 = L * first / (abs(dx) + abs(dy))
+        new_edges.append((na, corner, l1))
+        new_edges.append((corner, nb, L - l1))
+        split += 1
+        if carried:
+            # 흡수돼 있던 elbow 는 등가길이 부속이라 어느 세그먼트에 달려도 수리적으로 동일.
+            new_elbows[(min(na, corner), max(na, corner))].extend(carried)
+
+    if audit is not None:
+        audit.update({
+            "snapped_nodes": moved,
+            "max_shift_mm": round(max_shift, 3),
+            "snap_reverted_nodes": len(reverted),
+            "snap_skipped_classes": dict(skipped),
+            "split_edges": split,
+            "unresolved_diagonals": unresolved,
+            "edges_before": len(edges),
+            "edges_after": len(new_edges),
+        })
+    return new_edges, {k: v for k, v in new_elbows.items() if v}, node_map
+
+
 def _restrict_to_branch_region(
     graph: dict[tuple, set[tuple]],
     edge_len: dict[tuple, float],
@@ -3707,13 +3860,18 @@ def _finalize_selection(
     src_bridge_dist_mm: float,
     src_fallback: bool,
     head_drop_out: set | None = None,
+    ortho: bool = True,
+    ortho_audit: dict | None = None,
 ) -> SelectionResult:
-    """SPT 이후 공통 후반부 — 헤드 스냅→거리정렬→top-K→subgraph→collinear 병합.
+    """SPT 이후 공통 후반부 — 헤드 스냅→거리정렬→top-K→subgraph→collinear 병합→직교화.
 
     select_worst30_heads 에서 순수 코드 이동(동작 불변). anchored 경로
     (select_worst30_heads_anchored)와 공유하기 위해 분리.
     head_drop_out: 주어지면 헤드 스냅으로 추가된 head-drop edge (min,max) 키 누적
         (→W7 audit. 기본 None=기존 동작 불변).
+    ortho: 병합 결과를 축평행 간선만으로 재구성(`orthogonalize_edges`). 병합이 직각
+        코너를 흡수해 만든 대각선을 되돌린다. 총 연장·앵커 좌표는 보존.
+    ortho_audit: 주어지면 직교화 집계와 노드 이동 맵을 담아 돌려준다.
     """
     # 헤드 최근접-노드 스냅 — 헤드 수천 개 × O(|graph|) 전수스캔이면 대형 도면에서
     # 수십 초~분. 격자 인덱스(cell = HEAD_BRIDGE_MAX_MM)로 근사 O(1) 질의로 대체.
@@ -3806,9 +3964,24 @@ def _finalize_selection(
     distances = [d for _, _, d in top_k]
 
     # subgraph 추출 — top-K 헤드 각각의 src→head 최단경로의 합집합
+    # 최단경로 합집합은 경로가 갈렸다 다시 만나면 루프가 된다. 수리계산 입력은 가지식
+    # 이어야 하므로 union-find 로 사이클을 닫는 간선을 버린다. 버리는 시점에 양 끝이
+    # 이미 연결돼 있으므로 어떤 헤드도 끊기지 않는다.
+    _uf: dict[tuple[float, float], tuple[float, float]] = {}
+
+    def _uf_find(v):
+        _uf.setdefault(v, v)
+        root = v
+        while _uf[root] != root:
+            root = _uf[root]
+        while _uf[v] != root:
+            _uf[v], v = root, _uf[v]
+        return root
+
     sub_edges_seen: set[tuple[tuple[float, float], tuple[float, float]]] = set()
     sub_edges: list[tuple[tuple[float, float], tuple[float, float], float]] = []
     sub_nodes: set[tuple[float, float]] = {src}
+    cycle_dropped = 0
     _n_top = len(top_k)
     for _si, (_, head_node, _) in enumerate(top_k, 1):
         path = _shortest_path(graph, edge_len, src, head_node)
@@ -3816,6 +3989,11 @@ def _finalize_selection(
             key = (min(a, b), max(a, b))
             if key in sub_edges_seen:
                 continue
+            ra, rb = _uf_find(a), _uf_find(b)
+            if ra == rb:
+                cycle_dropped += 1
+                continue
+            _uf[ra] = rb
             sub_edges_seen.add(key)
             sub_edges.append((a, b, edge_len.get(key, math.hypot(b[0] - a[0], b[1] - a[1]))))
             sub_nodes.add(a); sub_nodes.add(b)
@@ -3901,7 +4079,17 @@ def _finalize_selection(
             seen_keys.add(key)
             L = sub_edge_len.get(key, math.hypot(m[0] - n[0], m[1] - n[1]))
             merged_edges.append((n, m, L))
-    merged_nodes = sorted(sub_adj.keys())
+    merged_edges_out = merged_edges
+    elbows_out = {k: v for k, v in edge_elbows.items() if v}
+    if ortho:
+        merged_edges_out, elbows_out, _node_map = orthogonalize_edges(
+            merged_edges, anchors=keep_nodes, elbow_fittings=elbows_out,
+            audit=ortho_audit)
+        if ortho_audit is not None:
+            ortho_audit["node_map"] = _node_map
+    if ortho_audit is not None:
+        ortho_audit["cycle_edges_dropped"] = cycle_dropped
+    merged_nodes = sorted({n for a, b, _L in merged_edges_out for n in (a, b)})
 
     _pcb(1.0, "선정 완료")
     return SelectionResult(
@@ -3909,9 +4097,9 @@ def _finalize_selection(
         source_kind=src_kind,
         heads=selected_heads,
         distances=distances,
-        edges=merged_edges,
+        edges=merged_edges_out,
         nodes_in_subgraph=merged_nodes,
-        elbow_fittings={k: v for k, v in edge_elbows.items() if v},
+        elbow_fittings=elbows_out,
         source_bridge_dist_mm=src_bridge_dist_mm,
         source_fallback=src_fallback,
     )
@@ -4132,7 +4320,8 @@ def select_worst30_heads_anchored(
     tee_split: bool = False,
     dxf_path=None,
     load_mode: bool = False,
-    on_residual_cycle: str = "preserve",
+    on_residual_cycle: str = "force_tree",
+    ortho: bool = True,
 ) -> SelectionResult:
     """2앵커 anchored 선정(§1 계약) — ``alarm_xy``·``head_region`` 필수.
 
@@ -4153,7 +4342,9 @@ def select_worst30_heads_anchored(
         경로 그대로. on 이면 corridor 제한 뒤 compute_edge_load → prune_by_load 로
         부하 0 간선(드레인·시험배관·막다른 가지)을 제거한다.
     on_residual_cycle: load_mode 에서 잔여 사이클 정책 — "preserve" | "force_tree".
-        force_tree 일 때만 force_spanning_tree 가 호출된다.
+        force_tree 일 때만 force_spanning_tree 가 호출된다. 기본 force_tree —
+        수리계산 입력은 루프 없는 가지식이어야 한다(격자 보존은 BLOCKED.md §11).
+    ortho: 최종망을 축평행 간선만으로 재구성(기본 on). docs/orthogonalization.md.
     """
     if alarm_xy is None:
         raise ValueError("anchored: alarm_xy(수동 알람밸브 좌표) 필수")
@@ -4298,10 +4489,23 @@ def select_worst30_heads_anchored(
     else:
         force_spanning_tree(graph, edge_len, source=src, penalty_keys=_penalty_keys)
     _hd_keys: set = set()
+    _ortho_audit: dict = {}
     res = _finalize_selection(graph, edge_len, src, "manual_anchored", heads, k, _pcb,
-                              src_bridge_dist_mm, False, head_drop_out=_hd_keys)
+                              src_bridge_dist_mm, False, head_drop_out=_hd_keys,
+                              ortho=ortho, ortho_audit=_ortho_audit)
     audit["head_drops"] = [{"p1": [kk[0][0], kk[0][1]], "p2": [kk[1][0], kk[1][1]],
                             "len_mm": edge_len.get(kk, 0.0)} for kk in sorted(_hd_keys)]
+    # 직교화가 노드를 옮겼으면 추정-edge 좌표도 같이 옮긴다 — 프론트가 브릿지·용접·
+    # head-drop 을 최종망 위에 점선으로 겹쳐 그리므로 좌표가 어긋나면 표시가 깨진다.
+    _nmap = _ortho_audit.pop("node_map", None)
+    if _nmap:
+        for _key in ("bridges", "welds", "head_drops"):
+            for _rec in audit.get(_key) or []:
+                for _pk in ("p1", "p2"):
+                    _moved = _nmap.get(tuple(_rec[_pk]))
+                    if _moved is not None:
+                        _rec[_pk] = [_moved[0], _moved[1]]
+    audit["ortho"] = _ortho_audit
     # W7 — 축적 dict → 정식 스키마. 반환값에 포함 (r30_combined 가 JSON 직렬화)
     res.audit = ExtractionAudit.from_audit_dict(audit)
     return res

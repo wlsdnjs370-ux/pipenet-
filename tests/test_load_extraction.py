@@ -196,7 +196,8 @@ def test_l4_no_attached_head_is_lost_by_pruning():
     assert audit["heads"]["unreachable"] == []
     assert audit["heads"]["attached"] == audit["heads"]["detected_in_region"]
     assert audit["pruned"]["dead_edge_count"] > 0
-    assert audit["residual_cycles"] == {"count": 0, "policy": "preserve"}
+    # 기본 정책은 force_tree — 수리계산 입력은 루프 없는 가지식이어야 한다(O1).
+    assert audit["residual_cycles"] == {"count": 0, "policy": "force_tree"}
 
 
 def test_l5_audit_json_schema_is_filled():

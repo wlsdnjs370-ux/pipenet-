@@ -2303,6 +2303,48 @@ def find_unreachable_region_heads(
     return unreachable
 
 
+def _source_attach_points(alarm_xy, graph: dict, comp_of: dict,
+                          edge_len: dict) -> dict:
+    """컴포넌트별 알람밸브 최근접 접속점 — {comp_id: (거리, 점, 쪼갤 edge 키|None)}.
+
+    노드뿐 아니라 배관 *중간* (수선발)도 후보다. 배관은 끝점에서만 갈라지지 않으므로
+    노드만 보면 주배관 옆 1m 지점에 선 알람밸브가 수십 m 떨어진 끝점으로 끌려가거나
+    옆의 짧은 조각에 붙는다. 수선발은 실배관 위의 점이라 좌표를 지어내지 않는다.
+    쪼갠 뒤 양쪽이 ``MIN_PIPE_EDGE_MM`` 미만이 되는 수선발은 버린다 — 그 경우는
+    끝점 접속이고 노드 후보가 이미 덮는다.
+    """
+    ax, ay = float(alarm_xy[0]), float(alarm_xy[1])
+    best: dict = {}
+    for n in graph:
+        cid = comp_of.get(n)
+        d = math.hypot(n[0] - ax, n[1] - ay)
+        if d < best.get(cid, (float("inf"),))[0]:
+            best[cid] = (d, n, None)
+    for key in edge_len:
+        a, b = key
+        if b not in graph.get(a, ()):
+            continue
+        abx = b[0] - a[0]
+        aby = b[1] - a[1]
+        L2 = abx * abx + aby * aby
+        if L2 < 1e-9:
+            continue
+        t = ((ax - a[0]) * abx + (ay - a[1]) * aby) / L2
+        if not (0.0 < t < 1.0):
+            continue
+        foot = (a[0] + t * abx, a[1] + t * aby)
+        if (math.hypot(foot[0] - a[0], foot[1] - a[1]) < MIN_PIPE_EDGE_MM
+                or math.hypot(foot[0] - b[0], foot[1] - b[1]) < MIN_PIPE_EDGE_MM):
+            continue
+        d = math.hypot(ax - foot[0], ay - foot[1])
+        cid = comp_of.get(a)
+        cur = best.get(cid)
+        # 동점은 edge 키 순으로 결정적 해소.
+        if cur is None or (d, key) < (cur[0], cur[2] or key):
+            best[cid] = (d, foot, key)
+    return best
+
+
 def attach_source(
     alarm_xy: tuple[float, float],
     graph: dict,
@@ -2310,23 +2352,30 @@ def attach_source(
     accepted_heads: list,
     edge_len: dict,
     audit: dict,
+    comp_len: dict | None = None,
 ) -> tuple[tuple[float, float], tuple | None]:
     """anchored 소스 결합(W2) — blind ``_nearest_graph_node`` 단독 폴백 금지.
+
+    접속점은 노드와 배관 중간(수선발)을 모두 본다(``_source_attach_points``).
+    알람밸브 결합은 추정연결 폐지 원칙의 예외로 유하게 잡는다 — 여기서 실패하면
+    추출이 통째로 죽는데, 소스 위치는 사용자가 직접 찍은 확정 입력이라 추정이 아니다.
 
     1순위 후보 = region 내 승인 헤드를 1개 이상 보유한 컴포넌트. 그중 헤드를 가장
     많이 담은 컴포넌트에 부착하고, 동수면 최근접으로 가른다 — 최근접 단독 기준은
     금지다. 배관↔배관 추정연결이 없어진 뒤로 망이 여러 조각으로 남으므로, 알람밸브
     바로 옆의 헤드 2개짜리 파편이 본망을 제치고 뽑히면 나머지 헤드를 통째로 잃는다.
     ``SOURCE_BRIDGE_MAX_MM`` 내에 없으면 무헤드 컴포넌트까지 1단계 완화
-    (escalation=1)하되 거리 상한은 유지. 그래도 없으면 anchored 실패 —
-    명시적 에러(ValueError). 선택 근거(거리·컴포넌트 헤드 수·완화 단계)는
-    ``audit['source_attach']`` 에 기록한다.
+    (escalation=1)하되 거리 상한은 유지. 이때도 최근접이 아니라 연장이 가장 긴
+    컴포넌트를 고른다 — B1F 실측에서 알람밸브 0.3mm 옆의 5.6m 짜리 스텁이 1.6m
+    떨어진 134m 주배관을 이겨 추출이 6노드로 끝났다. 그래도 없으면 anchored 실패 —
+    명시적 에러(ValueError). 선택 근거는 ``audit['source_attach']`` 에 기록한다.
 
     accepted_heads: HeadDetection 목록(또는 (x, y) 좌표 목록).
-    반환: (source 노드, 접속 edge 키 또는 None). alarm_xy 가 기존 노드와 1e-3 이상
-    떨어져 있으면 alarm_xy 를 그래프 노드로 추가하고 최근접 후보 노드와 edge 로
-    잇는다(기존 canonical 부착과 동일 방식) — 이 edge 는 추정연결이라 호출부에서
-    라우팅 penalty 대상으로 등록해야 한다.
+    comp_len: {comp_id: 총 연장 mm}. 없으면 완화 단계에서 최근접으로 가른다.
+    반환: (source 노드, 접속 edge 키 또는 None). 접속점이 배관 중간이면 그 배관을
+    두 조각으로 쪼갠 뒤 붙인다. alarm_xy 가 접속점과 1e-3 이상 떨어져 있으면
+    alarm_xy 를 그래프 노드로 추가하고 접속점과 edge 로 잇는다 — 이 edge 는
+    추정연결이라 호출부에서 라우팅 penalty 대상으로 등록해야 한다.
     """
     ax, ay = float(alarm_xy[0]), float(alarm_xy[1])
     head_count: dict = {}
@@ -2340,30 +2389,37 @@ def attach_source(
             if cid is not None:
                 head_count[cid] = head_count.get(cid, 0) + 1
 
-    nearest_in: dict = {}          # comp_id → (거리, 노드)
-    for n in graph:
-        cid = comp_of.get(n)
-        d = math.hypot(n[0] - ax, n[1] - ay)
-        if d < nearest_in.get(cid, (float("inf"), None))[0]:
-            nearest_in[cid] = (d, n)
-
-    ranked = sorted(nearest_in.items(),
-                    key=lambda kv: (-head_count.get(kv[0], 0), kv[1][0]))
+    nearest_in = _source_attach_points((ax, ay), graph, comp_of, edge_len)
+    _extent = comp_len or {}
     stages = (
-        (0, "head_component_most_heads", lambda cid: cid in head_count),
-        (1, "any_component_nearest", lambda cid: True),
+        (0, "head_component_most_heads", lambda cid: cid in head_count,
+         lambda kv: (-head_count.get(kv[0], 0), kv[1][0])),
+        (1, "largest_component_nearest_point", lambda cid: True,
+         lambda kv: (-_extent.get(kv[0], 0.0), kv[1][0])),
     )
-    for escalation, method, pred in stages:
-        cand = next(((d, n) for cid, (d, n) in ranked
-                     if pred(cid) and d <= SOURCE_BRIDGE_MAX_MM), None)
+    for escalation, method, pred, sort_key in stages:
+        cand = next((v for _cid, v in sorted(nearest_in.items(), key=sort_key)
+                     if pred(_cid) and v[0] <= SOURCE_BRIDGE_MAX_MM), None)
         if cand is None:
             continue
-        d, node = cand
+        d, node, split_key = cand
+        if split_key is not None:
+            a, b = split_key
+            graph[a].discard(b)
+            graph[b].discard(a)
+            del edge_len[split_key]
+            for end in (a, b):
+                graph.setdefault(node, set()).add(end)
+                graph[end].add(node)
+                edge_len[(min(node, end), max(node, end))] = math.hypot(
+                    node[0] - end[0], node[1] - end[1])
+            comp_of[node] = comp_of[a]
         audit["source_attach"] = {
             "dist_mm": d,
             "method": method,
             "escalation": escalation,
             "comp_head_count": head_count.get(comp_of.get(node), 0),
+            "attached_to": "pipe_interior" if split_key is not None else "node",
         }
         if d <= 1e-3:
             return node, None
@@ -2375,7 +2431,7 @@ def attach_source(
         return src, key
     audit["source_attach"] = {
         "dist_mm": None, "method": "failed", "escalation": len(stages),
-        "comp_head_count": 0,
+        "comp_head_count": 0, "attached_to": None,
     }
     raise ValueError(
         f"anchored 소스 결합 실패 — alarm_xy=({ax}, {ay}) 반경 "
@@ -4481,14 +4537,17 @@ def select_worst30_heads_anchored(
     _comp_len: dict = defaultdict(float)
     for (_a, _b), _L in edge_len.items():
         _comp_len[comp_of[_a]] += _L
-    src, attach_key = attach_source(src_raw, graph, comp_of, heads, edge_len, audit)
+    src, attach_key = attach_source(src_raw, graph, comp_of, heads, edge_len,
+                                    audit, comp_len=_comp_len)
     # 조각 현황(R3) — 추정 연결을 폐지했으니 안 붙은 조각은 봉합하지 않고 센다.
-    _main = comp_of.get(attach_key[0] if attach_key and attach_key[0] != src
-                        else (attach_key[1] if attach_key else None))
+    # 노드 수는 comps 가 아니라 comp_of 로 센다 — 배관 중간 접속이면 attach_source 가
+    # 그 배관을 쪼개면서 노드를 하나 더 만든다.
+    _main = comp_of.get(src if attach_key is None
+                        else (attach_key[0] if attach_key[0] != src else attach_key[1]))
     audit["fragments"] = {
         "count": len(comps),
-        "attached_nodes": len(comps[_main]) if _main is not None else 0,
-        "detached_nodes": sum(len(c) for i, c in enumerate(comps) if i != _main),
+        "attached_nodes": sum(1 for c in comp_of.values() if c == _main),
+        "detached_nodes": sum(1 for c in comp_of.values() if c != _main),
         "detached_len_mm": round(sum(L for i, L in _comp_len.items()
                                      if i != _main), 1),
     }

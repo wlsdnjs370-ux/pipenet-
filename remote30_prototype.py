@@ -4160,6 +4160,7 @@ def _split_crossing_tees(
     edge_len: dict,
     axis_tol_mm: float = CROSS_TEE_AXIS_TOL_MM,
     margin_mm: float = MIN_PIPE_EDGE_MM,
+    head_pts: list | None = None,
     cuts_out: list | None = None,
 ) -> int:
     """관통 교차를 티로 해석해 절단·접속한다 — 단, 합류하는 교차만.
@@ -4183,9 +4184,17 @@ def _split_crossing_tees(
          B1F 의 합류 교차 262곳 중 244곳이 137~288mm 짜리 고립 선분(LINE 으로 그린
          헤드 십자 기호)이고, 남는 18곳은 839mm 이상의 실배관이다. 길이 조건을 함께
          걸어야 통째로 한 선분인 긴 주배관을 잘못 배제하지 않는다.
+      3. **스프링클러 증거** (``head_pts`` 주어질 때) — 합치려는 두 조각 어느 쪽에도
+         헤드가 하나도 안 달려 있으면 무시한다. 부속 기호 게이트("기호 있는 교차만
+         분기")는 실측으로 기각됐다 — B1F 는 진짜 티 자리에도 기호를 안 그려서(절단
+         후보 326곳 중 기호 60mm 내 6곳) 게이트를 걸면 주망이 1856 → 45 헤드로
+         붕괴한다. 이 도면 관습에서 존재하는 유일한 부속 증거는 헤드 자체다. 헤드가
+         직접 안 달린 주배관 경유 합류가 285곳이라 "양쪽 필수"도 붕괴(→503)하고,
+         "양쪽 다 0개면 거부"만이 손실 0(1856 유지)으로 증거 없는 접속 4건을 거른다.
 
     끝점 근처(``margin_mm`` 안) 교차는 제외한다 — 최소길이 미만 토막을 만들지 않고,
     그 영역은 이미 ``_split_tee_branches`` 담당이다.
+    head_pts: 헤드 좌표 목록. ``HEAD_DROP_MAX_MM`` 이내 최근접 노드에 배정해 센다.
     cuts_out: 주어지면 [{"p", "h", "v"}] 기록 (audit 근거용).
     반환: 절단·접속한 교차 수.
     """
@@ -4228,6 +4237,25 @@ def _split_crossing_tees(
         if ra != rb:
             parent[ra] = rb
 
+    root_heads: dict = {}
+    if head_pts is not None:
+        cell = HEAD_DROP_MAX_MM
+        buckets: dict = defaultdict(list)
+        for n in graph:
+            buckets[(int(n[0] // cell), int(n[1] // cell))].append(n)
+        for hx, hy in head_pts:
+            cx, cy = int(hx // cell), int(hy // cell)
+            best, bd = None, cell * cell
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for n in buckets.get((cx + dx, cy + dy), ()):
+                        d = (n[0] - hx) ** 2 + (n[1] - hy) ** 2
+                        if d <= bd:
+                            best, bd = n, d
+            if best is not None:
+                r = _find(best)
+                root_heads[r] = root_heads.get(r, 0) + 1
+
     def _is_mark(key) -> bool:
         # 다른 배관과 이어지지도 않고 기호 크기를 넘지도 않는 선분 = 표시 획.
         return (len(comps[comp_of[key[0]]]) < 3
@@ -4241,7 +4269,11 @@ def _split_crossing_tees(
         ra, rb = _find(hk[0]), _find(vk[0])
         if ra == rb:
             continue  # 이미 이어진 배관끼리의 교차 — 스쳐 지나감과 구분 불가
+        if head_pts is not None and not (root_heads.get(ra) or root_heads.get(rb)):
+            continue  # 어느 쪽에도 스프링클러 증거(헤드)가 없다 — 접속 근거 없음
         parent[ra] = rb
+        if head_pts is not None:
+            root_heads[rb] = root_heads.pop(ra, 0) + root_heads.get(rb, 0)
         cuts[hk].add(p)
         cuts[vk].add(p)
         accepted += 1
@@ -4443,7 +4475,7 @@ def select_worst30_heads(
     _drop_covered_edges(graph, edge_len)
     # 헤드 기호가 끊어놓은 동일선상 배관 접속 — 헤드 확정 뒤라야 판정할 수 있다.
     _join_head_gap_endpoints(graph, edge_len, [h.pos for h in heads])
-    _split_crossing_tees(graph, edge_len)
+    _split_crossing_tees(graph, edge_len, head_pts=[h.pos for h in heads])
     if manual_source is not None:
         src_raw = _round_pt(manual_source[0], manual_source[1])
         src_kind = "manual"
@@ -4994,7 +5026,8 @@ def select_worst30_heads_anchored(
     audit["head_gap_joins"] = _hjoin
     # 관통 교차 티 복원 — 합류하는 교차만(루프 안 생김).
     _xtee: list = []
-    _split_crossing_tees(graph, edge_len, cuts_out=_xtee)
+    _split_crossing_tees(graph, edge_len, head_pts=[h.pos for h in heads],
+                         cuts_out=_xtee)
     audit["crossing_tees"] = _xtee
     # 배관↔배관 추정연결(용접·브리지)은 폐지 — 남는 추정은 기호↔배관 결합선뿐.
     _penalty_keys: set = set()
@@ -6609,7 +6642,8 @@ def run_stages_0_2(
     head_gap_joins = _join_head_gap_endpoints(
         graph, edge_len, [h.pos for h in head_detections])
     # 관통 교차 티 복원 — 합류하는 교차만(루프 안 생김).
-    crossing_tees = _split_crossing_tees(graph, edge_len)
+    crossing_tees = _split_crossing_tees(
+        graph, edge_len, head_pts=[h.pos for h in head_detections])
     # head_drop_edges: 헤드 INSERT 좌표 ↔ 배관 nearest 노드 직선 (실제 배관 아님)
     # — 기호↔배관 결합선이라 시각적으로 구분 렌더.
     # 헤드 drop line — 헤드 INSERT 좌표를 같은 NodeIndex 로 canonicalize

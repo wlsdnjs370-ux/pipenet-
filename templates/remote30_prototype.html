@@ -136,11 +136,11 @@
       border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;
       padding: 3px 6px; font-size: 0.72rem;
     }
-    .trace-bar input[type="range"] { flex: 1; min-width: 80px; accent-color: #fde047; }
+    .trace-bar input[type="range"] { flex: 1; min-width: 80px; accent-color: #38bdf8; }
     .trace-bar label { display: flex; align-items: center; gap: 4px; white-space: nowrap; cursor: pointer; }
     #trace-readout {
       min-width: 310px; font-variant-numeric: tabular-nums;
-      color: #fde047; white-space: nowrap;
+      color: #7dd3fc; white-space: nowrap;
     }
     /* ─── 아이소메트릭 3D — 옵션 패널 + 안내 + 캔버스 ─── */
     /* specificity: .canvas-pane canvas (0,1,1) 보다 높여야 display 가 적용됨.
@@ -1462,7 +1462,16 @@
       PIPE: "#3b82f6", HEAD: "#ef4444", TEXT: "#22c55e",
       ARCH: "#94a3b8", EXCLUDE: "#71717a", OTHER: "#f59e0b",
       ALARM: "#a855f7",  // 라이저 (입상관) / 알람밸브 레이어 — 보라색 (alarm valve 와 동일)
-      _subgraph: "#fde047", _subgraph_head: "#ef4444", _alarm_valve: "#a855f7",
+      _subgraph: "#38bdf8", _subgraph_head: "#22d3ee", _alarm_valve: "#a855f7",
+    };
+    // Stage 4 추적 전용 물 팔레트 — 알람밸브에서 물이 나가 헤드에서 방수되는 모습.
+    // GRAPH_STYLE.color_riser 는 계통도·통합 뷰와 공유라 여기서 건드리지 않는다.
+    const WATER = {
+      deep:    "#0369a1",   // 상류 관수로 — 짙은 물색
+      shallow: "#7dd3fc",   // 말단 가지 — 옅은 물색
+      crest:   "#f0f9ff",   // 추적 선단 = 물마루
+      spray:   "#22d3ee",   // 방수 중인 헤드
+      halo:    "#a5f3fc",   // 살수 링
     };
     const state = {
       // 5종 entity 스냅샷 (0=원본, 1=배관망, 2=헤드bbox, 3=그래프, 4=30 헤드)
@@ -2289,37 +2298,51 @@
         // Subgraph 엣지 — 서버가 AV→말단 traversal 순으로 정렬해 보낸 순서 그대로
         // 하나씩 전개. 트리에 못 들어간 edge(en.x)는 빨간 점선 = 오배선 후보.
         const _lim4 = state.revealed_edges_4;
-        const _subColor = (typeof GRAPH_STYLE !== "undefined") ? GRAPH_STYLE.color_riser : CAT_COLORS._subgraph;
         const _subWidth = (typeof GRAPH_STYLE !== "undefined") ? GRAPH_STYLE.pipe_width : 2.2;
+        // 관수로는 깊이에 따라 물색이 옅어진다 — 상류가 짙고 말단으로 갈수록 맑아진다.
+        let _maxD4 = 1;
+        for (const en of ents) if (en.l === "_subgraph" && en.d > _maxD4) _maxD4 = en.d;
         let _k4 = 0;
         for (const en of ents) {
           if (en.l !== "_subgraph") continue;
           const k = _k4++;
           if (_lim4 != null && k >= _lim4) continue;
           if (en.x) {
-            ctx.strokeStyle = "#ef4444"; ctx.fillStyle = "#ef4444";
+            ctx.strokeStyle = "#ef4444";
             ctx.lineWidth = _subWidth; ctx.setLineDash([6, 4]);
-          } else {
-            const lead = (_lim4 != null && k === _lim4 - 1);
-            ctx.strokeStyle = lead ? "#ffffff" : _subColor;
-            ctx.fillStyle = ctx.strokeStyle;
-            ctx.lineWidth = lead ? _subWidth * 2 : _subWidth;
-            ctx.setLineDash([]);
+            drawEntity(en);
+            continue;
           }
+          ctx.setLineDash([]);
+          if (_lim4 != null && k === _lim4 - 1) {
+            // 추적 선단 = 물마루. 번지는 글로우로 지금 물이 어디까지 갔는지 보인다.
+            ctx.strokeStyle = WATER.crest;
+            ctx.lineWidth = _subWidth * 2.2;
+            ctx.shadowColor = WATER.spray; ctx.shadowBlur = 12;
+            drawEntity(en);
+            ctx.shadowBlur = 0;
+            continue;
+          }
+          ctx.strokeStyle = _lerpColor(WATER.deep, WATER.shallow,
+                                       Math.min(1, (en.d || 0) / _maxD4));
+          ctx.lineWidth = _subWidth;
           drawEntity(en);
         }
         ctx.setLineDash([]);
 
-        // 헤드 — 자기 노드에 배관이 도달하는 순간(en.i)에 켜진다 + 도달 순 amber→red
-        let _maxI4 = 0;
-        for (const en of ents) if (en.l === "_subgraph_head" && en.i > _maxI4) _maxI4 = en.i;
+        // 헤드 — 배관이 자기 노드에 닿는 순간(en.i) 방수 시작. 물빛 코어 + 살수 링.
         for (const en of ents) {
           if (en.l !== "_subgraph_head") continue;
           if (_lim4 != null && en.i >= _lim4) continue;
-          const color = _maxI4 > 0
-            ? _lerpColor("#fde047", "#ef4444", (en.i || 0) / _maxI4)
-            : CAT_COLORS._subgraph_head;
-          ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.4;
+          const [hx, hy] = worldToScreen(en.c[0], en.c[1]);
+          const hr = en.r * state.view.zoom;
+          if (hr >= 1.5) {
+            ctx.strokeStyle = WATER.halo; ctx.lineWidth = 1.2;
+            ctx.globalAlpha = 0.45;
+            ctx.beginPath(); ctx.arc(hx, hy, hr * 2.1, 0, Math.PI * 2); ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+          ctx.strokeStyle = WATER.spray; ctx.fillStyle = WATER.spray; ctx.lineWidth = 1.6;
           drawEntity(en);
         }
 

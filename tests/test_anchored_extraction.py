@@ -811,3 +811,64 @@ def test_r9_unblocks_head_gap_join():
     assert rp._drop_covered_edges(graph, edge_len) == 1
     assert rp._join_head_gap_endpoints(graph, edge_len, heads) == 1
     assert len(rp._connected_components(graph)) == 1
+
+
+# ── R10: 헤드 틈 지문 배관 레이어 승격 ──────────────────────────────────────
+PROMO_LAYER = "현장조사#셔터"
+
+
+def _headgap_bundle(pieces: int = 4, head_x: float = 0.0,
+                    category: str = "OTHER") -> rp.ParsedDxfBundle:
+    """세로 런이 헤드마다 300mm 끊긴 도면. pieces-1 개의 헤드 틈이 생긴다."""
+    entities = []
+    for i in range(pieces):
+        y0 = i * 1300.0
+        entities.append({"t": "L", "l": PROMO_LAYER,
+                         "p": [0.0, y0, 0.0, y0 + 1000.0]})
+    for i in range(pieces - 1):
+        entities.append({"t": "I", "l": "SP-헤드", "n": "SP_HEAD",
+                         "p": [head_x, i * 1300.0 + 1150.0]})
+    return rp.ParsedDxfBundle(
+        entities=entities,
+        layers=[{"name": "SP-헤드", "auto_category": "HEAD"},
+                {"name": PROMO_LAYER, "auto_category": category}],
+    )
+
+
+def test_r10_promotes_layer_with_enough_head_gaps():
+    bundle = _headgap_bundle()
+    recs = rp._promote_headgap_pipe_layers(bundle)
+    assert [r["layer"] for r in recs] == [PROMO_LAYER]
+    assert recs[0]["prev_category"] == "OTHER"
+    assert recs[0]["headgap_count"] == 3
+    cats = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
+    assert cats[PROMO_LAYER] == "PIPE"
+
+
+def test_r10_below_threshold_stays_unpromoted():
+    """지문 2건 — 우연히 맞아떨어진 한두 쌍으로는 승격하지 않는다."""
+    bundle = _headgap_bundle(pieces=3)
+    assert rp._promote_headgap_pipe_layers(bundle) == []
+    cats = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
+    assert cats[PROMO_LAYER] == "OTHER"
+
+
+def test_r10_never_promotes_excluded_layer():
+    """EXCLUDE 는 사용자가 키워드로 명시해 뺀 레이어 — 지오메트리로 뒤집지 않는다."""
+    bundle = _headgap_bundle(category="EXCLUDE")
+    assert rp._promote_headgap_pipe_layers(bundle) == []
+    cats = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
+    assert cats[PROMO_LAYER] == "EXCLUDE"
+
+
+def test_r10_requires_head_inside_the_gap():
+    """헤드가 런에서 벗어난 자리에 있으면 그냥 끊긴 선 — 지문이 아니다."""
+    bundle = _headgap_bundle(head_x=rp.HEAD_GAP_JOIN_TOL_MM * 3)
+    assert rp._promote_headgap_pipe_layers(bundle) == []
+
+
+def test_r10_no_heads_no_promotion():
+    """헤드가 없는 도면에선 지문 자체가 성립하지 않는다."""
+    bundle = _headgap_bundle()
+    bundle.entities = [en for en in bundle.entities if en["t"] != "I"]
+    assert rp._promote_headgap_pipe_layers(bundle) == []

@@ -128,7 +128,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 
 def _categorize_layer(name: str) -> str:
@@ -262,6 +262,8 @@ class ParsedDxfBundle:
     layer_visibility: dict[str, dict] = field(default_factory=dict)
     # entity index → source meta (graph stage 에서 좌표→layer 매칭에 사용)
     layer_counts: dict[str, int] = field(default_factory=dict)
+    # 헤드 틈 지문으로 PIPE 승격된 레이어 — 이름 분류가 틀렸다는 근거 기록.
+    promoted_layers: list[dict] = field(default_factory=list)
     # robust bbox 진단 (outlier 가 있을 때 디버깅 + 라벨에 표시)
     bbox_diagnostics: dict = field(default_factory=dict)
 
@@ -541,6 +543,9 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
             "is_frozen": info.get("is_frozen", False),
             "visible": not (info.get("is_off", False) or info.get("is_frozen", False) or info.get("color", 7) < 0),
         })
+    # 이름 분류가 놓친 배관 레이어 회수 — 여기서 고쳐야 이후 모든 layer_categories
+    # 파생 지점(필터·그래프·레이어 패널)이 같은 분류를 본다.
+    bundle.promoted_layers = _promote_headgap_pipe_layers(bundle)
     return bundle
 
 
@@ -549,7 +554,7 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
 # 경로·mtime 키는 무의미 → 파일 내용 해시로 dedup. 파싱 로직이 바뀌면
 # _PARSE_CACHE_VERSION 을 올려 기존 캐시를 무효화한다. 캐시 실패는 전부 조용히 무시
 # (기능/정확도엔 영향 없음, 속도만 손해). 저장 위치는 gitignore 된 data/ 하위.
-_PARSE_CACHE_VERSION = 1
+_PARSE_CACHE_VERSION = 3  # 3: 헤드 틈 지문 배관 레이어 승격 + promoted_layers 필드
 _PARSE_CACHE_DIR = _Path(__file__).resolve().parent / "data" / "parse_cache"
 
 
@@ -2059,6 +2064,91 @@ def _machine_room_path_to_dict(
             "text_label_count": len(dia_text_pts),
         },
     }
+
+
+def _promote_headgap_pipe_layers(bundle: ParsedDxfBundle) -> list[dict]:
+    """헤드 틈 지문이 있는 레이어를 PIPE 로 승격 — 이름 아닌 지오메트리로 판별.
+
+    레이어 이름은 작도자 마음이다. B1F 업로드본은 가지관 한 줄(연장 85.6m)이 통째로
+    ``현장조사#셔터`` 레이어에 그려져 있어서 이름 기반 분류가 OTHER 로 떨어뜨리고,
+    그 런에 달린 헤드 15개가 주망에서 통째로 빠졌다. 키워드 목록에 "셔터"를 넣는
+    식으로는 다음 도면의 다음 오분류를 못 막는다.
+
+    지문은 ``_join_head_gap_endpoints`` 가 쓰는 사실 그대로다 — 동일선상 두 조각이
+    헤드 하나를 사이에 두고 ``HEAD_GAP_JOIN_MAX_MM`` 안으로 벌어져 있는가. 배관 런을
+    헤드마다 끊어 그리고 그 틈에 기호를 넣는 작도 관습의 흔적이라, 배관 아닌 도형이
+    우연히 만들기 어렵다. 실측(B1F 업로드본 39레이어 · B1F 최소 13 · 대명동 · LH306 ·
+    LH지하) 전 레이어 중 이 지문이 잡히는 비배관 레이어는 ``현장조사#셔터`` 하나(15건)
+    이고 건축·밸브·소화전·치수·PIT 는 전부 0건이다. 대명동·LH 는 승격 대상이 없다.
+
+    EXCLUDE 는 건드리지 않는다 — 설정 키워드로 사용자가 명시해 뺀 레이어다.
+    반환: 승격 기록 ``[{"layer", "prev_category", "headgap_count"}]``.
+    """
+    layer_cat = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
+    candidates = {name for name, cat in layer_cat.items()
+                  if cat not in PIPENET_CATEGORIES and cat != "EXCLUDE"
+                  and name not in KEEP_BASE_LAYERS}
+    if not candidates:
+        return []
+    base = [en for en in bundle.entities
+            if layer_cat.get(en["l"], "OTHER") in PIPENET_CATEGORIES
+            or en["l"] in KEEP_BASE_LAYERS]
+    heads = _find_head_candidates(base, layer_cat)
+    if len(heads) < HEADGAP_PIPE_PROMOTE_MIN:
+        return []
+
+    tol = HEAD_GAP_JOIN_TOL_MM
+    head_lane: dict = defaultdict(list)
+    for h in heads:
+        for axis in (0, 1):
+            run = 1 if axis == 0 else 0
+            head_lane[(axis, round(h.pos[1 - run] / tol))].append(h.pos[run])
+
+    lanes: dict = defaultdict(lambda: defaultdict(list))
+    for en in bundle.entities:
+        layer = en["l"]
+        if layer not in candidates:
+            continue
+        pts = en.get("p") or []
+        if en["t"] == "L":
+            segs = [((pts[0], pts[1]), (pts[2], pts[3]))] if len(pts) >= 4 else []
+        elif en["t"] == "PL":
+            segs = list(zip(pts, pts[1:]))
+        else:
+            continue
+        for a, b in segs:
+            if math.hypot(b[0] - a[0], b[1] - a[1]) < MIN_PIPE_EDGE_MM:
+                continue
+            axis = _axis_index(a, b, CROSS_TEE_AXIS_TOL_MM)
+            if axis < 0:
+                continue
+            run = 1 if axis == 0 else 0
+            off = (a[1 - run] + b[1 - run]) * 0.5
+            lanes[layer][(axis, round(off / CROSS_TEE_AXIS_TOL_MM))].append(
+                (min(a[run], b[run]), max(a[run], b[run])))
+
+    promoted = []
+    for layer, by_lane in lanes.items():
+        hits = 0
+        for (axis, bucket), spans in by_lane.items():
+            spans.sort()
+            hr = round(bucket * CROSS_TEE_AXIS_TOL_MM / tol)
+            hs = [v for d in (-1, 0, 1) for v in head_lane.get((axis, hr + d), ())]
+            for (_lo1, hi1), (lo2, _hi2) in zip(spans, spans[1:]):
+                gap = lo2 - hi1
+                if not (CROSS_TEE_AXIS_TOL_MM < gap <= HEAD_GAP_JOIN_MAX_MM):
+                    continue
+                mid = (hi1 + lo2) * 0.5
+                if any(abs(v - mid) <= tol for v in hs):
+                    hits += 1
+        if hits >= HEADGAP_PIPE_PROMOTE_MIN:
+            promoted.append({"layer": layer, "prev_category": layer_cat[layer],
+                             "headgap_count": hits})
+    names = {rec["layer"] for rec in promoted}
+    for ly in bundle.layers:
+        if ly["name"] in names:
+            ly["auto_category"] = "PIPE"
+    return promoted
 
 
 def filter_pipenet_only(bundle: ParsedDxfBundle) -> list[dict]:
@@ -6419,8 +6509,11 @@ def run_stages_0_2(
     pipe_ents = filter_pipenet_only(bundle)
     yield evt({"type": "entities", "stage": 1, "entities": pipe_ents,
                "summary": {"entity_count": len(pipe_ents)}})
+    _promo = "".join(
+        f" · 헤드 틈 지문으로 {r['layer']}({r['prev_category']}) 배관 승격 {r['headgap_count']}건"
+        for r in bundle.promoted_layers)
     yield evt({"type": "stage", "stage": 1, "status": "done",
-               "label": f"배관망 추출 완료 — {len(pipe_ents):,} entity"})
+               "label": f"배관망 추출 완료 — {len(pipe_ents):,} entity{_promo}"})
 
     # Stage 2: 헤드 인식
     yield evt({"type": "stage", "stage": 2, "status": "running",

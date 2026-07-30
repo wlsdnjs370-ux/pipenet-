@@ -3655,6 +3655,9 @@ def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
             {"label": str(p.get("label", "")),
              "in": str(p["in"]), "out": str(p["out"]),
              "dia": p.get("dia", 0),
+             # 재질 — DXF 에 없는 설계 정보. 이름(KSD 3507/CPVC2)은 CSV/XLSX 로,
+             # 짝인 C 계수는 SDF roughness-or-c 로 나간다. 둘은 항상 함께 편집된다.
+             "type": str(p.get("type", "") or ""),
              # 아이소 3D 방수 시뮬레이션용 하젠-윌리엄스 파라미터.
              "length": float(p.get("length", 0) or 0),   # m
              "c": float(p.get("c", 120) or 120),          # Hazen-Williams C
@@ -3668,6 +3671,41 @@ def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
              # 표시 전용 L-벤드 웨이포인트 [x,y] — 가지배관 대각선 직각화(있을 때만).
              "bend": p.get("bend")}
             for p in combined.pipes
+        ],
+        # ── 요소 조회/편집용 부속 테이블 (SDF 5테이블 중 노드·배관을 뺀 나머지) ──
+        # 브라우저 인스펙터가 헤드 방향·부속 종류·등가길이 산정 근거를 보여주고,
+        # rebuild 왕복에서 편집본을 그대로 돌려받아 각 포맷으로 방출한다.
+        "nozzles": [
+            {"label": str(nz.get("label", "")),
+             "in": str(nz.get("in") or nz.get("input_node") or ""),
+             "out": str(nz.get("out", "")),
+             "lib": str(nz.get("lib", "")),
+             "status": str(nz.get("status", "1")),
+             "flow_lmin": float(nz.get("flow_lmin", 0) or 0),
+             # 상향식/하향식 — 미지정 헤드는 빌드 시 전역 설정을 따른다.
+             "orientation": str(nz.get("orientation") or head_orientation)}
+            for nz in combined.nozzles
+        ],
+        "fittings": [
+            {"pipe": str(f.get("pipe", "")), "in": str(f.get("in", "")),
+             "out": str(f.get("out", "")), "type": str(f.get("type", "")),
+             "count": int(f.get("count", 1) or 1)}
+            for f in (combined.fittings or [])
+        ],
+        "equipment": [
+            {"pipe": str(e.get("pipe", "")), "in": str(e.get("in", "")),
+             "out": str(e.get("out", "")), "label": str(e.get("label", "")),
+             "desc": str(e.get("desc", "")),
+             "eq_len": float(e.get("eq_len", 0) or 0),
+             "rel_pos": float(e.get("rel_pos", 0) or 0),
+             # 등가길이 산정 근거 — 규격 프로파일명 / 출처 / 수동 덮어쓰기 여부.
+             "spec_ref": str(e.get("spec_ref", "") or ""),
+             "source": str(e.get("source", "") or ""),
+             "override_flag": bool(e.get("override_flag", False)),
+             "override_note": str(e.get("override_note", "") or ""),
+             "drawing_len_mm": (float(e["drawing_len_mm"])
+                                if e.get("drawing_len_mm") is not None else None)}
+            for e in (combined.equipment or [])
         ],
         "pumps": [
             {"label": str(p["label"]), "in": str(p["in"]), "out": str(p["out"])}
@@ -4407,9 +4445,10 @@ def _patch_combined_from_geometry(combined, geom: dict) -> None:
     """캐시된 CombinedTables 를 브라우저 편집 geometry 로 in-place 패치한다.
 
     편집 geometry(state.combined_geometry)는 노드(label,x,y,z,io,pressure_pa)와
-    배관(label,in,out,dia,length,c,elev)만 담는다. fittings/equipment/nozzle 유량 등
-    리치 필드는 combined 원본에 보존돼 있으므로, 여기서는 노드/배관만 덮어쓰고
-    삭제된 노드를 참조하는 nozzle/fitting/pump/valve 는 잘라낸다(SDF 무결성 유지).
+    배관(label,in,out,dia,length,c,elev,type)에 더해, 인스펙터가 건드릴 수 있는
+    nozzles/fittings/equipment 를 담는다. 이 세 키는 있을 때만 반영되므로 구버전
+    클라이언트(노드·배관만 전송)는 원본 부속을 그대로 유지한다.
+    끝으로 삭제된 노드를 참조하는 nozzle/fitting/pump/valve 를 잘라낸다(SDF 무결성).
 
     좌표계: x,y = mm(int) / elevation·length·elev = m. 클라이언트와 동일.
     """
@@ -4489,6 +4528,8 @@ def _patch_combined_from_geometry(combined, geom: dict) -> None:
         p["elev"] = _f(gp.get("elev", p.get("elev", 0)))
         if gp.get("c") is not None:
             p["c"] = gp["c"]
+        if gp.get("type"):
+            p["type"] = str(gp["type"])
         seen_p.add(lbl)
         if p["in"] in valid and p["out"] in valid:
             kept_pipes.append(p)
@@ -4499,7 +4540,8 @@ def _patch_combined_from_geometry(combined, geom: dict) -> None:
         if pin not in valid or pout not in valid:
             continue
         kept_pipes.append({
-            "label": lbl, "in": pin, "out": pout, "type": default_type,
+            "label": lbl, "in": pin, "out": pout,
+            "type": str(gp.get("type") or default_type),
             "dia": int(round(_f(gp.get("dia", 50)))),
             "length": _f(gp.get("length", 0)),
             "elev": _f(gp.get("elev", 0)),
@@ -4507,6 +4549,49 @@ def _patch_combined_from_geometry(combined, geom: dict) -> None:
             "status": "", "group": "",
         })
     combined.pipes = kept_pipes
+
+    # ── 인스펙터 편집분 반영 (헤드/부속/등가길이) ──
+    # 이 세 키는 편집본이 보낼 때만 존재한다. 보내면 그 목록이 곧 진실 — 사용자가
+    # 부속을 지우거나 추가할 수 있으므로 통째 교체한다(라벨 기준 패치로는 삭제 표현 불가).
+    pipe_labels = {str(p.get("label", "")) for p in combined.pipes}
+    if isinstance(geom.get("nozzles"), list):
+        g_nz = {str(nz.get("label", "")): nz for nz in geom["nozzles"]}
+        for nz in combined.nozzles:
+            gz = g_nz.get(str(nz.get("label", "")))
+            if gz is None:
+                continue
+            if gz.get("lib"):
+                nz["lib"] = str(gz["lib"])
+            if gz.get("status") is not None:
+                nz["status"] = str(gz["status"])
+            if gz.get("orientation"):
+                nz["orientation"] = str(gz["orientation"])
+            if gz.get("flow_lmin") is not None:
+                lmin = _f(gz["flow_lmin"])
+                nz["flow_lmin"] = lmin
+                nz["flow_m3s"] = lmin / 60000.0   # SDF 는 m³/s 로 방출
+    if isinstance(geom.get("fittings"), list):
+        combined.fittings = [
+            {"pipe": str(f.get("pipe", "")), "in": str(f.get("in", "")),
+             "out": str(f.get("out", "")), "type": str(f.get("type", "")),
+             "count": str(int(_f(f.get("count", 1), 1)) or 1)}
+            for f in geom["fittings"]
+            if str(f.get("pipe", "")) in pipe_labels and str(f.get("type", ""))
+        ]
+    if isinstance(geom.get("equipment"), list):
+        combined.equipment = [
+            {"pipe": str(e.get("pipe", "")), "in": str(e.get("in", "")),
+             "out": str(e.get("out", "")), "label": str(e.get("label", "")),
+             "desc": str(e.get("desc", "")),
+             "eq_len": _f(e.get("eq_len", 0)), "rel_pos": _f(e.get("rel_pos", 0)),
+             "spec_ref": str(e.get("spec_ref", "") or ""),
+             "source": str(e.get("source", "") or ""),
+             "override_flag": bool(e.get("override_flag", False)),
+             "override_note": str(e.get("override_note", "") or ""),
+             "drawing_len_mm": e.get("drawing_len_mm")}
+            for e in geom["equipment"]
+            if str(e.get("pipe", "")) in pipe_labels
+        ]
 
     # ── 삭제된 노드를 참조하는 부속(nozzle/fitting/pump/valve) 정리 ──
     def _nz_in(nz):
@@ -4525,9 +4610,9 @@ def _patch_combined_from_geometry(combined, geom: dict) -> None:
 def remote30_combined_rebuild():
     """브라우저에서 수동 편집한 통합망 geometry → SDF 재출력.
 
-    Body(JSON): { job_id, geometry:{nodes:[...], pipes:[...]} }
+    Body(JSON): { job_id, geometry:{nodes, pipes, nozzles?, fittings?, equipment?} }
       job_id   : 원본 통합 빌드의 job_id (_COMBINED_JOBS 캐시 키)
-      geometry : 편집된 state.combined_geometry (노드/배관만)
+      geometry : 편집된 state.combined_geometry
 
     캐시된 원본 CombinedTables 를 deepcopy → geometry 로 패치 → emit_full_sdf 로
     새 SDF 를 생성해 다운로드 URL 을 돌려준다. 패치본을 다시 캐시해 연속 편집을 지원.

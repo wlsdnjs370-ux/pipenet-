@@ -371,6 +371,71 @@
     /* 3D(등각) 모드에서는 우상단 #iso-controls 와 겹치지 않도록 좌측(뷰전환 바 아래)으로 이동 */
     #cmb-edit.iso-pos { right: auto; left: 14px; top: 104px; }
 
+    /* ─── 요소 인스펙터 (좌클릭=조회 / 우클릭=편집) — 클릭 지점에 뜨는 팝업 ─── */
+    #cmb-inspect {
+      position: fixed; display: none; flex-direction: column; gap: 7px;
+      width: 288px; max-height: 62vh; overflow-y: auto;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(148,163,184,0.28);
+      padding: 11px 12px; border-radius: 10px;
+      backdrop-filter: blur(12px) saturate(1.4);
+      -webkit-backdrop-filter: blur(12px) saturate(1.4);
+      z-index: 40; font-size: 0.72rem; color: #cbd5e1;
+      box-shadow: 0 18px 44px -14px rgba(0,0,0,0.7);
+    }
+    #cmb-inspect.is-open { display: flex; }
+    #cmb-inspect.is-edit { border-color: rgba(245,158,11,0.55); }
+    #cmb-inspect::-webkit-scrollbar { width: 7px; }
+    #cmb-inspect::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    #cmb-inspect .ci-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    #cmb-inspect .ci-title { font-weight: 700; font-size: 0.78rem; color: #e2e8f0; }
+    #cmb-inspect .ci-badge {
+      font-size: 0.6rem; font-weight: 700; letter-spacing: 0.06em; padding: 2px 6px;
+      border-radius: 999px; background: rgba(59,130,246,0.22); color: #93c5fd;
+    }
+    #cmb-inspect.is-edit .ci-badge { background: rgba(245,158,11,0.22); color: #fcd34d; }
+    #cmb-inspect .ci-close {
+      background: none; border: none; color: #94a3b8; cursor: pointer;
+      font-size: 0.95rem; line-height: 1; padding: 0 2px;
+    }
+    #cmb-inspect .ci-close:hover { color: #f1f5f9; }
+    #cmb-inspect .ci-sec {
+      font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+      color: #7c8aa5; border-top: 1px solid rgba(255,255,255,0.09); padding-top: 7px; margin-top: 1px;
+    }
+    #cmb-inspect .ci-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;
+    }
+    #cmb-inspect .ci-row > label { flex: 1; white-space: nowrap; color: #94a3b8; }
+    #cmb-inspect .ci-val {
+      flex: 1.25; text-align: right; color: #e2e8f0;
+      font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.71rem;
+      overflow-wrap: anywhere;
+    }
+    #cmb-inspect input, #cmb-inspect select {
+      flex: 1.25; min-width: 0; background: rgba(2,6,23,0.7); color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.16); border-radius: 5px; padding: 3px 6px;
+      font-size: 0.7rem; font-family: var(--font-mono, ui-monospace, monospace);
+    }
+    #cmb-inspect input[type="checkbox"] { flex: none; accent-color: var(--accent); }
+    #cmb-inspect .ci-note { font-size: 0.65rem; color: #94a3b8; line-height: 1.45; }
+    #cmb-inspect .ci-sub {
+      border: 1px solid rgba(255,255,255,0.09); border-radius: 7px;
+      padding: 6px 7px; margin-bottom: 5px; background: rgba(2,6,23,0.35);
+    }
+    #cmb-inspect .ci-sub .ci-row { margin-bottom: 3px; }
+    #cmb-inspect .ci-sub .ci-row:last-child { margin-bottom: 0; }
+    #cmb-inspect button.ci-btn {
+      background: rgba(51,65,85,0.7); color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.14); border-radius: 6px;
+      padding: 4px 8px; font-size: 0.67rem; font-weight: 600; cursor: pointer;
+      font-family: var(--font-sans);
+    }
+    #cmb-inspect button.ci-btn:hover { background: rgba(71,85,105,0.9); color: #fff; }
+    #cmb-inspect button.ci-del { color: #fca5a5; border-color: rgba(248,113,113,0.35); }
+    #cmb-inspect .ci-btns { display: flex; gap: 6px; }
+    #cmb-inspect .ci-btns button { flex: 1; }
+
     /* ─── 방수 시뮬레이션 수치 오버레이 (좌하단) ─── */
     #sim-overlay {
       position: absolute; bottom: 14px; left: 14px;
@@ -922,7 +987,7 @@
             <button data-tool="merge" type="button">병합</button>
             <button data-tool="delete" type="button">삭제</button>
           </div>
-          <div id="ce-hint" class="ce-hint">노드·배관을 클릭해 선택하세요.</div>
+          <div id="ce-hint" class="ce-hint">클릭=정보 보기 / 우클릭=값 편집.</div>
           <div class="ic-section">선택 속성</div>
           <div id="ce-props" class="ce-props"><div class="ce-empty">선택된 요소 없음</div></div>
           <div class="ic-section">변경</div>
@@ -932,6 +997,16 @@
             <button id="ce-rebuild" type="button" disabled>▶ 편집본 재출력</button>
           </div>
         </div>
+      </div>
+
+      <!-- 요소 인스펙터 — 통합 캔버스에서 좌클릭(조회) / 우클릭(편집) 시 클릭 지점에 팝업 -->
+      <div id="cmb-inspect" aria-hidden="true">
+        <div class="ci-head">
+          <span class="ci-title" id="ci-title">요소</span>
+          <span class="ci-badge" id="ci-badge">조회</span>
+          <button class="ci-close" id="ci-close" type="button" aria-label="닫기">✕</button>
+        </div>
+        <div id="ci-body"></div>
       </div>
 
       <div id="wb-empty" class="canvas-empty">
@@ -5429,8 +5504,11 @@
           Math.max(..._hys) - Math.min(..._hys)) || 1;
         const _frac = (typeof g.head_z_frac === "number") ? g.head_z_frac : 0.04;
         // 화면 픽셀 오프셋: upright=위(−sy), pendent=아래(+sy). zoom 반영해 줌과 비례.
-        const _dyPx = _rawDiag * _frac * state.view.zoom
-                      * (g.head_orientation === "upright" ? -1 : 1);
+        const _dyPx = _rawDiag * _frac * state.view.zoom;
+        // 헤드별 설치 방향 — 인스펙터에서 개별로 바꾼 값이 있으면 전역 설정을 이긴다.
+        const _hdir = new Map();
+        for (const nz of (g.nozzles || [])) if (nz.orientation) _hdir.set(nz.in, nz.orientation);
+        const _defDir = g.head_orientation;
         ctx.save();
         ctx.strokeStyle = GRAPH_STYLE.color_head;
         ctx.fillStyle = GRAPH_STYLE.color_head;
@@ -5440,7 +5518,7 @@
           if (!n) continue;
           if (revealNodeSet && !revealNodeSet.has(lbl)) continue;
           const [sx, sy] = toScreen(n.x, n.y, n.z);
-          const ty = sy + _dyPx;
+          const ty = sy + _dyPx * ((_hdir.get(lbl) || _defDir) === "upright" ? -1 : 1);
           ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, ty); ctx.stroke();
           ctx.beginPath(); ctx.arc(sx, ty, 2.5, 0, Math.PI * 2); ctx.fill();
         }
@@ -7565,9 +7643,19 @@
         const g0 = _g0();
         const touching = g0.pipes.filter(p => p.in === label || p.out === label).length;
         if (touching && !confirm("이 노드에 연결된 배관 " + touching + "개도 함께 삭제됩니다. 계속할까요?")) return;
+        const gone = new Set(g0.pipes.filter(p => p.in === label || p.out === label).map(p => p.label));
         g0.nodes = g0.nodes.filter(n => n.label !== label);
         g0.pipes = g0.pipes.filter(p => p.in !== label && p.out !== label);
+        _pruneSubs(gone, label);
         if (S.selected && S.selected.type === "node" && S.selected.label === label) S.selected = null;
+      }
+      // 사라진 배관·노드를 참조하는 부속 정리 — 서버도 같은 컷을 하지만, 화면의
+      // 인스펙터가 유령 부속을 계속 보여주지 않도록 클라이언트에서도 즉시 끊는다.
+      function _pruneSubs(pipeLabels, nodeLabel) {
+        const g0 = _g0(); if (!g0) return;
+        if (Array.isArray(g0.fittings)) g0.fittings = g0.fittings.filter(f => !pipeLabels.has(f.pipe));
+        if (Array.isArray(g0.equipment)) g0.equipment = g0.equipment.filter(e => !pipeLabels.has(e.pipe));
+        if (nodeLabel && Array.isArray(g0.nozzles)) g0.nozzles = g0.nozzles.filter(nz => nz.in !== nodeLabel);
       }
       function addPipe(fromLbl, toLbl) {
         if (fromLbl === toLbl) return;
@@ -7587,6 +7675,7 @@
       function deletePipe(p) {
         const g0 = _g0();
         g0.pipes = g0.pipes.filter(x => x !== p);
+        _pruneSubs(new Set([p.label]), null);
         if (S.selected && S.selected.type === "pipe" && S.selected.ref === p) S.selected = null;
       }
       // ── 노드 분리(split) — 한 노드를 같은 위치의 두 노드로 쪼갠다 (층 단위 편집용).
@@ -7653,6 +7742,84 @@
         if (patch.length_locked != null) p.length_locked = !!patch.length_locked;
         if (patch.length != null && isFinite(+patch.length)) { p.length = +patch.length; p.length_locked = true; }
         if (!p.length_locked) _recalcPipe(p);   // 잠금 해제 시 형상 기준 복원
+      }
+
+      // ── 부속 테이블 (헤드/부속류/등가길이) ──
+      // build 응답이 노드·배관과 함께 실어 준 SDF 5테이블의 나머지 셋. 여기서 고친 값은
+      // 재출력 시 그대로 서버로 돌아가 SDF/SLF/KFP/HAS/CSV/XLSX 에 반영된다.
+      function _sub(key) {
+        const g0 = _g0(); if (!g0) return [];
+        if (!Array.isArray(g0[key])) g0[key] = [];
+        return g0[key];
+      }
+      function _fittingsOf(p) { return _sub("fittings").filter(f => f.pipe === p.label); }
+      function _equipOf(p) { return _sub("equipment").filter(e => e.pipe === p.label); }
+      function _nozzleAt(label) { return _sub("nozzles").find(nz => nz.in === label) || null; }
+
+      // 재질은 DXF 에 없는 설계 정보 — 이름은 CSV/XLSX 로, 짝인 C 계수는 SDF
+      // roughness-or-c 로 나간다. 마찰손실에 실제로 쓰이는 값은 C 쪽이다.
+      const PIPE_MATERIALS = [
+        { type: "KSD 3507", c: 120, ko: "강관 (KSD 3507)" },
+        { type: "CPVC2", c: 150, ko: "CPVC (CPVC2)" },
+      ];
+      const FITTING_TYPES = [
+        ["tee", "티"], ["elbow", "엘보 90°"], ["elbow-45", "엘보 45°"],
+        ["gate", "게이트밸브"], ["check", "체크밸브"], ["butterfly", "버터플라이밸브"],
+        ["reducer", "레듀서"],
+      ];
+      function _fittingKo(t) { const f = FITTING_TYPES.find(x => x[0] === t); return f ? f[1] : (t || "-"); }
+      function _materialKo(p) {
+        const m = PIPE_MATERIALS.find(x => x.type === p.type);
+        return m ? m.ko : (p.type || "미지정");
+      }
+      function setPipeMaterial(p, type) {
+        const m = PIPE_MATERIALS.find(x => x.type === type);
+        p.type = type;
+        if (m) p.c = m.c;   // 재질을 고르면 C 계수도 그 재질값으로 동기화
+      }
+      function setNozzleProps(nz, patch) {
+        if (patch.orientation) nz.orientation = patch.orientation;
+        if (patch.lib != null) nz.lib = String(patch.lib);
+        if (patch.status != null) nz.status = String(patch.status);
+        if (patch.flow_lmin != null && isFinite(+patch.flow_lmin)) nz.flow_lmin = +patch.flow_lmin;
+      }
+      function addFitting(p) {
+        _sub("fittings").push({ pipe: p.label, in: p.in, out: p.out, type: "tee", count: 1 });
+      }
+      function setFittingProps(f, patch) {
+        if (patch.type) f.type = patch.type;
+        if (patch.count != null && isFinite(+patch.count)) f.count = Math.max(1, Math.round(+patch.count));
+      }
+      function deleteFitting(f) {
+        const g0 = _g0(); g0.fittings = _sub("fittings").filter(x => x !== f);
+      }
+      function _nextEquipLabel() {
+        let mx = 0;
+        for (const e of _sub("equipment")) { const v = parseInt(e.label, 10); if (isFinite(v) && v > mx) mx = v; }
+        return String(mx + 1);
+      }
+      function addEquip(p) {
+        _sub("equipment").push({
+          pipe: p.label, in: p.in, out: p.out, label: _nextEquipLabel(),
+          desc: "", eq_len: 0, rel_pos: 0.5,
+          spec_ref: "", source: "manual", override_flag: true, override_note: "",
+          drawing_len_mm: null,
+        });
+      }
+      function setEquipProps(e, patch) {
+        if (patch.desc != null) e.desc = String(patch.desc);
+        if (patch.eq_len != null && isFinite(+patch.eq_len)) {
+          e.eq_len = +patch.eq_len;
+          // 프리셋 등가길이를 손으로 고치면 그 사실을 산정 근거에 남긴다 — CSV/XLSX 의
+          // Override 열로 나가 나중에 "왜 표 값과 다른가"를 되짚을 수 있다.
+          e.override_flag = true;
+          e.source = "manual";
+        }
+        if (patch.rel_pos != null && isFinite(+patch.rel_pos)) e.rel_pos = Math.min(1, Math.max(0, +patch.rel_pos));
+        if (patch.override_note != null) e.override_note = String(patch.override_note);
+      }
+      function deleteEquip(e) {
+        const g0 = _g0(); g0.equipment = _sub("equipment").filter(x => x !== e);
       }
 
       // ── 변경 후 반영 (캐시 무효화 → 재렌더 → 3D 동기 → 패널) ──
@@ -7755,12 +7922,274 @@
         }
       }
 
+      // ══════ 요소 인스펙터 — 좌클릭 조회 / 우클릭 편집 ══════
+      // 편집 세션(편집 시작) 없이도 조회는 항상 열린다. 우클릭 편집은 값을 실제로
+      // 바꾸므로 세션을 자동으로 연다(원본 스냅샷 확보 → 복원·재출력 가능).
+      const INS = { target: null, edit: false, cx: 0, cy: 0 };
+      const insEl = {};
+
+      function _esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      function _roRow(label, val) {
+        return '<div class="ci-row"><label>' + _esc(label) + '</label>' +
+               '<span class="ci-val">' + _esc(val) + '</span></div>';
+      }
+      function _inRow(label, key, val, attrs) {
+        return '<div class="ci-row"><label>' + _esc(label) + '</label>' +
+               '<input data-k="' + key + '" ' + (attrs || "") +
+               ' value="' + _esc(val) + '"></div>';
+      }
+      function _selRow(label, key, val, opts) {
+        return '<div class="ci-row"><label>' + _esc(label) + '</label><select data-k="' + key + '">' +
+               opts.map(([v, t]) => '<option value="' + _esc(v) + '"' +
+                        (String(v) === String(val) ? ' selected' : '') + '>' + _esc(t) + '</option>').join('') +
+               '</select></div>';
+      }
+      function _sec(t) { return '<div class="ci-sec">' + _esc(t) + '</div>'; }
+
+      function _nodeRole(n) {
+        const g0 = _g0(); if (!g0) return "노드";
+        if (n.label === g0.av_node_label) return "알람밸브";
+        if ((g0.head_labels || []).indexOf(n.label) >= 0) return "헤드";
+        if ((g0.machine_room_labels || []).indexOf(n.label) >= 0) return "기계실";
+        if ((g0.riser_labels || []).indexOf(n.label) >= 0) return "라이저";
+        if (n.io === "Input") return "수원(경계)";
+        return "일반 접합";
+      }
+      // 등가길이 산정 근거 한 줄 — 규격표 프리셋인지 손으로 넣은 값인지 밝힌다.
+      function _eqBasis(e) {
+        if (e.override_flag) return "직접 입력" + (e.override_note ? " — " + e.override_note : "");
+        if (e.spec_ref) return "규격 프로파일 “" + e.spec_ref + "”" + (e.source ? " (" + e.source + ")" : "");
+        return e.source || "산정 근거 미기재";
+      }
+
+      function _insPipeHtml(p) {
+        const fits = _fittingsOf(p), eqs = _equipOf(p);
+        const ed = INS.edit;
+        let h = _sec("배관");
+        h += _roRow("라벨", p.label || "-");
+        h += _roRow("구간", p.in + " → " + p.out);
+        h += ed ? _inRow("내경 (mm)", "dia", _num(p.dia), 'type="number" step="1" min="1"')
+                : _roRow("내경 (mm)", _num(p.dia));
+        h += ed ? _inRow("길이 (m)", "length", _num(p.length), 'type="number" step="0.01"')
+                : _roRow("길이 (m)", _num(p.length));
+        if (ed) {
+          h += '<div class="ci-row"><label>길이 잠금</label>' +
+               '<input data-k="length_locked" type="checkbox"' + (p.length_locked ? ' checked' : '') + '></div>';
+        } else {
+          h += _roRow("길이 산정", p.length_locked ? "직접 입력(잠금)" : "노드 좌표 3D 거리");
+        }
+        h += ed ? _selRow("재질", "material", p.type, PIPE_MATERIALS.map(m => [m.type, m.ko]))
+                : _roRow("재질", _materialKo(p));
+        h += ed ? _inRow("C 계수", "c", _num(p.c), 'type="number" step="1"')
+                : _roRow("C 계수 (조도)", _num(p.c));
+        h += _roRow("상승고 (m)", _num(p.elev));
+        if (p.pipe_role) h += _roRow("역할", p.pipe_role);
+        if (p.flow_lpm != null) h += _roRow("유량 (L/min)", _num(p.flow_lpm));
+        if (p.velocity_mps != null) {
+          h += _roRow("유속 (m/s)", _num(p.velocity_mps) +
+                      (p.v_limit != null ? " / 상한 " + _num(p.v_limit) : "") +
+                      (p.v_over ? "  ⚠ 초과" : ""));
+        }
+
+        h += _sec("부속류 (" + fits.length + ")");
+        if (!fits.length) h += '<div class="ci-note">이 배관에 등록된 부속이 없습니다.</div>';
+        for (const f of fits) {
+          const i = _sub("fittings").indexOf(f);
+          if (!ed) { h += _roRow(_fittingKo(f.type), f.count + " 개"); continue; }
+          h += '<div class="ci-sub" data-fit="' + i + '">' +
+               _selRow("종류", "f_type", f.type, FITTING_TYPES) +
+               _inRow("개수", "f_count", f.count, 'type="number" step="1" min="1"') +
+               '<div class="ci-btns"><button class="ci-btn ci-del" data-k="f_del" type="button">부속 삭제</button></div>' +
+               '</div>';
+        }
+        if (ed) h += '<div class="ci-btns"><button class="ci-btn" data-k="f_add" type="button">＋ 부속 추가</button></div>';
+
+        h += _sec("등가길이 (" + eqs.length + ")");
+        if (!eqs.length) h += '<div class="ci-note">이 배관에 등가길이 항목이 없습니다.</div>';
+        for (const e of eqs) {
+          const i = _sub("equipment").indexOf(e);
+          if (!ed) {
+            h += '<div class="ci-sub">' +
+                 _roRow(e.desc || ("항목 " + e.label), _num(e.eq_len) + " m") +
+                 _roRow("산정 근거", _eqBasis(e)) +
+                 _roRow("설치 위치", _num(e.rel_pos) + " (0=입구, 1=출구)") +
+                 (e.drawing_len_mm != null ? _roRow("도면 실길이 (mm)", _num(e.drawing_len_mm)) : "") +
+                 '</div>';
+            continue;
+          }
+          h += '<div class="ci-sub" data-eq="' + i + '">' +
+               _inRow("설명", "e_desc", e.desc, 'type="text"') +
+               _inRow("등가길이 (m)", "e_eq_len", _num(e.eq_len), 'type="number" step="0.1"') +
+               _inRow("설치 위치", "e_rel_pos", _num(e.rel_pos), 'type="number" step="0.05" min="0" max="1"') +
+               _inRow("근거 메모", "e_note", e.override_note, 'type="text"') +
+               '<div class="ci-note">' + _esc(_eqBasis(e)) + '</div>' +
+               '<div class="ci-btns"><button class="ci-btn ci-del" data-k="e_del" type="button">항목 삭제</button></div>' +
+               '</div>';
+        }
+        if (ed) h += '<div class="ci-btns"><button class="ci-btn" data-k="e_add" type="button">＋ 등가길이 추가</button></div>';
+        return h;
+      }
+
+      function _insNodeHtml(n) {
+        const g0 = _g0(), ed = INS.edit;
+        const nz = _nozzleAt(n.label);
+        const inc = g0.pipes.filter(p => p.in === n.label || p.out === n.label);
+        let h = _sec(_nodeRole(n));
+        h += _roRow("라벨", n.label);
+        if (n.floor) h += _roRow("층", n.floor);
+        h += ed ? _inRow("X (mm)", "x", _num(n.x), 'type="number" step="1"') : _roRow("X (mm)", _num(n.x));
+        h += ed ? _inRow("Y (mm)", "y", _num(n.y), 'type="number" step="1"') : _roRow("Y (mm)", _num(n.y));
+        h += ed ? _inRow("고도 (m)", "z", _num(n.z), 'type="number" step="0.1"') : _roRow("고도 (m)", _num(n.z));
+        h += ed ? _selRow("경계 유형", "io", n.io, [["No", "No (내부)"], ["Input", "Input (공급)"], ["Output", "Output (유출)"]])
+                : _roRow("경계 유형", n.io || "No");
+        if (n.pressure_pa != null) h += _roRow("공급압 (kPa)", _num(n.pressure_pa / 1000));
+        h += _roRow("연결 배관", inc.length + " 개" + (inc.length >= 3 ? " (분기 — 티)" : ""));
+
+        if (nz) {
+          h += _sec("헤드 (노즐 " + nz.label + ")");
+          h += ed ? _selRow("설치 방향", "nz_orientation", nz.orientation,
+                            [["upright", "상향식 (upright)"], ["pendent", "하향식 (pendent)"]])
+                  : _roRow("설치 방향", nz.orientation === "upright" ? "상향식 (upright)" : "하향식 (pendent)");
+          h += ed ? _inRow("방수량 (L/min)", "nz_flow", _num(nz.flow_lmin), 'type="number" step="1" min="0"')
+                  : _roRow("방수량 (L/min)", _num(nz.flow_lmin));
+          h += ed ? _inRow("라이브러리", "nz_lib", nz.lib, 'type="text"') : _roRow("라이브러리", nz.lib || "-");
+          h += _roRow("토출 노드", nz.out || "-");
+        }
+        // 이 노드에 걸린 배관의 부속 — 티/엘보가 어느 노드에서 생긴 것인지 알려준다.
+        const nearFits = _sub("fittings").filter(f => f.in === n.label || f.out === n.label);
+        if (nearFits.length) {
+          h += _sec("인접 부속 (" + nearFits.length + ")");
+          for (const f of nearFits) h += _roRow(_fittingKo(f.type), "배관 " + f.pipe + " · " + f.count + " 개");
+          if (ed) h += '<div class="ci-note">부속 편집은 해당 배관을 우클릭하세요.</div>';
+        }
+        return h;
+      }
+
+      function _insRender() {
+        const box = insEl["ci-body"]; if (!box || !INS.target) return;
+        const keep = insEl["cmb-inspect"].scrollTop;
+        let html = "", title = "";
+        if (INS.target.type === "node") {
+          const n = _g0NodeByLabel(INS.target.label);
+          if (!n) { insClose(); return; }
+          title = "노드 " + n.label;
+          html = _insNodeHtml(n);
+        } else {
+          const p = INS.target.ref;
+          if (!_g0().pipes.includes(p)) { insClose(); return; }
+          title = "배관 " + (p.label || "");
+          html = _insPipeHtml(p);
+        }
+        insEl["ci-title"].textContent = title;
+        insEl["ci-badge"].textContent = INS.edit ? "편집" : "조회";
+        insEl["cmb-inspect"].classList.toggle("is-edit", INS.edit);
+        box.innerHTML = html;
+        insEl["cmb-inspect"].scrollTop = keep;
+        _insBind();
+        // 부속을 추가하면 팝업이 길어진다 — position:fixed 라 화면 밖으로 밀리면
+        // 스크롤로도 못 되돌린다. 렌더마다 앵커 기준으로 다시 화면 안에 가둔다.
+        _insPlace(INS.cx, INS.cy);
+      }
+
+      function _insCommit(k, node, val) {
+        const t = INS.target;
+        if (t.type === "node") {
+          const n = _g0NodeByLabel(t.label); if (!n) return;
+          if (k === "nz_orientation" || k === "nz_flow" || k === "nz_lib") {
+            const nz = _nozzleAt(n.label); if (!nz) return;
+            setNozzleProps(nz, k === "nz_orientation" ? { orientation: val }
+                             : k === "nz_flow" ? { flow_lmin: val } : { lib: val });
+          } else {
+            const patch = {}; patch[k] = val; setNodeProps(n.label, patch);
+          }
+          _afterChange(); _insRender(); return;
+        }
+        const p = t.ref;
+        if (k === "material") setPipeMaterial(p, val);
+        else if (k === "f_type" || k === "f_count" || k === "f_del") {
+          const f = _sub("fittings")[+node.closest("[data-fit]").dataset.fit];
+          if (!f) return;
+          if (k === "f_del") deleteFitting(f);
+          else setFittingProps(f, k === "f_type" ? { type: val } : { count: val });
+        } else if (k === "f_add") addFitting(p);
+        else if (k === "e_add") addEquip(p);
+        else if (k.startsWith("e_")) {
+          const e = _sub("equipment")[+node.closest("[data-eq]").dataset.eq];
+          if (!e) return;
+          if (k === "e_del") deleteEquip(e);
+          else setEquipProps(e, k === "e_desc" ? { desc: val }
+                              : k === "e_eq_len" ? { eq_len: val }
+                              : k === "e_rel_pos" ? { rel_pos: val } : { override_note: val });
+        } else {
+          const patch = {}; patch[k] = val; setPipeProps(p, patch);
+        }
+        _afterChange(); _insRender();
+      }
+
+      function _insBind() {
+        if (!INS.edit) return;
+        const box = insEl["ci-body"];
+        for (const f of box.querySelectorAll("input, select")) {
+          f.addEventListener("change", () =>
+            _insCommit(f.dataset.k, f, f.type === "checkbox" ? f.checked : f.value));
+        }
+        for (const b of box.querySelectorAll("button[data-k]")) {
+          b.addEventListener("click", () => _insCommit(b.dataset.k, b, null));
+        }
+      }
+
+      function _insPlace(cx, cy) {
+        const box = insEl["cmb-inspect"];
+        box.style.left = "0px"; box.style.top = "0px";
+        const r = box.getBoundingClientRect();
+        box.style.left = Math.round(Math.min(Math.max(8, cx + 14), Math.max(8, window.innerWidth - r.width - 8))) + "px";
+        box.style.top = Math.round(Math.min(Math.max(8, cy + 10), Math.max(8, window.innerHeight - r.height - 8))) + "px";
+      }
+
+      function insOpen(target, edit, cx, cy) {
+        if (!_g0() || !target) { insClose(); return; }
+        // 편집은 값을 실제로 바꾸므로 세션을 연다 — 원본 스냅샷이 있어야 복원·재출력이 산다.
+        if (edit && !S.active) start();
+        INS.target = target; INS.edit = !!edit; INS.cx = cx; INS.cy = cy;
+        insEl["cmb-inspect"].classList.add("is-open");
+        insEl["cmb-inspect"].setAttribute("aria-hidden", "false");
+        _insRender();
+        // 편집 패널 선택 상태도 같이 맞춰 캔버스 하이라이트가 따라오게 한다.
+        S.selected = target; _renderProps(); render();
+      }
+      function insClose() {
+        INS.target = null;
+        if (!insEl["cmb-inspect"]) return;
+        insEl["cmb-inspect"].classList.remove("is-open");
+        insEl["cmb-inspect"].setAttribute("aria-hidden", "true");
+      }
+      // 캔버스 히트테스트 → 인스펙터 대상. 빈 곳이면 null.
+      function _insHit(sx, sy) {
+        const nl = _hitNode(sx, sy);
+        if (nl) return { type: "node", label: nl };
+        const p = _hitPipe(sx, sy);
+        return p ? { type: "pipe", ref: p } : null;
+      }
+      function _onContextMenu(e) {
+        if (state.current_mode !== "combined" || !_g0()) return;
+        const [sx, sy] = _evtXY(e);
+        const t = _insHit(sx, sy);
+        if (!t) { insClose(); return; }
+        e.preventDefault();
+        insOpen(t, true, e.clientX, e.clientY);
+      }
+
       // ── 도구/모드 ──
       function setTool(t) {
         S.tool = t; S.addFrom = null; S.mergeFrom = null;
         for (const b of el["cmb-edit"].querySelectorAll(".ce-tools button"))
           b.classList.toggle("is-active", b.dataset.tool === t);
-        const hints = { select:"노드·배관을 클릭해 선택하세요.", move:"노드를 드래그해 이동 (평면 뷰 전용).",
+        const hints = { select:"클릭=정보 보기 / 우클릭=값 편집 (길이·내경·재질·부속류·헤드 방향).",
+          move:"노드를 드래그해 이동 (평면 뷰 전용).",
           addnode:"빈 곳을 클릭해 노드 추가 (평면 뷰 전용).", addpipe:"시작 노드→끝 노드를 차례로 클릭.",
           split:"분리할 노드를 클릭 — 같은 자리에 새 노드가 생겨 배관이 나뉩니다(층 추가).",
           merge:"사라질 노드 → 남길 노드 순서로 클릭 (앞 노드가 뒤 노드로 병합; 층 삭제).",
@@ -7791,7 +8220,10 @@
         const g0 = _g0();
         g0.nodes = _clone(S._orig.nodes);
         g0.pipes = _clone(S._orig.pipes);
+        for (const k of ["nozzles", "fittings", "equipment"])
+          if (Array.isArray(S._orig[k])) g0[k] = _clone(S._orig[k]);
         S.dirty = false; S.selected = null; S.addFrom = null;
+        insClose();
         _afterChange();
       }
 
@@ -7813,7 +8245,11 @@
           const res = await fetch("/api/remote30/combined/rebuild", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ job_id: jobId, geometry: { nodes: g0.nodes, pipes: g0.pipes } }),
+            body: JSON.stringify({ job_id: jobId, geometry: {
+              nodes: g0.nodes, pipes: g0.pipes,
+              // 인스펙터가 고칠 수 있는 부속 테이블 — 보낸 목록이 곧 진실(삭제 표현 가능).
+              nozzles: g0.nozzles || [], fittings: g0.fittings || [], equipment: g0.equipment || [],
+            } }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || !data.ok) {
@@ -7870,14 +8306,18 @@
       }
       function _onClick(e) {
         const dragged = S._dragMoved; S._dragMoved = false;
-        if (!_canEdit() || state._didDrag || dragged) return;
+        if (state._didDrag || dragged) return;
         const [sx, sy] = _evtXY(e);
-        if (S.tool === "select") {
-          const nl = _hitNode(sx, sy);
-          if (nl) S.selected = { type: "node", label: nl };
-          else { const p = _hitPipe(sx, sy); S.selected = p ? { type: "pipe", ref: p } : null; }
-          _renderProps(); render();
-        } else if (S.tool === "addnode") {
+        // 선택 = 조회. 편집 세션을 켜지 않아도 통합 뷰의 요소를 누르면 정보창이 뜬다.
+        if (state.current_mode === "combined" && _g0() && (!S.active || S.tool === "select")) {
+          const t = _insHit(sx, sy);
+          if (t) insOpen(t, false, e.clientX, e.clientY);
+          else { insClose(); S.selected = null; _renderProps(); render(); }
+          return;
+        }
+        insClose();
+        if (!_canEdit()) return;
+        if (S.tool === "addnode") {
           if (!_isPlan()) { _hint("노드 추가는 평면 뷰에서만 가능합니다."); return; }
           const w = _screenToWorldPlan(sx, sy); addNode(w.x, w.y); _afterChange();
         } else if (S.tool === "addpipe") {
@@ -7932,6 +8372,7 @@
 
       // ── 패널 표시 동기화 ──
       function sync() {
+        insClose();   // 뷰/모드가 바뀌면 클릭 지점에 떠 있던 정보창은 무의미
         if (!el["cmb-edit"]) return;
         const m = state.current_mode;
         const show = !!state.combined_geometry && (m === "combined" || m === "iso");
@@ -7943,6 +8384,13 @@
 
       function init() {
         for (const id of ids) el[id] = document.getElementById(id);
+        for (const id of ["cmb-inspect", "ci-title", "ci-badge", "ci-body", "ci-close"])
+          insEl[id] = document.getElementById(id);
+        if (insEl["cmb-inspect"]) {
+          insEl["ci-close"].addEventListener("click", insClose);
+          canvas.addEventListener("contextmenu", _onContextMenu);
+          window.addEventListener("keydown", e => { if (e.key === "Escape") insClose(); });
+        }
         if (!el["cmb-edit"]) return;
         el["ce-toggle"].addEventListener("click", () => (S.active ? stop() : start()));
         for (const b of el["cmb-edit"].querySelectorAll(".ce-tools button"))

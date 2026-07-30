@@ -818,21 +818,27 @@ PROMO_LAYER = "현장조사#셔터"
 
 
 def _headgap_bundle(pieces: int = 4, head_x: float = 0.0,
-                    category: str = "OTHER") -> rp.ParsedDxfBundle:
+                    category: str = "OTHER",
+                    extra: list[dict] | None = None) -> rp.ParsedDxfBundle:
     """세로 런이 헤드마다 300mm 끊긴 도면. pieces-1 개의 헤드 틈이 생긴다."""
     entities = []
     for i in range(pieces):
         y0 = i * 1300.0
         entities.append({"t": "L", "l": PROMO_LAYER,
                          "p": [0.0, y0, 0.0, y0 + 1000.0]})
-    for i in range(pieces - 1):
-        entities.append({"t": "I", "l": "SP-헤드", "n": "SP_HEAD",
-                         "p": [head_x, i * 1300.0 + 1150.0]})
+    entities.extend(extra or [])
+    heads = [{"t": "I", "l": "SP-헤드", "n": "SP_HEAD",
+              "p": [head_x, i * 1300.0 + 1150.0]} for i in range(pieces - 1)]
     return rp.ParsedDxfBundle(
-        entities=entities,
-        layers=[{"name": "SP-헤드", "auto_category": "HEAD"},
-                {"name": PROMO_LAYER, "auto_category": category}],
+        entities=entities + heads,
+        layers=[{"name": "SP-헤드", "auto_category": "HEAD", "count": len(heads)},
+                {"name": PROMO_LAYER, "auto_category": category,
+                 "count": len(entities)}],
     )
+
+
+def _cats(bundle: rp.ParsedDxfBundle) -> dict[str, str]:
+    return {ly["name"]: ly["auto_category"] for ly in bundle.layers}
 
 
 def test_r10_promotes_layer_with_enough_head_gaps():
@@ -841,16 +847,38 @@ def test_r10_promotes_layer_with_enough_head_gaps():
     assert [r["layer"] for r in recs] == [PROMO_LAYER]
     assert recs[0]["prev_category"] == "OTHER"
     assert recs[0]["headgap_count"] == 3
-    cats = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
-    assert cats[PROMO_LAYER] == "PIPE"
+    assert recs[0]["entity_count"] == 4
+    assert _cats(bundle)[recs[0]["pipe_layer"]] == "PIPE"
+
+
+def test_r10_ignores_merely_crossing_geometry():
+    """노드를 공유하지 않고 지나가기만 하는 선은 승격에서 빠진다.
+
+    B1F 의 ``현장조사#셔터`` 는 가지관 옆으로 헤드 없는 41m 셔터선이 나란히 지나가고,
+    레이어를 통째로 올렸더니 교차 티가 없는 부속을 만들어냈다.
+    """
+    crossing = {"t": "L", "l": PROMO_LAYER, "p": [-9000.0, 600.0, 9000.0, 600.0]}
+    bundle = _headgap_bundle(extra=[crossing])
+    recs = rp._promote_headgap_pipe_layers(bundle)
+    assert recs[0]["entity_count"] == 4
+    assert crossing["l"] == PROMO_LAYER
+    assert _cats(bundle)[PROMO_LAYER] == "OTHER"
+
+
+def test_r10_carries_connected_headless_run():
+    """지문은 없어도 끝점을 공유하는 주관·입상관은 함께 올라간다."""
+    main = {"t": "L", "l": PROMO_LAYER, "p": [0.0, 0.0, -9000.0, 0.0]}
+    bundle = _headgap_bundle(extra=[main])
+    recs = rp._promote_headgap_pipe_layers(bundle)
+    assert recs[0]["entity_count"] == 5
+    assert main["l"] == recs[0]["pipe_layer"]
 
 
 def test_r10_below_threshold_stays_unpromoted():
     """지문 2건 — 우연히 맞아떨어진 한두 쌍으로는 승격하지 않는다."""
     bundle = _headgap_bundle(pieces=3)
     assert rp._promote_headgap_pipe_layers(bundle) == []
-    cats = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
-    assert cats[PROMO_LAYER] == "OTHER"
+    assert _cats(bundle)[PROMO_LAYER] == "OTHER"
 
 
 def test_r10_never_promotes_excluded_layer():

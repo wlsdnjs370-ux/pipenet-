@@ -435,8 +435,8 @@ def test_w7_audit_schema_on_fixture(pipe_ents, layer_categories):
     j = _json.loads(_json.dumps(aud.to_json_dict()))   # JSON 직렬화 계약
     assert set(j) == {"heads", "snap_eps", "fragments", "head_drops", "nonnominal",
                       "corridor", "source_attach", "water", "tee_splits",
-                      "load", "pruned", "residual_cycles", "unreachable_heads",
-                      "fallback", "ortho"}
+                      "head_gap_joins", "load", "pruned", "residual_cycles",
+                      "unreachable_heads", "fallback", "ortho"}
     assert j["heads"]["detected_in_region"] == len(gated)
     assert j["heads"]["attached"] + len(j["heads"]["unreachable"]) == len(gated)
     assert {"dist_mm", "method", "escalation"} <= set(j["source_attach"])
@@ -588,3 +588,91 @@ def test_p1_tee_split_always_on_in_anchored(pipe_ents, layer_categories):
     for r in aud.tee_splits:
         assert set(r) == {"p", "edge", "gap_mm", "sym_mm"}
         assert 0.0 <= r["gap_mm"] <= rp.TEE_SPLIT_MAX_MM
+
+
+# ── R7: 헤드 기호가 끊어놓은 동일선상 배관 접속 ────────────────────────────
+HEAD_GAP = 300.0
+
+
+def _head_gap_graph(gap: float = HEAD_GAP, offset: float = 0.0):
+    """세로 런이 gap 만큼 끊긴 두 조각. offset 은 위 조각의 x 어긋남."""
+    lo = ((0.0, 0.0), (0.0, 1000.0))
+    hi = ((offset, 1000.0 + gap), (offset, 2500.0))
+    graph: dict = {}
+    edge_len: dict = {}
+    for a, b in (lo, hi):
+        graph.setdefault(a, set()).add(b)
+        graph.setdefault(b, set()).add(a)
+        edge_len[(min(a, b), max(a, b))] = math.hypot(b[0] - a[0], b[1] - a[1])
+    return graph, edge_len, lo[1], hi[0]
+
+
+def test_r7_head_gap_join_collinear_with_head():
+    graph, edge_len, u, v = _head_gap_graph()
+    rec: list = []
+    assert rp._join_head_gap_endpoints(graph, edge_len, [(0.0, 1150.0)],
+                                       joins_out=rec) == 1
+    assert v in graph[u]
+    assert edge_len[(u, v)] == pytest.approx(HEAD_GAP)
+    assert rec[0]["gap_mm"] == pytest.approx(HEAD_GAP)
+
+
+def test_r7_head_gap_join_requires_head_between():
+    """③ 이 없으면 그냥 가까운 두 끝점 — 추정 연결이라 잇지 않는다."""
+    graph, edge_len, u, v = _head_gap_graph()
+    assert rp._join_head_gap_endpoints(graph, edge_len, [(0.0, 3000.0)]) == 0
+    assert v not in graph[u]
+
+
+def test_r7_head_gap_join_requires_collinear():
+    graph, edge_len, u, v = _head_gap_graph(offset=200.0)
+    assert rp._join_head_gap_endpoints(graph, edge_len, [(100.0, 1150.0)]) == 0
+    assert v not in graph[u]
+
+
+def test_r7_head_gap_join_far_gap_untouched():
+    gap = rp.HEAD_GAP_JOIN_MAX_MM + 100.0
+    graph, edge_len, u, v = _head_gap_graph(gap=gap)
+    assert rp._join_head_gap_endpoints(graph, edge_len,
+                                       [(0.0, 1000.0 + gap / 2.0)]) == 0
+    assert v not in graph[u]
+
+
+def test_r7_head_gap_join_rejects_perpendicular_neighbor():
+    """① 인접 간선이 다른 축이면 런의 연속이 아니라 모서리 — 잇지 않는다."""
+    graph, edge_len, u, _v = _head_gap_graph()
+    v, w = (0.0, 1300.0), (1500.0, 1300.0)
+    graph[v] = {w}
+    graph[w] = {v}
+    del edge_len[((0.0, 1300.0), (0.0, 2500.0))]
+    graph.pop((0.0, 2500.0))
+    edge_len[(v, w)] = 1500.0
+    assert rp._join_head_gap_endpoints(graph, edge_len, [(0.0, 1150.0)]) == 0
+    assert v not in graph[u]
+
+
+def test_r7_head_gap_join_skips_already_connected():
+    """이미 이어진 조각끼리는 안 잇는다 — 루프를 만들지 않는다."""
+    graph, edge_len, u, v = _head_gap_graph()
+    side = (900.0, 1250.0)
+    for n in ((0.0, 0.0), (0.0, 2500.0)):
+        graph.setdefault(side, set()).add(n)
+        graph[n].add(side)
+        edge_len[(min(side, n), max(side, n))] = math.hypot(side[0] - n[0],
+                                                            side[1] - n[1])
+    assert rp._join_head_gap_endpoints(graph, edge_len, [(0.0, 1150.0)]) == 0
+    assert v not in graph[u]
+
+
+def test_r7_head_gap_join_chain_three_pieces():
+    """헤드 2개로 3조각 난 런 — 한 번에 전부 이어져 단일 컴포넌트가 된다."""
+    graph: dict = {}
+    edge_len: dict = {}
+    for y0, y1 in ((0.0, 1000.0), (1300.0, 2300.0), (2600.0, 3600.0)):
+        a, b = (0.0, y0), (0.0, y1)
+        graph.setdefault(a, set()).add(b)
+        graph.setdefault(b, set()).add(a)
+        edge_len[(a, b)] = y1 - y0
+    assert rp._join_head_gap_endpoints(graph, edge_len,
+                                       [(0.0, 1150.0), (0.0, 2450.0)]) == 2
+    assert len(rp._connected_components(graph)) == 1

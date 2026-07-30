@@ -701,7 +701,6 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                     alarm_xy=alarm_xy,
                     head_region=HeadRegion.from_rects(zones),
                     zones=zones,
-                    tee_split=True,
                     load_mode=load_mode,
                     on_residual_cycle=on_residual_cycle,
                     audit_out=anchored_audit,

@@ -476,10 +476,12 @@
       box-shadow: 0 4px 12px -2px rgba(79, 70, 229, 0.45);
     }
     .run-btn:active:not(:disabled) { transform: translateY(0); }
+    /* 아웃라인 변형 버튼들은 인라인 style 로 흰 배경·보라 글자를 준다. 인라인은
+       선택자를 이기므로 !important 가 없으면 disabled 여도 활성과 똑같이 보인다. */
     .run-btn:disabled {
-      background: #cbd5e1; border-color: #cbd5e1;
+      background: #cbd5e1 !important; border-color: #cbd5e1 !important;
       cursor: not-allowed; box-shadow: none;
-      color: #f1f5f9;
+      color: #f1f5f9 !important;
     }
     .info-line { font-size: 0.76rem; color: var(--muted); line-height: 1.55; }
 
@@ -7121,6 +7123,9 @@
       }
       // 평면도+계통도 준비되면 통합 버튼 활성화 (기계실은 선택)
       _cmbMergeBtn.disabled = !(planeReady && systemReady);
+      const _missing = [!planeReady && "평면도 추출", !systemReady && "계통도 추출"].filter(Boolean);
+      _cmbMergeBtn.title = _missing.length
+        ? `${_missing.join(" · ")} 을(를) 먼저 완료해야 누를 수 있습니다.` : "";
       // 포맷 출력 버튼 — 통합 빌드 완료(state.combinedBuild) 후에만 활성화
       const _built = !!state.combinedBuild;
       if (_cmbExpSdf) _cmbExpSdf.disabled = !_built;

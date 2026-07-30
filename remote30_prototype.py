@@ -128,7 +128,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 # ── 초대형 XREF 도면 예산 가드 (기계실/계통도 파싱) ──────────────────────────
 # 142MB LH 지하층배관도는 최상위 INSERT 61개를 폭발하면 leaf 597k개가 되는데
@@ -4025,6 +4025,21 @@ def _find_head_candidates(pipe_entities: list[dict], layer_categories: dict[str,
     ]
 
 
+def _find_fitting_symbols(pipe_entities: list[dict],
+                          layer_categories: dict[str, str]) -> list[tuple]:
+    """배관 부속 기호(티·엘보) 좌표 — 배관 레이어에 직접 그린 호(ARC)의 중심.
+
+    B1F 는 티 자리에 반지름 180mm 짜리 호 두 개를 교차점 중심으로 마주 보게 그린다.
+    블록 참조가 아니라 배관 레이어의 생 ARC 라 ``_build_graph`` 가 노이즈로 버리고,
+    INSERT/CIRCLE 만 훑는 기호 탐지로는 안 잡힌다. 배관이 지나는 자리에 호를 그릴
+    이유는 부속 도시밖에 없으므로 반지름·각도는 따지지 않는다 — 도면마다 기호
+    치수가 다르고, 판정은 교차점과의 거리로만 한다.
+    """
+    return [(en["c"][0], en["c"][1]) for en in pipe_entities
+            if en["t"] == "A" and en.get("c")
+            and layer_categories.get(en["l"]) == "PIPE"]
+
+
 def _find_source(pipe_entities: list[dict], layer_categories: dict[str, str]) -> tuple[tuple[float, float] | None, str]:
     """알람밸브 자동 식별 — 5-tier fallback:
       1) block_name 에 ALARM_VALVE 키워드 포함된 INSERT (사전 기반)
@@ -4383,6 +4398,7 @@ def _split_crossing_tees(
     axis_tol_mm: float = CROSS_TEE_AXIS_TOL_MM,
     margin_mm: float = MIN_PIPE_EDGE_MM,
     head_pts: list | None = None,
+    fitting_pts: list | None = None,
     cuts_out: list | None = None,
 ) -> int:
     """관통 교차를 티로 해석해 절단·접속한다 — 단, 합류하는 교차만.
@@ -4406,17 +4422,29 @@ def _split_crossing_tees(
          B1F 의 합류 교차 262곳 중 244곳이 137~288mm 짜리 고립 선분(LINE 으로 그린
          헤드 십자 기호)이고, 남는 18곳은 839mm 이상의 실배관이다. 길이 조건을 함께
          걸어야 통째로 한 선분인 긴 주배관을 잘못 배제하지 않는다.
-      3. **스프링클러 증거** (``head_pts`` 주어질 때) — 합치려는 두 조각 어느 쪽에도
-         헤드가 하나도 안 달려 있으면 무시한다. 부속 기호 게이트("기호 있는 교차만
-         분기")는 실측으로 기각됐다 — B1F 는 진짜 티 자리에도 기호를 안 그려서(절단
-         후보 326곳 중 기호 60mm 내 6곳) 게이트를 걸면 주망이 1856 → 45 헤드로
-         붕괴한다. 이 도면 관습에서 존재하는 유일한 부속 증거는 헤드 자체다. 헤드가
-         직접 안 달린 주배관 경유 합류가 285곳이라 "양쪽 필수"도 붕괴(→503)하고,
-         "양쪽 다 0개면 거부"만이 손실 0(1856 유지)으로 증거 없는 접속 4건을 거른다.
+      3. **부속 증거** (``fitting_pts`` 주어질 때) — 도면은 진짜 티 자리에 부속 기호를
+         그린다. 그 기호는 INSERT 도 CIRCLE 도 아니라 *배관 레이어에 직접 그린 ARC 쌍*
+         이라 그래프에는 안 남는다(``_build_graph`` 가 호를 노이즈로 버린다). 교차점을
+         중심으로 ``CROSS_TEE_SYMBOL_TOL_MM`` 안에 그런 호가 있으면 부속이다.
+
+         기호만으로 게이트를 걸 수는 없다 — 주배관끼리 이어지는 자리는 기호 없이
+         맞물려 그린다. 그래서 간선의 *역할* 로 나눈다. 헤드가
+         ``HEAD_DROP_MAX_MM`` 안에 달린 간선은 가지관, 아니면 주관이다.
+
+           - 가지관 × 가지관 → **부속 기호 필수**. 세대 가지관끼리 스쳐 지나가는
+             자리라 기호가 없으면 접속이 아니다. 말단 배관망이 꼬이던 원인이 여기다.
+           - 그 외 → 기호 / 끝점(``CROSS_TEE_END_TOL_MM`` 안에서 배관이 끝남 = 진짜 T)
+             / 양쪽 다 주관 중 하나면 인정.
+
+         B1F 실측이 이 구분을 만들었다. 절단 후보 326곳을 (레이어 × 레이어 × 기호) 로
+         분류하니 주관×가지관 259곳 중 241곳(93%)이 기호를 갖고, 가지관×가지관 21곳은
+         **하나도** 안 갖는다. 결과: 절단 326 → 320, 주망헤드 1856 유지(무손실),
+         주망 7579.9 → 7573.6m. 대명동·LH306 은 불변.
 
     끝점 근처(``margin_mm`` 안) 교차는 제외한다 — 최소길이 미만 토막을 만들지 않고,
     그 영역은 이미 ``_split_tee_branches`` 담당이다.
-    head_pts: 헤드 좌표 목록. ``HEAD_DROP_MAX_MM`` 이내 최근접 노드에 배정해 센다.
+    head_pts: 헤드 좌표 목록. 간선의 역할(가지관/주관) 판정에 쓴다.
+    fitting_pts: 부속 기호 좌표 목록 — ``_find_fitting_symbols`` 산출물.
     cuts_out: 주어지면 [{"p", "h", "v"}] 기록 (audit 근거용).
     반환: 절단·접속한 교차 수.
     """
@@ -4459,24 +4487,64 @@ def _split_crossing_tees(
         if ra != rb:
             parent[ra] = rb
 
-    root_heads: dict = {}
-    if head_pts is not None:
-        cell = HEAD_DROP_MAX_MM
-        buckets: dict = defaultdict(list)
-        for n in graph:
-            buckets[(int(n[0] // cell), int(n[1] // cell))].append(n)
-        for hx, hy in head_pts:
-            cx, cy = int(hx // cell), int(hy // cell)
-            best, bd = None, cell * cell
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    for n in buckets.get((cx + dx, cy + dy), ()):
-                        d = (n[0] - hx) ** 2 + (n[1] - hy) ** 2
-                        if d <= bd:
-                            best, bd = n, d
-            if best is not None:
-                r = _find(best)
-                root_heads[r] = root_heads.get(r, 0) + 1
+    gated = fitting_pts is not None
+    hcell = HEAD_DROP_MAX_MM
+    hbuckets: dict = defaultdict(list)
+    for hx, hy in (head_pts or ()):
+        hbuckets[(int(hx // hcell), int(hy // hcell))].append((hx, hy))
+    fcell = CROSS_TEE_SYMBOL_TOL_MM
+    fbuckets: dict = defaultdict(list)
+    for fx, fy in (fitting_pts or ()):
+        fbuckets[(int(fx // fcell), int(fy // fcell))].append((fx, fy))
+
+    def _has_fitting(p) -> bool:
+        cx, cy = int(p[0] // fcell), int(p[1] // fcell)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for fx, fy in fbuckets.get((cx + dx, cy + dy), ()):
+                    if math.hypot(fx - p[0], fy - p[1]) <= CROSS_TEE_SYMBOL_TOL_MM:
+                        return True
+        return False
+
+    role: dict = {}
+
+    def _is_branch(key) -> bool:
+        """헤드가 이 간선에 달려 있는가 = 가지관인가."""
+        hit = role.get(key)
+        if hit is not None:
+            return hit
+        (x1, y1), (x2, y2) = key
+        dx, dy = x2 - x1, y2 - y1
+        L2 = dx * dx + dy * dy
+        hit = False
+        lox, loy = int(min(x1, x2) // hcell) - 1, int(min(y1, y2) // hcell) - 1
+        hix, hiy = int(max(x1, x2) // hcell) + 1, int(max(y1, y2) // hcell) + 1
+        for cx in range(lox, hix + 1):
+            if hit:
+                break
+            for cy in range(loy, hiy + 1):
+                for hx, hy in hbuckets.get((cx, cy), ()):
+                    t = 0.0 if L2 == 0 else max(0.0, min(
+                        1.0, ((hx - x1) * dx + (hy - y1) * dy) / L2))
+                    if math.hypot(hx - (x1 + t * dx), hy - (y1 + t * dy)) <= hcell:
+                        hit = True
+                        break
+                if hit:
+                    break
+        role[key] = hit
+        return hit
+
+    def _ends_at(key, p) -> bool:
+        a, b = key
+        return min(math.hypot(a[0] - p[0], a[1] - p[1]),
+                   math.hypot(b[0] - p[0], b[1] - p[1])) <= CROSS_TEE_END_TOL_MM
+
+    def _accept(p, hk, vk) -> bool:
+        bh, bv = _is_branch(hk), _is_branch(vk)
+        if bh and bv:
+            return _has_fitting(p)  # 가지관끼리 = 스쳐 지나감. 기호만이 증거다.
+        return (_has_fitting(p) or _ends_at(hk, p) or _ends_at(vk, p)
+                or not (bh or bv))
 
     def _is_mark(key) -> bool:
         # 다른 배관과 이어지지도 않고 기호 크기를 넘지도 않는 선분 = 표시 획.
@@ -4491,11 +4559,9 @@ def _split_crossing_tees(
         ra, rb = _find(hk[0]), _find(vk[0])
         if ra == rb:
             continue  # 이미 이어진 배관끼리의 교차 — 스쳐 지나감과 구분 불가
-        if head_pts is not None and not (root_heads.get(ra) or root_heads.get(rb)):
-            continue  # 어느 쪽에도 스프링클러 증거(헤드)가 없다 — 접속 근거 없음
+        if gated and not _accept(p, hk, vk):
+            continue  # 부속 기호도 끝점도 없는 가지관끼리의 교차 — 접속 근거 없음
         parent[ra] = rb
-        if head_pts is not None:
-            root_heads[rb] = root_heads.pop(ra, 0) + root_heads.get(rb, 0)
         cuts[hk].add(p)
         cuts[vk].add(p)
         accepted += 1
@@ -4697,7 +4763,8 @@ def select_worst30_heads(
     _drop_covered_edges(graph, edge_len)
     # 헤드 기호가 끊어놓은 동일선상 배관 접속 — 헤드 확정 뒤라야 판정할 수 있다.
     _join_head_gap_endpoints(graph, edge_len, [h.pos for h in heads])
-    _split_crossing_tees(graph, edge_len, head_pts=[h.pos for h in heads])
+    _split_crossing_tees(graph, edge_len, head_pts=[h.pos for h in heads],
+                         fitting_pts=_find_fitting_symbols(pipe_entities, layer_categories))
     if manual_source is not None:
         src_raw = _round_pt(manual_source[0], manual_source[1])
         src_kind = "manual"
@@ -5246,9 +5313,10 @@ def select_worst30_heads_anchored(
     _join_head_gap_endpoints(graph, edge_len, [h.pos for h in heads],
                              joins_out=_hjoin)
     audit["head_gap_joins"] = _hjoin
-    # 관통 교차 티 복원 — 합류하는 교차만(루프 안 생김).
+    # 관통 교차 티 복원 — 합류하는 교차 중 부속 기호·끝점 근거가 있는 것만.
     _xtee: list = []
     _split_crossing_tees(graph, edge_len, head_pts=[h.pos for h in heads],
+                         fitting_pts=_find_fitting_symbols(pipe_entities, layer_categories),
                          cuts_out=_xtee)
     audit["crossing_tees"] = _xtee
     # 배관↔배관 추정연결(용접·브리지)은 폐지 — 남는 추정은 기호↔배관 결합선뿐.
@@ -7035,9 +7103,10 @@ def run_stages_0_2(
     # 헤드 기호가 끊어놓은 동일선상 배관 접속 — 작도 규약 해석(추정 연결 아님).
     head_gap_joins = _join_head_gap_endpoints(
         graph, edge_len, [h.pos for h in head_detections])
-    # 관통 교차 티 복원 — 합류하는 교차만(루프 안 생김).
+    # 관통 교차 티 복원 — 합류하는 교차 중 부속 기호·끝점 근거가 있는 것만.
     crossing_tees = _split_crossing_tees(
-        graph, edge_len, head_pts=[h.pos for h in head_detections])
+        graph, edge_len, head_pts=[h.pos for h in head_detections],
+        fitting_pts=_find_fitting_symbols(pipe_ents, layer_categories))
     # head_drop_edges: 헤드 INSERT 좌표 ↔ 배관 nearest 노드 직선 (실제 배관 아님)
     # — 기호↔배관 결합선이라 시각적으로 구분 렌더.
     # 헤드 drop line — 헤드 INSERT 좌표를 같은 NodeIndex 로 canonicalize

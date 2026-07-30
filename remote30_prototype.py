@@ -3156,6 +3156,38 @@ ORTHO_SNAP_EPS_MM = 25.0
 _ORTHO_TOL = 1e-9
 
 
+def _ortho_span(p: tuple, q: tuple) -> tuple[bool, float, float, float]:
+    """축평행 세그먼트 → (수평인가, 고정좌표, 구간 하한, 구간 상한)."""
+    if abs(p[1] - q[1]) <= _ORTHO_TOL:
+        return (True, p[1], min(p[0], q[0]), max(p[0], q[0]))
+    return (False, p[0], min(p[1], q[1]), max(p[1], q[1]))
+
+
+def _ortho_leg_penalty(p: tuple, q: tuple, placed: list, nodes: set) -> float:
+    """L자 다리 pq 가 이미 놓인 형상과 부딪히는 정도.
+
+    같은 축선 위 겹침이 가장 나쁘다 — 배관 두 줄이 포개져 화면에서 루프로 읽힌다.
+    노드 관통은 그 다음(있어야 할 티가 없는 자리), 직교 교차는 층이 다른 배관이
+    실제로 스쳐 지나갈 수 있으므로 가장 가볍게 본다.
+    """
+    horiz, fixed, lo, hi = _ortho_span(p, q)
+    penalty = 0.0
+    for n in nodes:
+        if n == p or n == q:
+            continue
+        off, along = (n[1], n[0]) if horiz else (n[0], n[1])
+        if abs(off - fixed) <= _ORTHO_TOL and lo < along < hi:
+            penalty += 10.0
+    for s_horiz, s_fixed, s_lo, s_hi in placed:
+        if s_horiz == horiz:
+            if (abs(s_fixed - fixed) <= _ORTHO_TOL
+                    and min(hi, s_hi) - max(lo, s_lo) > _ORTHO_TOL):
+                penalty += 100.0
+        elif lo <= s_fixed <= hi and s_lo <= fixed <= s_hi:
+            penalty += 1.0
+    return penalty
+
+
 def orthogonalize_edges(
     edges: list[tuple[tuple[float, float], tuple[float, float], float]],
     anchors: set[tuple[float, float]],
@@ -3253,30 +3285,54 @@ def orthogonalize_edges(
     # ── ② L자 분해 ─────────────────────────────────────────────────────────
     src_elbows = elbow_fittings or {}
     occupied = set(node_map.values())
+    diagonals: list = []
+    placed: list = []
+    for i, (a, b, _L) in enumerate(edges):
+        na, nb = node_map[a], node_map[b]
+        if abs(nb[0] - na[0]) > _ORTHO_TOL and abs(nb[1] - na[1]) > _ORTHO_TOL:
+            diagonals.append((i, na, nb))
+        else:
+            placed.append(_ortho_span(na, nb))
+
+    # 코너는 이미 놓인 형상을 피해서 고른다. 자유도가 낮은 짧은 대각선부터 자리를
+    # 잡게 하고, 같은 길이면 좌표순이라 결정적이다.
+    corners: dict = {}
+    for i, na, nb in sorted(diagonals,
+                            key=lambda e: (abs(e[2][0] - e[1][0]) + abs(e[2][1] - e[1][1]),
+                                           e[1], e[2])):
+        dx, dy = nb[0] - na[0], nb[1] - na[1]
+        # 긴 성분을 먼저 진행하는 코너가 기본 — 주배관 방향을 유지한 뒤 끝에서 꺾는
+        # 실제 배선에 가깝다. 동점일 때만 이 순서가 쓰인다.
+        cands = ([(nb[0], na[1]), (na[0], nb[1])] if abs(dx) >= abs(dy)
+                 else [(na[0], nb[1]), (nb[0], na[1])])
+        best = min(((_ortho_leg_penalty(na, c, placed, occupied)
+                     + _ortho_leg_penalty(c, nb, placed, occupied), rank, c)
+                    for rank, c in enumerate(cands) if c not in occupied),
+                   default=None)
+        if best is None:
+            continue
+        corner = best[2]
+        corners[i] = corner
+        occupied.add(corner)
+        placed.append(_ortho_span(na, corner))
+        placed.append(_ortho_span(corner, nb))
+
     new_edges: list = []
     new_elbows: dict = defaultdict(list)
     split = unresolved = 0
-
-    for a, b, L in edges:
+    for i, (a, b, L) in enumerate(edges):
         na, nb = node_map[a], node_map[b]
         carried = src_elbows.get((min(a, b), max(a, b)))
-        dx, dy = nb[0] - na[0], nb[1] - na[1]
-        corner = None
-        if abs(dx) > _ORTHO_TOL and abs(dy) > _ORTHO_TOL:
-            # 긴 성분을 먼저 진행 — 주배관 방향을 유지한 뒤 끝에서 꺾는 실제 배선에 가깝다.
-            cands = ([(nb[0], na[1]), (na[0], nb[1])] if abs(dx) >= abs(dy)
-                     else [(na[0], nb[1]), (nb[0], na[1])])
-            corner = next((c for c in cands if c not in occupied), None)
-            if corner is None:
-                unresolved += 1
+        corner = corners.get(i)
         if corner is None:
+            if abs(nb[0] - na[0]) > _ORTHO_TOL and abs(nb[1] - na[1]) > _ORTHO_TOL:
+                unresolved += 1
             new_edges.append((na, nb, L))
             if carried:
                 new_elbows[(min(na, nb), max(na, nb))].extend(carried)
             continue
-        occupied.add(corner)
         first = abs(corner[0] - na[0]) + abs(corner[1] - na[1])
-        l1 = L * first / (abs(dx) + abs(dy))
+        l1 = L * first / (abs(nb[0] - na[0]) + abs(nb[1] - na[1]))
         new_edges.append((na, corner, l1))
         new_edges.append((corner, nb, L - l1))
         split += 1
@@ -3296,6 +3352,120 @@ def orthogonalize_edges(
             "edges_after": len(new_edges),
         })
     return new_edges, {k: v for k, v in new_elbows.items() if v}, node_map
+
+
+def planarize_edges(
+    edges: list[tuple[tuple[float, float], tuple[float, float], float]],
+    source: tuple[float, float],
+    keep: set[tuple[float, float]],
+    elbow_fittings: dict | None = None,
+    audit: dict | None = None,
+) -> tuple[list, dict]:
+    """축평행 배관망을 평면 그래프로 만든 뒤 다시 트리로 자른다.
+
+    그래프가 트리여도 간선이 노드나 다른 간선을 **관통**하면 화면에는 닫힌 영역이
+    생겨 루프로 읽힌다. 두 가지가 다 실제로는 잘못된 형상이다 — 관통 지점은 있어야
+    할 티가 빠진 자리이고, 같은 축선 위 겹침은 배관 두 줄이 포개진 자리다.
+
+    관통·교차 지점마다 노드를 넣어 실제 분기로 만들면 그 자리에서 사이클이 생긴다.
+    소스 기준 최단경로 트리로 잘라내 다시 가지식으로 되돌린다. 잘리는 것은 우회하는
+    중복 배관이므로 **총 연장이 줄어든다** — 직교화와 달리 길이 보존이 아니다.
+
+    그 절단이 남긴 급수 대상 없는 막다른 조각은 `keep`(소스·헤드) 이 아닌 잎부터
+    되짚어 제거한다. 입력 배관망의 잎은 모두 헤드이므로 여기서 사라지는 것은
+    평면화가 만든 조각뿐이다.
+
+    Returns:
+        (new_edges, new_elbow_fittings)
+    """
+    spans = [_ortho_span(p, q) for p, q, _L in edges]
+    nodes = {n for p, q, _L in edges for n in (p, q)}
+    cuts: dict[int, set] = defaultdict(set)
+
+    for i, (h1, f1, lo1, hi1) in enumerate(spans):
+        for n in nodes:
+            off, along = (n[1], n[0]) if h1 else (n[0], n[1])
+            if abs(off - f1) <= _ORTHO_TOL and lo1 + _ORTHO_TOL < along < hi1 - _ORTHO_TOL:
+                cuts[i].add(n)
+        for j in range(i + 1, len(spans)):
+            h2, f2, lo2, hi2 = spans[j]
+            # 같은 축선 위 겹침은 상대 끝점이 위 노드 검사에 걸려 이미 잘린다.
+            if h2 == h1:
+                continue
+            if lo1 <= f2 <= hi1 and lo2 <= f1 <= hi2:
+                pt = (f2, f1) if h1 else (f1, f2)
+                cuts[i].add(pt)
+                cuts[j].add(pt)
+
+    pieces: list = []
+    for i, (p, q, L) in enumerate(edges):
+        geo = math.dist(p, q)
+        ordered = sorted({p, q} | cuts.get(i, set()),
+                         key=lambda n: (n[0] - p[0]) ** 2 + (n[1] - p[1]) ** 2)
+        for u, v in zip(ordered, ordered[1:]):
+            seg = math.dist(u, v)
+            if seg > _ORTHO_TOL:
+                pieces.append((u, v, L * seg / geo, i))
+
+    graph: dict = defaultdict(set)
+    edge_len: dict = {}
+    for u, v, L, _i in pieces:
+        k = (min(u, v), max(u, v))
+        if k in edge_len:
+            # 완전히 포개진 중복 배관 — 짧은 쪽 한 줄만 남긴다.
+            edge_len[k] = min(edge_len[k], L)
+            continue
+        edge_len[k] = L
+        graph[u].add(v)
+        graph[v].add(u)
+    deduped = len(pieces) - len(edge_len)
+    _tree, removed = force_spanning_tree(graph, edge_len, source)
+
+    stubs = 0
+    leaves = [n for n, nbs in graph.items() if len(nbs) == 1 and n not in keep]
+    while leaves:
+        n = leaves.pop()
+        if len(graph[n]) != 1 or n in keep:
+            continue
+        m = next(iter(graph[n]))
+        graph[n].discard(m)
+        graph[m].discard(n)
+        edge_len.pop((min(n, m), max(n, m)), None)
+        stubs += 1
+        if len(graph[m]) == 1 and m not in keep:
+            leaves.append(m)
+
+    src_elbows = elbow_fittings or {}
+    orig_keys = [(min(p, q), max(p, q)) for p, q, _L in edges]
+    new_edges: list = []
+    new_elbows: dict = defaultdict(list)
+    seen: set = set()
+    carried_done: set = set()
+    for u, v, _L, i in pieces:
+        k = (min(u, v), max(u, v))
+        if k in seen or k not in edge_len:
+            continue
+        seen.add(k)
+        new_edges.append((u, v, edge_len[k]))
+        if i not in carried_done:
+            carried_done.add(i)
+            carried = src_elbows.get(orig_keys[i])
+            if carried:
+                new_elbows[k].extend(carried)
+
+    if audit is not None:
+        surviving = {n for p, q, _L in new_edges for n in (p, q)}
+        audit.update({
+            "dropped_nodes": nodes - surviving,
+            "cuts": sum(len(v) for v in cuts.values()),
+            "duplicate_edges": deduped,
+            "cycle_edges_dropped": len(removed),
+            "dead_stubs_dropped": stubs,
+            "edges_after": len(new_edges),
+            "len_before_mm": round(sum(L for _p, _q, L in edges), 3),
+            "len_after_mm": round(sum(L for _p, _q, L in new_edges), 3),
+        })
+    return new_edges, dict(new_elbows)
 
 
 def _restrict_to_branch_region(
@@ -4085,8 +4255,14 @@ def _finalize_selection(
         merged_edges_out, elbows_out, _node_map = orthogonalize_edges(
             merged_edges, anchors=keep_nodes, elbow_fittings=elbows_out,
             audit=ortho_audit)
+        _planar_audit: dict = {}
+        merged_edges_out, elbows_out = planarize_edges(
+            merged_edges_out, source=_node_map.get(src, src),
+            keep={_node_map.get(n, n) for n in keep_nodes},
+            elbow_fittings=elbows_out, audit=_planar_audit)
         if ortho_audit is not None:
             ortho_audit["node_map"] = _node_map
+            ortho_audit["planar"] = _planar_audit
     if ortho_audit is not None:
         ortho_audit["cycle_edges_dropped"] = cycle_dropped
     merged_nodes = sorted({n for a, b, _L in merged_edges_out for n in (a, b)})
@@ -4498,13 +4674,20 @@ def select_worst30_heads_anchored(
     # 직교화가 노드를 옮겼으면 추정-edge 좌표도 같이 옮긴다 — 프론트가 브릿지·용접·
     # head-drop 을 최종망 위에 점선으로 겹쳐 그리므로 좌표가 어긋나면 표시가 깨진다.
     _nmap = _ortho_audit.pop("node_map", None)
+    _gone = (_ortho_audit.get("planar") or {}).pop("dropped_nodes", set())
     if _nmap:
         for _key in ("bridges", "welds", "head_drops"):
+            _kept = []
             for _rec in audit.get(_key) or []:
                 for _pk in ("p1", "p2"):
                     _moved = _nmap.get(tuple(_rec[_pk]))
                     if _moved is not None:
                         _rec[_pk] = [_moved[0], _moved[1]]
+                # 평면화가 걷어낸 중복 배관에 붙어 있던 추정 연결은 그릴 자리가 없다.
+                if not any(tuple(_rec[_pk]) in _gone for _pk in ("p1", "p2")):
+                    _kept.append(_rec)
+            if _key in audit:
+                audit[_key] = _kept
     audit["ortho"] = _ortho_audit
     # W7 — 축적 dict → 정식 스키마. 반환값에 포함 (r30_combined 가 JSON 직렬화)
     res.audit = ExtractionAudit.from_audit_dict(audit)

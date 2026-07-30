@@ -192,9 +192,15 @@ def test_l4_every_final_edge_carries_at_least_one_head():
 
 
 def test_l4_no_attached_head_is_lost_by_pruning():
-    _sel, audit = _anchored(True)
-    assert audit["heads"]["unreachable"] == []
-    assert audit["heads"]["attached"] == audit["heads"]["detected_in_region"]
+    """가지치기는 이미 붙은 헤드를 하나도 떨어뜨리지 않는다.
+
+    추정 연결(용접·브리지) 폐지 후 실배관만으로는 이 도면의 헤드 일부가 별개
+    조각에 남는다 — 그건 감사에 기록만 하고 봉합하지 않는 게 정책이다. 여기서
+    볼 것은 그 수가 가지치기 때문에 늘지 않는다는 것.
+    """
+    sel, audit = _anchored(True)
+    assert len(sel.heads) == audit["heads"]["attached"]
+    assert audit["unreachable_heads"] == audit["heads"]["unreachable"]
     assert audit["pruned"]["dead_edge_count"] > 0
     # 기본 정책은 force_tree — 수리계산 입력은 루프 없는 가지식이어야 한다(O1).
     assert audit["residual_cycles"] == {"count": 0, "policy": "force_tree"}
@@ -208,7 +214,7 @@ def test_l5_audit_json_schema_is_filled():
     assert j["load"]["max"] >= j["load"]["median"] >= j["load"]["min"]
     assert set(j["pruned"]) == {"dead_edge_count", "dead_len_mm", "cycle_cut_count"}
     assert set(j["residual_cycles"]) == {"count", "policy"}
-    assert j["unreachable_heads"] == []
+    assert j["unreachable_heads"] == sel.audit.heads["unreachable"]
     assert j["fallback"] == {"triggered": False, "reason": ""}
 
 

@@ -3829,7 +3829,6 @@ def remote30_combined_build():
                 alarm_xy=alarm_xy,
                 head_region=HeadRegion.from_rects(zones),
                 zones=zones,
-                tee_split=True,
                 load_mode=load_mode,
                 on_residual_cycle=on_residual_cycle,
                 audit_out=anchored_audit,

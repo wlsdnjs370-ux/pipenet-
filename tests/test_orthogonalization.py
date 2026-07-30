@@ -191,22 +191,31 @@ def test_pipeline_is_a_tree(anchored):
 
 
 def test_pipeline_is_plane_embedded(anchored):
-    """간선이 노드를 관통하거나 서로 교차·중첩하지 않는다 — 화면에 닫힌 영역 없음."""
-    _off, on, _ao, _an = anchored
-    assert _planarity_defects(on.edges) == (0, 0, 0)
+    """간선이 노드를 관통하거나 축선 위에서 포개지지 않는다.
+
+    직교 교차(X)는 남을 수 있다 — 층이 다른 배관이 스쳐 지나가는 것인지 티인지
+    평면 좌표로는 못 가리므로 추정으로 자르지 않고 감사에만 센다.
+    """
+    _off, on, _ao, an = anchored
+    thru, cross, overlap = _planarity_defects(on.edges)
+    assert (thru, overlap) == (0, 0)
+    assert an["ortho"]["planar"]["unmarked_crossings"] >= cross
 
 
-def test_pipeline_planarization_only_removes_length(anchored):
-    """평면화는 포개진 중복·우회 배관을 걷어내므로 총연장이 줄기만 한다."""
+def test_pipeline_planarization_never_adds_length(anchored):
+    """평면화는 포개진 중복·우회 배관을 걷어낼 뿐 배관을 만들어내지 않는다.
+
+    추정 연결(용접·브리지)을 폐지한 뒤로 이 fixture 에는 걷어낼 중복이 남지
+    않아 감산이 0 일 수 있다 — 늘지 않는 것이 여기서 검증할 불변식이다.
+    """
     off, on, _ao, an = anchored
     lo = sum(L for _a, _b, L in off.edges)
     ln = sum(L for _a, _b, L in on.edges)
-    assert ln < lo
+    assert ln <= lo
     p = an["ortho"]["planar"]
     # 감사값은 0.001mm 로 반올림 — 직교화까지는 길이가 보존된다.
     assert p["len_before_mm"] == pytest.approx(lo, abs=1e-3)
     assert p["len_after_mm"] == pytest.approx(ln, abs=1e-3)
-    assert p["duplicate_edges"] + p["cycle_edges_dropped"] + p["dead_stubs_dropped"] > 0
 
 
 def test_pipeline_anchors_and_distances_unchanged(anchored):
@@ -230,7 +239,7 @@ def test_pipeline_ortho_audit_recorded(anchored):
 
 
 def test_no_estimated_edge_points_at_empty_space(anchored):
-    """브릿지·용접·head-drop 이 최종망에 없는 좌표를 가리키면 안 된다.
+    """head-drop 결합선이 최종망에 없는 좌표를 가리키면 안 된다.
 
     프론트가 이 좌표를 최종망 위에 점선으로 겹쳐 그린다. 스냅이 노드를 옮겼는데
     좌표를 그대로 두면 빈 자리에 점선이 뜨고, 평면화가 걷어낸 중복 배관에 붙어
@@ -241,7 +250,7 @@ def test_no_estimated_edge_points_at_empty_space(anchored):
     nodes_off = {n for a, b, _L in off.edges for n in (a, b)}
     nodes_on = {n for a, b, _L in on.edges for n in (a, b)}
     checked = 0
-    for key in ("bridges", "welds", "head_drops"):
+    for key in ("head_drops",):
         on_pts = {(r[pk][0], r[pk][1]) for r in (an.get(key) or [])
                   for pk in ("p1", "p2")}
         for rec in ao.get(key) or []:

@@ -8,9 +8,9 @@
       "y_max": -2568.803,
       "y_min": -3053.231
     },
-    "bg_budget": 120000,
+    "bg_budget": 500000,
     "bg_entities": 54,
-    "bg_skipped": false,
+    "bg_truncated": false,
     "counts": {
       "layers": 15,
       "total_entities": 1855

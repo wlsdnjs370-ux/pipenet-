@@ -2077,11 +2077,11 @@
 
     // 배경(건축) 생략 알림 접미사 — /inspect 가 예산 초과로 배경을 생략했을 때만.
     function _bgSkipNote(result, short) {
-      if (!result || !result.bg_skipped) return "";
-      const n = (result.bg_entities || 0).toLocaleString();
+      if (!result || !result.bg_truncated) return "";
+      const n = (result.bg_budget || 0).toLocaleString();
       return short
-        ? ` ⚡ 건축배경 ${n}개 생략(속도).`
-        : ` ⚡ 건축배경 ${n}개는 처리속도 위해 생략됨(배관 추출엔 무영향).`;
+        ? ` ⚠ 건축배경 ${n}개에서 절단.`
+        : ` ⚠ 건축배경이 상한 ${n}개에 도달해 이후는 표시되지 않음(배관 추출엔 무영향).`;
     }
 
     function render() {
@@ -3912,11 +3912,8 @@
           _sysFileStatus.textContent = `✓ ${result.dxf_filename || f.name} — ${total.toLocaleString()} entity, ` +
             `표시 영역 ${(bw/1000).toFixed(1)}m × ${(bh/1000).toFixed(1)}m. 펌프/V 클릭으로 위치 지정 →` + _bgSkipNote(result, true);
         }
-        if (state.current_mode === "system") {
-          // robust bbox 로 최종 1회 fit — 스트리밍 중 raw bbox(작게) 보이던 걸 본 도면에 맞춤
-          fitSystemCanvas();
-          render();
-        }
+        // robust bbox 로 최종 1회 fit — 스트리밍 중 raw bbox(작게) 보이던 걸 본 도면에 맞춤
+        if (state.current_mode === "system") fitSystemCanvas();
       } catch (err) {
         state._sysStreaming = false;
         _sysFileStatus.textContent = `❌ 로딩 실패: ${err.message || err}`;
@@ -3983,6 +3980,7 @@
       state.view.panX = w / 2 - ((b.x_min + b.x_max) / 2) * z;
       state.view.panY = h / 2 + ((b.y_min + b.y_max) / 2) * z;
       state.view.fitMode = "system";
+      render();
     }
 
     // 등각도(iso2d) 표시 좌표 재배치 — 라이저(기계실 제외)를 헤드 AV 한 점에 모은다.
@@ -4611,7 +4609,9 @@
         if (buf.trim()) { try { handleMsg(JSON.parse(buf)); } catch (e) {} }
         state._mrStreaming = false;  // 스트림 완료 → 이후 render() 는 GL 경로 사용
         if (result) {
-          state.machineroom_bbox = result.bbox || state.machineroom_bbox;
+          // raw bbox 는 outlier 포함 — LH 지하층배관도는 3642m×4274m 로 부풀어 실도면이
+          // 화면 8% 로 쪼그라든다. 계통도와 같은 percentile robust bbox 로 fit.
+          state.machineroom_bbox = _robustBboxFromEnts(ents) || result.bbox || state.machineroom_bbox;
           state.machineroom_bbox_full = result.bbox || state.machineroom_bbox;
           state.machineroom_layers = result.layers || [];
           // GL 색상은 layer_cat(레이어→카테고리) 기준 — 평면도와 공유 dict 에 채움.
@@ -4623,11 +4623,8 @@
             `표시 영역 ${(bw/1000).toFixed(1)}m × ${(bh/1000).toFixed(1)}m. 배관 레이어 선택 후 수원/연결점 클릭 →` + _bgSkipNote(result, true);
           _buildMrLayerPicker();
         }
-        // 최종 1회 render (뷰는 첫 전경에서 이미 fit — 로딩 중 사용자 pan 보존).
-        if (state.current_mode === "machineroom") {
-          if (!started) fitMachineroomCanvas();
-          render();
-        }
+        // robust bbox 로 최종 1회 fit — 스트리밍 중 raw bbox(작게) 보이던 걸 본 도면에 맞춤
+        if (state.current_mode === "machineroom") fitMachineroomCanvas();
       } catch (err) {
         state._mrStreaming = false;
         _mrFileStatus.textContent = `❌ 로딩 실패: ${err.message || err}`;
@@ -4802,6 +4799,7 @@
       state.view.panX = w / 2 - ((b.x_min + b.x_max) / 2) * z;
       state.view.panY = h / 2 + ((b.y_min + b.y_max) / 2) * z;
       state.view.fitMode = "machineroom";
+      render();
     }
 
     function setMachineroomPickMode(mode) {

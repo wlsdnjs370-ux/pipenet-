@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 import re
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -26,6 +27,7 @@ _CORE = Path(__file__).resolve().parent / "core"
 if _CORE.is_dir() and str(_CORE) not in _sys.path:
     _sys.path.insert(0, str(_CORE))
 
+from hydraulic_solver import inner_diameter_mm
 from remote30_graph import HeadRegion
 from remote30_constants import _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM
 
@@ -355,6 +357,67 @@ def _collect_supplementary_segments(msp, base_segments, text_items, settings: Re
     return extra, counts
 
 
+class _GridIndex:
+    """격자 버킷 최근접 탐색 — 노드 전수 O(n²) 스캔 대체."""
+
+    __slots__ = ("cell", "_bucket")
+
+    def __init__(self, cell):
+        self.cell = max(float(cell), 1e-9)
+        self._bucket = defaultdict(list)
+
+    def _key(self, xy):
+        return (int(xy[0] // self.cell), int(xy[1] // self.cell))
+
+    def add(self, idx, xy):
+        self._bucket[self._key(xy)].append((idx, xy))
+
+    def nearest_within(self, xy, radius, exclude=frozenset()):
+        """radius 안 최근접 (idx, dist). 없으면 (None, inf)."""
+        span = int(radius / self.cell) + 1
+        kx, ky = self._key(xy)
+        best, best_d = None, float("inf")
+        for dx in range(-span, span + 1):
+            for dy in range(-span, span + 1):
+                for idx, q in self._bucket.get((kx + dx, ky + dy), ()):
+                    if idx in exclude:
+                        continue
+                    d = math.dist(xy, q)
+                    if d < best_d:
+                        best, best_d = idx, d
+        if best is not None and best_d <= radius:
+            return best, best_d
+        return None, float("inf")
+
+    def nearest(self, xy):
+        """무제한 최근접 (idx, dist) — 링 확장. 비어 있으면 (None, inf)."""
+        if not self._bucket:
+            return None, float("inf")
+        kx, ky = self._key(xy)
+        max_ring = max(max(abs(bx - kx), abs(by - ky)) for bx, by in self._bucket)
+        best, best_d = None, float("inf")
+        for ring in range(max_ring + 1):
+            # ring r 버킷 안 점의 거리 하한 = (r-1)*cell — 이미 찾은 best 보다 멀면 종료
+            if best is not None and (ring - 1) * self.cell > best_d:
+                break
+            if ring == 0:
+                cells = ((kx, ky),)
+            else:
+                cells = []
+                for dx in range(-ring, ring + 1):
+                    cells.append((kx + dx, ky - ring))
+                    cells.append((kx + dx, ky + ring))
+                for dy in range(-ring + 1, ring):
+                    cells.append((kx - ring, ky + dy))
+                    cells.append((kx + ring, ky + dy))
+            for ck in cells:
+                for idx, q in self._bucket.get(ck, ()):
+                    d = math.dist(xy, q)
+                    if d < best_d:
+                        best, best_d = idx, d
+        return best, best_d
+
+
 def _close_graph_gaps(G, node_coords, settings: Remote30Settings):
     """그래프 closure: degree==1 끝점이 다른 노드/segment 끝과 N 거리 안이면 가짜 edge 로 연결.
     원본 segment 가 아니므로 dia=None, source='closure', weight=실제 거리.
@@ -362,27 +425,18 @@ def _close_graph_gaps(G, node_coords, settings: Remote30Settings):
     if settings.graph_closure_tol <= 0:
         return 0
     closure_tol = settings.graph_closure_tol
-    closure_tol_sq = closure_tol * closure_tol
 
     leaf_nodes = [n for n in G.nodes() if G.degree(n) == 1]
+    if not leaf_nodes:
+        return 0
+    index = _GridIndex(closure_tol)
+    for i, xy in enumerate(node_coords):
+        index.add(i, xy)
     added = 0
     for u in leaf_nodes:
-        ux, uy = node_coords[u]
-        best = None
-        best_d_sq = closure_tol_sq + 1
-        for v, (vx, vy) in enumerate(node_coords):
-            if v == u:
-                continue
-            if G.has_edge(u, v):
-                continue
-            dx = ux - vx
-            dy = uy - vy
-            d_sq = dx * dx + dy * dy
-            if d_sq < best_d_sq:
-                best_d_sq = d_sq
-                best = v
-        if best is not None and best_d_sq <= closure_tol_sq:
-            d = math.sqrt(best_d_sq)
+        exclude = {u, *G.neighbors(u)}
+        best, d = index.nearest_within(node_coords[u], closure_tol, exclude=exclude)
+        if best is not None:
             raw_p1 = (float(node_coords[u][0]), float(node_coords[u][1]))
             raw_p2 = (float(node_coords[best][0]), float(node_coords[best][1]))
             G.add_edge(u, best, weight=d, pipe_no=f"PC{added:04d}", length=d, dia=None,
@@ -432,7 +486,12 @@ def _bridge_components(G, node_coords, alarm_node):
     if main is None:
         # 알람밸브가 어떤 component 에도 없으면 가장 큰 component 를 main
         main = max(components, key=len)
-    main_nodes = list(main)
+    xs = [c[0] for c in node_coords]
+    ys = [c[1] for c in node_coords]
+    span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+    index = _GridIndex(span / 64.0)
+    for v in main:
+        index.add(v, node_coords[v])
     added = 0
     for comp in components:
         if comp is main:
@@ -440,12 +499,9 @@ def _bridge_components(G, node_coords, alarm_node):
         # comp 의 각 노드에서 main 의 가장 가까운 노드 (최소 거리 쌍)
         best_u, best_v, best_d = None, None, float("inf")
         for u in comp:
-            ux, uy = node_coords[u]
-            for v in main_nodes:
-                vx, vy = node_coords[v]
-                d = math.hypot(ux - vx, uy - vy)
-                if d < best_d:
-                    best_d = d; best_u = u; best_v = v
+            v, d = index.nearest(node_coords[u])
+            if d < best_d:
+                best_d = d; best_u = u; best_v = v
         if best_u is not None:
             raw_p1 = (float(node_coords[best_u][0]), float(node_coords[best_u][1]))
             raw_p2 = (float(node_coords[best_v][0]), float(node_coords[best_v][1]))
@@ -456,7 +512,8 @@ def _bridge_components(G, node_coords, alarm_node):
                 raw_p1=raw_p1, raw_p2=raw_p2, is_closure=True,
             )
             added += 1
-            main_nodes.extend(comp)  # 다음 comp는 이제 main+comp 둘 다와 비교
+            for u in comp:  # 다음 comp는 이제 main+comp 둘 다와 비교
+                index.add(u, node_coords[u])
     return added
 
 
@@ -597,17 +654,14 @@ def detect_alarm_valve_xy(msp, settings: Remote30Settings) -> Optional[tuple]:
 def _snap_points(points, tol):
     snapped = []
     node_coords = []
+    index = _GridIndex(tol)
     for p in points:
-        found = None
-        for i, q in enumerate(node_coords):
-            if math.dist(p, q) <= tol:
-                found = i
-                break
+        found, _ = index.nearest_within(p, tol)
         if found is None:
+            found = len(node_coords)
             node_coords.append(p)
-            snapped.append(len(node_coords) - 1)
-        else:
-            snapped.append(found)
+            index.add(found, p)
+        snapped.append(found)
     return snapped, node_coords
 
 
@@ -642,6 +696,7 @@ def _build_pipe_graph(segments, text_items, settings: Remote30Settings):
         G.add_node(i, xy=xy)
 
     pipe_records = []
+    rec_by_pair = {}
     sid = 0
     for idx, s in enumerate(segments):
         n1 = snapped_ids[2 * idx]
@@ -674,24 +729,37 @@ def _build_pipe_graph(segments, text_items, settings: Remote30Settings):
             raw_p1=raw_p1, raw_p2=raw_p2,
         )
 
-        pipe_records.append({
+        record = {
             "Pipe No": pipe_no,
             "From Node": f"N{n1:04d}",
             "To Node": f"N{n2:04d}",
             "Dia(mm)": dia,
             "Length(CAD unit)": round(length, 2),
             "Layer": s["layer"],
-        })
+        }
+        # 평행 segment 로 edge 를 대체한 경우 기존 record 도 함께 교체 (stale 행 방지)
+        pair = (n1, n2) if n1 < n2 else (n2, n1)
+        ridx = rec_by_pair.get(pair)
+        if ridx is None:
+            rec_by_pair[pair] = len(pipe_records)
+            pipe_records.append(record)
+        else:
+            pipe_records[ridx] = record
     return G, node_coords, pipe_records
 
 
 def _attach_heads_to_graph(heads, G, node_coords, settings: Remote30Settings):
     attached = []
+    if not node_coords:
+        return attached
+    tol = settings.head_to_pipe_tol
+    index = _GridIndex(tol)
+    for i, xy in enumerate(node_coords):
+        index.add(i, xy)
     for i, h in enumerate(heads, 1):
         xy = h["xy"]
-        n = _nearest_node_id(xy, node_coords)
-        dist = math.dist(xy, node_coords[n])
-        if dist <= settings.head_to_pipe_tol:
+        n, dist = index.nearest_within(xy, tol)
+        if n is not None:
             attached.append({
                 "Head No": f"H{i:03d}",
                 "Node": n,
@@ -756,7 +824,8 @@ def _compute_hydraulic_loss_per_head(G, head_paths, edge_head_count, settings: R
             dia_mm = ed.get("dia") or settings.fallback_dia_mm
             n_below = edge_head_count[frozenset((a, b))]
             q_lpm = n_below * flow_per_head
-            friction += hw_friction_loss_kgcm2(q_lpm, length_m, c, dia_mm)
+            # HW 식은 실내경 기준 — 호칭경을 그대로 쓰면 마찰손실 ~1.6× 과대
+            friction += hw_friction_loss_kgcm2(q_lpm, length_m, c, inner_diameter_mm(dia_mm))
             path_len += length_m
         out[n] = {
             "friction": friction,
@@ -799,16 +868,7 @@ def _select_remote_hydraulic(G, node_coords, attached_heads, alarm_xy, settings:
     for idx, h in enumerate(selected, 1):
         h["Remote Head No"] = f"RH{idx:02d}"
 
-    # path_edges 재구성 (번호 변경 후)
-    path_edges = set()
-    for h in selected:
-        try:
-            path = nx.shortest_path(G, alarm_node, h["Node"], weight="weight")
-            for a, b in zip(path[:-1], path[1:]):
-                path_edges.add(tuple(sorted((a, b))))
-        except nx.NetworkXNoPath:
-            continue
-
+    # path_edges 는 Pass 1 결과 그대로 — 정렬/번호변경은 edge 집합을 바꾸지 않는다
     return selected, alarm_node, path_edges
 
 
@@ -1268,112 +1328,6 @@ def _export_sdf(G, node_coords, selected_heads, path_edges, alarm_node, settings
         tables = build_pipenet_tables(G, node_coords, selected_heads, path_edges, alarm_node, settings)
     text = build_sdf_xml(tables, settings)
     Path(out_sdf).write_text(text, encoding="utf-8")
-    return  # 아래의 옛 구현은 사용하지 않으므로 즉시 return
-
-    import xml.etree.ElementTree as ET
-    from xml.dom import minidom
-
-    scale = settings.cad_unit_to_m
-
-    used_nodes = set()
-    for a, b in path_edges:
-        used_nodes.add(a)
-        used_nodes.add(b)
-    used_nodes.add(alarm_node)
-    head_nodes_to_id = {h["Node"]: h["Remote Head No"] for h in selected_heads}
-
-    # SDF label 매핑 — RV03_NEW 는 정수 label 사용
-    sorted_nodes = sorted(used_nodes)
-    node_label_map = {n: str(i + 1) for i, n in enumerate(sorted_nodes)}
-
-    project = ET.Element("Project", version="1.11.0  (3604)")
-    network = ET.SubElement(project, "Network-spray")
-    ET.SubElement(network, "Title").text = "Remote 30 Auto-Extracted"
-    ET.SubElement(network, "Network-description").text = " "
-
-    attrs = ET.SubElement(network, "Attributes")
-    units = ET.SubElement(attrs, "Units", type="user-defined")
-    ET.SubElement(units, "Length-unit", display="2", precision="2", unit="metres")
-    ET.SubElement(units, "Diameter-unit", display="3", precision="3", unit="millimetres")
-    ET.SubElement(units, "Pressure-unit", display="0", precision="1", unit="kg-f-cm2-g")
-    ET.SubElement(units, "Velocity-unit", display="2", precision="2", unit="m-s")
-    ET.SubElement(units, "Volumetric-flow-unit", display="1", precision="1", unit="l-min")
-
-    ET.SubElement(attrs, "Fluid-fixed-user", density="998.2", **{"vapour-pressure": "3.62070676e+205", "viscosity": "1e-09"})
-    design = ET.SubElement(
-        attrs, "Design-options",
-        **{
-            "analysis-phase": "1", "design-phase": "0", "design-rules": "NFPA",
-            "pressure-equation": "hazen-williams", "specification-type": "user-defined",
-        },
-    )
-    # NFTC 80 LPM @ K=80 = 1.333e-3 m^3/s
-    flow_m3s = settings.design_flow_per_head_lpm / 60000.0
-    ET.SubElement(design, "Nozzle-specification", flowrate=f"{flow_m3s:.11f}", label="")
-    ET.SubElement(
-        attrs, "Defaults",
-        elevation="0", friction="Unset", **{"nozzle-flowrate": f"{flow_m3s:.11f}"},
-    )
-
-    nodes_el = ET.SubElement(network, "Nodes")
-    for n in sorted_nodes:
-        if n == alarm_node:
-            elev = settings.elevation_alarm_m
-        elif n in head_nodes_to_id:
-            elev = settings.elevation_head_m
-        else:
-            elev = settings.elevation_head_m
-        node_el = ET.SubElement(
-            nodes_el, "Node",
-            elevation=f"{elev:g}", **{"io-node": "No"}, label=node_label_map[n],
-        )
-        x_cad, y_cad = node_coords[n]
-        ET.SubElement(node_el, "Position", x=f"{x_cad:g}", y=f"{y_cad:g}")
-
-    pipes_el = ET.SubElement(network, "Pipes")
-    pipe_label = 0
-    for a, b in sorted(path_edges):
-        ed = G.get_edge_data(a, b)
-        dia_mm = ed.get("dia") or settings.fallback_dia_mm
-        bore_m = float(dia_mm) / 1000.0
-        length_m = ed.get("length", 0.0) * scale
-        pipe_label += 1
-        ET.SubElement(
-            pipes_el, "Pipe",
-            bore=f"{bore_m:g}",
-            input=node_label_map[a],
-            label=str(pipe_label),
-            length=f"{length_m:.3f}",
-            output=node_label_map[b],
-            rise="0",
-            **{"roughness-or-c": f"{settings.c_factor:g}"},
-            status="normal",
-        )
-
-    nozzles_el = ET.SubElement(network, "Nozzles")
-    for h in selected_heads:
-        n = h["Node"]
-        rh_no = h["Remote Head No"]
-        nozzle_label = rh_no.replace("RH", "").lstrip("0") or "1"
-        ET.SubElement(
-            nozzles_el, "Nozzle",
-            input=node_label_map[n],
-            label=nozzle_label,
-            output=f"@/{nozzle_label}",
-            status="1",
-        )
-
-    # 정렬된 XML 출력
-    raw = ET.tostring(project, encoding="utf-8")
-    pretty = minidom.parseString(raw).toprettyxml(indent="\t", encoding="UTF-8")
-    # PIPENET 의 DOCTYPE 라인 삽입
-    pretty_text = pretty.decode("utf-8")
-    pretty_text = pretty_text.replace(
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE Project SYSTEM "spray.dtd">',
-        1,
-    )
-    Path(out_sdf).write_text(pretty_text, encoding="utf-8")
 
 
 def run_remote30_extraction(
@@ -1534,7 +1488,9 @@ def run_remote30_extraction(
             user_zone_applied = True
             warnings.append(f"사용자 zone 적용 → zone 안 attached_heads {len(attached_heads)}개")
 
-    if settings.remote_mode == "hydraulic":
+    if not node_coords:
+        selected, alarm_node, path_edges = [], None, set()
+    elif settings.remote_mode == "hydraulic":
         selected, alarm_node, path_edges = _select_remote_hydraulic(
             G, node_coords, attached_heads, alarm_xy, settings
         )

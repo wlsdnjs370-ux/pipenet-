@@ -704,8 +704,22 @@ def _load_update_history() -> dict:
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "items": [],
         }
-    with UPDATE_HISTORY_PATH.open("r", encoding="utf-8") as fp:
+    # utf-8-sig — 이 파일은 Windows 편집기로 손대는 일이 잦아 BOM 이 붙는다.
+    # 순수 utf-8 로 읽으면 JSONDecodeError 로 업데이트 기록 API 가 통째 500.
+    with UPDATE_HISTORY_PATH.open("r", encoding="utf-8-sig") as fp:
         payload = json.load(fp)
+    # 이 파일은 손으로 관리돼 스냅샷 dict 를 리스트에 덧붙인 형태로도 쌓인다.
+    # 프론트는 단일 dict 만 받으므로 items 를 합쳐 한 장으로 접는다.
+    if isinstance(payload, list):
+        merged: list = []
+        for snap in payload:
+            if isinstance(snap, dict):
+                merged.extend(snap.get("items") or [])
+        stamps = [str(s.get("updated_at")) for s in payload
+                  if isinstance(s, dict) and s.get("updated_at")]
+        payload = {"items": merged}
+        if stamps:
+            payload["updated_at"] = max(stamps)
     payload.setdefault("title", "업데이트 기록")
     payload.setdefault("updated_at", datetime.now().strftime("%Y-%m-%d %H:%M"))
     payload.setdefault("items", [])

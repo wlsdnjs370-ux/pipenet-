@@ -3340,6 +3340,16 @@ MACHINEROOM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 _COMBINED_JOBS: dict[str, dict] = {}
 _COMBINED_JOBS_CAP = 24
 
+# _COMBINED_JOBS 축출+삽입 원자화 — 동시 빌드 시 이중 pop(KeyError) 방지
+_JOBS_LOCK = threading.Lock()
+
+
+def _cache_job(jobs: dict, cap: int, job_id: str, value: dict) -> None:
+    with _JOBS_LOCK:
+        while len(jobs) >= cap:
+            jobs.pop(next(iter(jobs)))  # 가장 오래된 항목 제거
+        jobs[job_id] = value
+
 
 def _emit_subnetwork_bundle(net, out_dir: Path, job_id: str, prefix: str,
                             project_title: str, *, coord_scale: float = 1.0) -> dict:
@@ -3805,11 +3815,14 @@ def remote30_combined_build():
         return jsonify({"ok": False, "message": "system_riser (계통도 추출) 가 필요합니다"}), 400
 
     plane_edit = body.get("plane_edit") or {}
-    added = [tuple(p) for p in plane_edit.get("added_heads", [])]
-    deleted = set(int(i) for i in plane_edit.get("deleted_indices", []))
-    zones = [tuple(z) for z in plane_edit.get("zones", [])]
-    branch_zones = [tuple(z) for z in plane_edit.get("branch_zones",
-                                                     plane_job.get("branch_zones") or [])]
+    try:
+        added = [tuple(p) for p in plane_edit.get("added_heads", [])]
+        deleted = set(int(i) for i in plane_edit.get("deleted_indices", []))
+        zones = [tuple(z) for z in plane_edit.get("zones", [])]
+        branch_zones = [tuple(z) for z in plane_edit.get("branch_zones",
+                                                         plane_job.get("branch_zones") or [])]
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "plane_edit 형식이 잘못되었습니다"}), 400
     alarm_xy = plane_job.get("alarm_xy")
     ax, ay = plane_edit.get("alarm_x"), plane_edit.get("alarm_y")
     if ax is not None and ay is not None:
@@ -4336,9 +4349,7 @@ def remote30_combined_build():
         warnings.warn(f"[combined] z-aware 좌표 캐시 실패 (편집 KFP/HAS 비율 저하 가능): {_zexc}",
                        RuntimeWarning, stacklevel=2)
     try:
-        if len(_COMBINED_JOBS) >= _COMBINED_JOBS_CAP:
-            _COMBINED_JOBS.pop(next(iter(_COMBINED_JOBS)))  # 가장 오래된 항목 제거
-        _COMBINED_JOBS[job_id] = {
+        _cache_job(_COMBINED_JOBS, _COMBINED_JOBS_CAP, job_id, {
             "combined": _copy.deepcopy(combined),
             "title": title,
             "zaware": _zaware_map,
@@ -4351,7 +4362,7 @@ def remote30_combined_build():
             # 재배치 루트(AV)와 lift 제외 대상(라이저·기계실)을 그대로 승계.
             "av_label": av_label,
             "no_lift_labels": sorted(riser_collapse_labels | _mr_set),
-        }
+        })
     except Exception as _cache_exc:  # noqa: BLE001 — 캐시 실패가 통합 출력을 막지 않도록
         warnings.warn(f"[combined] rebuild 캐시 저장 실패 (편집 재출력 불가): {_cache_exc}",
                        RuntimeWarning, stacklevel=2)
@@ -4589,11 +4600,20 @@ def _patch_combined_from_geometry(combined, geom: dict) -> None:
     # 부속을 지우거나 추가할 수 있으므로 통째 교체한다(라벨 기준 패치로는 삭제 표현 불가).
     pipe_labels = {str(p.get("label", "")) for p in combined.pipes}
     if isinstance(geom.get("nozzles"), list):
-        g_nz = {str(nz.get("label", "")): nz for nz in geom["nozzles"]}
-        for nz in combined.nozzles:
-            gz = g_nz.get(str(nz.get("label", "")))
-            if gz is None:
-                continue
+        base_nz = {str(nz.get("label", "")): nz for nz in combined.nozzles}
+        new_nozzles = []
+        for gz in geom["nozzles"]:
+            lbl = str(gz.get("label", ""))
+            # 캐시본이 있으면 리치 필드(k-factor 등) 승계, 없으면(편집기 신규 헤드) 기본 골격
+            nz = dict(base_nz.get(lbl) or {
+                "label": lbl, "in": "", "out": f"@/{lbl}",
+                "status": "1", "lib": "SP-HEAD",
+                "flow_m3s": 0.00133333333, "flow_lmin": 80,
+            })
+            if gz.get("in"):
+                nz["in"] = str(gz["in"])
+            if gz.get("out"):
+                nz["out"] = str(gz["out"])
             if gz.get("lib"):
                 nz["lib"] = str(gz["lib"])
             if gz.get("status") is not None:
@@ -4604,6 +4624,8 @@ def _patch_combined_from_geometry(combined, geom: dict) -> None:
                 lmin = _f(gz["flow_lmin"])
                 nz["flow_lmin"] = lmin
                 nz["flow_m3s"] = lmin / 60000.0   # SDF 는 m³/s 로 방출
+            new_nozzles.append(nz)
+        combined.nozzles = new_nozzles
     if isinstance(geom.get("fittings"), list):
         combined.fittings = [
             {"pipe": str(f.get("pipe", "")), "in": str(f.get("in", "")),
@@ -4763,16 +4785,14 @@ def remote30_combined_rebuild():
 
         # 패치본을 새 job_id 로 캐시 — 연속 편집(편집→재출력→더 편집) 지원.
         # z-aware/스케일·등각 기준 라벨도 승계해 이후 편집에서도 비율을 유지한다.
-        if len(_COMBINED_JOBS) >= _COMBINED_JOBS_CAP:
-            _COMBINED_JOBS.pop(next(iter(_COMBINED_JOBS)))
-        _COMBINED_JOBS[new_job] = {
+        _cache_job(_COMBINED_JOBS, _COMBINED_JOBS_CAP, new_job, {
             "combined": _copy.deepcopy(combined), "title": title,
             "zaware": zaware, "kfp_coord_scale": kfp_scale, "has_iso_z_scale": has_zs,
             # 연속 편집을 위해 역할 라벨을 이월(구버전 캐시면 None → 폴백 유지).
             "riser_labels": cache.get("riser_labels"),
             "machine_room_labels": cache.get("machine_room_labels"),
             "av_label": av_label, "no_lift_labels": sorted(no_lift),
-        }
+        })
 
         base = f"/api/remote30/combined/result/{new_job}"
         return jsonify({

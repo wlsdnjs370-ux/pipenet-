@@ -121,9 +121,6 @@ class Topology:
     head_count: dict[str, int] = field(default_factory=dict)
     elevation: dict[str, float] = field(default_factory=dict)
 
-    def reachable(self, idx: int) -> bool:
-        return self.depth.get(self.down[idx]) is not None
-
 
 _UNREACHED = 10 ** 9
 

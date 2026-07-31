@@ -269,7 +269,8 @@ def has_dict_to_network(data: dict) -> CommonNetwork:
             "peak_p": 0.0,
             "curve_data": [],
         }
-        cn.raw["pump_enode"] = pmp.get("ENodeId")
+        # parse_sdf 와 같은 키로 보존 — emit/방향판정(:573,:694)은 pump_output 만 읽는다
+        cn.raw["pump_output"] = pmp.get("ENodeId")
         cn.raw["pump_type"] = pmp.get("PumpType")
 
     # ── PRV(reducing) / orifice → kind 승격 (정보 보존; emit 에서 재구성)

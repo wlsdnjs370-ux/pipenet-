@@ -553,7 +553,12 @@ def _emit_format_bundle(net_obj, out_dir: Path, stem: str, *, title: str, tag: s
     b_kfp = out_dir / f"{stem}.kfp"
     kfp_ok = False
     try:
-        _emit_kfp(z_sdf, b_kfp, coord_scale=kfp_coord_scale, display_geometry=True)
+        # display_geometry=False — K-Fire_Solver 는 노드 3D 좌표거리에서 배관장을
+        # 역산한다(레퍼런스 .kfp 실측: 좌표거리/length_m == 1.0000). 통합망도 이 규약을
+        # 따르도록 미터 좌표로 내보낸다. 라이저는 z_sdf 에서 이미 한 점으로 collapse 돼
+        # 있어 z=실표고와 합쳐 진짜 수직 기둥이 되고, 평면 x,y 는 length_m 기준으로
+        # 미터 환산된다. 대가로 화면 비율은 미리보기와 달라진다(사용자 승인).
+        _emit_kfp(z_sdf, b_kfp, coord_scale=kfp_coord_scale, display_geometry=False)
         kfp_ok = b_kfp.is_file()
     except Exception as _kfp_exc:  # noqa: BLE001 — KFP 실패가 SDF 출력을 막지 않도록
         warnings.warn(f"[{tag}] KFP emit 실패 (SDF 는 정상): {_kfp_exc}",

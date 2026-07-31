@@ -397,6 +397,32 @@ def main():
         # 수원 경계
         n_wt = sum(1 for n in net_kfp.nodes.values() if n.kind == "wt")
         check(f"KFP 수원(wt) 노드 존재 ({n_wt})", n_wt >= 1, True)
+        # ★ 좌표 규약 — K-Fire_Solver 는 노드 3D 좌표거리에서 배관장을 역산한다
+        # (사용자 수작업 .kfp 실측: 좌표거리/length_m 중앙값 1.0000, n=139/122).
+        # 통합망도 이 규약을 지켜야 솔버 표·자동수리가 실배관장을 쓴다.
+        import json as _json
+        _kj = _json.loads(Path(files["kfp"]).read_text(encoding="utf-8"))
+        _kn = {k: (v.get("coords") or [])
+               for k, v in (_kj.get("nodes_meta_runtime") or {}).items()}
+        _rat = []
+        _coord_total = 0.0
+        for _p in (_kj.get("pipe_data") or {}).values():
+            _s, _e = _kn.get(_p.get("start")), _kn.get(_p.get("end"))
+            _lm = float(_p.get("length_m") or 0.0)
+            if not _s or not _e or _lm <= 0:
+                continue
+            _d = math.dist(_s[:3], _e[:3])
+            _coord_total += _d
+            if _d > 1e-9:
+                _rat.append(_d / _lm)
+        _rat.sort()
+        if _rat:
+            _p10 = _rat[int(len(_rat) * 0.10)]
+            _med = _rat[len(_rat) // 2]
+            _p90 = _rat[int(len(_rat) * 0.90)]
+            print(f"   좌표거리/length_m — p10 {_p10:.3f} / 중앙값 {_med:.4f} / p90 {_p90:.3f}")
+            print(f"   좌표 총연장 {_coord_total:.2f}m vs 실배관장 {L_true:.2f}m")
+            check(f"좌표거리==length_m 규약 (중앙값 {_med:.4f})", _med, 1.0, tol=0.02)
     else:
         FAILS.append("KFP 없음")
 

@@ -351,6 +351,21 @@ def _require_login_gate():
     return redirect(url_for("login_page", next=request.path))
 
 
+@app.after_request
+def _no_store_behind_gate(response):
+    """게이트 뒤 응답은 캐시 금지.
+
+    Cloudflare 엣지가 apex 루트를 HIT 로 물고 있어 로그인 후에만 보여야 할
+    랜딩 페이지가 비로그인 방문자에게 그대로 서빙됐다. 오리진이 캐시 가능
+    응답을 내주는 한 재발하므로 게이트 대상 경로 전체를 no-store 로 못박는다.
+    """
+    if not request.path.startswith(_AUTH_EXEMPT_PREFIXES):
+        response.headers["Cache-Control"] = "no-store, private"
+        response.headers.pop("Expires", None)
+        response.headers.pop("Pragma", None)
+    return response
+
+
 @app.get("/login")
 def login_page():
     if session.get("authed"):

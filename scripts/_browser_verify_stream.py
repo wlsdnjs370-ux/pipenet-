@@ -24,11 +24,39 @@ PANELS = {
 }
 
 
+_PROGRESS_JS = """() => {
+  const w = document.getElementById('boot-progress-wrap');
+  const b = document.getElementById('boot-bar');
+  const p = document.getElementById('boot-pct');
+  if (!w || !b || !p) return null;
+  return {on: w.classList.contains('is-on'), width: b.style.width, text: p.textContent};
+}"""
+
+
 def _probe(page, mode, dxf, timeout_s, interval_ms):
     btn_sel, input_sel, status_sel = PANELS[mode]
     page.click(btn_sel)
     page.wait_for_timeout(400)
+
+    # 업로드 진행바는 첫 chunk 전에만 보인다 — 스크린샷보다 촘촘히 별도 표집.
+    seen_progress: list[str] = []
+
     page.set_input_files(input_sel, dxf)
+    t_up = time.time()
+    was_on = False
+    while time.time() - t_up < timeout_s:
+        try:
+            r = page.evaluate(_PROGRESS_JS)
+        except Exception:
+            r = None
+        on = bool(r and r["on"])
+        if on and r["text"] and (not seen_progress or seen_progress[-1] != r["text"]):
+            seen_progress.append(r["text"])
+        # 첫 NDJSON chunk 에서 오버레이가 닫힌다 → 업로드 구간 종료
+        if was_on and not on:
+            break
+        was_on = was_on or on
+        page.wait_for_timeout(20)
 
     hashes = []
     box = page.locator("canvas").first.bounding_box()
@@ -66,6 +94,7 @@ def _probe(page, mode, dxf, timeout_s, interval_ms):
         "changes": changes,
         "elapsed_s": round(time.time() - t0, 1),
         "status": status[:200],
+        "progress": seen_progress,
     }
 
 
@@ -100,6 +129,9 @@ def run(port, dxf, password, modes, timeout_s, interval_ms, headless):
         print(f"[{mode}] 표본 {r['samples']}회 / 서로다른화면 {r['distinct']} / "
               f"화면변화 {r['changes']}회 / {r['elapsed_s']}s")
         print(f"         상태줄: {r['status']}")
+        prog = r["progress"]
+        print(f"         진행바 {len(prog)}단계"
+              + (f": {prog[0]} … {prog[-1]}" if prog else " — 관측 안됨(!)"))
     print(f"콘솔 오류 {len(errors)}건")
     for e in errors[:20]:
         print("  !", e)

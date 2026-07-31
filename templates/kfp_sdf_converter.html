@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KFP ↔ SDF 변환기</title>
+  <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
+  
+  <style>
+    :root {
+      --bg: #ffffff;
+      --panel: #ffffff;
+      --line: #e2e8f0;
+      --line-strong: #cbd5e1;
+      --text: #0f172a;
+      --text-2: #1e293b;
+      --muted: #64748b;
+      --accent: #0a1228;
+      --accent-soft: #f1f5f9;
+      --ok: #047857;
+      --warn: #b45309;
+      --bad: #b91c1c;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0;
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .sidebar {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      padding: 18px 18px 24px;
+      overflow-y: auto;
+    }
+    .sidebar h1 {
+      font-size: 1rem; font-weight: 700; margin: 0 0 4px;
+    }
+    .sidebar p.info {
+      font-size: 0.78rem; color: var(--muted); margin: 0 0 16px; line-height: 1.45;
+    }
+    section { margin-bottom: 18px; }
+    section h2 {
+      font-size: 0.78rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      margin: 0 0 8px; padding: 0 0 4px;
+      border-bottom: 1px solid var(--line);
+    }
+    .file-pick {
+      display: block; padding: 10px 12px;
+      background: var(--accent-soft);
+      border: 1px dashed var(--line-strong); border-radius: 6px;
+      font-size: 0.8rem; cursor: pointer;
+      text-align: center;
+    }
+    .file-pick:hover { background: #e2e8f0; }
+    .file-pick input[type=file] { display: none; }
+    .file-status {
+      font-size: 0.74rem; color: var(--muted); margin-top: 6px; font-family: var(--font-mono);
+      word-break: break-all;
+    }
+    .file-status.ok { color: var(--ok); }
+    .file-status.err { color: var(--bad); }
+    .convert-row { display: flex; gap: 6px; margin-top: 8px; }
+    .convert-row button {
+      flex: 1; padding: 9px 8px;
+      background: #0a1228; color: #fff; border: 1px solid #0a1228;
+      border-radius: 6px; font-weight: 600; font-size: 0.78rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .convert-row button:disabled {
+      background: #cbd5e1; border-color: #cbd5e1; cursor: not-allowed;
+    }
+    .convert-row button:hover:not(:disabled) { background: #1e293b; }
+    .summary-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 6px 12px; font-size: 0.76rem;
+    }
+    .summary-grid .k { color: var(--muted); }
+    .summary-grid .v { font-family: var(--font-mono); font-weight: 600; }
+    .roundtrip-box {
+      background: var(--accent-soft);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 0.74rem;
+    }
+    .rt-ok { color: var(--ok); font-weight: 600; }
+    .rt-warn { color: var(--warn); font-weight: 600; }
+    .rt-bad { color: var(--bad); font-weight: 600; }
+    .legend {
+      display: flex; gap: 12px; flex-wrap: wrap;
+      font-size: 0.72rem; padding: 8px 10px;
+      background: rgba(15, 23, 42, 0.04);
+      border-radius: 6px;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 4px; }
+    .legend i {
+      width: 12px; height: 12px; border-radius: 50%; display: inline-block;
+    }
+    .canvas-pane {
+      position: relative;
+      background: #0a1228;
+      overflow: hidden;
+    }
+    #preview-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    #preview-canvas.is-panning { cursor: grabbing; }
+    .overlay-bar {
+      position: absolute; top: 14px; left: 14px; right: 14px;
+      display: flex; justify-content: space-between; pointer-events: none; gap: 10px;
+    }
+    .pill {
+      background: rgba(15, 23, 42, 0.78);
+      color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.10);
+      padding: 6px 11px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-family: var(--font-mono);
+      pointer-events: auto;
+      backdrop-filter: blur(8px);
+    }
+    .overlay-bar .actions { display: flex; gap: 6px; pointer-events: auto; }
+    .overlay-bar .actions button {
+      background: rgba(30, 41, 59, 0.72);
+      color: #cbd5e1;
+      border: 1px solid rgba(255,255,255,0.10);
+      padding: 6px 10px;
+      border-radius: 5px;
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
+    .overlay-bar .actions button:hover { background: rgba(51, 65, 85, 0.85); color: #fff; }
+    .empty-canvas {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: #94a3b8; font-family: var(--font-mono); font-size: 0.78rem; text-align: center;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <h1>KFP ↔ SDF 변환기</h1>
+      <p class="info">K-solver (.kfp) 와 PIPENET Vision (.sdf) 사이의 양방향 변환. 노드 / 파이프 / 헤드 / 피팅 / 펌프 / 밸브 / 수원의 의미를 보존합니다.</p>
+
+      <section>
+        <h2>1. 파일 업로드</h2>
+        <label class="file-pick" for="file-input">
+          <span id="file-pick-label">.kfp 또는 .sdf 파일 선택</span>
+          <input id="file-input" type="file" accept=".kfp,.sdf,.json,.xml">
+        </label>
+        <div id="file-status" class="file-status">대기 중</div>
+      </section>
+
+      <section>
+        <h2>2. 미리보기 요약</h2>
+        <div id="preview-summary" class="summary-grid">
+          <div class="k">format</div><div class="v" id="sum-format">—</div>
+          <div class="k">project</div><div class="v" id="sum-project">—</div>
+          <div class="k">노드 수</div><div class="v" id="sum-nodes">—</div>
+          <div class="k">파이프 수</div><div class="v" id="sum-pipes">—</div>
+          <div class="k">노즐/헤드</div><div class="v" id="sum-nozzles">—</div>
+          <div class="k">수원 (wt)</div><div class="v" id="sum-wt">—</div>
+          <div class="k">밸브</div><div class="v" id="sum-valves">—</div>
+          <div class="k">펌프</div><div class="v" id="sum-pumps">—</div>
+        </div>
+      </section>
+
+      <section>
+        <h2>3. 변환</h2>
+        <div class="convert-row">
+          <button id="btn-to-sdf" disabled>→ .sdf 출력</button>
+          <button id="btn-to-kfp" disabled>→ .kfp 출력</button>
+        </div>
+        <div id="convert-status" class="file-status" style="margin-top: 8px;">파일 업로드 후 활성화</div>
+      </section>
+
+      <section>
+        <h2>4. Round-trip 검증</h2>
+        <div id="rt-box" class="roundtrip-box">
+          KFP 업로드 시 자동 실행 — KFP → SDF → KFP 재변환 후 손실 측정.
+        </div>
+      </section>
+
+      <section>
+        <h2>5. 의미 매핑</h2>
+        <p style="font-size: 0.72rem; color: var(--muted); margin: 0;">
+          KFP 의 <b>nodes_meta</b>, <b>pipe_data</b>, <b>nozzle_library</b>, <b>fittings_library</b>,
+          <b>pump_library</b>, <b>design_settings</b> 는 SDF 의 <b>Node</b>/<b>Pipe</b>/<b>Nozzle</b>/<b>Fitting</b>/<b>Pump-fan</b>/
+          <b>Elastomeric-valve</b>/<b>Calculation-spec</b> 와 1:1 또는 N:1 매핑됩니다.
+          비표준 attribute <code>nominal-mm</code> 으로 inner↔호칭경 손실 방지.
+        </p>
+      </section>
+    </aside>
+
+    <main class="canvas-pane">
+      <canvas id="preview-canvas"></canvas>
+      <div id="empty-canvas" class="empty-canvas">
+        파일 업로드 시 노드·파이프 토폴로지가 여기에 표시됩니다.
+      </div>
+      <div class="overlay-bar">
+        <span id="overlay-info" class="pill">대기 중</span>
+        <div class="actions">
+          <button id="btn-fit">화면 맞춤</button>
+        </div>
+      </div>
+      <div class="overlay-bar" style="top: auto; bottom: 14px;">
+        <div></div>
+        <div class="legend">
+          <span><i style="background:#06b6d4"></i>base</span>
+          <span><i style="background:#ef4444"></i>nozzle</span>
+          <span><i style="background:#a855f7"></i>wt 수원</span>
+          <span><i style="background:#f59e0b"></i>valve</span>
+          <span><i style="background:#10b981"></i>pump</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const STATE = {
+      file: null,
+      filename: "",
+      preview: null,  // {nodes, edges, bbox, meta, format}
+      view: { zoom: 1, panX: 0, panY: 0 },
+      _drag: null,
+    };
+    const COLOR = {
+      base:   "#06b6d4",
+      nozzle: "#ef4444",
+      wt:     "#a855f7",
+      valve:  "#f59e0b",
+      pump:   "#10b981",
+      edge:   "#64748b",
+    };
+
+    const cv = document.getElementById("preview-canvas");
+    const ctx = cv.getContext("2d");
+    const emptyEl = document.getElementById("empty-canvas");
+    const overlayInfo = document.getElementById("overlay-info");
+
+    function dpr() { return window.devicePixelRatio || 1; }
+    function resize() {
+      const r = cv.getBoundingClientRect();
+      cv.width = r.width * dpr();
+      cv.height = r.height * dpr();
+      ctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
+      render();
+    }
+    window.addEventListener("resize", resize);
+
+    function worldToScreen(x, y) {
+      return [x * STATE.view.zoom + STATE.view.panX,
+              -y * STATE.view.zoom + STATE.view.panY];
+    }
+
+    function fitView() {
+      if (!STATE.preview) return;
+      const r = cv.getBoundingClientRect();
+      const w = r.width, h = r.height;
+      const [xmin, ymin, xmax, ymax] = STATE.preview.bbox;
+      const bw = (xmax - xmin) || 1;
+      const bh = (ymax - ymin) || 1;
+      const margin = 50;
+      const z = Math.min((w - 2 * margin) / bw, (h - 2 * margin) / bh);
+      STATE.view.zoom = z;
+      STATE.view.panX = w / 2 - ((xmin + xmax) / 2) * z;
+      STATE.view.panY = h / 2 + ((ymin + ymax) / 2) * z;
+      render();
+    }
+
+    function render() {
+      const r = cv.getBoundingClientRect();
+      const w = r.width, h = r.height;
+      ctx.fillStyle = "#0a1228";
+      ctx.fillRect(0, 0, w, h);
+      if (!STATE.preview) return;
+      const pv = STATE.preview;
+      // 노드 id → 좌표 매핑
+      const map = new Map();
+      for (const n of pv.nodes) map.set(n.id, n);
+      // edges — waypoints 가 있으면 폴리라인 (start → wp1 → ... → end),
+      // 없으면 단순 직선. PIPENET SDF 의 휘어진 본관 (Waypoints) 정확히 표현.
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      for (const e of pv.edges) {
+        const a = map.get(e.a), b = map.get(e.b);
+        if (!a || !b) continue;
+        ctx.strokeStyle = COLOR.edge;
+        ctx.lineWidth = Math.max(1, Math.min(6, (e.dn || 50) / 25));
+        ctx.beginPath();
+        const [ax, ay] = worldToScreen(a.x, a.y);
+        ctx.moveTo(ax, ay);
+        // 중간 waypoints 통과
+        if (Array.isArray(e.waypoints) && e.waypoints.length) {
+          for (const wp of e.waypoints) {
+            const [wx, wy] = worldToScreen(wp[0], wp[1]);
+            ctx.lineTo(wx, wy);
+          }
+        }
+        const [bx, by] = worldToScreen(b.x, b.y);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+      }
+      // nodes
+      for (const n of pv.nodes) {
+        const [sx, sy] = worldToScreen(n.x, n.y);
+        const col = COLOR[n.kind] || COLOR.base;
+        ctx.fillStyle = col; ctx.strokeStyle = "rgba(0,0,0,0.3)";
+        const radius = (n.kind === "wt" || n.kind === "pump") ? 7
+                     : (n.kind === "valve") ? 6
+                     : (n.kind === "nozzle") ? 4 : 3.5;
+        ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+      }
+    }
+
+    // 마우스 pan/zoom
+    cv.addEventListener("mousedown", e => {
+      STATE._drag = { x: e.clientX, y: e.clientY, panX: STATE.view.panX, panY: STATE.view.panY };
+      cv.classList.add("is-panning");
+    });
+    window.addEventListener("mousemove", e => {
+      if (!STATE._drag) return;
+      STATE.view.panX = STATE._drag.panX + (e.clientX - STATE._drag.x);
+      STATE.view.panY = STATE._drag.panY + (e.clientY - STATE._drag.y);
+      render();
+    });
+    window.addEventListener("mouseup", () => {
+      STATE._drag = null;
+      cv.classList.remove("is-panning");
+    });
+    cv.addEventListener("wheel", e => {
+      e.preventDefault();
+      const r = cv.getBoundingClientRect();
+      const mx = e.clientX - r.left, my = e.clientY - r.top;
+      const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
+      // 줌 중심 = 마우스 위치
+      const oldZ = STATE.view.zoom;
+      const newZ = oldZ * factor;
+      STATE.view.panX = mx - (mx - STATE.view.panX) * (newZ / oldZ);
+      STATE.view.panY = my - (my - STATE.view.panY) * (newZ / oldZ);
+      STATE.view.zoom = newZ;
+      render();
+    }, { passive: false });
+
+    document.getElementById("btn-fit").addEventListener("click", fitView);
+
+    // 파일 업로드
+    const fileInput = document.getElementById("file-input");
+    const fileStatus = document.getElementById("file-status");
+    const filePickLabel = document.getElementById("file-pick-label");
+    fileInput.addEventListener("change", async () => {
+      const f = fileInput.files[0];
+      if (!f) return;
+      STATE.file = f;
+      STATE.filename = f.name;
+      filePickLabel.textContent = f.name;
+      fileStatus.textContent = `⏳ ${f.name} (${(f.size/1024).toFixed(1)} KB) 파싱 중…`;
+      fileStatus.className = "file-status";
+
+      const fd = new FormData();
+      fd.append("file", f);
+      try {
+        const res = await fetch("/api/kfp_sdf/preview", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!data.ok) {
+          fileStatus.textContent = `❌ ${data.message || "파싱 실패"}`;
+          fileStatus.className = "file-status err";
+          return;
+        }
+        STATE.preview = data.preview;
+        fileStatus.textContent = `✓ format=${data.preview.format} · 노드 ${data.preview.meta.node_count} · 파이프 ${data.preview.meta.pipe_count}`;
+        fileStatus.className = "file-status ok";
+        // 요약 갱신
+        document.getElementById("sum-format").textContent = data.preview.format.toUpperCase();
+        document.getElementById("sum-project").textContent = data.preview.meta.project_title || "-";
+        document.getElementById("sum-nodes").textContent = data.preview.meta.node_count;
+        document.getElementById("sum-pipes").textContent = data.preview.meta.pipe_count;
+        const k = data.preview.meta.kind_counts || {};
+        document.getElementById("sum-nozzles").textContent = k.nozzle || 0;
+        document.getElementById("sum-wt").textContent = k.wt || 0;
+        document.getElementById("sum-valves").textContent = k.valve || 0;
+        document.getElementById("sum-pumps").textContent = k.pump || 0;
+        overlayInfo.textContent = `[${data.preview.format.toUpperCase()}] ${data.preview.meta.node_count} 노드 / ${data.preview.meta.pipe_count} 파이프`;
+        emptyEl.style.display = "none";
+        // 활성화: 반대 포맷 변환 버튼
+        document.getElementById("btn-to-sdf").disabled = (data.preview.format !== "kfp");
+        document.getElementById("btn-to-kfp").disabled = (data.preview.format !== "sdf");
+        document.getElementById("convert-status").textContent = data.preview.format === "kfp"
+          ? "KFP 입력 → .sdf 출력 가능" : "SDF 입력 → .kfp 출력 가능";
+        // Round-trip (KFP 만 의미 있음 — KFP→SDF→KFP)
+        if (data.preview.format === "kfp" && data.round_trip) {
+          renderRoundTrip(data.round_trip);
+        } else {
+          document.getElementById("rt-box").innerHTML = "<span style='color:#64748b'>SDF 입력 시 round-trip 은 SDF → KFP → SDF 방향으로 측정 (별도 동작).</span>";
+        }
+        // fit + 그리기
+        resize();
+        fitView();
+      } catch (err) {
+        fileStatus.textContent = `❌ 네트워크 오류: ${err.message}`;
+        fileStatus.className = "file-status err";
+      }
+    });
+
+    function renderRoundTrip(rt) {
+      const box = document.getElementById("rt-box");
+      const lossless = (rt.node_count_orig === rt.node_count_rt
+        && rt.pipe_count_orig === rt.pipe_count_rt
+        && rt.pipe_length_rmse_m < 0.01
+        && rt.pipe_dn_match_pct >= 99);
+      const cls = lossless ? "rt-ok" : (rt.pipe_dn_match_pct >= 90 ? "rt-warn" : "rt-bad");
+      box.innerHTML = `
+        <div class="${cls}" style="margin-bottom:6px;">${lossless ? "✓ 손실 없음" : "⚠ 부분 손실"}</div>
+        <div>노드: ${rt.node_count_orig} → ${rt.node_count_rt}</div>
+        <div>파이프: ${rt.pipe_count_orig} → ${rt.pipe_count_rt}</div>
+        <div>길이 RMSE: ${rt.pipe_length_rmse_m} m</div>
+        <div>호칭경 일치: ${rt.pipe_dn_match_pct}%</div>
+      `;
+    }
+
+    // 변환 + 다운로드
+    async function doConvert(direction) {
+      if (!STATE.file) return;
+      const fd = new FormData();
+      fd.append("file", STATE.file);
+      fd.append("direction", direction);  // "to_sdf" | "to_kfp"
+      const status = document.getElementById("convert-status");
+      status.textContent = "⏳ 변환 중…";
+      try {
+        const res = await fetch("/api/kfp_sdf/convert", { method: "POST", body: fd });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          status.textContent = `❌ ${data.message || res.statusText}`;
+          return;
+        }
+        const blob = await res.blob();
+        const stemBase = STATE.filename.replace(/\.[^.]+$/, "");
+        // to_sdf → ZIP (.sdf + .slf 동봉, PIPENET 권장).
+        // to_kfp → 단일 .kfp 파일.
+        const outName = direction === "to_sdf" ? `${stemBase}.zip` : `${stemBase}.kfp`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = outName;
+        document.body.appendChild(a); a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        const note = direction === "to_sdf"
+          ? "ZIP 다운로드 — 압축 해제 후 폴더 안 .sdf 를 PIPENET 에서 여세요. (.slf 자동 매핑)"
+          : "KFP 다운로드 완료.";
+        status.textContent = `✓ ${outName} — ${note}`;
+      } catch (err) {
+        status.textContent = `❌ ${err.message}`;
+      }
+    }
+    document.getElementById("btn-to-sdf").addEventListener("click", () => doConvert("to_sdf"));
+    document.getElementById("btn-to-kfp").addEventListener("click", () => doConvert("to_kfp"));
+
+    // 초기 캔버스
+    resize();
+  </script>
+</body>
+</html>

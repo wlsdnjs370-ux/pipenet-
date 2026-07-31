@@ -38,6 +38,15 @@ runs/
 *.h5
 *.pth
 
+# main 워크트리와 공유하는 자산 (Windows 디렉터리 junction).
+# 실체는 JupyterProject 한 곳뿐이며, 여기서 추적하면 같은 파일이 두 번
+# 커밋되고 100MB 넘는 모델 파일 때문에 push 가 거부된다.
+sprinkler_ai_agent_server_source_2026-04-27/
+K-Fire_Solver/
+pipenet_converter/
+fire-dxf2sdf/
+templates_hwp/
+
 # Notebook checkpoints
 .ipynb_checkpoints/
 

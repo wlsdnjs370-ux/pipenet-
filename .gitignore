@@ -101,6 +101,12 @@ pipenet_converter/*.kfr
 K-Fire_Solver/
 *.lnk
 
+# 외부 번들 자산 — 저장소 밖에서 관리하고 domain-slim 워크트리와 junction 으로
+# 공유한다. 45MB keras 모델이 들어 있어 추적하면 push 가 거부된다.
+sprinkler_ai_agent_server_source_2026-04-27/
+fire-dxf2sdf/
+templates_hwp/
+
 # 대용량 도면 샘플 아카이브 (소스 아님)
 samples/archives/
 samples/dwg/

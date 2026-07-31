@@ -1141,7 +1141,11 @@ def sdf_root_to_network(root: ET.Element) -> CommonNetwork:
     """SDF XML root → CommonNetwork."""
     net = CommonNetwork(source_format="sdf")
     # Project > Network-spray (또는 직접 자식)
-    net_spray = _find_child(root, "Network-spray") or root
+    # `or root` 금지 — Element 의 truthiness 는 자식 수라서, 자식 없는
+    # <Network-spray/> 를 찾아놓고도 root 로 되돌아간다(ET DeprecationWarning).
+    net_spray = _find_child(root, "Network-spray")
+    if net_spray is None:
+        net_spray = root
     # 노드 — 단위 자동 감지 (우리 emit_sdf 는 mm, 외부 SDF 는 m 일 수도)
     nodes_el = _find_child(net_spray, "Nodes")
     raw_coords: list[tuple[float, float]] = []

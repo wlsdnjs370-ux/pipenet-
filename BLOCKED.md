@@ -506,6 +506,31 @@
   `roughness-or-c="150"`, 부속 추가 → `<Fitting count="2" type="elbow"/>`,
   등가길이 7.5 → `equivalent-length="7.5"` 로 실제 방출됨을 파일 파싱으로 확인.
 
+## 16. 통합망 KFP — 배관장은 고쳤으나 좌표 규약(좌표거리==length_m)은 미충족
+- **항목**: 평면도+계통도+기계실 통합망의 포맷 충실도 감사
+  (`scripts/_format_audit.py`, 대명동 201동 + 옥상수조).
+- **고친 것**: `kfp_sdf_converter.sdf_root_to_network` 이 SDF 의 `length` 속성을
+  노드 좌표거리로 무조건 덮어쓰고 있었다. PIPENET SDF 의 `Position` 은 스키매틱
+  캔버스 좌표(레퍼런스 3-1형: 배관 129m 인데 좌표 span 2650 unit, 우리 emit_sdf 는
+  최장변 3000 unit 로 정규화)라 미터가 아니다 → 통합망 KFP/HAS 총연장이
+  **327.76m → 137.80m** 로 무너져 있었다(개별 배관 예: 0.845m → 0.058m). 이제
+  `length/좌표거리` 중앙값이 1 근처일 때만 좌표거리를 신뢰한다. KFP→SDF→KFP
+  왕복은 여전히 무손실(`pipe_length_rmse_m=0.0`, DN 100%).
+- **남은 문제**: K-Fire Solver 의 KFP 규약은 **좌표거리 == length_m** 이다
+  (사용자 수작업 파일 2건 모두 비율 1.0000, n=139/122). 통합망은
+  `emit_kfp(display_geometry=True)` 로 미리보기와 같은 스키매틱 좌표(라이저=수직
+  기둥)를 쓰므로 이 규약을 깬다 — 실측 비율 중앙값 0.383, 좌표거리 총합 1071m
+  vs 실배관장 328m. 솔버가 좌표에서 배관장을 역산하면 여전히 어긋난다.
+- **왜 지금 안 바꿨나**: `display_geometry=False` 로 내리면 비율 중앙값은 1.0000 이
+  되지만 산포가 남고(p10 0.707 / p90 7.0 — 라이저·FX 구간), 무엇보다 솔버 화면에서
+  통합망 모양이 바뀌는 **사용자 눈에 보이는 결정**이라 임의로 뒤집지 않는다.
+  선택지: (a) 현행 유지 — 정밀 수리는 단독 도면 KFP 로, (b) 통합망도
+  `display_geometry=False` 로 전환해 좌표를 미터로 되돌리고 표시 왜곡을 감수.
+- **감사 나머지는 전 항목 PASS**: SDF 참조무결성·노드/배관/노즐 무손실·
+  `bore`=dia/1000·length·rise·`roughness-or-c`·부속 114건·등가길이 총합 480.90m·
+  기계실 10노드 편입·Input 경계압력·단일 연결 컴포넌트, SLF schedule 6종 전부 존재,
+  PIPENET ZIP = 동일 stem 의 .sdf+.slf 쌍, HAS round-trip 무손실(RMSE 0.0000m).
+
 ## 6. fixture 파일명 불일치 (해소됨 — 기록용)
 - **항목**: §0 검증 도면
 - **질문**: 지시서의 `1__입력도면_대명동_단위세대_평면도.dxf` 는 저장소에 없음.

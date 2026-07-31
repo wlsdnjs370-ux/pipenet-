@@ -770,6 +770,24 @@
       font-size: 0.72rem; color: rgba(226,232,240,0.6);
       min-height: 1.2em; letter-spacing: 0.04em;
     }
+    .boot-overlay .boot-progress-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      opacity: 0; transition: opacity 200ms ease;
+    }
+    .boot-overlay .boot-progress-wrap.is-on { opacity: 1; }
+    .boot-overlay .boot-progress {
+      width: 260px; height: 6px; border-radius: 999px;
+      background: rgba(255,255,255,0.14); overflow: hidden;
+    }
+    .boot-overlay .boot-bar {
+      width: 0%; height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, #38bdf8, #22d3ee);
+      transition: width 120ms linear;
+    }
+    .boot-overlay .boot-pct {
+      font-size: 0.7rem; color: rgba(226,232,240,0.75);
+      letter-spacing: 0.06em; min-height: 1.1em;
+    }
     .boot-overlay .boot-dots::after {
       content: ""; display: inline-block; width: 1.2em; text-align: left;
       animation: boot-dots 1.4s steps(4, end) infinite;
@@ -1075,6 +1093,13 @@
         <div class="boot-spinner"></div>
         <div class="boot-text">Initializing CAD engine<span class="boot-dots"></span></div>
         <div id="boot-sub" class="boot-sub">Preparing entity parser</div>
+        <div id="boot-progress-wrap" class="boot-progress-wrap">
+          <div class="boot-progress" id="boot-progress" role="progressbar"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="boot-bar" class="boot-bar"></div>
+          </div>
+          <div id="boot-pct" class="boot-pct"></div>
+        </div>
       </div>
 
       <!-- ─── PR1: Layer panel (S1/S2) ─── -->
@@ -1521,18 +1546,77 @@
   <script>
     // 업로드 전송량 최소화: 브라우저에서 gzip 압축 후 전송 (서버가 자동 해제).
     // CompressionStream 미지원 브라우저는 원본 그대로 전송.
-    async function gzipBlob(file) {
+    async function gzipBlob(file, onProgress) {
       if (typeof CompressionStream === "undefined") return null;
       try {
-        const stream = file.stream().pipeThrough(new CompressionStream("gzip"));
+        let source = file.stream();
+        if (onProgress) {
+          const total = file.size || 1;
+          let read = 0;
+          source = source.pipeThrough(new TransformStream({
+            transform(chunk, ctrl) {
+              read += chunk.byteLength;
+              onProgress(Math.min(1, read / total));
+              ctrl.enqueue(chunk);
+            },
+          }));
+        }
+        const stream = source.pipeThrough(new CompressionStream("gzip"));
         const buf = await new Response(stream).arrayBuffer();
         return new Blob([buf], { type: "application/gzip" });
       } catch (e) { return null; }
     }
-    async function appendUpload(fd, field, file) {
-      const gz = await gzipBlob(file);
+    async function appendUpload(fd, field, file, onProgress) {
+      const gz = await gzipBlob(file, onProgress);
       if (gz && gz.size < file.size) fd.append(field, gz, file.name + ".gz");
       else fd.append(field, file, file.name);
+    }
+
+    // NDJSON 스트리밍 POST. fetch 는 업로드 진행률 이벤트가 없어 XHR 을 쓰고,
+    // 증가하는 responseText 를 커서로 잘라 완결된 줄만 넘긴다(스트림 파싱 유지).
+    function postNdjsonStream(url, body, { onUploadProgress, onMessage }) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", url, true);
+        let seen = 0, buf = "", thrown = null;
+        const drain = (final) => {
+          const text = xhr.responseText;
+          if (text.length > seen) { buf += text.substring(seen); seen = text.length; }
+          let nl;
+          while ((nl = buf.indexOf("\n")) >= 0) {
+            const line = buf.slice(0, nl);
+            buf = buf.slice(nl + 1);
+            if (!line) continue;
+            let msg;
+            try { msg = JSON.parse(line); } catch (e) { continue; }
+            try { onMessage(msg); } catch (e) { thrown = e; xhr.abort(); return; }
+          }
+          if (final && buf.trim()) {
+            try { onMessage(JSON.parse(buf)); } catch (e) { /* 잘린 꼬리는 무시 */ }
+            buf = "";
+          }
+        };
+        if (onUploadProgress) {
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) onUploadProgress(e.loaded / e.total);
+          };
+          xhr.upload.onload = () => onUploadProgress(1);
+        }
+        xhr.onprogress = () => { if (xhr.status >= 200 && xhr.status < 300) drain(false); };
+        xhr.onerror = () => reject(new Error("네트워크 오류로 업로드가 실패했습니다"));
+        xhr.onabort = () => reject(thrown || new Error("업로드가 중단되었습니다"));
+        xhr.onload = () => {
+          if (xhr.status < 200 || xhr.status >= 300) {
+            let m = `HTTP ${xhr.status}`;
+            try { m = JSON.parse(xhr.responseText).message || m; } catch (e) {}
+            reject(new Error(m));
+            return;
+          }
+          drain(true);
+          if (thrown) reject(thrown); else resolve();
+        };
+        xhr.send(body);
+      });
     }
 
     const CAT_COLORS = {
@@ -1647,15 +1731,42 @@
       size() { return this.queue.length; }
     }
 
-    const bootOverlayEl = document.getElementById("boot-overlay");
-    const bootSubEl     = document.getElementById("boot-sub");
+    const bootOverlayEl  = document.getElementById("boot-overlay");
+    const bootSubEl      = document.getElementById("boot-sub");
+    const bootProgWrapEl = document.getElementById("boot-progress-wrap");
+    const bootProgEl     = document.getElementById("boot-progress");
+    const bootBarEl      = document.getElementById("boot-bar");
+    const bootPctEl      = document.getElementById("boot-pct");
     const BootOverlay = {
+      _pct: -1,
+      _label: null,
       show(msg) {
         if (msg) bootSubEl.textContent = msg;
+        this.clearProgress();
         bootOverlayEl.classList.add("is-visible");
       },
-      hide() { bootOverlayEl.classList.remove("is-visible"); },
-      setSub(msg) { bootSubEl.textContent = msg; }
+      hide() {
+        bootOverlayEl.classList.remove("is-visible");
+        this.clearProgress();
+      },
+      setSub(msg) { bootSubEl.textContent = msg; },
+      // ratio 0~1. 압축은 청크마다 호출되므로 정수 % 가 바뀔 때만 DOM 을 건드린다.
+      setProgress(ratio, label) {
+        const pct = Math.max(0, Math.min(100, Math.round((ratio || 0) * 100)));
+        if (pct === this._pct && label === this._label) return;
+        this._pct = pct; this._label = label;
+        bootProgWrapEl.classList.add("is-on");
+        bootBarEl.style.width = pct + "%";
+        bootProgEl.setAttribute("aria-valuenow", String(pct));
+        bootPctEl.textContent = label ? `${label} ${pct}%` : `${pct}%`;
+      },
+      clearProgress() {
+        this._pct = -1; this._label = null;
+        bootProgWrapEl.classList.remove("is-on");
+        bootBarEl.style.width = "0%";
+        bootProgEl.setAttribute("aria-valuenow", "0");
+        bootPctEl.textContent = "";
+      }
     };
 
     const layerPanelEl = document.getElementById("layer-panel");
@@ -2679,15 +2790,9 @@
       BootOverlay.show(`Reading ${f.name} (${sizeMb} MB)`);
       try {
         const fd = new FormData();
-        await appendUpload(fd, "dxf_file", f);
+        await appendUpload(fd, "dxf_file", f, (r) => BootOverlay.setProgress(r, "압축"));
         BootOverlay.setSub(`Parsing DXF entities (${sizeMb} MB)`);
-        // ── 점진적 렌더링: NDJSON 스트림 — 전경(배관/헤드) 먼저, 배경(건축) 나중 ──
-        const res = await fetch("/api/remote30/inspect", { method: "POST", body: fd });
-        if (!res.ok) {
-          let m = `HTTP ${res.status}`;
-          try { const j = await res.json(); m = j.message || m; } catch (e) {}
-          throw new Error(m);
-        }
+        BootOverlay.setProgress(0, "업로드");
         const firstFit = state.view.fitZoom === null;
         const ents = [];
         state.stage_entities[0] = ents;
@@ -2697,9 +2802,6 @@
         let started = false;
         let lastRender = 0;
         let result = null;
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
         const handleMsg = (msg) => {
           if (msg.type === "progress") {
             for (let k = 0; k < msg.entities.length; k++) ents.push(msg.entities[k]);
@@ -2730,22 +2832,11 @@
             throw new Error(msg.message || "스트림 오류");
           }
         };
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          let nl;
-          while ((nl = buf.indexOf("\n")) >= 0) {
-            const line = buf.slice(0, nl);
-            buf = buf.slice(nl + 1);
-            if (!line) continue;
-            let msg;
-            try { msg = JSON.parse(line); } catch (e) { continue; }
-            handleMsg(msg);
-          }
-        }
-        if (buf.trim()) { try { handleMsg(JSON.parse(buf)); } catch (e) {} }
+        // ── 점진적 렌더링: NDJSON 스트림 — 전경(배관/헤드) 먼저, 배경(건축) 나중 ──
+        await postNdjsonStream("/api/remote30/inspect", fd, {
+          onUploadProgress: (r) => BootOverlay.setProgress(r, r >= 1 ? "서버 파싱" : "업로드"),
+          onMessage: handleMsg,
+        });
         state._streaming = false;  // 스트림 완료 → 이후 render() 는 GL 경로 사용
         if (result) {
           state.bbox = result.bbox || state.bbox;
@@ -3846,17 +3937,9 @@
       let started = false, lastRender = 0, result = null;
       try {
         const fd = new FormData();
-        await appendUpload(fd, "dxf_file", f);
+        await appendUpload(fd, "dxf_file", f, (r) => BootOverlay.setProgress(r, "압축"));
         BootOverlay.setSub(`Parsing DXF entities (${sizeMb} MB)`);
-        const res = await fetch("/api/remote30/inspect", { method: "POST", body: fd });
-        if (!res.ok) {
-          let m = `HTTP ${res.status}`;
-          try { const j = await res.json(); m = j.message || m; } catch (e) {}
-          throw new Error(m);
-        }
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
+        BootOverlay.setProgress(0, "업로드");
         const handleMsg = (msg) => {
           if (msg.type === "progress") {
             for (let k = 0; k < msg.entities.length; k++) ents.push(msg.entities[k]);
@@ -3882,22 +3965,10 @@
             throw new Error(msg.message || "스트림 오류");
           }
         };
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          let nl;
-          while ((nl = buf.indexOf("\n")) >= 0) {
-            const line = buf.slice(0, nl);
-            buf = buf.slice(nl + 1);
-            if (!line) continue;
-            let msg;
-            try { msg = JSON.parse(line); } catch (e) { continue; }
-            handleMsg(msg);
-          }
-        }
-        if (buf.trim()) { try { handleMsg(JSON.parse(buf)); } catch (e) {} }
+        await postNdjsonStream("/api/remote30/inspect", fd, {
+          onUploadProgress: (r) => BootOverlay.setProgress(r, r >= 1 ? "서버 파싱" : "업로드"),
+          onMessage: handleMsg,
+        });
         state._sysStreaming = false;  // 스트림 완료 → 이후 render() 는 GL 경로 사용
         if (result) {
           // raw bbox 는 outlier 포함 — percentile robust bbox 로 fit (없으면 raw fallback)
@@ -4554,17 +4625,9 @@
       let started = false, lastRender = 0, result = null;
       try {
         const fd = new FormData();
-        await appendUpload(fd, "dxf_file", f);
+        await appendUpload(fd, "dxf_file", f, (r) => BootOverlay.setProgress(r, "압축"));
         BootOverlay.setSub(`Parsing DXF entities (${sizeMb} MB)`);
-        const res = await fetch("/api/remote30/inspect", { method: "POST", body: fd });
-        if (!res.ok) {
-          let m = `HTTP ${res.status}`;
-          try { const j = await res.json(); m = j.message || m; } catch (e) {}
-          throw new Error(m);
-        }
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
+        BootOverlay.setProgress(0, "업로드");
         const handleMsg = (msg) => {
           if (msg.type === "progress") {
             for (let k = 0; k < msg.entities.length; k++) ents.push(msg.entities[k]);
@@ -4591,22 +4654,10 @@
             throw new Error(msg.message || "스트림 오류");
           }
         };
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          let nl;
-          while ((nl = buf.indexOf("\n")) >= 0) {
-            const line = buf.slice(0, nl);
-            buf = buf.slice(nl + 1);
-            if (!line) continue;
-            let msg;
-            try { msg = JSON.parse(line); } catch (e) { continue; }
-            handleMsg(msg);
-          }
-        }
-        if (buf.trim()) { try { handleMsg(JSON.parse(buf)); } catch (e) {} }
+        await postNdjsonStream("/api/remote30/inspect", fd, {
+          onUploadProgress: (r) => BootOverlay.setProgress(r, r >= 1 ? "서버 파싱" : "업로드"),
+          onMessage: handleMsg,
+        });
         state._mrStreaming = false;  // 스트림 완료 → 이후 render() 는 GL 경로 사용
         if (result) {
           // raw bbox 는 outlier 포함 — LH 지하층배관도는 3642m×4274m 로 부풀어 실도면이

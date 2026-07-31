@@ -1328,19 +1328,6 @@ def sdf_root_to_network(root: ET.Element) -> CommonNetwork:
             # waypoints 단위 변환 — 노드 좌표와 동일 scale (Position 단위)
             waypoints_scaled = [(wx * coord_scale, wy * coord_scale)
                                   for wx, wy in waypoints_raw]
-            # ★ length 는 SDF attribute 가 아니라 노드 좌표의 3D Euclidean 으로
-            # 재계산 (K-solver KFP 의 length_m 규약). 사용자 제공 reference KFP 와
-            # 104/104 정확히 일치. PIPENET SDF 의 length 는 waypoint 포함 routed
-            # 길이라 더 길게 나옴 — K-solver 는 직선 길이 + fittings(Elbow) 로
-            # 분리해 표현. 그대로 두면 length 가 ref 보다 길어 보임 (예: P10 SDF
-            # 1.04 vs Ref 0.2312, 차이 0.8m).
-            sn = net.nodes.get(start_id); en = net.nodes.get(end_id)
-            if sn is not None and en is not None:
-                length_3d = math.sqrt(
-                    (sn.x - en.x) ** 2 + (sn.y - en.y) ** 2 + (sn.elevation_m - en.elevation_m) ** 2
-                )
-                if length_3d > 0:
-                    length = length_3d
             net.pipes[pid] = CommonPipe(
                 id=pid,
                 start=start_id,
@@ -1356,6 +1343,35 @@ def sdf_root_to_network(root: ET.Element) -> CommonNetwork:
                 # lookup 이 이 원명으로 FX/DP 25.0mm 권위값을 보존하는 데 쓴다.
                 raw={"sdf_label": plabel, "sdf_pipe_type": pipe_type_label},
             )
+
+    # ── 배관장 권위 결정: length attribute vs 노드 좌표거리.
+    # PIPENET SDF 의 Position 은 스키매틱 캔버스 좌표라 미터가 아닌 경우가 많다
+    # (레퍼런스 3-1형: 배관 129m 인데 좌표 span 2600 unit, 우리 emit_sdf 는 최장변을
+    # 3000 unit 로 정규화). 그 좌표거리로 length 를 덮어쓰면 배관장이 파괴돼 KFP/HAS
+    # 의 수리계산이 통째로 틀어진다. 반대로 KFP→SDF 로 만든 SDF 는 좌표가 실미터라
+    # 좌표거리가 곧 배관장이고, K-solver 는 이 규약(좌표거리 == length_m)을 쓴다.
+    # → length/좌표거리 비의 중앙값이 1 근처일 때만 좌표거리를 신뢰한다.
+    _ratios = []
+    for _cp in net.pipes.values():
+        _sn = net.nodes.get(_cp.start); _en = net.nodes.get(_cp.end)
+        if _sn is None or _en is None or _cp.length_m <= 0:
+            continue
+        _d = math.sqrt((_sn.x - _en.x) ** 2 + (_sn.y - _en.y) ** 2
+                       + (_sn.elevation_m - _en.elevation_m) ** 2)
+        if _d > 0:
+            _ratios.append(_cp.length_m / _d)
+    if _ratios:
+        _ratios.sort()
+        _med = _ratios[len(_ratios) // 2]
+        if 0.7 <= _med <= 1.5:
+            for _cp in net.pipes.values():
+                _sn = net.nodes.get(_cp.start); _en = net.nodes.get(_cp.end)
+                if _sn is None or _en is None:
+                    continue
+                _d = math.sqrt((_sn.x - _en.x) ** 2 + (_sn.y - _en.y) ** 2
+                               + (_sn.elevation_m - _en.elevation_m) ** 2)
+                if _d > 0:
+                    _cp.length_m = _d
 
     # Nozzle — 노드를 nozzle 종류로 표시.
     # SDF 의 Nozzle 은 attribute (flow=m³/s) 또는 자식 (Flow-define/Library-item).

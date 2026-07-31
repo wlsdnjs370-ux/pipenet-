@@ -411,7 +411,8 @@ def _dwg_to_dxf(dwg_path: Path) -> Path:
             "DWG 변환 모듈(ezdxf odafc)을 불러오지 못했습니다. ezdxf 설치를 확인해 주세요."
         ) from exc
     # 버전 폴더에 설치된 exe 를 직접 지정 (ezdxf 기본 경로는 unversioned 라 못 찾음)
-    exe = _locate_oda_exe()
+    from cad_engine import locate_oda_exe
+    exe = locate_oda_exe()
     if exe:
         try:
             ezdxf.options.set("odafc-addon", "win_exec_path", exe)

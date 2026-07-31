@@ -27,6 +27,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from werkzeug.utils import secure_filename
 
+from cad_engine import locate_oda_exe
 from cad_match import _cad_layer_weight
 from pipenet_validator import PipenetGuideValidator
 
@@ -66,24 +67,6 @@ def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH,
             f"Check {DESIGN_AUTOMATION_STDERR_PATH.name}."
         )
 
-    def _locate_oda_exe() -> str | None:
-        """ODA File Converter 실행파일 경로 탐색.
-
-        우선순위: 환경변수 ODA_FILE_CONVERTER_EXE → 표준 설치 경로
-        (버전 폴더명이 'ODAFileConverter 27.1.0' 처럼 버전을 포함해 ezdxf 기본 탐색이
-        실패하므로 직접 glob 으로 찾는다).
-        """
-        import os
-        env = os.environ.get("ODA_FILE_CONVERTER_EXE")
-        if env and Path(env).is_file():
-            return env
-        for base in (Path(r"C:/Program Files/ODA"), Path(r"C:/Program Files (x86)/ODA")):
-            if base.is_dir():
-                hits = sorted(base.glob("*/ODAFileConverter.exe"), reverse=True)
-                if hits:
-                    return str(hits[0])
-        return None
-
     def _printable_report_text(path: Path) -> str:
         return PipenetGuideValidator(report_path=path)._read_report_text(path)
 
@@ -97,8 +80,22 @@ def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH,
                 "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "items": [],
             }
-        with UPDATE_HISTORY_PATH.open("r", encoding="utf-8") as fp:
+        # utf-8-sig — 이 파일은 Windows 편집기로 손대는 일이 잦아 BOM 이 붙는다.
+        # 순수 utf-8 로 읽으면 JSONDecodeError 로 업데이트 기록 API 가 통째 500.
+        with UPDATE_HISTORY_PATH.open("r", encoding="utf-8-sig") as fp:
             payload = json.load(fp)
+        # 이 파일은 손으로 관리돼 스냅샷 dict 를 리스트에 덧붙인 형태로도 쌓인다.
+        # 프론트는 단일 dict 만 받으므로 items 를 합쳐 한 장으로 접는다.
+        if isinstance(payload, list):
+            merged: list = []
+            for snap in payload:
+                if isinstance(snap, dict):
+                    merged.extend(snap.get("items") or [])
+            stamps = [str(s.get("updated_at")) for s in payload
+                      if isinstance(s, dict) and s.get("updated_at")]
+            payload = {"items": merged}
+            if stamps:
+                payload["updated_at"] = max(stamps)
         payload.setdefault("title", "업데이트 기록")
         payload.setdefault("updated_at", datetime.now().strftime("%Y-%m-%d %H:%M"))
         payload.setdefault("items", [])
@@ -1773,7 +1770,7 @@ def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH,
 
         if fmt == "dwg":
             from ezdxf.addons import odafc  # noqa: PLC0415
-            exe = _locate_oda_exe()
+            exe = locate_oda_exe()
             if exe:
                 try:
                     ezdxf.options.set("odafc-addon", "win_exec_path", exe)

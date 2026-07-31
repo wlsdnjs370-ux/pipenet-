@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,6 +9,24 @@ from typing import Any, Iterable
 
 import ezdxf
 from ezdxf.addons.importer import Importer
+
+
+def locate_oda_exe() -> str | None:
+    """ODA File Converter 실행파일 경로 탐색.
+
+    우선순위: 환경변수 ODA_FILE_CONVERTER_EXE → 표준 설치 경로
+    (버전 폴더명이 'ODAFileConverter 27.1.0' 처럼 버전을 포함해 ezdxf 기본 탐색이
+    실패하므로 직접 glob 으로 찾는다).
+    """
+    env = os.environ.get("ODA_FILE_CONVERTER_EXE")
+    if env and Path(env).is_file():
+        return env
+    for base in (Path(r"C:/Program Files/ODA"), Path(r"C:/Program Files (x86)/ODA")):
+        if base.is_dir():
+            hits = sorted(base.glob("*/ODAFileConverter.exe"), reverse=True)
+            if hits:
+                return str(hits[0])
+    return None
 
 
 NETWORK_KEYWORDS = (

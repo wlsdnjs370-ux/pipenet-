@@ -58,7 +58,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 # 렌더/카테고리 로직이 바뀌면 INSPECT_CACHE_VERSION 을 올려 캐시를 무효화한다.
 INSPECT_CACHE_DIR = UPLOAD_DIR / "_inspect_cache"
 INSPECT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-INSPECT_CACHE_VERSION = "v3"
+INSPECT_CACHE_VERSION = "v4"
 
 
 def _inspect_cache_key(dxf_path: Path) -> str:

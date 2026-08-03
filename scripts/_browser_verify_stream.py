@@ -25,11 +25,13 @@ PANELS = {
 
 
 _PROGRESS_JS = """() => {
+  const o = document.getElementById('boot-overlay');
   const w = document.getElementById('boot-progress-wrap');
   const b = document.getElementById('boot-bar');
   const p = document.getElementById('boot-pct');
-  if (!w || !b || !p) return null;
-  return {on: w.classList.contains('is-on'), width: b.style.width, text: p.textContent};
+  if (!o || !w || !b || !p) return null;
+  return {on: w.classList.contains('is-on'), width: b.style.width, text: p.textContent,
+          busy: b.classList.contains('is-busy'), mini: o.classList.contains('is-mini')};
 }"""
 
 
@@ -38,50 +40,47 @@ def _probe(page, mode, dxf, timeout_s, interval_ms):
     page.click(btn_sel)
     page.wait_for_timeout(400)
 
-    # 업로드 진행바는 첫 chunk 전에만 보인다 — 스크린샷보다 촘촘히 별도 표집.
     seen_progress: list[str] = []
-
-    page.set_input_files(input_sel, dxf)
-    t_up = time.time()
-    was_on = False
-    while time.time() - t_up < timeout_s:
-        try:
-            r = page.evaluate(_PROGRESS_JS)
-        except Exception:
-            r = None
-        on = bool(r and r["on"])
-        if on and r["text"] and (not seen_progress or seen_progress[-1] != r["text"]):
-            seen_progress.append(r["text"])
-        # 첫 NDJSON chunk 에서 오버레이가 닫힌다 → 업로드 구간 종료
-        if was_on and not on:
-            break
-        was_on = was_on or on
-        page.wait_for_timeout(20)
-
-    hashes = []
+    busy_seen = False
+    hashes: list[str] = []
     box = page.locator("canvas").first.bounding_box()
     # 전체 캔버스 스크린샷은 1장에 수 초 걸려 250ms 스로틀 리페인트를 놓친다.
     # 중앙 일부만 잘라 찍어 표본 주기를 렌더 주기보다 짧게 만든다.
     clip = {"x": box["x"] + box["width"] / 2 - 200, "y": box["y"] + box["height"] / 2 - 150,
             "width": 400, "height": 300}
+
+    page.set_input_files(input_sel, dxf)
     t0 = time.time()
+    was_on = False
     stable = 0
+    next_shot = 0.0
+    # 진행바는 렌더가 끝날 때까지 살아 있으므로 스크린샷보다 촘촘히 표집한다.
+    # 두 계측을 한 루프에서 돌려야 렌더 구간의 진행률 변화를 놓치지 않는다.
     while time.time() - t0 < timeout_s:
         try:
-            shot = page.screenshot(clip=clip)
+            r = page.evaluate(_PROGRESS_JS)
         except Exception:
-            page.wait_for_timeout(interval_ms)
-            continue
-        h = hashlib.sha1(shot).hexdigest()
-        if hashes and h == hashes[-1]:
-            stable += 1
-        else:
-            stable = 0
-        hashes.append(h)
-        # 내용이 한 번이라도 그려진 뒤 5회 연속 동일 → 완료로 간주
-        if stable >= 5 and len(set(hashes)) > 1:
+            r = None
+        on = bool(r and r["on"])
+        if on:
+            busy_seen = busy_seen or bool(r["busy"])
+            if r["text"] and (not seen_progress or seen_progress[-1] != r["text"]):
+                seen_progress.append(r["text"])
+        was_on = was_on or on
+
+        now = time.time()
+        if now >= next_shot:
+            next_shot = now + interval_ms / 1000.0
+            try:
+                h = hashlib.sha1(page.screenshot(clip=clip)).hexdigest()
+                stable = stable + 1 if hashes and h == hashes[-1] else 0
+                hashes.append(h)
+            except Exception:
+                pass
+        # 오버레이가 닫히고 화면이 안정되면 완료
+        if was_on and not on and stable >= 3 and len(set(hashes)) > 1:
             break
-        page.wait_for_timeout(interval_ms)
+        page.wait_for_timeout(20)
 
     changes = sum(1 for a, b in zip(hashes, hashes[1:]) if a != b)
     try:
@@ -95,6 +94,7 @@ def _probe(page, mode, dxf, timeout_s, interval_ms):
         "elapsed_s": round(time.time() - t0, 1),
         "status": status[:200],
         "progress": seen_progress,
+        "busy_seen": busy_seen,
     }
 
 
@@ -148,8 +148,10 @@ def run(port, dxf, password, modes, timeout_s, interval_ms, headless):
               f"화면변화 {r['changes']}회 / {r['elapsed_s']}s")
         print(f"         상태줄: {r['status']}")
         prog = r["progress"]
-        print(f"         진행바 {len(prog)}단계"
+        print(f"         진행바 {len(prog)}단계 / 불확정구간 {'관측' if r['busy_seen'] else '없음'}"
               + (f": {prog[0]} … {prog[-1]}" if prog else " — 관측 안됨(!)"))
+        for s in prog:
+            print(f"           · {s}")
     print(f"콘솔 오류 {len(errors)}건")
     for e in errors[:20]:
         print("  !", e)

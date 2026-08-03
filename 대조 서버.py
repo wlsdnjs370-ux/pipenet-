@@ -3881,7 +3881,9 @@ def remote30_combined_build():
         prepend_machine_room_to_riser, insert_source_pump,
         normalize_pipe_bores, size_combined_bores,
     )
-    from hydraulic_solver import converge_bores_by_velocity
+    from hydraulic_solver import BAR_PER_M_WATER, converge_bores_by_velocity
+    from kfp_sdf_converter import WT_DEFAULT_WATER_LEVEL_M
+    from core.remote30_constants import FX_DEFAULT_PROFILE, FX_SPEC_PROFILES
 
     # ── 가압 방식 — "gravity"(자연낙차/고가수조, 기본) | "pump"(펌프 가압).
     # 펌프 가압이면 (1) 기계실/수원을 망 최하부로 배치·재고도(고저차 lift 반영),
@@ -4066,11 +4068,19 @@ def remote30_combined_build():
         #   얻고 초과 구간을 한 치수씩 올리는 것을 더 바뀌지 않을 때까지 반복(never-shrink).
         #   도면 관경 + 규약 최소경만으로는 실제 해석에서 유속이 넘던 문제의 해소책.
         #   각 배관에 flow/velocity/limit/role 을 stamp 하므로 별도 annotate 는 불필요.
+        # 사이징은 최원단 0.1 MPa 를 못 박고 필요 수원압을 역산하지만 산출물은
+        # 반대로 수원 조건을 싣고 나간다. 그 경계로 한 번 더 풀어야 과토출이 잡힌다.
+        if is_pump:
+            export_bar = float(pump_spec.get("rated_h") or 100) * BAR_PER_M_WATER
+        else:
+            export_bar = WT_DEFAULT_WATER_LEVEL_M * BAR_PER_M_WATER
         velocity_report = None
         try:
             velocity_report = converge_bores_by_velocity(
                 combined.nodes, combined.pipes, combined.nozzles,
-                equipment=combined.equipment, keep_existing=True)
+                equipment=combined.equipment, keep_existing=True,
+                export_source_bar=export_bar,
+                head_stub_bore_mm=FX_SPEC_PROFILES[FX_DEFAULT_PROFILE]["nominal_dn"])
             app.logger.info(
                 "combined/build: velocity converged in %d passes, changed=%d, "
                 "max v %.2f->%.2f, viol %d->%d, 과토출 x%.2f",
@@ -4400,6 +4410,7 @@ def remote30_combined_build():
             # 편집 재출력 시 역할별 내경 재배정용 라벨(입상관 순수 = MR 제외).
             "riser_labels": [str(l) for l in (riser_labels - {str(m) for m in (machine_room_labels or [])})],
             "machine_room_labels": [str(m) for m in (machine_room_labels or [])],
+            "export_bar": export_bar,
             # 편집 재출력의 등각 세트가 빌드와 같은 기준으로 베이크되도록 —
             # 재배치 루트(AV)와 lift 제외 대상(라이저·기계실)을 그대로 승계.
             "av_label": av_label,
@@ -4759,11 +4770,14 @@ def remote30_combined_rebuild():
                 app.logger.warning("combined/rebuild: bore detangle skipped: %s", _e)
         # ── 유속 상한(가지 6, 그 외 10 m/s) 보장 — build 와 동일하게 망을 직접 풀어
         #   과토출 유량으로 초과 구간을 승급(never-shrink). flow/velocity/role stamp 포함.
+        from core.remote30_constants import FX_DEFAULT_PROFILE, FX_SPEC_PROFILES
         velocity_report = None
         try:
             velocity_report = converge_bores_by_velocity(
                 combined.nodes, combined.pipes, combined.nozzles,
-                equipment=combined.equipment, keep_existing=True)
+                equipment=combined.equipment, keep_existing=True,
+                export_source_bar=cache.get("export_bar"),
+                head_stub_bore_mm=FX_SPEC_PROFILES[FX_DEFAULT_PROFILE]["nominal_dn"])
             app.logger.info(
                 "combined/rebuild: velocity converged in %d passes, changed=%d, viol %d->%d",
                 velocity_report["iterations"], velocity_report["changed"],
@@ -4833,6 +4847,7 @@ def remote30_combined_rebuild():
             # 연속 편집을 위해 역할 라벨을 이월(구버전 캐시면 None → 폴백 유지).
             "riser_labels": cache.get("riser_labels"),
             "machine_room_labels": cache.get("machine_room_labels"),
+            "export_bar": cache.get("export_bar"),
             "av_label": av_label, "no_lift_labels": sorted(no_lift),
         })
 

@@ -6432,11 +6432,16 @@ def _materialize_fx_pipes(tables: "PipeTables") -> tuple["PipeTables", dict, dic
 
     변환(각 FX Equipment E, 부모 파이프 P, 헤드노드 H 에 대해):
       1. 새 노드 F 삽입 (좌표=H, 표고=H_elev - FX_RISE_M → F→H 표고차 = FX_RISE_M).
-      2. P 의 끝점 중 H 인 것을 F 로 리디렉트 (P: ...→F).
+      2. H 에 붙어 있던 배관을 **전부** F 로 리디렉트 (P 뿐 아니라 형제 배관까지).
       3. FX 파이프 FXP(F→H) 추가: 호칭경=nominal_dn, 길이=phys_len_m,
          rise=FX_RISE_M, C=c_factor, type=FX_<기하> 스케줄명(SLF Item-name 겸용).
       4. 등가길이 Equipment E 를 FXP 로 이동 (eq_len 불변 — 실배관 위에 얹는 추가 등가길이).
     노즐(in=H)은 그대로 H 에 남는다 → 흐름: ...→F→(FXP)→H→(nozzle)→토출.
+
+    2)에서 부모 파이프만 옮기면 가지관 중간에 있는 헤드(분기점 겸 헤드)의 하류
+    배관이 H 에 남아, 하류 전체 유량이 20A 신축배관을 통과한다 (실측: 헤드 1개분
+    80 L/min 대신 499 L/min → 22 m/s). H 를 노즐만 남은 진짜 말단으로 만들어야
+    신축배관이 자기 헤드 유량만 받는다.
 
     반환: (변환된 tables 복사본,
            {FX파이프 label: 스케줄명},
@@ -6470,6 +6475,11 @@ def _materialize_fx_pipes(tables: "PipeTables") -> tuple["PipeTables", dict, dic
 
     node_ctr = _next_int_label(set(node_by_label))
     pipe_ctr = _next_int_label(set(pipe_by_label))
+
+    incident: dict[str, list[dict]] = {}
+    for q in t.pipes:
+        incident.setdefault(str(q["in"]), []).append(q)
+        incident.setdefault(str(q["out"]), []).append(q)
 
     fx_pipe_sched: dict[str, str] = {}
     fx_geoms: dict[str, tuple] = {}
@@ -6512,11 +6522,13 @@ def _materialize_fx_pipes(tables: "PipeTables") -> tuple["PipeTables", dict, dic
         t.nodes.append(f_node)
         node_by_label[f_label] = f_node
 
-        # 2) 부모 파이프 P 의 head 끝점 → F
-        if str(p["out"]) == head:
-            p["out"] = f_label
-        else:
-            p["in"] = f_label
+        # 2) head 에 붙은 배관 전부 → F (형제 배관까지 옮겨야 H 가 진짜 말단이 된다)
+        for q in incident.get(head, ()):
+            if str(q["in"]) == head:
+                q["in"] = f_label
+            if str(q["out"]) == head:
+                q["out"] = f_label
+        incident[f_label] = list(incident.pop(head, ()))
 
         # 3) FX 파이프 FXP(F→H)
         fxp_label = str(pipe_ctr); pipe_ctr += 1
@@ -6541,6 +6553,12 @@ def _materialize_fx_pipes(tables: "PipeTables") -> tuple["PipeTables", dict, dic
 
         fx_pipe_sched[fxp_label] = sched
         fx_geoms[sched] = (nominal_dn, inner_dia, c_factor)
+
+    # 끝점을 옮긴 배관에 달린 fitting/equipment 의 in/out 을 배관 실끝점과 다시 맞춘다.
+    for row in (*t.fittings, *t.equipment):
+        ref = pipe_by_label.get(str(row.get("pipe")))
+        if ref is not None:
+            row["in"], row["out"] = ref["in"], ref["out"]
 
     return t, fx_pipe_sched, fx_geoms
 

@@ -256,6 +256,24 @@ class Solution:
     converged: bool
 
 
+def _pipe_arrays(pipes: list[dict], equiv_length_m: dict[str, float] | None,
+                 material: str) -> tuple[list[float], list[float], list[float]]:
+    """해석에 쓸 (등가길이 포함 길이, C계수, 실내경) 배열."""
+    eq = equiv_length_m or {}
+    lengths, c_factors = [], []
+    for p in pipes:
+        try:
+            L = float(p.get("length") or 0.0)
+        except (TypeError, ValueError):
+            L = 0.0
+        lengths.append(max(0.0, L + eq.get(str(p.get("label", "")), 0.0)))
+        try:
+            c_factors.append(float(p.get("c") or DEFAULT_C_FACTOR))
+        except (TypeError, ValueError):
+            c_factors.append(DEFAULT_C_FACTOR)
+    return lengths, c_factors, [inner_diameter_mm(_bore_of(p), material) for p in pipes]
+
+
 def solve_network(
     pipes: list[dict],
     topo: Topology,
@@ -277,20 +295,7 @@ def solve_network(
         min_head_bar = head_pressure_min_mpa() / _MPA_PER_BAR
 
     n = len(pipes)
-    lengths = []
-    c_factors = []
-    for p in pipes:
-        try:
-            L = float(p.get("length") or 0.0)
-        except (TypeError, ValueError):
-            L = 0.0
-        L += (equiv_length_m or {}).get(str(p.get("label", "")), 0.0)
-        lengths.append(max(0.0, L))
-        try:
-            c_factors.append(float(p.get("c") or DEFAULT_C_FACTOR))
-        except (TypeError, ValueError):
-            c_factors.append(DEFAULT_C_FACTOR)
-    bores = [inner_diameter_mm(_bore_of(p), material) for p in pipes]
+    lengths, c_factors, bores = _pipe_arrays(pipes, equiv_length_m, material)
 
     head_nodes = list(topo.head_count)
     head_flow = {h: k_factor * math.sqrt(min_head_bar) * topo.head_count[h]
@@ -342,6 +347,63 @@ def solve_network(
                     iterations=iterations, converged=converged)
 
 
+def solve_at_source_pressure(
+    pipes: list[dict],
+    topo: Topology,
+    source_bar: float,
+    *,
+    equiv_length_m: dict[str, float] | None = None,
+    material: str = DEFAULT_PIPE_MATERIAL,
+    k_factor: float = NOZZLE_K_FACTOR,
+    damping: float = 0.4,
+    tol_lpm: float = 0.05,
+    max_iter: int = 400,
+) -> Solution:
+    """수원 게이지압을 못 박고 푼다 — K-Fire_Solver/EPANET 이 실제로 푸는 조건.
+
+    solve_network 는 최원단 헤드 방수압을 고정해 필요 수원압을 역산한다(설계기준).
+    산출물 KFP/SDF 는 반대로 수원 조건을 싣고 나가므로, 옥상수조처럼 수두가 설계
+    필요압을 넘으면 헤드가 과토출하고 같은 관경에서도 유속이 몇 배로 뛴다. 그
+    괴리를 재려면 내보낼 경계조건 그대로 한 번 더 풀어야 한다.
+    """
+    lengths, c_factors, bores = _pipe_arrays(pipes, equiv_length_m, material)
+
+    head_flow = {h: k_factor * math.sqrt(max(0.0, source_bar)) * c
+                 for h, c in topo.head_count.items()}
+    ascending = list(reversed(topo.order))
+    pipe_flow = [0.0] * len(pipes)
+    pressure: dict[str, float] = {}
+    iterations = 0
+    converged = not topo.head_count
+
+    for iterations in range(1, max_iter + 1):
+        pipe_flow = accumulate_flows(topo, head_flow)
+        pressure = {topo.source: source_bar}
+        for i in ascending:
+            u, d = topo.up[i], topo.down[i]
+            if u not in pressure:
+                continue
+            drop = hazen_williams_drop_bar(pipe_flow[i], lengths[i], c_factors[i], bores[i])
+            lift = (topo.elevation.get(d, 0.0) - topo.elevation.get(u, 0.0)) * BAR_PER_M_WATER
+            pressure[d] = pressure[u] - drop - lift
+        reached = [h for h in topo.head_count if h in pressure]
+        if not reached:
+            break
+        delta = 0.0
+        for h in reached:
+            target = k_factor * math.sqrt(max(0.0, pressure[h])) * topo.head_count[h]
+            new = head_flow[h] + damping * (target - head_flow[h])
+            delta = max(delta, abs(new - head_flow[h]))
+            head_flow[h] = new
+        if delta < tol_lpm:
+            converged = len(reached) == len(topo.head_count)
+            break
+
+    return Solution(pipe_flow_lpm=pipe_flow, node_pressure_bar=pressure,
+                    head_flow_lpm=head_flow, source_pressure_bar=source_bar,
+                    iterations=iterations, converged=converged)
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # 수렴 사이징
 # ────────────────────────────────────────────────────────────────────────────
@@ -357,6 +419,8 @@ def converge_bores_by_velocity(
     safety: float = 1.1,
     keep_existing: bool = True,
     max_outer: int = 24,
+    export_source_bar: float | None = None,
+    head_stub_bore_mm: float | None = None,
 ) -> dict:
     """모든 배관이 유속 상한 이하가 될 때까지 해석↔내경승급을 반복 (in-place).
 
@@ -368,6 +432,10 @@ def converge_bores_by_velocity(
     Args:
         safety: 사이징 판정에만 곱하는 유량 여유. 피팅 등가길이 미모델링분을 상쇄.
         keep_existing: 도면/규약이 준 기존 내경보다 얇게 만들지 않음.
+        export_source_bar: 산출물이 실제로 싣고 나가는 수원 게이지압 [bar]. 주면
+            사이징 후 그 경계로 한 번 더 풀어 `export` 블록(과토출·유속)을 담는다.
+        head_stub_bore_mm: 헤드 접속 신축배관 호칭경. 이 구간은 제조사 규격품이라
+            승급 대상이 아니므로 판정만 하고 `규격고정` 사유로 표에 남긴다.
 
     기록 필드 (배관 dict, 표시·검증용):
         flow_lpm, velocity_mps, v_limit, v_over, pipe_role, inner_dia_mm
@@ -380,7 +448,9 @@ def converge_bores_by_velocity(
              "max_velocity_before": 0.0, "max_velocity_after": 0.0,
              "violations_before": 0, "violations_after": 0,
              "source_pressure_bar": 0.0, "overdischarge_ratio_max": 1.0,
-             "solver_converged": True, "pipes": 0, "changes": []}
+             "solver_converged": True, "pipes": 0, "head_stub_bore_mm": None,
+             "head_stub_violations": 0, "head_stub_max_velocity": 0.0,
+             "export": None, "changes": []}
     if not pipes:
         return empty
 
@@ -510,6 +580,56 @@ def converge_bores_by_velocity(
     base = NOZZLE_K_FACTOR * math.sqrt(head_pressure_min_mpa() / _MPA_PER_BAR)
     per_head = [q / max(1, topo.head_count.get(h, 1))
                 for h, q in sol.head_flow_lpm.items()]
+
+    # 산출물 경계조건 재검증 — 사이징은 최원단 0.1 MPa 를 못 박고 필요 수원압을
+    # 역산하지만, KFP/SDF 는 수원 조건을 싣고 나간다. 옥상수조 수두가 필요압을
+    # 넘으면 전 헤드가 과토출해 같은 관경에서도 유속이 몇 배가 된다.
+    export = None
+    export_sol = None
+    if export_source_bar is not None:
+        export_sol = solve_at_source_pressure(pipes, topo, export_source_bar,
+                                              equiv_length_m=equiv, material=material)
+        ev = _velocities(export_sol.pipe_flow_lpm)
+        emx, eviol = _summary(ev)
+        eper = [q / max(1, topo.head_count.get(h, 1))
+                for h, q in export_sol.head_flow_lpm.items()]
+        export = {
+            "source_pressure_bar": round(export_source_bar, 3),
+            "required_source_bar": round(sol.source_pressure_bar, 3),
+            "surplus_bar": round(export_source_bar - sol.source_pressure_bar, 3),
+            "max_velocity": round(emx, 2),
+            "violations": eviol,
+            "head_flow_min": round(min(eper), 1) if eper else 0.0,
+            "head_flow_max": round(max(eper), 1) if eper else 0.0,
+            "overdischarge_ratio_max": round(max(eper) / base, 2) if eper else 1.0,
+            "solver_converged": export_sol.converged,
+        }
+
+    # 헤드 접속 신축배관 — 산출 단계에서 헤드마다 삽입되는 규격품이라 승급 대상이
+    # 아니다. 사이징 대상 배관 목록에 없어 표에서 통째로 빠지면 이 구간의 유속
+    # 초과가 산출물에서만 드러나므로, 상한을 넘는 것만 판정해 남긴다.
+    stub_violations = 0
+    stub_max_v = 0.0
+    if head_stub_bore_mm:
+        stub_inner = inner_diameter_mm(head_stub_bore_mm, material)
+        flow_of = (export_sol or sol).head_flow_lpm
+        for h, q in sorted(flow_of.items(), key=lambda kv: -kv[1]):
+            per = q / max(1, topo.head_count.get(h, 1))
+            v = velocity_mps(per, stub_inner)
+            stub_max_v = max(stub_max_v, v if v != float("inf") else 0.0)
+            if v <= BRANCH_PIPE_V_LIMIT + 1e-9:
+                continue
+            stub_violations += 1
+            changes.append({
+                "label": f"FX@{h}", "in": str(h), "out": str(h), "role": "branch",
+                "bore_before": round(float(head_stub_bore_mm), 1),
+                "bore_after": int(head_stub_bore_mm),
+                "inner_dia_mm": round(stub_inner, 1),
+                "velocity_before": round(v, 2), "velocity_after": round(v, 2),
+                "v_limit": BRANCH_PIPE_V_LIMIT, "v_over": True,
+                "flow_lpm": round(per, 1), "reasons": ["규격고정"],
+            })
+
     return {
         "iterations": outer,
         "converged": vio_after == 0,
@@ -522,5 +642,9 @@ def converge_bores_by_velocity(
         "overdischarge_ratio_max": round(max(per_head) / base, 2) if per_head else 1.0,
         "solver_converged": sol.converged,
         "pipes": len(pipes),
+        "head_stub_bore_mm": head_stub_bore_mm,
+        "head_stub_violations": stub_violations,
+        "head_stub_max_velocity": round(stub_max_v, 2),
+        "export": export,
         "changes": changes,
     }

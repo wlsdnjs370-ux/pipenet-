@@ -64,6 +64,13 @@ from pathlib import Path
 #   (KFP→SDF=bar, 통합망=양정[m]) rated-p-unit 속성으로 구분해 parse_sdf 가 bar 로 통일.
 _BAR_TO_M = 100000.0 / 9806.65   # ≈ 10.19716  bar → m
 _M_TO_BAR = 9806.65 / 100000.0   # ≈ 0.0980665 m → bar
+# SDF <Calculation-spec pressure=Pa/> 는 PIPENET 관례상 절대압. 개방수조가 실어
+# 나가는 101325 Pa 를 게이지압으로 오독하면 대기압 10.33 m 만큼 수원이 부풀어
+# 헤드가 통째로 과토출한다.
+_ATM_BAR = 1.01325
+# 개방수조가 게이지 구동수두를 안 실어 나올 때 쓰는 수위 [m]. K-solver 는 정수두
+# 0 인 수원을 계산 거부하므로 최소한의 실측 대체값이 필요하다.
+WT_DEFAULT_WATER_LEVEL_M = 2.0
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -651,14 +658,19 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
         # type 필드 - meta.update 후 raw 의 한글 type 이 덮어쓸 수 있으니 마지막 강제.
         meta["type"] = type_label
         node_types[nid] = type_label
-        # ★ 고가수조 (wt, 펌프 없음) — K-solver 가 driving head 0 으로 보고 계산
-        # 거부. water_level 이 raw 에 없으면 boundary pressure 또는 elevation 으로
-        # 정수두 환산. K-solver wt 정수두 = elevation + water_level.
+        # ★ 고가수조 (wt) 정수두 = elevation + water_level. water_level 이 raw 에
+        # 없으면 boundary pressure 로 환산하되, pressure_bar 는 절대압(개방수조 =
+        # 1.01325 bar)이라 그대로 수두로 바꾸면 대기압 10.33 m 가 통째로 가상의
+        # 구동수두가 돼 전 헤드가 과토출한다.
         if cn.kind == "wt" and not meta.get("water_level"):
-            if cn.pressure_bar and cn.pressure_bar > 0:
-                meta["water_level"] = round(cn.pressure_bar * 10.197, 3)
-            elif cn.elevation_m and cn.elevation_m > 0:
-                meta["water_level"] = 2.0
+            gauge = (cn.pressure_bar or 0.0) - _ATM_BAR
+            meta["water_level"] = (round(gauge * _BAR_TO_M, 3) if gauge > 1e-6
+                                   else WT_DEFAULT_WATER_LEVEL_M)
+        # water_level 로 정수두를 실은 뒤에도 required_pressure_bar 가 남아 있으면
+        # K-solver 가 둘을 더해 수원을 두 번 가압한다 (위 분기는 req_p 계산 이후에
+        # 돌기 때문에 여기서 다시 끊어야 한다).
+        if cn.kind == "wt" and meta.get("water_level"):
+            meta["required_pressure_bar"] = 0.0
         nodes_meta[nid] = meta
 
     # 공통 standard 추정 — 첫 pipe 의 type 로 (각 pipe 마다 다를 수도 있지만 보통 통일)

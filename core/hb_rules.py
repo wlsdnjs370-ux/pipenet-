@@ -20,6 +20,13 @@ from typing import Any
 
 from nftc_rules import RuleDecision, TripleTrace, Verdict
 
+# 1 kgf/cm² = 98066.5 Pa = 10 m 수두 = 0.980665 bar.
+# 0.0980665 는 "m 수두 → bar" 계수라서 kgf/cm² 자리에 쓰면 2% 어긋난다.
+# 두 척도를 이름으로 고정해 마찰손실과 정적수두가 서로 다른 단위로
+# 더해지는 사고를 막는다.
+KGFCM2_TO_BAR = 0.980665
+M_H2O_PER_KGFCM2 = 10.0
+
 
 # ---------------------------------------------------------------------------
 # 1. System type selection (5 systems per HB §2.4.1)

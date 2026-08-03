@@ -14,7 +14,13 @@ import pandas as pd
 MetadataValue: TypeAlias = str | float | int | bool
 Metadata: TypeAlias = dict[str, MetadataValue]
 
+# 값은 호칭경(m) — PIPENET 이 SDF 의 bore 를 SLF <Size-definition nominal> 과
+# 매칭해 실내경을 결정하므로 여기에 실내경을 넣으면 안 된다.
+# 15A/20A 는 신축배관(FX, 20A)·말단 가지관에 실제로 쓰이는데 빠져 있어
+# diameter_label_to_m 이 ValueError 를 내던 구간이다.
 SUPPORTED_DIAMETERS_M: dict[str, float] = {
+    "15A": 0.015,
+    "20A": 0.02,
     "25A": 0.025,
     "32A": 0.032,
     "40A": 0.04,

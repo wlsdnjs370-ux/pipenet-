@@ -93,6 +93,10 @@ def _build_node_element(node: Node) -> ET.Element:
 
 def _build_links_element(network: PipeNetwork) -> ET.Element:
     links_element = ET.Element("Links")
+    # PIPENET 은 <Links> 첫 Pipe-set 을 blank/default 슬롯으로 예약한다. 이 빈
+    # placeholder 가 없으면 우리 Pipe-type 이 그 슬롯에 흡수돼 관경이 "Unset" 으로
+    # 표시된다 (레퍼런스 3-1/4-1형, 다이소 SDF 전부 동일 구조).
+    ET.SubElement(links_element, "Pipe-set")
     pipe_set = ET.SubElement(links_element, "Pipe-set")
     for pipe in network.pipes.values():
         pipe_set.append(_build_pipe_element(pipe))

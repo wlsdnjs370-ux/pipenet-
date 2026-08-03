@@ -534,6 +534,65 @@
   기계실 10노드 편입·Input 경계압력·단일 연결 컴포넌트, SLF schedule 6종 전부 존재,
   PIPENET ZIP = 동일 stem 의 .sdf+.slf 쌍, HAS round-trip 무손실(RMSE 0.0000m).
 
+## 17. S4 수치 정확도 — SDF `bore` 는 호칭경, HW 계수는 kgf/cm² 계열 (감사 3항목 기각)
+
+### 17-1. 기각한 감사 항목 — "SDF `bore` 를 내경으로 바꿔라"
+- **기각 대상**: `pipenet_converter/.../models.py SUPPORTED_DIAMETERS_M`,
+  `sdf_writer._build_pipe_element` 의 `bore`, `sprinkler_remote30_extractor.py:990`
+  의 `diameter_m` — 세 곳 모두 "호칭경을 내경으로 교체" 지시였다.
+- **근거 (레퍼런스 실측)**: 레퍼런스 3-1형 SDF 의 `bore` 는 `0.125` / `0.08` /
+  `0.05` / `0.065` 로 **호칭경(m)** 이다. 내경은 SLF 가 담당한다 —
+  `assets/2. Pipenet_hand_FX28.slf` 의 `<Size-definition external="Unset"
+  internal="130.1" nominal="125"/>`. PIPENET 은 `bore` 를 `nominal` 과 매칭해
+  실내경을 결정하므로, `bore` 에 내경(105.3mm)을 넣으면 어떤 `nominal` 과도
+  안 맞아 관경이 **"Unset"** 이 된다.
+- **대신 고친 것**: 실제로 내경을 방출하던 유일한 지점
+  `kfp_sdf_converter.emit_sdf_xml` (`bore = diameter_inner_mm/1000`) → 호칭경.
+  파싱측(`bore*1000 → inner_mm`)은 `emit_kfp` 가 `abs(inner_mm - nominal_mm) < 0.5`
+  일 때 SLF 에서 실내경을 다시 조회하므로 호칭경 왕복이 오히려 정확해진다.
+
+### 17-2. 기각한 감사 항목 — "HW 마찰손실을 `/0.0980665` 로 고쳐라"
+- **한 번 적용했다가 되돌렸다.** 계수를 해석적으로 재도출한 결과가 근거다.
+  Hazen-Williams SI 형 `h_f[m] = 10.67·L·Q[m³/s]^1.852/(C^1.852·D[m]^4.87)` 을
+  Q[L/min]·d[mm] 로 환산하면 계수는 **6.17e5 (kgf/cm²)** / **6.05e4 (MPa)** 이다.
+  코드의 `6.174e4` 는 전자의 1/10 이므로 `/0.1` 을 거쳐야 kgf/cm² 가 된다.
+  PIPENET 보고서 헤더도 `Frict. Loss (kg/cm2)` 로 같은 척도다
+  (`data/docx_text.txt` FLOW IN PIPES). `/0.0980665` 로 바꾸면 **2% 부풀려진다**.
+- **남긴 것**: 중간변수명이 `dp_mpa` 였던 게 오해의 원인이라 이름을 `dp` 로 바꾸고
+  두 계수 계열을 주석에 못박았다 (`core/pipenet_validator.py`,
+  `sprinkler_remote30_extractor.hw_friction_loss_kgcm2`).
+
+### 17-3. 실제로 고친 단위 오류 2건 (골든 영향 있음)
+- **정적수두**: `sprinkler_remote30_extractor.py:816` 이 `static_head_m * 0.0980665`
+  로 kgf/cm² 를 만들고 있었다. 0.0980665 는 **m→bar** 계수다. 1 kgf/cm² = 10 m 수두
+  이므로 `/ M_H2O_PER_KGFCM2 (=10)` 로 교정 → 정적수두 **+1.97%**.
+- **솔버 단위 혼용**: `core/hydraulic_solver.hazen_williams_drop_bar` 는 이름과 달리
+  kgf/cm² 를 반환하면서, 같은 식에서 표고손실은 `BAR_PER_M_WATER(=0.0980665)` 로
+  진짜 bar 를 더하고 있었다(헤드 K 계수도 bar 기준). 마찰항에
+  `KGFCM2_TO_BAR(=0.980665)` 를 적용해 bar 로 통일 → 마찰손실 **−1.94%**.
+- **골든 영향**: 위 두 건은 통합망 수리해석 수치를 바꾼다. **골든 재생성은 하지
+  않았다** (사용자가 :5051 에서 대명동/B1F 를 눈으로 확인하기 전까지 보류).
+  현재 `tests`+`pipenet_converter/tests` 225 passed / 1 failed —
+  실패는 작업 전부터 실패하던 `combined_build__plane_daemyeong` (FX equipment
+  diff) 한 건뿐이고, 나머지 골든은 전부 불변이다.
+- `tests/test_hydraulic_solver.py::test_hazen_williams_matches_validator` 는
+  bar 와 kgf/cm² 를 직접 등호로 비교하고 있었다(계수가 둘 다 틀려서 우연히 통과).
+  환산 계수를 거치도록 고쳤다.
+
+### 17-4. 함께 고친 정직성/일관성 3건
+- `core/has_converter.py`: `.has` 파이프의 `diameter_inner_mm=0.0` → `PipeDiameter`
+  + `PipeMaterial` 로 KSD 실내경 조회(없으면 호칭경). 100A 기준 105.3 vs 100 →
+  마찰손실 약 12% 과소 산정이던 구간.
+- `core/hydraulic_solver.solve_network`: 소스에서 **도달 못 한 헤드가 남아도**
+  나머지가 안정되면 `converged=True` 였다. `len(reached) == len(head_nodes)` 를
+  요구하도록 변경 (커밋 `3eb9c4f` "근거 없는 자동합격 제거" 와 같은 취지).
+- `sprinkler_remote30_extractor`: ⓐ `diameter_m` 은 fallback 을 쓰는데
+  `diameter_label` 은 `None` 에서 파생돼 빈 문자열이 되던 불일치를 한 값으로 통일.
+  ⓑ `_refine_edge_diameters` 가 추정한 관경에 `dia_estimated` 표시.
+  ⓒ `counts` 에 `path_edges` / `path_edges_estimated_dia` / `path_edges_closure`
+  추가 — 전체 closure 수만 보면 **실제 계산에 쓰인 경로**가 얼마나 추정에
+  의존하는지 알 수 없었다.
+
 ## 6. fixture 파일명 불일치 (해소됨 — 기록용)
 - **항목**: §0 검증 도면
 - **질문**: 지시서의 `1__입력도면_대명동_단위세대_평면도.dxf` 는 저장소에 없음.

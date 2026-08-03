@@ -1591,18 +1591,18 @@
         const drain = (final) => {
           const text = xhr.responseText;
           if (text.length > seen) { buf += text.substring(seen); seen = text.length; }
-          let nl;
-          while ((nl = buf.indexOf("\n")) >= 0) {
-            const line = buf.slice(0, nl);
-            buf = buf.slice(nl + 1);
+          // 줄 단위로 한 번에 쪼갠다 — 예전처럼 줄마다 buf.slice 로 잘라내면
+          // 한 청크에 수백 줄이 실릴 때 남은 버퍼를 매번 복사해 O(줄²) 이 된다.
+          const lines = buf.split("\n");
+          buf = lines.pop();  // 마지막 조각은 아직 개행이 안 온 미완결 줄
+          if (final && buf.trim()) { lines.push(buf); }
+          if (final) buf = "";
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
             if (!line) continue;
             let msg;
             try { msg = JSON.parse(line); } catch (e) { continue; }
             try { onMessage(msg); } catch (e) { thrown = e; xhr.abort(); return; }
-          }
-          if (final && buf.trim()) {
-            try { onMessage(JSON.parse(buf)); } catch (e) { /* 잘린 꼬리는 무시 */ }
-            buf = "";
           }
         };
         if (onUploadProgress) {

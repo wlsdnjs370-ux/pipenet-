@@ -746,7 +746,9 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             prepend_machine_room_to_riser, insert_source_pump,
             normalize_pipe_bores,
         )
-        from hydraulic_solver import converge_bores_by_velocity
+        from hydraulic_solver import BAR_PER_M_WATER, converge_bores_by_velocity
+        from kfp_sdf_converter import WT_DEFAULT_WATER_LEVEL_M
+        from remote30_constants import FX_DEFAULT_PROFILE, FX_SPEC_PROFILES
 
         # ── 가압 방식 — "gravity"(자연낙차/고가수조, 기본) | "pump"(펌프 가압).
         # 펌프 가압이면 (1) 기계실/수원을 망 최하부로 배치·재고도(고저차 lift 반영),
@@ -922,11 +924,19 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             #   얻고 초과 구간을 한 치수씩 올리는 것을 더 바뀌지 않을 때까지 반복(never-shrink).
             #   도면 관경 + 규약 최소경만으로는 실제 해석에서 유속이 넘던 문제의 해소책.
             #   각 배관에 flow/velocity/limit/role 을 stamp 하므로 별도 annotate 는 불필요.
+            # 사이징은 최원단 0.1 MPa 를 못 박고 필요 수원압을 역산하지만 산출물은
+            # 반대로 수원 조건을 싣고 나간다. 그 경계로 한 번 더 풀어야 과토출이 잡힌다.
+            if is_pump:
+                export_bar = float(pump_spec.get("rated_h") or 100) * BAR_PER_M_WATER
+            else:
+                export_bar = WT_DEFAULT_WATER_LEVEL_M * BAR_PER_M_WATER
             velocity_report = None
             try:
                 velocity_report = converge_bores_by_velocity(
                     combined.nodes, combined.pipes, combined.nozzles,
-                    equipment=combined.equipment, keep_existing=True)
+                    equipment=combined.equipment, keep_existing=True,
+                    export_source_bar=export_bar,
+                    head_stub_bore_mm=FX_SPEC_PROFILES[FX_DEFAULT_PROFILE]["nominal_dn"])
                 app.logger.info(
                     "combined/build: velocity converged in %d passes, changed=%d, "
                     "max v %.2f->%.2f, viol %d->%d, 과토출 x%.2f",
@@ -1253,6 +1263,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                 # 재배치 루트(AV)와 lift 제외 대상(라이저·기계실)을 그대로 승계.
                 "av_label": av_label,
                 "no_lift_labels": sorted(riser_collapse_labels | _mr_set),
+                "export_bar": export_bar,
             })
         except Exception as _cache_exc:  # noqa: BLE001 — 캐시 실패가 통합 출력을 막지 않도록
             warnings.warn(f"[combined] rebuild 캐시 저장 실패 (편집 재출력 불가): {_cache_exc}",
@@ -1305,6 +1316,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
 
         from remote30_full_network import normalize_pipe_bores
         from hydraulic_solver import converge_bores_by_velocity
+        from remote30_constants import FX_DEFAULT_PROFILE, FX_SPEC_PROFILES
         try:
             combined = _copy.deepcopy(cache["combined"])
             _patch_combined_from_geometry(combined, geom)
@@ -1322,7 +1334,9 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             try:
                 velocity_report = converge_bores_by_velocity(
                     combined.nodes, combined.pipes, combined.nozzles,
-                    equipment=combined.equipment, keep_existing=True)
+                    equipment=combined.equipment, keep_existing=True,
+                    export_source_bar=cache.get("export_bar"),
+                    head_stub_bore_mm=FX_SPEC_PROFILES[FX_DEFAULT_PROFILE]["nominal_dn"])
                 app.logger.info(
                     "combined/rebuild: velocity converged in %d passes, changed=%d, viol %d->%d",
                     velocity_report["iterations"], velocity_report["changed"],
@@ -1390,6 +1404,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                 "combined": _copy.deepcopy(combined), "title": title,
                 "zaware": zaware, "kfp_coord_scale": kfp_scale, "has_iso_z_scale": has_zs,
                 "av_label": av_label, "no_lift_labels": sorted(no_lift),
+                "export_bar": cache.get("export_bar"),
             })
 
             base = f"/api/remote30/combined/result/{new_job}"

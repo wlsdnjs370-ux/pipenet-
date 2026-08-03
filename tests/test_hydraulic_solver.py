@@ -28,6 +28,7 @@ from hydraulic_solver import (  # noqa: E402
     demand_flows,
     hazen_williams_drop_bar,
     inner_diameter_mm,
+    solve_at_source_pressure,
     solve_network,
     velocity_mps,
 )
@@ -292,3 +293,42 @@ def test_network_without_nozzles_does_not_crash():
     rep = converge_bores_by_velocity(nodes, pipes, [])
     assert rep["pipes"] == len(pipes)
     assert rep["violations_after"] == 0
+
+
+# ── 산출물 경계조건 재검증 ───────────────────────────────────────────────────
+
+
+def test_solve_at_source_pressure_overdischarges_above_design():
+    """수원압을 설계 필요압보다 높게 못 박으면 헤드 유량이 설계치를 넘는다."""
+    nodes, pipes, nozzles = make_net(n_branch=2, n_head=3, dia=50)
+    topo = build_topology(nodes, pipes, nozzles)
+    need = solve_network(pipes, topo).source_pressure_bar
+    sol = solve_at_source_pressure(pipes, topo, need + 3.0)
+    assert sol.converged
+    assert min(sol.head_flow_lpm.values()) > NOZZLE_K_FACTOR
+
+
+def test_export_block_reports_surplus_and_overdischarge():
+    """산출물 경계가 설계 필요압을 넘으면 잉여·과토출을 리포트에 실어야 한다."""
+    nodes, pipes, nozzles = make_net(n_branch=2, n_head=3)
+    rep = converge_bores_by_velocity(nodes, pipes, nozzles, export_source_bar=8.0)
+    ex = rep["export"]
+    assert ex["surplus_bar"] == pytest.approx(8.0 - rep["source_pressure_bar"], abs=1e-3)
+    assert ex["overdischarge_ratio_max"] > 1.0
+    assert ex["max_velocity"] > rep["max_velocity_after"]
+
+
+def test_export_block_absent_without_boundary():
+    nodes, pipes, nozzles = make_net(n_branch=1, n_head=2)
+    assert converge_bores_by_velocity(nodes, pipes, nozzles)["export"] is None
+
+
+def test_head_stub_violations_are_reported_not_upsized():
+    """헤드 접속 신축배관은 규격품이라 승급 없이 판정만 표에 남는다."""
+    nodes, pipes, nozzles = make_net(n_branch=2, n_head=3)
+    rep = converge_bores_by_velocity(nodes, pipes, nozzles,
+                                     export_source_bar=8.0, head_stub_bore_mm=20)
+    stubs = [c for c in rep["changes"] if c["reasons"] == ["규격고정"]]
+    assert rep["head_stub_violations"] == len(stubs) > 0
+    assert rep["head_stub_max_velocity"] > BRANCH_PIPE_V_LIMIT
+    assert all(c["bore_before"] == c["bore_after"] == 20 for c in stubs)

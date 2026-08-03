@@ -7744,16 +7744,35 @@
           `변경 ${rep.changed}건 · 최대유속 ${num(rep.max_velocity_before, 2)} → ` +
           `${num(rep.max_velocity_after, 2)} m/s · 초과 ${rep.violations_before} → ` +
           `${rep.violations_after}구간 · ${rep.iterations}회차 · 과토출 x${num(rep.overdischarge_ratio_max, 2)}`;
+        const warns = [];
         if (rep.violations_after > 0) {
-          warnEl.style.display = "block";
-          warnEl.innerHTML =
+          warns.push(
             `⚠ 사다리 최대치(200A)까지 올려도 상한을 못 맞춘 구간이 ` +
             `<strong>${rep.violations_after}개</strong> 남았습니다(사유 <strong>한계도달</strong>). ` +
             `설계 불가라기보다 추출 오접합으로 유량이 한 관에 몰렸을 가능성이 큽니다 — 판정 보류로 두고 ` +
-            `해당 구간의 연결을 확인하세요.`;
-        } else {
-          warnEl.style.display = "none";
+            `해당 구간의 연결을 확인하세요.`);
         }
+        // 위 표는 "최원단 0.1 MPa" 설계기준으로 사이징한 결과다. 산출물(KFP/SDF)은
+        // 수원 조건을 싣고 나가므로 수조 수두가 필요압을 넘으면 K-solver 에서 과토출한다.
+        const ex = rep.export;
+        if (ex && ex.surplus_bar > 0.05) {
+          warns.push(
+            `⚠ 산출물 경계조건 재검증: 수원 게이지압 <strong>${num(ex.source_pressure_bar, 2)} bar</strong>` +
+            `(설계 필요 ${num(ex.required_source_bar, 2)} bar, 잉여 <strong>+${num(ex.surplus_bar, 2)} bar</strong>)로 ` +
+            `그대로 풀면 헤드가 <strong>${num(ex.head_flow_min, 0)}~${num(ex.head_flow_max, 0)} L/min</strong> ` +
+            `(설계 80 대비 x${num(ex.overdischarge_ratio_max, 2)})으로 과토출해 최대유속 ` +
+            `<strong>${num(ex.max_velocity, 2)} m/s</strong> · 초과 <strong>${ex.violations}구간</strong>이 됩니다. ` +
+            `관경으로 풀 문제가 아니라 감압장치(감압밸브·오리피스)로 ${num(ex.surplus_bar, 2)} bar 를 ` +
+            `줄여야 하는 구간입니다.`);
+        }
+        if (rep.head_stub_violations > 0) {
+          warns.push(
+            `⚠ 헤드 접속 신축배관(${rep.head_stub_bore_mm}A, 제조사 규격품이라 승급 불가) ` +
+            `<strong>${rep.head_stub_violations}개</strong>가 가지배관 상한 6 m/s 를 넘습니다 ` +
+            `(최대 ${num(rep.head_stub_max_velocity, 2)} m/s). 표에 <strong>규격고정</strong> 사유로 실었습니다.`);
+        }
+        warnEl.style.display = warns.length ? "block" : "none";
+        warnEl.innerHTML = warns.join("<hr style='border:0;border-top:1px solid #fecaca;margin:5px 0;'>");
         if (!cs.length) {
           tableBox.innerHTML =
             `<p class="info-line" style="padding:8px;">관경이 바뀐 구간이 없습니다 — ` +

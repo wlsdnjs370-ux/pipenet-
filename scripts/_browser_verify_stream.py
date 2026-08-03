@@ -98,6 +98,25 @@ def _probe(page, mode, dxf, timeout_s, interval_ms):
     }
 
 
+def _session_cookie(base, password, port):
+    """로그인 세션 쿠키를 받아 Secure 플래그를 떼고 돌려준다.
+
+    서버는 SESSION_COOKIE_SECURE=True 라 평문 http 로는 쿠키를 발급하지 않고,
+    ProxyFix 로 https 인 척해 받아내도 Chromium 이 평문 origin 에 저장을 거부한다.
+    Flask 는 수신 시 Secure 여부를 보지 않으므로 값만 그대로 심으면 된다.
+    """
+    import requests
+
+    r = requests.post(f"{base}/login", data={"password": password},
+                      headers={"X-Forwarded-Proto": "https"},
+                      timeout=30, allow_redirects=False)
+    value = r.cookies.get("session")
+    if not value:
+        raise SystemExit(f"로그인 실패 — status={r.status_code} (비번 확인)")
+    return {"name": "session", "value": value, "domain": "127.0.0.1", "path": "/",
+            "httpOnly": True, "secure": False, "sameSite": "Lax"}
+
+
 def run(port, dxf, password, modes, timeout_s, interval_ms, headless):
     base = f"http://127.0.0.1:{port}"
     errors: list[str] = []
@@ -107,17 +126,16 @@ def run(port, dxf, password, modes, timeout_s, interval_ms, headless):
         browser = p.chromium.launch(
             headless=headless, args=[f"--explicitly-allowed-ports={port}"])
         page = browser.new_page(viewport={"width": 1600, "height": 950})
+        page.context.add_cookies([_session_cookie(base, password, port)])
         page.on("console",
                 lambda m: errors.append(f"console.{m.type}: {m.text}") if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
 
-        page.goto(f"{base}/login", wait_until="domcontentloaded")
-        page.fill("input[name=password]", password)
-        page.press("input[name=password]", "Enter")
-        page.wait_for_load_state("domcontentloaded")
-
         page.goto(f"{base}/remote30-prototype", wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
+        if page.locator("#mode-btn-plane").count() == 0:
+            names = [c["name"] for c in page.context.cookies()]
+            raise SystemExit(f"프로토타입 진입 실패 — url={page.url} 쿠키={names}")
 
         out = {}
         for mode in modes:

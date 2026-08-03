@@ -150,6 +150,21 @@ from werkzeug.middleware.proxy_fix import ProxyFix as _ProxyFix
 app.wsgi_app = _ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
+# 같은 서버가 https(cloudflared) 와 평문 http(localhost) 를 동시에 받는다.
+# Secure 를 전역 고정하면 평문 접속에서 브라우저가 쿠키 저장을 거부해 로그인이
+# 무한 반복된다. 요청 스킴별로 판단하면 https 는 Secure 를 그대로 유지한 채
+# 로컬 http 만 통과한다 — 외부 노출 방어선 손실 없음.
+from flask.sessions import SecureCookieSessionInterface as _SecureCookieSI
+
+
+class _SchemeAwareSessionInterface(_SecureCookieSI):
+    def get_cookie_secure(self, app):  # noqa: D102
+        return bool(request.is_secure)
+
+
+app.session_interface = _SchemeAwareSessionInterface()
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # 잡 스토어 / 임시파일 수명 관리 — 24/7 구동 프로세스의 무한 누적 방지
 # ────────────────────────────────────────────────────────────────────────────

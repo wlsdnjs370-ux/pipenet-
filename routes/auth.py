@@ -14,7 +14,7 @@ from threading import Lock
 from flask import (make_response, redirect, render_template, request,
                    session, url_for)
 
-# Brute-force 방어 — 4자리 PIN 은 무제한 시도면 1만 회로 뚫린다.
+# Brute-force 방어 — 짧은 비번은 무제한 시도면 전수조사로 뚫린다.
 # 단순 in-memory dict — waitress 단일 프로세스 + 16 thread 환경에 적합.
 _FAIL_WINDOW_S = 15 * 60
 _FAIL_THRESHOLD = 5

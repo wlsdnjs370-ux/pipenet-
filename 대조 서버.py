@@ -52,7 +52,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 # 렌더/카테고리 로직이 바뀌면 INSPECT_CACHE_VERSION 을 올려 캐시를 무효화한다.
 INSPECT_CACHE_DIR = UPLOAD_DIR / "_inspect_cache"
 INSPECT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-INSPECT_CACHE_VERSION = "v3"
+INSPECT_CACHE_VERSION = "v4"
 
 
 def _inspect_cache_key(dxf_path: Path) -> str:
@@ -5985,6 +5985,11 @@ def remote30_inspect():
     layer_type_counts: dict[str, dict] = {}
     total_count = [0]
     bg_status = {"truncated": False, "entities": 0}
+    # 진행률 분모 — 방출되는 entity 수는 INSERT 폭발 때문에 미리 알 수 없지만
+    # top-level entity 수는 파싱 직후 확정된다. 클라이언트 진행바가 추측이 아닌
+    # 실제 소화량을 표시하려면 이 (done, total) 쌍이 필요하다.
+    total_top = len(foreground_top) + len(background_top)
+    done_top = [0]
 
     def _bbox_obj():
         if bbox[0] == float("inf"):
@@ -6003,7 +6008,8 @@ def remote30_inspect():
                 tc = layer_type_counts.setdefault(l, {})
                 tc[ent["t"]] = tc.get(ent["t"], 0) + 1
             total_count[0] += len(chunk)
-            msg = {"type": "progress", "phase": phase, "entities": chunk}
+            msg = {"type": "progress", "phase": phase, "entities": chunk,
+                   "done": done_top[0], "total": total_top}
             if with_bbox and i == 0:
                 msg["bbox"] = _bbox_obj()
             yield json.dumps(msg, ensure_ascii=False) + "\n"
@@ -6017,8 +6023,14 @@ def remote30_inspect():
         #    매 flush 의 첫 chunk 가 "지금까지" 범위를 실어 보낸다(클라가 점진 fit).
         FIRST_FLUSH_N = 2000
         fg_flushed = False
+        # 파싱(ezdxf.readfile)까지는 진행 상황을 알릴 방법이 없다. 그 구간이
+        # 끝난 이 시점을 먼저 알려 클라이언트가 "몇 % 인지 모름" 표시를 끝내고
+        # 렌더 진행률로 넘어가게 한다 — 첫 chunk 는 2000 entity 뒤에나 온다.
+        yield json.dumps({"type": "phase", "phase": "render",
+                          "total": total_top}, ensure_ascii=False) + "\n"
         for e in foreground_top:
             _render_entity(e)
+            done_top[0] += 1
             thresh = FIRST_FLUSH_N if not fg_flushed else FLUSH_N
             if len(entities) >= thresh:
                 yield from _emit("foreground", with_bbox=True)
@@ -6030,10 +6042,14 @@ def remote30_inspect():
         bg_start = total_count[0]
         for e in background_top:
             _render_entity(e)
+            done_top[0] += 1
             if len(entities) >= FLUSH_N:
                 yield from _emit("background", with_bbox=False)
             if total_count[0] - bg_start >= BG_ENTITY_BUDGET:
                 bg_status["truncated"] = True
+                # 상한에 걸려 남은 top-level 을 건너뛴다 — 할 일이 끝난 건
+                # 맞으므로 분자를 채워 진행바가 중간에 멈춘 채 끝나지 않게 한다.
+                done_top[0] = total_top
                 break
         if entities:
             yield from _emit("background", with_bbox=False)

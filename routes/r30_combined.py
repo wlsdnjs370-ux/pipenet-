@@ -234,9 +234,35 @@ def _tidy_head_plane_layout(nodes, pipes, root_label, exclude_labels):
     return moved
 
 
+def _head_stub_length(combined, head_label_set, frac: float) -> float:
+    """헤드 니플(표시 전용) 길이 — 헤드↔이웃 평면거리 중앙값(헤드 간격) × frac.
+
+    기준이 도면 대각선이면 도면이 커질수록 니플이 길어져, 헤드가 가지 끝단이 아니라
+    한참 아래에 따로 매달린 것처럼 보인다(대명동 201동 실측: 대각선 39,113 × 0.04 =
+    1,565 ≈ 헤드 간격의 절반). 헤드 간격에 매달면 도면 크기와 무관하게 짧게 남는다.
+    """
+    node = {str(n.get("label")): n for n in combined.nodes}
+    gaps: list[float] = []
+    for p in combined.pipes:
+        a, b = str(p.get("in", "")), str(p.get("out", ""))
+        if (a in head_label_set) == (b in head_label_set):
+            continue  # 헤드↔비헤드 간선만 (헤드 간 직결·본관은 간격 아님)
+        na, nb = node.get(a), node.get(b)
+        if na is None or nb is None:
+            continue
+        d = math.hypot(float(na.get("x", 0) or 0) - float(nb.get("x", 0) or 0),
+                       float(na.get("y", 0) or 0) - float(nb.get("y", 0) or 0))
+        if d > 1e-9:
+            gaps.append(d)
+    if not gaps:
+        return 0.0
+    gaps.sort()
+    return gaps[len(gaps) // 2] * frac
+
+
 def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
                              machine_room_labels, pump_junction_label,
-                             is_pump, head_orientation, head_z_frac) -> dict:
+                             is_pump, head_orientation, head_stub_len) -> dict:
     """통합망(헤드+라이저) 캔버스 시각화용 geometry dict.
 
     machine_room_at_bottom: 펌프방식이면 수원/기계실이 망 최하부 → 3D 아이소뷰가 Z 방향
@@ -253,7 +279,8 @@ def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
         "machine_room_plan_edges": combined.machine_room_plan_edges,
         "head_labels": sorted(head_label_set),
         "head_orientation": head_orientation,
-        "head_z_frac": head_z_frac,
+        # 니플 실길이(모델 단위) — 2D/3D 렌더러는 이 값만 쓴다(기준 산정은 서버 단일화).
+        "head_stub_len": head_stub_len,
         "nodes": [
             {"label": str(n["label"]),
              "x": float(n.get("x", 0)), "y": float(n.get("y", 0)),
@@ -336,7 +363,7 @@ def _build_combined_geometry(combined, riser, riser_labels, head_label_set,
 
 def _build_roles_sidecar(combined, riser_labels, head_label_set, av_node_label,
                          machine_room_labels, pump_junction_label,
-                         is_pump, head_orientation, head_z_frac) -> dict:
+                         is_pump, head_orientation, head_stub_len) -> dict:
     """포맷 미리보기(round-trip)용 역할 사이드카.
 
     KFP/SDF/HAS emit→재파싱은 라벨을 N1..Nn 으로 개명하고 라이저/헤드/AV 구조 메타를
@@ -353,7 +380,7 @@ def _build_roles_sidecar(combined, riser_labels, head_label_set, av_node_label,
         "machine_room_labels": list(machine_room_labels),
         "pump_junction_label": pump_junction_label,
         "head_orientation": head_orientation,
-        "head_z_frac": head_z_frac,
+        "head_stub_len": head_stub_len,
         "machine_room_at_bottom": is_pump,
         "pumps": [{"label": str(p["label"]), "in": str(p["in"]), "out": str(p["out"])}
                   for p in combined.pumps],
@@ -767,12 +794,12 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         source_drop_m = abs(_to_float(pump_spec.get("source_drop_m"), 0.0))
         # 헤드 설치방향(전역) — 상향식(upright)=가지배관 위로 돌출, 하향식(pendent)=아래로.
         # DXF 에 상/하향 정보가 없어(재질과 동일) 전역 토글로 받는다. 표시 전용 — 헤드를
-        # 짧은 니플로 ±z 띄워 그릴 뿐, 수리 elevation·length 는 불변. head_z_frac 은 도면
-        # 대각선 대비 비율(스케일 무관) — m/mm 좌표계 모두에서 일관되게 보이도록.
+        # 짧은 니플로 ±z 띄워 그릴 뿐, 수리 elevation·length 는 불변. head_z_frac 은 헤드
+        # 간격 대비 비율(스케일 무관) — m/mm 좌표계 모두에서 일관되게 보이도록.
         head_orientation = str(body.get("head_orientation") or "pendent").strip().lower()
         if head_orientation not in ("upright", "pendent"):
             head_orientation = "pendent"
-        head_z_frac = _to_float(body.get("head_z_frac"), 0.04)
+        head_z_frac = _to_float(body.get("head_z_frac"), 0.25)
         if head_z_frac < 0:
             head_z_frac = 0.0
         # 불리한 헤드 개수 N — 평면도에서 고른 값(통합 빌드 body 의 n_heads, 없으면
@@ -1011,13 +1038,9 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             #    수리값(length·elevation)은 어느 경로든 불변.
 
             # ── 헤드(스프링클러) z 돌출 — 상향식(+)/하향식(−)을 표시 전용 display_z 로 베이크.
-            #   헤드 = nozzle 부착(input) 노드. 돌출량은 평면 대각선 비율(head_z_frac)이라
+            #   헤드 = nozzle 부착(input) 노드. 돌출량은 헤드 간격 비율(head_z_frac)이라
             #   좌표 단위(m/mm)에 무관. elevation(수리 실표고)은 일절 건드리지 않아 결과 불변.
             #   여기서 한 번 계산해 KFP/HAS(display_z)·iso SDF(iso 베이크)·geometry 가 공유.
-            _hd_xs = [float(n.get("x", 0) or 0) for n in combined.nodes]
-            _hd_ys = [float(n.get("y", 0) or 0) for n in combined.nodes]
-            _plan_diag = (math.hypot(max(_hd_xs) - min(_hd_xs), max(_hd_ys) - min(_hd_ys))
-                          if _hd_xs else 0.0)
             head_label_set = {
                 str(nz.get("in") or nz.get("input_node") or nz.get("input") or "")
                 for nz in combined.nozzles
@@ -1025,7 +1048,8 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             }
             head_label_set.discard("")
             _head_sign = 1.0 if head_orientation == "upright" else -1.0
-            head_disp_z = _head_sign * _plan_diag * head_z_frac
+            head_stub_len = _head_stub_length(combined, head_label_set, head_z_frac)
+            head_disp_z = _head_sign * head_stub_len
 
             def _collapse_riser_to_column(net_obj):
                 """net_obj 사본에서 라이저를 수직 입상관으로 재배치 (미리보기 3D 뷰와 정합).
@@ -1065,30 +1089,6 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                     if str(n.get("label")) in riser_collapse_labels:
                         n["x"] = int(round(cx))
                         n["y"] = cy
-                # ── 공통 1.5: 헤드(nozzle 부착 leaf)의 x,y 를 가지배관 이웃 노드에 스냅.
-                #   헤드는 display_z 로만 ±수직 돌출하는데, 평면 x,y 가 이웃(가지 tee)과
-                #   어긋나 있으면 드롭 배관이 대각선으로 보인다(예: head N48 35°, N54 48°).
-                #   이웃 x,y 로 맞추면 Δxy=0 → 완전 90° 수직 드롭. leaf(이웃 1개)만 대상으로
-                #   해 가지 중간 통과 헤드는 건드리지 않는다. 표시 전용(elevation·length_m
-                #   불변 → 수리 결과 동일).
-                _znode = {str(n.get("label")): n for n in z_net.nodes}
-                _head_nbrs: dict[str, set] = {}
-                for _p in z_net.pipes:
-                    _a = str(_p.get("in", "")); _b = str(_p.get("out", ""))
-                    if _a in head_label_set and _b:
-                        _head_nbrs.setdefault(_a, set()).add(_b)
-                    if _b in head_label_set and _a:
-                        _head_nbrs.setdefault(_b, set()).add(_a)
-                for _hl, _nbs in _head_nbrs.items():
-                    if len(_nbs) != 1:  # leaf 헤드만 (통과 헤드 제외)
-                        continue
-                    _hn = _znode.get(_hl)
-                    _tn = _znode.get(next(iter(_nbs)))
-                    if (_hn is None or _tn is None
-                            or _tn.get("x") is None or _tn.get("y") is None):
-                        continue
-                    _hn["x"] = _tn["x"]
-                    _hn["y"] = _tn["y"]
                 # ── 공통 2: 기둥 높이 = 0.5 × 전체 평면 대각선 × zScale (x,y 가 AV 로 모인 뒤
                 #   bbox — 미리보기 spreadHeight/_spreadH 와 정합). display_z 는 emit_sdf 가 x,y
                 #   와 동일 _scale 로 정규화 → 평면과 자동 비례(3/longest 보정 불필요).
@@ -1219,14 +1219,14 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         geometry = _build_combined_geometry(
             combined, riser, riser_labels, head_label_set,
             machine_room_labels, pump_junction_label,
-            is_pump, head_orientation, head_z_frac)
+            is_pump, head_orientation, head_stub_len)
 
         # ── 포맷 미리보기(round-trip)용 역할 사이드카.
         try:
             roles_sidecar = _build_roles_sidecar(
                 combined, riser_labels, head_label_set, riser.av_node_label,
                 machine_room_labels, pump_junction_label,
-                is_pump, head_orientation, head_z_frac)
+                is_pump, head_orientation, head_stub_len)
             (out_dir / f"combined_{job_id}_roles.json").write_text(
                 json.dumps(roles_sidecar, ensure_ascii=False), encoding="utf-8")
         except Exception as _rs_exc:  # noqa: BLE001 — 사이드카 실패가 통합 출력을 막지 않도록
@@ -1469,7 +1469,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         # ── 역할 사이드카로 구조 메타 복원 (Option I).
         # emit→재파싱은 라벨을 N1..Nn 으로 개명하고 라이저/헤드/AV 구분을 잃는다. 빌드 때
         # 저장한 노드 순서별 원본 라벨로 개명 라벨과 매핑해, 렌더러가 모양을 재구성하는 데
-        # 쓰는 riser_labels·head_labels·head_z_frac 등을 다시 채운다. 노드 순서는 parse==emit
+        # 쓰는 riser_labels·head_labels·head_stub_len 등을 다시 채운다. 노드 순서는 parse==emit
         # ==combined 로 동일(검증됨)하므로 인덱스 정합으로 안전하게 옮길 수 있다.
         roles_path = run_dir / f"combined_{safe_id}_roles.json"
         if roles_path.is_file():
@@ -1493,7 +1493,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                     if _pj is not None and str(_pj) in old2new:
                         geometry["pump_junction_label"] = old2new[str(_pj)]
                     geometry["head_orientation"] = roles.get("head_orientation", "pendent")
-                    geometry["head_z_frac"] = roles.get("head_z_frac", 0.04)
+                    geometry["head_stub_len"] = roles.get("head_stub_len")
                     geometry["machine_room_at_bottom"] = bool(roles.get("machine_room_at_bottom", False))
                     order_io = roles.get("order_io") or []
                     if len(order_io) == len(geo_nodes):

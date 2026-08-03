@@ -55,8 +55,9 @@ def test_golden(name):
         return
 
     gf = _golden_file(name)
-    if not gf.exists():
-        pytest.skip(f"golden 없음 — GOLDEN_UPDATE=1 로 먼저 생성: {name}")
+    # skip 이 아니라 fail — golden 파일이 사라지면 안전망도 같이 사라지는데,
+    # skip 은 초록으로 보여서 회귀 검출이 꺼진 걸 아무도 모른다.
+    assert gf.exists(), f"golden 없음 — GOLDEN_UPDATE=1 로 먼저 생성: {name}"
     expected = json.loads(gf.read_text(encoding="utf-8"))
     assert _dump(actual) == _dump(expected), (
         f"케이스 '{name}' 출력이 golden 과 다름 — 동작이 변경됨(회귀 의심)"

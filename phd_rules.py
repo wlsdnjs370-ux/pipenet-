@@ -143,8 +143,10 @@ class DiscretionaryVariables:
     # ⑤ 펌프 운전점 — pump operating point validations
     pump_check_rated_q_lpm: float = 0.0
     pump_check_rated_h_m: float = 0.0
-    pump_check_q150_validated: bool = False
-    pump_check_churn_le_120pct: bool = False
+    # 검증하지 못한 항목은 None — False 로 두면 "검증했고 불합격"과 구분이 안 되고,
+    # True 로 두면 계산한 적 없는 펌프가 합격으로 보고된다.
+    pump_check_q150_validated: bool | None = None
+    pump_check_churn_le_120pct: bool | None = None
     # Trace
     trace: TripleTrace = field(default_factory=lambda: TripleTrace(phd="박사논문 — 공백변수 5종"))
 
@@ -188,8 +190,9 @@ def decide_discretionary_variables(
                 "p2_bar": 4.0,  # HB §2.4.16 — 2차측 4 bar
                 "delta_p_bar": round(f.natural_drop_pressure_bar - 4.0, 2),
             })
-    # ⑤ pump check
-    churn_ratio = pump_churn_h_m / pump_rated_h_m if pump_rated_h_m > 0 else 0.0
+    # ⑤ pump check — 정격양정이 없으면 체절비를 계산할 수 없다. 예전에는 이때
+    # churn_ratio 를 0.0 으로 두어 "체절 120% 이하 합격"이 나왔다.
+    churn_le_120 = pump_churn_h_m / pump_rated_h_m <= 1.20 if pump_rated_h_m > 0 else None
     return DiscretionaryVariables(
         reference_zones=ref_zones,
         natural_drop_start_floor=natural_start,
@@ -201,8 +204,9 @@ def decide_discretionary_variables(
         prv_settings=prv_list,
         pump_check_rated_q_lpm=pump_rated_q_lpm,
         pump_check_rated_h_m=pump_rated_h_m,
-        pump_check_q150_validated=True,  # caller is responsible for actual validation
-        pump_check_churn_le_120pct=churn_ratio <= 1.20,
+        # 150% 유량점 검증은 펌프 성능곡선이 있어야 한다 — 여기서는 판정 불가(None).
+        pump_check_q150_validated=None,
+        pump_check_churn_le_120pct=churn_le_120,
         trace=TripleTrace(
             nftc=None,
             hb=f"HB §2.4.16 ({hb_case.case.value})",
@@ -334,12 +338,14 @@ def generate_calculation_scenarios(
 class ImbalanceMetrics:
     """3 imbalance metrics per doctoral thesis."""
 
+    # 실측 근거가 없으면 지표는 None — 0.0 으로 채우면 "편차 없음"(=만점)으로 읽힌다.
     delta_p_max_mpa_per_zone: dict[str, float]   # per zone
-    cv_flow: float                                # σ_Q / μ_Q
-    tau_water_minutes: float                      # 수원고갈시간
+    cv_flow: float | None                         # σ_Q / μ_Q
+    tau_water_minutes: float | None               # 수원고갈시간
     legal_duration_minutes: float                 # 법정 방사시간
-    duration_reduction_pct: float                 # (legal - tau) / legal × 100
+    duration_reduction_pct: float | None          # (legal - tau) / legal × 100
     tier: str                                     # 'auto_pass' / 'human_review' / 'redesign_required'
+                                                  # / 'insufficient_evidence'
     diagnosis_messages: list[str]
     trace: TripleTrace
 

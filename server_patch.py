@@ -109,6 +109,22 @@ def _err(message: str, status: int = 400) -> tuple:
     return (jsonify({"ok": False, "error": message}), status)
 
 
+def _err_exc(exc: BaseException, status: int = 500) -> tuple:
+    """예외 → 500 JSON. traceback 은 서버 로그로만 (외부 노출 차단).
+
+    fncadnet.com 으로 열려 있어 traceback 본문(파일 경로·업로드 파일명·코드
+    스니펫)이 그대로 나가면 안 된다. EXPOSE_TRACEBACK=1 로 국소 복원.
+    """
+    import logging
+    import os
+    import traceback
+    logging.getLogger(__name__).error("v4 route error: %s", exc, exc_info=True)
+    message = f"{type(exc).__name__}: {exc}"
+    if os.environ.get("EXPOSE_TRACEBACK") == "1":
+        message = f"{message}\n{traceback.format_exc()[-2000:]}"
+    return _err(message, status=status)
+
+
 def _ok(payload: Any) -> Any:
     return jsonify({"ok": True, "data": _to_json_safe(payload)})
 
@@ -315,7 +331,7 @@ def register_v4_routes(app: Flask) -> Flask:
             heads = placer.place()
             return _ok({"heads": heads, "head_count": len(heads)})
         except Exception as exc:
-            return _err(f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}", status=500)
+            return _err_exc(exc)
 
     @app.post("/api/v4/pipe-routing")
     def v4_pipe_routing():
@@ -382,7 +398,7 @@ def register_v4_routes(app: Flask) -> Flask:
                 "cross_main_count": len(cross_mains),
             })
         except Exception as exc:
-            return _err(f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}", status=500)
+            return _err_exc(exc)
 
     @app.post("/api/v4/scenarios-generate")
     def v4_scenarios_generate():
@@ -445,7 +461,7 @@ def register_v4_routes(app: Flask) -> Flask:
                 "discretionary": discretionary,
             })
         except Exception as exc:
-            return _err(f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}", status=500)
+            return _err_exc(exc)
 
     @app.post("/api/v4/imbalance-evaluate")
     def v4_imbalance_evaluate():
@@ -540,7 +556,7 @@ def register_v4_routes(app: Flask) -> Flask:
                 "alternative_count": len(alts),
             })
         except Exception as exc:
-            return _err(f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}", status=500)
+            return _err_exc(exc)
 
     @app.post("/api/v4/validate-scenarios")
     def v4_validate_scenarios():
@@ -576,7 +592,7 @@ def register_v4_routes(app: Flask) -> Flask:
             )
             return _ok(report)
         except Exception as exc:
-            return _err(f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}", status=500)
+            return _err_exc(exc)
 
     # -----------------------------------------------------------------------
     # 3. Audit endpoints — change log + trace

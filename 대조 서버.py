@@ -113,6 +113,10 @@ DESIGN_AUTOMATION_PID_PATH = BASE_DIR / "design_automation_server.pid"
 DESIGN_AUTOMATION_STDOUT_PATH = BASE_DIR / "design_automation_server_stdout.log"
 DESIGN_AUTOMATION_STDERR_PATH = BASE_DIR / "design_automation_server_stderr.log"
 DESIGN_AUTOMATION_PORT = 7870
+# 설계자동화 자식 서버는 로그인 게이트가 없다. 0.0.0.0 으로 띄우면 fncadnet.com
+# 호스트의 7870 이 무인증으로 열린다 → 루프백 고정. 원격 접근이 필요해지면
+# 리다이렉트 대신 로그인 게이트 뒤 리버스 프록시로 붙여야 한다.
+DESIGN_AUTOMATION_BIND_HOST = "127.0.0.1"
 
 app = Flask(__name__)
 # Jinja2 템플릿 자동 reload — 디스크 변경 시 다음 요청부터 반영.
@@ -285,12 +289,18 @@ app.json = _SafeJSONProvider(app)
 # ────────────────────────────────────────────────────────────────────────────
 # 비밀번호 로그인 게이트 — 외부 노출(터널 등) 시 접근 보호
 # ────────────────────────────────────────────────────────────────────────────
-# 한 줄 비밀번호 폼 → 세션 쿠키. SECRET_KEY 는 env var 또는 dev 용 hardcoded fallback.
-# 비밀번호는 LOGIN_PASSWORD env var 로 override 가능 (기본 "5361").
+# 한 줄 비밀번호 폼 → 세션 쿠키. SECRET_KEY·비밀번호 모두 env var(.env) 로 주입.
+# 미설정 시 4자리 난수를 발급하고 서버 콘솔에만 찍는다 — 소스에 상수를 두면
+# 저장소·배포 zip 을 읽은 사람이 곧바로 게이트를 통과한다.
+# 로그인 폼이 pattern="[0-9]*" 라 난수도 숫자여야 브라우저 제출이 된다.
 import secrets as _secrets
 import os as _os_for_auth
 app.secret_key = _os_for_auth.environ.get("FLASK_SECRET_KEY") or _secrets.token_hex(32)
-LOGIN_PASSWORD = _os_for_auth.environ.get("LOGIN_PASSWORD", "5361")
+LOGIN_PASSWORD = _os_for_auth.environ.get("LOGIN_PASSWORD")
+if not LOGIN_PASSWORD:
+    LOGIN_PASSWORD = f"{_secrets.randbelow(10000):04d}"
+    print(f"[auth] LOGIN_PASSWORD 미설정 — 이번 기동 한정 임시 비밀번호: {LOGIN_PASSWORD}",
+          flush=True)
 
 # Brute-force 방어 — 5회 실패 시 15분 lock-out (IP 단위).
 # 단순 in-memory dict — waitress 단일 프로세스 + 16 thread 환경 적합.
@@ -501,7 +511,7 @@ def _start_design_automation_server() -> None:
                 sys.executable,
                 str(DESIGN_AUTOMATION_SERVER_PATH),
                 "--host",
-                "0.0.0.0",
+                DESIGN_AUTOMATION_BIND_HOST,
                 "--port",
                 str(DESIGN_AUTOMATION_PORT),
             ],
@@ -1556,8 +1566,7 @@ def design_automation_module_8():
             f"원인: {html_lib.escape(str(exc))}",
             500,
         )
-    host = request.host.split(":", 1)[0]
-    return redirect(f"http://{host}:{DESIGN_AUTOMATION_PORT}/", code=302)
+    return redirect(f"http://{DESIGN_AUTOMATION_BIND_HOST}:{DESIGN_AUTOMATION_PORT}/", code=302)
 
 
 @app.get("/print-report/<path:filename>")

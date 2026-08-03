@@ -662,9 +662,9 @@
     .table-preview td { padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; color: var(--text); }
     .table-preview tr:last-child td { border-bottom: 0; }
     /* 신축배관(FX) 검토 편집기 */
-    #fx-table .fx-tbl { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
-    #fx-table .fx-tbl th { position: sticky; top: 0; background: var(--panel-soft); padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; font-weight: 600; color: var(--text-2); }
-    #fx-table .fx-tbl td { padding: 4px 6px; border-bottom: 1px solid var(--line); color: var(--text); vertical-align: top; }
+    #fx-table .fx-tbl, #vel-table .fx-tbl { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+    #fx-table .fx-tbl th, #vel-table .fx-tbl th { position: sticky; top: 0; background: var(--panel-soft); padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; font-weight: 600; color: var(--text-2); }
+    #fx-table .fx-tbl td, #vel-table .fx-tbl td { padding: 4px 6px; border-bottom: 1px solid var(--line); color: var(--text); vertical-align: top; }
     #fx-table tr.fx-ovr { background: #fff7ed; }
     #fx-table tr.fx-ovr td:first-child { box-shadow: inset 3px 0 0 #f97316; }
     #fx-table .fx-spec-fixed { color: var(--muted); font-size: 0.68rem; }
@@ -713,13 +713,13 @@
     }
     #fx-open-btn:hover { background: #dbeafe; }
     #fx-open-btn .fx-open-badge { font-weight: 400; color: var(--muted); font-size: 0.72rem; }
-    /* FX 검토 창 — 우측 도킹 플로팅 (캔버스 클릭 통과, 파이프넷식) */
-    #fx-modal-overlay {
+    /* FX 검토 · 내경 역산표 창 — 우측 도킹 플로팅 (캔버스 클릭 통과, 파이프넷식) */
+    #fx-modal-overlay, #vel-modal-overlay {
       display: none; position: fixed; inset: 0; z-index: 4000;
       pointer-events: none;   /* 창 밖 클릭은 캔버스로 통과 */
     }
-    #fx-modal-overlay.is-open { display: block; }
-    #fx-review-section {
+    #fx-modal-overlay.is-open, #vel-modal-overlay.is-open { display: block; }
+    #fx-review-section, #vel-review-section {
       pointer-events: auto;   /* 창 자체는 상호작용 */
       position: absolute; top: 16px; left: 16px;
       width: min(540px, 46vw); height: calc(100vh - 32px);
@@ -731,18 +731,26 @@
       padding: 16px 18px; overflow: hidden;
       resize: both;   /* 우하단 모서리 드래그로 크기 조절 */
     }
-    #fx-review-section .fx-modal-head {
+    /* 역산표는 열 수가 많아 더 넓게, FX 창과 겹치지 않도록 반대편에서 시작 */
+    #vel-review-section { left: auto; right: 16px; width: min(720px, 56vw); }
+    #fx-review-section .fx-modal-head, #vel-review-section .fx-modal-head {
       display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px;
       cursor: move;   /* 헤더 드래그로 창 이동 */
       user-select: none;
     }
-    #fx-review-section .fx-modal-head h3 { margin: 0; font-size: 0.95rem; font-weight: 700; }
-    #fx-modal-close {
+    #fx-review-section .fx-modal-head h3,
+    #vel-review-section .fx-modal-head h3 { margin: 0; font-size: 0.95rem; font-weight: 700; }
+    #fx-modal-close, #vel-modal-close {
       border: none; background: transparent; font-size: 1.3rem; line-height: 1;
       color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 5px;
     }
-    #fx-modal-close:hover { background: var(--panel-soft); color: var(--text); }
+    #fx-modal-close:hover, #vel-modal-close:hover { background: var(--panel-soft); color: var(--text); }
     #fx-review-section #fx-table { flex: 1 1 auto; min-height: 0; }
+    #vel-review-section #vel-table { flex: 1 1 auto; min-height: 0; }
+    /* 사다리 최대치로도 상한을 못 맞춘 구간 — 판정 보류로 눈에 띄게 */
+    #vel-table tr.vel-over td { background: #fef2f2; }
+    #vel-table tr.vel-over td:first-child { box-shadow: inset 3px 0 0 #ef4444; }
+    #vel-table .vel-up { color: #b91c1c; font-weight: 700; }
     /* ─── Boot overlay (S0 — Initializing CAD engine) ─── */
     .boot-overlay {
       position: absolute; inset: 0; z-index: 1000;
@@ -1526,6 +1534,15 @@
         </section>
 
         <section>
+          <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">유속 검토 · 내경 역산</h3>
+          <p class="info-line" style="font-size: 0.72rem; margin-bottom: 6px;">
+            NFTC 2.2.1.10 — 가지배관 6 m/s, 그 밖의 배관 10 m/s. 통합 시 망을 직접 풀어
+            초과 구간의 관경을 한 치수씩 올려 재해석합니다. 어디가 어떻게 바뀌었는지 표로 확인하세요.
+          </p>
+          <button id="cmb-vel-btn" class="run-btn" type="button" disabled title="유속 상한을 맞추려 조정된 관경의 전후 대조표" style="width:100%; background:#ffffff; color:var(--accent); border-color:var(--accent);">내경 역산표 보기</button>
+        </section>
+
+        <section>
           <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">포맷 출력</h3>
           <p class="info-line" style="font-size: 0.72rem; margin-bottom: 6px;">배관망 통합 후 원하는 수리계산 포맷으로 내보냅니다.</p>
           <div style="display:flex; gap:6px;">
@@ -1571,6 +1588,26 @@
     </section>
   </div>
 
+  <!-- ───── 내경 역산표 (유속 상한 역산) 모달 창 ───── -->
+  <div id="vel-modal-overlay">
+    <section id="vel-review-section">
+      <div class="fx-modal-head">
+        <h3>내경 역산표 · 유속 검토</h3>
+        <button id="vel-modal-close" type="button" title="닫기 (Esc)" aria-label="닫기">×</button>
+      </div>
+      <p class="info-line" style="font-size: 0.72rem; color: var(--muted); margin: 0 0 6px;">
+        헤드를 K√P 오리피스로 풀어 얻은 <strong>과토출 유량</strong> 기준입니다. 도면 관경으로 상한
+        (가지 6 · 그 밖 10 m/s)을 넘던 구간만 표에 남습니다. 관경은 줄지 않고 올라가기만 합니다.
+      </p>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+        <button id="vel-csv-btn" type="button" style="padding:5px 9px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:0.72rem; cursor:pointer; border-radius:4px;">CSV 내려받기</button>
+        <span id="vel-summary" class="info-line" style="font-size:0.72rem; color:var(--muted); align-self:center;"></span>
+      </div>
+      <div id="vel-warning" style="display:none; font-size:0.72rem; color:#7f1d1d; background:#fef2f2; border:1px solid #fecaca; border-radius:4px; padding:5px 8px; margin-bottom:6px;"></div>
+      <div class="table-preview" id="vel-table" style="overflow:auto;"></div>
+    </section>
+  </div>
+
   <script>
     // HTML 이스케이프 — 스크립트 전역에 하나만 둔다.
     // 레이어명·층 라벨·파일명은 업로드된 DXF 에서 오므로 신뢰할 수 없다. 특히
@@ -1579,6 +1616,41 @@
       return String(s == null ? "" : s)
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    // 플로팅 창 헤더 드래그로 이동. 크기 조절은 CSS resize:both (우하단 모서리).
+    // 스크립트 전역에 하나만 둔다 — FX 검토 창과 내경 역산표 창이 공유한다.
+    function enableModalDrag(sec) {
+      const head = sec && sec.querySelector(".fx-modal-head");
+      if (!head) return;
+      let dragging = false, sx = 0, sy = 0, startLeft = 0, startTop = 0;
+      head.addEventListener("mousedown", (e) => {
+        if (e.target.closest("button")) return;   // 닫기(×) 등 버튼 클릭은 이동 아님
+        const r = sec.getBoundingClientRect();
+        startLeft = r.left; startTop = r.top;
+        sx = e.clientX; sy = e.clientY;
+        dragging = true;
+        document.body.style.userSelect = "none";
+        e.preventDefault();
+      });
+      document.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        const w = sec.offsetWidth, h = sec.offsetHeight;
+        let nl = startLeft + (e.clientX - sx);
+        let nt = startTop + (e.clientY - sy);
+        // 화면 밖으로 완전히 사라지지 않도록 클램프 (일부는 항상 잡히게)
+        nl = Math.max(-w + 120, Math.min(window.innerWidth - 80, nl));
+        nt = Math.max(0, Math.min(window.innerHeight - 40, nt));
+        // right 로 배치된 창도 left 로 끌 수 있게 기준을 넘긴다.
+        sec.style.right = "auto";
+        sec.style.left = nl + "px";
+        sec.style.top = nt + "px";
+      });
+      document.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.style.userSelect = "";
+      });
     }
 
     // 업로드 전송량 최소화: 브라우저에서 gzip 압축 후 전송 (서버가 자동 해제).
@@ -3856,37 +3928,7 @@
       }
       initTableSelection();
 
-      // 헤더 드래그로 창 이동 (닫기 버튼은 제외). 크기 조절은 CSS resize:both (우하단 모서리).
-      (function enableDrag() {
-        const head = sec.querySelector(".fx-modal-head");
-        if (!head) return;
-        let dragging = false, sx = 0, sy = 0, startLeft = 0, startTop = 0;
-        head.addEventListener("mousedown", (e) => {
-          if (e.target.closest("button")) return;   // 닫기(×) 등 버튼 클릭은 이동 아님
-          const r = sec.getBoundingClientRect();
-          startLeft = r.left; startTop = r.top;
-          sx = e.clientX; sy = e.clientY;
-          dragging = true;
-          document.body.style.userSelect = "none";
-          e.preventDefault();
-        });
-        document.addEventListener("mousemove", (e) => {
-          if (!dragging) return;
-          const w = sec.offsetWidth, h = sec.offsetHeight;
-          let nl = startLeft + (e.clientX - sx);
-          let nt = startTop + (e.clientY - sy);
-          // 화면 밖으로 완전히 사라지지 않도록 클램프 (일부는 항상 잡히게)
-          nl = Math.max(-w + 120, Math.min(window.innerWidth - 80, nl));
-          nt = Math.max(0, Math.min(window.innerHeight - 40, nt));
-          sec.style.left = nl + "px";
-          sec.style.top = nt + "px";
-        });
-        document.addEventListener("mouseup", () => {
-          if (!dragging) return;
-          dragging = false;
-          document.body.style.userSelect = "";
-        });
-      })();
+      enableModalDrag(sec);
 
       // 창 열고/닫기 — 트리거 버튼 · 닫기(×) · Esc
       openBtn.addEventListener("click", show);
@@ -7331,6 +7373,7 @@
     const _cmbExpSdf = document.getElementById("cmb-exp-sdf");
     const _cmbExpKfp = document.getElementById("cmb-exp-kfp");
     const _cmbExpHas = document.getElementById("cmb-exp-has");
+    const _cmbVelBtn = document.getElementById("cmb-vel-btn");
 
     // 출력 좌표 형태 토글 (평면 / 등각) — 다운로드 시 평면 or 등각 좌표 세트 선택
     state.combined_export_form = state.combined_export_form || "plan";
@@ -7406,6 +7449,14 @@
       if (_cmbExpKfp) _cmbExpKfp.disabled = !(_built && state.combinedBuild && state.combinedBuild.download_url_kfp);
       // HAS 출력 미지원 — 빌드 상태와 무관하게 항상 비활성(스타일/툴팁은 인라인 HTML).
       if (_cmbExpHas) _cmbExpHas.disabled = true;
+      // 내경 역산표 — velocity_report 가 온 빌드에서만. 수렴이 예외로 건너뛰면 null 이다.
+      if (_cmbVelBtn) {
+        const _velOk = _built && !!state.combinedBuild.velocity_report;
+        _cmbVelBtn.disabled = !_velOk;
+        _cmbVelBtn.title = _velOk
+          ? "유속 상한을 맞추려 조정된 관경의 전후 대조표"
+          : (_built ? "이 빌드는 유속 수렴이 실행되지 않았습니다." : "배관망 통합을 먼저 실행하세요.");
+      }
     }
     // 기계실 등 입력이 바뀌어 기존 통합 결과가 옛 데이터가 됐을 때 — 재빌드 유도.
     // (재빌드 전까지 통합 캔버스/3D 는 기계실 없는 옛 그래프 → "기계실 독립" 처럼 보임)
@@ -7656,6 +7707,121 @@
       if (!_cmbConfirmIsoFallback(d, "download_url_has")) return;
       _cmbDownload(u);
     });
+
+    // ─── 내경 역산표 — 유속 상한(NFTC 2.2.1.10)을 맞추려 승급된 관경의 전후 대조 ───
+    //   서버 converge_bores_by_velocity() 가 돌려준 velocity_report 를 그대로 표로 편다.
+    const VelReview = (function () {
+      const overlay = document.getElementById("vel-modal-overlay");
+      const sec = document.getElementById("vel-review-section");
+      const tableBox = document.getElementById("vel-table");
+      const summaryEl = document.getElementById("vel-summary");
+      const warnEl = document.getElementById("vel-warning");
+      const COLS = ["배관", "구분", "변경전(A)", "변경후(A)", "실내경(mm)", "유량(L/min)",
+                    "변경전 유속", "변경후 유속", "상한", "사유"];
+
+      function report() {
+        return (state.combinedBuild && state.combinedBuild.velocity_report) || null;
+      }
+      function roleName(r) { return r === "branch" ? "가지" : "그 밖"; }
+      function num(v, digits) {
+        return (v === null || v === undefined) ? "—" : Number(v).toFixed(digits);
+      }
+      function rows() {
+        const rep = report();
+        return (rep && Array.isArray(rep.changes)) ? rep.changes : [];
+      }
+
+      function render() {
+        const rep = report();
+        const cs = rows();
+        if (!rep) {
+          tableBox.innerHTML = `<p class="info-line" style="padding:8px;">통합 빌드를 먼저 실행하세요.</p>`;
+          summaryEl.textContent = "";
+          warnEl.style.display = "none";
+          return;
+        }
+        summaryEl.textContent =
+          `변경 ${rep.changed}건 · 최대유속 ${num(rep.max_velocity_before, 2)} → ` +
+          `${num(rep.max_velocity_after, 2)} m/s · 초과 ${rep.violations_before} → ` +
+          `${rep.violations_after}구간 · ${rep.iterations}회차 · 과토출 x${num(rep.overdischarge_ratio_max, 2)}`;
+        if (rep.violations_after > 0) {
+          warnEl.style.display = "block";
+          warnEl.innerHTML =
+            `⚠ 사다리 최대치(200A)까지 올려도 상한을 못 맞춘 구간이 ` +
+            `<strong>${rep.violations_after}개</strong> 남았습니다(사유 <strong>한계도달</strong>). ` +
+            `설계 불가라기보다 추출 오접합으로 유량이 한 관에 몰렸을 가능성이 큽니다 — 판정 보류로 두고 ` +
+            `해당 구간의 연결을 확인하세요.`;
+        } else {
+          warnEl.style.display = "none";
+        }
+        if (!cs.length) {
+          tableBox.innerHTML =
+            `<p class="info-line" style="padding:8px;">관경이 바뀐 구간이 없습니다 — ` +
+            `도면 관경 그대로 유속 상한을 만족합니다.</p>`;
+          return;
+        }
+        const head = `<tr>${COLS.map((c) => `<th>${escHtml(c)}</th>`).join("")}</tr>`;
+        const body = cs.map((c) => {
+          const cls = c.v_over ? ' class="vel-over"' : "";
+          const up = c.bore_after > c.bore_before ? ' class="vel-up"' : "";
+          return `<tr${cls}>` +
+            `<td>${escHtml(c.label || `${c.in}→${c.out}`)}</td>` +
+            `<td>${escHtml(roleName(c.role))}</td>` +
+            `<td>${num(c.bore_before, 0)}</td>` +
+            `<td${up}>${num(c.bore_after, 0)}</td>` +
+            `<td>${num(c.inner_dia_mm, 1)}</td>` +
+            `<td>${num(c.flow_lpm, 1)}</td>` +
+            `<td>${num(c.velocity_before, 2)}</td>` +
+            `<td${up}>${num(c.velocity_after, 2)}</td>` +
+            `<td>${num(c.v_limit, 0)}</td>` +
+            `<td>${escHtml((c.reasons || []).join(", "))}</td>` +
+            `</tr>`;
+        }).join("");
+        tableBox.innerHTML = `<table class="fx-tbl"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+      }
+
+      function open() {
+        render();
+        overlay.classList.add("is-open");
+      }
+      function close() { overlay.classList.remove("is-open"); }
+
+      function toCsv() {
+        const esc = (v) => {
+          const s = (v === null || v === undefined) ? "" : String(v);
+          return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const lines = [COLS.join(",")];
+        for (const c of rows()) {
+          lines.push([c.label || `${c.in}→${c.out}`, roleName(c.role), c.bore_before,
+                      c.bore_after, c.inner_dia_mm, c.flow_lpm, c.velocity_before,
+                      c.velocity_after, c.v_limit, (c.reasons || []).join(" ")]
+                     .map(esc).join(","));
+        }
+        return lines.join("\r\n");
+      }
+
+      const btn = document.getElementById("cmb-vel-btn");
+      if (btn) btn.addEventListener("click", open);
+      const closeBtn = document.getElementById("vel-modal-close");
+      if (closeBtn) closeBtn.addEventListener("click", close);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && overlay.classList.contains("is-open")) close();
+      });
+      const csvBtn = document.getElementById("vel-csv-btn");
+      if (csvBtn) csvBtn.addEventListener("click", () => {
+        if (!rows().length) { alert("내보낼 변경 이력이 없습니다."); return; }
+        // BOM — Excel 이 UTF-8 CSV 를 CP949 로 오해해 한글이 깨지는 것을 막는다.
+        const blob = new Blob(["﻿" + toCsv()], {type: "text/csv;charset=utf-8"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "내경역산표.csv";
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      });
+      enableModalDrag(sec);
+      return {open, close, render};
+    })();
 
     // ─── 좌측 상단 뷰 전환 (평면도 / 등각도 / 아이소메트릭 3D) ───
     //   세 뷰 모두 단일 통합 geometry 에서 즉시 전환. 평면/등각은 2D 캔버스 투영
@@ -8460,6 +8626,9 @@
           for (const [k, v] of Object.entries(data)) {
             if (k.startsWith("download_url_")) state.combinedBuild[k] = v || null;
           }
+          // 재출력도 유속 수렴을 다시 돌린다 — 역산표가 편집본 기준이 되도록 갈아끼운다.
+          state.combinedBuild.velocity_report = data.velocity_report || null;
+          try { VelReview.render(); } catch (_) {}
           // 상단 내보내기 버튼 활성화 — 편집본이 생겼으니 SDF/KFP/HAS 를 받을 수 있게
           // 한다(표준 새로고침은 HAS 를 항상 비활성으로 두므로 여기서 직접 켠다).
           try {

@@ -147,6 +147,19 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 from werkzeug.middleware.proxy_fix import ProxyFix as _ProxyFix
 app.wsgi_app = _ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
+# 같은 서버가 https(cloudflared) 와 평문 http(localhost/LAN) 를 동시에 받는다.
+# Secure 를 전역 고정하면 평문 접속에서 브라우저가 쿠키 저장을 거부해 로그인이
+# 무한 반복된다. 요청 스킴별로 판단하면 https 는 Secure 를 유지한 채 평문만 통과.
+from flask.sessions import SecureCookieSessionInterface as _SecureCookieSI
+
+
+class _SchemeAwareSessionInterface(_SecureCookieSI):
+    def get_cookie_secure(self, app):  # noqa: D102
+        return bool(request.is_secure)
+
+
+app.session_interface = _SchemeAwareSessionInterface()
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # 잡 스토어 / 임시파일 수명 관리 — 24/7 구동 프로세스의 무한 누적 방지
@@ -344,6 +357,21 @@ def _clear_login_failures(ip: str) -> None:
     with _login_lock:
         _login_state.pop(ip, None)
 
+
+def _login_hint() -> str | None:
+    """로그인 화면에 비밀번호 힌트를 띄워도 되는 요청인가 — 루프백/사설망만.
+
+    이 페이지는 cloudflared 로 인터넷에 노출돼 있어, 힌트를 무조건 렌더하면
+    로그인 게이트가 사실상 무력화된다. ProxyFix 가 X-Forwarded-For 를 반영하므로
+    외부 접속은 공인 IP 로 잡힌다.
+    """
+    import ipaddress as _ipaddress
+    try:
+        ip = _ipaddress.ip_address(request.remote_addr or "")
+    except ValueError:
+        return None
+    return LOGIN_PASSWORD if (ip.is_loopback or ip.is_private) else None
+
 # 게이트에서 제외할 path prefix (login/logout/정적 파일/health 등)
 _AUTH_EXEMPT_PREFIXES = ("/login", "/logout", "/static/", "/favicon.ico")
 
@@ -381,7 +409,9 @@ def login_page():
     if session.get("authed"):
         nxt = request.args.get("next", "/")
         return redirect(nxt or "/")
-    response = make_response(render_template("login.html", error=None, next_path=request.args.get("next", "/")))
+    response = make_response(render_template(
+        "login.html", error=None, next_path=request.args.get("next", "/"),
+        password_hint=_login_hint()))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -400,7 +430,8 @@ def login_submit():
     if lock_until > now:
         wait_s = int(lock_until - now)
         msg = f"로그인 시도 횟수 초과. {wait_s // 60}분 {wait_s % 60}초 후 다시 시도하세요."
-        response = make_response(render_template("login.html", error=msg, next_path=nxt))
+        response = make_response(render_template(
+        "login.html", error=msg, next_path=nxt, password_hint=_login_hint()))
         response.headers["Cache-Control"] = "no-store"
         return response, 429
     # 상수 시간 비교 — timing attack 방지
@@ -417,7 +448,8 @@ def login_submit():
     else:
         remaining = _LOGIN_FAIL_THRESHOLD - n_fail
         msg = f"비밀번호가 틀립니다. (남은 시도 {remaining}회)"
-    response = make_response(render_template("login.html", error=msg, next_path=nxt))
+    response = make_response(render_template(
+        "login.html", error=msg, next_path=nxt, password_hint=_login_hint()))
     response.headers["Cache-Control"] = "no-store"
     return response
 

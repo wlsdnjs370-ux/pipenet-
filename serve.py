@@ -81,7 +81,17 @@ def main() -> None:
         print("[serve.py] WARNING: FLASK_SECRET_KEY 가 .env/env 에 없음 — "
               "서버 재시작 시 세션이 모두 만료됩니다. .env 에 한 줄 추가 권장.")
     try:
-        serve(app, host=host, port=port, threads=threads, ident="cad-pipenet-server")
+        # waitress 는 기본값(clear_untrusted_proxy_headers=True, trusted_proxy=None)에서
+        # X-Forwarded-* 를 WSGI 앱에 넘기기 전에 전부 지운다 → 앱의 ProxyFix 가 무력화되고
+        # 모든 요청이 127.0.0.1 / http 로 보인다(IP 잠금이 전역 한 통, 쿠키 Secure 판정 불가).
+        # cloudflared 는 루프백에서 접속하므로 루프백만 신뢰 프록시로 지정한다 —
+        # LAN/외부에서 직접 온 위조 헤더는 여전히 폐기된다.
+        serve(app, host=host, port=port, threads=threads, ident="cad-pipenet-server",
+              trusted_proxy="127.0.0.1",
+              trusted_proxy_count=1,
+              trusted_proxy_headers={"x-forwarded-for", "x-forwarded-proto",
+                                     "x-forwarded-host"},
+              clear_untrusted_proxy_headers=True)
     except OSError as exc:
         # 포트 점유(좀비 인스턴스 등) → raw traceback 대신 원인을 명확히 알리고 종료.
         # start_server.bat 은 재실행 시 :PORT 점유 PID 를 먼저 정리하므로 다음 루프에서 회복.

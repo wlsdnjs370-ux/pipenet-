@@ -1830,28 +1830,39 @@
     // 훑도록 한다 — 예전처럼 업로드 바이트만 재면 전송이 끝나는 즉시 100% 로
     // 고정된 채 서버 파싱·렌더가 남아 진행바가 거짓말을 하게 된다.
     function createUploadProgress() {
-      const W_GZIP = 0.15, W_SEND = 0.30, W_RENDER = 0.55;
+      const W_GZIP = 0.10, W_SEND = 0.15, W_PARSE = 0.25, W_RENDER = 0.50;
+      const PARSE_BASE = W_GZIP + W_SEND, RENDER_BASE = PARSE_BASE + W_PARSE;
       let timer = null, t0 = 0;
       const clamp01 = (r) => Math.max(0, Math.min(1, r || 0));
       const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+      const busy = () => {
+        if (timer) return;
+        t0 = performance.now();
+        const tick = () => BootOverlay.setBusy("서버 파싱", Math.round((performance.now() - t0) / 1000));
+        tick();
+        timer = setInterval(tick, 500);
+      };
       return {
         gzip(r)  { stop(); BootOverlay.setProgress(clamp01(r) * W_GZIP, "압축"); },
         send(r)  { stop(); BootOverlay.setProgress(W_GZIP + clamp01(r) * W_SEND, "업로드"); },
-        // ezdxf.readfile 은 진행 콜백이 없어 남은 시간을 알 수 없다. 채워진 막대
-        // 대신 불확정 막대 + 경과 시간을 보여 준다.
-        parsing() {
-          if (timer) return;
-          t0 = performance.now();
-          const tick = () => BootOverlay.setBusy("서버 파싱", Math.round((performance.now() - t0) / 1000));
-          tick();
-          timer = setInterval(tick, 500);
+        // 업로드가 끝난 뒤 서버의 첫 parse 라인이 오기 전까지는 진행률을 정말
+        // 모르는 구간이라 불확정 막대 + 경과 시간으로 둔다.
+        parsing: busy,
+        // 서버 파싱은 두 단계(태그 구조 읽기 / entity 바인딩)로 실측되어 온다.
+        // 두 단계가 파싱 구간을 절반씩 나눠 쓴다 — 141MB 도면 기준 실제 소요도
+        // 대략 반반이다. 총량을 모르는 입력(바이너리 DXF)이면 불확정으로 되돌린다.
+        parse(stage, done, total) {
+          if (!(total > 0)) { busy(); return; }
+          stop();
+          const half = stage === "build" ? 0.5 : 0;
+          BootOverlay.setProgress(PARSE_BASE + (half + clamp01(done / total) * 0.5) * W_PARSE, "서버 파싱");
         },
         // 서버가 (done, total) 을 실어 보낼 때만 확정 진행률로 전환한다. 예전
         // 캐시 스트림에는 이 필드가 없으므로 그 경우 불확정 막대를 유지한다.
         render(done, total) {
           if (!(total > 0)) return;
           stop();
-          BootOverlay.setProgress(W_GZIP + W_SEND + clamp01(done / total) * W_RENDER, "렌더링");
+          BootOverlay.setProgress(RENDER_BASE + clamp01(done / total) * W_RENDER, "렌더링");
         },
         done() { stop(); BootOverlay.setProgress(1, "완료"); },
         stop,
@@ -2893,7 +2904,9 @@
         let lastRender = 0;
         let result = null;
         const handleMsg = (msg) => {
-          if (msg.type === "phase") {
+          if (msg.type === "parse") {
+            up.parse(msg.stage, msg.done, msg.total);
+          } else if (msg.type === "phase") {
             up.render(0, msg.total);
           } else if (msg.type === "progress") {
             up.render(msg.done, msg.total);
@@ -4044,7 +4057,9 @@
         BootOverlay.setSub(`Parsing DXF entities (${sizeMb} MB)`);
         up.send(0);
         const handleMsg = (msg) => {
-          if (msg.type === "phase") {
+          if (msg.type === "parse") {
+            up.parse(msg.stage, msg.done, msg.total);
+          } else if (msg.type === "phase") {
             up.render(0, msg.total);
           } else if (msg.type === "progress") {
             up.render(msg.done, msg.total);
@@ -4754,7 +4769,9 @@
         BootOverlay.setSub(`Parsing DXF entities (${sizeMb} MB)`);
         up.send(0);
         const handleMsg = (msg) => {
-          if (msg.type === "phase") {
+          if (msg.type === "parse") {
+            up.parse(msg.stage, msg.done, msg.total);
+          } else if (msg.type === "phase") {
             up.render(0, msg.total);
           } else if (msg.type === "progress") {
             up.render(msg.done, msg.total);

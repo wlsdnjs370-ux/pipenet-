@@ -91,77 +91,15 @@ class RuleDecision:
 
 # Hierarchical decision tree. Each row is matched in order; the first match wins.
 # Source: NFTC 103, Table 2.1.1.1 (closed-head sprinkler reference head count).
+#
+# 표에 고유 행이 없는 "그 밖의 것" 용도. 부착높이로만 갈린다.
+_OTHER_USES = {"other_low", "other_high", "other"}
+
+# 순서가 곧 규칙이다 — 아파트가 11층 이상 행 뒤에 있으면 국내 아파트 대부분이
+# "11층 이상 → 30개"로 잡혀 기준개수가 3배로 뒤집힌다. 마찬가지로 "그 밖의 것"의
+# 부착높이 8m 미만(10개) 행은 포괄 행보다 앞에 와야 도달한다.
 _REFERENCE_COUNT_TABLE: list[dict[str, Any]] = [
-    # 10층 이하
-    {
-        "rule_id": "NFTC-211-A",
-        "predicate": lambda m: (
-            m.get("floors_total", 0) <= 10
-            and m.get("use") in {"factory", "warehouse"}
-            and m.get("has_special_combustible") is True
-        ),
-        "count": 30,
-        "label": "10층 이하 공장·창고로 특수가연물 저장·취급",
-    },
-    {
-        "rule_id": "NFTC-211-B",
-        "predicate": lambda m: (
-            m.get("floors_total", 0) <= 10
-            and m.get("use") in {"factory", "warehouse"}
-        ),
-        "count": 20,
-        "label": "10층 이하 그 외 공장·창고",
-    },
-    {
-        "rule_id": "NFTC-211-C",
-        "predicate": lambda m: (
-            m.get("floors_total", 0) <= 10
-            and m.get("use") in {"neighborhood", "retail", "transit", "complex"}
-        ),
-        "count": 30,
-        "label": "10층 이하 근린·판매·운수·복합건축물",
-    },
-    {
-        "rule_id": "NFTC-211-D",
-        "predicate": lambda m: (
-            m.get("floors_total", 0) <= 10
-            and m.get("use") not in {"apartment"}
-            and m.get("head_attach_h_m", 0) <= 8
-        ),
-        "count": 20,
-        "label": "10층 이하 그 외 (헤드 부착높이 8m 이하 일반)",
-    },
-    # Note: head attach height rule applies to "기타" buildings.
-    {
-        "rule_id": "NFTC-211-E",
-        "predicate": lambda m: (
-            m.get("floors_total", 0) <= 10
-            and m.get("head_attach_h_m", 0) > 8
-        ),
-        "count": 20,
-        "label": "10층 이하 기타 (헤드 부착높이 8m 이상)",
-    },
-    {
-        "rule_id": "NFTC-211-F",
-        "predicate": lambda m: (
-            m.get("floors_total", 0) <= 10
-            and m.get("head_attach_h_m", 0) <= 8
-            and m.get("use") == "other_low"
-        ),
-        "count": 10,
-        "label": "10층 이하 기타 (헤드 부착높이 8m 미만)",
-    },
-    # 11층 이상 / 지하역사 / 지하가
-    {
-        "rule_id": "NFTC-211-G",
-        "predicate": lambda m: (
-            m.get("floors_total", 0) >= 11
-            or m.get("use") in {"underground_station", "underground_arcade"}
-        ),
-        "count": 30,
-        "label": "11층 이상 특정소방대상물 / 지하역사 / 지하가",
-    },
-    # 아파트
+    # 공동주택 — 층수와 무관하게 먼저 판정 (NFTC 608 준용)
     {
         "rule_id": "NFTC-211-I",
         "predicate": lambda m: (
@@ -176,6 +114,63 @@ _REFERENCE_COUNT_TABLE: list[dict[str, Any]] = [
         "predicate": lambda m: m.get("use") == "apartment",
         "count": 10,
         "label": "공동주택(아파트) 일반 세대",
+    },
+    # 11층 이상 / 지하역사 / 지하가
+    {
+        "rule_id": "NFTC-211-G",
+        "predicate": lambda m: (
+            m.get("floors_total", 0) >= 11
+            or m.get("use") in {"underground_station", "underground_arcade"}
+        ),
+        "count": 30,
+        "label": "11층 이상 특정소방대상물 / 지하역사 / 지하가",
+    },
+    # 10층 이하
+    {
+        "rule_id": "NFTC-211-A",
+        "predicate": lambda m: (
+            m.get("use") in {"factory", "warehouse"}
+            and m.get("has_special_combustible") is True
+        ),
+        "count": 30,
+        "label": "10층 이하 공장·창고로 특수가연물 저장·취급",
+    },
+    {
+        "rule_id": "NFTC-211-B",
+        "predicate": lambda m: m.get("use") in {"factory", "warehouse"},
+        "count": 20,
+        "label": "10층 이하 그 외 공장·창고",
+    },
+    {
+        "rule_id": "NFTC-211-C",
+        "predicate": lambda m: m.get("use") in {"retail", "complex"},
+        "count": 30,
+        "label": "10층 이하 판매시설 또는 판매시설이 설치된 복합건축물",
+    },
+    {
+        "rule_id": "NFTC-211-C2",
+        "predicate": lambda m: m.get("use") in {"neighborhood", "transit"},
+        "count": 20,
+        "label": "10층 이하 근린생활시설·운수시설",
+    },
+    # 그 밖의 것 — 헤드 부착높이 기준. 모르는 용도까지 여기로 쓸어담으면 안 된다
+    # (기준개수 10개는 표에서 가장 작은 값 → 조용한 과소설계). 미상 용도는 아래
+    # REVIEW fallback 으로 보낸다.
+    {
+        "rule_id": "NFTC-211-E",
+        "predicate": lambda m: (
+            m.get("use") in _OTHER_USES and m.get("head_attach_h_m", 0) >= 8
+        ),
+        "count": 20,
+        "label": "10층 이하 그 밖의 것 (헤드 부착높이 8m 이상)",
+    },
+    {
+        "rule_id": "NFTC-211-F",
+        "predicate": lambda m: (
+            m.get("use") in _OTHER_USES and 0 < m.get("head_attach_h_m", 0) < 8
+        ),
+        "count": 10,
+        "label": "10층 이하 그 밖의 것 (헤드 부착높이 8m 미만)",
     },
 ]
 
@@ -218,9 +213,11 @@ def decide_reference_count(building_meta: dict[str, Any]) -> RuleDecision:
             nftc="NFTC 103 §2.1.1 (해당 없음, 보수적 20개 적용)",
             hb=None,
             phd=None,
-            note="building_meta가 표 9개 룰 어디에도 매칭되지 않음 — 인간 검토 필요",
+            note=f"표 매칭 없음 (use={building_meta.get('use')!r}, "
+                 f"floors_total={building_meta.get('floors_total')!r}, "
+                 f"head_attach_h_m={building_meta.get('head_attach_h_m')!r}) — 인간 검토 필요",
         ),
-        detail="9개 룰 중 매칭 없음 — 보수적으로 20개 가정",
+        detail="표 매칭 없음 — 보수적으로 20개 가정",
     )
 
 
@@ -463,12 +460,31 @@ def validate_head_clearance(
     `obstacles` is a list of dicts with at least:
       - "polygon" or "bbox": list of (x, y) representing the obstacle footprint
       - "is_wall": bool (walls have the 10 cm exception)
+
+    is_wall 로 표시된 장애물은 검사에서 빠지는 게 아니라 벽 기준(10 cm)으로
+    옮겨간다 — 예전에는 continue 로 건너뛰어 벽 옆에 붙은 헤드가 무조건 통과했다.
+    형상이 없는 장애물은 통과가 아니라 REVIEW 다.
     """
-    walls = walls or []
+    obstacle_items: list[dict[str, Any]] = []
+    wall_items: list[dict[str, Any]] = list(walls or [])
     for obs in obstacles:
-        if obs.get("is_wall"):
-            continue
-        d = _min_distance_point_to_polygon(head_xy, obs.get("polygon") or _bbox_to_polygon(obs.get("bbox")))
+        (wall_items if obs.get("is_wall") else obstacle_items).append(obs)
+    no_geometry = [o.get("id") for o in (*obstacle_items, *wall_items) if not _footprint(o)]
+    if no_geometry:
+        return RuleDecision(
+            rule_id="NFTC-2771-NO-GEOMETRY",
+            verdict=Verdict.REVIEW,
+            value={"obstacles_without_footprint": no_geometry},
+            trace=TripleTrace(
+                nftc="NFTC 103 §2.7.7.1",
+                hb="HB §2.4.11 동일",
+                phd=None,
+                note=f"형상(polygon/bbox) 없는 장애물 {len(no_geometry)}건 — 거리 계산 불가",
+            ),
+            detail=f"REVIEW: 형상 미상 장애물 {no_geometry} — 살수공간 판정 보류",
+        )
+    for obs in obstacle_items:
+        d = _min_distance_point_to_polygon(head_xy, _footprint(obs))
         if d < radius_m:
             return RuleDecision(
                 rule_id="NFTC-2771-OBSTACLE",
@@ -482,8 +498,8 @@ def validate_head_clearance(
                 ),
                 detail=f"FAIL: 헤드 {head_xy} → 장애물 {obs.get('id')} 거리 {d:.3f} m",
             )
-    for wall in walls:
-        d = _min_distance_point_to_polygon(head_xy, wall.get("polygon") or _bbox_to_polygon(wall.get("bbox")))
+    for wall in wall_items:
+        d = _min_distance_point_to_polygon(head_xy, _footprint(wall))
         if d < wall_min_m:
             return RuleDecision(
                 rule_id="NFTC-2771-WALL",
@@ -518,10 +534,34 @@ def _bbox_to_polygon(bbox: tuple[float, float, float, float] | None) -> list[tup
     return [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
 
 
+def _footprint(item: dict[str, Any]) -> list[tuple[float, float]]:
+    """장애물·벽의 평면 형상. polygon 우선, 없으면 bbox, 둘 다 없으면 빈 리스트."""
+    return item.get("polygon") or _bbox_to_polygon(item.get("bbox"))
+
+
+def _point_in_polygon(point: tuple[float, float], polygon: list[tuple[float, float]]) -> bool:
+    """Ray-casting — 헤드가 장애물 내부에 있는지."""
+    px, py = point
+    inside = False
+    n = len(polygon)
+    for i in range(n):
+        ax, ay = polygon[i]
+        bx, by = polygon[(i + 1) % n]
+        if (ay > py) != (by > py) and px < (bx - ax) * (py - ay) / (by - ay) + ax:
+            inside = not inside
+    return inside
+
+
 def _min_distance_point_to_polygon(point: tuple[float, float], polygon: list[tuple[float, float]]) -> float:
-    """Minimum euclidean distance from a point to a polygon's edges."""
+    """Minimum euclidean distance from a point to a polygon's edges.
+
+    내부에 있으면 0 — 변까지의 거리만 재면 장애물 한가운데 놓인 헤드가
+    이격거리 통과로 나온다.
+    """
     if not polygon:
         return float("inf")
+    if _point_in_polygon(point, polygon):
+        return 0.0
     best = float("inf")
     n = len(polygon)
     for i in range(n):

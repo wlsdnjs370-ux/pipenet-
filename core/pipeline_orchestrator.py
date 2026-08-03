@@ -23,8 +23,9 @@ up to a configured number of attempts before requesting human review.
 from __future__ import annotations
 
 import json
+import secrets
 import xml.etree.ElementTree as ET
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -72,6 +73,19 @@ from ai_vision import get_cached_ai_vision_extractor
 # ---------------------------------------------------------------------------
 # 1. Pipeline configuration
 # ---------------------------------------------------------------------------
+
+
+# 실측 근거가 없어 3대 불균형 지표를 계산조차 못한 상태. auto_pass 와 구분해야
+# 한다 — 값이 없어서 경고가 안 뜬 것을 "지표 모두 통과" 로 보고하면, 계산을 한
+# 적 없는 설계가 합격 도장을 달고 나간다.
+TIER_INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+
+_TIER_VERDICT = {
+    "auto_pass": "PASS",
+    "human_review": "REVIEW",
+    "redesign_required": "FAIL",
+    TIER_INSUFFICIENT_EVIDENCE: "REVIEW",
+}
 
 
 @dataclass
@@ -147,7 +161,7 @@ class SprinklerPipelineV4:
         self.config.log_dir.mkdir(parents=True, exist_ok=True)
         self.tracer = TripleTracer()
         self.logger = ChangeLogger(config.project_id, log_dir=config.log_dir)
-        self.run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+        self.run_id = _new_run_id()
 
     # --------------------------- Public entrypoint --------------------------
 
@@ -162,9 +176,13 @@ class SprinklerPipelineV4:
         existing_sdf_path: Path | None = None,
         existing_pipenet_pdf_path: Path | None = None,
         sdf_writer: Callable[[DesignNetwork, Path], Path] | None = None,
-        pipenet_runner: Callable[[Path], dict[str, Any]] | None = None,
     ) -> PipelineRunReport:
         """End-to-end run. Returns report with every stage's evidence."""
+        # 한 인스턴스로 두 번 돌리면 이전 run 의 trace·변경이력이 그대로 쌓이고
+        # run_id 도 같아 보고서 파일이 덮어써진다 — 매 run 마다 새로 시작한다.
+        self.run_id = _new_run_id()
+        self.tracer = TripleTracer()
+        self.logger = ChangeLogger(self.config.project_id, log_dir=self.config.log_dir)
         report = PipelineRunReport(
             project_id=self.config.project_id,
             run_id=self.run_id,
@@ -193,7 +211,6 @@ class SprinklerPipelineV4:
                 network=network,
                 sdf_paths=sdf_paths,
                 cad_path=dxf_path,
-                pipenet_runner=pipenet_runner,
                 existing_pipenet_pdf_path=existing_pipenet_pdf_path,
             )
             report.stages.append(validate_stage)
@@ -210,7 +227,6 @@ class SprinklerPipelineV4:
                     network=network,
                     current_imbalance=current_imbalance,
                     sdf_writer=sdf_writer,
-                    pipenet_runner=pipenet_runner,
                     cad_path=dxf_path,
                     attempt=attempts,
                 )
@@ -223,13 +239,7 @@ class SprinklerPipelineV4:
                 final_validation=current_validation,
             )
             report.stages.append(final_stage)
-            # Verdict
-            if current_imbalance.tier == "auto_pass":
-                report.overall_verdict = "PASS"
-            elif current_imbalance.tier == "human_review":
-                report.overall_verdict = "REVIEW"
-            else:
-                report.overall_verdict = "FAIL"
+            report.overall_verdict = _TIER_VERDICT[current_imbalance.tier]
             report.final_kpis = self._summarize_kpis(network, current_imbalance, current_validation)
         except Exception as exc:
             report.overall_verdict = "ERROR"
@@ -517,7 +527,6 @@ class SprinklerPipelineV4:
         network: DesignNetwork,
         sdf_paths: list[Path],
         cad_path: Path,
-        pipenet_runner: Callable[[Path], dict[str, Any]] | None,
         existing_pipenet_pdf_path: Path | None,
     ) -> tuple[StageResult, dict[str, Any], ImbalanceMetrics]:
         """⑥ 6 hard rules + 3 imbalance metrics."""
@@ -539,19 +548,25 @@ class SprinklerPipelineV4:
         else:
             validation_results = self._fallback_hard_rule_check(network)
         # Imbalance metrics
-        head_flows = self._gather_head_flows(network, validation_results)
-        zone_pressures = self._gather_zone_pressures(network, validation_results)
-        tank_total_m3 = self._estimate_tank_volume(network)
-        imbalance = evaluate_imbalance(
-            head_flows_lpm=head_flows,
-            zone_pressures=zone_pressures,
-            tank_total_volume_m3=tank_total_m3,
-            legal_duration_minutes=self.config.legal_duration_minutes,
-        )
+        head_flows = self._gather_head_flows(validation_results)
+        zone_pressures = self._gather_zone_pressures(validation_results)
+        if head_flows is None or zone_pressures is None:
+            imbalance = _insufficient_evidence_metrics(
+                legal_duration_minutes=self.config.legal_duration_minutes,
+                missing=[n for n, v in (("head_flows", head_flows),
+                                        ("zone_pressures", zone_pressures)) if v is None],
+            )
+        else:
+            imbalance = evaluate_imbalance(
+                head_flows_lpm=head_flows,
+                zone_pressures=zone_pressures,
+                tank_total_volume_m3=self._estimate_tank_volume(network),
+                legal_duration_minutes=self.config.legal_duration_minutes,
+            )
         # Trace
         self.tracer.record(decision_key="imbalance_tier", trace=imbalance.trace, value=imbalance.tier)
         # Verdict
-        verdict = {"auto_pass": "PASS", "human_review": "REVIEW", "redesign_required": "FAIL"}[imbalance.tier]
+        verdict = _TIER_VERDICT[imbalance.tier]
         return (
             StageResult(
                 stage="⑥_validate",
@@ -603,22 +618,23 @@ class SprinklerPipelineV4:
                 results["FAIL"].append(churn_dec.detail)
         return {"results": results, "synthetic": True}
 
-    def _gather_head_flows(self, network: DesignNetwork, validation_results: dict[str, Any]) -> list[float]:
-        """Extract per-head actual flow from validation tables, or use K·√P fallback."""
-        tables = validation_results.get("tables") or {}
-        nozzle_flows = tables.get("nozzle_flows") or []
-        flows: list[float] = []
-        for row in nozzle_flows:
-            q = row.get("actual_flow_lpm")
-            if isinstance(q, (int, float)):
-                flows.append(float(q))
-        if flows:
-            return flows
-        # Fallback: assume each head delivers 80 LPM at minimum
-        return [80.0 for _ in (h for z in network.zones for h in z.heads)]
+    def _gather_head_flows(self, validation_results: dict[str, Any]) -> list[float] | None:
+        """PIPENET 결과표의 헤드별 실측 유량. 표가 없으면 None.
 
-    def _gather_zone_pressures(self, network: DesignNetwork, validation_results: dict[str, Any]) -> dict[str, list[float]]:
-        """Extract per-zone pressures from validation tables, or estimate."""
+        예전에는 표가 없을 때 전 헤드 80 LPM 을 채웠는데, 그러면 편차가 0 이라
+        CV=0 → auto_pass 가 나온다. 계산을 안 했다는 사실이 만점으로 둔갑한다.
+        """
+        tables = validation_results.get("tables") or {}
+        flows = [float(q) for row in (tables.get("nozzle_flows") or [])
+                 if isinstance(q := row.get("actual_flow_lpm"), (int, float))]
+        return flows or None
+
+    def _gather_zone_pressures(self, validation_results: dict[str, Any]) -> dict[str, list[float]] | None:
+        """PIPENET 결과표의 존별 압력(MPa). 표가 없으면 None.
+
+        예전 placeholder [0.1, 0.3, 0.5] 은 ΔP=0.4 MPa 라 임계값 0.6 아래여서
+        어떤 도면이든 압력 항목이 통과했다.
+        """
         tables = validation_results.get("tables") or {}
         pressures: dict[str, list[float]] = {}
         for row in tables.get("pipe_validation_rows") or []:
@@ -626,15 +642,8 @@ class SprinklerPipelineV4:
             for key in ("inlet_pressure_kgcm2", "outlet_pressure_kgcm2", "max_pressure_kgcm2"):
                 val = row.get(key)
                 if isinstance(val, (int, float)):
-                    p_mpa = val / 10.197  # kg/cm² → MPa
-                    pressures.setdefault(zone_id, []).append(p_mpa)
-        if pressures:
-            return pressures
-        # Fallback: zone-level estimate
-        out: dict[str, list[float]] = {}
-        for z in network.zones:
-            out[z.zone_id] = [0.1, 0.3, 0.5]  # placeholder spread
-        return out
+                    pressures.setdefault(zone_id, []).append(val / 10.197)  # kg/cm² → MPa
+        return pressures or None
 
     def _estimate_tank_volume(self, network: DesignNetwork) -> float:
         """Estimate tank volume from reference count × 80 LPM × 20 min."""
@@ -657,7 +666,6 @@ class SprinklerPipelineV4:
         network: DesignNetwork,
         current_imbalance: ImbalanceMetrics,
         sdf_writer: Callable[[DesignNetwork, Path], Path] | None,
-        pipenet_runner: Callable[[Path], dict[str, Any]] | None,
         cad_path: Path,
         attempt: int,
     ) -> tuple[StageResult, DesignNetwork, dict[str, Any], ImbalanceMetrics]:
@@ -690,12 +698,22 @@ class SprinklerPipelineV4:
                 "config_changes": chosen_alt.config_changes,
             })
         new_imbalance = sim_results[chosen["alt_id"]]
+        # 대안 평가는 _simulate_alternative 의 휴리스틱 계수일 뿐 실제 수리해석이
+        # 아니다. 이 값으로 auto_pass 를 선언하면 계산하지 않은 재설계안이 합격
+        # 도장을 달고 나간다 — 최선이어도 사람 검토까지만 올린다.
+        if new_imbalance.tier == "auto_pass":
+            new_imbalance = replace(
+                new_imbalance,
+                tier="human_review",
+                diagnosis_messages=[*new_imbalance.diagnosis_messages,
+                                    "휴리스틱 대안 시뮬레이션 결과 — PIPENET 재계산 전에는 자동합격 불가"],
+            )
         # Log entry
         self.logger.append(
             triggered_by="auto",
             diagnosis={
                 "tier_before": current_imbalance.tier,
-                "delta_p_max": max(current_imbalance.delta_p_max_mpa_per_zone.values(), default=0.0),
+                "delta_p_max": _max_delta_p(current_imbalance),
                 "cv": current_imbalance.cv_flow,
                 "tau": current_imbalance.tau_water_minutes,
             },
@@ -711,7 +729,7 @@ class SprinklerPipelineV4:
                 "cv": new_imbalance.cv_flow,
                 "tau": new_imbalance.tau_water_minutes,
             },
-            verdict={"auto_pass": "PASS", "human_review": "REVIEW", "redesign_required": "FAIL"}[new_imbalance.tier],
+            verdict=_TIER_VERDICT[new_imbalance.tier],
             trace_links=[
                 "PhD §4.x (alternatives)",
                 f"NFTC 103 §2.13 (combined supply)" if "tank" in (chosen_alt.alt_id if chosen_alt else "") else "—",
@@ -723,7 +741,7 @@ class SprinklerPipelineV4:
                 stage=f"⑦_redesign_attempt_{attempt}",
                 started_at=started,
                 finished_at=_iso_now(),
-                verdict={"auto_pass": "PASS", "human_review": "REVIEW", "redesign_required": "FAIL"}[new_imbalance.tier],
+                verdict=_TIER_VERDICT[new_imbalance.tier],
                 summary={
                     "alternatives_evaluated": len(alts),
                     "ranked": ranked,
@@ -790,17 +808,14 @@ class SprinklerPipelineV4:
         started = _iso_now()
         log_table = self.logger.render_table()
         traces = self.tracer.by_source()
-        verdict = "PASS" if final_imbalance.tier == "auto_pass" else (
-            "REVIEW" if final_imbalance.tier == "human_review" else "FAIL"
-        )
         return StageResult(
             stage="⑧_finalize",
             started_at=started,
             finished_at=_iso_now(),
-            verdict=verdict,
+            verdict=_TIER_VERDICT[final_imbalance.tier],
             summary={
                 "final_tier": final_imbalance.tier,
-                "delta_p_max_mpa": max(final_imbalance.delta_p_max_mpa_per_zone.values(), default=0.0),
+                "delta_p_max_mpa": _max_delta_p(final_imbalance),
                 "cv_flow": final_imbalance.cv_flow,
                 "tau_water_minutes": final_imbalance.tau_water_minutes,
                 "duration_reduction_pct": final_imbalance.duration_reduction_pct,
@@ -828,7 +843,7 @@ class SprinklerPipelineV4:
             "system_type": network.system_type,
             "hb_case": network.hb_case.case.value if network.hb_case else None,
             "tier": imbalance.tier,
-            "delta_p_max_mpa": max(imbalance.delta_p_max_mpa_per_zone.values(), default=0.0),
+            "delta_p_max_mpa": _max_delta_p(imbalance),
             "cv_flow": imbalance.cv_flow,
             "tau_water_minutes": imbalance.tau_water_minutes,
             "validation_synthetic": validation.get("synthetic", False),
@@ -853,6 +868,12 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _new_run_id() -> str:
+    """초 단위 타임스탬프 + 난수 — 같은 초에 두 run 이 시작해도 보고서가 안 겹친다."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"run-{stamp}-{secrets.token_hex(3)}"
+
+
 def _json_default(o: Any) -> Any:
     if hasattr(o, "to_dict"):
         return o.to_dict()
@@ -861,6 +882,36 @@ def _json_default(o: Any) -> Any:
     if hasattr(o, "__dict__"):
         return o.__dict__
     return str(o)
+
+
+def _insufficient_evidence_metrics(
+    *,
+    legal_duration_minutes: float,
+    missing: list[str],
+) -> ImbalanceMetrics:
+    """PIPENET 결과표가 없어 3대 지표를 계산할 수 없는 상태를 그대로 표현."""
+    return ImbalanceMetrics(
+        delta_p_max_mpa_per_zone={},
+        cv_flow=None,
+        tau_water_minutes=None,
+        legal_duration_minutes=legal_duration_minutes,
+        duration_reduction_pct=None,
+        tier=TIER_INSUFFICIENT_EVIDENCE,
+        diagnosis_messages=[
+            "판정 보류 — PIPENET 계산 결과가 없어 3대 불균형 지표를 산출할 수 없습니다 "
+            f"(누락: {', '.join(missing)}). 결과 PDF 를 입력한 뒤 재검증하세요."
+        ],
+        trace=TripleTrace(
+            nftc="NFTC 103 §2.9.3.2 (≥20분)",
+            hb="HB §2.4.3 (수조 80%)",
+            phd="박사논문 §4.x — 3대 불균형 지표 (근거 미확보)",
+        ),
+    )
+
+
+def _max_delta_p(imbalance: ImbalanceMetrics) -> float | None:
+    """존별 ΔP 중 최대. 존이 하나도 없으면 None (0.0 은 '편차 없음'과 헷갈린다)."""
+    return max(imbalance.delta_p_max_mpa_per_zone.values(), default=None)
 
 
 def _placeholder_hb_case() -> HBCaseDecision:

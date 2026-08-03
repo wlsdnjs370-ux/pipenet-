@@ -373,13 +373,14 @@ def converge_bores_by_velocity(
         flow_lpm, velocity_mps, v_limit, v_over, pipe_role, inner_dia_mm
 
     Returns:
-        수렴 리포트 dict.
+        수렴 리포트 dict. `changes` 는 관경이 바뀐 배관과 상한을 못 맞춘 배관의
+        전후 대조표 — 승급 사유가 유속인지 단조성 회복인지 구분해 담는다.
     """
     empty = {"iterations": 0, "converged": True, "changed": 0,
              "max_velocity_before": 0.0, "max_velocity_after": 0.0,
              "violations_before": 0, "violations_after": 0,
              "source_pressure_bar": 0.0, "overdischarge_ratio_max": 1.0,
-             "solver_converged": True, "pipes": 0}
+             "solver_converged": True, "pipes": 0, "changes": []}
     if not pipes:
         return empty
 
@@ -395,27 +396,37 @@ def converge_bores_by_velocity(
         except (TypeError, ValueError):
             continue
 
-    def _summary(flows: list[float]) -> tuple[float, int]:
-        mx, viol = 0.0, 0
-        for i, p in enumerate(pipes):
-            v = velocity_mps(flows[i], inner_diameter_mm(_bore_of(p), material))
-            if v != float("inf"):
-                mx = max(mx, v)
-            if v > limits[i] + 1e-9:
-                viol += 1
+    def _velocities(flows: list[float]) -> list[float]:
+        return [velocity_mps(flows[i], inner_diameter_mm(_bore_of(p), material))
+                for i, p in enumerate(pipes)]
+
+    def _summary(vs: list[float]) -> tuple[float, int]:
+        mx = max((v for v in vs if v != float("inf")), default=0.0)
+        viol = sum(1 for i, v in enumerate(vs) if v > limits[i] + 1e-9)
         return mx, viol
 
     # 진입 상태(도면 관경 + 규약 최소경) 를 기존 방식 그대로 — 헤드당 설계유량
     # 고정 — 으로 채점한 값이 "before". 과토출 기준으로 재면 아래 예비 사이징이
     # 없는 상태에선 해가 발산해 비교값이 되지 못한다.
-    mv_before, vio_before = _summary(demand_flows(topo))
+    bore_before = [_bore_of(p) for p in pipes]
+    v_before = _velocities(demand_flows(topo))
+    mv_before, vio_before = _summary(v_before)
+    # 승급 사유 — 유속 때문에 굵어진 것과 상류≥하류를 맞추느라 굵어진 것은
+    # 설계 검토에서 의미가 달라 분리 기록한다.
+    reasons: list[list[str]] = [[] for _ in pipes]
 
-    if keep_existing:
-        for p in pipes:
-            p["dia"] = int(_snap_up(_bore_of(p)) if _bore_of(p) > 0 else PIPE_BORE_LADDER_MM[0])
-    else:
-        for p in pipes:
+    def _mark(i: int, reason: str) -> None:
+        if reason not in reasons[i]:
+            reasons[i].append(reason)
+
+    for i, p in enumerate(pipes):
+        if keep_existing:
+            p["dia"] = int(_snap_up(bore_before[i]) if bore_before[i] > 0
+                           else PIPE_BORE_LADDER_MM[0])
+        else:
             p["dia"] = int(PIPE_BORE_LADDER_MM[0])
+        if _bore_of(p) != bore_before[i]:
+            _mark(i, "기준초기화" if not keep_existing else "규격스냅")
 
     def _bump(flows: list[float], *, single_step: bool = False) -> int:
         """유속 상한을 넘는 배관을 승급하고 단조성 회복. 바뀐 횟수 반환.
@@ -436,12 +447,14 @@ def converge_bores_by_velocity(
                     break
             if bore != _bore_of(p):
                 p["dia"] = int(bore)
+                _mark(i, "유속초과")
         # 상류가 하류보다 얇으면 배관망이 성립하지 않는다 — 단조 비증가 회복.
         for i in topo.order:
             kid_max = max((_bore_of(pipes[k]) for k in topo.children.get(topo.down[i], ())),
                           default=0.0)
             if kid_max > _bore_of(pipes[i]):
                 pipes[i]["dia"] = int(kid_max)
+                _mark(i, "단조성회복")
                 changed += 1
         return changed
 
@@ -459,16 +472,40 @@ def converge_bores_by_velocity(
             break
         sol = solve_network(pipes, topo, equiv_length_m=equiv, material=material)
 
-    mv_after, vio_after = _summary(sol.pipe_flow_lpm)
+    v_after = _velocities(sol.pipe_flow_lpm)
+    mv_after, vio_after = _summary(v_after)
+    changes = []
     for i, p in enumerate(pipes):
         idia = inner_diameter_mm(_bore_of(p), material)
-        v = velocity_mps(sol.pipe_flow_lpm[i], idia)
+        v = v_after[i]
+        over = v > limits[i] + 1e-9
         p["flow_lpm"] = round(sol.pipe_flow_lpm[i], 1)
         p["velocity_mps"] = round(v, 2) if v != float("inf") else None
         p["v_limit"] = limits[i]
-        p["v_over"] = v > limits[i] + 1e-9
+        p["v_over"] = over
         p["pipe_role"] = roles[i]
         p["inner_dia_mm"] = round(idia, 1)
+        # 상한을 못 맞춘 배관은 관경이 안 바뀌었어도 표에 남긴다 — 사다리 최대치로도
+        # 해소되지 않는 구간은 설계 불가가 아니라 대개 추출 오접합 신호라 판정 보류다.
+        if _bore_of(p) == bore_before[i] and not over:
+            continue
+        if over:
+            _mark(i, "한계도달")
+        changes.append({
+            "label": str(p.get("label", "")),
+            "in": str(p.get("in", "")), "out": str(p.get("out", "")),
+            "role": roles[i],
+            "bore_before": round(bore_before[i], 1),
+            "bore_after": int(_bore_of(p)),
+            "inner_dia_mm": round(idia, 1),
+            "velocity_before": (round(v_before[i], 2)
+                                if v_before[i] != float("inf") else None),
+            "velocity_after": round(v, 2) if v != float("inf") else None,
+            "v_limit": limits[i],
+            "v_over": over,
+            "flow_lpm": round(sol.pipe_flow_lpm[i], 1),
+            "reasons": reasons[i],
+        })
 
     base = NOZZLE_K_FACTOR * math.sqrt(head_pressure_min_mpa() / _MPA_PER_BAR)
     per_head = [q / max(1, topo.head_count.get(h, 1))
@@ -485,4 +522,5 @@ def converge_bores_by_velocity(
         "overdischarge_ratio_max": round(max(per_head) / base, 2) if per_head else 1.0,
         "solver_converged": sol.converged,
         "pipes": len(pipes),
+        "changes": changes,
     }

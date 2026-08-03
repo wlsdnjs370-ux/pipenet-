@@ -205,6 +205,29 @@ def test_grossly_undersized_network_does_not_slam_to_max_bore():
     assert sum(1 for p in pipes if p["dia"] >= 150) <= len(pipes) // 10
 
 
+def test_changes_table_records_before_after_and_reason():
+    nodes, pipes, nozzles = make_net()
+    rep = converge_bores_by_velocity(nodes, pipes, nozzles)
+    changes = rep["changes"]
+    assert changes, "유속 위반이 있던 망이면 변경 이력이 남아야 한다"
+    by_label = {c["label"]: c for c in changes}
+    for p in pipes:
+        c = by_label.get(p["label"])
+        if c is None:
+            continue
+        assert c["bore_after"] == p["dia"]
+        assert c["bore_after"] > c["bore_before"]
+        assert c["reasons"]
+        assert c["velocity_after"] <= c["v_limit"] + 1e-9
+    assert any("유속초과" in c["reasons"] for c in changes)
+
+
+def test_changes_table_is_empty_when_nothing_moves():
+    nodes, pipes, nozzles = make_net()
+    converge_bores_by_velocity(nodes, pipes, nozzles)
+    assert converge_bores_by_velocity(nodes, pipes, nozzles)["changes"] == []
+
+
 def test_overdischarge_is_modeled():
     """말단 헤드만 80 L/min 이고 펌프에 가까운 헤드는 더 많이 토출해야 한다."""
     nodes, pipes, nozzles = make_net()

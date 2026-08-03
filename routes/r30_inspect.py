@@ -12,9 +12,12 @@ import hashlib
 import json
 import math
 import os
+import threading
 from pathlib import Path
 
 from flask import Response, jsonify
+
+from core.dxf_parse_progress import parse_dxf_with_progress
 
 
 def _inspect_layer_visibility(doc):
@@ -115,19 +118,20 @@ def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload):
                 return Response(_stream_cached(), mimetype="application/x-ndjson")
 
         try:
-            import ezdxf
+            import ezdxf  # noqa: F401 — 스트림을 열기 전 의존성 확인
             from sprinkler_remote30_extractor import Remote30Settings, layer_match
         except ImportError as exc:
             return jsonify({"ok": False, "message": f"의존성 누락: {exc}"}), 500
 
-        try:
-            doc = ezdxf.readfile(str(dxf_path))
-            msp = doc.modelspace()
-        except Exception as exc:
-            return jsonify({"ok": False, "message": f"DXF 파싱 실패: {exc}"}), 500
-
-        # DXF 레이어 가시성 (off/frozen/color<0 만 hidden, plot=0 은 화면엔 보이므로 렌더).
-        doc_layer_info, hidden_layers = _inspect_layer_visibility(doc)
+        # 파싱은 스트림을 연 뒤 _parse_lines 안에서 실행한다 — 141MB 도면은 파싱만
+        # 30초가 넘어, 응답을 열기 전에 끝내 버리면 그 구간의 진행률을 보낼 길이 없다.
+        # 아래 이름들은 파싱이 끝난 시점에 nonlocal 로 채워진다.
+        doc = None
+        doc_layer_info: dict[str, dict] = {}
+        hidden_layers: set[str] = set()
+        foreground_top: list = []
+        background_top: list = []
+        total_top = 0
 
         entities = []
         bbox = [float("inf"), float("inf"), float("-inf"), float("-inf")]
@@ -418,26 +422,11 @@ def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload):
         # 배관/헤드 등 전경(foreground) top-level entity 를 먼저 렌더·전송해 사용자가
         # 즉시 작업을 시작하게 하고, 건축 배경(ARCH/EXCLUDE)은 이어서 스트리밍으로 채운다.
         # 화면 정보는 하나도 누락하지 않으며 첫 페인트까지의 체감 시간만 줄인다.
-        foreground_top, background_top = [], []
-        for e in msp:
-            try:
-                _lyr = e.dxf.layer if hasattr(e.dxf, "layer") else ""
-            except Exception:
-                _lyr = ""
-            if _layer_category(str(_lyr)) in ("ARCH", "EXCLUDE"):
-                background_top.append(e)
-            else:
-                foreground_top.append(e)
-
         FLUSH_N = 20000
         layer_counts: dict[str, int] = {}
         layer_type_counts: dict[str, dict] = {}
         total_count = [0]
         bg_status = {"truncated": False, "entities": 0}
-        # 진행률 분모 — 방출되는 entity 수는 INSERT 폭발 때문에 미리 알 수 없지만
-        # top-level entity 수는 파싱 직후 확정된다. 클라이언트 진행바가 추측이 아닌
-        # 실제 소화량을 표시하려면 이 (done, total) 쌍이 필요하다.
-        total_top = len(foreground_top) + len(background_top)
         done_top = [0]
 
         def _bbox_obj():
@@ -465,6 +454,65 @@ def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload):
                 i += FLUSH_N
             del entities[:]
 
+        def _parse_lines():
+            """DXF 파싱을 백그라운드로 돌리며 진행률 NDJSON 을 흘린다.
+
+            파싱 결과는 nonlocal 로 채운다. 실패는 이미 200 으로 스트림이 열린
+            뒤라 HTTP 상태로 알릴 수 없어 error 라인으로 내보내고, 호출자는
+            doc is None 으로 중단을 판별한다.
+            """
+            nonlocal doc, doc_layer_info, hidden_layers
+            nonlocal foreground_top, background_top, total_top
+            state = {"stage": "read", "done": 0, "total": 0, "db": None}
+            box: dict = {}
+
+            def _work():
+                try:
+                    box["doc"] = parse_dxf_with_progress(dxf_path, state)
+                except BaseException as exc:  # noqa: BLE001 — 스트림으로 전달
+                    box["error"] = exc
+
+            th = threading.Thread(target=_work, daemon=True)
+            th.start()
+            last = None
+            while True:
+                th.join(0.2)
+                stage, total = state["stage"], state["total"]
+                db = state.get("db")
+                done = len(db) if db is not None else state["done"]
+                cur = (stage, min(done, total)) if total else None
+                if cur is not None and cur != last:
+                    last = cur
+                    yield json.dumps({"type": "parse", "stage": stage,
+                                      "done": cur[1], "total": total},
+                                     ensure_ascii=False) + "\n"
+                if not th.is_alive():
+                    break
+
+            if box.get("doc") is None:
+                yield json.dumps(
+                    {"type": "error", "ok": False,
+                     "message": f"DXF 파싱 실패: {box.get('error')}"},
+                    ensure_ascii=False) + "\n"
+                return
+            doc = box["doc"]
+            # DXF 레이어 가시성 (off/frozen/color<0 만 hidden, plot=0 은 화면엔 보이므로 렌더).
+            doc_layer_info, hidden_layers = _inspect_layer_visibility(doc)
+            # 전경/배경 분할 — 배관·헤드를 먼저 렌더해 첫 페인트를 앞당긴다.
+            for e in doc.modelspace():
+                try:
+                    _lyr = e.dxf.layer if hasattr(e.dxf, "layer") else ""
+                except Exception:
+                    _lyr = ""
+                if _layer_category(str(_lyr)) in ("ARCH", "EXCLUDE"):
+                    background_top.append(e)
+                else:
+                    foreground_top.append(e)
+            # 진행률 분모 — 방출되는 entity 수는 INSERT 폭발 때문에 미리 알 수 없지만
+            # top-level entity 수는 파싱 직후 확정된다. 클라이언트 진행바가 추측이 아닌
+            # 실제 소화량을 표시하려면 이 (done, total) 쌍이 필요하다.
+            total_top = len(foreground_top) + len(background_top)
+
         def _progress_lines():
             # 1) 전경 — 점진적 flush. 첫 chunk 은 빠른 첫 페인트를 위해 작게(FIRST_FLUSH_N),
             #    이후는 FLUSH_N 단위. 이전엔 전경 전부 렌더 후 flush 라 cold 파싱 시
@@ -472,9 +520,8 @@ def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload):
             #    매 flush 의 첫 chunk 가 "지금까지" 범위를 실어 보낸다(클라가 점진 fit).
             FIRST_FLUSH_N = 2000
             fg_flushed = False
-            # 파싱(ezdxf.readfile)까지는 진행 상황을 알릴 방법이 없다. 그 구간이
-            # 끝난 이 시점을 먼저 알려 클라이언트가 "몇 % 인지 모름" 표시를 끝내고
-            # 렌더 진행률로 넘어가게 한다 — 첫 chunk 는 2000 entity 뒤에나 온다.
+            # 파싱이 끝난 이 시점을 먼저 알려 클라이언트가 렌더 진행률로 넘어가게
+            # 한다 — 첫 chunk 는 2000 entity 를 그린 뒤에나 온다.
             yield json.dumps({"type": "phase", "phase": "render",
                               "total": total_top}, ensure_ascii=False) + "\n"
             for e in foreground_top:
@@ -537,6 +584,12 @@ def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload):
                 except Exception:
                     gz_out = None
             try:
+                # 파싱 진행 라인은 캐시에 tee 하지 않는다 — 캐시 재생 시엔 파싱이
+                # 아예 없어 그 구간을 다시 보내면 진행바가 거짓말을 하게 된다.
+                for line in _parse_lines():
+                    yield line
+                if doc is None:
+                    return
                 for line in _progress_lines():
                     if gz_out is not None:
                         try:

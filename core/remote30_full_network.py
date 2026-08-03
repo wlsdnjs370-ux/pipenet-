@@ -652,6 +652,7 @@ def _layout_riser_as_schematic(
     anchor_xy: tuple[float, float],
     head_yspan: float = 5000.0,
     descend: bool = False,
+    min_span: float = 0.0,
 ) -> list[dict]:
     """라이저 노드를 PIPENET schematic 의 수직 막대 형태로 재배치.
 
@@ -674,11 +675,13 @@ def _layout_riser_as_schematic(
         descend: 펌프 가압(B1 펌프실) 모드. True 면 막대를 AV(헤드망) **아래**로
             내려, 펌프/수원이 화면 최하부에 오도록 한다(물이 B1→위로 가압되는
             물리 배치). 기본 False = 옥상수조(자연낙차) — 수원이 위.
+        min_span: 막대 길이 하한. 기계실이 붙을 때 그 평면이 헤드 군집 밖에
+            놓이도록 stitch 가 계산해 넘긴다.
     """
     n = len(riser_nodes)
     if n < 2:
         return list(riser_nodes)
-    riser_yspan = max(2000.0, head_yspan * 0.8)
+    riser_yspan = max(2000.0, head_yspan * 0.8, float(min_span))
     step_y = riser_yspan / (n - 1)
     target_x = float(anchor_xy[0])
     target_y_av = float(anchor_xy[1])
@@ -825,39 +828,64 @@ def stitch_riser_and_heads(
     #   같은 논리 분기점이다. 막대를 헤드 군집 중앙 위에 띄우면 AV 가 헤드 source 위치에서
     #   떨어져, 그 둘을 잇는 헤드 첫 배관(선언 길이 ~0)이 두 좌표계를 가로지르는 긴 선으로
     #   그려졌다. → anchor 를 head_av_node 좌표로 잡아 AV 를 source 에 정합, 연결선을 0 으로.
+    # 기계실 평면은 이음매(mK)를 원점으로 먼저 배치해 크기를 잰다 — 막대를 그만큼
+    # 늘려야 기계실이 헤드 군집 **밖**에 놓인다. 막대 길이를 헤드 y-span 의 80% 로
+    # 고정하면 막대 끝(펌프)이 헤드 군집 안에 남아, 거기 붙는 기계실 평면(70% 크기)이
+    # 헤드 배관과 통째로 겹쳐 그려졌다(대명동 실측: 기계실 78 edge 전부 헤드망 위).
+    mr_rel: list[dict] = []
+    plan_rel: list[list[float]] = []
+    if mr_nodes and pump_junction_label is not None:
+        try:
+            mr_rel, plan_rel = _layout_machine_room_plan(
+                mr_nodes, machine_room_plan_edges, (0.0, 0.0),
+                head_yspan=head_yspan, conn_raw_xy=machine_room_conn_xy,
+            )
+        except (KeyError, TypeError, ValueError):
+            mr_rel, plan_rel = [], []
+
+    min_span = 0.0
+    if mr_rel and head_ys and head_av_node is not None:
+        rel_ys = [float(n.get("y", 0.0)) for n in mr_rel]
+        for e in plan_rel:
+            rel_ys.append(float(e[1]))
+            rel_ys.append(float(e[3]))
+        pad = max(1000.0, head_yspan * 0.08)
+        try:
+            anchor_y = float(head_av_node["y"])
+        except (KeyError, TypeError, ValueError):
+            anchor_y = 0.0
+        if machine_room_at_bottom:   # 막대가 아래로 → 기계실 최상단이 헤드망 아래
+            min_span = anchor_y + max(rel_ys) - min(head_ys) + pad
+        else:                        # 막대가 위로 → 기계실 최하단이 헤드망 위
+            min_span = max(head_ys) + pad - min(rel_ys) - anchor_y
+        min_span = max(0.0, min_span)
+
     if head_av_node is not None and head_xs and head_ys:
         try:
             anchor_xy = (float(head_av_node["x"]), float(head_av_node["y"]))
             translated_riser_nodes = _layout_riser_as_schematic(
                 true_riser_nodes, anchor_xy, head_yspan=head_yspan,
-                descend=machine_room_at_bottom,
+                descend=machine_room_at_bottom, min_span=min_span,
             )
         except (KeyError, TypeError, ValueError):
             translated_riser_nodes = list(true_riser_nodes)
     else:
         translated_riser_nodes = list(true_riser_nodes)
 
-    # 기계실 평면 배치 — 펌프 junction("1")의 schematic 좌표에 부착, 실제 x,y 형상 유지.
-    #   수리경로 노드(mr_nodes) + 전체 SP 배관망 edge(plan_edges)를 **동일 변환**으로
-    #   배치해 완전한 평면도로 렌더. plan_laid 는 시각화 전용(SDF 미포함).
+    # 기계실 평면 배치 — 원점 배치본을 펌프 junction("1")의 schematic 좌표로 평행이동.
+    #   수리경로 노드(mr_nodes) + 전체 SP 배관망 edge(plan_edges)가 **동일 변환**이라
+    #   완전한 평면도로 렌더된다. plan_laid 는 시각화 전용(SDF 미포함).
     plan_laid: list[list[float]] = []
-    if mr_nodes and pump_junction_label is not None:
+    mr_laid = list(mr_nodes)
+    if mr_rel:
         pump_node = next((n for n in translated_riser_nodes
                           if str(n["label"]) == str(pump_junction_label)), None)
         if pump_node is not None:
-            try:
-                pump_xy = (float(pump_node["x"]), float(pump_node["y"]))
-                mr_laid, plan_laid = _layout_machine_room_plan(
-                    mr_nodes, machine_room_plan_edges, pump_xy, head_yspan=head_yspan,
-                    conn_raw_xy=machine_room_conn_xy,
-                )
-            except (KeyError, TypeError, ValueError):
-                mr_laid = list(mr_nodes)
-                plan_laid = []
-        else:
-            mr_laid = list(mr_nodes)
-    else:
-        mr_laid = list(mr_nodes)
+            px = int(round(float(pump_node.get("x", 0.0))))
+            py = int(round(float(pump_node.get("y", 0.0))))
+            mr_laid = [{**n, "x": n["x"] + px, "y": n["y"] + py} for n in mr_rel]
+            plan_laid = [[e[0] + px, e[1] + py, e[2] + px, e[3] + py]
+                         for e in plan_rel]
 
     translated_riser_nodes = translated_riser_nodes + mr_laid
 

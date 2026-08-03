@@ -4095,11 +4095,27 @@
       if (mode !== "iso2d") return g;
       const xy = _combinedIsoRiserXY(g);
       if (!xy.size) return g;
+      // 기계실 평면은 라이저 막대 끝(펌프 junction)에 붙어 있다. 라이저를 AV 한 점으로
+      // 모으면 그 부착점도 AV 로 옮겨지므로 기계실도 같은 만큼 평행이동해야 이음매가
+      // 0 으로 유지된다. 안 그러면 기계실이 제자리에 남아 이음매 배관 하나가 화면을
+      // 가로지르는 긴 사선이 된다.
+      const mrSet = new Set(g.machine_room_labels || []);
+      const pump = (g.nodes || []).find(n => n.label === g.pump_junction_label);
+      const to = pump ? xy.get(pump.label) : null;
+      const dx = to ? to.x - pump.x : 0, dy = to ? to.y - pump.y : 0;
+      const shift = (dx || dy) && mrSet.size;
       const nodes = g.nodes.map(n => {
         const m = xy.get(n.label);
-        return m ? { ...n, x: m.x, y: m.y } : n;
+        if (m) return { ...n, x: m.x, y: m.y };
+        if (shift && mrSet.has(n.label)) return { ...n, x: n.x + dx, y: n.y + dy };
+        return n;
       });
-      return { ...g, nodes };
+      const out = { ...g, nodes };
+      if (shift && (g.machine_room_plan_edges || []).length) {
+        out.machine_room_plan_edges = g.machine_room_plan_edges.map(
+          e => [e[0] + dx, e[1] + dy, e[2] + dx, e[3] + dy]);
+      }
+      return out;
     }
 
     // 통합 모드용 — combined_geometry 의 노드 bbox 에 맞춰 state.view 를 초기화

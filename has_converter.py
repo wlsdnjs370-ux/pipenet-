@@ -31,6 +31,7 @@ import math
 import os
 from pathlib import Path
 
+from hb_rules import get_inner_diameter_mm
 from kfp_sdf_converter import (
     CommonFitting,
     CommonNetwork,
@@ -315,12 +316,17 @@ def has_dict_to_network(data: dict) -> CommonNetwork:
             cfac = float(pl.get("CFactor") or 120)
         except ValueError:
             cfac = 120.0
+        material = str(pl.get("PipeMaterial") or "")
+        # .has 는 호칭경만 담고 실내경은 재질 테이블에 있다. 0 으로 두면 하류
+        # 마찰계산이 호칭경을 내경으로 오인해 손실을 과소 산정한다(100A 기준
+        # 105.3 vs 100 → 약 12% 차이).
+        inner_mm = get_inner_diameter_mm(f"{nominal}A", material) or float(nominal)
         cp = CommonPipe(
             id=pid,
             start=str(pl.get("SNodeId")),
             end=str(pl.get("ENodeId")),
             length_m=length,
-            diameter_inner_mm=0.0,
+            diameter_inner_mm=inner_mm,
             nominal_mm=nominal,
             c_factor=cfac,
             pipe_type_label=str(pl.get("PipeName") or "KSD 3507"),
@@ -328,7 +334,7 @@ def has_dict_to_network(data: dict) -> CommonNetwork:
             waypoints=waypoints,
             raw={
                 "has_label": pl.get("Label"),
-                "material": pl.get("PipeMaterial"),
+                "material": material,
             },
         )
         net.pipes[pid] = cp

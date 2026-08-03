@@ -1024,8 +1024,9 @@ def _ffloat(v, default=0.0):
         return default
 
 
-# 표준 호칭경 (mm) — KFP 와 PIPENET 공통. SDF 의 bore (inner diameter, m)
-# 로부터 nominal 을 round 할 때 가장 가까운 표준 값 사용.
+# 표준 호칭경 (mm) — KFP 와 PIPENET 공통.
+# SDF 의 bore 는 PIPENET 규약상 호칭경(m)이지만, 외부 SDF 중에는 실내경을 넣은
+# 것도 있어 파싱 시 bore*1000 을 여기로 통과시켜 호칭경으로 되돌린다.
 STANDARD_NOMINAL_MM = (15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300)
 
 
@@ -1633,7 +1634,11 @@ def emit_sdf_xml(net: CommonNetwork) -> str:
             "label": str(plabel),
             "input": str(in_label),
             "output": str(out_label),
-            "bore": str(cp.diameter_inner_mm / 1000.0),  # m
+            # bore 는 내경이 아니라 호칭경(m). PIPENET 은 이 값을 SLF 의
+            # <Size-definition nominal="..."> 와 매칭해 실내경을 결정하므로,
+            # 내경(105.3mm)을 넣으면 어떤 nominal 과도 안 맞아 "Unset" 이 된다.
+            # 레퍼런스 3-1형 SDF 도 0.125 / 0.08 / 0.05 처럼 호칭경을 쓴다.
+            "bore": str((cp.nominal_mm or _nearest_nominal_mm(cp.diameter_inner_mm)) / 1000.0),
             "length": str(cp.length_m),
         }
         # ★ nominal-mm 비표준 attribute 로 호칭경 보존 — PIPENET 은 unknown

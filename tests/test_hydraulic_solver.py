@@ -62,12 +62,18 @@ def make_net(n_branch: int = 4, n_head: int = 6, dia: int = 25):
 @pytest.mark.parametrize("q,L,c,d", [(80, 3.0, 120, 27.5), (1920, 6.0, 100, 105.3),
                                      (400, 12.5, 140, 53.2)])
 def test_hazen_williams_matches_validator(q, L, c, d):
-    """검증기(pipenet_validator)와 같은 식이어야 한다 — 두 경로의 판정이 갈리면 안 됨."""
+    """검증기(pipenet_validator)와 같은 식이어야 한다 — 두 경로의 판정이 갈리면 안 됨.
+
+    검증기는 PIPENET 보고서와 맞추려고 kgf/cm² 를, 솔버는 헤드 K 계수·표고손실과
+    맞추려고 bar 를 낸다. 환산 계수를 거쳐 같아야 한다.
+    """
+    from hb_rules import KGFCM2_TO_BAR
     from pipenet_validator import PipenetGuideValidator
 
-    ref = PipenetGuideValidator._calc_hw_friction_loss_kgcm2(
+    ref_kgfcm2 = PipenetGuideValidator._calc_hw_friction_loss_kgcm2(
         None, q_lpm=q, total_length_m=L, c_factor=c, actual_bore_mm=d)
-    assert hazen_williams_drop_bar(q, L, c, d) == pytest.approx(ref, rel=1e-12)
+    assert hazen_williams_drop_bar(q, L, c, d) == pytest.approx(
+        ref_kgfcm2 * KGFCM2_TO_BAR, rel=1e-12)
 
 
 def test_hazen_williams_degenerate_inputs_are_zero():

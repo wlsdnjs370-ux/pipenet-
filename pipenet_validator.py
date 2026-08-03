@@ -754,8 +754,12 @@ class PipenetGuideValidator:
         c_factor: float,
         actual_bore_mm: float,
     ) -> float:
-        dp_mpa = 6.174e4 * (q_lpm ** 1.85) * total_length_m / ((c_factor ** 1.85) * (actual_bore_mm ** 4.87))
-        return dp_mpa / 0.1
+        # 계수 6.174e5 는 kgf/cm² 계열(MPa 계열은 6.053e4)이다. 여기서는 그 1/10 을
+        # 쓰고 마지막에 10 배 하므로 결과 단위는 kgf/cm² — PIPENET 보고서
+        # "Frict. Loss (kg/cm2)" 와 같은 척도다. 중간값은 MPa 가 아니니
+        # 0.0980665 로 나누면 2% 부풀려진다.
+        dp = 6.174e4 * (q_lpm ** 1.85) * total_length_m / ((c_factor ** 1.85) * (actual_bore_mm ** 4.87))
+        return dp / 0.1
 
     def _build_pipe_validation_rows(
         self,

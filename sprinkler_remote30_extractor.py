@@ -27,6 +27,7 @@ _CORE = Path(__file__).resolve().parent / "core"
 if _CORE.is_dir() and str(_CORE) not in _sys.path:
     _sys.path.insert(0, str(_CORE))
 
+from hb_rules import M_H2O_PER_KGFCM2
 from hydraulic_solver import inner_diameter_mm
 from remote30_graph import HeadRegion
 from remote30_constants import _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM
@@ -450,6 +451,9 @@ def _refine_edge_diameters(G, settings: Remote30Settings):
        - degree=1 (leaf) 양쪽 끝 edge → branch_leaf_dia_mm (가지관 25A)
        - 짧은 edge (head 부근) → 가지관 25A
        - 그 외 → fallback_dia_mm (50A)
+
+    추정한 edge 는 ``dia_estimated`` 로 표시한다 — 도면 TEXT 로 확인된 관경과
+    한 덩어리로 보고하면 실측이 아닌 값이 실측처럼 읽힌다.
     """
     fdia = settings.fallback_dia_mm
     bdia = settings.branch_leaf_dia_mm
@@ -461,6 +465,7 @@ def _refine_edge_diameters(G, settings: Remote30Settings):
             continue  # TEXT 매칭 결과 보존
         length_m = data.get("length", 0) * scale
         deg_u = G.degree(u); deg_v = G.degree(v)
+        data["dia_estimated"] = True
         if deg_u == 1 or deg_v == 1:
             # leaf edge - 가지관 말단
             data["dia"] = bdia
@@ -774,13 +779,16 @@ def _attach_heads_to_graph(heads, G, node_coords, settings: Remote30Settings):
 
 
 def hw_friction_loss_kgcm2(q_lpm: float, length_m: float, c_factor: float, bore_mm: float) -> float:
-    """Hazen-Williams 마찰손실 (pipenet_validator.py:757 와 동일 공식).
-    returns: kgf/cm² (= 0.1 MPa = 10 mH2O ≈ 0.9806 bar)
+    """Hazen-Williams 마찰손실 (pipenet_validator._calc_hw_friction_loss_kgcm2 와 동일 공식).
+
+    계수 6.174e5 가 kgf/cm² 계열이므로 그 1/10 을 쓰고 10 배 해서 kgf/cm² 를 낸다.
+    중간값은 MPa 가 아니다 — 0.0980665 로 나누면 2% 부풀려진다.
+    returns: kgf/cm² (1 kgf/cm² = 10 mH2O = 0.980665 bar)
     """
     if bore_mm <= 0 or length_m <= 0 or q_lpm <= 0 or c_factor <= 0:
         return 0.0
-    dp_mpa = 6.174e4 * (q_lpm ** 1.85) * length_m / ((c_factor ** 1.85) * (bore_mm ** 4.87))
-    return dp_mpa / 0.1
+    dp = 6.174e4 * (q_lpm ** 1.85) * length_m / ((c_factor ** 1.85) * (bore_mm ** 4.87))
+    return dp / 0.1
 
 
 def _compute_head_paths_and_branch_load(G, alarm_node, attached_heads):
@@ -812,7 +820,7 @@ def _compute_hydraulic_loss_per_head(G, head_paths, edge_head_count, settings: R
     c = settings.c_factor
     scale = settings.cad_unit_to_m
     static_head_m = settings.elevation_head_m - settings.elevation_alarm_m
-    static_head_kgcm2 = static_head_m * 0.0980665  # 1 mH2O ≈ 0.0980665 kgf/cm²
+    static_head_kgcm2 = static_head_m / M_H2O_PER_KGFCM2
 
     out = {}
     for n, path in head_paths.items():
@@ -986,13 +994,14 @@ def build_pipenet_tables(G, node_coords, selected_heads, path_edges, alarm_node,
     pipenet_pipe_rows = []
     for a, b in sorted(path_edges):
         ed = G.get_edge_data(a, b)
-        dia_mm = ed.get("dia")
-        dia_m = (float(dia_mm) / 1000.0) if dia_mm else (settings.fallback_dia_mm / 1000.0)
+        # fallback 을 dia_m 에만 적용하면 label 은 빈 문자열이 돼 관경과 표기가
+        # 어긋난다 — 한 값으로 확정한 뒤 둘 다 거기서 파생시킨다.
+        dia_mm = ed.get("dia") or settings.fallback_dia_mm
         pipenet_pipe_rows.append({
             "pipe_id": ed.get("pipe_no") or f"P{a:04d}_{b:04d}",
             "from_node": f"N{a:04d}",
             "to_node": f"N{b:04d}",
-            "diameter_m": dia_m,
+            "diameter_m": float(dia_mm) / 1000.0,
             "diameter_label": diameter_mm_to_label(dia_mm),
             "length_m": round(ed.get("length", 0.0) * scale, 6),
             "rise_m": 0.0,
@@ -1546,6 +1555,17 @@ def run_remote30_extraction(
     else:
         warnings.append("선정 가능한 Remote 30 헤드가 없습니다. 배관/헤드 추출 결과를 확인하세요")
 
+    # 선정 경로에 실린 추정치의 양 — 전체 closure/bridge 수만 보면 실제 계산에
+    # 쓰인 경로가 얼마나 추정에 의존하는지 알 수 없다.
+    path_estimated_dia = 0
+    path_closure = 0
+    for a, b in path_edges:
+        ed = G.get_edge_data(a, b) or {}
+        if ed.get("dia_estimated") or not ed.get("dia"):
+            path_estimated_dia += 1
+        if ed.get("is_closure"):
+            path_closure += 1
+
     counts = {
         "segments": len(segments),
         "texts": len(text_items),
@@ -1558,6 +1578,9 @@ def run_remote30_extraction(
         "supplementary_near_text_line": extra_counts.get("near_text_line", 0),
         "graph_closure_edges": closure_added,
         "auto_bridge_edges": bridge_added,
+        "path_edges": len(path_edges),
+        "path_edges_estimated_dia": path_estimated_dia,
+        "path_edges_closure": path_closure,
         "orphan_heads_forced": len(orphan_heads) if orphan_heads else 0,
     }
 

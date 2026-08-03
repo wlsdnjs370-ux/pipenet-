@@ -35,7 +35,12 @@ import math
 from dataclasses import dataclass, field
 from functools import lru_cache
 
-from hb_rules import BRANCH_PIPE_V_LIMIT, MAIN_PIPE_V_LIMIT, get_inner_diameter_mm
+from hb_rules import (
+    BRANCH_PIPE_V_LIMIT,
+    KGFCM2_TO_BAR,
+    MAIN_PIPE_V_LIMIT,
+    get_inner_diameter_mm,
+)
 from nftc_rules import head_pressure_min_mpa
 from remote30_full_network import PIPE_BORE_LADDER_MM
 
@@ -53,14 +58,16 @@ def hazen_williams_drop_bar(q_lpm: float, length_m: float, c_factor: float,
                             inner_dia_mm: float) -> float:
     """Hazen-Williams 마찰손실 [bar]. 유량 L/min, 길이 m, 내경 mm.
 
-    pipenet_validator._calc_hw_friction_loss_kgcm2 와 동일한 식(계수 6.174e4).
-    두 구현의 일치는 tests/test_hydraulic_solver.py 가 검산한다.
+    식은 pipenet_validator._calc_hw_friction_loss_kgcm2 와 같지만(계수 6.174e4)
+    그 결과는 kgf/cm² 다. 이 솔버는 표고손실을 BAR_PER_M_WATER 로 bar 로 환산해
+    더하고 헤드 K 계수도 bar 기준이므로, 여기서 bar 로 맞춰야 두 항이 같은
+    척도가 된다. 두 구현의 일치는 tests/test_hydraulic_solver.py 가 검산한다.
     """
     if q_lpm <= 0 or length_m <= 0 or inner_dia_mm <= 0 or c_factor <= 0:
         return 0.0
-    dp_mpa = (6.174e4 * (q_lpm ** 1.85) * length_m
-              / ((c_factor ** 1.85) * (inner_dia_mm ** 4.87)))
-    return dp_mpa / _MPA_PER_BAR
+    dp_kgfcm2 = (6.174e4 * (q_lpm ** 1.85) * length_m
+                 / ((c_factor ** 1.85) * (inner_dia_mm ** 4.87))) / 0.1
+    return dp_kgfcm2 * KGFCM2_TO_BAR
 
 
 @lru_cache(maxsize=256)
@@ -325,7 +332,9 @@ def solve_network(
             delta = max(delta, abs(new - head_flow[h]))
             head_flow[h] = new
         if delta < tol_lpm:
-            converged = True
+            # 소스에서 도달 못 한 헤드가 있으면 그 헤드의 유량·압력은 초기 가정
+            # 그대로다 — 나머지가 안정됐다고 "수렴"이라 부르면 근거 없는 합격이 된다.
+            converged = len(reached) == len(head_nodes)
             break
 
     return Solution(pipe_flow_lpm=pipe_flow, node_pressure_bar=pressure,

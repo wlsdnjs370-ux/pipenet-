@@ -1735,19 +1735,8 @@
       ALARM: "#a855f7",  // 라이저 (입상관) / 알람밸브 레이어 — 보라색 (alarm valve 와 동일)
       _subgraph: "#38bdf8", _subgraph_head: "#22d3ee", _alarm_valve: "#a855f7",
     };
-    // 계통도·기계실 패널 전용 회색조 팔레트 — 평면도는 레이어 분류(색)를 직접 보고
-    // 배관 레이어를 고르는 화면이라 CAT_COLORS 를 그대로 쓰고, 이미 분류가 끝난
-    // 계통도·기계실은 밑그림을 명도 단계로만 깔아 추출 경로가 유일하게 도드라지게 한다.
-    const PANEL_MONO = {
-      PIPE: "#aebbcc", HEAD: "#dbe3ec", ALARM: "#aebbcc", TEXT: "#8b98ab",
-      ARCH: "#5a6a80", EXCLUDE: "#4a586b", OTHER: "#7d8ca0",
-      _subgraph: "#dbe3ec", _subgraph_head: "#f1f5f9", _alarm_valve: "#ef4444",
-      // 2D 폴백(엔티티 종류별) — GL 을 못 쓸 때 같은 명도 단계를 재현
-      line: "#8b9bb0", circle: "#c3cddb", insert: "#7d8ca0",
-      faint: "#475569", text: "#cbd5e1",
-    };
-    // Stage 4 추적 전용 물 팔레트 — 알람밸브에서 물이 나가 헤드에서 방수되는 모습.
-    // GRAPH_STYLE.color_riser 는 계통도·통합 뷰와 공유라 여기서 건드리지 않는다.
+    // 물 팔레트 — 평면도 Stage 4 추적과 계통도·기계실·통합의 추출 배관망/노드가 공유.
+    // 밑그림(원본 DXF)은 CAT_COLORS 그대로 두고, "추출된 것"만 물색으로 칠해 구분한다.
     const WATER = {
       deep:    "#0369a1",   // 상류 관수로 — 짙은 물색
       shallow: "#7dd3fc",   // 말단 가지 — 옅은 물색
@@ -2320,9 +2309,9 @@
           ok = true; return true;
         } catch (e) { console.warn("[GL] init fail", e); ok = false; return false; }
       }
-      function build(ents, palette) {
+      function build(ents) {
         if (!ok) return false;
-        const pal = palette || CAT_COLORS;
+        const pal = CAT_COLORS;
         let posArr = new Float32Array(4096);
         let colArr = new Uint8Array(8192);
         let n = 0; // vertex count
@@ -5160,7 +5149,7 @@
       let glDrawn = false;
       if (!state._mrStreaming && !state._glDisabled && ents.length && GL.init()) {
         try {
-          if (state._glOwner !== "mr" || state._glLen !== ents.length) { GL.build(ents, PANEL_MONO); state._glOwner = "mr"; state._glLen = ents.length; }
+          if (state._glOwner !== "mr" || state._glLen !== ents.length) { GL.build(ents); state._glOwner = "mr"; state._glLen = ents.length; }
           GL.draw(canvas.width, canvas.height);
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.drawImage(GL.canvas, 0, 0);
@@ -5170,11 +5159,11 @@
           // 텍스트(T)/인서트(I)/솔리드(S) — 소량, 2D 오버레이 (라인류는 GL 이 그림)
           if (state.view.zoom >= 0.005) {
             ctx.globalAlpha = state.machine_room ? 0.55 : 1.0;
-            ctx.fillStyle = PANEL_MONO.text; ctx.strokeStyle = PANEL_MONO.text; ctx.lineWidth = 1.0;
+            ctx.fillStyle = "#e2e8f0"; ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1.0;
             ctx.font = "10px ui-monospace, monospace";
             for (const en of ents) if (en.t === "T") { const [sx, sy] = worldToScreen(en.p[0], en.p[1]); ctx.fillText(en.v, sx, sy); }
             ctx.globalAlpha = dim;
-            ctx.strokeStyle = PANEL_MONO.insert; ctx.fillStyle = PANEL_MONO.insert; ctx.lineWidth = 1.2;
+            ctx.strokeStyle = "#fb923c"; ctx.fillStyle = "#fb923c"; ctx.lineWidth = 1.2;
             for (const en of ents) if (en.t === "I" || en.t === "S") drawEntity(en);
             ctx.globalAlpha = 1.0;
           }
@@ -5199,19 +5188,19 @@
           return;
         }
         ctx.globalAlpha = dim;
-        ctx.strokeStyle = PANEL_MONO.line; ctx.fillStyle = PANEL_MONO.line; ctx.lineWidth = 1.4;
+        ctx.strokeStyle = "#22d3ee"; ctx.fillStyle = "#22d3ee"; ctx.lineWidth = 1.4;
         for (const en of ents) { if (en.t === "L" || en.t === "PL" || en.t === "A") drawEntity(en); }
         ctx.globalAlpha = dim;
-        ctx.strokeStyle = PANEL_MONO.circle; ctx.fillStyle = PANEL_MONO.circle; ctx.lineWidth = 1.6;
+        ctx.strokeStyle = "#fbbf24"; ctx.fillStyle = "#fbbf24"; ctx.lineWidth = 1.6;
         for (const en of ents) { if (en.t === "C") drawEntity(en); }
         ctx.globalAlpha = dim;
-        ctx.strokeStyle = PANEL_MONO.insert; ctx.fillStyle = PANEL_MONO.insert; ctx.lineWidth = 1.2;
+        ctx.strokeStyle = "#fb923c"; ctx.fillStyle = "#fb923c"; ctx.lineWidth = 1.2;
         for (const en of ents) { if (en.t === "I") drawEntity(en); }
         ctx.globalAlpha = dim * 0.4;
-        ctx.strokeStyle = PANEL_MONO.faint; ctx.fillStyle = PANEL_MONO.faint; ctx.lineWidth = 0.6;
+        ctx.strokeStyle = "#64748b"; ctx.fillStyle = "#64748b"; ctx.lineWidth = 0.6;
         for (const en of ents) { if (en.t === "H" || en.t === "S") drawEntity(en); }
         ctx.globalAlpha = state.machine_room ? 0.55 : 1.0;
-        ctx.fillStyle = PANEL_MONO.text; ctx.strokeStyle = PANEL_MONO.text; ctx.lineWidth = 1.0;
+        ctx.fillStyle = "#e2e8f0"; ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1.0;
         for (const en of ents) { if (en.t === "T") drawEntity(en); }
         ctx.globalAlpha = 1.0;
       }
@@ -5530,8 +5519,6 @@
     }
 
     // ─── 공통 그래프 시각화 스타일 — 평면도/계통도/통합 세 모드 통일 ───
-    // 색깔별 의미 (유지): Pump=보라, AV=빨강, 라이저 중간=amber, 헤드망=cyan,
-    //   펌프 부속=초록, 밸브=주황.
     // 모양/굵기 (통일): pipe 는 단일선 (평면도 Stage 4 원래 스타일, lineWidth 2.2).
     //   노드는 endpoint(=8px)와 중간(=4px) 두 가지 크기, 흰 외곽 + 색 채움,
     //   endpoint 만 라벨 (P/AV).
@@ -5542,17 +5529,16 @@
       mid_radius:         4,
       mid_stroke:         1.5,
       label_font:   "bold 12px ui-monospace, monospace",
-      label_color:  "#e2e8f0",
+      label_color:  "#e0f2fe",
       label_offset: 12,
-      // 단색(회색조) 팔레트 — 계통도·기계실·통합이 공유. 구간 구분은 색상(hue)이 아니라
-      // 같은 계열의 명도 단계로만 준다. 유채색은 주의를 끌어야 하는 곳(AV·유속 초과·
-      // 추정 연결)에만 남겨, 그 빨강이 화면에서 유일한 신호가 되게 한다.
-      color_pump:  "#f1f5f9",   // 수원·시작 노드 — 가장 밝게
-      color_av:    "#ef4444",   // AV / 경고 — 유일한 유채 강조
-      color_riser: "#9aa8bd",   // 라이저·계통도 경로 — 중간
-      color_head:  "#dbe3ec",   // 평면 가지배관·헤드 — 밝게
-      color_pump_extra: "#6b7a90",  // 기계실 — 어둡게
-      color_valve:      "#c3cddb",  // 밸브·연결점
+      // 물 팔레트 — 평면도 Stage 4 추적과 같은 계열. 상류(기계실)가 짙고 하류(헤드)로
+      // 갈수록 옅어져 흐름 방향이 색으로 읽힌다. AV(빨강)만 유일한 유채 경고색.
+      color_pump:  WATER.crest,     // 수원·시작 노드 — 물마루(가장 밝음)
+      color_av:    "#ef4444",       // AV / 경고 — 유일한 유채 강조
+      color_riser: WATER.shallow,   // 라이저·계통도 경로
+      color_head:  WATER.spray,     // 평면 가지배관·헤드
+      color_pump_extra: WATER.deep, // 기계실 — 최상류 짙은 물색
+      color_valve:      WATER.halo, // 밸브·연결점
       color_white:      "#ffffff",
     };
     // pipe 그룹 (단일 선) — toScreen 은 함수, pipes 는 [{a:{x,y}, b:{x,y}}, ...]
@@ -5606,7 +5592,7 @@
       const netEdges = r.network_edges || [];
       if (netEdges.length) {
         ctx.save();
-        ctx.strokeStyle = PANEL_MONO.line;
+        ctx.strokeStyle = WATER.deep;
         ctx.globalAlpha = 0.9;
         ctx.lineWidth = 1.6;
         ctx.beginPath();
@@ -5826,8 +5812,8 @@
       }
 
       // 노드 — 공통 헬퍼 (endpoint vs mid 통일)
-      //   수원(탱크 Input)·라이저 시작 = 밝게, 기계실 = 어둡게, 라이저 = 중간, 헤드 = 밝게.
-      //   AV 만 빨강 — 화면에서 유일한 유채색이라 눈이 바로 간다.
+      //   상류(기계실)가 짙고 하류(헤드)로 갈수록 옅어지는 물색 계열.
+      //   AV 만 빨강 — 물색 화면에서 유일한 경고색이라 눈이 바로 간다.
       //   ※ 이 경계 노드는 예전에 "펌프"로 표기했으나, 실제 펌프는 펌프방식일 때 기계실에
       //     삽입되는 FP 요소(아래 g.pumps 로 별도 렌더)다. 이 노드는 기계실 배관이 라이저로
       //     합류하는 입상 시작점이라 "라이저 시작"으로 표기해 펌프 중복 착시를 없앤다.
@@ -5873,7 +5859,7 @@
 
       // 좌하단 라벨
       ctx.fillStyle = "#e2e8f0"; ctx.font = "bold 12px ui-monospace";
-      ctx.fillText(`통합 배관망 — 기계실(어두움) → 라이저·계통도(중간) → 평면도 가지·헤드(밝음) · V(빨강)=알람밸브`, 12, h - 14);
+      ctx.fillText(`통합 배관망 — 기계실(짙은 물색) → 라이저·계통도(옅은 물색) → 평면도 가지·헤드(청록) · V(빨강)=알람밸브`, 12, h - 14);
 
       // 계산(유속) HUD — 백엔드 annotate_pipe_velocity 값. 초과 있으면 빨강 강조.
       if (_vHave) {
@@ -5946,13 +5932,13 @@
         autoRiserSpread: true, // 라이저 elev 가 모두 같으면 라벨 순서로 강제 Z 분배
       };
 
-      // 카테고리 색상 (GRAPH_STYLE 과 동일 hex — 회색조 명도 단계 + AV 빨강)
+      // 카테고리 색상 (GRAPH_STYLE 과 동일 hex — 물 팔레트 + AV 빨강)
       const COLOR = {
-        head:  0xdbe3ec,
-        riser: 0x9aa8bd,
-        pump:  0xf1f5f9,
+        head:  0x22d3ee,
+        riser: 0x7dd3fc,
+        pump:  0xf0f9ff,
         av:    0xef4444,  // 유일한 유채 강조
-        machineroom: 0x6b7a90,
+        machineroom: 0x0369a1,
         // 그리드 — 어두운 배경 위에서 잘 보이도록 약간 밝게
         gridMajor: 0x475569,  // slate-600
         gridMinor: 0x334155,  // slate-700
@@ -7320,7 +7306,7 @@
       let glDrawn = false;
       if (!state._sysStreaming && !state._glDisabled && ents.length && GL.init()) {
         try {
-          if (state._glOwner !== "sys" || state._glLen !== ents.length) { GL.build(ents, PANEL_MONO); state._glOwner = "sys"; state._glLen = ents.length; }
+          if (state._glOwner !== "sys" || state._glLen !== ents.length) { GL.build(ents); state._glOwner = "sys"; state._glLen = ents.length; }
           GL.draw(canvas.width, canvas.height);
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.drawImage(GL.canvas, 0, 0);
@@ -7329,10 +7315,10 @@
           // 텍스트(T)/인서트(I)/솔리드(S) — 소량, 2D 오버레이 (라인류는 GL 이 그림)
           if (state.view.zoom >= 0.005) {
             ctx.globalAlpha = state.system_riser ? 0.55 : 1.0;
-            ctx.fillStyle = PANEL_MONO.text; ctx.strokeStyle = PANEL_MONO.text; ctx.lineWidth = 1.0;
+            ctx.fillStyle = "#e2e8f0"; ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1.0;
             for (const en of ents) if (en.t === "T") drawEntity(en);
             ctx.globalAlpha = dim;
-            ctx.strokeStyle = PANEL_MONO.insert; ctx.fillStyle = PANEL_MONO.insert; ctx.lineWidth = 1.2;
+            ctx.strokeStyle = "#fb923c"; ctx.fillStyle = "#fb923c"; ctx.lineWidth = 1.2;
             for (const en of ents) if (en.t === "I" || en.t === "S") drawEntity(en);
             ctx.globalAlpha = 1.0;
           }
@@ -7357,34 +7343,33 @@
           ctx.fillText(msg, w / 2 - m.width / 2, h / 2);
           return;
         }
-        // 밑그림은 회색조 명도 단계로만 — 색은 추출 경로·마커에만 쓴다.
         // 1) LINE / LWPOLYLINE / ARC (배관 라인)
         ctx.globalAlpha = dim;
-        ctx.strokeStyle = PANEL_MONO.line; ctx.fillStyle = PANEL_MONO.line; ctx.lineWidth = 1.4;
+        ctx.strokeStyle = "#22d3ee"; ctx.fillStyle = "#22d3ee"; ctx.lineWidth = 1.4;
         for (const en of ents) {
           if (en.t === "L" || en.t === "PL" || en.t === "A") drawEntity(en);
         }
-        // 2) CIRCLE (헤드/심볼) — 한 단계 밝게
+        // 2) CIRCLE (헤드/심볼)
         ctx.globalAlpha = dim;
-        ctx.strokeStyle = PANEL_MONO.circle; ctx.fillStyle = PANEL_MONO.circle; ctx.lineWidth = 1.6;
+        ctx.strokeStyle = "#fbbf24"; ctx.fillStyle = "#fbbf24"; ctx.lineWidth = 1.6;
         for (const en of ents) {
           if (en.t === "C") drawEntity(en);
         }
         // 3) INSERT (블록 — 펌프/밸브/표지 등)
         ctx.globalAlpha = dim;
-        ctx.strokeStyle = PANEL_MONO.insert; ctx.fillStyle = PANEL_MONO.insert; ctx.lineWidth = 1.2;
+        ctx.strokeStyle = "#fb923c"; ctx.fillStyle = "#fb923c"; ctx.lineWidth = 1.2;
         for (const en of ents) {
           if (en.t === "I") drawEntity(en);
         }
         // 4) HATCH/SOLID (배경 영역). dim * 0.4 합성.
         ctx.globalAlpha = dim * 0.4;
-        ctx.strokeStyle = PANEL_MONO.faint; ctx.fillStyle = PANEL_MONO.faint; ctx.lineWidth = 0.6;
+        ctx.strokeStyle = "#64748b"; ctx.fillStyle = "#64748b"; ctx.lineWidth = 0.6;
         for (const en of ents) {
           if (en.t === "H" || en.t === "S") drawEntity(en);
         }
         // 5) TEXT (층 라벨 등). 텍스트는 path 있어도 적당히 보이게 dim 약간 완화.
         ctx.globalAlpha = state.system_riser ? 0.55 : 1.0;
-        ctx.fillStyle = PANEL_MONO.text; ctx.strokeStyle = PANEL_MONO.text; ctx.lineWidth = 1.0;
+        ctx.fillStyle = "#e2e8f0"; ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1.0;
         for (const en of ents) {
           if (en.t === "T") drawEntity(en);
         }

@@ -1127,7 +1127,7 @@
       <!-- ─── PR1: Boot overlay (S0) ─── -->
       <div id="boot-overlay" class="boot-overlay" role="status" aria-live="polite">
         <div class="boot-spinner"></div>
-        <div class="boot-text">Initializing CAD engine<span class="boot-dots"></span></div>
+        <div class="boot-text"><span id="boot-title">Initializing CAD engine</span><span class="boot-dots"></span></div>
         <div id="boot-sub" class="boot-sub">Preparing entity parser</div>
         <div id="boot-progress-wrap" class="boot-progress-wrap">
           <div class="boot-progress" id="boot-progress" role="progressbar"
@@ -1854,6 +1854,7 @@
 
     const bootOverlayEl  = document.getElementById("boot-overlay");
     const bootSubEl      = document.getElementById("boot-sub");
+    const bootTitleEl    = document.getElementById("boot-title");
     const bootProgWrapEl = document.getElementById("boot-progress-wrap");
     const bootProgEl     = document.getElementById("boot-progress");
     const bootBarEl      = document.getElementById("boot-bar");
@@ -1862,7 +1863,8 @@
       _pct: -1,
       _label: null,
       _busy: false,
-      show(msg) {
+      show(msg, title) {
+        bootTitleEl.textContent = title || "Initializing CAD engine";
         if (msg) bootSubEl.textContent = msg;
         this.clearProgress();
         this.mini(false);
@@ -1952,6 +1954,40 @@
         stop,
       };
     }
+
+    // 배관망 완성(Stage 3~5) 진행률. 30 헤드 선정만 서버가 substep 으로 실측 진행률을
+    // 보내오고 테이블 생성은 단계 경계밖에 알 수 없어, 구간 가중치로 0~100% 를 한 번만
+    // 훑게 한다.
+    const FinalizeProgress = (() => {
+      const W_POST = 0.05, W_SEL = 0.70, W_TABLE = 0.25;
+      const SEL_BASE = W_POST, TABLE_BASE = W_POST + W_SEL;
+      const clamp01 = (r) => Math.max(0, Math.min(1, r || 0));
+      let active = false, hideTimer = null;
+      const set = (r, label) => { if (active) BootOverlay.setProgress(r, label); };
+      return {
+        get active() { return active; },
+        begin() {
+          if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+          active = true;
+          BootOverlay.show("30 헤드 선정 → 5 테이블 생성", "배관망 완성 (Stage 3~5)");
+          BootOverlay.mini(true);   // 캔버스를 가리지 않는 우하단 카드
+          BootOverlay.setProgress(0, "요청 전송");
+        },
+        select(r) { set(SEL_BASE + clamp01(r) * W_SEL, "30 헤드 선정"); },
+        tables(r) { set(TABLE_BASE + clamp01(r) * W_TABLE, "테이블 생성"); },
+        done() {
+          if (!active) return;
+          set(1, "완료");
+          active = false;
+          hideTimer = setTimeout(() => { hideTimer = null; BootOverlay.hide(); }, 600);
+        },
+        abort() {
+          if (!active) return;
+          active = false;
+          BootOverlay.hide();
+        },
+      };
+    })();
 
     const layerPanelEl = document.getElementById("layer-panel");
     const lpListEl     = document.getElementById("lp-list");
@@ -3355,9 +3391,16 @@
       if (!state.jobId) return;
       finalizeBtn.disabled = true;
       finalizeBtn.textContent = "▶ Stage 3~5 진행 중...";
+      // 완성 버튼은 stage2_done 이 처리되는 순간 열리는데, 그 뒤에 큐잉된
+      // stage3_switch 는 아직 큐에 남아 있다. 그대로 두면 클릭 직후에 실행돼 화면을
+      // Stage 3 으로 되돌리고(setStageView(3) → TracePlayer.finish()), 뒤이어 오는
+      // 30 헤드 추적까지 끝으로 건너뛴다. 여기서 잔여분을 정리하고 뷰를 확정한다.
+      animQueue.clear();
+      if ((state.stage_entities[3] || []).length) setStageView(3);
       // Stage 4 reveal 상태 리셋 (이전 finalize 결과 잔류 방지)
       state.revealed_edges_4 = null;
       TracePlayer.stop();
+      FinalizeProgress.begin();
       const payload = {
         added_heads: state.user_added_heads,
         deleted_indices: Array.from(state.user_deleted_indices),
@@ -3377,16 +3420,16 @@
         body: JSON.stringify(payload),
       });
       const j = await r.json();
-      if (!j.ok) { alert("finalize 실패: " + j.message); finalizeBtn.disabled = false; finalizeBtn.textContent = "▶ 배관망 완성 (Stage 3~5 진행)"; return; }
+      if (!j.ok) { FinalizeProgress.abort(); alert("finalize 실패: " + j.message); finalizeBtn.disabled = false; finalizeBtn.textContent = "▶ 배관망 완성 (Stage 3~5 진행)"; return; }
       const es2 = new EventSource(`/api/remote30/prototype/finalize_stream/${state.jobId}`);
       es2.onmessage = (e) => {
         let evt; try { evt = JSON.parse(e.data); } catch { return; }
         handleEvent(evt);
         // 신축배관 검토 게이트 — finalize_stream 은 stage5_complete 로 종료(더 이상 done 아님).
         if (evt.type === "stage5_complete") { es2.close(); finalizeBtn.textContent = "✓ 테이블 생성 — FX 검토"; }
-        else if (evt.type === "error") { es2.close(); finalizeBtn.textContent = "✓ 완료"; }
+        else if (evt.type === "error") { es2.close(); FinalizeProgress.abort(); finalizeBtn.textContent = "✓ 완료"; }
       };
-      es2.onerror = () => { es2.close(); };
+      es2.onerror = () => { es2.close(); FinalizeProgress.abort(); };
     });
 
     // ====== "배관망 생성" — 잡 시작 + SSE 구독 ======
@@ -3396,6 +3439,7 @@
       runBtn.textContent = "▶ 진행 중...";
       // PR1/1.5/1.6 — Boot overlay + Layer panel + reveal 상태 초기화
       animQueue.clear();
+      FinalizeProgress.abort();
       LayerPanel.reset();
       LayerPanel.show();
       BootOverlay.show("Parsing DXF entities");
@@ -3452,10 +3496,14 @@
     function handleEvent(evt) {
       if (evt.type === "stage") {
         overlayInfoEl.textContent = `[Stage ${evt.stage}] ${evt.label || ""}`;
+        // 테이블 생성은 서버가 시작/종료만 알려와 두 지점만 찍을 수 있다.
+        if (evt.stage === 4) FinalizeProgress.select(evt.status === "done" ? 1 : 0);
+        else if (evt.stage === 5) FinalizeProgress.tables(evt.status === "done" ? 0.9 : 0.1);
       } else if (evt.type === "substep") {
         if (evt.stage === 4) {
           const p = Math.max(0, Math.min(100, Math.round((evt.progress || 0) * 100)));
           overlayInfoEl.textContent = `[Stage 4] ${evt.label || ""} (${p}%)`;
+          FinalizeProgress.select(evt.progress);
         }
       } else if (evt.type === "entities") {
         state.stage_entities[evt.stage] = evt.entities;
@@ -3537,6 +3585,7 @@
         const btn = stageButtons[evt.stage];
         if (btn) btn.disabled = false;
       } else if (evt.type === "stage5_complete") {
+        FinalizeProgress.done();
         FxReview.open(evt.fx_review, evt.tables);
       } else if (evt.type === "warning") {
         FxReview.addWarning(evt.message || "");

@@ -148,6 +148,13 @@
   </div>
 
   <script>
+    // 레이어명은 업로드된 DXF 에서 온다 — 속성 보간 탈출을 막으려면 따옴표까지 5자 전부.
+    function escHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
     // ====== 상태 ======
     const CATEGORY_COLORS = {
       PIPE:    "#3b82f6",
@@ -472,7 +479,7 @@
       const rows = state.layers.map((l) => {
         const ls = state.layerState[l.name];
         const opts = cats.map((c) => `<option value="${c}" ${ls.category === c ? "selected" : ""}>${c}</option>`).join("");
-        const safeName = l.name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const safeName = escHtml(l.name);
         return `<div class="layer-row">
           <input type="checkbox" data-layer="${encodeURIComponent(l.name)}" ${ls.visible ? "checked" : ""}>
           <div>

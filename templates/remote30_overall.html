@@ -1066,15 +1066,18 @@
         return;
       }
       if (evt.type === "stage") {
+        // 서버가 보내는 stage 번호가 이 화면의 행 목록보다 많을 수 있다 —
+        // 없는 행을 그냥 참조하면 여기서 예외가 나 이후 이벤트가 전부 끊긴다.
         const row = document.getElementById("stage-row-" + evt.stage);
         const elapsedEl = document.getElementById("stage-elapsed-" + evt.stage);
-        if (evt.status === "running") {
+        if (row && evt.status === "running") {
           row.classList.add("is-running"); row.classList.remove("is-done");
-        } else if (evt.status === "done") {
+        } else if (row && evt.status === "done") {
           row.classList.remove("is-running");
           row.classList.add("is-done");
-          elapsedEl.textContent = (evt.elapsed_ms / 1000).toFixed(1) + "s";
-          row.querySelector(".stage-desc").textContent = evt.label;
+          if (elapsedEl) elapsedEl.textContent = (evt.elapsed_ms / 1000).toFixed(1) + "s";
+          const descEl = row.querySelector(".stage-desc");
+          if (descEl) descEl.textContent = evt.label;
         }
         overlayInfoEl.textContent = `[Stage ${evt.stage}] ${evt.label || ""}`;
       } else if (evt.type === "entities") {

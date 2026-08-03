@@ -31,6 +31,11 @@ from cad_engine import locate_oda_exe
 from cad_match import _cad_layer_weight
 from pipenet_validator import PipenetGuideValidator
 
+# 설계자동화 자식 서버는 로그인 게이트가 없다. 0.0.0.0 으로 띄우면 fncadnet.com
+# 호스트의 7870 이 무인증으로 열린다 → 루프백 고정. 원격 접근이 필요해지면
+# 리다이렉트 대신 로그인 게이트 뒤 리버스 프록시로 붙여야 한다.
+DESIGN_AUTOMATION_BIND_HOST = "127.0.0.1"
+
 
 def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH, DESIGN_AUTOMATION_PORT, DESIGN_AUTOMATION_ROOT, DESIGN_AUTOMATION_SERVER_PATH, DESIGN_AUTOMATION_STDERR_PATH, DESIGN_AUTOMATION_STDOUT_PATH, EXPORT_SCHEMA, REMOTE30_OUTPUT_DIR, UPDATE_HISTORY_PATH, UPLOAD_DIR, _approx_arc_points, _bbox, _ensure_design_automation_static_layout, _entity_preview_row, _fig_to_data_url, _is_local_port_open, _load_cad_sdf_learning_profile, _mark_similar_cad_pipe_entities, _norm_point, _normalize_layer_name, _point_on_polyline, _save_upload, _sdf_av_node, _sdf_bore_reductions, _sdf_branch_nodes, _sdf_build_adjacency, _sdf_dijkstra, _sdf_farthest_heads, _sdf_fitting_stats, _sdf_graph_pipes, _sdf_length_checks, _sdf_parse_nodes, _sdf_parse_nozzles, _sdf_parse_pipes_equipment, _sdf_vertical_pipes, _to_float, _write_cad_sdf_learning_profile):
 
@@ -47,7 +52,7 @@ def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH,
                     sys.executable,
                     str(DESIGN_AUTOMATION_SERVER_PATH),
                     "--host",
-                    "0.0.0.0",
+                    DESIGN_AUTOMATION_BIND_HOST,
                     "--port",
                     str(DESIGN_AUTOMATION_PORT),
                 ],
@@ -836,11 +841,16 @@ def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH,
                     "message": exc.description or str(exc),
                     "status": exc.code,
                 }), exc.code
-            return jsonify({
+            from routes import traceback_for_client
+            app.logger.error("Unhandled (%s): %s\n%s", request.path, exc, _tb.format_exc())
+            body = {
                 "ok": False,
                 "message": f"서버 오류: {type(exc).__name__}: {str(exc)[:300]}",
-                "traceback": _tb.format_exc()[-2000:],
-            }), 500
+            }
+            tb = traceback_for_client()
+            if tb:
+                body["traceback"] = tb
+            return jsonify(body), 500
         # /api/ 가 아니면 Flask 기본 처리 (HTML 페이지 OK)
         if isinstance(exc, HTTPException):
             return exc
@@ -868,8 +878,7 @@ def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH,
                 f"원인: {html_lib.escape(str(exc))}",
                 500,
             )
-        host = request.host.split(":", 1)[0]
-        return redirect(f"http://{host}:{DESIGN_AUTOMATION_PORT}/", code=302)
+        return redirect(f"http://{DESIGN_AUTOMATION_BIND_HOST}:{DESIGN_AUTOMATION_PORT}/", code=302)
 
     @app.get("/print-report/<path:filename>")
     def print_report(filename: str):

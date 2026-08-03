@@ -1544,6 +1544,15 @@
   </div>
 
   <script>
+    // HTML 이스케이프 — 스크립트 전역에 하나만 둔다.
+    // 레이어명·층 라벨·파일명은 업로드된 DXF 에서 오므로 신뢰할 수 없다. 특히
+    // 따옴표를 빼면 `value="${s}"` 같은 속성 보간에서 탈출이 가능해 5자 모두 필수.
+    function escHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
     // 업로드 전송량 최소화: 브라우저에서 gzip 압축 후 전송 (서버가 자동 해제).
     // CompressionStream 미지원 브라우저는 원본 그대로 전송.
     async function gzipBlob(file, onProgress) {
@@ -1797,7 +1806,7 @@
         if (this.rows[name]) return;
         const row = document.createElement("div");
         row.className = "lp-row";
-        const safeName = String(name).replace(/[<>&"']/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c]));
+        const safeName = escHtml(name);
         row.innerHTML = `<span class="lp-name" title="${safeName}">${safeName}</span><span class="lp-tag">…</span>`;
         lpListEl.appendChild(row);
         this.rows[name] = row;
@@ -2840,7 +2849,7 @@
         state._streaming = false;  // 스트림 완료 → 이후 render() 는 GL 경로 사용
         if (result) {
           state.bbox = result.bbox || state.bbox;
-          state.layer_cat = Object.fromEntries((result.layers || []).map(l => [l.name, l.auto_category]));
+          Object.assign(state.layer_cat, Object.fromEntries((result.layers || []).map(l => [l.name, l.auto_category])));
           render();
           fileStatusEl.textContent =
             `${result.dxf_filename} — entity ${result.counts.total_entities.toLocaleString()}, layer ${result.counts.layers}. ` +
@@ -2852,6 +2861,9 @@
       } catch (err) {
         fileStatusEl.textContent = `프리뷰 실패: ${err.message || err}. 그래도 [배관망 생성] 으로 실행 가능.`;
       } finally {
+        // 실패 경로에서도 반드시 내려야 한다 — 켜진 채로 남으면 render() 의 GL
+        // 고속 경로가 이 세션 내내 막혀 대형 도면이 Canvas2D 로 그려진다.
+        state._streaming = false;
         runBtn.disabled = false;
         BootOverlay.hide();
       }
@@ -2880,7 +2892,9 @@
       render();
     });
     canvas.addEventListener("click", (e) => {
-      if (!state.pickAlarmMode) return;
+      // 캔버스는 4개 모드가 공유한다. setMode 는 pickAlarmMode 를 끄지 않으므로
+      // 모드 확인 없이는 기계실 좌표에 알람밸브가 찍힌다 (zone 드래그와 동일 이유).
+      if (state.current_mode !== "plane" || !state.pickAlarmMode) return;
       if (state._didDrag) return;  // 패닝 드래그였으면 알람밸브 배치 안 함
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left;
@@ -2933,6 +2947,8 @@
       state._glOwner = null;
       state.view.fitZoom = null;
       state.jobId = null;
+      state._streaming = false;
+      state.branch_zones = [];
       runBtn.disabled = true;
       if (_wbClearBtn) _wbClearBtn.disabled = true;
       fileStatusEl.textContent = "파일을 선택하세요. (테스트용 추천: 대명동201동 단위세대_layer정리.dxf)";
@@ -3018,6 +3034,7 @@
 
     // 캔버스 click — add / delete 모드 처리 (zone 은 mousedown/up)
     canvas.addEventListener("click", (e) => {
+      if (state.current_mode !== "plane") return;
       if (state.edit_mode === "none" || state.edit_mode === "zone") return;
       if (state._didDrag) return;  // 패닝 드래그였으면 헤드 추가/삭제 안 함
       const rect = canvas.getBoundingClientRect();
@@ -3258,7 +3275,7 @@
       } else if (evt.type === "entities") {
         state.stage_entities[evt.stage] = evt.entities;
         if (evt.layers) {
-          state.layer_cat = Object.fromEntries(evt.layers.map(l => [l.name, l.auto_category]));
+          Object.assign(state.layer_cat, Object.fromEntries(evt.layers.map(l => [l.name, l.auto_category])));
           // PR1 — stage 0 도착 시 boot overlay 닫고 layer panel 모킹 시작
           if (evt.stage === 0) {
             BootOverlay.hide();
@@ -3397,9 +3414,7 @@
       let selecting = false, dragAnchor = null, dragged = false;
       let ctxMenu = null;          // 우클릭 규격변경 컨텍스트 메뉴 DOM (init 시 1회 생성)
 
-      const esc = (s) => String(s == null ? "" : s)
-        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      const esc = escHtml;
       const isFx = (r) => (r.spec_ref in profiles);
       const isAv = (r) => (r.spec_ref === "AV_STD" || (r.label && String(r.label).indexOf("A/V") >= 0));
 
@@ -3976,7 +3991,7 @@
           state.system_bbox = _rob || result.bbox || state.system_bbox;
           state.system_bbox_full = result.bbox || state.system_bbox;
           state.system_layers = result.layers || [];
-          state.layer_cat = Object.fromEntries((result.layers || []).map(l => [l.name, l.auto_category]));
+          Object.assign(state.layer_cat, Object.fromEntries((result.layers || []).map(l => [l.name, l.auto_category])));
           const total = (result.counts && result.counts.total_entities) || ents.length;
           const b = state.system_bbox || {};
           const bw = (b.x_max - b.x_min) || 0, bh = (b.y_max - b.y_min) || 0;
@@ -4431,7 +4446,7 @@
         const gs = r.graph_stats;
         graphBody += `<br>Graph: ${gs.node_count}n / ${gs.edge_count}e · `;
         if (gs.layer_filter_used && gs.layer_filter_used.length) {
-          graphBody += `layers [${gs.layer_filter_used.join(", ")}]`;
+          graphBody += `layers [${escHtml(gs.layer_filter_used.join(", "))}]`;
         } else if (gs.layer_filter_fallback_no_match) {
           graphBody += `<span style="color:#b91c1c;">layer 매칭 실패 — 전체 LINE 사용</span>`;
         }
@@ -4448,7 +4463,7 @@
           const fhM = (fm.floor_height_mm / 1000).toFixed(2);
           floorBody = `라벨 <strong>${fm.label_count}</strong>개 · 평균 층고 <strong>${fhM} m</strong>`;
           floorBody += `<br>V 위치 → ` + (avMatched
-            ? `<strong style="color:#065f46;">${fm.av_floor_name || ("지상" + fm.av_floor_idx + "층")}</strong> (idx ${fm.av_floor_idx})`
+            ? `<strong style="color:#065f46;">${escHtml(fm.av_floor_name || ("지상" + fm.av_floor_idx + "층"))}</strong> (idx ${fm.av_floor_idx})`
             : `<span style="color:#b91c1c;">미식별</span>`);
           floorBody += `<br>노드 매칭률 <strong>${fm.nodes_with_floor}/${r.nodes.length}</strong>` +
                        ` (${(fm.nodes_with_floor / Math.max(1, r.nodes.length) * 100).toFixed(0)}%)`;
@@ -4469,7 +4484,7 @@
       if (r.nodes && r.nodes.length >= 2) {
         const first = r.nodes[0], last = r.nodes[r.nodes.length - 1];
         const fmtNode = (n) => {
-          const fl = n.floor ? ` · ${n.floor.trim()}` : "";
+          const fl = n.floor ? ` · ${escHtml(n.floor.trim())}` : "";
           const lab = (n.io_node === "Input") ? "P" : (n.label === r.av_node_label ? "V" : n.label);
           return `<strong>${lab}</strong> · elev <strong>${(n.elevation >= 0 ? "+" : "") + n.elevation.toFixed(2)}m</strong>${fl}`;
         };
@@ -4665,8 +4680,9 @@
           state.machineroom_bbox = _robustBboxFromEnts(ents) || result.bbox || state.machineroom_bbox;
           state.machineroom_bbox_full = result.bbox || state.machineroom_bbox;
           state.machineroom_layers = result.layers || [];
-          // GL 색상은 layer_cat(레이어→카테고리) 기준 — 평면도와 공유 dict 에 채움.
-          state.layer_cat = Object.fromEntries((result.layers || []).map(l => [l.name, l.auto_category]));
+          // GL 색상은 layer_cat 기준 — 세 패널이 공유하는 dict 라
+          // 교체하면 직전 패널의 색이 전부 OTHER 로 죽는다. 반드시 병합.
+          Object.assign(state.layer_cat, Object.fromEntries((result.layers || []).map(l => [l.name, l.auto_category])));
           const total = (result.counts && result.counts.total_entities) || ents.length;
           const b = state.machineroom_bbox || {};
           const bw = (b.x_max - b.x_min) || 0, bh = (b.y_max - b.y_min) || 0;
@@ -4807,7 +4823,7 @@
         const dia = good ? "#059669" : (r.conn >= 0.2 ? "#b45309" : "#9ca3af");
         const checked = selected.has(r.name) ? "checked" : "";
         // 모지바케 레이어명도 그대로 표시 (사용자가 위치/라인수로 식별)
-        const safeName = r.name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const safeName = escHtml(r.name);
         return `<label style="display:flex; align-items:center; gap:6px; cursor:pointer; padding:1px 0;">` +
           `<input type="checkbox" class="mr-layer-cb" value="${safeName}" ${checked}>` +
           `<span style="flex:1; font-family:ui-monospace,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${safeName}">${safeName}</span>` +
@@ -5101,7 +5117,7 @@
       if (gs.node_count) {
         graphBody += `<br>Graph: ${gs.node_count}n / ${gs.edge_count}e`;
         if (gs.layer_filter_used && gs.layer_filter_used.length) {
-          graphBody += ` · layers [${gs.layer_filter_used.join(", ")}]`;
+          graphBody += ` · layers [${escHtml(gs.layer_filter_used.join(", "))}]`;
         }
       }
       html += sec("⚙ 그래프 / Snap", graphBody, "#0a1228");
@@ -6435,8 +6451,7 @@
       //  물리는 서버가 준 실측값(pipe.length/dia/c, node.z 고도, pressure_pa)으로
       //  계산하고, 파티클은 scene 좌표(nodeMap/headTip)로 그린다. 시각 Z spread 와 무관.
       // ═══════════════════════════════════════════════════════════════
-      const _esc = (s) => String(s).replace(/[&<>"]/g,
-        c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const _esc = escHtml;
 
       // Hazen-Williams 마찰손실 (sprinkler_remote30_extractor.py:623 공식) → bar.
       //   dp[MPa] = 6.174e4·Q^1.85·L / (C^1.85·d^4.87),  1 MPa = 10 bar.
@@ -7338,8 +7353,8 @@
         });
         const data = await res.json();
         if (!data.ok) {
-          _cmbResultBox.innerHTML = `<span style="color:#b91c1c;">❌ ${data.message || "실패"}</span>` +
-            (data.traceback ? `<pre style="font-size:0.7rem; color:#7f1d1d; max-height:120px; overflow:auto;">${data.traceback}</pre>` : "");
+          _cmbResultBox.innerHTML = `<span style="color:#b91c1c;">❌ ${escHtml(data.message || "실패")}</span>` +
+            (data.traceback ? `<pre style="font-size:0.7rem; color:#7f1d1d; max-height:120px; overflow:auto;">${escHtml(data.traceback)}</pre>` : "");
           return;
         }
         // 결과 박스 — ZIP 우선 (.sdf + .slf 동봉)
@@ -7977,11 +7992,7 @@
       const INS = { target: null, edit: false, cx: 0, cy: 0 };
       const insEl = {};
 
-      function _esc(s) {
-        return String(s == null ? "" : s)
-          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;");
-      }
+      const _esc = escHtml;
       function _roRow(label, val) {
         return '<div class="ci-row"><label>' + _esc(label) + '</label>' +
                '<span class="ci-val">' + _esc(val) + '</span></div>';

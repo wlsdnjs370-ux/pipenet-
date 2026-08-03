@@ -297,9 +297,16 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                              "fx_review": job["fx_review"]})
 
             except Exception as exc:  # noqa: BLE001
+                import logging
                 import traceback
-                err = {"type": "error", "message": str(exc)[:500],
-                       "traceback": traceback.format_exc()[-1500:]}
+
+                from routes import traceback_for_client
+                # 제너레이터는 요청 컨텍스트 밖에서 돌 수 있어 current_app 대신 모듈 로거.
+                logging.getLogger(__name__).error("SSE error: %s\n%s", exc, traceback.format_exc())
+                err = {"type": "error", "message": str(exc)[:500]}
+                tb = traceback_for_client()
+                if tb:
+                    err["traceback"] = tb
                 yield _emit(err)
 
         response = Response(_gen(), mimetype="text/event-stream")
@@ -446,9 +453,16 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                              "job_id": job_id, "sdf": out_sdf.name})
 
             except Exception as exc:  # noqa: BLE001
+                import logging
                 import traceback
-                err = {"type": "error", "message": str(exc)[:500],
-                       "traceback": traceback.format_exc()[-1500:]}
+
+                from routes import traceback_for_client
+                # 제너레이터는 요청 컨텍스트 밖에서 돌 수 있어 current_app 대신 모듈 로거.
+                logging.getLogger(__name__).error("SSE error: %s\n%s", exc, traceback.format_exc())
+                err = {"type": "error", "message": str(exc)[:500]}
+                tb = traceback_for_client()
+                if tb:
+                    err["traceback"] = tb
                 yield _emit(err)
 
         response = Response(_gen(), mimetype="text/event-stream")

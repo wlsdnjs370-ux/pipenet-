@@ -509,6 +509,13 @@
   </div>
 
   <script>
+    // DXF/SDF 유래 문자열(레이어명·사유)은 신뢰 불가 — innerHTML 삽입 전 반드시 경유.
+    function escHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
     const cadColors = { 1:'#FF0000', 2:'#FFFF00', 3:'#00FF00', 4:'#00FFFF', 5:'#0000FF', 6:'#FF00FF', 7:'#FFFFFF', 8:'#808080', 9:'#C0C0C0' };
     const sdfLayerColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
     const DXF_ENDPOINT_TOLERANCE = 120;
@@ -1846,10 +1853,10 @@
         const cls = row.status === 'PASS' ? 'match-pass' : row.status === 'FAIL' ? 'match-fail' : 'match-review';
         tr.innerHTML = `
           <td class="${cls}">${row.status}</td>
-          <td>${row.dxf ? `${row.dxf.label}<br><span class="text-gray-500">${row.dxf.layer || '-'}</span>` : '-'}</td>
-          <td>${row.sdf ? `Pipe ${row.sdf.label}<br><span class="text-gray-500">${row.sdf.layer || '-'}</span>` : '-'}</td>
-          <td>${row.compare}</td>
-          <td>${row.reason}</td>
+          <td>${row.dxf ? `${escHtml(row.dxf.label)}<br><span class="text-gray-500">${escHtml(row.dxf.layer || '-')}</span>` : '-'}</td>
+          <td>${row.sdf ? `Pipe ${escHtml(row.sdf.label)}<br><span class="text-gray-500">${escHtml(row.sdf.layer || '-')}</span>` : '-'}</td>
+          <td>${escHtml(row.compare)}</td>
+          <td>${escHtml(row.reason)}</td>
         `;
         body.appendChild(tr);
       });

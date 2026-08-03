@@ -14,7 +14,8 @@ waitress 는 Windows-friendly production WSGI 서버 (멀티 스레드, 안정�
     PORT                기본 5051
     WAITRESS_THREADS    기본 16       (동시 요청 처리 워커)
     FLASK_SECRET_KEY    필수 (대조 서버.py 에서 세션용)
-    LOGIN_PASSWORD      기본 "5361"   (로그인 게이트 비번)
+    LOGIN_PASSWORD      필수 (로그인 게이트 비번, 4자리 숫자)
+                        미설정 시 기동 때마다 난수 발급 + 콘솔 출력
 """
 
 from __future__ import annotations

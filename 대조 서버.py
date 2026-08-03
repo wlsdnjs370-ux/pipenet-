@@ -126,6 +126,29 @@ app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
 
+# ────────────────────────────────────────────────────────────────────────────
+# 보안 하드닝 — fncadnet.com 외부 노출 시 기본 방어선
+# ────────────────────────────────────────────────────────────────────────────
+# (1) 업로드 크기 제한 — 수GB 파일 업로드 DoS 차단.
+#     일반 DXF/SDF/KFP 는 수십 MB 이내. 200 MB 면 큰 통합 도면도 충분.
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
+
+# (2) 세션 쿠키 하드닝
+#     SECURE: HTTPS 만 전송 (cloudflared 가 TLS terminate → origin 까지는 HTTP
+#       지만, X-Forwarded-Proto: https 를 ProxyFix 로 신뢰 시 Flask 가 https
+#       세션 발급. 아래 ProxyFix 와 함께 동작.)
+#     HTTPONLY: JS 접근 차단 — XSS 발생 시 쿠키 탈취 막음.
+#     SAMESITE=Lax: 외부 사이트의 cross-site 요청에 쿠키 전송 안 함 (CSRF 완화).
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+# (3) ProxyFix — cloudflared 가 보내는 X-Forwarded-Proto/For 헤더를 신뢰해서
+#     request.is_secure 가 https 로 인식되도록. 없으면 SESSION_COOKIE_SECURE=True
+#     일 때 쿠키 자체가 안 발급되어 로그인이 작동 안 함.
+from werkzeug.middleware.proxy_fix import ProxyFix as _ProxyFix
+app.wsgi_app = _ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # 잡 스토어 / 임시파일 수명 관리 — 24/7 구동 프로세스의 무한 누적 방지
@@ -268,12 +291,18 @@ app.json = _SafeJSONProvider(app)
 # ────────────────────────────────────────────────────────────────────────────
 # 비밀번호 로그인 게이트 — 외부 노출(터널 등) 시 접근 보호
 # ────────────────────────────────────────────────────────────────────────────
-# 한 줄 비밀번호 폼 → 세션 쿠키. SECRET_KEY 는 env var 또는 dev 용 hardcoded fallback.
-# 비밀번호는 LOGIN_PASSWORD env var 로 override 가능 (기본 "5361").
+# 한 줄 비밀번호 폼 → 세션 쿠키. SECRET_KEY·비밀번호 모두 env var(.env) 로 주입.
+# 미설정 시 4자리 난수를 발급하고 서버 콘솔에만 찍는다 — 소스에 상수를 두면
+# 저장소·배포 zip 을 읽은 사람이 곧바로 게이트를 통과한다.
+# 로그인 폼이 pattern="[0-9]*" 라 난수도 숫자여야 브라우저 제출이 된다.
 import secrets as _secrets
 import os as _os_for_auth
 app.secret_key = _os_for_auth.environ.get("FLASK_SECRET_KEY") or _secrets.token_hex(32)
-LOGIN_PASSWORD = _os_for_auth.environ.get("LOGIN_PASSWORD", "5361")
+LOGIN_PASSWORD = _os_for_auth.environ.get("LOGIN_PASSWORD")
+if not LOGIN_PASSWORD:
+    LOGIN_PASSWORD = f"{_secrets.randbelow(10000):04d}"
+    print(f"[auth] LOGIN_PASSWORD 미설정 — 이번 기동 한정 임시 비밀번호: {LOGIN_PASSWORD}",
+          flush=True)
 
 # 게이트에서 제외할 path prefix (login/logout/정적 파일/health 등)
 _AUTH_EXEMPT_PREFIXES = ("/login", "/logout", "/static/", "/favicon.ico")
@@ -496,9 +525,13 @@ def _err500(exc, *, message=None, **extra):
     message 미지정 시 str(exc)[:300]. extra 로 라우트별 추가 키(algorithm 등) 병합.
     """
     import traceback
+    tb_text = traceback.format_exc()
+    app.logger.error("Route error (%s): %s\n%s", request.path, exc, tb_text)
     body = {"ok": False,
-            "message": message if message is not None else str(exc)[:300],
-            "traceback": traceback.format_exc()[-1500:]}
+            "message": message if message is not None else str(exc)[:300]}
+    # 외부 노출 환경 — traceback 본문은 서버 로그로만. EXPOSE_TRACEBACK=1 시에만 클라이언트 노출.
+    if _os_for_auth.environ.get("EXPOSE_TRACEBACK") == "1":
+        body["traceback"] = tb_text[-1500:]
     body.update(extra)
     return jsonify(body), 500
 

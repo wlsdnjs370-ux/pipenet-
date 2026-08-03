@@ -105,9 +105,12 @@ def register(app) -> None:
                 return Response(data, mimetype="application/json",
                                 headers={"Content-Disposition": 'attachment; filename="converted.kfp"'})
         except Exception as exc:
-            import traceback
-            return jsonify({"ok": False, "message": f"변환 실패: {exc}",
-                            "traceback": traceback.format_exc()[-2000:]}), 400
+            from routes import traceback_for_client
+            body = {"ok": False, "message": f"변환 실패: {exc}"}
+            tb = traceback_for_client()
+            if tb:
+                body["traceback"] = tb
+            return jsonify(body), 400
         finally:
             try: os.unlink(tmp_path)
             except OSError: pass

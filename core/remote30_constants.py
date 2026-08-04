@@ -129,7 +129,7 @@ DEFAULT_ZONE_MATERIAL = (STEEL_PIPE_TYPE, STEEL_C_FACTOR)
 # ── 신축배관(FX) 규격 프로파일 — "표 1" (원본 규격표) ──────────────
 # 값은 여기에만 존재한다. build_input_tables 등 사용처는 반드시 이 dict를 참조.
 # 프로파일 추가 시 여기에만 항목을 늘린다.
-# 프리셋은 "평균"(구 A사 유형 값) 1종만 등재 — 그 외 규격은 편집기의 "직접 입력"으로 처리.
+# 등재되지 않은 규격은 편집기의 "직접 입력"으로 처리.
 # phys_len_m 는 참고용 — 파이프 기하(도면 거리)에 이미 포함되므로 eq_len/길이에 가산 금지.
 FX_SPEC_PROFILES: dict[str, dict] = {
     "평균": {                  # 구 A사 유형 값 — 규격 평균 프리셋
@@ -139,7 +139,16 @@ FX_SPEC_PROFILES: dict[str, dict] = {
         "c_factor": 120,
         "phys_len_m": 0.7,    # 참고용. 가산 금지.
     },
+    "한백표준": {              # 한백에프앤씨 사내 표준(F사 유형) — KSD 25A
+        "eq_len_m": 22.4,
+        "nominal_dn": 25,
+        "inner_dia_mm": 28.0,
+        "c_factor": 120,
+        "phys_len_m": 0.7,
+    },
 }
+# 기본값은 "평균" 유지 — 사용자 지시로 지시서 T3 의 기본값 교체안은 채택하지 않는다.
+# 한백표준은 편집기에서 골라 쓰는 라이브러리 항목이다.
 FX_DEFAULT_PROFILE = "평균"
 AV_EQ_LEN_M = 12.9             # 알람밸브 등가길이 (기존값 상수화만, 값 변경 없음)
 

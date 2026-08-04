@@ -1,0 +1,2214 @@
+<style>
+
+.pipeline-doc{
+  --bg: #f4f1e8;
+  --bg-card: #fdfbf4;
+  --text: #1a1f2e;
+  --text-dim: #4a5060;
+  --text-faint: #8a8a82;
+  --border: #d2cdb8;
+  --border-soft: #e6e1cf;
+
+  --amber: #a83a06;
+  --amber-soft: #f3e3c8;
+  --amber-line: #c2410c;
+  --amber-text: #7a2a04;
+
+  --teal: #086862;
+  --teal-soft: #d6e8e6;
+  --teal-line: #0a8077;
+  --teal-text: #064e49;
+
+  --purple: #5232a0;
+  --purple-soft: #e3dcef;
+  --purple-line: #6d4cb6;
+  --purple-text: #3a2375;
+
+  --hb: #883a1f;
+  --hb-soft: #f5e0d4;
+  --hb-line: #a8472a;
+  --hb-text: #5e2615;
+
+  --accent: #1a1f2e;
+
+  --sans: 'Pretendard Variable', Pretendard, -apple-system, system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+.pipeline-doc *{ box-sizing: border-box; margin: 0; padding: 0; }
+.pipeline-doc{ scroll-behavior: smooth; }
+.pipeline-doc{
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-feature-settings: 'ss01', 'ss02';
+  line-height: 1.55;
+  font-size: 15px;
+}
+.pipeline-doc .wrap{ max-width: 1280px; margin: 0 auto; padding: 60px 32px 120px; }
+
+/* 헤더 */
+.pipeline-doc .doc-header{
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 28px;
+  margin-bottom: 48px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 24px;
+  align-items: end;
+}
+.pipeline-doc .doc-header h1{
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-bottom: 10px;
+}
+.pipeline-doc .doc-header .sub{
+  color: var(--text-dim);
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+.pipeline-doc .doc-meta{
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.7;
+}
+.pipeline-doc .doc-meta strong{ color: var(--hb); font-weight: 600; }
+
+/* 인트로 */
+.pipeline-doc .intro{
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 28px 32px;
+  margin-bottom: 32px;
+}
+.pipeline-doc .intro h2{
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 16px;
+}
+.pipeline-doc .intro p{
+  font-size: 15px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+.pipeline-doc .intro p:last-child{ margin-bottom: 0; }
+.pipeline-doc .intro strong{ color: var(--text); font-weight: 600; }
+.pipeline-doc .intro .hb-mark{
+  background: var(--hb-soft);
+  color: var(--hb-text);
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+.pipeline-doc .legend{
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--border-soft);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.pipeline-doc .legend-item{ display: flex; align-items: center; gap: 8px; }
+.pipeline-doc .legend-dot{ width: 10px; height: 10px; border-radius: 2px; }
+.pipeline-doc .legend-dot.h{ background: var(--amber-line); }
+.pipeline-doc .legend-dot.r{ background: var(--teal-line); }
+.pipeline-doc .legend-dot.ai{ background: var(--purple-line); }
+.pipeline-doc .legend-dot.hb{ background: var(--hb-line); }
+
+/* 한백 룰 요약 박스 */
+.pipeline-doc .hb-summary{
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-left: 4px solid var(--hb-line);
+  border-radius: 8px;
+  padding: 28px 32px;
+  margin-bottom: 56px;
+}
+.pipeline-doc .hb-summary h2{
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--hb-text);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pipeline-doc .hb-summary h2::before{
+  content: 'HB';
+  background: var(--hb-line);
+  color: white;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+.pipeline-doc .hb-grid{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.pipeline-doc .hb-item{
+  font-size: 13px;
+}
+.pipeline-doc .hb-item h3{
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--border-soft);
+}
+.pipeline-doc .hb-item ul{ list-style: none; padding: 0; }
+.pipeline-doc .hb-item li{
+  padding: 4px 0 4px 14px;
+  position: relative;
+  color: var(--text-dim);
+  line-height: 1.55;
+  font-size: 12.5px;
+}
+.pipeline-doc .hb-item li::before{
+  content: '·';
+  position: absolute;
+  left: 4px; top: 4px;
+  color: var(--hb-line);
+  font-weight: 700;
+}
+.pipeline-doc .hb-item li code{
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--hb-text);
+  background: var(--hb-soft);
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+/* 단계 카드 */
+.pipeline-doc .stage{
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  margin-bottom: 36px;
+  overflow: hidden;
+  position: relative;
+}
+.pipeline-doc .stage::before{
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+}
+.pipeline-doc .stage.t-amber::before{ background: var(--amber-line); }
+.pipeline-doc .stage.t-teal::before{ background: var(--teal-line); }
+.pipeline-doc .stage.t-purple::before{ background: var(--purple-line); }
+.pipeline-doc .stage.t-hb::before{ background: var(--hb-line); }
+
+.pipeline-doc .stage-header{
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 24px;
+  align-items: center;
+  padding: 28px 36px 22px 40px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.pipeline-doc .stage-num{
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-faint);
+  letter-spacing: -0.02em;
+}
+.pipeline-doc .stage-title h2{
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+.pipeline-doc .stage-title .lede{
+  font-size: 14px;
+  color: var(--text-dim);
+}
+.pipeline-doc .stage-meta{ display: flex; gap: 8px; flex-wrap: wrap; }
+.pipeline-doc .badge{
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+}
+.pipeline-doc .badge-h{ background: var(--amber-soft); color: var(--amber-text); }
+.pipeline-doc .badge-r{ background: var(--teal-soft);  color: var(--teal-text); }
+.pipeline-doc .badge-ai{ background: var(--purple-soft); color: var(--purple-text); }
+.pipeline-doc .badge-hb{ background: var(--hb-soft); color: var(--hb-text); font-weight: 700; }
+
+.pipeline-doc .stage-io{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--border-soft);
+}
+.pipeline-doc .io{
+  padding: 16px 36px 16px 40px;
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  font-size: 13px;
+}
+.pipeline-doc .io + .io{ border-left: 1px solid var(--border-soft); }
+.pipeline-doc .io-label{
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  width: 36px;
+}
+.pipeline-doc .io-content{ color: var(--text); }
+
+.pipeline-doc .stage-diagram{
+  padding: 28px 36px 12px 40px;
+}
+.pipeline-doc .stage-diagram svg{
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* HB 인용 박스 (스테이지 안) */
+.pipeline-doc .hb-quote{
+  margin: 8px 36px 20px 40px;
+  padding: 14px 18px;
+  background: var(--hb-soft);
+  border-left: 3px solid var(--hb-line);
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+  color: var(--hb-text);
+}
+.pipeline-doc .hb-quote-tag{
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  display: block;
+}
+.pipeline-doc .hb-quote ul{ list-style: none; padding: 0; margin: 0; }
+.pipeline-doc .hb-quote li{ padding: 2px 0; line-height: 1.55; }
+.pipeline-doc .hb-quote li code{
+  font-family: var(--mono);
+  font-size: 12px;
+  background: rgba(168, 71, 42, 0.12);
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+/* 노트 */
+.pipeline-doc .stage-notes{
+  padding: 8px 36px 32px 40px;
+}
+.pipeline-doc .stage-notes h3{
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 14px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border-soft);
+}
+.pipeline-doc .stage-notes ul{ list-style: none; padding: 0; }
+.pipeline-doc .stage-notes li{
+  padding: 8px 0 8px 18px;
+  position: relative;
+  font-size: 14px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+.pipeline-doc .stage-notes li::before{
+  content: '—';
+  position: absolute;
+  left: 0; top: 8px;
+  color: var(--text-faint);
+}
+.pipeline-doc .stage-notes li strong{ color: var(--text); font-weight: 600; }
+.pipeline-doc .stage-notes li.hb-note::before{ content: '★'; color: var(--hb-line); }
+.pipeline-doc .stage-notes li.hb-note strong{ color: var(--hb-text); }
+.pipeline-doc .stage-notes code{
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--bg);
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--text);
+}
+
+/* SVG 스타일 */
+.pipeline-doc svg .box-r{ fill: var(--teal-soft); stroke: var(--teal-line); stroke-width: 0.8; }
+.pipeline-doc svg .box-ai{ fill: var(--purple-soft); stroke: var(--purple-line); stroke-width: 0.8; }
+.pipeline-doc svg .box-h{ fill: var(--amber-soft); stroke: var(--amber-line); stroke-width: 0.8; }
+.pipeline-doc svg .box-hb{ fill: var(--hb-soft); stroke: var(--hb-line); stroke-width: 0.8; }
+.pipeline-doc svg .box-io{ fill: var(--bg); stroke: var(--border); stroke-width: 0.8; stroke-dasharray: 3 2; }
+.pipeline-doc svg .box-group{ fill: none; stroke: var(--border); stroke-width: 0.6; stroke-dasharray: 4 3; }
+
+.pipeline-doc svg .t-title{ font-family: var(--sans); font-size: 12.5px; font-weight: 600; fill: var(--text); }
+.pipeline-doc svg .t-sub{ font-family: var(--sans); font-size: 11px; fill: var(--text-dim); }
+.pipeline-doc svg .t-mini{ font-family: var(--mono); font-size: 9.8px; fill: var(--text-faint); letter-spacing: 0.04em; }
+.pipeline-doc svg .t-hb{ font-family: var(--mono); font-size: 9.8px; fill: var(--hb-text); font-weight: 600; letter-spacing: 0.04em; }
+.pipeline-doc svg .t-h-text{ fill: var(--amber-text); }
+.pipeline-doc svg .t-r-text{ fill: var(--teal-text); }
+.pipeline-doc svg .t-ai-text{ fill: var(--purple-text); }
+.pipeline-doc svg .t-hb-text{ fill: var(--hb-text); }
+
+.pipeline-doc svg .arr{ stroke: var(--text-dim); stroke-width: 1.2; fill: none; }
+.pipeline-doc svg .arr-loop{ stroke: var(--purple-line); stroke-width: 1; fill: none; stroke-dasharray: 4 3; }
+
+/* Phase 푸터 */
+.pipeline-doc .phases{
+  margin-top: 64px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 32px 36px;
+}
+.pipeline-doc .phases h2{
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 22px;
+}
+.pipeline-doc .phase-grid{
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+}
+.pipeline-doc .phase{
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 16px 18px;
+  background: var(--bg);
+}
+.pipeline-doc .phase-num{
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+.pipeline-doc .phase-title{
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.pipeline-doc .phase-eta{
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.pipeline-doc .phase-desc{
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+@media print {
+  .pipeline-doc{ background: white; }
+  .pipeline-doc .stage{ break-inside: avoid; page-break-inside: avoid; }
+  .pipeline-doc .wrap{ max-width: 100%; padding: 20px; }
+}
+@media (max-width: 900px) {
+  .pipeline-doc .doc-header{ grid-template-columns: 1fr; }
+  .pipeline-doc .doc-meta{ text-align: left; }
+  .pipeline-doc .stage-io{ grid-template-columns: 1fr; }
+  .pipeline-doc .io + .io{ border-left: none; border-top: 1px solid var(--border-soft); }
+  .pipeline-doc .phase-grid{ grid-template-columns: repeat(2, 1fr); }
+  .pipeline-doc .hb-grid{ grid-template-columns: 1fr; }
+}
+</style>
+<div class="pipeline-doc">
+<div class="wrap">
+
+<!-- ============ HEADER ============ -->
+<header class="doc-header">
+  <div>
+    <h1>스프링클러 자동 설계 파이프라인</h1>
+    <p class="sub">한백에프앤씨 설계지침서 v.250508 + NFTC 103 반영 — 8단계 상세 프로세스</p>
+  </div>
+  <div class="doc-meta">
+    <strong>HB GUIDELINE</strong><br>
+    Rev. 2 — 한백 v.250508 반영<br>
+    소방 AI 연구소
+  </div>
+</header>
+
+<!-- ============ INTRO ============ -->
+<section class="intro">
+  <h2>버전 노트 — v2 변경점</h2>
+  <p>v1 대비 가장 큰 변화는 <strong>한백 설계지침서 §2.4</strong>의 모든 핵심 룰을 자동화 파이프라인의 결정 근거로 명시적으로 인코딩했다는 점입니다. 이전 버전이 NFTC 103만 참조했다면, 이번 버전은 한백 사무소 표준이 NFTC를 어떻게 보강·강화하는지 단계마다 표시합니다. <span class="hb-mark">★ 표시</span>는 한백 지침서에 의해 룰이 결정되는 항목입니다.</p>
+  <p>또한 v1에서 다루지 않았던 <strong>시스템 선정 분기</strong> (습식/준비작동/건식/일제살수)와 <strong>계통 Case 1~5</strong> (건물 높이 + 피난안전층 간격에 따른 펌프·고가수조·감압밸브 토폴로지)를 ②와 ④에 정식 포함시켰습니다.</p>
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot h"></span>인간 주도 (H)</div>
+    <div class="legend-item"><span class="legend-dot r"></span>룰 기반 (R)</div>
+    <div class="legend-item"><span class="legend-dot ai"></span>AI 주도</div>
+    <div class="legend-item"><span class="legend-dot hb"></span>한백 지침서 룰 (★)</div>
+  </div>
+</section>
+
+<!-- ============ HB SUMMARY ============ -->
+<section class="hb-summary">
+  <h2>한백 지침서 핵심 수치 — 자동화 룰 엔진의 ground truth</h2>
+  <div class="hb-grid">
+    <div class="hb-item">
+      <h3>유량 · 압력 · 수원</h3>
+      <ul>
+        <li>헤드 최소 방수량 <code>≥ 80 LPM</code></li>
+        <li>최대 방수압력 <code>≤ 1.2 MPa</code></li>
+        <li>최소 방수압력 <code>≥ 0.1 MPa</code></li>
+        <li>소화수량 = <code>펌프유량 × 20분</code></li>
+        <li>수조 유효용량 = <code>총체적 × 0.8</code></li>
+        <li>건식설비 기준개수 <code>×130%</code> (10개 → 13개)</li>
+      </ul>
+    </div>
+    <div class="hb-item">
+      <h3>방호구역 · 수평거리 · 이격</h3>
+      <ul>
+        <li>방호구역 <code>≤ 3,000 m²</code> (격자형 3,700 m²)</li>
+        <li>층마다 (단 ≤10 헤드 또는 복층은 3개층 이내)</li>
+        <li>R = <code>1.7 / 2.1 / 2.3 m</code> (무대부 / 비내화 / 내화)</li>
+        <li>헤드 사이 <code>≥ 1.8 m</code> (Skipping 방지)</li>
+        <li>벽 거리 <code>≥ 10 cm</code>, 이격거리 <code>≤ 1/2</code></li>
+        <li>(2R)² = S² + L²</li>
+      </ul>
+    </div>
+    <div class="hb-item">
+      <h3>헤드 · 표시온도 · 종류</h3>
+      <ul>
+        <li>최고주위온도 = <code>0.9·T − 27.3</code></li>
+        <li>사람 상주 → <code>RTI ≤ 50</code> 조기반응형</li>
+        <li>4 m 이상 공장 → <code>≥ 121 ℃</code></li>
+        <li>측벽형은 경급위험만</li>
+        <li>준비작동/건식 하향 → 드라이펜던트</li>
+      </ul>
+    </div>
+    <div class="hb-item">
+      <h3>배관 · 유속 · 관경</h3>
+      <ul>
+        <li>≤1.2 MPa → <code>KSD 3507</code></li>
+        <li>>1.2 MPa → <code>KSD 3562</code></li>
+        <li>가지배관 유속 <code>≤ 6 m/s</code></li>
+        <li>그 외 배관 유속 <code>≤ 10 m/s</code></li>
+        <li>교차배관 <code>≥ 40 mm</code>, 배수 <code>≥ 50 mm</code></li>
+        <li>준비작동·건식: 수평 1/500, 가지 1/250 기울기</li>
+      </ul>
+    </div>
+    <div class="hb-item">
+      <h3>행거 · 부속 · 장애물</h3>
+      <ul>
+        <li>가지: 헤드마다 1개, <code>≤ 3.5 m</code></li>
+        <li>교차: 가지마다 1개, <code>≤ 4.5 m</code></li>
+        <li>행거↔헤드 <code>≥ 8 cm</code></li>
+        <li>장애물: A ≥ <code>(D − 0.2) + B</code></li>
+        <li>인접 장애물 장변 ×3 (max 60 cm)</li>
+        <li>버터플라이는 기어식만</li>
+      </ul>
+    </div>
+    <div class="hb-item">
+      <h3>계통 Case · 펌프 · 감압</h3>
+      <ul>
+        <li>Case 1 (≤60m): 정격 ≤100m, 체절 ≤120m</li>
+        <li>Case 2 (60~80m): 옥상 또는 지하 + 분리</li>
+        <li>Case 3 (80~120m): 가압구간 펌프실 ±40m</li>
+        <li>Case 4·5 (피난안전층 80m ±)</li>
+        <li>체절압력 <code>≤ 정격 × 120%</code></li>
+        <li>감압밸브 2차측 <code>= 4 bar</code></li>
+        <li>120 m마다 감압밸브</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STAGE 1 ============ -->
+<section class="stage t-purple" id="stage-1">
+  <header class="stage-header">
+    <span class="stage-num">01</span>
+    <div class="stage-title">
+      <h2>도면 객체 추출</h2>
+      <p class="lede">DXF + 비전 cross-binding + 한백 §2.4.18 헤드 설치 제외 영역 자동 마스킹</p>
+    </div>
+    <div class="stage-meta">
+      <span class="badge badge-h">H 5%</span>
+      <span class="badge badge-r">R 30%</span>
+      <span class="badge badge-ai">AI 65%</span>
+      <span class="badge badge-hb">★ HB §2.4.18</span>
+    </div>
+  </header>
+  <div class="stage-io">
+    <div class="io"><span class="io-label">입력</span><span class="io-content">DXF 도면 + 사무소 표준 매핑 + 발주처 용도</span></div>
+    <div class="io"><span class="io-label">출력</span><span class="io-content">객체 DB + 헤드 설치 제외 영역 마스크 + 환경 메타</span></div>
+  </div>
+
+  <div class="hb-quote">
+    <span class="hb-quote-tag">한백 §2.4.18 — 헤드 설치 제외 영역</span>
+    <ul>
+      <li>· 계단실·부속실·경사로·승강기 승강로·비상용 승강장·<code>PD/AD</code>·목욕실·수영장·화장실·외기 개방 복도</li>
+      <li>· 통신기기실·전자기기실·발전실·변전실·변압기·병원 수술실/응급처치실</li>
+      <li>· 천장-반자 양쪽 불연재이고 거리 <code>&lt;2m</code> (또는 ≥2m+가연물 없음)</li>
+      <li>· 한쪽만 불연재이고 거리 <code>&lt;1m</code>, 양쪽 비불연재이고 거리 <code>&lt;0.5m</code></li>
+      <li>· 펌프실·물탱크실·엘리베이터 권상기실·바닥 ≥20m 현관/로비·영하 냉장/냉동실</li>
+    </ul>
+  </div>
+
+  <div class="stage-diagram">
+    <svg viewBox="0 0 1140 820" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="arr1d" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#a8472a" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <text class="t-mini" x="20" y="18">PARALLEL EXTRACTION</text>
+      <rect class="box-group" x="14" y="28" width="1112" height="338" rx="8"/>
+
+      <!-- 입력 -->
+      <rect class="box-io" x="30" y="155" width="160" height="100" rx="8"/>
+      <text class="t-title" x="110" y="190" text-anchor="middle">DXF 파일</text>
+      <text class="t-sub" x="110" y="210" text-anchor="middle">+ 매핑 테이블</text>
+      <text class="t-mini" x="110" y="230" text-anchor="middle">+ 발주처 용도</text>
+      <text class="t-mini" x="110" y="244" text-anchor="middle">+ 환경 (온도)</text>
+
+      <!-- DXF 갈래 -->
+      <text class="t-mini t-r-text" x="220" y="55">RULE-BASED PARSER</text>
+      <line x1="218" y1="62" x2="380" y2="62" stroke="#0a8077" stroke-width="0.6" stroke-dasharray="2 2"/>
+
+      <rect class="box-r" x="220" y="80" width="170" height="60" rx="6"/>
+      <text class="t-title" x="305" y="103" text-anchor="middle">엔티티 파싱</text>
+      <text class="t-sub" x="305" y="120" text-anchor="middle">ezdxf · LINE/POLY</text>
+      <text class="t-sub" x="305" y="134" text-anchor="middle">INSERT/TEXT/HATCH</text>
+
+      <rect class="box-r" x="420" y="80" width="170" height="60" rx="6"/>
+      <text class="t-title" x="505" y="103" text-anchor="middle">사무소 매핑 룰</text>
+      <text class="t-sub" x="505" y="120" text-anchor="middle">레이어 → 클래스</text>
+      <text class="t-sub" x="505" y="134" text-anchor="middle">사무소별 YAML</text>
+
+      <rect class="box-r" x="620" y="80" width="170" height="60" rx="6"/>
+      <text class="t-title" x="705" y="103" text-anchor="middle">매칭 분류</text>
+      <text class="t-sub" x="705" y="120" text-anchor="middle">매칭 → conf 0.9</text>
+      <text class="t-sub" x="705" y="134" text-anchor="middle">잔류 → CV로</text>
+
+      <line x1="190" y1="180" x2="218" y2="115" class="arr" marker-end="url(#arr1)"/>
+      <line x1="390" y1="110" x2="418" y2="110" class="arr" marker-end="url(#arr1)"/>
+      <line x1="590" y1="110" x2="618" y2="110" class="arr" marker-end="url(#arr1)"/>
+
+      <!-- 비전 갈래 -->
+      <text class="t-mini t-ai-text" x="220" y="265">AI VISION PIPELINE</text>
+      <line x1="218" y1="272" x2="380" y2="272" stroke="#6d4cb6" stroke-width="0.6" stroke-dasharray="2 2"/>
+
+      <rect class="box-ai" x="220" y="285" width="170" height="60" rx="6"/>
+      <text class="t-title" x="305" y="308" text-anchor="middle">라스터화</text>
+      <text class="t-sub" x="305" y="325" text-anchor="middle">100~150 DPI</text>
+      <text class="t-sub" x="305" y="339" text-anchor="middle">affine T 보존</text>
+
+      <rect class="box-ai" x="420" y="285" width="170" height="60" rx="6"/>
+      <text class="t-title" x="505" y="308" text-anchor="middle">인스턴스 세그</text>
+      <text class="t-sub" x="505" y="325" text-anchor="middle">Mask2Former</text>
+      <text class="t-sub" x="505" y="339" text-anchor="middle">벽·기둥·보·덕트</text>
+
+      <rect class="box-ai" x="620" y="285" width="170" height="60" rx="6"/>
+      <text class="t-title" x="705" y="308" text-anchor="middle">마스크 + 클래스</text>
+      <text class="t-sub" x="705" y="325" text-anchor="middle">폴리곤 + score</text>
+      <text class="t-sub" x="705" y="339" text-anchor="middle">CAD 좌표 환원</text>
+
+      <line x1="190" y1="210" x2="218" y2="315" class="arr" marker-end="url(#arr1)"/>
+      <line x1="390" y1="315" x2="418" y2="315" class="arr" marker-end="url(#arr1)"/>
+      <line x1="590" y1="315" x2="618" y2="315" class="arr" marker-end="url(#arr1)"/>
+
+      <!-- Cross-binding -->
+      <rect class="box-r" x="830" y="170" width="280" height="100" rx="8"/>
+      <text class="t-title" x="970" y="195" text-anchor="middle">Cross-binding</text>
+      <text class="t-sub" x="970" y="213" text-anchor="middle">DXF 좌표 + CV 클래스 합의 투표</text>
+      <line x1="850" y1="222" x2="1090" y2="222" stroke="#0a8077" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-mini" x="845" y="240" text-anchor="start">동의 → conf 0.95</text>
+      <text class="t-mini" x="845" y="253" text-anchor="start">DXF만 → CV score × 0.8</text>
+      <text class="t-mini" x="845" y="266" text-anchor="start">충돌 → 0.5 (검수 큐)</text>
+
+      <line x1="790" y1="110" x2="828" y2="200" class="arr" marker-end="url(#arr1)"/>
+      <line x1="790" y1="315" x2="828" y2="240" class="arr" marker-end="url(#arr1)"/>
+      <line x1="970" y1="270" x2="970" y2="404" class="arr" marker-end="url(#arr1)"/>
+
+      <!-- 행2: Topology + 한백 §2.4.18 마스킹 -->
+      <rect class="box-group" x="14" y="394" width="1112" height="410" rx="8"/>
+      <text class="t-mini" x="20" y="384">RECONCILIATION + TOPOLOGY + HB §2.4.18 MASKING</text>
+
+      <!-- Topology -->
+      <rect class="box-r" x="40" y="420" width="240" height="180" rx="8"/>
+      <text class="t-title" x="160" y="445" text-anchor="middle">Topology 구성</text>
+      <line x1="60" y1="460" x2="260" y2="460" stroke="#0a8077" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="55" y="480" text-anchor="start">① 벽 세그먼트 그래프</text>
+      <text class="t-sub" x="55" y="498" text-anchor="start">② 닫힌 폴리곤 → 방</text>
+      <text class="t-sub" x="55" y="516" text-anchor="start">③ 텍스트 매칭 → 방 이름·용도</text>
+      <text class="t-sub" x="55" y="534" text-anchor="start">④ 방화구획 그룹화</text>
+      <text class="t-sub" x="55" y="552" text-anchor="start">⑤ 천장고 (입면도/주기)</text>
+      <text class="t-hb" x="55" y="572" text-anchor="start">★ 천장-반자 거리·재질 추출</text>
+      <text class="t-hb" x="55" y="588" text-anchor="start">★ 내화/비내화 구조 라벨링</text>
+
+      <!-- 신뢰도 -->
+      <rect class="box-io" x="320" y="420" width="200" height="80" rx="8"/>
+      <text class="t-title" x="420" y="445" text-anchor="middle">신뢰도 평가</text>
+      <text class="t-sub" x="420" y="465" text-anchor="middle">객체별 임계치</text>
+      <text class="t-mini" x="420" y="483" text-anchor="middle">벽 0.85 / 방화구획 0.95</text>
+
+      <!-- 인간 검수 -->
+      <rect class="box-h" x="320" y="520" width="200" height="80" rx="8"/>
+      <text class="t-title" x="420" y="545" text-anchor="middle">인간 검수 큐</text>
+      <text class="t-sub" x="420" y="565" text-anchor="middle">UI 직접 수정</text>
+      <text class="t-mini" x="420" y="583" text-anchor="middle">방화구획 보수적 처리</text>
+
+      <!-- HB §2.4.18 마스킹 박스 -->
+      <rect class="box-hb" x="560" y="420" width="220" height="180" rx="8"/>
+      <text class="t-hb" x="572" y="438" text-anchor="start">★ HB §2.4.18 MASKING</text>
+      <line x1="572" y1="445" x2="768" y2="445" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="572" y="465" text-anchor="start">방 이름·용도 매칭으로 분류</text>
+      <text class="t-mini t-hb-text" x="572" y="485" text-anchor="start">[규모 0] 계단실·PD·AD</text>
+      <text class="t-mini t-hb-text" x="572" y="500" text-anchor="start">    화장실·승강로·외기복도</text>
+      <text class="t-mini t-hb-text" x="572" y="518" text-anchor="start">[규모 1] 통신·전자기기실</text>
+      <text class="t-mini t-hb-text" x="572" y="533" text-anchor="start">    발전·변전실</text>
+      <text class="t-mini t-hb-text" x="572" y="551" text-anchor="start">[규모 2] 천장-반자 거리</text>
+      <text class="t-mini t-hb-text" x="572" y="566" text-anchor="start">    + 재질 조건 매칭</text>
+      <text class="t-mini t-hb-text" x="572" y="584" text-anchor="start">→ exclusion_mask 생성</text>
+
+      <!-- 객체 DB -->
+      <rect class="box-io" x="820" y="420" width="290" height="280" rx="10"/>
+      <text class="t-title" x="965" y="445" text-anchor="middle">구조화된 객체 DB</text>
+      <line x1="840" y1="458" x2="1090" y2="458" stroke="var(--text-faint)" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="840" y="478" text-anchor="start">rooms[]</text>
+      <text class="t-mini" x="852" y="492" text-anchor="start">polygon · name · use · ceiling_h</text>
+      <text class="t-mini" x="852" y="506" text-anchor="start">structure (내화/비내화) ★</text>
+      <text class="t-mini" x="852" y="520" text-anchor="start">hb_excluded: bool ★</text>
+      <text class="t-sub" x="840" y="540" text-anchor="start">walls[] · beams[] · ducts[]</text>
+      <text class="t-sub" x="840" y="558" text-anchor="start">fire_compartments[]</text>
+      <text class="t-sub" x="840" y="578" text-anchor="start">ceiling_voids[] ★</text>
+      <text class="t-mini" x="852" y="592" text-anchor="start">천장-반자 사이 공간 + 재질</text>
+      <text class="t-sub" x="840" y="612" text-anchor="start">env_meta[]</text>
+      <text class="t-mini" x="852" y="626" text-anchor="start">동결우려 · 부식환경 · 직사광</text>
+      <text class="t-sub" x="840" y="646" text-anchor="start">openings[] (연소우려)</text>
+      <text class="t-mini" x="852" y="660" text-anchor="start">위치 + 폭 (1.2m 이상 등)</text>
+      <text class="t-sub" x="840" y="680" text-anchor="start">staircases[] · shafts[]</text>
+
+      <!-- 화살표 -->
+      <line x1="280" y1="510" x2="318" y2="460" class="arr" marker-end="url(#arr1)"/>
+      <line x1="280" y1="525" x2="318" y2="555" class="arr" marker-end="url(#arr1)"/>
+      <line x1="520" y1="500" x2="558" y2="500" class="arr" marker-end="url(#arr1)"/>
+      <line x1="780" y1="510" x2="818" y2="510" class="arr" marker-end="url(#arr1)"/>
+
+      <!-- 학습 루프 -->
+      <path d="M 320 605 L 290 605 L 290 770 L 505 770 L 505 350" stroke="#6d4cb6" stroke-width="0.8" stroke-dasharray="4 3" fill="none" marker-end="url(#arr1d)"/>
+      <text class="t-mini t-ai-text" x="375" y="785" text-anchor="middle">검수 결과 → 비전 모델 fine-tune</text>
+    </svg>
+  </div>
+  <div class="stage-notes">
+    <h3>핵심 디테일</h3>
+    <ul>
+      <li><strong>DXF는 좌표를, 비전은 클래스를</strong> — 둘은 직교 정보원이다. 좌표 정밀도는 DXF, 시각적 클래스 분류는 비전 모델로 cross-binding.</li>
+      <li class="hb-note"><strong>한백 §2.4.18 자동 마스킹</strong>이 ①의 핵심 추가 단계. 13가지 제외 대상을 방 이름·용도·구조 조건으로 자동 매칭해 <code>exclusion_mask</code>를 생성. 후속 단계는 이 마스크를 입력으로 받는다.</li>
+      <li class="hb-note"><strong>천장-반자 사이 공간 (ceiling_void)</strong>은 한백이 명시한 거리·재질 조건(<code>&lt;2m + 양쪽 불연재</code> 등)에 따라 헤드 설치 여부가 결정된다. 객체 추출 단계에서 이 영역을 별도 객체로 추출해야 ②에서 판정 가능.</li>
+      <li class="hb-note"><strong>내화/비내화 구조 라벨링</strong>은 ②의 수평거리 R 결정에 직결된다. 한백 §2.4.8의 R=2.1 vs 2.3 분기가 여기서 결정. 도면 주기·구조도 텍스트에서 추출.</li>
+      <li><strong>잔류 엔티티에만 비전 추론</strong>으로 비용 70~80% 절감. 단 충돌 검출용으로는 비전이 전 도면을 일단 본다.</li>
+      <li>한국 도면 특수 케이스: 천장보 점선 표기, 방화구획 경계 (해치 패턴), 이중천장 — 비전 모델 학습 데이터로 명시 처리.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ STAGE 2 ============ -->
+<section class="stage t-hb" id="stage-2">
+  <header class="stage-header">
+    <span class="stage-num">02</span>
+    <div class="stage-title">
+      <h2>시스템 선정 + Zone 분할 + 헤드 선정</h2>
+      <p class="lede">한백 §2.4.1~9 — 5종 시스템 분기, 방호구역, 헤드 R/표시온도/RTI 자동 결정</p>
+    </div>
+    <div class="stage-meta">
+      <span class="badge badge-h">H 10%</span>
+      <span class="badge badge-r">R 80%</span>
+      <span class="badge badge-ai">AI 10%</span>
+      <span class="badge badge-hb">★ HB §2.4.1~9</span>
+    </div>
+  </header>
+  <div class="stage-io">
+    <div class="io"><span class="io-label">입력</span><span class="io-content">객체 DB + exclusion_mask + 발주처 용도/등급</span></div>
+    <div class="io"><span class="io-label">출력</span><span class="io-content">{system_type, zones[], head_spec_per_zone, trace}</span></div>
+  </div>
+
+  <div class="hb-quote">
+    <span class="hb-quote-tag">한백 §2.4.2 — 방호구역</span>
+    <ul>
+      <li>· 방호구역은 최대 <code>3,000 m²</code> 이하 (격자형 배관방식은 <code>3,700 m²</code>까지)</li>
+      <li>· 하나의 방호구역은 층마다 설정. 단 헤드 개수 ≤10개이거나 복층형 공동주택은 <code>3개층 이내</code></li>
+      <li>· 일제살수: 하나의 방호구역 내 헤드 <code>≤50개</code>, 방호구역 2개 이상이면 <code>≥25개</code></li>
+      <li>· 건식설비 기준개수 10개는 <code>13개로 적용</code> (130%)</li>
+      <li>· 헤드 최소 방수량 <code>≥80 LPM</code>, 최대 방수압력 <code>≤1.2 MPa</code></li>
+    </ul>
+  </div>
+
+  <div class="stage-diagram">
+    <svg viewBox="0 0 1140 1100" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <!-- ======== Tier 1: 시스템 선정 ======== -->
+      <text class="t-hb" x="20" y="20">★ TIER 1 — SYSTEM TYPE SELECTION (HB §2.4.1)</text>
+      <rect class="box-group" x="14" y="30" width="1112" height="240" rx="8"/>
+
+      <!-- 입력 -->
+      <rect class="box-io" x="30" y="120" width="140" height="80" rx="8"/>
+      <text class="t-title" x="100" y="148" text-anchor="middle">객체 DB</text>
+      <text class="t-sub" x="100" y="168" text-anchor="middle">+ 환경 메타</text>
+      <text class="t-mini" x="100" y="188" text-anchor="middle">동결우려·용도</text>
+
+      <!-- 결정 트리 -->
+      <rect class="box-hb" x="200" y="50" width="200" height="60" rx="6"/>
+      <text class="t-title" x="300" y="73" text-anchor="middle">동결 우려?</text>
+      <text class="t-mini t-hb-text" x="300" y="92" text-anchor="middle">env_meta.frost = true?</text>
+
+      <rect class="box-hb" x="200" y="125" width="200" height="60" rx="6"/>
+      <text class="t-title" x="300" y="148" text-anchor="middle">개방형 헤드 필요?</text>
+      <text class="t-mini t-hb-text" x="300" y="167" text-anchor="middle">무대부·위험물·플랜트</text>
+
+      <rect class="box-hb" x="200" y="200" width="200" height="60" rx="6"/>
+      <text class="t-title" x="300" y="223" text-anchor="middle">감지기 우선 보호?</text>
+      <text class="t-mini t-hb-text" x="300" y="242" text-anchor="middle">전산실·문서고·박물관</text>
+
+      <line x1="170" y1="155" x2="198" y2="80" class="arr" marker-end="url(#arr2)"/>
+      <line x1="170" y1="160" x2="198" y2="155" class="arr" marker-end="url(#arr2)"/>
+      <line x1="170" y1="165" x2="198" y2="230" class="arr" marker-end="url(#arr2)"/>
+
+      <!-- 5종 시스템 -->
+      <rect class="box-hb" x="450" y="50" width="200" height="60" rx="6"/>
+      <text class="t-title" x="550" y="73" text-anchor="middle">습식 (Wet)</text>
+      <text class="t-mini t-hb-text" x="550" y="92" text-anchor="middle">기본 · 신뢰도 최고</text>
+
+      <rect class="box-hb" x="680" y="50" width="200" height="60" rx="6"/>
+      <text class="t-title" x="780" y="73" text-anchor="middle">건식 (Dry Pipe)</text>
+      <text class="t-mini t-hb-text" x="780" y="92" text-anchor="middle">동결우려 + 그리드 금지</text>
+
+      <rect class="box-hb" x="910" y="50" width="200" height="60" rx="6"/>
+      <text class="t-title" x="1010" y="73" text-anchor="middle">준비작동식</text>
+      <text class="t-mini t-hb-text" x="1010" y="92" text-anchor="middle">Single/None/Double</text>
+
+      <rect class="box-hb" x="450" y="200" width="200" height="60" rx="6"/>
+      <text class="t-title" x="550" y="223" text-anchor="middle">일제살수식 (Deluge)</text>
+      <text class="t-mini t-hb-text" x="550" y="242" text-anchor="middle">개방형 + 감지기 작동</text>
+
+      <rect class="box-hb" x="680" y="200" width="430" height="60" rx="6"/>
+      <text class="t-title" x="895" y="222" text-anchor="middle">시스템별 추가 제약 자동 적용</text>
+      <text class="t-mini t-hb-text" x="895" y="242" text-anchor="middle">건식 ≤2,840L·1,890L↑급속개방 / 준비작동 Single≤1,000개·Double≤1,890L</text>
+
+      <line x1="400" y1="80" x2="448" y2="80" class="arr" marker-end="url(#arr2)"/>
+      <line x1="400" y1="80" x2="678" y2="80" class="arr" marker-end="url(#arr2)" stroke-dasharray="3 2"/>
+      <line x1="400" y1="155" x2="908" y2="80" class="arr" marker-end="url(#arr2)" stroke-dasharray="3 2"/>
+      <line x1="400" y1="230" x2="448" y2="230" class="arr" marker-end="url(#arr2)"/>
+
+      <!-- ======== Tier 2: Zone 분할 ======== -->
+      <text class="t-hb" x="20" y="294">★ TIER 2 — ZONE PARTITIONING (HB §2.4.2)</text>
+      <rect class="box-group" x="14" y="304" width="1112" height="240" rx="8"/>
+
+      <!-- 시스템별 분기 -->
+      <rect class="box-io" x="30" y="350" width="140" height="180" rx="8"/>
+      <text class="t-title" x="100" y="378" text-anchor="middle">system_type</text>
+      <text class="t-sub" x="100" y="398" text-anchor="middle">+ 객체 DB</text>
+      <text class="t-mini" x="100" y="418" text-anchor="middle">- rooms (mask 제외)</text>
+      <text class="t-mini" x="100" y="434" text-anchor="middle">- 방화구획</text>
+      <text class="t-mini" x="100" y="450" text-anchor="middle">- 층 정보</text>
+
+      <!-- 면적 룰 -->
+      <rect class="box-hb" x="200" y="320" width="220" height="100" rx="6"/>
+      <text class="t-hb" x="212" y="340" text-anchor="start">★ 면적 룰</text>
+      <line x1="212" y1="346" x2="408" y2="346" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="212" y="365" text-anchor="start">if 격자형 배관:</text>
+      <text class="t-mini t-hb-text" x="220" y="380" text-anchor="start">area &gt; 3,700 m² → 분할</text>
+      <text class="t-sub" x="212" y="398" text-anchor="start">else:</text>
+      <text class="t-mini t-hb-text" x="220" y="412" text-anchor="start">area &gt; 3,000 m² → 분할</text>
+
+      <!-- 층 룰 -->
+      <rect class="box-hb" x="440" y="320" width="220" height="100" rx="6"/>
+      <text class="t-hb" x="452" y="340" text-anchor="start">★ 층별 룰 (다층 예외)</text>
+      <line x1="452" y1="346" x2="648" y2="346" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="452" y="365" text-anchor="start">기본: 층마다 zone</text>
+      <text class="t-sub" x="452" y="383" text-anchor="start">예외 (3개층 묶기 가능):</text>
+      <text class="t-mini t-hb-text" x="460" y="397" text-anchor="start">- 헤드 ≤10개 또는</text>
+      <text class="t-mini t-hb-text" x="460" y="412" text-anchor="start">- 복층형 공동주택</text>
+
+      <!-- 시스템별 추가 -->
+      <rect class="box-hb" x="680" y="320" width="240" height="100" rx="6"/>
+      <text class="t-hb" x="692" y="340" text-anchor="start">★ 시스템별 추가 분할</text>
+      <line x1="692" y1="346" x2="908" y2="346" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="692" y="365" text-anchor="start">일제살수: 헤드 ≤50개</text>
+      <text class="t-mini t-hb-text" x="700" y="380" text-anchor="start">  다구역 시 ≥25개</text>
+      <text class="t-sub" x="692" y="398" text-anchor="start">건식: 2차측 체적 ≤2,840 L</text>
+      <text class="t-mini t-hb-text" x="700" y="412" text-anchor="start">  ≥1,890 L → 급속개방장치</text>
+
+      <!-- 방화구획 -->
+      <rect class="box-hb" x="940" y="320" width="170" height="100" rx="6"/>
+      <text class="t-hb" x="952" y="340" text-anchor="start">★ 방화구획</text>
+      <line x1="952" y1="346" x2="1098" y2="346" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="952" y="365" text-anchor="start">구획별 zone 강제 분리</text>
+      <text class="t-sub" x="952" y="383" text-anchor="start">공동살수구역 자동 추가</text>
+      <text class="t-mini t-hb-text" x="952" y="403" text-anchor="start">(일제살수 다구역)</text>
+
+      <!-- 출력: zones -->
+      <rect class="box-io" x="200" y="450" width="910" height="80" rx="8"/>
+      <text class="t-title" x="220" y="475" text-anchor="start">zones[] = {zone_id, polygon, floor, area, system_type, fire_compartment_id, head_count_estimate, ...}</text>
+      <text class="t-sub" x="220" y="495" text-anchor="start">+ 방호구역 메타: 격자형 여부 · 다층 그룹 · 공동살수구역 ID</text>
+      <text class="t-mini" x="220" y="515" text-anchor="start">한백 §2.4.2 trace 기록 — 어떤 룰로 분할이 결정됐는지 zone 마다 첨부</text>
+
+      <line x1="170" y1="370" x2="198" y2="370" class="arr" marker-end="url(#arr2)"/>
+      <line x1="420" y1="370" x2="438" y2="370" class="arr" marker-end="url(#arr2)"/>
+      <line x1="660" y1="370" x2="678" y2="370" class="arr" marker-end="url(#arr2)"/>
+      <line x1="920" y1="370" x2="938" y2="370" class="arr" marker-end="url(#arr2)"/>
+      <line x1="600" y1="420" x2="600" y2="448" class="arr" marker-end="url(#arr2)"/>
+
+      <!-- ======== Tier 3: 헤드 사양 결정 ======== -->
+      <text class="t-hb" x="20" y="570">★ TIER 3 — HEAD SPEC SELECTION (HB §2.4.8~10)</text>
+      <rect class="box-group" x="14" y="580" width="1112" height="380" rx="8"/>
+
+      <rect class="box-io" x="30" y="710" width="140" height="100" rx="8"/>
+      <text class="t-title" x="100" y="738" text-anchor="middle">zone[]</text>
+      <text class="t-sub" x="100" y="758" text-anchor="middle">+ env_meta</text>
+      <text class="t-mini" x="100" y="778" text-anchor="middle">+ 천장고 H</text>
+      <text class="t-mini" x="100" y="794" text-anchor="middle">+ 구조 (내화)</text>
+
+      <!-- 수평거리 R -->
+      <rect class="box-hb" x="200" y="600" width="240" height="120" rx="6"/>
+      <text class="t-hb" x="212" y="620" text-anchor="start">★ 수평거리 R 결정 (§2.4.8)</text>
+      <line x1="212" y1="626" x2="428" y2="626" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="212" y="645" text-anchor="start">if 무대부·특수가연물:</text>
+      <text class="t-mini t-hb-text" x="220" y="660" text-anchor="start">R = 1.7 m</text>
+      <text class="t-sub" x="212" y="678" text-anchor="start">elif 비내화 구조:</text>
+      <text class="t-mini t-hb-text" x="220" y="692" text-anchor="start">R = 2.1 m</text>
+      <text class="t-sub" x="212" y="710" text-anchor="start">else (내화 구조):</text>
+      <text class="t-mini t-hb-text" x="220" y="715" text-anchor="start"></text>
+
+      <!-- K-factor -->
+      <rect class="box-hb" x="460" y="600" width="240" height="120" rx="6"/>
+      <text class="t-hb" x="472" y="620" text-anchor="start">★ 헤드 K · 방수량 (§2.4.2)</text>
+      <line x1="472" y1="626" x2="688" y2="626" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="472" y="645" text-anchor="start">K = Q / √P (제조사 표)</text>
+      <text class="t-mini t-hb-text" x="472" y="662" text-anchor="start">기본 K=80 → Q=80 LPM @ 0.1 MPa</text>
+      <text class="t-mini t-hb-text" x="472" y="678" text-anchor="start">Q ≥ 80 LPM 필수 (HB)</text>
+      <text class="t-mini t-hb-text" x="472" y="696" text-anchor="start">P ≤ 1.2 MPa 상한</text>
+      <text class="t-mini t-hb-text" x="472" y="712" text-anchor="start">→ K=80/115/161/202 매핑</text>
+
+      <!-- 표시온도 공식 -->
+      <rect class="box-hb" x="720" y="600" width="390" height="120" rx="6"/>
+      <text class="t-hb" x="732" y="620" text-anchor="start">★ 표시온도 (§2.4.9) — 공식 + 특례</text>
+      <line x1="732" y1="626" x2="1098" y2="626" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="732" y="648" text-anchor="start">공식: 최고주위온도 = 0.9 × T_표시 − 27.3</text>
+      <text class="t-mini t-hb-text" x="732" y="664" text-anchor="start">예: T=68℃ 헤드 → 주위 ≤34℃까지만 사용</text>
+      <text class="t-sub" x="732" y="682" text-anchor="start">특례:</text>
+      <text class="t-mini t-hb-text" x="740" y="696" text-anchor="start">- 4 m 이상 공장 → ≥121℃ 가능 (주위온도 무관)</text>
+      <text class="t-mini t-hb-text" x="740" y="710" text-anchor="start">- 스팀배관·라디에이터 인근, 채광창, 환기X 다락 → 103~105℃</text>
+
+      <!-- 헤드 타입 -->
+      <rect class="box-hb" x="200" y="740" width="280" height="120" rx="6"/>
+      <text class="t-hb" x="212" y="760" text-anchor="start">★ 헤드 타입 (§2.4.10)</text>
+      <line x1="212" y1="766" x2="468" y2="766" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="212" y="785" text-anchor="start">if 사람 상주 용도:</text>
+      <text class="t-mini t-hb-text" x="220" y="800" text-anchor="start">type = "조기반응형 (RTI ≤ 50)"</text>
+      <text class="t-sub" x="212" y="818" text-anchor="start">if 측벽형:</text>
+      <text class="t-mini t-hb-text" x="220" y="832" text-anchor="start">경급위험만 (HB 원칙)</text>
+      <text class="t-sub" x="212" y="848" text-anchor="start">if 부식환경: 내식성 헤드</text>
+
+      <!-- 시스템별 헤드 -->
+      <rect class="box-hb" x="500" y="740" width="280" height="120" rx="6"/>
+      <text class="t-hb" x="512" y="760" text-anchor="start">★ 시스템별 헤드 매칭</text>
+      <line x1="512" y1="766" x2="768" y2="766" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="512" y="785" text-anchor="start">습식: 상향식/하향식 자유</text>
+      <text class="t-sub" x="512" y="803" text-anchor="start">준비작동·건식 + 하향식:</text>
+      <text class="t-mini t-hb-text" x="520" y="818" text-anchor="start">→ 드라이펜던트 + 직결</text>
+      <text class="t-sub" x="512" y="836" text-anchor="start">상수도 깨끗 + 하향:</text>
+      <text class="t-mini t-hb-text" x="520" y="850" text-anchor="start">→ 가지배관 측면 분기</text>
+
+      <!-- 출력 -->
+      <rect class="box-io" x="800" y="740" width="310" height="200" rx="8"/>
+      <text class="t-title" x="955" y="765" text-anchor="middle">head_spec_per_zone</text>
+      <line x1="820" y1="778" x2="1090" y2="778" stroke="var(--text-faint)" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-mini" x="820" y="795" text-anchor="start">{</text>
+      <text class="t-mini" x="830" y="810" text-anchor="start">  R: 2.3,                </text>
+      <text class="t-mini" x="830" y="824" text-anchor="start">  K: 80,</text>
+      <text class="t-mini" x="830" y="838" text-anchor="start">  T_marking: 68,</text>
+      <text class="t-mini" x="830" y="852" text-anchor="start">  RTI_class: "fast",</text>
+      <text class="t-mini" x="830" y="866" text-anchor="start">  type: "pendent",</text>
+      <text class="t-mini" x="830" y="880" text-anchor="start">  sub: "drypendent" if dry,</text>
+      <text class="t-mini" x="830" y="894" text-anchor="start">  corrosion_resistant: false,</text>
+      <text class="t-mini" x="830" y="908" text-anchor="start">  trace: "HB §2.4.8 R=2.3"</text>
+      <text class="t-mini" x="820" y="922" text-anchor="start">}</text>
+
+      <line x1="170" y1="755" x2="198" y2="660" class="arr" marker-end="url(#arr2)"/>
+      <line x1="170" y1="755" x2="458" y2="660" class="arr" marker-end="url(#arr2)" stroke-dasharray="3 2"/>
+      <line x1="170" y1="765" x2="718" y2="660" class="arr" marker-end="url(#arr2)" stroke-dasharray="3 2"/>
+      <line x1="170" y1="775" x2="198" y2="800" class="arr" marker-end="url(#arr2)"/>
+      <line x1="170" y1="785" x2="498" y2="800" class="arr" marker-end="url(#arr2)" stroke-dasharray="3 2"/>
+      <line x1="780" y1="800" x2="798" y2="800" class="arr" marker-end="url(#arr2)"/>
+
+      <!-- 인간 검토 플래그 -->
+      <rect class="box-h" x="200" y="980" width="910" height="60" rx="8"/>
+      <text class="t-title t-h-text" x="220" y="1005" text-anchor="start">⚠ 인간 검토 강제 플래그</text>
+      <text class="t-sub t-h-text" x="220" y="1024" text-anchor="start">혼합용도 (사무+판매) · 유사용도 판단 · 성능위주설계 · 측벽형 中급위험 적용 의사 · 4m↑ 공장 ≥121℃ 결정</text>
+    </svg>
+  </div>
+  <div class="stage-notes">
+    <h3>핵심 디테일</h3>
+    <ul>
+      <li class="hb-note"><strong>시스템 선정이 ②의 첫 단계로 격상</strong>되었다. 한백은 5종 시스템 (습식·건식·준비작동·일제살수·NFPA13식)이 명확히 구분되며 후속 단계의 모든 결정에 영향을 준다. 동결우려·개방형 필요·감지기 우선 보호 세 질문이 결정 트리.</li>
+      <li class="hb-note"><strong>건식 2,840L / 1,890L 룰</strong>은 자동화의 hard 검증 항목. 2차측 체적이 1,890L를 넘어가면 자동으로 급속개방장치(Exhauster/Accelerator) 추가가 필수 부속품으로 ④에 전달된다.</li>
+      <li class="hb-note"><strong>수평거리 R 결정</strong>은 객체 DB의 <code>structure</code> 라벨에 직접 의존. 무대부=1.7, 비내화=2.1, 내화=2.3 — 이 한 값이 ③ 헤드 배치 격자 sweep 범위를 결정한다.</li>
+      <li class="hb-note"><strong>표시온도 공식 <code>0.9·T − 27.3</code></strong>를 룰로 인코딩하면 환경 메타(주위온도)에서 사용 가능 헤드 등급이 자동 산출된다. 예: 주위 50℃ 환경 → T ≥ 86℃ 필요 → 79℃ 헤드 사용 불가.</li>
+      <li class="hb-note"><strong>RTI ≤ 50 조기반응형</strong> 자동 매칭은 용도 분류 정확도가 관건. "사람 상주" 판단이 모호한 경우(창고 사무실 병합 등)는 인간 검토 큐로.</li>
+      <li><strong>코드와 데이터 분리</strong> 원칙 유지 — 한백 수치는 모두 YAML 파라미터로, 결정 로직은 DSL로. 한백 지침서 v.250508 → v.251108로 개정시 YAML 한 파일만 갱신.</li>
+      <li>Reasoning trace에는 <code>HB §2.4.x</code>와 <code>NFTC §x.x</code>를 동시에 기록 — 어떤 룰이 더 보수적이어서 적용됐는지 명시.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ STAGE 3 ============ -->
+<section class="stage t-purple" id="stage-3">
+  <header class="stage-header">
+    <span class="stage-num">03</span>
+    <div class="stage-title">
+      <h2>헤드 배치</h2>
+      <p class="lede">한백 §2.4.8 표 룩업 + (2R)²=S²+L² + §2.4.11 보·장애물·연소우려 룰</p>
+    </div>
+    <div class="stage-meta">
+      <span class="badge badge-h">H 10%</span>
+      <span class="badge badge-r">R 55%</span>
+      <span class="badge badge-ai">AI 35%</span>
+      <span class="badge badge-hb">★ HB §2.4.8, 11</span>
+    </div>
+  </header>
+  <div class="stage-io">
+    <div class="io"><span class="io-label">입력</span><span class="io-content">zones[] + head_spec(R, K, RTI) + 보·덕트·장애물</span></div>
+    <div class="io"><span class="io-label">출력</span><span class="io-content">heads[] = {x, y, type, K, T, branch_axis} + 격자 메타</span></div>
+  </div>
+
+  <div class="hb-quote">
+    <span class="hb-quote-tag">한백 §2.4.8 — 헤드 이격거리 + §2.4.11 — 헤드 설치 위치</span>
+    <ul>
+      <li>· 헤드는 수평거리 R을 기준으로 반경의 원을 그리고 모든 헤드가 원 안에 배치 — <code>(2R)² = S² + L²</code></li>
+      <li>· 헤드 사이 <code>≥ 1.8 m</code> (Skipping 방지), 벽 거리 <code>≥ 10 cm</code>, 이격거리 <code>≤ 1/2</code></li>
+      <li>· 천정에서 <code>≤ 30 cm</code> 원칙 (보로 구획 + 보 하단까지 ≥55cm + 보 측면 끝~헤드 ≤ 이격/2 → <code>55 cm 이하</code>까지 가능)</li>
+      <li>· 장애물(벽체): <code>A ≥ (D − 0.2) + B</code> (A=이격, D=폭 max 0.8m, B=높이)</li>
+      <li>· 인접 장애물(덕트·배관·조명) 장변 <code>×3</code> 이격, 최대 <code>60 cm</code></li>
+      <li>· 그물천정 개구율 ≥70% + 45 cm 이상 이격 → 그물 위에 설치 가능</li>
+      <li>· 연소우려 개구부: 상하좌우 <code>2.5 m</code> 간격 / 폭 ≤2.5m면 중앙</li>
+      <li>· 측벽형: 폭 4.5~9m면 <code>양쪽 어긋나게</code>, 3.6 m 이내</li>
+      <li>· 헤드↔가연물 상단 <code>≥ 0.9 m</code></li>
+    </ul>
+  </div>
+
+  <div class="stage-diagram">
+    <svg viewBox="0 0 1140 1080" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="arr3d" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#6d4cb6" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <text class="t-mini" x="20" y="18">CANDIDATE GENERATION → SCORING → REFINEMENT → HB HARD CHECK</text>
+
+      <!-- 입력 -->
+      <rect class="box-io" x="30" y="80" width="160" height="120" rx="8"/>
+      <text class="t-title" x="110" y="115" text-anchor="middle">zone + spec</text>
+      <text class="t-sub" x="110" y="135" text-anchor="middle">R, K, T 결정됨</text>
+      <text class="t-mini" x="110" y="155" text-anchor="middle">+ 보·덕트·벽</text>
+      <text class="t-mini" x="110" y="170" text-anchor="middle">+ 천장-반자</text>
+      <text class="t-mini" x="110" y="185" text-anchor="middle">+ 연소우려개구부</text>
+
+      <!-- ===== Step 1: 격자 sweep with HB constraint ===== -->
+      <rect class="box-group" x="220" y="40" width="430" height="200" rx="8"/>
+      <text class="t-mini t-r-text" x="232" y="60">① GRID SWEEP — HB §2.4.8 표 기반</text>
+
+      <rect class="box-r" x="240" y="80" width="190" height="68" rx="6"/>
+      <text class="t-title" x="335" y="103" text-anchor="middle">방향각 θ sweep</text>
+      <text class="t-sub" x="335" y="121" text-anchor="middle">0~90° / 5° step</text>
+      <text class="t-mini" x="335" y="138" text-anchor="middle">방의 주축 정렬 우선</text>
+
+      <rect class="box-hb" x="450" y="80" width="190" height="68" rx="6"/>
+      <text class="t-hb" x="545" y="100" text-anchor="middle">★ (S, L) HB 표 룩업</text>
+      <text class="t-mini t-hb-text" x="545" y="118" text-anchor="middle">R=2.3 → (1.8,4.2)~(4.2,1.9)</text>
+      <text class="t-mini t-hb-text" x="545" y="133" text-anchor="middle">A = S × L</text>
+
+      <rect class="box-r" x="240" y="160" width="190" height="68" rx="6"/>
+      <text class="t-title" x="335" y="183" text-anchor="middle">오프셋 sweep</text>
+      <text class="t-sub" x="335" y="201" text-anchor="middle">0.3 m step</text>
+      <text class="t-mini" x="335" y="218" text-anchor="middle">코너 사각 최소화</text>
+
+      <rect class="box-hb" x="450" y="160" width="190" height="68" rx="6"/>
+      <text class="t-hb" x="545" y="180" text-anchor="middle">★ HB §2.4.11 벽거리</text>
+      <text class="t-mini t-hb-text" x="545" y="198" text-anchor="middle">≥ 10 cm</text>
+      <text class="t-mini t-hb-text" x="545" y="213" text-anchor="middle">≤ 이격/2</text>
+
+      <line x1="190" y1="130" x2="238" y2="115" class="arr" marker-end="url(#arr3)"/>
+
+      <!-- ===== Step 2: 장애물 회피 (HB 정확 룰) ===== -->
+      <rect class="box-group" x="680" y="40" width="440" height="200" rx="8"/>
+      <text class="t-hb" x="692" y="60">★ ② OBSTACLE AVOIDANCE — HB §2.4.11</text>
+
+      <rect class="box-hb" x="700" y="80" width="200" height="68" rx="6"/>
+      <text class="t-hb" x="800" y="100" text-anchor="middle">★ 보 처리</text>
+      <text class="t-mini t-hb-text" x="800" y="118" text-anchor="middle">천정~보하단 ≥55cm 인 경우</text>
+      <text class="t-mini t-hb-text" x="800" y="133" text-anchor="middle">헤드~부착면 ≤55cm</text>
+
+      <rect class="box-hb" x="910" y="80" width="200" height="68" rx="6"/>
+      <text class="t-hb" x="1010" y="100" text-anchor="middle">★ 벽체 장애물</text>
+      <text class="t-mini t-hb-text" x="1010" y="118" text-anchor="middle">A ≥ (D − 0.2) + B</text>
+      <text class="t-mini t-hb-text" x="1010" y="133" text-anchor="middle">D ≤ 0.8 m</text>
+
+      <rect class="box-hb" x="700" y="160" width="200" height="68" rx="6"/>
+      <text class="t-hb" x="800" y="180" text-anchor="middle">★ 인접 덕트·조명</text>
+      <text class="t-mini t-hb-text" x="800" y="198" text-anchor="middle">장변 × 3 (max 60 cm)</text>
+      <text class="t-mini t-hb-text" x="800" y="213" text-anchor="middle">측면 시프트 또는 추가</text>
+
+      <rect class="box-hb" x="910" y="160" width="200" height="68" rx="6"/>
+      <text class="t-hb" x="1010" y="180" text-anchor="middle">★ 연소우려 개구부</text>
+      <text class="t-mini t-hb-text" x="1010" y="198" text-anchor="middle">상하좌우 2.5 m</text>
+      <text class="t-mini t-hb-text" x="1010" y="213" text-anchor="middle">개구부 내측 ≤15 cm</text>
+
+      <line x1="650" y1="140" x2="698" y2="140" class="arr" marker-end="url(#arr3)"/>
+
+      <!-- ===== Step 3: 비용함수 (HB hard 항 추가) ===== -->
+      <rect class="box-ai" x="220" y="290" width="900" height="200" rx="8"/>
+      <text class="t-mini t-ai-text" x="232" y="310">③ COST FUNCTION — HB constraints as hard penalties</text>
+      <line x1="232" y1="318" x2="1108" y2="318" stroke="#6d4cb6" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-title" x="232" y="342" text-anchor="start">Cost = w₁·사각면적 + w₂·헤드수 + w₃·라우팅추정 + w₄·격자불규칙</text>
+      <text class="t-title" x="232" y="362" text-anchor="start">       + w₅·HB hard 위반(soft penalty for SA) + w₆·보간섭 + w₇·살수겹침</text>
+      <line x1="232" y1="380" x2="1108" y2="380" stroke="#6d4cb6" stroke-width="0.3" stroke-dasharray="2 2"/>
+      <text class="t-hb" x="232" y="400" text-anchor="start">★ HB hard 위반 항목 (각각 큰 가중치):</text>
+      <text class="t-mini t-hb-text" x="240" y="416" text-anchor="start">- 헤드 사이 거리 &lt; 1.8 m (Skipping)</text>
+      <text class="t-mini t-hb-text" x="240" y="430" text-anchor="start">- 벽 거리 &lt; 10 cm</text>
+      <text class="t-mini t-hb-text" x="240" y="444" text-anchor="start">- (2R)² &lt; S² + L² (살수반경 위반)</text>
+      <text class="t-mini t-hb-text" x="600" y="416" text-anchor="start">- 장애물 이격 미달 (A &lt; (D−0.2)+B)</text>
+      <text class="t-mini t-hb-text" x="600" y="430" text-anchor="start">- 인접 장애물 장변×3 미달</text>
+      <text class="t-mini t-hb-text" x="600" y="444" text-anchor="start">- 헤드↔가연물 상단 &lt; 0.9 m</text>
+      <text class="t-mini" x="232" y="468" text-anchor="start">가중치 회귀: 한백 검수 통과 도면 30~50장으로 inverse optimization</text>
+
+      <line x1="445" y1="240" x2="445" y2="288" class="arr" marker-end="url(#arr3)"/>
+
+      <!-- ===== Step 4: SA + (2R)²=S²+L² 시각화 ===== -->
+      <rect class="box-ai" x="220" y="520" width="450" height="240" rx="8"/>
+      <text class="t-mini t-ai-text" x="232" y="540">④ LOCAL SEARCH — SIMULATED ANNEALING</text>
+      <line x1="232" y1="548" x2="660" y2="548" stroke="#6d4cb6" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-sub" x="232" y="568" text-anchor="start">perturbation:</text>
+      <text class="t-mini" x="240" y="584" text-anchor="start">• 시프트 (한 헤드 ±0.5m 이동)</text>
+      <text class="t-mini" x="240" y="600" text-anchor="start">• 추가 (사각 큰 영역에 삽입)</text>
+      <text class="t-mini" x="240" y="616" text-anchor="start">• 제거 (살수 겹침 큰 헤드 삭제)</text>
+      <text class="t-mini" x="240" y="632" text-anchor="start">• 격자 회전 (지역 단위)</text>
+
+      <text class="t-sub" x="232" y="656" text-anchor="start">accept: ΔC&lt;0 무조건 / ΔC&gt;0은 exp(−ΔC/T)</text>
+      <text class="t-mini" x="232" y="672" text-anchor="start">500~2,000 iter / 방 — 분 단위</text>
+      <text class="t-mini" x="232" y="690" text-anchor="start">초기 온도 T₀ = 1.0, 냉각률 0.95</text>
+
+      <text class="t-hb" x="232" y="715" text-anchor="start">★ HB hard 위반 가중치는 SA 종반 ↑</text>
+      <text class="t-mini t-hb-text" x="232" y="731" text-anchor="start">초반 탐색은 자유, 최종 단계는 한백 룰 만족 강제</text>
+
+      <!-- (2R)²=S²+L² 시각화 -->
+      <g transform="translate(700, 530)">
+        <rect class="box-io" x="0" y="0" width="420" height="230" rx="6"/>
+        <text class="t-hb" x="210" y="20" text-anchor="middle">★ HB §2.4.8 — (2R)² = S² + L² 검증</text>
+
+        <!-- 격자 표현 -->
+        <line x1="50" y1="60" x2="380" y2="60" stroke="var(--text-faint)" stroke-width="0.5" stroke-dasharray="3 2"/>
+        <line x1="50" y1="160" x2="380" y2="160" stroke="var(--text-faint)" stroke-width="0.5" stroke-dasharray="3 2"/>
+        <line x1="80" y1="40" x2="80" y2="180" stroke="var(--text-faint)" stroke-width="0.5" stroke-dasharray="3 2"/>
+        <line x1="280" y1="40" x2="280" y2="180" stroke="var(--text-faint)" stroke-width="0.5" stroke-dasharray="3 2"/>
+
+        <!-- 헤드 4개 -->
+        <circle cx="80" cy="60" r="4" fill="#6d4cb6"/>
+        <circle cx="280" cy="60" r="4" fill="#6d4cb6"/>
+        <circle cx="80" cy="160" r="4" fill="#6d4cb6"/>
+        <circle cx="280" cy="160" r="4" fill="#6d4cb6"/>
+
+        <!-- S와 L -->
+        <line x1="80" y1="50" x2="280" y2="50" stroke="#a8472a" stroke-width="1.5" marker-end="url(#arr3)" marker-start="url(#arr3)"/>
+        <text class="t-hb" x="180" y="42" text-anchor="middle">S (가지간 거리)</text>
+
+        <line x1="290" y1="60" x2="290" y2="160" stroke="#a8472a" stroke-width="1.5" marker-end="url(#arr3)" marker-start="url(#arr3)"/>
+        <text class="t-hb" x="305" y="115" text-anchor="start">L</text>
+
+        <!-- 대각선 = 2R -->
+        <line x1="80" y1="60" x2="280" y2="160" stroke="#5232a0" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <text class="t-hb t-ai-text" x="180" y="115" text-anchor="middle">2R = √(S² + L²)</text>
+
+        <!-- A = S × L -->
+        <text class="t-mini t-hb-text" x="50" y="200" text-anchor="start">예: R=2.3, S=1.8 → L_max = √(4.6²−1.8²) = 4.24 m</text>
+        <text class="t-mini t-hb-text" x="50" y="216" text-anchor="start">A = S × L = 7.6 m² (HB 표와 일치)</text>
+      </g>
+
+      <line x1="540" y1="490" x2="540" y2="518" class="arr" marker-end="url(#arr3)"/>
+
+      <!-- ===== Step 5: HB hard check ===== -->
+      <rect class="box-hb" x="220" y="800" width="500" height="180" rx="8"/>
+      <text class="t-hb" x="232" y="820">★ ⑤ HB HARD CHECK — 전수 검증 (체크리스트)</text>
+      <line x1="232" y1="828" x2="708" y2="828" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-mini t-hb-text" x="232" y="850" text-anchor="start">□ 헤드 사이 ≥ 1.8 m (Skipping)</text>
+      <text class="t-mini t-hb-text" x="232" y="868" text-anchor="start">□ (2R)² ≥ S² + L² (모든 인접 4개 그룹)</text>
+      <text class="t-mini t-hb-text" x="232" y="886" text-anchor="start">□ 벽 거리 10 cm ~ 이격/2</text>
+      <text class="t-mini t-hb-text" x="232" y="904" text-anchor="start">□ 장애물 A ≥ (D − 0.2) + B</text>
+      <text class="t-mini t-hb-text" x="232" y="922" text-anchor="start">□ 인접 덕트 장변 × 3</text>
+      <text class="t-mini t-hb-text" x="500" y="850" text-anchor="start">□ 천정~헤드 ≤ 30 cm 또는 ≤ 55 cm (보 조건)</text>
+      <text class="t-mini t-hb-text" x="500" y="868" text-anchor="start">□ 헤드↔가연물 ≥ 0.9 m</text>
+      <text class="t-mini t-hb-text" x="500" y="886" text-anchor="start">□ 연소우려 개구부 2.5 m 간격</text>
+      <text class="t-mini t-hb-text" x="500" y="904" text-anchor="start">□ 측벽형 4.5~9m 폭 → 어긋나게</text>
+      <text class="t-mini t-hb-text" x="500" y="922" text-anchor="start">□ 측벽형 3.6 m 이내마다</text>
+      <text class="t-sub t-hb-text" x="232" y="950" text-anchor="start">위반 시 → SA 가중치 ↑ 재실행 (최대 3회) → 실패 시 인간 검수 큐</text>
+
+      <line x1="445" y1="760" x2="445" y2="798" class="arr" marker-end="url(#arr3)"/>
+
+      <!-- 출력 -->
+      <rect class="box-io" x="750" y="800" width="370" height="180" rx="8"/>
+      <text class="t-title" x="935" y="825" text-anchor="middle">heads[] 최종 출력</text>
+      <line x1="770" y1="838" x2="1100" y2="838" stroke="var(--text-faint)" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-mini" x="770" y="858" text-anchor="start">[</text>
+      <text class="t-mini" x="780" y="872" text-anchor="start">  {x: 12.4, y: 8.2, type: "pendent",</text>
+      <text class="t-mini" x="780" y="886" text-anchor="start">   K: 80, T: 68, RTI: "fast",</text>
+      <text class="t-mini" x="780" y="900" text-anchor="start">   zone_id: "Z01", branch_axis: "EW",</text>
+      <text class="t-mini" x="780" y="914" text-anchor="start">   cell_S: 3.2, cell_L: 3.2,</text>
+      <text class="t-mini" x="780" y="928" text-anchor="start">   hb_check: "PASS"}, ...</text>
+      <text class="t-mini" x="770" y="942" text-anchor="start">]</text>
+      <text class="t-sub" x="770" y="965" text-anchor="start">+ 격자 메타: θ, dx, dy, type</text>
+
+      <line x1="720" y1="888" x2="748" y2="888" class="arr" marker-end="url(#arr3)"/>
+
+      <!-- SA 루프백 -->
+      <path d="M 720 940 L 880 940 L 880 760 L 540 760" stroke="#6d4cb6" stroke-width="0.8" stroke-dasharray="4 3" fill="none" marker-end="url(#arr3d)"/>
+      <text class="t-mini t-ai-text" x="800" y="755" text-anchor="middle">위반 시 가중치 ↑ 재실행</text>
+
+      <!-- 후보 점수 분포 -->
+      <g transform="translate(750, 295)">
+        <rect class="box-io" x="0" y="0" width="0" height="0" rx="6"/>
+      </g>
+    </svg>
+  </div>
+  <div class="stage-notes">
+    <h3>핵심 디테일</h3>
+    <ul>
+      <li class="hb-note"><strong>한백 §2.4.8 표가 자동화의 ground truth</strong>. 수평거리 R마다 (S, L, A=S×L) 매트릭스가 코드에 박혀 있어, R=2.3에서는 (1.8, 4.2)부터 (4.2, 1.9)까지 ~25개 조합이 격자 sweep 후보가 된다.</li>
+      <li class="hb-note"><strong>(2R)² ≥ S² + L² 검증</strong>이 hard check의 핵심. 격자 회전·시프트 후에도 모든 4-헤드 셀에 대해 검증 — 위반시 즉시 페널티.</li>
+      <li class="hb-note"><strong>장애물 룰 <code>A ≥ (D − 0.2) + B</code></strong>는 자동화하기 까다로운 부분. D는 max 0.8m로 클리핑되며, B는 객체 DB의 보·덕트 높이 메타에서 가져온다. 한백 예시(D=500mm, B=300mm → A≥600mm)와 동일하게 검증.</li>
+      <li class="hb-note"><strong>인접 장애물 장변×3, 최대 60cm</strong>은 덕트·조명·배관 단변/장변 자동 분류가 선행. 객체 DB에서 폴리곤의 최소회전 사각형으로 단변·장변 추출.</li>
+      <li class="hb-note"><strong>측벽형 + 폭 4.5~9m → 양쪽 어긋나게</strong>는 zone 형태 분석에서 자동 결정. 폭 측정 → 한백 룰 매칭 → 헤드 ID마다 측 표시.</li>
+      <li><strong>SA 종반에는 HB hard 가중치를 점진적으로 ↑</strong>. 초반에는 탐색 자유도 확보, 종반에는 룰 만족 강제 — annealing schedule과 위반 페널티 schedule을 분리.</li>
+      <li>이형 천장·아트리움·노출 보 + 마감재 변경 라인은 ① 객체 DB의 <code>special_zone</code> 플래그로 표시 → SA가 건드리지 않고 인간 입력 받는다.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ STAGE 4 ============ -->
+<section class="stage t-purple" id="stage-4">
+  <header class="stage-header">
+    <span class="stage-num">04</span>
+    <div class="stage-title">
+      <h2>배관망 라우팅 + 계통 Case 결정 + 부속 자동 배치</h2>
+      <p class="lede">한백 §2.4.5~7, §2.4.16 — 관종·유속·행거·계통 Case 1~5·감압밸브 자동화</p>
+    </div>
+    <div class="stage-meta">
+      <span class="badge badge-h">H 8%</span>
+      <span class="badge badge-r">R 50%</span>
+      <span class="badge badge-ai">AI 42%</span>
+      <span class="badge badge-hb">★ HB §2.4.5~7,16</span>
+    </div>
+  </header>
+  <div class="stage-io">
+    <div class="io"><span class="io-label">입력</span><span class="io-content">heads[] + zones[] + 샤프트 + 건물높이 + 피난안전층</span></div>
+    <div class="io"><span class="io-label">출력</span><span class="io-content">배관망 그래프 + 부속(밸브·행거·후렉시블) + 펌프·고가수조 위치</span></div>
+  </div>
+
+  <div class="hb-quote">
+    <span class="hb-quote-tag">한백 §2.4.16 — 배관 계통 구성 (Case 1~5)</span>
+    <ul>
+      <li>· <code>Case 1</code> (≤60 m): 지하 펌프, 정격 ≤100 m, 체절 ≤120 m</li>
+      <li>· <code>Case 2a</code> (60~80 m): 옥상 고가수조 + 펌프, 자연낙차, 펌프실에서 40 m 아래까지 가압구간 <strong>(원칙)</strong></li>
+      <li>· <code>Case 2b/2c</code>: 고저층 입상배관 분리 또는 지하 펌프 + 감압밸브</li>
+      <li>· <code>Case 3a/b/c</code> (80~120 m): 가압구간 펌프실 ±40 m, 정격 ≤160 m / 체절 ≤200 m</li>
+      <li>· <code>Case 4a</code> (피난안전층 ≤80 m, 원칙): 최상층 + 피난안전층마다 고가수조 → 자연낙차구간</li>
+      <li>· <code>Case 5a/b</code> (피난안전층 >80 m): 120 m마다 감압밸브, 2차측 <code>= 4 bar</code></li>
+      <li>· 입상관 각층 연결지점 적정압력 <code>최대 4 bar</code>, 체절압력 <code>≤ 정격 × 120%</code></li>
+    </ul>
+  </div>
+
+  <div class="stage-diagram">
+    <svg viewBox="0 0 1140 1240" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <!-- ====== TIER 1: 가지·교차·입상 라우팅 ====== -->
+      <text class="t-mini t-ai-text" x="20" y="20">TIER 1 — BRANCH / CROSS-MAIN / RISER ROUTING (AI)</text>
+      <rect class="box-group" x="14" y="30" width="1112" height="240" rx="8"/>
+
+      <rect class="box-io" x="30" y="120" width="140" height="100" rx="8"/>
+      <text class="t-title" x="100" y="155" text-anchor="middle">heads[]</text>
+      <text class="t-sub" x="100" y="175" text-anchor="middle">+ branch_axis</text>
+      <text class="t-mini" x="100" y="195" text-anchor="middle">N개 헤드</text>
+
+      <rect class="box-ai" x="200" y="60" width="220" height="180" rx="8"/>
+      <text class="t-mini t-ai-text" x="212" y="80">① BRANCH CLUSTERING</text>
+      <line x1="212" y1="88" x2="408" y2="88" stroke="#6d4cb6" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="212" y="108" text-anchor="start">행 클러스터링 (DBSCAN)</text>
+      <text class="t-mini" x="220" y="124" text-anchor="start">branch_axis 기준 정렬</text>
+      <text class="t-hb" x="212" y="146" text-anchor="start">★ HB 한 가지 헤드수 ≤ 8</text>
+      <text class="t-mini t-hb-text" x="220" y="162" text-anchor="start">관경 50A 기준 별표 한계</text>
+      <text class="t-sub" x="212" y="184" text-anchor="start">균형 분할 (헤드수 ±1)</text>
+      <text class="t-mini" x="212" y="208" text-anchor="start">행거 마진 ≤3.5m도 검증</text>
+
+      <rect class="box-ai" x="450" y="60" width="220" height="180" rx="8"/>
+      <text class="t-mini t-ai-text" x="462" y="80">② CROSS-MAIN TREE</text>
+      <line x1="462" y1="88" x2="658" y2="88" stroke="#6d4cb6" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="462" y="108" text-anchor="start">MST + 마찰손실 추정</text>
+      <text class="t-mini" x="470" y="124" text-anchor="start">w = length + α·heads + β·hL_est</text>
+      <text class="t-hb" x="462" y="146" text-anchor="start">★ 교차배관 ≥ 40 mm</text>
+      <text class="t-mini t-hb-text" x="470" y="162" text-anchor="start">청소용 앵글밸브 40A (끝단)</text>
+      <text class="t-sub" x="462" y="184" text-anchor="start">Steiner 점 추가 시도</text>
+      <text class="t-sub" x="462" y="208" text-anchor="start">보·덕트 회피 (천장 내 경로)</text>
+
+      <rect class="box-r" x="700" y="60" width="200" height="180" rx="8"/>
+      <text class="t-mini t-r-text" x="712" y="80">③ RISER + DRAIN</text>
+      <line x1="712" y1="88" x2="888" y2="88" stroke="#0a8077" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="712" y="108" text-anchor="start">샤프트 위치 룩업</text>
+      <text class="t-sub" x="712" y="126" text-anchor="start">→ 입상관 라우팅</text>
+      <text class="t-hb" x="712" y="148" text-anchor="start">★ 배수배관 ≥ 50 mm</text>
+      <text class="t-hb" x="712" y="166" text-anchor="start">★ 시험배관 위치</text>
+      <text class="t-mini t-hb-text" x="720" y="180" text-anchor="start">습식: 알람밸브 일체형</text>
+      <text class="t-mini t-hb-text" x="720" y="194" text-anchor="start">건식·논·더블: 가장 먼 가지말단</text>
+      <text class="t-hb" x="712" y="216" text-anchor="start">★ 기울기 (준비/건/일제)</text>
+      <text class="t-mini t-hb-text" x="720" y="232" text-anchor="start">수평 1/500, 가지 1/250</text>
+
+      <rect class="box-hb" x="930" y="60" width="180" height="180" rx="8"/>
+      <text class="t-hb" x="942" y="80">★ ④ 관종 + 유속</text>
+      <line x1="942" y1="88" x2="1098" y2="88" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="942" y="108" text-anchor="start">관종 자동 결정:</text>
+      <text class="t-mini t-hb-text" x="950" y="124" text-anchor="start">P ≤ 1.2 MPa → KSD 3507</text>
+      <text class="t-mini t-hb-text" x="950" y="138" text-anchor="start">P > 1.2 MPa → KSD 3562</text>
+      <text class="t-sub" x="942" y="160" text-anchor="start">유속 한계 (검증):</text>
+      <text class="t-mini t-hb-text" x="950" y="176" text-anchor="start">가지: ≤ 6 m/s</text>
+      <text class="t-mini t-hb-text" x="950" y="190" text-anchor="start">그 외: ≤ 10 m/s</text>
+      <text class="t-sub" x="942" y="212" text-anchor="start">관경 1차:</text>
+      <text class="t-mini t-hb-text" x="950" y="228" text-anchor="start">헤드수 → 별표 → +1 단계</text>
+
+      <line x1="170" y1="170" x2="198" y2="150" class="arr" marker-end="url(#arr4)"/>
+      <line x1="420" y1="150" x2="448" y2="150" class="arr" marker-end="url(#arr4)"/>
+      <line x1="670" y1="150" x2="698" y2="150" class="arr" marker-end="url(#arr4)"/>
+      <line x1="900" y1="150" x2="928" y2="150" class="arr" marker-end="url(#arr4)"/>
+
+      <!-- ====== TIER 2: Case 1~5 결정 ====== -->
+      <text class="t-hb" x="20" y="294">★ TIER 2 — 계통 CASE 1~5 결정 (HB §2.4.16)</text>
+      <rect class="box-group" x="14" y="304" width="1112" height="380" rx="8"/>
+
+      <!-- 입력 -->
+      <rect class="box-io" x="30" y="430" width="140" height="120" rx="8"/>
+      <text class="t-title" x="100" y="460" text-anchor="middle">건물 높이 H</text>
+      <text class="t-sub" x="100" y="478" text-anchor="middle">+ 피난안전층</text>
+      <text class="t-mini" x="100" y="498" text-anchor="middle">간격 H_safe</text>
+      <text class="t-mini" x="100" y="514" text-anchor="middle">+ 발주처 의향</text>
+      <text class="t-mini" x="100" y="530" text-anchor="middle">(고가수조)</text>
+
+      <!-- 결정 트리 -->
+      <rect class="box-hb" x="200" y="330" width="180" height="60" rx="6"/>
+      <text class="t-title" x="290" y="354" text-anchor="middle">H ≤ 60 m ?</text>
+      <text class="t-mini t-hb-text" x="290" y="372" text-anchor="middle">if YES → Case 1</text>
+
+      <rect class="box-hb" x="200" y="410" width="180" height="60" rx="6"/>
+      <text class="t-title" x="290" y="434" text-anchor="middle">60 &lt; H ≤ 80 m ?</text>
+      <text class="t-mini t-hb-text" x="290" y="452" text-anchor="middle">→ Case 2a/b/c</text>
+
+      <rect class="box-hb" x="200" y="490" width="180" height="60" rx="6"/>
+      <text class="t-title" x="290" y="514" text-anchor="middle">80 &lt; H ≤ 120 m ?</text>
+      <text class="t-mini t-hb-text" x="290" y="532" text-anchor="middle">→ Case 3a/b/c</text>
+
+      <rect class="box-hb" x="200" y="570" width="180" height="60" rx="6"/>
+      <text class="t-title" x="290" y="594" text-anchor="middle">초고층 ?</text>
+      <text class="t-mini t-hb-text" x="290" y="612" text-anchor="middle">H_safe ≤ 80 → C4</text>
+
+      <line x1="170" y1="490" x2="198" y2="360" class="arr" marker-end="url(#arr4)"/>
+      <line x1="170" y1="490" x2="198" y2="440" class="arr" marker-end="url(#arr4)"/>
+      <line x1="170" y1="490" x2="198" y2="520" class="arr" marker-end="url(#arr4)"/>
+      <line x1="170" y1="495" x2="198" y2="600" class="arr" marker-end="url(#arr4)"/>
+
+      <!-- Case 결과 -->
+      <rect class="box-hb" x="410" y="330" width="180" height="60" rx="6"/>
+      <text class="t-hb" x="500" y="354" text-anchor="middle">★ Case 1</text>
+      <text class="t-mini t-hb-text" x="500" y="372" text-anchor="middle">지하 펌프 / 정격 ≤100m</text>
+
+      <rect class="box-hb" x="410" y="410" width="180" height="60" rx="6"/>
+      <text class="t-hb" x="500" y="434" text-anchor="middle">★ Case 2a (원칙)</text>
+      <text class="t-mini t-hb-text" x="500" y="452" text-anchor="middle">옥상 고가수조 + 자연낙차</text>
+
+      <rect class="box-hb" x="410" y="490" width="180" height="60" rx="6"/>
+      <text class="t-hb" x="500" y="514" text-anchor="middle">★ Case 3a/b/c</text>
+      <text class="t-mini t-hb-text" x="500" y="532" text-anchor="middle">가압 ±40m / 감압 옵션</text>
+
+      <rect class="box-hb" x="410" y="570" width="180" height="60" rx="6"/>
+      <text class="t-hb" x="500" y="594" text-anchor="middle">★ Case 4a/4b/5a/5b</text>
+      <text class="t-mini t-hb-text" x="500" y="612" text-anchor="middle">피난안전층 + 120m 감압</text>
+
+      <line x1="380" y1="360" x2="408" y2="360" class="arr" marker-end="url(#arr4)"/>
+      <line x1="380" y1="440" x2="408" y2="440" class="arr" marker-end="url(#arr4)"/>
+      <line x1="380" y1="520" x2="408" y2="520" class="arr" marker-end="url(#arr4)"/>
+      <line x1="380" y1="600" x2="408" y2="600" class="arr" marker-end="url(#arr4)"/>
+
+      <!-- Case 적용 결과 -->
+      <rect class="box-hb" x="620" y="330" width="490" height="300" rx="8"/>
+      <text class="t-hb" x="632" y="350">★ CASE 적용 → 자동 배치되는 항목</text>
+      <line x1="632" y1="358" x2="1098" y2="358" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-sub" x="632" y="380" text-anchor="start">펌프 위치 (지하 / 옥상 / 중간층)</text>
+      <text class="t-mini t-hb-text" x="640" y="396" text-anchor="start">→ 정격양정 자동 산출</text>
+      <text class="t-mini t-hb-text" x="640" y="410" text-anchor="start">→ 체절양정 ≤ 정격 × 120% 검증</text>
+
+      <text class="t-sub" x="632" y="432" text-anchor="start">고가수조 위치 (Case 2a, 3a, 4a, 5a)</text>
+      <text class="t-mini t-hb-text" x="640" y="448" text-anchor="start">→ 자연낙차구간 = 펌프실에서 40m 아래</text>
+      <text class="t-mini t-hb-text" x="640" y="462" text-anchor="start">→ 가압구간 = 펌프실 ~ 40m 아래</text>
+
+      <text class="t-sub" x="632" y="484" text-anchor="start">감압밸브 자동 삽입 (Case 2c, 3c, 4a, 5)</text>
+      <text class="t-mini t-hb-text" x="640" y="500" text-anchor="start">→ 고가수조 아래 120m마다</text>
+      <text class="t-mini t-hb-text" x="640" y="514" text-anchor="start">→ 2차측 압력 = 4 bar 셋팅</text>
+
+      <text class="t-sub" x="632" y="536" text-anchor="start">관종 분기 (압력 구간별)</text>
+      <text class="t-mini t-hb-text" x="640" y="552" text-anchor="start">→ 체절양정 − 120m 위쪽: KSD 3562</text>
+      <text class="t-mini t-hb-text" x="640" y="566" text-anchor="start">→ 그 아래: KSD 3507</text>
+
+      <text class="t-sub" x="632" y="588" text-anchor="start">릴리프밸브 (펌프 토출측)</text>
+      <text class="t-mini t-hb-text" x="640" y="604" text-anchor="start">→ 소방전용 수조: 압력 릴리프밸브</text>
+      <text class="t-mini t-hb-text" x="640" y="618" text-anchor="start">→ 시상수 겸용: 감압밸브</text>
+
+      <line x1="590" y1="360" x2="618" y2="380" class="arr" marker-end="url(#arr4)" stroke-dasharray="3 2"/>
+      <line x1="590" y1="440" x2="618" y2="440" class="arr" marker-end="url(#arr4)" stroke-dasharray="3 2"/>
+      <line x1="590" y1="520" x2="618" y2="520" class="arr" marker-end="url(#arr4)" stroke-dasharray="3 2"/>
+      <line x1="590" y1="600" x2="618" y2="580" class="arr" marker-end="url(#arr4)" stroke-dasharray="3 2"/>
+
+      <!-- Case 4a 다이어그램 (작은 시각화) -->
+      <g transform="translate(20, 750)">
+        <text class="t-hb" x="0" y="0">★ CASE 4a 시각화 — 피난안전층 ≤80m 원칙안</text>
+        <line x1="0" y1="10" x2="540" y2="10" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+        <!-- 건물 -->
+        <rect x="10" y="30" width="80" height="240" fill="none" stroke="var(--text-dim)" stroke-width="1"/>
+
+        <!-- 옥상 고가수조 + 펌프 -->
+        <rect x="20" y="35" width="60" height="20" fill="#a8472a" opacity="0.3" stroke="#a8472a" stroke-width="0.8"/>
+        <text class="t-mini t-hb-text" x="100" y="48" text-anchor="start">옥상 고가수조 + 펌프</text>
+
+        <!-- 가압구간 1 -->
+        <line x1="50" y1="55" x2="50" y2="105" stroke="#5232a0" stroke-width="2"/>
+        <text class="t-mini" x="100" y="80" text-anchor="start">가압구간 (40m)</text>
+
+        <!-- 자연낙차 구간 1 -->
+        <line x1="50" y1="105" x2="50" y2="155" stroke="#0a8077" stroke-width="2"/>
+        <text class="t-mini" x="100" y="130" text-anchor="start">자연낙차구간 (40m)</text>
+
+        <!-- 피난안전층 고가수조 -->
+        <rect x="20" y="155" width="60" height="15" fill="#a8472a" opacity="0.3" stroke="#a8472a" stroke-width="0.8"/>
+        <text class="t-mini t-hb-text" x="100" y="166" text-anchor="start">피난안전층 고가수조</text>
+
+        <!-- 가압구간 2 -->
+        <line x1="50" y1="170" x2="50" y2="220" stroke="#5232a0" stroke-width="2"/>
+        <text class="t-mini" x="100" y="195" text-anchor="start">가압구간 (40m)</text>
+
+        <!-- 자연낙차 구간 2 -->
+        <line x1="50" y1="220" x2="50" y2="270" stroke="#0a8077" stroke-width="2"/>
+        <text class="t-mini" x="100" y="245" text-anchor="start">자연낙차구간 (40m)</text>
+
+        <!-- 지하 -->
+        <rect x="0" y="270" width="100" height="20" fill="#888" opacity="0.2"/>
+        <text class="t-mini" x="100" y="285" text-anchor="start">지하 (수조)</text>
+
+        <!-- 우측: 자동 결정되는 항목 -->
+        <text class="t-hb" x="280" y="40" text-anchor="start">자동 결정 출력:</text>
+        <text class="t-mini t-hb-text" x="280" y="60" text-anchor="start">- 펌프 위치: 옥상</text>
+        <text class="t-mini t-hb-text" x="280" y="76" text-anchor="start">- 펌프 정격양정 ≤ 120 m</text>
+        <text class="t-mini t-hb-text" x="280" y="92" text-anchor="start">- 가압구간: 펌프실 아래 40 m</text>
+        <text class="t-mini t-hb-text" x="280" y="108" text-anchor="start">- 자연낙차: 그 아래 40 m</text>
+        <text class="t-mini t-hb-text" x="280" y="124" text-anchor="start">- 저층부 고가수조 → 지하 ≥ 120 m면</text>
+        <text class="t-mini t-hb-text" x="288" y="138" text-anchor="start">고가수조 아래 120 m부터 감압밸브</text>
+        <text class="t-mini t-hb-text" x="280" y="156" text-anchor="start">- 감압밸브 2차측 = 4 bar</text>
+        <text class="t-mini t-hb-text" x="280" y="172" text-anchor="start">- 체절양정 한계 자동 검증</text>
+      </g>
+
+      <!-- 인간 판단 박스 -->
+      <rect class="box-h" x="600" y="750" width="510" height="200" rx="8"/>
+      <text class="t-title t-h-text" x="612" y="775" text-anchor="start">⚠ 인간 판단 영역 (자동화 강제 금지)</text>
+      <line x1="612" y1="785" x2="1098" y2="785" stroke="#a83a06" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub t-h-text" x="612" y="805" text-anchor="start">• 옥상 고가수조 설치 가능 여부 (구조·미관)</text>
+      <text class="t-sub t-h-text" x="612" y="823" text-anchor="start">• 피난안전층 위치 (건축과 협의 — Case 4a 원칙 가능 여부)</text>
+      <text class="t-sub t-h-text" x="612" y="841" text-anchor="start">• 시상수 겸용 vs 소방 전용 수조</text>
+      <text class="t-sub t-h-text" x="612" y="859" text-anchor="start">• 펌프 제조사·모델 선정 (Q-H 곡선 DB 참조)</text>
+      <text class="t-sub t-h-text" x="612" y="877" text-anchor="start">• 송수구 위치 (창문 3m 룰 + 외관)</text>
+      <text class="t-mini t-h-text" x="612" y="908" text-anchor="start">자동화 시스템은 Case 후보 ranking을 제시. 최종 결정은 발주처 + 인간 설계자.</text>
+      <text class="t-mini t-h-text" x="612" y="924" text-anchor="start">예: "Case 2a 권장 (자재비 -15%) / Case 2c (지하 펌프 — 옥상 불가시)"</text>
+    </svg>
+  </div>
+
+  <div class="hb-quote" style="margin-top: 4px;">
+    <span class="hb-quote-tag">한백 §2.4.5~7 — 배관·부속·행거 (자동 배치)</span>
+    <ul>
+      <li>· 가지배관 행거: 헤드 사이마다 1개, 행거간 <code>≤ 3.5 m</code>, 행거↔헤드 <code>≥ 8 cm</code></li>
+      <li>· 교차배관 행거: 가지마다 1개, <code>≤ 4.5 m</code>, 수평주행 <code>≤ 4.5 m</code></li>
+      <li>· 수격방지장치: <code>입상주배관 최상부 + 수평주행 말단</code> (유수검지장치 X)</li>
+      <li>· 자동공기배출밸브: 습식만, 입상 상부 + 각층 수평주행 끝</li>
+      <li>· 후렉시블죠인트: <code>≤ 1.5 m</code> 원칙 (최대 2.5 m, 1.5m 초과시 마찰저항 반영)</li>
+      <li>· OS&Y 또는 기어식 버터플라이밸브 (레버식 X), 5초 이내 닫기 금지</li>
+      <li>· 송수구: 65 mm 쌍구형, 창문 ≥3 m 이격, 폐쇄형은 3,000 m²마다 1개 (최대 5개)</li>
+    </ul>
+  </div>
+
+  <div class="stage-notes">
+    <h3>핵심 디테일</h3>
+    <ul>
+      <li class="hb-note"><strong>한백 §2.4.16 Case 1~5는 결정론적 결정 트리</strong>로 인코딩 가능. 입력은 H(건물높이) + H_safe(피난안전층 간격) + 옥상 고가수조 가능성 — 이 세 값으로 11개 sub-case 중 하나가 자동 선정된다.</li>
+      <li class="hb-note"><strong>Case 결정 → 펌프·고가수조·감압밸브가 동시에 자동 배치</strong>. 단순히 케이스 라벨이 아니라 펌프 위치, 정격양정 한계, 자연낙차 구간 길이, 감압밸브 위치·셋팅까지 한 번에 출력된다.</li>
+      <li class="hb-note"><strong>관종 분기 (KSD 3507 / 3562)</strong>는 압력 구간별로 자동. 펌프 토출 직후부터 체절양정 − 120m 위쪽까지가 KSD 3562 구간, 그 아래는 KSD 3507. Case별로 경계 위치가 달라진다.</li>
+      <li class="hb-note"><strong>유속 검증 (가지 6m/s, 그 외 10m/s)</strong>은 ⑥ 검진 항목이지만 ④에서 1차 추정으로 미리 검증 — 위반 예상 시 관경을 별표 +1 단계로 자동 ↑.</li>
+      <li class="hb-note"><strong>행거 자동 배치</strong>는 가지배관 헤드 위치 + 길이 정보로 결정론적. 헤드 사이마다 1개 + 헤드↔행거 ≥8cm 제약 충족시키며 균등 분포. 교차배관도 동일 룰.</li>
+      <li class="hb-note"><strong>시험배관 위치</strong>는 시스템 종류에 따라 분기. 습식은 알람밸브 일체형 또는 2차측 가까운 곳, 건식·논·더블은 가장 먼 가지배관 말단 — 자동 라우팅으로 결정.</li>
+      <li class="hb-note"><strong>릴리프밸브 vs 감압밸브 결정</strong>은 발주처 입력(소방전용 vs 시상수겸용 수조)에 따라 분기. 자동 라우팅에서 펌프 토출측 부속 자동 매핑.</li>
+      <li>가지배관 그룹화는 행 클러스터링으로 시작 — 한백의 "가지당 헤드 수 한계 (관경 50A 별표 ≤8개)"를 자동 충족시킨다.</li>
+      <li>Case 후보 ranking을 인간에게 제시 — 자재비 / 시공 난이도 / 유지관리 편의성 트레이드오프를 명시. 최종 선택은 발주처 협의.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ STAGE 5 ============ -->
+<section class="stage t-teal" id="stage-5">
+  <header class="stage-header">
+    <span class="stage-num">05</span>
+    <div class="stage-title">
+      <h2>PipeNet 변환 → 수리계산</h2>
+      <p class="lede">한백 §2.4.5 KSD 실제내경 표 + §2.4.13 마찰상수 + 펌프곡선 룩업</p>
+    </div>
+    <div class="stage-meta">
+      <span class="badge badge-r">R 100%</span>
+      <span class="badge badge-hb">★ HB §2.4.5, 13, 15</span>
+    </div>
+  </header>
+  <div class="stage-io">
+    <div class="io"><span class="io-label">입력</span><span class="io-content">배관망 그래프 + 부속품 + Case 정보 + 펌프·수조 위치</span></div>
+    <div class="io"><span class="io-label">출력</span><span class="io-content">노드별 P/Q + 링크별 v/hL + 펌프 동작점 + N185 양식 데이터</span></div>
+  </div>
+
+  <div class="hb-quote">
+    <span class="hb-quote-tag">한백 §2.4.5 — KSD 실제 내경 표 (수리계산 ground truth)</span>
+    <ul>
+      <li>· KSD 3507 (≤1.2 MPa) vs KSD 3562 (>1.2 MPa) — 호칭경 같아도 실제 내경 다름</li>
+      <li>· 20A: <code>3507=21.9 / 3562=21.4 mm</code> · 50A: <code>53.2 / 52.7</code> · 100A: <code>105.3 / 102.3</code> · 200A: <code>204.6 / 199.9</code></li>
+      <li>· Hazen-Williams 마찰손실 계산은 <strong>실제 내경 기반</strong> — 호칭경으로 근사하면 5~8% 오차</li>
+      <li>· 질소 가압시 (건식·준비작동 §2.4.13/15) 마찰상수 <code>C = 120</code> 적용 가능</li>
+      <li>· 후렉시블 1.5m 초과 시 마찰저항 수리계산 반영 필수</li>
+    </ul>
+  </div>
+
+  <div class="stage-diagram">
+    <svg viewBox="0 0 1140 720" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <text class="t-mini" x="20" y="18">DETERMINISTIC FORMAT MAPPING + ENGINE CALL + RESULT PARSE</text>
+
+      <!-- 입력 -->
+      <rect class="box-io" x="30" y="100" width="160" height="120" rx="8"/>
+      <text class="t-title" x="110" y="135" text-anchor="middle">배관망 그래프</text>
+      <text class="t-sub" x="110" y="155" text-anchor="middle">+ Case 정보</text>
+      <text class="t-mini" x="110" y="175" text-anchor="middle">heads · pipes · valves</text>
+      <text class="t-mini" x="110" y="190" text-anchor="middle">pump_pos · tank_pos</text>
+      <text class="t-mini" x="110" y="205" text-anchor="middle">감압밸브·릴리프</text>
+
+      <!-- ① 노드/링크 매핑 -->
+      <rect class="box-r" x="220" y="60" width="220" height="200" rx="8"/>
+      <text class="t-mini t-r-text" x="232" y="80">① NODE / LINK MAPPING</text>
+      <line x1="232" y1="88" x2="428" y2="88" stroke="#0a8077" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-sub" x="232" y="108" text-anchor="start">헤드 → source 노드</text>
+      <text class="t-mini" x="240" y="123" text-anchor="start">flow demand = K√P</text>
+      <text class="t-mini" x="240" y="137" text-anchor="start">elevation 자동 부여</text>
+      <text class="t-sub" x="232" y="158" text-anchor="start">분기·교차 → junction</text>
+      <text class="t-sub" x="232" y="178" text-anchor="start">배관 → pipe link</text>
+      <text class="t-hb" x="232" y="198" text-anchor="start">★ KSD 실제내경 룩업</text>
+      <text class="t-mini t-hb-text" x="240" y="213" text-anchor="start">3507 / 3562 분기</text>
+      <text class="t-mini t-hb-text" x="240" y="228" text-anchor="start">호칭경 → 실제 내경 mm</text>
+      <text class="t-mini t-hb-text" x="240" y="245" text-anchor="start">Hazen-Williams C=120</text>
+
+      <!-- ② 부속 등가관장 -->
+      <rect class="box-r" x="470" y="60" width="220" height="200" rx="8"/>
+      <text class="t-mini t-r-text" x="482" y="80">② FITTINGS 등가관장</text>
+      <line x1="482" y1="88" x2="678" y2="88" stroke="#0a8077" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-sub" x="482" y="108" text-anchor="start">기하학 분석 자동 결정</text>
+      <text class="t-mini" x="490" y="125" text-anchor="start">• 방향변경 ≥30° → 엘보</text>
+      <text class="t-mini" x="490" y="141" text-anchor="start">• 분기점 → 티 (관통/분기)</text>
+      <text class="t-mini" x="490" y="157" text-anchor="start">• 입상관 → 체크밸브</text>
+      <text class="t-hb" x="482" y="178" text-anchor="start">★ HB 부속 자동 삽입</text>
+      <text class="t-mini t-hb-text" x="490" y="193" text-anchor="start">알람·OS&Y·기어 버터플라이</text>
+      <text class="t-mini t-hb-text" x="490" y="207" text-anchor="start">시험배관 (시스템별 위치)</text>
+      <text class="t-hb" x="482" y="228" text-anchor="start">★ 후렉시블 마찰저항</text>
+      <text class="t-mini t-hb-text" x="490" y="243" text-anchor="start">길이 ≤1.5m: 무시</text>
+
+      <!-- ③ 펌프곡선 + 체절 -->
+      <rect class="box-hb" x="720" y="60" width="200" height="200" rx="8"/>
+      <text class="t-hb" x="732" y="80">★ ③ PUMP CURVE + 체절</text>
+      <line x1="732" y1="88" x2="908" y2="88" stroke="#a8472a" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-sub" x="732" y="108" text-anchor="start">DB 룩업: 제조사 × 모델</text>
+      <text class="t-mini" x="740" y="123" text-anchor="start">→ Q-H 곡선 다항식</text>
+      <text class="t-mini" x="740" y="137" text-anchor="start">H = a + b·Q + c·Q²</text>
+
+      <!-- 곡선 -->
+      <g transform="translate(740, 145)">
+        <line x1="0" y1="60" x2="150" y2="60" stroke="var(--text-faint)" stroke-width="0.4"/>
+        <line x1="0" y1="0" x2="0" y2="60" stroke="var(--text-faint)" stroke-width="0.4"/>
+        <path d="M 0 8 Q 75 14 150 50" stroke="#0a8077" stroke-width="1.5" fill="none"/>
+        <line x1="0" y1="2" x2="160" y2="2" stroke="#a8472a" stroke-width="0.8" stroke-dasharray="3 2"/>
+        <text class="t-mini t-hb-text" x="160" y="6" text-anchor="end">120% 한계</text>
+        <text class="t-mini" x="-3" y="-2" text-anchor="end">H</text>
+        <text class="t-mini" x="153" y="68" text-anchor="end">Q</text>
+        <circle cx="8" cy="10" r="3" fill="#a8472a"/>
+        <text class="t-hb" x="14" y="14" text-anchor="start">체절점</text>
+      </g>
+      <text class="t-hb" x="732" y="240" text-anchor="start">★ 체절 ≤ 정격 × 120%</text>
+      <text class="t-mini t-hb-text" x="732" y="253" text-anchor="start">검증 실패 → 펌프 재선정</text>
+
+      <!-- ④ 엔진 호출 -->
+      <rect class="box-r" x="950" y="60" width="170" height="200" rx="8"/>
+      <text class="t-mini t-r-text" x="962" y="80">④ ENGINE CALL</text>
+      <line x1="962" y1="88" x2="1108" y2="88" stroke="#0a8077" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-sub" x="1035" y="108" text-anchor="middle">PipeNet</text>
+      <text class="t-mini" x="1035" y="124" text-anchor="middle">CLI / API</text>
+      <text class="t-mini" x="1035" y="148" text-anchor="middle">input.dat 생성</text>
+      <text class="t-mini" x="1035" y="162" text-anchor="middle">→ subprocess</text>
+      <text class="t-mini" x="1035" y="186" text-anchor="middle">→ output.rep 파싱</text>
+      <text class="t-mini" x="1035" y="200" text-anchor="middle">→ 객체 매핑</text>
+      <text class="t-hb" x="1035" y="225" text-anchor="middle">★ N185 양식 생성</text>
+      <text class="t-mini t-hb-text" x="1035" y="240" text-anchor="middle">기준개수 다른 구역</text>
+
+      <line x1="190" y1="160" x2="218" y2="160" class="arr" marker-end="url(#arr5)"/>
+      <line x1="440" y1="160" x2="468" y2="160" class="arr" marker-end="url(#arr5)"/>
+      <line x1="690" y1="160" x2="718" y2="160" class="arr" marker-end="url(#arr5)"/>
+      <line x1="920" y1="160" x2="948" y2="160" class="arr" marker-end="url(#arr5)"/>
+
+      <!-- 출력 -->
+      <rect class="box-io" x="220" y="320" width="900" height="280" rx="8"/>
+      <text class="t-mini" x="232" y="340">SIMULATION RESULTS — 수리계산 결과 객체</text>
+      <line x1="232" y1="348" x2="1108" y2="348" stroke="var(--text-faint)" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-title" x="240" y="370" text-anchor="start">노드별 (압력 / 유량)</text>
+      <text class="t-mini" x="240" y="390" text-anchor="start">node | P (MPa) | Q (LPM)</text>
+      <text class="t-mini" x="240" y="406" text-anchor="start">H_001 | 0.142     | 82.3</text>
+      <text class="t-mini" x="240" y="422" text-anchor="start">H_002 | 0.135     | 80.1</text>
+      <text class="t-mini" x="240" y="438" text-anchor="start">H_017 | 0.098 ⚠   | 75.4 ⚠</text>
+      <text class="t-mini" x="240" y="454" text-anchor="start">...</text>
+      <text class="t-hb" x="240" y="478" text-anchor="start">★ HB 임계값:</text>
+      <text class="t-mini t-hb-text" x="240" y="494" text-anchor="start">P 최저 ≥ 0.1 MPa</text>
+      <text class="t-mini t-hb-text" x="240" y="510" text-anchor="start">P 최고 ≤ 1.2 MPa</text>
+      <text class="t-mini t-hb-text" x="240" y="526" text-anchor="start">Q 헤드당 ≥ 80 LPM</text>
+
+      <text class="t-title" x="540" y="370" text-anchor="start">링크별 (유속 / 마찰손실)</text>
+      <text class="t-mini" x="540" y="390" text-anchor="start">link | v (m/s) | hL (m/100m)</text>
+      <text class="t-mini" x="540" y="406" text-anchor="start">P_005 | 3.2     | 4.1</text>
+      <text class="t-mini" x="540" y="422" text-anchor="start">P_012 | 6.8 ⚠   | 18.2 ⚠</text>
+      <text class="t-mini" x="540" y="438" text-anchor="start">P_023 | 2.9     | 3.8</text>
+      <text class="t-mini" x="540" y="454" text-anchor="start">...</text>
+      <text class="t-hb" x="540" y="478" text-anchor="start">★ HB 유속 한계:</text>
+      <text class="t-mini t-hb-text" x="540" y="494" text-anchor="start">가지배관 ≤ 6 m/s</text>
+      <text class="t-mini t-hb-text" x="540" y="510" text-anchor="start">교차·입상 ≤ 10 m/s</text>
+      <text class="t-mini t-hb-text" x="540" y="526" text-anchor="start">위반 = 마찰 핫스팟</text>
+
+      <text class="t-title" x="850" y="370" text-anchor="start">시스템 전체</text>
+      <text class="t-mini" x="850" y="390" text-anchor="start">필요 양정 H_req: 52.3 m</text>
+      <text class="t-mini" x="850" y="406" text-anchor="start">펌프 양정 H_pump: 60.0 m</text>
+      <text class="t-mini" x="850" y="422" text-anchor="start">여유율: 14.7%</text>
+      <text class="t-mini" x="850" y="438" text-anchor="start">필요 유량 Q_req: 1,840</text>
+      <text class="t-mini" x="850" y="454" text-anchor="start">펌프 토출 Q_pump: 2,100</text>
+      <text class="t-hb" x="850" y="478" text-anchor="start">★ HB Case별 한계:</text>
+      <text class="t-mini t-hb-text" x="850" y="494" text-anchor="start">Case 1: 정격 ≤100m</text>
+      <text class="t-mini t-hb-text" x="850" y="510" text-anchor="start">Case 3: 정격 ≤160m</text>
+      <text class="t-mini t-hb-text" x="850" y="526" text-anchor="start">체절 ≤ 정격 × 120%</text>
+
+      <text class="t-sub" x="240" y="565" text-anchor="start">+ 소화수량 = Q_pump × 20분 = 42,000 L = 42 m³ (HB §2.4.2)</text>
+      <text class="t-sub" x="240" y="582" text-anchor="start">+ 수조 유효용량 = 총 체적 × 0.8 → 총 체적 ≥ 52.5 m³ (HB §2.4.3)</text>
+
+      <line x1="350" y1="260" x2="350" y2="318" class="arr" marker-end="url(#arr5)"/>
+      <line x1="580" y1="260" x2="580" y2="318" class="arr" marker-end="url(#arr5)"/>
+      <line x1="820" y1="260" x2="820" y2="318" class="arr" marker-end="url(#arr5)"/>
+      <line x1="1035" y1="260" x2="1035" y2="318" class="arr" marker-end="url(#arr5)"/>
+
+      <!-- N185 박스 -->
+      <rect class="box-hb" x="220" y="630" width="900" height="70" rx="8"/>
+      <text class="t-hb" x="232" y="652">★ HB §2.4.2 N185 양식 — 기준개수가 서로 다른 구역이 있을 때</text>
+      <text class="t-mini t-hb-text" x="232" y="672" text-anchor="start">각 구역에 대해 수리계산 → 모든 구역 만족 펌프 선정 (수리계산 프로그램 또는 N185 양식)</text>
+      <text class="t-mini t-hb-text" x="232" y="688" text-anchor="start">자동화: 구역별 (Q_req, H_req) 좌표 → N185 그래프 자동 작도 → 펌프 동작점이 모든 점 위쪽에 있는지 검증</text>
+    </svg>
+  </div>
+
+  <div class="stage-notes">
+    <h3>핵심 디테일</h3>
+    <ul>
+      <li class="hb-note"><strong>한백 §2.4.5 KSD 실제 내경 표</strong>가 수리계산 정확도의 ground truth. 같은 호칭경(예: 50A)도 KSD 3507(53.2mm) vs 3562(52.7mm)에서 실제 내경이 다르고, Hazen-Williams 식의 D⁴·⁸⁷에 들어가므로 5~8% 오차로 이어진다. 압력 구간별 관종 분기를 정확히 반영해야 함.</li>
+      <li class="hb-note"><strong>마찰상수 C 값은 시스템·매질에 따라 변화</strong>. 한백 §2.4.13/15에 따르면 질소 가압시 C=120 적용 가능. 기본은 백강관 C=100~120 범위.</li>
+      <li class="hb-note"><strong>체절양정 ≤ 정격 × 120% 검증</strong>은 ⑤에서 미리 체크 — 펌프 곡선 DB에서 Q=0일 때의 H를 읽어 검증. 위반 시 펌프 재선정 신호를 ⑦로 전달.</li>
+      <li class="hb-note"><strong>N185 양식 자동 생성</strong> — 한백이 직접 언급한 양식. 기준개수가 다른 구역이 공존할 때(예: 사무 10개 + 주차 30개), 각 구역의 (Q_req, H_req)를 좌표로 찍어 펌프 곡선이 모두 위쪽에 있는지 그래프로 검증.</li>
+      <li class="hb-note"><strong>소화수량 = 펌프유량 × 20분</strong>은 ⑤ 출력에 자동 첨부 — 수조 총 체적 = 소화수량 / 0.8 (HB §2.4.3 유효용량 80%).</li>
+      <li><strong>헤드 flow demand는 K√P</strong>로 모델링 — 단순 fixed flow가 아닌 압력 의존 source 노드. PipeNet 입력에서 명시적으로 설정.</li>
+      <li>PipeNet 버전별 입력 포맷 차이는 사무소가 사용하는 정확한 버전을 명시하고 입력 생성기를 그에 맞춤.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ STAGE 6 ============ -->
+<section class="stage t-teal" id="stage-6">
+  <header class="stage-header">
+    <span class="stage-num">06</span>
+    <div class="stage-title">
+      <h2>수리계산 결과 검진</h2>
+      <p class="lede">한백 §2.4.2 + §2.4.5 + §2.4.16 — 6대 hard 검증 + 경계값 진단</p>
+    </div>
+    <div class="stage-meta">
+      <span class="badge badge-h">H 15%</span>
+      <span class="badge badge-r">R 75%</span>
+      <span class="badge badge-ai">AI 10%</span>
+      <span class="badge badge-hb">★ HB 6대 검증</span>
+    </div>
+  </header>
+  <div class="stage-io">
+    <div class="io"><span class="io-label">입력</span><span class="io-content">⑤ 수리계산 결과 + Case 정보 + 시스템 종류</span></div>
+    <div class="io"><span class="io-label">출력</span><span class="io-content">PASS/FAIL + 위반 항목 + 진단 (병목 위치·원인)</span></div>
+  </div>
+
+  <div class="hb-quote">
+    <span class="hb-quote-tag">한백 검진 6대 항목 — hard 검증 (모두 AND 조건)</span>
+    <ul>
+      <li>· <strong>① 방수압</strong>: 모든 헤드 <code>0.1 ~ 1.2 MPa</code></li>
+      <li>· <strong>② 방수량</strong>: 헤드당 <code>≥ 80 LPM</code> + 동시방수 N개 (건식은 ×130%)</li>
+      <li>· <strong>③ 유속</strong>: 가지 <code>≤ 6 m/s</code>, 그 외 <code>≤ 10 m/s</code></li>
+      <li>· <strong>④ 펌프 양정</strong>: Case별 한계 (Case 1 ≤100m, Case 3 ≤160m 등)</li>
+      <li>· <strong>⑤ 체절압력</strong>: <code>≤ 정격 × 120%</code></li>
+      <li>· <strong>⑥ 소화수량</strong>: <code>≥ 펌프유량 × 20분</code> · 수조 총체적 ≥ 소화수량 / 0.8</li>
+    </ul>
+  </div>
+
+  <div class="stage-diagram">
+    <svg viewBox="0 0 1140 660" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr6" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="arr6d" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#6d4cb6" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <text class="t-mini" x="20" y="18">HARD VALIDATION (6) + DIAGNOSTIC + ROUTING</text>
+
+      <!-- 입력 -->
+      <rect class="box-io" x="30" y="240" width="140" height="100" rx="8"/>
+      <text class="t-title" x="100" y="278" text-anchor="middle">⑤ 결과</text>
+      <text class="t-sub" x="100" y="298" text-anchor="middle">P · Q · v · hL</text>
+      <text class="t-mini" x="100" y="316" text-anchor="middle">+ Case · 시스템</text>
+
+      <!-- 6대 검증 (3x2) -->
+      <rect class="box-hb" x="200" y="50" width="280" height="100" rx="8"/>
+      <text class="t-hb" x="212" y="72">★ ① 방수압</text>
+      <text class="t-mini t-hb-text" x="212" y="90" text-anchor="start">모든 헤드 P ≥ 0.1 MPa</text>
+      <text class="t-mini t-hb-text" x="212" y="106" text-anchor="start">모든 헤드 P ≤ 1.2 MPa</text>
+      <text class="t-mini" x="212" y="128" text-anchor="start">위반 시: 헤드 ID + 실측 P 기록</text>
+
+      <rect class="box-hb" x="500" y="50" width="280" height="100" rx="8"/>
+      <text class="t-hb" x="512" y="72">★ ② 방수량</text>
+      <text class="t-mini t-hb-text" x="512" y="90" text-anchor="start">헤드당 Q ≥ 80 LPM</text>
+      <text class="t-mini t-hb-text" x="512" y="106" text-anchor="start">동시방수 N개 (기준개수)</text>
+      <text class="t-mini t-hb-text" x="512" y="122" text-anchor="start">건식: 기준개수 × 130%</text>
+
+      <rect class="box-hb" x="800" y="50" width="280" height="100" rx="8"/>
+      <text class="t-hb" x="812" y="72">★ ③ 유속 (한백 명시)</text>
+      <text class="t-mini t-hb-text" x="812" y="90" text-anchor="start">가지배관 v ≤ 6 m/s</text>
+      <text class="t-mini t-hb-text" x="812" y="106" text-anchor="start">교차·입상 v ≤ 10 m/s</text>
+      <text class="t-mini" x="812" y="128" text-anchor="start">"절대적인 것은 아니다" — 검토 플래그</text>
+
+      <rect class="box-hb" x="200" y="170" width="280" height="100" rx="8"/>
+      <text class="t-hb" x="212" y="192">★ ④ 펌프 양정 (Case별)</text>
+      <text class="t-mini t-hb-text" x="212" y="210" text-anchor="start">Case 1: 정격 ≤ 100 m</text>
+      <text class="t-mini t-hb-text" x="212" y="226" text-anchor="start">Case 2c: 정격 ≤ 120 m</text>
+      <text class="t-mini t-hb-text" x="212" y="242" text-anchor="start">Case 3: 정격 ≤ 160 m</text>
+      <text class="t-mini t-hb-text" x="212" y="258" text-anchor="start">Case 4b: 정격 ≤ 120 m</text>
+
+      <rect class="box-hb" x="500" y="170" width="280" height="100" rx="8"/>
+      <text class="t-hb" x="512" y="192">★ ⑤ 체절압력</text>
+      <text class="t-mini t-hb-text" x="512" y="210" text-anchor="start">체절 ≤ 정격 × 120%</text>
+      <text class="t-mini t-hb-text" x="512" y="226" text-anchor="start">예: 정격 100m → 체절 ≤ 120m</text>
+      <text class="t-mini" x="512" y="248" text-anchor="start">위반 시: 펌프 모델 변경 필요</text>
+
+      <rect class="box-hb" x="800" y="170" width="280" height="100" rx="8"/>
+      <text class="t-hb" x="812" y="192">★ ⑥ 소화수량 + 수조</text>
+      <text class="t-mini t-hb-text" x="812" y="210" text-anchor="start">소화수량 = Q_pump × 20분</text>
+      <text class="t-mini t-hb-text" x="812" y="226" text-anchor="start">수조 총체적 ≥ 소화수량 / 0.8</text>
+      <text class="t-mini t-hb-text" x="812" y="242" text-anchor="start">유효용량 = 총체적 × 80%</text>
+
+      <line x1="170" y1="270" x2="200" y2="100" class="arr" marker-end="url(#arr6)"/>
+      <line x1="170" y1="280" x2="500" y2="100" class="arr" marker-end="url(#arr6)" stroke-dasharray="3 2"/>
+      <line x1="170" y1="290" x2="800" y2="100" class="arr" marker-end="url(#arr6)" stroke-dasharray="3 2"/>
+      <line x1="170" y1="300" x2="200" y2="220" class="arr" marker-end="url(#arr6)"/>
+      <line x1="170" y1="310" x2="500" y2="220" class="arr" marker-end="url(#arr6)" stroke-dasharray="3 2"/>
+      <line x1="170" y1="320" x2="800" y2="220" class="arr" marker-end="url(#arr6)" stroke-dasharray="3 2"/>
+
+      <!-- ④ 경계값 진단 (AI) -->
+      <rect class="box-ai" x="200" y="380" width="370" height="120" rx="8"/>
+      <text class="t-mini t-ai-text" x="212" y="400">⑦ 경계값 진단 (AI)</text>
+      <line x1="212" y1="408" x2="558" y2="408" stroke="#6d4cb6" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="212" y="430" text-anchor="start">병목 식별 (마찰손실 핫스팟)</text>
+      <text class="t-sub" x="212" y="450" text-anchor="start">한계값 ±10% 항목 플래그</text>
+      <text class="t-mini" x="212" y="468" text-anchor="start">예: P 0.11 MPa (한계 0.1) → 플래그</text>
+      <text class="t-mini" x="212" y="484" text-anchor="start">예: v 5.7 m/s (한계 6.0) → 플래그</text>
+
+      <!-- 종합 판정 -->
+      <rect class="box-r" x="600" y="380" width="280" height="120" rx="8"/>
+      <text class="t-title" x="740" y="408" text-anchor="middle">종합 판정</text>
+      <text class="t-mini" x="740" y="430" text-anchor="middle">all_pass = AND(① ~ ⑥)</text>
+      <text class="t-mini" x="740" y="450" text-anchor="middle">+ ⑦ 진단 첨부</text>
+      <text class="t-sub" x="740" y="476" text-anchor="middle">위반 항목 리스트</text>
+      <text class="t-sub" x="740" y="494" text-anchor="middle">+ 우선순위 (영향도)</text>
+
+      <line x1="570" y1="440" x2="598" y2="440" class="arr" marker-end="url(#arr6)"/>
+      <line x1="170" y1="340" x2="600" y2="430" class="arr" marker-end="url(#arr6)" stroke-dasharray="3 2"/>
+
+      <!-- 분기 -->
+      <line x1="740" y1="500" x2="740" y2="540" class="arr" marker-end="url(#arr6)"/>
+      <g transform="translate(660, 540)">
+        <polygon points="80,0 160,30 80,60 0,30" fill="var(--bg)" stroke="var(--text-dim)" stroke-width="1"/>
+        <text class="t-title" x="80" y="36" text-anchor="middle">합격?</text>
+      </g>
+
+      <!-- YES → ⑧ -->
+      <line x1="820" y1="570" x2="930" y2="570" class="arr" marker-end="url(#arr6)"/>
+      <text class="t-mini" x="875" y="563" text-anchor="middle" fill="var(--text-dim)">YES</text>
+      <rect class="box-io" x="940" y="540" width="160" height="60" rx="8"/>
+      <text class="t-title" x="1020" y="566" text-anchor="middle">⑧ 최종 도면</text>
+      <text class="t-mini" x="1020" y="585" text-anchor="middle">+ trace 첨부</text>
+
+      <!-- NO → ⑦ -->
+      <line x1="660" y1="570" x2="450" y2="570" stroke="#6d4cb6" stroke-width="1.2" stroke-dasharray="4 3" fill="none" marker-end="url(#arr6d)"/>
+      <text class="t-mini" x="555" y="563" text-anchor="middle" fill="#6d4cb6">NO — 부적합</text>
+      <rect class="box-ai" x="240" y="540" width="200" height="60" rx="8"/>
+      <text class="t-title" x="340" y="566" text-anchor="middle">⑦ 재설계 루프</text>
+      <text class="t-mini" x="340" y="585" text-anchor="middle">위반 항목 + 진단 동봉</text>
+
+      <!-- 인간 검토 큐 (경계 케이스) -->
+      <rect class="box-h" x="900" y="380" width="200" height="120" rx="8"/>
+      <text class="t-title t-h-text" x="1000" y="408" text-anchor="middle">⚠ 경계 케이스</text>
+      <text class="t-mini t-h-text" x="1000" y="428" text-anchor="middle">여유율 5~10%</text>
+      <text class="t-mini t-h-text" x="1000" y="444" text-anchor="middle">유속 한계 ±10%</text>
+      <text class="t-mini t-h-text" x="1000" y="464" text-anchor="middle">→ 인간 검토 큐</text>
+      <text class="t-mini t-h-text" x="1000" y="480" text-anchor="middle">자동 통과 금지</text>
+
+      <line x1="880" y1="440" x2="898" y2="440" class="arr" marker-end="url(#arr6)" stroke-dasharray="3 2"/>
+    </svg>
+  </div>
+  <div class="stage-notes">
+    <h3>핵심 디테일</h3>
+    <ul>
+      <li class="hb-note"><strong>유속 검증이 한백의 차별점</strong>. NFTC는 명시 안 하지만 한백은 가지 6m/s, 그 외 10m/s를 명시. "절대적인 것은 아니다"라고 단서 — 자동 통과 vs 인간 검토 분기를 위한 ±10% 경계 진단 영역 활용.</li>
+      <li class="hb-note"><strong>건식 ×130% 룰</strong>은 ② 방수량 검증에서 자동 적용. system_type=dry이면 기준개수 10개 → 13개로 동시방수 계산. ⑤에서 이미 적용된 값을 ⑥에서 재확인.</li>
+      <li class="hb-note"><strong>Case별 펌프 양정 한계</strong>는 ④에서 결정된 Case에 따라 다르다. Case 1=100m, Case 2c=120m, Case 3=160m, Case 4b=120m. 결정 트리로 한계값 자동 룩업.</li>
+      <li class="hb-note"><strong>체절 ≤ 정격 × 120%</strong>는 ⑤에서 펌프 곡선 DB로 미리 체크하지만 ⑥에서 hard 검증 재실행 (펌프 모델 변경시 누락 방지).</li>
+      <li class="hb-note"><strong>경계값 진단 (한계 ±10%)</strong>이 ⑦ 재설계의 효율을 좌우. "어디가 위태로운지"를 자동 식별해서 ⑦에 우선순위 정보로 전달하면 루프 횟수 절반.</li>
+      <li>합/부 판정만 자동, <strong>경계 케이스 (여유율 5~10%)는 인간 검토 큐</strong>에 자동 회부 — 시공 오차·노후화 마진을 인간이 결정.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ STAGE 7 ============ -->
+<section class="stage t-purple" id="stage-7">
+  <header class="stage-header">
+    <span class="stage-num">07</span>
+    <div class="stage-title">
+      <h2>재설계 루프</h2>
+      <p class="lede">진단 분류기 → 옵션 ranking → 한백 트레이드오프 (시스템·Case·관경·펌프)</p>
+    </div>
+    <div class="stage-meta">
+      <span class="badge badge-h">H 15%</span>
+      <span class="badge badge-r">R 25%</span>
+      <span class="badge badge-ai">AI 60%</span>
+      <span class="badge badge-hb">★ HB 트레이드오프</span>
+    </div>
+  </header>
+  <div class="stage-io">
+    <div class="io"><span class="io-label">입력</span><span class="io-content">⑥ 위반 항목 + 경계값 진단 + 현재 설계 상태</span></div>
+    <div class="io"><span class="io-label">출력</span><span class="io-content">수정된 설계 + 회귀 단계 지정 (③/④/⑤)</span></div>
+  </div>
+
+  <div class="stage-diagram">
+    <svg viewBox="0 0 1140 720" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr7" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+        <marker id="arr7d" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#6d4cb6" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <text class="t-mini" x="20" y="18">DIAGNOSIS-DRIVEN REDESIGN — HB TRADE-OFF AWARE</text>
+
+      <!-- 입력 -->
+      <rect class="box-io" x="30" y="60" width="200" height="160" rx="8"/>
+      <text class="t-title" x="130" y="88" text-anchor="middle">⑥ 진단</text>
+      <line x1="40" y1="100" x2="220" y2="100" stroke="var(--text-faint)" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="40" y="118" text-anchor="start">위반:</text>
+      <text class="t-mini" x="50" y="134" text-anchor="start">- H_017 P 0.098 ⚠</text>
+      <text class="t-mini" x="50" y="148" text-anchor="start">- P_012 v 6.8 ⚠</text>
+      <text class="t-sub" x="40" y="170" text-anchor="start">진단:</text>
+      <text class="t-mini" x="50" y="186" text-anchor="start">- 가지 길이 과다</text>
+      <text class="t-mini" x="50" y="200" text-anchor="start">- 마찰 핫스팟</text>
+
+      <!-- 진단 분류기 -->
+      <rect class="box-ai" x="270" y="60" width="220" height="160" rx="8"/>
+      <text class="t-mini t-ai-text" x="282" y="80">DIAGNOSIS CLASSIFIER (AI)</text>
+      <line x1="282" y1="88" x2="478" y2="88" stroke="#6d4cb6" stroke-width="0.4" stroke-dasharray="2 2"/>
+      <text class="t-sub" x="282" y="108" text-anchor="start">증상 → 원인 매핑</text>
+      <text class="t-mini" x="290" y="124" text-anchor="start">• 마찰 ↑ → 관경/라우팅</text>
+      <text class="t-mini" x="290" y="140" text-anchor="start">• 양정 부족 → Case 변경</text>
+      <text class="t-mini" x="290" y="156" text-anchor="start">• 사각 발생 → 헤드 배치</text>
+      <text class="t-mini" x="290" y="172" text-anchor="start">• 체절 초과 → 펌프 모델</text>
+      <text class="t-sub" x="282" y="195" text-anchor="start">우선순위 결정 (비용·시간)</text>
+
+      <line x1="230" y1="140" x2="268" y2="140" class="arr" marker-end="url(#arr7)"/>
+
+      <!-- 옵션 ABCDE (한백 트레이드오프) -->
+      <text class="t-hb" x="540" y="55">★ HB-AWARE OPTIONS (priority order)</text>
+
+      <rect class="box-r" x="540" y="65" width="290" height="65" rx="8"/>
+      <text class="t-title" x="555" y="85" text-anchor="start">A. 관경 1단계 ↑ (R)</text>
+      <text class="t-mini" x="555" y="103" text-anchor="start">병목 링크만 별표 다음 단계로</text>
+      <text class="t-hb" x="555" y="120" text-anchor="start">★ KSD 분기 변경 가능 (3507→3562)</text>
+
+      <rect class="box-ai" x="540" y="135" width="290" height="65" rx="8"/>
+      <text class="t-title" x="555" y="155" text-anchor="start">B. 라우팅 재구성 (AI)</text>
+      <text class="t-mini" x="555" y="173" text-anchor="start">트리 토폴로지 변경 (가지 분할)</text>
+      <text class="t-mini" x="555" y="188" text-anchor="start">SA로 새 트리 탐색</text>
+
+      <rect class="box-ai" x="540" y="205" width="290" height="65" rx="8"/>
+      <text class="t-title" x="555" y="225" text-anchor="start">C. 헤드 재배치 (AI)</text>
+      <text class="t-mini" x="555" y="243" text-anchor="start">SA 재실행 (가중치 조정)</text>
+      <text class="t-hb" x="555" y="258" text-anchor="start">★ R 변경 시도 (2.1 → 2.3 가능?)</text>
+
+      <rect class="box-hb" x="850" y="65" width="270" height="65" rx="8"/>
+      <text class="t-hb" x="865" y="85" text-anchor="start">★ D. 시스템 변경 (HB)</text>
+      <text class="t-mini t-hb-text" x="865" y="103" text-anchor="start">건식 → 준비작동식 (방수지연 ↓)</text>
+      <text class="t-mini t-hb-text" x="865" y="118" text-anchor="start">준비작동 → 습식 (가능시)</text>
+
+      <rect class="box-hb" x="850" y="135" width="270" height="65" rx="8"/>
+      <text class="t-hb" x="865" y="155" text-anchor="start">★ E. 계통 Case 변경 (HB)</text>
+      <text class="t-mini t-hb-text" x="865" y="173" text-anchor="start">Case 2c → 2a (옥상 가능시)</text>
+      <text class="t-mini t-hb-text" x="865" y="188" text-anchor="start">Case 3b → 3c (감압밸브 추가)</text>
+
+      <rect class="box-h" x="850" y="205" width="270" height="65" rx="8"/>
+      <text class="t-title t-h-text" x="865" y="225" text-anchor="start">F. 펌프 사양 변경 (H)</text>
+      <text class="t-mini t-h-text" x="865" y="243" text-anchor="start">A~E 모두 실패 시 마지막 수단</text>
+      <text class="t-mini t-h-text" x="865" y="258" text-anchor="start">발주처 컨택 + AI 제안</text>
+
+      <line x1="490" y1="105" x2="538" y2="98" class="arr" marker-end="url(#arr7)"/>
+      <line x1="490" y1="135" x2="538" y2="168" class="arr" marker-end="url(#arr7)"/>
+      <line x1="490" y1="155" x2="538" y2="237" class="arr" marker-end="url(#arr7)"/>
+      <line x1="490" y1="105" x2="848" y2="98" class="arr" marker-end="url(#arr7)" stroke-dasharray="3 2"/>
+      <line x1="490" y1="155" x2="848" y2="168" class="arr" marker-end="url(#arr7)" stroke-dasharray="3 2"/>
+      <line x1="490" y1="195" x2="848" y2="237" class="arr" marker-end="url(#arr7)" stroke-dasharray="3 2"/>
+
+      <!-- RETRY LOOP -->
+      <text class="t-mini" x="40" y="320">RETRY LOOP — try in priority order, escalate on failure</text>
+
+      <rect class="box-r" x="40" y="340" width="160" height="60" rx="8"/>
+      <text class="t-title" x="120" y="365" text-anchor="middle">A 시도</text>
+      <text class="t-mini" x="120" y="384" text-anchor="middle">→ ⑤ ⑥ 재실행</text>
+
+      <polygon points="240,370 290,340 340,370 290,400" fill="var(--bg)" stroke="var(--text-dim)" stroke-width="1"/>
+      <text class="t-title" x="290" y="375" text-anchor="middle">합격?</text>
+
+      <line x1="200" y1="370" x2="238" y2="370" class="arr" marker-end="url(#arr7)"/>
+
+      <line x1="342" y1="370" x2="380" y2="370" class="arr" marker-end="url(#arr7)"/>
+      <text class="t-mini" x="361" y="362" text-anchor="middle">YES</text>
+      <rect class="box-io" x="380" y="340" width="160" height="60" rx="8"/>
+      <text class="t-title" x="460" y="375" text-anchor="middle">⑧ 최종으로</text>
+
+      <line x1="290" y1="400" x2="290" y2="430" class="arr" marker-end="url(#arr7d)" stroke="#6d4cb6" stroke-dasharray="4 3"/>
+      <text class="t-mini" x="305" y="420" text-anchor="start" fill="#6d4cb6">NO</text>
+
+      <rect class="box-ai" x="200" y="430" width="180" height="55" rx="8"/>
+      <text class="t-title" x="290" y="455" text-anchor="middle">B 시도</text>
+      <text class="t-mini" x="290" y="473" text-anchor="middle">라우팅 재구성</text>
+
+      <line x1="290" y1="485" x2="290" y2="510" stroke="#6d4cb6" stroke-width="1" stroke-dasharray="4 3" fill="none"/>
+
+      <rect class="box-ai" x="200" y="510" width="180" height="55" rx="8"/>
+      <text class="t-title" x="290" y="535" text-anchor="middle">C 시도</text>
+      <text class="t-mini" x="290" y="553" text-anchor="middle">헤드 재배치</text>
+
+      <line x1="290" y1="565" x2="290" y2="590" stroke="#6d4cb6" stroke-width="1" stroke-dasharray="4 3" fill="none"/>
+
+      <rect class="box-hb" x="200" y="590" width="180" height="55" rx="8"/>
+      <text class="t-hb" x="290" y="613" text-anchor="middle">★ D / E 시도</text>
+      <text class="t-mini t-hb-text" x="290" y="632" text-anchor="middle">시스템·Case 변경</text>
+
+      <path d="M 200 617 L 160 617 L 160 670 L 460 670" stroke="#6d4cb6" stroke-width="1" stroke-dasharray="4 3" fill="none" marker-end="url(#arr7d)"/>
+
+      <rect class="box-h" x="380" y="640" width="200" height="55" rx="8"/>
+      <text class="t-title" x="480" y="665" text-anchor="middle">F. 펌프 변경</text>
+      <text class="t-mini" x="480" y="683" text-anchor="middle">발주처 협의</text>
+
+      <!-- 가드레일 -->
+      <rect class="box-h" x="620" y="340" width="500" height="360" rx="8"/>
+      <text class="t-title t-h-text" x="635" y="365">⚠ 가드레일 — 무한 루프 방지</text>
+      <line x1="635" y1="375" x2="1108" y2="375" stroke="#a83a06" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-sub t-h-text" x="635" y="395" text-anchor="start">루프 카운터:</text>
+      <text class="t-mini t-h-text" x="650" y="412" text-anchor="start">A: 최대 3회 / B: 최대 2회 / C·D·E: 최대 1회</text>
+
+      <text class="t-sub t-h-text" x="635" y="438" text-anchor="start">진동 검출:</text>
+      <text class="t-mini t-h-text" x="650" y="455" text-anchor="start">동일 옵션 반복 → 다음 단계 escalate</text>
+      <text class="t-mini t-h-text" x="650" y="471" text-anchor="start">설계 상태 해시 비교</text>
+
+      <text class="t-sub t-h-text" x="635" y="497" text-anchor="start">전체 시간 한계:</text>
+      <text class="t-mini t-h-text" x="650" y="514" text-anchor="start">한 도면당 30분 초과 → 인간 알림</text>
+
+      <text class="t-hb" x="635" y="540" text-anchor="start">★ HB 트레이드오프 가드:</text>
+      <text class="t-mini t-hb-text" x="650" y="557" text-anchor="start">시스템 변경 (D)은 발주처 동의 필요</text>
+      <text class="t-mini t-hb-text" x="650" y="573" text-anchor="start">Case 변경 (E)은 건축 협의 필요</text>
+      <text class="t-mini t-hb-text" x="650" y="589" text-anchor="start">→ 자동 결정 금지, 옵션 제시만</text>
+
+      <text class="t-sub t-h-text" x="635" y="615" text-anchor="start">로그 누적:</text>
+      <text class="t-mini t-h-text" x="650" y="632" text-anchor="start">모든 시도 + 결과 → 학습 데이터</text>
+      <text class="t-mini t-h-text" x="650" y="648" text-anchor="start">진단 분류기 fine-tune 근거</text>
+      <text class="t-mini t-h-text" x="650" y="668" text-anchor="start">한백 표준 시나리오 라이브러리화</text>
+    </svg>
+  </div>
+  <div class="stage-notes">
+    <h3>핵심 디테일</h3>
+    <ul>
+      <li class="hb-note"><strong>옵션 D (시스템 변경)와 옵션 E (계통 Case 변경)</strong>이 한백 v2의 신규 핵심. 한백 지침서가 시스템 5종과 Case 11종을 명시했기 때문에 자동화에서도 이 차원의 트레이드오프 탐색이 가능해진다.</li>
+      <li class="hb-note"><strong>옵션 D 예시</strong>: 건식설비에서 양정·유속 부족 → 준비작동식(Single Interlock)으로 변경하면 방수지연 줄어 H_req도 감소. 단, 감지기 회로 추가·신뢰도 변화는 발주처 동의 필요.</li>
+      <li class="hb-note"><strong>옵션 E 예시</strong>: Case 2c (지하 펌프 + 감압)에서 체절 초과 발생 → Case 2a (옥상 고가수조)로 변경하면 자연낙차 활용해 정격 ↓. 단, 옥상 구조 가능 여부는 건축과 협의.</li>
+      <li class="hb-note"><strong>D·E는 자동 결정 금지</strong>. 시스템·Case는 발주처 비용·시공·법적 책임 영향이 크므로 옵션 ranking과 트레이드오프만 제시. 최종 선택은 인간.</li>
+      <li><strong>진단 분류기가 AI의 핵심 효용</strong>. 단순 룰로는 "어디가 왜 문제인지"를 못 잡는다. 한백 베테랑 설계자 인터뷰 + 누적 실패 로그가 학습 데이터.</li>
+      <li><strong>옵션 우선순위 A → B → C → D → E → F</strong>는 비용·시간·영향도 순. A는 1초, F는 발주처 컨택 → 며칠.</li>
+      <li>모든 시도 로그 누적 → <strong>한백 표준 시나리오 라이브러리</strong>로 발전. 비슷한 케이스에서 어떤 옵션이 성공했는지 ranking 우선순위에 반영.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ STAGE 8 ============ -->
+<section class="stage t-amber" id="stage-8">
+  <header class="stage-header">
+    <span class="stage-num">08</span>
+    <div class="stage-title">
+      <h2>최종 도면 + 인간 승인</h2>
+      <p class="lede">한백 표준 체크리스트 + KSD 표시 + N185 첨부 + 시험배관 표시</p>
+    </div>
+    <div class="stage-meta">
+      <span class="badge badge-h">H 100%</span>
+      <span class="badge badge-hb">★ HB 체크리스트</span>
+    </div>
+  </header>
+  <div class="stage-io">
+    <div class="io"><span class="io-label">입력</span><span class="io-content">합격 설계 + 전체 reasoning trace + 한백 룰 버전</span></div>
+    <div class="io"><span class="io-label">출력</span><span class="io-content">서명된 DXF + 설계 보고서 (한백 표준) + N185 + BOM</span></div>
+  </div>
+
+  <div class="hb-quote">
+    <span class="hb-quote-tag">한백 인간 검토 강제 항목 — 자동 통과 절대 금지</span>
+    <ul>
+      <li>· <strong>행거 위치</strong>: 가지 헤드 사이마다, 행거↔헤드 ≥8cm, 가지 ≤3.5m / 교차 ≤4.5m / 수평주행 ≤4.5m</li>
+      <li>· <strong>OS&Y / 기어식 버터플라이 표시</strong> (레버식 채택 금지)</li>
+      <li>· <strong>송수구 위치</strong>: 65mm 쌍구형, 창문 ≥3m, 0.5~1m 높이, 폐쇄형 3,000m²마다 1개 (최대 5개)</li>
+      <li>· <strong>KSD 표시</strong>: 압력 구간별 3507/3562 명시</li>
+      <li>· <strong>시험배관 표시</strong>: 시스템별 위치 (습식 알람일체형 vs 건식·논·더블 가지말단)</li>
+      <li>· <strong>N185 양식 첨부</strong> (기준개수 다른 구역 공존 시)</li>
+      <li>· <strong>유수검지장치실 출입구</strong>: 0.5m × 1m, 4℃ 이상 유지 명시</li>
+    </ul>
+  </div>
+
+  <div class="stage-diagram">
+    <svg viewBox="0 0 1140 460" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr8" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/>
+        </marker>
+      </defs>
+
+      <text class="t-mini" x="20" y="18">FINAL DELIVERABLE — HB-COMPLIANT, HUMAN-OWNED</text>
+
+      <!-- 입력 -->
+      <rect class="box-io" x="30" y="140" width="160" height="120" rx="8"/>
+      <text class="t-title" x="110" y="170" text-anchor="middle">⑥ 합격 설계</text>
+      <text class="t-mini" x="110" y="190" text-anchor="middle">+ 전체 trace</text>
+      <text class="t-mini" x="110" y="208" text-anchor="middle">+ 진단 로그</text>
+      <text class="t-mini" x="110" y="225" text-anchor="middle">+ HB 룰 버전</text>
+      <text class="t-mini" x="110" y="243" text-anchor="middle">+ NFTC 룰 버전</text>
+
+      <!-- ① DXF EXPORT -->
+      <rect class="box-r" x="220" y="80" width="280" height="240" rx="8"/>
+      <text class="t-mini t-r-text" x="232" y="100">① DXF EXPORT (R)</text>
+      <line x1="232" y1="108" x2="488" y2="108" stroke="#0a8077" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-sub" x="232" y="128" text-anchor="start">레이어 자동 분류 (한백 표준)</text>
+      <text class="t-mini" x="240" y="144" text-anchor="start">F-HEAD-SP / F-PIPE-BR</text>
+      <text class="t-mini" x="240" y="158" text-anchor="start">F-PIPE-CR / F-PIPE-RS</text>
+      <text class="t-mini" x="240" y="172" text-anchor="start">F-VALVE / F-PUMP / F-TANK</text>
+
+      <text class="t-hb" x="232" y="195" text-anchor="start">★ KSD 표시 (압력별)</text>
+      <text class="t-mini t-hb-text" x="240" y="210" text-anchor="start">3507 vs 3562 자동 라벨링</text>
+
+      <text class="t-hb" x="232" y="232" text-anchor="start">★ 시험배관 명시</text>
+      <text class="t-mini t-hb-text" x="240" y="247" text-anchor="start">시스템별 위치 + 오리피스 표시</text>
+
+      <text class="t-sub" x="232" y="270" text-anchor="start">XDATA 메타데이터:</text>
+      <text class="t-mini" x="240" y="285" text-anchor="start">trace_id · HB §x.x · NFTC §x.x</text>
+      <text class="t-mini" x="240" y="300" text-anchor="start">결정 시점 · 룰 버전</text>
+
+      <!-- ② DESIGN REPORT -->
+      <rect class="box-r" x="540" y="80" width="280" height="240" rx="8"/>
+      <text class="t-mini t-r-text" x="552" y="100">② DESIGN REPORT (R)</text>
+      <line x1="552" y1="108" x2="808" y2="108" stroke="#0a8077" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-sub" x="552" y="128" text-anchor="start">자동 생성 PDF 보고서</text>
+      <text class="t-mini" x="560" y="144" text-anchor="start">• 적용 법령 + HB §2.4 인덱스</text>
+      <text class="t-mini" x="560" y="158" text-anchor="start">• 시스템 종류 + Case 결정 근거</text>
+      <text class="t-mini" x="560" y="172" text-anchor="start">• Zone별 헤드 사양 표</text>
+      <text class="t-mini" x="560" y="186" text-anchor="start">• 수리계산 결과 표</text>
+
+      <text class="t-hb" x="552" y="208" text-anchor="start">★ N185 양식 첨부</text>
+      <text class="t-mini t-hb-text" x="560" y="223" text-anchor="start">기준개수 다른 구역 공존 시</text>
+
+      <text class="t-hb" x="552" y="246" text-anchor="start">★ 펌프 곡선 + 체절 그래프</text>
+      <text class="t-mini t-hb-text" x="560" y="261" text-anchor="start">120% 한계 시각화</text>
+
+      <text class="t-sub" x="552" y="282" text-anchor="start">자재 내역 (BOM)</text>
+      <text class="t-mini" x="560" y="297" text-anchor="start">"§ HB 2.4.16 Case 2a로 결정"</text>
+
+      <!-- ③ HUMAN SIGN-OFF -->
+      <rect class="box-h" x="860" y="80" width="260" height="240" rx="8"/>
+      <text class="t-mini t-h-text" x="872" y="100">③ HUMAN SIGN-OFF</text>
+      <line x1="872" y1="108" x2="1108" y2="108" stroke="#a83a06" stroke-width="0.4" stroke-dasharray="2 2"/>
+
+      <text class="t-sub" x="872" y="128" text-anchor="start">한백 표준 검토 항목:</text>
+      <text class="t-mini" x="880" y="144" text-anchor="start">□ Zone 분할 적정성</text>
+      <text class="t-mini" x="880" y="158" text-anchor="start">□ 시스템 종류 적합성</text>
+      <text class="t-mini" x="880" y="172" text-anchor="start">□ Case 1~5 결정 근거</text>
+      <text class="t-mini" x="880" y="186" text-anchor="start">□ 헤드 배치 위화감</text>
+      <text class="t-mini" x="880" y="200" text-anchor="start">□ 행거 위치 시공성</text>
+      <text class="t-mini" x="880" y="214" text-anchor="start">□ OS&Y/기어식 표시</text>
+      <text class="t-mini" x="880" y="228" text-anchor="start">□ 송수구 위치</text>
+      <text class="t-mini" x="880" y="242" text-anchor="start">□ KSD 표시 정확성</text>
+      <text class="t-mini" x="880" y="256" text-anchor="start">□ 수리계산 여유율</text>
+      <text class="t-mini" x="880" y="270" text-anchor="start">□ N185 적합성</text>
+
+      <text class="t-sub t-h-text" x="872" y="294" text-anchor="start">전자서명 → 발주처 제출</text>
+      <text class="t-mini t-h-text" x="872" y="310" text-anchor="start">법적 책임은 인간 설계자</text>
+
+      <!-- 화살표 -->
+      <line x1="190" y1="200" x2="218" y2="200" class="arr" marker-end="url(#arr8)"/>
+      <line x1="500" y1="200" x2="538" y2="200" class="arr" marker-end="url(#arr8)"/>
+      <line x1="820" y1="200" x2="858" y2="200" class="arr" marker-end="url(#arr8)"/>
+
+      <!-- 경고 박스 -->
+      <rect x="220" y="350" width="900" height="80" rx="6" fill="var(--amber-soft)" stroke="var(--amber-line)" stroke-width="0.5"/>
+      <text class="t-title t-h-text" x="240" y="375" text-anchor="start">⚠ 자동화 절대 금지 영역</text>
+      <text class="t-sub t-h-text" x="240" y="395" text-anchor="start">최종 사인은 사람만. 시스템은 trace를 제공하고, 사람은 검토하고 책임을 진다.</text>
+      <text class="t-sub t-h-text" x="240" y="413" text-anchor="start">한백 trace는 발주처 협의·법적 검토에서 즉시 활용 가능 — "왜 Case 2a로 결정했는가"에 한 줄로 답변.</text>
+    </svg>
+  </div>
+  <div class="stage-notes">
+    <h3>핵심 디테일</h3>
+    <ul>
+      <li class="hb-note"><strong>한백 표준 검토 체크리스트</strong>를 UI에서 강제. 미체크 항목이 있으면 사인 불가능 — Zone·시스템·Case·헤드·행거·OS&Y·송수구·KSD·여유율·N185 10개 항목.</li>
+      <li class="hb-note"><strong>KSD 자동 라벨링</strong>이 도면 가독성을 좌우. 압력 구간별로 3507/3562가 다르게 표시되어야 시공자가 정확한 자재 발주 가능.</li>
+      <li class="hb-note"><strong>N185 양식</strong>은 한백이 직접 언급. 기준개수가 다른 구역(예: 사무 10개 + 주차 30개) 공존시 펌프 적합성을 그래프로 검증한 결과를 보고서에 첨부.</li>
+      <li class="hb-note"><strong>Case 결정 근거</strong>를 보고서에 자연어로 기재 — "건물 높이 75m → Case 2 / 옥상 고가수조 가능 → Case 2a 원칙 적용 / 자재비 -15%"와 같은 형태.</li>
+      <li><strong>DXF에 trace_id를 XDATA로 박는다</strong> — 도면에서 어떤 결정이 어떤 한백 조항·NFTC 조항·룰 버전으로 났는지 영구 추적 가능.</li>
+      <li><strong>법적 책임 라인</strong> — 시스템은 보조자. 사인한 사람이 모든 결정에 책임진다. trace는 책임 검토를 가능케 하는 도구이지 책임 회피 수단이 아니다.</li>
+      <li>발주처 제출 후 <strong>피드백 루프</strong>: 발주처가 수정 요구하면 trace를 들고 협의 → 한백 조항으로 즉시 설명 가능.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ PHASE 푸터 ============ -->
+<section class="phases">
+  <h2>Phase별 구현 우선순위 — 한백 v2 반영</h2>
+  <div class="phase-grid">
+    <div class="phase">
+      <div class="phase-num">PHASE 1</div>
+      <div class="phase-title">한백 룰 백본</div>
+      <div class="phase-eta">~ 1.5개월</div>
+      <p class="phase-desc">②⑤⑥ + Case 1~5 결정 트리 + KSD 실제내경 표 + N185 양식 + 유속 검증. 한백 지침서를 YAML+DSL로 인코딩.</p>
+    </div>
+    <div class="phase">
+      <div class="phase-num">PHASE 2</div>
+      <div class="phase-title">헤드 배치 옵티마이저</div>
+      <div class="phase-eta">~ 2-3개월</div>
+      <p class="phase-desc">③ 격자 sweep + SA + (2R)²=S²+L² 검증 + HB §2.4.11 장애물 룰. 한백 표(S, L) 룩업이 ground truth.</p>
+    </div>
+    <div class="phase">
+      <div class="phase-num">PHASE 3</div>
+      <div class="phase-title">도면 객체 추출 + §2.4.18</div>
+      <div class="phase-eta">~ 6개월+</div>
+      <p class="phase-desc">① 비전 모델 + 한백 §2.4.18 13개 제외영역 자동 마스킹. 사무소 표준 1,000장+ 라벨링 필요.</p>
+    </div>
+    <div class="phase">
+      <div class="phase-num">PHASE 4</div>
+      <div class="phase-title">배관 + 계통 라우팅</div>
+      <div class="phase-eta">Phase 2 안정 후</div>
+      <p class="phase-desc">④ 배관망 + Case 1~5 토폴로지 + 부속 자동 배치 (행거·릴리프·감압밸브). 한백 §2.4.16 결정 트리.</p>
+    </div>
+    <div class="phase">
+      <div class="phase-num">PHASE 5</div>
+      <div class="phase-title">재설계 진단 + 트레이드오프</div>
+      <div class="phase-eta">앞 단계 안정 후</div>
+      <p class="phase-desc">⑦ 진단 분류기 + 시스템·Case 변경 옵션 ranking. 한백 베테랑 설계자 인터뷰 + 누적 실패 로그.</p>
+    </div>
+  </div>
+</section>
+
+</div>
+</div>

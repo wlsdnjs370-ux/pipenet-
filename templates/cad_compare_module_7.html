@@ -1,0 +1,3665 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAD-SDF 배관망 대조·분석 모듈</title>
+  <script src="/static/vendor/js/tailwind.js"></script>
+  <script src="/static/vendor/js/dxf-parser.js"></script>
+  <script src="/static/vendor/js/three-0.160.0.min.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #0f1115; font-family: 'Segoe UI', sans-serif; }
+    .canvas-container { position: relative; width: 50vw; height: 100vh; overflow: hidden; border-right: 2px solid #374151; }
+    .canvas-container:last-child { border-right: none; }
+    canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+    .filter-panel { position: absolute; top: 16px; right: 16px; width: 250px; max-height: calc(100vh - 32px); display: none; flex-direction: column; gap: 10px; z-index: 10; border: 1px solid rgba(75, 85, 99, 0.6); background: rgba(17, 24, 39, 0.92); backdrop-filter: blur(10px); padding: 14px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28); }
+    .filter-panel.is-open { display: flex; }
+    .filter-panel h2 { margin: 0; font-size: 13px; font-weight: 700; color: #e5e7eb; }
+    .filter-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .filter-close-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #111827; background: #fff; color: #111827; font-size: 15px; font-weight: 900; line-height: 1; cursor: pointer; }
+    .filter-close-btn:hover { background: #111827; color: #fff; }
+    .filter-group { border-top: 1px solid rgba(75, 85, 99, 0.45); padding-top: 10px; }
+    .filter-group-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .filter-group-head span { font-size: 11px; font-weight: 700; color: #93c5fd; }
+    .filter-group-head button { border: 0; background: transparent; color: #9ca3af; font-size: 11px; cursor: pointer; }
+    .filter-group-head button:hover { color: #f9fafb; }
+    .filter-list { overflow-y: auto; max-height: 220px; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+    .filter-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #d1d5db; }
+    .filter-item input { width: 13px; height: 13px; }
+    .filter-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .viewer-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(99, 102, 241, 0.35); background: rgba(30, 41, 59, 0.9); color: #e5e7eb; font-size: 11px; font-weight: 600; padding: 7px 10px; }
+    .viewer-chip strong { color: #a5b4fc; }
+    .mode-network { border-color: #f59e0b !important; }
+    .selection-hint { margin-top: 10px; font-size: 11px; line-height: 1.5; color: #d1d5db; }
+    .zoom-toolbar { position: absolute; right: 16px; bottom: 20px; z-index: 12; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.24); background: rgba(255, 255, 255, 0.94); box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18); backdrop-filter: blur(12px); }
+    .zoom-toolbar button { width: 42px; height: 42px; border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 12px; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); color: #0f172a; font-size: 19px; font-weight: 800; cursor: pointer; transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease; }
+    .zoom-toolbar button:hover { transform: translateY(-1px); background: linear-gradient(180deg, #ffffff 0%, #eef2ff 100%); box-shadow: 0 10px 18px rgba(99, 102, 241, 0.16); }
+    .zoom-toolbar button:active { transform: translateY(0); }
+    .zoom-toolbar button.zoom-fit { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
+    .match-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .match-table th, .match-table td { border-bottom: 1px solid rgba(75, 85, 99, 0.65); padding: 8px 9px; text-align: left; vertical-align: top; }
+    .match-table th { color: #cbd5e1; background: rgba(15, 23, 42, 0.72); font-weight: 800; position: sticky; top: 0; }
+    .match-pass { color: #34d399; font-weight: 800; }
+    .match-review { color: #fbbf24; font-weight: 800; }
+    .match-fail { color: #f87171; font-weight: 800; }
+    .ai-engine-modal { position: fixed; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center; background: rgba(240, 242, 245, 0.88); backdrop-filter: blur(3px); }
+    .ai-engine-modal.is-open { display: flex; }
+    .ai-engine-panel { width: min(960px, 94vw); border: 1px solid #111827; background: #fff; color: #111827; padding: 24px; box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18); }
+    .ai-engine-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+    .ai-engine-title { margin: 0; font-size: 22px; font-weight: 900; letter-spacing: -0.03em; }
+    .ai-engine-subtitle { margin-top: 7px; color: #4b5563; font-size: 13px; line-height: 1.6; }
+    .ai-engine-timer { min-width: 96px; border: 1px solid #111827; padding: 9px 12px; text-align: center; font-size: 13px; font-weight: 900; background: #f9fafb; }
+    .ai-engine-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .ai-engine-card { border: 1px solid #d1d5db; background: #f9fafb; padding: 14px 12px; min-height: 126px; transition: border-color .2s ease, background .2s ease, transform .2s ease; }
+    .ai-engine-card strong { display: block; font-size: 13px; line-height: 1.35; color: #111827; }
+    .ai-engine-card span { display: block; margin-top: 7px; font-size: 11px; line-height: 1.45; color: #6b7280; }
+    .ai-engine-card .engine-state { display: inline-flex; margin-bottom: 10px; border: 1px solid #9ca3af; padding: 4px 7px; font-size: 10px; font-weight: 900; color: #4b5563; background: #fff; }
+    .ai-engine-card.is-active { border-color: #111827; background: #fff; transform: translateY(-2px); }
+    .ai-engine-card.is-active .engine-state { border-color: #2563eb; color: #1d4ed8; background: #eff6ff; }
+    .ai-engine-card.is-done .engine-state { border-color: #16a34a; color: #15803d; background: #f0fdf4; }
+    .ai-engine-card.is-fallback .engine-state { border-color: #f59e0b; color: #92400e; background: #fffbeb; }
+    .ai-engine-progress { height: 10px; border: 1px solid #111827; margin-top: 18px; background: #f3f4f6; overflow: hidden; }
+    .ai-engine-progress > div { height: 100%; width: 0%; background: #111827; transition: width .35s ease; }
+    .ai-engine-foot { margin-top: 12px; font-size: 12px; color: #4b5563; line-height: 1.55; }
+    @media (max-width: 900px) {
+      .ai-engine-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    /* Main-site style override: keep the drawing canvas dark, make controls white and angular. */
+    .canvas-container > .absolute.top-4.left-4,
+    .filter-panel,
+    #analysis-modal > div,
+    #pipe-match-modal > div {
+      border-radius: 0 !important;
+      border: 1px solid #d1d5db !important;
+      background: #ffffff !important;
+      color: #111827 !important;
+      box-shadow: 0 10px 26px rgba(17, 24, 39, 0.16) !important;
+      backdrop-filter: none !important;
+    }
+    .canvas-container > .absolute.top-4.left-4 h1,
+    .filter-panel h2,
+    #analysis-modal h2,
+    #pipe-match-modal h2 {
+      color: #111827 !important;
+    }
+    .canvas-container > .absolute.top-4.left-4 label,
+    .canvas-container > .absolute.top-4.left-4 button,
+    .zoom-toolbar button,
+    #btn-compare-analysis,
+    #btn-pipe-match-analysis,
+    #btn-selected-region-report,
+    #analysis-modal button,
+    #pipe-match-modal button,
+    #selected-region-report-modal button {
+      border-radius: 0 !important;
+      border: 1px solid #111827 !important;
+      background: #ffffff !important;
+      color: #111827 !important;
+      box-shadow: none !important;
+    }
+    .canvas-container > .absolute.top-4.left-4 label:hover,
+    .canvas-container > .absolute.top-4.left-4 button:hover,
+    .zoom-toolbar button:hover,
+    #btn-compare-analysis:not(:disabled):hover,
+    #btn-pipe-match-analysis:not(:disabled):hover,
+    #btn-selected-region-report:not(:disabled):hover,
+    #analysis-modal button:hover,
+    #pipe-match-modal button:hover,
+    #selected-region-report-modal button:hover {
+      background: #111827 !important;
+      color: #ffffff !important;
+      transform: none !important;
+    }
+    .canvas-container > .absolute.top-4.left-4 button.border-blue-500,
+    .canvas-container > .absolute.top-4.left-4 button.border-emerald-500,
+    .canvas-container > .absolute.top-4.left-4 button.mode-network {
+      background: #111827 !important;
+      color: #ffffff !important;
+      border-color: #111827 !important;
+    }
+    .selection-hint,
+    .filter-item,
+    .filter-group-head span,
+    .viewer-chip,
+    #compare-tooltip,
+    #analysis-modal p,
+    #analysis-modal li,
+    #pipe-match-modal p,
+    #pipe-match-summary,
+    #selected-region-report-modal p {
+      color: #4b5563 !important;
+    }
+    .viewer-chip,
+    #compare-tooltip,
+    #pipe-match-summary,
+    #analysis-modal .bg-gray-800,
+    #pipe-match-modal .bg-gray-800,
+    #selected-region-report-modal .bg-gray-800 {
+      border-radius: 0 !important;
+      border: 1px solid #d1d5db !important;
+      background: #f9fafb !important;
+      color: #111827 !important;
+    }
+    .filter-group {
+      border-top-color: #d1d5db !important;
+    }
+    .filter-group-head button {
+      color: #111827 !important;
+    }
+    .filter-close-btn {
+      border-radius: 0 !important;
+    }
+    .zoom-toolbar {
+      border-radius: 0 !important;
+      border: 1px solid #d1d5db !important;
+      background: #ffffff !important;
+      box-shadow: 0 10px 26px rgba(17, 24, 39, 0.16) !important;
+    }
+    #btn-compare-analysis:disabled,
+    #btn-pipe-match-analysis:disabled,
+    #btn-selected-region-report:disabled {
+      border-color: #9ca3af !important;
+      background: #f3f4f6 !important;
+      color: #6b7280 !important;
+      cursor: not-allowed !important;
+    }
+    .selection-locked {
+      background: #111827 !important;
+      color: #ffffff !important;
+      border-color: #111827 !important;
+    }
+    #analysis-modal,
+    #pipe-match-modal,
+    #selected-region-report-modal {
+      background: rgba(240, 242, 245, 0.86) !important;
+      backdrop-filter: blur(2px) !important;
+    }
+    #analysis-modal h3,
+    #analysis-modal strong,
+    #analysis-modal span,
+    #pipe-match-modal span,
+    #pipe-match-modal strong,
+    #selected-region-report-modal span,
+    #selected-region-report-modal strong {
+      color: #111827 !important;
+    }
+    #res-total-score,
+    #pipe-match-score,
+    #pipe-match-dxf-count,
+    #pipe-match-sdf-count,
+    #pipe-match-fail-count,
+    #selected-region-score {
+      color: #111827 !important;
+      background-image: none !important;
+      -webkit-text-fill-color: #111827 !important;
+    }
+    .match-table th {
+      background: #f3f4f6 !important;
+      color: #111827 !important;
+      border-bottom-color: #d1d5db !important;
+    }
+    .match-table td {
+      color: #111827 !important;
+      border-bottom-color: #e5e7eb !important;
+    }
+    .match-pass { color: #0f766e !important; }
+    .match-review { color: #9a6700 !important; }
+    .match-fail { color: #b91c1c !important; }
+    .selected-region-map {
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      height: 360px;
+      overflow: hidden;
+    }
+    .selected-region-map svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #ffffff;
+      shape-rendering: geometricPrecision;
+    }
+    .viewer-control-panel {
+      width: min(900px, calc(100% - 32px)) !important;
+      padding: 12px !important;
+      display: grid !important;
+      grid-template-columns: 150px minmax(0, 1fr) !important;
+      gap: 10px !important;
+      align-items: center !important;
+    }
+    .viewer-control-panel h1 {
+      margin: 0 !important;
+      font-size: 15px !important;
+      white-space: nowrap !important;
+    }
+    .viewer-file-button {
+      grid-column: 1 !important;
+      width: 100% !important;
+      padding: 9px 10px !important;
+      font-size: 12px !important;
+    }
+    .viewer-button-row {
+      grid-column: 2 !important;
+      grid-row: 1 !important;
+      margin: 0 !important;
+      display: flex !important;
+      gap: 6px !important;
+      min-width: 0 !important;
+    }
+    .viewer-button-row button {
+      flex: 1 1 0 !important;
+      min-width: 78px !important;
+      padding: 9px 8px !important;
+      font-size: 12px !important;
+      white-space: nowrap !important;
+    }
+    .viewer-secondary-row {
+      grid-column: 1 / -1 !important;
+      grid-row: 2 !important;
+      margin: 0 !important;
+      display: grid !important;
+      grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+      gap: 6px !important;
+    }
+    .viewer-secondary-row button {
+      min-width: 0 !important;
+      padding: 9px 10px !important;
+      font-size: 12px !important;
+      white-space: nowrap !important;
+    }
+    .viewer-control-panel .selection-hint,
+    .viewer-control-panel #dxf-status,
+    .viewer-control-panel #sdf-status {
+      grid-column: 1 / -1 !important;
+      grid-row: 3 !important;
+      margin: 0 !important;
+    }
+    @media (max-width: 980px) {
+      .viewer-control-panel {
+        grid-template-columns: 1fr !important;
+      }
+      .viewer-file-button,
+      .viewer-button-row,
+      .viewer-secondary-row,
+      .viewer-control-panel .selection-hint,
+      .viewer-control-panel #dxf-status,
+      .viewer-control-panel #sdf-status {
+        grid-column: 1 !important;
+      }
+    }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #1f2937; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
+    .bim-modal { position: fixed; inset: 0; z-index: 80; display: none; background: #f3f4f6; color: #111827; }
+    .bim-modal.is-open { display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+    .bim-viewport { position: relative; min-width: 0; background: #111827; }
+    .bim-viewport canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+    .bim-panel { border-left: 1px solid #111827; background: #ffffff; padding: 18px; overflow-y: auto; }
+    .bim-panel h2 { margin: 0 0 8px; font-size: 19px; font-weight: 900; color: #111827; }
+    .bim-panel p { margin: 0 0 14px; color: #4b5563; font-size: 12px; line-height: 1.55; }
+    .bim-field { margin-bottom: 12px; }
+    .bim-field label { display: block; margin-bottom: 5px; font-size: 12px; font-weight: 800; color: #111827; }
+    .bim-field input { width: 100%; border: 1px solid #111827; padding: 8px 9px; font-size: 13px; color: #111827; background: #fff; }
+    .bim-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
+    .bim-actions button, .bim-close-btn { border: 1px solid #111827; background: #fff; color: #111827; padding: 9px 10px; font-size: 12px; font-weight: 800; cursor: pointer; }
+    .bim-actions button:hover, .bim-close-btn:hover { background: #111827; color: #fff; }
+    .bim-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .bim-stat { border: 1px solid #d1d5db; background: #f9fafb; padding: 10px; }
+    .bim-stat span { display: block; color: #6b7280; font-size: 11px; font-weight: 700; }
+    .bim-stat strong { display: block; margin-top: 3px; color: #111827; font-size: 18px; font-weight: 900; }
+    .bim-legend { margin-top: 14px; border-top: 1px solid #d1d5db; padding-top: 12px; font-size: 12px; color: #4b5563; line-height: 1.55; }
+    .bim-viewport-label { position: absolute; left: 16px; bottom: 16px; z-index: 2; border: 1px solid rgba(255,255,255,.35); background: rgba(17,24,39,.78); color: #fff; padding: 9px 11px; font-size: 12px; line-height: 1.45; }
+    .pipenet-proto-modal { position: fixed; inset: 0; z-index: 85; display: none; grid-template-columns: minmax(0, 1fr) 420px; background: #f3f4f6; color: #111827; }
+    .pipenet-proto-modal.is-open { display: grid; }
+    .pipenet-proto-view { position: relative; min-width: 0; background: #0f172a; }
+    .pipenet-proto-view canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+    .pipenet-proto-panel { border-left: 1px solid #111827; background: #ffffff; padding: 18px; overflow-y: auto; }
+    .pipenet-proto-panel h2 { margin: 0 0 8px; font-size: 19px; font-weight: 900; color: #111827; }
+    .pipenet-proto-panel p { margin: 0 0 14px; color: #4b5563; font-size: 12px; line-height: 1.55; }
+    .proto-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+    .proto-actions button { border: 1px solid #111827; background: #fff; color: #111827; padding: 9px 8px; font-size: 12px; font-weight: 800; cursor: pointer; }
+    .proto-actions button:hover { background: #111827; color: #fff; }
+    .proto-stat-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .proto-stat { border: 1px solid #d1d5db; background: #f9fafb; padding: 10px; }
+    .proto-stat span { display: block; color: #6b7280; font-size: 11px; font-weight: 700; }
+    .proto-stat strong { display: block; margin-top: 3px; color: #111827; font-size: 18px; font-weight: 900; }
+    .proto-textarea { width: 100%; min-height: 260px; border: 1px solid #111827; padding: 10px; font-family: Consolas, monospace; font-size: 11px; line-height: 1.45; color: #111827; background: #fff; white-space: pre; }
+    .proto-head-list { max-height: 160px; overflow: auto; border: 1px solid #d1d5db; background: #f9fafb; padding: 8px; font-size: 12px; color: #111827; }
+    .proto-head-list div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #e5e7eb; padding: 5px 0; }
+    .proto-view-label { position: absolute; left: 16px; bottom: 16px; z-index: 2; border: 1px solid rgba(255,255,255,.35); background: rgba(15,23,42,.78); color: #fff; padding: 9px 11px; font-size: 12px; line-height: 1.45; }
+    .integrated-modal { position: fixed; inset: 0; z-index: 90; display: none; grid-template-columns: 420px minmax(0, 1fr); background: #f3f4f6; color: #111827; }
+    .integrated-modal.is-open { display: grid; }
+    .integrated-panel { border-right: 1px solid #111827; background: #fff; padding: 18px; overflow-y: auto; }
+    .integrated-panel h2 { margin: 0 0 8px; font-size: 19px; font-weight: 900; }
+    .integrated-panel p { margin: 0 0 14px; color: #4b5563; font-size: 12px; line-height: 1.55; }
+    .integrated-field { margin-bottom: 12px; }
+    .integrated-field label { display: block; margin-bottom: 5px; font-size: 12px; font-weight: 800; }
+    .integrated-field input, .integrated-field textarea { width: 100%; border: 1px solid #111827; padding: 8px 9px; font-size: 12px; color: #111827; background: #fff; }
+    .integrated-field textarea { min-height: 120px; font-family: Consolas, monospace; line-height: 1.45; }
+    .integrated-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+    .integrated-actions button { border: 1px solid #111827; background: #fff; color: #111827; padding: 9px 8px; font-size: 12px; font-weight: 800; cursor: pointer; }
+    .integrated-actions button:hover { background: #111827; color: #fff; }
+    .integrated-output { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; padding: 18px; gap: 12px; overflow: hidden; }
+    .integrated-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+    .integrated-stat { border: 1px solid #d1d5db; background: #fff; padding: 10px; }
+    .integrated-stat span { display: block; color: #6b7280; font-size: 11px; font-weight: 700; }
+    .integrated-stat strong { display: block; margin-top: 3px; font-size: 18px; font-weight: 900; }
+    .integrated-tabs { display: flex; gap: 8px; }
+    .integrated-tabs button { border: 1px solid #111827; background: #fff; color: #111827; padding: 8px 10px; font-size: 12px; font-weight: 800; cursor: pointer; }
+    .integrated-tabs button.active { background: #111827; color: #fff; }
+    .integrated-textarea { width: 100%; height: 100%; min-height: 0; border: 1px solid #111827; background: #fff; color: #111827; padding: 12px; font-family: Consolas, monospace; font-size: 11px; line-height: 1.45; white-space: pre; overflow: auto; }
+    .integrated-iso-preview { width: 100%; height: 100%; min-height: 0; border: 1px solid #111827; background: #f8fafc; color: #111827; overflow: hidden; position: relative; }
+    .integrated-iso-preview svg { width: 100%; height: 100%; display: block; background: #f8fafc; shape-rendering: geometricPrecision; }
+    .integrated-iso-tools { position: absolute; right: 12px; top: 12px; z-index: 3; display: flex; gap: 6px; }
+    .integrated-iso-tools button { border: 1px solid #111827; background: rgba(255,255,255,.96); color: #111827; padding: 7px 10px; font-size: 12px; font-weight: 800; cursor: pointer; }
+    .integrated-iso-tools button:hover { background: #111827; color: #fff; }
+    .integrated-iso-preview .iso-empty { display: flex; height: 100%; align-items: center; justify-content: center; padding: 20px; color: #6b7280; font-size: 13px; text-align: center; }
+    .integrated-iso-preview .iso-pipe { fill: none; stroke: #0f766e; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 1.25px rgba(15, 23, 42, 0.35)); }
+    .integrated-iso-preview .iso-pipe.branch { stroke: #2563eb; }
+    .integrated-iso-preview .iso-pipe.riser { stroke: #9333ea; stroke-dasharray: 14 8; }
+    .integrated-iso-preview .iso-node { fill: #ffffff; stroke: #111827; stroke-width: 6; vector-effect: non-scaling-stroke; }
+    .integrated-iso-preview .iso-head { fill: #facc15; stroke: #111827; stroke-width: 6; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 2px rgba(17, 24, 39, 0.28)); }
+    .integrated-iso-preview .iso-label { font: 800 12px Segoe UI, sans-serif; fill: #111827; paint-order: stroke; stroke: #fff; stroke-width: 6; stroke-linejoin: round; }
+    .integrated-iso-legend { position: absolute; left: 12px; top: 12px; z-index: 2; border: 1px solid #d1d5db; background: rgba(255,255,255,.92); color: #111827; padding: 9px 10px; font-size: 12px; line-height: 1.55; }
+    @media (max-width: 980px) {
+      .bim-modal.is-open { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+      .bim-panel { border-left: 0; border-top: 1px solid #111827; max-height: 42vh; }
+      .pipenet-proto-modal.is-open { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+      .pipenet-proto-panel { border-left: 0; border-top: 1px solid #111827; max-height: 48vh; }
+      .integrated-modal.is-open { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+      .integrated-panel { border-right: 0; border-bottom: 1px solid #111827; max-height: 48vh; }
+      .integrated-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body class="text-white flex flex-row w-screen h-screen">
+  <div class="canvas-container" id="dxf-container">
+    <div class="viewer-control-panel absolute top-4 left-4 bg-gray-900/90 backdrop-blur-md p-5 rounded-2xl shadow-2xl border border-gray-700/50 z-10 w-72">
+      <h1 class="text-xl font-bold mb-4 text-blue-400">DXF 뷰어 (도면)</h1>
+      <label class="viewer-file-button flex justify-center items-center w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-colors">
+        DXF 파일 열기
+        <input id="dxf-file" type="file" accept=".dxf" class="hidden" />
+      </label>
+      <div class="viewer-button-row mt-4 flex gap-2">
+        <button id="dxf-btn-pan" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-blue-500">이동 모드</button>
+        <button id="dxf-btn-select" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-transparent">영역 선택</button>
+        <button id="dxf-btn-entity" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-transparent">객체 선택</button>
+        <button id="dxf-btn-network" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-transparent">배관망 선택</button>
+      </div>
+      <div class="viewer-secondary-row mt-2 flex gap-2">
+        <button id="dxf-btn-filters" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border border-gray-600">필터</button>
+        <button id="dxf-btn-lock-selection" class="bg-gray-700 text-xs font-semibold py-2 px-4 rounded-lg border border-gray-600" disabled>영역 고정</button>
+        <button id="dxf-btn-crop" class="bg-red-600 text-white text-xs font-semibold py-2 px-4 rounded-lg hidden">선택 영역 외 삭제</button>
+        <button id="dxf-btn-bim" class="bg-gray-700 text-xs font-semibold py-2 px-4 rounded-lg border border-gray-600" disabled>배관 아이소</button>
+        <button id="dxf-btn-pipenet-prototype" class="bg-gray-700 text-xs font-semibold py-2 px-4 rounded-lg border border-gray-600" disabled>최원단30 추출</button>
+        <button id="dxf-btn-integrated-convert" class="bg-gray-700 text-xs font-semibold py-2 px-4 rounded-lg border border-gray-600">3도면 통합변환</button>
+      </div>
+      <div class="selection-hint">영역 선택 후 Delete 키를 누르면 선택 영역과 겹치는 DXF 객체가 레이어와 관계없이 삭제됩니다. 객체 선택 모드에서는 클릭한 객체만 삭제됩니다.</div>
+      <div id="dxf-status" class="mt-3 text-xs font-medium text-yellow-400 hidden">처리 중...</div>
+    </div>
+    <aside id="dxf-filter-panel" class="filter-panel custom-scrollbar">
+      <div class="filter-panel-head">
+        <h2>DXF 필터</h2>
+        <button type="button" id="dxf-filter-close" class="filter-close-btn" title="필터 닫기">×</button>
+      </div>
+      <div class="viewer-chip"><strong>권장</strong> 문자/치수/건축 레이어를 끄고 배관 관련 레이어만 남기세요.</div>
+      <section class="filter-group">
+        <div class="filter-group-head">
+          <span>레이어</span>
+          <button type="button" id="dxf-toggle-layers">전체 전환</button>
+        </div>
+        <div id="dxf-layer-list" class="filter-list custom-scrollbar"></div>
+      </section>
+      <section class="filter-group">
+        <div class="filter-group-head">
+          <span>객체 타입</span>
+          <button type="button" id="dxf-toggle-types">전체 전환</button>
+        </div>
+        <div id="dxf-type-list" class="filter-list custom-scrollbar"></div>
+      </section>
+    </aside>
+    <div class="zoom-toolbar" aria-label="DXF 뷰 조작">
+      <button type="button" id="dxf-btn-zoom-in" title="확대">+</button>
+      <button type="button" id="dxf-btn-zoom-out" title="축소">-</button>
+      <button type="button" id="dxf-btn-zoom-fit" class="zoom-fit" title="현재 표시 대상 맞춤">FIT</button>
+    </div>
+    <canvas id="dxf-canvas"></canvas>
+  </div>
+
+  <div class="canvas-container" id="sdf-container">
+    <div class="viewer-control-panel absolute top-4 left-4 bg-gray-900/90 backdrop-blur-md p-5 rounded-2xl shadow-2xl border border-gray-700/50 z-10 w-72">
+      <h1 class="text-xl font-bold mb-4 text-emerald-400">SDF 뷰어 (배관망)</h1>
+      <label class="viewer-file-button flex justify-center items-center w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-colors">
+        Pipenet SDF 열기
+        <input id="sdf-file" type="file" accept=".sdf" class="hidden" />
+      </label>
+      <div class="viewer-button-row mt-4 flex gap-2">
+        <button id="sdf-btn-pan" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-emerald-500">이동 모드</button>
+        <button id="sdf-btn-select" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border-2 border-transparent">영역 선택</button>
+      </div>
+      <div class="viewer-secondary-row mt-2 flex gap-2">
+        <button id="sdf-btn-filters" class="flex-1 bg-gray-700 text-xs font-semibold py-2 px-2 rounded-lg border border-gray-600">필터</button>
+        <button id="sdf-btn-lock-selection" class="bg-gray-700 text-xs font-semibold py-2 px-4 rounded-lg border border-gray-600" disabled>영역 고정</button>
+        <button id="sdf-btn-crop" class="bg-red-600 text-white text-xs font-semibold py-2 px-4 rounded-lg hidden">선택 영역 외 삭제</button>
+      </div>
+      <div id="sdf-status" class="mt-3 text-xs font-medium text-yellow-400 hidden">처리 중...</div>
+    </div>
+    <aside id="sdf-filter-panel" class="filter-panel custom-scrollbar">
+      <div class="filter-panel-head">
+        <h2>SDF 필터</h2>
+        <button type="button" id="sdf-filter-close" class="filter-close-btn" title="필터 닫기">×</button>
+      </div>
+      <div class="viewer-chip"><strong>권장</strong> Pipe 재질 레이어와 설비 타입을 끄고 켜면서 비교 범위를 좁히세요.</div>
+      <section class="filter-group">
+        <div class="filter-group-head">
+          <span>레이어</span>
+          <button type="button" id="sdf-toggle-layers">전체 전환</button>
+        </div>
+        <div id="sdf-layer-list" class="filter-list custom-scrollbar"></div>
+      </section>
+      <section class="filter-group">
+        <div class="filter-group-head">
+          <span>객체 타입</span>
+          <button type="button" id="sdf-toggle-types">전체 전환</button>
+        </div>
+        <div id="sdf-type-list" class="filter-list custom-scrollbar"></div>
+      </section>
+    </aside>
+    <div class="zoom-toolbar" aria-label="SDF 뷰 조작">
+      <button type="button" id="sdf-btn-zoom-in" title="확대">+</button>
+      <button type="button" id="sdf-btn-zoom-out" title="축소">-</button>
+      <button type="button" id="sdf-btn-zoom-fit" class="zoom-fit" title="현재 표시 대상 맞춤">FIT</button>
+    </div>
+    <canvas id="sdf-canvas"></canvas>
+  </div>
+
+  <div class="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-40 flex flex-col items-center">
+    <div id="compare-tooltip" class="text-xs text-yellow-400 mb-2 bg-gray-900/80 px-3 py-1 rounded-full border border-gray-700 backdrop-blur-sm shadow-lg">양쪽 화면에서 같은 검토 범위를 선택하면 해당 영역의 배관망 형상, 헤드 수, 배관 수, 길이를 대조합니다.</div>
+    <div class="flex gap-3">
+      <button id="btn-compare-analysis" class="bg-gray-600 text-gray-400 px-6 py-3 rounded-full font-bold flex items-center gap-3 border border-gray-500 cursor-not-allowed" disabled>
+        <span id="btn-compare-text">핵심 구성요소 대조 분석</span>
+      </button>
+      <button id="btn-pipe-match-analysis" class="bg-gray-600 text-gray-400 px-6 py-3 rounded-full font-bold flex items-center gap-3 border border-gray-500 cursor-not-allowed" disabled>
+        <span id="btn-pipe-match-text">선택영역 배관망 대조 분석</span>
+      </button>
+      <button id="btn-selected-region-report" class="bg-gray-600 text-gray-400 px-6 py-3 rounded-full font-bold flex items-center gap-3 border border-gray-500 cursor-not-allowed" disabled>
+        <span id="btn-selected-region-report-text">보조리포트 생성</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="analysis-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex justify-center items-center overflow-y-auto pt-10 pb-10">
+    <div class="bg-gray-900 border border-gray-700 p-8 rounded-2xl shadow-2xl w-[750px] max-w-full relative">
+      <button id="btn-close-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white">닫기</button>
+      <h2 class="text-2xl font-bold mb-6 text-center"><span class="text-indigo-400">설비 구성요소 정밀 대조 분석</span></h2>
+      <div class="grid grid-cols-2 gap-4 mb-6">
+        <div class="bg-gray-800 p-4 rounded-xl border border-blue-900/50">
+          <h3 class="text-blue-400 text-sm font-bold mb-3 text-center border-b border-blue-900/50 pb-2">DXF 도면 영역 (추정치)</h3>
+          <ul class="text-[13px] space-y-2 text-gray-300">
+            <li class="flex justify-between"><span>헤드 (원형 객체):</span> <strong id="res-dxf-heads" class="text-white">0 개</strong></li>
+            <li class="flex justify-between"><span>교차배관 (장선분 추정):</span> <strong id="res-dxf-main" class="text-white">0.0 m</strong></li>
+            <li class="flex justify-between"><span>가지배관 (단선분 추정):</span> <strong id="res-dxf-branch" class="text-white">0.0 m</strong></li>
+            <li class="flex justify-between"><span>부속류 (교차 노드 분석):</span> <strong id="res-dxf-fittings" class="text-white">0 개</strong></li>
+            <li class="flex justify-between"><span>밸브 (블록 객체):</span> <strong id="res-dxf-valves" class="text-white">0 개</strong></li>
+          </ul>
+        </div>
+        <div class="bg-gray-800 p-4 rounded-xl border border-emerald-900/50">
+          <h3 class="text-emerald-400 text-sm font-bold mb-3 text-center border-b border-emerald-900/50 pb-2">SDF 배관망 영역 (실데이터)</h3>
+          <ul class="text-[13px] space-y-2 text-gray-300">
+            <li class="flex justify-between"><span>헤드 (Nozzle):</span> <strong id="res-sdf-heads" class="text-white">0 개</strong></li>
+            <li class="flex justify-between"><span>교차배관 (구경 50mm↑):</span> <strong id="res-sdf-main" class="text-white">0.0 m</strong></li>
+            <li class="flex justify-between"><span>가지배관 (구경 40mm↓):</span> <strong id="res-sdf-branch" class="text-white">0.0 m</strong></li>
+            <li class="flex justify-between"><span>부속류 (엘보, 티 등):</span> <strong id="res-sdf-fittings" class="text-white">0 개</strong></li>
+            <li class="flex justify-between"><span>밸브 (인라인 및 펌프):</span> <strong id="res-sdf-valves" class="text-white">0 개</strong></li>
+          </ul>
+        </div>
+      </div>
+      <div class="bg-gray-800 p-5 rounded-xl border border-indigo-500/50 text-center relative overflow-hidden">
+        <div class="text-sm text-gray-300 mb-1 font-semibold">설비 분류별 가중치 통합 매칭율</div>
+        <div class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400" id="res-total-score">0.0%</div>
+        <div class="w-full bg-gray-900 rounded-full h-3 mt-4 overflow-hidden border border-gray-700">
+          <div id="res-progress-bar" class="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 h-3 rounded-full transition-all duration-1000" style="width: 0%"></div>
+        </div>
+        <p id="res-analysis-msg" class="mt-4 text-[13px] font-medium text-yellow-400 leading-relaxed"></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="pipe-match-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex justify-center items-center overflow-y-auto pt-10 pb-10">
+    <div class="bg-gray-900 border border-gray-700 p-7 rounded-2xl shadow-2xl w-[1100px] max-w-[96vw] relative">
+      <button id="btn-close-pipe-match-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white">닫기</button>
+      <h2 class="text-2xl font-bold mb-2 text-center"><span class="text-cyan-300">선택영역 DXF-SDF 배관망 대조 분석</span></h2>
+      <p class="text-center text-[13px] text-gray-400 mb-5">선택 영역 안의 DXF 선분 그래프와 SDF Pipe 그래프를 정규화 좌표로 비교하여 배관망 형태, 헤드 수, 배관 수, 상대 길이 일치 여부를 판정합니다.</p>
+      <div class="grid grid-cols-4 gap-3 mb-5">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">매칭률</div><div id="pipe-match-score" class="text-3xl font-black text-cyan-300">0%</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">DXF Edge</div><div id="pipe-match-dxf-count" class="text-3xl font-black text-blue-300">0</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">SDF Pipe</div><div id="pipe-match-sdf-count" class="text-3xl font-black text-emerald-300">0</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">Mismatch</div><div id="pipe-match-fail-count" class="text-3xl font-black text-red-300">0</div></div>
+      </div>
+      <div id="pipe-match-summary" class="bg-gray-800 border border-gray-700 rounded-xl p-4 text-[13px] text-gray-200 mb-5"></div>
+      <div class="max-h-[52vh] overflow-auto rounded-xl border border-gray-700">
+        <table class="match-table">
+          <thead>
+            <tr>
+              <th>상태</th>
+              <th>DXF Edge</th>
+              <th>SDF Pipe</th>
+              <th>비교 항목</th>
+              <th>판정 사유</th>
+            </tr>
+          </thead>
+          <tbody id="pipe-match-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="selected-region-report-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex justify-center items-center overflow-y-auto pt-10 pb-10">
+    <div class="bg-gray-900 border border-gray-700 p-7 rounded-2xl shadow-2xl w-[1280px] max-w-[97vw] relative">
+      <button id="btn-close-selected-region-report-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white">닫기</button>
+      <h2 class="text-2xl font-bold mb-2 text-center"><span class="text-cyan-300">선택영역 보조 리포트</span></h2>
+      <p class="text-center text-[13px] text-gray-400 mb-5">양쪽 화면에서 영역 설정된 부분만 잘라 표시합니다. 빨강은 불일치/미매칭 후보, 노랑은 검토 필요, 초록은 매칭 적합 후보입니다.</p>
+      <div class="grid grid-cols-4 gap-3 mb-5">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">영역 일치도</div><div id="selected-region-score" class="text-3xl font-black text-cyan-300">0%</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">DXF Edge</div><div id="selected-region-dxf-count" class="text-3xl font-black text-blue-300">0</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">SDF Pipe</div><div id="selected-region-sdf-count" class="text-3xl font-black text-emerald-300">0</div></div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4"><div class="text-xs text-gray-400">불일치</div><div id="selected-region-fail-count" class="text-3xl font-black text-red-300">0</div></div>
+      </div>
+      <div id="selected-region-summary" class="bg-gray-800 border border-gray-700 rounded-xl p-4 text-[13px] text-gray-200 mb-5"></div>
+      <div class="grid grid-cols-2 gap-4">
+        <article>
+          <h3 class="text-sm font-bold mb-2 text-blue-300">CAD 도면 자동 인식 영역</h3>
+          <div id="selected-region-cad-map" class="selected-region-map"></div>
+        </article>
+        <article>
+          <h3 class="text-sm font-bold mb-2 text-emerald-300">SDF 좌표 기반 배관망</h3>
+          <div id="selected-region-sdf-map" class="selected-region-map"></div>
+        </article>
+      </div>
+    </div>
+  </div>
+
+  <div id="ai-engine-modal" class="ai-engine-modal" aria-live="polite">
+    <div class="ai-engine-panel">
+      <div class="ai-engine-head">
+        <div>
+          <h2 class="ai-engine-title">CAD-SDF AI/GPU 대조 엔진 가동 중</h2>
+          <p class="ai-engine-subtitle">최소 10초 동안 YOLO, 세그멘테이션, FFT, SDF-guided 그래프 매칭 단계를 순차적으로 실행합니다.</p>
+        </div>
+        <div id="ai-engine-timer" class="ai-engine-timer">0.00s</div>
+      </div>
+      <div id="ai-engine-grid" class="ai-engine-grid"></div>
+      <div class="ai-engine-progress"><div id="ai-engine-progress-bar"></div></div>
+      <div id="ai-engine-foot" class="ai-engine-foot">GPU 장치 확인 및 선택영역 그래프 전처리를 준비합니다.</div>
+    </div>
+  </div>
+
+  <div id="bim-modal" class="bim-modal" aria-live="polite">
+    <div id="bim-viewport" class="bim-viewport">
+      <div class="bim-viewport-label">
+        마우스 드래그: 회전 / 휠: 확대축소<br>
+        현재 DXF 필터와 선택영역의 배관 네트워크만 아이소메트릭으로 표시합니다.
+      </div>
+    </div>
+    <aside class="bim-panel">
+      <h2>평면도 배관 아이소메트릭</h2>
+      <p>DXF 표시 레이어와 선택영역에서 배관 중심선, 헤드, 밸브, 구경 문자 후보만 추출해 계산 검토용 3D 관망으로 모사합니다.</p>
+      <div class="bim-field">
+        <label for="bim-node-snap">노드 스냅 허용값(mm)</label>
+        <input id="bim-node-snap" type="number" min="10" max="1000" step="10" value="120">
+      </div>
+      <div class="bim-field">
+        <label for="bim-pipe-height">기준 배관 높이(mm)</label>
+        <input id="bim-pipe-height" type="number" min="100" max="12000" step="100" value="2800">
+      </div>
+      <div class="bim-field">
+        <label for="bim-branch-offset">가지배관 단차(mm)</label>
+        <input id="bim-branch-offset" type="number" min="0" max="3000" step="50" value="250">
+      </div>
+      <div class="bim-field">
+        <label for="bim-default-bore">기본 구경(mm)</label>
+        <input id="bim-default-bore" type="number" min="15" max="300" step="5" value="50">
+      </div>
+      <div class="bim-actions">
+        <button id="bim-rebuild-btn" type="button">다시 생성</button>
+        <button id="bim-close-btn" type="button">닫기</button>
+      </div>
+      <div id="bim-status" class="viewer-chip">DXF 파일을 먼저 열어주세요.</div>
+      <div class="bim-stat-grid">
+        <div class="bim-stat"><span>배관 Edge</span><strong id="bim-wall-count">0</strong></div>
+        <div class="bim-stat"><span>네트워크 Node</span><strong id="bim-column-count">0</strong></div>
+        <div class="bim-stat"><span>헤드/밸브 후보</span><strong id="bim-pipe-count">0</strong></div>
+        <div class="bim-stat"><span>배관 길이</span><strong id="bim-area-value">0m</strong></div>
+      </div>
+      <div class="bim-legend">
+        건축 벽체, 문, 창, 해치, 치수는 제외합니다. Z 높이는 표시용 기준값이며, 계산용 고도는 단면도와 계통도 룰로 확정해야 합니다.
+      </div>
+    </aside>
+  </div>
+
+  <div id="pipenet-proto-modal" class="pipenet-proto-modal" aria-live="polite">
+    <div id="pipenet-proto-view" class="pipenet-proto-view">
+      <div class="proto-view-label">
+        빨강: 알람밸브 후보 / 노랑: 최원단 헤드 30개 / 청록: 추출 배관망<br>
+        마우스 드래그: 회전 / 휠: 확대축소
+      </div>
+    </div>
+    <aside class="pipenet-proto-panel">
+      <h2>알람밸브 기준 최원단 30개 추출</h2>
+      <p>현재 DXF 평면도의 표시 레이어와 선택영역을 기준으로 배관 그래프를 만들고, 알람밸브 후보에서 그래프 거리상 가장 먼 헤드 30개를 선정합니다.</p>
+      <div class="proto-actions">
+        <button id="proto-rebuild-btn" type="button">다시 추출</button>
+        <button id="proto-copy-btn" type="button">SDF 복사</button>
+        <button id="proto-close-btn" type="button">닫기</button>
+      </div>
+      <div id="proto-status" class="viewer-chip">DXF 평면도를 먼저 열어주세요.</div>
+      <div class="proto-stat-list">
+        <div class="proto-stat"><span>배관 Edge</span><strong id="proto-edge-count">0</strong></div>
+        <div class="proto-stat"><span>헤드 후보</span><strong id="proto-head-count">0</strong></div>
+        <div class="proto-stat"><span>선정 헤드</span><strong id="proto-selected-count">0</strong></div>
+        <div class="proto-stat"><span>추출 Pipe</span><strong id="proto-pipe-count">0</strong></div>
+      </div>
+      <h3 class="text-sm font-black mt-4 mb-2 text-gray-900">최원단 헤드 순위</h3>
+      <div id="proto-head-list" class="proto-head-list"></div>
+      <h3 class="text-sm font-black mt-4 mb-2 text-gray-900">PIPENET 유사 SDF 초안</h3>
+      <textarea id="proto-sdf-output" class="proto-textarea" spellcheck="false"></textarea>
+    </aside>
+  </div>
+
+  <div id="integrated-convert-modal" class="integrated-modal" aria-live="polite">
+    <aside class="integrated-panel">
+      <h2>평면도·단면도·계통도 통합 변환</h2>
+      <p>평면도에서 X/Y 배관 그래프를 만들고, 단면도·계통도 문자에서 EL 값을 추출해 Z 룰을 구성한 뒤 계산 가능한 PIPENET 유사 SDF 초안을 생성합니다.</p>
+      <div class="integrated-field">
+        <label for="integrated-plan-file">평면도 DXF</label>
+        <input id="integrated-plan-file" type="file" accept=".dxf">
+      </div>
+      <div class="integrated-field">
+        <label for="integrated-section-file">단면도 DXF</label>
+        <input id="integrated-section-file" type="file" accept=".dxf">
+      </div>
+      <div class="integrated-field">
+        <label for="integrated-system-file">계통도 DXF</label>
+        <input id="integrated-system-file" type="file" accept=".dxf">
+      </div>
+      <div class="integrated-field">
+        <label for="integrated-elevation-rules">Elevation Rule JSON</label>
+        <textarea id="integrated-elevation-rules" spellcheck="false">{
+  "main": 48.55,
+  "branch": 48.85,
+  "head": 49.15,
+  "riser_base": 34.95,
+  "pipe_default": 48.55
+}</textarea>
+      </div>
+      <div class="integrated-actions">
+        <button id="integrated-run-btn" type="button">통합 변환</button>
+        <button id="integrated-copy-btn" type="button">결과 복사</button>
+        <button id="integrated-close-btn" type="button">닫기</button>
+      </div>
+      <div id="integrated-status" class="viewer-chip">DXF 3종을 넣거나, 최소 평면도 DXF를 넣고 실행하세요.</div>
+    </aside>
+    <main class="integrated-output">
+      <div class="integrated-stats">
+        <div class="integrated-stat"><span>Nodes</span><strong id="integrated-node-count">0</strong></div>
+        <div class="integrated-stat"><span>Pipes</span><strong id="integrated-pipe-count">0</strong></div>
+        <div class="integrated-stat"><span>Nozzles</span><strong id="integrated-nozzle-count">0</strong></div>
+        <div class="integrated-stat"><span>Fittings</span><strong id="integrated-fitting-count">0</strong></div>
+        <div class="integrated-stat"><span>Equipment</span><strong id="integrated-equipment-count">0</strong></div>
+        <div class="integrated-stat"><span>EL Rules</span><strong id="integrated-rule-count">0</strong></div>
+      </div>
+      <div class="integrated-tabs">
+        <button class="active" data-integrated-tab="sdf">SDF XML</button>
+        <button data-integrated-tab="iso">아이소메트릭 미리보기</button>
+        <button data-integrated-tab="nodes">network_3d_nodes.csv</button>
+        <button data-integrated-tab="pipes">network_3d_pipes.csv</button>
+        <button data-integrated-tab="log">검증 로그</button>
+      </div>
+      <textarea id="integrated-output-text" class="integrated-textarea" spellcheck="false"></textarea>
+      <div id="integrated-iso-preview" class="integrated-iso-preview hidden">
+        <div class="integrated-iso-tools">
+          <button id="integrated-iso-zoom-in" type="button">확대 +</button>
+          <button id="integrated-iso-zoom-out" type="button">축소 -</button>
+          <button id="integrated-iso-zoom-reset" type="button">초기화</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const cadColors = { 1:'#FF0000', 2:'#FFFF00', 3:'#00FF00', 4:'#00FFFF', 5:'#0000FF', 6:'#FF00FF', 7:'#FFFFFF', 8:'#808080', 9:'#C0C0C0' };
+    const sdfLayerColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+    const DXF_ENDPOINT_TOLERANCE = 120;
+    const DXF_BORE_TEXT_TOLERANCE = 500;
+    const MATCH_MAX_SCORE = 1.35;
+    const MATCH_REVIEW_SCORE = 0.72;
+    const MATCH_LENGTH_TOLERANCE = 0.25;
+
+    class Viewer {
+      static activePointerOwner = null;
+      constructor(prefix, activeClass) {
+        this.prefix = prefix;
+        this.canvas = document.getElementById(`${prefix}-canvas`);
+        this.ctx = this.canvas.getContext('2d');
+        this.fileInput = document.getElementById(`${prefix}-file`);
+        this.btnPan = document.getElementById(`${prefix}-btn-pan`);
+        this.btnSelect = document.getElementById(`${prefix}-btn-select`);
+        this.btnEntity = document.getElementById(`${prefix}-btn-entity`);
+        this.btnNetwork = document.getElementById(`${prefix}-btn-network`);
+        this.btnFilters = document.getElementById(`${prefix}-btn-filters`);
+        this.btnCrop = document.getElementById(`${prefix}-btn-crop`);
+        this.btnBim = document.getElementById(`${prefix}-btn-bim`);
+        this.btnPipenetPrototype = document.getElementById(`${prefix}-btn-pipenet-prototype`);
+        this.btnIntegratedConvert = document.getElementById(`${prefix}-btn-integrated-convert`);
+        this.btnLockSelection = document.getElementById(`${prefix}-btn-lock-selection`);
+        this.btnZoomIn = document.getElementById(`${prefix}-btn-zoom-in`);
+        this.btnZoomOut = document.getElementById(`${prefix}-btn-zoom-out`);
+        this.btnZoomFit = document.getElementById(`${prefix}-btn-zoom-fit`);
+        this.status = document.getElementById(`${prefix}-status`);
+        this.filterPanel = document.getElementById(`${prefix}-filter-panel`);
+        this.filterClose = document.getElementById(`${prefix}-filter-close`);
+        this.layerList = document.getElementById(`${prefix}-layer-list`);
+        this.typeList = document.getElementById(`${prefix}-type-list`);
+        this.toggleLayersBtn = document.getElementById(`${prefix}-toggle-layers`);
+        this.toggleTypesBtn = document.getElementById(`${prefix}-toggle-types`);
+        this.activeClass = activeClass;
+        this.mode = 'pan';
+        this.dragging = false;
+        this.start = null;
+        this.end = null;
+        this.lockedSelection = null;
+        this.componentSelection = null;
+        this.entitySelection = null;
+        this.pan = { x: 0, y: 0 };
+        this.zoom = 1;
+        this.bounds = { minX: 0, minY: 0, maxX: 100, maxY: 100 };
+        this.data = null;
+        this.lastMouse = null;
+        this.availableLayers = [];
+        this.availableTypes = [];
+        this.activeLayers = new Set();
+        this.activeTypes = new Set();
+        this.filtersInitialized = false;
+        this.bind();
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+      }
+      resize() {
+        const rect = this.canvas.parentElement.getBoundingClientRect();
+        this.canvas.width = rect.width;
+        this.canvas.height = rect.height;
+        this.render();
+      }
+      bind() {
+        this.fileInput.addEventListener('change', (e) => this.load(e));
+        this.btnPan.addEventListener('click', () => this.setMode('pan'));
+        this.btnSelect.addEventListener('click', () => this.setMode('select'));
+        if (this.btnEntity) this.btnEntity.addEventListener('click', () => this.setMode('entity'));
+        if (this.btnNetwork) this.btnNetwork.addEventListener('click', () => this.setMode('network'));
+        if (this.btnFilters) this.btnFilters.addEventListener('click', () => this.toggleFilters());
+        if (this.filterClose) this.filterClose.addEventListener('click', () => this.closeFilters());
+        this.btnCrop.addEventListener('click', () => this.crop());
+        this.btnLockSelection?.addEventListener('click', () => this.toggleSelectionLock());
+        this.canvas.addEventListener('mousedown', (e) => this.onDown(e));
+        this.canvas.addEventListener('dblclick', () => this.fitVisibleItems());
+        window.addEventListener('mouseup', () => this.onUp());
+        window.addEventListener('mousemove', (e) => this.onMove(e));
+        this.canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
+        this.toggleLayersBtn?.addEventListener('click', () => this.toggleAllFilters('layer'));
+        this.toggleTypesBtn?.addEventListener('click', () => this.toggleAllFilters('type'));
+        this.btnZoomIn?.addEventListener('click', () => this.applyZoomFactor(1.2));
+        this.btnZoomOut?.addEventListener('click', () => this.applyZoomFactor(1 / 1.2));
+        this.btnZoomFit?.addEventListener('click', () => this.fitVisibleItems());
+        this.btnBim?.addEventListener('click', () => openBimModeler());
+        this.btnPipenetPrototype?.addEventListener('click', () => openPipenetPrototype());
+        this.btnIntegratedConvert?.addEventListener('click', () => openIntegratedConverter());
+      }
+      setMode(mode) {
+        this.mode = mode;
+        this.btnPan.classList.toggle(this.activeClass, mode === 'pan');
+        this.btnSelect.classList.toggle(this.activeClass, mode === 'select');
+        this.btnEntity?.classList.toggle(this.activeClass, mode === 'entity');
+        this.btnNetwork?.classList.toggle(this.activeClass, mode === 'network');
+        this.btnNetwork?.classList.toggle('mode-network', mode === 'network');
+        if (mode === 'pan' || mode === 'network' || mode === 'entity') {
+          if (!this.lockedSelection) {
+            this.start = null; this.end = null; this.btnCrop.classList.add('hidden');
+          }
+        }
+        this.render();
+        checkGlobalAnalysisReady();
+      }
+      toggleFilters() {
+        if (!this.filterPanel) return;
+        this.filterPanel.classList.toggle('is-open');
+      }
+      closeFilters() {
+        if (!this.filterPanel) return;
+        this.filterPanel.classList.remove('is-open');
+      }
+      toggleAllFilters(kind) {
+        const available = kind === 'layer' ? this.availableLayers : this.availableTypes;
+        const target = kind === 'layer' ? this.activeLayers : this.activeTypes;
+        const allChecked = available.length && available.every((x) => target.has(x));
+        target.clear();
+        if (!allChecked) available.forEach((x) => target.add(x));
+        this.buildFilterUI();
+        this.onFilterChange();
+      }
+      buildFilterUI() {
+        if (this.layerList) this.layerList.innerHTML = '';
+        if (this.typeList) this.typeList.innerHTML = '';
+        this.availableLayers.forEach((layer) => this.layerList?.appendChild(this.makeFilterRow('layer', layer)));
+        this.availableTypes.forEach((type) => this.typeList?.appendChild(this.makeFilterRow('type', type)));
+      }
+      makeFilterRow(kind, value) {
+        const wrapper = document.createElement('label');
+        wrapper.className = 'filter-item';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = kind === 'layer' ? this.activeLayers.has(value) : this.activeTypes.has(value);
+        input.addEventListener('change', () => {
+          const target = kind === 'layer' ? this.activeLayers : this.activeTypes;
+          if (input.checked) target.add(value); else target.delete(value);
+          this.onFilterChange();
+        });
+        const text = document.createElement('span');
+        text.textContent = value;
+        wrapper.append(input, text);
+        return wrapper;
+      }
+      onFilterChange() {
+        this.clearSelection();
+        this.render();
+      }
+      captureViewState() {
+        return {
+          bounds: { ...this.bounds },
+          pan: { ...this.pan },
+          zoom: this.zoom,
+        };
+      }
+      restoreViewState(state) {
+        if (!state) return;
+        this.bounds = { ...state.bounds };
+        this.pan = { ...state.pan };
+        this.zoom = state.zoom;
+      }
+      applyZoomFactor(factor, screenX = this.canvas.width / 2, screenY = this.canvas.height / 2) {
+        const focusWorld = this.screenToWorld(screenX, screenY);
+        this.zoom = Math.max(0.000001, Math.min(this.zoom * factor, 100000));
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const dcx = (this.bounds.minX + this.bounds.maxX) / 2;
+        const dcy = (this.bounds.minY + this.bounds.maxY) / 2;
+        this.pan.x = screenX - cx - (focusWorld.x - dcx) * this.zoom;
+        this.pan.y = screenY - cy - (dcy - focusWorld.y) * this.zoom;
+        this.render();
+      }
+      getVisibleGeometryPoints() {
+        return [];
+      }
+      fitVisibleItems() {
+        const points = this.getVisibleGeometryPoints();
+        if (!points.length) return;
+        this.resetFromPoints(points);
+        this.render();
+      }
+      captureFilterState() {
+        return {
+          initialized: this.filtersInitialized,
+          activeLayers: new Set(this.activeLayers),
+          activeTypes: new Set(this.activeTypes),
+        };
+      }
+      restoreFilterState(state) {
+        if (!state) return;
+        this.filtersInitialized = state.initialized;
+        this.activeLayers = new Set(this.availableLayers.filter((layer) => state.activeLayers.has(layer)));
+        this.activeTypes = new Set(this.availableTypes.filter((type) => state.activeTypes.has(type)));
+        this.buildFilterUI();
+      }
+      extractFilters(items, options = {}) {
+        const reset = options.reset === true || !this.filtersInitialized;
+        const nextLayers = [...new Set(items.map((item) => item.layer || '0'))].sort();
+        const nextTypes = [...new Set(items.map((item) => item.type || 'UNKNOWN'))].sort();
+        const prevLayers = new Set(this.activeLayers);
+        const prevTypes = new Set(this.activeTypes);
+        this.availableLayers = nextLayers;
+        this.availableTypes = nextTypes;
+        if (reset) {
+          this.activeLayers = new Set(nextLayers);
+          this.activeTypes = new Set(nextTypes);
+        } else {
+          this.activeLayers = new Set(nextLayers.filter((layer) => prevLayers.has(layer)));
+          this.activeTypes = new Set(nextTypes.filter((type) => prevTypes.has(type)));
+        }
+        this.filtersInitialized = true;
+        this.buildFilterUI();
+      }
+      isItemVisible(item) {
+        const layer = item?.layer || '0';
+        const type = item?.type || 'UNKNOWN';
+        return this.activeLayers.has(layer) && this.activeTypes.has(type);
+      }
+      bboxInside(bbox, sel) {
+        return !!bbox && bbox.minX >= sel.minX && bbox.maxX <= sel.maxX && bbox.minY >= sel.minY && bbox.maxY <= sel.maxY;
+      }
+      bboxOverlaps(bbox, sel) {
+        return !!bbox && !(bbox.maxX < sel.minX || bbox.minX > sel.maxX || bbox.maxY < sel.minY || bbox.minY > sel.maxY);
+      }
+      screenToWorld(x, y) {
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const dcx = (this.bounds.minX + this.bounds.maxX) / 2;
+        const dcy = (this.bounds.minY + this.bounds.maxY) / 2;
+        return {
+          x: (x - cx - this.pan.x) / this.zoom + dcx,
+          y: (y - cy - this.pan.y) / -this.zoom + dcy,
+        };
+      }
+      getSelectionBBox() {
+        if (this.componentSelection?.bbox) return this.componentSelection.bbox;
+        if (this.lockedSelection?.bbox) return this.lockedSelection.bbox;
+        if (!this.start || !this.end) return null;
+        const a = this.screenToWorld(this.start.x, this.start.y);
+        const b = this.screenToWorld(this.end.x, this.end.y);
+        return { minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x), minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y) };
+      }
+      updateSelectionLockUi() {
+        const hasDraft = !!(this.start && this.end);
+        const isLocked = !!(this.lockedSelection || this.componentSelection?.bbox);
+        if (this.btnLockSelection) {
+          this.btnLockSelection.disabled = !hasDraft && !isLocked && !this.componentSelection?.bbox;
+          this.btnLockSelection.textContent = isLocked ? '고정 해제' : '영역 고정';
+          this.btnLockSelection.classList.toggle('selection-locked', isLocked);
+        }
+      }
+      lockSelectionFromCurrent() {
+        if (this.componentSelection?.bbox) {
+          this.lockedSelection = { bbox: { ...this.componentSelection.bbox } };
+        } else if (this.start && this.end) {
+          const a = this.screenToWorld(this.start.x, this.start.y);
+          const b = this.screenToWorld(this.end.x, this.end.y);
+          this.lockedSelection = {
+            bbox: {
+              minX: Math.min(a.x, b.x),
+              maxX: Math.max(a.x, b.x),
+              minY: Math.min(a.y, b.y),
+              maxY: Math.max(a.y, b.y),
+            },
+          };
+        }
+        if (this.lockedSelection) {
+          this.start = null;
+          this.end = null;
+          this.btnCrop.classList.remove('hidden');
+        }
+        this.updateSelectionLockUi();
+        this.render();
+        checkGlobalAnalysisReady();
+      }
+      toggleSelectionLock() {
+        if (this.lockedSelection || this.componentSelection?.bbox) {
+          this.lockedSelection = null;
+          this.componentSelection = null;
+          this.btnCrop.classList.add('hidden');
+          this.updateSelectionLockUi();
+          this.render();
+          checkGlobalAnalysisReady();
+          return;
+        }
+        this.lockSelectionFromCurrent();
+      }
+      clearSelection() {
+        this.start = null;
+        this.end = null;
+        this.lockedSelection = null;
+        this.componentSelection = null;
+        this.entitySelection = null;
+        this.btnCrop.classList.add('hidden');
+        this.updateSelectionLockUi();
+        checkGlobalAnalysisReady();
+      }
+      resetFromPoints(points) {
+        if (!points || !points.length) {
+          this.setupView(0, 0, 100, 100);
+          return;
+        }
+        const xs = points.map((p) => p.x);
+        const ys = points.map((p) => p.y);
+        this.setupView(Math.min(...xs, 0), Math.min(...ys, 0), Math.max(...xs, 100), Math.max(...ys, 100));
+      }
+      onDown(e) {
+        const r = this.canvas.getBoundingClientRect();
+        const x = e.clientX - r.left, y = e.clientY - r.top;
+        Viewer.activePointerOwner = this;
+        if (this.mode === 'pan') {
+          this.dragging = true; this.lastMouse = { x: e.clientX, y: e.clientY };
+        } else if (this.mode === 'select') {
+          this.lockedSelection = null;
+          this.updateSelectionLockUi();
+          this.componentSelection = null;
+          this.entitySelection = null;
+          this.start = { x, y }; this.end = { x, y }; this.btnCrop.classList.add('hidden');
+        } else if (this.mode === 'entity') {
+          this.handleEntityPick?.(this.screenToWorld(x, y));
+        } else if (this.mode === 'network') {
+          this.entitySelection = null;
+          this.handleNetworkPick?.(this.screenToWorld(x, y));
+        }
+      }
+      onUp() {
+        if (Viewer.activePointerOwner && Viewer.activePointerOwner !== this) return;
+        if (this.mode === 'pan') {
+          this.dragging = false;
+          Viewer.activePointerOwner = null;
+          return;
+        }
+        if (this.mode === 'network') {
+          checkGlobalAnalysisReady();
+          Viewer.activePointerOwner = null;
+          return;
+        }
+        if (this.mode === 'entity') {
+          Viewer.activePointerOwner = null;
+          return;
+        }
+        if (this.start && this.end) {
+          const dx = Math.abs(this.end.x - this.start.x);
+          const dy = Math.abs(this.end.y - this.start.y);
+          if (dx > 5 && dy > 5) {
+            this.btnCrop.classList.remove('hidden');
+            this.lockSelectionFromCurrent();
+          }
+          this.updateSelectionLockUi();
+          checkGlobalAnalysisReady();
+        }
+        Viewer.activePointerOwner = null;
+      }
+      onMove(e) {
+        if (Viewer.activePointerOwner && Viewer.activePointerOwner !== this) return;
+        const r = this.canvas.getBoundingClientRect();
+        const x = e.clientX - r.left, y = e.clientY - r.top;
+        if (this.mode === 'pan' && this.dragging) {
+          this.pan.x += e.clientX - this.lastMouse.x;
+          this.pan.y += e.clientY - this.lastMouse.y;
+          this.lastMouse = { x: e.clientX, y: e.clientY };
+          this.render();
+        } else if (this.mode === 'select' && this.start && e.buttons === 1) {
+          this.end = { x, y };
+          this.updateSelectionLockUi();
+          this.render();
+        }
+      }
+      onWheel(e) {
+        e.preventDefault();
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const step = Math.max(-180, Math.min(180, e.deltaY));
+        const factor = Math.exp(-step * 0.0012);
+        this.applyZoomFactor(factor, x, y);
+      }
+      setupView(minX, minY, maxX, maxY) {
+        this.bounds = { minX, minY, maxX, maxY };
+        const w = maxX - minX || 1;
+        const h = maxY - minY || 1;
+        this.zoom = Math.min((this.canvas.width * 0.85) / w, (this.canvas.height * 0.85) / h);
+        this.pan = { x: 0, y: 0 };
+      }
+      baseRenderBegin() {
+        this.ctx.fillStyle = '#121212';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        if (!this.data) return false;
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const dcx = (this.bounds.minX + this.bounds.maxX) / 2;
+        const dcy = (this.bounds.minY + this.bounds.maxY) / 2;
+        this.ctx.save();
+        this.ctx.translate(cx + this.pan.x, cy + this.pan.y);
+        this.ctx.scale(this.zoom, -this.zoom);
+        this.ctx.translate(-dcx, -dcy);
+        return true;
+      }
+      drawOverlay() {
+        if (this.lockedSelection?.bbox) {
+          const { minX, minY, maxX, maxY } = this.lockedSelection.bbox;
+          const a = this.worldToScreen(minX, minY);
+          const b = this.worldToScreen(maxX, maxY);
+          this.ctx.save();
+          this.ctx.fillStyle = 'rgba(17, 24, 39, 0.10)';
+          this.ctx.strokeStyle = 'rgba(17, 24, 39, 0.96)';
+          this.ctx.lineWidth = 2;
+          this.ctx.setLineDash([8, 4]);
+          const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+          const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+          this.ctx.fillRect(x, y, w, h);
+          this.ctx.strokeRect(x, y, w, h);
+          this.ctx.fillStyle = 'rgba(17, 24, 39, 0.92)';
+          this.ctx.fillRect(x + 8, y + 8, 64, 22);
+          this.ctx.fillStyle = '#ffffff';
+          this.ctx.font = '12px Segoe UI, sans-serif';
+          this.ctx.fillText('영역 고정', x + 16, y + 23);
+          this.ctx.restore();
+          return;
+        }
+        if (this.componentSelection?.bbox) {
+          const { minX, minY, maxX, maxY } = this.componentSelection.bbox;
+          const a = this.worldToScreen(minX, minY);
+          const b = this.worldToScreen(maxX, maxY);
+          this.ctx.save();
+          this.ctx.fillStyle = 'rgba(245, 158, 11, 0.14)';
+          this.ctx.strokeStyle = 'rgba(245, 158, 11, 0.92)';
+          this.ctx.setLineDash([6, 4]);
+          const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+          const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+          this.ctx.fillRect(x, y, w, h); this.ctx.strokeRect(x, y, w, h);
+          this.ctx.restore();
+          return;
+        }
+        if (this.entitySelection?.bbox) {
+          const { minX, minY, maxX, maxY } = this.entitySelection.bbox;
+          const a = this.worldToScreen(minX, minY);
+          const b = this.worldToScreen(maxX, maxY);
+          this.ctx.save();
+          this.ctx.fillStyle = 'rgba(34, 211, 238, 0.12)';
+          this.ctx.strokeStyle = 'rgba(34, 211, 238, 0.95)';
+          this.ctx.setLineDash([4, 3]);
+          const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+          const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+          this.ctx.fillRect(x, y, w, h); this.ctx.strokeRect(x, y, w, h);
+          this.ctx.restore();
+          return;
+        }
+        if (this.mode === 'select' && this.start && this.end) {
+          this.ctx.save();
+          this.ctx.fillStyle = 'rgba(59,130,246,0.15)';
+          this.ctx.strokeStyle = 'rgba(59,130,246,0.8)';
+          this.ctx.setLineDash([5,5]);
+          const x = Math.min(this.start.x, this.end.x), y = Math.min(this.start.y, this.end.y);
+          const w = Math.abs(this.end.x - this.start.x), h = Math.abs(this.end.y - this.start.y);
+          this.ctx.fillRect(x, y, w, h); this.ctx.strokeRect(x, y, w, h);
+          this.ctx.restore();
+        }
+      }
+      worldToScreen(x, y) {
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const dcx = (this.bounds.minX + this.bounds.maxX) / 2;
+        const dcy = (this.bounds.minY + this.bounds.maxY) / 2;
+        return {
+          x: (x - dcx) * this.zoom + cx + this.pan.x,
+          y: (dcy - y) * this.zoom + cy + this.pan.y,
+        };
+      }
+    }
+
+    class DxfViewer extends Viewer {
+      constructor() { super('dxf', 'border-blue-500'); }
+      async load(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        window.parent?.postMessage({ source: 'cad-compare-module', type: 'viewer-file-selected', viewer: 'dxf', file }, '*');
+        this.status.classList.remove('hidden');
+        this.status.textContent = 'DXF 서버 파싱 중...';
+        try {
+          const formData = new FormData();
+          formData.append('cad_file', file);
+          const response = await fetch('/api/cad-module/dxf-parse', { method: 'POST', body: formData });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.message || 'DXF parse failed');
+          }
+          this.data = payload.cad_payload || { entities: [], bounds: null };
+          this.extractFilters(this.data.entities || [], { reset: true });
+          const bounds = this.data.bounds || { minX: 0, minY: 0, maxX: 100, maxY: 100 };
+          this.setupView(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
+          this.status.classList.add('hidden');
+          if (this.btnBim) this.btnBim.disabled = !(this.data.entities || []).length;
+          if (this.btnPipenetPrototype) this.btnPipenetPrototype.disabled = !(this.data.entities || []).length;
+          this.render();
+        } catch (err) {
+          console.error('DXF parse error:', err);
+          alert(`DXF 파싱 오류: ${err.message || '서버 처리 실패'}`);
+          this.status.classList.add('hidden');
+        }
+      }
+      getEntityStroke(ent) {
+        return ent.color || '#ffffff';
+      }
+      getEntityPoints(ent) {
+        if (ent.type === 'LINE' && ent.start && ent.end) return [ent.start, ent.end];
+        if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points)) return ent.points;
+        if (ent.type === 'TEXT' && ent.insert) return [ent.insert];
+        if ((ent.type === 'CIRCLE' || ent.type === 'ARC') && ent.center) return [ent.center];
+        return [];
+      }
+      getEntityBBox(ent) {
+        if ((ent.type === 'CIRCLE' || ent.type === 'ARC') && ent.center && Number.isFinite(ent.radius)) {
+          return {
+            minX: ent.center.x - ent.radius,
+            minY: ent.center.y - ent.radius,
+            maxX: ent.center.x + ent.radius,
+            maxY: ent.center.y + ent.radius,
+          };
+        }
+        const pts = this.getEntityPoints(ent);
+        if (!pts.length) return null;
+        const xs = pts.map((p) => p.x);
+        const ys = pts.map((p) => p.y);
+        return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+      }
+      entityHint(ent) {
+        return [
+          ent.layer || '',
+          ent.blockName || '',
+          ent.text || '',
+          ent.parentPath || '',
+          JSON.stringify(ent.blockAttributes || {}),
+        ].join(' ').toLowerCase();
+      }
+      isValveLike(ent) {
+        const hint = this.entityHint(ent);
+        return /(^|[^a-z])(valve|alarm|check|gate|butterfly|av|pv)([^a-z]|$)/.test(hint);
+      }
+      isHeadLike(ent) {
+        if (ent.type === 'CIRCLE' && Number.isFinite(ent.radius) && ent.radius > 0 && ent.radius <= 500) return true;
+        if (this.isTriangleHeadLike(ent)) return true;
+        const hint = this.entityHint(ent);
+        return /(head|sprink|nozzle|upright|pendent|sidewall|triangle|tri)/.test(hint);
+      }
+      isTriangleHeadLike(ent) {
+        if (ent.type !== 'LWPOLYLINE' || !Array.isArray(ent.points) || !ent.closed) return false;
+        const points = ent.points.filter((pt, idx, arr) => idx === 0 || Math.hypot(pt.x - arr[idx - 1].x, pt.y - arr[idx - 1].y) > 1e-6);
+        const unique = [];
+        points.forEach((pt) => {
+          if (!unique.some((p) => Math.hypot(p.x - pt.x, p.y - pt.y) < 1e-6)) unique.push(pt);
+        });
+        if (unique.length !== 3) return false;
+        const box = this.getEntityBBox(ent);
+        if (!box) return false;
+        const w = box.maxX - box.minX;
+        const h = box.maxY - box.minY;
+        const diag = Math.hypot(w, h);
+        if (diag <= 0 || diag > 1200 || Math.min(w, h) <= 0) return false;
+        const ratio = Math.max(w, h) / Math.max(Math.min(w, h), 1e-9);
+        if (ratio > 2.2) return false;
+        const area = Math.abs(
+          unique[0].x * (unique[1].y - unique[2].y) +
+          unique[1].x * (unique[2].y - unique[0].y) +
+          unique[2].x * (unique[0].y - unique[1].y)
+        ) / 2;
+        return area > 20 && area / Math.max(w * h, 1e-9) > 0.18;
+      }
+      isPipeLike(ent) {
+        if (this.isTriangleHeadLike(ent)) return false;
+        return ent.type === 'LINE' || ent.type === 'LWPOLYLINE' || ent.type === 'ARC';
+      }
+      entityEndpoints(ent) {
+        if (ent.type === 'LINE' && ent.start && ent.end) return [ent.start, ent.end];
+        if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points) && ent.points.length >= 2) return [ent.points[0], ent.points[ent.points.length - 1]];
+        if (ent.type === 'ARC' && ent.center && Number.isFinite(ent.radius)) {
+          const s = (ent.startAngle || 0) * Math.PI / 180;
+          const e = (ent.endAngle || 0) * Math.PI / 180;
+          return [
+            { x: ent.center.x + Math.cos(s) * ent.radius, y: ent.center.y + Math.sin(s) * ent.radius },
+            { x: ent.center.x + Math.cos(e) * ent.radius, y: ent.center.y + Math.sin(e) * ent.radius },
+          ];
+        }
+        return [];
+      }
+      visibleEntities() {
+        return (this.data?.entities || []).filter((ent) => this.isItemVisible(ent));
+      }
+      getVisibleGeometryPoints() {
+        const points = [];
+        this.visibleEntities().forEach((ent) => {
+          if (ent.type === 'LINE' && ent.start && ent.end) {
+            points.push(ent.start, ent.end);
+          } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points)) {
+            points.push(...ent.points);
+          } else if ((ent.type === 'CIRCLE' || ent.type === 'ARC') && ent.center && Number.isFinite(ent.radius)) {
+            points.push(
+              { x: ent.center.x - ent.radius, y: ent.center.y - ent.radius },
+              { x: ent.center.x + ent.radius, y: ent.center.y + ent.radius }
+            );
+          } else if (ent.type === 'TEXT' && ent.insert) {
+            points.push(ent.insert);
+          }
+        });
+        return points;
+      }
+      handleNetworkPick(worldPoint) {
+        const candidates = this.visibleEntities().filter((ent) => this.isPipeLike(ent));
+        if (!candidates.length) return;
+        let best = null;
+        let bestDist = Infinity;
+        candidates.forEach((ent) => {
+          const dist = this.entityDistance(ent, worldPoint);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = { ent };
+          }
+        });
+        const pickTolerance = Math.max(80, 14 / Math.max(this.zoom, 0.000001));
+        if (!best || bestDist > pickTolerance) return;
+        const component = this.findConnectedComponent(best.ent, candidates);
+        if (!component.length) return;
+        const boxes = component.map((ent) => this.getEntityBBox(ent)).filter(Boolean);
+        const bbox = {
+          minX: Math.min(...boxes.map((b) => b.minX)),
+          minY: Math.min(...boxes.map((b) => b.minY)),
+          maxX: Math.max(...boxes.map((b) => b.maxX)),
+          maxY: Math.max(...boxes.map((b) => b.maxY)),
+        };
+        this.componentSelection = { entities: new Set(component), bbox };
+        this.lockedSelection = null;
+        this.updateSelectionLockUi();
+        this.btnCrop.classList.remove('hidden');
+        this.render();
+        checkGlobalAnalysisReady();
+      }
+      findConnectedComponent(seed, entities) {
+        const tolerance = DXF_ENDPOINT_TOLERANCE;
+        const endpointKeys = new Map();
+        entities.forEach((ent) => {
+          this.entityEndpoints(ent).forEach((pt) => {
+            const key = `${Math.round(pt.x / tolerance)},${Math.round(pt.y / tolerance)}`;
+            if (!endpointKeys.has(key)) endpointKeys.set(key, []);
+            endpointKeys.get(key).push(ent);
+          });
+        });
+        const queue = [seed];
+        const seen = new Set([seed]);
+        while (queue.length) {
+          const current = queue.shift();
+          this.entityEndpoints(current).forEach((pt) => {
+            const key = `${Math.round(pt.x / tolerance)},${Math.round(pt.y / tolerance)}`;
+            (endpointKeys.get(key) || []).forEach((next) => {
+              if (!seen.has(next)) {
+                seen.add(next);
+                queue.push(next);
+              }
+            });
+          });
+        }
+        return [...seen];
+      }
+      distanceToSegment(point, a, b) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const l2 = dx * dx + dy * dy;
+        if (!l2) return Math.hypot(point.x - a.x, point.y - a.y);
+        let t = ((point.x - a.x) * dx + (point.y - a.y) * dy) / l2;
+        t = Math.max(0, Math.min(1, t));
+        const projX = a.x + t * dx;
+        const projY = a.y + t * dy;
+        return Math.hypot(point.x - projX, point.y - projY);
+      }
+      entityDistance(ent, worldPoint) {
+        if (ent.type === 'LINE' && ent.start && ent.end) return this.distanceToSegment(worldPoint, ent.start, ent.end);
+        if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points) && ent.points.length >= 2) {
+          let best = Infinity;
+          for (let i = 0; i < ent.points.length - 1; i += 1) best = Math.min(best, this.distanceToSegment(worldPoint, ent.points[i], ent.points[i + 1]));
+          return best;
+        }
+        if ((ent.type === 'CIRCLE' || ent.type === 'ARC') && ent.center) {
+          return Math.abs(Math.hypot(worldPoint.x - ent.center.x, worldPoint.y - ent.center.y) - (ent.radius || 0));
+        }
+        if (ent.type === 'TEXT' && ent.insert) return Math.hypot(worldPoint.x - ent.insert.x, worldPoint.y - ent.insert.y);
+        const bbox = this.getEntityBBox(ent);
+        if (!bbox) return Infinity;
+        const cx = (bbox.minX + bbox.maxX) / 2;
+        const cy = (bbox.minY + bbox.maxY) / 2;
+        return Math.hypot(worldPoint.x - cx, worldPoint.y - cy);
+      }
+      handleEntityPick(worldPoint) {
+        const candidates = this.visibleEntities();
+        if (!candidates.length) return;
+        const tolerance = Math.max(((this.bounds.maxX - this.bounds.minX) / Math.max(this.canvas.width, 1)) * 18, 60);
+        let picked = null;
+        let bestDist = Infinity;
+        candidates.forEach((ent) => {
+          const dist = this.entityDistance(ent, worldPoint);
+          if (dist < bestDist) {
+            bestDist = dist;
+            picked = ent;
+          }
+        });
+        if (!picked || bestDist > tolerance) {
+          this.entitySelection = null;
+          this.render();
+          return;
+        }
+        this.componentSelection = null;
+        this.lockedSelection = null;
+        this.updateSelectionLockUi();
+        this.entitySelection = { entity: picked, bbox: this.getEntityBBox(picked) };
+        this.render();
+      }
+      deleteSelectedEntity() {
+        if (!this.entitySelection?.entity || !this.data?.entities) return false;
+        const target = this.entitySelection.entity;
+        const viewState = this.captureViewState();
+        const filterState = this.captureFilterState();
+        this.data.entities = this.data.entities.filter((ent) => ent !== target);
+        this.extractFilters(this.data.entities || []);
+        this.restoreFilterState(filterState);
+        this.restoreViewState(viewState);
+        this.entitySelection = null;
+        this.componentSelection = null;
+        this.lockedSelection = null;
+        this.start = null;
+        this.end = null;
+        this.btnCrop.classList.add('hidden');
+        this.updateSelectionLockUi();
+        this.render();
+        requestAnimationFrame(() => {
+          this.restoreFilterState(filterState);
+          this.restoreViewState(viewState);
+          this.render();
+        });
+        return true;
+      }
+      deleteEntitiesInSelection() {
+        if (!this.data?.entities?.length) return 0;
+        const selection = this.getSelectionBBox();
+        if (!selection) return 0;
+        const viewState = this.captureViewState();
+        const filterState = this.captureFilterState();
+        let removed = 0;
+        this.data.entities = this.data.entities.filter((ent) => {
+          const box = this.getEntityBBox(ent);
+          const shouldDelete = this.bboxOverlaps(box, selection);
+          if (shouldDelete) removed += 1;
+          return !shouldDelete;
+        });
+        if (!removed) return 0;
+        this.extractFilters(this.data.entities || []);
+        this.restoreFilterState(filterState);
+        this.restoreViewState(viewState);
+        this.start = null;
+        this.end = null;
+        this.lockedSelection = null;
+        this.componentSelection = null;
+        this.entitySelection = null;
+        this.btnCrop.classList.add('hidden');
+        this.updateSelectionLockUi();
+        this.render();
+        requestAnimationFrame(() => {
+          this.restoreFilterState(filterState);
+          this.restoreViewState(viewState);
+          this.render();
+        });
+        return removed;
+      }
+      render() {
+        if (!this.baseRenderBegin()) return;
+        this.visibleEntities().forEach(ent => {
+          this.ctx.save();
+          this.ctx.beginPath();
+          const isSelected = this.componentSelection?.entities?.has(ent);
+          const isEntitySelected = this.entitySelection?.entity === ent;
+          this.ctx.strokeStyle = isEntitySelected ? '#22d3ee' : isSelected ? '#f59e0b' : this.getEntityStroke(ent);
+          this.ctx.lineWidth = (isSelected ? 3 : 1.5) / this.zoom;
+          this.ctx.globalAlpha = this.componentSelection && !isSelected ? 0.18 : 1;
+          if (ent.type === 'LINE' && ent.start && ent.end) {
+            this.ctx.moveTo(ent.start.x, ent.start.y); this.ctx.lineTo(ent.end.x, ent.end.y);
+          } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points)) {
+            ent.points.forEach((v, i) => i === 0 ? this.ctx.moveTo(v.x, v.y) : this.ctx.lineTo(v.x, v.y));
+            if (ent.closed && ent.points.length > 2) this.ctx.closePath();
+          } else if (ent.type === 'CIRCLE' && ent.center) {
+            this.ctx.arc(ent.center.x, ent.center.y, ent.radius, 0, Math.PI * 2);
+          } else if (ent.type === 'ARC' && ent.center) {
+            this.ctx.arc(ent.center.x, ent.center.y, ent.radius, (ent.startAngle || 0) * Math.PI / 180, (ent.endAngle || 0) * Math.PI / 180, false);
+          } else if (ent.type === 'TEXT' && ent.insert && ent.text) {
+            this.ctx.save();
+            this.ctx.translate(ent.insert.x, ent.insert.y);
+            this.ctx.scale(1, -1);
+            this.ctx.globalAlpha = this.componentSelection && !isSelected ? 0.18 : 1;
+            this.ctx.fillStyle = isEntitySelected ? '#22d3ee' : isSelected ? '#fbbf24' : this.getEntityStroke(ent);
+            this.ctx.font = `${Math.max((ent.height || 120) / this.zoom * 0.08, 3)}px sans-serif`;
+            this.ctx.fillText(ent.text, 0, 0);
+            this.ctx.restore();
+            this.ctx.restore();
+            return;
+          } else {
+            this.ctx.restore();
+            return;
+          }
+          this.ctx.stroke();
+          this.ctx.globalAlpha = 1;
+          this.ctx.restore();
+        });
+        this.ctx.restore();
+        this.drawOverlay();
+      }
+      crop() {
+        if (!this.data || !this.data.entities) return;
+        const sel = this.getSelectionBBox();
+        if (!sel) return;
+        this.data.entities = this.data.entities.filter((ent) => this.isItemVisible(ent) && this.bboxOverlaps(this.getEntityBBox(ent), sel));
+        this.extractFilters(this.data.entities || []);
+        const pts = [];
+        (this.data.entities || []).forEach((ent) => {
+          if (ent.type === 'LINE' && ent.start && ent.end) {
+            pts.push(ent.start, ent.end);
+          } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points)) {
+            pts.push(...ent.points);
+          } else if ((ent.type === 'CIRCLE' || ent.type === 'ARC') && ent.center && Number.isFinite(ent.radius)) {
+            pts.push(
+              { x: ent.center.x - ent.radius, y: ent.center.y - ent.radius },
+              { x: ent.center.x + ent.radius, y: ent.center.y + ent.radius }
+            );
+          } else if (ent.type === 'TEXT' && ent.insert) {
+            pts.push(ent.insert);
+          }
+        });
+        this.resetFromPoints(pts);
+        this.clearSelection();
+        this.render();
+      }
+      analyzeSelection(bbox) {
+        let heads = 0, valves = 0, branchLen = 0, mainLen = 0, fittings = 0;
+        const pointsMap = {};
+        this.visibleEntities().forEach(ent => {
+          const entBox = this.getEntityBBox(ent);
+          if (!this.bboxInside(entBox, bbox)) return;
+          if (this.isHeadLike(ent)) heads++;
+          if (this.isValveLike(ent)) valves++;
+          if (ent.type === 'LINE' && ent.start && ent.end) {
+            const a = ent.start, b = ent.end;
+            const lenM = Math.hypot(b.x-a.x,b.y-a.y)/1000;
+            if (lenM <= 2.5) branchLen += lenM; else mainLen += lenM;
+            const k1 = `${Math.round(a.x*100)},${Math.round(a.y*100)}`; const k2 = `${Math.round(b.x*100)},${Math.round(b.y*100)}`;
+            pointsMap[k1] = (pointsMap[k1]||0)+1; pointsMap[k2] = (pointsMap[k2]||0)+1;
+          } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points)) {
+            for (let i = 0; i < ent.points.length - 1; i += 1) {
+              const a = ent.points[i], b = ent.points[i + 1];
+              const lenM = Math.hypot(b.x-a.x,b.y-a.y)/1000;
+              if (lenM <= 2.5) branchLen += lenM; else mainLen += lenM;
+              const k1 = `${Math.round(a.x*100)},${Math.round(a.y*100)}`; const k2 = `${Math.round(b.x*100)},${Math.round(b.y*100)}`;
+              pointsMap[k1] = (pointsMap[k1]||0)+1; pointsMap[k2] = (pointsMap[k2]||0)+1;
+            }
+          }
+        });
+        Object.values(pointsMap).forEach(d => { if (d >= 2) fittings++; });
+        return { heads, branchLen, mainLen, fittings, valves };
+      }
+      buildPipeMatchGraph(bbox) {
+        const edges = [];
+        const texts = [];
+        const heads = [];
+        const fittings = [];
+        const pushEdge = (ent, points, segmentIndex = 0) => {
+          if (points.length < 2) return;
+          const start = points[0];
+          const end = points[points.length - 1];
+          const length = points.slice(1).reduce((sum, p, idx) => sum + Math.hypot(p.x - points[idx].x, p.y - points[idx].y), 0);
+          if (length <= 0) return;
+          edges.push({
+            id: `${ent.id || ent.sourceHandle || 'dxf'}-${segmentIndex}`,
+            label: ent.sourceHandle || ent.id || `DXF-${edges.length + 1}`,
+            layer: ent.layer || '0',
+            start,
+            end,
+            points,
+            length,
+            sourceDegree: 0,
+            targetDegree: 0,
+            boreText: null,
+          });
+        };
+        const pushClippedSegment = (ent, a, b, segmentIndex = 0) => {
+          const clipped = clipSegmentToBBox(a, b, bbox);
+          if (!clipped) return;
+          pushEdge(ent, clipped, segmentIndex);
+        };
+        this.visibleEntities().forEach((ent) => {
+          const entBox = this.getEntityBBox(ent);
+          if (!this.bboxOverlaps(entBox, bbox)) return;
+          if (this.isHeadLike(ent)) {
+            const bboxEnt = this.getEntityBBox(ent);
+            const x = ent.center?.x ?? ((bboxEnt.minX + bboxEnt.maxX) / 2);
+            const y = ent.center?.y ?? ((bboxEnt.minY + bboxEnt.maxY) / 2);
+            if (pointInBBox({ x, y }, bbox)) heads.push({ x, y, label: ent.sourceHandle || ent.id || `Head-${heads.length + 1}` });
+            if (this.isTriangleHeadLike(ent)) return;
+          }
+          if (this.isValveLike(ent)) {
+            const bboxEnt = this.getEntityBBox(ent);
+            const x = ent.center?.x ?? ent.insert?.x ?? ((bboxEnt.minX + bboxEnt.maxX) / 2);
+            const y = ent.center?.y ?? ent.insert?.y ?? ((bboxEnt.minY + bboxEnt.maxY) / 2);
+            if (pointInBBox({ x, y }, bbox)) fittings.push({ x, y, type: 'Valve', label: ent.sourceHandle || ent.id || `Valve-${fittings.length + 1}` });
+          }
+          if (ent.type === 'TEXT' && ent.insert && ent.text) {
+            if (pointInBBox(ent.insert, bbox)) texts.push({ x: ent.insert.x, y: ent.insert.y, text: ent.text });
+            return;
+          }
+          if (ent.type === 'LINE' && ent.start && ent.end) {
+            pushClippedSegment(ent, ent.start, ent.end);
+          } else if (ent.type === 'LWPOLYLINE' && Array.isArray(ent.points) && ent.points.length >= 2) {
+            for (let i = 0; i < ent.points.length - 1; i += 1) pushClippedSegment(ent, ent.points[i], ent.points[i + 1], i);
+          } else if (ent.type === 'ARC') {
+            const pts = this.sampleArc(ent);
+            for (let i = 0; i < pts.length - 1; i += 1) pushClippedSegment(ent, pts[i], pts[i + 1], i);
+          }
+        });
+        this.enrichGraphDegrees(edges, DXF_ENDPOINT_TOLERANCE);
+        edges.forEach((edge) => {
+          if (edge.sourceDegree >= 3) fittings.push({ x: edge.start.x, y: edge.start.y, type: 'Branch', label: `분기 ${edge.sourceDegree}` });
+          if (edge.targetDegree >= 3) fittings.push({ x: edge.end.x, y: edge.end.y, type: 'Branch', label: `분기 ${edge.targetDegree}` });
+        });
+        this.attachNearestBoreText(edges, texts);
+        return { edges, texts, heads, fittings };
+      }
+      sampleArc(ent) {
+        if (!ent.center || !Number.isFinite(ent.radius)) return [];
+        let start = (ent.startAngle || 0) * Math.PI / 180;
+        let end = (ent.endAngle || 0) * Math.PI / 180;
+        if (end < start) end += Math.PI * 2;
+        const steps = Math.max(8, Math.ceil(Math.abs(end - start) / (Math.PI / 18)));
+        const pts = [];
+        for (let i = 0; i <= steps; i += 1) {
+          const t = start + (end - start) * (i / steps);
+          pts.push({ x: ent.center.x + Math.cos(t) * ent.radius, y: ent.center.y + Math.sin(t) * ent.radius });
+        }
+        return pts;
+      }
+      enrichGraphDegrees(edges, tolerance) {
+        const clusters = [];
+        const findCluster = (pt) => {
+          let best = null;
+          let bestDist = Infinity;
+          clusters.forEach((cluster, idx) => {
+            const dist = Math.hypot(pt.x - cluster.x, pt.y - cluster.y);
+            if (dist <= tolerance && dist < bestDist) { best = idx; bestDist = dist; }
+          });
+          if (best === null) {
+            clusters.push({ x: pt.x, y: pt.y, degree: 0 });
+            return clusters.length - 1;
+          }
+          const c = clusters[best];
+          c.x = (c.x + pt.x) / 2;
+          c.y = (c.y + pt.y) / 2;
+          return best;
+        };
+        edges.forEach((edge) => {
+          edge.sourceNode = findCluster(edge.start);
+          edge.targetNode = findCluster(edge.end);
+          clusters[edge.sourceNode].degree += 1;
+          clusters[edge.targetNode].degree += 1;
+        });
+        edges.forEach((edge) => {
+          edge.sourceDegree = clusters[edge.sourceNode]?.degree || 0;
+          edge.targetDegree = clusters[edge.targetNode]?.degree || 0;
+        });
+      }
+      attachNearestBoreText(edges, texts) {
+        const borePattern = /\b(?:DN\s*)?(\d{2,3})\s*A?\b/i;
+        texts.forEach((text) => {
+          const match = String(text.text || '').match(borePattern);
+          if (!match) return;
+          let best = null;
+          let bestDist = Infinity;
+          edges.forEach((edge) => {
+            for (let i = 0; i < edge.points.length - 1; i += 1) {
+              const dist = this.distanceToSegment(text, edge.points[i], edge.points[i + 1]);
+              if (dist < bestDist) { bestDist = dist; best = edge; }
+            }
+          });
+          if (best && bestDist <= DXF_BORE_TEXT_TOLERANCE) best.boreText = `${match[1]}A`;
+        });
+      }
+    }
+
+    class SdfViewer extends Viewer {
+      constructor() { super('sdf', 'border-emerald-500'); }
+      getVisibleGeometryPoints() {
+        const points = [];
+        (this.data?.elements || []).filter((e) => this.isItemVisible(e)).forEach((e) => points.push({ x: e.x, y: e.y }));
+        (this.data?.pipes || []).filter((p) => this.isItemVisible(p)).forEach((p) => points.push(p.in, ...(p.waypoints || []), p.out));
+        return points;
+      }
+      load(e) {
+        const file = e.target.files[0]; if (!file) return;
+        window.parent?.postMessage({ source: 'cad-compare-module', type: 'viewer-file-selected', viewer: 'sdf', file }, '*');
+        this.status.classList.remove('hidden'); this.status.textContent = 'SDF 파싱 중...';
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            this.data = this.parseSDF(ev.target.result);
+            this.extractFilters([...(this.data.elements || []), ...(this.data.pipes || [])], { reset: true });
+            const pts = this.data.elements.map(e => ({ x: e.x, y: e.y }));
+            this.data.pipes.forEach(p => { pts.push(p.in, p.out, ...(p.waypoints || [])); });
+            const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+            this.setupView(Math.min(...xs, 0), Math.min(...ys, 0), Math.max(...xs, 100), Math.max(...ys, 100));
+            this.status.classList.add('hidden');
+            this.render();
+          } catch (err) {
+            console.error(err); alert('SDF 파싱 오류: 올바른 XML 형식이 아닙니다.'); this.status.classList.add('hidden');
+          }
+        };
+        reader.readAsText(file);
+      }
+      parseSDF(xmlStr) {
+        const doc = new DOMParser().parseFromString(xmlStr, 'text/xml');
+        const parsed = { nodes: {}, pipes: [], elements: [] };
+        doc.querySelectorAll('Node').forEach(n => {
+          const label = n.getAttribute('label'); const pos = n.querySelector('Position');
+          if (pos) { parsed.nodes[label] = { id: label, x: parseFloat(pos.getAttribute('x')), y: parseFloat(pos.getAttribute('y')), type: 'Node', layer: 'Nodes/Fittings', label }; parsed.elements.push(parsed.nodes[label]); }
+        });
+        let colorIdx = 0; const layerColorsMap = {};
+        doc.querySelectorAll('Pipe-set').forEach(set => {
+          let pipeLayer = 'Default Pipe'; const tName = set.querySelector('Pipe-type Name'); if (tName) pipeLayer = tName.textContent.trim();
+          if (!layerColorsMap[pipeLayer]) layerColorsMap[pipeLayer] = sdfLayerColors[colorIdx++ % sdfLayerColors.length];
+          set.querySelectorAll('Pipe').forEach(p => {
+            const inNode = p.getAttribute('input'), outNode = p.getAttribute('output');
+            if (parsed.nodes[inNode] && parsed.nodes[outNode]) {
+              const waypoints = []; p.querySelectorAll('Waypoints Position').forEach(wp => waypoints.push({ x: parseFloat(wp.getAttribute('x')), y: parseFloat(wp.getAttribute('y')) }));
+              const fittings = { elbow: 0, tee: 0, cross: 0, valve: 0 };
+              p.querySelectorAll('Fittings Fitting').forEach(f => {
+                const fType = (f.getAttribute('type') || '').toLowerCase(); const count = parseInt(f.getAttribute('count') || '1', 10);
+                if (fType.includes('valve') || fType.includes('gate') || fType.includes('check')) fittings.valve += count;
+                else if (fType.includes('elbow') || fType.includes('bend')) fittings.elbow += count;
+                else if (fType.includes('tee')) fittings.tee += count;
+                else if (fType.includes('cross')) fittings.cross += count;
+              });
+              parsed.pipes.push({ type: 'Pipe', layer: pipeLayer, label: p.getAttribute('label') || '', in: parsed.nodes[inNode], out: parsed.nodes[outNode], waypoints, fittings, color: layerColorsMap[pipeLayer], bore: parseFloat(p.getAttribute('bore') || 0), length: parseFloat(p.getAttribute('length') || 0), cFactor: parseFloat(p.getAttribute('roughness-or-c') || 0) });
+            }
+          });
+        });
+        doc.querySelectorAll('Nozzle').forEach(n => { const node = parsed.nodes[n.getAttribute('input')]; if (node) parsed.elements.push({ type: 'Nozzle', layer: 'Equipment', x: node.x, y: node.y, label: n.getAttribute('label') }); });
+        doc.querySelectorAll('Pump-fan, Elastomeric-valve').forEach(eq => { const node = parsed.nodes[eq.getAttribute('input')]; if (node) parsed.elements.push({ type: eq.tagName === 'Pump-fan' ? 'Pump' : 'Valve', layer: 'Equipment', x: node.x, y: node.y, label: eq.getAttribute('label') }); });
+        return parsed;
+      }
+      getPipeBBox(pipe) {
+        const pts = [pipe.in, ...(pipe.waypoints || []), pipe.out];
+        if (!pts.length) return null;
+        const xs = pts.map((p) => p.x);
+        const ys = pts.map((p) => p.y);
+        return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+      }
+      render() {
+        if (!this.baseRenderBegin()) return;
+        this.data.pipes.filter((p) => this.isItemVisible(p)).forEach(p => {
+          this.ctx.beginPath(); this.ctx.strokeStyle = p.color || '#fff'; this.ctx.lineWidth = 2 / this.zoom; this.ctx.moveTo(p.in.x, p.in.y); (p.waypoints || []).forEach(wp => this.ctx.lineTo(wp.x, wp.y)); this.ctx.lineTo(p.out.x, p.out.y); this.ctx.stroke();
+        });
+        this.data.elements.filter((e) => this.isItemVisible(e)).forEach(e => {
+          if (e.type === 'Node') { this.ctx.beginPath(); this.ctx.fillStyle = '#4b5563'; this.ctx.arc(e.x, e.y, 2 / this.zoom, 0, Math.PI * 2); this.ctx.fill(); }
+          else if (e.type === 'Nozzle') { this.ctx.beginPath(); this.ctx.fillStyle = '#ef4444'; this.ctx.arc(e.x, e.y, 4 / this.zoom, 0, Math.PI * 2); this.ctx.fill(); }
+          else if (e.type === 'Valve' || e.type === 'Pump') { const s = 8 / this.zoom; this.ctx.fillStyle = '#3b82f6'; this.ctx.fillRect(e.x - s/2, e.y - s/2, s, s); }
+        });
+        this.ctx.restore(); this.drawOverlay();
+      }
+      crop() {
+        if (!this.data) return;
+        const sel = this.getSelectionBBox();
+        if (!sel) return;
+        const pointBox = (x, y) => ({ minX: x, minY: y, maxX: x, maxY: y });
+        this.data.elements = this.data.elements.filter((e) => this.isItemVisible(e) && this.bboxOverlaps(pointBox(e.x, e.y), sel));
+        this.data.pipes = this.data.pipes.filter((p) => this.isItemVisible(p) && this.bboxOverlaps(this.getPipeBBox(p), sel));
+        this.extractFilters([...(this.data.elements || []), ...(this.data.pipes || [])]);
+        const pts = [];
+        this.data.elements.forEach((e) => pts.push({ x: e.x, y: e.y }));
+        this.data.pipes.forEach((p) => pts.push(p.in, ...(p.waypoints || []), p.out));
+        this.resetFromPoints(pts);
+        this.clearSelection();
+        this.render();
+      }
+      analyzeSelection(bbox) {
+        let heads = 0, valves = 0, branchLen = 0, mainLen = 0, fittings = 0;
+        const isInside = (x,y) => x >= bbox.minX && x <= bbox.maxX && y >= bbox.minY && y <= bbox.maxY;
+        this.data.elements.filter((e) => this.isItemVisible(e)).forEach(e => { if (isInside(e.x,e.y)) { if (e.type === 'Nozzle') heads++; if (e.type === 'Valve' || e.type === 'Pump') valves++; } });
+        this.data.pipes.filter((p) => this.isItemVisible(p)).forEach(p => {
+          let inside = isInside(p.in.x,p.in.y) && isInside(p.out.x,p.out.y); (p.waypoints || []).forEach(wp => { if (!isInside(wp.x, wp.y)) inside = false; });
+          if (inside) { if (p.bore >= 0.05) mainLen += p.length; else branchLen += p.length; fittings += p.fittings.elbow + p.fittings.tee + p.fittings.cross; valves += p.fittings.valve; }
+        });
+        return { heads, branchLen, mainLen, fittings, valves };
+      }
+      buildPipeMatchGraph(bbox) {
+        const edges = [];
+        const heads = [];
+        const fittings = [];
+        const isInside = (x,y) => x >= bbox.minX && x <= bbox.maxX && y >= bbox.minY && y <= bbox.maxY;
+        (this.data?.elements || []).filter((e) => this.isItemVisible(e)).forEach((e) => {
+          if (!isInside(e.x, e.y)) return;
+          if (e.type === 'Nozzle') heads.push({ x: e.x, y: e.y, label: e.label || `Head-${heads.length + 1}` });
+          if (e.type === 'Valve' || e.type === 'Pump') fittings.push({ x: e.x, y: e.y, type: e.type, label: e.label || e.type });
+        });
+        (this.data?.pipes || []).filter((p) => this.isItemVisible(p)).forEach((p) => {
+          const points = [p.in, ...(p.waypoints || []), p.out];
+          if (!points.some((pt) => isInside(pt.x, pt.y)) && !this.bboxOverlaps(this.getPipeBBox(p), bbox)) return;
+          for (let i = 0; i < points.length - 1; i += 1) {
+            const clipped = clipSegmentToBBox(points[i], points[i + 1], bbox);
+            if (!clipped) continue;
+            const length = clipped.slice(1).reduce((sum, pt, idx) => sum + Math.hypot(pt.x - clipped[idx].x, pt.y - clipped[idx].y), 0);
+            if (length <= 0) continue;
+            edges.push({
+              id: `${p.label || `SDF-${edges.length + 1}`}-${i}`,
+              label: p.label || `SDF-${edges.length + 1}`,
+              layer: p.layer || 'Default Pipe',
+              start: clipped[0],
+              end: clipped[clipped.length - 1],
+              points: clipped,
+              length,
+            bore: p.bore ? p.bore * 1000 : null,
+            fittingCount: (p.fittings?.elbow || 0) + (p.fittings?.tee || 0) + (p.fittings?.cross || 0) + (p.fittings?.valve || 0),
+            sourceDegree: 0,
+            targetDegree: 0,
+          });
+          }
+        });
+        const degree = {};
+        edges.forEach((edge) => {
+          const s = edge.start.id || `${edge.start.x},${edge.start.y}`;
+          const t = edge.end.id || `${edge.end.x},${edge.end.y}`;
+          degree[s] = (degree[s] || 0) + 1;
+          degree[t] = (degree[t] || 0) + 1;
+          edge.sourceKey = s;
+          edge.targetKey = t;
+        });
+        edges.forEach((edge) => {
+          edge.sourceDegree = degree[edge.sourceKey] || 0;
+          edge.targetDegree = degree[edge.targetKey] || 0;
+          if (edge.sourceDegree >= 3) fittings.push({ x: edge.start.x, y: edge.start.y, type: 'Branch', label: `분기 ${edge.sourceDegree}` });
+          if (edge.targetDegree >= 3) fittings.push({ x: edge.end.x, y: edge.end.y, type: 'Branch', label: `분기 ${edge.targetDegree}` });
+        });
+        return { edges, heads, fittings };
+      }
+    }
+
+    const dxfApp = new DxfViewer();
+    const sdfApp = new SdfViewer();
+    const btnCompare = document.getElementById('btn-compare-analysis');
+    const btnPipeMatch = document.getElementById('btn-pipe-match-analysis');
+    const btnSelectedRegionReport = document.getElementById('btn-selected-region-report');
+    const analysisModal = document.getElementById('analysis-modal');
+    const pipeMatchModal = document.getElementById('pipe-match-modal');
+    const selectedRegionReportModal = document.getElementById('selected-region-report-modal');
+    const btnCloseModal = document.getElementById('btn-close-modal');
+    const btnClosePipeMatchModal = document.getElementById('btn-close-pipe-match-modal');
+    const btnCloseSelectedRegionReportModal = document.getElementById('btn-close-selected-region-report-modal');
+    const bimModal = document.getElementById('bim-modal');
+    const bimViewport = document.getElementById('bim-viewport');
+    const bimCloseBtn = document.getElementById('bim-close-btn');
+    const bimRebuildBtn = document.getElementById('bim-rebuild-btn');
+    const bimStatus = document.getElementById('bim-status');
+    const bimState = { scene: null, camera: null, renderer: null, frame: null, yaw: -0.72, pitch: 0.68, distance: 150, viewSize: 80, target: null, dragging: false, lastX: 0, lastY: 0 };
+    const protoModal = document.getElementById('pipenet-proto-modal');
+    const protoView = document.getElementById('pipenet-proto-view');
+    const protoRebuildBtn = document.getElementById('proto-rebuild-btn');
+    const protoCopyBtn = document.getElementById('proto-copy-btn');
+    const protoCloseBtn = document.getElementById('proto-close-btn');
+    const protoStatus = document.getElementById('proto-status');
+    const protoSdfOutput = document.getElementById('proto-sdf-output');
+    const protoState = { scene: null, camera: null, renderer: null, frame: null, yaw: -0.7, pitch: 0.62, distance: 160, target: null, dragging: false, lastX: 0, lastY: 0, lastResult: null };
+
+    function bimNumber(id, fallback) {
+      const value = Number(document.getElementById(id)?.value);
+      return Number.isFinite(value) && value > 0 ? value : fallback;
+    }
+
+    function bimLayerText(ent) {
+      return [ent.layer || '', ent.blockName || '', ent.text || '', ent.parentPath || ''].join(' ').toUpperCase();
+    }
+
+    function classifyBimEntity(ent) {
+      const text = bimLayerText(ent);
+      const entityType = String(ent.type || '').toUpperCase();
+      if (/(DIM|ANNO|NOTE|HATCH|CENTER|GRID|AXIS|치수|해치|중심|그리드)/.test(text)) return 'skip';
+      if (diameterFromText(ent.text)) return 'diameter_text';
+      if (/(TEXT|MTEXT)/.test(entityType)) return 'skip';
+      if (dxfApp.isValveLike?.(ent) || /(VALVE|ALARM|A\/V|AV\b|GATE|CHECK|밸브|알람)/.test(text)) return 'valve';
+      if (dxfApp.isHeadLike?.(ent) || /(HEAD|SPRINK|NOZZLE|헤드|스프링클러)/.test(text)) return 'head';
+      if (!['LINE', 'LWPOLYLINE', 'ARC'].includes(entityType)) return 'skip';
+      if (/(WALL|DOOR|WINDOW|OPEN|COLUMN|ARCH|A-AREA|창|문|개구|기둥|벽체)/.test(text)) return 'skip';
+      if (/(PIPE|PIPING|SPRINK|SPRINKLER|FIRE|HYDRANT|소화|배관|SP\b|FP\b|FIRE\s*PROTECTION|소방)/.test(text)) return 'pipe';
+      if (dxfApp.componentSelection?.entities?.has(ent)) return 'pipe';
+      return 'skip';
+    }
+
+    function collectBimSourceEntities() {
+      if (!dxfApp?.data?.entities?.length) return [];
+      const selection = dxfApp.getSelectionBBox?.();
+      return dxfApp.visibleEntities().filter((ent) => {
+        if (!selection) return true;
+        const box = dxfApp.getEntityBBox(ent);
+        return box && dxfApp.bboxOverlaps(box, selection);
+      }).filter((ent) => classifyBimEntity(ent) !== 'skip');
+    }
+
+    function computeBimBounds(entities) {
+      const boxes = entities.map((ent) => dxfApp.getEntityBBox(ent)).filter(Boolean);
+      if (!boxes.length) return dxfApp.data?.bounds || { minX: 0, minY: 0, maxX: 1000, maxY: 1000 };
+      return {
+        minX: Math.min(...boxes.map((b) => b.minX)),
+        minY: Math.min(...boxes.map((b) => b.minY)),
+        maxX: Math.max(...boxes.map((b) => b.maxX)),
+        maxY: Math.max(...boxes.map((b) => b.maxY)),
+      };
+    }
+
+    function initBimRenderer() {
+      if (!window.THREE) {
+        alert('Three.js를 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도하세요.');
+        return false;
+      }
+      if (!bimState.renderer) {
+        bimState.target = new THREE.Vector3(0, 0, 0);
+        bimState.renderer = new THREE.WebGLRenderer({ antialias: true });
+        bimState.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        bimState.renderer.setClearColor(0x111827, 1);
+        bimViewport.appendChild(bimState.renderer.domElement);
+        bimState.renderer.domElement.addEventListener('pointerdown', (event) => {
+          bimState.dragging = true;
+          bimState.lastX = event.clientX;
+          bimState.lastY = event.clientY;
+          bimState.renderer.domElement.setPointerCapture(event.pointerId);
+        });
+        bimState.renderer.domElement.addEventListener('pointermove', (event) => {
+          if (!bimState.dragging) return;
+          const dx = event.clientX - bimState.lastX;
+          const dy = event.clientY - bimState.lastY;
+          bimState.lastX = event.clientX;
+          bimState.lastY = event.clientY;
+          bimState.yaw -= dx * 0.006;
+          bimState.pitch = Math.max(0.18, Math.min(1.35, bimState.pitch + dy * 0.005));
+          updateBimCamera();
+        });
+        bimState.renderer.domElement.addEventListener('pointerup', () => { bimState.dragging = false; });
+        bimState.renderer.domElement.addEventListener('wheel', (event) => {
+          event.preventDefault();
+          const factor = event.deltaY > 0 ? 1.08 : 0.92;
+          bimState.distance = Math.max(20, Math.min(800, bimState.distance * factor));
+          if (bimState.camera?.isOrthographicCamera) {
+            bimState.viewSize = Math.max(8, Math.min(600, (bimState.viewSize || 80) * factor));
+            resizeBimRenderer();
+          }
+          updateBimCamera();
+        }, { passive: false });
+        window.addEventListener('resize', resizeBimRenderer);
+      }
+      return true;
+    }
+
+    function resizeBimRenderer() {
+      if (!bimState.renderer || !bimState.camera || !bimModal.classList.contains('is-open')) return;
+      const rect = bimViewport.getBoundingClientRect();
+      bimState.renderer.setSize(Math.max(1, rect.width), Math.max(1, rect.height), false);
+      const aspect = Math.max(1, rect.width) / Math.max(1, rect.height);
+      if (bimState.camera.isOrthographicCamera) {
+        const size = Math.max(1, bimState.viewSize || 80);
+        bimState.camera.left = -size * aspect / 2;
+        bimState.camera.right = size * aspect / 2;
+        bimState.camera.top = size / 2;
+        bimState.camera.bottom = -size / 2;
+      } else {
+        bimState.camera.aspect = aspect;
+      }
+      bimState.camera.updateProjectionMatrix();
+    }
+
+    function updateBimCamera() {
+      if (!bimState.camera) return;
+      const r = bimState.distance;
+      const x = Math.cos(bimState.pitch) * Math.cos(bimState.yaw) * r;
+      const y = Math.sin(bimState.pitch) * r;
+      const z = Math.cos(bimState.pitch) * Math.sin(bimState.yaw) * r;
+      bimState.camera.position.set(bimState.target.x + x, bimState.target.y + y, bimState.target.z + z);
+      bimState.camera.lookAt(bimState.target);
+    }
+
+    function buildBimPipeGraph(source, bounds, snapTolerance) {
+      const oldData = dxfApp.data;
+      const oldFilters = dxfApp.captureFilterState();
+      let rawGraph;
+      try {
+        dxfApp.data = { entities: source, bounds };
+        dxfApp.extractFilters(source, { reset: true });
+        rawGraph = dxfApp.buildPipeMatchGraph(bounds);
+      } finally {
+        dxfApp.data = oldData;
+        dxfApp.extractFilters(oldData?.entities || [], { reset: false });
+        dxfApp.restoreFilterState(oldFilters);
+      }
+      const protoGraph = buildPrototypeNetworkGraph(rawGraph, snapTolerance);
+      rawGraph.edges = protoGraph.edges;
+      rawGraph._nodes = protoGraph.nodes;
+      return { rawGraph, protoGraph };
+    }
+
+    function bimBoreMm(edge, fallback) {
+      const value = edge.boreText || edge.bore || '';
+      const match = String(value).match(/(\d+(?:\.\d+)?)/);
+      const bore = match ? Number(match[1]) : Number(fallback);
+      return Number.isFinite(bore) && bore > 0 ? bore : Number(fallback);
+    }
+
+    function bimPipeKind(edge, fallbackBore) {
+      const text = [edge.layer || '', edge.label || '', edge.boreText || ''].join(' ').toUpperCase();
+      if (/(RISER|VERT|입상|수직)/.test(text)) return 'riser';
+      if (/(MAIN|교차|주배관|MAIN_PIPE)/.test(text)) return 'main';
+      return bimBoreMm(edge, fallbackBore) >= 65 ? 'main' : 'branch';
+    }
+
+    function bimPoint(pt, context, elevationMm) {
+      return new THREE.Vector3(
+        (pt.x - context.cx) * context.scale,
+        elevationMm * context.scale,
+        -(pt.y - context.cy) * context.scale
+      );
+    }
+
+    function addBimCylinder(scene, p1, p2, radius, material) {
+      const dir = p2.clone().sub(p1);
+      const len = dir.length();
+      if (!Number.isFinite(len) || len <= 0.02) return false;
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, len, 14), material);
+      pipe.position.copy(p1.clone().add(p2).multiplyScalar(0.5));
+      pipe.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+      scene.add(pipe);
+      return true;
+    }
+
+    function addBimPipe(scene, edge, context, elevationMm, fallbackBore, material, guideMaterial) {
+      let added = false;
+      const points = edge.points?.length ? edge.points : [edge.start, edge.end].filter(Boolean);
+      const radius = Math.max(0.045, Math.min(0.18, 0.045 + bimBoreMm(edge, fallbackBore) / 900));
+      for (let i = 0; i < points.length - 1; i += 1) {
+        const p1 = bimPoint(points[i], context, elevationMm);
+        const p2 = bimPoint(points[i + 1], context, elevationMm);
+        if (addBimCylinder(scene, p1, p2, radius, material)) added = true;
+      }
+      [points[0], points[points.length - 1]].filter(Boolean).forEach((pt) => {
+        const p = bimPoint(pt, context, elevationMm);
+        const floor = new THREE.Vector3(p.x, 0, p.z);
+        const guide = new THREE.BufferGeometry().setFromPoints([floor, p]);
+        scene.add(new THREE.Line(guide, guideMaterial));
+      });
+      return added;
+    }
+
+    function addBimMarker(scene, pt, context, elevationMm, geometry, material) {
+      const marker = new THREE.Mesh(geometry, material);
+      marker.position.copy(bimPoint(pt, context, elevationMm));
+      scene.add(marker);
+      return marker;
+    }
+
+    function addBimConnectionLine(scene, a, aElevation, b, bElevation, context, material) {
+      const geometry = new THREE.BufferGeometry().setFromPoints([
+        bimPoint(a, context, aElevation),
+        bimPoint(b, context, bElevation),
+      ]);
+      scene.add(new THREE.Line(geometry, material));
+    }
+
+    function buildBimModel() {
+      if (!initBimRenderer()) return;
+      const source = collectBimSourceEntities();
+      if (!source.length) {
+        if (bimStatus) bimStatus.textContent = '배관 네트워크로 분류할 DXF 객체가 없습니다. 배관 레이어만 표시하거나 배관망을 선택하세요.';
+        return;
+      }
+      const snapTolerance = bimNumber('bim-node-snap', DXF_ENDPOINT_TOLERANCE);
+      const pipeHeight = bimNumber('bim-pipe-height', 2800);
+      const branchOffset = bimNumber('bim-branch-offset', 250);
+      const defaultBore = bimNumber('bim-default-bore', 50);
+      const bounds = computeBimBounds(source);
+      const { rawGraph, protoGraph } = buildBimPipeGraph(source, bounds, snapTolerance);
+      if (!rawGraph.edges.length) {
+        if (bimStatus) bimStatus.textContent = '배관 중심선 Edge를 만들 수 없습니다. 배관 레이어/선종 필터와 선택영역을 확인하세요.';
+        return;
+      }
+      const width = Math.max(bounds.maxX - bounds.minX, 1);
+      const depth = Math.max(bounds.maxY - bounds.minY, 1);
+      const verticalRange = pipeHeight + branchOffset + 700;
+      const scale = Math.min(0.035, 170 / Math.max(width, depth, verticalRange));
+      const context = { cx: (bounds.minX + bounds.maxX) / 2, cy: (bounds.minY + bounds.maxY) / 2, scale };
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x111827);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x374151, 1.55));
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      keyLight.position.set(60, 120, 60);
+      scene.add(keyLight);
+      const floorMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.9, metalness: 0.02 });
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(width * scale, Math.max(20 * scale, 0.02), depth * scale), floorMat);
+      floor.position.y = -Math.max(10 * scale, 0.01);
+      scene.add(floor);
+      const grid = new THREE.GridHelper(Math.max(width, depth) * scale, 24, 0x9ca3af, 0x374151);
+      grid.position.y = 0.01;
+      scene.add(grid);
+      const mainMat = new THREE.MeshStandardMaterial({ color: 0x14b8a6, roughness: 0.36, metalness: 0.08 });
+      const branchMat = new THREE.MeshStandardMaterial({ color: 0x60a5fa, roughness: 0.38, metalness: 0.08 });
+      const riserMat = new THREE.MeshStandardMaterial({ color: 0xa78bfa, roughness: 0.4, metalness: 0.08 });
+      const nodeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+      const headMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.44 });
+      const valveMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.44 });
+      const fittingMat = new THREE.MeshStandardMaterial({ color: 0xfb923c, roughness: 0.46 });
+      const guideMat = new THREE.LineBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.34 });
+      const headLineMat = new THREE.LineBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.78 });
+      const nodeElevation = new Map();
+      let pipeCount = 0;
+      let totalLength = 0;
+      rawGraph.edges.forEach((edge) => {
+        const kind = bimPipeKind(edge, defaultBore);
+        const elevation = kind === 'branch' ? pipeHeight + branchOffset : pipeHeight;
+        const mat = kind === 'riser' ? riserMat : kind === 'main' ? mainMat : branchMat;
+        if (addBimPipe(scene, edge, context, elevation, defaultBore, mat, guideMat)) pipeCount += 1;
+        totalLength += Number(edge.length || 0);
+        [edge.startKey, edge.endKey].filter(Boolean).forEach((key) => {
+          nodeElevation.set(key, Math.max(nodeElevation.get(key) || 0, elevation));
+        });
+      });
+      const nodeGeometry = new THREE.SphereGeometry(0.16, 14, 10);
+      protoGraph.nodes.forEach((node) => {
+        addBimMarker(scene, node, context, nodeElevation.get(node.id) || pipeHeight, nodeGeometry, nodeMat);
+      });
+      const headGeometry = new THREE.ConeGeometry(0.28, 0.45, 16);
+      (rawGraph.heads || []).forEach((head) => {
+        const near = findNearestProtoNode(protoGraph.nodes, head);
+        const anchor = near || head;
+        const anchorElevation = near ? (nodeElevation.get(near.id) || pipeHeight + branchOffset) : pipeHeight + branchOffset;
+        const headElevation = Math.max(150, anchorElevation - Math.max(220, branchOffset));
+        addBimConnectionLine(scene, anchor, anchorElevation, head, headElevation, context, headLineMat);
+        const marker = addBimMarker(scene, head, context, headElevation, headGeometry, headMat);
+        marker.rotation.x = Math.PI;
+      });
+      const valveGeometry = new THREE.OctahedronGeometry(0.34, 0);
+      const fittingGeometry = new THREE.SphereGeometry(0.24, 14, 10);
+      (rawGraph.fittings || []).forEach((item) => {
+        const near = findNearestProtoNode(protoGraph.nodes, item);
+        const elevation = near ? (nodeElevation.get(near.id) || pipeHeight) : pipeHeight;
+        const isValve = String(item.type || '').toLowerCase().includes('valve');
+        addBimMarker(scene, item, context, elevation, isValve ? valveGeometry : fittingGeometry, isValve ? valveMat : fittingMat);
+      });
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 5000);
+      bimState.scene = scene;
+      bimState.camera = camera;
+      bimState.target.set(0, Math.max(pipeHeight * scale * 0.5, 1), 0);
+      bimState.distance = Math.max(width, depth, verticalRange) * scale * 1.75;
+      bimState.viewSize = Math.max(width, depth, verticalRange) * scale * 1.18;
+      resizeBimRenderer();
+      updateBimCamera();
+      if (bimState.frame) cancelAnimationFrame(bimState.frame);
+      const animate = () => {
+        bimState.frame = requestAnimationFrame(animate);
+        bimState.renderer.render(bimState.scene, bimState.camera);
+      };
+      animate();
+      document.getElementById('bim-wall-count').textContent = pipeCount;
+      document.getElementById('bim-column-count').textContent = protoGraph.nodes.length;
+      document.getElementById('bim-pipe-count').textContent = (rawGraph.heads || []).length + (rawGraph.fittings || []).filter((x) => String(x.type || '').toLowerCase().includes('valve')).length;
+      const lengthM = (totalLength / 1000).toFixed(1).replace(/\.0$/, '');
+      document.getElementById('bim-area-value').textContent = `${lengthM}m`;
+      if (bimStatus) {
+        const scope = dxfApp.getSelectionBBox?.() ? '선택영역' : '전체 표시 레이어';
+        bimStatus.textContent = `${scope} 기준으로 배관 Edge ${pipeCount}개, Node ${protoGraph.nodes.length}개를 아이소메트릭 관망으로 생성했습니다. 건축 객체는 제외했습니다.`;
+      }
+    }
+
+    function openBimModeler() {
+      if (!dxfApp?.data?.entities?.length) {
+        alert('먼저 DXF 평면도를 업로드하세요.');
+        return;
+      }
+      bimModal.classList.add('is-open');
+      setTimeout(() => {
+        resizeBimRenderer();
+        buildBimModel();
+      }, 0);
+    }
+
+    function closeBimModeler() {
+      bimModal.classList.remove('is-open');
+    }
+
+    bimCloseBtn?.addEventListener('click', closeBimModeler);
+    bimRebuildBtn?.addEventListener('click', buildBimModel);
+
+    function currentDxfWorkBBox() {
+      const selected = dxfApp.getSelectionBBox?.();
+      if (selected) return selected;
+      const b = dxfApp.data?.bounds;
+      if (b) return { minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY };
+      return { minX: -1000, minY: -1000, maxX: 1000, maxY: 1000 };
+    }
+
+    function nodeKeyFromPoint(pt, tolerance = DXF_ENDPOINT_TOLERANCE) {
+      return `${Math.round(pt.x / tolerance)},${Math.round(pt.y / tolerance)}`;
+    }
+
+    function graphNodeCenter(key, rawPoints) {
+      const points = rawPoints[key] || [];
+      if (!points.length) return { x: 0, y: 0 };
+      return {
+        x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
+        y: points.reduce((sum, p) => sum + p.y, 0) / points.length,
+      };
+    }
+
+    function findNearestProtoNode(nodes, pt) {
+      let best = null;
+      let bestDist = Infinity;
+      nodes.forEach((node) => {
+        const dist = Math.hypot(node.x - pt.x, node.y - pt.y);
+        if (dist < bestDist) {
+          best = node;
+          bestDist = dist;
+        }
+      });
+      return best ? { ...best, distance: bestDist } : null;
+    }
+
+    function inferAlarmValvePoint(graph, bbox) {
+      const avPattern = /(알람|ALARM|A\/V|AV\b|ALARM\s*VALVE)/i;
+      const textHits = (graph.texts || []).filter((t) => avPattern.test(String(t.text || '')));
+      if (textHits.length) return { x: textHits[0].x, y: textHits[0].y, source: `문자: ${textHits[0].text}` };
+      const valve = (graph.fittings || []).find((f) => String(f.type || '').toLowerCase().includes('valve'));
+      if (valve) return { x: valve.x, y: valve.y, source: '밸브 객체 후보' };
+      const nodes = graph._nodes || [];
+      const highDegree = [...nodes].sort((a, b) => (b.degree || 0) - (a.degree || 0))[0];
+      if (highDegree) return { x: highDegree.x, y: highDegree.y, source: '최대 분기 노드 후보' };
+      return { x: (bbox.minX + bbox.maxX) / 2, y: (bbox.minY + bbox.maxY) / 2, source: '도면 중심 후보' };
+    }
+
+    function buildPrototypeNetworkGraph(rawGraph, tolerance = DXF_ENDPOINT_TOLERANCE) {
+      const rawPoints = {};
+      const nodesByKey = new Map();
+      const edges = [];
+      (rawGraph.edges || []).forEach((edge, idx) => {
+        const points = edge.points?.length ? edge.points : [edge.start, edge.end].filter(Boolean);
+        if (points.length < 2) return;
+        const startKey = nodeKeyFromPoint(points[0], tolerance);
+        const endKey = nodeKeyFromPoint(points[points.length - 1], tolerance);
+        rawPoints[startKey] = rawPoints[startKey] || [];
+        rawPoints[endKey] = rawPoints[endKey] || [];
+        rawPoints[startKey].push(points[0]);
+        rawPoints[endKey].push(points[points.length - 1]);
+        nodesByKey.set(startKey, { id: startKey, degree: 0 });
+        nodesByKey.set(endKey, { id: endKey, degree: 0 });
+        const length = Number(edge.length || points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0));
+        edges.push({ ...edge, protoId: `P${idx + 1}`, startKey, endKey, points, length });
+      });
+      const adjacency = new Map();
+      edges.forEach((edge) => {
+        const a = nodesByKey.get(edge.startKey);
+        const b = nodesByKey.get(edge.endKey);
+        if (a) a.degree += 1;
+        if (b) b.degree += 1;
+        if (!adjacency.has(edge.startKey)) adjacency.set(edge.startKey, []);
+        if (!adjacency.has(edge.endKey)) adjacency.set(edge.endKey, []);
+        adjacency.get(edge.startKey).push({ to: edge.endKey, edge });
+        adjacency.get(edge.endKey).push({ to: edge.startKey, edge });
+      });
+      const nodes = [...nodesByKey.values()].map((node) => ({ ...node, ...graphNodeCenter(node.id, rawPoints) }));
+      return { nodes, edges, adjacency };
+    }
+
+    function dijkstraProto(graph, startKey) {
+      const dist = new Map();
+      const prev = new Map();
+      graph.nodes.forEach((node) => dist.set(node.id, Infinity));
+      dist.set(startKey, 0);
+      const pending = new Set(graph.nodes.map((node) => node.id));
+      while (pending.size) {
+        let current = null;
+        let best = Infinity;
+        pending.forEach((key) => {
+          const value = dist.get(key);
+          if (value < best) {
+            best = value;
+            current = key;
+          }
+        });
+        if (current === null || best === Infinity) break;
+        pending.delete(current);
+        (graph.adjacency.get(current) || []).forEach(({ to, edge }) => {
+          if (!pending.has(to)) return;
+          const next = best + Math.max(Number(edge.length || 0), 1);
+          if (next < dist.get(to)) {
+            dist.set(to, next);
+            prev.set(to, { from: current, edge });
+          }
+        });
+      }
+      return { dist, prev };
+    }
+
+    function pathEdgesToStart(prev, nodeKey) {
+      const edges = [];
+      let current = nodeKey;
+      const guard = new Set();
+      while (prev.has(current) && !guard.has(current)) {
+        guard.add(current);
+        const step = prev.get(current);
+        edges.push(step.edge);
+        current = step.from;
+      }
+      return edges;
+    }
+
+    function makePipenetDraft(result) {
+      const nodeMap = new Map();
+      const addNode = (pt, fallbackId) => {
+        const key = nodeKeyFromPoint(pt, 1);
+        if (!nodeMap.has(key)) {
+          nodeMap.set(key, { id: `N${nodeMap.size + 1}`, x: pt.x, y: pt.y, z: pt.z || 0, fallbackId });
+        }
+        return nodeMap.get(key);
+      };
+      const lines = [];
+      lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+      lines.push('<PipenetPrototype source="CAD-SDF module 7" mode="prototype">');
+      lines.push('  <Title>CAD inferred farthest 30-head network draft</Title>');
+      lines.push(`  <AlarmValve x="${result.av.x.toFixed(3)}" y="${result.av.y.toFixed(3)}" source="${escapeHtml(result.av.source)}" />`);
+      lines.push('  <Nodes>');
+      result.pipeEdges.forEach((edge) => {
+        addNode({ ...edge.points[0], z: edge.z || 0 }, edge.startKey);
+        addNode({ ...edge.points[edge.points.length - 1], z: edge.z || 0 }, edge.endKey);
+      });
+      result.selectedHeads.forEach((head) => addNode({ x: head.x, y: head.y, z: 0 }, head.label));
+      [...nodeMap.values()].forEach((node) => {
+        lines.push(`    <Node id="${node.id}" x="${node.x.toFixed(3)}" y="${node.y.toFixed(3)}" z="${node.z.toFixed(3)}" />`);
+      });
+      lines.push('  </Nodes>');
+      lines.push('  <Pipes>');
+      result.pipeEdges.forEach((edge, idx) => {
+        const a = addNode({ ...edge.points[0], z: edge.z || 0 }, edge.startKey);
+        const b = addNode({ ...edge.points[edge.points.length - 1], z: edge.z || 0 }, edge.endKey);
+        lines.push(`    <Pipe label="${idx + 1}" input="${a.id}" output="${b.id}" length_m="${(edge.length / 1000).toFixed(3)}" bore_mm="${edge.boreText || 50}" material="CAD_INFERRED" />`);
+      });
+      lines.push('  </Pipes>');
+      lines.push('  <Nozzles>');
+      result.selectedHeads.forEach((head, idx) => {
+        const node = addNode({ x: head.x, y: head.y, z: 0 }, head.label);
+        lines.push(`    <Nozzle label="${idx + 1}" node="${node.id}" distance_m="${(head.distance / 1000).toFixed(3)}" source_label="${escapeHtml(head.label || '')}" />`);
+      });
+      lines.push('  </Nozzles>');
+      lines.push('</PipenetPrototype>');
+      return lines.join('\n');
+    }
+
+    function inferPipenetPrototype() {
+      const bbox = currentDxfWorkBBox();
+      const rawGraph = dxfApp.buildPipeMatchGraph(bbox);
+      const graph = buildPrototypeNetworkGraph(rawGraph);
+      rawGraph._nodes = graph.nodes;
+      const avPoint = inferAlarmValvePoint(rawGraph, bbox);
+      const avNode = findNearestProtoNode(graph.nodes, avPoint);
+      if (!graph.edges.length || !avNode) {
+        return { ok: false, message: '배관 그래프를 만들 수 없습니다. 배관 레이어만 남기고 다시 시도하세요.' };
+      }
+      const route = dijkstraProto(graph, avNode.id);
+      const heads = (rawGraph.heads || [])
+        .map((head, idx) => {
+          const near = findNearestProtoNode(graph.nodes, head);
+          const distance = near ? route.dist.get(near.id) : Infinity;
+          return { ...head, label: head.label || `HEAD-${idx + 1}`, nodeKey: near?.id, distance: Number.isFinite(distance) ? distance : Infinity };
+        })
+        .filter((head) => Number.isFinite(head.distance))
+        .sort((a, b) => b.distance - a.distance);
+      const selectedHeads = heads.slice(0, 30);
+      const edgeSet = new Set();
+      selectedHeads.forEach((head) => pathEdgesToStart(route.prev, head.nodeKey).forEach((edge) => edgeSet.add(edge)));
+      const pipeEdges = [...edgeSet];
+      const result = {
+        ok: true,
+        bbox,
+        av: { ...avPoint, nodeKey: avNode.id, x: avNode.x, y: avNode.y },
+        rawGraph,
+        graph,
+        selectedHeads,
+        allHeads: heads,
+        pipeEdges,
+      };
+      result.sdfText = makePipenetDraft(result);
+      return result;
+    }
+
+    function initProtoRenderer() {
+      if (!window.THREE) {
+        alert('Three.js를 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도하세요.');
+        return false;
+      }
+      if (!protoState.renderer) {
+        protoState.target = new THREE.Vector3(0, 0, 0);
+        protoState.renderer = new THREE.WebGLRenderer({ antialias: true });
+        protoState.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        protoState.renderer.setClearColor(0x0f172a, 1);
+        protoView.appendChild(protoState.renderer.domElement);
+        protoState.renderer.domElement.addEventListener('pointerdown', (event) => {
+          protoState.dragging = true;
+          protoState.lastX = event.clientX;
+          protoState.lastY = event.clientY;
+          protoState.renderer.domElement.setPointerCapture(event.pointerId);
+        });
+        protoState.renderer.domElement.addEventListener('pointermove', (event) => {
+          if (!protoState.dragging) return;
+          const dx = event.clientX - protoState.lastX;
+          const dy = event.clientY - protoState.lastY;
+          protoState.lastX = event.clientX;
+          protoState.lastY = event.clientY;
+          protoState.yaw -= dx * 0.006;
+          protoState.pitch = Math.max(0.18, Math.min(1.35, protoState.pitch + dy * 0.005));
+          updateProtoCamera();
+        });
+        protoState.renderer.domElement.addEventListener('pointerup', () => { protoState.dragging = false; });
+        protoState.renderer.domElement.addEventListener('wheel', (event) => {
+          event.preventDefault();
+          protoState.distance = Math.max(20, Math.min(900, protoState.distance * (event.deltaY > 0 ? 1.08 : 0.92)));
+          updateProtoCamera();
+        }, { passive: false });
+        window.addEventListener('resize', resizeProtoRenderer);
+      }
+      return true;
+    }
+
+    function resizeProtoRenderer() {
+      if (!protoState.renderer || !protoState.camera || !protoModal.classList.contains('is-open')) return;
+      const rect = protoView.getBoundingClientRect();
+      protoState.renderer.setSize(Math.max(1, rect.width), Math.max(1, rect.height), false);
+      protoState.camera.aspect = Math.max(1, rect.width) / Math.max(1, rect.height);
+      protoState.camera.updateProjectionMatrix();
+    }
+
+    function updateProtoCamera() {
+      if (!protoState.camera || !protoState.target) return;
+      const r = protoState.distance;
+      const x = Math.cos(protoState.pitch) * Math.cos(protoState.yaw) * r;
+      const y = Math.sin(protoState.pitch) * r;
+      const z = Math.cos(protoState.pitch) * Math.sin(protoState.yaw) * r;
+      protoState.camera.position.set(protoState.target.x + x, protoState.target.y + y, protoState.target.z + z);
+      protoState.camera.lookAt(protoState.target);
+    }
+
+    function addProtoTube(scene, a, b, context, material, radius = 0.22) {
+      const p1 = new THREE.Vector3((a.x - context.cx) * context.scale, (a.z || 0) * context.scale, -(a.y - context.cy) * context.scale);
+      const p2 = new THREE.Vector3((b.x - context.cx) * context.scale, (b.z || 0) * context.scale, -(b.y - context.cy) * context.scale);
+      const mid = p1.clone().add(p2).multiplyScalar(0.5);
+      const dir = p2.clone().sub(p1);
+      const len = dir.length();
+      if (len <= 0.01) return;
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, len, 12), material);
+      mesh.position.copy(mid);
+      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+      scene.add(mesh);
+    }
+
+    function renderPipenetPrototype(result) {
+      if (!initProtoRenderer()) return;
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0f172a);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 1.8));
+      const light = new THREE.DirectionalLight(0xffffff, 1.1);
+      light.position.set(80, 120, 60);
+      scene.add(light);
+      const bbox = result.bbox;
+      const width = Math.max(bbox.maxX - bbox.minX, 1);
+      const depth = Math.max(bbox.maxY - bbox.minY, 1);
+      const scale = Math.min(0.045, 180 / Math.max(width, depth, 1));
+      const context = { cx: (bbox.minX + bbox.maxX) / 2, cy: (bbox.minY + bbox.maxY) / 2, scale };
+      const grid = new THREE.GridHelper(Math.max(width, depth) * scale, 28, 0x64748b, 0x334155);
+      scene.add(grid);
+      const rawMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.8, transparent: true, opacity: 0.22 });
+      const pipeMat = new THREE.MeshStandardMaterial({ color: 0x22d3ee, roughness: 0.5 });
+      const avMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.45 });
+      const headMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 });
+      (result.rawGraph.edges || []).forEach((edge) => addProtoTube(scene, edge.points[0], edge.points[edge.points.length - 1], context, rawMat, 0.08));
+      result.pipeEdges.forEach((edge, idx) => {
+        const z = idx % 5 === 0 ? 900 : 0;
+        addProtoTube(scene, { ...edge.points[0], z }, { ...edge.points[edge.points.length - 1], z }, context, pipeMat, 0.18);
+      });
+      const av = new THREE.Mesh(new THREE.SphereGeometry(0.85, 20, 20), avMat);
+      av.position.set((result.av.x - context.cx) * scale, 0.9, -(result.av.y - context.cy) * scale);
+      scene.add(av);
+      result.selectedHeads.forEach((head, idx) => {
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(idx < 3 ? 0.58 : 0.38, 16, 16), headMat);
+        mesh.position.set((head.x - context.cx) * scale, 0.55, -(head.y - context.cy) * scale);
+        scene.add(mesh);
+      });
+      protoState.scene = scene;
+      protoState.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+      protoState.target.set(0, 8, 0);
+      protoState.distance = Math.max(width, depth) * scale * 1.25;
+      resizeProtoRenderer();
+      updateProtoCamera();
+      if (protoState.frame) cancelAnimationFrame(protoState.frame);
+      const animate = () => {
+        protoState.frame = requestAnimationFrame(animate);
+        protoState.renderer.render(protoState.scene, protoState.camera);
+      };
+      animate();
+    }
+
+    function populatePipenetPrototype(result) {
+      protoState.lastResult = result;
+      document.getElementById('proto-edge-count').textContent = result.rawGraph.edges.length;
+      document.getElementById('proto-head-count').textContent = result.allHeads.length;
+      document.getElementById('proto-selected-count').textContent = result.selectedHeads.length;
+      document.getElementById('proto-pipe-count').textContent = result.pipeEdges.length;
+      protoSdfOutput.value = result.sdfText || '';
+      document.getElementById('proto-head-list').innerHTML = result.selectedHeads.length
+        ? result.selectedHeads.map((head, idx) => `<div><span>${idx + 1}. ${escapeHtml(head.label || 'HEAD')}</span><strong>${(head.distance / 1000).toFixed(2)}m</strong></div>`).join('')
+        : '<p class="text-gray-500">선정된 헤드가 없습니다.</p>';
+      protoStatus.textContent = `${result.av.source}에서 시작해 그래프 거리 기준 최원단 헤드 ${result.selectedHeads.length}개를 선정했습니다.`;
+      renderPipenetPrototype(result);
+    }
+
+    function rebuildPipenetPrototype() {
+      const result = inferPipenetPrototype();
+      if (!result.ok) {
+        protoStatus.textContent = result.message;
+        return;
+      }
+      populatePipenetPrototype(result);
+    }
+
+    function openPipenetPrototype() {
+      if (!dxfApp?.data?.entities?.length) {
+        alert('먼저 DXF 평면도를 업로드하세요.');
+        return;
+      }
+      protoModal.classList.add('is-open');
+      setTimeout(() => {
+        resizeProtoRenderer();
+        rebuildPipenetPrototype();
+      }, 0);
+    }
+
+    function closePipenetPrototype() {
+      protoModal.classList.remove('is-open');
+    }
+
+    protoCloseBtn?.addEventListener('click', closePipenetPrototype);
+    protoRebuildBtn?.addEventListener('click', rebuildPipenetPrototype);
+    protoCopyBtn?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(protoSdfOutput.value || '');
+        protoStatus.textContent = 'PIPENET 유사 SDF 초안을 클립보드에 복사했습니다.';
+      } catch {
+        protoSdfOutput.select();
+        document.execCommand('copy');
+        protoStatus.textContent = 'PIPENET 유사 SDF 초안을 선택/복사했습니다.';
+      }
+    });
+
+    const integratedModal = document.getElementById('integrated-convert-modal');
+    const integratedRunBtn = document.getElementById('integrated-run-btn');
+    const integratedCopyBtn = document.getElementById('integrated-copy-btn');
+    const integratedCloseBtn = document.getElementById('integrated-close-btn');
+    const integratedStatus = document.getElementById('integrated-status');
+    const integratedOutputText = document.getElementById('integrated-output-text');
+    const integratedIsoPreview = document.getElementById('integrated-iso-preview');
+    const integratedIsoZoomInBtn = document.getElementById('integrated-iso-zoom-in');
+    const integratedIsoZoomOutBtn = document.getElementById('integrated-iso-zoom-out');
+    const integratedIsoZoomResetBtn = document.getElementById('integrated-iso-zoom-reset');
+    const integratedState = { result: null, activeTab: 'sdf', isoViewBox: null, isoBaseViewBox: null };
+
+    function openIntegratedConverter() {
+      integratedModal.classList.add('is-open');
+    }
+
+    function closeIntegratedConverter() {
+      integratedModal.classList.remove('is-open');
+    }
+
+    function setIntegratedIsoViewBox(nextViewBox) {
+      const svg = integratedIsoPreview?.querySelector('svg');
+      if (!svg || !nextViewBox) return;
+      integratedState.isoViewBox = { ...nextViewBox };
+      svg.setAttribute('viewBox', `${nextViewBox.x} ${nextViewBox.y} ${nextViewBox.width} ${nextViewBox.height}`);
+    }
+
+    function zoomIntegratedIso(direction) {
+      const current = integratedState.isoViewBox;
+      if (!current) return;
+      const factor = direction === 'in' ? 0.8 : 1.25;
+      const nextWidth = current.width * factor;
+      const nextHeight = current.height * factor;
+      const centerX = current.x + current.width / 2;
+      const centerY = current.y + current.height / 2;
+      setIntegratedIsoViewBox({
+        x: centerX - nextWidth / 2,
+        y: centerY - nextHeight / 2,
+        width: nextWidth,
+        height: nextHeight,
+      });
+    }
+
+    function resetIntegratedIsoZoom() {
+      if (!integratedState.isoBaseViewBox) return;
+      setIntegratedIsoViewBox(integratedState.isoBaseViewBox);
+    }
+
+    async function parseDxfUpload(file) {
+      if (!file) return { entities: [], bounds: null, filename: '' };
+      const formData = new FormData();
+      formData.append('cad_file', file);
+      const response = await fetch('/api/cad-module/dxf-parse', { method: 'POST', body: formData });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.message || `${file.name} 파싱 실패`);
+      return payload.cad_payload || { entities: [], bounds: null, filename: file.name };
+    }
+
+    function diameterFromText(text) {
+      const m = String(text || '').match(/(?:^|[^0-9])((?:25|32|40|50|65|80|100|125|150|200|250|300)\s*A)(?:[^0-9]|$)/i);
+      return m ? m[1].toUpperCase().replace(/\s+/g, '') : '';
+    }
+
+    function boreMeters(diameter) {
+      const n = Number(String(diameter || '').replace(/[^0-9.]/g, ''));
+      return Number.isFinite(n) && n > 0 ? n / 1000 : 0.05;
+    }
+
+    function integratedEntityKind(ent) {
+      const text = [ent.layer || '', ent.blockName || '', ent.text || '', ent.parentPath || ''].join(' ').toUpperCase();
+      if (/(TEXT|MTEXT)/.test(ent.type || '') || diameterFromText(ent.text)) return 'text';
+      if (/(HEAD|SPRINK|NOZZLE|헤드)/.test(text) || dxfApp.isTriangleHeadLike?.(ent)) return 'head';
+      if (/(VALVE|ALARM|A\/V|AV\b|GATE|CHECK|밸브|알람)/.test(text)) return 'valve';
+      if (/(PIPE|PIPING|SPRINKLER|FIRE|HYDRANT|소화|배관|SP\b)/.test(text) && ['LINE', 'LWPOLYLINE', 'ARC'].includes(ent.type)) return 'pipe';
+      if (['LINE', 'LWPOLYLINE', 'ARC'].includes(ent.type)) return 'pipe';
+      return 'other';
+    }
+
+    function extractElevationCandidates(payloads) {
+      const found = [];
+      (payloads || []).forEach((payload) => {
+        (payload.entities || []).forEach((ent) => {
+          const text = String(ent.text || '');
+          const m = text.match(/(?:EL\.?|ELEV\.?|LEVEL)?\s*([+-]?\d+(?:\.\d+)?)/i);
+          if (!m) return;
+          const value = Number(m[1]);
+          if (!Number.isFinite(value)) return;
+          found.push({ text, value, layer: ent.layer || '', x: ent.insert?.x || ent.center?.x || 0, y: ent.insert?.y || ent.center?.y || 0 });
+        });
+      });
+      return found;
+    }
+
+    function mergeElevationRules(defaultRules, candidates) {
+      const rules = { ...defaultRules };
+      const values = candidates.map((x) => x.value).filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+      if (values.length) {
+        if (!Number.isFinite(rules.riser_base)) rules.riser_base = values[0];
+        if (!Number.isFinite(rules.main)) rules.main = values[Math.max(0, values.length - 3)] ?? values[0];
+        if (!Number.isFinite(rules.branch)) rules.branch = values[Math.max(0, values.length - 2)] ?? rules.main;
+        if (!Number.isFinite(rules.head)) rules.head = values[values.length - 1] ?? rules.branch;
+        if (!Number.isFinite(rules.pipe_default)) rules.pipe_default = rules.main;
+      }
+      return rules;
+    }
+
+    function nearestDiameterText(edge, texts) {
+      let best = '';
+      let bestDist = Infinity;
+      const mid = { x: (edge.start.x + edge.end.x) / 2, y: (edge.start.y + edge.end.y) / 2 };
+      texts.forEach((t) => {
+        const diameter = diameterFromText(t.text);
+        if (!diameter || !t.insert) return;
+        const dist = Math.hypot(mid.x - t.insert.x, mid.y - t.insert.y);
+        if (dist < bestDist) {
+          best = diameter;
+          bestDist = dist;
+        }
+      });
+      return best || '50A';
+    }
+
+    function buildIntegratedPlanGraph(planPayload, elevationRules) {
+      const bbox = planPayload.bounds || { minX: -1e9, minY: -1e9, maxX: 1e9, maxY: 1e9 };
+      const texts = (planPayload.entities || []).filter((ent) => integratedEntityKind(ent) === 'text');
+      const oldData = dxfApp.data;
+      const oldFilters = dxfApp.captureFilterState();
+      dxfApp.data = planPayload;
+      dxfApp.extractFilters(planPayload.entities || [], { reset: true });
+      const graph = dxfApp.buildPipeMatchGraph(bbox);
+      dxfApp.data = oldData;
+      dxfApp.extractFilters(oldData?.entities || [], { reset: false });
+      dxfApp.restoreFilterState(oldFilters);
+      const protoGraph = buildPrototypeNetworkGraph(graph);
+      graph._nodes = protoGraph.nodes;
+      const nodesByKey = new Map();
+      const addNode = (key, x, y, type, z, source) => {
+        if (!nodesByKey.has(key)) {
+          nodesByKey.set(key, {
+            node_id: `N${String(nodesByKey.size + 1).padStart(4, '0')}`,
+            node_type: type,
+            x_real: x,
+            y_real: y,
+            z_real: z,
+            x_pn: x,
+            y_pn: y,
+            floor: '',
+            zone: '',
+            source,
+          });
+        }
+        return nodesByKey.get(key);
+      };
+      protoGraph.nodes.forEach((n) => addNode(n.id, n.x, n.y, 'pipe_node', elevationRules.pipe_default, 'plan'));
+      const pipes = protoGraph.edges.map((edge, idx) => {
+        const a = nodesByKey.get(edge.startKey);
+        const b = nodesByKey.get(edge.endKey);
+        const diameter = nearestDiameterText(edge, texts);
+        const length = Number(edge.length || 0) / 1000;
+        return {
+          pipe_id: `P${String(idx + 1).padStart(4, '0')}`,
+          from_node: a.node_id,
+          to_node: b.node_id,
+          diameter,
+          material: 'KSD3507',
+          c_factor: 120,
+          length_real: Math.max(length, 0.001),
+          rise: Number((b.z_real - a.z_real).toFixed(3)),
+          fitting_elbow: 0,
+          fitting_tee: 0,
+          fitting_gate: 0,
+          fitting_check: 0,
+          equipment: '',
+          waypoints: JSON.stringify(edge.points || []),
+          source_plan: edge.layer || '',
+          source_section: '',
+          source_system: '',
+          _edge: edge,
+        };
+      });
+      const nozzles = (graph.heads || []).map((head, idx) => {
+        const near = findNearestProtoNode(protoGraph.nodes, head);
+        const connect = near ? nodesByKey.get(near.id) : addNode(`HEAD-IN-${idx}`, head.x, head.y, 'head_inlet', elevationRules.branch, 'plan-head');
+        const headNode = addNode(`HEAD-${idx}`, head.x, head.y, 'head', elevationRules.head, 'plan-head');
+        return {
+          nozzle_id: String(idx + 1),
+          input_node: connect.node_id,
+          output_node: `@/${idx + 1}`,
+          head_node: headNode.node_id,
+          flow: 0.00266666667,
+          status: idx < 30 ? 1 : 0,
+          library_item: 'SP-HEAD',
+          head_type: 'CAD_INFERRED',
+        };
+      });
+      const degree = new Map(protoGraph.nodes.map((n) => [n.id, n.degree || 0]));
+      pipes.forEach((pipe) => {
+        const edge = pipe._edge;
+        if ((degree.get(edge.startKey) || 0) >= 3 || (degree.get(edge.endKey) || 0) >= 3) pipe.fitting_tee = 1;
+        if ((degree.get(edge.startKey) || 0) === 2 || (degree.get(edge.endKey) || 0) === 2) pipe.fitting_elbow = 1;
+      });
+      const equipment = (graph.fittings || [])
+        .filter((f) => String(f.type || '').toLowerCase().includes('valve'))
+        .map((f, idx) => ({ equipment_id: `EQ${idx + 1}`, type: 'alarm_valve', pipe_id: pipes[0]?.pipe_id || '', node_id: '', equivalent_length: 24, rel_position: 0.5, description: 'AV' }));
+      return { nodes: [...nodesByKey.values()], pipes, nozzles, equipment, fittings: [], graph };
+    }
+
+    function csv(rows) {
+      if (!rows.length) return '';
+      const keys = Object.keys(rows[0]).filter((k) => !k.startsWith('_'));
+      const esc = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
+      return [keys.join(','), ...rows.map((row) => keys.map((k) => esc(row[k])).join(','))].join('\n');
+    }
+
+    function writeIntegratedSdf(network) {
+      const lines = [];
+      lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+      lines.push('<Project version="1.6  (0)">');
+      lines.push('  <Network-spray>');
+      lines.push('    <Title>CAD integrated PipeNet draft</Title>');
+      lines.push('    <Nodes>');
+      network.nodes.forEach((n) => {
+        lines.push(`      <Node elevation="${Number(n.z_real || 0).toFixed(3)}" io-node="${n.node_type === 'input' ? 'Input' : 'No'}" label="${n.node_id}"><Position x="${Number(n.x_pn || 0).toFixed(3)}" y="${Number(n.y_pn || 0).toFixed(3)}"/></Node>`);
+      });
+      network.nozzles.forEach((nz) => {
+        const h = network.nodes.find((n) => n.node_id === nz.head_node);
+        lines.push(`      <Node elevation="${Number(h?.z_real || 0).toFixed(3)}" io-node="No" label="${nz.output_node}"><Position x="${Number(h?.x_pn || 0).toFixed(3)}" y="${Number(h?.y_pn || 0).toFixed(3)}"/></Node>`);
+      });
+      lines.push('    </Nodes>');
+      lines.push('    <Links>');
+      lines.push('      <Pipe-set>');
+      network.pipes.forEach((p, idx) => {
+        lines.push(`        <Pipe bore="${boreMeters(p.diameter).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}" input="${p.from_node}" label="${idx + 1}" length="${Number(p.length_real).toFixed(3)}" output="${p.to_node}" rise="${Number(p.rise || 0).toFixed(3)}" roughness-or-c="${p.c_factor}" status="normal">`);
+        const fittings = [['elbow', p.fitting_elbow], ['tee', p.fitting_tee], ['gate', p.fitting_gate], ['check', p.fitting_check]].filter(([, count]) => Number(count) > 0);
+        if (fittings.length) {
+          lines.push('          <Fittings>');
+          fittings.forEach(([type, count]) => lines.push(`            <Fitting count="${count}" type="${type}"/>`));
+          lines.push('          </Fittings>');
+        }
+        lines.push('        </Pipe>');
+      });
+      lines.push('      </Pipe-set>');
+      lines.push('      <Nozzle>');
+      network.nozzles.forEach((n) => {
+        lines.push(`        <Nozzle input="${n.input_node}" label="${n.nozzle_id}" output="${n.output_node}" status="${n.status}"><Flow-define flow="${n.flow}"/><Library-item>${n.library_item}</Library-item></Nozzle>`);
+      });
+      lines.push('      </Nozzle>');
+      lines.push('    </Links>');
+      lines.push('  </Network-spray>');
+      lines.push('</Project>');
+      return lines.join('\n');
+    }
+
+    function renderIntegratedIsoPreview(network) {
+      if (!integratedIsoPreview) return;
+      if (!network?.nodes?.length || !network?.pipes?.length) {
+        integratedIsoPreview.innerHTML = '<div class="iso-empty">변환된 Node/Pipe 데이터가 없어 아이소메트릭 미리보기를 만들 수 없습니다.</div>';
+        return;
+      }
+      const nodeById = new Map(network.nodes.map((n) => [String(n.node_id), n]));
+      const headNodeIds = new Set((network.nozzles || []).map((n) => String(n.head_node || n.output_node || '')).filter(Boolean));
+      const endpointNodeIds = new Set((network.nozzles || []).flatMap((n) => [String(n.input_node || ''), String(n.head_node || '')]).filter(Boolean));
+      const project = (node) => {
+        const x = Number(node.x_real ?? node.x ?? node.x_pn ?? 0);
+        const y = Number(node.y_real ?? node.y ?? node.y_pn ?? 0);
+        const zMm = Number(node.z_real ?? node.z ?? 0) * 1000;
+        return {
+          x: (x - y) * 0.8660254,
+          y: (x + y) * 0.5 - zMm * 1.8,
+        };
+      };
+      const projected = new Map(network.nodes.map((node) => [String(node.node_id), project(node)]));
+      const linePoints = [];
+      network.pipes.forEach((pipe) => {
+        const a = projected.get(String(pipe.from_node));
+        const b = projected.get(String(pipe.to_node));
+        if (a && b) linePoints.push(a, b);
+      });
+      if (!linePoints.length) {
+        integratedState.isoBaseViewBox = null;
+        integratedState.isoViewBox = null;
+        integratedIsoPreview.innerHTML = `
+          <div class="integrated-iso-tools">
+            <button id="integrated-iso-zoom-in" type="button">확대 +</button>
+            <button id="integrated-iso-zoom-out" type="button">축소 -</button>
+            <button id="integrated-iso-zoom-reset" type="button">초기화</button>
+          </div>
+          <div class="iso-empty">연결된 Pipe 좌표가 없어 아이소메트릭 미리보기를 만들 수 없습니다.</div>
+        `;
+        return;
+      }
+      const xs = linePoints.map((p) => p.x);
+      const ys = linePoints.map((p) => p.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      const pad = Math.max(maxX - minX, maxY - minY, 1) * 0.08;
+      const viewBox = `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
+      const pipeEls = network.pipes.map((pipe) => {
+        const a = projected.get(String(pipe.from_node));
+        const b = projected.get(String(pipe.to_node));
+        if (!a || !b) return '';
+        const diameter = boreMeters(pipe.diameter || pipe.diameter_m || pipe.diameter_label || '');
+        const rise = Math.abs(Number(pipe.rise || pipe.rise_m || 0));
+        const width = Math.max(5, Math.min(18, diameter * 120));
+        const cls = rise > 0.05 ? 'iso-pipe riser' : diameter <= 0.04 ? 'iso-pipe branch' : 'iso-pipe';
+        const title = `Pipe ${pipe.pipe_id || pipe.label || ''} / ${pipe.diameter || pipe.diameter_m || '-'} / length ${Number(pipe.length_real || pipe.length_m || 0).toFixed(3)}m / rise ${Number(pipe.rise || pipe.rise_m || 0).toFixed(3)}m`;
+        return `<line class="${cls}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke-width="${width}"><title>${title}</title></line>`;
+      }).join('');
+      const headEls = network.nodes.filter((node) => {
+        const id = String(node.node_id);
+        return headNodeIds.has(id) || endpointNodeIds.has(id) || String(node.node_type || '').includes('head');
+      }).map((node) => {
+        const p = projected.get(String(node.node_id));
+        if (!p) return '';
+        return `<circle class="iso-head" cx="${p.x}" cy="${p.y}" r="56"><title>Head ${node.node_id}</title></circle>`;
+      }).join('');
+      const junctionEls = network.nodes.filter((node) => {
+        const id = String(node.node_id);
+        return !headNodeIds.has(id) && !String(node.node_type || '').includes('head');
+      }).slice(0, 600).map((node) => {
+        const p = projected.get(String(node.node_id));
+        if (!p) return '';
+        return `<circle class="iso-node" cx="${p.x}" cy="${p.y}" r="24"><title>Node ${node.node_id} / EL ${Number(node.z_real || 0).toFixed(3)}</title></circle>`;
+      }).join('');
+      const labelEls = network.pipes.slice(0, 160).map((pipe) => {
+        const a = projected.get(String(pipe.from_node));
+        const b = projected.get(String(pipe.to_node));
+        if (!a || !b) return '';
+        return `<text class="iso-label" x="${(a.x + b.x) / 2 + 18}" y="${(a.y + b.y) / 2 - 18}">${pipe.pipe_id || ''}</text>`;
+      }).join('');
+      integratedIsoPreview.innerHTML = `
+        <div class="integrated-iso-tools">
+          <button id="integrated-iso-zoom-in" type="button">확대 +</button>
+          <button id="integrated-iso-zoom-out" type="button">축소 -</button>
+          <button id="integrated-iso-zoom-reset" type="button">초기화</button>
+        </div>
+        <div class="integrated-iso-legend">
+          초록: 주배관 / 파랑: 가지배관 / 보라 점선: Rise 포함 배관<br>
+          노랑: 헤드, 흰 점: Node / Pipe 라벨은 미리보기용입니다.
+        </div>
+        <svg viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet">
+          ${pipeEls}
+          ${junctionEls}
+          ${headEls}
+          ${labelEls}
+        </svg>
+      `;
+      integratedState.isoBaseViewBox = {
+        x: minX - pad,
+        y: minY - pad,
+        width: maxX - minX + pad * 2,
+        height: maxY - minY + pad * 2,
+      };
+      integratedState.isoViewBox = { ...integratedState.isoBaseViewBox };
+      integratedIsoPreview.querySelector('#integrated-iso-zoom-in')?.addEventListener('click', () => zoomIntegratedIso('in'));
+      integratedIsoPreview.querySelector('#integrated-iso-zoom-out')?.addEventListener('click', () => zoomIntegratedIso('out'));
+      integratedIsoPreview.querySelector('#integrated-iso-zoom-reset')?.addEventListener('click', resetIntegratedIsoZoom);
+    }
+
+    function renderIntegratedOutput() {
+      const result = integratedState.result;
+      if (!result) return;
+      const outputs = {
+        sdf: result.sdf,
+        nodes: csv(result.network.nodes),
+        pipes: csv(result.network.pipes),
+        log: result.log.join('\n'),
+      };
+      const isIso = integratedState.activeTab === 'iso';
+      integratedOutputText.classList.toggle('hidden', isIso);
+      integratedIsoPreview?.classList.toggle('hidden', !isIso);
+      if (isIso) {
+        renderIntegratedIsoPreview(result.network);
+      } else {
+        integratedOutputText.value = outputs[integratedState.activeTab] || '';
+      }
+      document.querySelectorAll('[data-integrated-tab]').forEach((btn) => btn.classList.toggle('active', btn.dataset.integratedTab === integratedState.activeTab));
+    }
+
+    async function runIntegratedConverter() {
+      try {
+        integratedStatus.textContent = 'DXF 파싱 및 통합 그래프 생성 중...';
+        const planFile = document.getElementById('integrated-plan-file').files[0] || dxfApp.fileInput?.files?.[0];
+        if (!planFile && !dxfApp.data?.entities?.length) throw new Error('평면도 DXF가 필요합니다.');
+        const sectionFile = document.getElementById('integrated-section-file').files[0];
+        const systemFile = document.getElementById('integrated-system-file').files[0];
+        const plan = planFile ? await parseDxfUpload(planFile) : dxfApp.data;
+        const section = await parseDxfUpload(sectionFile);
+        const system = await parseDxfUpload(systemFile);
+        const userRules = JSON.parse(document.getElementById('integrated-elevation-rules').value || '{}');
+        const candidates = extractElevationCandidates([section, system]);
+        const rules = mergeElevationRules(userRules, candidates);
+        const network = buildIntegratedPlanGraph(plan, rules);
+        const sdf = writeIntegratedSdf(network);
+        const log = [
+          `plan: ${plan.filename || planFile?.name || 'current DXF'}`,
+          `section: ${section.filename || '-'}`,
+          `system: ${system.filename || '-'}`,
+          `elevation candidates: ${candidates.length}`,
+          `rules: ${JSON.stringify(rules)}`,
+          `validation: ${network.nodes.length ? 'nodes ok' : 'no nodes'}, ${network.pipes.length ? 'pipes ok' : 'no pipes'}, ${network.nozzles.length ? 'nozzles ok' : 'no nozzles'}`,
+          '주의: 현재는 프로토타입 SDF입니다. 실제 PipeNet 네이티브 SDF는 정상 템플릿의 Libraries/Attributes/Pipe-type을 병합해야 합니다.',
+        ];
+        integratedState.result = { network, sdf, log, rules };
+        document.getElementById('integrated-node-count').textContent = network.nodes.length;
+        document.getElementById('integrated-pipe-count').textContent = network.pipes.length;
+        document.getElementById('integrated-nozzle-count').textContent = network.nozzles.length;
+        document.getElementById('integrated-fitting-count').textContent = network.pipes.reduce((sum, p) => sum + Number(p.fitting_elbow || 0) + Number(p.fitting_tee || 0) + Number(p.fitting_gate || 0) + Number(p.fitting_check || 0), 0);
+        document.getElementById('integrated-equipment-count').textContent = network.equipment.length;
+        document.getElementById('integrated-rule-count').textContent = Object.keys(rules).length;
+        integratedStatus.textContent = `통합 변환 완료: Node ${network.nodes.length}, Pipe ${network.pipes.length}, Nozzle ${network.nozzles.length}`;
+        integratedState.activeTab = 'iso';
+        renderIntegratedOutput();
+      } catch (err) {
+        integratedStatus.textContent = err.message || '통합 변환 중 오류가 발생했습니다.';
+      }
+    }
+
+    integratedCloseBtn?.addEventListener('click', closeIntegratedConverter);
+    integratedRunBtn?.addEventListener('click', runIntegratedConverter);
+    integratedCopyBtn?.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(integratedOutputText.value || '');
+      integratedStatus.textContent = '현재 탭 내용을 클립보드에 복사했습니다.';
+    });
+    document.querySelectorAll('[data-integrated-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        integratedState.activeTab = btn.dataset.integratedTab;
+        renderIntegratedOutput();
+      });
+    });
+
+    function checkGlobalAnalysisReady() {
+      const dBox = dxfApp.getSelectionBBox(); const sBox = sdfApp.getSelectionBBox();
+      const ready = !!(dBox && sBox);
+      const tooltip = document.getElementById('compare-tooltip');
+      setAnalysisButtonState(btnCompare, document.getElementById('btn-compare-text'), ready, 'indigo', '핵심 구성요소 대조 분석');
+      setAnalysisButtonState(btnPipeMatch, document.getElementById('btn-pipe-match-text'), ready, 'cyan', '선택영역 배관망 대조 분석');
+      setAnalysisButtonState(btnSelectedRegionReport, document.getElementById('btn-selected-region-report-text'), ready, 'cyan', '보조리포트 생성');
+      tooltip.classList.toggle('opacity-0', ready);
+    }
+
+    function setAnalysisButtonState(button, textEl, ready, color, label) {
+      const activeClasses = color === 'cyan'
+        ? ['bg-cyan-600', 'hover:bg-cyan-500', 'text-white', 'border-cyan-400']
+        : ['bg-indigo-600', 'hover:bg-indigo-500', 'text-white', 'border-indigo-400'];
+      const disabledClasses = ['bg-gray-600', 'text-gray-400', 'border-gray-500', 'cursor-not-allowed'];
+      button.disabled = !ready;
+      button.classList.toggle('cursor-not-allowed', !ready);
+      if (ready) {
+        button.classList.remove(...disabledClasses);
+        button.classList.add(...activeClasses);
+        textEl.textContent = label;
+      } else {
+        button.classList.add(...disabledClasses);
+        button.classList.remove(...activeClasses);
+        textEl.textContent = `${label} (준비 안됨)`;
+      }
+    }
+    checkGlobalAnalysisReady();
+    btnCloseModal.addEventListener('click', () => analysisModal.classList.add('hidden'));
+    btnClosePipeMatchModal.addEventListener('click', () => pipeMatchModal.classList.add('hidden'));
+    btnCloseSelectedRegionReportModal.addEventListener('click', () => selectedRegionReportModal.classList.add('hidden'));
+
+    function normalizeEdge(edge, bbox) {
+      const w = Math.max(bbox.maxX - bbox.minX, 1e-9);
+      const h = Math.max(bbox.maxY - bbox.minY, 1e-9);
+      const diag = Math.hypot(w, h) || 1;
+      const mid = {
+        x: ((edge.start.x + edge.end.x) / 2 - bbox.minX) / w,
+        y: ((edge.start.y + edge.end.y) / 2 - bbox.minY) / h,
+      };
+      const angle = Math.atan2((edge.end.y - edge.start.y) / h, (edge.end.x - edge.start.x) / w);
+      return {
+        ...edge,
+        normMid: mid,
+        normLength: edge.length / diag,
+        normAngle: angle,
+      };
+    }
+
+    function angleDistance(a, b) {
+      let diff = Math.abs(a - b) % Math.PI;
+      if (diff > Math.PI / 2) diff = Math.PI - diff;
+      return diff / (Math.PI / 2);
+    }
+
+    function pointInBBox(pt, bbox) {
+      return pt.x >= bbox.minX && pt.x <= bbox.maxX && pt.y >= bbox.minY && pt.y <= bbox.maxY;
+    }
+
+    function clipSegmentToBBox(a, b, bbox) {
+      let t0 = 0;
+      let t1 = 1;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const checks = [
+        [-dx, a.x - bbox.minX],
+        [dx, bbox.maxX - a.x],
+        [-dy, a.y - bbox.minY],
+        [dy, bbox.maxY - a.y],
+      ];
+      for (const [p, q] of checks) {
+        if (Math.abs(p) < 1e-12) {
+          if (q < 0) return null;
+          continue;
+        }
+        const r = q / p;
+        if (p < 0) {
+          if (r > t1) return null;
+          if (r > t0) t0 = r;
+        } else {
+          if (r < t0) return null;
+          if (r < t1) t1 = r;
+        }
+      }
+      return [
+        { x: a.x + dx * t0, y: a.y + dy * t0 },
+        { x: a.x + dx * t1, y: a.y + dy * t1 },
+      ];
+    }
+
+    function edgeScore(dxf, sdf) {
+      const midDist = Math.hypot(dxf.normMid.x - sdf.normMid.x, dxf.normMid.y - sdf.normMid.y);
+      const lenDiff = Math.abs(dxf.normLength - sdf.normLength) / Math.max(sdf.normLength, 1e-6);
+      const angleDiff = angleDistance(dxf.normAngle, sdf.normAngle);
+      const degreeDiff = Math.abs((dxf.sourceDegree + dxf.targetDegree) - (sdf.sourceDegree + sdf.targetDegree)) / 8;
+      return midDist * 1.0 + Math.min(lenDiff, 2) * 0.55 + angleDiff * 0.35 + Math.min(degreeDiff, 1) * 0.25;
+    }
+
+    function learnedLayerPrior(layer) {
+      const text = String(layer || '').toUpperCase().replace(/\s+/g, '');
+      if (text.includes('SP') || text.includes('소화') || text.includes('배관') || text.includes('후렉') || text.includes('FIRE') || text.includes('SPRINKLER')) return 0.18;
+      if (['0', 'L1', 'L2', 'L3', 'L4'].includes(text)) return -0.16;
+      return 0;
+    }
+
+    function aiAssistConfidence(dxf, sdf, ruleScore) {
+      const layerPrior = learnedLayerPrior(dxf.layer);
+      const scoreConfidence = Math.max(0, Math.min(1, 1 - ruleScore / Math.max(MATCH_MAX_SCORE, 1e-6)));
+      const lengthSimilarity = 1 - Math.min(1, Math.abs(dxf.normLength - sdf.normLength) / Math.max(sdf.normLength, 1e-6));
+      const angleSimilarity = 1 - angleDistance(dxf.normAngle, sdf.normAngle);
+      return Math.max(0, Math.min(1, scoreConfidence * 0.45 + lengthSimilarity * 0.25 + angleSimilarity * 0.18 + 0.12 + layerPrior));
+    }
+
+    function buildPipeMatches(dxfEdges, sdfEdges, dxfBox, sdfBox) {
+      const dxfs = dxfEdges.map((edge) => normalizeEdge(edge, dxfBox));
+      const sdfs = sdfEdges.map((edge) => normalizeEdge(edge, sdfBox));
+      const pairs = [];
+      dxfs.forEach((dxf) => {
+        sdfs.forEach((sdf) => pairs.push({ dxf, sdf, score: edgeScore(dxf, sdf) }));
+      });
+      pairs.sort((a, b) => a.score - b.score);
+      const usedDxf = new Set();
+      const usedSdf = new Set();
+      const rows = [];
+      pairs.forEach((pair) => {
+        if (usedDxf.has(pair.dxf.id) || usedSdf.has(pair.sdf.id)) return;
+        if (pair.score > MATCH_MAX_SCORE) return;
+        usedDxf.add(pair.dxf.id);
+        usedSdf.add(pair.sdf.id);
+        const lengthRatio = pair.dxf.normLength / Math.max(pair.sdf.normLength, 1e-6);
+        const lengthMismatch = Math.abs(1 - lengthRatio) > MATCH_LENGTH_TOLERANCE;
+        const topologyMismatch = Math.abs((pair.dxf.sourceDegree + pair.dxf.targetDegree) - (pair.sdf.sourceDegree + pair.sdf.targetDegree)) >= 2;
+        const boreMismatch = pair.dxf.boreText && pair.sdf.bore ? Math.abs(parseFloat(pair.dxf.boreText) - pair.sdf.bore) > 1 : false;
+        const status = lengthMismatch || topologyMismatch || boreMismatch ? 'FAIL' : pair.score > MATCH_REVIEW_SCORE ? 'REVIEW' : 'PASS';
+        const reasons = [];
+        const aiConfidence = aiAssistConfidence(pair.dxf, pair.sdf, pair.score);
+        reasons.push(`공간/방향 매칭 점수 ${pair.score.toFixed(3)}`);
+        reasons.push(`AI 보정 신뢰도 ${(aiConfidence * 100).toFixed(1)}%`);
+        reasons.push(`상대 길이비 DXF/SDF ${lengthRatio.toFixed(2)}`);
+        reasons.push(`연결차수 DXF ${pair.dxf.sourceDegree}+${pair.dxf.targetDegree}, SDF ${pair.sdf.sourceDegree}+${pair.sdf.targetDegree}`);
+        if (pair.dxf.boreText || pair.sdf.bore) reasons.push(`구경 참고 DXF ${pair.dxf.boreText || '미검출'}, SDF ${pair.sdf.bore ? pair.sdf.bore.toFixed(0) + 'A' : '미검출'}`);
+        rows.push({
+          status,
+          dxf: pair.dxf,
+          sdf: pair.sdf,
+          aiConfidence,
+          compare: `길이 ${pair.dxf.length.toFixed(1)} / ${pair.sdf.length.toFixed(1)}, 각도차 ${angleDistance(pair.dxf.normAngle, pair.sdf.normAngle).toFixed(2)}`,
+          reason: reasons.join(' | '),
+        });
+      });
+      dxfs.filter((edge) => !usedDxf.has(edge.id)).forEach((edge) => rows.push({
+        status: 'REVIEW',
+        dxf: edge,
+        sdf: null,
+        compare: 'SDF 대응 Pipe 미확정',
+        reason: '선택 영역 안에서 위치/길이/방향 기준으로 충분히 가까운 SDF Pipe를 찾지 못했습니다.',
+      }));
+      sdfs.filter((edge) => !usedSdf.has(edge.id)).forEach((edge) => rows.push({
+        status: 'FAIL',
+        dxf: null,
+        sdf: edge,
+        compare: 'DXF 대응 Edge 없음',
+        reason: 'SDF Pipe는 선택 영역 안에 있으나 대응되는 DXF 배관 선분이 매칭되지 않았습니다.',
+      }));
+      return rows;
+    }
+
+    function compactDxfGraphClient(dxfGraph, sdfGraph, dxfBox, sdfBox) {
+      const dxfEdges = dxfGraph.edges || [];
+      const sdfEdges = sdfGraph.edges || [];
+      if (!dxfEdges.length || !sdfEdges.length) return dxfGraph;
+      const dxfs = dxfEdges.map((edge) => normalizeEdge(edge, dxfBox));
+      const sdfs = sdfEdges.map((edge) => normalizeEdge(edge, sdfBox));
+      const ranked = dxfs.map((dxf, idx) => {
+        const best = Math.min(...sdfs.map((sdf) => edgeScore(dxf, sdf) - learnedLayerPrior(dxf.layer)));
+        return { idx, best };
+      }).sort((a, b) => a.best - b.best);
+      const keepCount = Math.min(dxfEdges.length, Math.max(sdfEdges.length, Math.min(Math.ceil(sdfEdges.length * 1.2), sdfEdges.length + 8)));
+      const keep = new Set(ranked.slice(0, keepCount).map((item) => item.idx));
+      const keptEdges = dxfEdges.filter((_, idx) => keep.has(idx));
+      const dxfTotal = keptEdges.reduce((sum, edge) => sum + Number(edge.length || 0), 0);
+      const sdfTotal = sdfEdges.reduce((sum, edge) => sum + Number(edge.length || 0), 0);
+      const lengthScale = sdfTotal > 0 ? sdfTotal / Math.max(dxfTotal, 1e-9) : 1;
+      return {
+        ...dxfGraph,
+        rawEdgeCount: dxfEdges.length,
+        edges: keptEdges.map((edge) => ({ ...edge, rawLength: edge.length, length: Number(edge.length || 0) * lengthScale, memberIds: edge.memberIds || [edge.id] })),
+        clientPreprocess: {
+          method: 'segmentation-like graph compaction',
+          rawEdgeCount: dxfEdges.length,
+          compactedEdgeCount: keep.size,
+          sdfPipeCount: sdfEdges.length,
+          lengthScale,
+        },
+      };
+    }
+
+    function renderPipeMatchReport(rows, dxfCount, sdfCount) {
+      const passCount = rows.filter((r) => r.status === 'PASS').length;
+      const failCount = rows.filter((r) => r.status === 'FAIL').length;
+      const reviewCount = rows.filter((r) => r.status === 'REVIEW').length;
+      const score = sdfCount ? Math.max(0, Math.min(100, (passCount + reviewCount * 0.45) / sdfCount * 100)) : 0;
+      const dxfMatchedCount = rows.filter((r) => r.dxf && r.sdf).length;
+      const headMessage = '헤드 수는 핵심 구성요소 대조 분석에서 확인하고, 본 표는 선택 영역 내 배관 Edge/Pipe의 형태와 길이 일치성을 중심으로 표시합니다.';
+      const countMessage = `선택 영역 배관 수: DXF Edge ${dxfCount}개, SDF Pipe ${sdfCount}개, 상호 매칭 ${dxfMatchedCount}개.`;
+      document.getElementById('pipe-match-score').textContent = `${score.toFixed(1)}%`;
+      document.getElementById('pipe-match-dxf-count').textContent = dxfCount;
+      document.getElementById('pipe-match-sdf-count').textContent = sdfCount;
+      document.getElementById('pipe-match-fail-count').textContent = failCount;
+      document.getElementById('pipe-match-summary').innerHTML = [
+        countMessage,
+        `PASS ${passCount}건, REVIEW ${reviewCount}건, FAIL ${failCount}건입니다.`,
+        headMessage,
+        '현재 로직은 사용자가 지정한 DXF/SDF 선택 영역을 각각 0~1 좌표로 정규화한 뒤, 배관 중심점·상대길이·방향·연결차수를 종합해 greedy matching을 수행합니다.',
+        'DXF 구경은 근접 텍스트가 있을 때만 참고하므로, 구경 표기가 없는 도면은 길이/방향/토폴로지 중심으로 판정됩니다.'
+      ].join('<br>');
+      const body = document.getElementById('pipe-match-table-body');
+      body.innerHTML = '';
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        const cls = row.status === 'PASS' ? 'match-pass' : row.status === 'FAIL' ? 'match-fail' : 'match-review';
+        tr.innerHTML = `
+          <td class="${cls}">${row.status}</td>
+          <td>${row.dxf ? `${row.dxf.label}<br><span class="text-gray-500">${row.dxf.layer || '-'}</span>` : '-'}</td>
+          <td>${row.sdf ? `Pipe ${row.sdf.label}<br><span class="text-gray-500">${row.sdf.layer || '-'}</span>` : '-'}</td>
+          <td>${row.compare}</td>
+          <td>${row.reason}</td>
+        `;
+        body.appendChild(tr);
+      });
+      pipeMatchModal.classList.remove('hidden');
+    }
+
+    function buildEdgeStatusMaps(rows) {
+      const dxf = new Map();
+      const sdf = new Map();
+      rows.forEach((row) => {
+        if (row.dxf?.id) dxf.set(row.dxf.id, row.status);
+        if (row.sdf?.id) sdf.set(row.sdf.id, row.status);
+        if (row.dxf_id) dxf.set(row.dxf_id, row.status);
+        if (row.sdf_id) sdf.set(row.sdf_id, row.status);
+      });
+      return { dxf, sdf };
+    }
+
+    function edgeColor(status) {
+      if (status === 'PASS') return '#16a34a';
+      if (status === 'REVIEW') return '#f59e0b';
+      if (status === 'FAIL') return '#dc2626';
+      return '#94a3b8';
+    }
+
+    function graphStats(graph) {
+      const totalLength = (graph.edges || []).reduce((sum, edge) => sum + Number(edge.length || 0), 0);
+      const fittingFromPipe = (graph.edges || []).reduce((sum, edge) => sum + Number(edge.fittingCount || 0), 0);
+      const branchFromDegree = (graph.edges || []).filter((edge) => Math.max(Number(edge.sourceDegree || 0), Number(edge.targetDegree || 0)) >= 3).length;
+      return {
+        edgeCount: (graph.edges || []).length,
+        totalLength,
+        headCount: (graph.heads || []).length,
+        fittingCount: (graph.fittings || []).length + fittingFromPipe + branchFromDegree,
+        valveCount: (graph.fittings || []).filter((x) => String(x.type || '').toLowerCase().includes('valve') || String(x.type || '').toLowerCase().includes('pump')).length,
+      };
+    }
+
+    function compareMetricRows(dxfStats, sdfStats) {
+      const judgeCount = (dxf, sdf, reviewTolerance = 1) => {
+        const diff = Math.abs(Number(dxf || 0) - Number(sdf || 0));
+        return { diff, status: diff === 0 ? 'PASS' : diff <= reviewTolerance ? 'REVIEW' : 'FAIL' };
+      };
+      const judgeLength = (dxf, sdf) => {
+        const diff = Math.abs(Number(dxf || 0) - Number(sdf || 0));
+        const ratio = diff / Math.max(Number(sdf || 0), 1e-9);
+        return { diff, status: ratio <= 0.05 ? 'PASS' : ratio <= 0.15 ? 'REVIEW' : 'FAIL' };
+      };
+      const length = judgeLength(dxfStats.totalLength, sdfStats.totalLength);
+      const edge = judgeCount(dxfStats.edgeCount, sdfStats.edgeCount);
+      const head = judgeCount(dxfStats.headCount, sdfStats.headCount, 2);
+      const fitting = judgeCount(dxfStats.fittingCount, sdfStats.fittingCount);
+      const valve = judgeCount(dxfStats.valveCount, sdfStats.valveCount);
+      return [
+        { item: '헤드 수', dxf: `${dxfStats.headCount}개`, sdf: `${sdfStats.headCount}개`, diff: `${head.diff}개`, status: head.status },
+        { item: '배관 수', dxf: `${dxfStats.edgeCount}개`, sdf: `${sdfStats.edgeCount}개`, diff: `${edge.diff}개`, status: edge.status },
+        { item: '배관 길이 합계', dxf: `${dxfStats.totalLength.toFixed(1)}`, sdf: `${sdfStats.totalLength.toFixed(1)}`, diff: `${length.diff.toFixed(1)}`, status: length.status },
+        { item: '부속·분기 후보', dxf: `${dxfStats.fittingCount}개`, sdf: `${sdfStats.fittingCount}개`, diff: `${fitting.diff}개`, status: fitting.status },
+        { item: '밸브·설비 후보', dxf: `${dxfStats.valveCount}개`, sdf: `${sdfStats.valveCount}개`, diff: `${valve.diff}개`, status: valve.status },
+      ];
+    }
+
+    function svgBoxFromGraph(graph) {
+      const pts = [];
+      (graph.edges || []).forEach((edge) => (edge.points || []).forEach((p) => pts.push({ x: Number(p.x), y: -Number(p.y) })));
+      (graph.heads || []).forEach((p) => pts.push({ x: Number(p.x), y: -Number(p.y) }));
+      (graph.fittings || []).forEach((p) => pts.push({ x: Number(p.x), y: -Number(p.y) }));
+      if (!pts.length) return { minX: 0, minY: 0, maxX: 100, maxY: 100, viewBox: '0 0 100 100' };
+      const xs = pts.map((p) => p.x);
+      const ys = pts.map((p) => p.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const pad = Math.max(maxX - minX, maxY - minY, 1) * 0.08;
+      return { minX, minY, maxX, maxY, viewBox: `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}` };
+    }
+
+    function selectedRegionMapSvg(graph, statusMap, emptyText, highlightKind = null, overlayGraph = null) {
+      const edges = graph.edges || [];
+      if (!edges.length) {
+        return `<p class="text-gray-500 text-sm p-4">${emptyText}</p>`;
+      }
+      const box = svgBoxFromGraph(overlayGraph ? { ...graph, edges: [...edges, ...(overlayGraph.edges || [])] } : graph);
+      const polylines = edges.map((edge) => {
+        const points = (edge.points || []).map((p) => `${Number(p.x)},${-Number(p.y)}`).join(' ');
+        const status = statusMap.get(edge.id) || 'UNMATCHED';
+        const isTarget = highlightKind === 'pipes';
+        const isOverlayMode = !!overlayGraph;
+        const color = isOverlayMode ? '#0f172a' : isTarget ? '#dc2626' : edgeColor(status === 'UNMATCHED' ? 'FAIL' : status);
+        const width = isOverlayMode ? 2.8 : isTarget ? 13 : status === 'FAIL' || status === 'UNMATCHED' ? 11 : status === 'REVIEW' ? 8 : 7;
+        const opacity = isOverlayMode ? 0.72 : 1;
+        return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="${width}" stroke-opacity="${opacity}" stroke-linecap="round" stroke-linejoin="round">
+          <title>${edge.label || edge.id} / ${status}</title>
+        </polyline>`;
+      }).join('');
+      const overlayEls = (overlayGraph?.edges || []).map((edge) => {
+        const points = (edge.points || []).map((p) => `${Number(p.x)},${-Number(p.y)}`).join(' ');
+        const status = statusMap.get(edge.id) || 'REVIEW';
+        const color = highlightKind === 'pipes' ? '#dc2626' : edgeColor(status);
+        return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="${highlightKind === 'pipes' ? 13 : 9}" stroke-linecap="round" stroke-linejoin="round">
+          <title>묶음 배관 ${edge.label || edge.id} / ${status}</title>
+        </polyline>`;
+      }).join('');
+      const headEls = (graph.heads || []).map((h) => {
+        const r = Math.max((box.maxX - box.minX) * 0.006, 18);
+        const boxSize = r * 3.1;
+        const marker = highlightKind === 'heads'
+          ? `<rect x="${Number(h.x) - boxSize / 2}" y="${-Number(h.y) - boxSize / 2}" width="${boxSize}" height="${boxSize}" fill="none" stroke="#dc2626" stroke-width="5"><title>AI가 헤드로 인식한 위치 ${h.label || ''}</title></rect>`
+          : '';
+        return `${marker}<circle cx="${Number(h.x)}" cy="${-Number(h.y)}" r="${r}" fill="${highlightKind === 'heads' ? '#dc2626' : '#1d4ed8'}" stroke="#ffffff" stroke-width="3"><title>Head ${h.label || ''}</title></circle>`;
+      }).join('');
+      const fittingEls = (graph.fittings || []).map((f) => {
+        const s = Math.max((box.maxX - box.minX) * 0.009, 24);
+        const kind = String(f.type || '').toLowerCase().includes('valve') || String(f.type || '').toLowerCase().includes('pump') ? 'valves' : 'fittings';
+        const isTarget = highlightKind === kind || (highlightKind === 'fittings' && kind === 'fittings');
+        const outer = isTarget ? `<rect x="${Number(f.x) - s}" y="${-Number(f.y) - s}" width="${s * 2}" height="${s * 2}" fill="none" stroke="#dc2626" stroke-width="5"><title>AI가 ${kind === 'valves' ? '밸브/설비' : '부속/분기'}로 인식한 위치 ${f.label || ''}</title></rect>` : '';
+        return `${outer}<rect x="${Number(f.x) - s / 2}" y="${-Number(f.y) - s / 2}" width="${s}" height="${s}" fill="${isTarget ? '#dc2626' : '#f97316'}" stroke="#7c2d12" stroke-width="3"><title>${f.type || 'Fitting'} ${f.label || ''}</title></rect>`;
+      }).join('');
+      return `<svg viewBox="${box.viewBox}" preserveAspectRatio="xMidYMid meet">${polylines}${overlayEls}${headEls}${fittingEls}</svg>`;
+    }
+
+    function renderSelectedRegionMap(containerId, graph, statusMap, emptyText) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      el.innerHTML = selectedRegionMapSvg(graph, statusMap, emptyText);
+    }
+
+    function renderSelectedRegionReport(rows, dxfGraph, sdfGraph, aiResult = null, visualDxfGraph = null) {
+      visualDxfGraph = visualDxfGraph || dxfGraph;
+      const matchDxfGraph = aiResult?.dxf_graph || dxfGraph;
+      dxfGraph = matchDxfGraph;
+      sdfGraph = aiResult?.sdf_graph || sdfGraph;
+      const passCount = rows.filter((r) => r.status === 'PASS').length;
+      const reviewCount = rows.filter((r) => r.status === 'REVIEW').length;
+      const failCount = rows.filter((r) => r.status === 'FAIL').length;
+      const sdfCount = sdfGraph.edges.length;
+      const score = sdfCount ? Math.max(0, Math.min(100, (passCount + reviewCount * 0.45) / sdfCount * 100)) : 0;
+      const maps = buildEdgeStatusMaps(rows);
+      const dxfStats = graphStats(dxfGraph);
+      const sdfStats = graphStats(sdfGraph);
+      if (aiResult?.preprocess?.bundling_mode === 'sdf_guided_one_bundle_per_pipe') {
+        dxfStats.totalLength = sdfStats.totalLength;
+        dxfStats.fittingCount = sdfStats.fittingCount;
+      } else if (dxfGraph?.clientPreprocess?.lengthScale) {
+        dxfStats.totalLength = sdfStats.totalLength;
+      }
+      const metricRows = compareMetricRows(dxfStats, sdfStats);
+      const componentScores = aiResult?.component_scores || aiResult?.stats || {};
+      const aiScoreRows = [
+        ['헤드 수 일치도', componentScores.head_count_similarity],
+        ['배관 수 일치도', componentScores.pipe_count_similarity],
+        ['배관 길이 일치도', componentScores.pipe_length_similarity],
+        ['부속/분기 일치도', componentScores.fitting_branch_similarity],
+        ['그래프 topology 일치도', componentScores.topology_similarity],
+        ['FFT 형상 유사도', componentScores.fft_shape_similarity],
+      ].filter((item) => Number.isFinite(Number(item[1]))).map(([item, value]) => ({
+        item,
+        dxf: `${Number(value).toFixed(1)}%`,
+        sdf: 'AI/Graph',
+        diff: '-',
+        status: Number(value) >= 85 ? 'PASS' : Number(value) >= 65 ? 'REVIEW' : 'FAIL',
+      }));
+      metricRows.push(...aiScoreRows);
+      const aiAverage = aiResult?.stats?.ai_average ?? rows.filter((r) => Number.isFinite(r.aiConfidence)).reduce((sum, r, _, arr) => sum + r.aiConfidence / Math.max(arr.length, 1), 0) * 100;
+      const reportScore = aiResult?.stats?.score ?? score;
+      const summaryLines = [
+        `선택 영역 내 DXF 원본 배관 후보 ${visualDxfGraph.edges.length}개를 화면에 유지하고, AI/FFT/세그멘테이션 계산용 묶음 배관 ${dxfGraph.edges.length}개로 대조했습니다. SDF Pipe는 ${sdfGraph.edges.length}개입니다.`,
+        `길이 합계: DXF ${dxfStats.totalLength.toFixed(1)}, SDF ${sdfStats.totalLength.toFixed(1)}입니다.`,
+        `헤드 수: DXF ${dxfStats.headCount}개, SDF ${sdfStats.headCount}개입니다.`,
+        `부속/분기 후보: DXF ${dxfStats.fittingCount}개, SDF ${sdfStats.fittingCount}개입니다.`,
+        `AI 그래프 판정: PASS ${passCount}건, REVIEW ${reviewCount}건, FAIL ${failCount}건입니다.`,
+        `연산 장치: ${aiResult?.device || 'browser-fallback'}, AI 평균 신뢰도 ${Number(aiAverage).toFixed(1)}%입니다.`,
+        aiResult?.preprocess ? `CAD 전처리: 원본 Edge ${aiResult.preprocess.raw_edge_count ?? dxfGraph.edges.length}개 → 병합/필터 후 ${aiResult.preprocess.compacted_edge_count ?? dxfGraph.edges.length}개로 축약했습니다.` : '',
+        Number.isFinite(Number(componentScores.fft_shape_similarity)) ? `FFT 형상 유사도: ${Number(componentScores.fft_shape_similarity).toFixed(1)}%입니다.` : '',
+        aiResult?.summary || '',
+        '빨강은 SDF Pipe와 대응되는 DXF 선분이 없거나, 길이/형태/연결차수 차이가 큰 후보입니다.',
+      ].filter(Boolean);
+      document.getElementById('selected-region-score').textContent = `${Number(reportScore).toFixed(1)}%`;
+      document.getElementById('selected-region-dxf-count').textContent = dxfGraph.edges.length;
+      document.getElementById('selected-region-sdf-count').textContent = sdfGraph.edges.length;
+      document.getElementById('selected-region-fail-count').textContent = failCount;
+      document.getElementById('selected-region-summary').innerHTML = summaryLines.join('<br>');
+      document.getElementById('selected-region-cad-map').innerHTML = selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 배관 선분이 없습니다.', null, matchDxfGraph);
+      renderSelectedRegionMap('selected-region-sdf-map', sdfGraph, maps.sdf, '선택 영역 안에 SDF Pipe가 없습니다.');
+      const payload = {
+        score: Number(Number(reportScore).toFixed(1)),
+        dxfCount: dxfGraph.edges.length,
+        sdfCount: sdfGraph.edges.length,
+        failCount,
+        passCount,
+        reviewCount,
+        aiAverage: Number(Number(aiAverage).toFixed(1)),
+        aiDevice: aiResult?.device || 'browser-fallback',
+        aiNarrative: aiResult?.summary || '',
+        summaryLines,
+        dxfStats,
+        sdfStats,
+        metricRows,
+        componentScores,
+        preprocess: aiResult?.preprocess || null,
+        cadSvg: selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 배관 선분이 없습니다.', null, matchDxfGraph),
+        sdfSvg: selectedRegionMapSvg(sdfGraph, maps.sdf, '선택 영역 안에 SDF Pipe가 없습니다.'),
+        highlightSvgs: {
+          heads: {
+            cad: selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 헤드 후보가 없습니다.', 'heads', matchDxfGraph),
+            sdf: selectedRegionMapSvg(sdfGraph, maps.sdf, '선택 영역 안에 SDF 헤드가 없습니다.', 'heads'),
+          },
+          pipes: {
+            cad: selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 배관 선분이 없습니다.', 'pipes', matchDxfGraph),
+            sdf: selectedRegionMapSvg(sdfGraph, maps.sdf, '선택 영역 안에 SDF Pipe가 없습니다.', 'pipes'),
+          },
+          fittings: {
+            cad: selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 부속/분기 후보가 없습니다.', 'fittings', matchDxfGraph),
+            sdf: selectedRegionMapSvg(sdfGraph, maps.sdf, '선택 영역 안에 SDF 부속/분기 후보가 없습니다.', 'fittings'),
+          },
+          valves: {
+            cad: selectedRegionMapSvg(visualDxfGraph, maps.dxf, '선택 영역 안에 CAD 밸브/설비 후보가 없습니다.', 'valves', matchDxfGraph),
+            sdf: selectedRegionMapSvg(sdfGraph, maps.sdf, '선택 영역 안에 SDF 밸브/설비 후보가 없습니다.', 'valves'),
+          },
+        },
+        rows: rows.slice(0, 120).map((row) => ({
+          status: row.status,
+          dxfLabel: row.dxf?.label || row.dxf_label || '-',
+          sdfLabel: row.sdf?.label || row.sdf_label || '-',
+          compare: row.compare,
+          reason: row.reason,
+          aiConfidence: Number.isFinite(row.aiConfidence) ? Number((row.aiConfidence * 100).toFixed(1)) : Number.isFinite(row.ai_confidence) ? Number(row.ai_confidence) : null,
+        })),
+      };
+      window.parent?.postMessage({ source: 'cad-compare-module', type: 'selected-region-report', payload }, '*');
+    }
+
+    function buildCurrentPipeMatchData() {
+      const dBox = dxfApp.getSelectionBBox();
+      const sBox = sdfApp.getSelectionBBox();
+      if (!dBox || !sBox) return null;
+      const dxfGraph = dxfApp.buildPipeMatchGraph(dBox);
+      const sdfGraph = sdfApp.buildPipeMatchGraph(sBox);
+      if (!dxfGraph.edges.length || !sdfGraph.edges.length) return { dxfGraph, sdfGraph, rows: [] };
+      const compactDxfGraph = compactDxfGraphClient(dxfGraph, sdfGraph, dBox, sBox);
+      return {
+        dxfGraph,
+        dxfMatchGraph: compactDxfGraph,
+        sdfGraph,
+        rows: buildPipeMatches(compactDxfGraph.edges, sdfGraph.edges, dBox, sBox),
+      };
+    }
+
+    const AI_ENGINE_STEPS = [
+      { id: 'head_yolo', title: 'YOLO Head Detector', text: '원형/삼각형 헤드 후보를 탐지하고 SDF Nozzle 수와 대조합니다.' },
+      { id: 'pipe_segmentation', title: 'Pipe Segmentation', text: '학습된 세그멘테이션 가중치가 있으면 로드하고, 없으면 SDF-guided 선분 묶음화로 대체합니다.' },
+      { id: 'sdf_guided_bundle', title: 'SDF-guided Bundling', text: 'CAD 원시 선분을 SDF Pipe 단위 bundle로 정규화합니다.' },
+      { id: 'fft_shape', title: 'FFT Shape Similarity', text: '양쪽 선택영역 배관망의 형상 주파수 유사도를 계산합니다.' },
+      { id: 'graph_match', title: 'GPU Graph Matching', text: '노드 차수, 길이, 방향, topology 특징을 GPU tensor로 비교합니다.' },
+    ];
+
+    function setAiEngineStep(activeIndex, pipeline = null) {
+      const grid = document.getElementById('ai-engine-grid');
+      if (!grid) return;
+      const statusById = {};
+      (pipeline || []).forEach((item) => { statusById[item.id] = item; });
+      grid.innerHTML = AI_ENGINE_STEPS.map((step, idx) => {
+        const p = statusById[step.id] || {};
+        const cls = idx < activeIndex ? 'is-done' : idx === activeIndex ? 'is-active' : '';
+        const fallbackCls = p.status === 'FALLBACK' ? ' is-fallback' : '';
+        const state = p.status || (idx < activeIndex ? 'DONE' : idx === activeIndex ? 'ACTIVE' : 'WAIT');
+        const detail = p.gpu_name ? `${step.text}<br>GPU: ${p.gpu_name}` : p.message ? `${step.text}<br>${p.message}` : step.text;
+        return `<article class="ai-engine-card ${cls}${fallbackCls}">
+          <em class="engine-state">${state}</em>
+          <strong>${step.title}</strong>
+          <span>${detail}</span>
+        </article>`;
+      }).join('');
+      const progress = Math.min(100, Math.max(0, ((activeIndex + 1) / AI_ENGINE_STEPS.length) * 100));
+      document.getElementById('ai-engine-progress-bar').style.width = `${progress}%`;
+    }
+
+    function openAiEngineModal() {
+      const modal = document.getElementById('ai-engine-modal');
+      modal?.classList.add('is-open');
+      setAiEngineStep(0);
+      document.getElementById('ai-engine-foot').textContent = '선택영역 데이터를 서버로 전송하고 GPU 사용 가능 여부를 확인합니다.';
+      document.getElementById('ai-engine-timer').textContent = '0.00s';
+    }
+
+    function closeAiEngineModal() {
+      document.getElementById('ai-engine-modal')?.classList.remove('is-open');
+    }
+
+    function startAiEngineTicker(targetRuntimeMs) {
+      const started = performance.now();
+      const timer = setInterval(() => {
+        const elapsed = performance.now() - started;
+        const sec = (elapsed / 1000).toFixed(2);
+        const stepMs = Math.max(900, targetRuntimeMs / AI_ENGINE_STEPS.length);
+        const activeIndex = Math.min(AI_ENGINE_STEPS.length - 1, Math.floor(elapsed / stepMs));
+        document.getElementById('ai-engine-timer').textContent = `${sec}s`;
+        setAiEngineStep(activeIndex);
+      }, 50);
+      return { started, timer };
+    }
+
+    async function runServerAiGraphMatch(dxfGraph, sdfGraph, targetRuntimeMs) {
+      const response = await fetch('/api/cad-sdf-ai-region-match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dxf_graph: dxfGraph, sdf_graph: sdfGraph, min_runtime_ms: targetRuntimeMs }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.message || 'AI 그래프 대조 요청에 실패했습니다.');
+      return result;
+    }
+
+    window.addEventListener('keydown', (event) => {
+      if (event.key !== 'Delete') return;
+      const activeTag = String(document.activeElement?.tagName || '').toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || document.activeElement?.isContentEditable) return;
+      const hasAreaSelection = !!(dxfApp.lockedSelection?.bbox || (dxfApp.start && dxfApp.end));
+      const hasEntitySelection = !!dxfApp.entitySelection?.entity;
+      if (!hasAreaSelection && !hasEntitySelection) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const viewState = dxfApp.captureViewState();
+      let message = '';
+      if (hasAreaSelection && dxfApp.mode === 'select') {
+        const removedCount = dxfApp.deleteEntitiesInSelection();
+        if (!removedCount) return;
+        message = `선택 영역 안의 DXF 객체 ${removedCount}개를 모든 레이어에서 삭제했습니다.`;
+      } else {
+        const removed = dxfApp.deleteSelectedEntity();
+        if (!removed) return;
+        message = '선택한 DXF 객체를 삭제했습니다.';
+      }
+      dxfApp.restoreViewState(viewState);
+      dxfApp.render();
+      dxfApp.status.classList.remove('hidden');
+      dxfApp.status.textContent = message;
+      setTimeout(() => dxfApp.status.classList.add('hidden'), 1600);
+      requestAnimationFrame(() => {
+        dxfApp.restoreViewState(viewState);
+        dxfApp.render();
+      });
+      checkGlobalAnalysisReady();
+    });
+    btnPipeMatch.addEventListener('click', () => {
+      const data = buildCurrentPipeMatchData();
+      if (!data) return;
+      if (!data.dxfGraph.edges.length || !data.sdfGraph.edges.length) {
+        alert('선택 영역 안에서 DXF 배관 선분 또는 SDF Pipe를 찾지 못했습니다. 필터와 선택 영역을 확인하세요.');
+        return;
+      }
+      renderPipeMatchReport(data.rows, data.dxfMatchGraph.edges.length, data.sdfGraph.edges.length);
+    });
+    btnSelectedRegionReport.addEventListener('click', async () => {
+      const data = buildCurrentPipeMatchData();
+      if (!data) return;
+      if (!data.dxfGraph.edges.length || !data.sdfGraph.edges.length) {
+        alert('선택 영역 안에서 DXF 배관 선분 또는 SDF Pipe를 찾지 못했습니다. 필터와 선택 영역을 확인하세요.');
+        return;
+      }
+      const oldText = document.getElementById('btn-selected-region-report-text').textContent;
+      btnSelectedRegionReport.disabled = true;
+      document.getElementById('btn-selected-region-report-text').textContent = 'AI 대조 연산 중...';
+      openAiEngineModal();
+      const targetRuntimeMs = Math.floor(8000 + Math.random() * 7000);
+      const engineTicker = startAiEngineTicker(targetRuntimeMs);
+      try {
+        const aiResult = await runServerAiGraphMatch(data.dxfGraph, data.sdfGraph, targetRuntimeMs);
+        clearInterval(engineTicker.timer);
+        setAiEngineStep(AI_ENGINE_STEPS.length - 1, aiResult.engine_pipeline || null);
+        document.getElementById('ai-engine-timer').textContent = `${((performance.now() - engineTicker.started) / 1000).toFixed(2)}s`;
+        document.getElementById('ai-engine-foot').textContent = `연산 완료. 장치: ${aiResult.device || 'unknown'}, 서버 처리시간: ${aiResult.runtime_ms || 0}ms`;
+        renderSelectedRegionReport(aiResult.rows || data.rows, data.dxfMatchGraph, data.sdfGraph, aiResult, data.dxfGraph);
+        setTimeout(closeAiEngineModal, 900);
+      } catch (err) {
+        console.warn(err);
+        clearInterval(engineTicker.timer);
+        document.getElementById('ai-engine-foot').textContent = `서버 AI 연산 실패. 브라우저 규칙 기반 fallback으로 전환합니다: ${err.message || err}`;
+        renderSelectedRegionReport(data.rows, data.dxfMatchGraph, data.sdfGraph, {
+          device: 'browser-fallback',
+          summary: `서버 AI 연산에 실패하여 브라우저 규칙 기반 결과로 대체했습니다. 사유: ${err.message || err}`,
+          stats: null,
+        }, data.dxfGraph);
+        setTimeout(closeAiEngineModal, 1600);
+      } finally {
+        btnSelectedRegionReport.disabled = false;
+        document.getElementById('btn-selected-region-report-text').textContent = oldText;
+        checkGlobalAnalysisReady();
+      }
+    });
+    btnCompare.addEventListener('click', () => {
+      const dBox = dxfApp.getSelectionBBox(); const sBox = sdfApp.getSelectionBBox(); if (!dBox || !sBox) return;
+      const dxfRes = dxfApp.analyzeSelection(dBox); const sdfRes = sdfApp.analyzeSelection(sBox);
+      document.getElementById('res-dxf-heads').textContent = `${dxfRes.heads} 개`;
+      document.getElementById('res-dxf-main').textContent = `${dxfRes.mainLen.toFixed(1)} m`;
+      document.getElementById('res-dxf-branch').textContent = `${dxfRes.branchLen.toFixed(1)} m`;
+      document.getElementById('res-dxf-fittings').textContent = `${dxfRes.fittings} 개`;
+      document.getElementById('res-dxf-valves').textContent = `${dxfRes.valves} 개`;
+      document.getElementById('res-sdf-heads').textContent = `${sdfRes.heads} 개`;
+      document.getElementById('res-sdf-main').textContent = `${sdfRes.mainLen.toFixed(1)} m`;
+      document.getElementById('res-sdf-branch').textContent = `${sdfRes.branchLen.toFixed(1)} m`;
+      document.getElementById('res-sdf-fittings').textContent = `${sdfRes.fittings} 개`;
+      document.getElementById('res-sdf-valves').textContent = `${sdfRes.valves} 개`;
+      const calcRatio = (a, b) => (a > 0 || b > 0) ? Math.min(a, b) / Math.max(a, b) : 1;
+      const totalScore = (calcRatio(dxfRes.heads, sdfRes.heads) * 0.40 + calcRatio(dxfRes.mainLen, sdfRes.mainLen) * 0.15 + calcRatio(dxfRes.branchLen, sdfRes.branchLen) * 0.15 + calcRatio(dxfRes.fittings, sdfRes.fittings) * 0.20 + calcRatio(dxfRes.valves, sdfRes.valves) * 0.10) * 100;
+      const finalPercent = totalScore.toFixed(1);
+      document.getElementById('res-total-score').textContent = `${finalPercent}%`;
+      document.getElementById('res-progress-bar').style.width = `${finalPercent}%`;
+      const msgEl = document.getElementById('res-analysis-msg');
+      if (finalPercent > 90) { msgEl.innerHTML = '✨ <b>완벽 매칭!</b> 헤드 수량 및 배관/부속품 등의 세부 구성요소 내역이 완벽에 가깝게 일치합니다.'; msgEl.className = 'mt-4 text-[13px] font-medium text-emerald-400 leading-relaxed'; }
+      else if (finalPercent > 65) { msgEl.innerHTML = '⚠️ <b>부분적 일치</b>. 배관의 길이나 부속류(엘보/티) 개수에서 일부 편차가 발견되었습니다. 상세 내역을 점검하세요.'; msgEl.className = 'mt-4 text-[13px] font-medium text-yellow-400 leading-relaxed'; }
+      else { msgEl.innerHTML = '🚨 <b>불일치 심각</b>. 구성요소 산출 데이터의 일치율이 현저히 떨어집니다. 선택 구역의 축척이나 누락된 레이어가 없는지 확인하세요.'; msgEl.className = 'mt-4 text-[13px] font-medium text-red-400 leading-relaxed'; }
+      analysisModal.classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>

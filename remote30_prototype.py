@@ -5404,6 +5404,27 @@ def _point_in_zones(px: float, py: float,
     return False
 
 
+def normalize_material_zones(raw) -> list[dict]:
+    """브라우저가 보낸 관종 구역을 `[{"rect": (x1,y1,x2,y2), "kind": str}]` 로 정규화.
+
+    유형 문자열은 검증하지 않는다 — 모르는 유형은 _zone_material_at 이 강관 기본값으로
+    떨어뜨리므로, 여기서 거르면 오히려 '왜 구역이 사라졌지' 가 된다.
+    """
+    zones = []
+    for item in raw or []:
+        if not isinstance(item, dict):
+            continue
+        rect = item.get("rect")
+        if not isinstance(rect, (list, tuple)) or len(rect) != 4:
+            continue
+        try:
+            zones.append({"rect": tuple(float(v) for v in rect),
+                          "kind": str(item.get("kind") or "")})
+        except (TypeError, ValueError):
+            continue
+    return zones
+
+
 def _zone_material_at(px: float, py: float,
                       material_zones: list[dict] | None) -> tuple[str, str, str]:
     """점 → (관종, C factor, 근거). 겹치면 먼저 그린 구역이 이긴다.

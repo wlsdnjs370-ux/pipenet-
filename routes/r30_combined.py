@@ -727,7 +727,9 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         Body (JSON):
             plane_job_id   : Remote 30 프로토타입 평면도 모드의 job_id
             plane_edit     : { added_heads:[[x,y],...], deleted_indices:[int,...],
-                               zones:[[x1,y1,x2,y2],...], alarm_x, alarm_y }
+                               zones:[[x1,y1,x2,y2],...],
+                               material_zones:[{rect:[x1,y1,x2,y2], kind:"unit_dwelling"},...],
+                               alarm_x, alarm_y }
             system_riser   : extract_riser_msp_28f 의 출력 그대로 (nodes/pipes/pumps/valves/av_node_label)
 
         Returns:
@@ -748,6 +750,8 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         if not system_riser or not system_riser.get("nodes") or not system_riser.get("pipes"):
             return jsonify({"ok": False, "message": "system_riser (계통도 추출) 가 필요합니다"}), 400
 
+        from remote30_prototype import normalize_material_zones
+
         plane_edit = body.get("plane_edit") or {}
         try:
             added = [tuple(p) for p in plane_edit.get("added_heads", [])]
@@ -755,6 +759,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             zones = [tuple(z) for z in plane_edit.get("zones", [])]
             branch_zones = [tuple(z) for z in plane_edit.get("branch_zones",
                                                              plane_job.get("branch_zones") or [])]
+            material_zones = normalize_material_zones(plane_edit.get("material_zones"))
         except (TypeError, ValueError):
             return jsonify({"ok": False, "message": "plane_edit 형식이 잘못되었습니다"}), 400
         alarm_xy = plane_job.get("alarm_xy")
@@ -862,6 +867,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                 project_title=Path(plane_job["dxf_path"]).stem,
                 # W6 — anchored 작업창 밖(범례 표 등)의 관경 문자 오염 차단
                 anchor_window=anchored_audit.get("anchor_window"),
+                material_zones=material_zones or None,
             )
         except Exception as exc:  # noqa: BLE001
             return _err500(exc)

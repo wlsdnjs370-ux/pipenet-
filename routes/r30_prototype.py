@@ -19,27 +19,6 @@ from flask import Response, jsonify, make_response, render_template, request
 _JOB_LOCK = threading.Lock()
 
 
-def _parse_material_zones(raw) -> list[dict]:
-    """브라우저가 보낸 관종 구역을 `[{"rect": (x1,y1,x2,y2), "kind": str}]` 로 정규화.
-
-    유형 문자열은 검증하지 않는다 — 모르는 유형은 아래 계산에서 강관 기본값으로
-    떨어지므로, 여기서 거르면 오히려 '왜 구역이 사라졌지' 가 된다.
-    """
-    zones = []
-    for item in raw or []:
-        if not isinstance(item, dict):
-            continue
-        rect = item.get("rect")
-        if not isinstance(rect, (list, tuple)) or len(rect) != 4:
-            continue
-        try:
-            zones.append({"rect": tuple(float(v) for v in rect),
-                          "kind": str(item.get("kind") or "")})
-        except (TypeError, ValueError):
-            continue
-    return zones
-
-
 def register(app, *, _save_upload, _register_job, _serve_run_file,
              _sweep_old_run_dirs, _PROTOTYPE_JOBS,
              PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR):
@@ -168,6 +147,8 @@ def register(app, *, _save_upload, _register_job, _serve_run_file,
         zones 는 헤드 선정 범위, material_zones 는 관종 구역이다. 같은 사각형이라도
         "여기서 헤드를 고른다"와 "여기 배관은 CPVC다"는 다른 주장이므로 분리한다.
         """
+        from remote30_prototype import normalize_material_zones
+
         job = _PROTOTYPE_JOBS.get(job_id)
         if not job:
             return jsonify({"ok": False, "message": f"unknown job_id {job_id}"}), 404
@@ -181,7 +162,7 @@ def register(app, *, _save_upload, _register_job, _serve_run_file,
             # 분기영역 — body 우선, 없으면 스트림 재구독 때 저장해둔 job 값 재사용.
             "branch_zones": [tuple(z) for z in body.get("branch_zones",
                                                         job.get("branch_zones") or [])],
-            "material_zones": _parse_material_zones(body.get("material_zones")),
+            "material_zones": normalize_material_zones(body.get("material_zones")),
         }
         # alarm_xy 갱신 (사용자가 후속으로 변경했을 수 있음)
         ax, ay = body.get("alarm_x"), body.get("alarm_y")

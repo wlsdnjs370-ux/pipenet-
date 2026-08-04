@@ -1206,6 +1206,12 @@
           <button id="wb-mode-zone" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">▭ 영역 지정 (드래그)</button>
           <button id="wb-zones-clear" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">↺ 영역 전체 해제</button>
         </div>
+        <div id="wb-zone-kinds" style="display: none; margin-bottom: 6px; border: 1px solid var(--line); background: #f9fafb; padding: 6px 8px;">
+          <div style="font-size: 0.72rem; color: var(--muted); margin-bottom: 4px;">
+            구역별 배관 종류 — 안 고르면 강관(C=120)으로 계산합니다.
+          </div>
+          <div id="wb-zone-kind-rows" style="display: grid; gap: 4px;"></div>
+        </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px;">
           <button id="wb-mode-branchzone" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">◨ 분기영역 지정 (드래그)</button>
           <button id="wb-branchzones-clear" type="button" style="padding: 6px; background: #fff; color: var(--text); border: 1px solid var(--line); font-size: 0.75rem; cursor: pointer;">↺ 분기영역 해제</button>
@@ -1784,6 +1790,8 @@
       user_added_heads: [], // [[x,y], ...]
       user_deleted_indices: new Set(),
       zones: [],            // [[x1,y1,x2,y2], ...]
+      // zones 와 같은 길이. 각 구역의 배관 종류("" = 미지정 → 서버가 강관 기본값).
+      zone_kinds: [],
       branch_zones: [],     // [[x1,y1,x2,y2], ...] 분기영역 — 영역 밖 단일경로 강제
       edit_mode: "none",    // none|add|delete|zone|branchzone|alarm_pick
       zone_drag: null,      // {start_wx, start_wy} 드래그 진행 중일 때
@@ -3179,7 +3187,7 @@
       state.detected_heads = [];
       state.user_added_heads = [];
       state.user_deleted_indices = new Set();
-      state.zones = [];
+      state.zones = []; state.zone_kinds = [];
       state.alarm_marker = null;
       state.bbox = null;
       state.current_stage_view = 0;
@@ -3219,6 +3227,8 @@
     const modeBranchZoneBtn = document.getElementById("wb-mode-branchzone");
     const branchZonesClearBtn = document.getElementById("wb-branchzones-clear");
     const branchZoneApplyBtn = document.getElementById("wb-branchzone-apply");
+    const zoneKindsBox = document.getElementById("wb-zone-kinds");
+    const zoneKindRowsEl = document.getElementById("wb-zone-kind-rows");
     const modeBtns = { add: modeAddBtn, delete: modeDeleteBtn, zone: modeZoneBtn, branchzone: modeBranchZoneBtn };
     const modeColors = { add: "#16a34a", delete: "#dc2626", zone: "#1e40af", branchzone: "#d97706" };
 
@@ -3245,11 +3255,57 @@
     modeZoneBtn.addEventListener("click", () => setEditMode(state.edit_mode === "zone" ? "none" : "zone"));
     modeBranchZoneBtn.addEventListener("click", () => setEditMode(state.edit_mode === "branchzone" ? "none" : "branchzone"));
     modeCancelBtn.addEventListener("click", () => setEditMode("none"));
-    zonesClearBtn.addEventListener("click", () => { state.zones = []; updateEditCounts(); render(); });
+    zonesClearBtn.addEventListener("click", () => { state.zones = []; state.zone_kinds = []; updateEditCounts(); render(); });
     branchZonesClearBtn.addEventListener("click", () => { state.branch_zones = []; updateEditCounts(); render(); });
     if (branchZoneApplyBtn) branchZoneApplyBtn.addEventListener("click", () => rebuildWithBranchZones());
 
+    // 값은 서버 ZONE_MATERIAL_MAP 의 키와 일치해야 한다. 없는 키를 보내면 강관으로 떨어진다.
+    const ZONE_KIND_OPTIONS = [
+      ["", "미지정 (강관 C=120)"],
+      ["unit_dwelling", "단위세대 (CPVC C=150)"],
+      ["parking", "지하주차장 (강관)"],
+      ["corridor", "복도 (강관)"],
+    ];
+
+    function renderZoneKinds() {
+      state.zone_kinds.length = state.zones.length;
+      for (let i = 0; i < state.zone_kinds.length; i++) {
+        if (!state.zone_kinds[i]) state.zone_kinds[i] = "";
+      }
+      zoneKindsBox.style.display = state.zones.length ? "" : "none";
+      zoneKindRowsEl.textContent = "";
+      state.zones.forEach(([x1, y1, x2, y2], i) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex; align-items:center; gap:6px; font-size:0.72rem;";
+        const tag = document.createElement("span");
+        tag.style.cssText = "color:#1e40af; font-weight:700; white-space:nowrap;";
+        tag.textContent = `구역 ${i + 1}`;
+        const sel = document.createElement("select");
+        sel.style.cssText = "flex:1; font-size:0.72rem; padding:2px;";
+        sel.title = `${Math.round(Math.abs(x2 - x1))}×${Math.round(Math.abs(y2 - y1))}mm`;
+        for (const [value, label] of ZONE_KIND_OPTIONS) {
+          const opt = document.createElement("option");
+          opt.value = value;
+          opt.textContent = label;
+          sel.appendChild(opt);
+        }
+        sel.value = state.zone_kinds[i];
+        sel.addEventListener("change", () => { state.zone_kinds[i] = sel.value; });
+        row.appendChild(tag);
+        row.appendChild(sel);
+        zoneKindRowsEl.appendChild(row);
+      });
+    }
+
+    // 유형을 고른 구역만 서버로 보낸다 — 미지정은 보내봐야 강관 기본값이라 같다.
+    function materialZonesPayload() {
+      return state.zones
+        .map((rect, i) => ({ rect, kind: state.zone_kinds[i] || "" }))
+        .filter((z) => z.kind);
+    }
+
     function updateEditCounts() {
+      renderZoneKinds();
       const det = state.detected_heads.length;
       editDetectedEl.textContent = det;
       editAddedEl.textContent = state.user_added_heads.length;
@@ -3427,6 +3483,7 @@
         deleted_indices: Array.from(state.user_deleted_indices),
         zones: state.zones,
         branch_zones: state.branch_zones,
+        material_zones: materialZonesPayload(),
       };
       const ax = alarmXEl.value.trim(), ay = alarmYEl.value.trim();
       if (ax && ay) { payload.alarm_x = ax; payload.alarm_y = ay; }
@@ -3472,7 +3529,7 @@
       state.detected_heads = [];
       state.user_added_heads = [];
       state.user_deleted_indices = new Set();
-      state.zones = [];
+      state.zones = []; state.zone_kinds = [];
       state.branch_zones = [];
       finalizeBtn.disabled = true;
       finalizeBtn.textContent = "▶ 배관망 완성 (Stage 3~5 진행)";
@@ -3577,7 +3634,7 @@
             .map(en => ({ i: en.i, pos: en.pos, bbox: en.p, k: en.k, c: en.c }));
           state.user_added_heads = [];
           state.user_deleted_indices = new Set();
-          state.zones = [];
+          state.zones = []; state.zone_kinds = [];
           animQueue.enqueue({ type: "stage2_intro" });
           animQueue.enqueue({ type: "stage2_switch" });
           const _total = state.detected_heads.length;
@@ -7583,6 +7640,7 @@
           deleted_indices: Array.from(state.user_deleted_indices),
           zones: state.zones,
           branch_zones: state.branch_zones,
+          material_zones: materialZonesPayload(),
         };
         if (ax && ay) { planeEdit.alarm_x = ax; planeEdit.alarm_y = ay; }
         const _press = (document.querySelector('input[name="cmb-press"]:checked') || {}).value || "gravity";

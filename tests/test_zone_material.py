@@ -96,9 +96,25 @@ def test_cpvc_zones_parameter_is_gone():
     assert "material_zones" in params
 
 
-def test_route_material_zone_parser_drops_malformed():
-    from routes.r30_prototype import _parse_material_zones
-    parsed = _parse_material_zones([
+def test_browser_and_server_agree_on_payload_key():
+    """화면이 보내는 이름과 서버가 읽는 이름이 어긋나면 조용히 강관으로 떨어진다.
+
+    구역 유형을 골라도 CPVC 가 안 나오는데 오류도 안 뜨는 형태라 눈치채기 어렵다.
+    """
+    html = (_ROOT / "templates" / "remote30_prototype.html").read_text(encoding="utf-8")
+    assert html.count("material_zones: materialZonesPayload()") == 2
+
+    for name in ("r30_prototype.py", "r30_combined.py"):
+        path = _ROOT / "routes" / name
+        if not path.exists():  # domain-slim 은 라우트가 서버 파일에 인라인이다
+            continue
+        src = path.read_text(encoding="utf-8")
+        assert 'get("material_zones")' in src
+        assert "normalize_material_zones" in src
+
+
+def test_material_zone_parser_drops_malformed():
+    parsed = rp.normalize_material_zones([
         {"rect": [0, 0, 1, 1], "kind": ZONE_KIND_UNIT_DWELLING},
         {"rect": [0, 0, 1]},          # 좌표 부족
         {"kind": "parking"},          # rect 없음

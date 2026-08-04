@@ -85,14 +85,43 @@ def _sha(obj) -> str:
     ).hexdigest()[:16]
 
 
+def _n_components(graph: dict, edge_len: dict) -> int:
+    parent: dict = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for n in graph:
+        find(n)
+    for a, b in edge_len:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+    return len({find(n) for n in parent})
+
+
 def _canon_graph(graph: dict, edge_len: dict) -> dict:
-    """노드/엣지 수 + 정렬된 엣지(정수반올림·길이0.1) 해시로 그래프 동결."""
+    """노드/엣지 수 + 정렬된 엣지(정수반올림·길이0.1) 해시로 그래프 동결.
+
+    edge_sig 는 "달라졌다"만 알려주고 무엇이 달라졌는지는 못 알려준다. 총연장과
+    연결성분 수를 함께 동결해 회귀가 났을 때 방향(간선 소실 vs 분단)을 읽는다.
+    """
     edges = []
     for (a, b), L in edge_len.items():
         edges.append((int(round(a[0])), int(round(a[1])),
                       int(round(b[0])), int(round(b[1])), round(float(L), 1)))
     edges.sort()
-    return {"nodes": len(graph), "edges": len(edge_len), "edge_sig": _sha(edges)}
+    return {
+        "nodes": len(graph),
+        "edges": len(edge_len),
+        "total_len": round(sum(float(v) for v in edge_len.values()), 1),
+        "components": _n_components(graph, edge_len),
+        "edge_sig": _sha(edges),
+    }
 
 
 def _canon_entities(parsed: dict) -> dict:

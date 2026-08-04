@@ -1682,51 +1682,83 @@
       else fd.append(field, file, file.name);
     }
 
-    // NDJSON 스트리밍 POST. fetch 는 업로드 진행률 이벤트가 없어 XHR 을 쓰고,
-    // 증가하는 responseText 를 커서로 잘라 완결된 줄만 넘긴다(스트림 파싱 유지).
-    function postNdjsonStream(url, body, { onUploadProgress, onMessage }) {
+    // 업로드 진행률은 XHR 로만 얻을 수 있다. 작은 JSON 응답 하나만 받는 업로드
+    // 전용 요청으로 분리해, 진행률은 유지하면서 큰 응답을 XHR 에 태우지 않는다.
+    function xhrUploadForToken(url, body, onUploadProgress) {
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", url, true);
-        let seen = 0, buf = "", thrown = null;
-        const drain = (final) => {
-          const text = xhr.responseText;
-          if (text.length > seen) { buf += text.substring(seen); seen = text.length; }
-          // 줄 단위로 한 번에 쪼갠다 — 예전처럼 줄마다 buf.slice 로 잘라내면
-          // 한 청크에 수백 줄이 실릴 때 남은 버퍼를 매번 복사해 O(줄²) 이 된다.
-          const lines = buf.split("\n");
-          buf = lines.pop();  // 마지막 조각은 아직 개행이 안 온 미완결 줄
-          if (final && buf.trim()) { lines.push(buf); }
-          if (final) buf = "";
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (!line) continue;
-            let msg;
-            try { msg = JSON.parse(line); } catch (e) { continue; }
-            try { onMessage(msg); } catch (e) { thrown = e; xhr.abort(); return; }
-          }
-        };
         if (onUploadProgress) {
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) onUploadProgress(e.loaded / e.total);
           };
-          xhr.upload.onload = () => onUploadProgress(1);
         }
-        xhr.onprogress = () => { if (xhr.status >= 200 && xhr.status < 300) drain(false); };
         xhr.onerror = () => reject(new Error("네트워크 오류로 업로드가 실패했습니다"));
-        xhr.onabort = () => reject(thrown || new Error("업로드가 중단되었습니다"));
+        xhr.onabort = () => reject(new Error("업로드가 중단되었습니다"));
         xhr.onload = () => {
-          if (xhr.status < 200 || xhr.status >= 300) {
-            let m = `HTTP ${xhr.status}`;
-            try { m = JSON.parse(xhr.responseText).message || m; } catch (e) {}
-            reject(new Error(m));
+          let data = null;
+          try { data = JSON.parse(xhr.responseText); } catch (e) {}
+          if (xhr.status < 200 || xhr.status >= 300 || !data || !data.ok) {
+            reject(new Error((data && data.message) || `HTTP ${xhr.status}`));
             return;
           }
-          drain(true);
-          if (thrown) reject(thrown); else resolve();
+          resolve(data.dxf_token);
         };
         xhr.send(body);
       });
+    }
+
+    // NDJSON 스트리밍 POST. XHR 은 응답 전체를 responseText 에 붙들고 있어
+    // 대형 도면(LH 지하층배관도 = 비압축 173MB) 에서 탭 메모리가 그만큼 늘어난다.
+    // 그래서 파일은 위 업로드 요청으로 먼저 보내 토큰을 받고, 본 스트림은
+    // fetch + ReadableStream 으로 읽어 소비한 청크를 즉시 버린다.
+    async function postNdjsonStream(url, body, { onUploadProgress, onMessage }) {
+      const file = body instanceof FormData ? body.get("dxf_file") : null;
+      if (file instanceof Blob) {
+        const up = new FormData();
+        up.append("dxf_file", file, file.name || "upload.dxf");
+        const token = await xhrUploadForToken("/api/remote30/upload", up, onUploadProgress);
+        body.delete("dxf_file");
+        body.set("dxf_token", token);
+      }
+      if (onUploadProgress) onUploadProgress(1);
+
+      const res = await fetch(url, { method: "POST", body });
+      if (!res.ok) {
+        let m = `HTTP ${res.status}`;
+        try { m = (await res.json()).message || m; } catch (e) {}
+        throw new Error(m);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      const drain = (final) => {
+        // 줄 단위로 한 번에 쪼갠다 — 줄마다 buf.slice 로 잘라내면 한 청크에
+        // 수백 줄이 실릴 때 남은 버퍼를 매번 복사해 O(줄²) 이 된다.
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        if (final && buf.trim()) lines.push(buf);
+        if (final) buf = "";
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (!line) continue;
+          let msg;
+          try { msg = JSON.parse(line); } catch (e) { continue; }
+          onMessage(msg);
+        }
+      };
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          drain(false);
+        }
+        drain(true);
+      } catch (e) {
+        try { await reader.cancel(); } catch (_) {}
+        throw e;
+      }
     }
 
     const CAT_COLORS = {

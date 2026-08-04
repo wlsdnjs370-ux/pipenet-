@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import warnings
 from datetime import datetime
 from io import BytesIO
@@ -98,6 +99,15 @@ UPDATE_HISTORY_PATH = BASE_DIR / "data" / "update_history.json"
 FEEDBACK_POSTS_PATH = BASE_DIR / "data" / "feedback_posts.json"
 FEEDBACK_UPLOAD_DIR = BASE_DIR / "data" / "feedback_uploads"
 FEEDBACK_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# 게시글 저장소는 JSON 파일 한 장이라 등록이 read-modify-write 다. waitress 는
+# 멀티스레드라 동시 등록 시 나중 쓰기가 앞선 글을 통째로 덮어쓴다(유실).
+_POSTS_LOCK = threading.Lock()
+
+# 같은 job_id 를 두 번 구독하면(재구독·새로고침) 두 제너레이터가 하나의 job
+# 딕셔너리에 스테이지별로 나눠 쓴다. 한쪽의 layers 와 다른쪽의 detected_heads 가
+# 섞이면 finalize 가 어긋난 상태를 본다.
+_JOB_LOCK = threading.Lock()
 from cad_match import (CAD_SDF_LEARNING_PROFILE_PATH, PIPE_SEGMENTATION_MODEL_CANDIDATES, _AI_MATCH_MAX_EDGES, _torch_device_info, _pipe_segmentation_engine_status, _load_cad_sdf_learning_profile, _write_cad_sdf_learning_profile, _cad_layer_weight, _mark_similar_cad_pipe_entities, _ai_edge_features, _recompute_edge_degrees, _merge_collinear_cad_edges, _compact_cad_graph_for_sdf, _rasterize_edges_for_fft, _fft_shape_similarity, _component_similarity_stats)  # noqa: E501  (Phase2b core)
 
 # fire-dxf2sdf (Phase 1-3 GNN 파이프라인) subprocess 호출용
@@ -809,8 +819,11 @@ def _load_feedback_posts() -> list[dict]:
 def _save_feedback_posts(posts: list[dict]) -> None:
     FEEDBACK_POSTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     ordered = sorted(posts, key=lambda item: str(item.get("created_at", "")), reverse=True)
-    with FEEDBACK_POSTS_PATH.open("w", encoding="utf-8") as fp:
-        json.dump({"posts": ordered}, fp, ensure_ascii=False, indent=2)
+    # 목록 조회가 반쯤 쓰인 파일을 읽고 빈 목록으로 되돌아가지 않도록 원자 교체.
+    tmp = FEEDBACK_POSTS_PATH.with_suffix(f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps({"posts": ordered}, ensure_ascii=False, indent=2),
+                   encoding="utf-8")
+    os.replace(tmp, FEEDBACK_POSTS_PATH)
 
 
 def _clean_feedback_text(value: object, limit: int) -> str:
@@ -1700,7 +1713,6 @@ def create_feedback_post():
     if not body:
         return jsonify({"ok": False, "message": "개선의견 내용을 입력해주세요."}), 400
 
-    posts = _load_feedback_posts()
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     post_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
     attachment = _save_feedback_attachment(post_id)
@@ -1712,8 +1724,10 @@ def create_feedback_post():
         "created_at": created_at,
         "attachment": attachment,
     }
-    posts.insert(0, post)
-    _save_feedback_posts(posts[:300])
+    with _POSTS_LOCK:
+        posts = _load_feedback_posts()
+        posts.insert(0, post)
+        _save_feedback_posts(posts[:300])
     return jsonify({"ok": True, "message": "개선의견이 등록되었습니다.", "post": post})
 
 
@@ -2606,16 +2620,19 @@ def remote30_prototype_stream(job_id: str):
             pass
 
     def _gen():
+        # 스테이지 산출은 이 스트림의 로컬 값으로만 만들고 한 번에 반영한다.
+        stream_layers: list = []
         try:
             for evt in run_stages_0_2(Path(job["dxf_path"]), job_id,
                                        alarm_xy=job.get("alarm_xy"),
                                        branch_zones=job.get("branch_zones")):
                 # 마지막 awaiting_finalize 이벤트 직전에 detected_heads 데이터를 job 에 저장
+                patch = None
                 if evt.get("type") == "entities" and evt.get("stage") == 1:
-                    job["pipe_ents"] = evt["entities"]
+                    patch = {"pipe_ents": evt["entities"]}
                 elif evt.get("type") == "entities" and evt.get("stage") == 0:
-                    job["layers"] = evt["layers"]
-                    job["bbox"] = evt["bbox"]
+                    stream_layers = evt["layers"]
+                    patch = {"layers": stream_layers, "bbox": evt["bbox"]}
                 elif evt.get("type") == "entities" and evt.get("stage") == 2:
                     # bbox entity 들에서 detected_heads 위치 + bbox 추출
                     detected = []
@@ -2626,8 +2643,12 @@ def remote30_prototype_stream(job_id: str):
                             detected.append({"pos": [cx, cy], "bbox": p,
                                              "k": be.get("k", ""), "c": be.get("c", 0),
                                              "i": be.get("i", 0)})
-                    job["detected_heads"] = detected
-                    job["layer_cat"] = {l["name"]: l["auto_category"] for l in job.get("layers", [])}
+                    patch = {"detected_heads": detected,
+                             "layer_cat": {l["name"]: l["auto_category"]
+                                           for l in stream_layers}}
+                if patch is not None:
+                    with _JOB_LOCK:
+                        job.update(patch)
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
         except Exception as exc:  # noqa: BLE001
             err = {"type": "error", "message": str(exc)[:500]}
@@ -5217,9 +5238,9 @@ def remote30_system_extract():
                                     waypoints=waypoints or None)
         return jsonify({"ok": True, "riser": riser, "algorithm": "dxf_path_v1"})
     except ValueError as exc:
-        # 사용자 입력 오류 (snap 실패 / disconnected). 상태코드 200 + suggest_legacy 표시.
+        # 사용자 입력 오류 (snap 실패 / disconnected). 프론트는 본문 ok 로 분기한다.
         return jsonify({"ok": False, "message": str(exc),
-                        "algorithm": "dxf_path_v1", "suggest_legacy": True}), 200
+                        "algorithm": "dxf_path_v1", "suggest_legacy": True}), 400
     except Exception as exc:  # noqa: BLE001
         return _err500(exc, algorithm="dxf_path_v1")
 
@@ -5410,9 +5431,9 @@ def remote30_machineroom_extract():
                                        snap_tolerance_mm=snap_tol)
         return jsonify({"ok": True, "machine_room": mr, "algorithm": "machineroom_path_v1"})
     except ValueError as exc:
-        # 사용자 입력 오류 (snap 실패 / disconnected) — 상태코드 200.
+        # 사용자 입력 오류 (snap 실패 / disconnected). 프론트는 본문 ok 로 분기한다.
         return jsonify({"ok": False, "message": str(exc),
-                        "algorithm": "machineroom_path_v1"}), 200
+                        "algorithm": "machineroom_path_v1"}), 400
     except Exception as exc:  # noqa: BLE001
         return _err500(exc, algorithm="machineroom_path_v1")
 
@@ -5686,13 +5707,43 @@ def _inspect_layer_visibility(doc):
     return doc_layer_info, hidden_layers
 
 
-@app.post("/api/remote30/inspect")
-def remote30_inspect():
-    """DXF 업로드 → 모든 entity JSON + 레이어 통계 + 카테고리 자동 추천."""
+def _inspect_token_path(token: str):
+    """이미 업로드된 파일 이름(토큰) → 경로. 업로드 폴더 밖이면 None."""
+    token = (token or "").strip()
+    if not token or secure_filename(token) != token:
+        return None
+    candidate = UPLOAD_DIR / token
+    if candidate.is_file() and candidate.suffix.lower() == ".dxf":
+        return candidate
+    return None
+
+
+@app.post("/api/remote30/upload")
+def remote30_upload():
+    """DXF 업로드만 하고 토큰을 반환 — 렌더 스트림과 요청을 분리하기 위함.
+
+    업로드 진행률은 XHR 로만 얻을 수 있는데, XHR 은 응답 전체를 responseText 에
+    붙들고 있는다. LH 지하층배관도의 inspect NDJSON 은 비압축 173MB 라 그대로
+    메모리에 남는다. 업로드를 이 작은 응답으로 떼어내면 스트림 쪽은
+    fetch + ReadableStream 으로 읽어 소비한 청크를 즉시 버릴 수 있다.
+    """
     try:
         dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
+    return jsonify({"ok": True, "dxf_token": dxf_path.name,
+                    "dxf_filename": dxf_path.name})
+
+
+@app.post("/api/remote30/inspect")
+def remote30_inspect():
+    """DXF(업로드 또는 dxf_token) → 모든 entity JSON + 레이어 통계 + 카테고리 추천."""
+    dxf_path = _inspect_token_path(request.form.get("dxf_token", ""))
+    if dxf_path is None:
+        try:
+            dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
+        except ValueError as exc:
+            return jsonify({"ok": False, "message": str(exc)}), 400
 
     dxf_name = dxf_path.name
 
@@ -6184,10 +6235,15 @@ def remote30_inspect():
     def _stream():
         # 캐시 미스 → 렌더하며 NDJSON 스트리밍하고, 동시에 gzip 캐시에 tee.
         tmp_ent = None
+        tmp_meta = None
         gz_out = None
         committed = False
+        # 캐시 키는 도면 내용 해시라 같은 도면을 동시에 올린 두 요청이 같은 키를
+        # 쓴다. tmp 이름까지 같으면 서로의 gzip 에 끼어 쓰고, 먼저 끝난 쪽이
+        # commit 한 파일을 늦게 끝난 쪽의 정리 코드가 지운다.
+        tmp_tag = f".{uuid.uuid4().hex[:12]}.tmp"
         if cache_ent_path is not None:
-            tmp_ent = cache_ent_path.with_suffix(".tmp")
+            tmp_ent = cache_ent_path.with_suffix(tmp_tag)
             try:
                 gz_out = gzip.open(tmp_ent, "wt", encoding="utf-8")
             except Exception:
@@ -6237,7 +6293,7 @@ def remote30_inspect():
                         "bg_entities": bg_status["entities"],
                         "bg_budget": BG_ENTITY_BUDGET,
                     }
-                    tmp_meta = cache_meta_path.with_suffix(".tmp")
+                    tmp_meta = cache_meta_path.with_suffix(tmp_tag)
                     tmp_meta.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
                     os.replace(tmp_ent, cache_ent_path)
                     os.replace(tmp_meta, cache_meta_path)
@@ -6250,11 +6306,14 @@ def remote30_inspect():
                     gz_out.close()
                 except Exception:
                     pass
-            if not committed and tmp_ent is not None and tmp_ent.exists():
-                try:
-                    tmp_ent.unlink()
-                except Exception:
-                    pass
+            if not committed:
+                for leftover in (tmp_ent, tmp_meta):
+                    if leftover is None:
+                        continue
+                    try:
+                        leftover.unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
     return Response(_stream(), mimetype="application/x-ndjson")
 

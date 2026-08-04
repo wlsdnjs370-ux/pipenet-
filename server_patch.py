@@ -81,6 +81,24 @@ V4_VERSION = "v4.0.0"
 DEFAULT_OUTPUT_DIR = Path("data/v4_outputs")
 DEFAULT_LOG_DIR = Path("data/change_logs")
 
+# dxf_path 는 JSON 본문에서 그대로 온다 — 제한이 없으면 로그인만 통과한 사용자가
+# C:\Users\...\.env 같은 임의 파일을 읽히거나 존재 여부를 떠볼 수 있다.
+_DXF_ROOT = Path(__file__).resolve().parent / "data"
+
+
+def _resolve_dxf_path(raw: object) -> Path:
+    """JSON 으로 받은 dxf_path 를 data/ 아래로 한정해 해석한다."""
+    text = str(raw or "").strip()
+    if not text:
+        raise ValueError("dxf_path 가 비었습니다")
+    candidate = Path(text)
+    resolved = (candidate if candidate.is_absolute() else _DXF_ROOT / candidate).resolve()
+    try:
+        resolved.relative_to(_DXF_ROOT)
+    except ValueError:
+        raise ValueError("dxf_path 는 data/ 아래여야 합니다") from None
+    return resolved
+
 
 # ---------------------------------------------------------------------------
 # Helper — JSON serialization for dataclasses / enums
@@ -204,7 +222,10 @@ def register_v4_routes(app: Flask) -> Flask:
         try:
             body = request.get_json(force=True) or {}
             project_id = body.get("project_id") or "v4-default"
-            dxf_path = Path(body.get("dxf_path") or "")
+            try:
+                dxf_path = _resolve_dxf_path(body.get("dxf_path"))
+            except ValueError as exc:
+                return _err(str(exc), status=400)
             building_meta = body.get("building_meta") or {}
             rooms = body.get("rooms") or []
             obstacles = body.get("obstacles") or []
@@ -234,9 +255,12 @@ def register_v4_routes(app: Flask) -> Flask:
         """Run the trained triangle-head detector on a DXF file."""
         try:
             body = request.get_json(force=True) or {}
-            dxf_path = Path(body.get("dxf_path") or "")
+            try:
+                dxf_path = _resolve_dxf_path(body.get("dxf_path"))
+            except ValueError as exc:
+                return _err(str(exc), status=400)
             if not dxf_path.exists():
-                return _err(f"DXF path not found: {dxf_path}", status=404)
+                return _err(f"DXF path not found: {dxf_path.name}", status=404)
             from cad_engine import DXFWorkspace  # type: ignore[import-not-found]
 
             workspace = DXFWorkspace(dxf_path.parent / "_v4_workspace")

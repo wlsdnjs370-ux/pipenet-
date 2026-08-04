@@ -36,6 +36,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator
 
+from remote30_constants import FX_DEFAULT_PROFILE, FX_SPEC_PROFILES
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # 상수
@@ -548,6 +550,13 @@ class ZoneType(Enum):
     LLSP_2STAGE = "llsp_2stage"
 
 
+class MissingProjectInputError(ValueError):
+    """수리 입력이 없어 라이저를 만들 수 없을 때. 메시지가 빠진 입력을 지목한다.
+
+    ValueError 를 상속해 라우트의 기존 예외 처리에 그대로 걸린다.
+    """
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # 데이터 모델
 # ────────────────────────────────────────────────────────────────────────────
@@ -560,6 +569,39 @@ class FloorRow:
     head_drop_m: float        # 누적 낙차 (m, 옥상 수원 기준)
     after_prv_m: float | None = None  # 감압 이후 수두 (m) — 감압 구간만
     note: str = ""            # 비고 ("자연낙차시작점", "1차 감압밸브 사용구간" 등)
+
+
+def _to_int(value: Any, default: int) -> int:
+    """폼/JSON 의 정수 필드 — 빈칸이나 숫자가 아니면 기본값."""
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _floor_row_from_mapping(raw: Any) -> FloorRow | None:
+    """압력표 한 행(원시 매핑) → FloorRow. 못 읽으면 None.
+
+    낙차압이 비어 있으면 0 으로 때우지 않고 행을 버린다 — 그 층의 표고를 물었을 때
+    "0 이다" 라고 답하는 대신 "표에 없다" 로 걸리게 하려는 것.
+    """
+    if not isinstance(raw, dict):
+        return None
+    label = str(raw.get("floor_label") or "").strip()
+    drop = raw.get("head_drop_m")
+    if not label or drop in (None, ""):
+        return None
+    after = raw.get("after_prv_m")
+    try:
+        return FloorRow(
+            floor_label=label,
+            height_m=float(raw.get("height_m") or 0),
+            head_drop_m=float(drop),
+            after_prv_m=None if after in (None, "") else float(after),
+            note=str(raw.get("note") or ""),
+        )
+    except (TypeError, ValueError):
+        return None
 
 
 @dataclass
@@ -600,18 +642,9 @@ class BuildingPressureProfile:
                 for k, v in raw.items():
                     key = KCOL.get((k or "").strip(), (k or "").strip())
                     norm[key] = (v or "").strip()
-                if not norm.get("floor_label"):
-                    continue
-                try:
-                    rows.append(FloorRow(
-                        floor_label=norm["floor_label"],
-                        height_m=float(norm.get("height_m") or 0),
-                        head_drop_m=float(norm.get("head_drop_m") or 0),
-                        after_prv_m=(float(norm["after_prv_m"]) if norm.get("after_prv_m") else None),
-                        note=norm.get("note", "") or "",
-                    ))
-                except (ValueError, KeyError):
-                    continue
+                row = _floor_row_from_mapping(norm)
+                if row is not None:
+                    rows.append(row)
         return cls(building_name=building_name, floors=rows)
 
     @classmethod
@@ -638,19 +671,11 @@ class BuildingPressureProfile:
             def _get(key, default=None):
                 i = col_idx.get(key)
                 return r[i] if i is not None and i < len(r) else default
-            label = _get("floor_label")
-            if not label:
-                continue
-            try:
-                rows.append(FloorRow(
-                    floor_label=str(label),
-                    height_m=float(_get("height_m") or 0),
-                    head_drop_m=float(_get("head_drop_m") or 0),
-                    after_prv_m=(float(_get("after_prv_m")) if _get("after_prv_m") is not None else None),
-                    note=str(_get("note") or ""),
-                ))
-            except (ValueError, TypeError):
-                continue
+            row = _floor_row_from_mapping({k: _get(k) for k in
+                                           ("floor_label", "height_m", "head_drop_m",
+                                            "after_prv_m", "note")})
+            if row is not None:
+                rows.append(row)
         wb.close()
         return cls(building_name=building_name, floors=rows)
 
@@ -679,6 +704,204 @@ class ZoneSpec:
     pump_count: int = 2
 
 
+class SourceTag(str, Enum):
+    """값이 어디서 왔는지. 리포트 경고 블록의 판단 근거."""
+    USER_CONFIRMED = "user_confirmed"      # 사람이 폼에 직접 넣고 확정
+    DRAWING_ESTIMATED = "drawing_estimated"  # 도면/계통도에서 뽑아낸 추정치
+    DEFAULT = "default"                    # 아무도 안 정해서 코드 기본값이 쓰인 것
+
+
+# 경고 블록에 사람이 읽을 이름으로 찍는다. 여기 실린 필드만 미확정 추적 대상이다.
+_CONTEXT_FIELD_LABELS: dict[str, str] = {
+    "project_title": "프로젝트명",
+    "zone_name": "존 이름",
+    "building_name": "빌딩명",
+    "floor_profile": "층별 압력분포표",
+    "natural_fall_start_floor": "자연낙차 시작층",
+    "machine_room_ceiling_m": "기계실 천장고",
+    "roof_tank_water_level_m": "옥상수조 수위",
+    "fx_profile_key": "신축배관 규격",
+    "material_zones": "관종 구역",
+    "ceiling_zones": "반자 구역",
+}
+
+# 받아서 서류에는 남기지만 아직 배관망을 바꾸지 않는 항목. 여기 적힌 필드를 채워도
+# SDF 는 그대로다 — 채웠다는 이유로 "반영됐다" 고 읽히면 안 되므로 경고에 밝힌다.
+_RECORD_ONLY_FIELDS: frozenset[str] = frozenset({
+    "natural_fall_start_floor",   # 후보 계산·표시용. 라이저 분기는 zone_type 이 정한다.
+    "machine_room_ceiling_m",     # 기계실 추출 경로(프로토타입) 전용 — 통합 산출에는 기계실이 없다.
+    "roof_tank_water_level_m",
+    "ceiling_zones",              # 상향/하향은 material_zones 의 구역 유형이 가른다.
+})
+
+
+def _context_value_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, (str, list, tuple, dict)):
+        return len(value) == 0
+    if isinstance(value, BuildingPressureProfile):
+        return not value.floors
+    return False
+
+
+@dataclass
+class ProjectContext:
+    """한 과제의 수리계산 입력 일체 — 폼 딕셔너리를 대신하는 타입 있는 서류.
+
+    ``sources`` 는 필드명 → SourceTag 문자열. 사용자가 실제로 채운 값만
+    ``user_confirmed`` 가 되고 나머지는 ``default`` 로 남아 :meth:`unconfirmed`
+    에 잡힌다. "값이 이렇다" 와 "아무도 안 정해서 이렇게 됐다" 를 구분하는 것이
+    이 클래스의 존재 이유다.
+    """
+    zone_spec: ZoneSpec
+    floor_profile: BuildingPressureProfile | None = None
+    project_title: str = ""
+    zone_name: str = ""
+    building_name: str = ""
+    natural_fall_start_floor: str | None = None
+    machine_room_ceiling_m: float | None = None
+    roof_tank_water_level_m: float | None = None
+    fx_profile_key: str = FX_DEFAULT_PROFILE
+    material_zones: list[dict] = field(default_factory=list)
+    ceiling_zones: list[dict] = field(default_factory=list)
+    sources: dict[str, str] = field(default_factory=dict)
+
+    # ── 출처 ────────────────────────────────────────────────────────────
+    def tag(self, field_name: str) -> SourceTag:
+        try:
+            return SourceTag(self.sources.get(field_name, ""))
+        except ValueError:
+            return SourceTag.DEFAULT
+
+    def unconfirmed(self) -> list[dict]:
+        """사람이 확정하지 않은 항목 — 리포트 최상단 경고 블록의 재료."""
+        out: list[dict] = []
+        for name, label in _CONTEXT_FIELD_LABELS.items():
+            tag = self.tag(name)
+            if tag is SourceTag.USER_CONFIRMED:
+                continue
+            out.append({
+                "field": name,
+                "label": label,
+                "tag": tag.value,
+                "missing": _context_value_missing(getattr(self, name)),
+                "record_only": name in _RECORD_ONLY_FIELDS,
+            })
+        return out
+
+    def warning_lines(self) -> list[str]:
+        """`[미확정] <필드> — <한글이름> (<상태>)` 한 줄씩."""
+        state_of = {
+            SourceTag.DRAWING_ESTIMATED.value: "도면 추정",
+            SourceTag.DEFAULT.value: "기본값",
+        }
+        lines = []
+        for item in self.unconfirmed():
+            state = "미입력" if item["missing"] else state_of.get(item["tag"], "기본값")
+            note = ", 기록 전용 — 현재 산출물 미반영" if item["record_only"] else ""
+            lines.append(f"[미확정] {item['field']} — {item['label']} ({state}{note})")
+        return lines
+
+    # ── 파생값 ──────────────────────────────────────────────────────────
+    def report_title(self) -> str:
+        """리포트/SDF 제목. 사용자가 넣은 프로젝트명이 최우선."""
+        for candidate in (self.project_title, self.zone_name):
+            if candidate.strip():
+                return candidate.strip()
+        return (f"Remote 30 전체 — {self.zone_spec.zone_type.value} "
+                f"{self.zone_spec.target_floor}").strip()
+
+    def natural_fall_candidates(self) -> list[dict]:
+        """자연낙차 시작층 후보 — 계산해서 보여만 주고 고르지는 않는다.
+
+        규칙(지시서 T4): 낙차압이 헤드 최소 방수압(NFTC 2.2.1.11, 0.1 MPa)
+        이상이 되는 최초의 층. 압력표가 없으면 후보도 없다 — 짐작하지 않는다.
+        """
+        if self.floor_profile is None or not self.floor_profile.floors:
+            return []
+        from nftc_rules import head_pressure_min_mpa
+        required_m = head_pressure_min_mpa() * 1e6 / M_TO_PA
+        return [{
+            "floor_label": row.floor_label,
+            "head_drop_m": row.head_drop_m,
+            "required_m": round(required_m, 2),
+            "ok": row.head_drop_m >= required_m,
+        } for row in self.floor_profile.floors]
+
+    def suggested_natural_fall_floor(self) -> str | None:
+        """UI 가 커서만 올려둘 기본 후보. 자동 확정이 아니다."""
+        for cand in self.natural_fall_candidates():
+            if cand["ok"]:
+                return cand["floor_label"]
+        return None
+
+    # ── 직렬화 (combined 경로의 선택 필드 project_context) ───────────────
+    def to_dict(self) -> dict:
+        return {
+            "zone_type": self.zone_spec.zone_type.value,
+            "target_floor": self.zone_spec.target_floor,
+            "prv1_target_pa": self.zone_spec.prv1_target_pa,
+            "prv2_target_pa": self.zone_spec.prv2_target_pa,
+            "pump_library_name": self.zone_spec.pump_library_name,
+            "pump_count": self.zone_spec.pump_count,
+            "floor_profile": ([{
+                "floor_label": r.floor_label, "height_m": r.height_m,
+                "head_drop_m": r.head_drop_m, "after_prv_m": r.after_prv_m,
+                "note": r.note,
+            } for r in self.floor_profile.floors] if self.floor_profile else None),
+            "project_title": self.project_title,
+            "zone_name": self.zone_name,
+            "building_name": self.building_name,
+            "natural_fall_start_floor": self.natural_fall_start_floor,
+            "machine_room_ceiling_m": self.machine_room_ceiling_m,
+            "roof_tank_water_level_m": self.roof_tank_water_level_m,
+            "fx_profile_key": self.fx_profile_key,
+            "material_zones": list(self.material_zones),
+            "ceiling_zones": list(self.ceiling_zones),
+            "sources": dict(self.sources),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ProjectContext":
+        rows = data.get("floor_profile")
+        profile = BuildingPressureProfile(
+            building_name=str(data.get("building_name", "") or ""),
+            floors=[row for row in map(_floor_row_from_mapping, rows) if row is not None],
+        ) if isinstance(rows, list) and rows else None
+        return cls(
+            zone_spec=ZoneSpec(
+                zone_type=ZoneType(data.get("zone_type", ZoneType.LSP_1STAGE.value)),
+                target_floor=str(data.get("target_floor", "") or ""),
+                prv1_target_pa=data.get("prv1_target_pa"),
+                prv2_target_pa=data.get("prv2_target_pa"),
+                pump_library_name=str(data.get("pump_library_name") or "SP_162M_2900LPM"),
+                pump_count=_to_int(data.get("pump_count"), 2),
+            ),
+            floor_profile=profile,
+            project_title=str(data.get("project_title", "") or ""),
+            zone_name=str(data.get("zone_name", "") or ""),
+            building_name=str(data.get("building_name", "") or ""),
+            natural_fall_start_floor=(data.get("natural_fall_start_floor") or None),
+            machine_room_ceiling_m=data.get("machine_room_ceiling_m"),
+            roof_tank_water_level_m=data.get("roof_tank_water_level_m"),
+            fx_profile_key=str(data.get("fx_profile_key") or FX_DEFAULT_PROFILE),
+            material_zones=list(data.get("material_zones") or []),
+            ceiling_zones=list(data.get("ceiling_zones") or []),
+            sources=dict(data.get("sources") or {}),
+        )
+
+    @classmethod
+    def titled(cls, project_title: str, *, zone_type: ZoneType = ZoneType.LSP_1STAGE) -> "ProjectContext":
+        """제목만 아는 호출자(구형 통합 경로)용 최소 컨텍스트.
+
+        나머지 항목은 전부 미확정으로 남아 경고 블록에 그대로 드러난다.
+        """
+        return cls(zone_spec=ZoneSpec(zone_type=zone_type),
+                   project_title=project_title,
+                   sources={"project_title": SourceTag.USER_CONFIRMED.value})
+
+
 @dataclass
 class OverallInputs:
     """모듈 10 의 입력 일체."""
@@ -688,6 +911,14 @@ class OverallInputs:
     alarm_xy: tuple[float, float] | None = None
     job_id: str = ""
     project_title: str = "Remote 30 전체 배관망 총괄"
+
+    def to_context(self) -> ProjectContext:
+        return ProjectContext(
+            zone_spec=self.zone_spec, floor_profile=self.profile,
+            project_title=self.project_title,
+            building_name=(self.profile.building_name if self.profile else ""),
+            sources={"project_title": SourceTag.USER_CONFIRMED.value},
+        )
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -780,10 +1011,15 @@ def _node(label: str, elev: float, x: float, y: float, *,
 
 def _pipe(label: str, in_lbl: str, out_lbl: str, bore_mm: int,
           length_m: float, rise_m: float = 0.0, c_factor: str = "120") -> dict:
-    """라이저 파이프 dict — remote30_prototype.PipeTables.pipes 호환."""
+    """라이저 파이프 dict — remote30_prototype.PipeTables.pipes 호환.
+
+    PIPENET/K-solver 는 낙차가 관 길이보다 큰 관을 거부하므로 길이를 |낙차| 아래로
+    내려보내지 않는다. 반올림도 이 관계를 깨지 않게 양쪽 모두 같은 자리로 맞춘다.
+    """
+    rise = round(rise_m, 2)
     return {
         "label": label, "in": in_lbl, "out": out_lbl, "type": "KSD 3507",
-        "dia": bore_mm, "length": round(length_m, 2), "elev": rise_m,
+        "dia": bore_mm, "length": max(round(length_m, 2), abs(rise)), "elev": rise,
         "c": c_factor, "status": "Normal", "group": "Unset",
     }
 
@@ -808,17 +1044,78 @@ def _pressure_valve(label: str, in_lbl: str, out_lbl: str, *,
     }
 
 
-def _elev_at_floor(profile: BuildingPressureProfile | None, floor_label: str,
-                   fallback: float = 0.0) -> float:
+def _require_profile(profile: BuildingPressureProfile | None,
+                     zone_label: str) -> BuildingPressureProfile:
+    """압력표가 있어야만 라이저를 만든다 — 없으면 특정 현장 수치로 조용히 때우지 않는다."""
+    if profile is None or not profile.floors:
+        raise MissingProjectInputError(
+            f"{zone_label} 라이저를 만들려면 층별 압력표가 필요합니다. "
+            "계통도 DXF 자동 추출 · CSV/엑셀 업로드 · 직접 입력 중 하나로 채워주세요.")
+    # 이 아래 표고 계산은 전부 "첫 행이 옥상" 을 전제로 한다. 표가 아래층부터
+    # 적혀 있으면 라이저 전체가 뒤집히는데 결과만 봐서는 알 수 없으므로,
+    # 누적 낙차가 위→아래로 커지는지 여기서 확인한다.
+    for prev, cur in zip(profile.floors, profile.floors[1:]):
+        if cur.head_drop_m < prev.head_drop_m:
+            raise MissingProjectInputError(
+                f"압력표가 옥상부터 아래로 정렬되어 있지 않습니다 — "
+                f"'{prev.floor_label}'({prev.head_drop_m}m) 다음 행 "
+                f"'{cur.floor_label}'({cur.head_drop_m}m) 의 누적 낙차가 더 작습니다.")
+    return profile
+
+
+def _elev_at_floor(profile: BuildingPressureProfile, floor_label: str) -> float:
     """압력표에서 층 라벨의 누적 낙차 (m) → SDF elevation (음수)."""
-    if profile is not None:
-        row = profile.find_by_label(floor_label)
-        if row is not None:
-            return -float(row.head_drop_m)
-    return fallback
+    row = profile.find_by_label(floor_label)
+    if row is None:
+        have = ", ".join(r.floor_label for r in profile.floors[:12])
+        raise MissingProjectInputError(
+            f"압력표에 '{floor_label}' 행이 없어 그 층의 낙차압을 알 수 없습니다. "
+            f"표에 있는 층: {have}")
+    return -float(row.head_drop_m)
 
 
-# ── 라이저 logical 좌표 — 빌딩 무관. emit_sdf 의 _xform 이 정규화.
+def _elev_riser_top(profile: BuildingPressureProfile) -> float:
+    """라이저가 수원에서 내려오기 시작하는 표고 — 최상단 행(옥상)의 층고만큼 아래."""
+    top = profile.floors[0]
+    if top.height_m <= 0:
+        raise MissingProjectInputError(
+            f"압력표 최상단 행('{top.floor_label}')의 층고가 비어 있어 "
+            "라이저가 내려오기 시작하는 표고를 정할 수 없습니다.")
+    return -float(top.height_m)
+
+
+def _prv_rows(profile: BuildingPressureProfile) -> list[FloorRow]:
+    """감압이후 수두가 적힌 행 = 감압밸브 아래에 있는 층들."""
+    return [r for r in profile.floors if r.after_prv_m is not None]
+
+
+def _elev_prv1(profile: BuildingPressureProfile, zone_label: str) -> float:
+    """1차 감압밸브 표고 — 감압 구간이 시작되는 첫 행."""
+    rows = _prv_rows(profile)
+    if not rows:
+        raise MissingProjectInputError(
+            f"{zone_label} 는 감압밸브가 있는 구간인데 압력표의 '감압이후' 열이 비어 있습니다. "
+            "1차 감압밸브가 어느 층에 붙는지 정할 수 없습니다.")
+    return -float(rows[0].head_drop_m)
+
+
+def _elev_prv2(profile: BuildingPressureProfile) -> float:
+    """2차 감압밸브 표고 — 감압이후 수두가 다시 낮아지는 첫 행.
+
+    감압이후 수두는 밸브 출구를 기준으로 재므로 한 구간 안에서는 아래로 갈수록 커진다.
+    다시 작아지는 자리가 새 밸브가 물린 층이다.
+    """
+    rows = _prv_rows(profile)
+    for prev, cur in zip(rows, rows[1:]):
+        if cur.after_prv_m < prev.after_prv_m:
+            return -float(cur.head_drop_m)
+    raise MissingProjectInputError(
+        "압력표에서 2차 감압 시작 층을 찾지 못했습니다. 2차 감압 구간의 '감압이후' 수두는 "
+        "밸브 출구 기준으로 다시 낮아져야 합니다.")
+
+
+# ── 라이저 logical 좌표 — 화면 배치용(스키매틱)일 뿐 수리 계산에는 쓰이지 않는다.
+#    표고는 elevation 필드가 따로 들고 있고, emit_sdf 의 _xform 이 이 x/y 를 정규화한다.
 _COORDS_INPUT      = (   0,     0)    # 옥상 수원
 _COORDS_N2         = (-500,  -100)    # 옥상 수평 분기
 _COORDS_N3         = (-500,  -300)    # 옥상 → 라이저 진입
@@ -833,6 +1130,40 @@ _COORDS_AV         = ( 100, -3300)    # 노드 10 (헤드망 source ★)
 _COORDS_PUMP_INPUT = ( 200,   100)    # HSP Pump-fan 앞 Input(100), Input(1) 보다 위
 
 
+def _riser_upper(elev_top: float, elev_bottom: float) -> tuple[list[dict], list[dict]]:
+    """수원(옥상) → 라이저 하강 → 노드 7 까지. 네 zone 공통 구간."""
+    nodes = [
+        _node("1", 0.0,       *_COORDS_INPUT, io_node="Input", pressure_pa=ATM_PA),
+        _node("2", 0.0,       *_COORDS_N2),
+        _node("3", elev_top,  *_COORDS_N3),
+        _node("4", elev_top,  *_COORDS_N4),
+        _node("7", elev_bottom, *_COORDS_N7),
+    ]
+    pipes = [
+        _pipe("r1", "1", "2", 150, 20.95, 0.0),
+        _pipe("r2", "2", "3", 150, abs(elev_top), elev_top),
+        _pipe("r3", "3", "4", 150, 14.93, 0.0),
+        _pipe("r4", "4", "7", 150, abs(elev_bottom - elev_top), elev_bottom - elev_top),
+    ]
+    return nodes, pipes
+
+
+def _riser_prv_to_av(elev_prv: float, elev_av: float) -> tuple[list[dict], list[dict]]:
+    """PRV 1개 → AV 까지. 노드 7 뒤에 붙는다 (LSP 1차감압 / HSP 펌프식 공통)."""
+    nodes = [
+        _node("8",  elev_prv, *_COORDS_PRV_IN),
+        _node("89", elev_prv, *_COORDS_PRV_OUT),
+        _node("5",  elev_av - 1.0, *_COORDS_N5_AV_PREV),
+        _node("10", elev_av,  *_COORDS_AV),
+    ]
+    pipes = [
+        _pipe("r5", "7", "8",  150, 0.5, 0.0),
+        _pipe("r6", "89", "5", 150, abs(elev_av - 1.0 - elev_prv), (elev_av - 1.0) - elev_prv),
+        _pipe("r7", "5", "10", 125, 1.5, 1.0),
+    ]
+    return nodes, pipes
+
+
 def build_riser_lsp_1stage(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
     """LSP 1차감압 라이저 — 자연낙차 + PRV 1개.
 
@@ -841,35 +1172,19 @@ def build_riser_lsp_1stage(spec: ZoneSpec, profile: BuildingPressureProfile | No
     Elastomeric-valve: 8 → 89 (target = spec.prv1_target_pa)
     """
     if spec.prv1_target_pa is None:
-        raise ValueError("LSP_1STAGE 는 prv1_target_pa 가 필요합니다 (kg/cm² 또는 m 수두 → Pa).")
-    elev_av = _elev_at_floor(profile, spec.target_floor, fallback=-98.45)
-    elev_prv = -73.35  # PRV 위치 (옥상 -73m) — 답안 16F 기준 고정값 (24F 1차 감압 위치)
-    elev_top = -3.75   # 옥상 수직 분기 위치
+        raise MissingProjectInputError(
+            "LSP_1STAGE 는 prv1_target_pa 가 필요합니다 (kg/cm² 또는 m 수두 → Pa).")
+    profile = _require_profile(profile, "LSP_1STAGE")
+    elev_top = _elev_riser_top(profile)
+    elev_prv = _elev_prv1(profile, "LSP_1STAGE")
+    elev_av = _elev_at_floor(profile, spec.target_floor)
+    nodes, pipes = _riser_upper(elev_top, elev_prv)
+    tail_nodes, tail_pipes = _riser_prv_to_av(elev_prv, elev_av)
     return RiserTables(
-        nodes=[
-            _node("1",  0.0,        *_COORDS_INPUT,    io_node="Input", pressure_pa=ATM_PA),
-            _node("2",  0.0,        *_COORDS_N2),
-            _node("3",  elev_top,   *_COORDS_N3),
-            _node("4",  elev_top,   *_COORDS_N4),
-            _node("7",  elev_prv,   *_COORDS_N7),
-            _node("8",  elev_prv,   *_COORDS_PRV_IN),
-            _node("89", elev_prv,   *_COORDS_PRV_OUT),
-            _node("5",  elev_av - 1.0, *_COORDS_N5_AV_PREV),
-            _node("10", elev_av,    *_COORDS_AV),
-        ],
-        pipes=[
-            _pipe("r1", "1", "2",   150, 20.95, 0.0),
-            _pipe("r2", "2", "3",   150,  3.75, elev_top - 0.0),
-            _pipe("r3", "3", "4",   150, 14.93, 0.0),
-            _pipe("r4", "4", "7",   150, abs(elev_prv - elev_top), elev_prv - elev_top),
-            _pipe("r5", "7", "8",   150,  0.5,  0.0),
-            _pipe("r6", "89","5",   150, abs(elev_av - 1.0 - elev_prv), (elev_av - 1.0) - elev_prv),
-            _pipe("r7", "5", "10",  125,  1.5,  1.0),
-        ],
+        nodes=nodes + tail_nodes,
+        pipes=pipes + tail_pipes,
         pumps=[],
-        valves=[
-            _pressure_valve("1", "8", "89", target_pa=spec.prv1_target_pa),
-        ],
+        valves=[_pressure_valve("1", "8", "89", target_pa=spec.prv1_target_pa)],
         av_node_label="10",
     )
 
@@ -881,41 +1196,46 @@ def build_riser_hsp_pump(spec: ZoneSpec, profile: BuildingPressureProfile | None
     Pump-fan: 100 → 1 (Library-pump = spec.pump_library_name, count=spec.pump_count)
     """
     if spec.prv1_target_pa is None:
-        raise ValueError("HSP_PUMP 는 prv1_target_pa 가 필요합니다.")
-    # HSP 는 고층부라 elev_av 가 양수 (옥상보다 위)가 아니라 옥상 근처. 답안 29F = -64.2m 정도
-    elev_av = _elev_at_floor(profile, spec.target_floor, fallback=-67.1)
-    elev_prv = -10.0   # HSP 1차 PRV 위치 (옥상 직하단 보통)
-    elev_top = -3.75
-    nodes = [
-        _node("100", 0.0, *_COORDS_PUMP_INPUT, io_node="Input", pressure_pa=ATM_PA),
-        _node("1",   0.0,        *_COORDS_INPUT),
-        _node("2",   0.0,        *_COORDS_N2),
-        _node("3",   elev_top,   *_COORDS_N3),
-        _node("4",   elev_top,   *_COORDS_N4),
-        _node("7",   elev_prv,   *_COORDS_N7),
-        _node("8",   elev_prv,   *_COORDS_PRV_IN),
-        _node("89",  elev_prv,   *_COORDS_PRV_OUT),
-        _node("5",   elev_av - 1.0, *_COORDS_N5_AV_PREV),
-        _node("10",  elev_av,    *_COORDS_AV),
-    ]
-    pipes = [
-        _pipe("r1", "1", "2",   150, 20.95, 0.0),
-        _pipe("r2", "2", "3",   150,  3.75, elev_top),
-        _pipe("r3", "3", "4",   150, 14.93, 0.0),
-        _pipe("r4", "4", "7",   150, abs(elev_prv - elev_top), elev_prv - elev_top),
-        _pipe("r5", "7", "8",   150,  0.5,  0.0),
-        _pipe("r6", "89","5",   150, abs(elev_av - 1.0 - elev_prv), (elev_av - 1.0) - elev_prv),
-        _pipe("r7", "5", "10",  125,  1.5,  1.0),
-    ]
-    pumps = [
-        _pump_fan(str(i + 1), "100", "1", library_pump=spec.pump_library_name)
-        for i in range(max(1, spec.pump_count))
-    ]
+        raise MissingProjectInputError("HSP_PUMP 는 prv1_target_pa 가 필요합니다.")
+    profile = _require_profile(profile, "HSP_PUMP")
+    elev_top = _elev_riser_top(profile)
+    elev_prv = _elev_prv1(profile, "HSP_PUMP")
+    elev_av = _elev_at_floor(profile, spec.target_floor)
+    nodes, pipes = _riser_upper(elev_top, elev_prv)
+    # 수원이 아니라 펌프 토출이 라이저 머리 — Input 지정을 노드 100 으로 옮긴다.
+    nodes[0] = _node("1", 0.0, *_COORDS_INPUT)
+    nodes.insert(0, _node("100", 0.0, *_COORDS_PUMP_INPUT,
+                          io_node="Input", pressure_pa=ATM_PA))
+    tail_nodes, tail_pipes = _riser_prv_to_av(elev_prv, elev_av)
     return RiserTables(
-        nodes=nodes, pipes=pipes, pumps=pumps,
+        nodes=nodes + tail_nodes,
+        pipes=pipes + tail_pipes,
+        pumps=[_pump_fan(str(i + 1), "100", "1", library_pump=spec.pump_library_name)
+               for i in range(max(1, spec.pump_count))],
         valves=[_pressure_valve("1", "8", "89", target_pa=spec.prv1_target_pa)],
         av_node_label="10",
     )
+
+
+def build_riser_lsp_gravity(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
+    """LSP 자연낙차 라이저 — 감압밸브 없음. PRV 자리(노드 8, 89)가 아예 없다.
+
+    노드: Input(1, elev=0) → 2 → 3 → 4 → 7 → 5 → 10(AV)
+    """
+    profile = _require_profile(profile, "LSP_GRAVITY")
+    elev_top = _elev_riser_top(profile)
+    elev_av = _elev_at_floor(profile, spec.target_floor)
+    elev_pre_av = elev_av - 1.0
+    nodes, pipes = _riser_upper(elev_top, elev_pre_av)
+    nodes += [
+        _node("5",  elev_pre_av, *_COORDS_N5_AV_PREV),
+        _node("10", elev_av,     *_COORDS_AV),
+    ]
+    pipes += [
+        _pipe("r5", "7", "5",  150, 0.5, 0.0),
+        _pipe("r6", "5", "10", 125, 1.5, 1.0),
+    ]
+    return RiserTables(nodes=nodes, pipes=pipes, pumps=[], valves=[], av_node_label="10")
 
 
 def build_riser_llsp_2stage(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
@@ -925,17 +1245,15 @@ def build_riser_llsp_2stage(spec: ZoneSpec, profile: BuildingPressureProfile | N
     Elastomeric-valve: 8→89 (1차, target=prv1_target_pa), 87→88 (2차, target=prv2_target_pa)
     """
     if spec.prv1_target_pa is None or spec.prv2_target_pa is None:
-        raise ValueError("LLSP_2STAGE 는 prv1_target_pa, prv2_target_pa 모두 필요합니다.")
-    elev_av = _elev_at_floor(profile, spec.target_floor, fallback=-159.6)  # B1 = -159.6m
-    elev_prv1 = -73.35   # 1차 PRV (옥상 -73m)
-    elev_prv2 = -145.4   # 2차 PRV (1.5F, 옥상 -145m)
-    elev_top = -3.75
-    nodes = [
-        _node("1",  0.0,         *_COORDS_INPUT,    io_node="Input", pressure_pa=ATM_PA),
-        _node("2",  0.0,         *_COORDS_N2),
-        _node("3",  elev_top,    *_COORDS_N3),
-        _node("4",  elev_top,    *_COORDS_N4),
-        _node("7",  elev_prv1,   *_COORDS_N7),
+        raise MissingProjectInputError(
+            "LLSP_2STAGE 는 prv1_target_pa, prv2_target_pa 모두 필요합니다.")
+    profile = _require_profile(profile, "LLSP_2STAGE")
+    elev_top = _elev_riser_top(profile)
+    elev_prv1 = _elev_prv1(profile, "LLSP_2STAGE")
+    elev_prv2 = _elev_prv2(profile)
+    elev_av = _elev_at_floor(profile, spec.target_floor)
+    nodes, pipes = _riser_upper(elev_top, elev_prv1)
+    nodes += [
         _node("8",  elev_prv1,   *_COORDS_PRV_IN),
         _node("89", elev_prv1,   *_COORDS_PRV_OUT),
         _node("87", elev_prv2,   *_COORDS_PRV2_IN),
@@ -943,15 +1261,11 @@ def build_riser_llsp_2stage(spec: ZoneSpec, profile: BuildingPressureProfile | N
         _node("5",  elev_av - 1.0, *_COORDS_N5_AV_PREV),
         _node("10", elev_av,     *_COORDS_AV),
     ]
-    pipes = [
-        _pipe("r1", "1", "2",   150, 20.95, 0.0),
-        _pipe("r2", "2", "3",   150,  3.75, elev_top),
-        _pipe("r3", "3", "4",   150, 14.93, 0.0),
-        _pipe("r4", "4", "7",   150, abs(elev_prv1 - elev_top), elev_prv1 - elev_top),
-        _pipe("r5", "7", "8",   150,  0.5,  0.0),
+    pipes += [
+        _pipe("r5", "7", "8",   150, 0.5, 0.0),
         _pipe("r6", "89", "87", 150, abs(elev_prv2 - elev_prv1), elev_prv2 - elev_prv1),
         _pipe("r7", "88", "5",  150, abs(elev_av - 1.0 - elev_prv2), (elev_av - 1.0) - elev_prv2),
-        _pipe("r8", "5", "10",  125,  1.5,  1.0),
+        _pipe("r8", "5", "10",  125, 1.5, 1.0),
     ]
     return RiserTables(
         nodes=nodes, pipes=pipes, pumps=[],
@@ -963,28 +1277,22 @@ def build_riser_llsp_2stage(spec: ZoneSpec, profile: BuildingPressureProfile | N
     )
 
 
-def build_riser(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
-    """zone 분기 라우터."""
-    if spec.zone_type == ZoneType.HSP_PUMP:
-        return build_riser_hsp_pump(spec, profile)
-    if spec.zone_type == ZoneType.LSP_1STAGE:
-        return build_riser_lsp_1stage(spec, profile)
-    if spec.zone_type == ZoneType.LLSP_2STAGE:
-        return build_riser_llsp_2stage(spec, profile)
-    if spec.zone_type == ZoneType.LSP_GRAVITY:
-        # 자연낙차 감압 없음 — LSP_1STAGE 의 PRV 만 제거한 변형
-        rt = build_riser_lsp_1stage(
-            ZoneSpec(zone_type=ZoneType.LSP_1STAGE, target_floor=spec.target_floor,
-                     prv1_target_pa=ATM_PA),  # dummy — valves 비울 거니까 무시
-            profile,
-        )
-        rt.valves = []
-        # PRV 자리 노드 8, 89 도 제거하고 7 → 5 직결
-        rt.nodes = [n for n in rt.nodes if n["label"] not in ("8", "89")]
-        rt.pipes = [p for p in rt.pipes if p["in"] not in ("7", "89") or p["out"] not in ("8", "5")]
-        rt.pipes.append(_pipe("r_g", "7", "5", 150, 30.0, -30.0))  # 7 → 5 직결 단순화
-        return rt
-    raise ValueError(f"Unknown zone_type: {spec.zone_type}")
+_RISER_BUILDERS = {
+    ZoneType.HSP_PUMP: build_riser_hsp_pump,
+    ZoneType.LSP_1STAGE: build_riser_lsp_1stage,
+    ZoneType.LSP_GRAVITY: build_riser_lsp_gravity,
+    ZoneType.LLSP_2STAGE: build_riser_llsp_2stage,
+}
+
+
+def build_riser(ctx: ProjectContext) -> RiserTables:
+    """zone 분기 라우터. 폼 딕셔너리가 아니라 ProjectContext 하나만 받는다."""
+    spec = ctx.zone_spec
+    try:
+        builder = _RISER_BUILDERS[spec.zone_type]
+    except KeyError:
+        raise ValueError(f"Unknown zone_type: {spec.zone_type}") from None
+    return builder(spec, ctx.floor_profile)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -1660,7 +1968,7 @@ def _harden_slf_for_combined(
 
 
 def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
-                  project_title: str = "Remote 30 전체 배관망 총괄") -> Path:
+                  ctx: ProjectContext) -> Path:
     """완성 SDF 직렬화.
 
     1단계: ``remote30_prototype.emit_sdf`` 호출 — PIPENET-native 후처리
@@ -1682,7 +1990,7 @@ def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
         equipment=list(combined.equipment),
         meta=list(combined.meta),
     )
-    emit_sdf(tables, out_path, project_title=project_title)
+    emit_sdf(tables, out_path, project_title=ctx.report_title())
 
     # 2단계: SDF 재오픈 → Pump-fan / Elastomeric-valve / Calculation-spec 추가
     import xml.etree.ElementTree as ET
@@ -1777,9 +2085,10 @@ def run_full_pipeline(inputs: OverallInputs, head_tables: Any, out_path: Path) -
         head_tables: remote30_prototype.PipeTables — Stage A 의 결과.
         out_path: 출력 SDF 경로.
     """
-    riser = build_riser(inputs.zone_spec, inputs.profile)
+    ctx = inputs.to_context()
+    riser = build_riser(ctx)
     combined = stitch_riser_and_heads(riser, head_tables)
-    return emit_full_sdf(combined, out_path, project_title=inputs.project_title)
+    return emit_full_sdf(combined, out_path, ctx=ctx)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -1826,7 +2135,7 @@ def zone_spec_from_form(form: dict[str, Any]) -> ZoneSpec:
         prv1_target_pa=_to_pa("prv1_target_kgf", "prv1_target_m"),
         prv2_target_pa=_to_pa("prv2_target_kgf", "prv2_target_m"),
         pump_library_name=str(form.get("pump_library_name", "SP_162M_2900LPM")).strip(),
-        pump_count=int(form.get("pump_count", 2)),
+        pump_count=_to_int(form.get("pump_count"), 2),
     )
 
 
@@ -1933,21 +2242,111 @@ def profile_from_form(form: dict[str, Any]) -> BuildingPressureProfile | None:
          {"floor_label": "49층",   "height_m": 3.1, "head_drop_m": 6.2},
          ...]
     """
-    raw = form.get("pressure_table_json", "").strip()
+    raw = str(form.get("pressure_table_json") or "").strip()
     if not raw:
         return None
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return None
-    rows = [FloorRow(
-        floor_label=str(d.get("floor_label", "")).strip(),
-        height_m=float(d.get("height_m", 0) or 0),
-        head_drop_m=float(d.get("head_drop_m", 0) or 0),
-        after_prv_m=(float(d["after_prv_m"]) if d.get("after_prv_m") not in (None, "") else None),
-        note=str(d.get("note", "") or ""),
-    ) for d in data if d.get("floor_label")]
+    if not isinstance(data, list):
+        return None
+    rows = [row for row in map(_floor_row_from_mapping, data) if row is not None]
     return BuildingPressureProfile(
         building_name=str(form.get("building_name", "")).strip(),
         floors=rows,
+    )
+
+
+def project_context_from_form(
+    form: dict[str, Any],
+    *,
+    floor_profile: BuildingPressureProfile | None = None,
+    material_zones: list[dict] | None = None,
+    ceiling_zones: list[dict] | None = None,
+) -> ProjectContext:
+    """run 폼 + (이미 해석된) 압력표 → ProjectContext.
+
+    폼에 실제로 값이 들어온 항목만 ``user_confirmed`` 로 표시한다. 빈칸은
+    태그 없이 남아 :meth:`ProjectContext.unconfirmed` 에 잡힌다 — 기본값이
+    쓰였다는 사실을 리포트가 숨기지 않게 하려는 것이다.
+    """
+    sources: dict[str, str] = {}
+
+    def _text(key: str) -> str:
+        value = str(form.get(key, "") or "").strip()
+        if value:
+            sources[key] = SourceTag.USER_CONFIRMED.value
+        return value
+
+    def _number(key: str) -> float | None:
+        raw = str(form.get(key, "") or "").strip()
+        if not raw:
+            return None
+        try:
+            value = float(raw)
+        except ValueError:
+            return None
+        sources[key] = SourceTag.USER_CONFIRMED.value
+        return value
+
+    project_title = _text("project_title")
+    zone_name = _text("zone_name")
+    building_name = _text("building_name")
+    natural_fall_start_floor = _text("natural_fall_start_floor")
+    machine_room_ceiling_m = _number("machine_room_ceiling_m")
+    roof_tank_water_level_m = _number("roof_tank_water_level_m")
+
+    fx_profile_key = str(form.get("fx_profile_key", "") or "").strip()
+    if fx_profile_key in FX_SPEC_PROFILES:
+        sources["fx_profile_key"] = SourceTag.USER_CONFIRMED.value
+    else:
+        fx_profile_key = FX_DEFAULT_PROFILE
+
+    if floor_profile is not None and floor_profile.floors:
+        sources["floor_profile"] = SourceTag.USER_CONFIRMED.value
+    if material_zones:
+        sources["material_zones"] = SourceTag.USER_CONFIRMED.value
+    if ceiling_zones:
+        sources["ceiling_zones"] = SourceTag.USER_CONFIRMED.value
+
+    return ProjectContext(
+        zone_spec=zone_spec_from_form(form),
+        floor_profile=floor_profile,
+        project_title=project_title,
+        zone_name=zone_name,
+        building_name=building_name or (floor_profile.building_name if floor_profile else ""),
+        natural_fall_start_floor=natural_fall_start_floor or None,
+        machine_room_ceiling_m=machine_room_ceiling_m,
+        roof_tank_water_level_m=roof_tank_water_level_m,
+        fx_profile_key=fx_profile_key,
+        material_zones=list(material_zones or []),
+        ceiling_zones=list(ceiling_zones or []),
+        sources=sources,
+    )
+
+
+def project_context_from_job(job: dict[str, Any]) -> ProjectContext:
+    """overall job 상태 → ProjectContext. 폼 딕셔너리를 읽는 유일한 자리다.
+
+    압력표 우선순위는 업로드 CSV → 업로드 XLSX → 폼 JSON.
+    ``context_override`` 는 run 이후에 사용자가 확정한 값(자연낙차 시작층 등)으로,
+    run 폼보다 나중에 정해졌으니 폼 값을 덮는다.
+    """
+    form = {**(job.get("spec_form") or {}), **(job.get("context_override") or {})}
+    building_name = str(form.get("building_name", "") or "").strip()
+    profile: BuildingPressureProfile | None = None
+    if job.get("pressure_table_csv"):
+        profile = BuildingPressureProfile.from_csv(
+            Path(job["pressure_table_csv"]), building_name=building_name)
+    elif job.get("pressure_table_xlsx"):
+        profile = BuildingPressureProfile.from_xlsx(
+            Path(job["pressure_table_xlsx"]), building_name=building_name)
+    else:
+        profile = profile_from_form(form)
+    return project_context_from_form(
+        form,
+        floor_profile=profile,
+        material_zones=job.get("material_zones"),
+        ceiling_zones=job.get("ceiling_zones"),
     )

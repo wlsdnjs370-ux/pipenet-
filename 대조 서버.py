@@ -2436,7 +2436,12 @@ def remote30_overall():
     + Stage C (stitch) + Stage D (PIPENET-native 후처리) 로 완성 SDF 생성.
     현재는 모듈 자리만 마련된 상태이고 API 는 task #14~#16 에서 추가.
     """
-    response = make_response(render_template("remote30_overall.html"))
+    from core.remote30_constants import FX_SPEC_PROFILES, FX_DEFAULT_PROFILE
+    response = make_response(render_template(
+        "remote30_overall.html",
+        fx_profile_keys=list(FX_SPEC_PROFILES),
+        fx_default_profile=FX_DEFAULT_PROFILE,
+    ))
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return response
 
@@ -2668,8 +2673,14 @@ def remote30_prototype_finalize(job_id: str):
         added_heads: [[x,y], ...]
         deleted_indices: [int, ...]
         zones: [[x1,y1,x2,y2], ...]
+        material_zones: [{"rect": [x1,y1,x2,y2], "kind": "unit_dwelling"}, ...]
         alarm_x, alarm_y: float | null (선택 — 비우면 자동)
+
+    zones 는 헤드 선정 범위, material_zones 는 관종 구역이다. 같은 사각형이라도
+    "여기서 헤드를 고른다"와 "여기 배관은 CPVC다"는 다른 주장이므로 분리한다.
     """
+    from remote30_prototype import normalize_material_zones
+
     job = _PROTOTYPE_JOBS.get(job_id)
     if not job:
         return jsonify({"ok": False, "message": f"unknown job_id {job_id}"}), 404
@@ -2683,6 +2694,7 @@ def remote30_prototype_finalize(job_id: str):
         # 분기영역 — body 우선, 없으면 스트림 재구독 때 저장해둔 job 값 재사용.
         "branch_zones": [tuple(z) for z in body.get("branch_zones",
                                                     job.get("branch_zones") or [])],
+        "material_zones": normalize_material_zones(body.get("material_zones")),
     }
     # alarm_xy 갱신 (사용자가 후속으로 변경했을 수 있음)
     ax, ay = body.get("alarm_x"), body.get("alarm_y")
@@ -2731,6 +2743,7 @@ def remote30_prototype_finalize_stream(job_id: str):
                 user_deleted_indices=job["edit"]["deleted_indices"],
                 zones=job["edit"]["zones"],
                 branch_zones=job["edit"].get("branch_zones") or None,
+                material_zones=job["edit"].get("material_zones") or None,
             ):
                 # 신축배관(FX) 검토 게이트 — stage2_complete 저장 방식과 동일하게
                 # tables/fx_review 를 job state 에 저장하고 이벤트는 그대로 프론트에 전달.
@@ -2874,7 +2887,8 @@ def remote30_overall_run():
         pressure_table_json: 압력표 직접 입력 (JSON 문자열)
     """
     import secrets
-    from remote30_full_network import zone_spec_from_form, ZoneType
+    from remote30_full_network import (
+        zone_spec_from_form, ZoneType, project_context_from_job)
 
     try:
         dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
@@ -2926,15 +2940,18 @@ def remote30_overall_run():
         return jsonify({"ok": False, "message": str(exc)}), 400
 
     _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
-    _register_job(_OVERALL_JOBS, job_id, {
+    job = {
         "dxf_path": str(dxf_path),
         "dxf_filename": dxf_path.name,
         "out_dir": str(out_dir),
         "alarm_xy": alarm_xy,
-        "spec_form": dict(request.form),  # finalize 시 ZoneSpec 재구성
+        "spec_form": dict(request.form),  # finalize 시 ProjectContext 재구성
         "pressure_table_csv": str(pressure_csv) if pressure_csv else None,
         "pressure_table_xlsx": str(pressure_xlsx) if pressure_xlsx else None,
-    })
+    }
+    _register_job(_OVERALL_JOBS, job_id, job)
+
+    ctx = project_context_from_job(job)
     return jsonify({
         "ok": True, "job_id": job_id, "dxf_filename": dxf_path.name,
         "zone_type": spec.zone_type.value, "target_floor": spec.target_floor,
@@ -2942,6 +2959,10 @@ def remote30_overall_run():
         "prv2_target_pa": spec.prv2_target_pa,
         "alarm_xy": list(alarm_xy) if alarm_xy else None,
         "pressure_table": (pressure_csv and pressure_csv.name) or (pressure_xlsx and pressure_xlsx.name),
+        # 자연낙차 시작층은 보여만 주고 고르지 않는다 — 확정은 사용자 몫.
+        "natural_fall_candidates": ctx.natural_fall_candidates(),
+        "suggested_natural_fall_floor": ctx.suggested_natural_fall_floor(),
+        "context_warnings": ctx.warning_lines(),
     })
 
 
@@ -3001,6 +3022,8 @@ def remote30_overall_finalize(job_id: str):
         return jsonify({"ok": False, "message": f"unknown job_id {job_id}"}), 404
     if "detected_heads" not in job:
         return jsonify({"ok": False, "message": "Stage A (스트림) 가 아직 끝나지 않았습니다."}), 400
+    from remote30_prototype import normalize_material_zones
+
     body = request.get_json(silent=True) or {}
     job["edit"] = {
         "added_heads": [tuple(p) for p in body.get("added_heads", [])],
@@ -3009,6 +3032,13 @@ def remote30_overall_finalize(job_id: str):
         "branch_zones": [tuple(z) for z in body.get("branch_zones",
                                                     job.get("branch_zones") or [])],
     }
+    job["material_zones"] = normalize_material_zones(body.get("material_zones"))
+    # run 이후 화면에서 확정된 값(자연낙차 시작층 등). 문자열만 받는다 —
+    # ProjectContext 가 폼 문자열과 같은 규칙으로 해석하게 두려는 것.
+    override = body.get("context_override")
+    if isinstance(override, dict):
+        job["context_override"] = {str(k): str(v) for k, v in override.items()
+                                   if v not in (None, "")}
     ax, ay = body.get("alarm_x"), body.get("alarm_y")
     if ax is not None and ay is not None:
         try:
@@ -3036,6 +3066,7 @@ def remote30_overall_finalize_stream(job_id: str):
         return jsonify({"ok": False, "message": "finalize() 먼저 호출하세요."}), 400
 
     from remote30_prototype import select_worst30_heads, build_input_tables
+    from remote30_full_network import project_context_from_job
 
     def _emit(payload: dict) -> str:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
@@ -3083,11 +3114,15 @@ def remote30_overall_finalize_stream(job_id: str):
                          "label": f"30 헤드 선정 완료 — 헤드 {len(selection.heads)}개 / "
                                   f"경로 {len(selection.edges)} edge"})
 
+            ctx = project_context_from_job(job)
+            if not ctx.project_title.strip():
+                ctx.project_title = Path(job["dxf_path"]).stem
             head_tables = build_input_tables(
                 selection,
                 pipe_entities=job.get("pipe_ents", []),
-                project_title=Path(job["dxf_path"]).stem,
-                cpvc_zones=job["edit"]["zones"] if job["edit"]["zones"] else None,
+                project_title=ctx.report_title(),
+                material_zones=ctx.material_zones or None,
+                fx_profile_key=ctx.fx_profile_key,
             )
             yield _emit({"type": "overall_progress", "phase": "stage_a_tables_done",
                          "head_nodes": len(head_tables.nodes),
@@ -3099,11 +3134,12 @@ def remote30_overall_finalize_stream(job_id: str):
             # job state 에 저장 → 웹 편집기(FX 검토 패널) → POST .../fx/finalize.
             from core.remote30_constants import FX_SPEC_PROFILES, FX_DEFAULT_PROFILE
             job["head_tables"] = head_tables.as_dict()
-            job["overall_project_stem"] = Path(job["dxf_path"]).stem
+            job["overall_project_stem"] = ctx.report_title()
             job["fx_review"] = {
                 "equipment": head_tables.equipment,   # 헤드망 FX/AV — 전량, 편집 대상
                 "profiles": FX_SPEC_PROFILES,
-                "default_profile": FX_DEFAULT_PROFILE,
+                "default_profile": (ctx.fx_profile_key if ctx.fx_profile_key in FX_SPEC_PROFILES
+                                    else FX_DEFAULT_PROFILE),
             }
             yield _emit({"type": "stage5_complete",
                          "tables": job["head_tables"],
@@ -3160,7 +3196,7 @@ def remote30_overall_fx_finalize_stream(job_id: str):
 
     from remote30_prototype import PipeTables, _validate_edited_equipment
     from remote30_full_network import (
-        zone_spec_from_form, profile_from_form, BuildingPressureProfile,
+        project_context_from_job,
         build_riser, stitch_riser_and_heads, emit_full_sdf,
     )
 
@@ -3182,24 +3218,18 @@ def remote30_overall_fx_finalize_stream(job_id: str):
                     yield _emit(dict(w))
                 head_tables.equipment = new_equipment
 
-            spec = zone_spec_from_form(job["spec_form"])
-            # 압력표 우선순위: csv → xlsx → form JSON
-            profile: BuildingPressureProfile | None = None
-            if job.get("pressure_table_csv"):
-                profile = BuildingPressureProfile.from_csv(
-                    Path(job["pressure_table_csv"]),
-                    building_name=job["spec_form"].get("building_name", ""))
-            elif job.get("pressure_table_xlsx"):
-                profile = BuildingPressureProfile.from_xlsx(
-                    Path(job["pressure_table_xlsx"]),
-                    building_name=job["spec_form"].get("building_name", ""))
-            else:
-                profile = profile_from_form(job["spec_form"])
+            ctx = project_context_from_job(job)
+            if not ctx.project_title.strip():
+                ctx.project_title = job.get("overall_project_stem") or Path(job["dxf_path"]).stem
+            warnings = ctx.warning_lines()
+            if warnings:
+                yield _emit({"type": "context_warning", "lines": warnings,
+                             "items": ctx.unconfirmed()})
 
             # ── Stage B: 라이저
             yield _emit({"type": "overall_progress", "phase": "stage_b",
-                         "msg": f"라이저 템플릿 생성 ({spec.zone_type.value})"})
-            riser = build_riser(spec, profile)
+                         "msg": f"라이저 템플릿 생성 ({ctx.zone_spec.zone_type.value})"})
+            riser = build_riser(ctx)
             yield _emit({"type": "overall_progress", "phase": "stage_b_done",
                          "riser_nodes": len(riser.nodes),
                          "riser_pipes": len(riser.pipes),
@@ -3218,8 +3248,7 @@ def remote30_overall_fx_finalize_stream(job_id: str):
             yield _emit({"type": "overall_progress", "phase": "stage_d",
                          "msg": "완성 SDF 직렬화 (PIPENET-native 후처리)"})
             out_sdf = Path(job["out_dir"]) / f"overall_{job_id}.sdf"
-            emit_full_sdf(combined, out_sdf,
-                          project_title=f"Remote 30 전체 — {spec.zone_type.value} {spec.target_floor}")
+            emit_full_sdf(combined, out_sdf, ctx=ctx)
 
             yield _emit({"type": "overall_result",
                          "sdf": out_sdf.name, "job_id": job_id,
@@ -3423,10 +3452,10 @@ def _emit_subnetwork_bundle(net, out_dir: Path, job_id: str, prefix: str,
     ZIP 으로 함께 묶는다. KFP 실패는 SDF/ZIP 출력을 막지 않는다.
     반환: {"sdf","slf","kfp","zip"} — 없으면 None.
     """
-    from remote30_full_network import emit_full_sdf
+    from remote30_full_network import ProjectContext, emit_full_sdf
     out_dir.mkdir(parents=True, exist_ok=True)
     out_sdf = out_dir / f"{prefix}_{job_id}.sdf"
-    emit_full_sdf(net, out_sdf, project_title=project_title)
+    emit_full_sdf(net, out_sdf, ctx=ProjectContext.titled(project_title))
     out_slf = out_dir / f"{prefix}_{job_id}.slf"  # emit_sdf 가 같은 폴더에 자동 생성
     out_kfp = out_dir / f"{prefix}_{job_id}.kfp"
     kfp_ok = False
@@ -3883,7 +3912,9 @@ def remote30_combined_build():
     Body (JSON):
         plane_job_id   : Remote 30 프로토타입 평면도 모드의 job_id
         plane_edit     : { added_heads:[[x,y],...], deleted_indices:[int,...],
-                           zones:[[x1,y1,x2,y2],...], alarm_x, alarm_y }
+                           zones:[[x1,y1,x2,y2],...],
+                           material_zones:[{rect:[x1,y1,x2,y2], kind:"unit_dwelling"},...],
+                           alarm_x, alarm_y }
         system_riser   : extract_riser_msp_28f 의 출력 그대로 (nodes/pipes/pumps/valves/av_node_label)
 
     Returns:
@@ -3904,6 +3935,8 @@ def remote30_combined_build():
     if not system_riser or not system_riser.get("nodes") or not system_riser.get("pipes"):
         return jsonify({"ok": False, "message": "system_riser (계통도 추출) 가 필요합니다"}), 400
 
+    from remote30_prototype import normalize_material_zones
+
     plane_edit = body.get("plane_edit") or {}
     try:
         added = [tuple(p) for p in plane_edit.get("added_heads", [])]
@@ -3911,6 +3944,7 @@ def remote30_combined_build():
         zones = [tuple(z) for z in plane_edit.get("zones", [])]
         branch_zones = [tuple(z) for z in plane_edit.get("branch_zones",
                                                          plane_job.get("branch_zones") or [])]
+        material_zones = normalize_material_zones(plane_edit.get("material_zones"))
     except (TypeError, ValueError):
         return jsonify({"ok": False, "message": "plane_edit 형식이 잘못되었습니다"}), 400
     alarm_xy = plane_job.get("alarm_xy")
@@ -3925,6 +3959,7 @@ def remote30_combined_build():
                                     select_worst30_heads_anchored,
                                     build_input_tables, HeadRegion)
     from remote30_full_network import (
+        ProjectContext,
         stitch_riser_and_heads,
         prepend_machine_room_to_riser, insert_source_pump,
         normalize_pipe_bores, size_combined_bores,
@@ -3932,6 +3967,24 @@ def remote30_combined_build():
     from hydraulic_solver import BAR_PER_M_WATER, converge_bores_by_velocity
     from kfp_sdf_converter import WT_DEFAULT_WATER_LEVEL_M
     from core.remote30_constants import FX_DEFAULT_PROFILE, FX_SPEC_PROFILES
+
+    # ── project_context 는 선택 필드다. 통합 모듈에서 넘어오면 프로젝트명·존
+    # 정보를 그대로 쓰고, 없으면 도면 stem 만 확정값으로 담아 나머지는 미확정으로
+    # 남긴다 — 이 경로의 기존 동작이 그대로 유지된다.
+    # Title 은 답안지 컨벤션이 건물명(예: "Officetell")이라 내부 식별자
+    # (SYSTEM_EXTRACT_V1)나 도구 브랜딩이 노출되지 않도록 도면 stem 을 쓴다.
+    raw_ctx = body.get("project_context")
+    try:
+        ctx = (ProjectContext.from_dict(raw_ctx) if isinstance(raw_ctx, dict)
+               else ProjectContext.titled(""))
+    except (TypeError, ValueError, AttributeError, KeyError) as exc:
+        return jsonify({"ok": False,
+                        "message": f"project_context 형식이 잘못되었습니다: {exc}"}), 400
+    if not ctx.project_title.strip():
+        ctx.project_title = (Path(plane_job.get("dxf_path", "")).stem
+                             or system_riser.get("title") or "Combined")
+    ctx.material_zones = list(material_zones or [])
+    title = ctx.report_title()
 
     # ── 가압 방식 — "gravity"(자연낙차/고가수조, 기본) | "pump"(펌프 가압).
     # 펌프 가압이면 (1) 기계실/수원을 망 최하부로 배치·재고도(고저차 lift 반영),
@@ -4015,10 +4068,10 @@ def remote30_combined_build():
         head_tables = build_input_tables(
             selection,
             pipe_entities=plane_job.get("pipe_ents", []),
-            project_title=Path(plane_job["dxf_path"]).stem,
-            cpvc_zones=zones if zones else None,
+            project_title=title,
             # W6 — anchored 작업창 밖(범례 표 등)의 관경 문자 오염 차단
             anchor_window=anchored_audit.get("anchor_window"),
+            material_zones=material_zones or None,
         )
     except Exception as exc:  # noqa: BLE001
         return _err500(exc)
@@ -4142,13 +4195,6 @@ def remote30_combined_build():
         _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
         out_dir = COMBINED_OUTPUT_DIR / job_id
         out_dir.mkdir(parents=True, exist_ok=True)
-        # 통합 Title — 업로드한 평면도 파일명(건물/도면명)을 따른다. 답안지 Title
-        # 컨벤션이 건물명(예: "Officetell")이라, 내부 식별자(SYSTEM_EXTRACT_V1)나
-        # 도구 브랜딩이 그대로 노출되지 않도록 도면 stem 을 쓴다.
-        title = (Path(plane_job.get("dxf_path", "")).stem
-                 or system_riser.get("title")
-                 or "Combined")
-
         import copy as _copy
 
         # ── z-aware 도구(K-solver/HASS)용 라이저 "참 3D 축정렬" 좌표 — KFP/HAS 만 적용.
@@ -4351,7 +4397,7 @@ def remote30_combined_build():
         def _emit_bundle(net_obj, suffix: str) -> dict:
             return _emit_format_bundle(
                 net_obj, out_dir, f"combined_{job_id}{suffix}",
-                title=title, tag=f"combined{suffix}", z_net_fn=_plan_z_net,
+                ctx=ctx, tag=f"combined{suffix}", z_net_fn=_plan_z_net,
                 kfp_coord_scale=kfp_coord_scale, has_iso_z_scale=has_iso_z_scale)
 
         # 통합 평면(2D) 뷰는 tree-packing 스키매틱 재배치를 적용하지 않고 실 DXF 추출
@@ -4424,7 +4470,7 @@ def remote30_combined_build():
     try:
         _cache_job(_COMBINED_JOBS, _COMBINED_JOBS_CAP, job_id, {
             "combined": _copy.deepcopy(combined),
-            "title": title,
+            "project_context": ctx.to_dict(),
             "zaware": _zaware_map,
             "kfp_coord_scale": kfp_coord_scale,
             "has_iso_z_scale": has_iso_z_scale,
@@ -4465,7 +4511,7 @@ def remote30_combined_build():
     })
 
 
-def _emit_format_bundle(net_obj, out_dir: Path, stem: str, *, title: str, tag: str,
+def _emit_format_bundle(net_obj, out_dir: Path, stem: str, *, ctx, tag: str,
                         z_net_fn=None, kfp_coord_scale: float = 1.0,
                         has_iso_z_scale: float = 1.0) -> dict:
     """net_obj → SDF(+동봉 SLF)/KFP/HAS/ZIP 한 세트. 빌드·편집 재출력이 공유한다.
@@ -4485,7 +4531,7 @@ def _emit_format_bundle(net_obj, out_dir: Path, stem: str, *, title: str, tag: s
     from remote30_prototype import emit_kfp as _emit_kfp, emit_has as _emit_has
 
     b_sdf = out_dir / f"{stem}.sdf"
-    emit_full_sdf(net_obj, b_sdf, project_title=title)
+    emit_full_sdf(net_obj, b_sdf, ctx=ctx)
     # PIPENET 은 .sdf 옆의 .slf 로 호칭경↔내경을 lookup 한다 — emit_sdf 가 표준
     # 라이브러리를 같은 이름으로 동봉하므로, 다운로드도 반드시 이 쌍으로 나가야 한다.
     b_slf = b_sdf.with_suffix(".slf")
@@ -4494,7 +4540,7 @@ def _emit_format_bundle(net_obj, out_dir: Path, stem: str, *, title: str, tag: s
     if z_net is not None:
         z_sdf = out_dir / f"{stem}_z.sdf"
         try:
-            emit_full_sdf(z_net, z_sdf, project_title=title)
+            emit_full_sdf(z_net, z_sdf, ctx=ctx)
         except Exception as _z_exc:  # noqa: BLE001 — 사본 실패 시 원본 좌표로 폴백
             warnings.warn(f"[{tag}] z-aware SDF emit 실패 (원본 좌표 사용): {_z_exc}",
                           RuntimeWarning, stacklevel=2)
@@ -4814,7 +4860,10 @@ def remote30_combined_rebuild():
         _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
         out_dir = COMBINED_OUTPUT_DIR / new_job
         out_dir.mkdir(parents=True, exist_ok=True)
-        title = cache.get("title") or "Combined (edited)"
+        from remote30_full_network import ProjectContext
+        ctx = ProjectContext.from_dict(cache.get("project_context") or {})
+        if not ctx.project_title.strip():
+            ctx.project_title = "Combined (edited)"
         # ── 원본 빌드가 캐시한 z-aware 표시좌표(라이저 기둥 collapse + display_z)를
         #    라벨별로 재적용해 KFP/HAS 가 원본과 동일 비율이 되게 한다. 편집으로 옮긴
         #    노드는 새 x,y 를 유지하되 display_z 는 캐시값(헤드 돌출·고도)을 쓴다.
@@ -4844,7 +4893,7 @@ def remote30_combined_rebuild():
         # SDF 만 내면 PIPENET 이 짝 .slf 를 못 찾아 내경이 Unset 이 되고, 등각 세트가
         # 없으면 등각 다운로드가 조용히 평면으로 떨어진다.
         plan_bundle = _emit_format_bundle(
-            combined, out_dir, f"combined_{new_job}", title=title,
+            combined, out_dir, f"combined_{new_job}", ctx=ctx,
             tag="combined/rebuild", z_net_fn=_edited_z_net,
             kfp_coord_scale=kfp_scale, has_iso_z_scale=has_zs)
 
@@ -4860,14 +4909,14 @@ def remote30_combined_rebuild():
         _bake_isometric_node_coords(combined_iso.nodes, has_zs, no_lift_labels=no_lift,
                                     ref_label=av_label)
         iso_bundle = _emit_format_bundle(
-            combined_iso, out_dir, f"combined_{new_job}_iso", title=title,
+            combined_iso, out_dir, f"combined_{new_job}_iso", ctx=ctx,
             tag="combined/rebuild_iso", z_net_fn=_edited_z_net,
             kfp_coord_scale=kfp_scale, has_iso_z_scale=has_zs)
 
         # 패치본을 새 job_id 로 캐시 — 연속 편집(편집→재출력→더 편집) 지원.
         # z-aware/스케일·등각 기준 라벨도 승계해 이후 편집에서도 비율을 유지한다.
         _cache_job(_COMBINED_JOBS, _COMBINED_JOBS_CAP, new_job, {
-            "combined": _copy.deepcopy(combined), "title": title,
+            "combined": _copy.deepcopy(combined), "project_context": ctx.to_dict(),
             "zaware": zaware, "kfp_coord_scale": kfp_scale, "has_iso_z_scale": has_zs,
             # 연속 편집을 위해 역할 라벨을 이월(구버전 캐시면 None → 폴백 유지).
             "riser_labels": cache.get("riser_labels"),
@@ -5159,6 +5208,17 @@ def remote30_system_extract():
     use_legacy = False
     snap_tol = 2500.0
     waypoints: list[tuple[float, float]] = []
+    profile_rows: list[dict] = []
+
+    def _parse_profile_rows(raw):
+        """압력표 JSON → 층 행 목록. 읽지 못하면 빈 목록 = 도면 추정으로 내려간다."""
+        if not raw:
+            return []
+        try:
+            data = raw if isinstance(raw, list) else json.loads(raw)
+        except (TypeError, ValueError):
+            return []
+        return [d for d in data if isinstance(d, dict) and d.get("floor_label")]
 
     def _parse_waypoints(raw):
         """waypoints 는 [[x,y], ...] JSON 문자열. 잘못된 형식은 무시(빈 리스트)."""
@@ -5183,6 +5243,7 @@ def remote30_system_extract():
         except (TypeError, ValueError):
             snap_tol = 2500.0
         waypoints = _parse_waypoints(body.get("waypoints"))
+        profile_rows = _parse_profile_rows(body.get("pressure_table_json"))
     else:
         try:
             px = float(request.form["pump_x"]); py = float(request.form["pump_y"])
@@ -5195,6 +5256,7 @@ def remote30_system_extract():
         except (TypeError, ValueError):
             snap_tol = 2500.0
         waypoints = _parse_waypoints(request.form.get("waypoints"))
+        profile_rows = _parse_profile_rows(request.form.get("pressure_table_json"))
 
     if use_legacy:
         from remote30_prototype import extract_riser_msp_28f
@@ -5235,7 +5297,8 @@ def remote30_system_extract():
             entities = entities + anno_text
         riser = extract_system_path(entities, (px, py), (ax, ay),
                                     snap_tolerance_mm=snap_tol,
-                                    waypoints=waypoints or None)
+                                    waypoints=waypoints or None,
+                                    floor_profile_rows=profile_rows or None)
         return jsonify({"ok": True, "riser": riser, "algorithm": "dxf_path_v1"})
     except ValueError as exc:
         # 사용자 입력 오류 (snap 실패 / disconnected). 프론트는 본문 ok 로 분기한다.
@@ -5402,6 +5465,18 @@ def remote30_machineroom_extract():
         except (TypeError, ValueError):
             snap_tol = 3000.0
 
+    # 천장고는 비우면 미확정(None)으로 남긴다. 0 은 "천장고가 0" 이라는 주장이라
+    # 미입력과 같지 않고, 숫자가 아니면 조용히 흡수하지 않고 되돌려준다.
+    _ceiling_raw = (request.get_json(silent=True) or {}).get("machine_room_ceiling_m") \
+        if request.is_json else request.form.get("machine_room_ceiling_m")
+    ceiling_m = None
+    if _ceiling_raw not in (None, ""):
+        try:
+            ceiling_m = float(_ceiling_raw)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False,
+                            "message": "machine_room_ceiling_m 는 숫자여야 합니다."}), 400
+
     # 사용자가 지정한 배관 레이어 — 다계통(PIPE/PIPE_MAIN/PIPE_SUB/소화수관…) 도면에서
     # '어떤 레이어가 이 기계실 배관인가'를 명시. 없으면 자동(SP 레이어→키워드) 추론.
     pipe_layers = None
@@ -5428,7 +5503,8 @@ def remote30_machineroom_extract():
                                           skip_background_over_budget=True)["entities"]
         mr = extract_machine_room_path(entities, (sx, sy), (cx, cy),
                                        layer_filter=pipe_layers,
-                                       snap_tolerance_mm=snap_tol)
+                                       snap_tolerance_mm=snap_tol,
+                                       ceiling_m=ceiling_m)
         return jsonify({"ok": True, "machine_room": mr, "algorithm": "machineroom_path_v1"})
     except ValueError as exc:
         # 사용자 입력 오류 (snap 실패 / disconnected). 프론트는 본문 ok 로 분기한다.

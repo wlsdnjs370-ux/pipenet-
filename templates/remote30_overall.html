@@ -155,6 +155,27 @@
           <p id="wb-alarm-status" class="info-line" style="margin-top: 4px; font-size: 0.7rem;">미지정 시 도면의 '배관-SP 2차' 레이어에서 자동 식별.</p>
         </div>
 
+        <!-- 과제 정보 — 비워두면 리포트 상단 [미확정] 경고에 그대로 뜬다 -->
+        <div style="margin: 10px 0; padding: 8px; background: #eef2ff; border: 1px solid #6366f1;">
+          <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: #3730a3;">과제 정보 (비우면 [미확정] 표시)</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px;">
+            <input id="ov-project-title" type="text" placeholder="프로젝트명" style="font-size: 0.72rem; padding: 3px 4px;">
+            <input id="ov-zone-name" type="text" placeholder="존 이름" style="font-size: 0.72rem; padding: 3px 4px;">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px;">
+            <input id="ov-machine-room-h" type="number" step="0.1" placeholder="기계실 천장고 m" style="font-size: 0.72rem; padding: 3px 4px;">
+            <input id="ov-roof-tank-level" type="number" step="0.1" placeholder="옥상수조 수위 m" style="font-size: 0.72rem; padding: 3px 4px;">
+          </div>
+          <p style="margin: 0 0 4px; font-size: 0.68rem; color: var(--muted);">천장고·수조 수위는 서류에만 남습니다 — 통합 산출물에는 기계실이 없어 배관망이 바뀌지 않습니다.</p>
+          <label for="ov-fx-profile" style="font-size: 0.7rem; color: var(--muted);">신축배관 규격</label>
+          <select id="ov-fx-profile" style="width: 100%; font-size: 0.72rem; padding: 3px 4px; border: 1px solid var(--line);">
+            <option value="">— 미지정 (기본값 사용) —</option>
+            {% for key in fx_profile_keys %}
+            <option value="{{ key }}">{{ key }}{% if key == fx_default_profile %} (기본){% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+
         <!-- ZONE SPEC — 10번 모듈 전용 (라이저/펌프/PRV 매개변수) -->
         <div style="margin: 10px 0; padding: 8px; background: #fef3c7; border: 1px solid #f59e0b;">
           <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: #78350f;">Zone 분류 (라이저 템플릿)</div>
@@ -198,7 +219,13 @@
 
         <!-- 계통도 + 압력표 -->
         <div style="margin: 10px 0; padding: 8px; background: #ecfdf5; border: 1px solid #16a34a;">
-          <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: #065f46;">계통도 → 압력 분포표 (선택)</div>
+          <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: #065f46;">계통도 → 압력 분포표 (필수)</div>
+          <p class="info-line" style="font-size: 0.7rem; margin: 0 0 6px;">
+            라이저 표고(옥상 진입·감압밸브 위치·대상 층)를 전부 이 표에서 뽑습니다. 표가 없으면
+            생성이 멈춥니다. 맨 윗행이 옥상, 아래로 내려갈수록 낮은 층입니다. 감압 구간이 있는 존은
+            그 층부터 <b>감압이후 m</b> 칸을 채워야 감압밸브가 몇 층에 붙는지 알 수 있고,
+            2차 감압은 그 값이 다시 낮아지는 층으로 잡습니다.
+          </p>
           <div class="field" style="margin: 0 0 6px;">
             <label for="ov-sysdg-file" style="font-size: 0.72rem;">계통도 DXF</label>
             <input id="ov-sysdg-file" type="file" accept=".dxf" style="font-size: 0.74rem;">
@@ -208,11 +235,53 @@
             <input id="ov-sysdg-roof-h" type="number" step="0.1" value="6.0" placeholder="옥상 층고 m" style="font-size: 0.72rem; padding: 3px 4px;">
           </div>
           <button id="ov-sysdg-parse" type="button" style="width: 100%; padding: 5px; background: #16a34a; color: #fff; border: none; font-size: 0.74rem; font-weight: 600; cursor: pointer;">계통도 자동 파싱 →</button>
-          <p id="ov-sysdg-status" class="info-line" style="font-size: 0.7rem; margin-top: 4px;">계통도 DXF 업로드 후 클릭 → 층/elevation 자동 추출 → 아래 textarea 에 JSON 으로 채워짐. 검토/수정 후 [▶ 배관망 생성] 클릭.</p>
-          <textarea id="ov-pressure-json" placeholder='압력표 JSON — 자동 파싱 또는 직접 입력. 예: [{"floor_label":"옥상층","height_m":6,"head_drop_m":3.1}, ...]' style="width: 100%; margin-top: 6px; padding: 4px 6px; border: 1px solid var(--line); font-size: 0.7rem; font-family: ui-monospace, monospace; min-height: 70px; resize: vertical;"></textarea>
+          <p id="ov-sysdg-status" class="info-line" style="font-size: 0.7rem; margin-top: 4px;">계통도 DXF 업로드 후 클릭 → 층/elevation 자동 추출 → 아래 표에 채워짐. 검토/수정 후 [▶ 배관망 생성] 클릭.</p>
+
+          <table style="width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 0.68rem;">
+            <thead><tr style="background: #d1fae5;">
+              <th style="text-align: left; padding: 2px 3px;">층 이름</th>
+              <th style="padding: 2px 3px; width: 15%;">층고 m</th>
+              <th style="padding: 2px 3px; width: 17%;">낙차압 m</th>
+              <th style="padding: 2px 3px; width: 17%;">감압이후 m</th>
+              <th style="text-align: left; padding: 2px 3px;">비고</th>
+              <th style="width: 18px;"></th>
+            </tr></thead>
+            <tbody id="ov-pt-tbody"></tbody>
+          </table>
+          <div style="display: flex; gap: 4px; margin-top: 4px;">
+            <button id="ov-pt-add" type="button" style="flex: 1; padding: 4px; background: #fff; border: 1px solid #16a34a; color: #065f46; font-size: 0.72rem; cursor: pointer;">+ 층 추가</button>
+            <button id="ov-pt-clear" type="button" style="padding: 4px 8px; background: #fff; border: 1px solid var(--line); color: var(--muted); font-size: 0.72rem; cursor: pointer;">표 비우기</button>
+          </div>
+          <p id="ov-pt-status" class="info-line" style="font-size: 0.68rem; margin: 4px 0 0;"></p>
+
+          <details style="margin-top: 6px;">
+            <summary style="font-size: 0.7rem; cursor: pointer; color: var(--muted);">원시 JSON 보기 / 붙여넣기</summary>
+            <textarea id="ov-pressure-json" placeholder='압력표 JSON. 예: [{"floor_label":"옥상층","height_m":6,"head_drop_m":0}, {"floor_label":"18층","height_m":2.9,"head_drop_m":13.8,"after_prv_m":2.0}, ...]' style="width: 100%; margin-top: 4px; padding: 4px 6px; border: 1px solid var(--line); font-size: 0.7rem; font-family: ui-monospace, monospace; min-height: 70px; resize: vertical;"></textarea>
+            <p class="info-line" style="font-size: 0.66rem; margin: 2px 0 0;">여기에 붙여넣고 칸 밖을 클릭하면 위 표로 옮겨집니다.</p>
+          </details>
         </div>
 
         <button id="wb-run" class="run-btn" type="button" disabled>▶ 배관망 생성</button>
+
+        <!-- 자연낙차 후보 + 미확정 경고 — run 응답으로 채워진다 -->
+        <div id="ov-context-report" style="display: none; margin: 10px 0; padding: 8px; background: #fff7ed; border: 1px solid #fb923c;">
+          <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: #7c2d12;">자연낙차 시작층 후보</div>
+          <p class="info-line" style="font-size: 0.7rem; margin: 0 0 4px;">
+            낙차압이 헤드 최소 방수압(NFTC 2.2.1.11 · 0.1 MPa ≒ 10.2 m)을 넘는 층. 자동 확정하지 않으니 직접 고르세요.
+            고른 값은 서류에만 남습니다 — 라이저 형식은 위에서 고른 존 유형이 정합니다.
+          </p>
+          <select id="ov-nf-select" style="width: 100%; font-size: 0.72rem; padding: 3px 4px; border: 1px solid var(--line);"></select>
+          <table style="width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 0.68rem;">
+            <thead><tr style="background: #ffedd5;">
+              <th style="text-align: left; padding: 2px 4px;">층</th>
+              <th style="text-align: right; padding: 2px 4px;">낙차압 m</th>
+              <th style="text-align: right; padding: 2px 4px;">필요 m</th>
+              <th style="text-align: center; padding: 2px 4px;">가능</th>
+            </tr></thead>
+            <tbody id="ov-nf-tbody"></tbody>
+          </table>
+          <div id="ov-context-warnings" style="margin-top: 6px;"></div>
+        </div>
       </section>
 
       <section id="wb-head-edit-section" style="display:none; background: #ffffff; border-left: 3px solid #f97316;">
@@ -926,6 +995,8 @@
       };
       const ax = alarmXEl.value.trim(), ay = alarmYEl.value.trim();
       if (ax && ay) { payload.alarm_x = ax; payload.alarm_y = ay; }
+      const nfSel = document.getElementById("ov-nf-select");
+      if (nfSel && nfSel.value) payload.context_override = { natural_fall_start_floor: nfSel.value };
       const r = await fetch(`/api/remote30/overall/finalize/${state.jobId}`, {
         method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload),
@@ -1012,9 +1083,18 @@
         fd.append("pump_library_name", vals("ov-pump-lib") || "SP_162M_2900LPM");
         fd.append("pump_count", vals("ov-pump-count") || "2");
       }
-      // 압력표 JSON (계통도 자동 파싱 또는 직접 입력)
-      const pjs = (document.getElementById("ov-pressure-json").value || "").trim();
-      if (pjs) fd.append("pressure_table_json", pjs);
+      // 압력표 — 표 편집기가 원본. 빈 표는 보내지 않아야 서버가 [미확정] 로 잡는다.
+      const ptRows = ptReadRows();
+      if (ptRows.length) fd.append("pressure_table_json", JSON.stringify(ptRows));
+
+      // ── 과제 정보 — 빈칸은 보내지 않는다. 서버가 [미확정] 로 잡아야 하기 때문.
+      for (const [id, field] of [["ov-project-title", "project_title"],
+                                 ["ov-zone-name", "zone_name"],
+                                 ["ov-machine-room-h", "machine_room_ceiling_m"],
+                                 ["ov-roof-tank-level", "roof_tank_water_level_m"],
+                                 ["ov-fx-profile", "fx_profile_key"]]) {
+        if (vals(id)) fd.append(field, vals(id));
+      }
 
       const res = await fetch("/api/remote30/overall/run", { method: "POST", body: fd });
       const data = await res.json();
@@ -1024,6 +1104,7 @@
         return;
       }
       state.jobId = data.job_id;
+      renderContextReport(data);
       // SSE 구독
       const es = new EventSource(`/api/remote30/overall/stream/${data.job_id}`);
       es.onmessage = (e) => {
@@ -1038,7 +1119,70 @@
       };
     });
 
+    // 자연낙차 후보 + 미확정 경고 렌더. 층 이름은 사용자 압력표에서 온 문자열이라
+    // innerHTML 이 아니라 textContent 로만 넣는다.
+    function renderContextReport(data) {
+      const box = document.getElementById("ov-context-report");
+      const tbody = document.getElementById("ov-nf-tbody");
+      const sel = document.getElementById("ov-nf-select");
+      const warnBox = document.getElementById("ov-context-warnings");
+      if (!box) return;
+      const cands = data.natural_fall_candidates || [];
+      const warns = data.context_warnings || [];
+      if (!cands.length && !warns.length) { box.style.display = "none"; return; }
+
+      tbody.replaceChildren();
+      sel.replaceChildren();
+      const blank = document.createElement("option");
+      blank.value = ""; blank.textContent = "— 미확정 (자연낙차 시작층 미지정) —";
+      sel.appendChild(blank);
+      for (const c of cands) {
+        const tr = document.createElement("tr");
+        for (const [text, align] of [[c.floor_label, "left"],
+                                     [Number(c.head_drop_m).toFixed(2), "right"],
+                                     [Number(c.required_m).toFixed(2), "right"],
+                                     [c.ok ? "○" : "✕", "center"]]) {
+          const td = document.createElement("td");
+          td.textContent = text;
+          td.style.cssText = `padding: 2px 4px; text-align: ${align}; border-top: 1px solid var(--line);`;
+          if (align === "center") td.style.color = c.ok ? "#16a34a" : "#dc2626";
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+        if (!c.ok) continue;
+        const opt = document.createElement("option");
+        opt.value = c.floor_label;
+        opt.textContent = `${c.floor_label} (낙차 ${Number(c.head_drop_m).toFixed(2)} m)`;
+        sel.appendChild(opt);
+      }
+      // 서버 추천은 커서만 올려둔다 — 확정은 사용자가 [배관망 완성] 을 누를 때.
+      sel.value = data.suggested_natural_fall_floor || "";
+
+      warnBox.replaceChildren();
+      for (const line of warns) {
+        const p = document.createElement("div");
+        p.textContent = line;
+        p.style.cssText = "font-size: 0.68rem; color: #9a3412;";
+        warnBox.appendChild(p);
+      }
+      box.style.display = "";
+    }
+
     function handleEvent(evt) {
+      if (evt.type === "context_warning") {
+        const warnBox = document.getElementById("ov-context-warnings");
+        if (warnBox) {
+          warnBox.replaceChildren();
+          for (const line of evt.lines || []) {
+            const p = document.createElement("div");
+            p.textContent = line;
+            p.style.cssText = "font-size: 0.68rem; color: #9a3412;";
+            warnBox.appendChild(p);
+          }
+          document.getElementById("ov-context-report").style.display = "";
+        }
+        return;
+      }
       // ── 10번 모듈 — overall_progress / overall_result / error 처리
       if (evt.type === "overall_progress") {
         overlayInfoEl.textContent = `[Stage B/C/D] ${evt.phase}`;
@@ -1569,11 +1713,103 @@
       }, true);  // capture: prototype 의 click 핸들러 전에
     });
 
+    // ── 10번 모듈 — 압력표 편집기.
+    // 표가 원본이고 textarea 는 거울이다. 층 이름/비고는 사용자 문자열이므로
+    // innerHTML 없이 createElement + value 로만 넣는다.
+    const PT_FIELDS = ["floor_label", "height_m", "head_drop_m", "after_prv_m", "note"];
+    const PT_TEXT_FIELDS = new Set(["floor_label", "note"]);
+    const PT_PLACEHOLDER = {
+      floor_label: "16층", height_m: "2.9", head_drop_m: "19.6",
+      after_prv_m: "감압구간만", note: "",
+    };
+
+    function ptMakeRow(row) {
+      const src = row || {};
+      const tr = document.createElement("tr");
+      for (const key of PT_FIELDS) {
+        const td = document.createElement("td");
+        td.style.padding = "1px 2px";
+        const inp = document.createElement("input");
+        inp.type = PT_TEXT_FIELDS.has(key) ? "text" : "number";
+        if (inp.type === "number") inp.step = "0.01";
+        inp.dataset.ptField = key;
+        inp.placeholder = PT_PLACEHOLDER[key];
+        const v = src[key];
+        inp.value = (v === null || v === undefined) ? "" : String(v);
+        inp.style.cssText = "width:100%;box-sizing:border-box;padding:2px 3px;"
+          + "border:1px solid var(--line);font-size:0.68rem;";
+        if (!PT_TEXT_FIELDS.has(key)) inp.style.textAlign = "right";
+        inp.addEventListener("input", ptSync);
+        td.appendChild(inp);
+        tr.appendChild(td);
+      }
+      const tdDel = document.createElement("td");
+      const del = document.createElement("button");
+      del.type = "button"; del.textContent = "✕"; del.title = "이 층 삭제";
+      del.style.cssText = "border:none;background:none;cursor:pointer;color:#b91c1c;font-size:0.7rem;";
+      del.addEventListener("click", () => { tr.remove(); ptSync(); });
+      tdDel.appendChild(del);
+      tr.appendChild(tdDel);
+      return tr;
+    }
+
+    // 표 → 행 배열. 층 이름이 빈 행은 아직 안 채운 행으로 보고 내보내지 않는다.
+    function ptReadRows() {
+      const rows = [];
+      for (const tr of document.getElementById("ov-pt-tbody").rows) {
+        const row = {};
+        for (const inp of tr.querySelectorAll("input[data-pt-field]")) {
+          const raw = inp.value.trim();
+          if (!raw) continue;
+          const key = inp.dataset.ptField;
+          row[key] = PT_TEXT_FIELDS.has(key) ? raw : Number(raw);
+        }
+        if (row.floor_label) rows.push(row);
+      }
+      return rows;
+    }
+
+    function ptSetRows(rows) {
+      const tbody = document.getElementById("ov-pt-tbody");
+      tbody.replaceChildren();
+      for (const r of (rows || [])) tbody.appendChild(ptMakeRow(r));
+      if (!tbody.rows.length) tbody.appendChild(ptMakeRow(null));
+      ptSync();
+    }
+
+    function ptSync() {
+      const rows = ptReadRows();
+      document.getElementById("ov-pressure-json").value =
+        rows.length ? JSON.stringify(rows, null, 2) : "";
+      document.getElementById("ov-pt-status").textContent = rows.length
+        ? `${rows.length}개 층 입력됨 — 맨 윗행이 옥상(라이저 진입 표고의 근거)입니다.`
+        : "층이 아직 없습니다. 계통도 자동 파싱을 돌리거나 층을 직접 추가하세요.";
+    }
+
+    (function setupPressureTable() {
+      document.getElementById("ov-pt-add").addEventListener("click", () => {
+        document.getElementById("ov-pt-tbody").appendChild(ptMakeRow(null));
+        ptSync();
+      });
+      document.getElementById("ov-pt-clear").addEventListener("click", () => ptSetRows([]));
+      // 붙여넣기 흡수 — 읽지 못하면 표를 덮어쓰지 않고 이유만 말한다.
+      document.getElementById("ov-pressure-json").addEventListener("change", (ev) => {
+        const raw = ev.target.value.trim();
+        const st = document.getElementById("ov-pt-status");
+        if (!raw) { ptSetRows([]); return; }
+        let parsed;
+        try { parsed = JSON.parse(raw); }
+        catch (e) { st.textContent = `❌ JSON 을 읽지 못했습니다 (표는 그대로): ${e.message}`; return; }
+        if (!Array.isArray(parsed)) { st.textContent = "❌ 압력표는 층 목록(대괄호 배열)이어야 합니다."; return; }
+        ptSetRows(parsed);
+      });
+      ptSetRows([]);
+    })();
+
     // ── 10번 모듈 — 계통도 자동 파싱 핸들러
     document.getElementById("ov-sysdg-parse").addEventListener("click", async () => {
       const fileEl = document.getElementById("ov-sysdg-file");
       const statusEl = document.getElementById("ov-sysdg-status");
-      const jsonEl = document.getElementById("ov-pressure-json");
       if (!fileEl.files[0]) { statusEl.textContent = "❌ 계통도 DXF 를 먼저 선택하세요."; return; }
       statusEl.textContent = "⏳ 파싱 중...";
       const fd = new FormData();
@@ -1584,9 +1820,8 @@
         const res = await fetch("/api/remote30/overall/parse-system-diagram", { method: "POST", body: fd });
         const data = await res.json();
         if (!data.ok) { statusEl.textContent = `❌ 파싱 실패: ${data.message}`; return; }
-        // floors 를 JSON 텍스트로 채움 (사용자가 검토/수정 가능)
-        jsonEl.value = JSON.stringify(data.floors, null, 2);
-        statusEl.textContent = `✓ ${data.n_floors} 층 자동 추출 — 검토 후 [▶ 배관망 생성] 클릭. 옥상층/지하층 등 누락 시 textarea 에서 직접 추가.`;
+        ptSetRows(data.floors);
+        statusEl.textContent = `✓ ${data.n_floors} 층 자동 추출 — 검토 후 [▶ 배관망 생성] 클릭. 옥상층/지하층 등 누락 시 [+ 층 추가] 로 채우세요.`;
       } catch (err) {
         statusEl.textContent = `❌ 네트워크 오류: ${err.message}`;
       }

@@ -113,6 +113,18 @@ CPVC_PIPE_TYPE = "CPVC2"
 CPVC_C_FACTOR = "150"
 ORTHO_SNAP_TOL_DEG = 20.0
 
+# ── 구역 유형 → 관종 매핑 ──────────────────────────────────────────
+# 사용자가 화면에서 그린 구역에는 유형 태그가 붙는다. 유형은 "헤드를 어디서 고를까"
+# 와 무관하게 "이 구간 배관이 무엇으로 되어 있나"만 뜻한다.
+# DXF 에 재질 정보가 없으므로 유형은 사람이 지정해야 하고, 지정이 없으면 강관이다.
+ZONE_KIND_UNIT_DWELLING = "unit_dwelling"
+ZONE_MATERIAL_MAP: dict[str, tuple[str, str]] = {
+    ZONE_KIND_UNIT_DWELLING: (CPVC_PIPE_TYPE, CPVC_C_FACTOR),
+    "parking": (STEEL_PIPE_TYPE, STEEL_C_FACTOR),
+    "corridor": (STEEL_PIPE_TYPE, STEEL_C_FACTOR),
+}
+DEFAULT_ZONE_MATERIAL = (STEEL_PIPE_TYPE, STEEL_C_FACTOR)
+
 
 # ── 신축배관(FX) 규격 프로파일 — "표 1" (원본 규격표) ──────────────
 # 값은 여기에만 존재한다. build_input_tables 등 사용처는 반드시 이 dict를 참조.

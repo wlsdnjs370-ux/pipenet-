@@ -128,7 +128,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, NON_PIPE_GEOMETRY_CATS, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, HEAD_CONNECTOR_MAX_MM, HEAD_CONNECTOR_TOUCH_MM, HEAD_CONNECTOR_MAX_SEGS, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, NON_PIPE_GEOMETRY_CATS, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, HEAD_CONNECTOR_MAX_MM, HEAD_CONNECTOR_TOUCH_MM, HEAD_CONNECTOR_MAX_SEGS, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ZONE_MATERIAL_MAP, DEFAULT_ZONE_MATERIAL, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 
 def _categorize_layer(name: str) -> str:
@@ -5404,6 +5404,24 @@ def _point_in_zones(px: float, py: float,
     return False
 
 
+def _zone_material_at(px: float, py: float,
+                      material_zones: list[dict] | None) -> tuple[str, str, str]:
+    """점 → (관종, C factor, 근거). 겹치면 먼저 그린 구역이 이긴다.
+
+    유형이 안 붙었거나 모르는 유형이면 CPVC 로 찍지 않고 강관 기본값으로 떨어진다
+    (DXF 에 재질 정보가 없으므로 '모름'은 CPVC 가 아니라 기본값이다).
+    """
+    for zone in material_zones or []:
+        rect = zone.get("rect")
+        if not rect or not _point_in_zones(px, py, [rect]):
+            continue
+        material = ZONE_MATERIAL_MAP.get(zone.get("kind"))
+        if material:
+            return material[0], material[1], "zone"
+        break
+    return DEFAULT_ZONE_MATERIAL[0], DEFAULT_ZONE_MATERIAL[1], "default"
+
+
 # 가지배관 직각화 각도 임계값(deg) — 가지 edge 가 축(0/90°)에서 이 이내면 축정렬로
 # 스냅, 45° 근방(진짜 대각선)은 실좌표 유지. 표시 전용(length_mm·연결 불변).
 
@@ -5704,13 +5722,15 @@ def build_input_tables(
     pipe_entities: list[dict] | None = None,
     *,
     project_title: str = "Remote 30 Prototype",
-    cpvc_zones: list[tuple[float, float, float, float]] | None = None,
+    material_zones: list[dict] | None = None,
     anchor_window=None,
 ) -> PipeTables:
     """선정 결과 → 5 테이블. pipe_entities 가 있으면 FX(flexible) Equipment 도 추출.
 
-    cpvc_zones: 이 영역(단위세대 내부) 안에 배관 중점이 들어오면 CPVC(C=150)로 표기.
-    비어있으면 전 배관 강관(C=120).
+    material_zones: 관종 구역. `[{"rect": (x1,y1,x2,y2), "kind": "unit_dwelling"}, ...]`.
+        헤드 선정 영역(zones)과는 별개 개념이다 — 같은 사각형이라도 "여기서 헤드를
+        고른다"와 "여기 배관은 CPVC다"는 다른 주장이다. 유형이 없거나 매핑에 없는
+        구역은 강관 기본값으로 떨어지고 관로에 material_source="default" 가 남는다.
     anchor_window: anchored 모드의 작업창 W(contains(pt) 노출 객체). 지정 시 관경
         텍스트 후보를 W 내부로 제한 — 범례 표(x≈288k)의 관경 문자 오염 차단(W6).
         None(비-anchored)이면 기존과 동일.
@@ -5888,17 +5908,15 @@ def build_input_tables(
         plabel = str(pipe_label_counter)
         edge_key_to_pipe[(min(a, b), max(a, b))] = plabel
         dia = _pipe_diameter(a, b)
-        # 배관 중점이 사용자 지정 CPVC 영역(단위세대) 안이면 CPVC, 아니면 강관.
         mx, my = (a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0
-        if _point_in_zones(mx, my, cpvc_zones):
-            ptype, cfac = CPVC_PIPE_TYPE, CPVC_C_FACTOR
+        ptype, cfac, msource = _zone_material_at(mx, my, material_zones)
+        if ptype == CPVC_PIPE_TYPE:
             cpvc_pipe_count += 1
-        else:
-            ptype, cfac = STEEL_PIPE_TYPE, STEEL_C_FACTOR
         tables.pipes.append({
             "label": plabel,
             "in": la, "out": lb,
             "type": ptype,
+            "material_source": msource,
             "dia": dia,
             # PIPENET/K-solver 는 length=0 배관을 거부(특이행렬). 좌표가 거의 겹치는
             # 노드쌍(클러스터 잔여)은 round 후 0.0 이 되므로 10mm 하한 강제.
@@ -7079,11 +7097,15 @@ def run_stages_3_5(
     user_deleted_indices: list[int] | None = None,
     zones: list[tuple[float, float, float, float]] | None = None,
     branch_zones: list[tuple[float, float, float, float]] | None = None,
+    material_zones: list[dict] | None = None,
 ) -> Iterator[dict]:
     """사용자 편집 결과를 받아 Stage 3~5 실행.
 
     edited_heads = detected_heads - deleted_indices + user_added
     그 다음 select_worst30_heads(zones=zones, manual_heads=edited_heads).
+
+    zones 는 헤드 선정 범위, material_zones 는 관종 구역이다. 예전엔 zones 를
+    그대로 CPVC 구역으로 넘겨서 지하주차장까지 CPVC 로 찍혔다.
     """
     t0 = time.time()
     def evt(d):
@@ -7152,7 +7174,7 @@ def run_stages_3_5(
     # Stage 5: 5 테이블 (기존 4)
     yield evt({"type": "stage", "stage": 5, "status": "running", "label": "Nodes/Pipes/Nozzles/Fittings/Equipment 테이블 생성"})
     tables = build_input_tables(selection, pipe_entities=pipe_ents, project_title=dxf_path.stem,
-                                cpvc_zones=zones)
+                                material_zones=material_zones)
     csv_dir = out_dir / "csv"
     csv_paths = write_csv_tables(tables, csv_dir, prefix=f"prototype_{job_id}")
     xlsx_path = out_dir / f"prototype_{job_id}.xlsx"
@@ -7334,6 +7356,7 @@ def run_stages_3_6(
     user_added_heads: list[tuple[float, float]] | None = None,
     user_deleted_indices: list[int] | None = None,
     zones: list[tuple[float, float, float, float]] | None = None,
+    material_zones: list[dict] | None = None,
 ) -> Iterator[dict]:
     """하위호환 원샷 래퍼 — 기존 run_stages_3_5(스테이지 3~6 일괄) 동작 재현.
 
@@ -7346,6 +7369,7 @@ def run_stages_3_6(
         dxf_path, out_dir, job_id, pipe_ents, layer_categories, detected_heads_pos,
         k_heads=k_heads, alarm_xy=alarm_xy, user_added_heads=user_added_heads,
         user_deleted_indices=user_deleted_indices, zones=zones,
+        material_zones=material_zones,
     ):
         if ev.get("type") == "stage5_complete":
             tables = PipeTables.from_dict(ev["tables"])

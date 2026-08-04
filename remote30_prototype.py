@@ -128,7 +128,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, NON_PIPE_GEOMETRY_CATS, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, HEAD_CONNECTOR_MAX_MM, HEAD_CONNECTOR_TOUCH_MM, HEAD_CONNECTOR_MAX_SEGS, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ZONE_MATERIAL_MAP, DEFAULT_ZONE_MATERIAL, ZONE_KIND_PARKING, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, LOCAL_RISE_RULES, ELEV_SOURCE_USER, ELEV_SOURCE_DRAWING, ELEV_SOURCE_DEFAULT, ELEV_SOURCE_UNRESOLVED, ELEV_SOURCE_ORDER, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, NON_PIPE_GEOMETRY_CATS, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, HEAD_CONNECTOR_MAX_MM, HEAD_CONNECTOR_TOUCH_MM, HEAD_CONNECTOR_MAX_SEGS, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ZONE_MATERIAL_MAP, DEFAULT_ZONE_MATERIAL, ZONE_KIND_PARKING, ZONE_KIND_UNIT_DWELLING, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, LOCAL_RISE_RULES, ELEV_SOURCE_USER, ELEV_SOURCE_DRAWING, ELEV_SOURCE_DEFAULT, ELEV_SOURCE_UNRESOLVED, ELEV_SOURCE_ORDER, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 
 def _categorize_layer(name: str) -> str:
@@ -5548,6 +5548,26 @@ def _local_rise(a: tuple[float, float], b: tuple[float, float],
     return (drop if kind_b == ZONE_KIND_PARKING else -drop), ELEV_SOURCE_DEFAULT
 
 
+def _head_feed_rise(head_pos: tuple[float, float], head_is_out: bool,
+                    material_zones: list[dict] | None) -> tuple[float, str]:
+    """가지관 ↔ 헤드 한 토막의 (표고차 m, 출처).
+
+    세대 안은 하향식이고 그 낙차는 신축배관이 실배관으로 방출될 때 붙으므로 여기서는
+    수평이다. 세대 밖(주차장·복도)은 상향식이라 KS D 3507 촛대 길이만큼 헤드가 위로
+    올라간다 — 수직 니플이라 길이가 곧 상승분이다. 구역을 안 지정한 도면은 상향/하향을
+    알 방법이 없으므로 0 으로 두되 미확정으로 센다.
+    """
+    kind = _zone_kind_at(head_pos[0], head_pos[1], material_zones)
+    if not kind:
+        return 0.0, ELEV_SOURCE_UNRESOLVED
+    if kind == ZONE_KIND_UNIT_DWELLING:
+        return 0.0, ELEV_SOURCE_DEFAULT
+    rise = LOCAL_RISE_RULES.get("upright_riser_nipple_m")
+    if rise is None:
+        return 0.0, ELEV_SOURCE_UNRESOLVED
+    return (rise if head_is_out else -rise), ELEV_SOURCE_DEFAULT
+
+
 # 가지배관 직각화 각도 임계값(deg) — 가지 edge 가 축(0/90°)에서 이 이내면 축정렬로
 # 스냅, 45° 근방(진짜 대각선)은 실좌표 유지. 표시 전용(length_mm·연결 불변).
 
@@ -6042,8 +6062,9 @@ def build_input_tables(
         if ptype == CPVC_PIPE_TYPE:
             cpvc_pipe_count += 1
         if a in head_positions or b in head_positions:
-            # 헤드까지 내려가는 촛대/드롭 높이는 평면도에 없고 사내 통계도 아직 없다.
-            elev_m, elev_src = 0.0, ELEV_SOURCE_UNRESOLVED
+            head_is_out = b in head_positions
+            elev_m, elev_src = _head_feed_rise(b if head_is_out else a,
+                                               head_is_out, material_zones)
         else:
             elev_m, elev_src = _local_rise(a, b, material_zones)
         tables.pipes.append({
@@ -6054,7 +6075,8 @@ def build_input_tables(
             "dia": dia,
             # PIPENET/K-solver 는 length=0 배관을 거부(특이행렬). 좌표가 거의 겹치는
             # 노드쌍(클러스터 잔여)은 round 후 0.0 이 되므로 10mm 하한 강제.
-            "length": max(round(length_mm / 1000.0, 3), 0.01),
+            # |표고차| > 길이 인 관도 거부하므로(피타고라스) 촛대만큼은 늘려준다.
+            "length": max(round(length_mm / 1000.0, 3), 0.01, abs(elev_m)),
             "elev": elev_m,
             "elev_source": elev_src,
             "c": cfac,

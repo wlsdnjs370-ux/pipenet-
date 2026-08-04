@@ -88,6 +88,7 @@ INSIDE_B = (4000.0, 0.0)
 OUTSIDE = (1000.0, 0.0)
 PARKING_ZONE = [{"rect": PARKING_RECT, "kind": ZONE_KIND_PARKING}]
 BEAM_DROP = LOCAL_RISE_RULES["parking_beam_drop_m"]
+NIPPLE = LOCAL_RISE_RULES["upright_riser_nipple_m"]
 
 
 def test_주차장_안에서만_도는_관로는_수평():
@@ -124,12 +125,38 @@ def _plane_tables(material_zones=None):
     return rp.build_input_tables(selection, material_zones=material_zones)
 
 
-def test_헤드로_내려가는_관로는_미확정():
-    """촛대/드롭 높이는 평면도에 없고 사내 통계도 아직 없다."""
+PLANE_ZONE = (-1000.0, -1000.0, 5000.0, 1000.0)
+
+
+def _zoned(kind):
+    return [{"rect": PLANE_ZONE, "kind": kind}]
+
+
+def test_주차장_헤드는_촛대만큼_올라간다():
+    """KS D 3507 상향식 니플은 수직이라 길이가 곧 상승분이다."""
+    pipes = _plane_tables(material_zones=_zoned(ZONE_KIND_PARKING)).pipes
+    head_pipe = next(p for p in pipes if p["elev"] != 0.0)
+    assert head_pipe["elev"] == NIPPLE
+    assert {p["elev_source"] for p in pipes} == {ELEV_SOURCE_DEFAULT}
+
+
+def test_촛대가_평면_길이보다_길면_관_길이를_늘린다():
+    """PIPENET 은 |표고차| > 길이 인 관을 거부한다 (피타고라스)."""
+    pipes = _plane_tables(material_zones=_zoned(ZONE_KIND_PARKING)).pipes
+    assert all(p["length"] >= abs(p["elev"]) for p in pipes)
+
+
+def test_세대_안_헤드는_수평_낙차는_신축배관_몫():
+    pipes = _plane_tables(material_zones=_zoned(ZONE_KIND_UNIT_DWELLING)).pipes
+    assert {p["elev"] for p in pipes} == {0.0}
+    assert {p["elev_source"] for p in pipes} == {ELEV_SOURCE_DEFAULT}
+
+
+def test_구역을_안_지정하면_상향_하향을_모른다():
+    """상향/하향은 도면에 없다. 구역이 없으면 0 을 쓰되 주장하지 않는다."""
     pipes = _plane_tables().pipes
     sources = [p["elev_source"] for p in pipes]
     assert sources.count(ELEV_SOURCE_UNRESOLVED) == 1   # 헤드가 달린 관로만
-    assert sources.count(ELEV_SOURCE_DEFAULT) == 1
     assert {p["elev"] for p in pipes} == {0.0}
 
 

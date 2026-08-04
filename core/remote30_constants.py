@@ -179,8 +179,10 @@ ELEV_SOURCE_ORDER = (ELEV_SOURCE_USER, ELEV_SOURCE_DRAWING,
 # 나오면 값만 갈아끼운다. None 은 "아직 근거 없음" — 0 과 다르다.
 LOCAL_RISE_RULES: dict[str, float | None] = {
     "parking_beam_drop_m": -0.3,       # 지하주차장 보 하단 하향
-    "upright_riser_nipple_m": None,    # 상향식 촛대 — 사내 통계 대기, 미확정
-    "fx_drop_m": FX_RISE_M,            # 신축배관 드롭
+    # 상향식 촛대 — KS D 3507 배관용 탄소강관. 수직이라 길이가 곧 상승분이다.
+    # 세대 내 하향식은 신축배관(FX)이 맡는다: 길이 0.7m 는 FX_SPEC_PROFILES
+    # phys_len_m, 표고차는 FX_RISE_M. 관이 휘어 돌아 길이 ≠ 낙차다.
+    "upright_riser_nipple_m": 0.3,
 }
 
 

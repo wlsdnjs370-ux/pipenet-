@@ -1029,7 +1029,7 @@ _routes_feedback.register(
 import routes.r30_inspect as _routes_r30_inspect
 _routes_r30_inspect.register(
     app, INSPECT_CACHE_DIR=INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION=INSPECT_CACHE_VERSION,
-    _save_upload=_save_upload)
+    _save_upload=_save_upload, UPLOAD_DIR=UPLOAD_DIR)
 import routes.r30_combined as _routes_r30_combined
 _routes_r30_combined.register(
     app, COMBINED_OUTPUT_DIR=COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR=OVERALL_OUTPUT_DIR,

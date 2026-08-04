@@ -13,9 +13,11 @@ import json
 import math
 import os
 import threading
+import uuid
 from pathlib import Path
 
-from flask import Response, jsonify
+from flask import Response, jsonify, request
+from werkzeug.utils import secure_filename
 
 from core.dxf_parse_progress import parse_dxf_with_progress
 
@@ -55,7 +57,33 @@ def _inspect_layer_visibility(doc):
     return doc_layer_info, hidden_layers
 
 
-def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload):
+def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload, UPLOAD_DIR):
+
+    def _token_path(token: str) -> Path | None:
+        """이미 업로드된 파일 이름(토큰) → 경로. 업로드 폴더 밖이면 None."""
+        token = (token or "").strip()
+        if not token or secure_filename(token) != token:
+            return None
+        candidate = UPLOAD_DIR / token
+        if candidate.is_file() and candidate.suffix.lower() == ".dxf":
+            return candidate
+        return None
+
+    @app.post("/api/remote30/upload")
+    def remote30_upload():
+        """DXF 업로드만 하고 토큰을 반환 — 렌더 스트림과 요청을 분리하기 위함.
+
+        업로드 진행률은 XHR 로만 얻을 수 있는데, XHR 은 응답 전체를 responseText 에
+        붙들고 있는다. LH 지하층배관도의 inspect NDJSON 은 비압축 173MB 라 그대로
+        메모리에 남는다. 업로드를 이 작은 응답으로 떼어내면 스트림 쪽은
+        fetch + ReadableStream 으로 읽어 소비한 청크를 즉시 버릴 수 있다.
+        """
+        try:
+            dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
+        except ValueError as exc:
+            return jsonify({"ok": False, "message": str(exc)}), 400
+        return jsonify({"ok": True, "dxf_token": dxf_path.name,
+                        "dxf_filename": dxf_path.name})
 
     def _inspect_cache_paths(dxf_path: Path):
         """도면 내용 해시 기반 inspect 렌더 캐시 경로 → (entities_gz, meta_json).
@@ -79,11 +107,13 @@ def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload):
 
     @app.post("/api/remote30/inspect")
     def remote30_inspect():
-        """DXF 업로드 → 모든 entity JSON + 레이어 통계 + 카테고리 자동 추천."""
-        try:
-            dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
-        except ValueError as exc:
-            return jsonify({"ok": False, "message": str(exc)}), 400
+        """DXF(업로드 또는 dxf_token) → 모든 entity JSON + 레이어 통계 + 카테고리 추천."""
+        dxf_path = _token_path(request.form.get("dxf_token", ""))
+        if dxf_path is None:
+            try:
+                dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
+            except ValueError as exc:
+                return jsonify({"ok": False, "message": str(exc)}), 400
 
         dxf_name = dxf_path.name
 
@@ -575,10 +605,15 @@ def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload):
         def _stream():
             # 캐시 미스 → 렌더하며 NDJSON 스트리밍하고, 동시에 gzip 캐시에 tee.
             tmp_ent = None
+            tmp_meta = None
             gz_out = None
             committed = False
+            # 캐시 키는 도면 내용 해시라 같은 도면을 동시에 올린 두 요청이 같은 키를
+            # 쓴다. tmp 이름까지 같으면 서로의 gzip 에 끼어 쓰고, 먼저 끝난 쪽이
+            # commit 한 파일을 늦게 끝난 쪽의 정리 코드가 지운다.
+            tmp_tag = f".{uuid.uuid4().hex[:12]}.tmp"
             if cache_ent_path is not None:
-                tmp_ent = cache_ent_path.with_suffix(".tmp")
+                tmp_ent = cache_ent_path.with_suffix(tmp_tag)
                 try:
                     gz_out = gzip.open(tmp_ent, "wt", encoding="utf-8")
                 except Exception:
@@ -628,7 +663,7 @@ def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload):
                             "bg_entities": bg_status["entities"],
                             "bg_budget": BG_ENTITY_BUDGET,
                         }
-                        tmp_meta = cache_meta_path.with_suffix(".tmp")
+                        tmp_meta = cache_meta_path.with_suffix(tmp_tag)
                         tmp_meta.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
                         os.replace(tmp_ent, cache_ent_path)
                         os.replace(tmp_meta, cache_meta_path)
@@ -641,10 +676,13 @@ def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload):
                         gz_out.close()
                     except Exception:
                         pass
-                if not committed and tmp_ent is not None and tmp_ent.exists():
-                    try:
-                        tmp_ent.unlink()
-                    except Exception:
-                        pass
+                if not committed:
+                    for leftover in (tmp_ent, tmp_meta):
+                        if leftover is None:
+                            continue
+                        try:
+                            leftover.unlink(missing_ok=True)
+                        except Exception:
+                            pass
 
         return Response(_stream(), mimetype="application/x-ndjson")

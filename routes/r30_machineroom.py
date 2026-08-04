@@ -147,8 +147,8 @@ def register(app, *, COMBINED_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR, OVERALL_OUTPUT
                                            snap_tolerance_mm=snap_tol)
             return jsonify({"ok": True, "machine_room": mr, "algorithm": "machineroom_path_v1"})
         except ValueError as exc:
-            # 사용자 입력 오류 (snap 실패 / disconnected) — 상태코드 200.
+            # 사용자 입력 오류 (snap 실패 / disconnected). 프론트는 본문 ok 로 분기한다.
             return jsonify({"ok": False, "message": str(exc),
-                            "algorithm": "machineroom_path_v1"}), 200
+                            "algorithm": "machineroom_path_v1"}), 400
         except Exception as exc:  # noqa: BLE001
             return _err500(exc, algorithm="machineroom_path_v1")

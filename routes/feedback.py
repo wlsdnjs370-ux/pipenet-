@@ -8,11 +8,17 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
 from datetime import datetime
 from pathlib import Path
 
 from flask import jsonify, request, send_file
 from werkzeug.utils import secure_filename
+
+# 게시글 저장소는 JSON 파일 한 장이라 등록이 read-modify-write 다. waitress 는
+# 멀티스레드라 동시 등록 시 나중 쓰기가 앞선 글을 통째로 덮어쓴다(유실).
+_POSTS_LOCK = threading.Lock()
 
 
 def register(app, *, FEEDBACK_POSTS_PATH, FEEDBACK_UPLOAD_DIR):
@@ -36,8 +42,11 @@ def register(app, *, FEEDBACK_POSTS_PATH, FEEDBACK_UPLOAD_DIR):
     def _save_feedback_posts(posts: list[dict]) -> None:
         FEEDBACK_POSTS_PATH.parent.mkdir(parents=True, exist_ok=True)
         ordered = sorted(posts, key=lambda item: str(item.get("created_at", "")), reverse=True)
-        with FEEDBACK_POSTS_PATH.open("w", encoding="utf-8") as fp:
-            json.dump({"posts": ordered}, fp, ensure_ascii=False, indent=2)
+        # 목록 조회가 반쯤 쓰인 파일을 읽고 빈 목록으로 되돌아가지 않도록 원자 교체.
+        tmp = FEEDBACK_POSTS_PATH.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"posts": ordered}, ensure_ascii=False, indent=2),
+                       encoding="utf-8")
+        os.replace(tmp, FEEDBACK_POSTS_PATH)
 
     def _clean_feedback_text(value: object, limit: int) -> str:
         text = str(value or "").strip()
@@ -81,7 +90,6 @@ def register(app, *, FEEDBACK_POSTS_PATH, FEEDBACK_UPLOAD_DIR):
         if not body:
             return jsonify({"ok": False, "message": "개선의견 내용을 입력해주세요."}), 400
 
-        posts = _load_feedback_posts()
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M")
         post_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
         attachment = _save_feedback_attachment(post_id)
@@ -93,8 +101,10 @@ def register(app, *, FEEDBACK_POSTS_PATH, FEEDBACK_UPLOAD_DIR):
             "created_at": created_at,
             "attachment": attachment,
         }
-        posts.insert(0, post)
-        _save_feedback_posts(posts[:300])
+        with _POSTS_LOCK:
+            posts = _load_feedback_posts()
+            posts.insert(0, post)
+            _save_feedback_posts(posts[:300])
         return jsonify({"ok": True, "message": "개선의견이 등록되었습니다.", "post": post})
 
     @app.get("/api/feedback-attachments/<path:filename>")

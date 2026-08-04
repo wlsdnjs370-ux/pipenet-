@@ -7,9 +7,14 @@ _save_pressure_table_upload 는 overall 전용이라 이 모듈로 이동."""
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 from flask import Response, jsonify, make_response, render_template, request
+
+# 같은 job_id 재구독 시 두 제너레이터가 하나의 job 딕셔너리에 스테이지별로 나눠
+# 쓰는 것을 막는다 — r30_prototype.py 와 동일한 이유.
+_JOB_LOCK = threading.Lock()
 
 
 def _save_pressure_table_upload(field_name: str, out_dir: Path) -> Path | None:
@@ -151,15 +156,17 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                 pass
 
         def _gen():
+            stream_layers: list = []
             try:
                 for evt in run_stages_0_2(Path(job["dxf_path"]), job_id,
                                            alarm_xy=job.get("alarm_xy"),
                                            branch_zones=job.get("branch_zones")):
+                    patch = None
                     if evt.get("type") == "entities" and evt.get("stage") == 1:
-                        job["pipe_ents"] = evt["entities"]
+                        patch = {"pipe_ents": evt["entities"]}
                     elif evt.get("type") == "entities" and evt.get("stage") == 0:
-                        job["layers"] = evt["layers"]
-                        job["bbox"] = evt["bbox"]
+                        stream_layers = evt["layers"]
+                        patch = {"layers": stream_layers, "bbox": evt["bbox"]}
                     elif evt.get("type") == "entities" and evt.get("stage") == 2:
                         detected = []
                         for be in evt["entities"]:
@@ -169,8 +176,12 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                                 detected.append({"pos": [cx, cy], "bbox": p,
                                                  "k": be.get("k", ""), "c": be.get("c", 0),
                                                  "i": be.get("i", 0)})
-                        job["detected_heads"] = detected
-                        job["layer_cat"] = {l["name"]: l["auto_category"] for l in job.get("layers", [])}
+                        patch = {"detected_heads": detected,
+                                 "layer_cat": {l["name"]: l["auto_category"]
+                                               for l in stream_layers}}
+                    if patch is not None:
+                        with _JOB_LOCK:
+                            job.update(patch)
                     yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
             except Exception as exc:  # noqa: BLE001
                 err = {"type": "error", "message": str(exc)[:500]}

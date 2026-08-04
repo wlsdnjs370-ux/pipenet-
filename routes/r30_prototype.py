@@ -8,9 +8,15 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 from flask import Response, jsonify, make_response, render_template, request
+
+# 같은 job_id 를 두 번 구독하면(재구독·새로고침) 두 제너레이터가 하나의 job
+# 딕셔너리에 스테이지별로 나눠 쓴다. 한쪽의 layers 와 다른쪽의 detected_heads 가
+# 섞이면 finalize 가 어긋난 상태를 본다.
+_JOB_LOCK = threading.Lock()
 
 
 def register(app, *, _save_upload, _register_job, _serve_run_file,
@@ -88,16 +94,19 @@ def register(app, *, _save_upload, _register_job, _serve_run_file,
                 pass
 
         def _gen():
+            # 스테이지 산출은 이 스트림의 로컬 값으로만 만들고 한 번에 반영한다.
+            stream_layers: list = []
             try:
                 for evt in run_stages_0_2(Path(job["dxf_path"]), job_id,
                                            alarm_xy=job.get("alarm_xy"),
                                            branch_zones=job.get("branch_zones")):
                     # 마지막 awaiting_finalize 이벤트 직전에 detected_heads 데이터를 job 에 저장
+                    patch = None
                     if evt.get("type") == "entities" and evt.get("stage") == 1:
-                        job["pipe_ents"] = evt["entities"]
+                        patch = {"pipe_ents": evt["entities"]}
                     elif evt.get("type") == "entities" and evt.get("stage") == 0:
-                        job["layers"] = evt["layers"]
-                        job["bbox"] = evt["bbox"]
+                        stream_layers = evt["layers"]
+                        patch = {"layers": stream_layers, "bbox": evt["bbox"]}
                     elif evt.get("type") == "entities" and evt.get("stage") == 2:
                         # bbox entity 들에서 detected_heads 위치 + bbox 추출
                         detected = []
@@ -108,8 +117,12 @@ def register(app, *, _save_upload, _register_job, _serve_run_file,
                                 detected.append({"pos": [cx, cy], "bbox": p,
                                                  "k": be.get("k", ""), "c": be.get("c", 0),
                                                  "i": be.get("i", 0)})
-                        job["detected_heads"] = detected
-                        job["layer_cat"] = {l["name"]: l["auto_category"] for l in job.get("layers", [])}
+                        patch = {"detected_heads": detected,
+                                 "layer_cat": {l["name"]: l["auto_category"]
+                                               for l in stream_layers}}
+                    if patch is not None:
+                        with _JOB_LOCK:
+                            job.update(patch)
                     yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
             except Exception as exc:  # noqa: BLE001
                 err = {"type": "error", "message": str(exc)[:500]}

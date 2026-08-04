@@ -178,9 +178,9 @@ def register(app, *, BASE_DIR, COMBINED_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR, OVER
                                         waypoints=waypoints or None)
             return jsonify({"ok": True, "riser": riser, "algorithm": "dxf_path_v1"})
         except ValueError as exc:
-            # 사용자 입력 오류 (snap 실패 / disconnected). 상태코드 200 + suggest_legacy 표시.
+            # 사용자 입력 오류 (snap 실패 / disconnected). 프론트는 본문 ok 로 분기한다.
             return jsonify({"ok": False, "message": str(exc),
-                            "algorithm": "dxf_path_v1", "suggest_legacy": True}), 200
+                            "algorithm": "dxf_path_v1", "suggest_legacy": True}), 400
         except Exception as exc:  # noqa: BLE001
             return _err500(exc, algorithm="dxf_path_v1")
 

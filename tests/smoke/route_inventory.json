@@ -417,6 +417,14 @@
     "rule": "/api/remote30/system/result/<job_id>/<path:filename>"
   },
   {
+    "endpoint": "remote30_upload",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/upload"
+  },
+  {
     "endpoint": "sdf_sprinkler_analysis",
     "methods": [
       "OPTIONS",

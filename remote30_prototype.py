@@ -128,7 +128,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, NON_PIPE_GEOMETRY_CATS, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, HEAD_CONNECTOR_MAX_MM, HEAD_CONNECTOR_TOUCH_MM, HEAD_CONNECTOR_MAX_SEGS, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 
 def _categorize_layer(name: str) -> str:
@@ -545,7 +545,8 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
         })
     # 이름 분류가 놓친 배관 레이어 회수 — 여기서 고쳐야 이후 모든 layer_categories
     # 파생 지점(필터·그래프·레이어 패널)이 같은 분류를 본다.
-    bundle.promoted_layers = _promote_headgap_pipe_layers(bundle)
+    bundle.promoted_layers = (_promote_headgap_pipe_layers(bundle)
+                              + _promote_head_connector_runs(bundle))
     return bundle
 
 
@@ -554,7 +555,7 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
 # 경로·mtime 키는 무의미 → 파일 내용 해시로 dedup. 파싱 로직이 바뀌면
 # _PARSE_CACHE_VERSION 을 올려 기존 캐시를 무효화한다. 캐시 실패는 전부 조용히 무시
 # (기능/정확도엔 영향 없음, 속도만 손해). 저장 위치는 gitignore 된 data/ 하위.
-_PARSE_CACHE_VERSION = 4  # 4: 헤드 틈 지문 승격 단위를 레이어 → 연결된 entity 로 축소
+_PARSE_CACHE_VERSION = 5  # 5: 헤드 연결관(후렉시블) 승격 추가
 _PARSE_CACHE_DIR = _Path(__file__).resolve().parent / "data" / "parse_cache"
 
 
@@ -2199,6 +2200,152 @@ def _promote_headgap_pipe_layers(bundle: ParsedDxfBundle) -> list[dict]:
     return promoted
 
 
+def _promote_head_connector_runs(bundle: ParsedDxfBundle) -> list[dict]:
+    """헤드와 가지관을 잇는 그려진 연결관이 비배관 레이어에 있으면 PIPE 로 승격.
+
+    대명동 201동은 헤드마다 후렉시블을 그려 놓았는데 그 레이어가 일정하지 않다.
+    붙은 헤드 옆에는 ``SP 후렉시블``(PIPE) 이 25mm 거리에 있지만, 안 붙은 헤드
+    옆에는 **같은 모양의 선이 레이어 '0'(OTHER)** 로 그려져 있다. ``_build_graph``
+    가 PIPE 만 쓰므로 그 헤드는 가지관에서 617mm(중앙) 떨어진 것으로 계산되고
+    ``HEAD_DROP_MAX_MM``(300) 에 걸려 통째로 탈락한다 — 헤드 118 중 42개, 그중에
+    사용자가 찾던 **최원거리 헤드들**이 들어 있었다.
+
+    ``_promote_headgap_pipe_layers`` 는 "런이 헤드마다 끊긴" 지문을 보므로 이 형태를
+    못 잡는다. 여기서 보는 지문은 연결관 그 자체다 — 한쪽 끝이 헤드에서
+    ``HEAD_DROP_MAX_MM`` 안에 있고, ``HEAD_CONNECTOR_MAX_SEGS`` 토막
+    ``HEAD_CONNECTOR_MAX_MM`` 안에 반대쪽이 실제 배관에 닿는 선. 없는 선을 그리지
+    않고 이미 그려진 선의 분류만 고치는 것이라 추정 연결이 아니다.
+
+    이미 배관에 닿아 있는 헤드는 건너뛴다. 즉 이 승격은 **그냥 두면 버려질 헤드**
+    에만 작동하고, 미부착 헤드가 없는 도면(B1F 최소 등)에서는 한 건도 올리지 않아
+    기존 산출물이 그대로다.
+    """
+    layer_cat = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
+    base = [en for en in bundle.entities
+            if layer_cat.get(en["l"], "OTHER") in PIPENET_CATEGORIES
+            or en["l"] in KEEP_BASE_LAYERS]
+    heads = _find_head_candidates(base, layer_cat)
+    if not heads:
+        return []
+
+    pipe_segs: list[tuple] = []
+    cand: list[tuple] = []           # (a, b, entity_index)
+    ent_len: dict[int, float] = defaultdict(float)
+    for ei, en in enumerate(bundle.entities):
+        pts = en.get("p") or []
+        if en["t"] == "L":
+            segs = [((pts[0], pts[1]), (pts[2], pts[3]))] if len(pts) >= 4 else []
+        elif en["t"] == "PL":
+            segs = [((a[0], a[1]), (b[0], b[1])) for a, b in zip(pts, pts[1:])]
+        else:
+            continue
+        cat = layer_cat.get(en["l"], "OTHER")
+        if cat == "PIPE":
+            pipe_segs.extend(segs)
+        elif cat not in NON_PIPE_GEOMETRY_CATS:
+            for a, b in segs:
+                cand.append((a, b, ei))
+                ent_len[ei] += math.hypot(b[0] - a[0], b[1] - a[1])
+    if not pipe_segs or not cand:
+        return []
+
+    cell = HEAD_CONNECTOR_MAX_MM
+    pipe_grid: dict[tuple[int, int], list] = defaultdict(list)
+    for a, b in pipe_segs:
+        for cx in range(int(min(a[0], b[0]) // cell), int(max(a[0], b[0]) // cell) + 1):
+            for cy in range(int(min(a[1], b[1]) // cell), int(max(a[1], b[1]) // cell) + 1):
+                pipe_grid[(cx, cy)].append((a, b))
+
+    def pipe_gap(p: tuple[float, float]) -> float:
+        cx, cy = int(p[0] // cell), int(p[1] // cell)
+        best = math.inf
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for a, b in pipe_grid.get((cx + dx, cy + dy), ()):
+                    d = _point_to_segment_dist(p[0], p[1], a[0], a[1], b[0], b[1])
+                    if d < best:
+                        best = d
+        return best
+
+    # 헤드 주변으로 후보를 좁힌다 — 도면 전체를 인접리스트로 만들면 낭비다.
+    near_cells = {(int(h.pos[0] // cell) + dx, int(h.pos[1] // cell) + dy)
+                  for h in heads for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
+    idx = _NodeIndex()
+    adj: dict[tuple, list] = defaultdict(list)
+    node_grid: dict[tuple[int, int], set] = defaultdict(set)
+    for a, b, ei in cand:
+        if ((int(a[0] // cell), int(a[1] // cell)) not in near_cells
+                and (int(b[0] // cell), int(b[1] // cell)) not in near_cells):
+            continue
+        if ent_len[ei] > HEAD_CONNECTOR_MAX_MM:
+            continue
+        ca, cb = idx.canonical(*a), idx.canonical(*b)
+        if ca == cb:
+            continue
+        length = math.hypot(b[0] - a[0], b[1] - a[1])
+        adj[ca].append((cb, length, ei))
+        adj[cb].append((ca, length, ei))
+        for n in (ca, cb):
+            node_grid[(int(n[0] // HEAD_DROP_MAX_MM), int(n[1] // HEAD_DROP_MAX_MM))].add(n)
+
+    promoted_ents: set[int] = set()
+    rescued = 0
+    for h in heads:
+        p = h.pos
+        if pipe_gap(p) <= HEAD_DROP_MAX_MM:
+            continue
+        cx, cy = int(p[0] // HEAD_DROP_MAX_MM), int(p[1] // HEAD_DROP_MAX_MM)
+        starts = [n for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                  for n in node_grid.get((cx + dx, cy + dy), ())
+                  if math.hypot(p[0] - n[0], p[1] - n[1]) <= HEAD_DROP_MAX_MM]
+        if not starts:
+            continue
+        heap = [(0.0, n, 0, ()) for n in starts]
+        heapq.heapify(heap)
+        seen: dict[tuple, float] = {n: 0.0 for n in starts}
+        while heap:
+            cost, node, depth, path = heapq.heappop(heap)
+            if seen.get(node, math.inf) < cost:
+                continue
+            if path and pipe_gap(node) <= HEAD_CONNECTOR_TOUCH_MM:
+                promoted_ents.update(path)
+                rescued += 1
+                break
+            if depth >= HEAD_CONNECTOR_MAX_SEGS:
+                continue
+            for nb, length, ei in adj.get(node, ()):
+                nc = cost + length
+                if nc > HEAD_CONNECTOR_MAX_MM or seen.get(nb, math.inf) <= nc:
+                    continue
+                seen[nb] = nc
+                heapq.heappush(heap, (nc, nb, depth + 1, path + (ei,)))
+    if not promoted_ents:
+        return []
+
+    by_layer: dict[str, list[int]] = defaultdict(list)
+    for ei in promoted_ents:
+        by_layer[bundle.entities[ei]["l"]].append(ei)
+    out = []
+    for layer, eis in sorted(by_layer.items()):
+        pipe_name = f"{layer} (연결관 승격)"
+        while pipe_name in layer_cat:
+            pipe_name += "'"
+        for ei in eis:
+            bundle.entities[ei]["l"] = pipe_name
+        src = next(ly for ly in bundle.layers if ly["name"] == layer)
+        src["count"] -= len(eis)
+        bundle.layers.append(dict(src, name=pipe_name, count=len(eis),
+                                  auto_category="PIPE"))
+        bundle.layer_counts[layer] = src["count"]
+        bundle.layer_counts[pipe_name] = len(eis)
+        layer_cat[pipe_name] = "PIPE"
+        out.append({"layer": layer, "pipe_layer": pipe_name,
+                    "prev_category": src["auto_category"],
+                    "connector_heads": rescued, "entity_count": len(eis)})
+    bundle.layers.sort(key=lambda ly: ly["name"])
+    return out
+
+
 def filter_pipenet_only(bundle: ParsedDxfBundle) -> list[dict]:
     """Stage 1 — 배관망 관련 entity 만 필터 (auto_category in PIPE/HEAD/TEXT or layer in KEEP_BASE_LAYERS)."""
     layer_cat = {ly["name"]: ly["auto_category"] for ly in bundle.layers}
@@ -2718,8 +2865,6 @@ def _build_graph(
     idx = node_index if node_index is not None else _NodeIndex()
     min_sq = min_edge_mm * min_edge_mm
 
-    # 배관 geometry 가 될 수 없는 카테고리 — fallback 시에도 항상 제외.
-    _NON_PIPE_CATS = {"HEAD", "TEXT", "ALARM", "ARCH", "EXCLUDE"}
     _pred_mode = "strict"   # "strict" → PIPE 만 / "broad" → 비-배관 카테고리만 제외
 
     def is_pipe(layer: str) -> bool:
@@ -2727,7 +2872,7 @@ def _build_graph(
             return True
         cat = layer_categories.get(layer, "OTHER")
         if _pred_mode == "broad":
-            return cat not in _NON_PIPE_CATS
+            return cat not in NON_PIPE_GEOMETRY_CATS
         return cat == "PIPE"
 
     def add_edge(ax: float, ay: float, bx: float, by: float, length: float | None = None) -> None:
@@ -6688,8 +6833,8 @@ def run_stages_0_2(
     yield evt({"type": "entities", "stage": 1, "entities": pipe_ents,
                "summary": {"entity_count": len(pipe_ents)}})
     _promo = "".join(
-        f" · 헤드 틈 지문 {r['headgap_count']}건으로 {r['layer']}({r['prev_category']})"
-        f" 중 {r['entity_count']} entity 배관 승격"
+        f" · {'헤드 틈 지문 %d건으로' % r['headgap_count'] if 'headgap_count' in r else '헤드 연결관 %d개로' % r['connector_heads']}"
+        f" {r['layer']}({r['prev_category']}) 중 {r['entity_count']} entity 배관 승격"
         for r in bundle.promoted_layers)
     yield evt({"type": "stage", "stage": 1, "status": "done",
                "label": f"배관망 추출 완료 — {len(pipe_ents):,} entity{_promo}"})

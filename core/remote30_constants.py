@@ -9,6 +9,9 @@ import re
 
 
 PIPENET_CATEGORIES = {"PIPE", "HEAD", "TEXT", "ALARM"}
+# 배관 geometry 가 될 수 없는 카테고리 — 이름 분류를 못 믿고 지오메트리로 배관을
+# 되찾을 때(그래프 fallback · 연결관 승격) 공통으로 쓰는 배제 목록.
+NON_PIPE_GEOMETRY_CATS = {"HEAD", "TEXT", "ALARM", "ARCH", "EXCLUDE"}
 KEEP_BASE_LAYERS = {"0"}  # INSERT BYLAYER 공통 + 도면 컨텍스트
 _DIA_TEXT_PATTERNS = (
     re.compile(r"\b(\d{2,3})\s*A\b"),                  # 25A
@@ -85,6 +88,20 @@ CROSS_TEE_END_TOL_MM = 400.0
 # 비배관 레이어는 "현장조사#셔터" 하나뿐(15건)이고 건축·밸브·소화전·치수는 전부 0건이다.
 # 배관 레이어는 수백~수천 건이라 3 은 우연(한 쌍이 어쩌다 맞아떨어지는 경우)만 걸러낸다.
 HEADGAP_PIPE_PROMOTE_MIN = 3
+# 헤드 ↔ 가지관 사이의 연결관(후렉시블·드롭)이 배관 레이어가 아니라 기본 '0' 등에
+# 그려진 경우의 승격 상한. 대명동 201동 실측: 헤드 118 중 42개가 이 때문에 그래프에
+# 붙지 못했고(부착 헤드는 25mm 거리에 `SP 후렉시블` PIPE 런이 있는데 미부착 헤드는
+# 그 자리에 같은 모양의 선이 레이어 '0' 으로 그려져 있다), 최근접 배관까지 거리는
+# 중앙 617 · p75 790mm 로 300mm 상한을 넘는다. 실제 후렉시블 길이(도면 458~658mm)에
+# 꺾임 여유를 더한 값. 승격은 "헤드에서 300mm 안에 끝점이 있고 반대쪽이 배관에 닿는"
+# 실제로 그려진 선에만 적용된다 — 없는 선을 만들지 않으므로 추정 연결이 아니다.
+HEAD_CONNECTOR_MAX_MM = 1500.0
+# 연결관의 반대쪽 끝이 배관에 "닿았다"고 볼 거리 — 끝점 동등성(SNAP_TOL_MM)과 같은 자.
+HEAD_CONNECTOR_TOUCH_MM = 50.0
+# 연결관으로 인정할 최대 선분 수. 후렉시블은 수직 드롭 + 꺾임 + 수평 접근의 3토막이
+# 최대치다(대명동 `SP 후렉시블` 실측: 175 → 141 → 319mm). 더 길게 허용하면 건축선을
+# 이어 붙여 없는 배관을 만든다.
+HEAD_CONNECTOR_MAX_SEGS = 3
 CLOSED_PL_TOL_MM = 5.0  # PL 의 첫점과 마지막점이 이 거리 안이면 closed polygon 으로 간주 → 그래프 제외
 LADDER_MAX_RUNG_MM = 300.0     # rung (짧은 cross 변) 최대 길이. 단위세대 도면 기준.
 LADDER_MIN_RAIL_RATIO = 3.0    # rail / rung 평균 길이 비. 정사각형 (=1) 은 합성 안 됨.

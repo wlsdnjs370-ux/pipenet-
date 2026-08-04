@@ -24,8 +24,8 @@ import pytest  # noqa: E402
 import remote30_prototype as rp  # noqa: E402
 from remote30_constants import (  # noqa: E402
     ELEV_SOURCE_DEFAULT, ELEV_SOURCE_DRAWING, ELEV_SOURCE_UNRESOLVED,
-    ELEV_SOURCE_USER, LOCAL_RISE_RULES, ZONE_KIND_PARKING,
-    ZONE_KIND_UNIT_DWELLING,
+    ELEV_SOURCE_USER, FX_DEFAULT_PROFILE, FX_SPEC_PROFILES, LOCAL_RISE_RULES,
+    ZONE_KIND_PARKING, ZONE_KIND_UNIT_DWELLING,
 )
 
 # ── 계통도(라이저) — 수직 경로 위 층 라벨 3개 ──────────────────────
@@ -115,14 +115,14 @@ MID = (2000.0, 0.0)
 FAR = (4000.0, 0.0)
 
 
-def _plane_tables(material_zones=None):
+def _plane_tables(material_zones=None, **kw):
     heads = [rp.HeadCandidate(pos=FAR, raw=FAR, block_name="", layer="SP")]
     selection = rp.SelectionResult(
         source_pos=AV, source_kind="manual", heads=heads, distances=[4000.0],
         edges=[(AV, MID, 2000.0), (MID, FAR, 2000.0)],
         nodes_in_subgraph=[AV, MID, FAR],
     )
-    return rp.build_input_tables(selection, material_zones=material_zones)
+    return rp.build_input_tables(selection, material_zones=material_zones, **kw)
 
 
 PLANE_ZONE = (-1000.0, -1000.0, 5000.0, 1000.0)
@@ -161,7 +161,46 @@ def test_구역을_안_지정하면_상향_하향을_모른다():
 
 
 def test_평면도_노드_표고는_관례_기본값임을_밝힌다():
-    assert {n["elev_source"] for n in _plane_tables().nodes} == {ELEV_SOURCE_DEFAULT}
+    """상향/하향을 모르는 헤드는 그 노드 표고까지 미확정으로 내려간다."""
+    nodes = _plane_tables().nodes
+    assert {n["elev_source"] for n in nodes} == {ELEV_SOURCE_DEFAULT, ELEV_SOURCE_UNRESOLVED}
+    assert sum(1 for n in nodes if n["elev_source"] == ELEV_SOURCE_UNRESOLVED) == 1
+
+
+def test_노드_표고가_관로_낙차와_맞는다():
+    """SDF 는 둘 다 쓰고 KFP/HAS 는 노드 표고만 읽는다 — 어긋나면 낙차가 사라진다."""
+    tables = _plane_tables(material_zones=_zoned(ZONE_KIND_PARKING))
+    elev = {n["label"]: n["elevation"] for n in tables.nodes}
+    for p in tables.pipes:
+        assert elev[p["out"]] - elev[p["in"]] == pytest.approx(p["elev"])
+
+
+def test_상향식_구역_헤드에는_신축배관을_보충하지_않는다():
+    """촛대로 직결되는 상향식 헤드에 하향식 신축배관을 얹으면 표고가 이중으로 꺾인다."""
+    assert not [eq for eq in _plane_tables(material_zones=_zoned(ZONE_KIND_PARKING)).equipment
+                if eq["desc"] == "FX"]
+    assert [eq for eq in _plane_tables(material_zones=_zoned(ZONE_KIND_UNIT_DWELLING)).equipment
+            if eq["desc"] == "FX"]
+
+
+def _fx(profile_key):
+    tables = _plane_tables(material_zones=_zoned(ZONE_KIND_UNIT_DWELLING),
+                           fx_profile_key=profile_key)
+    return next(eq for eq in tables.equipment if eq["desc"] == "FX")
+
+
+def test_화면에서_고른_신축배관_규격이_등가길이까지_간다():
+    """예전엔 고른 규격이 build_input_tables 앞에서 버려져 항상 기본값이 나갔다."""
+    picked = next(k for k in FX_SPEC_PROFILES if k != FX_DEFAULT_PROFILE)
+    fx = _fx(picked)
+    assert fx["spec_ref"] == picked
+    assert fx["eq_len"] == pytest.approx(FX_SPEC_PROFILES[picked]["eq_len_m"])
+
+
+def test_모르는_규격은_기본_프리셋으로_떨어진다():
+    fx = _fx("FX_없는규격")
+    assert fx["spec_ref"] == FX_DEFAULT_PROFILE
+    assert fx["eq_len"] == pytest.approx(FX_SPEC_PROFILES[FX_DEFAULT_PROFILE]["eq_len_m"])
 
 
 def test_미확정_관로_수를_meta_에_보고한다():

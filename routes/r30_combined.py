@@ -775,7 +775,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                                         build_input_tables, HeadRegion)
         from remote30_full_network import (
             ProjectContext,
-            stitch_riser_and_heads, emit_full_sdf,
+            stitch_riser_and_heads,
             prepend_machine_room_to_riser, insert_source_pump,
             normalize_pipe_bores,
         )
@@ -789,8 +789,12 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         # Title 은 답안지 컨벤션이 건물명(예: "Officetell")이라 내부 식별자
         # (SYSTEM_EXTRACT_V1)나 도구 브랜딩이 노출되지 않도록 도면 stem 을 쓴다.
         raw_ctx = body.get("project_context")
-        ctx = (ProjectContext.from_dict(raw_ctx) if isinstance(raw_ctx, dict)
-               else ProjectContext.titled(""))
+        try:
+            ctx = (ProjectContext.from_dict(raw_ctx) if isinstance(raw_ctx, dict)
+                   else ProjectContext.titled(""))
+        except (TypeError, ValueError, AttributeError, KeyError) as exc:
+            return jsonify({"ok": False,
+                            "message": f"project_context 형식이 잘못되었습니다: {exc}"}), 400
         if not ctx.project_title.strip():
             ctx.project_title = (Path(plane_job.get("dxf_path", "")).stem
                                  or system_riser.get("title") or "Combined")
@@ -1370,7 +1374,6 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             ctx = ProjectContext.from_dict(cache.get("project_context") or {})
             if not ctx.project_title.strip():
                 ctx.project_title = "Combined (edited)"
-            title = ctx.report_title()
             # ── 원본 빌드가 캐시한 z-aware 표시좌표(라이저 기둥 collapse + display_z)를
             #    라벨별로 재적용해 KFP/HAS 가 원본과 동일 비율이 되게 한다. 편집으로 옮긴
             #    노드는 새 x,y 를 유지하되 display_z 는 캐시값(헤드 돌출·고도)을 쓴다.

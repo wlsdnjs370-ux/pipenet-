@@ -1274,6 +1274,12 @@
           </div>
           <p id="sys-anno-status" class="info-line" style="font-size: 0.72rem; color: var(--muted);">깨끗한 배관망 파일에 텍스트가 없을 때, 풀 도면을 추가하면 관경·층 라벨을 끌어와 결합합니다.</p>
 
+          <div class="field" style="margin-top: 6px;">
+            <label for="sys-pressure-json">압력표 (층별 누적 낙차, 선택)</label>
+            <textarea id="sys-pressure-json" placeholder='[{"floor_label":"18층","head_drop_m":13.8}, {"floor_label":"17층","head_drop_m":16.7}]' style="width: 100%; margin-top: 4px; padding: 4px 6px; border: 1px solid var(--line); font-size: 0.7rem; font-family: ui-monospace, monospace; min-height: 60px; resize: vertical;"></textarea>
+          </div>
+          <p id="sys-pressure-status" class="info-line" style="font-size: 0.72rem; color: var(--muted);">비워두면 층 라벨 간격으로 표고를 <strong>추정</strong>합니다. 표를 넣으면 그 낙차가 표고의 근거가 됩니다 — 맨 윗행이 옥상입니다.</p>
+
           <div style="margin: 10px 0; padding: 8px; background: #ffffff; border: 1px solid var(--line);">
             <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: var(--text-2);">위치 수동 지정 (필수)</div>
             <p class="info-line" style="margin-bottom: 8px; font-size: 0.72rem;">
@@ -4325,6 +4331,27 @@
       });
     }
 
+    // 압력표 붙여넣기 — 추출을 누르기 전에 읽히는지 알려준다.
+    const _sysPtInput = document.getElementById("sys-pressure-json");
+    const _sysPtStatus = document.getElementById("sys-pressure-status");
+    if (_sysPtInput && _sysPtStatus) {
+      const _PT_EMPTY = _sysPtStatus.innerHTML;
+      _sysPtInput.addEventListener("input", () => {
+        const raw = _sysPtInput.value.trim();
+        if (!raw) { _sysPtStatus.innerHTML = _PT_EMPTY; return; }
+        let rows;
+        try { rows = JSON.parse(raw); }
+        catch (e) { _sysPtStatus.textContent = `❌ JSON 을 읽지 못했습니다: ${e.message}`; return; }
+        if (!Array.isArray(rows)) { _sysPtStatus.textContent = "❌ 압력표는 층 목록(대괄호 배열)이어야 합니다."; return; }
+        const usable = rows.filter(r => r && typeof r === "object" && r.floor_label &&
+                                        r.head_drop_m !== undefined && r.head_drop_m !== "");
+        _sysPtStatus.textContent = usable.length
+          ? `✓ ${usable.length}개 층 사용 — 맨 윗행 '${usable[0].floor_label}' 이 옥상입니다.` +
+            (usable.length < rows.length ? ` (낙차압이 빈 ${rows.length - usable.length}행은 버려집니다)` : "")
+          : "❌ floor_label 과 head_drop_m 이 모두 있는 행이 없습니다 — 표고는 도면 추정으로 내려갑니다.";
+      });
+    }
+
     // 스트리밍 /inspect 는 raw bbox 만 줌 — 표제란/그리드 등 outlier 가 섞여
     // fit 하면 본 도면이 캔버스 한 구석에 점처럼 보인다. 백엔드 parse_dxf_for_view 와
     // 동일하게 좌표 0.5%/99.5% percentile + 2% margin 으로 main cluster bbox 를 복원.
@@ -4715,6 +4742,18 @@
           state.system_midnodes.map(m => [m.x, m.y])
         ));
       }
+      // 압력표 — 넣었는데 못 읽으면 조용히 버리지 않는다. 버리면 표고가 도면 추정으로
+      // 내려앉은 것을 화면에서 알 수 없다.
+      const _ptRaw = (document.getElementById("sys-pressure-json").value || "").trim();
+      if (_ptRaw) {
+        let _ptRows;
+        try { _ptRows = JSON.parse(_ptRaw); }
+        catch (e) { return { ok: false, message: `압력표 JSON 을 읽지 못했습니다: ${e.message}` }; }
+        if (!Array.isArray(_ptRows) || !_ptRows.length) {
+          return { ok: false, message: "압력표는 비어 있지 않은 층 목록(대괄호 배열)이어야 합니다." };
+        }
+        fd.append("pressure_table_json", JSON.stringify(_ptRows));
+      }
       if (useLegacy) {
         fd.append("use_legacy_template", "true");
       } else if (state.system_uploaded_file) {
@@ -4785,6 +4824,22 @@
                        ` (${(fm.nodes_with_floor / Math.max(1, r.nodes.length) * 100).toFixed(0)}%)`;
         }
         html += sec("🏢 층 매칭", floorBody, "#16a34a");
+      }
+
+      // 표고 출처 — 0 이 "수평이다" 인지 "모른다" 인지 여기서만 구분된다.
+      if (r.elev_sources) {
+        const srcLabel = { user_confirmed: "사람 확정(압력표)", drawing_estimated: "도면 추정",
+                           default: "관례 기본값", unresolved: "미확정" };
+        const srcColor = { user_confirmed: "#065f46", drawing_estimated: "#b45309",
+                           default: "#6b7280", unresolved: "#b91c1c" };
+        const fmt = (dist) => Object.entries(dist || {})
+          .map(([k, n]) => `<span style="color:${srcColor[k] || "#6b7280"};">${srcLabel[k] || escHtml(k)} ${n}</span>`)
+          .join(" · ") || "—";
+        let elevBody = `노드 ${fmt(r.elev_sources.nodes)}<br>관로 ${fmt(r.elev_sources.pipes)}`;
+        if (!(r.elev_sources.nodes || {}).user_confirmed) {
+          elevBody += `<br><span style="color:#b45309;">⚠ 압력표를 넣지 않아 표고가 추정값입니다 — 낙차가 실제와 다를 수 있습니다.</span>`;
+        }
+        html += sec("↕ 표고 출처", elevBody, "#7c3aed");
       }
 
       const dm = r.diameter_matching || {};

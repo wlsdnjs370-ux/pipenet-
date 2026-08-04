@@ -1066,6 +1066,10 @@ def _floor_index_of_label(text: str) -> int | None:
             n = int(m.group(1))
         except ValueError:
             continue
+        # "지하주차장 1층" 처럼 지하 표기가 층수와 떨어져 있으면 접두어 패턴이
+        # 놓치고 맨 끝 "N층" 이 지상으로 잡힌다. 지하가 적힌 라벨은 지하로 읽는다.
+        if kind == "ground" and "지하" in v:
+            return -n
         return -n if kind == "basement" else n
     return None
 
@@ -1089,14 +1093,19 @@ def _extract_floor_labels(entities: list[dict]) -> list[tuple[float, float, int,
 
 
 def _floor_drop_map(profile_rows: list[dict] | None) -> dict[int, float]:
-    """압력표 행 → {층 번호: 누적 낙차 m}. 층 이름을 못 읽는 행은 버린다."""
+    """압력표 행 → {층 번호: 누적 낙차 m}.
+
+    층 이름이나 낙차압을 못 읽는 행은 버린다 — 빈 낙차압을 0 으로 채우면
+    "그 층은 수원과 같은 높이" 라는 주장이 되어 미확정과 구분되지 않는다.
+    """
     out: dict[int, float] = {}
     for row in (profile_rows or []):
+        drop = row.get("head_drop_m")
         idx = _floor_index_of_label(str(row.get("floor_label", "")))
-        if idx is None:
+        if idx is None or drop in (None, ""):
             continue
         try:
-            out[idx] = float(row.get("head_drop_m") or 0.0)
+            out[idx] = float(drop)
         except (TypeError, ValueError):
             continue
     return out
@@ -2051,8 +2060,9 @@ def _machine_room_path_to_dict(
     total = len(path)
     total_length_mm = 0.0
 
-    ceiling_drop_m = round(-abs(ceiling_m), 3) if ceiling_m else 0.0
-    ceiling_source = ELEV_SOURCE_USER if ceiling_m else ELEV_SOURCE_UNRESOLVED
+    _has_ceiling = ceiling_m is not None
+    ceiling_drop_m = round(-abs(ceiling_m), 3) if _has_ceiling else 0.0
+    ceiling_source = ELEV_SOURCE_USER if _has_ceiling else ELEV_SOURCE_UNRESOLVED
 
     nodes: list[dict] = []
     for i, pt in enumerate(path):
@@ -5869,10 +5879,13 @@ def build_input_tables(
     *,
     project_title: str = "Remote 30 Prototype",
     material_zones: list[dict] | None = None,
+    fx_profile_key: str = FX_DEFAULT_PROFILE,
     anchor_window=None,
 ) -> PipeTables:
     """선정 결과 → 5 테이블. pipe_entities 가 있으면 FX(flexible) Equipment 도 추출.
 
+    fx_profile_key: 신축배관 규격 프리셋. 화면에서 고른 값이 여기까지 와야 그 선택이
+        실제 등가길이를 바꾼다. 모르는 키는 기본 프리셋으로 떨어진다.
     material_zones: 관종 구역. `[{"rect": (x1,y1,x2,y2), "kind": "unit_dwelling"}, ...]`.
         헤드 선정 영역(zones)과는 별개 개념이다 — 같은 사각형이라도 "여기서 헤드를
         고른다"와 "여기 배관은 CPVC다"는 다른 주장이다. 유형이 없거나 매핑에 없는
@@ -5884,6 +5897,7 @@ def build_input_tables(
     tables = PipeTables()
     if not selection.heads or selection.source_pos is None:
         return tables
+    fx_key = fx_profile_key if fx_profile_key in FX_SPEC_PROFILES else FX_DEFAULT_PROFILE
 
     # ── AV(source) 를 root 로 한 rooted traversal.
     # 계통도(extract_system_path)·기계실(extract_machine_room_path)은 시작노드에서
@@ -6085,6 +6099,25 @@ def build_input_tables(
         })
         pipe_label_counter += 1
 
+    # 노드 표고를 관로 낙차와 맞춘다. SDF 는 노드 표고와 관 낙차를 둘 다 쓰고
+    # KFP/HAS 는 노드 표고만 읽으므로, 둘이 어긋나면 국소 낙차가 조용히 사라지거나
+    # 검증기가 불일치로 잡는다. 관로는 이미 AV→말단(부모→자식) 순이라 한 번에 훑는다.
+    node_by_label = {n["label"]: n for n in tables.nodes}
+    settled = {src_label}
+    for p in tables.pipes:
+        up, dn = node_by_label.get(p["in"]), node_by_label.get(p["out"])
+        if up is None or dn is None:
+            continue
+        if p["in"] in settled and p["out"] not in settled:
+            dn["elevation"] = round(up["elevation"] + p["elev"], 3)
+            dn["elev_source"] = _weaker_elev_source(up["elev_source"], p["elev_source"])
+            settled.add(p["out"])
+            continue
+        # 트리 밖(루프 잔여) 관로 — 양 끝 표고가 이미 정해졌으니 낙차를 그쪽에 맞춘다.
+        p["elev"] = round(dn["elevation"] - up["elevation"], 3)
+        p["length"] = max(p["length"], abs(p["elev"]))
+        p["elev_source"] = _weaker_elev_source(up["elev_source"], dn["elev_source"])
+
     # Nozzles
     for i, (h, dist) in enumerate(zip(selection.heads, selection.distances), start=1):
         head_lab = head_node_label[h.pos]
@@ -6187,9 +6220,9 @@ def build_input_tables(
             tables.equipment.append({
                 "pipe": attached_pipe["label"], "in": attached_pipe["in"], "out": attached_pipe["out"],
                 "label": str(fx_count + 1), "desc": "FX",
-                "eq_len": FX_SPEC_PROFILES[FX_DEFAULT_PROFILE]["eq_len_m"],
+                "eq_len": FX_SPEC_PROFILES[fx_key]["eq_len_m"],
                 "rel_pos": 0.5,
-                "spec_ref": FX_DEFAULT_PROFILE,
+                "spec_ref": fx_key,
                 "source": "extracted",
                 "override_flag": False,
                 "override_note": "",
@@ -6205,6 +6238,11 @@ def build_input_tables(
         head_label = head_node_label[h.pos]
         if head_label in head_with_fx:
             continue
+        # 신축배관은 세대 안 하향식 헤드에 붙는 물건이다. 상향식으로 지정된 구역
+        # (주차장·복도)의 헤드는 촛대로 직결되므로 도면에 실물이 없으면 넣지 않는다.
+        kind = _zone_kind_at(h.pos[0], h.pos[1], material_zones)
+        if kind and kind != ZONE_KIND_UNIT_DWELLING:
+            continue
         attached_pipe = next((p for p in tables.pipes if p["in"] == head_label or p["out"] == head_label), None)
         if not attached_pipe:
             continue
@@ -6212,8 +6250,8 @@ def build_input_tables(
         tables.equipment.append({
             "pipe": attached_pipe["label"], "in": attached_pipe["in"], "out": attached_pipe["out"],
             "label": str(fx_count + 1), "desc": "FX",
-            "eq_len": FX_SPEC_PROFILES[FX_DEFAULT_PROFILE]["eq_len_m"], "rel_pos": 0.5,
-            "spec_ref": FX_DEFAULT_PROFILE,
+            "eq_len": FX_SPEC_PROFILES[fx_key]["eq_len_m"], "rel_pos": 0.5,
+            "spec_ref": fx_key,
             "source": "supplemented",
             "override_flag": False,
             "override_note": "",

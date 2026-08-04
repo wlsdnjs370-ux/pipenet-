@@ -121,9 +121,17 @@ def register(app, *, COMBINED_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR, OVERALL_OUTPUT
             except (TypeError, ValueError):
                 snap_tol = 3000.0
 
+        # 천장고는 비우면 미확정(None)으로 남긴다. 0 은 "천장고가 0" 이라는 주장이라
+        # 미입력과 같지 않고, 숫자가 아니면 조용히 흡수하지 않고 되돌려준다.
         _ceiling_raw = (request.get_json(silent=True) or {}).get("machine_room_ceiling_m") \
             if request.is_json else request.form.get("machine_room_ceiling_m")
-        ceiling_m = _to_float(_ceiling_raw, 0.0) or None
+        ceiling_m = None
+        if _ceiling_raw not in (None, ""):
+            try:
+                ceiling_m = float(_ceiling_raw)
+            except (TypeError, ValueError):
+                return jsonify({"ok": False,
+                                "message": "machine_room_ceiling_m 는 숫자여야 합니다."}), 400
 
         # 사용자가 지정한 배관 레이어 — 다계통(PIPE/PIPE_MAIN/PIPE_SUB/소화수관…) 도면에서
         # '어떤 레이어가 이 기계실 배관인가'를 명시. 없으면 자동(SP 레이어→키워드) 추론.

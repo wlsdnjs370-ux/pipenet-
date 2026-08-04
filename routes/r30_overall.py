@@ -319,6 +319,7 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                     pipe_entities=job.get("pipe_ents", []),
                     project_title=ctx.report_title(),
                     material_zones=ctx.material_zones or None,
+                    fx_profile_key=ctx.fx_profile_key,
                 )
                 yield _emit({"type": "overall_progress", "phase": "stage_a_tables_done",
                              "head_nodes": len(head_tables.nodes),
@@ -334,7 +335,8 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                 job["fx_review"] = {
                     "equipment": head_tables.equipment,   # 헤드망 FX/AV — 전량, 편집 대상
                     "profiles": FX_SPEC_PROFILES,
-                    "default_profile": FX_DEFAULT_PROFILE,
+                    "default_profile": (ctx.fx_profile_key if ctx.fx_profile_key in FX_SPEC_PROFILES
+                                        else FX_DEFAULT_PROFILE),
                 }
                 yield _emit({"type": "stage5_complete",
                              "tables": job["head_tables"],

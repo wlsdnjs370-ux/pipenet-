@@ -81,6 +81,16 @@ def test_경고줄은_미확정_항목마다_한_줄():
     assert any("프로젝트명" in line for line in lines)
 
 
+def test_산출물에_안_닿는_항목은_기록_전용이라고_밝힌다():
+    """채웠다는 이유로 '반영됐다' 로 읽히면 안 된다 — 미확정 여부와는 다른 축."""
+    ctx = _ctx()
+    by_field = {item["field"]: item for item in ctx.unconfirmed()}
+    assert by_field["roof_tank_water_level_m"]["record_only"] is True
+    assert by_field["fx_profile_key"]["record_only"] is False
+    assert any("기록 전용" in line and "옥상수조 수위" in line for line in ctx.warning_lines())
+    assert not any("기록 전용" in line and "신축배관 규격" in line for line in ctx.warning_lines())
+
+
 def test_자연낙차_후보는_계산만_하고_확정하지_않는다():
     ctx = _ctx()
     cands = ctx.natural_fall_candidates()

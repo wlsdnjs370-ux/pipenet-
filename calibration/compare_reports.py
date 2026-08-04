@@ -25,7 +25,7 @@ for _p in (_ROOT, _ROOT / "core"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from core.pipenet_validator import PipenetGuideValidator  # noqa: E402
+from pipenet_validator import PipenetGuideValidator  # noqa: E402
 
 NUM = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:E[-+]?\d+)?"
 # 자동본은 기계실/라이저 관로를 'M1/0', 'R4/0' 같은 문자 라벨로 낸다.

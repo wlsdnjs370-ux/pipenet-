@@ -211,6 +211,39 @@ class FloorRow:
     note: str = ""            # 비고 ("자연낙차시작점", "1차 감압밸브 사용구간" 등)
 
 
+def _to_int(value: Any, default: int) -> int:
+    """폼/JSON 의 정수 필드 — 빈칸이나 숫자가 아니면 기본값."""
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _floor_row_from_mapping(raw: Any) -> FloorRow | None:
+    """압력표 한 행(원시 매핑) → FloorRow. 못 읽으면 None.
+
+    낙차압이 비어 있으면 0 으로 때우지 않고 행을 버린다 — 그 층의 표고를 물었을 때
+    "0 이다" 라고 답하는 대신 "표에 없다" 로 걸리게 하려는 것.
+    """
+    if not isinstance(raw, dict):
+        return None
+    label = str(raw.get("floor_label") or "").strip()
+    drop = raw.get("head_drop_m")
+    if not label or drop in (None, ""):
+        return None
+    after = raw.get("after_prv_m")
+    try:
+        return FloorRow(
+            floor_label=label,
+            height_m=float(raw.get("height_m") or 0),
+            head_drop_m=float(drop),
+            after_prv_m=None if after in (None, "") else float(after),
+            note=str(raw.get("note") or ""),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass
 class BuildingPressureProfile:
     """빌딩 전체 압력 흐름 표 — 옥상부터 최하층까지 1행씩.
@@ -249,18 +282,9 @@ class BuildingPressureProfile:
                 for k, v in raw.items():
                     key = KCOL.get((k or "").strip(), (k or "").strip())
                     norm[key] = (v or "").strip()
-                if not norm.get("floor_label"):
-                    continue
-                try:
-                    rows.append(FloorRow(
-                        floor_label=norm["floor_label"],
-                        height_m=float(norm.get("height_m") or 0),
-                        head_drop_m=float(norm.get("head_drop_m") or 0),
-                        after_prv_m=(float(norm["after_prv_m"]) if norm.get("after_prv_m") else None),
-                        note=norm.get("note", "") or "",
-                    ))
-                except (ValueError, KeyError):
-                    continue
+                row = _floor_row_from_mapping(norm)
+                if row is not None:
+                    rows.append(row)
         return cls(building_name=building_name, floors=rows)
 
     @classmethod
@@ -287,19 +311,11 @@ class BuildingPressureProfile:
             def _get(key, default=None):
                 i = col_idx.get(key)
                 return r[i] if i is not None and i < len(r) else default
-            label = _get("floor_label")
-            if not label:
-                continue
-            try:
-                rows.append(FloorRow(
-                    floor_label=str(label),
-                    height_m=float(_get("height_m") or 0),
-                    head_drop_m=float(_get("head_drop_m") or 0),
-                    after_prv_m=(float(_get("after_prv_m")) if _get("after_prv_m") is not None else None),
-                    note=str(_get("note") or ""),
-                ))
-            except (ValueError, TypeError):
-                continue
+            row = _floor_row_from_mapping({k: _get(k) for k in
+                                           ("floor_label", "height_m", "head_drop_m",
+                                            "after_prv_m", "note")})
+            if row is not None:
+                rows.append(row)
         wb.close()
         return cls(building_name=building_name, floors=rows)
 
@@ -348,6 +364,15 @@ _CONTEXT_FIELD_LABELS: dict[str, str] = {
     "material_zones": "관종 구역",
     "ceiling_zones": "반자 구역",
 }
+
+# 받아서 서류에는 남기지만 아직 배관망을 바꾸지 않는 항목. 여기 적힌 필드를 채워도
+# SDF 는 그대로다 — 채웠다는 이유로 "반영됐다" 고 읽히면 안 되므로 경고에 밝힌다.
+_RECORD_ONLY_FIELDS: frozenset[str] = frozenset({
+    "natural_fall_start_floor",   # 후보 계산·표시용. 라이저 분기는 zone_type 이 정한다.
+    "machine_room_ceiling_m",     # 기계실 추출 경로(프로토타입) 전용 — 통합 산출에는 기계실이 없다.
+    "roof_tank_water_level_m",
+    "ceiling_zones",              # 상향/하향은 material_zones 의 구역 유형이 가른다.
+})
 
 
 def _context_value_missing(value: Any) -> bool:
@@ -401,6 +426,7 @@ class ProjectContext:
                 "label": label,
                 "tag": tag.value,
                 "missing": _context_value_missing(getattr(self, name)),
+                "record_only": name in _RECORD_ONLY_FIELDS,
             })
         return out
 
@@ -413,7 +439,8 @@ class ProjectContext:
         lines = []
         for item in self.unconfirmed():
             state = "미입력" if item["missing"] else state_of.get(item["tag"], "기본값")
-            lines.append(f"[미확정] {item['field']} — {item['label']} ({state})")
+            note = ", 기록 전용 — 현재 산출물 미반영" if item["record_only"] else ""
+            lines.append(f"[미확정] {item['field']} — {item['label']} ({state}{note})")
         return lines
 
     # ── 파생값 ──────────────────────────────────────────────────────────
@@ -480,14 +507,8 @@ class ProjectContext:
         rows = data.get("floor_profile")
         profile = BuildingPressureProfile(
             building_name=str(data.get("building_name", "") or ""),
-            floors=[FloorRow(
-                floor_label=str(r.get("floor_label", "")),
-                height_m=float(r.get("height_m", 0) or 0),
-                head_drop_m=float(r.get("head_drop_m", 0) or 0),
-                after_prv_m=(float(r["after_prv_m"]) if r.get("after_prv_m") not in (None, "") else None),
-                note=str(r.get("note", "") or ""),
-            ) for r in rows if r.get("floor_label")],
-        ) if rows else None
+            floors=[row for row in map(_floor_row_from_mapping, rows) if row is not None],
+        ) if isinstance(rows, list) and rows else None
         return cls(
             zone_spec=ZoneSpec(
                 zone_type=ZoneType(data.get("zone_type", ZoneType.LSP_1STAGE.value)),
@@ -495,7 +516,7 @@ class ProjectContext:
                 prv1_target_pa=data.get("prv1_target_pa"),
                 prv2_target_pa=data.get("prv2_target_pa"),
                 pump_library_name=str(data.get("pump_library_name") or "SP_162M_2900LPM"),
-                pump_count=int(data.get("pump_count", 2) or 2),
+                pump_count=_to_int(data.get("pump_count"), 2),
             ),
             floor_profile=profile,
             project_title=str(data.get("project_title", "") or ""),
@@ -630,10 +651,15 @@ def _node(label: str, elev: float, x: float, y: float, *,
 
 def _pipe(label: str, in_lbl: str, out_lbl: str, bore_mm: int,
           length_m: float, rise_m: float = 0.0, c_factor: str = "120") -> dict:
-    """라이저 파이프 dict — remote30_prototype.PipeTables.pipes 호환."""
+    """라이저 파이프 dict — remote30_prototype.PipeTables.pipes 호환.
+
+    PIPENET/K-solver 는 낙차가 관 길이보다 큰 관을 거부하므로 길이를 |낙차| 아래로
+    내려보내지 않는다. 반올림도 이 관계를 깨지 않게 양쪽 모두 같은 자리로 맞춘다.
+    """
+    rise = round(rise_m, 2)
     return {
         "label": label, "in": in_lbl, "out": out_lbl, "type": "KSD 3507",
-        "dia": bore_mm, "length": round(length_m, 2), "elev": rise_m,
+        "dia": bore_mm, "length": max(round(length_m, 2), abs(rise)), "elev": rise,
         "c": c_factor, "status": "Normal", "group": "Unset",
     }
 
@@ -665,6 +691,15 @@ def _require_profile(profile: BuildingPressureProfile | None,
         raise MissingProjectInputError(
             f"{zone_label} 라이저를 만들려면 층별 압력표가 필요합니다. "
             "계통도 DXF 자동 추출 · CSV/엑셀 업로드 · 직접 입력 중 하나로 채워주세요.")
+    # 이 아래 표고 계산은 전부 "첫 행이 옥상" 을 전제로 한다. 표가 아래층부터
+    # 적혀 있으면 라이저 전체가 뒤집히는데 결과만 봐서는 알 수 없으므로,
+    # 누적 낙차가 위→아래로 커지는지 여기서 확인한다.
+    for prev, cur in zip(profile.floors, profile.floors[1:]):
+        if cur.head_drop_m < prev.head_drop_m:
+            raise MissingProjectInputError(
+                f"압력표가 옥상부터 아래로 정렬되어 있지 않습니다 — "
+                f"'{prev.floor_label}'({prev.head_drop_m}m) 다음 행 "
+                f"'{cur.floor_label}'({cur.head_drop_m}m) 의 누적 낙차가 더 작습니다.")
     return profile
 
 
@@ -1740,7 +1775,7 @@ def zone_spec_from_form(form: dict[str, Any]) -> ZoneSpec:
         prv1_target_pa=_to_pa("prv1_target_kgf", "prv1_target_m"),
         prv2_target_pa=_to_pa("prv2_target_kgf", "prv2_target_m"),
         pump_library_name=str(form.get("pump_library_name", "SP_162M_2900LPM")).strip(),
-        pump_count=int(form.get("pump_count", 2)),
+        pump_count=_to_int(form.get("pump_count"), 2),
     )
 
 
@@ -1847,20 +1882,16 @@ def profile_from_form(form: dict[str, Any]) -> BuildingPressureProfile | None:
          {"floor_label": "49층",   "height_m": 3.1, "head_drop_m": 6.2},
          ...]
     """
-    raw = form.get("pressure_table_json", "").strip()
+    raw = str(form.get("pressure_table_json") or "").strip()
     if not raw:
         return None
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return None
-    rows = [FloorRow(
-        floor_label=str(d.get("floor_label", "")).strip(),
-        height_m=float(d.get("height_m", 0) or 0),
-        head_drop_m=float(d.get("head_drop_m", 0) or 0),
-        after_prv_m=(float(d["after_prv_m"]) if d.get("after_prv_m") not in (None, "") else None),
-        note=str(d.get("note", "") or ""),
-    ) for d in data if d.get("floor_label")]
+    if not isinstance(data, list):
+        return None
+    rows = [row for row in map(_floor_row_from_mapping, data) if row is not None]
     return BuildingPressureProfile(
         building_name=str(form.get("building_name", "")).strip(),
         floors=rows,

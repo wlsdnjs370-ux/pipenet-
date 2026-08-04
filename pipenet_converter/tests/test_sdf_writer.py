@@ -73,6 +73,20 @@ def test_network_to_sdf_text_round_trips_through_parser() -> None:
     assert pipe.waypoints == [(6550.0, 696.0)]
 
 
+def test_nozzle_flow_survives_the_lmin_round_trip() -> None:
+    """설계 유량 80 L/min 이 리포트에 80.0000 으로 찍혀야 한다(79.9998 아님)."""
+    network = PipeNetwork(title="flow precision")
+    network.add_node(Node("30", 0.0, 0.0, 0.0, "No"))
+    network.add_node(Node("@/1", 1.0, 0.0, 0.0, "No"))
+    for design_lmin in (80.0, 130.0):
+        network.nozzles.clear()
+        network.add_nozzle(Nozzle("1", "30", "@/1", design_lmin / 60000.0))
+
+        parsed = parse_sdf_text(network_to_sdf_text(network))
+
+        assert round(parsed.nozzles["1"].flow_m3s * 60000.0, 4) == design_lmin
+
+
 def test_write_sdf_writes_file(tmp_path: Path) -> None:
     output_path = tmp_path / "generated.sdf"
 

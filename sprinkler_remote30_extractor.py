@@ -1017,7 +1017,8 @@ def build_pipenet_tables(G, node_coords, selected_heads, path_edges, alarm_node,
             "nozzle_id": rh_no,
             "input_node": h["Node Name"],
             "output_node": f"OUT_{rh_no}",
-            "flow_m3s": round(settings.design_flow_per_head_lpm / 60000.0, 8),
+            # 반올림 금지 — 8자리로 자르면 80 L/min 이 79.9998 로 되돌아온다.
+            "flow_m3s": settings.design_flow_per_head_lpm / 60000.0,
             "status": 1,
             "library_item": settings.nozzle_library_item,
         })

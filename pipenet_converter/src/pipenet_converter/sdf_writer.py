@@ -176,7 +176,7 @@ def _build_nozzle_element(nozzle: Nozzle) -> ET.Element:
             "status": str(nozzle.status),
         },
     )
-    ET.SubElement(nozzle_element, "Flow-define", {"flow": _format_number(nozzle.flow_m3s)})
+    ET.SubElement(nozzle_element, "Flow-define", {"flow": _format_flow(nozzle.flow_m3s)})
     library_item = ET.SubElement(nozzle_element, "Library-item")
     library_item.text = nozzle.library_item
     return nozzle_element
@@ -200,6 +200,15 @@ def _build_valve_element(valve: Valve) -> ET.Element:
 
 def _format_number(value: float) -> str:
     return format(float(value), ".6g")
+
+
+def _format_flow(value: float) -> str:
+    """노즐 유량만 자릿수를 더 준다 — 6자리로 자르면 80 L/min 이 79.9998 로 찍힌다.
+
+    m³/s 로 저장하므로 80 L/min = 0.00133333... 이고, .6g 는 0.00133333 까지만 남긴다.
+    되돌리면 79.9998. PIPENET 이 직접 쓴 참조 SDF 도 0.00133333333(9자리)이다.
+    """
+    return format(float(value), ".9g")
 
 
 def _replace_direct_child(parent: ET.Element, child_name: str, replacement: ET.Element) -> None:

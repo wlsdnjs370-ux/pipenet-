@@ -511,7 +511,7 @@ def _patch_combined_from_geometry(combined, geom: dict) -> None:
             nz = dict(base_nz.get(lbl) or {
                 "label": lbl, "in": "", "out": f"@/{lbl}",
                 "status": "1", "lib": "SP-HEAD",
-                "flow_m3s": 0.00133333333, "flow_lmin": 80,
+                "flow_lmin": 80, "flow_m3s": 80 / 60000.0,
             })
             if gz.get("in"):
                 nz["in"] = str(gz["in"])

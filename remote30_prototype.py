@@ -5955,7 +5955,8 @@ def build_input_tables(
         tables.nozzles.append({
             "label": str(i), "in": head_lab, "out": f"@/{i}",
             "status": "1", "lib": "SP-HEAD",
-            "flow_m3s": 0.00133333333, "flow_lmin": 80,
+            # m³/s 는 L/min 에서 유도한다 — 손으로 자른 상수를 쓰면 되돌릴 때 값이 어긋난다.
+            "flow_lmin": 80, "flow_m3s": 80 / 60000.0,
         })
 
     # ====== Fittings ======

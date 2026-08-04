@@ -1537,10 +1537,11 @@
         <section>
           <h3 style="margin: 0 0 6px; font-size: 0.85rem; font-weight: 700;">유속 검토 · 내경 역산</h3>
           <p class="info-line" style="font-size: 0.72rem; margin-bottom: 6px;">
-            NFTC 2.2.1.10 — 가지배관 6 m/s, 그 밖의 배관 10 m/s. 통합 시 망을 직접 풀어
-            초과 구간의 관경을 한 치수씩 올려 재해석합니다. 어디가 어떻게 바뀌었는지 표로 확인하세요.
+            NFTC 2.2.1.10 — 가지배관 6 m/s, 그 밖의 배관 10 m/s. 먼저 도면 관경 그대로의
+            전 배관 유속표를 보여주고 초과 구간을 표시합니다. 창 안의 역산 실행 버튼을 누르면
+            그 구간의 관경을 한 치수씩 올려 재해석합니다.
           </p>
-          <button id="cmb-vel-btn" class="run-btn" type="button" disabled title="유속 상한을 맞추려 조정된 관경의 전후 대조표" style="width:100%; background:#ffffff; color:var(--accent); border-color:var(--accent);">내경 역산표 보기</button>
+          <button id="cmb-vel-btn" class="run-btn" type="button" disabled title="전 배관 유속 현황 → 초과 구간 내경 역산" style="width:100%; background:#ffffff; color:var(--accent); border-color:var(--accent);">내경 역산표 보기</button>
         </section>
 
         <section>
@@ -1596,11 +1597,10 @@
         <h3>내경 역산표 · 유속 검토</h3>
         <button id="vel-modal-close" type="button" title="닫기 (Esc)" aria-label="닫기">×</button>
       </div>
-      <p class="info-line" style="font-size: 0.72rem; color: var(--muted); margin: 0 0 6px;">
-        헤드를 K√P 오리피스로 풀어 얻은 <strong>과토출 유량</strong> 기준입니다. 도면 관경으로 상한
-        (가지 6 · 그 밖 10 m/s)을 넘던 구간만 표에 남습니다. 관경은 줄지 않고 올라가기만 합니다.
-      </p>
+      <p id="vel-intro" class="info-line" style="font-size: 0.72rem; color: var(--muted); margin: 0 0 6px;"></p>
       <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+        <button id="vel-run-btn" type="button" style="padding:5px 9px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; font-size:0.72rem; cursor:pointer; border-radius:4px; font-weight:700;">유속 초과 구간 내경 역산 실행</button>
+        <button id="vel-back-btn" type="button" style="display:none; padding:5px 9px; background:#f8fafc; color:#334155; border:1px solid #cbd5e1; font-size:0.72rem; cursor:pointer; border-radius:4px;">← 전체 배관 현황</button>
         <button id="vel-csv-btn" type="button" style="padding:5px 9px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-size:0.72rem; cursor:pointer; border-radius:4px;">CSV 내려받기</button>
         <span id="vel-summary" class="info-line" style="font-size:0.72rem; color:var(--muted); align-self:center;"></span>
       </div>
@@ -7761,16 +7761,24 @@
       _cmbDownload(u);
     });
 
-    // ─── 내경 역산표 — 유속 상한(NFTC 2.2.1.10)을 맞추려 승급된 관경의 전후 대조 ───
-    //   서버 converge_bores_by_velocity() 가 돌려준 velocity_report 를 그대로 표로 편다.
+    // ─── 내경 역산표 — 2단 구성 (NFTC 2.2.1.10 유속 상한) ───
+    //   1단 velocity_report.baseline = 도면 관경 그대로의 전 배관 현황(초과 구간 표시),
+    //   역산 실행 버튼 → 서버 재계산 → 2단 velocity_report.changes = 승급 전후 대조표.
     const VelReview = (function () {
       const overlay = document.getElementById("vel-modal-overlay");
       const sec = document.getElementById("vel-review-section");
       const tableBox = document.getElementById("vel-table");
       const summaryEl = document.getElementById("vel-summary");
       const warnEl = document.getElementById("vel-warning");
-      const COLS = ["배관", "구분", "변경전(A)", "변경후(A)", "실내경(mm)", "유량(L/min)",
-                    "변경전 유속", "변경후 유속", "상한", "사유"];
+      const introEl = document.getElementById("vel-intro");
+      const runBtn = document.getElementById("vel-run-btn");
+      const backBtn = document.getElementById("vel-back-btn");
+      const CHG_COLS = ["배관", "구분", "변경전(A)", "변경후(A)", "실내경(mm)", "유량(L/min)",
+                        "변경전 유속", "변경후 유속", "상한", "사유"];
+      const ALL_COLS = ["배관", "구분", "호칭경(A)", "실내경(mm)", "유량(L/min)",
+                        "유속(m/s)", "상한", "판정"];
+      // "all" = 도면 관경 그대로의 전 배관 현황(역산 전), "changes" = 역산 결과 대조표.
+      let view = "all";
 
       function report() {
         return (state.combinedBuild && state.combinedBuild.velocity_report) || null;
@@ -7779,24 +7787,20 @@
       function num(v, digits) {
         return (v === null || v === undefined) ? "—" : Number(v).toFixed(digits);
       }
-      function rows() {
+      function baseRows() {
+        const rep = report();
+        return (rep && Array.isArray(rep.baseline)) ? rep.baseline : [];
+      }
+      function chgRows() {
         const rep = report();
         return (rep && Array.isArray(rep.changes)) ? rep.changes : [];
       }
+      function rows() { return view === "all" ? baseRows() : chgRows(); }
+      function cols() { return view === "all" ? ALL_COLS : CHG_COLS; }
 
-      function render() {
-        const rep = report();
-        const cs = rows();
-        if (!rep) {
-          tableBox.innerHTML = `<p class="info-line" style="padding:8px;">통합 빌드를 먼저 실행하세요.</p>`;
-          summaryEl.textContent = "";
-          warnEl.style.display = "none";
-          return;
-        }
-        summaryEl.textContent =
-          `변경 ${rep.changed}건 · 최대유속 ${num(rep.max_velocity_before, 2)} → ` +
-          `${num(rep.max_velocity_after, 2)} m/s · 초과 ${rep.violations_before} → ` +
-          `${rep.violations_after}구간 · ${rep.iterations}회차 · 과토출 x${num(rep.overdischarge_ratio_max, 2)}`;
+      // 경고는 어느 표를 보고 있든 같은 사실이라 두 뷰 모두에 띄운다 — 특히 신축배관
+      // 규격고정·과토출은 관경 역산으로 풀 수 없는 항목이라 첫 화면에서 보여야 한다.
+      function renderWarnings(rep) {
         const warns = [];
         if (rep.violations_after > 0) {
           warns.push(
@@ -7805,7 +7809,7 @@
             `설계 불가라기보다 추출 오접합으로 유량이 한 관에 몰렸을 가능성이 큽니다 — 판정 보류로 두고 ` +
             `해당 구간의 연결을 확인하세요.`);
         }
-        // 위 표는 "최원단 0.1 MPa" 설계기준으로 사이징한 결과다. 산출물(KFP/SDF)은
+        // 역산은 "최원단 0.1 MPa" 설계기준으로 사이징한다. 산출물(KFP/SDF)은 반대로
         // 수원 조건을 싣고 나가므로 수조 수두가 필요압을 넘으면 K-solver 에서 과토출한다.
         const ex = rep.export;
         if (ex && ex.surplus_bar > 0.05) {
@@ -7822,17 +7826,85 @@
           warns.push(
             `⚠ 헤드 접속 신축배관(${rep.head_stub_bore_mm}A, 제조사 규격품이라 승급 불가) ` +
             `<strong>${rep.head_stub_violations}개</strong>가 가지배관 상한 6 m/s 를 넘습니다 ` +
-            `(최대 ${num(rep.head_stub_max_velocity, 2)} m/s). 표에 <strong>규격고정</strong> 사유로 실었습니다.`);
+            `(최대 ${num(rep.head_stub_max_velocity, 2)} m/s). 역산 결과 표에 <strong>규격고정</strong> 사유로 실었습니다.`);
         }
         warnEl.style.display = warns.length ? "block" : "none";
         warnEl.innerHTML = warns.join("<hr style='border:0;border-top:1px solid #fecaca;margin:5px 0;'>");
+      }
+
+      function renderAll() {
+        const bs = baseRows();
+        const over = bs.filter((b) => b.v_over).length;
+        const mx = bs.reduce((m, b) => Math.max(m, b.velocity_mps || 0), 0);
+        introEl.innerHTML =
+          `헤드당 설계유량 기준으로 <strong>도면 관경 그대로</strong> 계산한 전 배관 유속입니다. ` +
+          `상한(가지 6 · 그 밖 10 m/s)을 넘는 구간은 붉게 표시됩니다. ` +
+          `아래 <strong>내경 역산 실행</strong>을 눌러야 해당 구간의 관경을 승급하는 역산이 수행됩니다.`;
+        summaryEl.textContent =
+          `전체 ${bs.length}구간 · 초과 ${over}구간 · 최대유속 ${num(mx, 2)} m/s (도면 관경 기준)`;
+        runBtn.style.display = "";
+        // 위 표는 헤드당 설계유량 기준이고 역산은 과토출 유량으로 다시 푼다 — 여기서
+        // 초과가 0이어도 역산 단계에서 초과가 드러날 수 있어 버튼을 막지 않는다.
+        runBtn.disabled = false;
+        runBtn.textContent = over === 0
+          ? "내경 역산 실행 (설계유량 기준 초과 없음)"
+          : `유속 초과 ${over}구간 내경 역산 실행`;
+        backBtn.style.display = "none";
+        renderWarnings(report());
+        if (!bs.length) {
+          tableBox.innerHTML =
+            `<p class="info-line" style="padding:8px;">배관 현황이 비어 있습니다 — ` +
+            `이 통합 결과는 전 배관 표를 지원하지 않는 이전 빌드일 수 있습니다. ` +
+            `배관망 통합을 다시 실행해 주세요.</p>`;
+          return;
+        }
+        const head = `<tr>${ALL_COLS.map((c) => `<th>${escHtml(c)}</th>`).join("")}</tr>`;
+        const body = bs.map((b) => {
+          const cls = b.v_over ? ' class="vel-over"' : "";
+          return `<tr${cls}>` +
+            `<td>${escHtml(b.label || `${b.in}→${b.out}`)}</td>` +
+            `<td>${escHtml(roleName(b.role))}</td>` +
+            `<td>${num(b.bore_mm, 0)}</td>` +
+            `<td>${num(b.inner_dia_mm, 1)}</td>` +
+            `<td>${num(b.flow_lpm, 1)}</td>` +
+            `<td>${num(b.velocity_mps, 2)}</td>` +
+            `<td>${num(b.v_limit, 0)}</td>` +
+            `<td>${b.v_over ? "초과" : "적합"}</td>` +
+            `</tr>`;
+        }).join("");
+        tableBox.innerHTML = `<table class="fx-tbl"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+      }
+
+      function render() {
+        const rep = report();
+        if (!rep) {
+          tableBox.innerHTML = `<p class="info-line" style="padding:8px;">통합 빌드를 먼저 실행하세요.</p>`;
+          summaryEl.textContent = "";
+          introEl.textContent = "";
+          warnEl.style.display = "none";
+          runBtn.style.display = "none";
+          backBtn.style.display = "none";
+          return;
+        }
+        if (view === "all") { renderAll(); return; }
+        const cs = chgRows();
+        introEl.innerHTML =
+          `헤드를 K√P 오리피스로 풀어 얻은 <strong>과토출 유량</strong> 기준 역산 결과입니다. ` +
+          `관경은 줄지 않고 올라가기만 하며, 바뀐 구간과 상한을 못 맞춘 구간만 표에 남습니다.`;
+        runBtn.style.display = "none";
+        backBtn.style.display = "";
+        summaryEl.textContent =
+          `변경 ${rep.changed}건 · 최대유속 ${num(rep.max_velocity_before, 2)} → ` +
+          `${num(rep.max_velocity_after, 2)} m/s · 초과 ${rep.violations_before} → ` +
+          `${rep.violations_after}구간 · ${rep.iterations}회차 · 과토출 x${num(rep.overdischarge_ratio_max, 2)}`;
+        renderWarnings(rep);
         if (!cs.length) {
           tableBox.innerHTML =
             `<p class="info-line" style="padding:8px;">관경이 바뀐 구간이 없습니다 — ` +
             `도면 관경 그대로 유속 상한을 만족합니다.</p>`;
           return;
         }
-        const head = `<tr>${COLS.map((c) => `<th>${escHtml(c)}</th>`).join("")}</tr>`;
+        const head = `<tr>${CHG_COLS.map((c) => `<th>${escHtml(c)}</th>`).join("")}</tr>`;
         const body = cs.map((c) => {
           const cls = c.v_over ? ' class="vel-over"' : "";
           const up = c.bore_after > c.bore_before ? ' class="vel-up"' : "";
@@ -7852,42 +7924,83 @@
         tableBox.innerHTML = `<table class="fx-tbl"><thead>${head}</thead><tbody>${body}</tbody></table>`;
       }
 
-      function open() {
+      function open(which) {
+        // 전 배관 현황이 없는(이전 빌드) 결과는 곧장 역산 결과 표로 — 빈 화면 대신.
+        view = which || (baseRows().length ? "all" : "changes");
         render();
         overlay.classList.add("is-open");
       }
       function close() { overlay.classList.remove("is-open"); }
+
+      // 역산은 서버에서 실제로 다시 수행한다 — 캐시된 통합망을 도면 관경으로 되돌린 뒤
+      // 수렴 사이징을 재실행하므로, 버튼이 미리 계산된 값을 보여주기만 하는 게 아니다.
+      async function runResize() {
+        const jobId = state.combinedBuild && state.combinedBuild.job_id;
+        if (!jobId) {
+          alert("내경 역산은 '배관망 통합'으로 빌드한 결과에만 가능합니다.");
+          return;
+        }
+        const prev = runBtn.textContent;
+        runBtn.disabled = true;
+        runBtn.textContent = "내경 역산 계산 중…";
+        try {
+          const res = await fetch("/api/remote30/combined/velocity-resize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ job_id: jobId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) {
+            alert("내경 역산 실패: " + (data.message || ("HTTP " + res.status)));
+            runBtn.disabled = false;
+            runBtn.textContent = prev;
+            return;
+          }
+          state.combinedBuild.velocity_report = data.velocity_report || null;
+          view = "changes";
+          render();
+        } catch (err) {
+          alert("내경 역산 실패: " + err);
+          runBtn.disabled = false;
+          runBtn.textContent = prev;
+        }
+      }
 
       function toCsv() {
         const esc = (v) => {
           const s = (v === null || v === undefined) ? "" : String(v);
           return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
         };
-        const lines = [COLS.join(",")];
+        const lines = [cols().join(",")];
         for (const c of rows()) {
-          lines.push([c.label || `${c.in}→${c.out}`, roleName(c.role), c.bore_before,
-                      c.bore_after, c.inner_dia_mm, c.flow_lpm, c.velocity_before,
-                      c.velocity_after, c.v_limit, (c.reasons || []).join(" ")]
-                     .map(esc).join(","));
+          const cells = view === "all"
+            ? [c.label || `${c.in}→${c.out}`, roleName(c.role), c.bore_mm, c.inner_dia_mm,
+               c.flow_lpm, c.velocity_mps, c.v_limit, c.v_over ? "초과" : "적합"]
+            : [c.label || `${c.in}→${c.out}`, roleName(c.role), c.bore_before,
+               c.bore_after, c.inner_dia_mm, c.flow_lpm, c.velocity_before,
+               c.velocity_after, c.v_limit, (c.reasons || []).join(" ")];
+          lines.push(cells.map(esc).join(","));
         }
         return lines.join("\r\n");
       }
 
       const btn = document.getElementById("cmb-vel-btn");
-      if (btn) btn.addEventListener("click", open);
+      if (btn) btn.addEventListener("click", () => open());
       const closeBtn = document.getElementById("vel-modal-close");
       if (closeBtn) closeBtn.addEventListener("click", close);
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && overlay.classList.contains("is-open")) close();
       });
+      runBtn.addEventListener("click", runResize);
+      backBtn.addEventListener("click", () => { view = "all"; render(); });
       const csvBtn = document.getElementById("vel-csv-btn");
       if (csvBtn) csvBtn.addEventListener("click", () => {
-        if (!rows().length) { alert("내보낼 변경 이력이 없습니다."); return; }
+        if (!rows().length) { alert("내보낼 표가 비어 있습니다."); return; }
         // BOM — Excel 이 UTF-8 CSV 를 CP949 로 오해해 한글이 깨지는 것을 막는다.
         const blob = new Blob(["﻿" + toCsv()], {type: "text/csv;charset=utf-8"});
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url; a.download = "내경역산표.csv";
+        a.href = url; a.download = view === "all" ? "배관유속현황.csv" : "내경역산표.csv";
         document.body.appendChild(a); a.click(); a.remove();
         URL.revokeObjectURL(url);
       });

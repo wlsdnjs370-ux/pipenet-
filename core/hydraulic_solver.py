@@ -421,6 +421,7 @@ def converge_bores_by_velocity(
     max_outer: int = 24,
     export_source_bar: float | None = None,
     head_stub_bore_mm: float | None = None,
+    reset_bores: list[float] | None = None,
 ) -> dict:
     """모든 배관이 유속 상한 이하가 될 때까지 해석↔내경승급을 반복 (in-place).
 
@@ -436,13 +437,16 @@ def converge_bores_by_velocity(
             사이징 후 그 경계로 한 번 더 풀어 `export` 블록(과토출·유속)을 담는다.
         head_stub_bore_mm: 헤드 접속 신축배관 호칭경. 이 구간은 제조사 규격품이라
             승급 대상이 아니므로 판정만 하고 `규격고정` 사유로 표에 남긴다.
+        reset_bores: 주면 사이징 전에 각 배관 내경을 이 값으로 되돌린다. 이미 한 번
+            승급된 망을 도면 상태에서 다시 역산할 때 쓴다.
 
     기록 필드 (배관 dict, 표시·검증용):
         flow_lpm, velocity_mps, v_limit, v_over, pipe_role, inner_dia_mm
 
     Returns:
         수렴 리포트 dict. `changes` 는 관경이 바뀐 배관과 상한을 못 맞춘 배관의
-        전후 대조표 — 승급 사유가 유속인지 단조성 회복인지 구분해 담는다.
+        전후 대조표, `baseline` 은 승급 전 전 배관 현황 — 승급 사유가 유속인지
+        단조성 회복인지 구분해 담는다.
     """
     empty = {"iterations": 0, "converged": True, "changed": 0,
              "max_velocity_before": 0.0, "max_velocity_after": 0.0,
@@ -450,9 +454,13 @@ def converge_bores_by_velocity(
              "source_pressure_bar": 0.0, "overdischarge_ratio_max": 1.0,
              "solver_converged": True, "pipes": 0, "head_stub_bore_mm": None,
              "head_stub_violations": 0, "head_stub_max_velocity": 0.0,
-             "export": None, "changes": []}
+             "export": None, "changes": [], "baseline": []}
     if not pipes:
         return empty
+
+    if reset_bores is not None:
+        for p, bore in zip(pipes, reset_bores):
+            p["dia"] = bore
 
     topo = build_topology(nodes, pipes, nozzles)
     roles = classify_pipe_roles(topo, pipes)
@@ -479,8 +487,25 @@ def converge_bores_by_velocity(
     # 고정 — 으로 채점한 값이 "before". 과토출 기준으로 재면 아래 예비 사이징이
     # 없는 상태에선 해가 발산해 비교값이 되지 못한다.
     bore_before = [_bore_of(p) for p in pipes]
-    v_before = _velocities(demand_flows(topo))
+    demand = demand_flows(topo)
+    v_before = _velocities(demand)
     mv_before, vio_before = _summary(v_before)
+    # 승급 전 전 배관 현황 — `changes` 는 바뀐 것만 담아 설계 검토용 전체 표가 되지
+    # 못한다. 어디가 상한을 넘는지 먼저 보여주고 역산 여부를 판단하게 하려면 도면
+    # 그대로의 모든 구간이 필요하다.
+    baseline = [{
+        "label": str(p.get("label", "")),
+        "in": str(p.get("in", "")), "out": str(p.get("out", "")),
+        "role": roles[i],
+        "bore_mm": round(bore_before[i], 1),
+        "inner_dia_mm": (round(inner_diameter_mm(bore_before[i], material), 1)
+                         if bore_before[i] > 0 else None),
+        "flow_lpm": round(demand[i], 1),
+        "velocity_mps": (round(v_before[i], 2)
+                         if v_before[i] != float("inf") else None),
+        "v_limit": limits[i],
+        "v_over": v_before[i] > limits[i] + 1e-9,
+    } for i, p in enumerate(pipes)]
     # 승급 사유 — 유속 때문에 굵어진 것과 상류≥하류를 맞추느라 굵어진 것은
     # 설계 검토에서 의미가 달라 분리 기록한다.
     reasons: list[list[str]] = [[] for _ in pipes]
@@ -531,7 +556,7 @@ def converge_bores_by_velocity(
     # 예비 사이징 — 설계유량으로 먼저 상식적인 굵기를 만든다. 25A 일색 상태에서
     # 바로 해석에 들어가면 말단압 고정 탓에 근접 헤드 유량이 폭주해 전 구간이
     # 최대경으로 튄다.
-    changed_total = _bump(demand_flows(topo))
+    changed_total = _bump(demand)
 
     sol = solve_network(pipes, topo, equiv_length_m=equiv, material=material)
     outer = 0
@@ -647,4 +672,5 @@ def converge_bores_by_velocity(
         "head_stub_max_velocity": round(stub_max_v, 2),
         "export": export,
         "changes": changes,
+        "baseline": baseline,
     }

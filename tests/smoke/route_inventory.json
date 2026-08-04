@@ -125,6 +125,14 @@
     "rule": "/api/remote30/combined/result/<job_id>/<path:filename>"
   },
   {
+    "endpoint": "remote30_combined_velocity_resize",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/remote30/combined/velocity-resize"
+  },
+  {
     "endpoint": "remote30_export_cad",
     "methods": [
       "OPTIONS",

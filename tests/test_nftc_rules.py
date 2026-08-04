@@ -15,10 +15,11 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+for _p in (_ROOT, _ROOT / "core"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-from core import nftc_rules as N  # noqa: E402
+import nftc_rules as N  # noqa: E402
 
 
 # ────────────────────────────────────────────────────────────────────────────

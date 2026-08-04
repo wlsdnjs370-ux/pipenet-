@@ -229,6 +229,30 @@ def test_changes_table_is_empty_when_nothing_moves():
     assert converge_bores_by_velocity(nodes, pipes, nozzles)["changes"] == []
 
 
+def test_baseline_covers_every_pipe_as_drawn():
+    """`changes` 는 바뀐 것만 담는다 — 설계 검토용 전 배관 표는 `baseline` 이다."""
+    nodes, pipes, nozzles = make_net()
+    rep = converge_bores_by_velocity(nodes, pipes, nozzles)
+    baseline = rep["baseline"]
+    assert len(baseline) == len(pipes)
+    assert [b["label"] for b in baseline] == [p["label"] for p in pipes]
+    # 승급 전(도면 관경 25A) 기준이어야 한다 — 승급 후 값이면 초과가 사라져 버린다.
+    assert all(b["bore_mm"] == 25 for b in baseline)
+    assert sum(1 for b in baseline if b["v_over"]) == rep["violations_before"]
+
+
+def test_reset_bores_reruns_sizing_from_as_drawn():
+    """이미 승급된 망도 도면 관경으로 되돌려 같은 결과로 다시 수렴해야 한다."""
+    nodes, pipes, nozzles = make_net()
+    first = converge_bores_by_velocity(nodes, pipes, nozzles)
+    sized = [p["dia"] for p in pipes]
+    again = converge_bores_by_velocity(
+        nodes, pipes, nozzles, reset_bores=[b["bore_mm"] for b in first["baseline"]])
+    assert [p["dia"] for p in pipes] == sized
+    assert again["violations_before"] == first["violations_before"]
+    assert again["changed"] == first["changed"]
+
+
 def test_overdischarge_is_modeled():
     """말단 헤드만 80 L/min 이고 펌프에 가까운 헤드는 더 많이 토출해야 한다."""
     nodes, pipes, nozzles = make_net()

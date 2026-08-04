@@ -4415,6 +4415,10 @@ def remote30_combined_build():
             # 재배치 루트(AV)와 lift 제외 대상(라이저·기계실)을 그대로 승계.
             "av_label": av_label,
             "no_lift_labels": sorted(riser_collapse_labels | _mr_set),
+            # 도면 그대로의 관경 — 캐시된 combined 는 이미 승급된 상태라
+            # 역산을 다시 돌리려면 진입 상태를 따로 들고 있어야 한다.
+            "baseline_bores": [b["bore_mm"]
+                               for b in (velocity_report or {}).get("baseline", ())],
         })
     except Exception as _cache_exc:  # noqa: BLE001 — 캐시 실패가 통합 출력을 막지 않도록
         warnings.warn(f"[combined] rebuild 캐시 저장 실패 (편집 재출력 불가): {_cache_exc}",
@@ -4849,6 +4853,8 @@ def remote30_combined_rebuild():
             "machine_room_labels": cache.get("machine_room_labels"),
             "export_bar": cache.get("export_bar"),
             "av_label": av_label, "no_lift_labels": sorted(no_lift),
+            "baseline_bores": [b["bore_mm"]
+                               for b in (velocity_report or {}).get("baseline", ())],
         })
 
         base = f"/api/remote30/combined/result/{new_job}"
@@ -4862,6 +4868,45 @@ def remote30_combined_rebuild():
             **_bundle_urls(iso_bundle, base, "_iso"),
             "velocity_report": velocity_report,
         })
+    except Exception as exc:  # noqa: BLE001
+        return _err500(exc)
+
+
+@app.post("/api/remote30/combined/velocity-resize")
+def remote30_combined_velocity_resize():
+    """캐시된 통합망을 도면 관경으로 되돌려 유속 역산을 다시 수행 → 리포트만 반환.
+
+    Body(JSON): { job_id }
+
+    빌드 때 이미 한 번 승급된 망이 캐시에 남아 있으므로, 저장해 둔 도면 관경
+    (`baseline_bores`)으로 되돌린 뒤 수렴 사이징을 실제로 다시 돌린다. 산출 파일은
+    빌드 시점 결과와 같아 다시 만들지 않는다.
+    """
+    import copy as _copy
+    from hydraulic_solver import converge_bores_by_velocity
+    from remote30_constants import FX_DEFAULT_PROFILE, FX_SPEC_PROFILES
+    body = request.get_json(silent=True) or {}
+    src_job = (body.get("job_id") or "").strip()
+    if not src_job:
+        return jsonify({"ok": False, "message": "job_id 가 필요합니다"}), 400
+    cache = _COMBINED_JOBS.get(src_job)
+    if not cache:
+        return jsonify({"ok": False,
+                        "message": f"통합 빌드 캐시를 찾을 수 없습니다 (job_id={src_job}). "
+                                   "배관망 통합을 다시 실행해 주세요."}), 404
+    try:
+        combined = _copy.deepcopy(cache["combined"])
+        report = converge_bores_by_velocity(
+            combined.nodes, combined.pipes, combined.nozzles,
+            equipment=combined.equipment, keep_existing=True,
+            export_source_bar=cache.get("export_bar"),
+            head_stub_bore_mm=FX_SPEC_PROFILES[FX_DEFAULT_PROFILE]["nominal_dn"],
+            reset_bores=cache.get("baseline_bores") or None)
+        app.logger.info(
+            "combined/velocity-resize: %d passes, changed=%d, viol %d->%d",
+            report["iterations"], report["changed"],
+            report["violations_before"], report["violations_after"])
+        return jsonify({"ok": True, "job_id": src_job, "velocity_report": report})
     except Exception as exc:  # noqa: BLE001
         return _err500(exc)
 

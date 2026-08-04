@@ -28,6 +28,9 @@ _FLOOR_LABEL_PATTERNS = (
     (re.compile(r"지하\s*(\d{1,2})\s*층"), "basement"),   # 지하N층 → -N
     (re.compile(r"B\s*(\d{1,2})\s*F", re.I), "basement"),  # B1F → -1
     (re.compile(r"(?<![A-Za-z])(\d{1,2})\s*F(?![A-Za-z])"), "ground"),  # 5F → +5
+    # 접두어 없는 "18층" — 압력표에 사람이 실제로 쓰는 표기. 지상/지하가 먼저
+    # 걸리므로 여기까지 오는 건 층수만 적힌 경우뿐이다.
+    (re.compile(r"(\d{1,2})\s*층"), "ground"),
 )
 _FLOOR_LABEL_SPECIAL = {"옥상": 99, "옥탑": 99, "ROOF": 99, "R/F": 99, "RF": 99}
 MACHINE_ROOM_SP_LAYERS = {"-소화(SP-고)", "-소화(SP-저)"}
@@ -118,10 +121,12 @@ ORTHO_SNAP_TOL_DEG = 20.0
 # 와 무관하게 "이 구간 배관이 무엇으로 되어 있나"만 뜻한다.
 # DXF 에 재질 정보가 없으므로 유형은 사람이 지정해야 하고, 지정이 없으면 강관이다.
 ZONE_KIND_UNIT_DWELLING = "unit_dwelling"
+ZONE_KIND_PARKING = "parking"
+ZONE_KIND_CORRIDOR = "corridor"
 ZONE_MATERIAL_MAP: dict[str, tuple[str, str]] = {
     ZONE_KIND_UNIT_DWELLING: (CPVC_PIPE_TYPE, CPVC_C_FACTOR),
-    "parking": (STEEL_PIPE_TYPE, STEEL_C_FACTOR),
-    "corridor": (STEEL_PIPE_TYPE, STEEL_C_FACTOR),
+    ZONE_KIND_PARKING: (STEEL_PIPE_TYPE, STEEL_C_FACTOR),
+    ZONE_KIND_CORRIDOR: (STEEL_PIPE_TYPE, STEEL_C_FACTOR),
 }
 DEFAULT_ZONE_MATERIAL = (STEEL_PIPE_TYPE, STEEL_C_FACTOR)
 
@@ -157,6 +162,26 @@ AV_EQ_LEN_M = 12.9             # 알람밸브 등가길이 (기존값 상수화�
 # 내부에 등가길이 Equipment 를 담는 구조. 아래 값은 그 참조와 정합.
 FX_SCHEDULE_ROUGHNESS = 0.065  # SLF Metric-definition roughness (Colebrook 전용, C=120 계산엔 무영향 — 참고값)
 FX_RISE_M = -0.1               # FX 파이프 rise(입->출 표고차). 참조 SDF 하드코드값.
+
+
+# ── 표고 출처 ─────────────────────────────────────────────────────
+# 근거가 센 것부터. 근거가 아예 없는 값은 0 으로 때우지 않고 UNRESOLVED 로 센다 —
+# 0 은 "수평"이라는 주장이라서, 모르는 것과 구분되어야 한다.
+ELEV_SOURCE_USER = "user_confirmed"
+ELEV_SOURCE_DRAWING = "drawing_estimated"
+ELEV_SOURCE_DEFAULT = "default"
+ELEV_SOURCE_UNRESOLVED = "unresolved"
+ELEV_SOURCE_ORDER = (ELEV_SOURCE_USER, ELEV_SOURCE_DRAWING,
+                     ELEV_SOURCE_DEFAULT, ELEV_SOURCE_UNRESOLVED)
+
+# ── 층 내 국소 표고 규칙 (FNCADnet 작업지시서 T6-b) ─────────────────
+# 층간 낙차(압력표)와 달리 이건 한 층 안에서의 오르내림이다. 사내 도면 통계가
+# 나오면 값만 갈아끼운다. None 은 "아직 근거 없음" — 0 과 다르다.
+LOCAL_RISE_RULES: dict[str, float | None] = {
+    "parking_beam_drop_m": -0.3,       # 지하주차장 보 하단 하향
+    "upright_riser_nipple_m": None,    # 상향식 촛대 — 사내 통계 대기, 미확정
+    "fx_drop_m": FX_RISE_M,            # 신축배관 드롭
+}
 
 
 def fx_schedule_name(nominal_dn: int, inner_dia_mm: float) -> str:

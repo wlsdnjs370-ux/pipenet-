@@ -1352,6 +1352,16 @@
             <button id="mr-clear-marks" type="button" style="margin-top: 4px; padding: 3px 6px; background: transparent; border: 1px solid var(--line); font-size: 0.7rem; cursor: pointer;">↺ 모두 해제</button>
           </div>
 
+          <div style="margin: 10px 0; padding: 8px; background: #ffffff; border: 1px solid var(--line);">
+            <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: var(--text-2);">기계실 천장고 (선택)</div>
+            <p class="info-line" style="margin-bottom: 6px; font-size: 0.72rem;">
+              수조 수면에서 천장 아래 배관까지의 낙차입니다. 평면도에는 없는 값이라 비워 두면
+              첫 구간 표고가 <strong>미확정</strong>으로 남습니다(0 = 수평 이라는 주장과 구분).
+            </p>
+            <input id="mr-ceiling-h" type="number" step="0.1" min="0" placeholder="예: 4.5"
+                   style="width: 120px; font-size: 0.74rem; padding: 4px 6px;"> m
+          </div>
+
           <button id="mr-extract" class="run-btn" type="button" disabled style="background: #ffffff; color: var(--accent); border-color: var(--accent);">▶ 기계실 추출</button>
         </section>
 
@@ -5400,6 +5410,9 @@
       if (state.machineroom_pipe_layers && state.machineroom_pipe_layers.length) {
         fd.append("pipe_layers", JSON.stringify(state.machineroom_pipe_layers));
       }
+      // 빈칸은 보내지 않는다 — 서버가 미확정으로 잡아야 하기 때문.
+      const ceilRaw = (document.getElementById("mr-ceiling-h").value || "").trim();
+      if (ceilRaw) fd.append("machine_room_ceiling_m", ceilRaw);
       if (state.machineroom_uploaded_file) {
         await appendUpload(fd, "machineroom_dxf_file", state.machineroom_uploaded_file);
       } else {
@@ -5454,6 +5467,17 @@
           diaBody += `<br><span style="color:#b45309;">⚠ 모든 pipe dia=150A default — 도면 직경 라벨 부족.</span>`;
         }
         html += sec("Ø 직경 매칭", diaBody, "#b45309");
+      }
+
+      const unresolved = ((mr.elev_sources || {}).pipes || {}).unresolved || 0;
+      if (mr.machine_room_ceiling_m) {
+        html += sec("↕ 표고",
+          `천장고 <strong>${mr.machine_room_ceiling_m} m</strong> (사람 확정) → 첫 구간 낙차 적용. ` +
+          `나머지 구간은 천장 아래 수평으로 봅니다.`, "#065f46");
+      } else {
+        html += sec("↕ 표고 미확정",
+          `기계실 천장고가 비어 있어 <strong>표고 미확정 관로 ${unresolved}개</strong>. ` +
+          `수면→천장 낙차가 빠진 채 계산되니, 천장고를 입력하고 다시 추출하세요.`, "#b91c1c");
       }
 
       html += sec("🛤 경로 요약",

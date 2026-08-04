@@ -90,6 +90,8 @@ def register(app, *, COMBINED_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR, OVERALL_OUTPUT
             source_x, source_y     — 탱크 토출구(수원) 좌표 (mm, 필수)
             conn_x,   conn_y       — 입상관 연결점 좌표 (mm, 필수)
             snap_tolerance_mm      — 클릭 ↔ 그래프 노드 허용 거리 (기본 3000)
+            machine_room_ceiling_m — 기계실 천장고 (m). 수면→천장 아래 배관 낙차로
+                                     첫 구간에 적용. 없으면 그 구간 표고는 미확정.
 
         동작: 계통도 추출(extract_system_path)과 동형 — DXF LINE 으로 그래프 빌드 →
             탱크/연결점 클릭점을 가장 가까운 노드에 snap → Dijkstra 경로 → 기계실 dict.
@@ -119,6 +121,10 @@ def register(app, *, COMBINED_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR, OVERALL_OUTPUT
             except (TypeError, ValueError):
                 snap_tol = 3000.0
 
+        _ceiling_raw = (request.get_json(silent=True) or {}).get("machine_room_ceiling_m") \
+            if request.is_json else request.form.get("machine_room_ceiling_m")
+        ceiling_m = _to_float(_ceiling_raw, 0.0) or None
+
         # 사용자가 지정한 배관 레이어 — 다계통(PIPE/PIPE_MAIN/PIPE_SUB/소화수관…) 도면에서
         # '어떤 레이어가 이 기계실 배관인가'를 명시. 없으면 자동(SP 레이어→키워드) 추론.
         pipe_layers = None
@@ -144,7 +150,8 @@ def register(app, *, COMBINED_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR, OVERALL_OUTPUT
                 entities = parse_dxf_for_view(dxf_path, include_hidden_layers=True)["entities"]
             mr = extract_machine_room_path(entities, (sx, sy), (cx, cy),
                                            layer_filter=pipe_layers,
-                                           snap_tolerance_mm=snap_tol)
+                                           snap_tolerance_mm=snap_tol,
+                                           ceiling_m=ceiling_m)
             return jsonify({"ok": True, "machine_room": mr, "algorithm": "machineroom_path_v1"})
         except ValueError as exc:
             # 사용자 입력 오류 (snap 실패 / disconnected). 프론트는 본문 ok 로 분기한다.

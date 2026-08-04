@@ -101,6 +101,17 @@ def register(app, *, BASE_DIR, COMBINED_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR, OVER
         use_legacy = False
         snap_tol = 2500.0
         waypoints: list[tuple[float, float]] = []
+        profile_rows: list[dict] = []
+
+        def _parse_profile_rows(raw):
+            """압력표 JSON → 층 행 목록. 읽지 못하면 빈 목록 = 도면 추정으로 내려간다."""
+            if not raw:
+                return []
+            try:
+                data = raw if isinstance(raw, list) else json.loads(raw)
+            except (TypeError, ValueError):
+                return []
+            return [d for d in data if isinstance(d, dict) and d.get("floor_label")]
 
         def _parse_waypoints(raw):
             """waypoints 는 [[x,y], ...] JSON 문자열. 잘못된 형식은 무시(빈 리스트)."""
@@ -125,6 +136,7 @@ def register(app, *, BASE_DIR, COMBINED_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR, OVER
             except (TypeError, ValueError):
                 snap_tol = 2500.0
             waypoints = _parse_waypoints(body.get("waypoints"))
+            profile_rows = _parse_profile_rows(body.get("pressure_table_json"))
         else:
             try:
                 px = float(request.form["pump_x"]); py = float(request.form["pump_y"])
@@ -137,6 +149,7 @@ def register(app, *, BASE_DIR, COMBINED_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR, OVER
             except (TypeError, ValueError):
                 snap_tol = 2500.0
             waypoints = _parse_waypoints(request.form.get("waypoints"))
+            profile_rows = _parse_profile_rows(request.form.get("pressure_table_json"))
 
         if use_legacy:
             from remote30_prototype import extract_riser_msp_28f
@@ -175,7 +188,8 @@ def register(app, *, BASE_DIR, COMBINED_OUTPUT_DIR, MACHINEROOM_OUTPUT_DIR, OVER
                 entities = entities + anno_text
             riser = extract_system_path(entities, (px, py), (ax, ay),
                                         snap_tolerance_mm=snap_tol,
-                                        waypoints=waypoints or None)
+                                        waypoints=waypoints or None,
+                                        floor_profile_rows=profile_rows or None)
             return jsonify({"ok": True, "riser": riser, "algorithm": "dxf_path_v1"})
         except ValueError as exc:
             # 사용자 입력 오류 (snap 실패 / disconnected). 프론트는 본문 ok 로 분기한다.

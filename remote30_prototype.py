@@ -128,7 +128,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, NON_PIPE_GEOMETRY_CATS, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, HEAD_CONNECTOR_MAX_MM, HEAD_CONNECTOR_TOUCH_MM, HEAD_CONNECTOR_MAX_SEGS, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ZONE_MATERIAL_MAP, DEFAULT_ZONE_MATERIAL, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, NON_PIPE_GEOMETRY_CATS, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, HEAD_CONNECTOR_MAX_MM, HEAD_CONNECTOR_TOUCH_MM, HEAD_CONNECTOR_MAX_SEGS, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ZONE_MATERIAL_MAP, DEFAULT_ZONE_MATERIAL, ZONE_KIND_PARKING, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, LOCAL_RISE_RULES, ELEV_SOURCE_USER, ELEV_SOURCE_DRAWING, ELEV_SOURCE_DEFAULT, ELEV_SOURCE_UNRESOLVED, ELEV_SOURCE_ORDER, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 
 def _categorize_layer(name: str) -> str:
@@ -1049,6 +1049,27 @@ def _extract_dia_text_points(entities: list[dict]) -> list[tuple[float, float, i
     return out
 
 
+def _floor_index_of_label(text: str) -> int | None:
+    """층 이름 문자열 → 층 번호. 지상 +N, 지하 -N, 옥상 99. 못 읽으면 None."""
+    v = (text or "").strip()
+    if not v:
+        return None
+    upper = v.upper()
+    for kw, idx in _FLOOR_LABEL_SPECIAL.items():
+        if kw in upper:
+            return idx
+    for pat, kind in _FLOOR_LABEL_PATTERNS:
+        m = pat.search(v)
+        if not m:
+            continue
+        try:
+            n = int(m.group(1))
+        except ValueError:
+            continue
+        return -n if kind == "basement" else n
+    return None
+
+
 def _extract_floor_labels(entities: list[dict]) -> list[tuple[float, float, int, str]]:
     """TEXT 에서 층 라벨 → [(x, y, floor_idx, name), ...]
     floor_idx: 지상층 +N (1F=1), 지하층 -N (B1F=-1), 옥상 99.
@@ -1058,49 +1079,63 @@ def _extract_floor_labels(entities: list[dict]) -> list[tuple[float, float, int,
         if en.get("t") not in ("T", "M"):
             continue
         v = (en.get("v") or "").strip()
-        if not v:
-            continue
         p = en.get("p")
-        if not p or len(p) < 2:
+        if not v or not p or len(p) < 2:
             continue
-        x, y = float(p[0]), float(p[1])
-        # special 옥상/옥탑
-        matched = False
-        for kw, idx in _FLOOR_LABEL_SPECIAL.items():
-            if kw in v.upper():
-                out.append((x, y, idx, v[:20]))
-                matched = True
-                break
-        if matched:
-            continue
-        for pat, kind in _FLOOR_LABEL_PATTERNS:
-            m = pat.search(v)
-            if not m:
-                continue
-            try:
-                n = int(m.group(1))
-            except ValueError:
-                continue
-            idx = -n if kind == "basement" else n
-            out.append((x, y, idx, v[:20]))
-            break
+        idx = _floor_index_of_label(v)
+        if idx is not None:
+            out.append((float(p[0]), float(p[1]), idx, v[:20]))
     return out
 
 
-def _estimate_floor_height_mm(floor_labels: list[tuple[float, float, int, str]]) -> float:
-    """인접 층 라벨의 Y 차이 중앙값 → 평균 층고 (mm). 미정시 3000mm 디폴트."""
-    if len(floor_labels) < 2:
-        return 3000.0
+def _floor_drop_map(profile_rows: list[dict] | None) -> dict[int, float]:
+    """압력표 행 → {층 번호: 누적 낙차 m}. 층 이름을 못 읽는 행은 버린다."""
+    out: dict[int, float] = {}
+    for row in (profile_rows or []):
+        idx = _floor_index_of_label(str(row.get("floor_label", "")))
+        if idx is None:
+            continue
+        try:
+            out[idx] = float(row.get("head_drop_m") or 0.0)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _weaker_elev_source(*sources: str) -> str:
+    """근거가 더 약한 출처. 관로 표고는 양 끝 노드에서 나오므로 약한 쪽을 따른다."""
+    weakest = len(ELEV_SOURCE_ORDER)
+    return max(sources, key=lambda s: ELEV_SOURCE_ORDER.index(s)
+               if s in ELEV_SOURCE_ORDER else weakest)
+
+
+def elev_source_counts(items: list[dict]) -> dict[str, int]:
+    """노드/관로 목록의 표고 출처 분포. 출처 표기가 없는 항목은 미확정으로 센다."""
+    counts = {src: 0 for src in ELEV_SOURCE_ORDER}
+    for it in items:
+        src = it.get("elev_source") or ELEV_SOURCE_UNRESOLVED
+        counts[src] = counts.get(src, 0) + 1
+    return counts
+
+
+def _estimate_floor_height_mm(
+    floor_labels: list[tuple[float, float, int, str]],
+) -> tuple[float, str]:
+    """인접 층 라벨의 Y 차이 중앙값 → 평균 층고 (mm, 출처).
+
+    계통도는 수직 압축 작도되는 경우가 많아 이 값은 근거가 약하다. 압력표가 있으면
+    쓰지 않는다(호출부 참조). 라벨조차 없으면 3000mm 는 관례값일 뿐이다.
+    """
     sorted_labels = sorted(floor_labels, key=lambda fl: fl[2])
-    diffs: list[float] = []
-    for i in range(1, len(sorted_labels)):
-        a, b = sorted_labels[i - 1], sorted_labels[i]
-        if b[2] - a[2] == 1 and b[2] < 99 and a[2] >= 1:  # 연속 지상층만
-            diffs.append(abs(b[1] - a[1]))
+    diffs = [
+        abs(b[1] - a[1])
+        for a, b in zip(sorted_labels, sorted_labels[1:])
+        if b[2] - a[2] == 1 and b[2] < 99 and a[2] >= 1  # 연속 지상층만
+    ]
     if not diffs:
-        return 3000.0
+        return 3000.0, ELEV_SOURCE_DEFAULT
     diffs.sort()
-    return diffs[len(diffs) // 2]
+    return diffs[len(diffs) // 2], ELEV_SOURCE_DRAWING
 
 
 def _floor_for_node_y(node_y: float,
@@ -1363,6 +1398,7 @@ def extract_system_path(
     snap_tolerance_mm: float = 2500.0,
     layer_filter: set[str] | None = None,
     waypoints: list[tuple[float, float]] | None = None,
+    floor_profile_rows: list[dict] | None = None,
 ) -> dict:
     """계통도 DXF 에서 펌프 → AV 실제 배관망 경로 추출 (v1: 토폴로지만).
 
@@ -1467,6 +1503,7 @@ def extract_system_path(
         path, edge_len, pump_xy, av_xy,
         pump_snap_dist=pump_d, av_snap_dist=av_d, graph_stats=stats,
         dia_text_pts=dia_text_pts, floor_labels=floor_labels,
+        floor_profile_rows=floor_profile_rows,
     )
     # 전체 배관망 형태 — 원본 파일에 "그려진 실제 선"만 (force_connect 가 추가한 추측
     # bridge 는 제외). 그래야 화면이 파일 형태 그대로 보이고, 추측 연결선이 망을 가로질러
@@ -1513,13 +1550,16 @@ def _system_path_to_riser_dict(
     graph_stats: dict | None = None,
     dia_text_pts: list[tuple[float, float, int, str]] | None = None,
     floor_labels: list[tuple[float, float, int, str]] | None = None,
+    floor_profile_rows: list[dict] | None = None,
 ) -> dict:
     """경로 (vertex 시퀀스) → PIPENET 라이저 dict 변환.
 
     v2 — 직경 매칭 + 층 라벨 기반 elev:
         - dia_text_pts: TEXT 에서 추출한 직경 라벨 → segment 별 가까운 라벨 매칭.
-        - floor_labels: "지상N층" 등 라벨 → 노드 Y 좌표를 실제 층고로 변환.
-        매칭 실패 시 fallback: dia=100, elev=(y - av_y)/1000 heuristic.
+        - floor_labels: "지상N층" 등 라벨 → 노드 Y 좌표를 실제 층으로 매핑.
+        - floor_profile_rows: 사람이 확정한 압력표. 있으면 층별 낙차를 여기서 읽고,
+          없을 때만 도면 Y 차 중앙값 추정으로 내려간다.
+        매칭 실패 시 fallback: dia=150, elev=(y - av_y)/1000 heuristic.
 
     노드 라벨: "1" = 펌프 (Input, 1 atm), "10" = AV (No), 중간 = "2", "3", ...
     """
@@ -1533,17 +1573,24 @@ def _system_path_to_riser_dict(
     total = len(path)
     total_length_mm = 0.0
 
-    # v2 — 층 라벨 → AV 의 층 식별 + 평균 층고. 이걸로 노드 elev 정확히 계산.
-    floor_height_mm = _estimate_floor_height_mm(floor_labels)
+    # v2 — 층 라벨로 AV 의 층을 찾고, 층별 표고는 압력표(사람 확정) > 도면 추정 순으로.
+    floor_drop_m = _floor_drop_map(floor_profile_rows)
+    floor_height_mm, height_source = _estimate_floor_height_mm(floor_labels)
     av_floor_idx, av_floor_name = _floor_for_node_y(av_y_dxf, floor_labels)
+    profile_covers_av = av_floor_idx is not None and av_floor_idx in floor_drop_m
 
-    def _elev_for_node(ny: float) -> tuple[float, str | None, bool, int | None]:
-        """노드 Y 의 (elev_m, floor_name, from_label, floor_idx). label 없으면 Y/1000 fallback."""
+    def _elev_for_node(ny: float) -> tuple[float, str | None, str, int | None]:
+        """노드 Y 의 (elev_m, floor_name, elev_source, floor_idx)."""
         if floor_labels and av_floor_idx is not None:
             f_idx, f_name = _floor_for_node_y(ny, floor_labels)
             if f_idx is not None:
-                return ((f_idx - av_floor_idx) * floor_height_mm / 1000.0, f_name, True, f_idx)
-        return ((ny - av_y_dxf) / 1000.0, None, False, None)
+                if profile_covers_av and f_idx in floor_drop_m:
+                    # 낙차는 아래로 갈수록 커지므로 AV 기준 상대표고는 부호가 뒤집힌다.
+                    return (floor_drop_m[av_floor_idx] - floor_drop_m[f_idx],
+                            f_name, ELEV_SOURCE_USER, f_idx)
+                return ((f_idx - av_floor_idx) * floor_height_mm / 1000.0,
+                        f_name, height_source, f_idx)
+        return ((ny - av_y_dxf) / 1000.0, None, ELEV_SOURCE_DEFAULT, None)
 
     # 노드 — 라벨 컨벤션:
     #   첫 노드 "1" (Input/펌프), 마지막 노드 "10" (AV).
@@ -1557,14 +1604,15 @@ def _system_path_to_riser_dict(
             label, io = "10", "No"
         else:
             label, io = f"n{i + 1}", "No"
-        elev_m, floor_name, from_label, floor_idx = _elev_for_node(pt[1])
-        if from_label:
+        elev_m, floor_name, elev_source, floor_idx = _elev_for_node(pt[1])
+        if floor_idx is not None:
             nodes_with_floor += 1
         node: dict = {
             "label": label,
             "x": int(round(pt[0])),
             "y": int(round(pt[1])),
             "elevation": round(elev_m, 3),
+            "elev_source": elev_source,
             "io_node": io,
         }
         if floor_name:
@@ -1610,6 +1658,8 @@ def _system_path_to_riser_dict(
             "dia": used_dia,
             "length": round(length_m, 3),
             "elev":   elev_m,
+            "elev_source": _weaker_elev_source(nodes[i]["elev_source"],
+                                               nodes[i + 1]["elev_source"]),
             "c": "120",
             "status": "Normal",
             "group": "Unset",
@@ -1647,9 +1697,15 @@ def _system_path_to_riser_dict(
         "floor_matching": {
             "label_count": len(floor_labels),
             "floor_height_mm": round(floor_height_mm, 0),
+            "height_source": ELEV_SOURCE_USER if profile_covers_av else height_source,
+            "profile_floor_count": len(floor_drop_m),
             "av_floor_idx":  av_floor_idx,
             "av_floor_name": av_floor_name,
             "nodes_with_floor": nodes_with_floor,
+        },
+        "elev_sources": {
+            "nodes": elev_source_counts(nodes),
+            "pipes": elev_source_counts(pipes),
         },
         # 호환성 키 — legacy template 출력 형태 유지
         "affine_scale": 1.0,
@@ -1858,6 +1914,7 @@ def extract_machine_room_path(
     riser_conn_xy: tuple[float, float],
     snap_tolerance_mm: float = 2500.0,
     layer_filter: set[str] | None = None,
+    ceiling_m: float | None = None,
 ) -> dict:
     """기계실(옥상수조) DXF 에서 수원(탱크) → 입상관 연결점 배관 경로 추출.
 
@@ -1871,6 +1928,8 @@ def extract_machine_room_path(
         riser_conn_xy: 사용자 픽 입상관 연결점 좌표 (mm).
         snap_tolerance_mm: 클릭 ↔ 그래프 노드 허용 거리.
         layer_filter: None 이면 SP+물탱크 레이어 시도, 결과 부족 시 키워드 자동.
+        ceiling_m: 사람이 확정한 기계실 천장고 (m). 수조 수면에서 천장 아래 배관까지의
+            낙차로 첫 구간에만 적용된다. 없으면 그 구간 표고는 미확정으로 남는다.
 
     Returns:
         { nodes, pipes, source_node_label, conn_node_label, ... 진단 }
@@ -1940,7 +1999,7 @@ def extract_machine_room_path(
         path, edge_len, source_xy, riser_conn_xy,
         source_snap_dist=src_d, conn_snap_dist=conn_d,
         graph_stats=stats, dia_text_pts=dia_text_pts,
-        forced_keys=forced_keys,
+        forced_keys=forced_keys, ceiling_m=ceiling_m,
     )
 
     # 전체 SP 배관망 edge (시각화 전용) — 수리경로 spine 뿐 아니라 기계실 전 배관을
@@ -1977,17 +2036,23 @@ def _machine_room_path_to_dict(
     graph_stats: dict | None = None,
     dia_text_pts: list[tuple[float, float, int, str]] | None = None,
     forced_keys: set[tuple] | None = None,
+    ceiling_m: float | None = None,
 ) -> dict:
     """기계실 경로(vertex 시퀀스) → dict. 라벨 m1..mK, m1=Input(옥상수조 수면, 1atm).
 
-    옥상수조부는 수평 분포라 노드 elev=0 (탱크 수면 기준). 실제 수직 낙차는
-    라이저(계통도)가 담당하므로 기계실 elev 는 의도적으로 0 으로 둔다.
+    기계실 배관은 천장 아래 한 높이로 수평 분포한다. 수면(m1)에서 그 높이까지의
+    낙차만 실재하고, 이는 도면이 아니라 사람이 입력한 천장고(ceiling_m)에서 온다.
+    천장고가 없으면 첫 구간 표고는 0 이 아니라 '미확정'이다. 층간 수직 낙차는
+    여전히 라이저(계통도) 몫이다.
     """
     if len(path) < 2:
         raise ValueError(f"경로 노드 수 {len(path)} — 수원 = 연결점 같은 위치 가능성")
     dia_text_pts = dia_text_pts or []
     total = len(path)
     total_length_mm = 0.0
+
+    ceiling_drop_m = round(-abs(ceiling_m), 3) if ceiling_m else 0.0
+    ceiling_source = ELEV_SOURCE_USER if ceiling_m else ELEV_SOURCE_UNRESOLVED
 
     nodes: list[dict] = []
     for i, pt in enumerate(path):
@@ -1996,7 +2061,9 @@ def _machine_room_path_to_dict(
             "label": f"m{i + 1}",
             "x": int(round(pt[0])),
             "y": int(round(pt[1])),
-            "elevation": 0.0,
+            "elevation": 0.0 if i == 0 else ceiling_drop_m,
+            # m1 은 표고 기준점 자체라 출처를 따질 대상이 아니다.
+            "elev_source": ELEV_SOURCE_USER if i == 0 else ceiling_source,
             "io_node": io,
         }
         if io == "Input":
@@ -2011,7 +2078,10 @@ def _machine_room_path_to_dict(
         a = path[i]; b = path[i + 1]
         edge_key = (min(a, b), max(a, b))
         length_mm = edge_len.get(edge_key, math.hypot(b[0] - a[0], b[1] - a[1]))
-        total_length_mm += length_mm
+        elev_m = ceiling_drop_m if i == 0 else 0.0
+        # PIPENET 제약: |elev| ≤ length. 수면→천장 낙차가 평면 투영 길이보다 길 수 있다.
+        length_m = max(round(length_mm / 1000.0, 3), abs(elev_m))
+        total_length_mm += length_m * 1000.0
         ra = (int(round(a[0])), int(round(a[1])))
         rb = (int(round(b[0])), int(round(b[1])))
         is_estimated = (min(ra, rb), max(ra, rb)) in forced_keys
@@ -2027,8 +2097,9 @@ def _machine_room_path_to_dict(
             "out": nodes[i + 1]["label"],
             "type": "KSD 3507",
             "dia": used_dia,
-            "length": round(length_mm / 1000.0, 3),
-            "elev": 0.0,
+            "length": length_m,
+            "elev": elev_m,
+            "elev_source": ceiling_source if i == 0 else ELEV_SOURCE_DEFAULT,
             "c": "120",
             "status": "Normal",
             "group": "Unset",
@@ -2058,6 +2129,11 @@ def _machine_room_path_to_dict(
         "total_pipe_length_m": round(total_length_mm / 1000.0, 2),
         "source_snap_dist_mm": round(source_snap_dist, 1),
         "conn_snap_dist_mm": round(conn_snap_dist, 1),
+        "machine_room_ceiling_m": ceiling_m,
+        "elev_sources": {
+            "nodes": elev_source_counts(nodes),
+            "pipes": elev_source_counts(pipes),
+        },
         "graph_stats": graph_stats or {},
         "diameter_matching": {
             "matched_pipes": dia_match_count,
@@ -5443,6 +5519,35 @@ def _zone_material_at(px: float, py: float,
     return DEFAULT_ZONE_MATERIAL[0], DEFAULT_ZONE_MATERIAL[1], "default"
 
 
+def _zone_kind_at(px: float, py: float,
+                  material_zones: list[dict] | None) -> str:
+    """점이 속한 구역 유형. 겹치면 먼저 그린 구역이 이긴다. 밖이면 빈 문자열."""
+    for zone in material_zones or []:
+        rect = zone.get("rect")
+        if rect and _point_in_zones(px, py, [rect]):
+            return zone.get("kind") or ""
+    return ""
+
+
+def _local_rise(a: tuple[float, float], b: tuple[float, float],
+                material_zones: list[dict] | None) -> tuple[float, str]:
+    """평면도 관로 한 토막의 (표고차 m, 출처).
+
+    층간 낙차는 압력표에서 오지만 한 층 안의 오르내림은 평면도에 없다. 지금 근거가
+    있는 건 지하주차장 보 하단 하향뿐이라, 주차장 경계를 넘는 토막에만 그 값을 준다.
+    양 끝이 같은 구역이면 수평(0)으로 보고, 근거 없는 구역 전환은 0 으로 때우되
+    UNRESOLVED 로 세어 남긴다.
+    """
+    kind_a = _zone_kind_at(a[0], a[1], material_zones)
+    kind_b = _zone_kind_at(b[0], b[1], material_zones)
+    if kind_a == kind_b:
+        return 0.0, ELEV_SOURCE_DEFAULT
+    drop = LOCAL_RISE_RULES.get("parking_beam_drop_m")
+    if drop is None or ZONE_KIND_PARKING not in (kind_a, kind_b):
+        return 0.0, ELEV_SOURCE_UNRESOLVED
+    return (drop if kind_b == ZONE_KIND_PARKING else -drop), ELEV_SOURCE_DEFAULT
+
+
 # 가지배관 직각화 각도 임계값(deg) — 가지 edge 가 축(0/90°)에서 이 이내면 축정렬로
 # 스냅, 45° 근방(진짜 대각선)은 실좌표 유지. 표시 전용(length_mm·연결 불변).
 
@@ -5812,7 +5917,9 @@ def build_input_tables(
         io_node = "Input" if label == src_label else "No"
         ox, oy = _oxy(pos)
         tables.nodes.append({
+            # 2.8m 은 헤드 설치 높이 관례일 뿐 도면에서 읽은 값이 아니다.
             "label": label, "elevation": 2.8, "io_node": io_node,
+            "elev_source": ELEV_SOURCE_DEFAULT,
             "x": int(round(ox)), "y": int(round(oy)),
         })
 
@@ -5924,6 +6031,7 @@ def build_input_tables(
     edge_key_to_pipe: dict[tuple, str] = {}
     pipe_label_counter = 10
     cpvc_pipe_count = 0
+    head_positions = set(head_node_label)
     for a, b, length_mm, _off in ordered_edges:
         la = pos_to_label[a]; lb = pos_to_label[b]
         plabel = str(pipe_label_counter)
@@ -5933,6 +6041,11 @@ def build_input_tables(
         ptype, cfac, msource = _zone_material_at(mx, my, material_zones)
         if ptype == CPVC_PIPE_TYPE:
             cpvc_pipe_count += 1
+        if a in head_positions or b in head_positions:
+            # 헤드까지 내려가는 촛대/드롭 높이는 평면도에 없고 사내 통계도 아직 없다.
+            elev_m, elev_src = 0.0, ELEV_SOURCE_UNRESOLVED
+        else:
+            elev_m, elev_src = _local_rise(a, b, material_zones)
         tables.pipes.append({
             "label": plabel,
             "in": la, "out": lb,
@@ -5942,7 +6055,8 @@ def build_input_tables(
             # PIPENET/K-solver 는 length=0 배관을 거부(특이행렬). 좌표가 거의 겹치는
             # 노드쌍(클러스터 잔여)은 round 후 0.0 이 되므로 10mm 하한 강제.
             "length": max(round(length_mm / 1000.0, 3), 0.01),
-            "elev": 0.0,
+            "elev": elev_m,
+            "elev_source": elev_src,
             "c": cfac,
             "status": "Normal",
             "group": "Unset",
@@ -6099,6 +6213,7 @@ def build_input_tables(
         })
 
     # Meta
+    pipe_elev_srcs = elev_source_counts(tables.pipes)
     tables.meta = [
         ("원본 파일", project_title),
         ("SDF 버전", "1.8  (0)"),
@@ -6119,6 +6234,9 @@ def build_input_tables(
         ("traversal 최대 깊이", str(max(_bfs_depth.values()) if _bfs_depth else 0)),
         ("traversal 분기 노드 수", str(sum(1 for c in children_of.values() if len(c) >= 2))),
         ("트리 밖 edge (오배선 후보)", str(off_tree_count)),
+        ("표고 미확정 관로", str(pipe_elev_srcs[ELEV_SOURCE_UNRESOLVED])),
+        ("표고 출처 분포 (관로)",
+         " / ".join(f"{src} {cnt}" for src, cnt in pipe_elev_srcs.items() if cnt)),
     ]
     return tables
 

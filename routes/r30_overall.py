@@ -42,7 +42,12 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
         + Stage C (stitch) + Stage D (PIPENET-native 후처리) 로 완성 SDF 생성.
         현재는 모듈 자리만 마련된 상태이고 API 는 task #14~#16 에서 추가.
         """
-        response = make_response(render_template("remote30_overall.html"))
+        from core.remote30_constants import FX_SPEC_PROFILES, FX_DEFAULT_PROFILE
+        response = make_response(render_template(
+            "remote30_overall.html",
+            fx_profile_keys=list(FX_SPEC_PROFILES),
+            fx_default_profile=FX_DEFAULT_PROFILE,
+        ))
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         return response
 
@@ -67,9 +72,17 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
             pressure_table_csv: 압력표 CSV 파일
             pressure_table_xlsx: 압력표 엑셀 파일
             pressure_table_json: 압력표 직접 입력 (JSON 문자열)
+            project_title: 프로젝트명 (리포트/SDF 제목)
+            zone_name: 존 이름
+            natural_fall_start_floor: 자연낙차 시작층
+            machine_room_ceiling_m: 기계실 천장고 (m)
+            roof_tank_water_level_m: 옥상수조 수위 (m)
+            fx_profile_key: 신축배관 규격 프로파일 키
         """
         import secrets
-        from remote30_full_network import zone_spec_from_form, ZoneType
+        from remote30_full_network import (
+            zone_spec_from_form, ZoneType, project_context_from_job,
+        )
 
         try:
             dxf_path = _save_upload("dxf_file", {".dxf", ".dwg"}, required=True)
@@ -121,15 +134,18 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
             return jsonify({"ok": False, "message": str(exc)}), 400
 
         _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
-        _register_job(_OVERALL_JOBS, job_id, {
+        job = {
             "dxf_path": str(dxf_path),
             "dxf_filename": dxf_path.name,
             "out_dir": str(out_dir),
             "alarm_xy": alarm_xy,
-            "spec_form": dict(request.form),  # finalize 시 ZoneSpec 재구성
+            "spec_form": dict(request.form),  # finalize 시 ProjectContext 재구성
             "pressure_table_csv": str(pressure_csv) if pressure_csv else None,
             "pressure_table_xlsx": str(pressure_xlsx) if pressure_xlsx else None,
-        })
+        }
+        _register_job(_OVERALL_JOBS, job_id, job)
+
+        ctx = project_context_from_job(job)
         return jsonify({
             "ok": True, "job_id": job_id, "dxf_filename": dxf_path.name,
             "zone_type": spec.zone_type.value, "target_floor": spec.target_floor,
@@ -137,6 +153,10 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
             "prv2_target_pa": spec.prv2_target_pa,
             "alarm_xy": list(alarm_xy) if alarm_xy else None,
             "pressure_table": (pressure_csv and pressure_csv.name) or (pressure_xlsx and pressure_xlsx.name),
+            # 자연낙차 시작층은 보여만 주고 고르지 않는다 — 확정은 사용자 몫.
+            "natural_fall_candidates": ctx.natural_fall_candidates(),
+            "suggested_natural_fall_floor": ctx.suggested_natural_fall_floor(),
+            "context_warnings": ctx.warning_lines(),
         })
 
     @app.get("/api/remote30/overall/stream/<job_id>")
@@ -200,6 +220,8 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
             return jsonify({"ok": False, "message": f"unknown job_id {job_id}"}), 404
         if "detected_heads" not in job:
             return jsonify({"ok": False, "message": "Stage A (스트림) 가 아직 끝나지 않았습니다."}), 400
+        from remote30_prototype import normalize_material_zones
+
         body = request.get_json(silent=True) or {}
         job["edit"] = {
             "added_heads": [tuple(p) for p in body.get("added_heads", [])],
@@ -208,6 +230,13 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
             "branch_zones": [tuple(z) for z in body.get("branch_zones",
                                                         job.get("branch_zones") or [])],
         }
+        job["material_zones"] = normalize_material_zones(body.get("material_zones"))
+        # run 이후 화면에서 확정된 값(자연낙차 시작층 등). 문자열만 받는다 —
+        # ProjectContext 가 폼 문자열과 같은 규칙으로 해석하게 두려는 것.
+        override = body.get("context_override")
+        if isinstance(override, dict):
+            job["context_override"] = {str(k): str(v) for k, v in override.items()
+                                       if v not in (None, "")}
         ax, ay = body.get("alarm_x"), body.get("alarm_y")
         if ax is not None and ay is not None:
             try:
@@ -234,6 +263,7 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
             return jsonify({"ok": False, "message": "finalize() 먼저 호출하세요."}), 400
 
         from remote30_prototype import select_worst30_heads, build_input_tables
+        from remote30_full_network import project_context_from_job
 
         def _emit(payload: dict) -> str:
             return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
@@ -281,10 +311,14 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                              "label": f"30 헤드 선정 완료 — 헤드 {len(selection.heads)}개 / "
                                       f"경로 {len(selection.edges)} edge"})
 
+                ctx = project_context_from_job(job)
+                if not ctx.project_title.strip():
+                    ctx.project_title = Path(job["dxf_path"]).stem
                 head_tables = build_input_tables(
                     selection,
                     pipe_entities=job.get("pipe_ents", []),
-                    project_title=Path(job["dxf_path"]).stem,
+                    project_title=ctx.report_title(),
+                    material_zones=ctx.material_zones or None,
                 )
                 yield _emit({"type": "overall_progress", "phase": "stage_a_tables_done",
                              "head_nodes": len(head_tables.nodes),
@@ -296,7 +330,7 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                 # job state 에 저장 → 웹 편집기(FX 검토 패널) → POST .../fx/finalize.
                 from core.remote30_constants import FX_SPEC_PROFILES, FX_DEFAULT_PROFILE
                 job["head_tables"] = head_tables.as_dict()
-                job["overall_project_stem"] = Path(job["dxf_path"]).stem
+                job["overall_project_stem"] = ctx.report_title()
                 job["fx_review"] = {
                     "equipment": head_tables.equipment,   # 헤드망 FX/AV — 전량, 편집 대상
                     "profiles": FX_SPEC_PROFILES,
@@ -349,7 +383,7 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
         """Stage B(라이저)~D(emit_full_sdf) SSE — fx/finalize() 호출 후 구독.
 
         head_tables 를 job state 에서 복원하고, FX 편집이 있으면 검증 후 equipment 교체.
-        spec/profile/riser 는 job form 에서 결정적으로 재계산한다.
+        ProjectContext(존 사양·압력표·미확정 항목)는 job 에서 결정적으로 재구성한다.
         """
         job = _OVERALL_JOBS.get(job_id)
         if not job:
@@ -359,7 +393,7 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
 
         from remote30_prototype import PipeTables, _validate_edited_equipment
         from remote30_full_network import (
-            zone_spec_from_form, profile_from_form, BuildingPressureProfile,
+            project_context_from_job,
             build_riser, stitch_riser_and_heads, emit_full_sdf,
         )
 
@@ -381,24 +415,18 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                         yield _emit(dict(w))
                     head_tables.equipment = new_equipment
 
-                spec = zone_spec_from_form(job["spec_form"])
-                # 압력표 우선순위: csv → xlsx → form JSON
-                profile: BuildingPressureProfile | None = None
-                if job.get("pressure_table_csv"):
-                    profile = BuildingPressureProfile.from_csv(
-                        Path(job["pressure_table_csv"]),
-                        building_name=job["spec_form"].get("building_name", ""))
-                elif job.get("pressure_table_xlsx"):
-                    profile = BuildingPressureProfile.from_xlsx(
-                        Path(job["pressure_table_xlsx"]),
-                        building_name=job["spec_form"].get("building_name", ""))
-                else:
-                    profile = profile_from_form(job["spec_form"])
+                ctx = project_context_from_job(job)
+                if not ctx.project_title.strip():
+                    ctx.project_title = job.get("overall_project_stem") or Path(job["dxf_path"]).stem
+                warnings = ctx.warning_lines()
+                if warnings:
+                    yield _emit({"type": "context_warning", "lines": warnings,
+                                 "items": ctx.unconfirmed()})
 
                 # ── Stage B: 라이저
                 yield _emit({"type": "overall_progress", "phase": "stage_b",
-                             "msg": f"라이저 템플릿 생성 ({spec.zone_type.value})"})
-                riser = build_riser(spec, profile)
+                             "msg": f"라이저 템플릿 생성 ({ctx.zone_spec.zone_type.value})"})
+                riser = build_riser(ctx)
                 yield _emit({"type": "overall_progress", "phase": "stage_b_done",
                              "riser_nodes": len(riser.nodes),
                              "riser_pipes": len(riser.pipes),
@@ -417,8 +445,7 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                 yield _emit({"type": "overall_progress", "phase": "stage_d",
                              "msg": "완성 SDF 직렬화 (PIPENET-native 후처리)"})
                 out_sdf = Path(job["out_dir"]) / f"overall_{job_id}.sdf"
-                emit_full_sdf(combined, out_sdf,
-                              project_title=f"Remote 30 전체 — {spec.zone_type.value} {spec.target_floor}")
+                emit_full_sdf(combined, out_sdf, ctx=ctx)
 
                 yield _emit({"type": "overall_result",
                              "sdf": out_sdf.name, "job_id": job_id,

@@ -565,7 +565,7 @@ def _patch_combined_from_geometry(combined, geom: dict) -> None:
                        if str(vv.get("in", "")) in valid and str(vv.get("out", "")) in valid]
 
 
-def _emit_format_bundle(net_obj, out_dir: Path, stem: str, *, title: str, tag: str,
+def _emit_format_bundle(net_obj, out_dir: Path, stem: str, *, ctx, tag: str,
                         z_net_fn=None, kfp_coord_scale: float = 1.0,
                         has_iso_z_scale: float = 1.0) -> dict:
     """net_obj → SDF(+동봉 SLF)/KFP/HAS/ZIP 한 세트. 빌드·편집 재출력이 공유한다.
@@ -585,7 +585,7 @@ def _emit_format_bundle(net_obj, out_dir: Path, stem: str, *, title: str, tag: s
     from remote30_prototype import emit_kfp as _emit_kfp, emit_has as _emit_has
 
     b_sdf = out_dir / f"{stem}.sdf"
-    emit_full_sdf(net_obj, b_sdf, project_title=title)
+    emit_full_sdf(net_obj, b_sdf, ctx=ctx)
     # PIPENET 은 .sdf 옆의 .slf 로 호칭경↔내경을 lookup 한다 — emit_sdf 가 표준
     # 라이브러리를 같은 이름으로 동봉하므로, 다운로드도 반드시 이 쌍으로 나가야 한다.
     b_slf = b_sdf.with_suffix(".slf")
@@ -594,7 +594,7 @@ def _emit_format_bundle(net_obj, out_dir: Path, stem: str, *, title: str, tag: s
     if z_net is not None:
         z_sdf = out_dir / f"{stem}_z.sdf"
         try:
-            emit_full_sdf(z_net, z_sdf, project_title=title)
+            emit_full_sdf(z_net, z_sdf, ctx=ctx)
         except Exception as _z_exc:  # noqa: BLE001 — 사본 실패 시 원본 좌표로 폴백
             warnings.warn(f"[{tag}] z-aware SDF emit 실패 (원본 좌표 사용): {_z_exc}",
                           RuntimeWarning, stacklevel=2)
@@ -774,6 +774,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
                                         select_worst30_heads_anchored,
                                         build_input_tables, HeadRegion)
         from remote30_full_network import (
+            ProjectContext,
             stitch_riser_and_heads, emit_full_sdf,
             prepend_machine_room_to_riser, insert_source_pump,
             normalize_pipe_bores,
@@ -781,6 +782,20 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         from hydraulic_solver import BAR_PER_M_WATER, converge_bores_by_velocity
         from kfp_sdf_converter import WT_DEFAULT_WATER_LEVEL_M
         from remote30_constants import FX_DEFAULT_PROFILE, FX_SPEC_PROFILES
+
+        # ── project_context 는 선택 필드다. 통합 모듈에서 넘어오면 프로젝트명·존
+        # 정보를 그대로 쓰고, 없으면 도면 stem 만 확정값으로 담아 나머지는 미확정으로
+        # 남긴다 — 이 경로의 기존 동작이 그대로 유지된다.
+        # Title 은 답안지 컨벤션이 건물명(예: "Officetell")이라 내부 식별자
+        # (SYSTEM_EXTRACT_V1)나 도구 브랜딩이 노출되지 않도록 도면 stem 을 쓴다.
+        raw_ctx = body.get("project_context")
+        ctx = (ProjectContext.from_dict(raw_ctx) if isinstance(raw_ctx, dict)
+               else ProjectContext.titled(""))
+        if not ctx.project_title.strip():
+            ctx.project_title = (Path(plane_job.get("dxf_path", "")).stem
+                                 or system_riser.get("title") or "Combined")
+        ctx.material_zones = list(material_zones or [])
+        title = ctx.report_title()
 
         # ── 가압 방식 — "gravity"(자연낙차/고가수조, 기본) | "pump"(펌프 가압).
         # 펌프 가압이면 (1) 기계실/수원을 망 최하부로 배치·재고도(고저차 lift 반영),
@@ -864,7 +879,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             head_tables = build_input_tables(
                 selection,
                 pipe_entities=plane_job.get("pipe_ents", []),
-                project_title=Path(plane_job["dxf_path"]).stem,
+                project_title=title,
                 # W6 — anchored 작업창 밖(범례 표 등)의 관경 문자 오염 차단
                 anchor_window=anchored_audit.get("anchor_window"),
                 material_zones=material_zones or None,
@@ -983,13 +998,6 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
             out_dir = COMBINED_OUTPUT_DIR / job_id
             out_dir.mkdir(parents=True, exist_ok=True)
-            # 통합 Title — 업로드한 평면도 파일명(건물/도면명)을 따른다. 답안지 Title
-            # 컨벤션이 건물명(예: "Officetell")이라, 내부 식별자(SYSTEM_EXTRACT_V1)나
-            # 도구 브랜딩이 그대로 노출되지 않도록 도면 stem 을 쓴다.
-            title = (Path(plane_job.get("dxf_path", "")).stem
-                     or system_riser.get("title")
-                     or "Combined")
-
             import copy as _copy
 
             # ── z-aware 도구(K-solver/HASS)용 라이저 "참 3D 축정렬" 좌표 — KFP/HAS 만 적용.
@@ -1193,7 +1201,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             def _emit_bundle(net_obj, suffix: str) -> dict:
                 return _emit_format_bundle(
                     net_obj, out_dir, f"combined_{job_id}{suffix}",
-                    title=title, tag=f"combined{suffix}", z_net_fn=_plan_z_net,
+                    ctx=ctx, tag=f"combined{suffix}", z_net_fn=_plan_z_net,
                     kfp_coord_scale=kfp_coord_scale, has_iso_z_scale=has_iso_z_scale)
 
             # 평면 세트(실 DXF 좌표) — 캔버스 geometry 와 동일한 평면도 좌표(가지만 직각화).
@@ -1261,7 +1269,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         try:
             _cache_job(_COMBINED_JOBS, _COMBINED_JOBS_CAP, job_id, {
                 "combined": _copy.deepcopy(combined),
-                "title": title,
+                "project_context": ctx.to_dict(),
                 "zaware": _zaware_map,
                 "kfp_coord_scale": kfp_coord_scale,
                 "has_iso_z_scale": has_iso_z_scale,
@@ -1358,7 +1366,11 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             _sweep_old_run_dirs(PROTOTYPE_OUTPUT_DIR, OVERALL_OUTPUT_DIR, COMBINED_OUTPUT_DIR)
             out_dir = COMBINED_OUTPUT_DIR / new_job
             out_dir.mkdir(parents=True, exist_ok=True)
-            title = cache.get("title") or "Combined (edited)"
+            from remote30_full_network import ProjectContext
+            ctx = ProjectContext.from_dict(cache.get("project_context") or {})
+            if not ctx.project_title.strip():
+                ctx.project_title = "Combined (edited)"
+            title = ctx.report_title()
             # ── 원본 빌드가 캐시한 z-aware 표시좌표(라이저 기둥 collapse + display_z)를
             #    라벨별로 재적용해 KFP/HAS 가 원본과 동일 비율이 되게 한다. 편집으로 옮긴
             #    노드는 새 x,y 를 유지하되 display_z 는 캐시값(헤드 돌출·고도)을 쓴다.
@@ -1388,7 +1400,7 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             # SDF 만 내면 PIPENET 이 짝 .slf 를 못 찾아 내경이 Unset 이 되고, 등각 세트가
             # 없으면 등각 다운로드가 조용히 평면으로 떨어진다.
             plan_bundle = _emit_format_bundle(
-                combined, out_dir, f"combined_{new_job}", title=title,
+                combined, out_dir, f"combined_{new_job}", ctx=ctx,
                 tag="combined/rebuild", z_net_fn=_edited_z_net,
                 kfp_coord_scale=kfp_scale, has_iso_z_scale=has_zs)
 
@@ -1404,14 +1416,14 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             _bake_isometric_node_coords(combined_iso.nodes, has_zs, no_lift_labels=no_lift,
                                         ref_label=av_label)
             iso_bundle = _emit_format_bundle(
-                combined_iso, out_dir, f"combined_{new_job}_iso", title=title,
+                combined_iso, out_dir, f"combined_{new_job}_iso", ctx=ctx,
                 tag="combined/rebuild_iso", z_net_fn=_edited_z_net,
                 kfp_coord_scale=kfp_scale, has_iso_z_scale=has_zs)
 
             # 패치본을 새 job_id 로 캐시 — 연속 편집(편집→재출력→더 편집) 지원.
             # z-aware/스케일·등각 기준 라벨도 승계해 이후 편집에서도 비율을 유지한다.
             _cache_job(_COMBINED_JOBS, _COMBINED_JOBS_CAP, new_job, {
-                "combined": _copy.deepcopy(combined), "title": title,
+                "combined": _copy.deepcopy(combined), "project_context": ctx.to_dict(),
                 "zaware": zaware, "kfp_coord_scale": kfp_scale, "has_iso_z_scale": has_zs,
                 "av_label": av_label, "no_lift_labels": sorted(no_lift),
                 "export_bar": cache.get("export_bar"),

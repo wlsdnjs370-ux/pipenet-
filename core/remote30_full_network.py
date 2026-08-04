@@ -36,6 +36,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator
 
+from remote30_constants import FX_DEFAULT_PROFILE, FX_SPEC_PROFILES
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # 상수
@@ -319,6 +321,199 @@ class ZoneSpec:
     pump_count: int = 2
 
 
+class SourceTag(str, Enum):
+    """값이 어디서 왔는지. 리포트 경고 블록의 판단 근거."""
+    USER_CONFIRMED = "user_confirmed"      # 사람이 폼에 직접 넣고 확정
+    DRAWING_ESTIMATED = "drawing_estimated"  # 도면/계통도에서 뽑아낸 추정치
+    DEFAULT = "default"                    # 아무도 안 정해서 코드 기본값이 쓰인 것
+
+
+# 경고 블록에 사람이 읽을 이름으로 찍는다. 여기 실린 필드만 미확정 추적 대상이다.
+_CONTEXT_FIELD_LABELS: dict[str, str] = {
+    "project_title": "프로젝트명",
+    "zone_name": "존 이름",
+    "building_name": "빌딩명",
+    "floor_profile": "층별 압력분포표",
+    "natural_fall_start_floor": "자연낙차 시작층",
+    "machine_room_ceiling_m": "기계실 천장고",
+    "roof_tank_water_level_m": "옥상수조 수위",
+    "fx_profile_key": "신축배관 규격",
+    "material_zones": "관종 구역",
+    "ceiling_zones": "반자 구역",
+}
+
+
+def _context_value_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, (str, list, tuple, dict)):
+        return len(value) == 0
+    if isinstance(value, BuildingPressureProfile):
+        return not value.floors
+    return False
+
+
+@dataclass
+class ProjectContext:
+    """한 과제의 수리계산 입력 일체 — 폼 딕셔너리를 대신하는 타입 있는 서류.
+
+    ``sources`` 는 필드명 → SourceTag 문자열. 사용자가 실제로 채운 값만
+    ``user_confirmed`` 가 되고 나머지는 ``default`` 로 남아 :meth:`unconfirmed`
+    에 잡힌다. "값이 이렇다" 와 "아무도 안 정해서 이렇게 됐다" 를 구분하는 것이
+    이 클래스의 존재 이유다.
+    """
+    zone_spec: ZoneSpec
+    floor_profile: BuildingPressureProfile | None = None
+    project_title: str = ""
+    zone_name: str = ""
+    building_name: str = ""
+    natural_fall_start_floor: str | None = None
+    machine_room_ceiling_m: float | None = None
+    roof_tank_water_level_m: float | None = None
+    fx_profile_key: str = FX_DEFAULT_PROFILE
+    material_zones: list[dict] = field(default_factory=list)
+    ceiling_zones: list[dict] = field(default_factory=list)
+    sources: dict[str, str] = field(default_factory=dict)
+
+    # ── 출처 ────────────────────────────────────────────────────────────
+    def tag(self, field_name: str) -> SourceTag:
+        try:
+            return SourceTag(self.sources.get(field_name, ""))
+        except ValueError:
+            return SourceTag.DEFAULT
+
+    def unconfirmed(self) -> list[dict]:
+        """사람이 확정하지 않은 항목 — 리포트 최상단 경고 블록의 재료."""
+        out: list[dict] = []
+        for name, label in _CONTEXT_FIELD_LABELS.items():
+            tag = self.tag(name)
+            if tag is SourceTag.USER_CONFIRMED:
+                continue
+            out.append({
+                "field": name,
+                "label": label,
+                "tag": tag.value,
+                "missing": _context_value_missing(getattr(self, name)),
+            })
+        return out
+
+    def warning_lines(self) -> list[str]:
+        """`[미확정] <필드> — <한글이름> (<상태>)` 한 줄씩."""
+        state_of = {
+            SourceTag.DRAWING_ESTIMATED.value: "도면 추정",
+            SourceTag.DEFAULT.value: "기본값",
+        }
+        lines = []
+        for item in self.unconfirmed():
+            state = "미입력" if item["missing"] else state_of.get(item["tag"], "기본값")
+            lines.append(f"[미확정] {item['field']} — {item['label']} ({state})")
+        return lines
+
+    # ── 파생값 ──────────────────────────────────────────────────────────
+    def report_title(self) -> str:
+        """리포트/SDF 제목. 사용자가 넣은 프로젝트명이 최우선."""
+        for candidate in (self.project_title, self.zone_name):
+            if candidate.strip():
+                return candidate.strip()
+        return (f"Remote 30 전체 — {self.zone_spec.zone_type.value} "
+                f"{self.zone_spec.target_floor}").strip()
+
+    def natural_fall_candidates(self) -> list[dict]:
+        """자연낙차 시작층 후보 — 계산해서 보여만 주고 고르지는 않는다.
+
+        규칙(지시서 T4): 낙차압이 헤드 최소 방수압(NFTC 2.2.1.11, 0.1 MPa)
+        이상이 되는 최초의 층. 압력표가 없으면 후보도 없다 — 짐작하지 않는다.
+        """
+        if self.floor_profile is None or not self.floor_profile.floors:
+            return []
+        from nftc_rules import head_pressure_min_mpa
+        required_m = head_pressure_min_mpa() * 1e6 / M_TO_PA
+        return [{
+            "floor_label": row.floor_label,
+            "head_drop_m": row.head_drop_m,
+            "required_m": round(required_m, 2),
+            "ok": row.head_drop_m >= required_m,
+        } for row in self.floor_profile.floors]
+
+    def suggested_natural_fall_floor(self) -> str | None:
+        """UI 가 커서만 올려둘 기본 후보. 자동 확정이 아니다."""
+        for cand in self.natural_fall_candidates():
+            if cand["ok"]:
+                return cand["floor_label"]
+        return None
+
+    # ── 직렬화 (combined 경로의 선택 필드 project_context) ───────────────
+    def to_dict(self) -> dict:
+        return {
+            "zone_type": self.zone_spec.zone_type.value,
+            "target_floor": self.zone_spec.target_floor,
+            "prv1_target_pa": self.zone_spec.prv1_target_pa,
+            "prv2_target_pa": self.zone_spec.prv2_target_pa,
+            "pump_library_name": self.zone_spec.pump_library_name,
+            "pump_count": self.zone_spec.pump_count,
+            "floor_profile": ([{
+                "floor_label": r.floor_label, "height_m": r.height_m,
+                "head_drop_m": r.head_drop_m, "after_prv_m": r.after_prv_m,
+                "note": r.note,
+            } for r in self.floor_profile.floors] if self.floor_profile else None),
+            "project_title": self.project_title,
+            "zone_name": self.zone_name,
+            "building_name": self.building_name,
+            "natural_fall_start_floor": self.natural_fall_start_floor,
+            "machine_room_ceiling_m": self.machine_room_ceiling_m,
+            "roof_tank_water_level_m": self.roof_tank_water_level_m,
+            "fx_profile_key": self.fx_profile_key,
+            "material_zones": list(self.material_zones),
+            "ceiling_zones": list(self.ceiling_zones),
+            "sources": dict(self.sources),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ProjectContext":
+        rows = data.get("floor_profile")
+        profile = BuildingPressureProfile(
+            building_name=str(data.get("building_name", "") or ""),
+            floors=[FloorRow(
+                floor_label=str(r.get("floor_label", "")),
+                height_m=float(r.get("height_m", 0) or 0),
+                head_drop_m=float(r.get("head_drop_m", 0) or 0),
+                after_prv_m=(float(r["after_prv_m"]) if r.get("after_prv_m") not in (None, "") else None),
+                note=str(r.get("note", "") or ""),
+            ) for r in rows if r.get("floor_label")],
+        ) if rows else None
+        return cls(
+            zone_spec=ZoneSpec(
+                zone_type=ZoneType(data.get("zone_type", ZoneType.LSP_1STAGE.value)),
+                target_floor=str(data.get("target_floor", "") or ""),
+                prv1_target_pa=data.get("prv1_target_pa"),
+                prv2_target_pa=data.get("prv2_target_pa"),
+                pump_library_name=str(data.get("pump_library_name") or "SP_162M_2900LPM"),
+                pump_count=int(data.get("pump_count", 2) or 2),
+            ),
+            floor_profile=profile,
+            project_title=str(data.get("project_title", "") or ""),
+            zone_name=str(data.get("zone_name", "") or ""),
+            building_name=str(data.get("building_name", "") or ""),
+            natural_fall_start_floor=(data.get("natural_fall_start_floor") or None),
+            machine_room_ceiling_m=data.get("machine_room_ceiling_m"),
+            roof_tank_water_level_m=data.get("roof_tank_water_level_m"),
+            fx_profile_key=str(data.get("fx_profile_key") or FX_DEFAULT_PROFILE),
+            material_zones=list(data.get("material_zones") or []),
+            ceiling_zones=list(data.get("ceiling_zones") or []),
+            sources=dict(data.get("sources") or {}),
+        )
+
+    @classmethod
+    def titled(cls, project_title: str, *, zone_type: ZoneType = ZoneType.LSP_1STAGE) -> "ProjectContext":
+        """제목만 아는 호출자(구형 통합 경로)용 최소 컨텍스트.
+
+        나머지 항목은 전부 미확정으로 남아 경고 블록에 그대로 드러난다.
+        """
+        return cls(zone_spec=ZoneSpec(zone_type=zone_type),
+                   project_title=project_title,
+                   sources={"project_title": SourceTag.USER_CONFIRMED.value})
+
+
 @dataclass
 class OverallInputs:
     """모듈 10 의 입력 일체."""
@@ -328,6 +523,14 @@ class OverallInputs:
     alarm_xy: tuple[float, float] | None = None
     job_id: str = ""
     project_title: str = "Remote 30 전체 배관망 총괄"
+
+    def to_context(self) -> ProjectContext:
+        return ProjectContext(
+            zone_spec=self.zone_spec, floor_profile=self.profile,
+            project_title=self.project_title,
+            building_name=(self.profile.building_name if self.profile else ""),
+            sources={"project_title": SourceTag.USER_CONFIRMED.value},
+        )
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -603,8 +806,9 @@ def build_riser_llsp_2stage(spec: ZoneSpec, profile: BuildingPressureProfile | N
     )
 
 
-def build_riser(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
-    """zone 분기 라우터."""
+def build_riser(ctx: ProjectContext) -> RiserTables:
+    """zone 분기 라우터. 폼 딕셔너리가 아니라 ProjectContext 하나만 받는다."""
+    spec, profile = ctx.zone_spec, ctx.floor_profile
     if spec.zone_type == ZoneType.HSP_PUMP:
         return build_riser_hsp_pump(spec, profile)
     if spec.zone_type == ZoneType.LSP_1STAGE:
@@ -1300,7 +1504,7 @@ def _harden_slf_for_combined(
 
 
 def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
-                  project_title: str = "Remote 30 전체 배관망 총괄") -> Path:
+                  ctx: ProjectContext) -> Path:
     """완성 SDF 직렬화.
 
     1단계: ``remote30_prototype.emit_sdf`` 호출 — PIPENET-native 후처리
@@ -1322,7 +1526,7 @@ def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
         equipment=list(combined.equipment),
         meta=list(combined.meta),
     )
-    emit_sdf(tables, out_path, project_title=project_title)
+    emit_sdf(tables, out_path, project_title=ctx.report_title())
 
     # 2단계: SDF 재오픈 → Pump-fan / Elastomeric-valve / Calculation-spec 추가
     import xml.etree.ElementTree as ET
@@ -1417,9 +1621,10 @@ def run_full_pipeline(inputs: OverallInputs, head_tables: Any, out_path: Path) -
         head_tables: remote30_prototype.PipeTables — Stage A 의 결과.
         out_path: 출력 SDF 경로.
     """
-    riser = build_riser(inputs.zone_spec, inputs.profile)
+    ctx = inputs.to_context()
+    riser = build_riser(ctx)
     combined = stitch_riser_and_heads(riser, head_tables)
-    return emit_full_sdf(combined, out_path, project_title=inputs.project_title)
+    return emit_full_sdf(combined, out_path, ctx=ctx)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -1590,4 +1795,98 @@ def profile_from_form(form: dict[str, Any]) -> BuildingPressureProfile | None:
     return BuildingPressureProfile(
         building_name=str(form.get("building_name", "")).strip(),
         floors=rows,
+    )
+
+
+def project_context_from_form(
+    form: dict[str, Any],
+    *,
+    floor_profile: BuildingPressureProfile | None = None,
+    material_zones: list[dict] | None = None,
+    ceiling_zones: list[dict] | None = None,
+) -> ProjectContext:
+    """run 폼 + (이미 해석된) 압력표 → ProjectContext.
+
+    폼에 실제로 값이 들어온 항목만 ``user_confirmed`` 로 표시한다. 빈칸은
+    태그 없이 남아 :meth:`ProjectContext.unconfirmed` 에 잡힌다 — 기본값이
+    쓰였다는 사실을 리포트가 숨기지 않게 하려는 것이다.
+    """
+    sources: dict[str, str] = {}
+
+    def _text(key: str) -> str:
+        value = str(form.get(key, "") or "").strip()
+        if value:
+            sources[key] = SourceTag.USER_CONFIRMED.value
+        return value
+
+    def _number(key: str) -> float | None:
+        raw = str(form.get(key, "") or "").strip()
+        if not raw:
+            return None
+        try:
+            value = float(raw)
+        except ValueError:
+            return None
+        sources[key] = SourceTag.USER_CONFIRMED.value
+        return value
+
+    project_title = _text("project_title")
+    zone_name = _text("zone_name")
+    building_name = _text("building_name")
+    natural_fall_start_floor = _text("natural_fall_start_floor")
+    machine_room_ceiling_m = _number("machine_room_ceiling_m")
+    roof_tank_water_level_m = _number("roof_tank_water_level_m")
+
+    fx_profile_key = str(form.get("fx_profile_key", "") or "").strip()
+    if fx_profile_key in FX_SPEC_PROFILES:
+        sources["fx_profile_key"] = SourceTag.USER_CONFIRMED.value
+    else:
+        fx_profile_key = FX_DEFAULT_PROFILE
+
+    if floor_profile is not None and floor_profile.floors:
+        sources["floor_profile"] = SourceTag.USER_CONFIRMED.value
+    if material_zones:
+        sources["material_zones"] = SourceTag.USER_CONFIRMED.value
+    if ceiling_zones:
+        sources["ceiling_zones"] = SourceTag.USER_CONFIRMED.value
+
+    return ProjectContext(
+        zone_spec=zone_spec_from_form(form),
+        floor_profile=floor_profile,
+        project_title=project_title,
+        zone_name=zone_name,
+        building_name=building_name or (floor_profile.building_name if floor_profile else ""),
+        natural_fall_start_floor=natural_fall_start_floor or None,
+        machine_room_ceiling_m=machine_room_ceiling_m,
+        roof_tank_water_level_m=roof_tank_water_level_m,
+        fx_profile_key=fx_profile_key,
+        material_zones=list(material_zones or []),
+        ceiling_zones=list(ceiling_zones or []),
+        sources=sources,
+    )
+
+
+def project_context_from_job(job: dict[str, Any]) -> ProjectContext:
+    """overall job 상태 → ProjectContext. 폼 딕셔너리를 읽는 유일한 자리다.
+
+    압력표 우선순위는 업로드 CSV → 업로드 XLSX → 폼 JSON.
+    ``context_override`` 는 run 이후에 사용자가 확정한 값(자연낙차 시작층 등)으로,
+    run 폼보다 나중에 정해졌으니 폼 값을 덮는다.
+    """
+    form = {**(job.get("spec_form") or {}), **(job.get("context_override") or {})}
+    building_name = str(form.get("building_name", "") or "").strip()
+    profile: BuildingPressureProfile | None = None
+    if job.get("pressure_table_csv"):
+        profile = BuildingPressureProfile.from_csv(
+            Path(job["pressure_table_csv"]), building_name=building_name)
+    elif job.get("pressure_table_xlsx"):
+        profile = BuildingPressureProfile.from_xlsx(
+            Path(job["pressure_table_xlsx"]), building_name=building_name)
+    else:
+        profile = profile_from_form(form)
+    return project_context_from_form(
+        form,
+        floor_profile=profile,
+        material_zones=job.get("material_zones"),
+        ceiling_zones=job.get("ceiling_zones"),
     )

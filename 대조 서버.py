@@ -870,10 +870,10 @@ def _emit_subnetwork_bundle(net, out_dir: Path, job_id: str, prefix: str,
     ZIP 으로 함께 묶는다. KFP 실패는 SDF/ZIP 출력을 막지 않는다.
     반환: {"sdf","slf","kfp","zip"} — 없으면 None.
     """
-    from remote30_full_network import emit_full_sdf
+    from remote30_full_network import ProjectContext, emit_full_sdf
     out_dir.mkdir(parents=True, exist_ok=True)
     out_sdf = out_dir / f"{prefix}_{job_id}.sdf"
-    emit_full_sdf(net, out_sdf, project_title=project_title)
+    emit_full_sdf(net, out_sdf, ctx=ProjectContext.titled(project_title))
     out_slf = out_dir / f"{prefix}_{job_id}.slf"  # emit_sdf 가 같은 폴더에 자동 생성
     out_kfp = out_dir / f"{prefix}_{job_id}.kfp"
     kfp_ok = False

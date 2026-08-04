@@ -155,6 +155,26 @@
           <p id="wb-alarm-status" class="info-line" style="margin-top: 4px; font-size: 0.7rem;">미지정 시 도면의 '배관-SP 2차' 레이어에서 자동 식별.</p>
         </div>
 
+        <!-- 과제 정보 — 비워두면 리포트 상단 [미확정] 경고에 그대로 뜬다 -->
+        <div style="margin: 10px 0; padding: 8px; background: #eef2ff; border: 1px solid #6366f1;">
+          <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: #3730a3;">과제 정보 (비우면 [미확정] 표시)</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px;">
+            <input id="ov-project-title" type="text" placeholder="프로젝트명" style="font-size: 0.72rem; padding: 3px 4px;">
+            <input id="ov-zone-name" type="text" placeholder="존 이름" style="font-size: 0.72rem; padding: 3px 4px;">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px;">
+            <input id="ov-machine-room-h" type="number" step="0.1" placeholder="기계실 천장고 m" style="font-size: 0.72rem; padding: 3px 4px;">
+            <input id="ov-roof-tank-level" type="number" step="0.1" placeholder="옥상수조 수위 m" style="font-size: 0.72rem; padding: 3px 4px;">
+          </div>
+          <label for="ov-fx-profile" style="font-size: 0.7rem; color: var(--muted);">신축배관 규격</label>
+          <select id="ov-fx-profile" style="width: 100%; font-size: 0.72rem; padding: 3px 4px; border: 1px solid var(--line);">
+            <option value="">— 미지정 (기본값 사용) —</option>
+            {% for key in fx_profile_keys %}
+            <option value="{{ key }}">{{ key }}{% if key == fx_default_profile %} (기본){% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+
         <!-- ZONE SPEC — 10번 모듈 전용 (라이저/펌프/PRV 매개변수) -->
         <div style="margin: 10px 0; padding: 8px; background: #fef3c7; border: 1px solid #f59e0b;">
           <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: #78350f;">Zone 분류 (라이저 템플릿)</div>
@@ -213,6 +233,25 @@
         </div>
 
         <button id="wb-run" class="run-btn" type="button" disabled>▶ 배관망 생성</button>
+
+        <!-- 자연낙차 후보 + 미확정 경고 — run 응답으로 채워진다 -->
+        <div id="ov-context-report" style="display: none; margin: 10px 0; padding: 8px; background: #fff7ed; border: 1px solid #fb923c;">
+          <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: #7c2d12;">자연낙차 시작층 후보</div>
+          <p class="info-line" style="font-size: 0.7rem; margin: 0 0 4px;">
+            낙차압이 헤드 최소 방수압(NFTC 2.2.1.11 · 0.1 MPa ≒ 10.2 m)을 넘는 층. 자동 확정하지 않으니 직접 고르세요.
+          </p>
+          <select id="ov-nf-select" style="width: 100%; font-size: 0.72rem; padding: 3px 4px; border: 1px solid var(--line);"></select>
+          <table style="width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 0.68rem;">
+            <thead><tr style="background: #ffedd5;">
+              <th style="text-align: left; padding: 2px 4px;">층</th>
+              <th style="text-align: right; padding: 2px 4px;">낙차압 m</th>
+              <th style="text-align: right; padding: 2px 4px;">필요 m</th>
+              <th style="text-align: center; padding: 2px 4px;">가능</th>
+            </tr></thead>
+            <tbody id="ov-nf-tbody"></tbody>
+          </table>
+          <div id="ov-context-warnings" style="margin-top: 6px;"></div>
+        </div>
       </section>
 
       <section id="wb-head-edit-section" style="display:none; background: #ffffff; border-left: 3px solid #f97316;">
@@ -926,6 +965,8 @@
       };
       const ax = alarmXEl.value.trim(), ay = alarmYEl.value.trim();
       if (ax && ay) { payload.alarm_x = ax; payload.alarm_y = ay; }
+      const nfSel = document.getElementById("ov-nf-select");
+      if (nfSel && nfSel.value) payload.context_override = { natural_fall_start_floor: nfSel.value };
       const r = await fetch(`/api/remote30/overall/finalize/${state.jobId}`, {
         method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload),
@@ -1016,6 +1057,15 @@
       const pjs = (document.getElementById("ov-pressure-json").value || "").trim();
       if (pjs) fd.append("pressure_table_json", pjs);
 
+      // ── 과제 정보 — 빈칸은 보내지 않는다. 서버가 [미확정] 로 잡아야 하기 때문.
+      for (const [id, field] of [["ov-project-title", "project_title"],
+                                 ["ov-zone-name", "zone_name"],
+                                 ["ov-machine-room-h", "machine_room_ceiling_m"],
+                                 ["ov-roof-tank-level", "roof_tank_water_level_m"],
+                                 ["ov-fx-profile", "fx_profile_key"]]) {
+        if (vals(id)) fd.append(field, vals(id));
+      }
+
       const res = await fetch("/api/remote30/overall/run", { method: "POST", body: fd });
       const data = await res.json();
       if (!data.ok) {
@@ -1024,6 +1074,7 @@
         return;
       }
       state.jobId = data.job_id;
+      renderContextReport(data);
       // SSE 구독
       const es = new EventSource(`/api/remote30/overall/stream/${data.job_id}`);
       es.onmessage = (e) => {
@@ -1038,7 +1089,70 @@
       };
     });
 
+    // 자연낙차 후보 + 미확정 경고 렌더. 층 이름은 사용자 압력표에서 온 문자열이라
+    // innerHTML 이 아니라 textContent 로만 넣는다.
+    function renderContextReport(data) {
+      const box = document.getElementById("ov-context-report");
+      const tbody = document.getElementById("ov-nf-tbody");
+      const sel = document.getElementById("ov-nf-select");
+      const warnBox = document.getElementById("ov-context-warnings");
+      if (!box) return;
+      const cands = data.natural_fall_candidates || [];
+      const warns = data.context_warnings || [];
+      if (!cands.length && !warns.length) { box.style.display = "none"; return; }
+
+      tbody.replaceChildren();
+      sel.replaceChildren();
+      const blank = document.createElement("option");
+      blank.value = ""; blank.textContent = "— 미확정 (자연낙차 시작층 미지정) —";
+      sel.appendChild(blank);
+      for (const c of cands) {
+        const tr = document.createElement("tr");
+        for (const [text, align] of [[c.floor_label, "left"],
+                                     [Number(c.head_drop_m).toFixed(2), "right"],
+                                     [Number(c.required_m).toFixed(2), "right"],
+                                     [c.ok ? "○" : "✕", "center"]]) {
+          const td = document.createElement("td");
+          td.textContent = text;
+          td.style.cssText = `padding: 2px 4px; text-align: ${align}; border-top: 1px solid var(--line);`;
+          if (align === "center") td.style.color = c.ok ? "#16a34a" : "#dc2626";
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+        if (!c.ok) continue;
+        const opt = document.createElement("option");
+        opt.value = c.floor_label;
+        opt.textContent = `${c.floor_label} (낙차 ${Number(c.head_drop_m).toFixed(2)} m)`;
+        sel.appendChild(opt);
+      }
+      // 서버 추천은 커서만 올려둔다 — 확정은 사용자가 [배관망 완성] 을 누를 때.
+      sel.value = data.suggested_natural_fall_floor || "";
+
+      warnBox.replaceChildren();
+      for (const line of warns) {
+        const p = document.createElement("div");
+        p.textContent = line;
+        p.style.cssText = "font-size: 0.68rem; color: #9a3412;";
+        warnBox.appendChild(p);
+      }
+      box.style.display = "";
+    }
+
     function handleEvent(evt) {
+      if (evt.type === "context_warning") {
+        const warnBox = document.getElementById("ov-context-warnings");
+        if (warnBox) {
+          warnBox.replaceChildren();
+          for (const line of evt.lines || []) {
+            const p = document.createElement("div");
+            p.textContent = line;
+            p.style.cssText = "font-size: 0.68rem; color: #9a3412;";
+            warnBox.appendChild(p);
+          }
+          document.getElementById("ov-context-report").style.display = "";
+        }
+        return;
+      }
       // ── 10번 모듈 — overall_progress / overall_result / error 처리
       if (evt.type === "overall_progress") {
         overlayInfoEl.textContent = `[Stage B/C/D] ${evt.phase}`;

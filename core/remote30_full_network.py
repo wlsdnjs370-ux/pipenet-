@@ -190,6 +190,13 @@ class ZoneType(Enum):
     LLSP_2STAGE = "llsp_2stage"
 
 
+class MissingProjectInputError(ValueError):
+    """수리 입력이 없어 라이저를 만들 수 없을 때. 메시지가 빠진 입력을 지목한다.
+
+    ValueError 를 상속해 라우트의 기존 예외 처리에 그대로 걸린다.
+    """
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # 데이터 모델
 # ────────────────────────────────────────────────────────────────────────────
@@ -651,17 +658,69 @@ def _pressure_valve(label: str, in_lbl: str, out_lbl: str, *,
     }
 
 
-def _elev_at_floor(profile: BuildingPressureProfile | None, floor_label: str,
-                   fallback: float = 0.0) -> float:
+def _require_profile(profile: BuildingPressureProfile | None,
+                     zone_label: str) -> BuildingPressureProfile:
+    """압력표가 있어야만 라이저를 만든다 — 없으면 특정 현장 수치로 조용히 때우지 않는다."""
+    if profile is None or not profile.floors:
+        raise MissingProjectInputError(
+            f"{zone_label} 라이저를 만들려면 층별 압력표가 필요합니다. "
+            "계통도 DXF 자동 추출 · CSV/엑셀 업로드 · 직접 입력 중 하나로 채워주세요.")
+    return profile
+
+
+def _elev_at_floor(profile: BuildingPressureProfile, floor_label: str) -> float:
     """압력표에서 층 라벨의 누적 낙차 (m) → SDF elevation (음수)."""
-    if profile is not None:
-        row = profile.find_by_label(floor_label)
-        if row is not None:
-            return -float(row.head_drop_m)
-    return fallback
+    row = profile.find_by_label(floor_label)
+    if row is None:
+        have = ", ".join(r.floor_label for r in profile.floors[:12])
+        raise MissingProjectInputError(
+            f"압력표에 '{floor_label}' 행이 없어 그 층의 낙차압을 알 수 없습니다. "
+            f"표에 있는 층: {have}")
+    return -float(row.head_drop_m)
 
 
-# ── 라이저 logical 좌표 — 빌딩 무관. emit_sdf 의 _xform 이 정규화.
+def _elev_riser_top(profile: BuildingPressureProfile) -> float:
+    """라이저가 수원에서 내려오기 시작하는 표고 — 최상단 행(옥상)의 층고만큼 아래."""
+    top = profile.floors[0]
+    if top.height_m <= 0:
+        raise MissingProjectInputError(
+            f"압력표 최상단 행('{top.floor_label}')의 층고가 비어 있어 "
+            "라이저가 내려오기 시작하는 표고를 정할 수 없습니다.")
+    return -float(top.height_m)
+
+
+def _prv_rows(profile: BuildingPressureProfile) -> list[FloorRow]:
+    """감압이후 수두가 적힌 행 = 감압밸브 아래에 있는 층들."""
+    return [r for r in profile.floors if r.after_prv_m is not None]
+
+
+def _elev_prv1(profile: BuildingPressureProfile, zone_label: str) -> float:
+    """1차 감압밸브 표고 — 감압 구간이 시작되는 첫 행."""
+    rows = _prv_rows(profile)
+    if not rows:
+        raise MissingProjectInputError(
+            f"{zone_label} 는 감압밸브가 있는 구간인데 압력표의 '감압이후' 열이 비어 있습니다. "
+            "1차 감압밸브가 어느 층에 붙는지 정할 수 없습니다.")
+    return -float(rows[0].head_drop_m)
+
+
+def _elev_prv2(profile: BuildingPressureProfile) -> float:
+    """2차 감압밸브 표고 — 감압이후 수두가 다시 낮아지는 첫 행.
+
+    감압이후 수두는 밸브 출구를 기준으로 재므로 한 구간 안에서는 아래로 갈수록 커진다.
+    다시 작아지는 자리가 새 밸브가 물린 층이다.
+    """
+    rows = _prv_rows(profile)
+    for prev, cur in zip(rows, rows[1:]):
+        if cur.after_prv_m < prev.after_prv_m:
+            return -float(cur.head_drop_m)
+    raise MissingProjectInputError(
+        "압력표에서 2차 감압 시작 층을 찾지 못했습니다. 2차 감압 구간의 '감압이후' 수두는 "
+        "밸브 출구 기준으로 다시 낮아져야 합니다.")
+
+
+# ── 라이저 logical 좌표 — 화면 배치용(스키매틱)일 뿐 수리 계산에는 쓰이지 않는다.
+#    표고는 elevation 필드가 따로 들고 있고, emit_sdf 의 _xform 이 이 x/y 를 정규화한다.
 _COORDS_INPUT      = (   0,     0)    # 옥상 수원
 _COORDS_N2         = (-500,  -100)    # 옥상 수평 분기
 _COORDS_N3         = (-500,  -300)    # 옥상 → 라이저 진입
@@ -676,6 +735,40 @@ _COORDS_AV         = ( 100, -3300)    # 노드 10 (헤드망 source ★)
 _COORDS_PUMP_INPUT = ( 200,   100)    # HSP Pump-fan 앞 Input(100), Input(1) 보다 위
 
 
+def _riser_upper(elev_top: float, elev_bottom: float) -> tuple[list[dict], list[dict]]:
+    """수원(옥상) → 라이저 하강 → 노드 7 까지. 네 zone 공통 구간."""
+    nodes = [
+        _node("1", 0.0,       *_COORDS_INPUT, io_node="Input", pressure_pa=ATM_PA),
+        _node("2", 0.0,       *_COORDS_N2),
+        _node("3", elev_top,  *_COORDS_N3),
+        _node("4", elev_top,  *_COORDS_N4),
+        _node("7", elev_bottom, *_COORDS_N7),
+    ]
+    pipes = [
+        _pipe("r1", "1", "2", 150, 20.95, 0.0),
+        _pipe("r2", "2", "3", 150, abs(elev_top), elev_top),
+        _pipe("r3", "3", "4", 150, 14.93, 0.0),
+        _pipe("r4", "4", "7", 150, abs(elev_bottom - elev_top), elev_bottom - elev_top),
+    ]
+    return nodes, pipes
+
+
+def _riser_prv_to_av(elev_prv: float, elev_av: float) -> tuple[list[dict], list[dict]]:
+    """PRV 1개 → AV 까지. 노드 7 뒤에 붙는다 (LSP 1차감압 / HSP 펌프식 공통)."""
+    nodes = [
+        _node("8",  elev_prv, *_COORDS_PRV_IN),
+        _node("89", elev_prv, *_COORDS_PRV_OUT),
+        _node("5",  elev_av - 1.0, *_COORDS_N5_AV_PREV),
+        _node("10", elev_av,  *_COORDS_AV),
+    ]
+    pipes = [
+        _pipe("r5", "7", "8",  150, 0.5, 0.0),
+        _pipe("r6", "89", "5", 150, abs(elev_av - 1.0 - elev_prv), (elev_av - 1.0) - elev_prv),
+        _pipe("r7", "5", "10", 125, 1.5, 1.0),
+    ]
+    return nodes, pipes
+
+
 def build_riser_lsp_1stage(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
     """LSP 1차감압 라이저 — 자연낙차 + PRV 1개.
 
@@ -684,35 +777,19 @@ def build_riser_lsp_1stage(spec: ZoneSpec, profile: BuildingPressureProfile | No
     Elastomeric-valve: 8 → 89 (target = spec.prv1_target_pa)
     """
     if spec.prv1_target_pa is None:
-        raise ValueError("LSP_1STAGE 는 prv1_target_pa 가 필요합니다 (kg/cm² 또는 m 수두 → Pa).")
-    elev_av = _elev_at_floor(profile, spec.target_floor, fallback=-98.45)
-    elev_prv = -73.35  # PRV 위치 (옥상 -73m) — 답안 16F 기준 고정값 (24F 1차 감압 위치)
-    elev_top = -3.75   # 옥상 수직 분기 위치
+        raise MissingProjectInputError(
+            "LSP_1STAGE 는 prv1_target_pa 가 필요합니다 (kg/cm² 또는 m 수두 → Pa).")
+    profile = _require_profile(profile, "LSP_1STAGE")
+    elev_top = _elev_riser_top(profile)
+    elev_prv = _elev_prv1(profile, "LSP_1STAGE")
+    elev_av = _elev_at_floor(profile, spec.target_floor)
+    nodes, pipes = _riser_upper(elev_top, elev_prv)
+    tail_nodes, tail_pipes = _riser_prv_to_av(elev_prv, elev_av)
     return RiserTables(
-        nodes=[
-            _node("1",  0.0,        *_COORDS_INPUT,    io_node="Input", pressure_pa=ATM_PA),
-            _node("2",  0.0,        *_COORDS_N2),
-            _node("3",  elev_top,   *_COORDS_N3),
-            _node("4",  elev_top,   *_COORDS_N4),
-            _node("7",  elev_prv,   *_COORDS_N7),
-            _node("8",  elev_prv,   *_COORDS_PRV_IN),
-            _node("89", elev_prv,   *_COORDS_PRV_OUT),
-            _node("5",  elev_av - 1.0, *_COORDS_N5_AV_PREV),
-            _node("10", elev_av,    *_COORDS_AV),
-        ],
-        pipes=[
-            _pipe("r1", "1", "2",   150, 20.95, 0.0),
-            _pipe("r2", "2", "3",   150,  3.75, elev_top - 0.0),
-            _pipe("r3", "3", "4",   150, 14.93, 0.0),
-            _pipe("r4", "4", "7",   150, abs(elev_prv - elev_top), elev_prv - elev_top),
-            _pipe("r5", "7", "8",   150,  0.5,  0.0),
-            _pipe("r6", "89","5",   150, abs(elev_av - 1.0 - elev_prv), (elev_av - 1.0) - elev_prv),
-            _pipe("r7", "5", "10",  125,  1.5,  1.0),
-        ],
+        nodes=nodes + tail_nodes,
+        pipes=pipes + tail_pipes,
         pumps=[],
-        valves=[
-            _pressure_valve("1", "8", "89", target_pa=spec.prv1_target_pa),
-        ],
+        valves=[_pressure_valve("1", "8", "89", target_pa=spec.prv1_target_pa)],
         av_node_label="10",
     )
 
@@ -724,41 +801,46 @@ def build_riser_hsp_pump(spec: ZoneSpec, profile: BuildingPressureProfile | None
     Pump-fan: 100 → 1 (Library-pump = spec.pump_library_name, count=spec.pump_count)
     """
     if spec.prv1_target_pa is None:
-        raise ValueError("HSP_PUMP 는 prv1_target_pa 가 필요합니다.")
-    # HSP 는 고층부라 elev_av 가 양수 (옥상보다 위)가 아니라 옥상 근처. 답안 29F = -64.2m 정도
-    elev_av = _elev_at_floor(profile, spec.target_floor, fallback=-67.1)
-    elev_prv = -10.0   # HSP 1차 PRV 위치 (옥상 직하단 보통)
-    elev_top = -3.75
-    nodes = [
-        _node("100", 0.0, *_COORDS_PUMP_INPUT, io_node="Input", pressure_pa=ATM_PA),
-        _node("1",   0.0,        *_COORDS_INPUT),
-        _node("2",   0.0,        *_COORDS_N2),
-        _node("3",   elev_top,   *_COORDS_N3),
-        _node("4",   elev_top,   *_COORDS_N4),
-        _node("7",   elev_prv,   *_COORDS_N7),
-        _node("8",   elev_prv,   *_COORDS_PRV_IN),
-        _node("89",  elev_prv,   *_COORDS_PRV_OUT),
-        _node("5",   elev_av - 1.0, *_COORDS_N5_AV_PREV),
-        _node("10",  elev_av,    *_COORDS_AV),
-    ]
-    pipes = [
-        _pipe("r1", "1", "2",   150, 20.95, 0.0),
-        _pipe("r2", "2", "3",   150,  3.75, elev_top),
-        _pipe("r3", "3", "4",   150, 14.93, 0.0),
-        _pipe("r4", "4", "7",   150, abs(elev_prv - elev_top), elev_prv - elev_top),
-        _pipe("r5", "7", "8",   150,  0.5,  0.0),
-        _pipe("r6", "89","5",   150, abs(elev_av - 1.0 - elev_prv), (elev_av - 1.0) - elev_prv),
-        _pipe("r7", "5", "10",  125,  1.5,  1.0),
-    ]
-    pumps = [
-        _pump_fan(str(i + 1), "100", "1", library_pump=spec.pump_library_name)
-        for i in range(max(1, spec.pump_count))
-    ]
+        raise MissingProjectInputError("HSP_PUMP 는 prv1_target_pa 가 필요합니다.")
+    profile = _require_profile(profile, "HSP_PUMP")
+    elev_top = _elev_riser_top(profile)
+    elev_prv = _elev_prv1(profile, "HSP_PUMP")
+    elev_av = _elev_at_floor(profile, spec.target_floor)
+    nodes, pipes = _riser_upper(elev_top, elev_prv)
+    # 수원이 아니라 펌프 토출이 라이저 머리 — Input 지정을 노드 100 으로 옮긴다.
+    nodes[0] = _node("1", 0.0, *_COORDS_INPUT)
+    nodes.insert(0, _node("100", 0.0, *_COORDS_PUMP_INPUT,
+                          io_node="Input", pressure_pa=ATM_PA))
+    tail_nodes, tail_pipes = _riser_prv_to_av(elev_prv, elev_av)
     return RiserTables(
-        nodes=nodes, pipes=pipes, pumps=pumps,
+        nodes=nodes + tail_nodes,
+        pipes=pipes + tail_pipes,
+        pumps=[_pump_fan(str(i + 1), "100", "1", library_pump=spec.pump_library_name)
+               for i in range(max(1, spec.pump_count))],
         valves=[_pressure_valve("1", "8", "89", target_pa=spec.prv1_target_pa)],
         av_node_label="10",
     )
+
+
+def build_riser_lsp_gravity(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
+    """LSP 자연낙차 라이저 — 감압밸브 없음. PRV 자리(노드 8, 89)가 아예 없다.
+
+    노드: Input(1, elev=0) → 2 → 3 → 4 → 7 → 5 → 10(AV)
+    """
+    profile = _require_profile(profile, "LSP_GRAVITY")
+    elev_top = _elev_riser_top(profile)
+    elev_av = _elev_at_floor(profile, spec.target_floor)
+    elev_pre_av = elev_av - 1.0
+    nodes, pipes = _riser_upper(elev_top, elev_pre_av)
+    nodes += [
+        _node("5",  elev_pre_av, *_COORDS_N5_AV_PREV),
+        _node("10", elev_av,     *_COORDS_AV),
+    ]
+    pipes += [
+        _pipe("r5", "7", "5",  150, 0.5, 0.0),
+        _pipe("r6", "5", "10", 125, 1.5, 1.0),
+    ]
+    return RiserTables(nodes=nodes, pipes=pipes, pumps=[], valves=[], av_node_label="10")
 
 
 def build_riser_llsp_2stage(spec: ZoneSpec, profile: BuildingPressureProfile | None) -> RiserTables:
@@ -768,17 +850,15 @@ def build_riser_llsp_2stage(spec: ZoneSpec, profile: BuildingPressureProfile | N
     Elastomeric-valve: 8→89 (1차, target=prv1_target_pa), 87→88 (2차, target=prv2_target_pa)
     """
     if spec.prv1_target_pa is None or spec.prv2_target_pa is None:
-        raise ValueError("LLSP_2STAGE 는 prv1_target_pa, prv2_target_pa 모두 필요합니다.")
-    elev_av = _elev_at_floor(profile, spec.target_floor, fallback=-159.6)  # B1 = -159.6m
-    elev_prv1 = -73.35   # 1차 PRV (옥상 -73m)
-    elev_prv2 = -145.4   # 2차 PRV (1.5F, 옥상 -145m)
-    elev_top = -3.75
-    nodes = [
-        _node("1",  0.0,         *_COORDS_INPUT,    io_node="Input", pressure_pa=ATM_PA),
-        _node("2",  0.0,         *_COORDS_N2),
-        _node("3",  elev_top,    *_COORDS_N3),
-        _node("4",  elev_top,    *_COORDS_N4),
-        _node("7",  elev_prv1,   *_COORDS_N7),
+        raise MissingProjectInputError(
+            "LLSP_2STAGE 는 prv1_target_pa, prv2_target_pa 모두 필요합니다.")
+    profile = _require_profile(profile, "LLSP_2STAGE")
+    elev_top = _elev_riser_top(profile)
+    elev_prv1 = _elev_prv1(profile, "LLSP_2STAGE")
+    elev_prv2 = _elev_prv2(profile)
+    elev_av = _elev_at_floor(profile, spec.target_floor)
+    nodes, pipes = _riser_upper(elev_top, elev_prv1)
+    nodes += [
         _node("8",  elev_prv1,   *_COORDS_PRV_IN),
         _node("89", elev_prv1,   *_COORDS_PRV_OUT),
         _node("87", elev_prv2,   *_COORDS_PRV2_IN),
@@ -786,15 +866,11 @@ def build_riser_llsp_2stage(spec: ZoneSpec, profile: BuildingPressureProfile | N
         _node("5",  elev_av - 1.0, *_COORDS_N5_AV_PREV),
         _node("10", elev_av,     *_COORDS_AV),
     ]
-    pipes = [
-        _pipe("r1", "1", "2",   150, 20.95, 0.0),
-        _pipe("r2", "2", "3",   150,  3.75, elev_top),
-        _pipe("r3", "3", "4",   150, 14.93, 0.0),
-        _pipe("r4", "4", "7",   150, abs(elev_prv1 - elev_top), elev_prv1 - elev_top),
-        _pipe("r5", "7", "8",   150,  0.5,  0.0),
+    pipes += [
+        _pipe("r5", "7", "8",   150, 0.5, 0.0),
         _pipe("r6", "89", "87", 150, abs(elev_prv2 - elev_prv1), elev_prv2 - elev_prv1),
         _pipe("r7", "88", "5",  150, abs(elev_av - 1.0 - elev_prv2), (elev_av - 1.0) - elev_prv2),
-        _pipe("r8", "5", "10",  125,  1.5,  1.0),
+        _pipe("r8", "5", "10",  125, 1.5, 1.0),
     ]
     return RiserTables(
         nodes=nodes, pipes=pipes, pumps=[],
@@ -806,29 +882,22 @@ def build_riser_llsp_2stage(spec: ZoneSpec, profile: BuildingPressureProfile | N
     )
 
 
+_RISER_BUILDERS = {
+    ZoneType.HSP_PUMP: build_riser_hsp_pump,
+    ZoneType.LSP_1STAGE: build_riser_lsp_1stage,
+    ZoneType.LSP_GRAVITY: build_riser_lsp_gravity,
+    ZoneType.LLSP_2STAGE: build_riser_llsp_2stage,
+}
+
+
 def build_riser(ctx: ProjectContext) -> RiserTables:
     """zone 분기 라우터. 폼 딕셔너리가 아니라 ProjectContext 하나만 받는다."""
-    spec, profile = ctx.zone_spec, ctx.floor_profile
-    if spec.zone_type == ZoneType.HSP_PUMP:
-        return build_riser_hsp_pump(spec, profile)
-    if spec.zone_type == ZoneType.LSP_1STAGE:
-        return build_riser_lsp_1stage(spec, profile)
-    if spec.zone_type == ZoneType.LLSP_2STAGE:
-        return build_riser_llsp_2stage(spec, profile)
-    if spec.zone_type == ZoneType.LSP_GRAVITY:
-        # 자연낙차 감압 없음 — LSP_1STAGE 의 PRV 만 제거한 변형
-        rt = build_riser_lsp_1stage(
-            ZoneSpec(zone_type=ZoneType.LSP_1STAGE, target_floor=spec.target_floor,
-                     prv1_target_pa=ATM_PA),  # dummy — valves 비울 거니까 무시
-            profile,
-        )
-        rt.valves = []
-        # PRV 자리 노드 8, 89 도 제거하고 7 → 5 직결
-        rt.nodes = [n for n in rt.nodes if n["label"] not in ("8", "89")]
-        rt.pipes = [p for p in rt.pipes if p["in"] not in ("7", "89") or p["out"] not in ("8", "5")]
-        rt.pipes.append(_pipe("r_g", "7", "5", 150, 30.0, -30.0))  # 7 → 5 직결 단순화
-        return rt
-    raise ValueError(f"Unknown zone_type: {spec.zone_type}")
+    spec = ctx.zone_spec
+    try:
+        builder = _RISER_BUILDERS[spec.zone_type]
+    except KeyError:
+        raise ValueError(f"Unknown zone_type: {spec.zone_type}") from None
+    return builder(spec, ctx.floor_profile)
 
 
 # ────────────────────────────────────────────────────────────────────────────

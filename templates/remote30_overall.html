@@ -218,7 +218,12 @@
 
         <!-- 계통도 + 압력표 -->
         <div style="margin: 10px 0; padding: 8px; background: #ecfdf5; border: 1px solid #16a34a;">
-          <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: #065f46;">계통도 → 압력 분포표 (선택)</div>
+          <div style="font-size: 0.78rem; font-weight: 700; margin-bottom: 6px; color: #065f46;">계통도 → 압력 분포표 (필수)</div>
+          <p class="info-line" style="font-size: 0.7rem; margin: 0 0 6px;">
+            라이저 표고(옥상 진입·감압밸브 위치·대상 층)를 전부 이 표에서 뽑습니다. 표가 없으면
+            생성이 멈춥니다. 감압 구간이 있는 존은 그 층부터 <b>after_prv_m</b>(감압 이후 수두)을
+            채워야 감압밸브가 몇 층에 붙는지 알 수 있고, 2차 감압은 그 값이 다시 낮아지는 층으로 잡습니다.
+          </p>
           <div class="field" style="margin: 0 0 6px;">
             <label for="ov-sysdg-file" style="font-size: 0.72rem;">계통도 DXF</label>
             <input id="ov-sysdg-file" type="file" accept=".dxf" style="font-size: 0.74rem;">
@@ -229,7 +234,7 @@
           </div>
           <button id="ov-sysdg-parse" type="button" style="width: 100%; padding: 5px; background: #16a34a; color: #fff; border: none; font-size: 0.74rem; font-weight: 600; cursor: pointer;">계통도 자동 파싱 →</button>
           <p id="ov-sysdg-status" class="info-line" style="font-size: 0.7rem; margin-top: 4px;">계통도 DXF 업로드 후 클릭 → 층/elevation 자동 추출 → 아래 textarea 에 JSON 으로 채워짐. 검토/수정 후 [▶ 배관망 생성] 클릭.</p>
-          <textarea id="ov-pressure-json" placeholder='압력표 JSON — 자동 파싱 또는 직접 입력. 예: [{"floor_label":"옥상층","height_m":6,"head_drop_m":3.1}, ...]' style="width: 100%; margin-top: 6px; padding: 4px 6px; border: 1px solid var(--line); font-size: 0.7rem; font-family: ui-monospace, monospace; min-height: 70px; resize: vertical;"></textarea>
+          <textarea id="ov-pressure-json" placeholder='압력표 JSON — 자동 파싱 또는 직접 입력. 예: [{"floor_label":"옥상층","height_m":6,"head_drop_m":0}, {"floor_label":"18층","height_m":2.9,"head_drop_m":13.8,"after_prv_m":2.0}, ...]' style="width: 100%; margin-top: 6px; padding: 4px 6px; border: 1px solid var(--line); font-size: 0.7rem; font-family: ui-monospace, monospace; min-height: 70px; resize: vertical;"></textarea>
         </div>
 
         <button id="wb-run" class="run-btn" type="button" disabled>▶ 배관망 생성</button>

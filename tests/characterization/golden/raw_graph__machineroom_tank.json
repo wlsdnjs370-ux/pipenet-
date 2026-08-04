@@ -1,5 +1,7 @@
 {
+  "components": 4,
   "edge_sig": "b16cfdc75e6ac8c5",
   "edges": 22,
-  "nodes": 26
+  "nodes": 26,
+  "total_len": 33759.9
 }

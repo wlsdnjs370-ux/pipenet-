@@ -433,6 +433,9 @@ class AutoHeadPlacer:
         """Minimum distance from a point to polygon edges (self-contained)."""
         if not poly:
             return float("inf")
+        # 장애물 안에 들어간 헤드는 변까지의 거리가 멀어 통과로 읽힌다.
+        if self._point_in_polygon(p, poly):
+            return 0.0
         best = float("inf")
         n = len(poly)
         px, py = p

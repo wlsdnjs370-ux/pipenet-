@@ -1,4 +1,5 @@
 {
+  "components": 19,
   "edge_sig": "4ebcd5df215b54a0",
   "edges": 393,
   "nodes": 382,
@@ -15,5 +16,6 @@
     "node_count": 382,
     "scale_ratio": 0.005189,
     "snap_eps_mm": 0.259
-  }
+  },
+  "total_len": 2318.4
 }

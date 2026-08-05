@@ -25,6 +25,7 @@ from core.design import gate as G
 from core.design import session as S
 from core.design.deterministic import constraints as CN
 from core.design.deterministic import esfr as ESFR
+from core.design.deterministic import zoning as Z
 from core.design.recognize import params as RP
 from core.design.recognize import pipeline as PL
 from core.design.schema import BuildingDraft
@@ -36,8 +37,6 @@ DESIGN_CACHE_VERSION = "c1-v1"
 
 # 게이트 뒤에 서지만 아직 구현이 없는 단계들. C2·C2B 는 실제 라우트로 빠졌다.
 _GATED_STAGES = (
-    ("/api/design/c3/valves", "POST", "C3"),
-    ("/api/design/c3/zones", "POST", "C3-zones"),
     ("/api/design/c4/heads", "POST", "C4"),
     ("/api/design/c5/route", "POST", "C5"),
     ("/api/design/emit", "POST", "EMIT"),
@@ -55,6 +54,14 @@ _VOLATILE_KEYS = ("version", "updated_at")
 
 def _fail(code: str, message: str, status: int, **extra):
     return jsonify({"ok": False, "code": code, "message": message, **extra}), status
+
+
+def _stage_fields(meta: dict, stage: str) -> dict:
+    """`update_meta` 에 실을 stage 갱신. 뒤로 가는 값은 실지 않는다."""
+    current = meta.get("stage")
+    if current in _STAGE_ORDER and _STAGE_ORDER.index(current) >= _STAGE_ORDER.index(stage):
+        return {}
+    return {"stage": stage}
 
 
 def _content_hash(path: Path) -> str:
@@ -463,11 +470,7 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
 
         name = sess.next_constraints_name()
         version = sess.write(name, data)
-        stage = meta.get("stage")
-        fields = {"constraints": name}
-        if stage not in _STAGE_ORDER or _STAGE_ORDER.index(stage) < _STAGE_ORDER.index("c3"):
-            fields["stage"] = "c3"
-        sess.update_meta(**fields)
+        sess.update_meta(constraints=name, **_stage_fields(meta, "c3"))
         sess.audit(actor, "C2", "constraints_built", {
             "artifact": name,
             "scenario_head_count": data.get("scenario_head_count"),
@@ -532,6 +535,151 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
         except S.StageBusy as exc:
             return _fail("STAGE_BUSY", str(exc), 409)
         return jsonify({"ok": True, "esfr": decision.to_dict(), **(payload or {})})
+
+    # ── C3 유수검지장치·방호구역 (§7) ───────────────────────────────────
+    def _load_constraints(sess):
+        """현행 기준. C2 를 굽기 전이면 오류 — 기준 없이 구역을 나눌 수 없다."""
+        meta, _ = sess.read("meta.json")
+        data, _v = sess.read_or_none(meta.get("constraints") or S.CONSTRAINTS)
+        if data is None:
+            return None, _fail("CONSTRAINTS_REQUIRED",
+                               "C2 규범 조건을 먼저 실행하세요.", 409)
+        return data, None
+
+    @app.post("/api/design/c3/valves")
+    def design_c3_valves():
+        body = request.get_json(silent=True) or {}
+        sess, draft, err = _gated(str(body.get("session_id") or ""))
+        if err:
+            return err
+        operator = (body.get("operator") or "").strip()
+        if not operator:
+            return _fail("OPERATOR_REQUIRED", "밸브를 확정한 사람이 필요합니다.", 400)
+        # 기준 없이 확정한 밸브는 어떤 규범으로 놓았는지 말할 수 없다.
+        _constraints, err = _load_constraints(sess)
+        if err:
+            return err
+
+        candidates = {c["core_id"]: c for c in Z.valve_candidates(draft)}
+        placed = body.get("valves")
+        if not isinstance(placed, list) or not placed:
+            return _fail("VALVE_REQUIRED",
+                         "유수검지장치를 하나 이상 찍어야 합니다.", 400,
+                         candidates=list(candidates.values()))
+
+        rooms_by_id = {r.id: r for r in draft.rooms}
+        valves = []
+        for i, item in enumerate(placed, start=1):
+            core_id = str((item or {}).get("core_id") or "")
+            if core_id not in candidates:
+                return _fail("VALVE_CORE_UNCONFIRMED",
+                             f"{core_id or '(빈 값)'} 은(는) 확정된 샤프트·계단 코어가 "
+                             "아닙니다. 후보 중에서 고르세요.", 422,
+                             candidates=list(candidates.values()))
+            system_type = str(item.get("system_type") or "")
+            if system_type not in Z.SYSTEM_TYPES:
+                # 동결·수손 우려는 도면에 없다. 기본값을 넣으면 습식이 아닌 현장이
+                # 조용히 습식으로 확정된다.
+                return _fail("SYSTEM_TYPE_REQUIRED",
+                             f"{core_id} 의 설비 종류를 골라야 합니다: "
+                             + ", ".join(Z.SYSTEM_TYPES), 422, core_id=core_id)
+            point = item.get("point")
+            if not (isinstance(point, (list, tuple)) and len(point) == 2):
+                return _fail("VALVE_POINT_REQUIRED",
+                             f"{core_id} 의 설치 좌표가 없습니다.", 422, core_id=core_id)
+            room_id = Z.seed_room(draft, point)
+            if room_id is None:
+                return _fail("VALVE_OUTSIDE_ROOMS",
+                             f"{core_id} 에 찍은 자리가 어느 실 안에도 없습니다. "
+                             "코어 폴리곤 안을 찍으세요.", 422, core_id=core_id)
+            try:
+                confirmed = Z.check_requirements(item.get("requirements_confirmed") or {})
+            except Z.ZoningError as exc:
+                return _fail(exc.code, f"{core_id}: {exc}", 422,
+                             core_id=core_id, **exc.detail)
+            # 층은 코어가 아니라 밸브를 찍은 실이 안다. `Core` 에는 층이 없다.
+            floor = rooms_by_id[room_id].floor
+            valves.append({
+                "id": f"AV-{floor or '?'}-{i:02d}",
+                "core_id": core_id, "floor": floor,
+                "point": [float(point[0]), float(point[1])],
+                "room_id": room_id, "system_type": system_type,
+                "manual": True, "operator": operator,
+                "requirements_confirmed": confirmed,
+            })
+
+        unmet = [{"valve_id": v["id"], "fields": [k for k in Z.MANUAL_REQUIREMENTS
+                                                  if not v["requirements_confirmed"][k]]}
+                 for v in valves]
+        unmet = [u for u in unmet if u["fields"]]
+
+        try:
+            with sess.stage_lock("c3"):
+                design, _v = sess.read_or_none("design.json")
+                design = dict(design or {"schema": "fncadnet.design/1"})
+                design["valves"] = valves
+                # 밸브가 바뀌면 옛 구역은 근거를 잃는다. 남겨 두면 화면이 이전
+                # 구역을 새 밸브의 것으로 읽는다.
+                design.pop("zones", None)
+                sess.write("design.json", design)
+                sess.audit(operator, "C3", "valves_placed", {
+                    "count": len(valves),
+                    "valves": [{k: v[k] for k in ("id", "core_id", "system_type",
+                                                  "room_id", "requirements_confirmed")}
+                               for v in valves],
+                })
+        except S.StageBusy as exc:
+            return _fail("STAGE_BUSY", str(exc), 409)
+        return jsonify({"ok": True, "valves": valves, "requirements_unmet": unmet})
+
+    @app.get("/api/design/c3/candidates/<sid>")
+    def design_c3_candidates(sid):
+        sess, draft, err = _gated(sid)
+        if err:
+            return err
+        return jsonify({"ok": True, "candidates": Z.valve_candidates(draft),
+                        "system_types": list(Z.SYSTEM_TYPES),
+                        "requirements": [{"key": k, "label": Z.REQUIREMENT_LABELS[k]}
+                                         for k in Z.MANUAL_REQUIREMENTS]})
+
+    @app.post("/api/design/c3/zones")
+    def design_c3_zones():
+        body = request.get_json(silent=True) or {}
+        sess, draft, err = _gated(str(body.get("session_id") or ""))
+        if err:
+            return err
+        constraints, err = _load_constraints(sess)
+        if err:
+            return err
+        design, _v = sess.read_or_none("design.json")
+        valves = (design or {}).get("valves") or []
+        if not valves:
+            return _fail("VALVE_REQUIRED",
+                         "유수검지장치를 먼저 확정하세요.", 409)
+
+        result = Z.split_zones(draft, valves, constraints)
+        actor = (body.get("operator") or "").strip() or valves[0].get("operator") or "unknown"
+        try:
+            with sess.stage_lock("c3"):
+                stored = dict(design)
+                stored["zones"] = result["zones"]
+                stored["flags"] = result["flags"]
+                sess.write("design.json", stored)
+                # 플래그가 남아 있으면 구역이 아직 사람 손을 기다린다. 여기서 stage 를
+                # 밀면 닿지 않는 실을 안은 채로 C4 헤드 배치가 열린다.
+                if not result["flags"]:
+                    meta, _ = sess.read("meta.json")
+                    fields = _stage_fields(meta, "c4")
+                    if fields:
+                        sess.update_meta(**fields)
+                sess.audit(actor, "C3", "zones_split", {
+                    "zones": len(result["zones"]),
+                    "unreached": len(result["unreached"]),
+                    "flags": [f["code"] for f in result["flags"]],
+                })
+        except S.StageBusy as exc:
+            return _fail("STAGE_BUSY", str(exc), 409)
+        return jsonify({"ok": True, **result})
 
     # ── 게이트 뒤 단계 (자리만) ─────────────────────────────────────────
     def _make_gated(stage: str):

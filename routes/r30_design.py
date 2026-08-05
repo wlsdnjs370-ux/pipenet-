@@ -10,7 +10,7 @@ PR-2 범위는 세션과 게이트뿐이다. C2 이후 엔드포인트는 **게�
 """
 from __future__ import annotations
 
-from flask import jsonify, request
+from flask import jsonify, make_response, render_template, request
 
 from core.design import gate as G
 from core.design import session as S
@@ -54,6 +54,18 @@ def register(app, *, DESIGN_SESSION_DIR, enabled: bool = False):
             return None, 0, _fail(
                 "C1_NOT_DONE", "C1 인식이 끝나지 않아 확정할 대상이 없습니다.", 409)
         return BuildingDraft.from_dict(raw), version, None
+
+    # ── 페이지 ──────────────────────────────────────────────────────────
+    # [문서정합] §11 은 이 라우트를 `routes/pages.py` 에 두라고 한다. 여기 둔 이유는
+    # 플래그가 하나이기 때문이다. 페이지만 열리고 /api/design/* 이 404 면 화면은
+    # 이유를 알 수 없는 고장으로 보인다. 페이지와 API 는 같이 있거나 같이 없어야 한다.
+    @app.get("/design-workbench")
+    def design_workbench_page():
+        response = make_response(render_template("design_workbench.html"))
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
     # ── 세션 ────────────────────────────────────────────────────────────
     @app.post("/api/design/session")

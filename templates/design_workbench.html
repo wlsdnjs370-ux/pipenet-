@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>설계 자동화 워크벤치</title>
+  <style>
+    :root {
+      --bg: #f0f2f5;
+      --panel: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --line: #d1d5db;
+      --accent: #111827;
+      --warn: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font-family: "Malgun Gothic", "Segoe UI", sans-serif; color: var(--text); background: var(--bg); }
+    .workbench { display: grid; grid-template-columns: 220px 1fr 380px; height: calc(100vh - 37px); }
+    .stepper { background: #111827; color: #cbd5e1; padding: 14px 0; overflow-y: auto; }
+    .stepper h3 { margin: 0 16px 10px; font-size: 0.72rem; letter-spacing: 0.08em; color: #64748b; text-transform: uppercase; }
+    .stepper ol { list-style: none; margin: 0; padding: 0; }
+    .stepper li { padding: 9px 16px; font-size: 0.82rem; border-left: 3px solid transparent; display: flex; gap: 8px; align-items: baseline; }
+    .stepper li .no { font-family: ui-monospace, monospace; font-size: 0.72rem; color: #475569; min-width: 26px; }
+    .stepper li.done { color: #86efac; }
+    .stepper li.current { color: #fff; background: #1e293b; border-left-color: #3b82f6; font-weight: 700; }
+    .stepper li.todo { color: #475569; }
+    .stepper .session { margin: 14px 16px 0; padding-top: 12px; border-top: 1px solid #1e293b; font-size: 0.7rem; color: #64748b; font-family: ui-monospace, monospace; word-break: break-all; }
+    .canvas-pane { position: relative; background: #0f172a; overflow: hidden; }
+    .canvas-pane canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    .canvas-pane canvas.is-panning { cursor: grabbing; }
+    .canvas-overlay { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; pointer-events: none; gap: 10px; flex-wrap: wrap; }
+    .canvas-overlay .pill { background: rgba(15, 23, 42, 0.85); color: #e5e7eb; border: 1px solid #334155; padding: 6px 10px; font-size: 0.8rem; pointer-events: auto; font-family: ui-monospace, monospace; }
+    .canvas-overlay button { pointer-events: auto; background: #1f2937; color: #e5e7eb; border: 1px solid #475569; padding: 6px 10px; font-size: 0.78rem; cursor: pointer; }
+    .canvas-overlay button:hover { background: #334155; }
+    .canvas-toolbar { position: absolute; bottom: 12px; left: 12px; display: flex; gap: 6px; pointer-events: none; }
+    .zoom-group { display: inline-flex; align-items: stretch; border: 1px solid #475569; background: rgba(15, 23, 42, 0.85); pointer-events: auto; }
+    .zoom-group button { background: transparent; color: #e5e7eb; border: none; padding: 7px 12px; font-size: 1.05rem; font-weight: 700; cursor: pointer; min-width: 32px; }
+    .zoom-group button:hover { background: #1e40af; color: #fff; }
+    .zoom-group .zoom-level { display: inline-flex; align-items: center; justify-content: center; min-width: 56px; padding: 0 6px; color: #cbd5e1; font-size: 0.78rem; font-family: ui-monospace, monospace; border-left: 1px solid #475569; border-right: 1px solid #475569; cursor: pointer; user-select: none; }
+    .zoom-group .zoom-level:hover { background: #1e293b; color: #fff; }
+    .canvas-empty { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #94a3b8; font-size: 0.9rem; text-align: center; }
+    .canvas-empty strong { display: block; font-size: 1.1rem; margin-bottom: 6px; color: #cbd5e1; }
+    .sidebar { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; }
+    .sidebar section { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    .sidebar section h3 { margin: 0 0 8px; font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+    .sidebar .field { display: grid; gap: 4px; margin-bottom: 8px; }
+    .sidebar .field label { font-size: 0.78rem; font-weight: 600; }
+    .sidebar .field input { width: 100%; padding: 6px 8px; border: 1px solid var(--line); background: #fff; font-size: 0.85rem; font-family: inherit; }
+    .note { margin: 6px 0 0; font-size: 0.72rem; color: var(--muted); }
+    .note.warn { color: var(--warn); }
+    .cat-list { border: 1px solid var(--line); max-height: 52vh; overflow-y: auto; }
+    .cat-head { display: grid; grid-template-columns: auto 12px 1fr auto; gap: 7px; align-items: center; padding: 6px 8px; background: #f9fafb; border-bottom: 1px solid var(--line); font-size: 0.78rem; font-weight: 700; }
+    .cat-head .swatch { width: 12px; height: 12px; border: 1px solid #94a3b8; }
+    .cat-head .count { font-size: 0.7rem; font-weight: 400; color: var(--muted); font-family: ui-monospace, monospace; }
+    .cat-head.empty { opacity: 0.45; }
+    .layer-row { display: grid; grid-template-columns: auto 1fr 104px; gap: 6px; align-items: center; padding: 5px 8px 5px 20px; border-bottom: 1px solid #f3f4f6; font-size: 0.76rem; }
+    .layer-row:hover { background: #fafbfc; }
+    .layer-row .name { font-family: ui-monospace, monospace; font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .layer-row .count { font-size: 0.68rem; color: var(--muted); }
+    .layer-row select { padding: 3px 4px; font-size: 0.7rem; border: 1px solid var(--line); width: 100%; }
+    .overlay-row { display: grid; grid-template-columns: auto 12px 1fr auto; gap: 7px; align-items: center; padding: 5px 2px; font-size: 0.78rem; }
+    .overlay-row .swatch { width: 12px; height: 12px; border: 1px solid #94a3b8; }
+    .overlay-row .count { font-size: 0.7rem; color: var(--muted); font-family: ui-monospace, monospace; }
+    .overlay-row.empty { color: var(--muted); }
+    .topbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; background: var(--accent); color: #fff; font-size: 0.85rem; }
+    .topbar a { color: #cbd5e1; text-decoration: none; font-size: 0.78rem; }
+    .topbar a:hover { color: #fff; text-decoration: underline; }
+    @media (max-width: 1100px) {
+      .workbench { grid-template-columns: 1fr; grid-template-rows: auto 60vh 1fr; height: auto; }
+      .sidebar { border-left: 0; border-top: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <strong>설계 자동화 워크벤치 — 건축도면에서 배관망까지</strong>
+    <a href="/" target="_top">← 홈으로</a>
+  </div>
+  <div class="workbench">
+    <nav class="stepper">
+      <h3>단계</h3>
+      <ol id="dw-stepper"></ol>
+      <div class="session" id="dw-session">세션 준비 중…</div>
+    </nav>
+
+    <div class="canvas-pane">
+      <canvas id="dw-canvas"></canvas>
+      <div id="dw-empty" class="canvas-empty">
+        <strong>건축 DXF 를 업로드하세요</strong>
+        오른쪽 패널에서 .dxf 파일을 선택하면<br>여기에 도면이 표시됩니다.
+      </div>
+      <div class="canvas-overlay">
+        <span id="dw-overlay-info" class="pill">대기 중</span>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span id="dw-overlay-cursor" class="pill" style="display:none;"></span>
+          <button id="dw-fit-btn" type="button">화면 맞춤</button>
+        </div>
+      </div>
+      <div class="canvas-toolbar">
+        <div class="zoom-group">
+          <button id="dw-zoom-out" type="button" title="축소 (또는 - 키)">−</button>
+          <span id="dw-zoom-level" class="zoom-level" title="현재 줌">100%</span>
+          <button id="dw-zoom-in" type="button" title="확대 (또는 + 키)">+</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <section>
+        <h3>C1. 건축 DXF</h3>
+        <div class="field">
+          <label for="dw-dxf">DXF 업로드 (.dxf)</label>
+          <input id="dw-dxf" type="file" accept=".dxf">
+        </div>
+        <p id="dw-load-status" class="note">파일을 선택하세요.</p>
+      </section>
+
+      <section>
+        <h3>건축 레이어 12종</h3>
+        <div id="dw-layer-list" class="cat-list">
+          <div style="padding:14px; text-align:center; color:var(--muted); font-size:0.8rem;">DXF 업로드 후 표시됩니다.</div>
+        </div>
+        <p class="note">체크 = 캔버스 표시. 분류를 바꾸면 색·겹침 순서가 함께 바뀝니다.</p>
+        <p id="dw-unclassified-note" class="note warn" style="display:none;"></p>
+      </section>
+
+      <section>
+        <h3>설계 산출물</h3>
+        <div id="dw-design-list"></div>
+        <p class="note">C1 인식이 붙기 전까지 항목 수는 0 입니다. 0 을 채워 보여주지 않습니다.</p>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    // 레이어명은 업로드된 DXF 에서 온다 — 속성 보간 탈출을 막으려면 따옴표까지 5자 전부.
+    function escHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    // ====== 상수 (지시서 §12.5) ======
+    const ARCH_COLORS = {
+      WALL: "#94a3b8", DOOR: "#fbbf24", WINDOW: "#67e8f9", COLUMN: "#a1a1aa",
+      STAIR: "#c4b5fd", SHAFT: "#f472b6", ROOM_TEXT: "#22c55e", DIM: "#52525b",
+      FURNITURE: "#3f3f46", GRID: "#3f3f46", BEAM: "#fb923c", OTHER: "#71717a",
+    };
+    const DESIGN_COLORS = {
+      room: "#38bdf8", virtualEdge: "#f87171",   // ★ 경고색 — 검수 우선
+      core: "#f472b6", zone: "#a78bfa", obstacle: "#fb923c",
+      pipeBranch: "#3b82f6", pipeCross: "#2563eb", pipeMain: "#1d4ed8",
+      head: "#ef4444", valve: "#facc15",
+    };
+
+    // 미분류는 12종이 아니다. "아직 안 봤다" 와 "보고 나서 그 밖으로 판정했다(OTHER)" 를
+    // 같은 칸에 넣으면 인식기를 붙였을 때 무엇이 남았는지 셀 수 없다.
+    const UNCLASSIFIED = "__none__";
+    const UNCLASSIFIED_COLOR = "#94a3b8";
+
+    // 뒤 → 앞. 지시서 §12.4 의 배경(0.20) / 주요(0.45) / 문(0.6) 3단 alpha 를 따르고,
+    // 표에 층이 명시되지 않은 BEAM·SHAFT 는 주요 구조로, ROOM_TEXT 는 텍스트라 최상단에 둔다.
+    const ARCH_ORDER = [
+      // 미분류가 출발 상태다. 여기가 어두우면 분류할 도면이 안 보인다.
+      [UNCLASSIFIED, 0.60],
+      ["GRID", 0.20], ["DIM", 0.20], ["FURNITURE", 0.20], ["OTHER", 0.20],
+      ["WALL", 0.45], ["COLUMN", 0.45], ["STAIR", 0.45], ["WINDOW", 0.45],
+      ["BEAM", 0.45], ["SHAFT", 0.45],
+      ["DOOR", 0.60],
+      ["ROOM_TEXT", 0.85],
+    ];
+    const ARCH_CATEGORIES = ARCH_ORDER.map(([c]) => c).filter((c) => c !== UNCLASSIFIED).sort();
+
+    const STAGES = [
+      ["c1", "C1 건축 인식"], ["gate", "GATE 확정"], ["c2", "C2 규범 조건"],
+      ["c3", "C3 밸브·구역"], ["c4", "C4 헤드 배치"], ["c5", "C5 라우팅"],
+      ["emit", "솔버 파일 방출"],
+    ];
+
+    // 설계 오버레이는 자료가 생기는 PR 에서 하나씩 늘린다. 그릴 것이 없는 항목을
+    // 미리 켜 두면 "켰는데 아무것도 없다" 가 인식 실패인지 미구현인지 구분되지 않는다.
+    const OVERLAYS = [
+      ["rooms", "실 폴리곤", DESIGN_COLORS.room],
+      ["roomLabels", "실 이름", DESIGN_COLORS.room],
+      ["virtualEdges", "가상 폐합선", DESIGN_COLORS.virtualEdge],
+      ["cores", "코어(계단·샤프트)", DESIGN_COLORS.core],
+    ];
+
+    // ====== 상태 (지시서 §12.3) ======
+    const state = {
+      entities: [], bbox: null, layers: [], layerState: {},
+      view: { zoom: 1, panX: 0, panY: 0 },
+      dpr: window.devicePixelRatio || 1,
+      dxfFile: null, dxfToken: null, drag: null, fitZoom: null,
+
+      sessionId: null,
+      stage: "c1",
+      gatePassed: false,
+      centerlines: [],
+      virtualEdges: [],
+      rooms: [],
+      cores: [],
+      overlayVisible: { rooms: true, roomLabels: true, virtualEdges: true, cores: true },
+    };
+
+    const canvas = document.getElementById("dw-canvas");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    const emptyEl = document.getElementById("dw-empty");
+    const overlayInfoEl = document.getElementById("dw-overlay-info");
+    const overlayCursorEl = document.getElementById("dw-overlay-cursor");
+    const dxfInputEl = document.getElementById("dw-dxf");
+    const loadStatusEl = document.getElementById("dw-load-status");
+    const layerListEl = document.getElementById("dw-layer-list");
+    const unclassifiedNoteEl = document.getElementById("dw-unclassified-note");
+    const designListEl = document.getElementById("dw-design-list");
+    const stepperEl = document.getElementById("dw-stepper");
+    const sessionEl = document.getElementById("dw-session");
+    const fitBtnEl = document.getElementById("dw-fit-btn");
+    const zoomInBtn = document.getElementById("dw-zoom-in");
+    const zoomOutBtn = document.getElementById("dw-zoom-out");
+    const zoomLevelEl = document.getElementById("dw-zoom-level");
+
+    // ====== Canvas 리사이즈 ======
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      state.dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * state.dpr);
+      canvas.height = Math.round(rect.height * state.dpr);
+      render();
+    }
+    window.addEventListener("resize", resizeCanvas);
+
+    // ====== 뷰 변환 ======
+    function fitToBBox() {
+      if (!state.bbox) return;
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      const bw = state.bbox.x_max - state.bbox.x_min;
+      const bh = state.bbox.y_max - state.bbox.y_min;
+      if (bw <= 0 || bh <= 0) return;
+      const margin = 30;
+      const z = Math.min((w - 2 * margin) / bw, (h - 2 * margin) / bh);
+      state.view.zoom = z;
+      // DXF 좌표계: Y가 위쪽. Canvas 는 Y가 아래쪽. -z 로 뒤집기.
+      state.view.panX = w / 2 - ((state.bbox.x_min + state.bbox.x_max) / 2) * z;
+      state.view.panY = h / 2 + ((state.bbox.y_min + state.bbox.y_max) / 2) * z;
+      state.fitZoom = z;
+      render();
+      updateZoomLevelDisplay();
+    }
+    fitBtnEl.addEventListener("click", fitToBBox);
+
+    function zoomAtPoint(sx, sy, factor) {
+      if (!state.entities.length) return;
+      const [wx, wy] = screenToWorld(sx, sy);
+      state.view.zoom *= factor;
+      const [nsx, nsy] = worldToScreen(wx, wy);
+      state.view.panX += sx - nsx;
+      state.view.panY += sy - nsy;
+      render();
+      updateZoomLevelDisplay();
+    }
+
+    function zoomCenter(factor) {
+      const rect = canvas.getBoundingClientRect();
+      zoomAtPoint(rect.width / 2, rect.height / 2, factor);
+    }
+
+    function updateZoomLevelDisplay() {
+      const ratio = state.fitZoom ? (state.view.zoom / state.fitZoom) : state.view.zoom;
+      zoomLevelEl.textContent = (ratio * 100).toFixed(0) + "%";
+    }
+
+    zoomInBtn.addEventListener("click", () => zoomCenter(1.25));
+    zoomOutBtn.addEventListener("click", () => zoomCenter(1 / 1.25));
+    zoomLevelEl.addEventListener("click", fitToBBox);
+
+    // 키보드 단축키: + 확대 / - 축소 / 0 화면 맞춤
+    window.addEventListener("keydown", (e) => {
+      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable)) return;
+      if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomCenter(1.25); }
+      else if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomCenter(1 / 1.25); }
+      else if (e.key === "0") { e.preventDefault(); fitToBBox(); }
+    });
+
+    function worldToScreen(x, y) {
+      return [x * state.view.zoom + state.view.panX, -y * state.view.zoom + state.view.panY];
+    }
+    function screenToWorld(sx, sy) {
+      return [(sx - state.view.panX) / state.view.zoom, -(sy - state.view.panY) / state.view.zoom];
+    }
+
+    // ====== 렌더링 ======
+    function render() {
+      const w = canvas.width / state.dpr;
+      const h = canvas.height / state.dpr;
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, w, h);
+      if (!state.entities.length) return;
+
+      const groups = {};
+      for (const ent of state.entities) {
+        const ls = state.layerState[ent.l];
+        if (!ls || !ls.visible) continue;
+        (groups[ls.category] || (groups[ls.category] = [])).push(ent);
+      }
+      ctx.lineWidth = 1;
+      for (const [cat, alpha] of ARCH_ORDER) {
+        const arr = groups[cat];
+        if (!arr) continue;
+        const color = cat === UNCLASSIFIED ? UNCLASSIFIED_COLOR : ARCH_COLORS[cat];
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = 0.9;
+        for (const ent of arr) drawEntity(ent);
+      }
+      ctx.globalAlpha = 1;
+
+      drawDesignOverlays();
+    }
+
+    function drawDesignOverlays() {
+      if (state.overlayVisible.rooms && state.rooms.length) {
+        ctx.strokeStyle = DESIGN_COLORS.room;
+        ctx.fillStyle = DESIGN_COLORS.room;
+        ctx.lineWidth = 1.2;
+        for (const room of state.rooms) {
+          if (!room.polygon || room.polygon.length < 3) continue;
+          tracePoly(room.polygon);
+          ctx.closePath();
+          ctx.globalAlpha = 0.12;
+          ctx.fill();
+          ctx.globalAlpha = 0.9;
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // ★ 가상 폐합선 — 실측이 아니라 알고리즘 추정이다. 점선 + 경고색으로
+      // 실제 벽과 절대 섞이지 않게 그린다(§12.5). 여기가 오류의 최대 발생원이다.
+      if (state.overlayVisible.virtualEdges && state.virtualEdges.length) {
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = DESIGN_COLORS.virtualEdge;
+        ctx.lineWidth = 2.0;
+        for (const edge of state.virtualEdges) {
+          const [ax, ay] = worldToScreen(edge.p1[0], edge.p1[1]);
+          const [bx, by] = worldToScreen(edge.p2[0], edge.p2[1]);
+          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+
+      if (state.overlayVisible.cores && state.cores.length) {
+        ctx.strokeStyle = DESIGN_COLORS.core;
+        ctx.fillStyle = DESIGN_COLORS.core;
+        ctx.lineWidth = 2.4;
+        for (const core of state.cores) {
+          if (!core.polygon || core.polygon.length < 3) continue;
+          tracePoly(core.polygon);
+          ctx.closePath();
+          ctx.globalAlpha = 0.20;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.stroke();
+        }
+      }
+
+      if (state.overlayVisible.roomLabels && state.rooms.length && state.view.zoom > 0.005) {
+        ctx.fillStyle = ARCH_COLORS.ROOM_TEXT;
+        ctx.font = "11px ui-monospace, monospace";
+        for (const room of state.rooms) {
+          if (!room.polygon || !room.polygon.length) continue;
+          let cx = 0, cy = 0;
+          for (const p of room.polygon) { cx += p[0]; cy += p[1]; }
+          const [sx, sy] = worldToScreen(cx / room.polygon.length, cy / room.polygon.length);
+          ctx.fillText(room.name || room.id, sx, sy);
+        }
+      }
+    }
+
+    function signedArea2(pts) {
+      let s = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        s += a[0] * b[1] - b[0] * a[1];
+      }
+      return s;
+    }
+
+    function tracePoly(pts) {
+      ctx.beginPath();
+      for (let i = 0; i < pts.length; i++) {
+        const [sx, sy] = worldToScreen(pts[i][0], pts[i][1]);
+        if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+      }
+    }
+
+    function drawEntity(ent) {
+      const z = state.view.zoom;
+      if (ent.t === "L") {
+        const [a, b] = worldToScreen(ent.p[0], ent.p[1]);
+        const [c, d] = worldToScreen(ent.p[2], ent.p[3]);
+        ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke();
+      } else if (ent.t === "PL") {
+        tracePoly(ent.p);
+        ctx.stroke();
+      } else if (ent.t === "A") {
+        const [sx, sy] = worldToScreen(ent.c[0], ent.c[1]);
+        const r = ent.r * z;
+        if (r < 0.3) return;
+        // DXF ARC 는 CCW. Canvas 는 CW 가 양수.
+        const sa = ent.a[0] * Math.PI / 180;
+        const ea = ent.a[1] * Math.PI / 180;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, -ea, -sa, false);
+        ctx.stroke();
+      } else if (ent.t === "C") {
+        const [sx, sy] = worldToScreen(ent.c[0], ent.c[1]);
+        const r = ent.r * z;
+        if (r < 0.5) {
+          ctx.fillRect(sx - 1, sy - 1, 2, 2);
+          return;
+        }
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (ent.t === "H") {
+        if (!ent.p || ent.p.length < 3) return;
+        tracePoly(ent.p);
+        ctx.closePath();
+        const prev = ctx.globalAlpha;
+        ctx.globalAlpha = prev * 0.25;
+        ctx.fill();
+        ctx.globalAlpha = prev;
+        ctx.stroke();
+      } else if (ent.t === "S") {
+        if (!ent.p || ent.p.length < 3) return;
+        // DXF SOLID/TRACE 는 정점을 0-1-3-2 나비 순서로 저장하고 3DFACE 는 0-1-2-3 이다.
+        // 서버가 셋을 같은 "S" 로 방출해 구분이 없으므로, 자기교차하지 않는 순서
+        // (= 부호면적 절댓값이 큰 쪽)를 실제 외곽으로 본다. 틀리면 기둥이 모래시계가 된다.
+        let pts = ent.p;
+        if (pts.length === 4) {
+          const alt = [pts[0], pts[1], pts[3], pts[2]];
+          if (Math.abs(signedArea2(pts)) < Math.abs(signedArea2(alt))) pts = alt;
+        }
+        tracePoly(pts);
+        ctx.closePath();
+        ctx.fill();
+      } else if (ent.t === "I") {
+        const [sx, sy] = worldToScreen(ent.p[0], ent.p[1]);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - 3); ctx.lineTo(sx + 3, sy); ctx.lineTo(sx, sy + 3); ctx.lineTo(sx - 3, sy);
+        ctx.closePath();
+        ctx.fill();
+      } else if (ent.t === "T") {
+        if (z < 0.005) return;
+        const [sx, sy] = worldToScreen(ent.p[0], ent.p[1]);
+        ctx.font = "10px ui-monospace, monospace";
+        ctx.fillText(ent.v, sx, sy);
+      }
+    }
+
+    // ====== 인터랙션: zoom + pan ======
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      zoomAtPoint(e.clientX - rect.left, e.clientY - rect.top, e.deltaY < 0 ? 1.15 : 1 / 1.15);
+    }, { passive: false });
+
+    canvas.addEventListener("mousedown", (e) => {
+      state.drag = { x: e.clientX, y: e.clientY, panX: state.view.panX, panY: state.view.panY };
+      canvas.classList.add("is-panning");
+    });
+
+    window.addEventListener("mouseup", () => {
+      state.drag = null;
+      canvas.classList.remove("is-panning");
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (state.drag) {
+        state.view.panX = state.drag.panX + (e.clientX - state.drag.x);
+        state.view.panY = state.drag.panY + (e.clientY - state.drag.y);
+        render();
+        return;
+      }
+      if (state.entities.length && inside) {
+        const [wx, wy] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        overlayCursorEl.style.display = "inline-block";
+        overlayCursorEl.textContent = `( ${wx.toFixed(0)} , ${wy.toFixed(0)} )`;
+      } else {
+        overlayCursorEl.style.display = "none";
+      }
+    });
+
+    // ====== 세션 ======
+    async function startSession() {
+      try {
+        const res = await fetch("/api/design/session", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+        });
+        const body = await res.json();
+        if (!res.ok || !body.session_id) throw new Error(body.message || `HTTP ${res.status}`);
+        state.sessionId = body.session_id;
+        sessionEl.textContent = "session " + body.session_id;
+      } catch (err) {
+        sessionEl.textContent = "세션 생성 실패 — " + err.message;
+      }
+    }
+
+    function renderStepper() {
+      const at = STAGES.findIndex(([id]) => id === state.stage);
+      stepperEl.innerHTML = STAGES.map(([id, label], i) => {
+        const cls = i < at ? "done" : (i === at ? "current" : "todo");
+        return `<li class="${cls}"><span class="no">${String(i + 1).padStart(2, "0")}</span>${escHtml(label)}</li>`;
+      }).join("");
+    }
+
+    // ====== DXF 업로드 + inspect ======
+    dxfInputEl.addEventListener("change", async () => {
+      const file = dxfInputEl.files[0];
+      if (!file) return;
+      state.dxfFile = file;
+      loadStatusEl.textContent = `업로드 중... (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+
+      const fd = new FormData();
+      fd.append("dxf_file", file);
+      try {
+        const res = await fetch("/api/remote30/inspect", { method: "POST", body: fd });
+        if (!res.ok) {
+          let msg = `HTTP ${res.status}`;
+          try { const j = await res.json(); if (j && j.message) msg = j.message; } catch (_) {}
+          throw new Error(msg);
+        }
+        // NDJSON 스트림: {"type":"progress",...} 다수 + {"type":"result",...} 1개.
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buf = "";
+        const entities = [];
+        let result = null;
+        const handleLine = (line) => {
+          const s = line.trim();
+          if (!s) return;
+          let msg;
+          try { msg = JSON.parse(s); } catch (_) { return; }
+          if (msg.type === "progress") {
+            if (Array.isArray(msg.entities)) {
+              for (const e of msg.entities) entities.push(e);
+            }
+            if (msg.bbox) {
+              state.entities = entities;
+              state.bbox = msg.bbox;
+              loadStatusEl.textContent = `로딩 중... entity ${entities.length.toLocaleString()}`;
+              fitToBBox();
+            }
+          } else if (msg.type === "result") {
+            result = msg;
+          } else if (msg.ok === false) {
+            throw new Error(msg.message || "DXF 분석 실패");
+          }
+        };
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let nl;
+          while ((nl = buf.indexOf("\n")) >= 0) {
+            handleLine(buf.slice(0, nl));
+            buf = buf.slice(nl + 1);
+          }
+        }
+        if (buf.trim()) handleLine(buf);  // 마지막 줄(개행 없을 수 있음)
+        if (!result) throw new Error("스트림에 result 메시지가 없습니다");
+        if (result.ok === false) throw new Error(result.message || "DXF 분석 실패");
+
+        state.entities = entities;
+        state.bbox = result.bbox;
+        state.layers = result.layers || [];
+        state.dxfToken = result.dxf_token;
+        state.layerState = {};
+        for (const layer of state.layers) {
+          // 12종 분류는 C1 인식기(PR-4)가 지문으로 판정한다. 기존 6종 자동분류는
+          // 별개 체계라 그대로 옮기면 근거 없는 주장이 된다 → 미분류로 시작한다.
+          // 표시 여부만 기존 판정(EXCLUDE 는 도면 잡음)을 그대로 쓴다.
+          state.layerState[layer.name] = {
+            visible: layer.auto_category !== "EXCLUDE",
+            category: UNCLASSIFIED,
+          };
+        }
+        const counts = result.counts || {};
+        const totalEnt = counts.total_entities != null ? counts.total_entities : entities.length;
+        const layerN = counts.layers != null ? counts.layers : state.layers.length;
+        loadStatusEl.textContent = `${result.dxf_filename} — entity ${totalEnt}, layer ${layerN}`;
+        overlayInfoEl.textContent = `${totalEnt} entities | ${layerN} layers`;
+        emptyEl.style.display = "none";
+        renderLayerList();
+        fitToBBox();
+      } catch (err) {
+        loadStatusEl.textContent = "오류: " + err.message;
+      }
+    });
+
+    // ====== 건축 12종 토글 ======
+    function renderLayerList() {
+      if (!state.layers.length) return;
+      const byCat = {};
+      for (const layer of state.layers) {
+        const cat = state.layerState[layer.name].category;
+        (byCat[cat] || (byCat[cat] = [])).push(layer);
+      }
+      const opts = (sel) => [[UNCLASSIFIED, "미분류"], ...ARCH_CATEGORIES.map((c) => [c, c])]
+        .map(([v, t]) => `<option value="${v}" ${sel === v ? "selected" : ""}>${t}</option>`).join("");
+
+      const blocks = [UNCLASSIFIED, ...ARCH_CATEGORIES].map((cat) => {
+        const layers = byCat[cat] || [];
+        const entN = layers.reduce((s, l) => s + l.count, 0);
+        const allOn = layers.length > 0 && layers.every((l) => state.layerState[l.name].visible);
+        const title = cat === UNCLASSIFIED ? "미분류" : cat;
+        const color = cat === UNCLASSIFIED ? UNCLASSIFIED_COLOR : ARCH_COLORS[cat];
+        const head = `<div class="cat-head ${layers.length ? "" : "empty"}">
+          <input type="checkbox" data-cat="${cat}" ${allOn ? "checked" : ""} ${layers.length ? "" : "disabled"}>
+          <i class="swatch" style="background:${color}"></i>
+          <span>${title}</span>
+          <span class="count">${layers.length} layer / ${entN.toLocaleString()} ent</span>
+        </div>`;
+        const rows = layers.map((l) => {
+          const ls = state.layerState[l.name];
+          const safeName = escHtml(l.name);
+          const key = encodeURIComponent(l.name);
+          return `<div class="layer-row">
+            <input type="checkbox" data-layer="${key}" ${ls.visible ? "checked" : ""}>
+            <div>
+              <div class="name" title="${safeName}">${safeName}</div>
+              <div class="count">${l.count.toLocaleString()} ent.</div>
+            </div>
+            <select data-layer-cat="${key}">${opts(ls.category)}</select>
+          </div>`;
+        }).join("");
+        return head + rows;
+      }).join("");
+      layerListEl.innerHTML = blocks;
+
+      layerListEl.querySelectorAll("input[data-layer]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          state.layerState[decodeURIComponent(cb.dataset.layer)].visible = cb.checked;
+          renderLayerList();
+          render();
+        });
+      });
+      layerListEl.querySelectorAll("input[data-cat]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          for (const l of state.layers) {
+            if (state.layerState[l.name].category === cb.dataset.cat) {
+              state.layerState[l.name].visible = cb.checked;
+            }
+          }
+          renderLayerList();
+          render();
+        });
+      });
+      layerListEl.querySelectorAll("select[data-layer-cat]").forEach((sel) => {
+        sel.addEventListener("change", () => {
+          state.layerState[decodeURIComponent(sel.dataset.layerCat)].category = sel.value;
+          renderLayerList();
+          render();
+        });
+      });
+
+      const left = state.layers.filter((l) => state.layerState[l.name].category === UNCLASSIFIED).length;
+      unclassifiedNoteEl.style.display = left ? "block" : "none";
+      unclassifiedNoteEl.textContent =
+        `미분류 ${left}개 — 자동 판정은 C1 인식기(PR-4)가 붙은 뒤에 채워집니다.`;
+    }
+
+    // ====== 설계 산출물 토글 ======
+    function renderDesignList() {
+      designListEl.innerHTML = OVERLAYS.map(([key, label, color]) => {
+        const n = key === "roomLabels" ? state.rooms.length : state[key].length;
+        return `<label class="overlay-row ${n ? "" : "empty"}">
+          <input type="checkbox" data-overlay="${key}" ${state.overlayVisible[key] ? "checked" : ""} ${n ? "" : "disabled"}>
+          <i class="swatch" style="background:${color}"></i>
+          <span>${label}</span>
+          <span class="count">${n}</span>
+        </label>`;
+      }).join("");
+      designListEl.querySelectorAll("input[data-overlay]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          state.overlayVisible[cb.dataset.overlay] = cb.checked;
+          render();
+        });
+      });
+    }
+
+    renderStepper();
+    renderDesignList();
+    startSession();
+    setTimeout(resizeCanvas, 50);
+  </script>
+</body>
+</html>

@@ -100,6 +100,18 @@ def test_결손_항목은_한_번에_묶어서_낸다():
     assert items["total"] == len(G.unresolved(_draft()))
 
 
+def test_항목_목록은_비어_있어도_낸다():
+    """`groups` 는 지금 비어 있는 것만 담는다. 화면이 표의 열을 세우려면 항목 자체가
+    필요하고, 무엇이 무엇에 걸리는지도 화면이 다시 구현하지 않고 여기서 받아야 한다."""
+    items = G.gate_items(_draft())
+    fields = {f["field"]: f for f in items["fields"]}
+    assert set(fields) == {s.field for s in G.ROOM_FIELDS + G.BUILDING_FIELDS}
+    assert fields["ceiling.finish_height_mm"]["applies_when"] == {
+        "field": "ceiling.has_finish", "value": True}
+    # 반자를 아직 아무도 확정하지 않아 반자고 그룹은 없다 — 그래도 항목에는 있다.
+    assert "ceiling.finish_height_mm" not in {g["field"] for g in items["groups"]}
+
+
 def test_모르는_항목은_거절한다():
     with pytest.raises(ValueError):
         G.apply_values(_draft(), {"R-1F-012": {"ceiling.color": "white"}})

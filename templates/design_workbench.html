@@ -69,6 +69,43 @@
     .overlay-row .swatch { width: 12px; height: 12px; border: 1px solid #94a3b8; }
     .overlay-row .count { font-size: 0.7rem; color: var(--muted); font-family: ui-monospace, monospace; }
     .overlay-row.empty { color: var(--muted); }
+    /* GATE 결손 폼 (§12.8). 실이 200개인 도면을 380px 사이드바에서 채울 수는 없다. */
+    .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); display: none; z-index: 40; }
+    .modal.open { display: block; }
+    .modal-box { position: absolute; inset: 3vh 4vw; background: var(--panel); border: 1px solid var(--line); display: grid; grid-template-rows: auto auto 1fr auto; }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+    .modal-head h2 { margin: 0; font-size: 0.98rem; }
+    .modal-head .left { display: flex; align-items: baseline; gap: 12px; }
+    .modal-head .remain { font-size: 0.82rem; font-family: ui-monospace, monospace; }
+    .modal-head .remain.done { color: #15803d; font-weight: 700; }
+    .modal-head .remain.pending { color: var(--warn); font-weight: 700; }
+    .modal-head button { background: transparent; border: 1px solid var(--line); padding: 5px 10px; font-size: 0.8rem; cursor: pointer; font-family: inherit; }
+    .modal-sub { padding: 10px 16px; border-bottom: 1px solid var(--line); background: #f9fafb; display: grid; gap: 10px; }
+    .facts { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
+    .facts .cell { display: grid; gap: 3px; }
+    .facts .cell > span { font-size: 0.72rem; font-weight: 600; color: var(--muted); }
+    .facts select, .facts input { padding: 4px 6px; border: 1px solid var(--line); font-size: 0.78rem; font-family: inherit; background: #fff; min-width: 130px; }
+    .facts .miss select, .facts .miss input { border-color: var(--warn); }
+    .bulk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 0.76rem; }
+    .bulk select, .bulk input { padding: 4px 6px; border: 1px solid var(--line); font-size: 0.76rem; font-family: inherit; background: #fff; }
+    .bulk button { padding: 4px 10px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font-size: 0.76rem; cursor: pointer; font-family: inherit; }
+    .gate-scroll { overflow: auto; }
+    .gate-table { border-collapse: collapse; width: 100%; font-size: 0.75rem; }
+    .gate-table th, .gate-table td { border: 1px solid var(--line); padding: 3px 5px; text-align: left; white-space: nowrap; }
+    .gate-table thead th { position: sticky; top: 0; background: #f3f4f6; z-index: 1; font-size: 0.72rem; }
+    .gate-table tbody tr:nth-child(even) { background: #fafbfc; }
+    .gate-table .room-id { font-family: ui-monospace, monospace; font-size: 0.7rem; color: var(--muted); }
+    .gate-table select, .gate-table input { width: 100%; min-width: 88px; padding: 2px 4px; border: 1px solid var(--line); font-size: 0.72rem; font-family: inherit; background: #fff; }
+    .gate-table td.miss select, .gate-table td.miss input { border-color: var(--warn); background: #fef2f2; }
+    .gate-table td.na { background: #f3f4f6; color: var(--muted); text-align: center; }
+    .gate-table .sugg { display: block; font-size: 0.64rem; color: var(--muted); font-family: ui-monospace, monospace; }
+    .modal-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--line); }
+    .modal-foot .who { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; }
+    .modal-foot .who input { padding: 5px 8px; border: 1px solid var(--line); font-size: 0.8rem; font-family: inherit; }
+    .modal-foot .msg { font-size: 0.76rem; color: var(--muted); flex: 1; }
+    .modal-foot .msg.warn { color: var(--warn); }
+    .modal-foot .confirm { padding: 8px 18px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font-size: 0.84rem; font-weight: 700; cursor: pointer; font-family: inherit; }
+    .modal-foot .confirm:disabled { background: #e5e7eb; border-color: var(--line); color: var(--muted); cursor: not-allowed; }
     .topbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; background: var(--accent); color: #fff; font-size: 0.85rem; }
     .topbar a { color: #cbd5e1; text-decoration: none; font-size: 0.78rem; }
     .topbar a:hover { color: #fff; text-decoration: underline; }
@@ -143,11 +180,56 @@
       </section>
 
       <section>
+        <h3>GATE 인간 확정</h3>
+        <button id="dw-gate-open" class="run-btn" type="button" disabled>결손 항목 채우기</button>
+        <p id="dw-gate-progress" class="note">C1 인식을 먼저 끝내세요.</p>
+        <button id="dw-run-c2" class="run-btn" type="button" disabled style="margin-top:8px;">C2 규범 조건 실행</button>
+        <p id="dw-gate-status" class="note"></p>
+      </section>
+
+      <section>
         <h3>설계 산출물</h3>
         <div id="dw-design-list"></div>
         <p class="note">C1 인식이 붙기 전까지 항목 수는 0 입니다. 0 을 채워 보여주지 않습니다.</p>
       </section>
     </aside>
+  </div>
+
+  <!-- 결손 항목 폼 (§12.8). 질의를 한 지점에 모은다 — 여기서 전부 채우면 이후는 무인이다. -->
+  <div id="dw-gate-panel" class="modal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div class="left">
+          <h2>GATE — 도면에 없는 것을 사람이 확정한다</h2>
+          <span id="dw-gate-remain" class="remain"></span>
+        </div>
+        <button id="dw-gate-close" type="button">닫기</button>
+      </div>
+      <div class="modal-sub">
+        <div id="dw-gate-facts" class="facts"></div>
+        <div class="bulk">
+          <strong>일괄 적용</strong>
+          <select id="dw-bulk-field"></select>
+          <span id="dw-bulk-value-slot"></span>
+          <select id="dw-bulk-scope"></select>
+          <button id="dw-bulk-apply" type="button">적용</button>
+          <span id="dw-bulk-note" class="note" style="margin:0;"></span>
+        </div>
+      </div>
+      <div class="gate-scroll">
+        <table class="gate-table">
+          <thead id="dw-gate-thead"></thead>
+          <tbody id="dw-gate-tbody"></tbody>
+        </table>
+      </div>
+      <div class="modal-foot">
+        <label class="who">확정자
+          <input id="dw-gate-operator" type="text" placeholder="이름 또는 사번" autocomplete="off">
+        </label>
+        <span id="dw-gate-msg" class="msg"></span>
+        <button id="dw-gate-confirm" class="confirm" type="button">확정하고 게이트 통과</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -223,6 +305,14 @@
       rooms: [],
       cores: [],
       overlayVisible: { rooms: true, roomLabels: true, virtualEdges: true, cores: true },
+
+      // 확정 게이트. `values` 는 아직 서버에 보내지 않은 사람의 입력이고, `missing`
+      // 은 서버가 판정한 결손이다. 둘을 섞지 않아야 "화면은 다 찼는데 서버는 422"
+      // 가 생기지 않는다.
+      gate: {
+        fields: [], specByField: {}, missing: {}, suggestion: {},
+        values: {}, facts: {}, selection: new Set(), order: [], loaded: false,
+      },
     };
 
     const canvas = document.getElementById("dw-canvas");
@@ -242,6 +332,24 @@
     const recognizeStagesEl = document.getElementById("dw-recognize-stages");
     const stepperEl = document.getElementById("dw-stepper");
     const sessionEl = document.getElementById("dw-session");
+    const gateOpenEl = document.getElementById("dw-gate-open");
+    const gateProgressEl = document.getElementById("dw-gate-progress");
+    const runC2El = document.getElementById("dw-run-c2");
+    const gateStatusEl = document.getElementById("dw-gate-status");
+    const gatePanelEl = document.getElementById("dw-gate-panel");
+    const gateRemainEl = document.getElementById("dw-gate-remain");
+    const gateCloseEl = document.getElementById("dw-gate-close");
+    const gateFactsEl = document.getElementById("dw-gate-facts");
+    const bulkFieldEl = document.getElementById("dw-bulk-field");
+    const bulkValueSlotEl = document.getElementById("dw-bulk-value-slot");
+    const bulkScopeEl = document.getElementById("dw-bulk-scope");
+    const bulkApplyEl = document.getElementById("dw-bulk-apply");
+    const bulkNoteEl = document.getElementById("dw-bulk-note");
+    const gateTheadEl = document.getElementById("dw-gate-thead");
+    const gateTbodyEl = document.getElementById("dw-gate-tbody");
+    const gateOperatorEl = document.getElementById("dw-gate-operator");
+    const gateMsgEl = document.getElementById("dw-gate-msg");
+    const gateConfirmEl = document.getElementById("dw-gate-confirm");
     const fitBtnEl = document.getElementById("dw-fit-btn");
     const zoomInBtn = document.getElementById("dw-zoom-in");
     const zoomOutBtn = document.getElementById("dw-zoom-out");
@@ -719,6 +827,11 @@
         if (!result.ok) throw new Error(result.message || "인식이 끝나지 않았습니다");
         state.stage = "gate";
         renderStepper();
+        state.gate.values = {};
+        state.gate.selection = new Set();
+        state.gate.order = [];
+        state.gate.facts = {};
+        await loadGateItems();
         const c = result.counts || {};
         recognizeStatusEl.textContent =
           `실 ${c.rooms}개 / 코어 ${c.cores}개 / 가상 폐합선 ${c.virtual_edges}개 — `
@@ -729,6 +842,522 @@
         recognizeStatusEl.textContent = "오류: " + err.message;
       } finally {
         recognizeBtnEl.disabled = false;
+      }
+    });
+
+    // ====== GATE 인간 확정 (§4 · §12.8) ======
+    // 질의를 한 지점에 모은다. 여기서 결손이 0 이 되면 이후는 사람을 부르지 않는다.
+    // 규칙(무엇이 무엇에 걸리는지, 무엇이 필수인지)은 전부 서버가 준 `fields` 에서
+    // 읽는다 — 화면이 같은 규칙을 다시 구현하면 두 곳이 어긋난다.
+    const GATE_BOOL_LABELS = {
+      "ceiling.has_finish": ["있음", "없음"],
+      "confirmed": ["입상관으로 쓴다", "쓰지 않는다"],
+    };
+    const GATE_FACT_SCOPES = ["building", "obstacles"];
+
+    function gateSpecs(scope) {
+      return state.gate.fields.filter((f) => f.scope === scope);
+    }
+
+    function gateRawValue(obj, path) {
+      return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
+    }
+
+    function gateSetRaw(obj, path, value) {
+      const keys = path.split(".");
+      const last = keys.pop();
+      const target = keys.reduce((o, k) => (o[k] || (o[k] = {})), obj);
+      target[last] = value;
+    }
+
+    function gateLocal(targetId, field) {
+      const row = state.gate.values[targetId];
+      return row ? row[field] : undefined;
+    }
+
+    function gateSetLocal(targetId, field, value) {
+      if (value === undefined) {
+        const row = state.gate.values[targetId];
+        if (!row) return;
+        delete row[field];
+        if (!Object.keys(row).length) delete state.gate.values[targetId];
+        return;
+      }
+      (state.gate.values[targetId] || (state.gate.values[targetId] = {}))[field] = value;
+    }
+
+    function gateMissing(field, targetId) {
+      const set = state.gate.missing[field];
+      return !!set && set.has(targetId);
+    }
+
+    function gateSuggestion(field, targetId) {
+      const byId = state.gate.suggestion[field];
+      return byId ? byId[targetId] : undefined;
+    }
+
+    // 저장값 기준(`useLocal=false`)과 화면 기준(`true`)을 나눠 본다. 반자 유무를
+    // 화면에서 방금 "있음" 으로 바꾼 실은 서버가 아직 반자고를 묻지도 않았으므로
+    // 결손 목록에 없다 — 그걸 채운 것으로 세면 "0건 남음" 인데 422 가 돌아온다.
+    function gateApplies(room, spec, useLocal) {
+      const dep = spec.applies_when;
+      if (!dep) return true;
+      const stored = gateRawValue(room, dep.field);
+      const local = gateLocal(room.id, dep.field);
+      return (useLocal && local !== undefined ? local : stored) === dep.value;
+    }
+
+    function gateNeeds(room, spec) {
+      if (!spec.required || !gateApplies(room, spec, true)) return false;
+      if (gateLocal(room.id, spec.field) !== undefined) return false;
+      if (!gateApplies(room, spec, false)) return true;
+      return gateMissing(spec.field, room.id);
+    }
+
+    function gateFactNeeds(field) {
+      return gateLocal(field, field) === undefined && gateMissing(field, field);
+    }
+
+    function gateCoreNeeds(core) {
+      return gateLocal(core.id, "confirmed") === undefined
+        && gateMissing("confirmed", core.id);
+    }
+
+    /** 칸에 보일 값. 결손 칸은 비워 둔다 — 제안값을 미리 골라 두면 사람이 보지
+     *  않고 확정을 눌러도 근거 없는 값이 통과한다. 제안은 힌트로만 적는다. */
+    function gateDisplay(targetId, spec, stored, missing) {
+      const local = gateLocal(targetId, spec.field);
+      if (local !== undefined) return local;
+      if (missing) return undefined;
+      return stored == null ? undefined : stored;
+    }
+
+    function gateOptionLabel(field, option) {
+      if (option === null) return "없음";
+      if (typeof option === "boolean") {
+        const labels = GATE_BOOL_LABELS[field] || ["예", "아니오"];
+        return option ? labels[0] : labels[1];
+      }
+      return String(option);
+    }
+
+    function gateOptionsHtml(spec) {
+      return `<option value="">— 미정 —</option>` + spec.options.map(
+        (o, i) => `<option value="${i}">${escHtml(gateOptionLabel(spec.field, o))}</option>`
+      ).join("");
+    }
+
+    // 같은 항목의 <option> 문자열은 실 수와 무관하게 한 번만 만든다. 값은 DOM 을
+    // 세운 뒤 한 번에 넣는다(gateSyncControls) — 실이 600개면 문자열 조립 비용이
+    // 그대로 화면 멈춤이 된다.
+    const gateOptionCache = new Map();
+    function gateControl(spec, targetId, cls) {
+      const attrs = `data-gate="1" data-target="${escHtml(targetId)}" `
+        + `data-field="${escHtml(spec.field)}"${cls ? ` class="${cls}"` : ""}`;
+      if (!spec.options) return `<input type="number" step="any" ${attrs}>`;
+      if (!gateOptionCache.has(spec.field)) {
+        gateOptionCache.set(spec.field, gateOptionsHtml(spec));
+      }
+      return `<select ${attrs}>${gateOptionCache.get(spec.field)}</select>`;
+    }
+
+    function gateEncode(spec, value) {
+      if (!spec.options) return value === undefined || value === null ? "" : String(value);
+      if (value === undefined) return "";
+      const index = spec.options.findIndex((o) => o === value);
+      return index < 0 ? "" : String(index);
+    }
+
+    function gateDecode(spec, raw) {
+      if (raw === "") return undefined;
+      if (spec.options) return spec.options[Number(raw)];
+      const num = Number(raw.trim());
+      return Number.isFinite(num) ? num : undefined;
+    }
+
+    function gateStoredFact(field) {
+      return state.gate.facts[field];
+    }
+
+    function gateOrderedRooms() {
+      if (!state.gate.order.length) return state.rooms;
+      const rank = new Map(state.gate.order.map((id, i) => [id, i]));
+      return state.rooms.slice().sort(
+        (a, b) => (rank.has(a.id) ? rank.get(a.id) : 1e9)
+                - (rank.has(b.id) ? rank.get(b.id) : 1e9));
+    }
+
+    function renderGateFacts() {
+      const cells = [];
+      for (const scope of GATE_FACT_SCOPES) {
+        for (const spec of gateSpecs(scope)) {
+          cells.push(`<label class="cell" title="${escHtml(spec.note)}">
+            <span>${escHtml(spec.label)}</span>${gateControl(spec, spec.field, "")}</label>`);
+        }
+      }
+      const coreSpec = gateSpecs("core")[0];
+      if (coreSpec) {
+        for (const core of state.cores) {
+          const sugg = gateSuggestion("confirmed", core.id);
+          const hint = sugg ? ` ${(sugg.confidence * 100).toFixed(0)}%` : "";
+          cells.push(`<label class="cell" title="${escHtml(coreSpec.note)}">
+            <span>${escHtml(`${core.id} ${core.kind}${hint}`)}</span>
+            ${gateControl(coreSpec, core.id, "")}</label>`);
+        }
+      }
+      gateFactsEl.innerHTML = cells.join("");
+    }
+
+    function renderGateTable() {
+      const specs = gateSpecs("room");
+      gateTheadEl.innerHTML = `<tr><th><input type="checkbox" id="dw-gate-all"></th>`
+        + `<th>실</th><th>층</th>`
+        + specs.map((s) => `<th title="${escHtml(s.note)}">${escHtml(s.label)}`
+          + `${s.required ? "" : " (선택)"}</th>`).join("") + `</tr>`;
+
+      const rows = gateOrderedRooms().map((room) => {
+        const checked = state.gate.selection.has(room.id) ? " checked" : "";
+        const cells = specs.map((spec) => {
+          if (!gateApplies(room, spec, true)) return `<td class="na">—</td>`;
+          const sugg = gateSuggestion(spec.field, room.id);
+          const hint = sugg === undefined ? "" : `<span class="sugg">제안 `
+            + `${escHtml(gateOptionLabel(spec.field, sugg.value))} `
+            + `${(sugg.confidence * 100).toFixed(0)}%</span>`;
+          return `<td>${gateControl(spec, room.id, "")}${hint}</td>`;
+        }).join("");
+        return `<tr><td><input type="checkbox" data-select="${escHtml(room.id)}"${checked}></td>`
+          + `<td>${escHtml(room.name || "")}<span class="room-id">${escHtml(room.id)}</span></td>`
+          + `<td>${escHtml(room.floor || "")}</td>${cells}</tr>`;
+      });
+      gateTbodyEl.innerHTML = rows.join("");
+    }
+
+    /** 값과 "아직 미확정" 표시를 한 번에 맞춘다. 마크업을 다시 세우지 않으므로
+     *  입력 중인 칸이 사라지지 않고, 표를 다시 그리지 않아도 붉은 칸이 풀린다. */
+    function gateSyncControls() {
+      const byId = new Map(state.rooms.map((r) => [r.id, r]));
+      const coreById = new Map(state.cores.map((c) => [c.id, c]));
+      for (const el of gatePanelEl.querySelectorAll("[data-gate]")) {
+        const { target, field } = el.dataset;
+        const spec = state.gate.specByField[field];
+        const room = byId.get(target);
+        const core = coreById.get(target);
+        let stored;
+        let missing;
+        if (room) {
+          stored = gateRawValue(room, field);
+          missing = gateNeeds(room, spec);
+        } else if (core) {
+          stored = core.confirmed;
+          missing = gateCoreNeeds(core);
+        } else {
+          stored = gateStoredFact(field);
+          missing = gateFactNeeds(field);
+        }
+        // 지금 사람이 쓰고 있는 칸에는 값을 다시 넣지 않는다. 프로그램이 value 를
+        // 덮으면 브라우저가 그 칸의 change 를 더 이상 내지 않아, 방금 친 숫자가
+        // 다른 칸을 건드린 순간 조용히 사라진다.
+        if (el !== document.activeElement) {
+          el.value = gateEncode(spec, gateDisplay(target, spec, stored, missing));
+        }
+        el.parentElement.classList.toggle("miss", missing);
+      }
+    }
+
+    function gateRemaining() {
+      let need = 0;
+      let total = 0;
+      for (const room of state.rooms) {
+        for (const spec of gateSpecs("room")) {
+          if (!spec.required || !gateApplies(room, spec, true)) continue;
+          total += 1;
+          if (gateNeeds(room, spec)) need += 1;
+        }
+      }
+      for (const scope of GATE_FACT_SCOPES) {
+        for (const spec of gateSpecs(scope)) {
+          if (!spec.required) continue;
+          total += 1;
+          if (gateFactNeeds(spec.field)) need += 1;
+        }
+      }
+      if (gateSpecs("core").length) {
+        total += state.cores.length;
+        need += state.cores.filter(gateCoreNeeds).length;
+      }
+      return { need, total };
+    }
+
+    function renderGateProgress() {
+      const { need, total } = gateRemaining();
+      gateRemainEl.textContent = `${total}건 중 ${need}건 남음`;
+      gateRemainEl.className = `remain ${need ? "pending" : "done"}`;
+      gateProgressEl.textContent = state.gatePassed
+        ? "게이트 통과 — 이후 단계는 사람을 부르지 않는다."
+        : `${total}건 중 ${need}건 남음`;
+      runC2El.disabled = !state.gatePassed;
+    }
+
+    function renderGate() {
+      renderGateFacts();
+      renderGateTable();
+      renderBulkBar();
+      gateSyncControls();
+      renderGateProgress();
+    }
+
+    // ── 일괄 적용 (§12.8) — 이게 없으면 실이 200개인 도면에서 사용자가 포기한다.
+    /** 용도별 일괄 적용의 기준. 아직 확정 안 된 실은 제안값이 아니라 화면 입력만 본다. */
+    function gateEffectiveUse(room) {
+      const spec = state.gate.specByField["use"];
+      return spec && gateDisplay(room.id, spec, room.use, gateMissing("use", room.id));
+    }
+
+    function renderBulkBar() {
+      const specs = gateSpecs("room");
+      if (bulkFieldEl.options.length !== specs.length) {
+        bulkFieldEl.innerHTML = specs.map(
+          (s) => `<option value="${escHtml(s.field)}">${escHtml(s.label)}</option>`).join("");
+      }
+      const spec = state.gate.specByField[bulkFieldEl.value] || specs[0];
+      if (!spec) return;
+      bulkFieldEl.value = spec.field;
+
+      const hasSuggestion = !!state.gate.suggestion[spec.field];
+      bulkValueSlotEl.innerHTML = spec.options
+        ? `<select id="dw-bulk-value">${hasSuggestion
+            ? `<option value="sugg">제안값 그대로</option>` : ""}${gateOptionsHtml(spec)}</select>`
+        : `<input id="dw-bulk-value" type="number" step="any" placeholder="값">`;
+
+      const floors = [...new Set(state.rooms.map((r) => r.floor).filter(Boolean))];
+      const uses = [...new Set(state.rooms.map(gateEffectiveUse).filter(Boolean))];
+      bulkScopeEl.innerHTML = [`<option value="all">전체 실</option>`,
+        `<option value="sel">선택한 실</option>`]
+        .concat(spec.bulk_apply.includes("floor")
+          ? floors.map((f) => `<option value="floor:${escHtml(f)}">${escHtml(f)} 전체</option>`) : [])
+        .concat(spec.bulk_apply.includes("use")
+          ? uses.map((u) => `<option value="use:${escHtml(u)}">용도 ${escHtml(u)} 전체</option>`) : [])
+        .join("");
+      bulkNoteEl.textContent = spec.note || "";
+    }
+
+    function bulkTargets(scope) {
+      if (scope === "all") return state.rooms;
+      if (scope === "sel") return state.rooms.filter((r) => state.gate.selection.has(r.id));
+      const [kind, key] = [scope.slice(0, scope.indexOf(":")), scope.slice(scope.indexOf(":") + 1)];
+      if (kind === "floor") return state.rooms.filter((r) => r.floor === key);
+      return state.rooms.filter((r) => gateEffectiveUse(r) === key);
+    }
+
+    bulkFieldEl.addEventListener("change", () => { renderBulkBar(); gateSyncControls(); });
+
+    bulkApplyEl.addEventListener("click", () => {
+      const spec = state.gate.specByField[bulkFieldEl.value];
+      const valueEl = document.getElementById("dw-bulk-value");
+      if (!spec || !valueEl) return;
+      const useSuggestion = valueEl.value === "sugg";
+      const value = useSuggestion ? undefined : gateDecode(spec, valueEl.value);
+      if (!useSuggestion && value === undefined) {
+        bulkNoteEl.textContent = "적용할 값을 먼저 고르세요.";
+        return;
+      }
+      let n = 0;
+      for (const room of bulkTargets(bulkScopeEl.value)) {
+        if (!gateApplies(room, spec, true)) continue;
+        const sugg = useSuggestion ? gateSuggestion(spec.field, room.id) : null;
+        if (useSuggestion && !sugg) continue;
+        gateSetLocal(room.id, spec.field, useSuggestion ? sugg.value : value);
+        n += 1;
+      }
+      renderGate();
+      bulkNoteEl.textContent = `${n}개 실에 적용`;
+    });
+
+    // ── 입력 반영 ────────────────────────────────────────────────────────
+    gatePanelEl.addEventListener("change", (ev) => {
+      const el = ev.target;
+      if (el.dataset && el.dataset.select !== undefined) {
+        if (el.checked) state.gate.selection.add(el.dataset.select);
+        else state.gate.selection.delete(el.dataset.select);
+        return;
+      }
+      if (el.id === "dw-gate-all") {
+        state.gate.selection = new Set(el.checked ? state.rooms.map((r) => r.id) : []);
+        renderGateTable();
+        gateSyncControls();
+        return;
+      }
+      if (!el.dataset || !el.dataset.gate) return;
+      const spec = state.gate.specByField[el.dataset.field];
+      gateSetLocal(el.dataset.target, el.dataset.field, gateDecode(spec, el.value));
+      // 반자 유무를 바꾸면 반자고 칸이 생기거나 사라진다. 표 전체를 다시 그린다.
+      if (state.gate.fields.some((f) => f.applies_when
+          && f.applies_when.field === el.dataset.field)) {
+        renderGateTable();
+      }
+      gateSyncControls();
+      renderGateProgress();
+    });
+
+    // ── 결손 항목 적재 ──────────────────────────────────────────────────
+    async function loadGateItems() {
+      if (!state.sessionId) return;
+      let res;
+      let body;
+      try {
+        res = await fetch(`/api/design/c1/gate_items/${state.sessionId}`);
+        body = await res.json();
+      } catch (err) {
+        body = { message: "결손 항목을 읽지 못했습니다: " + err.message };
+      }
+      if (!res || !res.ok || !body || !body.ok) {
+        state.gate.loaded = false;
+        gateOpenEl.disabled = true;
+        gateProgressEl.textContent = (body && body.message) || "결손 항목을 읽지 못했습니다.";
+        return;
+      }
+      state.gate.fields = body.fields || [];
+      state.gate.specByField = Object.fromEntries(state.gate.fields.map((f) => [f.field, f]));
+      state.gate.missing = {};
+      state.gate.suggestion = {};
+      for (const group of body.groups || []) {
+        state.gate.missing[group.field] = new Set(group.targets || []);
+        if (group.suggestion) state.gate.suggestion[group.field] = group.suggestion;
+      }
+      const useGroup = (body.groups || []).find((g) => g.field === "use");
+      if (!state.gate.order.length && useGroup) state.gate.order = useGroup.targets.slice();
+      state.gate.loaded = true;
+      gateOptionCache.clear();
+      gateOpenEl.disabled = false;
+      renderGate();
+    }
+
+    // ── 확정 ─────────────────────────────────────────────────────────────
+    function gatePayload() {
+      // 화면에서 더 이상 묻지 않는 값(반자를 "없음" 으로 되돌린 실의 반자고)은
+      // 보내지 않는다. 서버는 받으면 그대로 쓰므로 아무도 확정하지 않은 값이 남는다.
+      const byId = new Map(state.rooms.map((r) => [r.id, r]));
+      const out = {};
+      for (const [targetId, fields] of Object.entries(state.gate.values)) {
+        const room = byId.get(targetId);
+        const kept = {};
+        for (const [field, value] of Object.entries(fields)) {
+          if (room && !gateApplies(room, state.gate.specByField[field], true)) continue;
+          kept[field] = value;
+        }
+        if (Object.keys(kept).length) out[targetId] = kept;
+      }
+      return out;
+    }
+
+    function gateCommit(values, defaults) {
+      const byId = new Map(state.rooms.map((r) => [r.id, r]));
+      const coreById = new Map(state.cores.map((c) => [c.id, c]));
+      for (const [targetId, fields] of Object.entries(values)) {
+        const room = byId.get(targetId);
+        const core = coreById.get(targetId);
+        for (const [field, value] of Object.entries(fields)) {
+          if (room) {
+            gateSetRaw(room, field, value);
+            room.provenance[field] = "GATE";
+          } else if (core) {
+            core.confirmed = !!value;
+          } else {
+            state.gate.facts[field] = value;
+          }
+        }
+      }
+      // 서버가 근거를 들어 채운 값(천장고=층고). 화면이 모르면 결손이 아닌데
+      // 비어 있는 칸이 생긴다.
+      for (const applied of defaults || []) {
+        const room = byId.get(applied.room);
+        if (!room) continue;
+        gateSetRaw(room, applied.field, applied.value);
+        room.provenance[applied.field] = "default";
+      }
+      state.gate.values = {};
+    }
+
+    gateConfirmEl.addEventListener("click", async () => {
+      const operator = gateOperatorEl.value.trim();
+      gateMsgEl.classList.remove("warn");
+      if (!operator) {
+        gateMsgEl.classList.add("warn");
+        gateMsgEl.textContent = "확정자 이름을 적어야 합니다 — 감사 기록에 남습니다.";
+        gateOperatorEl.focus();
+        return;
+      }
+      const values = gatePayload();
+      gateConfirmEl.disabled = true;
+      gateMsgEl.textContent = "확정 중…";
+      try {
+        const res = await fetch("/api/design/gate/confirm", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: state.sessionId, operator, values }),
+        });
+        const body = await res.json().catch(() => null);
+        if (res.status === 409) {
+          gateMsgEl.classList.add("warn");
+          gateMsgEl.textContent = (body && body.message) || "다른 곳에서 먼저 저장했습니다.";
+          return;
+        }
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        // 422 여도 서버는 이미 저장했다. 로컬 입력을 안 비우면 다음 확정에서 두 번
+        // 보내고, 결손 판정도 옛 응답 기준으로 남는다.
+        gateCommit(values, body.defaults);
+        await loadGateItems();
+        if (res.ok && body.passed) {
+          state.gatePassed = true;
+          state.stage = "c2";
+          renderStepper();
+          renderGateProgress();
+          gatePanelEl.classList.remove("open");
+          gateMsgEl.textContent = "";
+          gateStatusEl.classList.remove("warn");
+          gateStatusEl.textContent = `게이트 통과 (${operator}, v${body.version})`;
+          return;
+        }
+        gateMsgEl.classList.add("warn");
+        gateMsgEl.textContent = body.code === "GATE_INCOMPLETE"
+          ? `아직 ${body.unresolved.length}건이 확정되지 않았습니다.`
+          : (body.message || "확정하지 못했습니다.");
+      } catch (err) {
+        gateMsgEl.classList.add("warn");
+        gateMsgEl.textContent = "오류: " + err.message;
+      } finally {
+        gateConfirmEl.disabled = false;
+      }
+    });
+
+    gateOpenEl.addEventListener("click", () => {
+      if (!state.gate.loaded) return;
+      gatePanelEl.classList.add("open");
+      renderGate();
+    });
+    gateCloseEl.addEventListener("click", () => gatePanelEl.classList.remove("open"));
+    gatePanelEl.addEventListener("mousedown", (ev) => {
+      if (ev.target === gatePanelEl) gatePanelEl.classList.remove("open");
+    });
+
+    // C2 는 아직 없다(PR-6). 501 을 그대로 보여준다 — 통과한 척하면 화면이 진행된
+    // 것으로 오해한다.
+    runC2El.addEventListener("click", async () => {
+      runC2El.disabled = true;
+      gateStatusEl.classList.remove("warn");
+      gateStatusEl.textContent = "C2 실행 중…";
+      try {
+        const res = await fetch("/api/design/c2/constraints", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: state.sessionId }),
+        });
+        const body = await res.json().catch(() => null);
+        gateStatusEl.classList.toggle("warn", !res.ok);
+        gateStatusEl.textContent = (body && body.message) || `HTTP ${res.status}`;
+      } catch (err) {
+        gateStatusEl.classList.add("warn");
+        gateStatusEl.textContent = "오류: " + err.message;
+      } finally {
+        runC2El.disabled = !state.gatePassed;
       }
     });
 

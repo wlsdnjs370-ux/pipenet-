@@ -345,13 +345,16 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
                 "ok": False, "code": "GATE_INCOMPLETE",
                 "message": "확정되지 않은 필수 항목이 남아 있습니다.",
                 "unresolved": draft.gate.unresolved, "version": new_version,
+                "defaults": defaults,
             }), 422
 
         sess.update_meta(stage="c2", gate_passed=True, operator=operator)
         sess.audit(actor, "GATE", "passed",
                    {"rooms": len(draft.rooms), "edits": len(draft.gate.edits)})
+        # `defaults` 를 함께 낸다 — 서버가 근거를 들어 채운 값을 화면이 모르면
+        # 결손이 아닌데 비어 있는 칸이 생긴다.
         return jsonify({"ok": True, "passed": True, "version": new_version,
-                        "passed_at": draft.gate.passed_at})
+                        "passed_at": draft.gate.passed_at, "defaults": defaults})
 
     # ── 게이트 뒤 단계 (자리만) ─────────────────────────────────────────
     def _make_gated(stage: str):

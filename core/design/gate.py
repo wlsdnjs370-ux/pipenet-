@@ -46,6 +46,9 @@ class GateField:
     options: tuple | None = None
     bulk_apply: tuple = ()
     note: str = ""
+    # 다른 항목의 값에 따라 물을지 말지가 갈리는 항목. 화면이 같은 규칙을 다시
+    # 구현하면 두 곳이 어긋나는 순간 "남은 건수 0인데 통과가 안 되는" 화면이 된다.
+    applies_when: tuple | None = None    # (필드명, 그 값일 때만 물음)
 
 
 ROOM_FIELDS: tuple[GateField, ...] = (
@@ -54,7 +57,8 @@ ROOM_FIELDS: tuple[GateField, ...] = (
     GateField("ceiling.has_finish", "반자 유무", "room", True, (True, False),
               ("floor", "use"), "도면에 없다. 헤드 종류와 신축배관을 가른다"),
     GateField("ceiling.finish_height_mm", "반자고(mm)", "room", True, None,
-              ("floor", "use"), "반자가 있을 때만 필수"),
+              ("floor", "use"), "반자가 있을 때만 필수",
+              applies_when=("ceiling.has_finish", True)),
     GateField("ceiling.slab_height_mm", "천장고(슬래브, mm)", "room", True, None,
               ("floor", "use"), "기준개수 8m 판정의 대리 지표. 층고를 기본값으로 쓴다"),
     GateField("ambient_temp_max_c", "최고 주위온도(℃)", "room", False, None,
@@ -140,9 +144,8 @@ def _building_value(draft: BuildingDraft, field: str) -> Any:
 
 def _room_field_applies(room: Room, field: str) -> bool:
     """반자고는 반자가 있다고 확정된 실에만 묻는다."""
-    if field == "ceiling.finish_height_mm":
-        return room.ceiling.has_finish is True
-    return True
+    depends = _ALL_FIELDS[field].applies_when
+    return depends is None or _ROOM_GET[depends[0]](room) == depends[1]
 
 
 def _room_confirmed(room: Room, field: str) -> bool:
@@ -214,17 +217,27 @@ def gate_items(draft: BuildingDraft) -> dict[str, Any]:
         if spec.required:
             total += len(targets)
 
-    return {"ok": True, "total": total, "groups": groups}
+    # `groups` 는 "지금 비어 있는 것" 이라 이미 확정된 항목은 빠진다. 화면은 그것만
+    # 보고는 표의 열을 세울 수 없고(반자고 열은 반자를 채우기 전엔 그룹이 없다),
+    # 항목의 규칙을 화면이 다시 구현하면 두 곳이 어긋난다. 그래서 항목 목록을 따로 낸다.
+    return {"ok": True, "total": total, "groups": groups,
+            "fields": [_field_spec(s) for s in ROOM_FIELDS + BUILDING_FIELDS]}
+
+
+def _field_spec(spec: GateField) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "field": spec.field, "label": spec.label, "scope": spec.scope,
+        "required": spec.required, "bulk_apply": list(spec.bulk_apply), "note": spec.note,
+    }
+    if spec.options is not None:
+        out["options"] = list(spec.options)
+    if spec.applies_when is not None:
+        out["applies_when"] = {"field": spec.applies_when[0], "value": spec.applies_when[1]}
+    return out
 
 
 def _group(spec: GateField, targets: list[str], suggestion: dict) -> dict[str, Any]:
-    group: dict[str, Any] = {
-        "field": spec.field, "label": spec.label, "scope": spec.scope,
-        "required": spec.required, "targets": targets, "count": len(targets),
-        "bulk_apply": list(spec.bulk_apply), "note": spec.note,
-    }
-    if spec.options is not None:
-        group["options"] = list(spec.options)
+    group = {**_field_spec(spec), "targets": targets, "count": len(targets)}
     if suggestion:
         group["suggestion"] = suggestion
     return group

@@ -23,8 +23,10 @@ from werkzeug.utils import secure_filename
 
 from core.design import gate as G
 from core.design import session as S
+from core.design.checks import dimensional as DIM
 from core.design.deterministic import constraints as CN
 from core.design.deterministic import esfr as ESFR
+from core.design.deterministic import head_layout as HL
 from core.design.deterministic import zoning as Z
 from core.design.recognize import params as RP
 from core.design.recognize import pipeline as PL
@@ -35,13 +37,16 @@ from core.design.schema import BuildingDraft
 # 판정이 바뀌면 이 값을 올려야 옛 결과가 캐시에서 되살아나지 않는다.
 DESIGN_CACHE_VERSION = "c1-v1"
 
-# 게이트 뒤에 서지만 아직 구현이 없는 단계들. C2·C2B 는 실제 라우트로 빠졌다.
+# 게이트 뒤에 서지만 아직 구현이 없는 단계들. C2·C2B·C3·C4 는 실제 라우트로 빠졌다.
 _GATED_STAGES = (
-    ("/api/design/c4/heads", "POST", "C4"),
     ("/api/design/c5/route", "POST", "C5"),
     ("/api/design/emit", "POST", "EMIT"),
-    ("/api/design/checks/<sid>", "GET", "CHECKS"),
 )
+
+# C4 배치 플래그 중 **경고**로 볼 것. 나머지는 전부 다음 단계를 막는다.
+# 목록을 뒤집어 둔 이유는, 새 플래그가 생겼을 때 기본이 "막는다" 여야 하기
+# 때문이다. 통과 목록을 두면 새 플래그가 조용히 통과한다.
+_C4_WARNINGS = frozenset({"OBSTACLE_UNVERIFIED"})
 
 
 # meta.stage 는 앞으로만 간다. C2B 로 기준을 다시 구우면서 stage 를 되감으면 이미
@@ -62,6 +67,24 @@ def _stage_fields(meta: dict, stage: str) -> dict:
     if current in _STAGE_ORDER and _STAGE_ORDER.index(current) >= _STAGE_ORDER.index(stage):
         return {}
     return {"stage": stage}
+
+
+class _HeadLimits:
+    """`constraints.json` 중 C4 가 쓰는 값만 속성으로 읽는다.
+
+    `Constraints` 는 frozen dataclass 라 json 에서 되살리려면 전 필드를 다 채워야
+    하는데, 그 되살리는 코드가 곧 두 번째 진실 출처가 된다 — 한쪽만 고쳐지면 화면과
+    구운 기준이 조용히 갈린다. C4 가 실제로 보는 값은 네 개뿐이므로 그 넷만 읽고,
+    하나라도 없으면 기본값을 넣지 않고 거절한다.
+    """
+
+    FIELDS = ("horizontal_distance_m", "head_spacing_square_m",
+              "head_clearance_radius_m", "head_to_wall_clearance_m")
+
+    def __init__(self, data: dict):
+        self.missing = [k for k in self.FIELDS if data.get(k) is None]
+        for key in self.FIELDS:
+            setattr(self, key, float(data.get(key) or 0.0))
 
 
 def _content_hash(path: Path) -> str:
@@ -680,6 +703,82 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
         except S.StageBusy as exc:
             return _fail("STAGE_BUSY", str(exc), 409)
         return jsonify({"ok": True, **result})
+
+    # ── C4 헤드 배치 (§8) ───────────────────────────────────────────────
+    @app.post("/api/design/c4/heads")
+    def design_c4_heads():
+        body = request.get_json(silent=True) or {}
+        sess, draft, err = _gated(str(body.get("session_id") or ""))
+        if err:
+            return err
+        raw, err = _load_constraints(sess)
+        if err:
+            return err
+        limits = _HeadLimits(raw)
+        if limits.missing:
+            return _fail("CONSTRAINTS_INCOMPLETE",
+                         "기준에 헤드 값이 없습니다: " + ", ".join(limits.missing), 409)
+
+        design, _v = sess.read_or_none("design.json")
+        zones = (design or {}).get("zones") or []
+        if not zones:
+            return _fail("ZONE_REQUIRED", "C3 방호구역을 먼저 나누세요.", 409)
+        # 어느 밸브도 담당하지 않는 실에 헤드를 놓으면, 그 헤드에 물을 보내는
+        # 배관을 C5 가 그릴 수 없다. 빠진 실은 지우지 말고 세어서 보인다.
+        zoned = {rid for z in zones for rid in (z.get("rooms") or [])}
+
+        layouts, skipped = [], []
+        for index, room in enumerate(draft.rooms):
+            if room.id not in zoned:
+                skipped.append(room.id)
+                continue
+            layout = HL.layout_heads(room, limits, room_index=index)
+            HL.check_obstacles(layout, room, limits, draft.obstacles)
+            layouts.append(layout)
+
+        flags = [dict(f, room=f.get("room") or layout.room_id)
+                 for layout in layouts for f in layout.flags]
+        blocking = [f for f in flags if f["code"] not in _C4_WARNINGS]
+        checks = DIM.run_checks(draft.rooms, layouts, limits,
+                                gross_floor_area_m2=body.get("gross_floor_area_m2"))
+        heads = [layout.to_dict() for layout in layouts]
+        actor = (body.get("operator") or "").strip() or "unknown"
+
+        try:
+            with sess.stage_lock("c4"):
+                stored = dict(design)
+                stored["heads"] = heads
+                stored["head_flags"] = flags
+                sess.write("design.json", stored)
+                sess.write("checks.json", checks)
+                # C3 가 아직 문제를 안고 있으면 stage 는 "c3" 에 서 있다. 거기서 c5 로
+                # 밀면 닿지 않는 실을 안은 채 C5 가 열린다. 배치는 하되(빠진 실은
+                # `rooms_without_zone` 로 센다) 단계는 C3 가 풀린 뒤에 넘긴다.
+                meta, _ = sess.read("meta.json")
+                if not blocking and meta.get("stage") == "c4":
+                    sess.update_meta(stage="c5")
+                sess.audit(actor, "C4", "heads_placed", {
+                    "rooms": len(layouts), "skipped": len(skipped),
+                    "heads": sum(len(h["heads"]) for h in heads),
+                    "flags": sorted({f["code"] for f in flags}),
+                    "check_flags": [c["code"] for c in checks["flags"]],
+                })
+        except S.StageBusy as exc:
+            return _fail("STAGE_BUSY", str(exc), 409)
+
+        return jsonify({"ok": True, "rooms": heads, "flags": flags,
+                        "blocking": [f["code"] for f in blocking],
+                        "rooms_without_zone": skipped, "checks": checks})
+
+    @app.get("/api/design/checks/<sid>")
+    def design_checks(sid):
+        sess, _draft, err = _gated(sid)
+        if err:
+            return err
+        data, _v = sess.read_or_none("checks.json")
+        if data is None:
+            return _fail("CHECKS_NOT_RUN", "C4 헤드 배치를 먼저 실행하세요.", 409)
+        return jsonify({"ok": True, **data})
 
     # ── 게이트 뒤 단계 (자리만) ─────────────────────────────────────────
     def _make_gated(stage: str):

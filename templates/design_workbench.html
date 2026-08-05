@@ -144,6 +144,17 @@
     .zone-sum .z i { width: 10px; height: 10px; border: 1px solid #94a3b8; }
     .gate-table td.unset select { border-color: var(--warn); background: #fef2f2; }
     .gate-table .drop { border: 1px solid var(--line); background: #fff; padding: 1px 7px; font-size: 0.72rem; cursor: pointer; font-family: inherit; }
+    /* C4 검사표 (§13.5). 미검증에 통과색을 쓰지 않는다 — 재지 못한 것이 초록이면
+       검사표 전체가 장식이 되고, 사람은 초록을 보고 안 본다. */
+    .chk-list { display: grid; gap: 6px; padding: 10px 16px; }
+    .chk-list .chk { display: grid; grid-template-columns: 76px 1fr; gap: 9px; border: 1px solid var(--line); padding: 7px 10px; font-size: 0.76rem; line-height: 1.5; }
+    .chk-list .chk .st { font-family: ui-monospace, monospace; font-size: 0.68rem; font-weight: 700; text-align: center; padding: 2px 0; height: fit-content; border: 1px solid var(--line); }
+    .chk-list .chk .st.pass { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+    .chk-list .chk .st.flag { color: #7f1d1d; border-color: var(--warn); background: #fef2f2; }
+    .chk-list .chk .st.unverified { color: var(--muted); background: #f3f4f6; }
+    .chk-list .chk .code { font-family: ui-monospace, monospace; font-weight: 700; margin-right: 6px; }
+    .c4-gross { display: block; margin-top: 7px; font-size: 0.74rem; color: var(--muted); }
+    .c4-gross input { width: 100%; margin-top: 3px; padding: 3px 5px; border: 1px solid var(--line); font-family: inherit; font-size: 0.76rem; }
     .verdict.on { color: var(--warn); font-weight: 700; }
     .verdict.off { color: #15803d; font-weight: 700; }
     .verdict.unknown { color: var(--muted); }
@@ -259,6 +270,16 @@
         </div>
         <p id="dw-c3-status" class="note">C2 기준을 먼저 구우세요.</p>
         <p id="dw-c3-zone-note" class="note"></p>
+      </section>
+
+      <section>
+        <h3>C4 헤드 배치</h3>
+        <button id="dw-run-c4" class="run-btn" type="button" disabled>헤드 배치 실행</button>
+        <button id="dw-c4-open" class="run-btn" type="button" disabled style="margin-top:8px;">배치·검사표 보기</button>
+        <label class="c4-gross">연면적(㎡) — 알 때만 채우세요
+          <input id="dw-c4-gross" type="number" min="0" step="0.1" placeholder="모르면 비워 두세요" autocomplete="off">
+        </label>
+        <p id="dw-c4-status" class="note">C3 구역을 먼저 나누세요.</p>
       </section>
 
       <section>
@@ -401,6 +422,40 @@
     </div>
   </div>
 
+  <!-- C4 헤드 배치와 차원 무결성 검사(§8·§13.5). -->
+  <div id="dw-c4-panel" class="modal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div class="left">
+          <h2>C4 — 헤드 배치와 차원 무결성 검사</h2>
+          <span id="dw-c4-remain" class="remain"></span>
+        </div>
+        <button id="dw-c4-close" type="button">닫기</button>
+      </div>
+      <div class="modal-sub">
+        <p class="note" style="margin:0; line-height:1.6;">
+          헤드는 <strong>구역에 든 실에만</strong> 놓습니다 — 어느 밸브도 담당하지 않는 실의 헤드에는
+          C5 가 물을 보낼 배관을 그릴 수 없어, 가까운 구역에 붙이지 않고 미배치로 냅니다.
+          검사 상태는 셋입니다: <strong>통과</strong>는 재서 맞은 것, <strong>확인 필요</strong>는 재서 어긋난 것,
+          <strong>미검증</strong>은 <em>재지 못한 것</em>입니다 — 미검증을 통과로 읽지 마세요.
+          살수장애 아래 헤드는 화면에서 점선으로 그립니다(알고리즘이 추정한 자리).
+        </p>
+      </div>
+      <div class="gate-scroll">
+        <table class="gate-table">
+          <thead id="dw-c4-thead"></thead>
+          <tbody id="dw-c4-tbody"></tbody>
+        </table>
+        <div id="dw-c4-empty" class="c3-empty"></div>
+        <div id="dw-c4-checks" class="chk-list"></div>
+        <div id="dw-c4-flags" class="flag-list"></div>
+      </div>
+      <div class="modal-foot">
+        <span id="dw-c4-msg" class="msg"></span>
+      </div>
+    </div>
+  </div>
+
   <script>
     // 레이어명은 업로드된 DXF 에서 온다 — 속성 보간 탈출을 막으려면 따옴표까지 5자 전부.
     function escHtml(s) {
@@ -455,6 +510,7 @@
       ["cores", "코어(계단·샤프트)", DESIGN_COLORS.core, () => state.cores.length],
       ["valves", "유수검지장치", DESIGN_COLORS.valve, () => state.c3.drafts.length],
       ["zones", "방호구역", DESIGN_COLORS.zone, () => state.c3.zones.length],
+      ["heads", "헤드", DESIGN_COLORS.head, () => headCount()],
     ];
 
     // ====== 상태 (지시서 §12.3) ======
@@ -479,7 +535,7 @@
       rooms: [],
       cores: [],
       overlayVisible: { rooms: true, roomLabels: true, virtualEdges: true, cores: true,
-                        valves: true, zones: true },
+                        valves: true, zones: true, heads: true },
 
       // 확정 게이트. `values` 는 아직 서버에 보내지 않은 사람의 입력이고, `missing`
       // 은 서버가 판정한 결손이다. 둘을 섞지 않아야 "화면은 다 찼는데 서버는 422"
@@ -503,6 +559,12 @@
         candidates: [], systemTypes: [], requirements: [], loaded: false,
         drafts: [], valves: [], zones: [], flags: [],
         unreached: [], isolated: [], distance: {},
+      },
+
+      // C4(§8). `skipped` 는 구역에 들지 못해 헤드를 놓지 않은 실이다. 0 개로
+      // 접어 버리면 배치가 빠진 실이 화면에서 사라져 아무도 못 본다.
+      c4: {
+        rooms: [], flags: [], blocking: [], skipped: [], checks: null, ran: false,
       },
     };
 
@@ -562,6 +624,19 @@
     const c3SubmitEl = document.getElementById("dw-c3-submit");
     const c3ZonesEl = document.getElementById("dw-c3-zones");
     const toolValveEl = document.getElementById("dw-tool-valve");
+    const runC4El = document.getElementById("dw-run-c4");
+    const c4OpenEl = document.getElementById("dw-c4-open");
+    const c4StatusEl = document.getElementById("dw-c4-status");
+    const c4GrossEl = document.getElementById("dw-c4-gross");
+    const c4PanelEl = document.getElementById("dw-c4-panel");
+    const c4CloseEl = document.getElementById("dw-c4-close");
+    const c4RemainEl = document.getElementById("dw-c4-remain");
+    const c4TheadEl = document.getElementById("dw-c4-thead");
+    const c4TbodyEl = document.getElementById("dw-c4-tbody");
+    const c4EmptyEl = document.getElementById("dw-c4-empty");
+    const c4ChecksEl = document.getElementById("dw-c4-checks");
+    const c4FlagsEl = document.getElementById("dw-c4-flags");
+    const c4MsgEl = document.getElementById("dw-c4-msg");
     const gatePanelEl = document.getElementById("dw-gate-panel");
     const gateRemainEl = document.getElementById("dw-gate-remain");
     const gateCloseEl = document.getElementById("dw-gate-close");
@@ -758,6 +833,7 @@
       }
 
       drawC3Overlays();
+      drawC4Overlays();
     }
 
     // 구역 색은 밸브 순서로 돈다. 같은 입력이면 같은 색이 나와야 사람이 표의
@@ -829,6 +905,41 @@
           ctx.fillText(confirmed ? confirmed.id : `${draft.core_id} (미확정)`, sx + 10, sy + 4);
         });
       }
+    }
+
+    // 헤드 좌표는 서버가 mm 로 준다. 실마다 한 번만 되돌려 두고 캐시한다.
+    function headPoints(layout) {
+      if (!layout._pts) layout._pts = toDrawingUnits((layout.heads || []).map((h) => [h.x, h.y]));
+      return layout._pts;
+    }
+
+    function headCount() {
+      return state.c4.rooms.reduce((n, r) => n + (r.heads || []).length, 0);
+    }
+
+    function drawC4Overlays() {
+      if (!state.overlayVisible.heads || !state.c4.rooms.length) return;
+      ctx.lineWidth = 1.6;
+      for (const layout of state.c4.rooms) {
+        const pts = headPoints(layout);
+        (layout.heads || []).forEach((head, i) => {
+          const [sx, sy] = worldToScreen(pts[i][0], pts[i][1]);
+          // 살수장애 아래로 밀어 넣은 헤드는 알고리즘이 자리를 고른 것이다. 격자
+          // 헤드와 같은 모양으로 그리면 사람이 검수할 자리를 찾지 못한다.
+          const under = head.provenance === "under_obstacle";
+          ctx.setLineDash(under ? [3, 2] : []);
+          ctx.strokeStyle = under ? DESIGN_COLORS.obstacle : DESIGN_COLORS.head;
+          ctx.beginPath();
+          ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+          if (under) {
+            ctx.stroke();
+          } else {
+            ctx.fillStyle = DESIGN_COLORS.head;
+            ctx.fill();
+          }
+        });
+      }
+      ctx.setLineDash([]);
     }
 
     function hatchPolygon(poly, color) {
@@ -2189,6 +2300,11 @@
       c3.isolated = [];
       c3.distance = {};
       setNote(c3ZoneNoteEl, "", false);
+      c4Invalidate();
+      setC4Status("C3 구역을 먼저 나누세요.", false);
+      setNote(c4MsgEl, "", false);
+      updateC4Tools();
+      renderC4();
     }
 
     /** 아직 답하지 않은 칸 수. 0 이어야 확정할 수 있다. */
@@ -2439,13 +2555,18 @@
           + `미도달 ${c3.unreached.length}개 / 문 없는 실 ${c3.isolated.length}개`;
         setNote(c3MsgEl, summary, c3.flags.length > 0);
         setNote(c3ZoneNoteEl, summary, c3.flags.length > 0);
-        // 서버도 같은 규칙으로 단계를 잡아 둔다. 플래그가 남으면 C4 는 열리지 않는다.
+        // 서버도 같은 규칙으로 단계를 잡아 둔다. 플래그가 남으면 단계는 C3 에 선다 —
+        // 헤드는 구역에 든 실에 놓을 수 있지만, 닿지 않는 실을 안은 채로 C5 가 열리지는
+        // 않는다.
         if (!c3.flags.length) {
           state.stage = "c4";
           renderStepper();
         }
+        setC4Status(c3.flags.length
+          ? `남은 문제 ${c3.flags.length}건 — 구역에 든 실에만 헤드가 놓입니다.`
+          : "구역이 나뉘었습니다 — [헤드 배치 실행] 을 누르세요.", c3.flags.length > 0);
         setC3Status(c3.flags.length
-          ? `남은 문제 ${c3.flags.length}건 — 해결 전에는 C4 헤드 배치로 넘어가지 않습니다.`
+          ? `남은 문제 ${c3.flags.length}건 — 해결 전에는 C5 로 넘어가지 않습니다.`
           : "구역 확정 — C4 헤드 배치로 넘어갑니다.", c3.flags.length > 0);
         renderDesignList();
         render();
@@ -2453,8 +2574,130 @@
         setNote(c3MsgEl, "오류: " + err.message, true);
       } finally {
         renderC3();
+        updateC4Tools();
       }
     });
+
+    // ====== C4 헤드 배치 (§8·§13.5) ======
+    // 검사 상태는 셋이다. `unverified` 를 통과색으로 칠하면 검사표가 초록으로 가득
+    // 차고, 그 초록은 "쟀고 맞다" 가 아니라 "안 쟀다" 를 뜻하게 된다.
+    const CHECK_STATUS = { pass: "통과", flag: "확인 필요", unverified: "미검증" };
+
+    function c4Ready() {
+      return !!(state.sessionId && state.c3.zones.length);
+    }
+
+    function setC4Status(text, warn) {
+      setNote(c4StatusEl, text, warn);
+    }
+
+    /** 밸브나 구역이 바뀌면 이전 배치는 근거를 잃는다. */
+    function c4Invalidate() {
+      state.c4 = { rooms: [], flags: [], blocking: [], skipped: [], checks: null, ran: false };
+    }
+
+    function updateC4Tools() {
+      runC4El.disabled = !c4Ready();
+      c4OpenEl.disabled = !state.c4.ran;
+    }
+
+    function renderC4() {
+      const c4 = state.c4;
+      c4TheadEl.innerHTML = "<tr><th>실</th><th>헤드</th><th>면적㎡</th>"
+        + "<th>격자간격 m</th><th>벽이격 m</th><th>보 대응</th><th>플래그</th></tr>";
+      c4TbodyEl.innerHTML = c4.rooms.map((layout) => {
+        const m = layout.metrics || {};
+        const codes = (layout.flags || []).map((f) => f.code).join(", ");
+        const gap = m.wall_gap_m == null ? "—" : m.wall_gap_m;
+        return `<tr><td class="room-id">${escHtml(layout.room_id)}</td>`
+          + `<td>${(layout.heads || []).length}</td>`
+          + `<td>${m.area_m2 == null ? "—" : m.area_m2}</td>`
+          + `<td>${m.grid_spacing_m == null ? "—" : m.grid_spacing_m}</td>`
+          + `<td>${gap}</td>`
+          + `<td>${(layout.beam_requirements || []).length || "—"}</td>`
+          + `<td class="${codes ? "unset" : ""}">${escHtml(codes || "—")}</td></tr>`;
+      }).join("");
+
+      // 구역에 못 든 실은 세어서 낸다. 0 개로 접으면 빠진 실이 화면에서 사라진다.
+      c4EmptyEl.style.display = (c4.rooms.length && !c4.skipped.length) ? "none" : "block";
+      c4EmptyEl.textContent = c4.rooms.length
+        ? `구역에 들지 못해 헤드를 놓지 않은 실 ${c4.skipped.length}개: ${c4.skipped.join(", ")}`
+        : "아직 배치하지 않았습니다. [헤드 배치 실행] 을 누르세요.";
+
+      const checks = (c4.checks && c4.checks.checks) || [];
+      c4ChecksEl.innerHTML = checks.map((rec) =>
+        `<div class="chk"><span class="st ${escHtml(rec.status)}">`
+        + `${escHtml(CHECK_STATUS[rec.status] || rec.status)}</span>`
+        + `<span><span class="code">${escHtml(rec.code)}</span>`
+        + `${escHtml(rec.message)}</span></div>`).join("");
+      c4FlagsEl.innerHTML = c4.flags.map((flag) =>
+        `<div class="flag"><span class="code">${escHtml(flag.code)}</span>`
+        + `${escHtml(flag.room ? flag.room + " — " : "")}${escHtml(flag.message)}</div>`).join("");
+
+      const heads = headCount();
+      c4RemainEl.textContent = c4.ran
+        ? (c4.blocking.length ? `막는 문제 ${c4.blocking.length}건` : `헤드 ${heads}개`)
+        : "미배치";
+      c4RemainEl.className = `remain ${c4.ran && !c4.blocking.length ? "done" : "pending"}`;
+    }
+
+    runC4El.addEventListener("click", async () => {
+      if (!c4Ready()) return;
+      runC4El.disabled = true;
+      setC4Status("헤드를 배치하는 중…", false);
+      try {
+        // 연면적은 모르면 보내지 않는다. 0 을 보내면 면적 대조가 근거 없이 돈다.
+        const gross = parseFloat(c4GrossEl.value);
+        const res = await fetch("/api/design/c4/heads", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: state.sessionId, operator: c3OperatorEl.value.trim(),
+            ...(gross > 0 ? { gross_floor_area_m2: gross } : {}),
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setC4Status(body.message || `HTTP ${res.status}`, true);
+          return;
+        }
+        state.c4 = {
+          rooms: body.rooms || [], flags: body.flags || [],
+          blocking: body.blocking || [], skipped: body.rooms_without_zone || [],
+          checks: body.checks || null, ran: true,
+        };
+        const c4 = state.c4;
+        const checkFlags = (c4.checks && c4.checks.flags) || [];
+        const summary = `헤드 ${headCount()}개 / 실 ${c4.rooms.length}개 / `
+          + `미배치 ${c4.skipped.length}개 / 검사 확인 필요 ${checkFlags.length}건`;
+        setNote(c4MsgEl, summary, c4.blocking.length > 0);
+        // 서버와 같은 규칙으로 단계를 잡는다. C3 가 아직 문제를 안고 있으면 배치가
+        // 깨끗해도 C5 는 열리지 않는다 — 열면 닿지 않는 실이 그대로 딸려 간다.
+        const held = c4.blocking.length
+          ? `막는 문제 ${c4.blocking.length}건`
+          : (state.c3.flags.length ? `C3 남은 문제 ${state.c3.flags.length}건` : "");
+        if (!held) {
+          state.stage = "c5";
+          renderStepper();
+        }
+        setC4Status(held
+          ? `${summary} — ${held}, 해결 전에는 C5 로 넘어가지 않습니다.`
+          : `${summary} — C5 라우팅으로 넘어갑니다.`, c4.blocking.length > 0);
+        renderDesignList();
+        render();
+      } catch (err) {
+        setC4Status("오류: " + err.message, true);
+      } finally {
+        renderC4();
+        updateC4Tools();
+      }
+    });
+
+    c4OpenEl.addEventListener("click", () => {
+      renderC4();
+      c4PanelEl.classList.add("open");
+    });
+    bindModalClose(c4PanelEl, c4CloseEl);
 
     // ====== 건축 12종 토글 ======
     function renderLayerList() {
@@ -2552,6 +2795,8 @@
     updateEditTools();
     updateC3Tools();
     renderC3();
+    updateC4Tools();
+    renderC4();
     startSession();
     setTimeout(resizeCanvas, 50);
   </script>

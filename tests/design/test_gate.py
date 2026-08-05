@@ -222,8 +222,8 @@ def test_전부_확정하면_게이트가_열리고_기록이_남는다(client):
     assert "passed" in events
     assert sess.status()["meta"]["gate_passed"] is True
 
-    res = client.post("/api/design/c4/heads", json={"session_id": sid})
-    assert res.status_code == 501         # 게이트는 열렸고 C4 는 아직 없다
+    res = client.post("/api/design/c5/route", json={"session_id": sid})
+    assert res.status_code == 501         # 게이트는 열렸고 C5 는 아직 없다
 
 
 def test_다른_탭이_먼저_저장했으면_덮어쓰지_않는다(client):

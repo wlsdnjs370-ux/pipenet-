@@ -148,7 +148,11 @@ class DesignSession:
         payload["updated_at"] = now_iso()
         dest = self.path(name)
         tmp = dest.with_suffix(f".{uuid.uuid4().hex[:12]}.tmp")
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        # `allow_nan=False` — 파이썬 json 은 `inf` 를 `Infinity` 로 적지만 그것은
+        # JSON 이 아니라 브라우저가 응답 전체를 못 읽는다. 여기서 터뜨려야 감사
+        # 대상 파일이 반쯤 읽히는 상태로 남지 않는다.
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False),
+                       encoding="utf-8")
         os.replace(tmp, dest)
         return payload["version"]
 

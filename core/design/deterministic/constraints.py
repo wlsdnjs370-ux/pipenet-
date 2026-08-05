@@ -46,6 +46,27 @@ class FieldTrace:
         }
 
 
+def _beam_rows(table: tuple) -> list[dict[str, Any]]:
+    """보 이격표 직렬화. 마지막 구간만 `이상`(하한)으로 적는다.
+
+    표의 마지막 상한은 `inf` 인데, 파이썬 json 은 그것을 `Infinity` 로 적고 그
+    낱말은 JSON 에 없어 브라우저가 응답 전체를 못 읽는다. `null` 로 바꾸면 이
+    코드베이스에서 `null` 은 어디서나 "모른다" 라 상한을 모른다는 뜻이 돼버린다.
+    조문(2.7.7.7)도 그 구간을 "1.5m **이상**" 으로 적고, 지시서 §16 의 산출물 예시도
+    마지막 행만 `horizontal_gte_m` 이다.
+    """
+    rows: list[dict[str, Any]] = []
+    prev = 0.0
+    for limit, requirement in table:
+        bound = ({"horizontal_gte_m": prev} if limit == float("inf")
+                 else {"horizontal_lt_m": limit})
+        vertical = ({"vertical": requirement} if isinstance(requirement, str)
+                    else {"vertical_lt_m": requirement})
+        rows.append({**bound, **vertical})
+        prev = limit
+    return rows
+
+
 @dataclass(frozen=True)
 class Constraints:
     # ── 기준개수·수원 ──────────────────────────────
@@ -123,11 +144,7 @@ class Constraints:
                 for col, rows in self.pipe_size_table.items()
             },
             "velocity_limit_mps": {"_note": "사내 기준 — 법정 아님", **self.velocity_limit_mps},
-            "beam_clearance_table": [
-                {"horizontal_lt_m": lim, "vertical": req} if isinstance(req, str)
-                else {"horizontal_lt_m": lim, "vertical_lt_m": req}
-                for lim, req in self.beam_clearance_table
-            ],
+            "beam_clearance_table": _beam_rows(self.beam_clearance_table),
             "head_exempt_places": list(self.head_exempt_places),
             "trace": [t.to_dict() for t in self.trace],
         }

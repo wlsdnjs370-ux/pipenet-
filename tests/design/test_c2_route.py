@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -84,6 +85,21 @@ def test_기준을_구우면_조문_출처가_함께_남는다(client):
     sess = _sess(client, sid)
     assert sess.status()["meta"]["stage"] == "c3"
     assert "constraints_built" in [e["event"] for e in sess.audit_entries()]
+
+
+def test_기준은_브라우저가_읽는_JSON_으로_나간다(client):
+    """보 이격표 마지막 구간의 상한은 `inf` 다.
+
+    파이썬 json 은 그것을 `Infinity` 로 적지만 JSON 에는 없는 낱말이라, 브라우저는
+    응답 전체를 못 읽는다 — 서버는 200 인데 화면만 조용히 비는 자리였다.
+    """
+    sid = _seed(client)
+    res = client.post("/api/design/c2/constraints", json={"session_id": sid})
+    body = json.loads(res.get_data(as_text=True),
+                      parse_constant=lambda name: pytest.fail(f"JSON 밖의 값: {name}"))
+    last = body["constraints"]["beam_clearance_table"][-1]
+    # `null` 은 이 코드베이스에서 "모른다" 다. 상한 없는 구간은 조문대로 하한으로.
+    assert "horizontal_lt_m" not in last and last["horizontal_gte_m"] == 1.5
 
 
 def test_확정되지_않은_사실은_추측하지_않고_게이트로_돌려보낸다(client):

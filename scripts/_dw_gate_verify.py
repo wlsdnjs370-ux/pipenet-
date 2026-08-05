@@ -146,12 +146,11 @@ with sync_playwright() as p:
 
     page.click("#dw-run-c2")
     page.wait_for_function(
-        "() => !/실행 중/.test(document.getElementById('dw-gate-status').textContent)",
+        "() => !/실행 중/.test(document.getElementById('dw-c2-status').textContent)",
         timeout=60_000)
-    print("C2 응답:", page.inner_text("#dw-gate-status"))
+    print("C2 응답:", page.inner_text("#dw-c2-status"))
     browser.close()
 
-# C2 의 501 은 설계대로다(PR-6 미구현). 브라우저는 그것도 console.error 로 적으니
 # 네트워크 상태 로그와 실제 JS 예외를 갈라야 종료코드가 의미를 갖는다.
 network = [e for e in errors if "Failed to load resource" in e]
 js = [e for e in errors if e not in network]

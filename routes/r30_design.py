@@ -419,13 +419,12 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
         return sess, draft, None
 
     # ── C2 결정론 기준 (§5, §11) ────────────────────────────────────────
-    def _current_constraints(sess, data):
+    def _current_constraints(sess, meta, data):
         """내용이 같은 현행 기준이 있으면 `(이름, version, 내용)`, 없으면 None.
 
         같은 값을 다시 구울 때마다 `constraints.v2.json` 을 만들면 화면 새로고침
         한 번에 세대가 하나씩 늘어 감사 기록에서 진짜 재검토가 묻힌다.
         """
-        meta, _ = sess.read("meta.json")
         name = meta.get("constraints")
         if not name:
             return None
@@ -455,7 +454,8 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
         if decision is not None:
             data = ESFR.apply(data, decision)
 
-        same = _current_constraints(sess, data)
+        meta, _ = sess.read("meta.json")
+        same = _current_constraints(sess, meta, data)
         if same is not None:
             name, version, stored_data = same
             return {"artifact": name, "version": version, "constraints": stored_data,
@@ -463,7 +463,6 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
 
         name = sess.next_constraints_name()
         version = sess.write(name, data)
-        meta, _ = sess.read("meta.json")
         stage = meta.get("stage")
         fields = {"constraints": name}
         if stage not in _STAGE_ORDER or _STAGE_ORDER.index(stage) < _STAGE_ORDER.index("c3"):

@@ -111,6 +111,32 @@
     .modal-foot .msg.warn { color: var(--warn); }
     .modal-foot .confirm { padding: 8px 18px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font-size: 0.84rem; font-weight: 700; cursor: pointer; font-family: inherit; }
     .modal-foot .confirm:disabled { background: #e5e7eb; border-color: var(--line); color: var(--muted); cursor: not-allowed; }
+    /* C2 기준표·103B 판단 (§5·§6). 값만 보여주면 "무슨 근거냐"에 답할 수 없다. */
+    .modal-box.esfr-box { inset: 6vh 22vw; grid-template-rows: auto 1fr auto; }
+    .cn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 8px; padding: 12px 16px; }
+    .cn-card { border: 1px solid var(--line); padding: 8px 10px; display: grid; gap: 3px; align-content: start; }
+    .cn-card .k { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+    .cn-card .v { font-size: 1.02rem; font-weight: 700; font-family: ui-monospace, monospace; }
+    .cn-card .src { font-size: 0.66rem; color: var(--muted); line-height: 1.45; }
+    .cn-card.void { background: #fef2f2; border-color: var(--warn); }
+    .cn-card.void .v { color: var(--warn); font-size: 0.82rem; }
+    .cn-card.untraced .src { color: #b45309; }
+    .cn-banner { padding: 9px 16px; font-size: 0.78rem; line-height: 1.55; border-bottom: 1px solid var(--line); background: #f9fafb; }
+    .esfr-body { padding: 12px 16px; overflow: auto; display: grid; gap: 11px; align-content: start; }
+    .warn-block { background: #fef2f2; color: #7f1d1d; font-size: 0.78rem; line-height: 1.55; }
+    .cn-banner.warn-block { border-bottom-color: var(--warn); }
+    p.warn-block { margin: 0; padding: 9px 11px; border: 1px solid var(--warn); }
+    .esfr-q { border: 1px solid var(--line); padding: 9px 11px; display: grid; gap: 5px; }
+    .esfr-q.unanswered { border-color: var(--warn); }
+    .esfr-q .q { font-size: 0.84rem; font-weight: 700; }
+    .esfr-q .why { font-size: 0.72rem; color: var(--muted); line-height: 1.5; }
+    .esfr-q .opts { display: flex; gap: 16px; font-size: 0.8rem; }
+    .esfr-q .opts label { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
+    .esfr-note { display: grid; gap: 4px; font-size: 0.76rem; font-weight: 600; }
+    .esfr-note textarea { padding: 6px 8px; border: 1px solid var(--line); font-family: inherit; font-size: 0.8rem; resize: vertical; font-weight: 400; }
+    .verdict.on { color: var(--warn); font-weight: 700; }
+    .verdict.off { color: #15803d; font-weight: 700; }
+    .verdict.unknown { color: var(--muted); }
     .topbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; background: var(--accent); color: #fff; font-size: 0.85rem; }
     .topbar a { color: #cbd5e1; text-decoration: none; font-size: 0.78rem; }
     .topbar a:hover { color: #fff; text-decoration: underline; }
@@ -202,8 +228,16 @@
         <h3>GATE 인간 확정</h3>
         <button id="dw-gate-open" class="run-btn" type="button" disabled>결손 항목 채우기</button>
         <p id="dw-gate-progress" class="note">C1 인식을 먼저 끝내세요.</p>
-        <button id="dw-run-c2" class="run-btn" type="button" disabled style="margin-top:8px;">C2 규범 조건 실행</button>
         <p id="dw-gate-status" class="note"></p>
+      </section>
+
+      <section>
+        <h3>C2 규범 조건</h3>
+        <button id="dw-run-c2" class="run-btn" type="button" disabled>C2 규범 조건 실행</button>
+        <p id="dw-c2-status" class="note">게이트를 먼저 통과하세요.</p>
+        <button id="dw-c2-open" class="run-btn" type="button" disabled style="margin-top:8px;">기준표 보기</button>
+        <button id="dw-esfr-open" class="run-btn" type="button" disabled style="margin-top:8px;">103B(ESFR) 판단</button>
+        <p id="dw-esfr-status" class="note">103B 는 랙크식 창고라도 자동으로 켜지지 않습니다 — 사람이 켭니다.</p>
       </section>
 
       <section>
@@ -247,6 +281,62 @@
         </label>
         <span id="dw-gate-msg" class="msg"></span>
         <button id="dw-gate-confirm" class="confirm" type="button">확정하고 게이트 통과</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- C2 기준표. 값 옆에 조문을 같이 둔다 — 감리 질의는 값이 아니라 근거를 묻는다. -->
+  <div id="dw-c2-panel" class="modal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div class="left">
+          <h2>C2 — 이 설계가 딛고 선 기준</h2>
+          <span id="dw-c2-artifact" class="remain"></span>
+        </div>
+        <button id="dw-c2-close" type="button">닫기</button>
+      </div>
+      <div id="dw-c2-banner" class="cn-banner"></div>
+      <div class="gate-scroll">
+        <div id="dw-c2-grid" class="cn-grid"></div>
+        <table class="gate-table">
+          <thead><tr><th>필드</th><th>법령</th><th>조문</th><th>시행일</th><th>조문 해시</th><th>비고</th></tr></thead>
+          <tbody id="dw-c2-trace"></tbody>
+        </table>
+      </div>
+      <div class="modal-foot">
+        <span class="msg">기준은 덮어쓰지 않습니다. 값이 달라지면 <code>constraints.v2.json</code> 이 옆에 생기고 옛 기준은 그대로 남습니다(§16.3).</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- C2B 103B 판단. 세 조건에 기본값을 두지 않는다 — 안 고른 것과 '아니오'는 다르다. -->
+  <div id="dw-esfr-panel" class="modal">
+    <div class="modal-box esfr-box">
+      <div class="modal-head">
+        <div class="left">
+          <h2>C2B — 화재조기진압용 스프링클러(NFTC 103B)</h2>
+          <span id="dw-esfr-verdict" class="remain verdict unknown"></span>
+        </div>
+        <button id="dw-esfr-close" type="button">닫기</button>
+      </div>
+      <div class="esfr-body">
+        <p class="warn-block">
+          랙크식 창고라고 103B 가 되지 않습니다. 랙크식의 기본 트랙은 NFTC 103 2.7.2 이고
+          103B 는 별도 설비 종류입니다.
+          <strong>103B 를 켜면 NFTC 103 의 수평거리·정방형 간격·벽 이격·K 계수가 근거를 잃어 비워집니다.</strong>
+          그 자리를 대신할 103B 의 K값·간격표는 아직 구현되지 않았습니다 — 켠 뒤 헤드 배치는 사람이 값을 대야 합니다.
+        </p>
+        <div id="dw-esfr-questions"></div>
+        <label class="esfr-note">판단 근거 메모 (선택)
+          <textarea id="dw-esfr-note" rows="2" placeholder="예: 발주자 확인 공문 2026-08-01 / 저장품목 목록 검토 결과"></textarea>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <label class="who">확정자
+          <input id="dw-esfr-operator" type="text" placeholder="이름 또는 사번" autocomplete="off">
+        </label>
+        <span id="dw-esfr-msg" class="msg"></span>
+        <button id="dw-esfr-submit" class="confirm" type="button" disabled>103B 판단 확정</button>
       </div>
     </div>
   </div>
@@ -335,6 +425,13 @@
         fields: [], specByField: {}, missing: {}, suggestion: {},
         values: {}, facts: {}, selection: new Set(), order: [], loaded: false,
       },
+
+      // C2 산출물과 103B 판단. `esfrAnswers` 는 아직 서버에 보내지 않은 입력이고
+      // 참·거짓이 아닌 값은 전부 "아직 안 골랐다" 이다 — false 로 접으면 안 물어본
+      // 조건이 '아니다' 로 확정돼 설비 종류가 갈린다. 자리는 ESFR_QUESTIONS 에서
+      // 만든다(아래).
+      c2: null,
+      esfrAnswers: {},
     };
 
     const canvas = document.getElementById("dw-canvas");
@@ -358,6 +455,24 @@
     const gateProgressEl = document.getElementById("dw-gate-progress");
     const runC2El = document.getElementById("dw-run-c2");
     const gateStatusEl = document.getElementById("dw-gate-status");
+    const c2StatusEl = document.getElementById("dw-c2-status");
+    const c2OpenEl = document.getElementById("dw-c2-open");
+    const c2PanelEl = document.getElementById("dw-c2-panel");
+    const c2CloseEl = document.getElementById("dw-c2-close");
+    const c2ArtifactEl = document.getElementById("dw-c2-artifact");
+    const c2BannerEl = document.getElementById("dw-c2-banner");
+    const c2GridEl = document.getElementById("dw-c2-grid");
+    const c2TraceEl = document.getElementById("dw-c2-trace");
+    const esfrOpenEl = document.getElementById("dw-esfr-open");
+    const esfrStatusEl = document.getElementById("dw-esfr-status");
+    const esfrPanelEl = document.getElementById("dw-esfr-panel");
+    const esfrCloseEl = document.getElementById("dw-esfr-close");
+    const esfrVerdictEl = document.getElementById("dw-esfr-verdict");
+    const esfrQuestionsEl = document.getElementById("dw-esfr-questions");
+    const esfrNoteEl = document.getElementById("dw-esfr-note");
+    const esfrOperatorEl = document.getElementById("dw-esfr-operator");
+    const esfrMsgEl = document.getElementById("dw-esfr-msg");
+    const esfrSubmitEl = document.getElementById("dw-esfr-submit");
     const gatePanelEl = document.getElementById("dw-gate-panel");
     const gateRemainEl = document.getElementById("dw-gate-remain");
     const gateCloseEl = document.getElementById("dw-gate-close");
@@ -942,9 +1057,13 @@
       return [point[0] * k, point[1] * k];
     }
 
+    function setNote(el, text, warn) {
+      el.textContent = text;
+      el.classList.toggle("warn", !!warn);
+    }
+
     function setEditNote(text, warn) {
-      editNoteEl.textContent = text;
-      editNoteEl.classList.toggle("warn", !!warn);
+      setNote(editNoteEl, text, warn);
     }
 
     function editableNow() {
@@ -1352,6 +1471,12 @@
         ? "게이트 통과 — 이후 단계는 사람을 부르지 않는다."
         : `${total}건 중 ${need}건 남음`;
       runC2El.disabled = !state.gatePassed;
+      esfrOpenEl.disabled = !state.gatePassed;
+      // 경고가 떠 있으면 건드리지 않는다 — C2 가 결손으로 돌려보낸 안내를
+      // 게이트 재렌더가 "준비가 됐습니다" 로 덮으면 사람이 실패를 못 본다.
+      if (state.gatePassed && !state.c2 && !c2StatusEl.classList.contains("warn")) {
+        setC2Status("기준을 구울 준비가 됐습니다.", false);
+      }
     }
 
     function renderGate() {
@@ -1596,30 +1721,254 @@
       gatePanelEl.classList.add("open");
       renderGate();
     });
-    gateCloseEl.addEventListener("click", () => gatePanelEl.classList.remove("open"));
-    gatePanelEl.addEventListener("mousedown", (ev) => {
-      if (ev.target === gatePanelEl) gatePanelEl.classList.remove("open");
-    });
+    function bindModalClose(panelEl, closeEl) {
+      closeEl.addEventListener("click", () => panelEl.classList.remove("open"));
+      panelEl.addEventListener("mousedown", (ev) => {
+        if (ev.target === panelEl) panelEl.classList.remove("open");
+      });
+    }
 
-    // C2 는 아직 없다(PR-6). 501 을 그대로 보여준다 — 통과한 척하면 화면이 진행된
-    // 것으로 오해한다.
+    bindModalClose(gatePanelEl, gateCloseEl);
+
+    // ====== C2 규범 조건 (§5) ======
+    // 카드에 조문을 붙여 낸다. 값만 보이면 감리 질의("무슨 근거냐")에 화면이 답을
+    // 못 하고, 사람이 constraints.json 을 직접 열어 대조하게 된다.
+    const C2_CARDS = [
+      ["scenario_head_count", "기준개수", "개"],
+      ["water_supply_m3", "수원", "m³"],
+      ["discharge_minutes", "방수 시간", "분"],
+      ["emergency_power_minutes", "비상전원", "분"],
+      ["horizontal_distance_m", "수평거리 R", "m"],
+      ["head_spacing_square_m", "정방형 간격 S", "m"],
+      ["wall_clearance_max_m", "벽 이격 최대", "m"],
+      ["temp_rating_c", "헤드 표시온도", "℃"],
+      ["quick_response_required", "조기반응형 헤드", ""],
+      ["k_factor", "K 계수", ""],
+      ["flow_lpm_min", "헤드 방수량", "L/min"],
+      ["head_to_ceiling_max_m", "헤드-천장 최대", "m"],
+      ["zone_area_max_m2", "방호구역 면적", "m²"],
+      ["zone_floors_max", "방호구역 층수", "층"],
+      ["spray_zone_heads_max", "방수구역 헤드", "개"],
+      ["branch_heads_per_side_max", "가지배관 편측 헤드", "개"],
+      ["cross_main_min_dn", "교차배관 최소 관경", "DN"],
+    ];
+
+    function c2Value(value, unit) {
+      if (typeof value === "boolean") return value ? "필요" : "불필요";
+      // R×√2 같은 유도값은 부동소수 꼬리가 길다. 16자리를 그대로 내면 없는
+      // 정밀도를 주장하게 된다 — 원본은 constraints.json 에 그대로 남고
+      // 화면만 줄인다.
+      const shown = typeof value === "number" && !Number.isInteger(value)
+        ? String(Number(value.toFixed(3))) : String(value);
+      return `${shown}${unit ? " " + unit : ""}`;
+    }
+
+    function renderC2() {
+      const c2 = state.c2;
+      if (!c2) return;
+      const data = c2.constraints;
+      const esfr = data.esfr || null;
+      const voided = new Set((esfr && esfr.voided_fields) || []);
+      const traceBy = {};
+      (data.trace || []).forEach((t) => { traceBy[t.field] = t; });
+
+      c2ArtifactEl.textContent = `${c2.artifact} v${c2.version}`;
+      c2BannerEl.classList.toggle("warn-block", !!(esfr && esfr.active));
+      if (esfr && esfr.active) {
+        c2BannerEl.innerHTML = `<strong>103B 활성</strong> — ${escHtml(esfr.reason)}`
+          + ` (확정 ${escHtml(esfr.operator)}, ${escHtml(esfr.decided_at)}).`
+          + ` NFTC 103 의 ${voided.size}개 항목이 근거를 잃어 비었습니다. 103B 의 K값·간격표는 아직 없어 채우지 않았습니다.`;
+      } else {
+        c2BannerEl.innerHTML = `NFTC 시행일 <strong>${escHtml(data.nftc_effective_date)}</strong> 기준.`
+          + (esfr ? ` 103B 는 켜지 않았습니다 — ${escHtml(esfr.reason)}` : "")
+          + ` 아래 값은 게이트에서 사람이 확정한 사실에서만 나옵니다.`;
+      }
+
+      c2GridEl.innerHTML = C2_CARDS.map(([field, label, unit]) => {
+        const value = data[field];
+        const trace = traceBy[field];
+        if (voided.has(field)) {
+          return `<div class="cn-card void"><span class="k">${escHtml(label)}</span>`
+            + `<span class="v">103B 활성으로 무효</span>`
+            + `<span class="src">NFTC 103 근거가 사라졌습니다. 103B 표는 미구현 — 사람이 값을 대야 합니다.</span></div>`;
+        }
+        if (value === null || value === undefined) {
+          return `<div class="cn-card untraced"><span class="k">${escHtml(label)}</span>`
+            + `<span class="v">—</span><span class="src">값 없음</span></div>`;
+        }
+        const src = trace
+          ? `${escHtml(trace.code)} ${escHtml(trace.article)}${trace.note ? " · " + escHtml(trace.note) : ""}`
+          : "조문 출처 없음 — 사내 기준이거나 유도값";
+        return `<div class="cn-card${trace ? "" : " untraced"}"><span class="k">${escHtml(label)}</span>`
+          + `<span class="v">${escHtml(c2Value(value, unit))}</span>`
+          + `<span class="src">${src}</span></div>`;
+      }).join("");
+
+      c2TraceEl.innerHTML = (data.trace || []).map((t) => `<tr>`
+        + `<td>${escHtml(t.field)}</td><td>${escHtml(t.code)}</td><td>${escHtml(t.article)}</td>`
+        + `<td>${escHtml(t.effective_date)}</td>`
+        + `<td class="room-id">${escHtml(String(t.text_hash).slice(0, 16))}</td>`
+        + `<td>${escHtml(t.note || "")}</td></tr>`).join("");
+    }
+
+    function adoptC2(body) {
+      state.c2 = body;
+      state.stage = "c3";
+      c2OpenEl.disabled = false;
+      renderStepper();
+      renderC2();
+    }
+
+    function setC2Status(text, warn) {
+      setNote(c2StatusEl, text, warn);
+    }
+
     runC2El.addEventListener("click", async () => {
       runC2El.disabled = true;
-      gateStatusEl.classList.remove("warn");
-      gateStatusEl.textContent = "C2 실행 중…";
+      setC2Status("C2 실행 중…", false);
       try {
         const res = await fetch("/api/design/c2/constraints", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: state.sessionId }),
         });
         const body = await res.json().catch(() => null);
-        gateStatusEl.classList.toggle("warn", !res.ok);
-        gateStatusEl.textContent = (body && body.message) || `HTTP ${res.status}`;
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          // 422 는 결손이다. 게이트로 돌려보내는 것이 맞는 안내다.
+          setC2Status(body.code === "MISSING_BUILDING_FACT"
+            ? `${body.message} — 게이트에서 확정하세요.` : (body.message || `HTTP ${res.status}`), true);
+          return;
+        }
+        adoptC2(body);
+        setC2Status(body.rebaked
+          ? `기준 생성 — ${body.artifact} v${body.version}`
+          : `기준이 그대로입니다 — ${body.artifact} v${body.version} (다시 굽지 않음)`, false);
+        c2PanelEl.classList.add("open");
       } catch (err) {
-        gateStatusEl.classList.add("warn");
-        gateStatusEl.textContent = "오류: " + err.message;
+        setC2Status("오류: " + err.message, true);
       } finally {
         runC2El.disabled = !state.gatePassed;
+      }
+    });
+
+    c2OpenEl.addEventListener("click", () => {
+      if (!state.c2) return;
+      renderC2();
+      c2PanelEl.classList.add("open");
+    });
+    bindModalClose(c2PanelEl, c2CloseEl);
+
+    // ====== C2B 103B 판단 (§6) ======
+    // 물음마다 왜 묻는지를 같이 낸다. 이유 없이 체크박스만 세 개 두면 사람이
+    // 습관적으로 전부 켜고, 그 순간 설비 종류가 바뀐다.
+    const ESFR_QUESTIONS = [
+      ["owner_adopts_esfr", "발주자가 103B 를 채택했습니까?",
+       "도면·용도에서 유도하지 않습니다. 발주자 확정이 없으면 기본 트랙은 NFTC 103 입니다."],
+      ["site_conditions_ok", "설치장소 구조 조건을 만족합니까?",
+       "천장 기울기·천장고·보 구조 등 NFTC 103B 의 설치장소 조건. 도면만으로 판정하지 않습니다."],
+      ["commodity_restricted", "저장물이 103B 제한 품목입니까?",
+       "제4류 위험물·타이어·목재·종이·섬유류 등이 있으면 103B 를 쓸 수 없습니다. 하나라도 있으면 '예'."],
+    ];
+
+    // 답의 자리는 물음에서 만든다. 물음만 늘고 자리가 안 늘면 그 답은 `undefined`
+    // 가 되고, `undefined` 는 "안 골랐다" 검사를 빠져나가 '아니오'로 확정된다.
+    state.esfrAnswers = Object.fromEntries(ESFR_QUESTIONS.map(([key]) => [key, null]));
+
+    function esfrAnswered(value) {
+      return value === true || value === false;
+    }
+
+    function esfrVerdict() {
+      const a = state.esfrAnswers;
+      if (!ESFR_QUESTIONS.every(([key]) => esfrAnswered(a[key]))) return null;
+      return a.owner_adopts_esfr && a.site_conditions_ok && !a.commodity_restricted;
+    }
+
+    function renderEsfrVerdict() {
+      const verdict = esfrVerdict();
+      esfrVerdictEl.className = "remain verdict "
+        + (verdict === null ? "unknown" : (verdict ? "on" : "off"));
+      esfrVerdictEl.textContent = verdict === null
+        ? "세 조건을 모두 답해야 판정합니다"
+        : (verdict ? "→ 103B 활성" : "→ 103B 비활성 (NFTC 103 유지)");
+      esfrSubmitEl.disabled = verdict === null || !esfrOperatorEl.value.trim();
+    }
+
+    function renderEsfr() {
+      const answers = state.esfrAnswers;
+      esfrQuestionsEl.innerHTML = ESFR_QUESTIONS.map(([key, question, why]) => {
+        const picked = answers[key];
+        const opt = (val, label) => `<label><input type="radio" name="esfr-${key}"`
+          + ` data-key="${key}" data-val="${val}"${picked === val ? " checked" : ""}>${label}</label>`;
+        return `<div class="esfr-q${esfrAnswered(picked) ? "" : " unanswered"}">`
+          + `<span class="q">${escHtml(question)}</span>`
+          + `<span class="why">${escHtml(why)}</span>`
+          + `<span class="opts">${opt(true, "예")}${opt(false, "아니오")}`
+          + (esfrAnswered(picked) ? "" : `<span class="why" style="color:var(--warn);">아직 답하지 않았습니다</span>`)
+          + `</span></div>`;
+      }).join("");
+      renderEsfrVerdict();
+    }
+
+    function setEsfrStatus(text, warn) {
+      setNote(esfrStatusEl, text, warn);
+    }
+
+    esfrQuestionsEl.addEventListener("change", (ev) => {
+      const { key, val } = ev.target.dataset;
+      // 아는 값만 답으로 받는다. 모르는 문자열을 `=== "true"` 로 접으면 '아니오'가
+      // 되는데, 그 방향이 바로 묻지 않은 조건을 거짓으로 확정하는 쪽이다.
+      if (!key || (val !== "true" && val !== "false")) return;
+      state.esfrAnswers[key] = val === "true";
+      renderEsfr();
+    });
+    esfrOperatorEl.addEventListener("input", renderEsfrVerdict);
+
+    esfrOpenEl.addEventListener("click", () => {
+      renderEsfr();
+      setNote(esfrMsgEl, "", false);
+      esfrPanelEl.classList.add("open");
+    });
+    bindModalClose(esfrPanelEl, esfrCloseEl);
+
+    esfrSubmitEl.addEventListener("click", async () => {
+      const operator = esfrOperatorEl.value.trim();
+      if (esfrVerdict() === null || !operator) {
+        setNote(esfrMsgEl, "세 조건과 확정자를 모두 채워야 합니다 — 감사 기록에 남습니다.", true);
+        return;
+      }
+      esfrSubmitEl.disabled = true;
+      setNote(esfrMsgEl, "확정 중…", false);
+      try {
+        const res = await fetch("/api/design/c2b/esfr", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: state.sessionId, operator,
+            note: esfrNoteEl.value.trim(), ...state.esfrAnswers,
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setNote(esfrMsgEl, body.message || `HTTP ${res.status}`, true);
+          return;
+        }
+        // 기준을 이미 구웠다면 서버가 같이 다시 구워 보낸다. 화면이 옛 기준을
+        // 들고 있으면 무효가 된 수평거리를 계속 보여준다.
+        if (body.constraints) adoptC2(body);
+        esfrPanelEl.classList.remove("open");
+        setNote(esfrMsgEl, "", false);
+        setEsfrStatus(`103B ${body.esfr.active ? "활성" : "비활성"} (${operator}) — ${body.esfr.reason}`,
+                      body.esfr.active);
+        if (body.constraints) {
+          setC2Status(body.rebaked
+            ? `103B 판단을 반영해 다시 구웠습니다 — ${body.artifact} v${body.version}`
+            : `기준이 그대로입니다 — ${body.artifact} v${body.version}`, false);
+        }
+      } catch (err) {
+        setNote(esfrMsgEl, "오류: " + err.message, true);
+      } finally {
+        renderEsfrVerdict();
       }
     });
 

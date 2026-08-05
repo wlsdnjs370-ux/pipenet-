@@ -29,6 +29,7 @@
     .canvas-pane { position: relative; background: #0f172a; overflow: hidden; }
     .canvas-pane canvas { display: block; width: 100%; height: 100%; cursor: grab; }
     .canvas-pane canvas.is-panning { cursor: grabbing; }
+    .canvas-pane canvas.is-picking { cursor: crosshair; }
     .canvas-overlay { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; pointer-events: none; gap: 10px; flex-wrap: wrap; }
     .canvas-overlay .pill { background: rgba(15, 23, 42, 0.85); color: #e5e7eb; border: 1px solid #334155; padding: 6px 10px; font-size: 0.8rem; pointer-events: auto; font-family: ui-monospace, monospace; }
     .canvas-overlay button { pointer-events: auto; background: #1f2937; color: #e5e7eb; border: 1px solid #475569; padding: 6px 10px; font-size: 0.78rem; cursor: pointer; }
@@ -69,6 +70,10 @@
     .overlay-row .swatch { width: 12px; height: 12px; border: 1px solid #94a3b8; }
     .overlay-row .count { font-size: 0.7rem; color: var(--muted); font-family: ui-monospace, monospace; }
     .overlay-row.empty { color: var(--muted); }
+    .tool-row { display: flex; gap: 6px; margin-bottom: 6px; }
+    .tool-row button { flex: 1; padding: 6px 4px; border: 1px solid var(--line); background: #fff; font-size: 0.76rem; font-family: inherit; cursor: pointer; }
+    .tool-row button.is-on { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 700; }
+    .tool-row button:disabled { color: var(--muted); background: #f3f4f6; cursor: not-allowed; }
     /* GATE 결손 폼 (§12.8). 실이 200개인 도면을 380px 사이드바에서 채울 수는 없다. */
     .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); display: none; z-index: 40; }
     .modal.open { display: block; }
@@ -180,6 +185,20 @@
       </section>
 
       <section>
+        <h3>실 편집</h3>
+        <div class="tool-row">
+          <button id="dw-tool-pan" class="is-on" type="button">이동</button>
+          <button id="dw-tool-select" type="button" disabled>선택</button>
+          <button id="dw-tool-split" type="button" disabled>자르기</button>
+        </div>
+        <div class="tool-row">
+          <button id="dw-merge-btn" type="button" disabled>합치기</button>
+          <button id="dw-delete-btn" type="button" disabled>지우기</button>
+        </div>
+        <p id="dw-edit-note" class="note">C1 인식을 먼저 끝내세요.</p>
+      </section>
+
+      <section>
         <h3>GATE 인간 확정</h3>
         <button id="dw-gate-open" class="run-btn" type="button" disabled>결손 항목 채우기</button>
         <p id="dw-gate-progress" class="note">C1 인식을 먼저 끝내세요.</p>
@@ -248,7 +267,7 @@
     };
     const DESIGN_COLORS = {
       room: "#38bdf8", virtualEdge: "#f87171",   // ★ 경고색 — 검수 우선
-      core: "#f472b6", zone: "#a78bfa", obstacle: "#fb923c",
+      core: "#f472b6", zone: "#a78bfa", obstacle: "#fb923c", picked: "#fde047",
       pipeBranch: "#3b82f6", pipeCross: "#2563eb", pipeMain: "#1d4ed8",
       head: "#ef4444", valve: "#facc15",
     };
@@ -292,6 +311,9 @@
       view: { zoom: 1, panX: 0, panY: 0 },
       dpr: window.devicePixelRatio || 1,
       dxfFile: null, dxfToken: null, drag: null, fitZoom: null,
+
+      // 실 편집(§12.6). `tool` 이 "pan" 이 아니면 캔버스 클릭이 편집 조작이 된다.
+      tool: "pan", splitDraft: null, editBusy: false,
 
       // 인식기는 mm 로 답한다. 캔버스 좌표는 도면 단위 그대로라, 받는 자리에서
       // 한 번 되돌리지 않으면 m 단위 도면에서 오버레이가 1000배로 벌어진다.
@@ -354,6 +376,12 @@
     const zoomInBtn = document.getElementById("dw-zoom-in");
     const zoomOutBtn = document.getElementById("dw-zoom-out");
     const zoomLevelEl = document.getElementById("dw-zoom-level");
+    const toolPanEl = document.getElementById("dw-tool-pan");
+    const toolSelectEl = document.getElementById("dw-tool-select");
+    const toolSplitEl = document.getElementById("dw-tool-split");
+    const mergeBtnEl = document.getElementById("dw-merge-btn");
+    const deleteBtnEl = document.getElementById("dw-delete-btn");
+    const editNoteEl = document.getElementById("dw-edit-note");
 
     // ====== Canvas 리사이즈 ======
     function resizeCanvas() {
@@ -458,19 +486,30 @@
 
     function drawDesignOverlays() {
       if (state.overlayVisible.rooms && state.rooms.length) {
-        ctx.strokeStyle = DESIGN_COLORS.room;
-        ctx.fillStyle = DESIGN_COLORS.room;
-        ctx.lineWidth = 1.2;
         for (const room of state.rooms) {
           if (!room.polygon || room.polygon.length < 3) continue;
+          const picked = state.gate.selection.has(room.id);
+          ctx.strokeStyle = ctx.fillStyle = picked ? DESIGN_COLORS.picked : DESIGN_COLORS.room;
+          ctx.lineWidth = picked ? 2.4 : 1.2;
           tracePoly(room.polygon);
           ctx.closePath();
-          ctx.globalAlpha = 0.12;
+          ctx.globalAlpha = picked ? 0.30 : 0.12;
           ctx.fill();
           ctx.globalAlpha = 0.9;
           ctx.stroke();
         }
         ctx.globalAlpha = 1;
+      }
+
+      // 아직 서버에 보내지 않은 자르는 선. 실제 경계가 아니므로 점선으로만 둔다.
+      if (state.splitDraft) {
+        const [ax, ay] = worldToScreen(state.splitDraft.p1[0], state.splitDraft.p1[1]);
+        const [bx, by] = worldToScreen(state.splitDraft.p2[0], state.splitDraft.p2[1]);
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = DESIGN_COLORS.picked;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        ctx.setLineDash([]);
       }
 
       // ★ 가상 폐합선 — 실측이 아니라 알고리즘 추정이다. 점선 + 경고색으로
@@ -605,19 +644,43 @@
     }, { passive: false });
 
     canvas.addEventListener("mousedown", (e) => {
-      state.drag = { x: e.clientX, y: e.clientY, panX: state.view.panX, panY: state.view.panY };
+      const rect = canvas.getBoundingClientRect();
+      if (state.tool === "split" && state.rooms.length) {
+        const at = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        state.splitDraft = { p1: at, p2: at };
+        return;
+      }
+      // 끈 거리를 재 둔다. 선택 도구에서 화면을 옮기려던 손짓과 실을 고르는
+      // 클릭을 나누는 유일한 단서다.
+      state.drag = { x: e.clientX, y: e.clientY, panX: state.view.panX,
+                     panY: state.view.panY, moved: false };
       canvas.classList.add("is-panning");
     });
 
-    window.addEventListener("mouseup", () => {
+    window.addEventListener("mouseup", (e) => {
+      if (state.splitDraft) {
+        const { p1, p2 } = state.splitDraft;
+        state.splitDraft = null;
+        render();
+        submitSplit(p1, p2);
+        return;
+      }
+      const drag = state.drag;
       state.drag = null;
       canvas.classList.remove("is-panning");
+      if (drag && !drag.moved && state.tool === "select") pickRoomAt(e);
     });
 
     window.addEventListener("mousemove", (e) => {
       const rect = canvas.getBoundingClientRect();
       const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
-      if (state.drag) {
+      if (state.splitDraft) {
+        state.splitDraft.p2 = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        render();
+      } else if (state.drag) {
+        if (Math.abs(e.clientX - state.drag.x) + Math.abs(e.clientY - state.drag.y) > 3) {
+          state.drag.moved = true;
+        }
         state.view.panX = state.drag.panX + (e.clientX - state.drag.x);
         state.view.panY = state.drag.panY + (e.clientY - state.drag.y);
         render();
@@ -832,6 +895,8 @@
         state.gate.order = [];
         state.gate.facts = {};
         await loadGateItems();
+        updateEditTools();
+        setEditNote("실을 눌러 고른 뒤 합치기·자르기·지우기. 편집은 바로 저장됩니다.");
         const c = result.counts || {};
         recognizeStatusEl.textContent =
           `실 ${c.rooms}개 / 코어 ${c.cores}개 / 가상 폐합선 ${c.virtual_edges}개 — `
@@ -843,6 +908,197 @@
       } finally {
         recognizeBtnEl.disabled = false;
       }
+    });
+
+    // ====== 실 편집 (§12.6) ======
+    // 인식기가 뽑은 face 가 늘 맞지는 않는다. 그 수정은 GATE 안에서만 할 수 있고,
+    // 고친 결과가 그대로 C4 의 헤드 배치 면적이 된다. 그래서 폴리곤 수술은 화면이
+    // 흉내 내지 않는다 — 서버가 고친 실을 돌려주고 화면은 그것만 그린다.
+    function pointInPolygon(x, y, poly) {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i];
+        const [xj, yj] = poly[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
+
+    /** 겹친 실은 작은 쪽을 고른다. 큰 실 안에 든 작은 실은 달리 집을 방법이 없다. */
+    function roomAt(wx, wy) {
+      let best = null;
+      for (const room of state.rooms) {
+        if (!room.polygon || room.polygon.length < 3) continue;
+        if (!pointInPolygon(wx, wy, room.polygon)) continue;
+        if (!best || (room.area_m2 || 0) < (best.area_m2 || 0)) best = room;
+      }
+      return best;
+    }
+
+    function toMm(point) {
+      const k = state.unitToMm || 1;
+      return [point[0] * k, point[1] * k];
+    }
+
+    function setEditNote(text, warn) {
+      editNoteEl.textContent = text;
+      editNoteEl.classList.toggle("warn", !!warn);
+    }
+
+    function editableNow() {
+      return !!(state.sessionId && state.rooms.length && !state.gatePassed);
+    }
+
+    function updateEditTools() {
+      const ready = editableNow();
+      const n = state.gate.selection.size;
+      toolSelectEl.disabled = !ready;
+      toolSplitEl.disabled = !ready;
+      mergeBtnEl.disabled = !ready || n < 2 || state.editBusy;
+      deleteBtnEl.disabled = !ready || n < 1 || state.editBusy;
+      if (!ready && state.tool !== "pan") setTool("pan");
+    }
+
+    function setTool(tool) {
+      state.tool = tool;
+      for (const [el, id] of [[toolPanEl, "pan"], [toolSelectEl, "select"], [toolSplitEl, "split"]]) {
+        el.classList.toggle("is-on", tool === id);
+      }
+      canvas.classList.toggle("is-picking", tool !== "pan");
+      state.splitDraft = null;
+      render();
+    }
+
+    toolPanEl.addEventListener("click", () => setTool("pan"));
+    toolSelectEl.addEventListener("click", () => setTool("select"));
+    toolSplitEl.addEventListener("click", () => setTool("split"));
+
+    function pickRoomAt(ev) {
+      const rect = canvas.getBoundingClientRect();
+      const [wx, wy] = screenToWorld(ev.clientX - rect.left, ev.clientY - rect.top);
+      const room = roomAt(wx, wy);
+      if (!room) {
+        if (!ev.shiftKey) state.gate.selection = new Set();
+      } else if (ev.shiftKey) {
+        if (state.gate.selection.has(room.id)) state.gate.selection.delete(room.id);
+        else state.gate.selection.add(room.id);
+      } else {
+        state.gate.selection = new Set([room.id]);
+      }
+      afterSelectionChange();
+      setEditNote(room
+        ? `${room.name || room.id} — ${(room.area_m2 || 0).toFixed(1)}㎡ (선택 ${state.gate.selection.size}개)`
+        : `선택 ${state.gate.selection.size}개`, false);
+    }
+
+    function afterSelectionChange() {
+      updateEditTools();
+      if (gatePanelEl.classList.contains("open")) {
+        renderGateTable();
+        gateSyncControls();
+      }
+      render();
+    }
+
+    const EDIT_FIELD_LABEL = (field) => {
+      const spec = state.gate.specByField[field];
+      return spec ? spec.label : field;
+    };
+
+    function editSummary(rec) {
+      if (rec.op === "merge") {
+        const lost = (rec.cleared || []).map(EDIT_FIELD_LABEL).join(", ");
+        return `${rec.rooms.length}개 실을 ${rec.into} 로 합쳤습니다 — ${rec.area_m2}㎡`
+          + (lost ? `. 값이 달라 비운 항목: ${lost} (다시 확정해야 합니다)` : "");
+      }
+      if (rec.op === "split") {
+        return `${rec.room} 을 ${rec.into.join(" / ")} 로 잘랐습니다 — `
+          + `${rec.area_m2.map((a) => a + "㎡").join(" / ")}`;
+      }
+      return `${rec.room} 을 지웠습니다 — ${rec.area_m2}㎡`;
+    }
+
+    /** 서버가 돌려준 실로 통째로 갈아 끼운다. 사라진 실에 걸려 있던 화면 입력을
+     *  남겨 두면 없는 실을 가리키는 값이 확정에 실린다. */
+    function adoptRooms(rooms) {
+      state.rooms = (rooms || []).map(
+        (r) => ({ ...r, polygon: toDrawingUnits(r.polygon || []) }));
+      const alive = new Set(state.rooms.map((r) => r.id));
+      for (const id of Object.keys(state.gate.values)) {
+        if (!alive.has(id)) delete state.gate.values[id];
+      }
+      state.gate.order = state.gate.order.filter((id) => alive.has(id));
+      return alive;
+    }
+
+    async function postEdit(edit) {
+      if (state.editBusy || !state.sessionId) return false;
+      state.editBusy = true;
+      updateEditTools();
+      setEditNote("반영 중…", false);
+      try {
+        const res = await fetch("/api/design/gate/edit", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: state.sessionId, operator: gateOperatorEl.value.trim(), edit,
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok || !body || !body.ok) {
+          setEditNote((body && body.message) || `HTTP ${res.status}`, true);
+          return false;
+        }
+        const alive = adoptRooms(body.rooms);
+        // 고친 실을 그대로 골라 둔다 — 합친 실의 용도를 바로 다시 정해야 한다.
+        const rec = body.edit;
+        const next = rec.op === "merge" ? [rec.into] : (rec.op === "split" ? rec.into : []);
+        state.gate.selection = new Set(next.filter((id) => alive.has(id)));
+        renderDesignList();
+        await loadGateItems();
+        updateEditTools();
+        render();
+        setEditNote(editSummary(rec), false);
+        return true;
+      } catch (err) {
+        setEditNote("오류: " + err.message, true);
+        return false;
+      } finally {
+        state.editBusy = false;
+        updateEditTools();
+      }
+    }
+
+    function submitSplit(p1, p2) {
+      if (!editableNow()) return;
+      const px = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * state.view.zoom;
+      if (px < 8) return;                       // 클릭에 가깝다 — 자를 뜻이 아니다
+      const room = roomAt((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2);
+      if (!room) {
+        setEditNote("자를 실을 가로질러 선을 그으세요. 선의 가운데가 실 안에 있어야 합니다.", true);
+        return;
+      }
+      postEdit({ op: "split", room: room.id, line: [toMm(p1), toMm(p2)] });
+    }
+
+    mergeBtnEl.addEventListener("click", () => {
+      postEdit({ op: "merge", rooms: [...state.gate.selection] });
+    });
+
+    async function deleteSelected() {
+      for (const id of [...state.gate.selection]) {
+        if (!await postEdit({ op: "delete", room: id })) return;
+      }
+    }
+    deleteBtnEl.addEventListener("click", deleteSelected);
+
+    window.addEventListener("keydown", (e) => {
+      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT"
+        || e.target.tagName === "TEXTAREA" || e.target.isContentEditable)) return;
+      if (e.key !== "Delete" || !state.gate.selection.size || !editableNow()) return;
+      e.preventDefault();
+      deleteSelected();
     });
 
     // ====== GATE 인간 확정 (§4 · §12.8) ======
@@ -1179,12 +1435,16 @@
       if (el.dataset && el.dataset.select !== undefined) {
         if (el.checked) state.gate.selection.add(el.dataset.select);
         else state.gate.selection.delete(el.dataset.select);
+        updateEditTools();
+        render();
         return;
       }
       if (el.id === "dw-gate-all") {
         state.gate.selection = new Set(el.checked ? state.rooms.map((r) => r.id) : []);
         renderGateTable();
         gateSyncControls();
+        updateEditTools();
+        render();
         return;
       }
       if (!el.dataset || !el.dataset.gate) return;
@@ -1309,6 +1569,8 @@
         if (res.ok && body.passed) {
           state.gatePassed = true;
           state.stage = "c2";
+          updateEditTools();
+          setEditNote("게이트를 통과해 실을 더 고칠 수 없습니다.");
           renderStepper();
           renderGateProgress();
           gatePanelEl.classList.remove("open");
@@ -1454,6 +1716,7 @@
 
     renderStepper();
     renderDesignList();
+    updateEditTools();
     startSession();
     setTimeout(resizeCanvas, 50);
   </script>

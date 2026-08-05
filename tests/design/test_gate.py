@@ -33,6 +33,9 @@ def _raw_building(*, floor_height_mm=None):
             "name": "사무실", "use": "업무시설",
             "ceiling": {"has_finish": None},
             "confidence": {"use": 0.62}, "provenance": {"use": "C180"},
+        }, {
+            # 벽 틈으로 새어 나온 잡 face. 사람이 지우는 대상이다.
+            "id": "R-1F-013", "floor": "1F", "area_m2": 0.9,
         }],
         "cores": [{"id": "SH-01", "kind": "SHAFT", "area_m2": 2.1, "confidence": 0.4}],
         "obstacles": {"status": None},
@@ -179,7 +182,8 @@ def _confirm_all(client, sid, **extra):
             "building.use": {"building.use": "판매시설"},
             "obstacles.status": {"obstacles.status": "partial"},
         },
-        "edits": [{"op": "split", "room": "R-1F-007", "into": ["R-1F-007a", "R-1F-007b"]}],
+        # 지운 실은 결손에서도 사라져야 한다 — 편집이 결손 판정보다 먼저 돈다.
+        "edits": [{"op": "delete", "room": "R-1F-013"}],
         **extra,
     })
 

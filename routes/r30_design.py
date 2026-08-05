@@ -294,6 +294,43 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
             return err
         return jsonify(G.gate_items(draft))
 
+    # [문서정합] §12.6 은 편집을 `gate/confirm` 의 `edits` 로만 보내라고 적었다.
+    # 그러면 화면이 합친 뒤의 폴리곤을 스스로 계산해 그려야 하고, 서버가 "맞닿지
+    # 않아 못 합친다" 고 거절하는 것을 확정 순간에야 알게 된다. 편집은 한 건씩
+    # 바로 반영해 결과 폴리곤을 돌려주고, `confirm` 의 `edits` 는 계약대로 남긴다.
+    @app.post("/api/design/gate/edit")
+    def design_gate_edit():
+        body = request.get_json(silent=True) or {}
+        sess, err = _open(str(body.get("session_id") or ""))
+        if err:
+            return err
+        draft, version, err = _load_draft(sess)
+        if err:
+            return err
+        if draft.gate.passed:
+            return _fail("GATE_ALREADY_PASSED",
+                         "이미 확정된 세션입니다. 실을 다시 고칠 수 없습니다.", 409)
+
+        try:
+            edits = G.apply_edits(draft, [body.get("edit") or {}])
+        except (ValueError, TypeError) as exc:
+            return _fail("INVALID_EDIT", str(exc), 400)
+
+        draft.gate.edits.extend(edits)
+        draft.gate.unresolved = G.unresolved(draft)
+        try:
+            new_version = sess.write("building.json", draft.to_dict(),
+                                     if_version=version)
+        except S.VersionConflict as conflict:
+            return _fail("VERSION_CONFLICT",
+                         "다른 곳에서 먼저 저장했습니다. 현재 내용을 확인하세요.", 409,
+                         current_version=conflict.current, current=conflict.data)
+
+        actor = (body.get("operator") or "").strip() or "unknown"
+        sess.audit(actor, "GATE", "room_edit", edits[0])
+        return jsonify({"ok": True, "version": new_version, "edit": edits[0],
+                        "rooms": [r.to_dict() for r in draft.rooms]})
+
     @app.post("/api/design/gate/confirm")
     def design_gate_confirm():
         body = request.get_json(silent=True) or {}
@@ -306,13 +343,15 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
 
         operator = (body.get("operator") or "").strip() or None
         if_version = body.get("if_version")
+        # 편집이 먼저다. 사람이 실을 자른 뒤 그 자식 실의 용도를 같은 요청에
+        # 실어 보내므로, 값을 먼저 반영하면 아직 없는 실을 가리킨다.
         try:
+            edits = G.apply_edits(draft, body.get("edits") or [])
             changes = G.apply_values(draft, body.get("values") or {})
         except (ValueError, TypeError) as exc:
             return _fail("INVALID_VALUE", str(exc), 400)
 
         defaults = G.apply_defaults(draft)
-        edits = list(body.get("edits") or [])
         draft.gate.edits.extend(edits)
         draft.gate.operator = operator
         draft.gate.unresolved = G.unresolved(draft)

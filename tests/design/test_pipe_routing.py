@@ -1,0 +1,212 @@
+# -*- coding: utf-8 -*-
+"""지시서 §9.2·§9.3·§13.4 — 가지배관 골격 (R1~R4).
+
+지키는 것은 둘이다. **8개는 분기점 기준 한쪽**이라는 것(전체로 세어 자르면 적법한
+16개짜리 가지배관이 둘로 쪼개진다), 그리고 **최적화가 위법 형상을 만들지 않는다**는
+것(총연장을 줄이려고 대칭 분기로 수렴하면 토너먼트가 된다).
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+
+_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(_ROOT))
+
+from core.design.deterministic import pipe_routing as PR  # noqa: E402
+
+_SPACING = 3.2      # m — 헤드 간격. 라인 묶음 허용 오차는 이 값의 1/4 이다.
+_STEP = _SPACING * 1000.0
+
+
+class _Limits:
+    """라우팅이 실제로 보는 값만. 전 필드를 되살리면 그 코드가 두 번째 진실이 된다."""
+
+    def __init__(self, per_side=8, spacing=_SPACING):
+        self.branch_heads_per_side_max = per_side
+        self.head_spacing_square_m = spacing
+
+
+def _room(heads, *, room_id="R-1F-001", axis_deg=0.0):
+    return {"room_id": room_id, "metrics": {"axis_deg": axis_deg},
+            "heads": [{"id": f"H-{i:03d}", "room_id": room_id, "x": x, "y": y,
+                       "row": 0, "col": i} for i, (x, y) in enumerate(heads, 1)]}
+
+
+def _grid(cols, rows):
+    """cols 열 × rows 행. 열이 많을수록 교차배관이 x 를 따라 눕고, 그때 한 열이
+    가지배관 하나가 된다 — 한쪽 8개 상한을 보려면 이 모양이어야 한다."""
+    return [(c * _STEP, r * _STEP) for c in range(cols) for r in range(rows)]
+
+
+def _ys(heads):
+    return {h["id"]: h["y"] for h in _room(heads)["heads"]}
+
+
+def _plan(heads, *, per_side=8, valve=None, rooms=None):
+    return PR.plan_branches("Z-1F-01", rooms or [_room(heads)],
+                            valve, _Limits(per_side))
+
+
+# ── C510 축 결정 ────────────────────────────────────────────────────────
+
+def test_교차배관은_장변을_따라_눕는다():
+    """가지배관은 짧고 많아야 한쪽 8개 상한에 여유가 생긴다(§9.2 C510)."""
+    heads = [(c * _STEP, r * _STEP) for c in range(6) for r in range(2)]
+    axes = PR.zone_axes([_room(heads)])
+    assert axes.cross_span_mm > axes.branch_span_mm
+    assert round(axes.to_dict()["cross_axis_deg"], 1) == 0.0
+
+
+def test_복도형은_밸브를_봐도_축을_뒤집지_않는다():
+    """장단변비 4 이상. 복도에서 가지배관이 장변을 따라가면 실 안으로 못 들어간다."""
+    heads = [(c * _STEP, 0.0) for c in range(10)] + [(c * _STEP, _STEP) for c in range(10)]
+    axes = PR.zone_axes([_room(heads)], valve_point=(5 * _STEP, -50 * _STEP))
+    assert axes.corridor is True and axes.flipped is False
+
+
+def test_밸브가_옆에_붙으면_교차배관이_그쪽으로_돈다():
+    """교차배관은 밸브에서 곧게 뻗어야 주배관이 우회하지 않는다(§9.2 C510-3)."""
+    heads = [(c * _STEP, r * _STEP) for c in range(6) for r in range(3)]
+    straight = PR.zone_axes([_room(heads)], valve_point=(-20 * _STEP, _STEP))
+    turned = PR.zone_axes([_room(heads)], valve_point=(2.5 * _STEP, -20 * _STEP))
+    assert straight.flipped is False
+    assert turned.flipped is True
+    assert abs(straight.theta - turned.theta) == pytest.approx(3.14159 / 2, abs=1e-3)
+
+
+def test_각도_후보는_실_격자에서만_고른다():
+    """[문서정합 §9.2] 헤드는 실 격자 위에 있다. 뭉치의 OBB 각도를 새로 재면 어느
+    실의 헤드 열과도 어긋난 교차배관이 나온다."""
+    axes = PR.zone_axes([_room(_grid(1, 4), axis_deg=30.0)])
+    assert axes.to_dict()["cross_axis_deg"] in (30.0, 120.0)
+
+
+def test_헤드가_없으면_배관을_놓지_않는다():
+    with pytest.raises(ValueError):
+        PR.zone_axes([_room([])])
+
+
+# ── R1·R2 — 8개는 한쪽 기준 ─────────────────────────────────────────────
+
+def test_R1_한쪽_8개씩_총_16개는_분할하지_않는다():
+    """§9.4 — 전체로 세어 자르면 적법한 가지배관이 둘로 쪼개진다."""
+    plan = _plan(_grid(20, 16))
+    assert len(plan.crosses) == 1
+    assert len(plan.branches) == 20
+    assert all((len(b.left), len(b.right)) == (8, 8) for b in plan.branches)
+    assert plan.metrics["heads_per_side_max"] == 8
+    assert plan.flags == []
+
+
+def test_R2_한쪽이_9개면_분할한다():
+    plan = _plan(_grid(20, 17))
+    assert plan.metrics["heads_per_side_max"] <= 8
+    assert len(plan.crosses) == 2
+    assert plan.flags == []
+
+
+def test_분기점을_옮겨_해결되면_교차배관을_더_놓지_않는다():
+    """분할 전략 1. 한쪽만 넘치고 반대쪽에 여유가 있으면 tee 를 옮긴다."""
+    plan = _plan(_grid(20, 12), per_side=8)
+    assert len(plan.crosses) == 1
+    assert all(max(len(b.left), len(b.right)) <= 8 for b in plan.branches)
+
+
+def test_분기점_기준_양쪽이_교차배관을_사이에_둔다():
+    heads = _grid(20, 16)
+    plan = _plan(heads)
+    (cross,) = plan.crosses
+    ys = _ys(heads)
+    for branch in plan.branches:
+        assert all(ys[h] < cross.b_mm for h in branch.left)
+        assert all(ys[h] > cross.b_mm for h in branch.right)
+
+
+def test_모든_헤드가_정확히_한_가지배관에_실린다():
+    """빠뜨린 헤드는 미방호 구역이 되고, 겹친 헤드는 물을 두 번 센다."""
+    heads = [(c * _STEP, r * _STEP) for c in range(4) for r in range(20)]
+    plan = _plan(heads)
+    carried = [h for b in plan.branches for h in b.heads]
+    assert sorted(carried) == sorted(h["id"] for h in _room(heads)["heads"])
+
+
+def test_가지배관은_교차배관마다_따로_선다():
+    """교차배관이 둘이면 같은 헤드 열도 독립 가지배관 둘이다 — 하나로 이으면 루프다."""
+    plan = _plan(_grid(20, 20))
+    assert len(plan.crosses) == 2
+    assert {b.cross_id for b in plan.branches} == {c.id for c in plan.crosses}
+    assert len(plan.branches) == 40
+
+
+def test_상한을_못_맞추면_조용히_넘기지_않는다():
+    """한 격자점에 헤드가 몰려 분할로도 안 풀리는 경우. 플래그 없이 넘기면 그
+    가지배관은 수리계산만 통과하고 실제로는 물이 안 간다."""
+    plan = _plan([(0.0, 0.0)] * 5, per_side=2)
+    assert [f["code"] for f in plan.flags] == ["BRANCH_SPLIT_FAILED"]
+
+
+# ── R3·R4 — 토너먼트 금지 ───────────────────────────────────────────────
+
+def _undirected(edges):
+    graph: dict = {}
+    for a, b in edges:
+        graph.setdefault(a, set()).add(b)
+        graph.setdefault(b, set()).add(a)
+    return graph
+
+
+def test_R3_대칭_이분_분기는_토너먼트다():
+    """총연장 최소화(MST/Steiner)가 수렴하는 형상. 최적화가 위법을 만든다(§9.3)."""
+    graph = _undirected([("S", "A"), ("A", "B"), ("A", "C"),
+                         ("B", "B1"), ("B", "B2"), ("C", "C1"), ("C", "C2")])
+    assert PR.check_tournament(graph, "S")
+
+
+def test_R4_빗살은_통과한다():
+    """교차배관 1개 + 거기서 갈라지는 가지배관들. 허용 형상은 이것뿐이다."""
+    edges = [("S", "M1")]
+    for n in range(1, 5):
+        edges += [(f"M{n}", f"M{n + 1}"), (f"M{n}", f"B{n}"), (f"B{n}", f"H{n}")]
+    assert PR.check_tournament(_undirected(edges), "S") == []
+
+
+def test_교차배관_위의_이웃한_분기점은_토너먼트가_아니다():
+    """[문서정합 §9.3] 명세 예시("연속 2회 분기")를 그대로 쓰면 빗살이 전부
+    걸린다 — 교차배관의 분기점들은 서로 이웃한 차수 3 노드다."""
+    edges = [("S", "T1"), ("T1", "T2"), ("T1", "b1"), ("T2", "b2")]
+    assert PR.check_tournament(_undirected(edges), "S") == []
+
+
+def test_급수원에서_교차배관_둘로_갈라지는_것은_주배관_배열이다():
+    edges = [("S", "L1"), ("S", "R1")]
+    for side in ("L", "R"):
+        edges += [(f"{side}1", f"{side}2"), (f"{side}1", f"{side}b1"),
+                  (f"{side}2", f"{side}b2")]
+    assert PR.check_tournament(_undirected(edges), "S") == []
+
+
+def test_없는_급수원은_검사하지_않는다():
+    assert PR.check_tournament(_undirected([("A", "B")]), "S") == []
+
+
+def test_우리가_만든_빗살은_토너먼트가_아니다():
+    """C520 산출물을 그래프로 세워 스스로 검사한다. 검사가 우리 산출물을 통과하지
+    못하면 둘 중 하나가 틀린 것이다."""
+    plan = _plan(_grid(5, 6))
+    edges = []
+    for cross in plan.crosses:
+        mine = sorted((b for b in plan.branches if b.cross_id == cross.id),
+                      key=lambda b: b.a_mm)
+        edges.append(("SRC", f"{cross.id}-0"))
+        for n, branch in enumerate(mine, start=1):
+            tee = f"{cross.id}-{n}"
+            edges.append((f"{cross.id}-{n - 1}", tee))
+            for side in (branch.left, branch.right):
+                prev = tee
+                for head in side:
+                    edges.append((prev, head))
+                    prev = head
+    assert PR.check_tournament(_undirected(edges), "SRC") == []

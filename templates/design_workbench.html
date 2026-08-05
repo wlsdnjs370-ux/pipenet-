@@ -134,6 +134,16 @@
     .esfr-q .opts label { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; }
     .esfr-note { display: grid; gap: 4px; font-size: 0.76rem; font-weight: 600; }
     .esfr-note textarea { padding: 6px 8px; border: 1px solid var(--line); font-family: inherit; font-size: 0.8rem; resize: vertical; font-weight: 400; }
+    /* C3 밸브·구역 (§7). 표와 캔버스가 같은 상태를 본다 — 찍은 자리는 화면에만 있다. */
+    .c3-empty { padding: 16px; font-size: 0.8rem; color: var(--muted); line-height: 1.6; }
+    .flag-list { display: grid; gap: 6px; padding: 10px 16px; }
+    .flag-list .flag { border: 1px solid var(--warn); background: #fef2f2; color: #7f1d1d; padding: 7px 10px; font-size: 0.76rem; line-height: 1.5; }
+    .flag-list .flag .code { font-family: ui-monospace, monospace; font-weight: 700; margin-right: 6px; }
+    .zone-sum { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 0; font-size: 0.74rem; }
+    .zone-sum .z { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); padding: 3px 7px; font-family: ui-monospace, monospace; }
+    .zone-sum .z i { width: 10px; height: 10px; border: 1px solid #94a3b8; }
+    .gate-table td.unset select { border-color: var(--warn); background: #fef2f2; }
+    .gate-table .drop { border: 1px solid var(--line); background: #fff; padding: 1px 7px; font-size: 0.72rem; cursor: pointer; font-family: inherit; }
     .verdict.on { color: var(--warn); font-weight: 700; }
     .verdict.off { color: #15803d; font-weight: 700; }
     .verdict.unknown { color: var(--muted); }
@@ -241,6 +251,17 @@
       </section>
 
       <section>
+        <h3>C3 밸브·구역</h3>
+        <button id="dw-c3-load" class="run-btn" type="button" disabled>밸브 후보 불러오기</button>
+        <div class="tool-row" style="margin-top:6px;">
+          <button id="dw-tool-valve" type="button" disabled>밸브 찍기</button>
+          <button id="dw-c3-open" type="button" disabled>밸브 표 열기</button>
+        </div>
+        <p id="dw-c3-status" class="note">C2 기준을 먼저 구우세요.</p>
+        <p id="dw-c3-zone-note" class="note"></p>
+      </section>
+
+      <section>
         <h3>설계 산출물</h3>
         <div id="dw-design-list"></div>
         <p class="note">C1 인식이 붙기 전까지 항목 수는 0 입니다. 0 을 채워 보여주지 않습니다.</p>
@@ -341,6 +362,45 @@
     </div>
   </div>
 
+  <!-- C3 밸브·구역. 설비 종류와 설치 요건에는 기본값이 없다 — 안 고른 것과 '아니오'는 다르다. -->
+  <div id="dw-c3-panel" class="modal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div class="left">
+          <h2>C3 — 유수검지장치와 방호구역</h2>
+          <span id="dw-c3-remain" class="remain"></span>
+        </div>
+        <button id="dw-c3-close" type="button">닫기</button>
+      </div>
+      <div class="modal-sub">
+        <p class="note" style="margin:0; line-height:1.6;">
+          밸브 자리는 화면에서 <strong>사람이 찍습니다</strong> — 이 창을 닫고 [밸브 찍기] 로 후보 코어 안을 누르세요.
+          설비 종류와 설치 요건 4가지는 도면에 없어 기본값을 두지 않습니다.
+          요건에 '아니오' 로 답한 밸브도 확정은 되지만 미충족으로 남아 감사에 그대로 나갑니다.
+          구역 배정 거리는 직선거리가 아니라 <strong>문을 지나는 경로거리</strong>이고, 닿지 않는 실은
+          가까운 밸브에 붙이지 않고 미도달로 냅니다.
+        </p>
+      </div>
+      <div class="gate-scroll">
+        <table class="gate-table">
+          <thead id="dw-c3-thead"></thead>
+          <tbody id="dw-c3-tbody"></tbody>
+        </table>
+        <div id="dw-c3-empty" class="c3-empty"></div>
+        <div id="dw-c3-zones-sum" class="zone-sum"></div>
+        <div id="dw-c3-flags" class="flag-list"></div>
+      </div>
+      <div class="modal-foot">
+        <label class="who">확정자
+          <input id="dw-c3-operator" type="text" placeholder="이름 또는 사번" autocomplete="off">
+        </label>
+        <span id="dw-c3-msg" class="msg"></span>
+        <button id="dw-c3-submit" class="confirm" type="button" disabled>밸브 확정</button>
+        <button id="dw-c3-zones" class="confirm" type="button" disabled>구역 나누기</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // 레이어명은 업로드된 DXF 에서 온다 — 속성 보간 탈출을 막으려면 따옴표까지 5자 전부.
     function escHtml(s) {
@@ -389,10 +449,12 @@
     // 설계 오버레이는 자료가 생기는 PR 에서 하나씩 늘린다. 그릴 것이 없는 항목을
     // 미리 켜 두면 "켰는데 아무것도 없다" 가 인식 실패인지 미구현인지 구분되지 않는다.
     const OVERLAYS = [
-      ["rooms", "실 폴리곤", DESIGN_COLORS.room],
-      ["roomLabels", "실 이름", DESIGN_COLORS.room],
-      ["virtualEdges", "가상 폐합선", DESIGN_COLORS.virtualEdge],
-      ["cores", "코어(계단·샤프트)", DESIGN_COLORS.core],
+      ["rooms", "실 폴리곤", DESIGN_COLORS.room, () => state.rooms.length],
+      ["roomLabels", "실 이름", DESIGN_COLORS.room, () => state.rooms.length],
+      ["virtualEdges", "가상 폐합선", DESIGN_COLORS.virtualEdge, () => state.virtualEdges.length],
+      ["cores", "코어(계단·샤프트)", DESIGN_COLORS.core, () => state.cores.length],
+      ["valves", "유수검지장치", DESIGN_COLORS.valve, () => state.c3.drafts.length],
+      ["zones", "방호구역", DESIGN_COLORS.zone, () => state.c3.zones.length],
     ];
 
     // ====== 상태 (지시서 §12.3) ======
@@ -416,7 +478,8 @@
       virtualEdges: [],
       rooms: [],
       cores: [],
-      overlayVisible: { rooms: true, roomLabels: true, virtualEdges: true, cores: true },
+      overlayVisible: { rooms: true, roomLabels: true, virtualEdges: true, cores: true,
+                        valves: true, zones: true },
 
       // 확정 게이트. `values` 는 아직 서버에 보내지 않은 사람의 입력이고, `missing`
       // 은 서버가 판정한 결손이다. 둘을 섞지 않아야 "화면은 다 찼는데 서버는 422"
@@ -432,6 +495,15 @@
       // 만든다(아래).
       c2: null,
       esfrAnswers: {},
+
+      // C3(§7). `drafts` 는 사람이 화면에서 찍었지만 아직 서버가 확정하지 않은
+      // 밸브다. 서버가 돌려준 `valves` 와 한 통에 담으면 확정된 적 없는 밸브가
+      // 구역의 근거인 것처럼 보인다.
+      c3: {
+        candidates: [], systemTypes: [], requirements: [], loaded: false,
+        drafts: [], valves: [], zones: [], flags: [],
+        unreached: [], isolated: [], distance: {},
+      },
     };
 
     const canvas = document.getElementById("dw-canvas");
@@ -473,6 +545,23 @@
     const esfrOperatorEl = document.getElementById("dw-esfr-operator");
     const esfrMsgEl = document.getElementById("dw-esfr-msg");
     const esfrSubmitEl = document.getElementById("dw-esfr-submit");
+    const c3LoadEl = document.getElementById("dw-c3-load");
+    const c3OpenEl = document.getElementById("dw-c3-open");
+    const c3StatusEl = document.getElementById("dw-c3-status");
+    const c3ZoneNoteEl = document.getElementById("dw-c3-zone-note");
+    const c3PanelEl = document.getElementById("dw-c3-panel");
+    const c3CloseEl = document.getElementById("dw-c3-close");
+    const c3RemainEl = document.getElementById("dw-c3-remain");
+    const c3TheadEl = document.getElementById("dw-c3-thead");
+    const c3TbodyEl = document.getElementById("dw-c3-tbody");
+    const c3EmptyEl = document.getElementById("dw-c3-empty");
+    const c3ZonesSumEl = document.getElementById("dw-c3-zones-sum");
+    const c3FlagsEl = document.getElementById("dw-c3-flags");
+    const c3OperatorEl = document.getElementById("dw-c3-operator");
+    const c3MsgEl = document.getElementById("dw-c3-msg");
+    const c3SubmitEl = document.getElementById("dw-c3-submit");
+    const c3ZonesEl = document.getElementById("dw-c3-zones");
+    const toolValveEl = document.getElementById("dw-tool-valve");
     const gatePanelEl = document.getElementById("dw-gate-panel");
     const gateRemainEl = document.getElementById("dw-gate-remain");
     const gateCloseEl = document.getElementById("dw-gate-close");
@@ -667,6 +756,106 @@
           ctx.fillText(room.name || room.id, sx, sy);
         }
       }
+
+      drawC3Overlays();
+    }
+
+    // 구역 색은 밸브 순서로 돈다. 같은 입력이면 같은 색이 나와야 사람이 표의
+    // "Z-1F-03" 과 화면의 색칠을 같은 것으로 읽는다.
+    function zoneColor(i) {
+      return `hsl(${(i * 67) % 360}, 72%, 58%)`;
+    }
+
+    function candidatePoly(cand) {
+      if (!cand._poly) cand._poly = toDrawingUnits(cand.polygon || []);
+      return cand._poly;
+    }
+
+    function drawC3Overlays() {
+      const c3 = state.c3;
+      if (state.overlayVisible.zones && c3.zones.length) {
+        const zoneOf = new Map();
+        c3.zones.forEach((z, i) => { for (const rid of z.rooms) zoneOf.set(rid, i); });
+        const unreached = new Set(c3.unreached);
+        for (const room of state.rooms) {
+          if (!room.polygon || room.polygon.length < 3) continue;
+          const zi = zoneOf.get(room.id);
+          if (zi !== undefined) {
+            ctx.fillStyle = zoneColor(zi);
+            tracePoly(room.polygon);
+            ctx.closePath();
+            ctx.globalAlpha = 0.26;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          } else if (unreached.has(room.id)) {
+            // 어느 밸브에서도 문으로 닿지 않은 실. 색을 비워 두면 "칠할 것이 없는
+            // 실" 과 구분되지 않아 미도달이 조용히 넘어간다(§7.2).
+            hatchPolygon(room.polygon, DESIGN_COLORS.virtualEdge);
+          }
+        }
+      }
+
+      // 후보 코어는 밸브를 찍는 동안에만 밝힌다. 늘 켜 두면 확정된 코어와 구분이 없다.
+      if (state.tool === "valve" && c3.candidates.length) {
+        ctx.setLineDash([7, 4]);
+        ctx.strokeStyle = DESIGN_COLORS.valve;
+        ctx.lineWidth = 2.2;
+        for (const cand of c3.candidates) {
+          const poly = candidatePoly(cand);
+          if (poly.length < 3) continue;
+          tracePoly(poly);
+          ctx.closePath();
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+
+      // 확정 전 밸브는 속을 비운다. 채워 그리면 화면만 보고 확정된 줄 안다.
+      if (state.overlayVisible.valves && c3.drafts.length) {
+        ctx.font = "11px ui-monospace, monospace";
+        ctx.lineWidth = 2;
+        c3.drafts.forEach((draft, i) => {
+          const confirmed = c3.valves[i];
+          const [sx, sy] = worldToScreen(draft.point[0], draft.point[1]);
+          ctx.strokeStyle = DESIGN_COLORS.valve;
+          ctx.fillStyle = confirmed ? DESIGN_COLORS.valve : "#0f172a";
+          ctx.beginPath();
+          ctx.moveTo(sx, sy - 7); ctx.lineTo(sx + 7, sy);
+          ctx.lineTo(sx, sy + 7); ctx.lineTo(sx - 7, sy);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = DESIGN_COLORS.valve;
+          ctx.fillText(confirmed ? confirmed.id : `${draft.core_id} (미확정)`, sx + 10, sy + 4);
+        });
+      }
+    }
+
+    function hatchPolygon(poly, color) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of poly) {
+        const [sx, sy] = worldToScreen(p[0], p[1]);
+        if (sx < minX) minX = sx;
+        if (sx > maxX) maxX = sx;
+        if (sy < minY) minY = sy;
+        if (sy > maxY) maxY = sy;
+      }
+      const h = maxY - minY;
+      if (maxX - minX < 3 || h < 3) return;
+      ctx.save();
+      tracePoly(poly);
+      ctx.closePath();
+      ctx.clip();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.2;
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      for (let x = minX - h; x < maxX; x += 9) {
+        ctx.moveTo(x, maxY);
+        ctx.lineTo(x + h, minY);
+      }
+      ctx.stroke();
+      ctx.restore();
     }
 
     function signedArea2(pts) {
@@ -783,7 +972,9 @@
       const drag = state.drag;
       state.drag = null;
       canvas.classList.remove("is-panning");
-      if (drag && !drag.moved && state.tool === "select") pickRoomAt(e);
+      if (!drag || drag.moved) return;
+      if (state.tool === "select") pickRoomAt(e);
+      else if (state.tool === "valve") placeValveAt(e);
     });
 
     window.addEventListener("mousemove", (e) => {
@@ -1077,12 +1268,14 @@
       toolSplitEl.disabled = !ready;
       mergeBtnEl.disabled = !ready || n < 2 || state.editBusy;
       deleteBtnEl.disabled = !ready || n < 1 || state.editBusy;
-      if (!ready && state.tool !== "pan") setTool("pan");
+      // 밸브 찍기는 게이트 뒤에 산다. 실 편집이 닫혔다고 같이 끄면 C3 에서 손이 묶인다.
+      if (!ready && (state.tool === "select" || state.tool === "split")) setTool("pan");
     }
 
     function setTool(tool) {
       state.tool = tool;
-      for (const [el, id] of [[toolPanEl, "pan"], [toolSelectEl, "select"], [toolSplitEl, "split"]]) {
+      for (const [el, id] of [[toolPanEl, "pan"], [toolSelectEl, "select"],
+                              [toolSplitEl, "split"], [toolValveEl, "valve"]]) {
         el.classList.toggle("is-on", tool === id);
       }
       canvas.classList.toggle("is-picking", tool !== "pan");
@@ -1093,6 +1286,7 @@
     toolPanEl.addEventListener("click", () => setTool("pan"));
     toolSelectEl.addEventListener("click", () => setTool("select"));
     toolSplitEl.addEventListener("click", () => setTool("split"));
+    toolValveEl.addEventListener("click", () => setTool("valve"));
 
     function pickRoomAt(ev) {
       const rect = canvas.getBoundingClientRect();
@@ -1815,6 +2009,7 @@
       state.c2 = body;
       state.stage = "c3";
       c2OpenEl.disabled = false;
+      updateC3Tools();
       renderStepper();
       renderC2();
     }
@@ -1874,13 +2069,14 @@
     // 가 되고, `undefined` 는 "안 골랐다" 검사를 빠져나가 '아니오'로 확정된다.
     state.esfrAnswers = Object.fromEntries(ESFR_QUESTIONS.map(([key]) => [key, null]));
 
-    function esfrAnswered(value) {
+    // "안 골랐다" 와 "아니오" 는 다르다. 둘을 가르는 자리는 한 군데뿐이어야 한다.
+    function answeredYesNo(value) {
       return value === true || value === false;
     }
 
     function esfrVerdict() {
       const a = state.esfrAnswers;
-      if (!ESFR_QUESTIONS.every(([key]) => esfrAnswered(a[key]))) return null;
+      if (!ESFR_QUESTIONS.every(([key]) => answeredYesNo(a[key]))) return null;
       return a.owner_adopts_esfr && a.site_conditions_ok && !a.commodity_restricted;
     }
 
@@ -1900,11 +2096,11 @@
         const picked = answers[key];
         const opt = (val, label) => `<label><input type="radio" name="esfr-${key}"`
           + ` data-key="${key}" data-val="${val}"${picked === val ? " checked" : ""}>${label}</label>`;
-        return `<div class="esfr-q${esfrAnswered(picked) ? "" : " unanswered"}">`
+        return `<div class="esfr-q${answeredYesNo(picked) ? "" : " unanswered"}">`
           + `<span class="q">${escHtml(question)}</span>`
           + `<span class="why">${escHtml(why)}</span>`
           + `<span class="opts">${opt(true, "예")}${opt(false, "아니오")}`
-          + (esfrAnswered(picked) ? "" : `<span class="why" style="color:var(--warn);">아직 답하지 않았습니다</span>`)
+          + (answeredYesNo(picked) ? "" : `<span class="why" style="color:var(--warn);">아직 답하지 않았습니다</span>`)
           + `</span></div>`;
       }).join("");
       renderEsfrVerdict();
@@ -1969,6 +2165,294 @@
         setNote(esfrMsgEl, "오류: " + err.message, true);
       } finally {
         renderEsfrVerdict();
+      }
+    });
+
+    // ====== C3 밸브·구역 (§7) ======
+    // 밸브 자리는 사람이 캔버스에서 찍는다. 화면이 후보 중심에 자동으로 놓아 주면
+    // 사람은 그 자리를 본 적이 없는데 감사 기록에는 사람이 확정한 것으로 남는다.
+    function c3Ready() {
+      return !!(state.sessionId && state.c2);
+    }
+
+    function setC3Status(text, warn) {
+      setNote(c3StatusEl, text, warn);
+    }
+
+    /** 밸브를 건드리면 이전 확정과 구역은 근거를 잃는다. 서버도 같은 자리에서 지운다. */
+    function c3Invalidate() {
+      const c3 = state.c3;
+      c3.valves = [];
+      c3.zones = [];
+      c3.flags = [];
+      c3.unreached = [];
+      c3.isolated = [];
+      c3.distance = {};
+      setNote(c3ZoneNoteEl, "", false);
+    }
+
+    /** 아직 답하지 않은 칸 수. 0 이어야 확정할 수 있다. */
+    function c3Unanswered() {
+      let n = 0;
+      for (const draft of state.c3.drafts) {
+        if (!draft.system_type) n += 1;
+        for (const req of state.c3.requirements) {
+          if (!answeredYesNo(draft.requirements[req.key])) n += 1;
+        }
+      }
+      return n;
+    }
+
+    function updateC3Tools() {
+      c3LoadEl.disabled = !c3Ready();
+      c3OpenEl.disabled = !state.c3.loaded;
+      toolValveEl.disabled = !state.c3.candidates.length;
+      if (toolValveEl.disabled && state.tool === "valve") setTool("pan");
+    }
+
+    function candidateAt(wx, wy) {
+      let best = null;
+      for (const cand of state.c3.candidates) {
+        const poly = candidatePoly(cand);
+        if (poly.length < 3 || !pointInPolygon(wx, wy, poly)) continue;
+        if (!best || (cand.area_m2 || 0) < (best.area_m2 || 0)) best = cand;
+      }
+      return best;
+    }
+
+    function placeValveAt(ev) {
+      const rect = canvas.getBoundingClientRect();
+      const [wx, wy] = screenToWorld(ev.clientX - rect.left, ev.clientY - rect.top);
+      const cand = candidateAt(wx, wy);
+      if (!cand) {
+        // 가까운 후보로 끌어붙이지 않는다. 코어 밖에 찍힌 밸브는 서버도 거절한다.
+        setC3Status("후보 코어 안을 찍으세요 — 밖에 찍은 자리는 끌어붙이지 않습니다.", true);
+        return;
+      }
+      const found = state.c3.drafts.find((d) => d.core_id === cand.core_id);
+      if (found) {
+        found.point = [wx, wy];
+      } else {
+        state.c3.drafts.push({
+          core_id: cand.core_id, point: [wx, wy], system_type: "",
+          requirements: Object.fromEntries(state.c3.requirements.map((r) => [r.key, null])),
+        });
+      }
+      c3Invalidate();
+      renderC3();
+      renderDesignList();
+      render();
+      setC3Status(`${cand.core_id} ${found ? "자리를 옮겼습니다" : "에 밸브를 찍었습니다"} — `
+        + `밸브 ${state.c3.drafts.length}개, 남은 응답 ${c3Unanswered()}건`, false);
+    }
+
+    function renderC3() {
+      const c3 = state.c3;
+      const reqs = c3.requirements;
+      c3TheadEl.innerHTML = `<tr><th>밸브</th><th>코어</th><th>좌표</th><th>설비 종류</th>`
+        + reqs.map((r) => `<th>${escHtml(r.label)}</th>`).join("") + `<th></th></tr>`;
+      c3TbodyEl.innerHTML = c3.drafts.map((draft, i) => {
+        const confirmed = c3.valves[i];
+        const sys = `<select data-c3="system" data-i="${i}">`
+          + `<option value="">— 고르세요</option>`
+          + c3.systemTypes.map((t) => `<option value="${escHtml(t)}"`
+            + `${draft.system_type === t ? " selected" : ""}>${escHtml(t)}</option>`).join("")
+          + `</select>`;
+        const cells = reqs.map((req) => {
+          const value = draft.requirements[req.key];
+          const opt = (raw, label) => `<option value="${raw}"`
+            + `${String(value) === raw ? " selected" : ""}>${label}</option>`;
+          return `<td class="${answeredYesNo(value) ? "" : "unset"}">`
+            + `<select data-c3="req" data-i="${i}" data-key="${escHtml(req.key)}">`
+            + `<option value="">—</option>${opt("true", "예")}${opt("false", "아니오")}`
+            + `</select></td>`;
+        }).join("");
+        return `<tr><td>${escHtml(confirmed ? confirmed.id : "미확정")}</td>`
+          + `<td class="room-id">${escHtml(draft.core_id)}</td>`
+          + `<td class="room-id">${draft.point[0].toFixed(0)}, ${draft.point[1].toFixed(0)}</td>`
+          + `<td class="${draft.system_type ? "" : "unset"}">${sys}</td>${cells}`
+          + `<td><button class="drop" data-c3="drop" data-i="${i}" type="button">지우기</button></td></tr>`;
+      }).join("");
+
+      c3EmptyEl.style.display = c3.drafts.length ? "none" : "block";
+      c3EmptyEl.textContent = c3.candidates.length
+        ? `밸브 후보 코어 ${c3.candidates.length}개. 이 창을 닫고 [밸브 찍기] 로 코어 안을 누르세요.`
+        : "확정된 샤프트·계단 코어가 없습니다. GATE 에서 코어를 확정해야 후보가 생깁니다.";
+
+      c3ZonesSumEl.innerHTML = c3.zones.map((zone, i) =>
+        `<span class="z"><i style="background:${zoneColor(i)}"></i>${escHtml(zone.id)}`
+        + ` 실 ${zone.rooms.length} · ${zone.area_m2}㎡ · 최원 ${zone.farthest_room_m}m</span>`).join("");
+      c3FlagsEl.innerHTML = c3.flags.map((flag) =>
+        `<div class="flag"><span class="code">${escHtml(flag.code)}</span>`
+        + `${escHtml(flag.message)}</div>`).join("");
+
+      const unanswered = c3Unanswered();
+      c3RemainEl.textContent = c3.drafts.length
+        ? (unanswered ? `${unanswered}건 미응답` : `밸브 ${c3.drafts.length}개 응답 완료`)
+        : "밸브 없음";
+      c3RemainEl.className = `remain ${unanswered || !c3.drafts.length ? "pending" : "done"}`;
+      c3SubmitEl.disabled = !c3.drafts.length || unanswered > 0 || !c3OperatorEl.value.trim();
+      c3ZonesEl.disabled = !c3.valves.length;
+    }
+
+    c3TbodyEl.addEventListener("change", (ev) => {
+      const { c3: kind, i, key } = ev.target.dataset;
+      const draft = state.c3.drafts[Number(i)];
+      if (!draft) return;
+      if (kind === "system") {
+        draft.system_type = state.c3.systemTypes.includes(ev.target.value) ? ev.target.value : "";
+      } else if (kind === "req") {
+        // 아는 값만 답으로 받는다. 빈 값은 '아니오' 가 아니라 아직 안 물어본 것이다.
+        const raw = ev.target.value;
+        draft.requirements[key] = (raw === "true" || raw === "false") ? raw === "true" : null;
+      } else {
+        return;
+      }
+      c3Invalidate();
+      renderC3();
+      render();
+    });
+
+    c3TbodyEl.addEventListener("click", (ev) => {
+      if (ev.target.dataset.c3 !== "drop") return;
+      state.c3.drafts.splice(Number(ev.target.dataset.i), 1);
+      c3Invalidate();
+      renderC3();
+      renderDesignList();
+      render();
+    });
+
+    c3OperatorEl.addEventListener("input", renderC3);
+
+    c3LoadEl.addEventListener("click", async () => {
+      if (!c3Ready()) return;
+      c3LoadEl.disabled = true;
+      setC3Status("밸브 후보를 부르는 중…", false);
+      try {
+        const res = await fetch(`/api/design/c3/candidates/${encodeURIComponent(state.sessionId)}`);
+        const body = await res.json().catch(() => null);
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setC3Status(body.message || `HTTP ${res.status}`, true);
+          return;
+        }
+        const c3 = state.c3;
+        c3.candidates = body.candidates || [];
+        c3.systemTypes = body.system_types || [];
+        c3.requirements = body.requirements || [];
+        c3.loaded = true;
+        // 요건이 늘어난 뒤 옛 밸브를 그대로 두면 새 항목이 `undefined` 로 남고,
+        // `undefined` 는 "안 골랐다" 검사를 빠져나가 미응답인 채 확정된다.
+        for (const draft of c3.drafts) {
+          for (const req of c3.requirements) {
+            if (!(req.key in draft.requirements)) draft.requirements[req.key] = null;
+          }
+        }
+        setC3Status(c3.candidates.length
+          ? `밸브 후보 ${c3.candidates.length}개 — [밸브 찍기] 로 코어 안을 누르세요.`
+          : "확정된 샤프트·계단 코어가 없습니다. GATE 에서 코어를 확정하세요.",
+          !c3.candidates.length);
+        renderC3();
+        render();
+      } catch (err) {
+        setC3Status("오류: " + err.message, true);
+      } finally {
+        updateC3Tools();
+      }
+    });
+
+    c3OpenEl.addEventListener("click", () => {
+      renderC3();
+      setNote(c3MsgEl, "", false);
+      c3PanelEl.classList.add("open");
+    });
+    bindModalClose(c3PanelEl, c3CloseEl);
+
+    c3SubmitEl.addEventListener("click", async () => {
+      const operator = c3OperatorEl.value.trim();
+      if (!state.c3.drafts.length || c3Unanswered() || !operator) {
+        setNote(c3MsgEl, "밸브·설비 종류·설치 요건 4가지·확정자를 모두 채워야 합니다.", true);
+        return;
+      }
+      c3SubmitEl.disabled = true;
+      setNote(c3MsgEl, "확정 중…", false);
+      try {
+        const res = await fetch("/api/design/c3/valves", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: state.sessionId, operator,
+            valves: state.c3.drafts.map((draft) => ({
+              core_id: draft.core_id, point: toMm(draft.point),
+              system_type: draft.system_type,
+              requirements_confirmed: draft.requirements,
+            })),
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setNote(c3MsgEl, body.message || `HTTP ${res.status}`, true);
+          return;
+        }
+        state.c3.valves = body.valves || [];
+        // 요건에 '아니오' 로 답한 밸브도 확정은 된다. 다만 미충족인 채로 남는다는
+        // 사실이 여기서 사라지면 감사 때 처음 알게 된다.
+        const unmet = body.requirements_unmet || [];
+        const line = `밸브 ${state.c3.valves.length}개 확정 (${operator})`
+          + (unmet.length ? ` — 요건 미충족 ${unmet.length}개: `
+            + unmet.map((u) => u.valve_id).join(", ") : "");
+        setNote(c3MsgEl, line, unmet.length > 0);
+        setC3Status(line, unmet.length > 0);
+        render();
+      } catch (err) {
+        setNote(c3MsgEl, "오류: " + err.message, true);
+      } finally {
+        renderC3();
+      }
+    });
+
+    c3ZonesEl.addEventListener("click", async () => {
+      if (!state.c3.valves.length) return;
+      c3ZonesEl.disabled = true;
+      setNote(c3MsgEl, "구역을 나누는 중…", false);
+      try {
+        const res = await fetch("/api/design/c3/zones", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: state.sessionId, operator: c3OperatorEl.value.trim(),
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setNote(c3MsgEl, body.message || `HTTP ${res.status}`, true);
+          return;
+        }
+        const c3 = state.c3;
+        c3.zones = body.zones || [];
+        c3.flags = body.flags || [];
+        c3.unreached = body.unreached || [];
+        c3.isolated = body.isolated_rooms || [];
+        c3.distance = body.room_distance_m || {};
+        const covered = c3.zones.reduce((n, zone) => n + zone.rooms.length, 0);
+        const summary = `구역 ${c3.zones.length}개 / 담당 실 ${covered}개 / `
+          + `미도달 ${c3.unreached.length}개 / 문 없는 실 ${c3.isolated.length}개`;
+        setNote(c3MsgEl, summary, c3.flags.length > 0);
+        setNote(c3ZoneNoteEl, summary, c3.flags.length > 0);
+        // 서버도 같은 규칙으로 단계를 잡아 둔다. 플래그가 남으면 C4 는 열리지 않는다.
+        if (!c3.flags.length) {
+          state.stage = "c4";
+          renderStepper();
+        }
+        setC3Status(c3.flags.length
+          ? `남은 문제 ${c3.flags.length}건 — 해결 전에는 C4 헤드 배치로 넘어가지 않습니다.`
+          : "구역 확정 — C4 헤드 배치로 넘어갑니다.", c3.flags.length > 0);
+        renderDesignList();
+        render();
+      } catch (err) {
+        setNote(c3MsgEl, "오류: " + err.message, true);
+      } finally {
+        renderC3();
       }
     });
 
@@ -2046,8 +2530,8 @@
 
     // ====== 설계 산출물 토글 ======
     function renderDesignList() {
-      designListEl.innerHTML = OVERLAYS.map(([key, label, color]) => {
-        const n = key === "roomLabels" ? state.rooms.length : state[key].length;
+      designListEl.innerHTML = OVERLAYS.map(([key, label, color, count]) => {
+        const n = count();
         return `<label class="overlay-row ${n ? "" : "empty"}">
           <input type="checkbox" data-overlay="${key}" ${state.overlayVisible[key] ? "checked" : ""} ${n ? "" : "disabled"}>
           <i class="swatch" style="background:${color}"></i>
@@ -2066,6 +2550,8 @@
     renderStepper();
     renderDesignList();
     updateEditTools();
+    updateC3Tools();
+    renderC3();
     startSession();
     setTimeout(resizeCanvas, 50);
   </script>

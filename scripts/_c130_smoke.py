@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""C130 지문 수집 실도면 스모크 — 일회용.
+"""C130 지문 + C140 판정 실도면 스모크 — 일회용.
 
-단위 테스트는 합성 도형이라 성능을 못 잡는다. 평행쌍 탐색이 O(n^2) 로 퇴화하면
-합성 테스트는 그대로 통과하고 실 도면에서만 멈춘다.
+단위 테스트는 합성 도형이라 두 가지를 못 잡는다. 성능(평행쌍 탐색이 O(n^2) 로
+퇴화하면 합성 테스트는 그대로 통과하고 실 도면에서만 멈춘다)과, 실 도면 레이어가
+판정표의 "레이어=한 카테고리" 가정을 지키지 않는다는 사실이다.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ import ezdxf
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from core.design.recognize import arch_category as C  # noqa: E402
 from core.design.recognize import geom_stats as G  # noqa: E402
 
 
@@ -83,6 +85,16 @@ def main(path: Path) -> None:
             fp.closed_repeat_score, fp.grid_alignment_score, fp.arc_attach_ratio,
             fp.door_radius_ratio, fp.stair_bundle_max, fp.text_numeric_ratio,
             fp.long_line_ratio))
+
+    print("\n── C140 판정 ────────────────────────────────────────────────")
+    for fp in sorted(fps, key=lambda f: -f.n_entities)[:20]:
+        v = C.evaluate(fp)
+        alt = " / 대안 " + ", ".join(f"{c} {s:.2f}" for c, s in v.alternatives) if v.alternatives else ""
+        print(f"{fp.name[:27]:<28}{v.category:<11}{v.confidence:.2f}{alt}")
+        for text in v.provenance:
+            print(f"      + {text}")
+        for text in v.near_misses:
+            print(f"      - {text}")
 
 
 if __name__ == "__main__":

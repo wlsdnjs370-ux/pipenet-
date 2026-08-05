@@ -162,6 +162,12 @@ def test_치수_텍스트와_실명_텍스트를_비율로_가른다():
     assert _fp(ents).text_numeric_ratio == pytest.approx(0.75)
 
 
+def test_글자수_중앙값은_공백을_뺀_길이다():
+    """C140 이 실명(짧다)과 설명문(길다)을 가르는 데 쓴다."""
+    ents = [{"t": "T", "l": "A-ANNO", "v": v} for v in (" 거실 ", "주방", "다용도실")]
+    assert _fp(ents).text_len_median == pytest.approx(2.0)
+
+
 # ── 운영 ────────────────────────────────────────────────────────────────
 
 def test_거대_레이어는_표본만_보되_전체_개수는_보고한다():

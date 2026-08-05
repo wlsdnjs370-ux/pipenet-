@@ -58,6 +58,7 @@ class LayerFingerprint:
     closed_repeat_score: float = 0.0
     arc_attach_ratio: float = 0.0
     text_numeric_ratio: float = 0.0
+    text_len_median: float = 0.0
     grid_alignment_score: float = 0.0
     door_radius_ratio: float = 0.0
     closed_area_median_m2: float = 0.0
@@ -147,6 +148,9 @@ def _one_layer(name: str, items: list, unit_to_mm: float,
     _fill_arc_stats(fp, arcs, lines, unit_to_mm)
     _fill_closed_stats(fp, items, lines, unit_to_mm)
     fp.text_numeric_ratio = _numeric_ratio(texts)
+    stripped = [t.strip() for t in texts if t.strip()]
+    if stripped:
+        fp.text_len_median = statistics.median(len(t) for t in stripped)
     return fp
 
 

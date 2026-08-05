@@ -125,13 +125,13 @@ def test_제안하는_밸브_자리는_실_안에_있다():
     밖으로 나간 점을 화면이 제안하면, 사람이 제안대로 찍었을 때 '실 밖' 이라며
     거절당한다.
     """
-    from core.design.deterministic import zoning as Z
-    from core.design.recognize.spatial import centroid, point_in_polygon
+    from core.design.recognize.spatial import (
+        centroid, point_in_polygon, representative_point)
 
     u_shape = [[0, 0], [3000, 0], [3000, 10000], [2500, 10000],
                [2500, 500], [500, 500], [500, 10000], [0, 10000]]
     assert not point_in_polygon(centroid(u_shape), u_shape)   # 무게중심은 밖이다
-    assert point_in_polygon(Z.representative_point(u_shape), u_shape)
+    assert point_in_polygon(representative_point(u_shape), u_shape)
 
 
 def test_후보가_아닌_코어에는_밸브를_놓을_수_없다(client):

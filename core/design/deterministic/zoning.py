@@ -26,7 +26,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..recognize.spatial import NodeIndex, centroid, point_in_polygon
+from ..recognize.spatial import (
+    NodeIndex, centroid, point_in_polygon, representative_point)
 
 # §7.3 — 부압식을 빠뜨리지 마라. 파이프라인 v4~v6 문서가 5종에서 이걸 누락했었다.
 SYSTEM_TYPES = ("습식", "건식", "준비작동식", "부압식", "일제살수식")
@@ -83,39 +84,6 @@ def valve_candidates(draft) -> list[dict[str, Any]]:
             "center": [round(v, 1) for v in point] if point else None,
         })
     return out
-
-
-def representative_point(polygon) -> tuple[float, float] | None:
-    """폴리곤 **안**의 점 하나. 없으면 `None`.
-
-    무게중심을 그냥 쓰면 안 된다 — 오목한 실에서는 밖으로 나간다(양주옥정 코어
-    11개 중 1개). 화면은 이 점으로 밸브 자리를 제안하는데, 밖으로 나간 점을
-    제안하면 사람이 제안대로 찍었을 때 "실 밖" 이라며 거절당한다.
-
-    밖으로 나갔으면 무게중심의 y 로 수평선을 그어, 폴리곤 내부 구간 중 가장 넓은
-    곳의 중점을 쓴다. 어느 쪽도 안 되면 지어내지 않고 `None` 이다.
-    """
-    if len(polygon) < 3:
-        return None
-    cx, cy = centroid(polygon)
-    if point_in_polygon((cx, cy), polygon):
-        return (cx, cy)
-
-    crossings = []
-    for i, p in enumerate(polygon):
-        x1, y1 = float(p[0]), float(p[1])
-        q = polygon[(i + 1) % len(polygon)]
-        x2, y2 = float(q[0]), float(q[1])
-        if (y1 > cy) != (y2 > cy):
-            crossings.append(x1 + (cy - y1) * (x2 - x1) / (y2 - y1))
-    crossings.sort()
-
-    widest = max(zip(crossings[0::2], crossings[1::2]),
-                 key=lambda span: span[1] - span[0], default=None)
-    if widest is None:
-        return None
-    point = ((widest[0] + widest[1]) * 0.5, cy)
-    return point if point_in_polygon(point, polygon) else None
 
 
 def check_requirements(answers: dict) -> dict[str, bool]:

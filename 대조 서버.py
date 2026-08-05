@@ -853,6 +853,9 @@ SYSTEM_OUTPUT_DIR = BASE_DIR / "data" / "system_runs"
 SYSTEM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 MACHINEROOM_OUTPUT_DIR = BASE_DIR / "data" / "machineroom_runs"
 MACHINEROOM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# 모듈 C 설계 자동화 — 기본 off. 켜지기 전까지 /api/design/* 은 존재하지 않는다.
+DESIGN_SESSION_DIR = BASE_DIR / "data" / "design_sessions"
+DESIGN_WORKBENCH_ENABLED = _os_for_auth.environ.get("DESIGN_WORKBENCH_ENABLED") == "1"
 
 # 통합 빌드 결과(CombinedTables) 캐시 — 브라우저 수동 편집 후 재출력(/combined/rebuild)이
 # 원본 망(fittings/equipment/nozzle 유량/펌프 곡선 등 geometry JSON 에 없는 리치 필드 포함)을
@@ -1038,6 +1041,9 @@ _routes_r30_combined.register(
     _RISER_HEIGHT_FRAC=_RISER_HEIGHT_FRAC, _RISER_SCHEMATIC_SPAN_MM=_RISER_SCHEMATIC_SPAN_MM,
     _common_network_to_geometry=_common_network_to_geometry, _err500=_err500,
     _serve_run_file=_serve_run_file, _sweep_old_run_dirs=_sweep_old_run_dirs, _to_float=_to_float)
+import routes.r30_design as _routes_r30_design
+_routes_r30_design.register(
+    app, DESIGN_SESSION_DIR=DESIGN_SESSION_DIR, enabled=DESIGN_WORKBENCH_ENABLED)
 import routes.pages as _routes_pages
 _routes_pages.register(
     app, _analyze_sdf_sprinkler_network=_analyze_sdf_sprinkler_network,

@@ -4,17 +4,33 @@
 `register(app, ...)` 패턴. 기존 `/api/remote30/*` 는 건드리지 않으며, 이 모듈은
 `DESIGN_WORKBENCH_ENABLED` 가 꺼져 있으면 라우트를 아예 등록하지 않는다(§C.5).
 
-PR-2 범위는 세션과 게이트뿐이다. C2 이후 엔드포인트는 **게이트 강제만** 걸어
-자리를 잡아 두고, 게이트를 통과한 뒤에는 아직 구현되지 않았음을 501 로 밝힌다.
-통과한 것처럼 200 을 돌려주면 화면이 진행된 것으로 오해한다.
+C2 이후 엔드포인트는 **게이트 강제만** 걸어 자리를 잡아 두고, 게이트를 통과한
+뒤에는 아직 구현되지 않았음을 501 로 밝힌다. 통과한 것처럼 200 을 돌려주면 화면이
+진행된 것으로 오해한다.
 """
 from __future__ import annotations
 
-from flask import jsonify, make_response, render_template, request
+import contextlib
+import gzip
+import hashlib
+import json
+import os
+import uuid
+from pathlib import Path
+
+from flask import Response, jsonify, make_response, render_template, request
+from werkzeug.utils import secure_filename
 
 from core.design import gate as G
 from core.design import session as S
+from core.design.recognize import params as RP
+from core.design.recognize import pipeline as PL
 from core.design.schema import BuildingDraft
+
+# [문서정합] §11.2 는 이 상수를 쓰라고만 하고 둘 곳을 지정하지 않았다. 앱 엔트리
+# (`대조 서버.py`)는 §2 가 register 호출 한 줄만 허용하므로 여기 둔다. C1 사슬의
+# 판정이 바뀌면 이 값을 올려야 옛 결과가 캐시에서 되살아나지 않는다.
+DESIGN_CACHE_VERSION = "c1-v1"
 
 # 게이트 뒤에 서는 단계들. 지시서 §4.1 — `/api/design/c2/*` 이후 전부.
 _GATED_STAGES = (
@@ -33,11 +49,29 @@ def _fail(code: str, message: str, status: int, **extra):
     return jsonify({"ok": False, "code": code, "message": message, **extra}), status
 
 
-def register(app, *, DESIGN_SESSION_DIR, enabled: bool = False):
+def _content_hash(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fp:
+        for block in iter(lambda: fp.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None,
+             INSPECT_CACHE_VERSION: str = "", enabled: bool = False):
+    """[문서정합] §11 의 서명은 `(app, *, UPLOAD_DIR, _save_upload, DESIGN_SESSION_DIR)`.
+
+    `_save_upload` 는 받지 않는다. C1 은 화면이 이미 그린 도면을 다시 보는 단계라
+    업로드는 `/api/remote30/upload` 가 이미 끝냈고, 여기서 또 받으면 같은 도면이
+    두 벌 쌓인다. 대신 inspect 렌더 캐시를 읽어야 해서 그 위치와 버전을 받는다.
+    """
     if not enabled:
         return
 
     DESIGN_SESSION_DIR.mkdir(parents=True, exist_ok=True)
+    DESIGN_CACHE_DIR = (UPLOAD_DIR / "_design_cache") if UPLOAD_DIR else None
+    if DESIGN_CACHE_DIR is not None:
+        DESIGN_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
     def _open(sid: str):
         """반환 `(세션, None)` 또는 `(None, 오류응답)`."""
@@ -81,6 +115,173 @@ def register(app, *, DESIGN_SESSION_DIR, enabled: bool = False):
         if err:
             return err
         return jsonify({"ok": True, **sess.status()})
+
+    # ── C1 인식 (§11.1) ─────────────────────────────────────────────────
+    def _dxf_path(token: str):
+        """업로드된 도면 토큰 → 경로. 업로드 폴더 밖이면 None.
+
+        `r30_inspect` 에 같은 함수가 있으나 그쪽 register 클로저 안이고 §2 가 그
+        파일 수정을 막는다. 경로 조작을 막는 유일한 방어선이라 우회하지 않고 다시
+        쓴다.
+        """
+        token = (token or "").strip()
+        if not token or UPLOAD_DIR is None or secure_filename(token) != token:
+            return None
+        candidate = UPLOAD_DIR / token
+        return candidate if candidate.is_file() and candidate.suffix.lower() == ".dxf" else None
+
+    def _inspect_cache(content_hash: str):
+        """inspect 가 남긴 (엔티티 gz, 메타 json). 도면 내용 해시가 키다."""
+        if INSPECT_CACHE_DIR is None:
+            return None, None
+        key = f"{INSPECT_CACHE_VERSION}_{content_hash}"
+        return (INSPECT_CACHE_DIR / f"{key}.entities.ndjson.gz",
+                INSPECT_CACHE_DIR / f"{key}.meta.json")
+
+    def _cache_path(content_hash: str, floor: str, wall_layers: list):
+        """§11.2 캐시 키 — 도면 내용 + 인식 파라미터 전체."""
+        if DESIGN_CACHE_DIR is None:
+            return None
+        signature = json.dumps({"params": RP.recognize_params(), "floor": floor,
+                                "wall_layers": wall_layers},
+                               sort_keys=True, ensure_ascii=False)
+        digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()[:12]
+        return DESIGN_CACHE_DIR / f"{DESIGN_CACHE_VERSION}_{content_hash}_{digest}.json.gz"
+
+    def _cache_get(path):
+        if path is None or not path.is_file():
+            return None
+        try:
+            with gzip.open(path, "rt", encoding="utf-8") as gz:
+                return json.load(gz)
+        except (OSError, ValueError):
+            return None
+
+    def _cache_put(path, building):
+        if path is None:
+            return
+        tmp = path.with_suffix(f".{uuid.uuid4().hex[:12]}.tmp")
+        try:
+            with gzip.open(tmp, "wt", encoding="utf-8") as gz:
+                json.dump(building, gz, ensure_ascii=False)
+            os.replace(tmp, path)
+        except OSError:
+            tmp.unlink(missing_ok=True)
+
+    @app.post("/api/design/c1/recognize")
+    def design_c1_recognize():
+        """DXF(토큰) → C130~C190 → `building.json`. NDJSON 스트림(§11.1)."""
+        body = request.get_json(silent=True) or {}
+        sess, err = _open(str(body.get("session_id") or ""))
+        if err:
+            return err
+        dxf_path = _dxf_path(str(body.get("dxf_token") or ""))
+        if dxf_path is None:
+            return _fail("DXF_NOT_FOUND", "업로드된 도면을 찾을 수 없습니다.", 400)
+        try:
+            content_hash = _content_hash(dxf_path)
+        except OSError as exc:
+            return _fail("DXF_UNREADABLE", f"도면을 읽지 못했습니다: {exc}", 400)
+
+        ent_path, meta_path = _inspect_cache(content_hash)
+        if ent_path is None or not (ent_path.is_file() and meta_path.is_file()):
+            # 화면이 그린 엔티티를 다시 쓰는 구조라, 캐시가 없으면 도면을 아직
+            # 안 올렸거나 스트림이 중간에 끊긴 것이다. 여기서 DXF 를 다시 파싱하면
+            # 392k 도면 기준 40초를 말없이 더 쓴다.
+            return _fail("DXF_NOT_INSPECTED",
+                         "도면을 화면에 먼저 올려야 인식을 시작할 수 있습니다.", 409)
+
+        floor = str(body.get("floor") or "1F").strip() or "1F"
+        wall_layers = sorted({str(name) for name in (body.get("wall_layers") or [])})
+        cache_path = _cache_path(content_hash, floor, wall_layers)
+
+        # 같은 세션에 두 번 걸리면 building.json 을 서로 덮어쓴다.
+        stack = contextlib.ExitStack()
+        try:
+            stack.enter_context(sess.stage_lock("c1"))
+        except S.StageBusy as exc:
+            return _fail("STAGE_BUSY", str(exc), 409)
+
+        def _replay(building):
+            """캐시 hit — 화면이 받는 메시지를 draft 에서 되살린다.
+
+            hit 과 miss 가 다른 메시지를 내면 두 번째 실행에서 화면이 빈다. 지문과
+            중심선은 draft 에 없어 되살리지 않는다 — 그 둘은 진단용이다.
+            """
+            draft = building["draft"]
+            yield {"type": "phase", "phase": "recognize", "cached": True,
+                   "unit": building["unit"], "wall_layers": building["wall_layers"],
+                   "wall_source": building["wall_source"]}
+            yield {"type": "virtual_edges", "edges": draft["virtual_edges"]}
+            yield {"type": "rooms", "rooms": draft["rooms"]}
+            yield {"type": "cores", "cores": draft["cores"]}
+
+        def _recognized():
+            """캐시 hit 이면 재사용, 아니면 사슬을 돌린다. 반환은 `building` 메시지."""
+            cached = _cache_get(cache_path)
+            if cached is not None:
+                yield from _replay(cached)
+                return cached
+
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            total = int((meta.get("counts") or {}).get("total_entities") or 0)
+            entities = []
+            with gzip.open(ent_path, "rt", encoding="utf-8") as gz:
+                for line in gz:
+                    chunk = json.loads(line).get("entities")
+                    if not chunk:
+                        continue
+                    entities.extend(chunk)
+                    yield {"type": "parse", "stage": "cache", "done": len(entities),
+                           "total": max(total, len(entities))}
+
+            building = None
+            for msg in PL.recognize(entities, meta.get("bbox"), floor=floor,
+                                    session_id=sess.sid, wall_layers=wall_layers,
+                                    source={"dxf_filename": dxf_path.name,
+                                            "dxf_token": dxf_path.name}):
+                if msg["type"] == "building":
+                    building = msg
+                else:
+                    yield msg
+            # 막힌 결과는 캐시하지 않는다 — 되살릴 때 사람이 고를 차선(candidates)이
+            # draft 에 없어, 두 번째 실행이 이유 없이 멈춘 것처럼 보인다.
+            if not building["blocked"]:
+                _cache_put(cache_path, building)
+            return building
+
+        def _messages():
+            building = yield from _recognized()
+            result = {"type": "result", "ok": True, "session_id": sess.sid,
+                      "blocked": building["blocked"], "unit": building["unit"],
+                      "wall_layers": building["wall_layers"],
+                      "wall_source": building["wall_source"],
+                      "counts": building["counts"], "stages": building["stages"],
+                      "seconds": building["seconds"]}
+            if building["blocked"]:
+                # 막힌 채로 building.json 을 쓰면 GATE 가 빈 도면을 확정 대상으로
+                # 삼는다. 안 써야 /gate_items 가 C1_NOT_DONE 으로 남는다.
+                sess.audit("system", "C1", "blocked", {"reason": building["blocked"]})
+                yield {**result, "ok": False, "code": building["blocked"].upper(),
+                       "message": "WALL 로 볼 레이어를 고르면 인식을 이어갑니다."}
+                return
+            version = sess.write("building.json", building["draft"])
+            sess.audit("system", "C1", "recognized",
+                       {"version": version, **building["counts"]})
+            yield {**result, "version": version,
+                   "gate_items_url": f"/api/design/c1/gate_items/{sess.sid}"}
+
+        def _stream():
+            with stack:
+                try:
+                    for msg in _messages():
+                        yield json.dumps(msg, ensure_ascii=False) + "\n"
+                except Exception as exc:  # noqa: BLE001 — 스트림이 열린 뒤라 상태코드가 없다
+                    yield json.dumps({"type": "error", "ok": False, "code": "C1_FAILED",
+                                      "message": f"C1 인식 실패: {exc}"},
+                                     ensure_ascii=False) + "\n"
+
+        return Response(_stream(), mimetype="application/x-ndjson")
 
     # ── GATE ────────────────────────────────────────────────────────────
     @app.get("/api/design/c1/gate_items/<sid>")

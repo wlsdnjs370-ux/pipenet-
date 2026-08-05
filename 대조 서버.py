@@ -1043,7 +1043,9 @@ _routes_r30_combined.register(
     _serve_run_file=_serve_run_file, _sweep_old_run_dirs=_sweep_old_run_dirs, _to_float=_to_float)
 import routes.r30_design as _routes_r30_design
 _routes_r30_design.register(
-    app, DESIGN_SESSION_DIR=DESIGN_SESSION_DIR, enabled=DESIGN_WORKBENCH_ENABLED)
+    app, DESIGN_SESSION_DIR=DESIGN_SESSION_DIR, UPLOAD_DIR=UPLOAD_DIR,
+    INSPECT_CACHE_DIR=INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION=INSPECT_CACHE_VERSION,
+    enabled=DESIGN_WORKBENCH_ENABLED)
 import routes.pages as _routes_pages
 _routes_pages.register(
     app, _analyze_sdf_sprinkler_network=_analyze_sdf_sprinkler_network,

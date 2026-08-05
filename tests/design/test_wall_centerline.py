@@ -131,6 +131,47 @@ def test_스냅_공차는_벽_두께에_걸린다():
     assert W.snap_tol(400.0) == pytest.approx(120.0)
 
 
+# ── 접합점 연장 ─────────────────────────────────────────────────────────
+# 스냅 공차(0.3·t)는 직교 접합부의 간극(t/√2 ≈ 0.71·t)보다 항상 작다. 늘리지
+# 않으면 두께와 무관하게 모든 코너가 열린 채 남고, 실이 하나도 안 뽑힌다.
+
+def _room_lines(w=6000.0, h=5000.0, t=200.0):
+    return [(0, 0, w, 0), (0, h, w, h), (0, 0, 0, h), (w, 0, w, h),
+            (t, t, w - t, t), (t, h - t, w - t, h - t),
+            (t, t, t, h - t), (w - t, t, w - t, h - t)]
+
+
+def test_직교_코너가_교점에서_만난다():
+    result = W.build_centerlines(_room_lines(), offset_peaks_mm=[200.0])
+    assert len(result.centerlines) == 4
+    # 벽 네 장의 축이 만나는 네 점만 남는다 — 끝점 8개가 4개로 접힌다.
+    assert len(result.nodes) == 4
+    assert all(d == 2 for d in result.node_degree)
+
+
+def test_늘린_끝점_개수가_provenance_에_남는다():
+    result = W.build_centerlines(_room_lines(), offset_peaks_mm=[200.0])
+    assert any("접합점까지 늘린 끝점" in line for line in result.provenance)
+
+
+def test_나란한_두_중심선은_늘리지_않는다():
+    """거의 평행한 두 축의 교점은 벽 모서리가 아니라 아득히 먼 점이다."""
+    lines = [(0, 0, 4000, 0), (0, 200, 4000, 200),
+             (6000, 30, 10000, 30), (6000, 230, 10000, 230)]
+    result = W.build_centerlines(lines, offset_peaks_mm=[200.0])
+    assert len(result.nodes) == 4
+
+
+def test_먼_접합은_상한에서_잘린다():
+    """두 벽이 멀리 떨어져 있으면 교점이 있어도 같은 모서리가 아니다."""
+    far = P.JUNCTION_EXTEND_MAX_MM * 3
+    lines = [(0, 0, 4000, 0), (0, 200, 4000, 200),
+             (4000 + far, -3000, 4000 + far, 3000),
+             (4200 + far, -3000, 4200 + far, 3000)]
+    result = W.build_centerlines(lines, offset_peaks_mm=[200.0])
+    assert len(result.nodes) == 4
+
+
 # ── 운영 ────────────────────────────────────────────────────────────────
 
 def test_미터_단위_도면도_mm_로_환산된다():

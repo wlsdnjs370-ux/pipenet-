@@ -106,6 +106,11 @@ CENTERLINE_SNAP_TOL_RATIO = 0.30
 SINGLE_LINE_PARALLEL_MAX_RATIO = 0.30  # 이 밑이면 wall_repr="single_line" 완화 모드
 CONF_CENTERLINE_PAIRED = 0.90          # 미검증 — 두께까지 확인된 중심선
 CONF_CENTERLINE_UNPAIRED = 0.35        # 미검증 — 선은 있으나 두께를 모른다
+# 미검증 — 접합점 연장(§3.3 6항의 스냅이 못 닫는 코너). 직교 접합에 필요한 연장은
+# 상대 벽 두께의 절반이라 두께 자체를 상한으로 쓰면 넉넉하다. 다만 비스듬한 접합은
+# 1/sin(각) 로 커져서, 멀리서 스쳐 지나는 두 선까지 붙일 수 있어 절대 상한을 둔다.
+JUNCTION_EXTEND_MAX_MM = 600.0
+JUNCTION_MIN_ANGLE_DEG = 20.0          # 이보다 나란하면 교점이 벽 모서리가 아니다
 
 # ── C160 개구부 가상 폐합 (§3.4 증거표) ─────────────────────────────────
 GAP_SEARCH_RADIUS_MM = 3000.0
@@ -162,6 +167,11 @@ CORE_AREA_RATIO_MAX = 1.40
 CORE_FLOOR_SHARE_MIN = 0.60            # n ≥ (층수-1) * 0.6
 # 소형 폴리곤의 범위는 §3.2 SHAFT 행과 같은 값을 쓴다 (SHAFT_AREA_MIN_M2 ~
 # SMALL_CLOSED_AREA_MAX_M2). 신뢰도도 §3.2 의 CONF_SHAFT_* 를 그대로 쓴다.
+
+# ── C1 사슬 (§3.0) ──────────────────────────────────────────────────────
+# 미검증 — WALL 판정이 하나도 안 나왔을 때 사람에게 보여줄 차선의 개수. 전부
+# 보여주면 고를 수 없고, 안 보여주면 사슬이 멈춘 이유를 알 수 없다.
+WALL_CANDIDATE_LIMIT = 8
 
 # ── 성능 예산 (부록 C.1) ────────────────────────────────────────────────
 LAYER_SAMPLE_LIMIT = 20_000            # 레이어당 엔티티 상한. 초과 시 무작위 표본

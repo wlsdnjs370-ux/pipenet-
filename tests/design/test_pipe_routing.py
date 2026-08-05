@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
-"""지시서 §9.2·§9.3·§13.4 — 가지배관 골격 (R1~R4).
+"""지시서 §9.2·§9.3·§13.4 — 가지배관 골격과 교차배관 경로 (R1~R4).
 
-지키는 것은 둘이다. **8개는 분기점 기준 한쪽**이라는 것(전체로 세어 자르면 적법한
-16개짜리 가지배관이 둘로 쪼개진다), 그리고 **최적화가 위법 형상을 만들지 않는다**는
-것(총연장을 줄이려고 대칭 분기로 수렴하면 토너먼트가 된다).
+지키는 것은 셋이다. **8개는 분기점 기준 한쪽**이라는 것(전체로 세어 자르면 적법한
+16개짜리 가지배관이 둘로 쪼개진다), **최적화가 위법 형상을 만들지 않는다**는
+것(총연장을 줄이려고 대칭 분기로 수렴하면 토너먼트가 된다), 그리고 **닿지 못한
+분기점을 조용히 빼지 않는다**는 것(빼면 수리계산만 통과하고 미방호 구역이 남는다).
 """
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -41,6 +43,12 @@ def _grid(cols, rows):
     return [(c * _STEP, r * _STEP) for c in range(cols) for r in range(rows)]
 
 
+def _rot(points, deg):
+    t = math.radians(deg)
+    cos_t, sin_t = math.cos(t), math.sin(t)
+    return [(x * cos_t - y * sin_t, x * sin_t + y * cos_t) for x, y in points]
+
+
 def _ys(heads):
     return {h["id"]: h["y"] for h in _room(heads)["heads"]}
 
@@ -48,6 +56,25 @@ def _ys(heads):
 def _plan(heads, *, per_side=8, valve=None, rooms=None):
     return PR.plan_branches("Z-1F-01", rooms or [_room(heads)],
                             valve, _Limits(per_side))
+
+
+def _rect(x0, y0, x1, y1):
+    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+
+
+def _floor(*polygons):
+    """C530 이 보는 실은 폴리곤만 있으면 된다 — 벽은 그 경계에서 유도된다."""
+    return [{"room_id": f"R-{n}", "polygon": list(p)}
+            for n, p in enumerate(polygons, 1)]
+
+
+def _routed(plan, rooms, *, cores=(), doors=(), min_dn=40):
+    field = PR.RouteField(plan.axes, rooms, cores=cores, doors=doors)
+    return PR.route_cross_mains(plan, field, min_dn=min_dn), field
+
+
+def _ab(plan, path):
+    return [plan.axes.project(p[0], p[1]) for p in path]
 
 
 # ── C510 축 결정 ────────────────────────────────────────────────────────
@@ -146,6 +173,133 @@ def test_상한을_못_맞추면_조용히_넘기지_않는다():
     가지배관은 수리계산만 통과하고 실제로는 물이 안 간다."""
     plan = _plan([(0.0, 0.0)] * 5, per_side=2)
     assert [f["code"] for f in plan.flags] == ["BRANCH_SPLIT_FAILED"]
+
+
+# ── C530 벽·문·장애물 ──────────────────────────────────────────────────
+
+def test_실_경계에서_문을_빼면_벽이_남는다():
+    """[문서정합 §9.2] building.json 에 벽이 없다. 실 경계 중 문이 아닌 변이 벽이다."""
+    rooms = _floor(_rect(0, 0, 8000, 6000), _rect(8000, 0, 14000, 6000))
+    assert len(PR.wall_segments(rooms, [])) == 7      # 맞닿은 변은 하나로 센다
+    door = [{"p1": (8000, 0), "p2": (8000, 6000)}]
+    assert len(PR.wall_segments(rooms, door)) == 6
+
+
+def test_좁고_길쭉한_실만_격자를_낮춘다():
+    """폭만 보면 1.5m 창고 하나에 건물 전체 격자가 내려가고 탐색이 네 배가 된다."""
+    assert PR._auto_grid_mm(_floor(_rect(0, 0, 20000, 1500))) == PR.GRID_MM_NARROW
+    assert PR._auto_grid_mm(_floor(_rect(0, 0, 1500, 1500))) == PR.GRID_MM
+
+
+# ── C530 경로 ───────────────────────────────────────────────────────────
+
+def test_막힌_것이_없으면_교차배관은_곧다():
+    plan, _ = _routed(_plan(_grid(5, 4)),
+                      _floor(_rect(-2000, -2000, 14800, 11600)))
+    (cross,) = plan.crosses
+    assert len(cross.path) == 2
+    assert plan.metrics["cross_turns"] == 0
+    assert plan.metrics["cross_length_m"] == pytest.approx(12.8)
+    assert cross.min_dn == 40                        # 교차배관 법정 최소 40mm
+
+
+def test_경로는_구역_축에_평행하다():
+    """[문서정합 §9.2] 직교 격자를 세계 좌표에 깔면 기운 건물에서 계단이 나온다."""
+    heads = _rot(_grid(5, 4), 30.0)
+    plan, _ = _routed(_plan(heads, rooms=[_room(heads, axis_deg=30.0)]),
+                      _floor(_rot(_rect(-2000, -2000, 14800, 11600), 30.0)))
+    (cross,) = plan.crosses
+    path = _ab(plan, cross.path)
+    assert len(path) >= 2
+    for p, q in zip(path, path[1:]):
+        assert abs(p[0] - q[0]) < 1e-6 or abs(p[1] - q[1]) < 1e-6
+
+
+def test_벽은_비용을_물고_지나간다():
+    """배관은 슬리브로 벽을 뚫는다. 절대 장애물로 두면 경로가 아예 안 나온다."""
+    rooms = _floor(_rect(-2000, -2000, 8000, 11600),
+                   _rect(8000, -2000, 14800, 11600))
+    plan, _ = _routed(_plan(_grid(5, 4)), rooms)
+    assert plan.metrics["wall_pierces"] == 1
+    assert plan.metrics["cross_turns"] == 0          # 뚫는 편이 도는 것보다 싸다
+
+
+def test_문은_벽이_아니다():
+    rooms = _floor(_rect(-2000, -2000, 8000, 11600),
+                   _rect(8000, -2000, 14800, 11600))
+    door = [{"p1": (8000, -2000), "p2": (8000, 11600)}]
+    plan, _ = _routed(_plan(_grid(5, 4)), rooms, doors=door)
+    assert plan.metrics["wall_pierces"] == 0
+
+
+def test_코어는_뚫지_않고_돌아간다():
+    core = [{"polygon": _rect(7600, 3200, 8800, 6400)}]
+    plan, field = _routed(_plan(_grid(5, 4)),
+                          _floor(_rect(-2000, -2000, 14800, 11600)), cores=core)
+    (cross,) = plan.crosses
+    path = _ab(plan, cross.path)
+    assert plan.metrics["cross_turns"] >= 2
+    assert all(field.clear(p, q) for p, q in zip(path, path[1:]))
+    assert plan.flags == []
+
+
+def test_헤드_면제실도_절대_장애물이다():
+    """계단·EV 는 헤드를 안 놓는 실이지 배관이 지나가도 되는 실이 아니다."""
+    rooms = _floor(_rect(-2000, -2000, 14800, 11600))
+    rooms.append({"room_id": "R-EV", "polygon": _rect(7200, 3200, 9200, 6400),
+                  "head_exempt": True})
+    plan, _ = _routed(_plan(_grid(5, 4)), rooms)
+    assert plan.metrics["cross_turns"] >= 2
+
+
+# ── C530 재배정 ─────────────────────────────────────────────────────────
+
+_ODD = 8 * _STEP     # 짧은 열의 축 좌표. 8×8 격자(0…7)의 바로 오른쪽이다.
+
+
+def _short_column(levels):
+    """8열 × 8행 격자 오른쪽에 짧은 열 하나. 그 열의 분기점이 재배정 시험대다.
+
+    per_side=2 에서 교차배관은 넷씩 두 구간으로 갈리므로, 짧은 열이 첫 구간에 몇
+    개를 갖느냐가 옮길 수 있느냐를 가른다 — 옮기면 전부 한쪽에 실리기 때문이다.
+    """
+    return ([(c * _STEP, r * _STEP) for c in range(8) for r in range(8)]
+            + [(_ODD, r * _STEP) for r in levels])
+
+
+_BLOCK_TEE = [{"polygon": _rect(_ODD - 1200, 3600, _ODD + 1200, 6000)}]
+_WIDE = _floor(_rect(-2000, -2000, _ODD + 2400, 25000))
+
+
+def test_닿지_못한_분기점은_인접_교차배관으로_옮긴다():
+    plan, _ = _routed(_plan(_short_column([0, 1]), per_side=2),
+                      _WIDE, cores=_BLOCK_TEE)
+    near, far = plan.crosses
+    (moved,) = [b for b in plan.branches if b.a_mm > 7 * _STEP]
+    assert plan.metrics["branches_reassigned"] == 1
+    assert moved.cross_id == far.id != near.id
+    assert moved.per_side_max <= 2
+    assert len(far.spurs) == 1
+    assert plan.flags == []
+
+
+def test_옮겨서_한쪽_상한이_깨지면_옮기지_않는다():
+    """§9.4 를 깨는 재배정은 해결이 아니다. 조용히 옮기면 그 가지배관은 물이 안 간다."""
+    plan, _ = _routed(_plan(_short_column([0, 1, 2, 3]), per_side=2),
+                      _WIDE, cores=_BLOCK_TEE)
+    assert plan.metrics["branches_reassigned"] == 0
+    (flag,) = plan.flags
+    assert flag["code"] == "ROUTING_UNREACHABLE"
+    assert len(flag["heads"]) == 4
+
+
+def test_닿지_못한_헤드를_조용히_빼지_않는다():
+    """빼면 수리계산만 통과하고 미방호 구역이 남는다 — 플래그가 헤드를 들고 있어야 한다."""
+    heads = _short_column([0, 1, 2, 3])
+    plan, _ = _routed(_plan(heads, per_side=2), _WIDE, cores=_BLOCK_TEE)
+    carried = [h for b in plan.branches for h in b.heads]
+    assert sorted(carried) == sorted(h["id"] for h in _room(heads)["heads"])
+    assert set(plan.flags[0]["heads"]) <= set(carried)
 
 
 # ── R3·R4 — 토너먼트 금지 ───────────────────────────────────────────────

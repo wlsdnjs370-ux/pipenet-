@@ -49,7 +49,8 @@ REQUIREMENT_LABELS = {
 # 실 폴리곤 꼭짓점과 가상 간선 끝점을 같은 점으로 묶는 공차. C170 은 폴리곤을
 # 0.1mm 로, C160 은 간선을 0.01mm 로 반올림해 내보내므로 그 차이만 흡수하면 된다.
 # 격자 반올림이 아니라 epsilon 군집이다 — 격자는 눈금을 사이에 둔 두 점을 갈라놓는다.
-_JOIN_TOL_MM = 2.0
+# C530 도 같은 짝짓기로 벽과 문을 가른다. 공차가 갈리면 한쪽에서만 문이 사라진다.
+JOIN_TOL_MM = 2.0
 
 _MM_PER_M = 1000.0
 
@@ -126,7 +127,7 @@ def build_room_graph(draft) -> RoomGraph:
     폴리곤의 변도 아니게 되어 자연히 사라지고(안쪽이 됐으므로 맞다), 실을 자르면
     새로 생긴 변은 가상 간선이 아니라 통행이 안 된다(사람이 그은 칸막이다).
     """
-    index = NodeIndex(_JOIN_TOL_MM)
+    index = NodeIndex(JOIN_TOL_MM)
     edge_rooms: dict[tuple[int, int], list[str]] = {}
     centers: dict[str, tuple[float, float]] = {}
 

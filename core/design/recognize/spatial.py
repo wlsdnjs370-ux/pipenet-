@@ -189,6 +189,21 @@ def overlap_ratio(a: Segment, b: Segment) -> float:
     return max(0.0, min(la, hi) - max(0.0, lo)) / min(la, lb)
 
 
+def segments_cross(a: Segment, b: Segment) -> bool:
+    """두 선분이 서로를 가로지르는가. 끝점만 닿는 것은 가로지름이 아니다.
+
+    배관이 벽을 관통하는지 보는 데 쓴다 — 벽 끝(문틀)을 스치는 경로까지 관통으로
+    세면 열린 문으로 지나가는 데도 관통 비용이 붙는다.
+    """
+    def side(seg: Segment, px: float, py: float) -> float:
+        return ((seg[2] - seg[0]) * (py - seg[1])
+                - (seg[3] - seg[1]) * (px - seg[0]))
+
+    d1, d2 = side(a, b[0], b[1]), side(a, b[2], b[3])
+    d3, d4 = side(b, a[0], a[1]), side(b, a[2], a[3])
+    return (d1 > 0) != (d2 > 0) and (d3 > 0) != (d4 > 0)
+
+
 def point_in_polygon(point: Point, polygon: list) -> bool:
     """반직선 교차 판정. 변 위의 점은 보장하지 않는다 (실명 귀속에는 무해하다)."""
     x, y = point

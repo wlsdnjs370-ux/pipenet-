@@ -96,6 +96,42 @@ CONF_GRID = 0.75
 FURNITURE_INSERT_SHARE_MIN = 0.50      # 미검증 — "INSERT 밀집" 의 수치화
 CONF_FURNITURE = 0.40
 
+# ── C150 벽 중심선 (§3.3 알고리즘) ──────────────────────────────────────
+CENTERLINE_ANGLE_BUCKET_DEG = 5.0      # 후보 버킷. 판정 공차(2°)보다 넓게 둔다
+CENTERLINE_ANGLE_TOL_DEG = 2.0
+CENTERLINE_OFFSET_MATCH_TOL_MM = 15.0  # 오프셋이 offset_peaks 중 하나와 이만큼 이내
+CENTERLINE_OVERLAP_MIN_RATIO = 0.30
+CENTERLINE_SNAP_TOL_MIN_MM = 30.0      # snap_tol = max(30, 두께*0.3)
+CENTERLINE_SNAP_TOL_RATIO = 0.30
+SINGLE_LINE_PARALLEL_MAX_RATIO = 0.30  # 이 밑이면 wall_repr="single_line" 완화 모드
+CONF_CENTERLINE_PAIRED = 0.90          # 미검증 — 두께까지 확인된 중심선
+CONF_CENTERLINE_UNPAIRED = 0.35        # 미검증 — 선은 있으나 두께를 모른다
+
+# ── C160 개구부 가상 폐합 (§3.4 증거표) ─────────────────────────────────
+GAP_SEARCH_RADIUS_MM = 3000.0
+GAP_MIN_MM = 100.0                     # 이하는 스냅이 처리한다
+DOOR_GAP_ENDPOINT_TOL_MM = 300.0
+DOOR_GAP_RADIUS_MIN_RATIO = 0.80
+DOOR_GAP_RADIUS_MAX_RATIO = 1.30
+OPENING_GAP_MIN_MM = 700.0
+OPENING_GAP_MAX_MM = 1800.0
+OPENING_COLLINEAR_TOL_DEG = 2.0
+INFERRED_GAP_MIN_MM = 200.0
+INFERRED_GAP_MAX_MM = 3000.0
+CONF_VE_DOOR = 0.90
+CONF_VE_OPENING = 0.70
+CONF_VE_INFERRED = 0.45
+# 미검증 — §3.3 은 "완화 모드로 전환" 이라고만 하고 무엇을 완화할지 말하지 않는다.
+# 단선 표기 도면은 두께 보정이 없어 접합부 각도가 그만큼 흔들리므로 **공차만**
+# 넓힌다. 간극 폭 범위를 넓히면 없던 실이 생기는데, 그건 §3.4 가 최대 위험
+# 지점이라 부른 바로 그 사고다.
+RELAXED_COLLINEAR_TOL_DEG = 5.0
+RELAXED_DOOR_RADIUS_MIN_RATIO = 0.70
+RELAXED_DOOR_RADIUS_MAX_RATIO = 1.40
+# 미검증 — 한 끝점이 볼 후보 상한. 초과하면 가까운 순으로 자르고 그 사실을
+# provenance 에 남긴다. 자른 것을 숨기면 왜 간극이 안 닫혔는지 알 수 없다.
+GAP_CANDIDATE_MAX = 64
+
 # ── 성능 예산 (부록 C.1) ────────────────────────────────────────────────
 LAYER_SAMPLE_LIMIT = 20_000            # 레이어당 엔티티 상한. 초과 시 무작위 표본
 SAMPLE_SEED = 20260805                 # 표본이 바뀌면 지문도 바뀐다 — 고정한다

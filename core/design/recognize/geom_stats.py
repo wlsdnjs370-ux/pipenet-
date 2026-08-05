@@ -35,7 +35,7 @@ from dataclasses import dataclass, field, asdict
 
 from . import params as P
 from .spatial import (
-    NodeIndex, SegmentGrid, angle_deg, angle_diff, centroid, length,
+    NodeIndex, angle_bucketed_pairs, angle_deg, angle_diff, centroid, length,
     overlap_ratio, perp_offset, polygon_area,
 )
 
@@ -185,54 +185,25 @@ def _fill_line_stats(fp: LayerFingerprint, lines: list, diag_mm: float) -> None:
 
 
 def _fill_parallel_stats(fp: LayerFingerprint, lines: list) -> None:
-    """평행쌍 비율과 오프셋 peak — WALL 판정의 1차 근거.
-
-    격자를 각도 버킷별로 따로 둔다. 하나로 합치면 가구 레이어처럼 짧은 선이
-    수만 개 몰린 셀에서 후보가 그대로 O(n^2) 로 불어나 실 도면에서만 멈춘다.
-    각도로 먼저 가르면 대부분의 후보가 조회 전에 사라진다.
-    """
+    """평행쌍 비율과 오프셋 peak — WALL 판정의 1차 근거."""
     if len(lines) < 2:
         return
-    angles = [angle_deg(s) for s in lines]
-    n_buckets = int(180.0 / P.ANGLE_BUCKET_DEG)
-
-    grids: dict[int, SegmentGrid] = {}
-    cells: list[tuple] = []
-    buckets: list[int] = []
-    for i, seg in enumerate(lines):
-        b = int(angles[i] / P.ANGLE_BUCKET_DEG) % n_buckets
-        grid = grids.get(b)
-        if grid is None:
-            grid = grids[b] = SegmentGrid(P.PARALLEL_OFFSET_MAX_MM)
-        walked = grid.walk(seg)
-        grid.add(i, walked)
-        cells.append(walked)
-        buckets.append(b)
-
     paired: set[int] = set()
     offsets: list[float] = []
-    for i, seg in enumerate(lines):
-        # 이웃 버킷까지 봐야 179.9° 와 0.1° 처럼 버킷 경계를 사이에 둔 짝을 놓치지 않는다.
-        candidates: set[int] = set()
-        for d in (-1, 0, 1):
-            grid = grids.get((buckets[i] + d) % n_buckets)
-            if grid is not None:
-                candidates |= grid.lookup(cells[i])
-        for j in candidates:
-            if j <= i:
-                continue
-            if angle_diff(angles[i], angles[j]) > P.PARALLEL_ANGLE_TOL_DEG:
-                continue
-            other = lines[j]
-            offset = perp_offset(seg, (other[0] + other[2]) * 0.5,
-                                 (other[1] + other[3]) * 0.5)
-            if not (P.PARALLEL_OFFSET_MIN_MM <= offset <= P.PARALLEL_OFFSET_MAX_MM):
-                continue
-            if overlap_ratio(seg, other) < P.PARALLEL_OVERLAP_MIN_RATIO:
-                continue
-            paired.add(i)
-            paired.add(j)
-            offsets.append(offset)
+    for i, j, ai, aj in angle_bucketed_pairs(
+            lines, bucket_deg=P.ANGLE_BUCKET_DEG, cell=P.PARALLEL_OFFSET_MAX_MM):
+        if angle_diff(ai, aj) > P.PARALLEL_ANGLE_TOL_DEG:
+            continue
+        seg, other = lines[i], lines[j]
+        offset = perp_offset(seg, (other[0] + other[2]) * 0.5,
+                             (other[1] + other[3]) * 0.5)
+        if not (P.PARALLEL_OFFSET_MIN_MM <= offset <= P.PARALLEL_OFFSET_MAX_MM):
+            continue
+        if overlap_ratio(seg, other) < P.PARALLEL_OVERLAP_MIN_RATIO:
+            continue
+        paired.add(i)
+        paired.add(j)
+        offsets.append(offset)
 
     fp.parallel_pair_ratio = len(paired) / len(lines)
     fp.offset_peaks_mm = _offset_peaks(offsets)

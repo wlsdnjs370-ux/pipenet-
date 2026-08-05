@@ -18,6 +18,8 @@ sys.path.insert(0, str(ROOT))
 
 from core.design.recognize import arch_category as C  # noqa: E402
 from core.design.recognize import geom_stats as G  # noqa: E402
+from core.design.recognize import opening_close as O  # noqa: E402
+from core.design.recognize import wall_centerline as W  # noqa: E402
 
 
 def entities_of(path: Path) -> tuple[list, dict]:
@@ -64,7 +66,7 @@ def entities_of(path: Path) -> tuple[list, dict]:
     return out, {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy}
 
 
-def main(path: Path) -> None:
+def main(path: Path, wall_override: set = frozenset()) -> None:
     t0 = time.perf_counter()
     ents, bbox = entities_of(path)
     t1 = time.perf_counter()
@@ -87,8 +89,11 @@ def main(path: Path) -> None:
             fp.long_line_ratio))
 
     print("\n── C140 판정 ────────────────────────────────────────────────")
+    verdicts = {}
+    for fp in sorted(fps, key=lambda f: -f.n_entities):
+        verdicts[fp.name] = C.evaluate(fp)
     for fp in sorted(fps, key=lambda f: -f.n_entities)[:20]:
-        v = C.evaluate(fp)
+        v = verdicts[fp.name]
         alt = " / 대안 " + ", ".join(f"{c} {s:.2f}" for c, s in v.alternatives) if v.alternatives else ""
         print(f"{fp.name[:27]:<28}{v.category:<11}{v.confidence:.2f}{alt}")
         for text in v.provenance:
@@ -96,6 +101,52 @@ def main(path: Path) -> None:
         for text in v.near_misses:
             print(f"      - {text}")
 
+    _c150_c160(ents, fps, verdicts, (unit or {}).get("unit_to_mm") or 1.0, t2,
+               wall_override)
+
+
+def _c150_c160(ents, fps, verdicts, unit_to_mm, t2, wall_override) -> None:
+    """C140 이 WALL 로 본 레이어를 중심선화하고, DOOR 레이어의 호로 간극을 닫는다.
+
+    `wall_override` 는 GATE 가 사람 손으로 WALL 을 확정하는 자리를 대신한다. 실
+    도면에서 WALL 이 한 곳도 안 나오는 경우가 있어(§3.2 판정표의 한계) C150 을
+    실 기하로 돌려보려면 이 통로가 필요하다.
+    """
+    walls = ({fp.name for fp in fps if verdicts[fp.name].category == C.WALL}
+             | {fp.name for fp in fps if fp.name in wall_override})
+    doors = {fp.name for fp in fps if verdicts[fp.name].category == C.DOOR}
+    print(f"\n── C150/C160 ─ WALL {sorted(walls)} / DOOR {sorted(doors)}")
+    if not walls:
+        print("   WALL 레이어가 없다 — 중심선화할 대상이 없다")
+        return
+
+    peaks: list[float] = []
+    for fp in fps:
+        if fp.name in walls:
+            peaks += fp.offset_peaks_mm
+    lines = [e["p"] for e in ents if e["t"] == "L" and e["l"] in walls]
+    arcs = [e for e in ents if e["t"] == "A" and e["l"] in doors]
+
+    result = W.build_centerlines(lines, offset_peaks_mm=peaks, unit_to_mm=unit_to_mm)
+    t3 = time.perf_counter()
+    paired = sum(1 for c in result.centerlines if not c.unpaired)
+    print(f"   중심선 {len(result.centerlines)}개 (짝지음 {paired}), 노드 {len(result.nodes)}, "
+          f"{t3 - t2:.1f}s")
+    for line in result.provenance:
+        print(f"      + {line}")
+
+    closure = O.close_openings(result, arcs, unit_to_mm=unit_to_mm)
+    t4 = time.perf_counter()
+    kinds: dict = {}
+    for edge in closure.virtual_edges:
+        kinds[edge.kind] = kinds.get(edge.kind, 0) + 1
+    print(f"   가상 간선 {len(closure.virtual_edges)}개 {kinds}, {t4 - t3:.1f}s")
+    for line in closure.provenance:
+        print(f"      + {line}")
+    for edge in closure.virtual_edges[:3]:
+        print(f"      · {edge.kind} {edge.confidence:.2f} gap {edge.gap_mm:.0f}mm — "
+              f"{edge.evidence[0]}")
+
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]))
+    main(Path(sys.argv[1]), set(sys.argv[2:]))

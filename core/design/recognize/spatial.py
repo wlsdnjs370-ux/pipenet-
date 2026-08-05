@@ -18,37 +18,46 @@ Segment = tuple[float, float, float, float]
 
 
 class NodeIndex:
-    """공차 안의 점을 같은 노드로 묶는다. 좌표는 처음 들어온 값을 유지한다."""
+    """공차 안의 점을 같은 노드로 묶는다. 좌표는 처음 들어온 값을 유지한다.
+
+    점마다 공차가 다를 수 있다 — C150 의 `snap_tol` 은 벽 두께에 걸려 있다
+    (§3.3). 그래서 `tol` 은 격자 크기이자 **상한**이고, 실제 병합 판정은 두 점의
+    공차 중 작은 쪽으로 한다. 작은 쪽을 쓰지 않으면 어느 점을 먼저 넣었느냐에
+    따라 결과가 달라진다.
+    """
 
     def __init__(self, tol: float):
         if tol <= 0:
             raise ValueError("공차는 양수여야 합니다")
         self.tol = float(tol)
         self.points: list[Point] = []
+        self.tols: list[float] = []
         self._cells: dict[tuple[int, int], list[int]] = {}
 
     def _key(self, x: float, y: float) -> tuple[int, int]:
         return (math.floor(x / self.tol), math.floor(y / self.tol))
 
-    def find(self, x: float, y: float) -> int | None:
+    def find(self, x: float, y: float, tol: float | None = None) -> int | None:
+        limit = self.tol if tol is None else min(float(tol), self.tol)
         cx, cy = self._key(x, y)
         best: int | None = None
-        best_d = self.tol
+        best_d = limit
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
                 for nid in self._cells.get((cx + dx, cy + dy), ()):
                     px, py = self.points[nid]
                     d = math.hypot(px - x, py - y)
-                    if d <= best_d:
+                    if d <= min(best_d, self.tols[nid]):
                         best, best_d = nid, d
         return best
 
-    def add(self, x: float, y: float) -> int:
-        nid = self.find(x, y)
+    def add(self, x: float, y: float, tol: float | None = None) -> int:
+        nid = self.find(x, y, tol)
         if nid is not None:
             return nid
         nid = len(self.points)
         self.points.append((x, y))
+        self.tols.append(self.tol if tol is None else min(float(tol), self.tol))
         self._cells.setdefault(self._key(x, y), []).append(nid)
         return nid
 
@@ -96,6 +105,47 @@ class SegmentGrid:
                 for dy in (-1, 0, 1):
                     out.update(get((cx + dx, cy + dy), ()))
         return out
+
+
+def angle_bucketed_pairs(segments, *, bucket_deg: float, cell: float):
+    """근접한 평행 후보 쌍만 흘려보낸다. `(i, j, angle_i, angle_j)`, `i < j`.
+
+    격자를 각도 버킷별로 따로 둔다. 하나로 합치면 가구 레이어처럼 짧은 선이
+    수만 개 몰린 셀에서 후보가 그대로 O(n^2) 로 불어나 실 도면에서만 멈춘다.
+    각도로 먼저 가르면 대부분의 후보가 조회 전에 사라진다.
+
+    C130 평행쌍(§3.1)과 C150 중심선 쌍(§3.3)이 버킷 폭만 다르고 같은 탐색을
+    한다. 각자 두면 한쪽만 고쳐져 조용히 갈라진다.
+    """
+    n = len(segments)
+    if n < 2:
+        return
+    angles = [angle_deg(s) for s in segments]
+    n_buckets = max(1, int(round(180.0 / bucket_deg)))
+
+    grids: dict[int, SegmentGrid] = {}
+    cells: list[tuple] = []
+    buckets: list[int] = []
+    for i, seg in enumerate(segments):
+        b = int(angles[i] / bucket_deg) % n_buckets
+        grid = grids.get(b)
+        if grid is None:
+            grid = grids[b] = SegmentGrid(cell)
+        walked = grid.walk(seg)
+        grid.add(i, walked)
+        cells.append(walked)
+        buckets.append(b)
+
+    for i in range(n):
+        # 이웃 버킷까지 봐야 179.9° 와 0.1° 처럼 버킷 경계를 사이에 둔 짝을 놓치지 않는다.
+        candidates: set[int] = set()
+        for d in (-1, 0, 1):
+            grid = grids.get((buckets[i] + d) % n_buckets)
+            if grid is not None:
+                candidates |= grid.lookup(cells[i])
+        for j in candidates:
+            if j > i:
+                yield i, j, angles[i], angles[j]
 
 
 def angle_deg(seg: Segment) -> float:

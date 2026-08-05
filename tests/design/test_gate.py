@@ -83,14 +83,34 @@ def test_장애물_미확보도_확정이다():
     assert "obstacles.status" not in G.unresolved(draft)
 
 
+def _by_field(applied):
+    return {a["field"]: a for a in applied}
+
+
 def test_천장고_기본값은_층고가_있을_때만_채운다():
     """근거 없는 채움은 G9 위반이다. 층고를 모르면 결손으로 남긴다."""
-    assert G.apply_defaults(_draft()) == []
+    assert "ceiling.slab_height_mm" not in _by_field(G.apply_defaults(_draft()))
     draft = _draft(floor_height_mm=3200)
-    applied = G.apply_defaults(draft)
-    assert applied[0]["value"] == 3200
+    applied = _by_field(G.apply_defaults(draft))
+    assert applied["ceiling.slab_height_mm"]["value"] == 3200
     assert draft.room("R-1F-012").provenance["ceiling.slab_height_mm"] == G.PROV_DEFAULT
     assert "R-1F-012.ceiling.slab_height_mm" not in G.unresolved(draft)
+
+
+def test_주위온도는_상온_대푯값을_근거와_함께_채운다():
+    """[문서정합] §4 표는 '용도별 기본값'이라 적었으나 소방 용도 분류에 열원 정보가
+    없다. 표시온도는 39℃ 미만이 한 구간이라 상온 대푯값 하나로 결과가 같고, 그
+    구간을 벗어나는 실(보일러실 등)은 사람이 게이트에서 직접 올린다."""
+    draft = _draft()
+    applied = _by_field(G.apply_defaults(draft))["ambient_temp_max_c"]
+    assert applied["value"] == G.AMBIENT_DEFAULT_C and applied["basis"]
+    room = draft.room("R-1F-012")
+    assert room.provenance["ambient_temp_max_c"] == G.PROV_DEFAULT
+
+    # 사람이 올린 값은 기본값이 덮지 않는다.
+    G.apply_values(draft, {"R-1F-012": {"ambient_temp_max_c": 45}})
+    G.apply_defaults(draft)
+    assert room.ambient_temp_max_c == 45
 
 
 def test_결손_항목은_한_번에_묶어서_낸다():
@@ -202,8 +222,8 @@ def test_전부_확정하면_게이트가_열리고_기록이_남는다(client):
     assert "passed" in events
     assert sess.status()["meta"]["gate_passed"] is True
 
-    res = client.post("/api/design/c2/constraints", json={"session_id": sid})
-    assert res.status_code == 501         # 게이트는 열렸고 C2 는 아직 없다
+    res = client.post("/api/design/c3/valves", json={"session_id": sid})
+    assert res.status_code == 501         # 게이트는 열렸고 C3 는 아직 없다
 
 
 def test_다른_탭이_먼저_저장했으면_덮어쓰지_않는다(client):

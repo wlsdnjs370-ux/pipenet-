@@ -4,9 +4,9 @@
 `register(app, ...)` 패턴. 기존 `/api/remote30/*` 는 건드리지 않으며, 이 모듈은
 `DESIGN_WORKBENCH_ENABLED` 가 꺼져 있으면 라우트를 아예 등록하지 않는다(§C.5).
 
-C2 이후 엔드포인트는 **게이트 강제만** 걸어 자리를 잡아 두고, 게이트를 통과한
-뒤에는 아직 구현되지 않았음을 501 로 밝힌다. 통과한 것처럼 200 을 돌려주면 화면이
-진행된 것으로 오해한다.
+아직 구현되지 않은 C3 이후 엔드포인트는 **게이트 강제만** 걸어 자리를 잡아 두고,
+게이트를 통과한 뒤에는 구현이 없음을 501 로 밝힌다. 통과한 것처럼 200 을 돌려주면
+화면이 진행된 것으로 오해한다.
 """
 from __future__ import annotations
 
@@ -23,6 +23,8 @@ from werkzeug.utils import secure_filename
 
 from core.design import gate as G
 from core.design import session as S
+from core.design.deterministic import constraints as CN
+from core.design.deterministic import esfr as ESFR
 from core.design.recognize import params as RP
 from core.design.recognize import pipeline as PL
 from core.design.schema import BuildingDraft
@@ -32,10 +34,8 @@ from core.design.schema import BuildingDraft
 # 판정이 바뀌면 이 값을 올려야 옛 결과가 캐시에서 되살아나지 않는다.
 DESIGN_CACHE_VERSION = "c1-v1"
 
-# 게이트 뒤에 서는 단계들. 지시서 §4.1 — `/api/design/c2/*` 이후 전부.
+# 게이트 뒤에 서지만 아직 구현이 없는 단계들. C2·C2B 는 실제 라우트로 빠졌다.
 _GATED_STAGES = (
-    ("/api/design/c2/constraints", "POST", "C2"),
-    ("/api/design/c2b/esfr", "POST", "C2B"),
     ("/api/design/c3/valves", "POST", "C3"),
     ("/api/design/c3/zones", "POST", "C3-zones"),
     ("/api/design/c4/heads", "POST", "C4"),
@@ -43,6 +43,14 @@ _GATED_STAGES = (
     ("/api/design/emit", "POST", "EMIT"),
     ("/api/design/checks/<sid>", "GET", "CHECKS"),
 )
+
+
+# meta.stage 는 앞으로만 간다. C2B 로 기준을 다시 구우면서 stage 를 되감으면 이미
+# C4 까지 간 세션이 화면에서 C2 로 돌아간 것처럼 보인다.
+_STAGE_ORDER = ("c1", "c2", "c3", "c4", "c5", "emit")
+
+# 세션 파일이 관리하는 값. 내용 비교에서는 빼야 같은 기준을 다시 구웠는지 알 수 있다.
+_VOLATILE_KEYS = ("version", "updated_at")
 
 
 def _fail(code: str, message: str, status: int, **extra):
@@ -368,14 +376,13 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
                          current_version=conflict.current, current=conflict.data)
 
         actor = operator or "unknown"
-        for change in changes:
-            event = ("use_override"
-                     if change["field"] == "use" and change.get("suggested") else "value_confirmed")
-            sess.audit(actor, "GATE", event, change)
-        for applied in defaults:
-            sess.audit("system", "GATE", "default_applied", applied)
-        for edit in edits:
-            sess.audit(actor, "GATE", "room_edit", edit)
+        sess.audit_many(actor, "GATE", [
+            (("use_override" if change["field"] == "use" and change.get("suggested")
+              else "value_confirmed"), change) for change in changes
+        ] + [("room_edit", edit) for edit in edits])
+        # 기본값은 사람이 아니라 서버가 채웠다. 행위자를 섞으면 감리에서 누가
+        # 확정했는지 가려낼 수 없다.
+        sess.audit_many("system", "GATE", [("default_applied", a) for a in defaults])
 
         if not draft.gate.passed:
             sess.audit(actor, "GATE", "confirm_incomplete",
@@ -395,20 +402,145 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
         return jsonify({"ok": True, "passed": True, "version": new_version,
                         "passed_at": draft.gate.passed_at, "defaults": defaults})
 
+    # ── 게이트 뒤 공통 ──────────────────────────────────────────────────
+    def _gated(session_id: str):
+        """반환 `(세션, draft, None)` 또는 `(None, None, 오류응답)`."""
+        sess, err = _open(session_id)
+        if err:
+            return None, None, err
+        draft, _version, err = _load_draft(sess)
+        if err:
+            return None, None, err
+        try:
+            G.require_gate(draft)
+        except G.GateNotPassed as exc:
+            return None, None, _fail("GATE_NOT_PASSED", str(exc), 409,
+                                     unresolved=exc.unresolved)
+        return sess, draft, None
+
+    # ── C2 결정론 기준 (§5, §11) ────────────────────────────────────────
+    def _current_constraints(sess, data):
+        """내용이 같은 현행 기준이 있으면 `(이름, version, 내용)`, 없으면 None.
+
+        같은 값을 다시 구울 때마다 `constraints.v2.json` 을 만들면 화면 새로고침
+        한 번에 세대가 하나씩 늘어 감사 기록에서 진짜 재검토가 묻힌다.
+        """
+        meta, _ = sess.read("meta.json")
+        name = meta.get("constraints")
+        if not name:
+            return None
+        current, version = sess.read_or_none(name)
+        if current is None:
+            return None
+        stripped = {k: v for k, v in current.items() if k not in _VOLATILE_KEYS}
+        return (name, version, current) if stripped == data else None
+
+    def _bake_constraints(sess, draft, actor, decision=None):
+        """반환 `(payload, None)` 또는 `(None, 오류응답)`.
+
+        기준은 덮어쓰지 않는다(§16.3). 값이 실제로 달라졌을 때만
+        `constraints.v2.json` 을 새로 쓰고 meta 가 현행을 가리킨다 — 어떤 기준으로
+        설계했는지가 감사 대상이라 옛 기준이 남아 있어야 한다.
+        """
+        try:
+            data = CN.build_constraints(draft.to_dict()).to_dict()
+        except CN.MissingBuildingFact as exc:
+            # GATE 로 돌려보낸다. 결손은 코드가 추측할 항목이 아니다.
+            return None, _fail("MISSING_BUILDING_FACT", str(exc), 422,
+                               field=exc.field, detail=exc.detail)
+        if decision is None:
+            stored, _v = sess.read_or_none("esfr.json")
+            if stored is not None:
+                decision = ESFR.EsfrDecision.from_dict(stored)
+        if decision is not None:
+            data = ESFR.apply(data, decision)
+
+        same = _current_constraints(sess, data)
+        if same is not None:
+            name, version, stored_data = same
+            return {"artifact": name, "version": version, "constraints": stored_data,
+                    "rebaked": False}, None
+
+        name = sess.next_constraints_name()
+        version = sess.write(name, data)
+        meta, _ = sess.read("meta.json")
+        stage = meta.get("stage")
+        fields = {"constraints": name}
+        if stage not in _STAGE_ORDER or _STAGE_ORDER.index(stage) < _STAGE_ORDER.index("c3"):
+            fields["stage"] = "c3"
+        sess.update_meta(**fields)
+        sess.audit(actor, "C2", "constraints_built", {
+            "artifact": name,
+            "scenario_head_count": data.get("scenario_head_count"),
+            "horizontal_distance_m": data.get("horizontal_distance_m"),
+            "esfr_active": bool((data.get("esfr") or {}).get("active")),
+        })
+        return {"artifact": name, "version": version, "constraints": data,
+                "rebaked": True}, None
+
+    @app.post("/api/design/c2/constraints")
+    def design_c2_constraints():
+        body = request.get_json(silent=True) or {}
+        sess, draft, err = _gated(str(body.get("session_id") or ""))
+        if err:
+            return err
+        actor = (body.get("operator") or "").strip() or draft.gate.operator or "unknown"
+        try:
+            with sess.stage_lock("c2"):
+                payload, err = _bake_constraints(sess, draft, actor)
+        except S.StageBusy as exc:
+            return _fail("STAGE_BUSY", str(exc), 409)
+        if err:
+            return err
+        return jsonify({"ok": True, **payload})
+
+    # ── C2B 103B 활성 (§6) ──────────────────────────────────────────────
+    @app.post("/api/design/c2b/esfr")
+    def design_c2b_esfr():
+        body = request.get_json(silent=True) or {}
+        sess, draft, err = _gated(str(body.get("session_id") or ""))
+        if err:
+            return err
+        # 빠진 값을 False 로 읽으면 "묻지 않았다"가 "아니라고 답했다"가 되고 그 답이
+        # 설비 종류를 가른다 — 세 조건 전부 참/거짓으로 명시돼야 받는다.
+        missing = [key for key in ESFR.INPUTS if not isinstance(body.get(key), bool)]
+        if missing:
+            return _fail("ESFR_INPUT_REQUIRED",
+                         "103B 세 조건을 참/거짓으로 명시해야 합니다: " + ", ".join(missing),
+                         400, fields=missing)
+        try:
+            decision = ESFR.decide(
+                operator=(body.get("operator") or "").strip(),
+                decided_at=S.now_iso(), note=str(body.get("note") or ""),
+                **{key: body[key] for key in ESFR.INPUTS})
+        except ValueError as exc:
+            return _fail("OPERATOR_REQUIRED", str(exc), 400)
+
+        try:
+            with sess.stage_lock("c2"):
+                payload = None
+                # 기준을 이미 구웠다면 그 자리에서 다시 굽는다. 두 산출물이 어긋난
+                # 채 남으면 하류가 어느 쪽을 믿느냐에 따라 설계가 갈린다. 굽지
+                # 못하면 판단도 남기지 않는다 — 한쪽만 남으면 다음 C2 가 조용히
+                # 다른 기준을 만든다.
+                if sess.path(S.CONSTRAINTS).is_file():
+                    payload, err = _bake_constraints(sess, draft, decision.operator,
+                                                     decision=decision)
+                    if err:
+                        return err
+                sess.write("esfr.json", decision.to_dict())
+                sess.audit(decision.operator, "C2B", "esfr_decided", decision.to_dict())
+        except S.StageBusy as exc:
+            return _fail("STAGE_BUSY", str(exc), 409)
+        return jsonify({"ok": True, "esfr": decision.to_dict(), **(payload or {})})
+
     # ── 게이트 뒤 단계 (자리만) ─────────────────────────────────────────
     def _make_gated(stage: str):
         def view(sid=None):
             session_id = sid or str((request.get_json(silent=True) or {}).get("session_id") or "")
-            sess, err = _open(session_id)
+            _sess, _draft, err = _gated(session_id)
             if err:
                 return err
-            draft, _version, err = _load_draft(sess)
-            if err:
-                return err
-            try:
-                G.require_gate(draft)
-            except G.GateNotPassed as exc:
-                return _fail("GATE_NOT_PASSED", str(exc), 409, unresolved=exc.unresolved)
             return _fail("STAGE_NOT_IMPLEMENTED",
                          f"{stage} 단계는 아직 구현되지 않았습니다.", 501)
         return view

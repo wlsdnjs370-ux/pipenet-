@@ -31,6 +31,12 @@ _SESSION_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-
 _STAGE_LOCKS: dict[tuple[str, str], threading.Lock] = {}
 _STAGE_LOCKS_GUARD = threading.Lock()
 
+CONSTRAINTS = "constraints.json"
+
+# §16.3 — 다시 구운 기준은 `constraints.v2.json` 처럼 새 이름으로 남는다. 그 사본도
+# 원본과 똑같이 불변이어야 옛 설계가 어떤 기준을 썼는지 되짚을 수 있다.
+_IMMUTABLE_RE = re.compile(r"^constraints(\.v\d+)?\.json$")
+
 
 class SessionNotFound(Exception):
     pass
@@ -73,8 +79,6 @@ def is_session_id(sid: str) -> bool:
 
 class DesignSession:
     """`<root>/<session_id>/` 한 벌. 파일별 `version` 으로 낙관적 잠금을 건다."""
-
-    IMMUTABLE = ("constraints.json",)
 
     def __init__(self, root: Path, sid: str):
         if not is_session_id(sid):
@@ -134,7 +138,7 @@ class DesignSession:
         생략하면 검사 없이 덮어쓴다(생성 시점·서버 자신의 산출물).
         """
         current_data, current = self.read_or_none(name)
-        if name in self.IMMUTABLE and current_data is not None:
+        if _IMMUTABLE_RE.match(name) and current_data is not None:
             raise ImmutableArtifact(name)
         if if_version is not None and if_version != current:
             raise VersionConflict(name, if_version, current, current_data or {})
@@ -148,6 +152,15 @@ class DesignSession:
         os.replace(tmp, dest)
         return payload["version"]
 
+    def next_constraints_name(self) -> str:
+        """다음에 쓸 기준 파일 이름. §16.3 — 덮어쓰지 않고 옆에 새로 쓴다."""
+        if not self.path(CONSTRAINTS).is_file():
+            return CONSTRAINTS
+        n = 2
+        while self.path(f"constraints.v{n}.json").is_file():
+            n += 1
+        return f"constraints.v{n}.json"
+
     def update_meta(self, **fields: Any) -> None:
         meta, _ = self.read("meta.json")
         meta.update(fields)
@@ -155,13 +168,25 @@ class DesignSession:
 
     # ── 감사 로그 (append-only) ──────────────────────────────────────────
     def audit(self, actor: str, stage: str, event: str, detail: dict | None = None) -> None:
-        line = json.dumps({
-            "ts": now_iso(), "actor": actor, "stage": stage, "event": event,
+        self.audit_many(actor, stage, [(event, detail or {})])
+
+    def audit_many(self, actor: str, stage: str,
+                   events: list[tuple[str, dict]]) -> None:
+        """같은 행위자·단계의 여러 기록을 한 번에 붙인다.
+
+        게이트 통과 한 번이 실 개수만큼 `default_applied` 를 남기므로 건별로 열면
+        큰 도면에서 파일 열기가 실 수만큼 늘어난다.
+        """
+        if not events:
+            return
+        ts = now_iso()
+        lines = [json.dumps({
+            "ts": ts, "actor": actor, "stage": stage, "event": event,
             "detail": detail or {},
-        }, ensure_ascii=False)
+        }, ensure_ascii=False) for event, detail in events]
         self.dir.mkdir(parents=True, exist_ok=True)
         with self.path("audit.ndjson").open("a", encoding="utf-8") as fp:
-            fp.write(line + "\n")
+            fp.write("\n".join(lines) + "\n")
 
     def audit_entries(self) -> list[dict]:
         try:
@@ -180,8 +205,11 @@ class DesignSession:
     def status(self) -> dict[str, Any]:
         meta, _ = self.read("meta.json")
         artifacts = {}
-        for name in ("building.json", "constraints.json", "design.json",
-                     "graph.json", "checks.json"):
+        # 기준은 다시 구우면 이름이 바뀐다(§16.3). 현행(meta)과 최초본을 함께 실어야
+        # 화면이 옛 기준을 현행으로 착각하지도, 최초본이 사라졌다고 읽지도 않는다.
+        names = ["building.json", CONSTRAINTS, meta.get("constraints") or CONSTRAINTS,
+                 "esfr.json", "design.json", "graph.json", "checks.json"]
+        for name in dict.fromkeys(names):
             data, version = self.read_or_none(name)
             artifacts[name] = None if data is None else {
                 "version": version, "updated_at": data.get("updated_at")}

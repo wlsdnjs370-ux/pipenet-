@@ -165,6 +165,10 @@ class BuildingFacts:
     structure: str | None = None
     use: str | None = None
     is_underground_arcade: bool = False
+    # 기준개수 표 2.1.1.1 의 '판매시설과 연결된 주차장' 행. 여기에 자리가 없으면
+    # `to_dict()` 왕복에서 사라지고 C2 가 거짓으로 읽어 기준개수 30 이 20 으로
+    # 내려간다 — 수원이 3분의 2 로 과소 산정되는 방향이라 조용히 두면 안 된다.
+    is_connected_parking: bool = False
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "BuildingFacts":
@@ -176,6 +180,7 @@ class BuildingFacts:
             floors_underground=None if under is None else int(under),
             structure=d.get("structure"), use=d.get("use"),
             is_underground_arcade=bool(d.get("is_underground_arcade", False)),
+            is_connected_parking=bool(d.get("is_connected_parking", False)),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -184,6 +189,7 @@ class BuildingFacts:
             "floors_underground": self.floors_underground,
             "structure": self.structure, "use": self.use,
             "is_underground_arcade": self.is_underground_arcade,
+            "is_connected_parking": self.is_connected_parking,
         }
 
 

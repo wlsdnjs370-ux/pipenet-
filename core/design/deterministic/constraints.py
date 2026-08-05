@@ -289,12 +289,19 @@ def build_constraints(building: dict) -> Constraints:
     structure = str(_require(b, "structure", "building.structure"))
     use = str(_require(b, "use", "building.use"))
     is_underground_arcade = bool(b.get("is_underground_arcade", False))
-    has_special_combustible = bool(b.get("has_special_combustible", False))
-    is_apartment_unit = bool(b.get("is_apartment_unit", False))
     is_connected_parking = bool(b.get("is_connected_parking", False))
-    has_retail_occupancy = bool(b.get("has_retail_occupancy", False))
-    is_rack_storage = use == "랙크식창고"
-    is_stage = bool(b.get("is_stage", False))
+
+    # 무대부·특수가연물·랙크식은 **실별로** 확정된다(GATE `special_hazard`). 건물
+    # 키만 읽으면 사람이 실에 붙인 확정이 조용히 힘을 잃고 R 이 1.7 대신 2.3 으로
+    # 남는다 — 한 실이라도 붙어 있으면 건물 전체 기준을 그쪽으로 당긴다.
+    hazards = {room.get("special_hazard") for room in rooms}
+    has_special_combustible = "특수가연물" in hazards
+    is_stage = "무대부" in hazards
+    is_rack_storage = use == "랙크식창고" or "랙크식창고" in hazards
+    # 아파트 세대·판매시설 포함 여부도 사람이 확정한 용도에서 읽는다. 따로 묻지
+    # 않는 이유는 같은 사실을 두 번 물으면 두 답이 어긋나기 때문이다.
+    is_apartment_unit = use == "공동주택"
+    has_retail_occupancy = any((room.get("use") or "") in T.RETAIL_USES for room in rooms)
 
     mount_h = _head_mount_height_m(rooms) if rooms else float(
         _require(b, "head_mount_height_m", "building.head_mount_height_m"))

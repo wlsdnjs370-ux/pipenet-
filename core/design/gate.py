@@ -248,23 +248,35 @@ def _group(spec: GateField, targets: list[str], suggestion: dict) -> dict[str, A
 # 반영
 # ────────────────────────────────────────────────────────────────────────────
 
+# [문서정합] §4 표는 최고 주위온도의 기본값을 "용도별"이라 적었으나 소방 용도
+# 분류에는 열원 정보가 없어 용도별로 가를 근거가 없다. 표시온도는 39℃ 미만이 전부
+# 한 구간(표 2.7.6)이므로 상온 대푯값 하나면 그 구간 안에서 결과가 같다. 보일러실
+# 처럼 39℃ 를 넘는 실은 사람이 게이트에서 직접 올린다.
+AMBIENT_DEFAULT_C = 29.0
+_AMBIENT_BASIS = "NFTC 103 2.7.6 표시온도 첫 구간(39℃ 미만) 상온 대푯값"
+
+
 def apply_defaults(draft: BuildingDraft) -> list[dict[str, Any]]:
     """근거가 있는 기본값만 채운다. 반환은 감사 로그에 남길 변경 목록.
 
-    지금은 천장고 하나다 — `source.floors[].height_mm` 가 있을 때만 층고를 쓰고,
-    없으면 채우지 않고 결손으로 남긴다. 근거 없는 채움은 G9 위반이다.
+    천장고는 `source.floors[].height_mm` 가 있을 때만 층고를 쓰고, 없으면 채우지
+    않고 결손으로 남긴다. 근거 없는 채움은 G9 위반이다.
     """
     applied: list[dict[str, Any]] = []
     for room in draft.rooms:
-        if _room_confirmed(room, "ceiling.slab_height_mm"):
-            continue
-        height = draft.floor_height_mm(room.floor)
-        if height is None:
-            continue
-        room.ceiling.slab_height_mm = height
-        room.provenance["ceiling.slab_height_mm"] = PROV_DEFAULT
-        applied.append({"room": room.id, "field": "ceiling.slab_height_mm",
-                        "value": height, "basis": "source.floors[].height_mm"})
+        if not _room_confirmed(room, "ceiling.slab_height_mm"):
+            height = draft.floor_height_mm(room.floor)
+            if height is not None:
+                room.ceiling.slab_height_mm = height
+                room.provenance["ceiling.slab_height_mm"] = PROV_DEFAULT
+                applied.append({"room": room.id, "field": "ceiling.slab_height_mm",
+                                "value": height,
+                                "basis": "source.floors[].height_mm"})
+        if not _room_confirmed(room, "ambient_temp_max_c"):
+            room.ambient_temp_max_c = AMBIENT_DEFAULT_C
+            room.provenance["ambient_temp_max_c"] = PROV_DEFAULT
+            applied.append({"room": room.id, "field": "ambient_temp_max_c",
+                            "value": AMBIENT_DEFAULT_C, "basis": _AMBIENT_BASIS})
     return applied
 
 

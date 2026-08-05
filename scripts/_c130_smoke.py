@@ -17,8 +17,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core.design.recognize import arch_category as C  # noqa: E402
+from core.design.recognize import core_detect as K  # noqa: E402
 from core.design.recognize import geom_stats as G  # noqa: E402
 from core.design.recognize import opening_close as O  # noqa: E402
+from core.design.recognize import room_faces as F  # noqa: E402
+from core.design.recognize import room_label as L  # noqa: E402
 from core.design.recognize import wall_centerline as W  # noqa: E402
 
 
@@ -101,11 +104,13 @@ def main(path: Path, wall_override: set = frozenset()) -> None:
         for text in v.near_misses:
             print(f"      - {text}")
 
-    _c150_c160(ents, fps, verdicts, (unit or {}).get("unit_to_mm") or 1.0, t2,
-               wall_override)
+    unit_to_mm = (unit or {}).get("unit_to_mm") or 1.0
+    pair = _c150_c160(ents, fps, verdicts, unit_to_mm, t2, wall_override)
+    if pair is not None:
+        _c170_c190(ents, fps, verdicts, unit_to_mm, bbox, *pair)
 
 
-def _c150_c160(ents, fps, verdicts, unit_to_mm, t2, wall_override) -> None:
+def _c150_c160(ents, fps, verdicts, unit_to_mm, t2, wall_override):
     """C140 이 WALL 로 본 레이어를 중심선화하고, DOOR 레이어의 호로 간극을 닫는다.
 
     `wall_override` 는 GATE 가 사람 손으로 WALL 을 확정하는 자리를 대신한다. 실
@@ -118,7 +123,7 @@ def _c150_c160(ents, fps, verdicts, unit_to_mm, t2, wall_override) -> None:
     print(f"\n── C150/C160 ─ WALL {sorted(walls)} / DOOR {sorted(doors)}")
     if not walls:
         print("   WALL 레이어가 없다 — 중심선화할 대상이 없다")
-        return
+        return None
 
     peaks: list[float] = []
     for fp in fps:
@@ -146,6 +151,46 @@ def _c150_c160(ents, fps, verdicts, unit_to_mm, t2, wall_override) -> None:
     for edge in closure.virtual_edges[:3]:
         print(f"      · {edge.kind} {edge.confidence:.2f} gap {edge.gap_mm:.0f}mm — "
               f"{edge.evidence[0]}")
+    return result, closure, t4
+
+
+def _c170_c190(ents, fps, verdicts, unit_to_mm, bbox, result, closure, t4) -> None:
+    """실 폴리곤 → 실명 → 코어. 단층 도면이라 C190 은 이름 힌트 경로만 돈다."""
+    bbox_area = ((bbox["maxx"] - bbox["minx"]) * (bbox["maxy"] - bbox["miny"])
+                 * unit_to_mm * unit_to_mm)
+    faces = F.build_faces(result, closure, bbox_area_mm2=bbox_area)
+    t5 = time.perf_counter()
+    print(f"\n── C170 ─ 실 {len(faces.faces)}개, {t5 - t4:.1f}s")
+    for line in faces.provenance:
+        print(f"      + {line}")
+    for face in faces.faces[:5]:
+        flags = (" " + ",".join(face.flags)) if face.flags else ""
+        print(f"      · {face.area_m2:8.1f}㎡  변 {face.edge_count:3d}  "
+              f"conf {face.confidence:.2f}  가상 {face.virtual_ratio:.0%}{flags}")
+
+    rooms = {fp.name for fp in fps if verdicts[fp.name].category == C.ROOM_TEXT}
+    texts = [e for e in ents if e["t"] == "T" and e["l"] in rooms]
+    lines = [e for e in ents if e["t"] == "L"]
+    labels = L.assign_labels(faces.faces, texts, lines, unit_to_mm=unit_to_mm)
+    t6 = time.perf_counter()
+    print(f"\n── C180 ─ ROOM_TEXT {sorted(rooms)} / 텍스트 {len(texts)}개, "
+          f"{t6 - t5:.1f}s")
+    for line in labels.provenance:
+        print(f"      + {line}")
+    named = [lb for lb in labels.labels if lb.name]
+    for lb in named[:5]:
+        print(f"      · face {lb.face_index} '{lb.name}' ({lb.source} "
+              f"{lb.confidence:.2f}) 용도 {lb.use_hint}")
+
+    names = [[lb.name for lb in labels.labels]]
+    cores = K.detect_cores([faces.faces], names=names)
+    t7 = time.perf_counter()
+    print(f"\n── C190 ─ 코어 후보 {len(cores.candidates)}개, {t7 - t6:.1f}s")
+    for line in cores.provenance:
+        print(f"      + {line}")
+    for cand in cores.candidates[:5]:
+        print(f"      · face {cand.face_index} {cand.kind} {cand.confidence:.2f} "
+              f"— {cand.evidence[0]}")
 
 
 if __name__ == "__main__":

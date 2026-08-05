@@ -132,6 +132,37 @@ RELAXED_DOOR_RADIUS_MAX_RATIO = 1.40
 # provenance 에 남긴다. 자른 것을 숨기면 왜 간극이 안 닫혔는지 알 수 없다.
 GAP_CANDIDATE_MAX = 64
 
+# ── C170 실 폴리곤 (§3.5) ───────────────────────────────────────────────
+FACE_AREA_MIN_M2 = 1.0                 # 이하는 벽 두께 사이 틈
+FACE_AREA_MAX_BBOX_RATIO = 0.5         # 초과는 외곽 오검출
+FACE_EDGE_COUNT_SUSPICIOUS = 200       # 플래그하고 보존
+FACE_VIRTUAL_RATIO_SUSPICIOUS = 0.5
+FACE_CONF_BASE = 0.95
+FACE_CONF_VIRTUAL_PENALTY = 0.25
+FACE_CONF_UNPAIRED_PENALTY = 0.15
+FACE_CONF_MANY_EDGES_PENALTY = 0.10
+FACE_EDGE_COUNT_PENALTY_MIN = 40
+# 미검증 — 교차 분할에서 "간선 끝과 같은 점" 으로 볼 거리. C150 스냅 하한(30mm)
+# 보다 작아야 이미 이어 놓은 노드를 다시 가르지 않는다.
+FACE_SPLIT_TOL_MM = 5.0
+FACE_SPLIT_CELL_MIN_MM = 500.0         # 미검증 — 교차 후보 격자 하한
+
+# ── C180 실명 텍스트 귀속 (§3.6) ────────────────────────────────────────
+LEADER_SEARCH_RADIUS_MM = 2000.0
+LEADER_TEXT_ATTACH_MM = 500.0
+FACE_INDEX_CELL_MIN_MM = 2000.0        # 미검증 — 폴리곤 bbox 격자 셀
+CONF_LABEL_INSIDE = 0.85               # 미검증 — 폴리곤 안에서 직접 찾았다
+CONF_LABEL_LEADER = 0.60               # 미검증 — 지시선을 따라갔다
+CONF_USE_HINT = 0.70                   # 미검증 — 실명→용도는 추정일 뿐이다
+
+# ── C190 코어 판별 (§3.7) ───────────────────────────────────────────────
+CORE_CENTER_DIST_MAX_MM = 500.0
+CORE_AREA_RATIO_MIN = 0.70
+CORE_AREA_RATIO_MAX = 1.40
+CORE_FLOOR_SHARE_MIN = 0.60            # n ≥ (층수-1) * 0.6
+# 소형 폴리곤의 범위는 §3.2 SHAFT 행과 같은 값을 쓴다 (SHAFT_AREA_MIN_M2 ~
+# SMALL_CLOSED_AREA_MAX_M2). 신뢰도도 §3.2 의 CONF_SHAFT_* 를 그대로 쓴다.
+
 # ── 성능 예산 (부록 C.1) ────────────────────────────────────────────────
 LAYER_SAMPLE_LIMIT = 20_000            # 레이어당 엔티티 상한. 초과 시 무작위 표본
 SAMPLE_SEED = 20260805                 # 표본이 바뀌면 지문도 바뀐다 — 고정한다

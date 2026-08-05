@@ -189,8 +189,21 @@ def overlap_ratio(a: Segment, b: Segment) -> float:
     return max(0.0, min(la, hi) - max(0.0, lo)) / min(la, lb)
 
 
-def polygon_area(points: list) -> float:
-    """부호 없는 면적. 좌표 단위의 제곱으로 돌려준다."""
+def point_in_polygon(point: Point, polygon: list) -> bool:
+    """반직선 교차 판정. 변 위의 점은 보장하지 않는다 (실명 귀속에는 무해하다)."""
+    x, y = point
+    inside = False
+    n = len(polygon)
+    for i in range(n):
+        x1, y1 = polygon[i][0], polygon[i][1]
+        x2, y2 = polygon[(i + 1) % n][0], polygon[(i + 1) % n][1]
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) / (y2 - y1) * (x2 - x1):
+            inside = not inside
+    return inside
+
+
+def signed_area(points: list) -> float:
+    """부호 있는 면적. 반시계가 양수 — face 순회에서 외곽 face 를 가르는 데 쓴다."""
     n = len(points)
     if n < 3:
         return 0.0
@@ -199,9 +212,30 @@ def polygon_area(points: list) -> float:
         x1, y1 = points[i][0], points[i][1]
         x2, y2 = points[(i + 1) % n][0], points[(i + 1) % n][1]
         total += x1 * y2 - x2 * y1
-    return abs(total) * 0.5
+    return total * 0.5
+
+
+def polygon_area(points: list) -> float:
+    """부호 없는 면적. 좌표 단위의 제곱으로 돌려준다."""
+    return abs(signed_area(points))
 
 
 def centroid(points: list) -> Point:
+    """면적 중심. 면적이 0 이면 꼭짓점 평균으로 떨어진다.
+
+    꼭짓점 평균만 쓰면 한쪽 변에 꼭짓점이 몰린 폴리곤에서 중심이 그쪽으로 끌려간다.
+    C190 이 층 사이 폴리곤을 500mm 안에서 짝지으므로(§3.7) 그 편차가 그대로 오판이다.
+    """
+    area = signed_area(points)
+    if area:
+        n = len(points)
+        cx = cy = 0.0
+        for i in range(n):
+            x1, y1 = points[i][0], points[i][1]
+            x2, y2 = points[(i + 1) % n][0], points[(i + 1) % n][1]
+            cross = x1 * y2 - x2 * y1
+            cx += (x1 + x2) * cross
+            cy += (y1 + y2) * cross
+        return (cx / (6.0 * area), cy / (6.0 * area))
     return (sum(p[0] for p in points) / len(points),
             sum(p[1] for p in points) / len(points))

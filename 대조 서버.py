@@ -3425,6 +3425,9 @@ SYSTEM_OUTPUT_DIR = BASE_DIR / "data" / "system_runs"
 SYSTEM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 MACHINEROOM_OUTPUT_DIR = BASE_DIR / "data" / "machineroom_runs"
 MACHINEROOM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# 모듈 C 설계 자동화 — 기본 off. 켜지기 전까지 /api/design/* 은 존재하지 않는다.
+DESIGN_SESSION_DIR = BASE_DIR / "data" / "design_sessions"
+DESIGN_WORKBENCH_ENABLED = _os_for_auth.environ.get("DESIGN_WORKBENCH_ENABLED") == "1"
 
 # 통합 빌드 결과(CombinedTables) 캐시 — 브라우저 수동 편집 후 재출력(/combined/rebuild)이
 # 원본 망(fittings/equipment/nozzle 유량/펌프 곡선 등 geometry JSON 에 없는 리치 필드 포함)을
@@ -7094,6 +7097,14 @@ def remote30_export_cad():
     resp.headers["X-Kept-Layers"] = str(len(kept) if kept is not None else "all")
     return resp
 
+
+# 모듈 C 설계 자동화. 도메인판은 라우트가 이 파일 안에 인라인이라 register 패턴을
+# 쓰는 모듈이 이것 하나뿐이다 — app 과 설정이 모두 정의된 뒤여야 하므로 파일 끝에 둔다.
+import routes.r30_design as _routes_r30_design
+_routes_r30_design.register(
+    app, DESIGN_SESSION_DIR=DESIGN_SESSION_DIR, UPLOAD_DIR=UPLOAD_DIR,
+    INSPECT_CACHE_DIR=INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION=INSPECT_CACHE_VERSION,
+    enabled=DESIGN_WORKBENCH_ENABLED)
 
 try:
     from server_patch import register_v4_routes

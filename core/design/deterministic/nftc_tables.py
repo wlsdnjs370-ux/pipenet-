@@ -271,6 +271,19 @@ def min_dn(head_count: int, column: str = "가") -> int:
     return 150
 
 
+def next_dn(dn: int, column: str = "가") -> int | None:
+    """별표1 사다리에서 한 치수 위. 최대치면 `None`.
+
+    사다리를 따로 두지 않고 표의 행을 그대로 쓴다. 따로 두면 표에는 있는 90A 가
+    사다리에는 없는 식으로 어긋나고, 어긋난 쪽으로 상향하면 별표1 조회가 안 되는
+    호칭경이 나온다.
+    """
+    for candidate in sorted(PIPE_SIZE_TABLE[column]):
+        if candidate > dn:
+            return candidate
+    return None
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # 6. 보 이격 (NFTC 103 2.7.7.7)
 # ────────────────────────────────────────────────────────────────────────────
@@ -366,7 +379,8 @@ SPRAY_ZONE_HEADS_MIN_WHEN_SPLIT = 25
 BRANCH_HEADS_PER_SIDE_MAX = 8
 CROSS_MAIN_MIN_DN = 40
 
-# 사내 기준이며 법정 수치가 아니다. 2.2.1.10 단서의 수리계산 상한을 그대로 쓴다.
+# 2.5.3.3 단서의 법정 상한이다(`RULE_PIPE_SIZE` 본문에 그대로 적혀 있다). 나누는
+# 기준은 호칭경이 아니라 배관의 역할 — 가지배관이냐, 그 밖의 배관이냐다.
 VELOCITY_LIMIT_MPS: dict[str, float] = {"branch": 6.0, "other": 10.0}
 
 

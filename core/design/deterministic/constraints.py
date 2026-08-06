@@ -143,7 +143,8 @@ class Constraints:
                 col: {str(dn): cap for dn, cap in rows.items()}
                 for col, rows in self.pipe_size_table.items()
             },
-            "velocity_limit_mps": {"_note": "사내 기준 — 법정 아님", **self.velocity_limit_mps},
+            "velocity_limit_mps": {"_note": "NFTC 2.5.3.3 단서 — 배관 역할별",
+                                   **self.velocity_limit_mps},
             "beam_clearance_table": _beam_rows(self.beam_clearance_table),
             "head_exempt_places": list(self.head_exempt_places),
             "trace": [t.to_dict() for t in self.trace],
@@ -371,6 +372,8 @@ def build_constraints(building: dict) -> Constraints:
         _trace("cross_main_min_dn", T.RULE_CROSS_MAIN.code),
         _trace("tournament_forbidden", T.RULE_TOURNAMENT.code),
         _trace("pipe_size_table", T.RULE_PIPE_SIZE.code),
+        _trace("velocity_limit_mps", T.RULE_PIPE_SIZE.code,
+               note="2.5.3.3 단서. 호칭경이 아니라 배관 역할로 갈린다"),
         _trace("beam_clearance_table", T.RULE_BEAM.code),
         _trace("head_exempt_places", T.RULE_HEAD_EXEMPT.code),
     )

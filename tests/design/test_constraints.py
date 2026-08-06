@@ -15,7 +15,11 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_ROOT))
+# 기존 엔진(`nftc_rules`)은 배포판마다 `core/` 아래에도, 루트 평면에도 놓인다.
+# 둘 다 경로에 올리고 평면 이름으로 부르면 어느 배치에서도 같은 모듈을 읽는다.
+for _p in (_ROOT, _ROOT / "core"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from core.design.deterministic import constraints as C  # noqa: E402
 from core.design.deterministic import nftc_tables as T  # noqa: E402
@@ -302,7 +306,7 @@ def test_agrees_with_legacy_nftc_rules(use, floors, mount, special):
     두 개의 진실 출처가 조용히 갈라지는 것이 가장 비싼 실패다. 아래
     `test_known_divergence_*` 가 고정한 1건 외에 새 불일치가 생기면 실패한다.
     """
-    from core import nftc_rules as legacy
+    import nftc_rules as legacy
 
     mine, _ = C.scenario_head_count(
         use=use, floors_total=floors, head_mount_height_m=mount,
@@ -325,7 +329,7 @@ def test_known_divergence_complex_without_retail():
     문제는 아니지만, 고쳐질 때까지 이 차이를 여기에 고정해 둔다. 기존 엔진이
     수정되면 이 테스트가 실패하고 — 그때 이 테스트를 지우면 된다.
     """
-    from core import nftc_rules as legacy
+    import nftc_rules as legacy
 
     mine, _ = C.scenario_head_count(
         use="복합건축물", floors_total=9, head_mount_height_m=4.0,
@@ -339,7 +343,7 @@ def test_known_divergence_complex_without_retail():
 
 
 def test_agrees_with_legacy_temperature_rating():
-    from core import nftc_rules as legacy
+    import nftc_rules as legacy
 
     for ambient in (0.0, 38.0, 39.0, 63.0, 64.0, 105.0, 106.0):
         mine = C.temp_rating(ambient)[0]

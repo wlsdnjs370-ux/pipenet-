@@ -283,10 +283,12 @@ def test_꺾임_각도_구간은_모듈A와_같다(angle, expect):
 
 def test_부속류_이름은_HAS_변환기가_아는_것이어야_한다():
     """모르는 이름은 HAS 에서 조용히 사라진다 — 그만큼의 등가길이가 없어진다."""
-    # `core/has_converter.py` 는 평면 import(`from hb_rules import ...`)라 core 자체가
-    # 경로에 올라야 읽힌다. 설계 패키지가 이 짐을 지지 않으려고 여기서만 올린다.
+    # `has_converter` 는 평면 import(`from hb_rules import ...`)라 그것이 놓인
+    # 디렉터리 자체가 경로에 올라야 읽힌다. 배포판마다 `core/` 아래에도 루트에도
+    # 놓이므로 둘 다 올리고 평면 이름으로 부른다. 설계 패키지가 이 짐을 지지
+    # 않으려고 여기서만 손댄다.
     sys.path.insert(0, str(_ROOT / "core"))
-    from core.has_converter import _FITTING_TO_CNT
+    from has_converter import _FITTING_TO_CNT
     pipes = [{"label": "P1", "in": "10", "out": "11"},
              {"label": "P2", "in": "11", "out": "12"},
              {"label": "P3", "in": "11", "out": "13"}]

@@ -1,0 +1,1616 @@
+{
+  "Document": {
+    "PipeInfoMgr": {
+      "plines": [
+        {
+          "Color": "33, 190, 218",
+          "LineWeight": 2.0,
+          "LineWeightMethod": 0,
+          "LineTypeMethod": 1,
+          "ColorMethod": 0,
+          "LayerName": "Default",
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "Points": [
+            "-6.9282032, 6.0, 0",
+            "-2.0, 6.0, 0"
+          ],
+          "Id": 16,
+          "Label": "PIPE_15",
+          "SNodeId": "5",
+          "ENodeId": "15",
+          "PipeName": "압력강관(W)",
+          "PipeMaterial": "탄소강",
+          "PipeDiameter": "100",
+          "PipeLength": "4.93",
+          "CFactor": "120",
+          "DesigneFlowPosition": "펌프토출배관측",
+          "RESULT_A_HeightDiff": "",
+          "RESULT_A_FlowQuantity": "",
+          "RESULT_A_FlowSpeed": "",
+          "RESULT_A_HeadPressure": "",
+          "RESULT_A_TailPressure": "",
+          "RESULT_A_FractionLoss": "",
+          "RESULT_A_StaticPressureLoss": "",
+          "RESULT_A_TotalPressure": "",
+          "RESULT_B_HeightDiff": "",
+          "RESULT_B_FlowQuantity": "",
+          "RESULT_B_FlowSpeed": "",
+          "RESULT_B_HeadPressure": "",
+          "RESULT_B_TailPressure": "",
+          "RESULT_B_FractionLoss": "",
+          "RESULT_B_StaticPressureLoss": "",
+          "RESULT_B_TotalPressure": "",
+          "Cnt45DegreeElbow": "0",
+          "Cnt90DegreeElbow": "0",
+          "Cnt90DgreeStandardElbow": "0",
+          "CntDivideTee": "0",
+          "CntButterflyValve": "0",
+          "CntGateValve": "1",
+          "CntSwingcheckValve": "0",
+          "CntStrainer": "0",
+          "CntAngleValve": "0",
+          "CntFlexibleJoint": "0",
+          "CntAlarmValve": "0",
+          "CntDryValve": "0",
+          "CntPreactionValve": "0",
+          "CntDelugeValve": "0",
+          "CntEtcPartLengthValve": "0",
+          "EntityLocked": false,
+          "TextLocked": false
+        }
+      ],
+      "nodeBlks": [
+        {
+          "Color": "Black",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "ColorMethod": 0,
+          "LayerName": "Default",
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "InsertionPoint": "-12.990381, 3.5, 0",
+          "Id": 1,
+          "Label": "N1",
+          "IoNode": 1,
+          "Height": "0",
+          "RESULT_A_Pressure": "",
+          "RESULT_B_Pressure": "",
+          "EntityLocked": false,
+          "TextLocked": false
+        },
+        {
+          "Color": "Black",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "ColorMethod": 0,
+          "LayerName": "Default",
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "InsertionPoint": "-6.9282032, 6, 0",
+          "Id": 5,
+          "Label": "N5",
+          "IoNode": 0,
+          "Height": "0",
+          "RESULT_A_Pressure": "",
+          "RESULT_B_Pressure": "",
+          "EntityLocked": false,
+          "TextLocked": false
+        },
+        {
+          "Color": "Black",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "ColorMethod": 0,
+          "LayerName": "Default",
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "InsertionPoint": "-2.0, 6, 0",
+          "Id": 15,
+          "Label": "N15",
+          "IoNode": 0,
+          "Height": "0",
+          "RESULT_A_Pressure": "",
+          "RESULT_B_Pressure": "",
+          "EntityLocked": false,
+          "TextLocked": false
+        }
+      ],
+      "lines": [
+        {
+          "Color": "Black",
+          "LineWeight": 2.0,
+          "LineWeightMethod": 0,
+          "LineTypeMethod": 1,
+          "ColorMethod": 0,
+          "LayerName": "Default",
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "StartPoint": "-12.7592626372363, 3.59531160681384, 0",
+          "EndPoint": "-7.15932156276368, 5.90468839318616, 0",
+          "Id": 10,
+          "ParentId": 9
+        },
+        {
+          "Color": "Black",
+          "LineWeight": 2.0,
+          "LineWeightMethod": 0,
+          "LineTypeMethod": 1,
+          "ColorMethod": 0,
+          "LayerName": "Default",
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "StartPoint": "-6.9282032, 6.25, 0",
+          "EndPoint": "-6.9282032, 13, 0",
+          "Id": 13,
+          "ParentId": 12
+        }
+      ],
+      "directionBlks": [],
+      "angleBlks": [],
+      "alarmBlks": [],
+      "butterBlks": [],
+      "delugeBlks": [],
+      "dryBlks": [],
+      "flexibleBlks": [],
+      "gateBlks": [
+        {
+          "Color": "Black",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "ColorMethod": 1,
+          "LayerName": "배관블록",
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "InsertionPoint": "-4.464101599999999, 6.0, 0",
+          "Rotation": 0.0,
+          "Id": 17,
+          "Label": "K17",
+          "ParentId": 16,
+          "Description": "",
+          "DataValue": "",
+          "EntityLocked": false,
+          "TextLocked": false
+        }
+      ],
+      "lengthPartBlks": [],
+      "swingcheckBlks": [],
+      "strainerBlks": [],
+      "preactionBlks": [],
+      "reducingBlks": [],
+      "orifiaceBlks": [],
+      "flowFactorBlks": [],
+      "pressureLossBlks": [],
+      "nozzleBlks": [
+        {
+          "Color": "Black",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "ColorMethod": 1,
+          "LayerName": "Default",
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "InsertionPoint": "-2.0, 6, 0",
+          "Rotation": 0.0,
+          "Id": 20,
+          "Label": "H02",
+          "SNodeId": "15",
+          "NozzelOpenState": "열림",
+          "NozzleType": "스프링클러 헤드",
+          "FlwoCalMethod": "K-Factor",
+          "MinFlowQuantity": "80",
+          "MinPressure": "0.1",
+          "MaxPressure": "1.2",
+          "RESULT_A_ExitPressure": "",
+          "RESULT_A_CalcQuantity": "",
+          "RESULT_A_FlowQantityGap": "",
+          "RESULT_B_ExitPressure": "",
+          "RESULT_B_CalcQuantity": "",
+          "RESULT_B_FlowQantityGap": "",
+          "EntityLocked": false,
+          "TextLocked": false
+        }
+      ],
+      "pumpBlks": [
+        {
+          "Color": "Black",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "ColorMethod": 1,
+          "LayerName": "Default",
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "InsertionPoint": "-9.9592921, 4.75, 0",
+          "Rotation": 0.3911441786764366,
+          "Id": 9,
+          "Label": "PUMP_9",
+          "SNodeId": "1",
+          "ENodeId": "5",
+          "PumpType": "FP",
+          "MinFlowQuantity": "0",
+          "MaxFlowQuantity": "160",
+          "Efficiency": "",
+          "RESULT_A_SupplyPressure": "",
+          "RESULT_A_FlowQuantity": "",
+          "RESULT_A_Power": "",
+          "RESULT_B_SupplyPressure": "",
+          "RESULT_B_FlowQuantity": "",
+          "RESULT_B_Power": "",
+          "EntityLocked": false,
+          "TextLocked": false
+        }
+      ],
+      "infoTxts": [
+        {
+          "LayerName": "노드라벨",
+          "StyleName": "Arial",
+          "Alignment": 4,
+          "ColorMethod": 0,
+          "Color": "0, 0, 0",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "TextString": "N1",
+          "Height": 0.4,
+          "InsertionPoint": "-12.990381, 3, 0",
+          "Rotation": 0.0,
+          "Id": 2,
+          "Label": "N1",
+          "ParentId": 1
+        },
+        {
+          "LayerName": "노드_높이",
+          "StyleName": "Arial",
+          "Alignment": 4,
+          "ColorMethod": 0,
+          "Color": "0, 0, 0",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "TextString": "",
+          "Height": 0.4,
+          "InsertionPoint": "-12.990381, 4, 0",
+          "Rotation": 0.0,
+          "Id": 3,
+          "Label": "",
+          "ParentId": 1
+        },
+        {
+          "LayerName": "노드_압력",
+          "StyleName": "Arial",
+          "Alignment": 4,
+          "ColorMethod": 0,
+          "Color": "0, 0, 0",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "TextString": "",
+          "Height": 0.4,
+          "InsertionPoint": "-12.990381, 4, 0",
+          "Rotation": 0.0,
+          "Id": 4,
+          "Label": "",
+          "ParentId": 1
+        },
+        {
+          "LayerName": "노드라벨",
+          "StyleName": "Arial",
+          "Alignment": 4,
+          "ColorMethod": 0,
+          "Color": "0, 0, 0",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "TextString": "N5",
+          "Height": 0.4,
+          "InsertionPoint": "-6.9282032, 5.5, 0",
+          "Rotation": 0.0,
+          "Id": 6,
+          "Label": "N5",
+          "ParentId": 5
+        },
+        {
+          "LayerName": "노드_높이",
+          "StyleName": "Arial",
+          "Alignment": 4,
+          "ColorMethod": 0,
+          "Color": "0, 0, 0",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "TextString": "",
+          "Height": 0.4,
+          "InsertionPoint": "-6.9282032, 6.5, 0",
+          "Rotation": 0.0,
+          "Id": 7,
+          "Label": "",
+          "ParentId": 5
+        },
+        {
+          "LayerName": "노드_압력",
+          "StyleName": "Arial",
+          "Alignment": 4,
+          "ColorMethod": 0,
+          "Color": "0, 0, 0",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "TextString": "",
+          "Height": 0.4,
+          "InsertionPoint": "-6.9282032, 6.5, 0",
+          "Rotation": 0.0,
+          "Id": 8,
+          "Label": "",
+          "ParentId": 5
+        },
+        {
+          "LayerName": "노드라벨",
+          "StyleName": "Arial",
+          "Alignment": 4,
+          "ColorMethod": 0,
+          "Color": "0, 0, 0",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "TextString": "PUMP_9",
+          "Height": 0.4,
+          "InsertionPoint": "-9.76866888637232, 4.28776327447264, 0",
+          "Rotation": 0.3911441786764367,
+          "Id": 11,
+          "Label": "PUMP_9",
+          "ParentId": 9
+        },
+        {
+          "LayerName": "노드라벨",
+          "StyleName": "Arial",
+          "Alignment": 4,
+          "ColorMethod": 0,
+          "Color": "Black",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "TextString": "N15",
+          "Height": 0.4,
+          "InsertionPoint": "-2.0, 5.5, 0",
+          "Rotation": 0.0,
+          "Id": 18,
+          "Label": "N15",
+          "ParentId": 15
+        },
+        {
+          "LayerName": "배관라벨",
+          "StyleName": "Arial",
+          "Alignment": 4,
+          "ColorMethod": 0,
+          "Color": "Black",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "TextString": "PIPE_15",
+          "Height": 0.4,
+          "InsertionPoint": "-4.464101599999999, 6.5, 0",
+          "Rotation": 0.0,
+          "Id": 19,
+          "Label": "PIPE_15",
+          "ParentId": 16
+        },
+        {
+          "LayerName": "노드라벨",
+          "StyleName": "Arial",
+          "Alignment": 4,
+          "ColorMethod": 0,
+          "Color": "Black",
+          "LineWeight": 0.5,
+          "LineWeightMethod": 1,
+          "LineTypeMethod": 1,
+          "LineTypeName": null,
+          "LineTypeScale": 1.0,
+          "Visible": true,
+          "TextString": "H02",
+          "Height": 0.4,
+          "InsertionPoint": "-1.5, 6, 0",
+          "Rotation": 0.0,
+          "Id": 21,
+          "Label": "H02",
+          "ParentId": 20
+        }
+      ],
+      "txts": []
+    },
+    "PipeDbMgr": {
+      "pipeSizeColNames": [
+        "PSize13",
+        "PSize15",
+        "PSize20",
+        "PSize25",
+        "PSize30",
+        "PSize32",
+        "PSize40",
+        "PSize50",
+        "PSize60",
+        "PSize63",
+        "PSize65",
+        "PSize75",
+        "PSize80",
+        "PSize90",
+        "PSize100",
+        "PSize110",
+        "PSize125",
+        "PSize150",
+        "PSize200",
+        "PSize250",
+        "PSize300"
+      ],
+      "maxVDataTable": [
+        {
+          "Id": 1,
+          "PipeLine": "펌프토출배관측",
+          "PipeVelocity": 4.0,
+          "VelocityDec": null
+        },
+        {
+          "Id": 2,
+          "PipeLine": "교차배관",
+          "PipeVelocity": 10.0,
+          "VelocityDec": null
+        },
+        {
+          "Id": 3,
+          "PipeLine": "가지배관",
+          "PipeVelocity": 6.0,
+          "VelocityDec": null
+        },
+        {
+          "Id": 4,
+          "PipeLine": "기타배관",
+          "PipeVelocity": 10.0,
+          "VelocityDec": "기타"
+        }
+      ],
+      "nozzleDataTable": [
+        {
+          "Id": 1,
+          "NozzleName": "스프링클러 헤드",
+          "NozzleDec": "스프링클러 헤드",
+          "CalcMethod": "K-Factor",
+          "KFactor": 80.0,
+          "FixFlowRate": null,
+          "MinPressure": 0.1,
+          "MaxPressure": 1.2,
+          "MinFlowRate": 80.0
+        },
+        {
+          "Id": 2,
+          "NozzleName": "옥내소화전",
+          "NozzleDec": "옥내소화전",
+          "CalcMethod": "K-Factor",
+          "KFactor": 99.7055,
+          "FixFlowRate": null,
+          "MinPressure": 0.17,
+          "MaxPressure": 0.7,
+          "MinFlowRate": 130.0
+        },
+        {
+          "Id": 3,
+          "NozzleName": "옥외소화전",
+          "NozzleDec": "옥외소화전",
+          "CalcMethod": "K-Factor",
+          "KFactor": 221.3595,
+          "FixFlowRate": null,
+          "MinPressure": 0.25,
+          "MaxPressure": 0.7,
+          "MinFlowRate": 350.0
+        }
+      ],
+      "pipeDataTable": [
+        {
+          "Id": 1,
+          "PipeName": "ANSI",
+          "PipeDec": "ANSI B36.10 (SCH 40)",
+          "PipeMaterial": "탄소강",
+          "CFactor": 100.0,
+          "PSize13": null,
+          "PSize15": 15.76,
+          "PSize20": 20.96,
+          "PSize25": 26.64,
+          "PSize30": null,
+          "PSize32": 35.08,
+          "PSize40": 40.94,
+          "PSize50": 52.48,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": 62.68,
+          "PSize75": null,
+          "PSize80": 77.92,
+          "PSize90": 90.12,
+          "PSize100": 102.26,
+          "PSize110": null,
+          "PSize125": 128.2,
+          "PSize150": 154.08,
+          "PSize200": 202.74,
+          "PSize250": 254.56,
+          "PSize300": 303.28
+        },
+        {
+          "Id": 2,
+          "PipeName": "일반강관(W)",
+          "PipeDec": "KSD3507 (습식)",
+          "PipeMaterial": "탄소강",
+          "CFactor": 120.0,
+          "PSize13": null,
+          "PSize15": 16.4,
+          "PSize20": 21.9,
+          "PSize25": 27.5,
+          "PSize30": null,
+          "PSize32": 36.2,
+          "PSize40": 42.1,
+          "PSize50": 53.2,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": 69.0,
+          "PSize75": null,
+          "PSize80": 81.0,
+          "PSize90": 93.5,
+          "PSize100": 105.3,
+          "PSize110": null,
+          "PSize125": 130.1,
+          "PSize150": 155.5,
+          "PSize200": 204.6,
+          "PSize250": 254.6,
+          "PSize300": 304.6
+        },
+        {
+          "Id": 3,
+          "PipeName": "일반강관(D)",
+          "PipeDec": "KSD3507 (건식,준비작동식)",
+          "PipeMaterial": "탄소강",
+          "CFactor": 100.0,
+          "PSize13": null,
+          "PSize15": 16.4,
+          "PSize20": 21.9,
+          "PSize25": 27.5,
+          "PSize30": null,
+          "PSize32": 36.2,
+          "PSize40": 42.1,
+          "PSize50": 53.2,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": 69.0,
+          "PSize75": null,
+          "PSize80": 81.0,
+          "PSize90": 93.5,
+          "PSize100": 105.3,
+          "PSize110": null,
+          "PSize125": 130.1,
+          "PSize150": 155.5,
+          "PSize200": 204.8,
+          "PSize250": 254.6,
+          "PSize300": 304.5
+        },
+        {
+          "Id": 4,
+          "PipeName": "압력강관(W)",
+          "PipeDec": "KSD3562(#40) (습식)",
+          "PipeMaterial": "탄소강",
+          "CFactor": 120.0,
+          "PSize13": null,
+          "PSize15": 16.1,
+          "PSize20": 21.4,
+          "PSize25": 27.2,
+          "PSize30": null,
+          "PSize32": 35.5,
+          "PSize40": 41.2,
+          "PSize50": 52.7,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": 65.9,
+          "PSize75": null,
+          "PSize80": 78.1,
+          "PSize90": 90.2,
+          "PSize100": 102.3,
+          "PSize110": null,
+          "PSize125": 126.6,
+          "PSize150": 151.0,
+          "PSize200": 199.9,
+          "PSize250": 248.8,
+          "PSize300": 297.9
+        },
+        {
+          "Id": 5,
+          "PipeName": "압력강관(D)",
+          "PipeDec": "KSD3562(#40) (건식 준비작동식)",
+          "PipeMaterial": "탄소강",
+          "CFactor": 100.0,
+          "PSize13": null,
+          "PSize15": 16.1,
+          "PSize20": 21.4,
+          "PSize25": 27.2,
+          "PSize30": null,
+          "PSize32": 35.5,
+          "PSize40": 41.2,
+          "PSize50": 52.7,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": 65.9,
+          "PSize75": null,
+          "PSize80": 78.1,
+          "PSize90": 90.2,
+          "PSize100": 102.3,
+          "PSize110": null,
+          "PSize125": 126.6,
+          "PSize150": 151.0,
+          "PSize200": 199.9,
+          "PSize250": 248.8,
+          "PSize300": 297.9
+        },
+        {
+          "Id": 6,
+          "PipeName": "STS(su)",
+          "PipeDec": "KSD3595",
+          "PipeMaterial": "STS",
+          "CFactor": 150.0,
+          "PSize13": 14.28,
+          "PSize15": null,
+          "PSize20": 20.22,
+          "PSize25": 26.58,
+          "PSize30": 31.6,
+          "PSize32": null,
+          "PSize40": 40.3,
+          "PSize50": 46.2,
+          "PSize60": 57.5,
+          "PSize63": null,
+          "PSize65": null,
+          "PSize75": 73.3,
+          "PSize80": 85.1,
+          "PSize90": null,
+          "PSize100": 110.3,
+          "PSize110": null,
+          "PSize125": 135.8,
+          "PSize150": 159.2,
+          "PSize200": 210.3,
+          "PSize250": 261.4,
+          "PSize300": 312.5
+        },
+        {
+          "Id": 7,
+          "PipeName": "STS(A)",
+          "PipeDec": "KSD3576(105)",
+          "PipeMaterial": "STS",
+          "CFactor": 150.0,
+          "PSize13": null,
+          "PSize15": 17.5,
+          "PSize20": 23.0,
+          "PSize25": 28.4,
+          "PSize30": null,
+          "PSize32": 37.1,
+          "PSize40": 43.0,
+          "PSize50": 54.9,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": 70.3,
+          "PSize75": null,
+          "PSize80": 83.1,
+          "PSize90": null,
+          "PSize100": 108.3,
+          "PSize110": null,
+          "PSize125": 133.3,
+          "PSize150": 158.4,
+          "PSize200": 208.3,
+          "PSize250": 259.4,
+          "PSize300": 309.5
+        },
+        {
+          "Id": 8,
+          "PipeName": "동관(K)",
+          "PipeDec": "KSD5301(K)",
+          "PipeMaterial": "청동",
+          "CFactor": 150.0,
+          "PSize13": null,
+          "PSize15": 13.4,
+          "PSize20": 18.9,
+          "PSize25": 25.28,
+          "PSize30": null,
+          "PSize32": 31.62,
+          "PSize40": 37.62,
+          "PSize50": 49.76,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": 61.86,
+          "PSize75": null,
+          "PSize80": 73.84,
+          "PSize90": null,
+          "PSize100": 97.98,
+          "PSize110": null,
+          "PSize125": 122.06,
+          "PSize150": 145.82,
+          "PSize200": 192.62,
+          "PSize250": 240.0,
+          "PSize300": null
+        },
+        {
+          "Id": 9,
+          "PipeName": "동관(L)",
+          "PipeDec": "KSD5301(L)",
+          "PipeMaterial": "청동",
+          "CFactor": 150.0,
+          "PSize13": null,
+          "PSize15": 13.84,
+          "PSize20": 16.91,
+          "PSize25": 26.04,
+          "PSize30": null,
+          "PSize32": 32.12,
+          "PSize40": 38.24,
+          "PSize50": 50.42,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": 62.62,
+          "PSize75": null,
+          "PSize80": 74.8,
+          "PSize90": null,
+          "PSize100": 99.2,
+          "PSize110": null,
+          "PSize125": 123.82,
+          "PSize150": 148.46,
+          "PSize200": 196.22,
+          "PSize250": 244.48,
+          "PSize300": null
+        },
+        {
+          "Id": 10,
+          "PipeName": "동관(M)",
+          "PipeDec": "KSD5301(M)",
+          "PipeMaterial": "청동",
+          "CFactor": 150.0,
+          "PSize13": null,
+          "PSize15": 14.46,
+          "PSize20": 20.6,
+          "PSize25": 26.8,
+          "PSize30": null,
+          "PSize32": 32.78,
+          "PSize40": 38.8,
+          "PSize50": 51.04,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": 63.38,
+          "PSize75": null,
+          "PSize80": 75.72,
+          "PSize90": null,
+          "PSize100": 99.96,
+          "PSize110": null,
+          "PSize125": 124.64,
+          "PSize150": 149.38,
+          "PSize200": 197.74,
+          "PSize250": null,
+          "PSize300": null
+        },
+        {
+          "Id": 11,
+          "PipeName": "CPVC(A)",
+          "PipeDec": "CPVC 1종 A형",
+          "PipeMaterial": "플라스틱",
+          "CFactor": 150.0,
+          "PSize13": null,
+          "PSize15": null,
+          "PSize20": 16.2,
+          "PSize25": 20.4,
+          "PSize30": null,
+          "PSize32": 27.2,
+          "PSize40": 34.0,
+          "PSize50": 42.6,
+          "PSize60": null,
+          "PSize63": 53.6,
+          "PSize65": null,
+          "PSize75": 63.8,
+          "PSize80": null,
+          "PSize90": 76.6,
+          "PSize100": null,
+          "PSize110": 93.8,
+          "PSize125": null,
+          "PSize150": null,
+          "PSize200": null,
+          "PSize250": null,
+          "PSize300": null
+        },
+        {
+          "Id": 12,
+          "PipeName": "CPVC(B)",
+          "PipeDec": "CPVC 1종 B형",
+          "PipeMaterial": "플라스틱",
+          "CFactor": 150.0,
+          "PSize13": null,
+          "PSize15": null,
+          "PSize20": null,
+          "PSize25": 28.48,
+          "PSize30": null,
+          "PSize32": 35.96,
+          "PSize40": 41.04,
+          "PSize50": 51.36,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": 62.18,
+          "PSize75": null,
+          "PSize80": 75.74,
+          "PSize90": null,
+          "PSize100": null,
+          "PSize110": null,
+          "PSize125": null,
+          "PSize150": null,
+          "PSize200": null,
+          "PSize250": null,
+          "PSize300": null
+        },
+        {
+          "Id": 13,
+          "PipeName": "호스",
+          "PipeDec": "옥내소화전호스",
+          "PipeMaterial": "플라스틱",
+          "CFactor": 109.7,
+          "PSize13": null,
+          "PSize15": null,
+          "PSize20": null,
+          "PSize25": null,
+          "PSize30": null,
+          "PSize32": null,
+          "PSize40": 40.0,
+          "PSize50": null,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": null,
+          "PSize75": null,
+          "PSize80": null,
+          "PSize90": null,
+          "PSize100": null,
+          "PSize110": null,
+          "PSize125": null,
+          "PSize150": null,
+          "PSize200": null,
+          "PSize250": null,
+          "PSize300": null
+        },
+        {
+          "Id": 14,
+          "PipeName": "신축배관",
+          "PipeDec": "스프링클러 신축배관",
+          "PipeMaterial": "STS",
+          "CFactor": 120.0,
+          "PSize13": null,
+          "PSize15": null,
+          "PSize20": 21.5,
+          "PSize25": null,
+          "PSize30": null,
+          "PSize32": null,
+          "PSize40": null,
+          "PSize50": null,
+          "PSize60": null,
+          "PSize63": null,
+          "PSize65": null,
+          "PSize75": null,
+          "PSize80": null,
+          "PSize90": null,
+          "PSize100": null,
+          "PSize110": null,
+          "PSize125": null,
+          "PSize150": null,
+          "PSize200": null,
+          "PSize250": null,
+          "PSize300": null
+        }
+      ],
+      "pumpDataTable": [
+        {
+          "Id": 1,
+          "PumpName": "FP",
+          "PumpDec": "소화펌프",
+          "PumpUnit": "l/min",
+          "PumpHead": "maq"
+        }
+      ],
+      "pumpFlowDataTable": [
+        {
+          "Id": 1,
+          "PumpName": "FP",
+          "PumpFlowRate": 0.0,
+          "PumpFlowHead": 12.2
+        },
+        {
+          "Id": 2,
+          "PumpName": "FP",
+          "PumpFlowRate": 40.0,
+          "PumpFlowHead": 11.7
+        },
+        {
+          "Id": 3,
+          "PumpName": "FP",
+          "PumpFlowRate": 80.0,
+          "PumpFlowHead": 10.2
+        },
+        {
+          "Id": 4,
+          "PumpName": "FP",
+          "PumpFlowRate": 120.0,
+          "PumpFlowHead": 7.6
+        },
+        {
+          "Id": 5,
+          "PumpName": "FP",
+          "PumpFlowRate": 160.0,
+          "PumpFlowHead": 4.0
+        }
+      ]
+    },
+    "PipeViewMgr": {
+      "IsNodeLabelVisible": true,
+      "IsPipeLabelVisible": true,
+      "IsPipeBlockVisible": true,
+      "IsDirectionFlowVisible": true,
+      "IsStateA": false,
+      "NodeComboIndex": 2,
+      "PipeComboIndex": 4,
+      "PipeLabelComboIndex": 1
+    },
+    "Project": {
+      "ProjectName": null,
+      "Designer": null,
+      "Calculation": null,
+      "Description": null,
+      "UnitsType": 0,
+      "Units": {
+        "Meter": {
+          "Units": {
+            "Caption": "단 위",
+            "Unit": "Meter",
+            "Digit": 3
+          },
+          "Length": {
+            "Caption": "길 이",
+            "Unit": "m",
+            "Digit": 3
+          },
+          "Diameter": {
+            "Caption": "직 경",
+            "Unit": "mm",
+            "Digit": 3
+          },
+          "Velocity": {
+            "Caption": "속 도",
+            "Unit": "m/s",
+            "Digit": 3
+          },
+          "Temperature": {
+            "Caption": "온 도",
+            "Unit": "Celsius ('C)",
+            "Digit": 3
+          },
+          "Density": {
+            "Caption": "밀 도",
+            "Unit": "kg/m2",
+            "Digit": 3
+          },
+          "Viscosity": {
+            "Caption": "점 성",
+            "Unit": "Pa·s",
+            "Digit": 3
+          },
+          "Pressure": {
+            "Caption": "압 력",
+            "Unit": "Mpa",
+            "Digit": 3
+          },
+          "FlowRate": {
+            "Caption": "유 량",
+            "Unit": "l/min",
+            "Digit": 1
+          }
+        },
+        "US": {
+          "Units": {
+            "Caption": "단 위",
+            "Unit": "US",
+            "Digit": 3
+          },
+          "Length": {
+            "Caption": "길 이",
+            "Unit": "ft",
+            "Digit": 3
+          },
+          "Diameter": {
+            "Caption": "직 경",
+            "Unit": "in",
+            "Digit": 3
+          },
+          "Velocity": {
+            "Caption": "속 도",
+            "Unit": "ft/s",
+            "Digit": 3
+          },
+          "Temperature": {
+            "Caption": "온 도",
+            "Unit": "Fahrenheit ('F)",
+            "Digit": 3
+          },
+          "Density": {
+            "Caption": "밀 도",
+            "Unit": "lb/ft'",
+            "Digit": 3
+          },
+          "Viscosity": {
+            "Caption": "점 성",
+            "Unit": "lb/ft·hr",
+            "Digit": 3
+          },
+          "Pressure": {
+            "Caption": "압 력",
+            "Unit": "Psi",
+            "Digit": 3
+          },
+          "FlowRate": {
+            "Caption": "유 량",
+            "Unit": "ft'/s",
+            "Digit": 1
+          }
+        }
+      },
+      "CurrentUnits": {
+        "Units": {
+          "Caption": "단 위",
+          "Unit": "Meter",
+          "Digit": 3
+        },
+        "Length": {
+          "Caption": "길 이",
+          "Unit": "m",
+          "Digit": 3
+        },
+        "Diameter": {
+          "Caption": "직 경",
+          "Unit": "mm",
+          "Digit": 3
+        },
+        "Velocity": {
+          "Caption": "속 도",
+          "Unit": "m/s",
+          "Digit": 3
+        },
+        "Temperature": {
+          "Caption": "온 도",
+          "Unit": "Celsius ('C)",
+          "Digit": 3
+        },
+        "Density": {
+          "Caption": "밀 도",
+          "Unit": "kg/m2",
+          "Digit": 3
+        },
+        "Viscosity": {
+          "Caption": "점 성",
+          "Unit": "Pa·s",
+          "Digit": 3
+        },
+        "Pressure": {
+          "Caption": "압 력",
+          "Unit": "Mpa",
+          "Digit": 3
+        },
+        "FlowRate": {
+          "Caption": "유 량",
+          "Unit": "l/min",
+          "Digit": 1
+        }
+      }
+    },
+    "LegendSet": {
+      "Pressure": [
+        {
+          "Section": 1,
+          "MinRange": 0.0,
+          "MaxRange": 0.2,
+          "Color": -1028462
+        },
+        {
+          "Section": 2,
+          "MinRange": 0.2,
+          "MaxRange": 0.4,
+          "Color": -1360310
+        },
+        {
+          "Section": 3,
+          "MinRange": 0.4,
+          "MaxRange": 0.6,
+          "Color": -105179
+        },
+        {
+          "Section": 4,
+          "MinRange": 0.6,
+          "MaxRange": 0.8,
+          "Color": -13563
+        },
+        {
+          "Section": 5,
+          "MinRange": 0.8,
+          "MaxRange": 1.0,
+          "Color": -12261234
+        },
+        {
+          "Section": 6,
+          "MinRange": 1.0,
+          "MaxRange": 1.2,
+          "Color": -16729964
+        },
+        {
+          "Section": 7,
+          "MinRange": 1.2,
+          "MaxRange": 1.45,
+          "Color": -14565670
+        },
+        {
+          "Section": 8,
+          "MinRange": 1.45,
+          "MaxRange": 1.6,
+          "Color": -14719809
+        },
+        {
+          "Section": 9,
+          "MinRange": 1.6,
+          "MaxRange": 1.8,
+          "Color": -13218675
+        },
+        {
+          "Section": 10,
+          "MinRange": 1.8,
+          "MaxRange": 10.0,
+          "Color": -4259585
+        }
+      ],
+      "PressureLoss": [
+        {
+          "Section": 1,
+          "MinRange": 0.0,
+          "MaxRange": 0.01,
+          "Color": -1028462
+        },
+        {
+          "Section": 2,
+          "MinRange": 0.01,
+          "MaxRange": 0.02,
+          "Color": -1360310
+        },
+        {
+          "Section": 3,
+          "MinRange": 0.02,
+          "MaxRange": 0.03,
+          "Color": -105179
+        },
+        {
+          "Section": 4,
+          "MinRange": 0.03,
+          "MaxRange": 0.04,
+          "Color": -13563
+        },
+        {
+          "Section": 5,
+          "MinRange": 0.04,
+          "MaxRange": 0.05,
+          "Color": -12261234
+        },
+        {
+          "Section": 6,
+          "MinRange": 0.05,
+          "MaxRange": 0.06,
+          "Color": -16729964
+        },
+        {
+          "Section": 7,
+          "MinRange": 0.06,
+          "MaxRange": 0.07,
+          "Color": -14565670
+        },
+        {
+          "Section": 8,
+          "MinRange": 0.07,
+          "MaxRange": 0.08,
+          "Color": -14719809
+        },
+        {
+          "Section": 9,
+          "MinRange": 0.08,
+          "MaxRange": 0.09,
+          "Color": -13218675
+        },
+        {
+          "Section": 10,
+          "MinRange": 0.09,
+          "MaxRange": 10.0,
+          "Color": -4259585
+        }
+      ],
+      "Length": [
+        {
+          "Section": 1,
+          "MinRange": 0.0,
+          "MaxRange": 2.0,
+          "Color": -1028462
+        },
+        {
+          "Section": 2,
+          "MinRange": 2.0,
+          "MaxRange": 4.0,
+          "Color": -1360310
+        },
+        {
+          "Section": 3,
+          "MinRange": 4.0,
+          "MaxRange": 6.0,
+          "Color": -105179
+        },
+        {
+          "Section": 4,
+          "MinRange": 6.0,
+          "MaxRange": 8.0,
+          "Color": -13563
+        },
+        {
+          "Section": 5,
+          "MinRange": 8.0,
+          "MaxRange": 10.0,
+          "Color": -12261234
+        },
+        {
+          "Section": 6,
+          "MinRange": 10.0,
+          "MaxRange": 15.0,
+          "Color": -16729964
+        },
+        {
+          "Section": 7,
+          "MinRange": 15.0,
+          "MaxRange": 20.0,
+          "Color": -14565670
+        },
+        {
+          "Section": 8,
+          "MinRange": 20.0,
+          "MaxRange": 30.0,
+          "Color": -14719809
+        },
+        {
+          "Section": 9,
+          "MinRange": 30.0,
+          "MaxRange": 50.0,
+          "Color": -13218675
+        },
+        {
+          "Section": 10,
+          "MinRange": 50.0,
+          "MaxRange": 999.0,
+          "Color": -4259585
+        }
+      ],
+      "Velocity": [
+        {
+          "Section": 1,
+          "MinRange": 0.0,
+          "MaxRange": 1.0,
+          "Color": -1028462
+        },
+        {
+          "Section": 2,
+          "MinRange": 1.0,
+          "MaxRange": 2.0,
+          "Color": -1360310
+        },
+        {
+          "Section": 3,
+          "MinRange": 2.0,
+          "MaxRange": 3.0,
+          "Color": -105179
+        },
+        {
+          "Section": 4,
+          "MinRange": 3.0,
+          "MaxRange": 4.0,
+          "Color": -13563
+        },
+        {
+          "Section": 5,
+          "MinRange": 4.0,
+          "MaxRange": 5.0,
+          "Color": -12261234
+        },
+        {
+          "Section": 6,
+          "MinRange": 5.0,
+          "MaxRange": 6.0,
+          "Color": -16729964
+        },
+        {
+          "Section": 7,
+          "MinRange": 6.0,
+          "MaxRange": 7.0,
+          "Color": -14565670
+        },
+        {
+          "Section": 8,
+          "MinRange": 7.0,
+          "MaxRange": 8.0,
+          "Color": -14719809
+        },
+        {
+          "Section": 9,
+          "MinRange": 8.0,
+          "MaxRange": 9.0,
+          "Color": -13218675
+        },
+        {
+          "Section": 10,
+          "MinRange": 9.0,
+          "MaxRange": 99.0,
+          "Color": -4259585
+        }
+      ],
+      "Diameter": [
+        {
+          "Section": 1,
+          "MinRange": 0.0,
+          "MaxRange": 30.0,
+          "Color": -1028462
+        },
+        {
+          "Section": 2,
+          "MinRange": 30.0,
+          "MaxRange": 40.0,
+          "Color": -1360310
+        },
+        {
+          "Section": 3,
+          "MinRange": 40.0,
+          "MaxRange": 50.0,
+          "Color": -105179
+        },
+        {
+          "Section": 4,
+          "MinRange": 50.0,
+          "MaxRange": 60.0,
+          "Color": -13563
+        },
+        {
+          "Section": 5,
+          "MinRange": 60.0,
+          "MaxRange": 70.0,
+          "Color": -12261234
+        },
+        {
+          "Section": 6,
+          "MinRange": 70.0,
+          "MaxRange": 80.0,
+          "Color": -16729964
+        },
+        {
+          "Section": 7,
+          "MinRange": 80.0,
+          "MaxRange": 100.0,
+          "Color": -14565670
+        },
+        {
+          "Section": 8,
+          "MinRange": 100.0,
+          "MaxRange": 125.0,
+          "Color": -14719809
+        },
+        {
+          "Section": 9,
+          "MinRange": 125.0,
+          "MaxRange": 150.0,
+          "Color": -13218675
+        },
+        {
+          "Section": 10,
+          "MinRange": 150.0,
+          "MaxRange": 999.0,
+          "Color": -4259585
+        }
+      ],
+      "FlowRate": [
+        {
+          "Section": 1,
+          "MinRange": 0.0,
+          "MaxRange": 200.0,
+          "Color": -1028462
+        },
+        {
+          "Section": 2,
+          "MinRange": 200.0,
+          "MaxRange": 400.0,
+          "Color": -1360310
+        },
+        {
+          "Section": 3,
+          "MinRange": 400.0,
+          "MaxRange": 600.0,
+          "Color": -105179
+        },
+        {
+          "Section": 4,
+          "MinRange": 600.0,
+          "MaxRange": 800.0,
+          "Color": -13563
+        },
+        {
+          "Section": 5,
+          "MinRange": 800.0,
+          "MaxRange": 1000.0,
+          "Color": -12261234
+        },
+        {
+          "Section": 6,
+          "MinRange": 1000.0,
+          "MaxRange": 1200.0,
+          "Color": -16729964
+        },
+        {
+          "Section": 7,
+          "MinRange": 1200.0,
+          "MaxRange": 1400.0,
+          "Color": -14565670
+        },
+        {
+          "Section": 8,
+          "MinRange": 1400.0,
+          "MaxRange": 1600.0,
+          "Color": -14719809
+        },
+        {
+          "Section": 9,
+          "MinRange": 1600.0,
+          "MaxRange": 1800.0,
+          "Color": -13218675
+        },
+        {
+          "Section": 10,
+          "MinRange": 1800.0,
+          "MaxRange": 9999.0,
+          "Color": -4259585
+        }
+      ],
+      "Elevation": [
+        {
+          "Section": 1,
+          "MinRange": 0.0,
+          "MaxRange": 5.0,
+          "Color": -1028462
+        },
+        {
+          "Section": 2,
+          "MinRange": 5.0,
+          "MaxRange": 10.0,
+          "Color": -1360310
+        },
+        {
+          "Section": 3,
+          "MinRange": 10.0,
+          "MaxRange": 15.0,
+          "Color": -105179
+        },
+        {
+          "Section": 4,
+          "MinRange": 15.0,
+          "MaxRange": 20.0,
+          "Color": -13563
+        },
+        {
+          "Section": 5,
+          "MinRange": 20.0,
+          "MaxRange": 25.0,
+          "Color": -12261234
+        },
+        {
+          "Section": 6,
+          "MinRange": 25.0,
+          "MaxRange": 30.0,
+          "Color": -16729964
+        },
+        {
+          "Section": 7,
+          "MinRange": 30.0,
+          "MaxRange": 40.0,
+          "Color": -14565670
+        },
+        {
+          "Section": 8,
+          "MinRange": 40.0,
+          "MaxRange": 50.0,
+          "Color": -14719809
+        },
+        {
+          "Section": 9,
+          "MinRange": 50.0,
+          "MaxRange": 60.0,
+          "Color": -13218675
+        },
+        {
+          "Section": 10,
+          "MinRange": 60.0,
+          "MaxRange": 999.0,
+          "Color": -4259585
+        }
+      ]
+    },
+    "Version": "1.0.0",
+    "Variables": {
+      "Items": {
+        "GRIDMODE": true,
+        "SNAPMODE": true,
+        "NodeLabel": true,
+        "PipeLabel": true
+      }
+    },
+    "Settings": {
+      "Items": {
+        "Basic_Calculation": "CRANE",
+        "Basic_FontFamily": "Arial",
+        "Legend_Colors": null,
+        "Basic_FontSize": 16.0,
+        "ShowGrid": true,
+        "Basic_DrawColor": 0,
+        "ShowPipeLabel": true,
+        "Basic_FontColor": -16777216,
+        "ShowNodeLabel": true,
+        "Basic_FontStyle": "굵게",
+        "Basic_Temperature": 20,
+        "ShowProperties": true,
+        "Basic_LineWidth": 2.0,
+        "ShowSnap": true,
+        "Basic_LineColor": -16777216,
+        "ShowDataTable": false
+      }
+    },
+    "PaperSet": [
+      "배관",
+      "노드",
+      "노즐",
+      "부속류 등가길이",
+      "오리피스"
+    ]
+  }
+}

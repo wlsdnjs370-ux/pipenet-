@@ -15,7 +15,40 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..remote30_constants import _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL
+
 BUILDING_SCHEMA = "fncadnet.building/1"
+
+# 모듈 A 가 옥상·옥탑에 쓰는 표식. 층수가 아니라 "맨 위" 라는 뜻이다.
+_ROOF_INDEX = 99
+
+
+def floor_index(label: str) -> int | None:
+    """층 라벨 → 층 번호. 지상 +N, 지하 -N, 옥상 99. 못 읽으면 `None`.
+
+    [문서정합 §9.2 C540] "모듈 A 와 동일 규약" 이라 패턴표는 모듈 A 의 것을 그대로
+    쓴다. 판정 함수(`remote30_prototype._floor_index_of_label`)를 부르지 않는 것은
+    그 모듈이 ezdxf 를 끌고 들어오기 때문이지 규약을 달리 잡아서가 아니다 — 규약이
+    담긴 정규식은 공유하므로 한쪽만 바뀔 수 없다.
+    """
+    text = (label or "").strip()
+    if not text:
+        return None
+    upper = text.upper()
+    for keyword, index in _FLOOR_LABEL_SPECIAL.items():
+        if keyword in upper:
+            return index
+    for pattern, kind in _FLOOR_LABEL_PATTERNS:
+        match = pattern.search(text)
+        if not match:
+            continue
+        n = int(match.group(1))
+        # "지하주차장 1층" 처럼 지하 표기가 층수와 떨어져 있으면 접두어 패턴이
+        # 놓치고 맨 끝 "N층" 이 지상으로 잡힌다. 지하가 적힌 라벨은 지하로 읽는다.
+        if kind == "basement" or "지하" in text:
+            return -n
+        return n
+    return None
 
 
 def _opt_float(value: Any) -> float | None:
@@ -284,3 +317,46 @@ class BuildingDraft:
             if entry.get("label") == floor_label:
                 return _opt_float(entry.get("height_mm"))
         return None
+
+    def floor_elevations(self) -> tuple[dict[str, float], list[str]]:
+        """층 라벨 → 슬래브 표고(m)와 못 구한 층. 지상 1층 바닥이 0 이다.
+
+        층고가 없으면 그 층부터 위(또는 아래)로 전부 못 구한다 — 중간을 지어내
+        메우면 입상관 길이가 지어낸 값이 되고, 그 길이는 낙차 압력이 되어 수리계산에
+        그대로 들어간다(금지사항 G9).
+        """
+        height: dict[int, float] = {}
+        label_of: dict[int, str] = {}
+        for entry in (self.source.get("floors") or []):
+            label = str(entry.get("label") or "")
+            index = floor_index(label)
+            if index is None:
+                continue
+            label_of[index] = label
+            mm = _opt_float(entry.get("height_mm"))
+            if mm is not None:
+                height[index] = mm / 1000.0
+
+        # 옥상은 층수가 아니라 표식이다. 최상층 바로 위로 놓아야 누적이 이어진다.
+        roof = label_of.pop(_ROOF_INDEX, None)
+        if roof is not None:
+            ground = [i for i in label_of if i > 0]
+            label_of[max(ground, default=0) + 1] = roof
+
+        elevation: dict[str, float] = {}
+        for direction in (1, -1):
+            level = 0.0
+            index = direction
+            while index in label_of:
+                if direction < 0:
+                    if index not in height:
+                        break
+                    level -= height[index]
+                elevation[label_of[index]] = round(level, 4)
+                if direction > 0:
+                    if index not in height:
+                        break
+                    level += height[index]
+                index += direction
+        missing = [label for label in label_of.values() if label not in elevation]
+        return elevation, missing

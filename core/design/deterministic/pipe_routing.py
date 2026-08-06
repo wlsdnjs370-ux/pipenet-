@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""지시서 §9.2 C510·C520·C530 + §9.3 — 가지배관 골격과 교차배관 경로.
+"""지시서 §9.2 C510·C520·C530·C540 + §9.3 — 헤드에서 급수원까지의 배관 골격.
 
-여기서 정하는 것은 넷이다. 교차배관이 어느 방향으로 눕는가(C510), 헤드가 어느
+여기서 정하는 것은 다섯이다. 교차배관이 어느 방향으로 눕는가(C510), 헤드가 어느
 가지배관에 실리고 분기점이 어디에 서는가(C520), 그 분기점들을 실제로 어떤 경로로
-잇는가(C530), 그리고 그 결과가 토너먼트가 아닌가(§9.3).
+잇는가(C530), 그 교차배관들이 유수검지장치와 입상관을 거쳐 급수원까지 어떻게
+닿는가(C540), 그리고 그 결과가 토너먼트가 아닌가(§9.3).
 
 8개 상한은 **분기점 기준 한쪽**이다(§9.4). 가지배관 전체로는 16개가 적법하므로
 전체를 세어 자르면 배관이 두 배로 늘고, 늘어난 만큼 전부 자재비다.
@@ -20,7 +21,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..recognize.spatial import (
-    NodeIndex, SegmentGrid, point_in_polygon, segments_cross)
+    NodeIndex, SegmentGrid, centroid, point_in_polygon, representative_point,
+    segments_cross)
 from .zoning import JOIN_TOL_MM
 
 _MM_PER_M = 1000.0
@@ -129,6 +131,7 @@ class ZonePlan:
     axes: ZoneAxes
     crosses: list[CrossMain] = field(default_factory=list)
     branches: list[Branch] = field(default_factory=list)
+    main: Any = None
     head_ab: dict = field(default_factory=dict)
     flags: list = field(default_factory=list)
     metrics: dict = field(default_factory=dict)
@@ -138,6 +141,7 @@ class ZonePlan:
             "zone_id": self.zone_id, "axes": self.axes.to_dict(),
             "cross_mains": [c.to_dict() for c in self.crosses],
             "branches": [b.to_dict() for b in self.branches],
+            "main": self.main.to_dict() if self.main else None,
             "flags": self.flags, "metrics": self.metrics,
         }
 
@@ -702,10 +706,183 @@ def route_cross_mains(plan: ZonePlan, field: RouteField, *,
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# C540 — 주배관·입상관
+# ────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class MainRun:
+    """주배관. 유수검지장치에서 교차배관까지 — 이 아래가 한 구역이다."""
+
+    id: str
+    zone_id: str
+    valve: tuple[float, float]
+    path: list = field(default_factory=list)
+    spurs: list = field(default_factory=list)
+    min_dn: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"id": self.id, "zone_id": self.zone_id,
+                "valve": [round(self.valve[0], 1), round(self.valve[1], 1)],
+                "path": self.path, "spurs": self.spurs, "min_dn": self.min_dn}
+
+
+def _entry_point(valve, line: list):
+    """교차배관 시점 = 밸브에 가장 가까운 **끝**(§9.2 C540).
+
+    중간의 가장 가까운 점을 잡으면 주배관이 교차배관 한복판으로 들어가고, 그
+    지점에서 교차배관이 양쪽으로 갈라져 §9.3 이 금하는 형상이 된다.
+    """
+    return min((line[0], line[-1]),
+               key=lambda p: math.hypot(p[0] - valve[0], p[1] - valve[1]))
+
+
+def route_main(plan: ZonePlan, field: RouteField, valve_point, *,
+               min_dn: int = 0) -> ZonePlan:
+    """C540 1·2 — 유수검지장치에서 교차배관 시점까지 맨해튼 라우팅.
+
+    [문서정합 §9.2 C540] 명세는 "시점 → 유수검지장치" 한 구간만 적었다. C520 의
+    DP 는 §9.4 한쪽 8개를 맞추느라 한 구역에 교차배관을 여럿 놓으므로, 가장 가까운
+    하나만 주배관으로 잇고 나머지는 그 주배관에서 분기로 붙인다. 각각을 밸브까지
+    따로 끌면 주배관이 나란히 겹쳐 총연장이 늘고, 밸브에서 갈라진 갈래마다 또
+    분기가 달려 §9.3 이 금하는 형상이 된다.
+    """
+    axes = plan.axes
+    valve = axes.project(float(valve_point[0]), float(valve_point[1]))
+    run = MainRun(id=f"MN-{plan.zone_id}", zone_id=plan.zone_id,
+                  valve=tuple(axes.world(*valve)), min_dn=int(min_dn))
+    plan.main = run
+
+    routed = [(c, [axes.project(p[0], p[1]) for p in c.path])
+              for c in plan.crosses if len(c.path) >= 2]
+    ordered = sorted(routed, key=lambda item: math.hypot(
+        *(v - w for v, w in zip(_entry_point(valve, item[1]), valve))))
+
+    trunk = None
+    legs: list[list] = []
+    for cross, line in ordered:
+        entry = _entry_point(valve, line)
+        leg, reason = field.connect(valve if trunk is None
+                                    else _nearest_on(trunk, entry), entry)
+        if leg is None:
+            heads = [h for b in plan.branches if b.cross_id == cross.id
+                     for h in b.heads]
+            plan.flags.append({
+                "code": "MAIN_TIMEOUT" if reason == "timeout" else "MAIN_UNREACHABLE",
+                "zone_id": plan.zone_id, "cross_id": cross.id, "heads": heads,
+                "message": f"{cross.id} 교차배관까지 주배관을 놓을 경로가 없습니다. "
+                           f"헤드 {len(heads)}개가 미방호입니다.",
+            })
+            continue
+        legs.append(leg)
+        if trunk is None:
+            trunk = leg
+            run.path = [list(axes.world(a, b)) for a, b in leg]
+        else:
+            run.spurs.append([list(axes.world(a, b)) for a, b in leg])
+
+    length = 0.0
+    turns = pierces = 0
+    for line in legs:
+        turns += max(0, len(line) - 2)
+        for p, q in zip(line, line[1:]):
+            length += math.hypot(q[0] - p[0], q[1] - p[1])
+            pierces += field.pierce_count(p, q)
+    plan.metrics.update({
+        "main_length_m": round(length / _MM_PER_M, 2),
+        "main_turns": int(turns),
+        "main_wall_pierces": int(pierces),
+    })
+    return plan
+
+
+@dataclass
+class RiserLevel:
+    """입상관이 한 층에서 갖는 노드. 표고를 둘 따로 든다(§9.2 C540).
+
+    `elevation_m` 이 수리 실표고고 `display_z_m` 은 표시 전용이다. 하나로 합치면
+    보기 좋으라고 눌러 그린 층간 간격이 낙차 압력까지 눌러버린다.
+    """
+
+    floor: str
+    elevation_m: float
+    display_z_m: float
+    zone_id: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"floor": self.floor, "elevation_m": round(self.elevation_m, 4),
+                "display_z_m": round(self.display_z_m, 4), "zone_id": self.zone_id}
+
+
+@dataclass
+class Riser:
+    """층간 수직 간선. 최하단 노드가 그래프의 최종 급수원이다(§9.2 C540 5)."""
+
+    id: str
+    core_id: str
+    point: tuple[float, float]
+    levels: list[RiserLevel] = field(default_factory=list)
+
+    @property
+    def ordered(self) -> list[RiserLevel]:
+        return sorted(self.levels, key=lambda level: level.elevation_m)
+
+    def node_id(self, level: RiserLevel) -> str:
+        return f"{self.id}-{level.floor}"
+
+    @property
+    def source_node(self) -> str | None:
+        levels = self.ordered
+        return self.node_id(levels[0]) if levels else None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"id": self.id, "core_id": self.core_id,
+                "point": [round(self.point[0], 1), round(self.point[1], 1)],
+                "levels": [level.to_dict() for level in self.ordered],
+                "source_node": self.source_node}
+
+
+def plan_riser(core: dict, levels, *, riser_id: str | None = None) -> Riser:
+    """C540 3 — 입상관은 밸브가 속한 코어의 중심에 선다.
+
+    표고를 여기서 구하지 않는다. 층고는 `BuildingDraft.floor_elevations()` 가
+    쥐고 있고 못 구한 층은 빼서 돌려주므로, 여기서 메우면 지어낸 층고가 입상관
+    길이가 되고 그 길이가 그대로 낙차 압력이 된다(금지사항 G9).
+    """
+    polygon = [(float(p[0]), float(p[1])) for p in (core.get("polygon") or [])]
+    if len(polygon) < 3:
+        raise ValueError("입상관을 세울 코어 폴리곤이 없습니다.")
+    # 무게중심은 ㄱ자 코어에서 밖으로 나간다. 입상관은 샤프트 안에 서야 한다.
+    point = centroid(polygon)
+    if not point_in_polygon(point, polygon):
+        point = representative_point(polygon) or point
+    core_id = str(core.get("core_id") or core.get("id") or "CORE")
+    return Riser(id=riser_id or f"RS-{core_id}", core_id=core_id,
+                 point=point, levels=list(levels))
+
+
+def riser_segments(riser: Riser) -> list[dict]:
+    """아래에서 위로 층간 간선. 배관장 = max(도면상 길이, |표고차|)(§9.2 C540).
+
+    도면상 길이만 쓰면 눌러 그린 층에서 낙차가 사라지고, 표고차만 쓰면 실제로
+    꺾여 올라간 관이 직선으로 줄어든다. 둘 중 큰 쪽이 안전측이다.
+    """
+    levels = riser.ordered
+    out = []
+    for lo, hi in zip(levels, levels[1:]):
+        length = max(abs(hi.display_z_m - lo.display_z_m),
+                     abs(hi.elevation_m - lo.elevation_m))
+        out.append({"id": f"{riser.id}-{lo.floor}-{hi.floor}",
+                    "from": riser.node_id(lo), "to": riser.node_id(hi),
+                    "length_m": round(length, 4),
+                    "rise_m": round(hi.elevation_m - lo.elevation_m, 4)})
+    return out
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # §9.3 — 토너먼트 금지
 # ────────────────────────────────────────────────────────────────────────────
 
-def check_tournament(adjacency: dict, source) -> list[str]:
+def check_tournament(adjacency: dict, source, *, roots=None) -> list[str]:
     """토너먼트(대칭 이분) 형상을 찾아 위반 목록을 낸다. 빈 목록이 통과다.
 
     [문서정합 §9.3] 명세의 예시 코드는 "급수원→헤드 경로에 차수 3 이상 분기가
@@ -717,6 +894,12 @@ def check_tournament(adjacency: dict, source) -> list[str]:
 
     급수원 자신은 뺀다. 급수원에서 교차배관 여럿으로 갈라지는 것은 주배관 배열이지
     가지배관 배열이 아니다.
+
+    [문서정합 §9.3] `roots` 는 명세에 없다. 주배관이 들어오면 급수원 하나를 빼는
+    것만으로는 모자란다 — 주배관이 교차배관 둘로 갈라지고 그 교차배관들이 각각
+    분기점을 품는 순간, 적법한 주배관→교차배관→가지배관 위계가 그대로 위반으로
+    잡힌다. NFTC 2.5.10.1 이 금하는 것은 **가지배관 배열**이므로, 가지배관
+    분기점들을 `roots` 로 주면 그 하류만 본다(분기점 자신은 급수원처럼 뺀다).
     """
     if source not in adjacency:
         return []
@@ -738,9 +921,19 @@ def check_tournament(adjacency: dict, source) -> list[str]:
         has_split[node] = (len(children[node]) >= 2
                            or any(has_split[c] for c in children[node]))
 
+    scoped = None
+    if roots is not None:
+        seeds = {r for r in roots if r in parent}
+        scoped = set()
+        for node in order[1:]:
+            if parent[node] in seeds or parent[node] in scoped:
+                scoped.add(node)
+
     violations = []
     for node in order:
         if node is source or len(children[node]) < 2:
+            continue
+        if scoped is not None and node not in scoped:
             continue
         splitting = [c for c in children[node] if has_split[c]]
         if len(splitting) >= 2:

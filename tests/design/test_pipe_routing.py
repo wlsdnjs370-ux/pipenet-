@@ -18,6 +18,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_ROOT))
 
 from core.design.deterministic import pipe_routing as PR  # noqa: E402
+from core.design.schema import BuildingDraft, floor_index  # noqa: E402
 
 _SPACING = 3.2      # m — 헤드 간격. 라인 묶음 허용 오차는 이 값의 1/4 이다.
 _STEP = _SPACING * 1000.0
@@ -302,6 +303,130 @@ def test_닿지_못한_헤드를_조용히_빼지_않는다():
     assert set(plan.flags[0]["heads"]) <= set(carried)
 
 
+# ── C540 주배관 ─────────────────────────────────────────────────────────
+
+_OPEN = _floor(_rect(-6000, -6000, 14800, 11600))
+_VALVE = (-5000.0, -5000.0)
+
+
+def _mained(plan, rooms, *, valve=_VALVE, cores=(), min_dn=100):
+    plan, field = _routed(plan, rooms, cores=cores)
+    return PR.route_main(plan, field, valve, min_dn=min_dn), field
+
+
+def test_주배관은_밸브에서_교차배관_끝으로_간다():
+    plan, _ = _mained(_plan(_grid(5, 4)), _OPEN)
+    (cross,) = plan.crosses
+    assert plan.main.path[0] == pytest.approx(list(_VALVE))
+    assert plan.main.path[-1] == pytest.approx(cross.path[0])
+    assert plan.main.spurs == []
+    assert plan.main.min_dn == 100
+    assert plan.metrics["main_length_m"] > 0
+
+
+def test_주배관은_교차배관_한복판으로_들어가지_않는다():
+    """한복판으로 들어가면 그 지점에서 교차배관이 양쪽으로 갈라져 §9.3 형상이 된다."""
+    plan, _ = _mained(_plan(_grid(5, 4)), _OPEN, valve=(6400.0, -5000.0))
+    (cross,) = plan.crosses
+    assert plan.main.path[-1] in (cross.path[0], cross.path[-1])
+
+
+def test_교차배관이_여럿이면_주배관에서_분기한다():
+    """[문서정합 §9.2 C540] 각각을 밸브까지 따로 끌면 주배관이 나란히 겹친다."""
+    rooms = _floor(_rect(-6000, -6000, 20 * _STEP + 2000, 17 * _STEP + 2000))
+    plan, _ = _mained(_plan(_grid(20, 17)), rooms)
+    assert len(plan.crosses) == 2
+    (spur,) = plan.main.spurs
+    assert list(PR._nearest_on(plan.main.path, spur[0])) == pytest.approx(spur[0])
+    ends = [c.path[0] for c in plan.crosses] + [c.path[-1] for c in plan.crosses]
+    assert spur[-1] in ends
+    assert plan.flags == []
+
+
+def test_주배관이_못_닿으면_헤드를_들고_보고한다():
+    """구역 전체가 미방호다. 주배관 없이 그래프를 완성하면 그 사실이 사라진다."""
+    bar = [{"polygon": _rect(-20000, -4000, 30000, -3000)}]
+    plan, _ = _mained(_plan(_grid(5, 4)), _OPEN, cores=bar)
+    (flag,) = plan.flags
+    assert flag["code"] == "MAIN_UNREACHABLE"
+    assert len(flag["heads"]) == 20
+    assert plan.main.path == []
+
+
+# ── C540 층 표고 ────────────────────────────────────────────────────────
+
+def _draft(floors):
+    return BuildingDraft.from_dict({"source": {"floors": floors}})
+
+
+def test_층_라벨은_모듈_A_규약으로_읽는다():
+    assert [floor_index(s) for s in ("1F", "B1F", "지하2층", "옥탑")] == [1, -1, -2, 99]
+    # 지하 표기가 층수와 떨어져 있어도 지하다 — 끝의 "1층"만 보면 지상으로 잡힌다.
+    assert floor_index("지하주차장 1층") == -1
+    assert floor_index("") is None and floor_index("기계실") is None
+
+
+def test_지상1층_바닥이_0이고_지하는_아래로_쌓인다():
+    elevation, missing = _draft([
+        {"label": "B2F", "height_mm": 3000}, {"label": "B1F", "height_mm": 4000},
+        {"label": "1F", "height_mm": 4500}, {"label": "2F", "height_mm": 3200},
+    ]).floor_elevations()
+    assert elevation == {"B2F": -7.0, "B1F": -4.0, "1F": 0.0, "2F": 4.5}
+    assert missing == []
+
+
+def test_옥상은_층수가_아니라_최상층_바로_위다():
+    elevation, missing = _draft([
+        {"label": "1F", "height_mm": 4500}, {"label": "2F", "height_mm": 3200},
+        {"label": "옥상"},
+    ]).floor_elevations()
+    assert elevation["옥상"] == pytest.approx(7.7)
+    assert missing == []
+
+
+def test_층고를_모르면_그_층부터_빼고_돌려준다():
+    """지어내 메우면 그 값이 입상관 길이가 되고 그대로 낙차 압력이 된다(G9)."""
+    elevation, missing = _draft([
+        {"label": "1F", "height_mm": 4500}, {"label": "2F"},
+        {"label": "3F", "height_mm": 3200}, {"label": "4F", "height_mm": 3200},
+    ]).floor_elevations()
+    assert elevation == {"1F": 0.0, "2F": 4.5}
+    assert missing == ["3F", "4F"]
+
+
+# ── C540 입상관 ─────────────────────────────────────────────────────────
+
+def _riser(levels, *, polygon=None):
+    return PR.plan_riser({"core_id": "CR-1", "polygon": polygon
+                          or _rect(0, 0, 4000, 4000)}, levels)
+
+
+def test_입상관은_코어_안에_선다():
+    """ㄱ자 코어에서 무게중심은 밖으로 나간다. 입상관은 샤프트 안에 서야 한다."""
+    ell = [(0, 0), (10000, 0), (10000, 2000), (2000, 2000), (2000, 10000), (0, 10000)]
+    riser = _riser([], polygon=ell)
+    assert PR.point_in_polygon(riser.point, ell)
+
+
+def test_배관장은_도면상_길이와_표고차_중_큰_쪽이다():
+    """표시용으로 눌러 그린 층에서 도면상 길이만 쓰면 낙차가 사라진다(§9.2 C540)."""
+    riser = _riser([PR.RiserLevel("1F", 0.0, 0.0),
+                    PR.RiserLevel("B1F", -4.0, -1.0),
+                    PR.RiserLevel("2F", 4.5, 20.0)])
+    lengths = {seg["id"]: seg["length_m"] for seg in PR.riser_segments(riser)}
+    assert lengths == {"RS-CR-1-B1F-1F": 4.0, "RS-CR-1-1F-2F": 20.0}
+
+
+def test_최하층_종점이_최종_급수원이다():
+    riser = _riser([PR.RiserLevel("1F", 0.0, 0.0), PR.RiserLevel("B1F", -4.0, -4.0)])
+    assert riser.source_node == "RS-CR-1-B1F"
+    assert PR.riser_segments(riser)[0]["from"] == riser.source_node
+
+
+def test_표고가_없는_입상관은_급수원도_없다():
+    assert _riser([]).source_node is None and PR.riser_segments(_riser([])) == []
+
+
 # ── R3·R4 — 토너먼트 금지 ───────────────────────────────────────────────
 
 def _undirected(edges):
@@ -340,6 +465,36 @@ def test_급수원에서_교차배관_둘로_갈라지는_것은_주배관_배�
         edges += [(f"{side}1", f"{side}2"), (f"{side}1", f"{side}b1"),
                   (f"{side}2", f"{side}b2")]
     assert PR.check_tournament(_undirected(edges), "S") == []
+
+
+def _hierarchy():
+    """급수원 → 주배관 → 교차배관 둘 → 분기점 → 가지배관. 실제 설계의 위계다."""
+    edges = [("PUMP", "AV"), ("AV", "M0"), ("M0", "M1"), ("M1", "M2")]
+    tees = []
+    for side, hub in (("L", "M1"), ("R", "M2")):
+        edges.append((hub, f"{side}C1"))
+        for n in (1, 2):
+            tee = f"{side}T{n}"
+            edges += [(f"{side}C{n}", tee), (f"{side}C{n}", f"{side}C{n + 1}"),
+                      (tee, f"{side}H{n}")]
+            tees.append(tee)
+    return _undirected(edges), tees
+
+
+def test_주배관_위계는_가지배관_배열이_아니다():
+    """[문서정합 §9.3] 주배관이 들어오면 급수원 하나를 빼는 것으로 모자란다 —
+    주배관이 교차배관 둘로 갈라지고 그 둘이 각각 분기점을 품는 순간 적법한 위계가
+    통째로 걸린다. NFTC 2.5.10.1 이 금하는 것은 가지배관 배열이다."""
+    graph, tees = _hierarchy()
+    assert PR.check_tournament(graph, "PUMP")                     # 전체로 보면 걸린다
+    assert PR.check_tournament(graph, "PUMP", roots=tees) == []
+
+
+def test_분기점_하류가_또_갈라지면_범위를_줘도_걸린다():
+    """범위를 좁힌 것이지 검사를 끈 것이 아니다."""
+    graph = _undirected([("S", "T"), ("T", "a"), ("a", "b"), ("a", "c"),
+                         ("b", "b1"), ("b", "b2"), ("c", "c1"), ("c", "c2")])
+    assert PR.check_tournament(graph, "S", roots=["T"])
 
 
 def test_없는_급수원은_검사하지_않는다():

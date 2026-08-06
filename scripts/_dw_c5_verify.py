@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""PR-9f C5 배관망 UI 런타임 검증 — 일회용.
+"""PR-9f·PR-10 C5 배관망 + 방출 UI 런타임 검증 — 일회용.
 
-보고 싶은 것은 넷이다. **헤드 없이는 라우팅 버튼이 열리지 않는가**, **놓인 배관이
+보고 싶은 것은 다섯이다. **헤드 없이는 라우팅 버튼이 열리지 않는가**, **놓인 배관이
 캔버스에 실제로 그려지는가**(표만 차고 화면이 비면 검수할 수 없다), **관경이
-급수원 쪽에서 가늘어지지 않는가**, **헤드를 다시 놓으면 배관이 무효가 되는가**.
+급수원 쪽에서 가늘어지지 않는가**, **네 포맷이 실제로 내려받아지는가**, **헤드를
+다시 놓으면 배관도 방출물도 무효가 되는가**.
 
-네 번째가 핵심이다. 없어진 헤드를 먹이는 배관이 화면에 남아 있으면, 그 그림은
-어떤 설계도 아니다.
+마지막이 핵심이다. 없어진 헤드를 먹이는 배관이 화면에 남아 있거나 그 망으로 구운
+솔버 파일이 계속 내려받아지면, 그 그림도 그 파일도 어떤 설계가 아니다.
 
 `node --check` 는 구문만 본다 — 함수-지역 헬퍼를 다른 스코프에서 부르는 회귀는
 브라우저에서만 잡힌다. 그래서 진짜 크로미움으로 돈다.
@@ -125,6 +126,74 @@ PIPE_PIXELS = """() => {
   return diff;
 }"""
 
+def _keep_rooms(sid: str) -> list[str]:
+    """남길 실 — 첫 밸브 후보가 앉을 실과 문으로 이어진 덩어리.
+
+    화면이 나중에 고를 후보(`state.c3.candidates[0]`)와 같은 실을 골라야 하므로
+    같은 규칙으로 뽑는다 — `draft.cores` 순서의 첫 SHAFT·STAIR(검증이 코어를 전부
+    "입상관으로 쓴다" 로 확정하므로 필터 결과의 첫 항목이 같다).
+    """
+    from core.design.deterministic import zoning as Z
+    from core.design.recognize.spatial import representative_point
+    from core.design.schema import BuildingDraft
+
+    raw = json.loads((mod.DESIGN_SESSION_DIR / sid / "building.json")
+                     .read_text(encoding="utf-8"))
+    draft = BuildingDraft.from_dict(raw)
+    core = next(c for c in draft.cores if c.kind.upper() in Z.VALVE_CORE_KINDS)
+    seed = Z.seed_room(draft, representative_point(core.polygon))
+    if seed is None:
+        return []
+
+    graph = Z.build_room_graph(draft)
+    keep, stack = {seed}, [seed]
+    while stack:
+        for nxt, _hop, _mid in graph.neighbors(stack.pop()):
+            if nxt not in keep:
+                keep.add(nxt)
+                stack.append(nxt)
+    return sorted(keep)
+
+
+# 화면의 [지우기] 와 같은 라우트를 같은 쿠키로 부른다.
+PRUNE_PLAN = """async () => {
+  const keep = new Set(__KEEP__);
+  let deleted = 0, failed = 0;
+  for (const room of state.rooms.filter((r) => !keep.has(r.id))) {
+    const res = await fetch("/api/design/gate/edit", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: state.sessionId, operator: "jinwon",
+                             edit: { op: "delete", room: room.id } }),
+    });
+    const body = await res.json();
+    if (res.ok) { deleted++; state.rooms = body.rooms; } else { failed++; }
+  }
+  render();
+  return { deleted, failed, left: state.rooms.length };
+}"""
+
+EMIT_STATE = """() => ({
+  bundles: state.emit.bundles.length,
+  suffixes: state.emit.bundles.map(
+    (b) => b.files.map((f) => f.name.slice(f.name.lastIndexOf('.'))).sort()),
+  empty: state.emit.bundles.reduce(
+    (n, b) => n + b.files.filter((f) => !(f.bytes > 0)).length, 0),
+  rt_ok: state.emit.bundles.every((b) => b.round_trip && b.round_trip.ok),
+  flags: state.emit.flags.map((f) => f.code),
+  links: document.querySelectorAll('#dw-emit-files a').length,
+})"""
+
+# 링크 주소를 그대로 눌러 본다. SDF 는 XML 이므로 첫 글자가 '<' 여야 한다.
+FETCH_FIRST = """async () => {
+  const a = [...document.querySelectorAll('#dw-emit-files a')]
+    .find((el) => el.getAttribute('href').endsWith('.sdf'));
+  if (!a) return { status: 0, bytes: 0, sdf: false };
+  const res = await fetch(a.href);
+  const text = await res.text();
+  return { status: res.status, bytes: text.length,
+           sdf: text.trimStart().startsWith('<'), name: a.textContent };
+}"""
+
 with sync_playwright() as p:
     browser = p.chromium.launch()
     page = browser.new_page(viewport={"width": 1600, "height": 950})
@@ -153,6 +222,18 @@ with sync_playwright() as p:
         " || /오류/.test(document.getElementById('dw-recognize-status').textContent)",
         timeout=180_000)
     print("인식:", page.inner_text("#dw-recognize-status"))
+
+    # ── 방출까지 가려면 닿지 않는 실을 먼저 치워야 한다 ─────────────────────
+    # 이 도면은 C1 이 채택한 실이 도면의 일부만 덮어, 문으로 이어진 실 쌍이 11 개뿐이다
+    # (zoning.py 모듈 주석의 실측). 남은 실은 `ROOM_UNREACHABLE` 로 C3 를 막고, 막힌
+    # 단계에서는 방출도 열리지 않는다 — 서버가 옳다. 그래서 사람이 화면에서 할 일을
+    # 그대로 한다: 밸브가 문으로 닿을 수 있는 실만 남기고 나머지는 GATE 지우기로 뺀다.
+    # 확정 전이라 편집이 열려 있고, 지우는 경로도 화면의 [지우기] 와 같은 라우트다.
+    pruned = page.evaluate(PRUNE_PLAN.replace(
+        "__KEEP__", json.dumps(_keep_rooms(page.evaluate("() => state.sessionId")))))
+    print("실 정리:", json.dumps(pruned, ensure_ascii=False))
+    check("닿지 않는 실을 GATE 지우기로 뺌", pruned["failed"] == 0 and pruned["left"] > 0,
+          f"{pruned['deleted']}개 지움 / {pruned['left']}개 남음")
 
     page.click("#dw-gate-open")
     page.wait_for_selector("#dw-gate-tbody tr")
@@ -328,8 +409,47 @@ with sync_playwright() as p:
                     clip={"x": aim2["x"] - 500, "y": aim2["y"] - 320,
                           "width": 1000, "height": 640})
 
-    # ── [4] 헤드를 다시 놓으면 배관은 근거를 잃는다 ─────────────────────────
-    print("\n[4] 헤드를 다시 놓으면 배관이 무효")
+    # ── [4] 방출 — 솔버 파일 (§11 · §13.6) ──────────────────────────────────
+    print("\n[4] 솔버 파일 방출")
+    if server_stage != "emit":
+        why = f"서버 단계가 {server_stage} — 방출 자체가 열리지 않는 상태다"
+        check("방출로 넘어가지 못하면 버튼도 잠김", not page.is_enabled("#dw-emit-btn"), why)
+        for label in ("망마다 네 포맷이 나옴", "왕복 검증이 일치", "파일이 실제로 내려받아짐"):
+            skip(label, why)
+        emitted = None
+    else:
+        check("방출 단계가 되면 [솔버 파일 방출] 열림", page.is_enabled("#dw-emit-btn"))
+        t0 = time.time()
+        page.click("#dw-emit-btn")
+        page.wait_for_function(
+            "() => !/쓰는 중/.test(document.getElementById('dw-emit-status').textContent)",
+            timeout=600_000)
+        print(f"  {time.time() - t0:.1f}s — {page.inner_text('#dw-emit-status')}")
+        emitted = page.evaluate(EMIT_STATE)
+        print("  상태:", json.dumps(emitted, ensure_ascii=False))
+
+        check("망 수가 C5 와 같음", emitted["bundles"] == c5["networks"],
+              f"방출 {emitted['bundles']} vs 라우팅 {c5['networks']}")
+        check("망마다 네 포맷이 나옴", emitted["suffixes"] == [
+            [".has", ".kfp", ".sdf", ".slf"]] * emitted["bundles"],
+            json.dumps(emitted["suffixes"]))
+        check("빈 파일이 없음", emitted["empty"] == 0, f"{emitted['empty']}개")
+        check("왕복 검증이 일치", emitted["rt_ok"] and not emitted["flags"],
+              ", ".join(emitted["flags"]) or "플래그 없음")
+        # 링크가 그려진 것과 그 주소가 실제로 파일을 준다는 것은 다르다.
+        got = page.evaluate(FETCH_FIRST)
+        check("파일이 실제로 내려받아짐",
+              got["status"] == 200 and got["bytes"] > 0 and got["sdf"],
+              json.dumps(got, ensure_ascii=False))
+        # 없는 이름은 `emit.json` 화이트리스트에서 걸러야 한다.
+        bogus = page.evaluate(
+            "async () => (await fetch("
+            "`/api/design/emit/${state.sessionId}/meta.json`)).status")
+        check("방출물이 아닌 파일은 거절", bogus == 404, str(bogus))
+        page.screenshot(path=str(ROOT / "data" / "_dw_emit_panel.png"))
+
+    # ── [5] 헤드를 다시 놓으면 배관은 근거를 잃는다 ─────────────────────────
+    print("\n[5] 헤드를 다시 놓으면 배관이 무효")
     page.click("#dw-run-c4")
     page.wait_for_function(
         "() => !/배치하는 중/.test(document.getElementById('dw-c4-status').textContent)",
@@ -340,6 +460,14 @@ with sync_playwright() as p:
     check("[배관망 표 보기] 다시 잠김", not page.is_enabled("#dw-c5-open"))
     check("[배관망 라우팅 실행] 은 열려 있음", page.is_enabled("#dw-run-c5"),
           "헤드를 다시 놓았으니 다시 돌릴 수 있어야 한다")
+    # 없어진 망으로 구운 파일을 계속 내려받게 두면 화면과 손에 쥔 파일이 갈린다.
+    if emitted is None:
+        skip("방출물도 함께 무효화", "방출을 돌린 적이 없다")
+    else:
+        after = page.evaluate(EMIT_STATE)
+        check("방출물도 함께 무효화",
+              after["bundles"] == 0 and after["links"] == 0
+              and not page.is_enabled("#dw-emit-btn"), json.dumps(after))
 
     browser.close()
 

@@ -212,7 +212,8 @@ class DesignSession:
         # 기준은 다시 구우면 이름이 바뀐다(§16.3). 현행(meta)과 최초본을 함께 실어야
         # 화면이 옛 기준을 현행으로 착각하지도, 최초본이 사라졌다고 읽지도 않는다.
         names = ["building.json", CONSTRAINTS, meta.get("constraints") or CONSTRAINTS,
-                 "esfr.json", "design.json", "graph.json", "checks.json"]
+                 "esfr.json", "design.json", "graph.json", "checks.json",
+                 "emit.json"]
         for name in dict.fromkeys(names):
             data, version = self.read_or_none(name)
             artifacts[name] = None if data is None else {

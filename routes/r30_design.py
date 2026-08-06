@@ -4,9 +4,9 @@
 `register(app, ...)` 패턴. 기존 `/api/remote30/*` 는 건드리지 않으며, 이 모듈은
 `DESIGN_WORKBENCH_ENABLED` 가 꺼져 있으면 라우트를 아예 등록하지 않는다(§C.5).
 
-아직 구현되지 않은 C3 이후 엔드포인트는 **게이트 강제만** 걸어 자리를 잡아 두고,
-게이트를 통과한 뒤에는 구현이 없음을 501 로 밝힌다. 통과한 것처럼 200 을 돌려주면
-화면이 진행된 것으로 오해한다.
+C2 이후는 전부 게이트 뒤에 선다. 단계를 넘길지는 서버가 정하고(`meta.stage`),
+방출은 그 값이 `emit` 일 때만 돈다 — 막는 플래그를 안은 망이 솔버 파일이 되어
+나가지 않게 하는 마지막 잠금이다.
 """
 from __future__ import annotations
 
@@ -14,11 +14,15 @@ import contextlib
 import gzip
 import hashlib
 import json
+import math
 import os
+import shutil
 import uuid
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from flask import Response, jsonify, make_response, render_template, request
+from flask import (Response, jsonify, make_response, render_template, request,
+                   send_from_directory)
 from werkzeug.utils import secure_filename
 
 from core.design import gate as G
@@ -38,10 +42,8 @@ from core.design.schema import BuildingDraft
 # 판정이 바뀌면 이 값을 올려야 옛 결과가 캐시에서 되살아나지 않는다.
 DESIGN_CACHE_VERSION = "c1-v1"
 
-# 게이트 뒤에 서지만 아직 구현이 없는 단계들. C2~C5 는 실제 라우트로 빠졌다.
-_GATED_STAGES = (
-    ("/api/design/emit", "POST", "EMIT"),
-)
+# 방출 산출물이 놓이는 자리. 세션 안에 두어 세션이 지워질 때 함께 지워진다.
+_EMIT_DIR = "emit"
 
 # C5 플래그 중 **경고**로 볼 것. 나머지는 방출을 막는다. C4 와 같은 이유로 목록을
 # 뒤집어 둔다 — 새 플래그의 기본은 "막는다" 여야 한다.
@@ -89,6 +91,109 @@ class _HeadLimits:
         self.missing = [k for k in self.FIELDS if data.get(k) is None]
         for key in self.FIELDS:
             setattr(self, key, float(data.get(key) or 0.0))
+
+
+def _emit_stem(network: dict, index: int) -> str:
+    """방출 파일 이름. 코어 이름이 그대로 파일 이름이 되므로 여기서 씻는다."""
+    core = secure_filename(str((network.get("riser") or {}).get("core_id") or ""))
+    return f"net{index:02d}_{core}" if core else f"net{index:02d}"
+
+
+def _sdf_pipe_lengths(sdf: Path) -> list[float]:
+    """SDF 가 스스로 적어 둔 배관장(m).
+
+    `parse_sdf` 의 `length_m` 을 쓰지 않는 이유가 있다. 그 함수는 `length` 와 노드
+    좌표거리의 비 중앙값이 0.7~1.5 면 **좌표거리를 권위로 삼아 length 를 덮어쓴다**
+    (K-solver 규약이 좌표거리＝배관장이라서다). 그런데 `emit_sdf` 의 Position 은
+    최장변 3000 으로 정규화한 스키매틱 좌표라 미터가 아니다 — 그 배율이 우연히
+    저 창에 들면 읽은 배관장이 일제히 밀린다(실측: 양주옥정 1망, 비 1.5,
+    5.632m → 5.443m). PIPENET 은 `length` 를 읽으므로 파일 자체는 옳다. 그래서
+    "낸 값이 그대로 있는가" 는 `length` 로 재고, 좌표는 여기서 보지 않는다.
+    """
+    root = ET.parse(str(sdf)).getroot()
+    return [float(el.attrib["length"]) for el in root.iter()
+            if el.tag.rpartition("}")[2] == "Pipe" and "length" in el.attrib]
+
+
+def _round_trip(combined, net, sdf_lengths: list[float]) -> dict:
+    """§13.6 — 방출한 SDF 를 다시 읽어 그래프와 맞대어 본다.
+
+    `kfp_sdf_converter.round_trip_check` 는 KFP 를 기점으로 도는 함수라 여기 쓸 수
+    없다(우리 기점은 그래프다). 같은 항목을 같은 방식으로 잰다.
+
+    모듈 A 는 신축배관 등가길이를 실배관 한 토막으로 편다(`_materialize_fx_pipes`).
+    그래서 노드 수·배관 수·총연장이 신축배관 개수만큼 **느는 것이 정상**이다.
+    """
+    flex = len(combined.equipment)
+    flex_len_m = sum(float(eq["drawing_len_mm"]) / 1000.0
+                     for eq in combined.equipment)
+    length_before = sum(float(p["length"]) for p in combined.pipes)
+    length_after = sum(sdf_lengths)
+    dia_before = {f"P{p['label']}": int(p["dia"]) for p in combined.pipes}
+    dia_after = {p.id: p.nominal_mm for p in net.pipes.values()}
+    same_dia = sum(1 for pid, dn in dia_before.items() if dia_after.get(pid) == dn)
+    heads_after = sum(1 for n in net.nodes.values() if n.kind == "head")
+
+    out = {
+        "nodes": [len(combined.nodes), len(net.nodes)],
+        "pipes": [len(combined.pipes), len(net.pipes)],
+        "heads": [len(combined.nozzles), heads_after],
+        "length_m": [round(length_before, 3), round(length_after, 3)],
+        "dia_match": [same_dia, len(dia_before)],
+        "flex": flex, "flex_length_m": round(flex_len_m, 3),
+    }
+    out["ok"] = bool(
+        out["nodes"][1] == out["nodes"][0] + flex
+        and out["pipes"][1] == out["pipes"][0] + flex
+        and heads_after == len(combined.nozzles)
+        and math.isclose(length_before + flex_len_m, length_after, abs_tol=0.01)
+        and same_dia == len(dia_before))
+    return out
+
+
+def _emit_bundle(graph: dict, out_dir: Path, stem: str, *, title: str) -> dict:
+    """그래프 한 벌 → SDF(+동봉 SLF)·KFP·HAS + 왕복 검증.
+
+    모듈 A 는 부르기만 하고 고치지 않는다(금지사항 G8). import 를 함수 안에 두는
+    이유는 `_inner_dia_mm` 과 같다 — `remote30_prototype` 이 평면 import 로 짜여
+    `core` 자체가 sys.path 에 올라야 열린다.
+
+    세 포맷 중 하나라도 실패하면 여기서 터진다. 잡아서 넘기면 SDF 만 나온 것을
+    "3종 생성" 으로 읽게 된다.
+    """
+    from kfp_sdf_converter import parse_sdf
+    from remote30_full_network import (CombinedTables, ProjectContext, ZoneSpec,
+                                       ZoneType, emit_full_sdf)
+    from remote30_prototype import emit_has, emit_kfp
+
+    combined = CombinedTables(
+        nodes=list(graph["nodes"]), pipes=list(graph["pipes"]),
+        nozzles=list(graph["nozzles"]), fittings=list(graph["fittings"]),
+        equipment=list(graph["equipment"]),
+        meta=[tuple(pair) for pair in (graph.get("meta") or ())])
+    # `zone_spec` 은 `ProjectContext` 의 필수 인자지만 이 경로의 `emit_full_sdf` 는
+    # `report_title()` 만 본다. 가압방식은 모듈 C 가 아직 정하지 않으므로, 여기 적은
+    # 값이 수리계산에 흘러들지 않는다는 사실이 곧 이 줄이 G9 위반이 아닌 근거다.
+    ctx = ProjectContext(zone_spec=ZoneSpec(zone_type=ZoneType.LSP_GRAVITY),
+                         project_title=title)
+
+    sdf = out_dir / f"{stem}.sdf"
+    emit_full_sdf(combined, sdf, ctx=ctx)
+    kfp = out_dir / f"{stem}.kfp"
+    # display_geometry=False — K-Fire Solver 는 노드 좌표거리에서 배관장을 역산한다.
+    emit_kfp(sdf, kfp, coord_scale=1.0, display_geometry=False)
+    has = out_dir / f"{stem}.has"
+    # HASS 는 InsertionPoint 2D 좌표를 그대로 표시한다 — 등각으로 구워야 입상관이
+    # 기둥으로 보인다.
+    emit_has(sdf, has, isometric=True, iso_z_scale=1.0)
+
+    # PIPENET 은 .sdf 옆의 .slf 로 호칭경↔내경을 찾는다. `emit_sdf` 가 같은 이름으로
+    # 동봉하므로 내려보낼 때도 반드시 이 쌍이어야 한다.
+    files = [{"name": path.name, "bytes": path.stat().st_size}
+             for path in (sdf, sdf.with_suffix(".slf"), kfp, has)]
+    return {"stem": stem, "files": files,
+            "round_trip": _round_trip(combined, parse_sdf(sdf),
+                                      _sdf_pipe_lengths(sdf))}
 
 
 def _content_hash(path: Path) -> str:
@@ -847,17 +952,66 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
             return _fail("CHECKS_NOT_RUN", "C4 헤드 배치를 먼저 실행하세요.", 409)
         return jsonify({"ok": True, **data})
 
-    # ── 게이트 뒤 단계 (자리만) ─────────────────────────────────────────
-    def _make_gated(stage: str):
-        def view(sid=None):
-            session_id = sid or str((request.get_json(silent=True) or {}).get("session_id") or "")
-            _sess, _draft, err = _gated(session_id)
-            if err:
-                return err
-            return _fail("STAGE_NOT_IMPLEMENTED",
-                         f"{stage} 단계는 아직 구현되지 않았습니다.", 501)
-        return view
+    # ── 방출 — 모듈 A 체이닝 (§11 · §13.6) ──────────────────────────────
+    @app.post("/api/design/emit")
+    def design_emit():
+        body = request.get_json(silent=True) or {}
+        sess, draft, err = _gated(str(body.get("session_id") or ""))
+        if err:
+            return err
+        graph, _v = sess.read_or_none("graph.json")
+        networks = (graph or {}).get("networks") or []
+        if not networks:
+            return _fail("NETWORK_REQUIRED", "C5 배관망 라우팅을 먼저 실행하세요.", 409)
+        # 단계는 C5 가 정해 둔 것을 그대로 믿는다. 배관망 파일만 있으면 방출하도록
+        # 하면 막는 플래그를 안은 망이 솔버 파일이 되어 나간다.
+        meta, _ = sess.read("meta.json")
+        if meta.get("stage") != "emit":
+            return _fail("EMIT_NOT_READY",
+                         "앞 단계에 남은 문제가 있어 방출하지 않습니다.", 409,
+                         stage=meta.get("stage"))
 
-    for rule, method, stage in _GATED_STAGES:
-        app.add_url_rule(rule, endpoint=f"design_stage_{stage.lower().replace('-', '_')}",
-                         view_func=_make_gated(stage), methods=[method])
+        title = draft.source.get("dxf") or sess.sid
+        actor = (body.get("operator") or "").strip() or "unknown"
+        out_dir = sess.path(_EMIT_DIR)
+
+        try:
+            with sess.stage_lock("emit"):
+                # 옛 방출물을 남겨 두면 배관망을 다시 그린 뒤에도 내려받기가 옛 파일을
+                # 준다 — 화면이 말하는 망과 손에 쥔 파일이 갈린다.
+                shutil.rmtree(out_dir, ignore_errors=True)
+                out_dir.mkdir(parents=True)
+                bundles = [_emit_bundle(net["graph"], out_dir,
+                                        _emit_stem(net, index), title=title)
+                           for index, net in enumerate(networks, start=1)]
+                broken = [b["stem"] for b in bundles if not b["round_trip"]["ok"]]
+                flags = [{
+                    "code": "ROUND_TRIP_MISMATCH", "networks": broken,
+                    "message": f"방출한 SDF 를 다시 읽었더니 그래프와 어긋난 망이 "
+                               f"{len(broken)}개 있습니다 — 솔버에 그대로 넣지 마세요.",
+                }] if broken else []
+                sess.write("emit.json", {"schema": "fncadnet.design_emit/1",
+                                         "bundles": bundles, "flags": flags})
+                sess.audit(actor, "EMIT", "files_emitted", {
+                    "networks": len(bundles),
+                    "files": [f["name"] for b in bundles for f in b["files"]],
+                    "round_trip_ok": not broken,
+                })
+        except S.StageBusy as exc:
+            return _fail("STAGE_BUSY", str(exc), 409)
+
+        return jsonify({"ok": True, "bundles": bundles, "flags": flags})
+
+    # [문서정합] §11 에 내려받기 라우트가 없다. 방출은 했는데 가져갈 길이 없으면
+    # 산출물이 서버 안에만 쌓이므로 여기 둔다. 이름은 `emit.json` 에 적힌 것만 준다.
+    @app.get("/api/design/emit/<sid>/<name>")
+    def design_emit_file(sid, name):
+        sess, _draft, err = _gated(sid)
+        if err:
+            return err
+        data, _v = sess.read_or_none("emit.json")
+        allowed = {f["name"] for bundle in (data or {}).get("bundles") or []
+                   for f in bundle["files"]}
+        if name not in allowed:
+            return _fail("EMIT_FILE_NOT_FOUND", "그런 방출 파일이 없습니다.", 404)
+        return send_from_directory(sess.path(_EMIT_DIR), name, as_attachment=True)

@@ -126,27 +126,75 @@ with sync_playwright() as pw:
     check("모달 열림",
           page.eval_on_selector("#vel-modal-overlay",
                                 "e => e.classList.contains('is-open')"), True)
+
+    # ── 1단: 전 배관 현황 (도면 관경 기준)
+    baseline = (rep or {}).get("baseline") or []
+    n_over = sum(1 for b in baseline if b.get("v_over"))
     rows = page.eval_on_selector_all("#vel-table tbody tr", "els => els.length")
     cols = page.eval_on_selector_all("#vel-table thead th", "els => els.length")
-    n_changes = len(rep.get("changes") or []) if rep else 0
-    print(f"     표 {rows}행 × {cols}열")
-    check("헤더 10열", cols, 10 if n_changes else 0)
-    check("행 수 = changes 길이", rows, n_changes)
+    print(f"     1단 전 배관 표 {rows}행 × {cols}열 · 초과 {n_over}구간")
+    check("baseline 수신", bool(baseline))
+    check("1단 헤더 8열", cols, 8)
+    check("1단 행 수 = 전 배관 수", rows, len(baseline))
+    check("초과 행 강조",
+          page.eval_on_selector_all("#vel-table tbody tr.vel-over", "e => e.length"),
+          n_over)
+    run_txt = page.eval_on_selector("#vel-run-btn", "e => e.textContent.trim()")
+    run_dis = page.eval_on_selector("#vel-run-btn", "e => e.disabled")
+    print(f"     역산 버튼: {run_txt!r} (disabled={run_dis})")
+    check("역산 버튼 노출",
+          page.eval_on_selector("#vel-run-btn", "e => e.style.display !== 'none'"), True)
+    # 설계유량 기준 초과가 0이어도 역산은 과토출 유량으로 다시 푼다 — 항상 눌러야 한다.
+    check("역산 버튼 활성", run_dis, False)
+    check("되돌아가기 버튼 숨김",
+          page.eval_on_selector("#vel-back-btn", "e => e.style.display === 'none'"), True)
     summary = page.eval_on_selector("#vel-summary", "e => e.textContent.trim()")
-    print(f"     요약: {summary!r}")
-    check("요약 채워짐", bool(summary))
+    print(f"     1단 요약: {summary!r}")
+    check("1단 요약 채워짐", "전체" in summary)
+
+    # ── 2단: 역산 실행 (서버가 실제로 다시 수렴시킨다)
+    ex = (rep or {}).get("export") or {}
+    want_warn = bool(rep and (rep["violations_after"] > 0
+                              or rep.get("head_stub_violations", 0) > 0
+                              or (ex.get("surplus_bar") or 0) > 0.05))
+    check("1단에도 경고 표시(규격고정·과토출은 역산으로 못 푼다)",
+          page.eval_on_selector("#vel-warning", "e => e.style.display !== 'none'"),
+          want_warn)
+
+    print("\n⑤-b 내경 역산 실행")
+    page.click("#vel-run-btn")
+    page.wait_for_function(
+        "() => document.getElementById('vel-back-btn').style.display !== 'none'",
+        timeout=300000)
+    page.wait_for_timeout(300)
+    rows = page.eval_on_selector_all("#vel-table tbody tr", "els => els.length")
+    cols = page.eval_on_selector_all("#vel-table thead th", "els => els.length")
+    rep2 = page.evaluate("() => (state.combinedBuild || {}).velocity_report || null")
+    n_changes = len(rep2.get("changes") or []) if rep2 else 0
+    print(f"     2단 역산 결과 {rows}행 × {cols}열 · 변경 {rep2['changed']} · "
+          f"초과 {rep2['violations_before']}→{rep2['violations_after']}")
+    check("2단 헤더 10열", cols, 10 if n_changes else 0)
+    check("2단 행 수 = changes 길이", rows, n_changes)
+    check("역산 버튼 숨김",
+          page.eval_on_selector("#vel-run-btn", "e => e.style.display === 'none'"), True)
+    check("재실행 결과 = 빌드 결과", rep2["violations_after"], rep["violations_after"])
     if rows:
         first = page.eval_on_selector_all(
             "#vel-table tbody tr:first-child td", "els => els.map(e => e.textContent)")
         print(f"     첫 행: {first}")
         check("첫 행 사유 있음", bool(first[-1].strip()))
+    rep = rep2
 
     warn_on = page.eval_on_selector("#vel-warning", "e => e.style.display !== 'none'")
-    ex = (rep or {}).get("export") or {}
-    want_warn = bool(rep and (rep["violations_after"] > 0
-                              or rep.get("head_stub_violations", 0) > 0
-                              or (ex.get("surplus_bar") or 0) > 0.05))
-    check("경고 표시 = 한계도달/과토출/규격고정 중 하나", warn_on, want_warn)
+    check("2단 경고 표시 = 한계도달/과토출/규격고정 중 하나", warn_on, want_warn)
+
+    print("\n⑤-c 전체 현황으로 되돌아가기")
+    page.click("#vel-back-btn")
+    page.wait_for_timeout(300)
+    check("1단 복귀 헤더 8열",
+          page.eval_on_selector_all("#vel-table thead th", "els => els.length"), 8)
+    check("역산 버튼 재노출",
+          page.eval_on_selector("#vel-run-btn", "e => e.style.display !== 'none'"), True)
     if rep and rep.get("export"):
         print(f"     산출물 경계: 수원 {ex['source_pressure_bar']} bar "
               f"(필요 {ex['required_source_bar']}, 잉여 {ex['surplus_bar']}) · "
@@ -159,7 +207,7 @@ with sync_playwright() as pw:
     # 표/CSV 의 채워진 경로도 반드시 태워야 하므로, 솔버가 실제로 만든 변경 이력을
     # 하나 더 주입해 같은 렌더러로 그린다(형태 위조가 아니라 진짜 솔버 산출물).
     if not (rep.get("changes") if rep else None):
-        print("\n⑤-b 변경이 0건 — 솔버 실산출 변경표를 주입해 채워진 경로 검증")
+        print("\n⑤-d 변경이 0건 — 솔버 실산출 변경표를 주입해 채워진 경로 검증")
         import json as _json
         sys.path.insert(0, str(BASE / "core"))
         from hydraulic_solver import converge_bores_by_velocity  # noqa: E402
@@ -169,7 +217,7 @@ with sync_playwright() as pw:
         forced = converge_bores_by_velocity(_n, _p, _z, keep_existing=False)
         print(f"     주입 리포트: 변경 {forced['changed']} · {len(forced['changes'])}행")
         page.evaluate("(r) => { state.combinedBuild.velocity_report = r; "
-                      "updateCombinedStatus(); VelReview.open(); }",
+                      "updateCombinedStatus(); VelReview.open('changes'); }",
                       _json.loads(_json.dumps(forced)))
         page.wait_for_timeout(300)
         rows = page.eval_on_selector_all("#vel-table tbody tr", "els => els.length")

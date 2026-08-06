@@ -283,6 +283,13 @@
       </section>
 
       <section>
+        <h3>C5 배관망</h3>
+        <button id="dw-run-c5" class="run-btn" type="button" disabled>배관망 라우팅 실행</button>
+        <button id="dw-c5-open" class="run-btn" type="button" disabled style="margin-top:8px;">배관망 표 보기</button>
+        <p id="dw-c5-status" class="note">C4 헤드를 먼저 놓으세요.</p>
+      </section>
+
+      <section>
         <h3>설계 산출물</h3>
         <div id="dw-design-list"></div>
         <p class="note">C1 인식이 붙기 전까지 항목 수는 0 입니다. 0 을 채워 보여주지 않습니다.</p>
@@ -456,6 +463,40 @@
     </div>
   </div>
 
+  <!-- C5 배관망(§9). 표는 모듈 A 가 삼킬 여섯 표 그대로다 — 여기 보이는 관경이 SDF 로 간다. -->
+  <div id="dw-c5-panel" class="modal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div class="left">
+          <h2>C5 — 배관망 라우팅과 관경</h2>
+          <span id="dw-c5-remain" class="remain"></span>
+        </div>
+        <button id="dw-c5-close" type="button">닫기</button>
+      </div>
+      <div class="modal-sub">
+        <p class="note" style="margin:0; line-height:1.6;">
+          입상관은 <strong>코어마다 하나</strong>입니다. 코어가 여럿이면 그 입상관들을 잇는 지하 수평
+          주배관은 평면도에 없어 <strong>지어내지 않고</strong> 망을 따로 냅니다.
+          관경은 별표1 최소에서 시작해 유속 한도로 올리고, 급수원 쪽이 가늘어지지 않게 단조화합니다 —
+          <strong>한 단계 더 굵게는 관행이지 규정이 아니라</strong> 자동으로 올리지 않습니다.
+          층고를 못 구한 층은 낙차 압력의 근거가 없어 그 층 구역을 뺍니다.
+        </p>
+      </div>
+      <div class="gate-scroll">
+        <table class="gate-table">
+          <thead id="dw-c5-thead"></thead>
+          <tbody id="dw-c5-tbody"></tbody>
+        </table>
+        <div id="dw-c5-empty" class="c3-empty"></div>
+        <div id="dw-c5-dia"></div>
+        <div id="dw-c5-flags" class="flag-list"></div>
+      </div>
+      <div class="modal-foot">
+        <span id="dw-c5-msg" class="msg"></span>
+      </div>
+    </div>
+  </div>
+
   <script>
     // 레이어명은 업로드된 DXF 에서 온다 — 속성 보간 탈출을 막으려면 따옴표까지 5자 전부.
     function escHtml(s) {
@@ -511,6 +552,7 @@
       ["valves", "유수검지장치", DESIGN_COLORS.valve, () => state.c3.drafts.length],
       ["zones", "방호구역", DESIGN_COLORS.zone, () => state.c3.zones.length],
       ["heads", "헤드", DESIGN_COLORS.head, () => headCount()],
+      ["pipes", "배관망", DESIGN_COLORS.pipeMain, () => pipeCount()],
     ];
 
     // ====== 상태 (지시서 §12.3) ======
@@ -535,7 +577,7 @@
       rooms: [],
       cores: [],
       overlayVisible: { rooms: true, roomLabels: true, virtualEdges: true, cores: true,
-                        valves: true, zones: true, heads: true },
+                        valves: true, zones: true, heads: true, pipes: true },
 
       // 확정 게이트. `values` 는 아직 서버에 보내지 않은 사람의 입력이고, `missing`
       // 은 서버가 판정한 결손이다. 둘을 섞지 않아야 "화면은 다 찼는데 서버는 422"
@@ -565,6 +607,12 @@
       // 접어 버리면 배치가 빠진 실이 화면에서 사라져 아무도 못 본다.
       c4: {
         rooms: [], flags: [], blocking: [], skipped: [], checks: null, ran: false,
+      },
+
+      // C5(§9). 망은 코어(=입상관)마다 하나다. 여러 망을 한 통에 합치면 지하에서
+      // 이어진 하나의 망처럼 보이지만, 그 연결 배관은 평면도에 없어 짓지 않았다.
+      c5: {
+        networks: [], flags: [], blocking: [], ran: false,
       },
     };
 
@@ -637,6 +685,18 @@
     const c4ChecksEl = document.getElementById("dw-c4-checks");
     const c4FlagsEl = document.getElementById("dw-c4-flags");
     const c4MsgEl = document.getElementById("dw-c4-msg");
+    const runC5El = document.getElementById("dw-run-c5");
+    const c5OpenEl = document.getElementById("dw-c5-open");
+    const c5StatusEl = document.getElementById("dw-c5-status");
+    const c5PanelEl = document.getElementById("dw-c5-panel");
+    const c5CloseEl = document.getElementById("dw-c5-close");
+    const c5RemainEl = document.getElementById("dw-c5-remain");
+    const c5TheadEl = document.getElementById("dw-c5-thead");
+    const c5TbodyEl = document.getElementById("dw-c5-tbody");
+    const c5EmptyEl = document.getElementById("dw-c5-empty");
+    const c5DiaEl = document.getElementById("dw-c5-dia");
+    const c5FlagsEl = document.getElementById("dw-c5-flags");
+    const c5MsgEl = document.getElementById("dw-c5-msg");
     const gatePanelEl = document.getElementById("dw-gate-panel");
     const gateRemainEl = document.getElementById("dw-gate-remain");
     const gateCloseEl = document.getElementById("dw-gate-close");
@@ -833,7 +893,8 @@
       }
 
       drawC3Overlays();
-      drawC4Overlays();
+      drawC5Overlays();
+      drawC4Overlays();   // 헤드는 배관 위에 얹는다 — 관 아래 깔리면 검수가 안 된다.
     }
 
     // 구역 색은 밸브 순서로 돈다. 같은 입력이면 같은 색이 나와야 사람이 표의
@@ -940,6 +1001,59 @@
         });
       }
       ctx.setLineDash([]);
+    }
+
+    // 배관 좌표도 mm 다. 노드 라벨 → 도면 단위 점을 망마다 한 번만 만들어 둔다.
+    function pipePoints(net) {
+      if (!net._pts) {
+        const nodes = (net.graph && net.graph.nodes) || [];
+        const xy = toDrawingUnits(nodes.map((n) => [n.x, n.y]));
+        net._pts = new Map(nodes.map((n, i) => [n.label, xy[i]]));
+      }
+      return net._pts;
+    }
+
+    function pipeCount() {
+      return state.c5.networks.reduce(
+        (n, net) => n + (((net.graph && net.graph.pipes) || []).length), 0);
+    }
+
+    const PIPE_ROLE_COLOR = {
+      riser: DESIGN_COLORS.pipeMain, main: DESIGN_COLORS.pipeMain,
+      cross: DESIGN_COLORS.pipeCross, branch: DESIGN_COLORS.pipeBranch,
+    };
+
+    function drawC5Overlays() {
+      if (!state.overlayVisible.pipes || !state.c5.networks.length) return;
+      ctx.lineCap = "round";
+      for (const net of state.c5.networks) {
+        const pts = pipePoints(net);
+        for (const pipe of (net.graph && net.graph.pipes) || []) {
+          const a = pts.get(pipe.in);
+          const b = pts.get(pipe.out);
+          if (!a || !b) continue;
+          const [ax, ay] = worldToScreen(a[0], a[1]);
+          const [bx, by] = worldToScreen(b[0], b[1]);
+          // 입상관은 평면에서 길이가 0 이다. 선으로 그리면 아무것도 안 보이므로
+          // 급수원 자리를 고리로 찍는다 — 여기가 물이 들어오는 점이다.
+          if (ax === bx && ay === by) {
+            ctx.strokeStyle = DESIGN_COLORS.pipeMain;
+            ctx.lineWidth = 2.2;
+            ctx.beginPath();
+            ctx.arc(ax, ay, 7, 0, Math.PI * 2);
+            ctx.stroke();
+            continue;
+          }
+          ctx.strokeStyle = PIPE_ROLE_COLOR[pipe.role] || DESIGN_COLORS.pipeBranch;
+          // 굵기는 호칭경에 비례시킨다. 한 굵기로 그리면 화면만 보고는 관경 승급이
+          // 제대로 됐는지 알 수 없다.
+          ctx.lineWidth = Math.max(1.4, Math.min(6, (pipe.dia || 25) / 16));
+          ctx.beginPath();
+          ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        }
+      }
+      ctx.lineCap = "butt";
+      ctx.lineWidth = 1;
     }
 
     function hatchPolygon(poly, color) {
@@ -2591,9 +2705,14 @@
       setNote(c4StatusEl, text, warn);
     }
 
-    /** 밸브나 구역이 바뀌면 이전 배치는 근거를 잃는다. */
+    /** 밸브나 구역이 바뀌면 이전 배치는 근거를 잃는다 — 그 헤드로 그린 배관도 함께. */
     function c4Invalidate() {
       state.c4 = { rooms: [], flags: [], blocking: [], skipped: [], checks: null, ran: false };
+      c5Invalidate();
+      setC5Status("C4 헤드를 먼저 놓으세요.", false);
+      setNote(c5MsgEl, "", false);
+      updateC5Tools();
+      renderC5();
     }
 
     function updateC4Tools() {
@@ -2644,6 +2763,10 @@
     runC4El.addEventListener("click", async () => {
       if (!c4Ready()) return;
       runC4El.disabled = true;
+      // 헤드를 다시 놓으면 앞서 그린 배관은 없어진 헤드를 먹이고 있다.
+      c5Invalidate();
+      setC5Status("C4 헤드를 먼저 놓으세요.", false);
+      setNote(c5MsgEl, "", false);
       setC4Status("헤드를 배치하는 중…", false);
       try {
         // 연면적은 모르면 보내지 않는다. 0 을 보내면 면적 대조가 근거 없이 돈다.
@@ -2690,6 +2813,9 @@
       } finally {
         renderC4();
         updateC4Tools();
+        if (c5Ready()) setC5Status("헤드가 놓였습니다 — [배관망 라우팅 실행] 을 누르세요.", false);
+        updateC5Tools();
+        renderC5();
       }
     });
 
@@ -2698,6 +2824,142 @@
       c4PanelEl.classList.add("open");
     });
     bindModalClose(c4PanelEl, c4CloseEl);
+
+    // ====== C5 배관망 (§9) ======
+    const PIPE_ROLE_LABEL = { riser: "입상관", main: "주배관",
+                              cross: "교차배관", branch: "가지배관" };
+
+    function c5Ready() {
+      return !!(state.sessionId && state.c4.ran && !state.c4.blocking.length);
+    }
+
+    function setC5Status(text, warn) {
+      setNote(c5StatusEl, text, warn);
+    }
+
+    /** 헤드가 바뀌면 그 헤드로 그린 배관은 근거를 잃는다. */
+    function c5Invalidate() {
+      state.c5 = { networks: [], flags: [], blocking: [], ran: false };
+    }
+
+    function updateC5Tools() {
+      runC5El.disabled = !c5Ready();
+      c5OpenEl.disabled = !state.c5.ran;
+    }
+
+    /** 호칭경별 연장. 관경 승급이 실제로 어디에 얼마나 붙었는지 이 표로 본다. */
+    function diaSummary(networks) {
+      const by = new Map();
+      for (const net of networks) {
+        for (const pipe of (net.graph && net.graph.pipes) || []) {
+          const key = `${pipe.dia}|${pipe.role}`;
+          by.set(key, (by.get(key) || 0) + Number(pipe.length || 0));
+        }
+      }
+      return [...by.entries()]
+        .map(([key, len]) => {
+          const [dia, role] = key.split("|");
+          return { dia: Number(dia), role, length: len };
+        })
+        .sort((a, b) => b.dia - a.dia || a.role.localeCompare(b.role));
+    }
+
+    function renderC5() {
+      const c5 = state.c5;
+      c5TheadEl.innerHTML = "<tr><th>입상관</th><th>코어</th><th>층</th><th>구역</th>"
+        + "<th>헤드</th><th>배관</th><th>부속</th><th>신축배관</th><th>연장 m</th></tr>";
+      c5TbodyEl.innerHTML = c5.networks.map((net) => {
+        const m = net.metrics || {};
+        const floors = (net.riser.levels || []).map((l) => l.floor).join(", ");
+        return `<tr><td class="room-id">${escHtml(net.riser.id)}</td>`
+          + `<td>${escHtml(net.riser.core_id)}</td>`
+          + `<td>${escHtml(floors || "—")}</td>`
+          + `<td>${m.zones == null ? "—" : m.zones}</td>`
+          + `<td>${m.heads == null ? "—" : m.heads}</td>`
+          + `<td>${m.pipes == null ? "—" : m.pipes}</td>`
+          + `<td>${m.fittings == null ? "—" : m.fittings}</td>`
+          + `<td>${m.flex == null ? "—" : m.flex}</td>`
+          + `<td>${m.length_m == null ? "—" : m.length_m}</td></tr>`;
+      }).join("");
+
+      c5EmptyEl.style.display = c5.networks.length ? "none" : "block";
+      c5EmptyEl.textContent = c5.ran
+        ? "망이 하나도 나오지 않았습니다 — 아래 플래그가 이유입니다."
+        : "아직 라우팅하지 않았습니다. [배관망 라우팅 실행] 을 누르세요.";
+
+      const dias = diaSummary(c5.networks);
+      c5DiaEl.innerHTML = dias.length
+        ? "<table class=\"gate-table\"><thead><tr><th>호칭경</th><th>역할</th>"
+          + "<th>연장 m</th></tr></thead><tbody>"
+          + dias.map((d) => `<tr><td>${d.dia}A</td>`
+            + `<td>${escHtml(PIPE_ROLE_LABEL[d.role] || d.role)}</td>`
+            + `<td>${d.length.toFixed(2)}</td></tr>`).join("")
+          + "</tbody></table>"
+        : "";
+
+      c5FlagsEl.innerHTML = c5.flags.map((flag) =>
+        `<div class="flag"><span class="code">${escHtml(flag.code)}</span>`
+        + `${escHtml(flag.message)}</div>`).join("");
+
+      c5RemainEl.textContent = c5.ran
+        ? (c5.blocking.length ? `막는 문제 ${c5.blocking.length}건` : `배관 ${pipeCount()}본`)
+        : "미라우팅";
+      c5RemainEl.className = `remain ${c5.ran && !c5.blocking.length ? "done" : "pending"}`;
+    }
+
+    runC5El.addEventListener("click", async () => {
+      if (!c5Ready()) return;
+      runC5El.disabled = true;
+      setC5Status("배관을 놓는 중…", false);
+      try {
+        const res = await fetch("/api/design/c5/route", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: state.sessionId, operator: c3OperatorEl.value.trim(),
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setC5Status(body.message || `HTTP ${res.status}`, true);
+          return;
+        }
+        state.c5 = {
+          networks: body.networks || [], flags: body.flags || [],
+          blocking: body.blocking || [], ran: true,
+        };
+        const c5 = state.c5;
+        const total = c5.networks.reduce((n, net) => n + (net.metrics.length_m || 0), 0);
+        const summary = `망 ${c5.networks.length}개 / 배관 ${pipeCount()}본 / `
+          + `연장 ${total.toFixed(1)} m`;
+        setNote(c5MsgEl, summary, c5.blocking.length > 0);
+        // 단계는 서버가 정한다 — 앞 단계가 문제를 안고 있으면 배관망이 깨끗해도
+        // 방출은 열리지 않는다. 화면이 따로 셈하면 서버와 갈린다.
+        if (body.stage) {
+          state.stage = body.stage;
+          renderStepper();
+        }
+        const opened = state.stage === "emit";
+        let why = "";
+        if (c5.blocking.length) why = `막는 문제 ${c5.blocking.length}건, 해결 전에는 `;
+        else if (!opened) why = "앞 단계에 남은 문제가 있어 ";
+        setC5Status(opened ? `${summary} — 솔버 파일 방출로 넘어갑니다.`
+          : `${summary} — ${why}방출로 넘어가지 않습니다.`, !opened);
+        renderDesignList();
+        render();
+      } catch (err) {
+        setC5Status("오류: " + err.message, true);
+      } finally {
+        renderC5();
+        updateC5Tools();
+      }
+    });
+
+    c5OpenEl.addEventListener("click", () => {
+      renderC5();
+      c5PanelEl.classList.add("open");
+    });
+    bindModalClose(c5PanelEl, c5CloseEl);
 
     // ====== 건축 12종 토글 ======
     function renderLayerList() {
@@ -2797,6 +3059,8 @@
     renderC3();
     updateC4Tools();
     renderC4();
+    updateC5Tools();
+    renderC5();
     startSession();
     setTimeout(resizeCanvas, 50);
   </script>

@@ -544,11 +544,13 @@ def emit_tables(topo: DesignTopology, sizes: dict, constraints: dict, *,
     라벨은 모듈 A 와 같이 급수원 10 부터 흐르는 순으로 매긴다. 설계 쪽 id 는
     `design_id` 로 함께 실어 화면에서 되짚을 수 있게 둔다.
     """
-    tables = GraphTables(flags=list(topo.flags))
     if topo.source is None:
-        return tables
+        return GraphTables(flags=list(topo.flags))
 
+    # `orient` 이 고리와 미도달 노드를 topo.flags 에 적는다. 표를 먼저 만들면 그
+    # 두 플래그가 표에 실리지 않아 화면까지 오지 못한다.
     directed = orient(topo)
+    tables = GraphTables(flags=list(topo.flags))
     counter = 10
     for node_id in [topo.source] + [b for _, b in directed]:
         if node_id not in tables.labels:

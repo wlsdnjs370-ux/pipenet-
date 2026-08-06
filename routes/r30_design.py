@@ -24,6 +24,7 @@ from werkzeug.utils import secure_filename
 from core.design import gate as G
 from core.design import session as S
 from core.design.checks import dimensional as DIM
+from core.design.deterministic import build_network as BN
 from core.design.deterministic import constraints as CN
 from core.design.deterministic import esfr as ESFR
 from core.design.deterministic import head_layout as HL
@@ -37,11 +38,14 @@ from core.design.schema import BuildingDraft
 # 판정이 바뀌면 이 값을 올려야 옛 결과가 캐시에서 되살아나지 않는다.
 DESIGN_CACHE_VERSION = "c1-v1"
 
-# 게이트 뒤에 서지만 아직 구현이 없는 단계들. C2·C2B·C3·C4 는 실제 라우트로 빠졌다.
+# 게이트 뒤에 서지만 아직 구현이 없는 단계들. C2~C5 는 실제 라우트로 빠졌다.
 _GATED_STAGES = (
-    ("/api/design/c5/route", "POST", "C5"),
     ("/api/design/emit", "POST", "EMIT"),
 )
+
+# C5 플래그 중 **경고**로 볼 것. 나머지는 방출을 막는다. C4 와 같은 이유로 목록을
+# 뒤집어 둔다 — 새 플래그의 기본은 "막는다" 여야 한다.
+_C5_WARNINGS = frozenset({"MONOTONIC_CLAMP", "MULTIPLE_RISERS"})
 
 # C4 배치 플래그 중 **경고**로 볼 것. 나머지는 전부 다음 단계를 막는다.
 # 목록을 뒤집어 둔 이유는, 새 플래그가 생겼을 때 기본이 "막는다" 여야 하기
@@ -769,6 +773,69 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
         return jsonify({"ok": True, "rooms": heads, "flags": flags,
                         "blocking": [f["code"] for f in blocking],
                         "rooms_without_zone": skipped, "checks": checks})
+
+    # ── C5 배관망 라우팅 (§9) ───────────────────────────────────────────
+    def _inner_dia_mm():
+        """호칭경 → KS 실내경. 모듈 A 의 표를 그대로 쓴다.
+
+        모듈 최상단에서 import 하지 않는 이유는 `hydraulic_solver` 가 평면
+        import(`from hb_rules import ...`)로 짜여 `core` 자체가 sys.path 에 올라야
+        열리기 때문이다. 그 부담을 이 모듈에 지우면 C1~C4 라우트까지 함께 묶인다.
+        같은 표를 설계 쪽에 한 벌 더 두면 두 값이 조용히 갈린다.
+        """
+        import hydraulic_solver as HS
+        return HS.inner_diameter_mm
+
+    @app.post("/api/design/c5/route")
+    def design_c5_route():
+        body = request.get_json(silent=True) or {}
+        sess, draft, err = _gated(str(body.get("session_id") or ""))
+        if err:
+            return err
+        constraints, err = _load_constraints(sess)
+        if err:
+            return err
+        design, _v = sess.read_or_none("design.json")
+        if not (design or {}).get("zones"):
+            return _fail("ZONE_REQUIRED", "C3 방호구역을 먼저 나누세요.", 409)
+        if not (design or {}).get("heads"):
+            return _fail("HEADS_REQUIRED", "C4 헤드 배치를 먼저 실행하세요.", 409)
+
+        result = BN.build_networks(
+            draft, design, constraints, inner_dia_mm=_inner_dia_mm(),
+            meta=[("Project", draft.source.get("dxf") or sess.sid)])
+        networks = [n.to_dict() for n in result.networks]
+        flags = result.flags + [f for n in result.networks
+                                for f in (n.tables.flags if n.tables else ())]
+        blocking = [f for f in flags if f["code"] not in _C5_WARNINGS]
+        actor = (body.get("operator") or "").strip() or "unknown"
+
+        try:
+            with sess.stage_lock("c5"):
+                stored = dict(design)
+                stored["networks"] = networks
+                stored["network_flags"] = flags
+                sess.write("design.json", stored)
+                sess.write("graph.json", {"schema": "fncadnet.graph/1",
+                                          "networks": networks})
+                meta, _ = sess.read("meta.json")
+                stage = meta.get("stage")
+                # 앞 단계가 문제를 안고 있으면 stage 는 거기 서 있다. 단계를 화면이
+                # 따로 셈하면 서버와 갈리므로 여기서 정한 값을 그대로 돌려준다.
+                if not blocking and stage == "c5":
+                    sess.update_meta(stage="emit")
+                    stage = "emit"
+                sess.audit(actor, "C5", "network_routed", {
+                    "networks": len(networks),
+                    "metrics": [n["metrics"] for n in networks],
+                    "flags": sorted({f["code"] for f in flags}),
+                })
+        except S.StageBusy as exc:
+            return _fail("STAGE_BUSY", str(exc), 409)
+
+        return jsonify({"ok": True, "networks": networks, "flags": flags,
+                        "stage": stage,
+                        "blocking": sorted({f["code"] for f in blocking})})
 
     @app.get("/api/design/checks/<sid>")
     def design_checks(sid):

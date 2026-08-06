@@ -656,8 +656,8 @@ def route_cross_mains(plan: ZonePlan, field: RouteField, *,
         # 먹이는 배관만 바꾸면 아무것도 달라지지 않는다 — 그 자리에 닿느냐는 어느
         # 교차배관에서 출발하든 같은 물음이라, 도달 못한 분기점은 여전히 도달 못한다.
         moved = False
-        for other in sorted((c for c in plan.crosses if c.id != cross.id
-                             and len(paths.get(c.id) or ()) >= 2),
+        for other in sorted((c for c in plan.crosses
+                             if c.id != cross.id and paths.get(c.id)),
                             key=lambda c: abs(c.b_mm - cross.b_mm)):
             tee = (branch.a_mm, other.b_mm)
             left, right = _split_sides(plan.head_ab, branch.heads, other.b_mm)
@@ -752,8 +752,11 @@ def route_main(plan: ZonePlan, field: RouteField, valve_point, *,
                   valve=tuple(axes.world(*valve)), min_dn=int(min_dn))
     plan.main = run
 
+    # 분기점이 하나뿐인 교차배관은 점 하나로 줄어든다 — 이을 두 분기점이 없기
+    # 때문이다. 그래도 그 점은 주배관이 닿아야 할 티이고, 빼면 구역 전체가 급수원과
+    # 끊긴다. 길이 0 인 교차배관에 헤드가 달려 있다는 뜻이지 경로가 없다는 뜻이 아니다.
     routed = [(c, [axes.project(p[0], p[1]) for p in c.path])
-              for c in plan.crosses if len(c.path) >= 2]
+              for c in plan.crosses if c.path]
     ordered = sorted(routed, key=lambda item: math.hypot(
         *(v - w for v, w in zip(_entry_point(valve, item[1]), valve))))
 

@@ -109,10 +109,14 @@
       <section>
         <h3>1. DXF 파일</h3>
         <div class="field">
-          <label for="wb-dxf">DXF 업로드 (.dxf)</label>
-          <input id="wb-dxf" type="file" accept=".dxf">
+          <label for="wb-dxf">도면 업로드 (.dxf / .dwg)</label>
+          <input id="wb-dxf" type="file" accept=".dxf,.dwg">
+        </div>
+        <div id="wb-load-bar" style="display:none; height:6px; background:var(--line); margin-top:6px;">
+          <div id="wb-load-fill" style="height:100%; width:0; background:var(--accent); transition:width .12s linear;"></div>
         </div>
         <p id="wb-load-status" style="margin:4px 0 0; font-size:0.78rem; color: var(--muted);">파일을 선택하세요.</p>
+        <p style="margin:4px 0 0; font-size:0.72rem; color: var(--muted);">DWG 는 서버에서 DXF 로 변환한 뒤 처리합니다. 전송 전 압축하므로 DXF 는 실제 전송량이 원본의 1/8 수준입니다.</p>
       </section>
 
       <section>
@@ -147,6 +151,7 @@
     </aside>
   </div>
 
+  <script src="{{ url_for('static', filename='upload_stream.js') }}"></script>
   <script>
     // 레이어명은 업로드된 DXF 에서 온다 — 속성 보간 탈출을 막으려면 따옴표까지 5자 전부.
     function escHtml(s) {
@@ -422,63 +427,68 @@
     });
 
     // ====== DXF 업로드 + inspect ======
+    const loadBarEl = document.getElementById("wb-load-bar");
+    const loadFillEl = document.getElementById("wb-load-fill");
+    const MB = (n) => (n / 1024 / 1024).toFixed(1);
+
+    // 단계마다 0→100% 를 다시 그린다. 세 단계를 하나의 막대로 뭉뚱그리면 압축이
+    // 끝난 순간 진행률이 뒤로 돌아가거나, 파싱 시간을 모른 채 100% 로 위장하게 된다.
+    function setPhase(phase, ratio, info) {
+      loadBarEl.style.display = "block";
+      loadFillEl.style.width = Math.round(ratio * 100) + "%";
+      if (phase === "compress") {
+        loadStatusEl.textContent = `압축 중... ${Math.round(ratio * 100)}% (원본 ${MB(info.bytes)} MB)`;
+      } else if (phase === "upload") {
+        const saved = info.bytes < info.original
+          ? ` — 압축 ${MB(info.original)} → ${MB(info.bytes)} MB` : "";
+        loadStatusEl.textContent = `업로드 중... ${Math.round(ratio * 100)}%${saved}`;
+      } else if (phase === "parse") {
+        loadStatusEl.textContent = "서버에서 도면 분석 중...";
+      }
+    }
+
     dxfInputEl.addEventListener("change", async () => {
       const file = dxfInputEl.files[0];
       if (!file) return;
       state.dxfFile = file;
-      loadStatusEl.textContent = `업로드 중... (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
 
-      const fd = new FormData();
-      fd.append("dxf_file", file);
+      // /api/remote30/inspect 는 NDJSON 스트림을 반환한다:
+      //   {"type":"progress","entities":[...]}  (다중, 점진 렌더용)
+      //   {"type":"result","ok":true,"bbox":..,"layers":..,"dxf_token":..,"counts":..}  (최종 1개)
+      const entities = [];
+      let result = null;
+      let streamErr = null;
       try {
-        const res = await fetch("/api/remote30/inspect", { method: "POST", body: fd });
-        if (!res.ok) {
-          let msg = `HTTP ${res.status}`;
-          try { const j = await res.json(); if (j && j.message) msg = j.message; } catch (_) {}
-          throw new Error(msg);
-        }
-        // /api/remote30/inspect 는 NDJSON 스트림을 반환한다:
-        //   {"type":"progress","entities":[...]}  (다중, 점진 렌더용)
-        //   {"type":"result","ok":true,"bbox":..,"layers":..,"dxf_token":..,"counts":..}  (최종 1개)
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder("utf-8");
-        let buf = "";
-        const entities = [];
-        let result = null;
-        const handleLine = (line) => {
-          const s = line.trim();
-          if (!s) return;
-          let msg;
-          try { msg = JSON.parse(s); } catch (_) { return; }
-          if (msg.type === "progress") {
-            if (Array.isArray(msg.entities)) {
-              for (const e of msg.entities) entities.push(e);
+        await UploadStream.uploadAndStream({
+          file,
+          field: "dxf_file",
+          uploadUrl: "/api/remote30/upload",
+          streamUrl: "/api/remote30/inspect",
+          onPhase: setPhase,
+          onMessage: (msg) => {
+            if (streamErr) return;
+            if (msg.type === "progress") {
+              if (Array.isArray(msg.entities)) {
+                for (const e of msg.entities) entities.push(e);
+              }
+              if (msg.bbox) {
+                state.entities = entities;
+                state.bbox = msg.bbox;
+                loadStatusEl.textContent = `로딩 중... entity ${entities.length.toLocaleString()}`;
+                fitToBBox();
+              }
+            } else if (msg.type === "result") {
+              result = msg;
+            } else if (msg.ok === false) {
+              // onMessage 에서 throw 하면 스트림 리더 안에서 삼켜진다 — 밖으로 들고 나온다.
+              streamErr = new Error(msg.message || "도면 분석 실패");
             }
-            if (msg.bbox) {
-              state.entities = entities;
-              state.bbox = msg.bbox;
-              loadStatusEl.textContent = `로딩 중... entity ${entities.length.toLocaleString()}`;
-              fitToBBox();
-            }
-          } else if (msg.type === "result") {
-            result = msg;
-          } else if (msg.ok === false) {
-            throw new Error(msg.message || "DXF 분석 실패");
-          }
-        };
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          let nl;
-          while ((nl = buf.indexOf("\n")) >= 0) {
-            handleLine(buf.slice(0, nl));
-            buf = buf.slice(nl + 1);
-          }
-        }
-        if (buf.trim()) handleLine(buf);  // 마지막 줄(개행 없을 수 있음)
+          },
+        });
+        if (streamErr) throw streamErr;
         if (!result) throw new Error("스트림에 result 메시지가 없습니다");
-        if (result.ok === false) throw new Error(result.message || "DXF 분석 실패");
+        if (result.ok === false) throw new Error(result.message || "도면 분석 실패");
+        loadBarEl.style.display = "none";
 
         state.entities = entities;
         state.bbox = result.bbox;
@@ -503,6 +513,7 @@
         exportBtnEl.disabled = false;
         exportStatusEl.textContent = "체크한 레이어를 CAD 로 재출력할 수 있습니다.";
       } catch (err) {
+        loadBarEl.style.display = "none";
         loadStatusEl.textContent = "오류: " + err.message;
       }
     });

@@ -158,16 +158,30 @@ def _cell(text: str | None, datatype: str) -> Any:
     return value
 
 
-def _read_table(el: ET.Element, path: str) -> XTable:
-    fields = tuple(
-        XField(
-            name=f.get("name", ""),
-            datatype=f.get("datatype", "char"),
-            unit=f.get("unit", ""),
-            arraysize=f.get("arraysize", "1"),
-        )
-        for f in el.findall("FIELD")
+def _field(el: ET.Element, prefix: str = "") -> XField:
+    return XField(
+        name=prefix + el.get("name", ""),
+        datatype=el.get("datatype", "char"),
+        unit=el.get("unit", ""),
+        arraysize=el.get("arraysize", "1"),
     )
+
+
+def _fields(el: ET.Element) -> tuple[XField, ...]:
+    """열 순서는 문서 순서다. GROUP 은 열을 묶어 두는 껍데기일 뿐이라, 그 안의
+    FIELD 도 TR 에 칸을 차지한다 — 건너뛰면 뒤따르는 칸이 통째로 밀린다."""
+    out: list[XField] = []
+    for child in el:
+        if child.tag == "FIELD":
+            out.append(_field(child))
+        elif child.tag == "GROUP":
+            group = child.get("name", "")
+            out.extend(_field(f, f"{group} / ") for f in child.findall("FIELD"))
+    return tuple(out)
+
+
+def _read_table(el: ET.Element, path: str) -> XTable:
+    fields = _fields(el)
     rows = tuple(
         {fld.name: _cell(td.text, fld.datatype) for fld, td in zip(fields, tr)}
         for tr in el.iter("TR")
@@ -188,25 +202,31 @@ def read_xdset(path: str | Path) -> XdsetDocument:
 
     seen: dict[str, int] = {}
 
+    def unique(prefix: list[str], name: str) -> tuple[list[str], str]:
+        base = "/".join(prefix + [name])
+        n = seen.get(base, 0)
+        seen[base] = n + 1
+        segment = name if n == 0 else f"{name}[{n}]"
+        return prefix + [segment], "/".join(prefix + [segment])
+
     def walk(el: ET.Element, prefix: list[str]) -> None:
         for child in el:
             if child.tag == "RESOURCE":
-                name = child.get("name", "?")
+                # 같은 이름의 자원이 되풀이된다 (재질마다 하나씩인 Pipe-type). 이름으로만
+                # 담으면 마지막 것만 남아, 재질별 규격표가 어느 재질 것인지 사라진다.
+                inner, key = unique(prefix, child.get("name", "?"))
                 params = {
                     p.get("name", ""): restore_cp949(p.get("value", ""))
                     for p in child
                     if p.tag in ("INFO", "PARAM")
                 }
                 if params:
-                    doc.settings.setdefault(name, {}).update(params)
-                if name == "Units":
+                    doc.settings[key] = params
+                if child.get("name") == "Units":
                     doc.unit_declarations.update(params)
-                walk(child, prefix + [name])
+                walk(child, inner)
             elif child.tag == "TABLE":
-                base = "/".join(prefix + [child.get("name", "?")])
-                n = seen.get(base, 0)
-                seen[base] = n + 1
-                key = base if n == 0 else f"{base}[{n}]"
+                _, key = unique(prefix, child.get("name", "?"))
                 doc.tables[key] = _read_table(child, key)
 
     walk(root, [])

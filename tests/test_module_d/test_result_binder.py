@@ -181,6 +181,29 @@ def test_same_unit_name_gets_different_factors_per_table(hand):
     assert not [w for w in hand.warnings if "호칭경으로 못 갈랐다" in w]
 
 
+def test_group_columns_are_columns(hand):
+    # GROUP 은 열을 묶어 두는 껍데기다. 건너뛰면 TR 의 칸이 통째로 밀린다.
+    # 기대값은 워드 계산서 PIPE FITTINGS 원문에서 옮겨 적는다 (관로 1: 2 x 2, 4.267m).
+    fittings = hand.tables["Pipes-input/Pipe-fittings"]
+    row = next(r for r in fittings.rows if r["Label"] == "1")
+    assert row["Type 2 / Count"] == 2
+    assert row["Type 2 / Equiv. length"] == pytest.approx(4.2672)
+    assert row["Type 4 / Count"] == 1
+    assert row["Type 4 / Equiv. length"] == pytest.approx(9.144)
+
+
+def test_repeated_resources_keep_their_own_settings(hand):
+    # 재질마다 Pipe-type 자원이 하나씩이다. 이름으로만 담으면 마지막 것만 남아,
+    # 규격표가 어느 재질 것인지 사라진다.
+    materials = {
+        key: params["Pipe type"]
+        for key, params in hand.document.settings.items()
+        if "Pipe-type" in key
+    }
+    assert sorted(materials.values()) == ["CPVC", "DP", "FX", "KSD 3507"]
+    assert all(f"{key}/Sizes" in hand.tables for key in materials)
+
+
 def test_title_comes_from_info(hand):
     assert hand.title == ("Officetell", "WATER TANK_PH2F", "3-2 type_MSP_26F")
     assert all("Ã" not in v for v in hand.document.info.values())

@@ -90,6 +90,15 @@ def test_inner_diameter_uses_ks_table():
     assert inner_diameter_mm(25) > 25
 
 
+def test_unresolved_bores_are_counted_not_swallowed():
+    """표에 없는 조합은 호칭값으로 때우되 몇 개를 때웠는지 리포트에 남아야 한다."""
+    from hydraulic_solver import unresolved_inner_diameters
+    assert unresolved_inner_diameters([25, 50, 100], "KSD 3507") == {}
+    # CPVC 는 80A 까지다 — 그 위가 세어졌다면 재질 판단이 틀린 것이다.
+    assert unresolved_inner_diameters([50, 100, 100], "CPVC2") == {"100A": 2}
+    assert unresolved_inner_diameters([50], "청동") == {"50A": 1}
+
+
 def test_velocity_formula():
     """v = Q/A. 27.5 mm 관에 80 L/min → 약 2.25 m/s."""
     area = math.pi / 4 * (0.0275 ** 2)

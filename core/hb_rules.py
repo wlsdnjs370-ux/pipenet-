@@ -320,26 +320,52 @@ def decide_hb_case(
 
 
 # ---------------------------------------------------------------------------
-# 3. Pipe material — KSD 3507 / 3562 (HB §2.4.5)
+# 3. Pipe material — KSD 3507 / 3562 / 3576 / CPVC2 (HB §2.4.5)
 # ---------------------------------------------------------------------------
 
-# Real inner diameters in mm — HB §2.4.5 Table.
-# Used by hydraulics for accurate Hazen-Williams calculations.
+# 실내경(mm). 근거: 해석에 실제로 물리는 표준 라이브러리
+# assets/2. Pipenet_hand_FX28.slf 의 Schedule-section — PIPENET 이 쓰는 값과
+# 여기의 값이 어긋나면 우리 유속과 PIPENET 유속이 달라진다. 값을 손볼 일이
+# 생기면 SLF 를 고치고 여기를 맞춘다(반대 방향 금지).
+#
+# 열이 없는 칸은 "없음"이지 "0" 이 아니다 — SLF 에 그 조합이 없다는 뜻이며
+# 조회하면 None 이 나가야 한다. 특히:
+#   · 3562 에 15A 가 없다 (SLF 미수록).
+#   · CPVC2 는 25A~80A 만 있다 — 세대 내부 가지배관 용도라 그 위가 없다.
+#     90A 이상 CPVC2 를 조회했다면 재질 판단 자체가 틀린 것이므로
+#     조용히 강관 값으로 때우지 말고 미해결로 드러내야 한다.
 _KSD_INNER_DIAMETERS_MM: dict[str, dict[str, float]] = {
-    "20A":  {"3507": 21.9,  "3562": 21.4},
-    "25A":  {"3507": 27.5,  "3562": 27.2},
-    "32A":  {"3507": 36.2,  "3562": 35.5},
-    "40A":  {"3507": 42.1,  "3562": 41.2},
-    "50A":  {"3507": 53.2,  "3562": 52.7},
-    "65A":  {"3507": 69.0,  "3562": 65.9},
-    "80A":  {"3507": 81.0,  "3562": 78.1},
-    "100A": {"3507": 105.3, "3562": 102.3},
-    "125A": {"3507": 130.1, "3562": 126.6},
-    "150A": {"3507": 155.5, "3562": 151.0},
-    "200A": {"3507": 204.6, "3562": 199.9},
-    "250A": {"3507": 254.6, "3562": 248.8},
-    "300A": {"3507": 304.5, "3562": 297.9},
+    "15A":  {"3507": 16.4,                  "3576": 17.5},
+    "20A":  {"3507": 21.9,  "3562": 21.4,   "3576": 23.0},
+    "25A":  {"3507": 27.5,  "3562": 27.2,   "3576": 28.4,  "CPVC2": 28.02},
+    "32A":  {"3507": 36.2,  "3562": 35.5,   "3576": 37.1,  "CPVC2": 35.5},
+    "40A":  {"3507": 42.1,  "3562": 41.2,   "3576": 43.0,  "CPVC2": 40.63},
+    "50A":  {"3507": 53.2,  "3562": 52.7,   "3576": 54.9,  "CPVC2": 50.88},
+    "65A":  {"3507": 69.0,  "3562": 65.9,   "3576": 70.3,  "CPVC2": 64.0},
+    "80A":  {"3507": 81.0,  "3562": 78.1,   "3576": 83.1,  "CPVC2": 75.1},
+    "90A":  {"3507": 93.5,  "3562": 90.2,   "3576": 95.6},
+    "100A": {"3507": 105.3, "3562": 102.3,  "3576": 108.3},
+    "125A": {"3507": 130.1, "3562": 126.6,  "3576": 133.0},
+    "150A": {"3507": 155.5, "3562": 151.0,  "3576": 158.4},
+    "200A": {"3507": 204.6, "3562": 199.9,  "3576": 208.3},
+    "250A": {"3507": 254.6, "3562": 248.8,  "3576": 259.4},
+    "300A": {"3507": 304.5, "3562": 297.9,  "3576": 309.5},
 }
+
+# 재질 문자열 → 위 표의 열. 부분 문자열 검사이고 위에서부터 먼저 맞는 것을 쓴다.
+# 왼쪽 어휘가 두 갈래인 이유: SDF/SLF 경로는 "KSD 3507" 같은 규격 번호로 오고,
+# HASS(.has) 경로는 PipeMaterial 에 "탄소강"/"STS" 같은 우리말로 온다.
+# 여기 없는 말(예: 청동, 플라스틱)은 매핑하지 않는다 — 강관으로 때우면
+# 65A 에서 내경이 4mm 넘게 어긋나므로, 모르는 것은 None 으로 드러낸다.
+_MATERIAL_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("3507", "3507"),
+    ("3562", "3562"),
+    ("3576", "3576"),
+    ("3413", "CPVC2"),   # KS M 3413 = CPVC
+    ("CPVC", "CPVC2"),
+    ("탄소강", "3507"),
+    ("STS", "3576"),     # 스테인리스 = KS D 3576 Sch10S
+)
 
 
 def decide_pipe_material(operating_pressure_mpa: float) -> RuleDecision:
@@ -375,13 +401,25 @@ def decide_pipe_material(operating_pressure_mpa: float) -> RuleDecision:
     )
 
 
-def get_inner_diameter_mm(nominal: str, material: str) -> float | None:
-    """Look up real inner diameter in mm for given nominal size and material."""
-    nominal = nominal.upper().strip()
-    if nominal in _KSD_INNER_DIAMETERS_MM:
-        material_key = "3507" if "3507" in material else "3562" if "3562" in material else "3507"
-        return _KSD_INNER_DIAMETERS_MM[nominal][material_key]
+def resolve_material_column(material: str) -> str | None:
+    """재질 문자열을 내경표의 열 이름으로. 못 알아보면 None (강관으로 때우지 않는다)."""
+    token = (material or "").upper().strip()
+    for needle, column in _MATERIAL_COLUMNS:
+        if needle in token:
+            return column
     return None
+
+
+def get_inner_diameter_mm(nominal: str, material: str) -> float | None:
+    """Look up real inner diameter in mm for given nominal size and material.
+
+    None 은 "모른다" 다 — 재질을 못 알아봤거나, 그 재질에 그 호칭이 없다.
+    호출부는 None 을 0 이나 강관 값으로 조용히 바꾸지 말고 미해결로 세야 한다.
+    """
+    column = resolve_material_column(material)
+    if column is None:
+        return None
+    return _KSD_INNER_DIAMETERS_MM.get(nominal.upper().strip(), {}).get(column)
 
 
 # ---------------------------------------------------------------------------
@@ -626,6 +664,7 @@ __all__ = [
     "decide_hb_case",
     "decide_pipe_material",
     "get_inner_diameter_mm",
+    "resolve_material_column",
     "validate_velocity",
     "validate_churn_pressure",
     "decide_zone_partition",

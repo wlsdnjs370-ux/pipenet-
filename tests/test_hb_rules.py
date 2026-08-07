@@ -148,8 +148,78 @@ def test_unknown_nominal_returns_none_not_zero():
     assert H.get_inner_diameter_mm("999A", "KSD 3507") is None
 
 
-def test_unknown_material_falls_back_to_3507():
-    assert H.get_inner_diameter_mm("50A", "") == H.get_inner_diameter_mm("50A", "KSD 3507")
+def test_unknown_material_returns_none_not_steel():
+    """모르는 재질을 강관으로 때우면 CPVC·STS 가 강관 내경으로 조용히 계산된다."""
+    for material in ("", "청동", "플라스틱", "미상"):
+        assert H.get_inner_diameter_mm("50A", material) is None
+
+
+@pytest.mark.parametrize("material, column", [
+    ("KSD 3507", "3507"), ("KSD 3562", "3562"), ("KSD 3576", "3576"),
+    ("CPVC2", "CPVC2"), ("KSM 3413", "CPVC2"), ("cpvc", "CPVC2"),
+    ("탄소강", "3507"), ("STS", "3576"), ("sts 304", "3576"),
+])
+def test_material_column_mapping(material, column):
+    assert H.resolve_material_column(material) == column
+
+
+def test_cpvc_has_no_bore_above_80a():
+    """CPVC 는 세대 내부 가지배관용이다. 90A 이상을 물으면 강관 값이 아니라 None."""
+    for nominal in ("15A", "20A", "90A", "100A", "150A"):
+        assert H.get_inner_diameter_mm(nominal, "CPVC2") is None
+    assert H.get_inner_diameter_mm("80A", "CPVC2") == 75.1
+
+
+def test_3562_has_no_15a():
+    assert H.get_inner_diameter_mm("15A", "KSD 3562") is None
+    assert H.get_inner_diameter_mm("15A", "KSD 3507") == 16.4
+
+
+def test_inner_diameter_table_matches_standard_slf():
+    """표는 해석에 실제로 물리는 SLF 라이브러리에서 베낀 값이다.
+
+    SLF 가 바뀌었는데 이 표가 안 바뀌면 우리 유속과 PIPENET 유속이 갈라진다.
+    그래서 기대값을 여기 적지 않고 그 시점의 SLF 를 파싱해 만든다.
+    """
+    import xml.etree.ElementTree as ET
+
+    from remote30_prototype import resolve_standard_slf
+
+    slf = resolve_standard_slf()
+    assert slf and Path(slf).is_file(), f"표준 SLF 를 찾지 못함: {slf}"
+
+    checked = 0
+    for sched in ET.parse(slf).getroot().iter("Schedule"):
+        name = (sched.findtext("Item-name") or "").strip()
+        column = H.resolve_material_column(name)
+        if column is None:      # DP / FX 등 내경표가 다루지 않는 항목
+            continue
+        for sd in sched.iter("Size-definition"):
+            nominal = f"{int(float(sd.get('nominal')))}A"
+            assert H.get_inner_diameter_mm(nominal, name) == float(sd.get("internal")), \
+                f"{name} {nominal} 가 SLF 와 다름"
+            checked += 1
+    assert checked >= 50, f"검사한 칸이 너무 적다 ({checked}) — SLF 파싱이 헛돌았다"
+
+
+def test_table_has_no_entry_absent_from_slf():
+    """반대 방향 — SLF 에 없는 칸을 표가 지어내면 PIPENET 이 못 받는다."""
+    import xml.etree.ElementTree as ET
+
+    from remote30_prototype import resolve_standard_slf
+
+    in_slf: set[tuple[str, str]] = set()
+    for sched in ET.parse(resolve_standard_slf()).getroot().iter("Schedule"):
+        column = H.resolve_material_column((sched.findtext("Item-name") or "").strip())
+        if column is None:
+            continue
+        for sd in sched.iter("Size-definition"):
+            in_slf.add((f"{int(float(sd.get('nominal')))}A", column))
+
+    in_table = {(nominal, column)
+                for nominal, row in H._KSD_INNER_DIAMETERS_MM.items()
+                for column in row}
+    assert in_table - in_slf == set()
 
 
 # ────────────────────────────────────────────────────────────────────────────

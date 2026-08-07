@@ -42,11 +42,13 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
         + Stage C (stitch) + Stage D (PIPENET-native 후처리) 로 완성 SDF 생성.
         현재는 모듈 자리만 마련된 상태이고 API 는 task #14~#16 에서 추가.
         """
-        from core.remote30_constants import FX_SPEC_PROFILES, FX_DEFAULT_PROFILE
+        from core.remote30_constants import (DEFAULT_PUMP_LIBRARY_NAME,
+                                             FX_SPEC_PROFILES, FX_DEFAULT_PROFILE)
         response = make_response(render_template(
             "remote30_overall.html",
             fx_profile_keys=list(FX_SPEC_PROFILES),
             fx_default_profile=FX_DEFAULT_PROFILE,
+            default_pump_library=DEFAULT_PUMP_LIBRARY_NAME,
         ))
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         return response
@@ -448,6 +450,11 @@ def register(app, *, _err500, _register_job, _save_upload, _serve_run_file, _swe
                              "msg": "완성 SDF 직렬화 (PIPENET-native 후처리)"})
                 out_sdf = Path(job["out_dir"]) / f"overall_{job_id}.sdf"
                 emit_full_sdf(combined, out_sdf, ctx=ctx)
+                # 방출 대조에서 나온 미확정(예: SLF 에 없는 Library-pump)은 위 경고
+                # 시점에는 아직 없었다. 프론트가 목록을 통째로 갈아끼우므로 전량 재송신.
+                if ctx.emit_findings:
+                    yield _emit({"type": "context_warning", "lines": ctx.warning_lines(),
+                                 "items": ctx.unconfirmed()})
 
                 yield _emit({"type": "overall_result",
                              "sdf": out_sdf.name, "job_id": job_id,

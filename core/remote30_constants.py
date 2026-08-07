@@ -157,6 +157,14 @@ FX_SPEC_PROFILES: dict[str, dict] = {
 FX_DEFAULT_PROFILE = "평균"
 AV_EQ_LEN_M = 12.9             # 알람밸브 등가길이 (기존값 상수화만, 값 변경 없음)
 
+# ── 펌프 ────────────────────────────────────────────────────────────
+# <Pump-fan> 의 <Library-pump> 기본 이름. **이 이름이 SLF 의 Pump-section 에
+# 실재해야 한다** — 없으면 PIPENET 이 성능곡선 없이 양정을 스스로 선정해 버려서,
+# 살 수 없는 펌프로 계산서가 나와도 출력물만 봐서는 알 수 없다. SLF 사본마다
+# 펌프 이름이 다르므로(현재 표준 SLF 에는 이 이름이 없다) 실재 여부는 방출
+# 시점에 대조하고, 없으면 정격유량·양정으로 곡선을 주입하거나 미확정으로 올린다.
+DEFAULT_PUMP_LIBRARY_NAME = "SP_162M_2900LPM"
+
 # ── FX 실배관 materialize 상수 (Stage-6 방출부에서 사용) ──────────────
 # 참조 SDF(201동)의 FX 파이프: <Pipe bore=".." length="0.7" rise="-0.1" roughness-or-c="120">
 # 내부에 등가길이 Equipment 를 담는 구조. 아래 값은 그 참조와 정합.

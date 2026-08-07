@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -84,6 +85,27 @@ def inner_diameter_mm(nominal_mm: float, material: str = DEFAULT_PIPE_MATERIAL) 
     if nominal <= 0:
         return 0.0
     return get_inner_diameter_mm(f"{nominal}A", material) or float(nominal)
+
+
+def unresolved_inner_diameters(bores: Iterable[float], material: str) -> dict[str, int]:
+    """실내경을 못 찾아 호칭값으로 때운 구간을 호칭별로 센다.
+
+    때우는 것 자체는 유지한다 — 해석이 멈추면 안 된다. 다만 때웠다는 사실이
+    리포트에 드러나야 한다. CPVC2 는 표에 25A~80A 뿐이므로 그 위가 세어졌다면
+    "굵은 CPVC 배관" 이 아니라 재질 판단이 틀렸다는 신호다.
+    """
+    out: dict[str, int] = {}
+    for b in bores:
+        try:
+            nominal = int(round(float(b)))
+        except (TypeError, ValueError):
+            continue
+        if nominal <= 0:
+            continue
+        if get_inner_diameter_mm(f"{nominal}A", material) is None:
+            key = f"{nominal}A"
+            out[key] = out.get(key, 0) + 1
+    return out
 
 
 def velocity_mps(q_lpm: float, inner_dia_mm: float) -> float:
@@ -454,6 +476,7 @@ def converge_bores_by_velocity(
              "source_pressure_bar": 0.0, "overdischarge_ratio_max": 1.0,
              "solver_converged": True, "pipes": 0, "head_stub_bore_mm": None,
              "head_stub_violations": 0, "head_stub_max_velocity": 0.0,
+             "unresolved_inner_dia": {"material": material, "by_nominal": {}},
              "export": None, "changes": [], "baseline": []}
     if not pipes:
         return empty
@@ -670,6 +693,13 @@ def converge_bores_by_velocity(
         "head_stub_bore_mm": head_stub_bore_mm,
         "head_stub_violations": stub_violations,
         "head_stub_max_velocity": round(stub_max_v, 2),
+        "unresolved_inner_dia": {
+            "material": material,
+            "by_nominal": unresolved_inner_diameters(
+                [_bore_of(p) for p in pipes]
+                + ([head_stub_bore_mm] if head_stub_bore_mm else []),
+                material),
+        },
         "export": export,
         "changes": changes,
         "baseline": baseline,

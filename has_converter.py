@@ -320,7 +320,11 @@ def has_dict_to_network(data: dict) -> CommonNetwork:
         # .has 는 호칭경만 담고 실내경은 재질 테이블에 있다. 0 으로 두면 하류
         # 마찰계산이 호칭경을 내경으로 오인해 손실을 과소 산정한다(100A 기준
         # 105.3 vs 100 → 약 12% 차이).
-        inner_mm = get_inner_diameter_mm(f"{nominal}A", material) or float(nominal)
+        # 재질을 못 알아보면(예: 청동·플라스틱 — 아직 표에 없다) 강관으로 때우지
+        # 않고 호칭경을 쓴다. 강관 값으로 때우면 65A 에서 4mm 넘게 어긋나는데
+        # 어긋난 사실조차 남지 않는다. 때웠으면 raw 에 표시해 하류가 알게 한다.
+        table_mm = get_inner_diameter_mm(f"{nominal}A", material)
+        inner_mm = table_mm if table_mm else float(nominal)
         cp = CommonPipe(
             id=pid,
             start=str(pl.get("SNodeId")),
@@ -335,6 +339,7 @@ def has_dict_to_network(data: dict) -> CommonNetwork:
             raw={
                 "has_label": pl.get("Label"),
                 "material": material,
+                "inner_dia_source": "KS표" if table_mm else "호칭경대체",
             },
         )
         net.pipes[pid] = cp

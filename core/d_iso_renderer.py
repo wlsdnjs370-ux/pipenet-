@@ -36,6 +36,7 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Polygon, Rectangle
 
 from core.d_display_model import DisplayModel, DisplayNode, DisplayPipe, UnitSpec
+from core.d_label_layout import LabelRequest, lay_out
 from core.d_result_binder import BoundModel, normalize_label
 
 # A4. 지시서 밖의 종이를 쓰지 않는다 — 코퍼스 583 장이 전량 A4 다.
@@ -57,6 +58,14 @@ _BLANK_COLOUR = "#9a9a9a"
 # 환산하지 않고, Label-display 의 print-font 를 1 로 삼아 상대비만 지킨다.
 _LABEL_PT = 4.6
 _REFERENCE_PRINT_FONT = 48.0
+
+# 지시선. 망보다 연하고 가늘어야 관로로 오독되지 않는다. 값이 없어 회색으로 그린
+# 관로(_BLANK_COLOUR)와는 색이 달라야 한다 — 검사가 둘을 색으로 갈라 본다.
+_LEADER_COLOUR = "#7f7f7f"
+
+# 기호 크기(pt). 라벨이 피해야 할 자리를 잡는 데도 쓰이므로 그리는 쪽과 한 값이어야 한다.
+_DEVICE_PT = 3.4
+_EQUIPMENT_PT = 2.6
 
 _KOREAN_FONTS = ("malgun.ttf", "malgunsl.ttf", "NanumGothic.ttf", "gulim.ttc", "batang.ttc")
 
@@ -316,6 +325,11 @@ class RenderReport:
     undrawn_result_nodes: tuple[str, ...] = ()
     link_bands: tuple[float, ...] = ()
     node_bands: tuple[float, ...] = ()
+    # 라벨 배치 (D4). 자리를 못 찾아 그리지 않은 것은 조용히 사라지지 않는다.
+    labels_drawn: int = 0
+    labels_with_leader: int = 0
+    labels_dropped: tuple[str, ...] = ()
+    label_seconds: float = 0.0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -351,6 +365,45 @@ def _markers(ax, groups: dict[str, list[tuple[float, float]]], *,
         ax.plot([p[0] for p in points], [p[1] for p in points], linestyle="none",
                 marker=mark, markersize=size, markerfacecolor=face,
                 markeredgecolor="#222222", markeredgewidth=0.7, zorder=zorder)
+
+
+def _note_size(item) -> float:
+    """도면 주기 글자 크기(pt). SDF typesize 를 라벨 크기 기준으로 환산한다."""
+    size = _LABEL_PT * (item.typesize or _REFERENCE_PRINT_FONT) / _REFERENCE_PRINT_FONT
+    return max(3.0, min(size, 12.0))
+
+
+def _text_measurer(fig: Figure, ax, font: FontProperties | None,
+                   fontsize: float) -> Callable[[str], tuple[float, float]]:
+    """글자 한 줄이 도면 좌표로 몇 칸을 차지하는지 재는 자를 만든다.
+
+    폭은 글자 수로 어림하지 않는다 — 한글은 라틴 문자의 두 배라 어림하면 밀집
+    구간에서 겹침 판정이 그대로 틀린다. 실제 글꼴로 재고 문자열마다 캐시한다.
+
+    높이는 재지 않고 글꼴 한 줄 높이로 잡는다. Agg 는 4.6pt 글자를 정수 픽셀로
+    반올림해 재기 때문에 실측값이 잉크보다 16% 낮게 나오고, ``va="center"`` 가
+    맞추는 것도 잉크가 아니라 이 한 줄 상자다.
+    """
+    renderer = FigureCanvasAgg(fig).get_renderer()
+    props = font.copy() if font is not None else FontProperties()
+    props.set_size(fontsize)
+    # 등축척은 그릴 때 축 상자를 줄이면서 걸린다. 먼저 적용하지 않으면 여기서 읽는
+    # 자가 가로와 세로에 서로 다른 눈금을 갖고, 세로로 세운 라벨만 상자가 틀어진다.
+    ax.apply_aspect()
+    inverse = ax.transData.inverted()
+    origin = inverse.transform((0.0, 0.0))
+    line_px = fontsize * fig.dpi / 72.0
+    cache: dict[str, tuple[float, float]] = {}
+
+    def measure(text: str) -> tuple[float, float]:
+        got = cache.get(text)
+        if got is None:
+            width, _, _ = renderer.get_text_width_height_descent(text, props, False)
+            far = inverse.transform((width, line_px))
+            got = cache[text] = (abs(far[0] - origin[0]), abs(far[1] - origin[1]))
+        return got
+
+    return measure
 
 
 def _line_widths(bores: Sequence[float | None]) -> Callable[[float | None], float]:
@@ -522,7 +575,7 @@ def render_iso(
     if device_segments:
         ax.add_collection(LineCollection(device_segments, colors="#222222", linewidths=1.4,
                                          zorder=3))
-    _markers(ax, device_points, size=3.4, face="white", zorder=5)
+    _markers(ax, device_points, size=_DEVICE_PT, face="white", zorder=5)
 
     # ── 특수기기 (A/V, FLEX) ──
     equipment_points: dict[str, list[tuple[float, float]]] = {}
@@ -532,18 +585,22 @@ def render_iso(
             mark = "v" if eq.description.upper().startswith(("FX", "FLEX")) else "s"
             equipment_points.setdefault(mark, []).append(
                 _point_at(path, eq.rel_position if eq.rel_position is not None else 0.5))
-    _markers(ax, {"v": equipment_points.get("v", [])}, size=2.6, face="#ffffff", zorder=5)
-    _markers(ax, {"s": equipment_points.get("s", [])}, size=2.6, face="#222222", zorder=5)
+    _markers(ax, {"v": equipment_points.get("v", [])}, size=_EQUIPMENT_PT, face="#ffffff",
+             zorder=5)
+    _markers(ax, {"s": equipment_points.get("s", [])}, size=_EQUIPMENT_PT, face="#222222",
+             zorder=5)
 
     # ── 노즐 ──
     tri = max(span_x, span_y) * 0.006
     drawn_nozzles = 0
+    nozzle_tips: list[tuple[float, float]] = []
     for label, row in nozzles.items():
         base = coords.get(row.nozzle.input_node)
         tip = coords.get(row.nozzle.output_node, base)
         if base is None:
             continue
         drawn_nozzles += 1
+        nozzle_tips.append(tip)
         angle = math.atan2(tip[1] - base[1], tip[0] - base[0]) if tip != base else -math.pi / 2
         ax.add_patch(Polygon(
             [(tip[0], tip[1]),
@@ -570,8 +627,8 @@ def render_iso(
         ax.scatter([p[0] for p in node_points], [p[1] for p in node_points],
                    s=2.5, c=node_colours, marker="o", linewidths=0, zorder=4)
 
-    # ── 글자 ──
-    label_font = dict(fontproperties=font, fontsize=_LABEL_PT, zorder=7)
+    # ── 글자 (D4 가 자리를 정한다) ──
+    requests: list[LabelRequest] = []
     for label, path in placed.items():
         (mx, my), angle = _longest_segment(path)
         if angle > 90 or angle < -90:
@@ -586,8 +643,7 @@ def render_iso(
             else:
                 blank_links.append(label)
         if parts:
-            ax.text(mx, my, "  ".join(parts), rotation=angle, rotation_mode="anchor",
-                    ha="center", va="bottom", color="#111111", **label_font)
+            requests.append(LabelRequest(label, "  ".join(parts), (mx, my), angle, "link"))
 
     if link.scope == "nozzle" and link.name != "None":
         for label, row in nozzles.items():
@@ -598,21 +654,46 @@ def render_iso(
             if not text:
                 blank_links.append(label)
                 continue
-            ax.text(tip[0], tip[1] - tri, text, ha="center", va="top",
-                    color="#111111", **label_font)
+            requests.append(LabelRequest(label, text, tip, 0.0, "nozzle"))
 
     if show_labels or node.name != "None":
         for label, row in nodes.items():
-            x, y = coords.get(label, (None, None))
-            if x is None:
+            point = coords.get(label)
+            if point is None:
                 continue
             parts = [label] if show_labels else []
             if node.name != "None":
                 parts.append(node_fmt.text(node_values.get(label)))
             text = " ".join(p for p in parts if p)
             if text:
-                ax.text(x, y + tri * 0.6, text, ha="left", va="bottom",
-                        color="#111111", **label_font)
+                requests.append(LabelRequest(label, text, point, 0.0, "node"))
+
+    measure = _text_measurer(fig, ax, font, _LABEL_PT)
+    # 도면 주기는 SDF 가 정해 둔 자리다. 옮기지 않고 피해야 할 자리로만 넘긴다.
+    fixed = []
+    for item in model.texts:
+        scale = _note_size(item) / _LABEL_PT
+        w, h = measure(item.text)
+        fixed.append((item.x, item.y, item.x + w * scale, item.y + h * scale))
+    # 기호도 피한다. 값이 밸브나 노즐 위에 얹히면 겹친 라벨이 없어도 읽을 수 없다.
+    per_pt = measure("0")[1] / _LABEL_PT
+    for points, size_pt in ((device_points, _DEVICE_PT), (equipment_points, _EQUIPMENT_PT)):
+        half = size_pt * per_pt / 2
+        for group in points.values():
+            fixed.extend((x - half, y - half, x + half, y + half) for x, y in group)
+    fixed.extend((x - tri, y - tri, x + tri, y + tri) for x, y in nozzle_tips)
+    labels, layout = lay_out(requests, measure, obstacles=fixed)
+
+    leaders = [lab.leader for lab in labels if lab.leader]
+    if leaders:
+        ax.add_collection(LineCollection(leaders, colors=_LEADER_COLOUR, linewidths=0.25,
+                                         zorder=6))
+    for lab in labels:
+        # anchor 모드라야 (x, y) 가 회전 전 상자의 한가운데로 고정된다. 기본 모드는
+        # 회전한 뒤의 상자를 다시 맞춰서 D4 가 잡아 둔 자리와 어긋난다.
+        ax.text(lab.x, lab.y, lab.text, rotation=lab.angle, rotation_mode="anchor",
+                ha="center", va="center", color="#111111", fontproperties=font,
+                fontsize=_LABEL_PT, zorder=7)
 
     # ── 흐름 화살표 ──
     if show_arrows:
@@ -629,8 +710,7 @@ def render_iso(
 
     # ── 도면 주기 ──
     for text in model.texts:
-        size = _LABEL_PT * (text.typesize or _REFERENCE_PRINT_FONT) / _REFERENCE_PRINT_FONT
-        ax.text(text.x, text.y, text.text, fontsize=max(3.0, min(size, 12.0)),
+        ax.text(text.x, text.y, text.text, fontsize=_note_size(text),
                 color=text.colour or "#000000", fontproperties=font,
                 ha="left", va="bottom", zorder=8)
 
@@ -694,6 +774,11 @@ def render_iso(
         warnings.append(
             f"값이 없어 빈칸으로 둔 라벨 관로 {len(blank_links)}개 / 노드 {len(blank_nodes)}개"
         )
+    if layout.dropped:
+        warnings.append(
+            f"겹치지 않는 자리를 못 찾은 라벨 {len(layout.dropped)}개 — 겹친 채 두지 않고 "
+            f"그리지 않았다: {', '.join(layout.dropped[:12])}"
+        )
     undrawn_pipes = bound.report.xml_only_pipes if bound else ()
     undrawn_nodes = bound.report.xml_only_nodes if bound else ()
     if undrawn_pipes or undrawn_nodes:
@@ -716,5 +801,9 @@ def render_iso(
         undrawn_result_nodes=undrawn_nodes,
         link_bands=tuple(link_edges),
         node_bands=tuple(node_edges),
+        labels_drawn=layout.placed,
+        labels_with_leader=layout.leaders,
+        labels_dropped=layout.dropped,
+        label_seconds=layout.seconds,
         warnings=warnings,
     )

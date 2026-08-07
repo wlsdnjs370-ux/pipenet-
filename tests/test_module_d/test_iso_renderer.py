@@ -41,8 +41,9 @@ KGF_CM2 = 98066.5
 L_MIN = 60000.0
 ATM = 101325.0
 
-# 표제란·범례가 놓이는 위쪽 띠(pt). 이 아래가 그림틀이다.
+# 표제란·범례가 놓이는 위쪽 띠, 각주가 놓이는 아래쪽 띠(pt). 그 사이가 그림틀이다.
 _FRAME_TOP_PT = (1.0 - (12.0 + 16.0 + 18.0) / 297.0) * 297.0 / 25.4 * 72.0
+_FRAME_BOTTOM_PT = (12.0 + 6.0) / 25.4 * 72.0
 
 
 @pytest.fixture(scope="module")
@@ -98,13 +99,34 @@ def _drawn(pdf: Path) -> tuple[dict[str, str], dict[str, str]]:
     return links, nodes
 
 
+_STREAM_OP = re.compile(
+    r"(?P<grey>[\d.]+) G\b|(?P<rgb>(?:[\d.]+ ){3})RG\b|(?P<stack>(?<![\w.])[qQ](?![\w.]))"
+    r"|(?P<x>[\d.\-]+) (?P<y>[\d.\-]+) [mlc]\b")
+
+
 def _shape_digest(pdf: Path) -> str:
-    """그림틀 안 경로 좌표의 지문. 색·글자는 빠진다."""
+    """그림틀 안 경로 좌표의 지문. 색·글자는 빠진다.
+
+    지시선은 도형이 아니라 라벨의 부속이다 — 라벨이 어디로 밀려났는지에 따라
+    프리셋마다 달라지므로 지문에서 뺀다. 회색 획으로만 그려지니 획 색을 따라가며
+    거른다. 망이 지시선과 같은 색으로 바뀌면 이 필터가 망까지 지워 지문이 비고,
+    아래 단언이 먼저 걸린다.
+    """
     from pypdf import PdfReader
 
+    from core.d_iso_renderer import _LEADER_COLOUR
+
+    leader_grey = int(_LEADER_COLOUR[1:3], 16) / 255.0
     data = PdfReader(str(pdf)).pages[0].get_contents().get_data().decode("latin-1")
-    pts = [p for p in re.findall(r"([\d.\-]+) ([\d.\-]+) [mlc]\b", data)
-           if float(p[1]) < _FRAME_TOP_PT]
+    pts, grey = [], None
+    for m in _STREAM_OP.finditer(data):
+        if m["x"] is None:
+            grey = float(m["grey"]) if m["grey"] else None
+            continue
+        if grey is not None and abs(grey - leader_grey) < 1e-6:
+            continue
+        if float(m["y"]) < _FRAME_TOP_PT:
+            pts.append((m["x"], m["y"]))
     assert pts, "그림틀 안에 그려진 것이 없다"
     return hashlib.sha256(repr(pts).encode()).hexdigest()
 
@@ -163,6 +185,71 @@ def test_bore_labels_match_xml(auto, tmp_path):
 
 
 # ── 수용 기준 (지시서 6) ────────────────────────────────────────────────────
+
+
+def _glyph_boxes(pdf: Path) -> list[tuple[str, float, float, float, float]]:
+    """그림틀 안 글자가 실제로 차지한 자리(pt).
+
+    배치기가 쓴 상자를 돌려 쓰지 않는다 — 자리는 PDF 텍스트 행렬에서, 크기는 글꼴
+    윤곽에서 가져온다. 배치기가 글자를 작게 재고 있었다면 여기서 걸린다.
+    """
+    from matplotlib.textpath import TextPath
+    from pypdf import PdfReader
+
+    from core.d_iso_renderer import _korean_font
+
+    prop = _korean_font()
+    extents: dict[tuple[str, float], object] = {}
+    got: list[tuple[str, float, float, float, float]] = []
+
+    def visit(text, cm, tm, font_dict, font_size):
+        s = text.strip()
+        if not s:
+            return
+        # 회전과 위치는 tm 이 아니라 cm 에 실려 나온다 — tm 은 단위행렬 그대로다.
+        a, b, c, d, e, f = (float(v) for v in cm)
+        if not _FRAME_BOTTOM_PT < f < _FRAME_TOP_PT:
+            return
+        key = (s, font_size)
+        ext = extents.get(key)
+        if ext is None:
+            ext = extents[key] = TextPath((0, 0), s, size=font_size, prop=prop).get_extents()
+        # 중심을 되짚지 않는다. 윤곽의 네 귀퉁이를 PDF 행렬로 그대로 옮긴다 — 기준점이
+        # 글자 중심인지 밑선인지 짐작할 필요가 없어진다.
+        pts = [(a * px + c * py + e, b * px + d * py + f)
+               for px, py in ((ext.x0, ext.y0), (ext.x1, ext.y0),
+                              (ext.x1, ext.y1), (ext.x0, ext.y1))]
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        got.append((s, min(xs), min(ys), max(xs), max(ys)))
+
+    PdfReader(str(pdf)).pages[0].extract_text(visitor_text=visit)
+    return got
+
+
+def _overlaps(boxes) -> list[tuple[str, str]]:
+    boxes = sorted(boxes, key=lambda b: b[1])
+    bad = []
+    for i, a in enumerate(boxes):
+        for b in boxes[i + 1:]:
+            if b[1] >= a[3]:
+                break
+            if a[2] < b[4] and b[2] < a[4]:
+                bad.append((a[0], b[0]))
+    return bad
+
+
+@pytest.mark.parametrize("preset", list(PRESETS))
+def test_no_label_overlaps_in_the_drawing(hand, auto, preset, tmp_path):
+    """첨부 실물 파일에서 라벨 겹침 0건 (지시서 D4 수용 기준)."""
+    for name, model in (("hand", hand), ("auto", auto)):
+        pdf = tmp_path / f"{name}_{preset}.pdf"
+        report = render_iso(model, pdf, preset=preset)
+        boxes = _glyph_boxes(pdf)
+        assert len(boxes) > 100
+        assert _overlaps(boxes) == []
+        # 자리를 못 찾았다고 조용히 빼지 않는다 — 뺐다면 겹침 0 은 공짜로 나온다.
+        assert report.labels_dropped == ()
+        assert report.label_seconds < 3.0
 
 
 def test_shape_identical_across_presets(hand, tmp_path):

@@ -36,7 +36,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator
 
-from remote30_constants import FX_DEFAULT_PROFILE, FX_SPEC_PROFILES
+from remote30_constants import (DEFAULT_PUMP_LIBRARY_NAME, FX_DEFAULT_PROFILE,
+                                FX_SPEC_PROFILES)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -579,6 +580,14 @@ def _to_int(value: Any, default: int) -> int:
         return default
 
 
+def _to_opt_float(value: Any) -> float | None:
+    """폼/JSON 의 선택 실수 필드 — 빈칸이나 숫자가 아니면 None (0 으로 때우지 않는다)."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _floor_row_from_mapping(raw: Any) -> FloorRow | None:
     """압력표 한 행(원시 매핑) → FloorRow. 못 읽으면 None.
 
@@ -691,8 +700,14 @@ class ZoneSpec:
         prv1_target_pa        — 1차 PRV 출구압 (Pa). 자연낙차 + 감압 zone 에서.
         prv2_target_pa        — 2차 PRV 출구압 (Pa). LLSP_2STAGE 만.
         pump_library_name     — Library-pump 의 SLF Pump-definition 이름.
-                                기본 "SP_162M_2900LPM" (표준 SLF 와 정합).
+                                SLF 사본마다 펌프 이름이 다르므로 기본값이 실재하는지는
+                                방출 시점에 대조한다 (DEFAULT_PUMP_LIBRARY_NAME 주석 참조).
         pump_count            — Pump-fan 개수 (HSP 보통 2개 = 1차+2차 부스터)
+        pump_rated_q_lpm      — 정격유량 (L/min). 기본값 없음 — 모르면 None.
+        pump_rated_h_m        — 정격양정 (m). 기본값 없음 — 모르면 None.
+
+    정격유량/양정이 있으면 SLF 에 없는 펌프도 NFPC 3점 곡선으로 주입할 수 있다.
+    없으면 주입도 못 하므로 미확정 경고로 올라간다 — 임의 곡선을 지어내지 않는다.
 
     압력분포표가 있으면 prv1/prv2 target 은 표에서 자동 도출 가능, 없으면 직접 입력.
     """
@@ -700,8 +715,10 @@ class ZoneSpec:
     target_floor: str = ""
     prv1_target_pa: float | None = None
     prv2_target_pa: float | None = None
-    pump_library_name: str = "SP_162M_2900LPM"
+    pump_library_name: str = DEFAULT_PUMP_LIBRARY_NAME
     pump_count: int = 2
+    pump_rated_q_lpm: float | None = None
+    pump_rated_h_m: float | None = None
 
 
 class SourceTag(str, Enum):
@@ -766,6 +783,9 @@ class ProjectContext:
     material_zones: list[dict] = field(default_factory=list)
     ceiling_zones: list[dict] = field(default_factory=list)
     sources: dict[str, str] = field(default_factory=dict)
+    # 방출 시점에야 알 수 있는 미확정 — 입력이 아니라 산출물을 대조해 나온 것이라
+    # 직렬화하지 않는다(to_dict 에 없음). 예: Pump-fan 이 SLF 에 없는 펌프를 참조.
+    emit_findings: list[dict] = field(default_factory=list)
 
     # ── 출처 ────────────────────────────────────────────────────────────
     def tag(self, field_name: str) -> SourceTag:
@@ -788,7 +808,16 @@ class ProjectContext:
                 "missing": _context_value_missing(getattr(self, name)),
                 "record_only": name in _RECORD_ONLY_FIELDS,
             })
-        return out
+        return out + list(self.emit_findings)
+
+    def note_emit_issue(self, field_name: str, label: str, state: str) -> None:
+        """방출 대조에서 나온 미확정을 경고 블록에 올린다. 같은 항목은 한 번만."""
+        item = {
+            "field": field_name, "label": label, "state": state,
+            "tag": SourceTag.DEFAULT.value, "missing": False, "record_only": False,
+        }
+        if item not in self.emit_findings:
+            self.emit_findings.append(item)
 
     def warning_lines(self) -> list[str]:
         """`[미확정] <필드> — <한글이름> (<상태>)` 한 줄씩."""
@@ -798,7 +827,8 @@ class ProjectContext:
         }
         lines = []
         for item in self.unconfirmed():
-            state = "미입력" if item["missing"] else state_of.get(item["tag"], "기본값")
+            state = item.get("state") or (
+                "미입력" if item["missing"] else state_of.get(item["tag"], "기본값"))
             note = ", 기록 전용 — 현재 산출물 미반영" if item["record_only"] else ""
             lines.append(f"[미확정] {item['field']} — {item['label']} ({state}{note})")
         return lines
@@ -845,6 +875,8 @@ class ProjectContext:
             "prv2_target_pa": self.zone_spec.prv2_target_pa,
             "pump_library_name": self.zone_spec.pump_library_name,
             "pump_count": self.zone_spec.pump_count,
+            "pump_rated_q_lpm": self.zone_spec.pump_rated_q_lpm,
+            "pump_rated_h_m": self.zone_spec.pump_rated_h_m,
             "floor_profile": ([{
                 "floor_label": r.floor_label, "height_m": r.height_m,
                 "head_drop_m": r.head_drop_m, "after_prv_m": r.after_prv_m,
@@ -875,8 +907,10 @@ class ProjectContext:
                 target_floor=str(data.get("target_floor", "") or ""),
                 prv1_target_pa=data.get("prv1_target_pa"),
                 prv2_target_pa=data.get("prv2_target_pa"),
-                pump_library_name=str(data.get("pump_library_name") or "SP_162M_2900LPM"),
+                pump_library_name=str(data.get("pump_library_name") or DEFAULT_PUMP_LIBRARY_NAME),
                 pump_count=_to_int(data.get("pump_count"), 2),
+                pump_rated_q_lpm=_to_opt_float(data.get("pump_rated_q_lpm")),
+                pump_rated_h_m=_to_opt_float(data.get("pump_rated_h_m")),
             ),
             floor_profile=profile,
             project_title=str(data.get("project_title", "") or ""),
@@ -1025,14 +1059,24 @@ def _pipe(label: str, in_lbl: str, out_lbl: str, bore_mm: int,
 
 
 def _pump_fan(label: str, in_lbl: str, out_lbl: str, *,
-              library_pump: str, efficiency: int = 100, status: int = 1) -> dict:
-    """Pump-fan dict — emit_full_sdf 가 <Pump-fan> 으로 직렬화."""
-    return {
+              library_pump: str, efficiency: int = 100, status: int = 1,
+              rated_q: float | None = None, rated_h: float | None = None) -> dict:
+    """Pump-fan dict — emit_full_sdf 가 <Pump-fan> 으로 직렬화.
+
+    rated_q(L/min)/rated_h(m) 를 실으면 SLF 에 그 이름의 Pump-definition 이 없을 때
+    _harden_slf_for_combined 가 NFPC 3점 곡선으로 만들어 주입한다. 없으면 주입하지
+    않는다 — 곡선을 지어내면 PIPENET 이 양정을 스스로 고르는 것과 다를 바 없다.
+    """
+    fan = {
         "label": label, "in": in_lbl, "out": out_lbl,
         "efficiency": efficiency, "status": status,
         "library_pump": library_pump,
         "percentage_open": 1,
     }
+    if rated_q and rated_h:
+        fan["rated_q"] = float(rated_q)
+        fan["rated_h"] = float(rated_h)
+    return fan
 
 
 def _pressure_valve(label: str, in_lbl: str, out_lbl: str, *,
@@ -1210,7 +1254,8 @@ def build_riser_hsp_pump(spec: ZoneSpec, profile: BuildingPressureProfile | None
     return RiserTables(
         nodes=nodes + tail_nodes,
         pipes=pipes + tail_pipes,
-        pumps=[_pump_fan(str(i + 1), "100", "1", library_pump=spec.pump_library_name)
+        pumps=[_pump_fan(str(i + 1), "100", "1", library_pump=spec.pump_library_name,
+                         rated_q=spec.pump_rated_q_lpm, rated_h=spec.pump_rated_h_m)
                for i in range(max(1, spec.pump_count))],
         valves=[_pressure_valve("1", "8", "89", target_pa=spec.prv1_target_pa)],
         av_node_label="10",
@@ -1870,7 +1915,7 @@ def _harden_slf_for_combined(
     slf_path: Path,
     opt_flow_by_lib: dict[str, float],
     pumps: list[dict],
-) -> None:
+) -> list[dict]:
     """동봉 SLF 라이브러리를 통합망에 맞게 보정 — PIPENET 연산 경고/에러 제거.
 
     1) Nozzle 최소운전압력 ↓ : 표준 SLF 의 SP-HEAD minimum-pressure 가 헤드
@@ -1879,19 +1924,24 @@ def _harden_slf_for_combined(
        노즐 정의의 minimum-pressure 를 설계유량 압력의 90% 이하로 낮춘다.
     2) Pump 라이브러리 주입 : Pump-fan 이 참조하는 library_pump(예 "FP") 가
        SLF Pump-section 에 없으면 곡선 범위가 미정의되어 "Minimum flowrate
-       should be less than maximum" 에러가 난다. NFPC 3점 곡선(체절 140% /
-       정격 / 150% 65%)으로 Pump-definition 을 만들어 주입한다.
+       should be less than maximum" 에러가 난다. 정격유량·양정이 실려 있으면
+       NFPC 3점 곡선(체절 140% / 정격 / 150% 65%)으로 Pump-definition 을 만들어
+       주입하고, 없으면 지어내지 않고 미해결로 돌려준다.
 
     SLF 는 DOCTYPE(<!DOCTYPE Library SYSTEM "Library.dtd">) 를 요구하므로
     ElementTree 직렬화 후 XML 선언 + DOCTYPE 를 직접 앞에 붙여 보존한다.
+
+    Returns:
+        곡선을 확보하지 못한 Pump-fan 참조 ``[{"name":.., "reason":..}]``.
+        빈 리스트는 "모든 참조가 SLF 에 실재하거나 주입됐다" 를 뜻한다 —
+        대조를 못 한 경우(파일 없음·파싱 실패)는 빈 리스트가 아니라 그 사실을 담는다.
     """
     import xml.etree.ElementTree as ET
-    if not slf_path.is_file():
-        return
+    refs = sorted({str(p.get("library_pump", "")).strip() for p in pumps} - {""})
     try:
         tree = ET.parse(slf_path)
-    except ET.ParseError:
-        return
+    except (OSError, ET.ParseError) as exc:
+        return [{"name": n, "reason": f"SLF 대조 불가 ({type(exc).__name__})"} for n in refs]
     root = tree.getroot()
     changed = False
 
@@ -1918,23 +1968,31 @@ def _harden_slf_for_combined(
             changed = True
 
     # ── (2) 펌프 라이브러리 주입
+    unresolved: list[dict] = []
     pump_sec = root.find("Pump-section")
-    if pump_sec is not None and pumps:
+    if pump_sec is None:
+        unresolved += [{"name": n, "reason": "SLF 에 Pump-section 이 없음"} for n in refs]
+    elif refs:
         existing = {
             (pd.find("Item-name").text or "").strip()
             for pd in pump_sec.findall("Pump-definition")
             if pd.find("Item-name") is not None
         }
-        seen: set[str] = set()
-        for pump in pumps:
-            lib = str(pump.get("library_pump", "")).strip()
-            if not lib or lib in existing or lib in seen:
+        rated_by_lib = {
+            str(p.get("library_pump", "")).strip(): p
+            for p in pumps if p.get("rated_q") and p.get("rated_h")
+        }
+        for lib in refs:
+            if lib in existing:
                 continue
-            q = float(pump.get("rated_q", 0) or 0)  # L/min
-            h = float(pump.get("rated_h", 0) or 0)  # m
-            if q <= 0 or h <= 0:
+            pump = rated_by_lib.get(lib)
+            if pump is None:
+                # 곡선을 지어내지 않는다 — 정격유량·양정 없이 주입하면 PIPENET 이
+                # 양정을 스스로 고르는 것과 똑같이 근거 없는 계산서가 된다.
+                unresolved.append({"name": lib, "reason": "SLF 에 없음, 정격유량·양정 미입력으로 주입 실패"})
                 continue
-            seen.add(lib)
+            q = float(pump["rated_q"])  # L/min
+            h = float(pump["rated_h"])  # m
             q_si = q / 60000.0  # L/min → m³/s
             peak_q = float(pump.get("peak_q", q * PUMP_OVERLOAD_Q_RATIO) or q * PUMP_OVERLOAD_Q_RATIO)
             peak_q_si = peak_q / 60000.0
@@ -1965,6 +2023,7 @@ def _harden_slf_for_combined(
             '<!DOCTYPE Library SYSTEM "Library.dtd">\n' + body,
             encoding="utf-8",
         )
+    return unresolved
 
 
 def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
@@ -2068,7 +2127,13 @@ def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
             continue
         if lib and q > 0:
             opt_flow_by_lib[lib] = min(opt_flow_by_lib.get(lib, q), q)
-    _harden_slf_for_combined(out_path.with_suffix(".slf"), opt_flow_by_lib, list(combined.pumps))
+    # 방출 게이트 — Pump-fan 이 가리키는 Library-pump 가 보정 뒤 SLF 에 실재하는가.
+    # 없는데도 조용히 넘어가면 PIPENET 이 양정을 임의 선정한 계산서가 나오고,
+    # 출력물만 봐서는 그 사실을 알 수 없다. 방출은 막지 않고(기존 미확정 관행)
+    # 경고 블록에 올린다.
+    for miss in _harden_slf_for_combined(out_path.with_suffix(".slf"),
+                                         opt_flow_by_lib, list(combined.pumps)):
+        ctx.note_emit_issue("pump_library_name", f"펌프 성능곡선 {miss['name']}", miss["reason"])
     return out_path
 
 
@@ -2109,8 +2174,10 @@ def zone_spec_from_form(form: dict[str, Any]) -> ZoneSpec:
         prv2_target_kgf     : 2차 PRV 출구압 (kg/cm²) — LLSP_2STAGE 만
         prv1_target_m       : 1차 PRV 출구압 (m 수두) — kg/cm² 와 둘 중 하나만
         prv2_target_m       : 2차 PRV 출구압 (m 수두)
-        pump_library_name   : Library-pump 이름 (HSP_PUMP, 기본 SP_162M_2900LPM)
+        pump_library_name   : Library-pump 이름 (HSP_PUMP, 기본 DEFAULT_PUMP_LIBRARY_NAME)
         pump_count          : Pump-fan 개수 (HSP_PUMP, 기본 2)
+        pump_rated_q_lpm    : 정격유량 (L/min) — 없으면 곡선 주입 불가, 미확정 경고
+        pump_rated_h_m      : 정격양정 (m) — 없으면 곡선 주입 불가, 미확정 경고
     """
     zone_type = ZoneType(form.get("zone_type", "lsp_1stage"))
 
@@ -2134,8 +2201,10 @@ def zone_spec_from_form(form: dict[str, Any]) -> ZoneSpec:
         target_floor=str(form.get("target_floor", "")).strip(),
         prv1_target_pa=_to_pa("prv1_target_kgf", "prv1_target_m"),
         prv2_target_pa=_to_pa("prv2_target_kgf", "prv2_target_m"),
-        pump_library_name=str(form.get("pump_library_name", "SP_162M_2900LPM")).strip(),
+        pump_library_name=str(form.get("pump_library_name", DEFAULT_PUMP_LIBRARY_NAME)).strip(),
         pump_count=_to_int(form.get("pump_count"), 2),
+        pump_rated_q_lpm=_to_opt_float(form.get("pump_rated_q_lpm")),
+        pump_rated_h_m=_to_opt_float(form.get("pump_rated_h_m")),
     )
 
 

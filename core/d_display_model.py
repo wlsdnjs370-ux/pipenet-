@@ -60,6 +60,10 @@ UNIT_FACTORS: dict[str, tuple[float, str]] = {
 }
 
 
+# <Links> 아래에서 관로·노즐이 아닌 링크. 이것도 두 노드를 잇는 실제 구간이다.
+DEVICE_TAGS = ("Pump-fan", "Elastomeric-valve", "Pressure-loss")
+
+
 @dataclass(frozen=True)
 class UnitSpec:
     quantity: str          # 'Pressure', 'Length', ...
@@ -121,6 +125,22 @@ class DisplayPipe:
 
 
 @dataclass(frozen=True)
+class DisplayDevice:
+    """관로가 아닌 링크 — 펌프·감압밸브·고정손실. 노드를 잇고 있으므로 도면에 그려야 한다.
+
+    코퍼스 336 SDF 에서 Pump-fan 19 · Elastomeric-valve 179 · Pressure-loss 322 개가
+    나온다. 관로처럼 bore·length·waypoints 가 없어 두 끝 노드 사이 직선이다.
+    """
+    kind: str               # 'Pump-fan' | 'Elastomeric-valve' | 'Pressure-loss'
+    label: str
+    input_node: str
+    output_node: str
+    description: str        # Library-pump 이름 등. 없으면 빈 문자열
+    on: bool
+    attributes: dict[str, str]   # 파일 원문 그대로 (target-value, exponent …)
+
+
+@dataclass(frozen=True)
 class DisplayNozzle:
     label: str
     input_node: str
@@ -146,6 +166,7 @@ class DisplayModel:
     nodes: tuple[DisplayNode, ...] = ()
     pipes: tuple[DisplayPipe, ...] = ()
     nozzles: tuple[DisplayNozzle, ...] = ()
+    devices: tuple[DisplayDevice, ...] = ()
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -315,11 +336,29 @@ def load_display_model(path: str | Path) -> DisplayModel:
         ))
     model.nozzles = tuple(nozzles)
 
+    devices = []
+    for links in root.iterfind(".//Links"):
+        for dev in links:
+            if dev.tag not in DEVICE_TAGS:
+                continue
+            named = [restore_cp949((c.text or "").strip()) for c in dev if (c.text or "").strip()]
+            devices.append(DisplayDevice(
+                kind=dev.tag,
+                label=dev.get("label", ""),
+                input_node=dev.get("input", ""),
+                output_node=dev.get("output", ""),
+                description=named[0] if named else "",
+                on=dev.get("status", "1") == "1",
+                attributes=dict(dev.attrib),
+            ))
+    model.devices = tuple(devices)
+
     known_nodes = {n.label for n in model.nodes}
+    linked = list(model.pipes) + list(model.devices)
     dangling = sorted(
-        {e for p in model.pipes for e in (p.input_node, p.output_node) if e not in known_nodes}
+        {e for p in linked for e in (p.input_node, p.output_node) if e not in known_nodes}
     )
     if dangling:
-        model.warnings.append(f"노드 목록에 없는 관로 끝점 {len(dangling)}개: {dangling[:5]}")
+        model.warnings.append(f"노드 목록에 없는 링크 끝점 {len(dangling)}개: {dangling[:5]}")
 
     return model

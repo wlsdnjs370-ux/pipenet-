@@ -24,6 +24,13 @@ from core.d_display_model import (  # noqa: E402
 
 HAND = _ROOT / "routes" / "제출용[최종]" / "2. Pipenet_hand.sdf"
 AUTO = _ROOT / "routes" / "제출용[최종]" / "2. Pipenet_auto.sdf"
+# 제출용 2 개는 관로·노즐뿐이라 장치 링크를 검증할 수 없다. 펌프·감압밸브·고정손실이
+# 한 파일에 다 들어 있는 참조 코퍼스 파일을 쓴다.
+_LIB = _ROOT / "data" / "reference_library" / "2. 고가수조_양주옥정 중상1블럭"
+DEVICES = (_LIB / "수리계산 원본" / "수리계산 옥내소화전" / "오피스텔" / "116동"
+           / "01-1-1. 양주옥정 116동 펌프가압구간 49F_URER.sdf")
+PUMP = (_LIB / "수리계산 원본" / "수리계산 옥내소화전" / "오피스텔" / "116동"
+        / "01-2. 양주옥정 116동 펌프가압구간 최하층 32F_USER_펌프성능곡선 반영300.sdf")
 
 pytestmark = pytest.mark.skipif(not HAND.exists(), reason="제출용 SDF 없음")
 
@@ -78,6 +85,30 @@ def test_equipment_rel_position_preserved(hand):
     av = next(e for e in eq if e.description == "A/V")
     assert 0.0 <= av.rel_position <= 1.0
     assert av.equivalent_length_m == pytest.approx(12.9)
+
+
+def test_hand_has_no_device_links(hand):
+    assert hand.devices == ()
+
+
+@pytest.mark.skipif(not DEVICES.exists(), reason="참조 코퍼스 없음")
+def test_device_links_are_read_and_connected():
+    # 관로가 아닌 링크도 노드를 잇는 구간이다 — 빠뜨리면 도면에서 망이 끊긴다.
+    model = load_display_model(DEVICES)
+    kinds = sorted(d.kind for d in model.devices)
+    assert kinds == ["Elastomeric-valve", "Pressure-loss", "Pressure-loss", "Pressure-loss"]
+    labels = {n.label for n in model.nodes}
+    for dev in model.devices:
+        assert dev.input_node in labels and dev.output_node in labels
+    valve = next(d for d in model.devices if d.kind == "Elastomeric-valve")
+    assert valve.attributes["target-value"] == "689724"
+    assert model.warnings == []
+
+
+@pytest.mark.skipif(not PUMP.exists(), reason="참조 코퍼스 없음")
+def test_pump_carries_library_name():
+    pump = next(d for d in load_display_model(PUMP).devices if d.kind == "Pump-fan")
+    assert pump.description == "TEST1" and pump.on
 
 
 def test_graphics_schemes_and_grid(hand):

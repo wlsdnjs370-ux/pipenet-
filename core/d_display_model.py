@@ -56,6 +56,7 @@ UNIT_FACTORS: dict[str, tuple[float, str]] = {
     "kg-m3": (1.0, "kg/m³"),
     "lb-ft3": (1.0 / 16.018463373960142, "lb/ft³"),
     "pa-s": (1.0, "Pa·s"),
+    "watts": (1.0, "W"),
 }
 
 
@@ -133,6 +134,7 @@ class DisplayNozzle:
 class DisplayModel:
     source: Path
     project_version: str
+    fluid_density_kgm3: float | None = None
     units: dict[str, UnitSpec] = field(default_factory=dict)
     grid: dict[str, str] = field(default_factory=dict)
     display_options: dict[str, dict[str, str]] = field(default_factory=dict)
@@ -193,6 +195,10 @@ def load_display_model(path: str | Path) -> DisplayModel:
     src = Path(path)
     root = ET.parse(str(src)).getroot()
     model = DisplayModel(source=src, project_version=root.get("version", ""))
+
+    fluid = root.find(".//Attributes/Fluid-fixed-user")
+    if fluid is not None:
+        model.fluid_density_kgm3 = _num(fluid, "density")
 
     units_el = root.find(".//Attributes/Units")
     if units_el is None:

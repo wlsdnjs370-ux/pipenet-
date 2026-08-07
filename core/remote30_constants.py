@@ -194,6 +194,35 @@ LOCAL_RISE_RULES: dict[str, float | None] = {
 }
 
 
+# ── 라이저 형상 기본값 (FNCADnet 작업지시서 4-1/4-3) ────────────────
+# 아래 네 값은 **대명동 201동 실측값**이다. 근거는 그 현장의 수작업 PIPENET 모델
+# (data/sample_problem) — LSP·MSP·LLSP 20여 모델에서 한 자도 다르지 않다:
+#   1→2 length=20.95, 3→4 length=14.93, 7→8 length=0.5, 5→10 length=1.5 rise=1.
+# 현장이 바뀌면 전부 틀린 값이므로 ProjectContext 로 올려 사람이 확정하기 전에는
+# [미확정] 로 표시한다. 여기 값은 "아무도 안 정했을 때의 자리" 이지 표준이 아니다.
+RISER_ROOF_RUN_TO_RISER_M = 20.95   # 수원 → 옥상 수평 (r1)
+RISER_ROOF_RUN_AFTER_DROP_M = 14.93  # 옥상 하강 뒤 수평 (r3)
+RISER_PRV_APPROACH_M = 0.5          # 라이저 → PRV 입구 (r5)
+# T분기 → 알람밸브. 수작업 모델 전량이 rise=+1.0(알람밸브가 위), length=1.5 —
+# 즉 수직 1.0m + 수평 0.5m 의 L 자다. 현업 관행문(수평 0.6~1.0m)과는 수평분이
+# 다르지만, 실측이 있는 쪽을 기본값으로 둔다.
+TEE_TO_ALARM_VALVE_RISE_M = 1.0
+TEE_TO_ALARM_VALVE_RUN_M = 0.5
+
+# 현업 관행값 — 산출물에는 아직 반영하지 않는다(표고 기준면 미확정, BLOCKED.md §19).
+# 값만 서류에 남기고 "채웠으니 반영됐다" 로 읽히지 않게 기록 전용으로 표시한다.
+TEE_BRANCH_ABOVE_SLAB_M = 0.6       # 입상관 T분기 = 그 층 바닥 + 600mm
+TOP_FLOOR_EXTRA_HEIGHT_M = 0.25     # 최상층은 단열재분만큼 층고가 높다
+
+# 관경 전이(레듀서)는 T분기점에서 이 거리 안에 있으면 T분기점에 귀속시킨다.
+# 현업 관행 — 300mm 를 독립 노드로 살리면 관리 포인트만 늘고 그 차이는 오차범위
+# 안이라는 판단. 25/32 가 갈릴 때는 불리한 작은 쪽을 택한다.
+# 현재 추출망은 전이가 이미 노드에서만 일어나 결과적으로 같은 동작을 한다. 상수를
+# 두는 목적은 동작 변경이 아니라 자동본이 수동본과 다를 때 이유를 말할 수 있게
+# 하는 것이므로, 값을 쓰지 않고 **귀속된 지점 수만** 세어 방출 리포트에 낸다.
+REDUCER_SNAP_TO_TEE_MM = 300.0
+
+
 def fx_schedule_name(nominal_dn: int, inner_dia_mm: float) -> str:
     """규격 기하 → PIPENET-safe ASCII 스케줄명. (한글/공백 없이 SLF Item-name 겸용)
 

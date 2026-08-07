@@ -49,6 +49,8 @@ from xml.dom import minidom
 import ezdxf
 from ezdxf.math import Matrix44, Vec3
 
+import fitting_rules
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # 자산 파일 경로 해석 — 환경변수 → 모듈 디렉토리 fallback
@@ -5858,7 +5860,8 @@ def _classify_branch_edges(edges, head_points, source_point):
     # ── 교차배관 spine(trunk) 추적: 소스에서 방향 연속성으로 직진하는 경로.
     #    splitter 규칙만으론 마지막 분기 이후의 교차배관 tail 을 가지선과 구분 못 하므로
     #    (tail 서브트리도 splitter 가 없음), 진행방향이 이어지는 간선을 trunk 로 표시한다.
-    TRUNK_TURN_TOL = math.radians(45.0)  # 45° 이상 꺾이면 trunk 종료(가지 진입).
+    # 부속 계상의 직진/꺾임 판정과 **같은 자**를 쓴다(fitting_rules).
+    TRUNK_TURN_TOL = math.radians(fitting_rules.TRUNK_TURN_TOL_DEG)
 
     def _dir(u, v):
         return math.atan2(v[1] - u[1], v[0] - u[0])
@@ -6502,39 +6505,58 @@ def build_input_tables(
         })
 
     # ====== Fittings ======
+    # 판정 규칙 자체는 core/fitting_rules.py 에 있다 — 두 브랜치가 같은 함수를 부른다.
+    pipe_by_label = {p["label"]: p for p in tables.pipes}
+
     # 1) 흡수된 elbow → fitting (collinear merge 시 기록된 elbow_fittings 활용)
+    elbow_unresolved = 0
     for edge_key, elbows in selection.elbow_fittings.items():
-        pipe_label = edge_key_to_pipe.get(edge_key)
-        if not pipe_label:
-            continue
-        pipe = next((p for p in tables.pipes if p["label"] == pipe_label), None)
+        pipe = pipe_by_label.get(edge_key_to_pipe.get(edge_key, ""))
         if not pipe:
             continue
-        for _node_pos, angle_deg in elbows:
-            # 정확히 45도 근처 (43.5~46.5) 만 elbow-45 — 참조는 elbow-45 1개뿐
-            if 43.5 <= angle_deg <= 46.5:
-                ftype = "elbow-45"
-            elif angle_deg >= 70:
-                ftype = "elbow"
-            else:
-                continue
+        kinds, unresolved = fitting_rules.elbow_fittings(a for _pos, a in elbows)
+        elbow_unresolved += unresolved
+        for ftype in kinds:
             tables.fittings.append({
-                "pipe": pipe_label, "in": pipe["in"], "out": pipe["out"],
+                "pipe": pipe["label"], "in": pipe["in"], "out": pipe["out"],
                 "type": ftype, "count": "1",
             })
-    # 2) 차수 ≥ 3 노드 → tee (in 노드 기준)
+
+    # 2) 분기 노드 → **분류티**. 직진해 지나가는 갈래는 직류티라 계상하지 않는다.
     node_degrees: Counter[str] = Counter()
-    node_pipes: dict[str, list[dict]] = defaultdict(list)
+    downstream_of: dict[str, list[dict]] = defaultdict(list)
+    upstream_of: dict[str, list[dict]] = defaultdict(list)
     for p in tables.pipes:
         node_degrees[p["in"]] += 1
         node_degrees[p["out"]] += 1
-        node_pipes[p["in"]].append(p)
-        node_pipes[p["out"]].append(p)
+        downstream_of[p["in"]].append(p)
+        upstream_of[p["out"]].append(p)
+
+    tee_unresolved = 0
+    tee_pipe_labels: set[str] = set()
+    for node_label, outs in downstream_of.items():
+        if node_degrees[node_label] < 3:
+            continue
+        ups = upstream_of.get(node_label, [])
+        if len(outs) < 2:
+            # 하류가 하나뿐인 차수 3+ 노드 = 유입이 둘 이상인 합류(루프 잔여).
+            # 어느 갈래가 직진인지 정의할 수 없다 — 기존대로 티를 달되 미판정으로 센다.
+            tee_pipe_labels.update(p["label"] for p in outs)
+            tee_unresolved += len(outs)
+            continue
+        # 상류가 정확히 하나일 때만 유입 방향이 정해진다(소스이거나 루프 잔여면 None).
+        up_pos = label_to_pos[ups[0]["in"]] if len(ups) == 1 else None
+        labels, unresolved = fitting_rules.tee_fittings(
+            label_to_pos[node_label], up_pos,
+            [(p["label"], label_to_pos[p["out"]]) for p in outs])
+        tee_unresolved += unresolved
+        tee_pipe_labels.update(labels)
+    # 표 순서는 관로 순서를 따른다(골든 비교가 순서에 민감).
     for p in tables.pipes:
-        if node_degrees[p["in"]] >= 3:
+        if p["label"] in tee_pipe_labels:
             tables.fittings.append({
                 "pipe": p["label"], "in": p["in"], "out": p["out"],
-                "type": "tee", "count": "1",
+                "type": fitting_rules.TEE, "count": "1",
             })
 
     # (95도까지 흡수 모드 — preserved elbow 별도 검출 불필요)
@@ -6656,6 +6678,7 @@ def build_input_tables(
         ("subgraph 파이프 수", str(len(tables.pipes))),
         (f"세대내부 CPVC 배관 (C={CPVC_C_FACTOR})", f"{cpvc_pipe_count} / 강관 {len(tables.pipes) - cpvc_pipe_count}"),
         ("Fittings", str(len(tables.fittings))),
+        ("부속 각도 판정 불가 (엘보 / 티)", f"{elbow_unresolved} / {tee_unresolved}"),
         ("Equipment", str(len(tables.equipment))),
         ("알람밸브 좌표 (snap)", f"({selection.source_pos[0]:.1f}, {selection.source_pos[1]:.1f})"),
         ("source 자동 식별 방식", selection.source_kind),

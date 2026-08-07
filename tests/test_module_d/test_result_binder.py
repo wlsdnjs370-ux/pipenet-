@@ -165,6 +165,22 @@ def test_values_are_si(hand):
     assert hand.nodes["100"].pressure_pa == pytest.approx(669948.0)
 
 
+def test_same_unit_name_gets_different_factors_per_table(hand):
+    # 같은 unit="diameter" 를 달고도 표마다 표기가 다르다. 호칭경은 mm 로, 실지름은
+    # 이미 m 로 적혀 있다 — 한 배율로 뭉뚱그리면 실지름이 1000 배 작아진다.
+    # 기대값은 워드 계산서 원문에서 옮겨 적는다 (AVAILABLE PIPE SIZES: 15 → 16.4mm).
+    sizes = hand.tables["Design information/Pipe-type/Sizes"]
+    actual = {row["Nominal bore"]: row["Actual diameter"] for row in sizes.rows}
+    assert actual[15.0] == pytest.approx(0.0164, abs=1e-6)
+    assert actual[20.0] == pytest.approx(0.0219, abs=1e-6)
+    assert actual[25.0] == pytest.approx(0.0275, abs=1e-6)
+
+    assert hand.tables["Pipes-input/Pipes-input"].rows[0]["Nominal bore"] == pytest.approx(0.15)
+    fittings = hand.tables["Materials/Fittings"]
+    assert min(r["Fitting Nominal size"] for r in fittings.rows) == pytest.approx(0.025)
+    assert not [w for w in hand.warnings if "호칭경으로 못 갈랐다" in w]
+
+
 def test_title_comes_from_info(hand):
     assert hand.title == ("Officetell", "WATER TANK_PH2F", "3-2 type_MSP_26F")
     assert all("Ã" not in v for v in hand.document.info.values())

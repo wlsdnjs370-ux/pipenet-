@@ -80,6 +80,9 @@ _MIN_SAMPLES = 3
 INTERNAL_ANCHORS = frozenset({"pressure", "pressureDifference"})
 # 기준면 편차의 허용 산포(Pa). kg/cm² 를 소수 4 자리로 찍으면 눈금이 ~10 Pa 다.
 _DATUM_TOL_PA = 50.0
+# 실지름이 호칭경에서 벗어날 수 있는 폭. 관은 규격상 두 배씩 벌어지지 않으므로,
+# 이 안에 드는 배율은 하나뿐이다 (mm 로 읽으면 16.4 / 호칭 15, m 로 읽으면 0.0164).
+_BORE_SPAN = (0.5, 2.0)
 
 
 def normalize_label(raw: str) -> str:
@@ -378,13 +381,67 @@ def _resolve_scales(
     return scales
 
 
-def _to_si(tables: dict[str, XTable], scales: dict[str, UnitScale]) -> dict[str, XTable]:
+def _field_scales(
+    doc: XdsetDocument, scales: dict[str, UnitScale], warnings: list[str]
+) -> dict[tuple[str, str], float]:
+    """같은 단위 이름을 달고도 표마다 표기가 다른 필드의 배율을 따로 잰다.
+
+    ``Pipes-input`` 의 호칭경은 mm 로, ``Sizes`` 의 실지름은 m 로 적힌다. 호칭경으로
+    잰 배율을 실지름에 그대로 씌우면 지름이 1000 배 작아진다. 호칭경 열이 같은 표에
+    있으면 그것을 자로 삼아 다시 잰다 — 실지름은 호칭경과 자릿수가 같아야 하고,
+    그 조건을 만족하는 배율은 하나뿐이다.
+    """
+    mm = UNIT_FACTORS["millimetres"][0]
+    out: dict[tuple[str, str], float] = {}
+    for key, tbl in doc.tables.items():
+        # 단위 없이 적힌 호칭경 열이 이 표의 자다. 규격 번호라 언제나 mm 다.
+        if not any(f.name == "Nominal bore" and not f.unit for f in tbl.fields):
+            continue
+        for fld in tbl.fields:
+            if fld.unit != "diameter":
+                continue
+            samples = [
+                (n, v)
+                for n, v in ((r.get("Nominal bore"), r.get(fld.name)) for r in tbl.rows)
+                if isinstance(n, float) and isinstance(v, float) and n and v
+            ]
+            if not samples:
+                continue
+            fits = {
+                factor
+                for factor, _symbol in UNIT_FACTORS.values()
+                if all(_BORE_SPAN[0] <= v / factor * mm / n <= _BORE_SPAN[1] for n, v in samples)
+            }
+            current = scales.get(fld.unit)
+            if len(fits) != 1:
+                warnings.append(
+                    f"'{key}' 의 '{fld.name}' 표기를 호칭경으로 못 갈랐다 "
+                    f"(맞는 배율 {len(fits)}개) — 표 전체 배율을 그대로 쓴다"
+                )
+                continue
+            factor = fits.pop()
+            if current is not None and current.factor == factor:
+                continue
+            out[(key, fld.name)] = factor
+    return out
+
+
+def _to_si(
+    tables: dict[str, XTable],
+    scales: dict[str, UnitScale],
+    overrides: dict[tuple[str, str], float] | None = None,
+) -> dict[str, XTable]:
     factors = {k: s.factor for k, s in scales.items() if s.factor not in (None, 1.0)}
-    if not factors:
+    overrides = overrides or {}
+    if not factors and not overrides:
         return dict(tables)
     out: dict[str, XTable] = {}
     for key, tbl in tables.items():
-        scaled = {f.name: factors[f.unit] for f in tbl.fields if f.unit in factors}
+        scaled = {
+            f.name: factor
+            for f in tbl.fields
+            if (factor := overrides.get((key, f.name), factors.get(f.unit))) not in (None, 1.0)
+        }
         if not scaled:
             out[key] = tbl
             continue
@@ -550,7 +607,7 @@ def bind_results(sdf: str | Path | DisplayModel, xml: str | Path) -> BoundModel:
         warnings.append("SDF 에 유체 밀도가 없다 — 압력 배율을 실측하지 못한다")
 
     scales = _resolve_scales(doc, model, warnings)
-    tables = _to_si(doc.tables, scales)
+    tables = _to_si(doc.tables, scales, _field_scales(doc, scales, warnings))
 
     pin = _by_name(tables, "Pipes-input")
     pres = _by_name(tables, "Pipes-results")

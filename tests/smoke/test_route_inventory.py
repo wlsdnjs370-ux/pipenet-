@@ -32,6 +32,10 @@ def _load_app():
     for p in (str(REPO_ROOT), core):
         if p not in sys.path:
             sys.path.insert(0, p)
+    # 모듈 C 라우트는 이 플래그로 갈린다. 플래그가 .env(비추적)에 있으면 인벤토리가
+    # 기계마다 달라진다 — 여기서 못박아 baseline 이 항상 전량을 덮게 한다.
+    # load_dotenv 는 이미 있는 환경변수를 덮지 않으므로 이 설정이 이긴다.
+    os.environ["DESIGN_WORKBENCH_ENABLED"] = "1"
     spec = importlib.util.spec_from_file_location(
         "server_app_smoke", str(REPO_ROOT / "대조 서버.py"))
     mod = importlib.util.module_from_spec(spec)

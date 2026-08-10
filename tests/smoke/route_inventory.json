@@ -33,6 +33,139 @@
     "rule": "/api/cad-sdf-ai-region-match"
   },
   {
+    "endpoint": "design_gate_items",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/design/c1/gate_items/<sid>"
+  },
+  {
+    "endpoint": "design_c1_recognize",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/design/c1/recognize"
+  },
+  {
+    "endpoint": "design_c2_constraints",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/design/c2/constraints"
+  },
+  {
+    "endpoint": "design_c2b_esfr",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/design/c2b/esfr"
+  },
+  {
+    "endpoint": "design_c3_candidates",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/design/c3/candidates/<sid>"
+  },
+  {
+    "endpoint": "design_c3_valves",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/design/c3/valves"
+  },
+  {
+    "endpoint": "design_c3_zones",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/design/c3/zones"
+  },
+  {
+    "endpoint": "design_c4_heads",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/design/c4/heads"
+  },
+  {
+    "endpoint": "design_c5_route",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/design/c5/route"
+  },
+  {
+    "endpoint": "design_checks",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/design/checks/<sid>"
+  },
+  {
+    "endpoint": "design_emit",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/design/emit"
+  },
+  {
+    "endpoint": "design_emit_file",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/design/emit/<sid>/<name>"
+  },
+  {
+    "endpoint": "design_gate_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/design/gate/confirm"
+  },
+  {
+    "endpoint": "design_gate_edit",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/design/gate/edit"
+  },
+  {
+    "endpoint": "design_session_create",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/design/session"
+  },
+  {
+    "endpoint": "design_session_status",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/design/session/<sid>"
+  },
+  {
     "endpoint": "export_xlsx",
     "methods": [
       "OPTIONS",
@@ -81,6 +214,47 @@
       "POST"
     ],
     "rule": "/api/kfp_sdf/preview"
+  },
+  {
+    "endpoint": "module_d_book",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-d/book"
+  },
+  {
+    "endpoint": "module_d_draw",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-d/draw"
+  },
+  {
+    "endpoint": "module_d_load",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-d/load"
+  },
+  {
+    "endpoint": "module_d_report",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-d/report"
+  },
+  {
+    "endpoint": "module_d_result",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-d/result/<job_id>/<path:filename>"
   },
   {
     "endpoint": "remote30_auto_process",
@@ -648,6 +822,15 @@
     "rule": "/design-automation-module-8"
   },
   {
+    "endpoint": "design_workbench_page",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/design-workbench"
+  },
+  {
     "endpoint": "kfp_sdf_converter_page",
     "methods": [
       "GET",
@@ -681,6 +864,15 @@
       "OPTIONS"
     ],
     "rule": "/logout"
+  },
+  {
+    "endpoint": "module_d_output_page",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/module-d-output"
   },
   {
     "endpoint": "print_report",

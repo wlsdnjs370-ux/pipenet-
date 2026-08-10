@@ -132,11 +132,16 @@ def _shape_digest(pdf: Path) -> str:
 
 
 # ── 값 정합 ─────────────────────────────────────────────────────────────────
+#
+# 아래 세 검사는 이름표를 켠 채로 그린다. 기본값은 원본 SDF 를 따르는데 제출용
+# 두 파일 모두 이름표가 꺼져 있어, 그대로 두면 PDF 에 값만 남아 어느 관로의
+# 값인지 짝지을 수 없다. 이름표는 값을 식별하기 위한 검사 도구다.
+_TAGGED = {"show_link_labels": True, "show_node_labels": True}
 
 
 def test_flow_labels_match_xml(hand, tmp_path):
     pdf = tmp_path / "flow.pdf"
-    render_iso(hand, pdf, preset="유량본")
+    render_iso(hand, pdf, preset="유량본", **_TAGGED)
     drawn, _ = _drawn(pdf)
     checked = 0
     for row in _table(HAND_XML, "Pipes-results"):
@@ -150,7 +155,7 @@ def test_flow_labels_match_xml(hand, tmp_path):
 
 def test_pressure_labels_match_xml(hand, tmp_path):
     pdf = tmp_path / "press.pdf"
-    render_iso(hand, pdf, preset="압력본")
+    render_iso(hand, pdf, preset="압력본", **_TAGGED)
     links, nodes = _drawn(pdf)
     for row in _table(HAND_XML, "Pipes-results"):
         got = links.get(_key(row["Label"]))
@@ -172,7 +177,7 @@ def test_pressure_labels_match_xml(hand, tmp_path):
 def test_bore_labels_match_xml(auto, tmp_path):
     # 호칭경은 mm → m → mm 로 두 번 환산된다. 왕복해도 자리가 밀리면 안 된다.
     pdf = tmp_path / "bore.pdf"
-    render_iso(auto, pdf, preset="압력본_옥내소화전")
+    render_iso(auto, pdf, preset="압력본_옥내소화전", **_TAGGED)
     links, _ = _drawn(pdf)
     checked = 0
     for row in _table(AUTO_XML, "Pipes-input"):
@@ -400,6 +405,30 @@ def test_heads_without_a_direction_are_derived_and_declared(auto, tmp_path):
     report = render_iso(auto, tmp_path / "heads.pdf", link_item="Pipe volumetric flow")
     assert len(report.nozzles_derived) == 30 and report.nozzles_undirected == ()
     assert any("유도해 그린 것 30개" in w for w in report.warnings)
+
+
+# ── 원본 표시 설정 따르기 ───────────────────────────────────────────────────
+
+
+def test_default_follows_the_switches_the_file_was_saved_with(hand, tmp_path):
+    # 제출용 두 파일 모두 PIPENET 이 이름표를 끄고 화살표를 켠 채로 저장했다.
+    seen = hand.model.source_display
+    assert (seen.link_labels, seen.node_labels, seen.flow_arrows) == (False, False, True)
+
+    report = render_iso(hand, tmp_path / "asis.pdf", preset="유량본")
+    assert (report.link_labels, report.node_labels, report.flow_arrows) == (False, False, True)
+
+    # 이름표가 빠진 만큼 글자가 줄어야 한다 — 값 글자는 그대로 남는다.
+    bare = len(_text_items(tmp_path / "asis.pdf"))
+    render_iso(hand, tmp_path / "tagged.pdf", preset="유량본", **_TAGGED)
+    assert bare < len(_text_items(tmp_path / "tagged.pdf"))
+
+
+def test_caller_overrides_what_the_file_says(hand, tmp_path):
+    report = render_iso(hand, tmp_path / "over.pdf", preset="유량본",
+                        show_link_labels=True, show_arrows=False)
+    assert report.link_labels is True and report.flow_arrows is False
+    assert report.node_labels is False           # 시키지 않은 것은 원본을 따른다
 
 
 def test_unknown_display_item_is_refused(hand, tmp_path):

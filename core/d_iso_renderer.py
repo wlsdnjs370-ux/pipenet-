@@ -378,6 +378,10 @@ class RenderReport:
     link_item: str
     node_item: str
     orientation: str
+    # 실제로 쓴 스위치. None 으로 부르면 원본 SDF 설정이 들어오므로 되읽을 길이 필요하다.
+    link_labels: bool = True
+    node_labels: bool = True
+    flow_arrows: bool = True
     pipes_drawn: int = 0
     pipes_unplaced: tuple[str, ...] = ()
     devices_drawn: int = 0
@@ -541,8 +545,9 @@ def render_iso(
     preset: str | None = None,
     link_item: str | None = None,
     node_item: str | None = None,
-    show_labels: bool = True,
-    show_arrows: bool = True,
+    show_link_labels: bool | None = None,
+    show_node_labels: bool | None = None,
+    show_arrows: bool | None = None,
     section: str = "",
     also_png: str | Path | None = None,
 ) -> RenderReport:
@@ -553,10 +558,21 @@ def render_iso(
 
     ``also_png`` 를 주면 같은 도형에서 미리보기 PNG 를 한 장 더 뽑는다. 두 번
     호출하면 도형을 두 번 짓는다 — 짓는 값은 같으니 한 번만 짓는다.
+
+    이름표·화살표 스위치를 ``None`` 으로 두면 원본 SDF 의 ``<Display-options>``,
+    즉 PIPENET 이 자기 화면에 쓰던 설정을 그대로 따른다. 원본에 그 항목이 없을
+    때만 켠다.
     """
     bound = source if isinstance(source, BoundModel) else None
     model = bound.model if bound else source
     out = Path(output)
+
+    seen = model.source_display
+    def follow(given: bool | None, stored: bool | None) -> bool:
+        return given if given is not None else (True if stored is None else stored)
+    link_labels = follow(show_link_labels, seen.link_labels)
+    node_labels = follow(show_node_labels, seen.node_labels)
+    arrows = follow(show_arrows, seen.flow_arrows)
 
     chosen = PRESETS[preset] if preset else None
     link_name = link_item or (chosen.link if chosen else "None")
@@ -717,7 +733,7 @@ def render_iso(
         if angle > 90 or angle < -90:
             angle += 180
         parts = []
-        if show_labels:
+        if link_labels:
             parts.append(label)
         if banded:
             text = link_fmt.text(link_values.get(label))
@@ -739,12 +755,12 @@ def render_iso(
                 continue
             requests.append(LabelRequest(label, text, tip, 0.0, "nozzle"))
 
-    if show_labels or node.name != "None":
+    if node_labels or node.name != "None":
         for label, row in nodes.items():
             point = coords.get(label)
             if point is None:
                 continue
-            parts = [label] if show_labels else []
+            parts = [label] if node_labels else []
             if node.name != "None":
                 parts.append(node_fmt.text(node_values.get(label)))
             text = " ".join(p for p in parts if p)
@@ -779,7 +795,7 @@ def render_iso(
                 fontsize=_LABEL_PT, zorder=7)
 
     # ── 흐름 화살표 ──
-    if show_arrows:
+    if arrows:
         for label, path in placed.items():
             result = links[label].result
             flow = result.flow_m3s if result else None
@@ -891,6 +907,9 @@ def render_iso(
         link_item=link.name,
         node_item=node.name,
         orientation="landscape" if landscape else "portrait",
+        link_labels=link_labels,
+        node_labels=node_labels,
+        flow_arrows=arrows,
         pipes_drawn=len(segments),
         pipes_unplaced=tuple(unplaced),
         devices_drawn=len(device_segments),

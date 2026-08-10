@@ -40,6 +40,29 @@ def hand():
     return load_display_model(HAND)
 
 
+def test_source_display_reads_what_pipenet_saved(hand):
+    seen = hand.source_display
+    assert (seen.link_labels, seen.node_labels) == (False, False)
+    assert (seen.flow_arrows, seen.link_values, seen.node_values) == (True, True, False)
+    assert seen.grid == "isometric"
+
+
+def test_label_all_overrides_the_individual_switches():
+    # `label-all='1'` 은 PIPENET 의 "전부 표시" 다. 개별 스위치가 0 이어도 이긴다.
+    # 제출용 파일은 둘 다 0 이라 실물로는 확인할 수 없어 여기서 확인한다.
+    model = load_display_model(HAND)
+    model.display_options["Label-display"]["label-all"] = "1"
+    assert (model.source_display.link_labels, model.source_display.node_labels) == (True, True)
+
+
+def test_missing_display_switch_stays_unknown():
+    # 없는 항목을 켬/끔 어느 쪽으로도 지어내지 않는다 — 원본이 무엇을 시켰는지
+    # 다시 알 수 없게 된다.
+    model = load_display_model(HAND)
+    del model.display_options["Label-display"]["link-labels"]
+    assert model.source_display.link_labels is None
+
+
 def test_cp949_leaves_ascii_untouched():
     for s in ("", "PH2. FL -136.0M", "4F  AV", "A/V", "Pipe velocity", "150.0"):
         assert restore_cp949(s) == s

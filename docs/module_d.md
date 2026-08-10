@@ -64,10 +64,23 @@ UI 드롭다운·배치 프리셋·라우트 검증이 **이 한 벌만** 본다
 `Pipe type` 80 · `None` 55 · `Pipe volumetric flow` 22), 노즐 유무로도 갈리지
 않았다(260 세트 전량 노즐 보유). 호출자가 지정한다.
 
-## 5. `show_labels` 의 실제 의미
+## 5. 이름표·화살표 스위치 — 기본값은 원본이 정한다
 
-**이름표(태그)만 끈다.** 고른 표시 항목의 값 글자는 그대로 남는다
-(`d_iso_renderer.py` 의 `if show_labels: parts.append(label)`).
+`show_link_labels` / `show_node_labels` / `show_arrows` 는 셋 다 `bool | None` 이다.
+`None`(기본)이면 SDF 의 `<Display-options>`, 즉 **PIPENET 이 자기 화면에 쓰던
+설정**을 그대로 따른다. 원본에 그 항목이 아예 없을 때만 켠다.
+
+```
+<Label-display link-labels='0' node-labels='0' label-all='0' ...>
+<Results-display flow-arrows='1' links='1' nodes='0'>
+```
+
+대명동 수작업본·자동본 둘 다 위와 같다 — PIPENET 은 이름표를 전부 끈 채 관로
+결과값만 찍는다. 우리가 이름표를 켜 두면 수작업본 207 / 자동본 273 글자가 더
+얹혀 원본보다 지저분해진다. "PIPENET 출력 그대로"가 목표라면 손대지 않으면 된다.
+`label-all='1'` 은 개별 스위치를 덮어쓴다.
+
+**스위치는 이름표(태그)만 끈다.** 고른 표시 항목의 값 글자는 그대로 남는다.
 글자를 하나도 남기지 않으려면 이름표를 끄고 표시 항목도 둘 다 `None` 으로 둔다.
 UI 문구를 "라벨"이 아니라 "이름표"로 적은 이유다.
 

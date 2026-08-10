@@ -195,7 +195,10 @@ class DisplayModel:
         return SourceDisplay(
             link_labels=named("link-labels"),
             node_labels=named("node-labels"),
-            flow_arrows=_flag(result, "flow-arrows"),
+            # 흐름 화살표는 이름이 그럴듯한 `Results-display/@flow-arrows` 가 아니라
+            # `Label-display/@arrows` 가 켠다. 코퍼스에서 flow-arrows="0" 인 13 세트
+            # 전부 PIPENET 원본 PDF 에 화살표가 그려져 있다.
+            flow_arrows=_flag(label, "arrows"),
             link_values=_flag(result, "links"),
             node_values=_flag(result, "nodes"),
             grid=self.grid.get("grid", ""),

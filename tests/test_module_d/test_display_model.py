@@ -47,6 +47,16 @@ def test_source_display_reads_what_pipenet_saved(hand):
     assert seen.grid == "isometric"
 
 
+def test_flow_arrows_come_from_the_label_block_not_the_results_block():
+    # 코퍼스 334 세트 중 `Results-display/@flow-arrows="0"` 인 13 세트 전량이
+    # PIPENET 원본 PDF 에 화살표를 그려 놨다. 그 속성은 화살표 스위치가 아니다.
+    model = load_display_model(HAND)
+    model.display_options["Results-display"]["flow-arrows"] = "0"
+    assert model.source_display.flow_arrows is True
+    model.display_options["Label-display"]["arrows"] = "0"
+    assert model.source_display.flow_arrows is False
+
+
 def test_label_all_overrides_the_individual_switches():
     # `label-all='1'` 은 PIPENET 의 "전부 표시" 다. 개별 스위치가 0 이어도 이긴다.
     # 제출용 파일은 둘 다 0 이라 실물로는 확인할 수 없어 여기서 확인한다.

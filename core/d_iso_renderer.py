@@ -75,6 +75,14 @@ _STUB_SPAN_RATIO = 0.01208
 # 유도한 것은 실측과 같은 잉크로 그리지 않는다 — 점선 + 이 색으로 갈라 보인다.
 _DERIVED_COLOUR = "#c2410c"
 
+# 흐름 화살표. PIPENET 이 직접 출력한 ISO PDF 255 장을 SDF 모델 좌표에 맞춰 실측한
+# 값이다 — 채운 삼각형이 아니라 획 두 개짜리 열린 갈매기표이고, 크기는 도면 크기가
+# 아니라 모델 좌표에 붙어 있다(날개 6.76 단위, 변동계수 0.029). 벌어진각 53.13° 는
+# 2·atan(½) 이고, 자리는 관로 호길이의 0.687 지점, 꼭짓점은 4902/4902 가 진행 방향.
+_ARROW_WING_UNITS = 6.76
+_ARROW_HALF_ANGLE = math.degrees(math.atan(0.5))
+_ARROW_AT = 0.687
+
 _KOREAN_FONTS = ("malgun.ttf", "malgunsl.ttf", "NanumGothic.ttf", "gulim.ttc", "batang.ttc")
 
 # 장치 링크 종류별 기호. PIPENET 기호를 베끼지 않고 우리 표기를 쓴다 (지시서 7-2).
@@ -367,6 +375,31 @@ def _longest_segment(path: Sequence[tuple[float, float]]
             best, mid = span, ((x0 + x1) / 2, (y0 + y1) / 2)
             angle = math.degrees(math.atan2(y1 - y0, x1 - x0))
     return mid, angle
+
+
+def _along(path: Sequence[tuple[float, float]], fraction: float
+           ) -> tuple[tuple[float, float], float] | None:
+    """폴리라인 호길이의 `fraction` 지점과 그 자리의 진행각."""
+    spans = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(path, path[1:])]
+    total = sum(spans)
+    if total <= 0:
+        return None
+    want, acc = total * fraction, 0.0
+    for (a, b), span in zip(zip(path, path[1:]), spans):
+        if span and acc + span >= want:
+            t = (want - acc) / span
+            return ((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])),
+                    math.degrees(math.atan2(b[1] - a[1], b[0] - a[0])))
+        acc += span
+    return None
+
+
+def _chevron(tip: tuple[float, float], angle: float, wing: float
+             ) -> list[list[tuple[float, float]]]:
+    """꼭짓점이 `angle` 쪽을 보는 갈매기표 — 획 두 개. 채우지 않는다."""
+    back = [angle + 180 - _ARROW_HALF_ANGLE, angle + 180 + _ARROW_HALF_ANGLE]
+    return [[tip, (tip[0] + wing * math.cos(math.radians(a)),
+                   tip[1] + wing * math.sin(math.radians(a)))] for a in back]
 
 
 # ── 렌더 ────────────────────────────────────────────────────────────────────
@@ -732,6 +765,35 @@ def render_iso(
         ax.scatter([p[0] for p in node_points], [p[1] for p in node_points],
                    s=2.5, c=node_colours, marker="o", linewidths=0, zorder=4)
 
+    # ── 흐름 화살표 ──
+    # 라벨보다 먼저 자리를 잡는다. D4 에 피해야 할 자리로 넘겨야 값 글자가 화살표
+    # 위에 앉아 방향을 가리지 않는다.
+    arrow_strokes: list[list[tuple[float, float]]] = []
+    arrow_colours: list[str] = []
+    arrow_widths: list[float] = []
+    arrow_boxes: list[tuple[float, float, float, float]] = []
+    if arrows:
+        for (label, path), colour, width in zip(placed.items(), colours, widths):
+            result = links[label].result
+            flow = result.flow_m3s if result else None
+            if not flow:
+                continue
+            spot = _along(path, _ARROW_AT)
+            if spot is None:
+                continue
+            tip, angle = spot
+            wings = _chevron(tip, angle + (180 if flow < 0 else 0), _ARROW_WING_UNITS)
+            arrow_strokes.extend(wings)
+            arrow_colours.extend([colour] * len(wings))
+            arrow_widths.extend([width] * len(wings))
+            xs = [x for wing in wings for x, _ in wing]
+            ys = [y for wing in wings for _, y in wing]
+            arrow_boxes.append((min(xs), min(ys), max(xs), max(ys)))
+    if arrow_strokes:
+        ax.add_collection(LineCollection(arrow_strokes, colors=arrow_colours,
+                                         linewidths=arrow_widths, capstyle="butt",
+                                         zorder=3))
+
     # ── 글자 (D4 가 자리를 정한다) ──
     requests: list[LabelRequest] = []
     for label, path in placed.items():
@@ -787,6 +849,7 @@ def render_iso(
         for group in points.values():
             fixed.extend((x - half, y - half, x + half, y + half) for x, y in group)
     fixed.extend((x - tri, y - tri, x + tri, y + tri) for x, y in nozzle_tips)
+    fixed.extend(arrow_boxes)
     labels, layout = lay_out(requests, measure, obstacles=fixed)
 
     leaders = [lab.leader for lab in labels if lab.leader]
@@ -799,19 +862,6 @@ def render_iso(
         ax.text(lab.x, lab.y, lab.text, rotation=lab.angle, rotation_mode="anchor",
                 ha="center", va="center", color="#111111", fontproperties=font,
                 fontsize=_LABEL_PT, zorder=7)
-
-    # ── 흐름 화살표 ──
-    if arrows:
-        for label, path in placed.items():
-            result = links[label].result
-            flow = result.flow_m3s if result else None
-            if not flow:
-                continue
-            (mx, my), angle = _longest_segment(path)
-            if flow < 0:
-                angle += 180
-            ax.plot([mx], [my], marker=(3, 0, angle - 90), markersize=2.2,
-                    color="#111111", zorder=6)
 
     # ── 도면 주기 ──
     for text in model.texts:

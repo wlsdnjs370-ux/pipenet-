@@ -499,6 +499,97 @@ def test_derived_head_lines_are_not_dressed_up_as_measured(auto, tmp_path):
                    for got in stubs), f"유도한 헤드 {z.label} 의 선이 없다"
 
 
+# ── 흐름 화살표 ─────────────────────────────────────────────────────────────
+
+# PIPENET 이 직접 출력한 ISO PDF 255 장을 SDF 모델 좌표에 맞춰 실측한 값이다.
+# 렌더러에서 import 하지 않고 다시 적는다 — 같은 상수를 돌려 쓰면 값이 틀려도
+# 양쪽이 똑같이 틀려서 검사가 통과한다.
+_WING_UNITS = 6.76           # 날개 길이(모델 단위). 변동계수 0.029
+_WING_HALF_ANGLE = 26.565    # atan(1/2). 벌어진각 53.13°, 변동계수 0.025
+_ARROW_FRACTION = 0.687      # 관로 호길이의 이 지점. 4분위 0.672/0.687/0.697
+
+
+def _chevron_at(path, wing, reverse):
+    """호길이 0.687 지점에 꼭짓점을 둔 갈매기표 두 획."""
+    import math
+
+    spans = [math.dist(a, b) for a, b in zip(path, path[1:])]
+    want, acc = sum(spans) * _ARROW_FRACTION, 0.0
+    for (a, b), span in zip(zip(path, path[1:]), spans):
+        if span and acc + span >= want:
+            t = (want - acc) / span
+            tip = (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
+            ang = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0])) + (180 if reverse else 0)
+            return [[tip, (tip[0] + wing * math.cos(math.radians(ang + 180 + side)),
+                           tip[1] + wing * math.sin(math.radians(ang + 180 + side)))]
+                    for side in (-_WING_HALF_ANGLE, _WING_HALF_ANGLE)]
+        acc += span
+    raise AssertionError("호길이 지점을 찾지 못했다")
+
+
+def test_flow_arrows_are_pipe_coloured_chevrons(hand, tmp_path):
+    # PIPENET 은 채운 검은 화살촉이 아니라 관로와 같은 색·같은 선폭의 열린
+    # 갈매기표를 그린다. 크기는 도면 크기가 아니라 모델 좌표에 붙어 있다.
+    from core.d_result_binder import normalize_label
+
+    pdf = tmp_path / "arrows.pdf"
+    render_iso(hand, pdf, link_item="Pipe velocity")   # 관로가 띠 색이라 회색과 갈린다
+
+    model = hand.model
+    coords = {n.label: (n.x, n.y) for n in model.nodes}
+    to_pt = _data_to_pt(model)
+    origin, unit = to_pt(0.0, 0.0), to_pt(1.0, 0.0)
+    wing_pt = _WING_UNITS * (unit[0] - origin[0])
+
+    drawn = _stroked_paths(pdf)
+    strokes = [(colour, pts) for colour, pts in drawn if len(pts) == 2]
+
+    checked = 0
+    for pipe in model.pipes:
+        result = hand.pipes.get(normalize_label(pipe.label))
+        flow = result.flow_m3s if result else None
+        if not flow:
+            continue
+        path = [to_pt(*p) for p in
+                (coords[pipe.input_node], *pipe.waypoints, coords[pipe.output_node])]
+        colour = next(c for c, pts in drawn
+                      if len(pts) == len(path) and _same_segment(path, pts))
+        assert isinstance(colour, tuple), f"관로 {pipe.label} 가 띠 색으로 안 그려졌다"
+        for want in _chevron_at(path, wing_pt, flow < 0):
+            assert any(c == colour and _same_segment(want, pts) for c, pts in strokes), \
+                f"관로 {pipe.label} 의 갈매기표 획이 없다"
+        checked += 1
+    assert checked == 103
+
+
+def test_arrows_switched_off_leave_the_pipes_bare(hand, tmp_path):
+    from core.d_result_binder import normalize_label
+
+    on, off = tmp_path / "on.pdf", tmp_path / "off.pdf"
+    render_iso(hand, on, link_item="Pipe velocity")
+    render_iso(hand, off, link_item="Pipe velocity", show_arrows=False)
+
+    model = hand.model
+    coords = {n.label: (n.x, n.y) for n in model.nodes}
+    to_pt = _data_to_pt(model)
+    origin, unit = to_pt(0.0, 0.0), to_pt(1.0, 0.0)
+    wing_pt = _WING_UNITS * (unit[0] - origin[0])
+
+    pipe = next(p for p in model.pipes
+                if (hand.pipes.get(normalize_label(p.label)) or None)
+                and hand.pipes[normalize_label(p.label)].flow_m3s)
+    flow = hand.pipes[normalize_label(pipe.label)].flow_m3s
+    path = [to_pt(*p) for p in
+            (coords[pipe.input_node], *pipe.waypoints, coords[pipe.output_node])]
+    want = _chevron_at(path, wing_pt, flow < 0)[0]
+
+    def has_wing(pdf):
+        return any(len(pts) == 2 and _same_segment(want, pts)
+                   for _, pts in _stroked_paths(pdf))
+
+    assert has_wing(on) and not has_wing(off)
+
+
 # ── 원본 표시 설정 따르기 ───────────────────────────────────────────────────
 
 

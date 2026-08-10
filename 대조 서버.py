@@ -3433,6 +3433,8 @@ SYSTEM_OUTPUT_DIR = BASE_DIR / "data" / "system_runs"
 SYSTEM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 MACHINEROOM_OUTPUT_DIR = BASE_DIR / "data" / "machineroom_runs"
 MACHINEROOM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+D_OUTPUT_DIR = BASE_DIR / "data" / "d_output_runs"
+D_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # 모듈 C 설계 자동화 — 기본 off. 켜지기 전까지 /api/design/* 은 존재하지 않는다.
 DESIGN_SESSION_DIR = BASE_DIR / "data" / "design_sessions"
 DESIGN_WORKBENCH_ENABLED = _os_for_auth.environ.get("DESIGN_WORKBENCH_ENABLED") == "1"
@@ -7113,6 +7115,12 @@ _routes_r30_design.register(
     app, DESIGN_SESSION_DIR=DESIGN_SESSION_DIR, UPLOAD_DIR=UPLOAD_DIR,
     INSPECT_CACHE_DIR=INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION=INSPECT_CACHE_VERSION,
     enabled=DESIGN_WORKBENCH_ENABLED)
+
+import routes.d_output as _routes_d_output
+_routes_d_output.register(
+    app, D_OUTPUT_DIR=D_OUTPUT_DIR, _err500=_err500, _register_job=_register_job,
+    _save_upload=_save_upload, _serve_run_file=_serve_run_file,
+    _sweep_old_run_dirs=_sweep_old_run_dirs)
 
 try:
     from server_patch import register_v4_routes

@@ -67,6 +67,14 @@ _LEADER_COLOUR = "#7f7f7f"
 _DEVICE_PT = 3.4
 _EQUIPMENT_PT = 2.6
 
+# 노즐 스텁. SDF 가 @/n 좌표를 입력노드와 같은 자리에 두면 헤드가 분기점 위에 겹쳐
+# 찍힌다. 원본은 고칠 수 없으므로(지시서 7-3) 그릴 때 방향을 유도한다. 근거는 참조
+# 코퍼스 SDF 334 개 / 노즐 3437 개 실측이다 — 입사 관로가 있는 3115 개 중 3079 개
+# (98.8%)가 관로의 연장선이고 수직은 0 건, 길이는 도면 span 의 중앙값 1.208% 였다.
+_STUB_SPAN_RATIO = 0.01208
+# 유도한 것은 실측과 같은 잉크로 그리지 않는다 — 점선 + 이 색으로 갈라 보인다.
+_DERIVED_COLOUR = "#c2410c"
+
 _KOREAN_FONTS = ("malgun.ttf", "malgunsl.ttf", "NanumGothic.ttf", "gulim.ttc", "batang.ttc")
 
 # 장치 링크 종류별 기호. PIPENET 기호를 베끼지 않고 우리 표기를 쓴다 (지시서 7-2).
@@ -292,6 +300,62 @@ def _point_at(path: Sequence[tuple[float, float]], t: float) -> tuple[float, flo
     return path[-1]
 
 
+def _incident_dirs(pipes: Sequence[DisplayPipe], coords: dict[str, tuple[float, float]],
+                   base: str) -> list[tuple[float, float]]:
+    """base 노드에 붙은 관로가 base 에서 뻗어 나가는 단위벡터들."""
+    origin = coords[base]
+    out: list[tuple[float, float]] = []
+    for pipe in pipes:
+        if pipe.input_node == base:
+            ahead = [*pipe.waypoints, coords.get(pipe.output_node)]
+        elif pipe.output_node == base:
+            ahead = [*reversed(pipe.waypoints), coords.get(pipe.input_node)]
+        else:
+            continue
+        for point in ahead:
+            if point is None:
+                continue
+            dx, dy = point[0] - origin[0], point[1] - origin[1]
+            dist = math.hypot(dx, dy)
+            if dist > 1e-9:
+                out.append((dx / dist, dy / dist))
+                break
+    return out
+
+
+def _nozzle_tips(nozzles: dict[str, Any], pipes: Sequence[DisplayPipe],
+                 coords: dict[str, tuple[float, float]], span: float
+                 ) -> tuple[dict[str, tuple[float, float]], list[str], list[str]]:
+    """헤드 삼각형의 꼭짓점 자리. 원본이 방향을 준 것은 그대로 쓰고, 출력노드가
+    입력노드와 겹쳐 방향이 없는 것만 유도한다. 어느 쪽인지는 갈라서 돌려준다 —
+    유도한 것을 실측인 척 그리지 않기 위해서다."""
+    stub = span * _STUB_SPAN_RATIO
+    tips: dict[str, tuple[float, float]] = {}
+    derived: list[str] = []
+    undirected: list[str] = []
+    for label, row in nozzles.items():
+        base = coords.get(row.nozzle.input_node)
+        if base is None:
+            continue
+        tip = coords.get(row.nozzle.output_node)
+        if tip is not None and tip != base:
+            tips[label] = tip
+            continue
+        dirs = _incident_dirs(pipes, coords, row.nozzle.input_node)
+        sx = sum(d[0] for d in dirs)
+        sy = sum(d[1] for d in dirs)
+        mag = math.hypot(sx, sy)
+        if mag <= 1e-9:
+            # 입사 관로가 없거나 서로 상쇄된다 — 방향을 정할 근거가 없다.
+            # 자리를 지어내지 않고 입력노드에 둔 채 리포트에 올린다.
+            undirected.append(label)
+            tips[label] = base
+            continue
+        tips[label] = (base[0] - sx / mag * stub, base[1] - sy / mag * stub)
+        derived.append(label)
+    return tips, derived, undirected
+
+
 def _longest_segment(path: Sequence[tuple[float, float]]
                      ) -> tuple[tuple[float, float], float]:
     """가장 긴 구간의 중점과 방향각 — 값 라벨을 놓을 자리다."""
@@ -318,6 +382,9 @@ class RenderReport:
     pipes_unplaced: tuple[str, ...] = ()
     devices_drawn: int = 0
     nozzles_drawn: int = 0
+    # 원본이 자리를 주지 않아 유도해 그린 헤드 / 유도할 근거조차 없던 헤드. 전량 나열한다.
+    nozzles_derived: tuple[str, ...] = ()
+    nozzles_undirected: tuple[str, ...] = ()
     blank_link_values: tuple[str, ...] = ()
     blank_node_values: tuple[str, ...] = ()
     # 결과에는 있는데 도면에 형상이 없어 그리지 못한 라벨. 전량 나열한다.
@@ -596,21 +663,33 @@ def render_iso(
 
     # ── 노즐 ──
     tri = max(span_x, span_y) * 0.006
+    tips, derived_nozzles, undirected_nozzles = _nozzle_tips(
+        nozzles, model.pipes, coords, max(span_x, span_y))
+    is_derived = set(derived_nozzles)
     drawn_nozzles = 0
     nozzle_tips: list[tuple[float, float]] = []
+    stubs: list[list[tuple[float, float]]] = []
     for label, row in nozzles.items():
         base = coords.get(row.nozzle.input_node)
-        tip = coords.get(row.nozzle.output_node, base)
-        if base is None:
+        tip = tips.get(label)
+        if base is None or tip is None:
             continue
         drawn_nozzles += 1
         nozzle_tips.append(tip)
         angle = math.atan2(tip[1] - base[1], tip[0] - base[0]) if tip != base else -math.pi / 2
+        estimated = label in is_derived
+        if estimated:
+            stubs.append([base, tip])
         ax.add_patch(Polygon(
             [(tip[0], tip[1]),
              (tip[0] - tri * math.cos(angle - 0.4), tip[1] - tri * math.sin(angle - 0.4)),
              (tip[0] - tri * math.cos(angle + 0.4), tip[1] - tri * math.sin(angle + 0.4))],
-            closed=True, facecolor="#222222", edgecolor="none", zorder=6))
+            closed=True, facecolor="#ffffff" if estimated else "#222222",
+            edgecolor=_DERIVED_COLOUR if estimated else "none",
+            linewidth=0.5 if estimated else 0.0, zorder=6))
+    if stubs:
+        ax.add_collection(LineCollection(stubs, colors=_DERIVED_COLOUR, linewidths=0.4,
+                                         linestyles=[(0, (2.0, 1.5))], zorder=5))
 
     # ── 노드 ──
     # 밴드마다 따로 그리지 않고 한 컬렉션에 색만 나눠 담는다 — 그래야 표시 항목을
@@ -651,7 +730,7 @@ def render_iso(
 
     if link.scope == "nozzle" and link.name != "None":
         for label, row in nozzles.items():
-            tip = coords.get(row.nozzle.output_node) or coords.get(row.nozzle.input_node)
+            tip = tips.get(label)
             text = link_fmt.text(link_values.get(label))
             if tip is None:
                 continue
@@ -789,6 +868,17 @@ def render_iso(
             f"겹치지 않는 자리를 못 찾은 라벨 {len(layout.dropped)}개 — 겹친 채 두지 않고 "
             f"그리지 않았다: {', '.join(layout.dropped[:12])}"
         )
+    if derived_nozzles:
+        warnings.append(
+            f"원본이 헤드 자리를 주지 않아 유도해 그린 것 {len(derived_nozzles)}개 — 입사 "
+            f"관로의 연장선에 도면 span 의 {_STUB_SPAN_RATIO * 100:.3f}% 만큼 내고 점선·"
+            f"흰 삼각으로 갈라 표시했다: {', '.join(derived_nozzles[:12])}"
+        )
+    if undirected_nozzles:
+        warnings.append(
+            f"입사 관로가 없어 방향을 정할 근거가 없는 헤드 {len(undirected_nozzles)}개 — "
+            f"자리를 지어내지 않고 입력노드에 겹쳐 두었다: {', '.join(undirected_nozzles[:12])}"
+        )
     undrawn_pipes = bound.report.xml_only_pipes if bound else ()
     undrawn_nodes = bound.report.xml_only_nodes if bound else ()
     if undrawn_pipes or undrawn_nodes:
@@ -805,6 +895,8 @@ def render_iso(
         pipes_unplaced=tuple(unplaced),
         devices_drawn=len(device_segments),
         nozzles_drawn=drawn_nozzles,
+        nozzles_derived=tuple(derived_nozzles),
+        nozzles_undirected=tuple(undirected_nozzles),
         blank_link_values=tuple(blank_links),
         blank_node_values=tuple(blank_nodes),
         undrawn_result_pipes=undrawn_pipes,

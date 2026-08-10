@@ -319,6 +319,89 @@ def test_report_lists_labels_it_could_not_draw(hand, tmp_path):
     assert report.blank_link_values == () and report.blank_node_values == ()
 
 
+# ── 헤드 배치 ───────────────────────────────────────────────────────────────
+
+# 스텁 길이. 렌더러에서 import 하지 않고 다시 적는다 — 같은 상수를 돌려 쓰면 값이
+# 틀려도 양쪽이 똑같이 틀려서 검사가 통과한다. 근거는 참조 코퍼스 SDF 334 개 /
+# 노즐 3437 개의 중앙값(도면 span 의 1.208%)이다.
+_STUB_RATIO = 0.01208
+
+
+def _head_tips(bound):
+    from types import SimpleNamespace
+
+    from core.d_iso_renderer import _nozzle_tips
+
+    model = bound.model
+    minx, miny, maxx, maxy = model.bounds()
+    span = max(maxx - minx, maxy - miny)
+    coords = {n.label: (n.x, n.y) for n in model.nodes}
+    rows = {z.label: SimpleNamespace(nozzle=z) for z in model.nozzles}
+    tips, derived, undirected = _nozzle_tips(rows, model.pipes, coords, span)
+    return tips, derived, undirected, span, coords, model
+
+
+def _outgoing_dirs(model, coords, base):
+    """base 에서 관로가 뻗어 나가는 방향. 렌더러 헬퍼를 쓰지 않고 다시 구한다."""
+    import math
+
+    origin = coords[base]
+    out = []
+    for pipe in model.pipes:
+        if pipe.input_node == base:
+            ahead = [*pipe.waypoints, coords.get(pipe.output_node)]
+        elif pipe.output_node == base:
+            ahead = [*reversed(pipe.waypoints), coords.get(pipe.input_node)]
+        else:
+            continue
+        for point in ahead:
+            if point is None:
+                continue
+            dx, dy = point[0] - origin[0], point[1] - origin[1]
+            dist = math.hypot(dx, dy)
+            if dist > 1e-9:
+                out.append((dx / dist, dy / dist))
+                break
+    return out
+
+
+def test_head_positions_given_by_the_file_are_left_alone(hand):
+    # 수작업본은 @/n 에 진짜 좌표가 있다. 원본이 정한 자리를 옮기지 않는다.
+    tips, derived, undirected, _, coords, model = _head_tips(hand)
+    assert derived == [] and undirected == []
+    for z in model.nozzles:
+        assert tips[z.label] == coords[z.output_node]
+
+
+def test_heads_without_a_direction_are_derived_and_declared(auto, tmp_path):
+    # 자동 SDF 는 @/n 좌표가 입력노드와 겹쳐 방향이 없다. 원본은 고칠 수 없으므로
+    # (지시서 7-3) 그릴 때 유도하되, 유도했다는 사실을 리포트가 전량 실어야 한다.
+    import math
+
+    tips, derived, undirected, span, coords, model = _head_tips(auto)
+    assert len(derived) == 30 and undirected == []
+
+    for z in model.nozzles:
+        base, tip = coords[z.input_node], tips[z.label]
+        assert coords[z.output_node] == base       # 원본이 방향을 주지 않았다는 전제
+        assert math.dist(base, tip) == pytest.approx(span * _STUB_RATIO, rel=1e-9)
+        # 입사 관로의 반대쪽 — 망 바깥으로 뻗는다 (코퍼스 3115 개 중 98.8% 의 규칙).
+        dirs = _outgoing_dirs(model, coords, z.input_node)
+        assert dirs
+        sx = sum(d[0] for d in dirs) / len(dirs)
+        sy = sum(d[1] for d in dirs) / len(dirs)
+        mag = math.hypot(sx, sy)
+        ux, uy = (tip[0] - base[0]) / math.dist(base, tip), (tip[1] - base[1]) / math.dist(base, tip)
+        assert (sx / mag) * ux + (sy / mag) * uy == pytest.approx(-1.0, abs=1e-9)
+
+    # 헤드가 서로 다른 자리에 놓인다 — 겹쳐 찍히던 것이 이 검사에서 걸린다.
+    assert len(set(tips.values())) == 30
+
+    report = render_iso(auto, tmp_path / "heads.pdf", link_item="Pipe volumetric flow")
+    assert len(report.nozzles_derived) == 30 and report.nozzles_undirected == ()
+    assert any("유도해 그린 것 30개" in w for w in report.warnings)
+
+
 def test_unknown_display_item_is_refused(hand, tmp_path):
     with pytest.raises(ValueError, match="모르는 관로 표시 항목"):
         render_iso(hand, tmp_path / "x.pdf", link_item="Pipe colour")

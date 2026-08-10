@@ -964,7 +964,7 @@ def render_iso(
         warnings.append(
             f"원본이 헤드 자리를 주지 않아 유도해 그린 것 {len(derived_nozzles)}개 — 입사 "
             f"관로의 연장선에 도면 span 의 {_STUB_SPAN_RATIO * 100:.3f}% 만큼 내고 점선·"
-            f"흰 삼각으로 갈라 표시했다: {', '.join(derived_nozzles[:12])}"
+            f"주황 윤곽으로 갈라 표시했다: {', '.join(derived_nozzles[:12])}"
         )
     if undirected_nozzles:
         warnings.append(

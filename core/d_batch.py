@@ -185,12 +185,12 @@ def _attempt(name: str, out: Path,
                       seconds=time.perf_counter() - started)
 
 
-def _combine(parts: Sequence[PartResult], out: Path) -> None:
-    """나온 조각만 한 권으로. 조각 이름이 그대로 책갈피가 된다."""
+def combine_pdfs(parts: Sequence[tuple[Path, str]], out: Path) -> None:
+    """PDF 들을 한 권으로. 준 이름이 그대로 책갈피가 된다."""
     writer = PdfWriter()
     try:
-        for part in parts:
-            writer.append(str(part.path), outline_item=part.name)
+        for path, name in parts:
+            writer.append(str(path), outline_item=name)
         out.parent.mkdir(parents=True, exist_ok=True)
         with out.open("wb") as fh:
             writer.write(fh)
@@ -249,7 +249,7 @@ def process_set(file_set: FileSet, dest: str | Path, *,
     if combine and result.done:
         merged = dest / f"{file_set.stem}.pdf"
         try:
-            _combine(result.done, merged)
+            combine_pdfs([(p.path, p.name) for p in result.done], merged)
             result.combined = merged
         except Exception as exc:  # noqa: BLE001
             result.notes.append(f"합본을 만들지 못했다 — {_reason(exc)}")

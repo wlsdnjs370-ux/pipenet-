@@ -104,7 +104,7 @@ pressure 최대 0.009687(정밀도 1), 노즐 Calculated flow 최대 1e-11(정�
 |---|---|
 | `GET /module-d-output` | 워크벤치 화면 |
 | `POST /api/module-d/load` | SDF(필수) + 결과 XML(선택) → 잡 개설. **여기서만 파싱한다** |
-| `POST /api/module-d/draw` | 표시 항목을 골라 ISO 한 장 (PDF + 미리보기 PNG) |
+| `POST /api/module-d/draw` | 표시 항목을 여러 개 골라 관로×노드 조합마다 ISO 한 장씩 (낱장 PDF + 미리보기 PNG, 두 장 이상이면 합본도). 한 번에 24장까지 |
 | `POST /api/module-d/report` | 수리계산서 한 부. 결과 XML 이 없으면 400 |
 | `POST /api/module-d/book` | 계산서 + 프리셋 도면들을 한 권으로 |
 | `GET /api/module-d/result/<job>/<file>` | 산출물 내려받기 |

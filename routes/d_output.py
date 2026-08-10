@@ -22,7 +22,7 @@ from pathlib import Path
 
 from flask import jsonify, render_template, request
 
-from core.d_batch import DEFAULT_PRESETS, FileSet, process_set
+from core.d_batch import DEFAULT_PRESETS, FileSet, combine_pdfs, process_set
 from core.d_display_model import load_display_model
 from core.d_iso_renderer import LINK_ITEMS, NODE_ITEMS, PRESETS, render_iso
 from core.d_report_typeset import render_report
@@ -32,6 +32,9 @@ _JOBS: dict[str, dict] = {}
 _LINK_NAMES = frozenset(i.name for i in LINK_ITEMS)
 _NODE_NAMES = frozenset(i.name for i in NODE_ITEMS)
 _NONE_ITEM = "None"
+# 한 요청에서 그릴 장 수의 상한. 실측 재도시가 장당 0.5~1.6 초라, 이 위로는 요청
+# 하나가 분 단위로 늘어져 브라우저가 먼저 끊는다. 조용히 잘라내지 않고 거절한다.
+_MAX_SHEETS = 24
 
 
 def _job(job_id: str) -> dict:
@@ -39,6 +42,20 @@ def _job(job_id: str) -> dict:
     if found is None:
         raise ValueError("올린 파일이 만료되었습니다. 다시 올려 주세요.")
     return found
+
+
+def _picked(body: dict, key: str, known: frozenset[str], what: str) -> list[str]:
+    """고른 표시 항목들. 고르지 않았으면 '값 없음' 한 가지로 본다."""
+    raw = body.get(key)
+    names = [str(v) for v in raw] if isinstance(raw, list) else []
+    seen, picked = set(), []
+    for name in names:
+        if name not in known:
+            raise ValueError(f"{what} 표시 항목이 아닙니다: {name}")
+        if name not in seen:
+            seen.add(name)
+            picked.append(name)
+    return picked or [_NONE_ITEM]
 
 
 def _join_summary(bound) -> dict:
@@ -113,43 +130,69 @@ def register(app, *, D_OUTPUT_DIR, _err500, _register_job, _save_upload, _serve_
 
     @app.post("/api/module-d/draw")
     def module_d_draw():
-        """표시 항목을 골라 ISO 한 장. 파일은 다시 읽지 않는다."""
+        """고른 표시 항목 조합마다 ISO 한 장. 파일은 다시 읽지 않는다.
+
+        관로·노드 항목을 각각 여러 개 고를 수 있고, 나오는 장은 그 둘의 조합
+        전부다. 두 장 이상이면 한 권으로 묶은 PDF 도 함께 낸다 — 표시 항목만
+        다르고 축척과 점 자리는 같으므로 겹쳐 보기 좋다 (지시서 6).
+        """
         try:
             body = request.get_json(silent=True) or {}
             job = _job(str(body.get("job_id", "")))
-            link_item = str(body.get("link_item") or _NONE_ITEM)
-            node_item = str(body.get("node_item") or _NONE_ITEM)
-            if link_item not in _LINK_NAMES:
-                return jsonify({"ok": False,
-                                "message": f"관로 표시 항목이 아닙니다: {link_item}"}), 400
-            if node_item not in _NODE_NAMES:
-                return jsonify({"ok": False,
-                                "message": f"노드 표시 항목이 아닙니다: {node_item}"}), 400
+            links = _picked(body, "link_items", _LINK_NAMES, "관로")
+            nodes = _picked(body, "node_items", _NODE_NAMES, "노드")
+            combos = [(link, node) for link in links for node in nodes]
+            if len(combos) > _MAX_SHEETS:
+                return jsonify({"ok": False, "message":
+                                f"한 번에 {len(combos)}장은 너무 많습니다 — 관로 "
+                                f"{len(links)} × 노드 {len(nodes)}. {_MAX_SHEETS}장 "
+                                f"이하로 골라 주세요."}), 400
+
+            show_labels = bool(body.get("show_labels", True))
+            show_arrows = bool(body.get("show_arrows", True))
+            section = str(body.get("section", ""))
 
             started = time.perf_counter()
-            stem = f"iso_{uuid.uuid4().hex[:8]}"
-            drawn = render_iso(
-                job["bound"] or job["model"], job["dir"] / f"{stem}.pdf",
-                preset=None, link_item=link_item, node_item=node_item,
-                show_labels=bool(body.get("show_labels", True)),
-                show_arrows=bool(body.get("show_arrows", True)),
-                section=str(body.get("section", "")),
-                also_png=job["dir"] / f"{stem}.png")
-            elapsed = time.perf_counter() - started
+            sheets, made = [], []
+            for link_item, node_item in combos:
+                stem = f"iso_{uuid.uuid4().hex[:8]}"
+                at = time.perf_counter()
+                drawn = render_iso(
+                    job["bound"] or job["model"], job["dir"] / f"{stem}.pdf",
+                    preset=None, link_item=link_item, node_item=node_item,
+                    show_labels=show_labels, show_arrows=show_arrows, section=section,
+                    also_png=job["dir"] / f"{stem}.png")
+                name = link_item if node_item == _NONE_ITEM else f"{link_item} + {node_item}"
+                made.append((job["dir"] / f"{stem}.pdf", name))
+                sheets.append({
+                    "name": name, "link_item": link_item, "node_item": node_item,
+                    "pdf": f"{stem}.pdf", "png": f"{stem}.png",
+                    "seconds": round(time.perf_counter() - at, 2),
+                    "orientation": drawn.orientation,
+                    "drawn": {"pipes": drawn.pipes_drawn, "nozzles": drawn.nozzles_drawn,
+                              "devices": drawn.devices_drawn,
+                              "labels": drawn.labels_drawn},
+                    "blank_links": list(drawn.blank_link_values),
+                    "blank_nodes": list(drawn.blank_node_values),
+                    "unplaced_pipes": list(drawn.pipes_unplaced),
+                    "undrawn_pipes": list(drawn.undrawn_result_pipes),
+                    "undrawn_nodes": list(drawn.undrawn_result_nodes),
+                    "dropped_labels": list(drawn.labels_dropped),
+                    "derived_nozzles": list(drawn.nozzles_derived),
+                    "undirected_nozzles": list(drawn.nozzles_undirected),
+                    "warnings": list(drawn.warnings)})
 
-            return jsonify({
-                "ok": True, "pdf": f"{stem}.pdf", "png": f"{stem}.png",
-                "seconds": round(elapsed, 2),
-                "orientation": drawn.orientation,
-                "drawn": {"pipes": drawn.pipes_drawn, "nozzles": drawn.nozzles_drawn,
-                          "devices": drawn.devices_drawn, "labels": drawn.labels_drawn},
-                "blank_links": list(drawn.blank_link_values),
-                "blank_nodes": list(drawn.blank_node_values),
-                "unplaced_pipes": list(drawn.pipes_unplaced),
-                "undrawn_pipes": list(drawn.undrawn_result_pipes),
-                "undrawn_nodes": list(drawn.undrawn_result_nodes),
-                "dropped_labels": list(drawn.labels_dropped),
-                "warnings": list(drawn.warnings)})
+            book, notes = None, []
+            if len(made) > 1:
+                book = f"sheets_{uuid.uuid4().hex[:8]}.pdf"
+                try:
+                    combine_pdfs(made, job["dir"] / book)
+                except Exception as exc:  # noqa: BLE001 — 낱장은 이미 나왔다
+                    book = None
+                    notes.append(f"합본을 만들지 못했습니다 — {type(exc).__name__}: {exc}")
+
+            return jsonify({"ok": True, "sheets": sheets, "book": book, "notes": notes,
+                            "seconds": round(time.perf_counter() - started, 2)})
         except ValueError as exc:
             return jsonify({"ok": False, "message": str(exc)}), 400
         except Exception as exc:  # noqa: BLE001

@@ -110,6 +110,30 @@
     }
     .overlay-bar .actions a:hover { background: rgba(51, 65, 85, 0.85); color: #fff; }
     .overlay-bar .actions a.hidden { display: none; }
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 2px; }
+    .chip {
+      background: #fff; color: var(--text); border: 1px solid var(--line-strong);
+      border-radius: 999px; padding: 5px 10px;
+      font-family: var(--font-mono); font-size: 0.71rem; font-weight: 500;
+    }
+    .chip:hover:not(:disabled) { background: var(--accent-soft); color: var(--text); }
+    .chip[aria-pressed="true"] { background: #0a1228; border-color: #0a1228; color: #fff; }
+    .chip[aria-pressed="true"]:hover:not(:disabled) { background: #1e293b; color: #fff; }
+    .pick-count { font-size: 0.72rem; color: var(--muted); margin-top: 7px; font-family: var(--font-mono); }
+    .pick-count.warn { color: var(--warn); }
+    .sheet-tabs {
+      position: absolute; left: 14px; right: 14px; bottom: 14px;
+      display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+    }
+    .sheet-tab {
+      background: rgba(15, 23, 42, 0.78); color: #cbd5e1;
+      border: 1px solid rgba(255,255,255,0.10); border-radius: 5px;
+      padding: 5px 10px; font-size: 0.71rem; font-family: var(--font-mono); font-weight: 500;
+      backdrop-filter: blur(8px);
+    }
+    .sheet-tab:hover:not(:disabled) { background: rgba(51, 65, 85, 0.85); color: #fff; }
+    .sheet-tab[aria-pressed="true"] { background: #f8fafc; border-color: #f8fafc; color: #0f172a; }
+    .sheet-tab[aria-pressed="true"]:hover:not(:disabled) { background: #fff; color: #0f172a; }
   </style>
 </head>
 <body>
@@ -151,10 +175,11 @@
 
       <section>
         <h2>3. 표시 항목</h2>
-        <label class="field" for="link-item">관로에 표시할 값</label>
-        <select id="link-item" disabled></select>
-        <label class="field" for="node-item">노드에 표시할 값</label>
-        <select id="node-item" disabled></select>
+        <label class="field">관로에 표시할 값 — 눌러서 고르고, 다시 눌러 뺍니다</label>
+        <div class="chips" id="link-chips"></div>
+        <label class="field">노드에 표시할 값</label>
+        <div class="chips" id="node-chips"></div>
+        <div class="pick-count" id="pick-count">파일을 먼저 읽어 주세요</div>
         <div class="switches">
           <label title="끄면 이름표만 사라지고, 고른 표시 항목의 값은 그대로 남습니다"><input id="sw-labels" type="checkbox" checked> 이름표</label>
           <label><input id="sw-arrows" type="checkbox" checked> 흐름 화살표</label>
@@ -188,21 +213,28 @@
         <span id="overlay-info" class="pill">대기 중</span>
         <div class="actions">
           <a id="link-iso" class="hidden" href="#" target="_blank" rel="noopener">ISO PDF</a>
+          <a id="link-sheets" class="hidden" href="#" target="_blank" rel="noopener">여러 장 PDF</a>
           <a id="link-report" class="hidden" href="#" target="_blank" rel="noopener">계산서 PDF</a>
           <a id="link-book" class="hidden" href="#" target="_blank" rel="noopener">합본 PDF</a>
         </div>
       </div>
+      <div class="sheet-tabs" id="sheet-tabs"></div>
     </main>
   </div>
 
   <script>
-    const STATE = { jobId: null, stem: "", presets: {}, hasResults: false };
+    // 한 번에 그릴 수 있는 장 수. 서버의 상한과 같아야 한다 — 여기서 먼저 말려
+    // 주지 않으면 사용자는 오래 기다린 끝에 400 을 받는다.
+    const MAX_SHEETS = 24;
+
+    const STATE = { jobId: null, stem: "", presets: {}, hasResults: false, sheets: [] };
 
     const $ = (id) => document.getElementById(id);
     const sdfInput = $("sdf-input"), xmlInput = $("xml-input");
     const loadStatus = $("load-status"), outStatus = $("out-status");
     const outBox = $("out-box"), joinBox = $("join-box");
-    const linkSel = $("link-item"), nodeSel = $("node-item");
+    const linkChips = $("link-chips"), nodeChips = $("node-chips"), pickCount = $("pick-count");
+    const sheetTabs = $("sheet-tabs");
     const overlayInfo = $("overlay-info"), previewImg = $("preview-img"), emptyEl = $("empty-canvas");
 
     function setStatus(el, text, kind) {
@@ -222,12 +254,82 @@
       return `<div class="head">${escapeHtml(title)} (${items.length})</div><ul>${rows}</ul>`;
     }
 
-    function fillSelect(sel, names, chosen) {
-      sel.innerHTML = names.map(
-        (n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
-      sel.value = names.includes(chosen) ? chosen : names[0];
-      sel.disabled = false;
+    // "None" 은 SDF 가 쓰는 이름이라 값으로는 그대로 보내고, 화면에만 풀어 쓴다.
+    const chipLabel = (name) => (name === "None" ? "없음" : name);
+
+    function fillChips(host, names, chosen) {
+      host.innerHTML = names.map((n) => (
+        `<button type="button" class="chip" data-name="${escapeHtml(n)}"` +
+        ` aria-pressed="${n === chosen ? "true" : "false"}">${escapeHtml(chipLabel(n))}</button>`
+      )).join("");
     }
+
+    function chipsPicked(host) {
+      return Array.from(host.querySelectorAll('.chip[aria-pressed="true"]'))
+        .map((b) => b.dataset.name);
+    }
+
+    function setChips(host, names) {
+      host.querySelectorAll(".chip").forEach((b) => {
+        b.setAttribute("aria-pressed", names.includes(b.dataset.name) ? "true" : "false");
+      });
+    }
+
+    function refreshPickCount() {
+      if (!STATE.jobId) return;
+      const links = chipsPicked(linkChips).length || 1;
+      const nodes = chipsPicked(nodeChips).length || 1;
+      const sheets = links * nodes;
+      const tooMany = sheets > MAX_SHEETS;
+      pickCount.textContent = tooMany
+        ? `관로 ${links} × 노드 ${nodes} = ${sheets}장 — 한 번에 ${MAX_SHEETS}장까지입니다`
+        : `관로 ${links} × 노드 ${nodes} = ${sheets}장`;
+      pickCount.className = "pick-count" + (tooMany ? " warn" : "");
+      $("btn-draw").disabled = tooMany;
+    }
+
+    [linkChips, nodeChips].forEach((host) => {
+      host.addEventListener("click", (ev) => {
+        const chip = ev.target.closest(".chip");
+        if (!chip) return;
+        chip.setAttribute("aria-pressed",
+          chip.getAttribute("aria-pressed") === "true" ? "false" : "true");
+        refreshPickCount();
+      });
+    });
+
+    function showSheet(index) {
+      const sheet = STATE.sheets[index];
+      if (!sheet) return;
+      previewImg.src = resultUrl(sheet.png);
+      previewImg.style.display = "block";
+      emptyEl.style.display = "none";
+      setLink($("link-iso"), resultUrl(sheet.pdf), "ISO PDF");
+      overlayInfo.textContent = `${sheet.name} · ${sheet.orientation} · 관로 `
+        + `${sheet.drawn.pipes} / 노즐 ${sheet.drawn.nozzles} / 라벨 ${sheet.drawn.labels}`
+        + ` · ${sheet.seconds}s`;
+      sheetTabs.querySelectorAll(".sheet-tab").forEach((b) => {
+        b.setAttribute("aria-pressed", Number(b.dataset.index) === index ? "true" : "false");
+      });
+
+      let html = "";
+      html += listBlock("값이 비어 표시하지 못한 관로", sheet.blank_links);
+      html += listBlock("값이 비어 표시하지 못한 노드", sheet.blank_nodes);
+      html += listBlock("좌표가 없어 그리지 못한 관로", sheet.unplaced_pipes);
+      html += listBlock("결과에는 있으나 도면에 없는 관로", sheet.undrawn_pipes);
+      html += listBlock("결과에는 있으나 도면에 없는 노드", sheet.undrawn_nodes);
+      html += listBlock("자리가 없어 뺀 라벨", sheet.dropped_labels);
+      html += listBlock("자리를 유도해 그린 헤드", sheet.derived_nozzles);
+      html += listBlock("방향을 정할 근거가 없던 헤드", sheet.undirected_nozzles);
+      html += listBlock("경고", sheet.warnings);
+      outBox.innerHTML = html;
+      outBox.style.display = html ? "block" : "none";
+    }
+
+    sheetTabs.addEventListener("click", (ev) => {
+      const tab = ev.target.closest(".sheet-tab");
+      if (tab) showSheet(Number(tab.dataset.index));
+    });
 
     function setLink(el, href, label) {
       if (!href) { el.className = "hidden"; return; }
@@ -296,8 +398,9 @@
         $("sum-devices").textContent = data.counts.devices;
         $("sum-results").textContent = data.has_results ? "있음" : "없음";
 
-        fillSelect(linkSel, data.link_items, data.saved.link);
-        fillSelect(nodeSel, data.node_items, data.saved.node);
+        fillChips(linkChips, data.link_items, data.saved.link);
+        fillChips(nodeChips, data.node_items, data.saved.node);
+        refreshPickCount();
         $("section-name").value = data.stem;
 
         $("preset-row").innerHTML = Object.keys(STATE.presets).map(
@@ -341,8 +444,9 @@
       if (!name) return;
       const preset = STATE.presets[name];
       if (!preset) return;
-      linkSel.value = preset.link;
-      nodeSel.value = preset.node;
+      setChips(linkChips, [preset.link]);
+      setChips(nodeChips, [preset.node]);
+      refreshPickCount();
       $("btn-draw").click();
     });
 
@@ -353,8 +457,8 @@
       try {
         const data = await postJson("/api/module-d/draw", {
           job_id: STATE.jobId,
-          link_item: linkSel.value,
-          node_item: nodeSel.value,
+          link_items: chipsPicked(linkChips),
+          node_items: chipsPicked(nodeChips),
           show_labels: $("sw-labels").checked,
           show_arrows: $("sw-arrows").checked,
           section: $("section-name").value,
@@ -363,28 +467,23 @@
           setStatus(outStatus, `❌ ${data.message || "그리지 못했습니다"}`, "err");
           return;
         }
-        previewImg.src = resultUrl(data.png);
-        previewImg.style.display = "block";
-        emptyEl.style.display = "none";
-        setLink($("link-iso"), resultUrl(data.pdf), "ISO PDF");
-        overlayInfo.textContent =
-          `${data.orientation} · 관로 ${data.drawn.pipes} / 노즐 ${data.drawn.nozzles} / 라벨 ${data.drawn.labels} · ${data.seconds}s`;
+        STATE.sheets = data.sheets;
+        sheetTabs.innerHTML = data.sheets.length < 2 ? "" : data.sheets.map((s, i) => (
+          `<button type="button" class="sheet-tab" data-index="${i}"` +
+          ` aria-pressed="false">${escapeHtml(s.name)}</button>`
+        )).join("");
+        showSheet(0);
+        setLink($("link-sheets"), data.book ? resultUrl(data.book) : null, "여러 장 PDF");
 
-        let html = "";
-        html += listBlock("값이 비어 표시하지 못한 관로", data.blank_links);
-        html += listBlock("값이 비어 표시하지 못한 노드", data.blank_nodes);
-        html += listBlock("좌표가 없어 그리지 못한 관로", data.unplaced_pipes);
-        html += listBlock("결과에는 있으나 도면에 없는 관로", data.undrawn_pipes);
-        html += listBlock("결과에는 있으나 도면에 없는 노드", data.undrawn_nodes);
-        html += listBlock("자리가 없어 뺀 라벨", data.dropped_labels);
-        html += listBlock("경고", data.warnings);
-        outBox.innerHTML = html;
-        outBox.style.display = html ? "block" : "none";
-        setStatus(outStatus, `✓ ${data.seconds}s 만에 다시 그렸습니다 (파일은 다시 읽지 않았습니다)`, "ok");
+        const note = data.notes && data.notes.length ? ` · ${data.notes.join(" / ")}` : "";
+        setStatus(outStatus,
+          `✓ ${data.sheets.length}장을 ${data.seconds}s 만에 다시 그렸습니다 (파일은 다시 읽지 않았습니다)${note}`,
+          data.notes && data.notes.length ? "warn" : "ok");
       } catch (err) {
         setStatus(outStatus, `❌ ${err.message}`, "err");
       } finally {
         enableOutputs(true);
+        refreshPickCount();
       }
     });
 

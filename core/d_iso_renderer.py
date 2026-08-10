@@ -83,6 +83,13 @@ _ARROW_WING_UNITS = 6.76
 _ARROW_HALF_ANGLE = math.degrees(math.atan(0.5))
 _ARROW_AT = 0.687
 
+# 노즐 머리. 같은 참조 PDF 60 장 / 기호 638 개 실측이다 — 채운 삼각형이 아니라 속이
+# 빈 삼각형 윤곽이고(채움 0/638), 꼭짓점이 `@` 노드 좌표에 정확히 앉는다(그린 길이 ÷
+# 모델 길이 1.0004, 변동계수 0.004). 스텁은 꼭짓점이 아니라 삼각형 밑변에서 끝난다.
+# 크기는 화살표와 마찬가지로 모델 좌표에 고정이다(길이 변동계수 0.023, 반폭 0.011).
+_HEAD_LENGTH_UNITS = 17.96
+_HEAD_HALF_WIDTH_UNITS = 10.01
+
 _KOREAN_FONTS = ("malgun.ttf", "malgunsl.ttf", "NanumGothic.ttf", "gulim.ttc", "batang.ttc")
 
 # 장치 링크 종류별 기호. PIPENET 기호를 베끼지 않고 우리 표기를 쓴다 (지시서 7-2).
@@ -402,6 +409,22 @@ def _chevron(tip: tuple[float, float], angle: float, wing: float
                    tip[1] + wing * math.sin(math.radians(a)))] for a in back]
 
 
+def _nozzle_head(base: tuple[float, float], tip: tuple[float, float]
+                 ) -> tuple[tuple[float, float], list[tuple[float, float]]]:
+    """헤드 삼각형의 밑변 가운데와 두 밑각. 꼭짓점은 `@` 노드 자리 그대로다."""
+    dx, dy = tip[0] - base[0], tip[1] - base[1]
+    reach = math.hypot(dx, dy)
+    # 방향이 없는 노즐은 tip 이 입력노드에 얹혀 있다. 아래로 매달아 자리는 보이되
+    # 방향을 지어내지 않는다 — 유도 여부는 리포트가 따로 싣는다.
+    ux, uy = (dx / reach, dy / reach) if reach > 0 else (0.0, -1.0)
+    # 스텁보다 긴 머리는 분기점을 덮는다. 짧으면 그만큼 줄여 밑변이 관로를 넘지 않게.
+    length = min(_HEAD_LENGTH_UNITS, reach) if reach > 0 else _HEAD_LENGTH_UNITS
+    half = _HEAD_HALF_WIDTH_UNITS * length / _HEAD_LENGTH_UNITS
+    back = (tip[0] - ux * length, tip[1] - uy * length)
+    return back, [(back[0] - uy * half, back[1] + ux * half),
+                  (back[0] + uy * half, back[1] - ux * half)]
+
+
 # ── 렌더 ────────────────────────────────────────────────────────────────────
 
 
@@ -711,7 +734,6 @@ def render_iso(
              zorder=5)
 
     # ── 노즐 ──
-    tri = max(span_x, span_y) * 0.006
     tips, derived_nozzles, undirected_nozzles = _nozzle_tips(
         nozzles, model.pipes, coords, max(span_x, span_y))
     is_derived = set(derived_nozzles)
@@ -729,16 +751,13 @@ def render_iso(
             continue
         drawn_nozzles += 1
         nozzle_tips.append(tip)
-        angle = math.atan2(tip[1] - base[1], tip[0] - base[0]) if tip != base else -math.pi / 2
         estimated = label in is_derived
-        (guessed_stubs if estimated else stubs).append([base, tip])
+        back, corners = _nozzle_head(base, tip)
+        (guessed_stubs if estimated else stubs).append([base, back])
         ax.add_patch(Polygon(
-            [(tip[0], tip[1]),
-             (tip[0] - tri * math.cos(angle - 0.4), tip[1] - tri * math.sin(angle - 0.4)),
-             (tip[0] - tri * math.cos(angle + 0.4), tip[1] - tri * math.sin(angle + 0.4))],
-            closed=True, facecolor="#ffffff" if estimated else "#222222",
-            edgecolor=_DERIVED_COLOUR if estimated else "none",
-            linewidth=0.5 if estimated else 0.0, zorder=6))
+            [tip, *corners], closed=True, facecolor="none",
+            edgecolor=_DERIVED_COLOUR if estimated else "#222222",
+            linewidth=0.4, zorder=6))
     if stubs:
         ax.add_collection(LineCollection(stubs, colors="#333333", linewidths=0.4,
                                          capstyle="round", zorder=2))
@@ -848,7 +867,8 @@ def render_iso(
         half = size_pt * per_pt / 2
         for group in points.values():
             fixed.extend((x - half, y - half, x + half, y + half) for x, y in group)
-    fixed.extend((x - tri, y - tri, x + tri, y + tri) for x, y in nozzle_tips)
+    head = _HEAD_LENGTH_UNITS
+    fixed.extend((x - head, y - head, x + head, y + head) for x, y in nozzle_tips)
     fixed.extend(arrow_boxes)
     labels, layout = lay_out(requests, measure, obstacles=fixed)
 

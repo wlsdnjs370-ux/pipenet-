@@ -375,6 +375,22 @@ def test_report_lists_labels_it_could_not_draw(hand, tmp_path):
 # 노즐 3437 개의 중앙값(도면 span 의 1.208%)이다.
 _STUB_RATIO = 0.01208
 
+# 헤드 삼각형. 참조 PDF 60 장 / 기호 638 개 실측이다 — 꼭짓점이 `@` 노드에 앉고
+# 밑변은 그로부터 17.96 모델 단위 뒤, 반폭 10.01 단위다. 스텁은 꼭짓점이 아니라
+# 이 밑변에서 끝난다.
+_HEAD_LENGTH = 17.96
+_HEAD_HALF_WIDTH = 10.01
+
+
+def _head_back(base, tip):
+    """스텁이 끝나는 자리 — 삼각형 밑변 가운데. 렌더러 헬퍼를 쓰지 않고 다시 구한다."""
+    import math
+
+    reach = math.dist(base, tip)
+    length = min(_HEAD_LENGTH, reach)
+    return (tip[0] - (tip[0] - base[0]) / reach * length,
+            tip[1] - (tip[1] - base[1]) / reach * length)
+
 
 def _head_tips(bound):
     from types import SimpleNamespace
@@ -452,7 +468,13 @@ def test_heads_without_a_direction_are_derived_and_declared(auto, tmp_path):
 
 
 def _stub_of(pdf: Path, colour: object) -> list[list[tuple[float, float]]]:
-    return [pts for got, pts in _stroked_paths(pdf) if got == colour]
+    # 회색조는 스트림에 자릿수가 잘린 십진수로 적힌다 (0x22/255 → "0.1333333333").
+    def same(got: object) -> bool:
+        if isinstance(got, float) and isinstance(colour, float):
+            return abs(got - colour) < 5e-4
+        return got == colour
+
+    return [pts for got, pts in _stroked_paths(pdf) if same(got)]
 
 
 def _same_segment(a, b) -> bool:
@@ -473,7 +495,8 @@ def test_every_head_is_joined_to_the_pipe_it_hangs_from(hand, tmp_path):
     assert all(len(pts) == 2 for pts in drawn)
 
     for z in model.nozzles:
-        want = [to_pt(*coords[z.input_node]), to_pt(*tips[z.label])]
+        base = coords[z.input_node]
+        want = [to_pt(*base), to_pt(*_head_back(base, tips[z.label]))]
         assert any(_same_segment(want, got) or _same_segment(want, got[::-1])
                    for got in drawn), f"헤드 {z.label} 가 배관에 닿는 선이 없다"
 
@@ -494,9 +517,41 @@ def test_derived_head_lines_are_not_dressed_up_as_measured(auto, tmp_path):
     assert len(derived) == 30
     to_pt = _data_to_pt(model)
     for z in model.nozzles:
-        want = [to_pt(*coords[z.input_node]), to_pt(*tips[z.label])]
+        base = coords[z.input_node]
+        want = [to_pt(*base), to_pt(*_head_back(base, tips[z.label]))]
         assert any(_same_segment(want, got) or _same_segment(want, got[::-1])
                    for got in stubs), f"유도한 헤드 {z.label} 의 선이 없다"
+
+
+def test_head_triangle_is_an_outline_with_its_apex_on_the_at_node(hand, tmp_path):
+    # PIPENET 은 채운 삼각형이 아니라 속 빈 윤곽을 그리고, 꼭짓점을 `@` 노드 좌표에
+    # 그대로 앉힌다 — 참조 기호 638 개 중 채움 0 개, 그린 길이 ÷ 모델 길이 1.0004.
+    import math
+
+    pdf = tmp_path / "heads.pdf"
+    render_iso(hand, pdf, link_item="Pipe velocity")
+
+    tips, derived, _, _, coords, model = _head_tips(hand)
+    assert derived == []
+    to_pt = _data_to_pt(model)
+    # 윤곽선은 꼭짓점으로 돌아와 닫힌다 — 채웠다면 획이 아니라 채움으로 나온다.
+    triangles = [pts for pts in _stub_of(pdf, 0x22 / 255.0)
+                 if len(pts) == 4 and pts[0] == pts[3]]
+    assert len(triangles) == len(model.nozzles) == 30
+
+    for z in model.nozzles:
+        base, tip = coords[z.input_node], tips[z.label]
+        back = _head_back(base, tip)
+        reach = math.dist(base, tip)
+        half = _HEAD_HALF_WIDTH * min(_HEAD_LENGTH, reach) / _HEAD_LENGTH
+        ux, uy = (tip[0] - base[0]) / reach, (tip[1] - base[1]) / reach
+        apex = to_pt(*tip)
+        want = [apex,
+                to_pt(back[0] - uy * half, back[1] + ux * half),
+                to_pt(back[0] + uy * half, back[1] - ux * half),
+                apex]
+        assert any(_same_segment(want, got) for got in triangles), \
+            f"헤드 {z.label} 의 삼각형 윤곽이 없다"
 
 
 # ── 흐름 화살표 ─────────────────────────────────────────────────────────────

@@ -131,6 +131,50 @@ def _shape_digest(pdf: Path) -> str:
     return hashlib.sha256(repr(pts).encode()).hexdigest()
 
 
+def _stroked_paths(pdf: Path) -> list[tuple[object, list[tuple[float, float]]]]:
+    """획 색깔별 경로 좌표(pt). 회색 획은 float, 색깔 획은 3튜플로 돌려준다."""
+    from pypdf import PdfReader
+
+    data = PdfReader(str(pdf)).pages[0].get_contents().get_data().decode("latin-1")
+    out: list[tuple[object, list[tuple[float, float]]]] = []
+    colour: object = None
+    started: object = None
+    cur: list[tuple[float, float]] = []
+    for m in _STREAM_OP.finditer(data):
+        if m["x"] is None:
+            if m["grey"]:
+                colour = float(m["grey"])
+            elif m["rgb"]:
+                colour = tuple(round(float(v), 4) for v in m["rgb"].split())
+            continue
+        point = (float(m["x"]), float(m["y"]))
+        if data[m.end() - 1] == "m":
+            if cur:
+                out.append((started, cur))
+            cur, started = [point], colour
+        else:
+            cur.append(point)
+    if cur:
+        out.append((started, cur))
+    return out
+
+
+def _data_to_pt(model):
+    """데이터 좌표 → 페이지 pt. 종이·여백 수치를 렌더러에서 가져오지 않고 다시 적는다."""
+    minx, miny, maxx, maxy = model.bounds()
+    span_x, span_y = maxx - minx, maxy - miny
+    page = (297.0, 210.0) if span_x / span_y > 297.0 / 210.0 else (210.0, 297.0)
+    mm = 72.0 / 25.4
+    box_w = (page[0] - 24.0) * mm
+    box_h = (page[1] - (12.0 + 6.0) - (12.0 + 16.0 + 18.0)) * mm
+    box_cx, box_cy = page[0] * mm / 2.0, (12.0 + 6.0) * mm + box_h / 2.0
+    pad = 0.04 * max(span_x, span_y)
+    # 축은 aspect equal 이라 가로세로 같은 배율로 줄고 칸 가운데에 놓인다.
+    scale = min(box_w / (span_x + 2 * pad), box_h / (span_y + 2 * pad))
+    cx, cy = (minx + maxx) / 2.0, (miny + maxy) / 2.0
+    return lambda x, y: (box_cx + scale * (x - cx), box_cy + scale * (y - cy))
+
+
 # ── 값 정합 ─────────────────────────────────────────────────────────────────
 #
 # 아래 세 검사는 이름표를 켠 채로 그린다. 기본값은 원본 SDF 를 따르는데 제출용
@@ -405,6 +449,54 @@ def test_heads_without_a_direction_are_derived_and_declared(auto, tmp_path):
     report = render_iso(auto, tmp_path / "heads.pdf", link_item="Pipe volumetric flow")
     assert len(report.nozzles_derived) == 30 and report.nozzles_undirected == ()
     assert any("유도해 그린 것 30개" in w for w in report.warnings)
+
+
+def _stub_of(pdf: Path, colour: object) -> list[list[tuple[float, float]]]:
+    return [pts for got, pts in _stroked_paths(pdf) if got == colour]
+
+
+def _same_segment(a, b) -> bool:
+    return all(abs(p[0] - q[0]) < 0.5 and abs(p[1] - q[1]) < 0.5 for p, q in zip(a, b))
+
+
+def test_every_head_is_joined_to_the_pipe_it_hangs_from(hand, tmp_path):
+    # 노즐도 입력노드와 출력노드를 잇는 링크다. 그 선을 그리지 않으면 헤드가
+    # 배관에서 떨어져 떠 있는 것처럼 보인다. PDF 안에 선분이 실제로 있는지 본다.
+    pdf = tmp_path / "stubs.pdf"
+    render_iso(hand, pdf, link_item="Pipe velocity")   # 관로는 띠 색이라 회색과 갈린다
+
+    tips, derived, undirected, _, coords, model = _head_tips(hand)
+    assert derived == [] and undirected == []          # 수작업본은 전부 실측 자리
+    to_pt = _data_to_pt(model)
+    drawn = _stub_of(pdf, 0x33 / 255.0)
+    assert len(drawn) == len(model.nozzles) == 30
+    assert all(len(pts) == 2 for pts in drawn)
+
+    for z in model.nozzles:
+        want = [to_pt(*coords[z.input_node]), to_pt(*tips[z.label])]
+        assert any(_same_segment(want, got) or _same_segment(want, got[::-1])
+                   for got in drawn), f"헤드 {z.label} 가 배관에 닿는 선이 없다"
+
+
+def test_derived_head_lines_are_not_dressed_up_as_measured(auto, tmp_path):
+    # 자동본은 30개 전부 방향을 유도한 자리다. 지어낸 선을 실측 선과 같은 색·같은
+    # 실선으로 그리면 도면을 보는 사람이 둘을 구분할 길이 없다.
+    pdf = tmp_path / "derived.pdf"
+    render_iso(auto, pdf, link_item="Pipe velocity")
+    assert _stub_of(pdf, 0x33 / 255.0) == []          # 실측 실선으로 새어 나간 것 없음
+
+    orange = _stub_of(pdf, (0.7608, 0.2549, 0.0471))  # #c2410c
+    stubs = [pts for pts in orange if len(pts) == 2]
+    assert len(stubs) == 30
+    assert len(orange) - len(stubs) == 30             # 헤드 표시도 같은 색 테두리
+
+    tips, derived, _, _, coords, model = _head_tips(auto)
+    assert len(derived) == 30
+    to_pt = _data_to_pt(model)
+    for z in model.nozzles:
+        want = [to_pt(*coords[z.input_node]), to_pt(*tips[z.label])]
+        assert any(_same_segment(want, got) or _same_segment(want, got[::-1])
+                   for got in stubs), f"유도한 헤드 {z.label} 의 선이 없다"
 
 
 # ── 원본 표시 설정 따르기 ───────────────────────────────────────────────────

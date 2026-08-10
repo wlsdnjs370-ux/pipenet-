@@ -684,7 +684,11 @@ def render_iso(
     is_derived = set(derived_nozzles)
     drawn_nozzles = 0
     nozzle_tips: list[tuple[float, float]] = []
+    # 노즐도 입력노드와 출력노드를 잇는 링크다. 그 선을 그리지 않으면 헤드가
+    # 배관에서 떨어져 떠 있는 것처럼 보인다. 실측 자리는 관로와 같은 실선으로,
+    # 유도한 자리는 주황 점선으로 — 지어낸 것을 실측인 척 그리지 않는다.
     stubs: list[list[tuple[float, float]]] = []
+    guessed_stubs: list[list[tuple[float, float]]] = []
     for label, row in nozzles.items():
         base = coords.get(row.nozzle.input_node)
         tip = tips.get(label)
@@ -694,8 +698,7 @@ def render_iso(
         nozzle_tips.append(tip)
         angle = math.atan2(tip[1] - base[1], tip[0] - base[0]) if tip != base else -math.pi / 2
         estimated = label in is_derived
-        if estimated:
-            stubs.append([base, tip])
+        (guessed_stubs if estimated else stubs).append([base, tip])
         ax.add_patch(Polygon(
             [(tip[0], tip[1]),
              (tip[0] - tri * math.cos(angle - 0.4), tip[1] - tri * math.sin(angle - 0.4)),
@@ -704,7 +707,10 @@ def render_iso(
             edgecolor=_DERIVED_COLOUR if estimated else "none",
             linewidth=0.5 if estimated else 0.0, zorder=6))
     if stubs:
-        ax.add_collection(LineCollection(stubs, colors=_DERIVED_COLOUR, linewidths=0.4,
+        ax.add_collection(LineCollection(stubs, colors="#333333", linewidths=0.4,
+                                         capstyle="round", zorder=2))
+    if guessed_stubs:
+        ax.add_collection(LineCollection(guessed_stubs, colors=_DERIVED_COLOUR, linewidths=0.4,
                                          linestyles=[(0, (2.0, 1.5))], zorder=5))
 
     # ── 노드 ──

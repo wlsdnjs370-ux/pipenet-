@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>모듈 D — 출력 워크벤치</title>
+  <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --panel: #ffffff;
+      --line: #e2e8f0;
+      --line-strong: #cbd5e1;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent-soft: #f1f5f9;
+      --ok: #047857;
+      --warn: #b45309;
+      --bad: #b91c1c;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0;
+      font-family: var(--font-sans);
+      background: var(--bg); color: var(--text);
+      font-size: 14px; line-height: 1.5;
+    }
+    .app { display: grid; grid-template-columns: 380px 1fr; height: 100vh; overflow: hidden; }
+    .sidebar {
+      background: var(--panel); border-right: 1px solid var(--line);
+      padding: 18px 18px 32px; overflow-y: auto;
+    }
+    .sidebar h1 { font-size: 1rem; font-weight: 700; margin: 0 0 4px; }
+    .sidebar p.info { font-size: 0.78rem; color: var(--muted); margin: 0 0 16px; line-height: 1.45; }
+    section { margin-bottom: 18px; }
+    section h2 {
+      font-size: 0.78rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      margin: 0 0 8px; padding: 0 0 4px; border-bottom: 1px solid var(--line);
+    }
+    .file-pick {
+      display: block; padding: 10px 12px; margin-bottom: 6px;
+      background: var(--accent-soft);
+      border: 1px dashed var(--line-strong); border-radius: 6px;
+      font-size: 0.8rem; cursor: pointer; text-align: center;
+    }
+    .file-pick:hover { background: #e2e8f0; }
+    .file-pick input[type=file] { display: none; }
+    .status { font-size: 0.74rem; color: var(--muted); margin-top: 6px; font-family: var(--font-mono); word-break: break-all; }
+    .status.ok { color: var(--ok); }
+    .status.warn { color: var(--warn); }
+    .status.err { color: var(--bad); }
+    button {
+      font-family: inherit; border-radius: 6px; cursor: pointer;
+      font-weight: 600; font-size: 0.78rem;
+      background: #0a1228; color: #fff; border: 1px solid #0a1228; padding: 9px 8px;
+    }
+    button:disabled { background: #cbd5e1; border-color: #cbd5e1; cursor: not-allowed; }
+    button:hover:not(:disabled) { background: #1e293b; }
+    button.ghost { background: #fff; color: var(--text); border: 1px solid var(--line-strong); font-weight: 500; }
+    button.ghost:hover:not(:disabled) { background: var(--accent-soft); color: var(--text); }
+    .row { display: flex; gap: 6px; margin-top: 8px; }
+    .row button { flex: 1; }
+    label.field { display: block; font-size: 0.74rem; color: var(--muted); margin: 8px 0 3px; }
+    select, input[type=text] {
+      width: 100%; padding: 7px 8px; font-family: var(--font-mono); font-size: 0.76rem;
+      border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--text);
+    }
+    .switches { display: flex; gap: 14px; margin-top: 10px; font-size: 0.76rem; }
+    .switches label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+    .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 12px; font-size: 0.76rem; }
+    .summary-grid .k { color: var(--muted); }
+    .summary-grid .v { font-family: var(--font-mono); font-weight: 600; }
+    .note-box {
+      background: var(--accent-soft); border: 1px solid var(--line); border-radius: 6px;
+      padding: 9px 11px; font-size: 0.73rem; line-height: 1.5; margin-top: 8px;
+      max-height: 220px; overflow-y: auto;
+    }
+    .note-box ul { margin: 0; padding-left: 16px; }
+    .note-box li { margin-bottom: 3px; word-break: break-all; }
+    .note-box .head { font-weight: 700; margin: 6px 0 2px; }
+    .note-box .head:first-child { margin-top: 0; }
+    details summary { cursor: pointer; font-size: 0.75rem; color: var(--muted); }
+    .canvas-pane { position: relative; background: #0a1228; overflow: auto; display: flex;
+                   align-items: center; justify-content: center; }
+    #preview-img { max-width: 100%; max-height: 100%; display: none; background: #fff; }
+    .empty-canvas {
+      color: #94a3b8; font-family: var(--font-mono); font-size: 0.8rem;
+      text-align: center; padding: 24px; line-height: 1.7;
+    }
+    .overlay-bar {
+      position: absolute; top: 14px; left: 14px; right: 14px;
+      display: flex; justify-content: space-between; gap: 10px; pointer-events: none;
+    }
+    .pill {
+      background: rgba(15, 23, 42, 0.78); color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.10);
+      padding: 6px 11px; border-radius: 999px;
+      font-size: 0.74rem; font-family: var(--font-mono);
+      pointer-events: auto; backdrop-filter: blur(8px);
+    }
+    .overlay-bar .actions { display: flex; gap: 6px; pointer-events: auto; }
+    .overlay-bar .actions a {
+      background: rgba(30, 41, 59, 0.72); color: #cbd5e1;
+      border: 1px solid rgba(255,255,255,0.10);
+      padding: 6px 10px; border-radius: 5px; font-size: 0.72rem;
+      text-decoration: none;
+    }
+    .overlay-bar .actions a:hover { background: rgba(51, 65, 85, 0.85); color: #fff; }
+    .overlay-bar .actions a.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <h1>모듈 D — 출력 워크벤치</h1>
+      <p class="info">
+        PIPENET 이 계산해 둔 결과(<code>.sdf</code> + 결과 <code>.xml</code>)를 읽어 ISO 도면과
+        수리계산서 PDF 를 만듭니다. PIPENET 을 실행하지 않으며, 새로 계산하는 값도 없습니다.
+        표시 항목을 바꿀 때 파일을 다시 읽지 않습니다.
+      </p>
+
+      <section>
+        <h2>1. 파일</h2>
+        <label class="file-pick" for="sdf-input">
+          <span id="sdf-label">.sdf 선택 (필수)</span>
+          <input id="sdf-input" type="file" accept=".sdf">
+        </label>
+        <label class="file-pick" for="xml-input">
+          <span id="xml-label">결과 .xml 선택 (선택)</span>
+          <input id="xml-input" type="file" accept=".xml">
+        </label>
+        <div class="row"><button id="btn-load" disabled>읽기</button></div>
+        <div id="load-status" class="status">대기 중</div>
+      </section>
+
+      <section>
+        <h2>2. 요약</h2>
+        <div class="summary-grid">
+          <div class="k">표제</div><div class="v" id="sum-title">—</div>
+          <div class="k">노드</div><div class="v" id="sum-nodes">—</div>
+          <div class="k">관로</div><div class="v" id="sum-pipes">—</div>
+          <div class="k">노즐</div><div class="v" id="sum-nozzles">—</div>
+          <div class="k">기기</div><div class="v" id="sum-devices">—</div>
+          <div class="k">결과 결합</div><div class="v" id="sum-results">—</div>
+        </div>
+        <div id="join-box" class="note-box" style="display:none;"></div>
+      </section>
+
+      <section>
+        <h2>3. 표시 항목</h2>
+        <label class="field" for="link-item">관로에 표시할 값</label>
+        <select id="link-item" disabled></select>
+        <label class="field" for="node-item">노드에 표시할 값</label>
+        <select id="node-item" disabled></select>
+        <div class="switches">
+          <label title="끄면 이름표만 사라지고, 고른 표시 항목의 값은 그대로 남습니다"><input id="sw-labels" type="checkbox" checked> 이름표</label>
+          <label><input id="sw-arrows" type="checkbox" checked> 흐름 화살표</label>
+        </div>
+        <label class="field" for="section-name">구간 이름 (표제란)</label>
+        <input id="section-name" type="text" placeholder="비우면 파일 이름">
+        <div class="row" id="preset-row"></div>
+      </section>
+
+      <section>
+        <h2>4. 출력</h2>
+        <div class="row">
+          <button id="btn-draw" disabled>도면 생성</button>
+          <button id="btn-report" disabled>계산서 생성</button>
+        </div>
+        <div class="row">
+          <button id="btn-book" class="ghost" disabled>한 권으로 묶기 (계산서 + 유량본 + 압력본)</button>
+        </div>
+        <div id="out-status" class="status">파일을 먼저 읽어 주세요</div>
+        <div id="out-box" class="note-box" style="display:none;"></div>
+      </section>
+    </aside>
+
+    <main class="canvas-pane">
+      <img id="preview-img" alt="ISO 도면 미리보기">
+      <div id="empty-canvas" class="empty-canvas">
+        도면을 생성하면 여기에 미리보기가 표시됩니다.<br>
+        미리보기는 화면용 래스터이고, 내려받는 PDF 는 벡터입니다.
+      </div>
+      <div class="overlay-bar">
+        <span id="overlay-info" class="pill">대기 중</span>
+        <div class="actions">
+          <a id="link-iso" class="hidden" href="#" target="_blank" rel="noopener">ISO PDF</a>
+          <a id="link-report" class="hidden" href="#" target="_blank" rel="noopener">계산서 PDF</a>
+          <a id="link-book" class="hidden" href="#" target="_blank" rel="noopener">합본 PDF</a>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const STATE = { jobId: null, stem: "", presets: {}, hasResults: false };
+
+    const $ = (id) => document.getElementById(id);
+    const sdfInput = $("sdf-input"), xmlInput = $("xml-input");
+    const loadStatus = $("load-status"), outStatus = $("out-status");
+    const outBox = $("out-box"), joinBox = $("join-box");
+    const linkSel = $("link-item"), nodeSel = $("node-item");
+    const overlayInfo = $("overlay-info"), previewImg = $("preview-img"), emptyEl = $("empty-canvas");
+
+    function setStatus(el, text, kind) {
+      el.textContent = text;
+      el.className = "status" + (kind ? " " + kind : "");
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => (
+        { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    // 결손·빈칸은 개수만 세지 않고 이름을 전량 싣는다 — 지시서 §7-4.
+    function listBlock(title, items) {
+      if (!items || !items.length) return "";
+      const rows = items.map((v) => `<li>${escapeHtml(v)}</li>`).join("");
+      return `<div class="head">${escapeHtml(title)} (${items.length})</div><ul>${rows}</ul>`;
+    }
+
+    function fillSelect(sel, names, chosen) {
+      sel.innerHTML = names.map(
+        (n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+      sel.value = names.includes(chosen) ? chosen : names[0];
+      sel.disabled = false;
+    }
+
+    function setLink(el, href, label) {
+      if (!href) { el.className = "hidden"; return; }
+      el.href = href;
+      el.textContent = label;
+      el.className = "";
+    }
+
+    function resultUrl(name) {
+      return `/api/module-d/result/${encodeURIComponent(STATE.jobId)}/${name.split("/").map(encodeURIComponent).join("/")}`;
+    }
+
+    function enableOutputs(on) {
+      $("btn-draw").disabled = !on;
+      $("btn-book").disabled = !on;
+      $("btn-report").disabled = !(on && STATE.hasResults);
+    }
+
+    function pickedName(input) {
+      return input.files && input.files[0] ? input.files[0].name : "";
+    }
+
+    sdfInput.addEventListener("change", () => {
+      $("sdf-label").textContent = pickedName(sdfInput) || ".sdf 선택 (필수)";
+      $("btn-load").disabled = !pickedName(sdfInput);
+    });
+    xmlInput.addEventListener("change", () => {
+      $("xml-label").textContent = pickedName(xmlInput) || "결과 .xml 선택 (선택)";
+    });
+
+    async function postJson(url, body) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return res.json();
+    }
+
+    $("btn-load").addEventListener("click", async () => {
+      const sdf = sdfInput.files[0];
+      if (!sdf) return;
+      const fd = new FormData();
+      fd.append("sdf_file", sdf);
+      if (xmlInput.files[0]) fd.append("xml_file", xmlInput.files[0]);
+
+      $("btn-load").disabled = true;
+      enableOutputs(false);
+      setStatus(loadStatus, `⏳ ${sdf.name} 읽는 중…`);
+      try {
+        const res = await fetch("/api/module-d/load", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!data.ok) {
+          setStatus(loadStatus, `❌ ${data.message || "읽지 못했습니다"}`, "err");
+          return;
+        }
+        STATE.jobId = data.job_id;
+        STATE.stem = data.stem;
+        STATE.presets = data.presets || {};
+        STATE.hasResults = !!data.has_results;
+
+        $("sum-title").textContent = (data.title && data.title[0]) || data.stem;
+        $("sum-nodes").textContent = data.counts.nodes;
+        $("sum-pipes").textContent = data.counts.pipes;
+        $("sum-nozzles").textContent = data.counts.nozzles;
+        $("sum-devices").textContent = data.counts.devices;
+        $("sum-results").textContent = data.has_results ? "있음" : "없음";
+
+        fillSelect(linkSel, data.link_items, data.saved.link);
+        fillSelect(nodeSel, data.node_items, data.saved.node);
+        $("section-name").value = data.stem;
+
+        $("preset-row").innerHTML = Object.keys(STATE.presets).map(
+          (n) => `<button type="button" class="ghost" data-preset="${escapeHtml(n)}">${escapeHtml(n)}</button>`
+        ).join("");
+
+        let html = "";
+        html += listBlock("읽으며 남긴 말", data.notes);
+        const j = data.join;
+        if (j) {
+          html += `<div class="head">결합 — ${escapeHtml(j.summary)}</div>`;
+          html += listBlock("SDF 에만 있는 노드", j.sdf_only_nodes);
+          html += listBlock("결과에만 있는 노드", j.xml_only_nodes);
+          html += listBlock("SDF 에만 있는 관로", j.sdf_only_pipes);
+          html += listBlock("결과에만 있는 관로", j.xml_only_pipes);
+          html += listBlock("SDF 에만 있는 노즐", j.sdf_only_nozzles);
+          html += listBlock("결과에만 있는 노즐", j.xml_only_nozzles);
+          html += listBlock("양끝이 어긋난 관로", j.divergent_pipes);
+          html += listBlock("겹치는 라벨", j.duplicate_labels);
+        }
+        joinBox.innerHTML = html;
+        joinBox.style.display = html ? "block" : "none";
+
+        setStatus(loadStatus, `✓ ${data.stem} — 한 번만 읽었습니다. 표시 항목을 바꿔도 다시 읽지 않습니다.`, "ok");
+        setStatus(outStatus, data.has_results
+          ? "도면·계산서 모두 만들 수 있습니다"
+          : "결과 XML 이 없어 계산서는 만들 수 없습니다", data.has_results ? "" : "warn");
+        enableOutputs(true);
+        overlayInfo.textContent = `${data.stem} — 관로 ${data.counts.pipes} / 노드 ${data.counts.nodes}`;
+      } catch (err) {
+        setStatus(loadStatus, `❌ ${err.message}`, "err");
+      } finally {
+        $("btn-load").disabled = false;
+        // 다시 읽기가 실패해도 앞서 읽어 둔 잡은 살아 있다 — 출력을 잠가 두지 않는다.
+        enableOutputs(Boolean(STATE.jobId));
+      }
+    });
+
+    $("preset-row").addEventListener("click", (ev) => {
+      const name = ev.target && ev.target.dataset ? ev.target.dataset.preset : null;
+      if (!name) return;
+      const preset = STATE.presets[name];
+      if (!preset) return;
+      linkSel.value = preset.link;
+      nodeSel.value = preset.node;
+      $("btn-draw").click();
+    });
+
+    $("btn-draw").addEventListener("click", async () => {
+      if (!STATE.jobId) return;
+      enableOutputs(false);
+      setStatus(outStatus, "⏳ 도면 그리는 중…");
+      try {
+        const data = await postJson("/api/module-d/draw", {
+          job_id: STATE.jobId,
+          link_item: linkSel.value,
+          node_item: nodeSel.value,
+          show_labels: $("sw-labels").checked,
+          show_arrows: $("sw-arrows").checked,
+          section: $("section-name").value,
+        });
+        if (!data.ok) {
+          setStatus(outStatus, `❌ ${data.message || "그리지 못했습니다"}`, "err");
+          return;
+        }
+        previewImg.src = resultUrl(data.png);
+        previewImg.style.display = "block";
+        emptyEl.style.display = "none";
+        setLink($("link-iso"), resultUrl(data.pdf), "ISO PDF");
+        overlayInfo.textContent =
+          `${data.orientation} · 관로 ${data.drawn.pipes} / 노즐 ${data.drawn.nozzles} / 라벨 ${data.drawn.labels} · ${data.seconds}s`;
+
+        let html = "";
+        html += listBlock("값이 비어 표시하지 못한 관로", data.blank_links);
+        html += listBlock("값이 비어 표시하지 못한 노드", data.blank_nodes);
+        html += listBlock("좌표가 없어 그리지 못한 관로", data.unplaced_pipes);
+        html += listBlock("결과에는 있으나 도면에 없는 관로", data.undrawn_pipes);
+        html += listBlock("결과에는 있으나 도면에 없는 노드", data.undrawn_nodes);
+        html += listBlock("자리가 없어 뺀 라벨", data.dropped_labels);
+        html += listBlock("경고", data.warnings);
+        outBox.innerHTML = html;
+        outBox.style.display = html ? "block" : "none";
+        setStatus(outStatus, `✓ ${data.seconds}s 만에 다시 그렸습니다 (파일은 다시 읽지 않았습니다)`, "ok");
+      } catch (err) {
+        setStatus(outStatus, `❌ ${err.message}`, "err");
+      } finally {
+        enableOutputs(true);
+      }
+    });
+
+    $("btn-report").addEventListener("click", async () => {
+      if (!STATE.jobId) return;
+      enableOutputs(false);
+      setStatus(outStatus, "⏳ 계산서 조판 중…");
+      try {
+        const data = await postJson("/api/module-d/report", { job_id: STATE.jobId });
+        if (!data.ok) {
+          setStatus(outStatus, `❌ ${data.message || "만들지 못했습니다"}`, "err");
+          return;
+        }
+        setLink($("link-report"), resultUrl(data.pdf), "계산서 PDF");
+        let html = "";
+        html += listBlock("유속 초과", data.velocity_flags);
+        html += listBlock("노즐 요구 대비 미달", data.nozzle_flags);
+        html += listBlock("경고", data.warnings);
+        outBox.innerHTML = html;
+        outBox.style.display = html ? "block" : "none";
+        setStatus(outStatus, `✓ ${data.pages}쪽 · ${data.rows}행 · 본문 ${data.font_pt}pt`, "ok");
+      } catch (err) {
+        setStatus(outStatus, `❌ ${err.message}`, "err");
+      } finally {
+        enableOutputs(true);
+      }
+    });
+
+    $("btn-book").addEventListener("click", async () => {
+      if (!STATE.jobId) return;
+      enableOutputs(false);
+      setStatus(outStatus, "⏳ 계산서와 도면을 한 권으로 묶는 중…");
+      try {
+        const data = await postJson("/api/module-d/book", { job_id: STATE.jobId });
+        if (!data.parts) {
+          setStatus(outStatus, `❌ ${data.message || "묶지 못했습니다"}`, "err");
+          return;
+        }
+        setLink($("link-book"), data.pdf ? resultUrl(data.pdf) : null, "합본 PDF");
+        const broken = data.parts.filter((p) => !p.ok);
+        let html = `<div class="head">${escapeHtml(data.line)}</div>`;
+        html += "<ul>" + data.parts.map((p) => {
+          const state = p.ok ? `${p.pages}쪽 · ${p.seconds}s` : `실패 — ${escapeHtml(p.error)}`;
+          return `<li>${p.ok ? "✓" : "×"} ${escapeHtml(p.name)} — ${state}</li>`;
+        }).join("") + "</ul>";
+        html += listBlock("남긴 말", data.notes);
+        data.parts.forEach((p) => { html += listBlock(`${p.name} 경고`, p.warnings); });
+        outBox.innerHTML = html;
+        outBox.style.display = "block";
+        // 합본 파일이 없으면 조각이 몇 장 나왔든 "묶었다" 고 하지 않는다.
+        if (!data.pdf) {
+          setStatus(outStatus, `❌ ${data.message || "합본을 만들지 못했습니다"}`, "err");
+        } else {
+          setStatus(outStatus, broken.length
+            ? `⚠ ${broken.length} 조각이 빠졌습니다 — 나온 것만 묶었습니다`
+            : "✓ 한 권으로 묶었습니다", broken.length ? "warn" : "ok");
+        }
+      } catch (err) {
+        setStatus(outStatus, `❌ ${err.message}`, "err");
+      } finally {
+        enableOutputs(true);
+      }
+    });
+  </script>
+</body>
+</html>

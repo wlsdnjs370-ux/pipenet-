@@ -853,6 +853,8 @@ SYSTEM_OUTPUT_DIR = BASE_DIR / "data" / "system_runs"
 SYSTEM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 MACHINEROOM_OUTPUT_DIR = BASE_DIR / "data" / "machineroom_runs"
 MACHINEROOM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+D_OUTPUT_DIR = BASE_DIR / "data" / "d_output_runs"
+D_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # 모듈 C 설계 자동화 — 기본 off. 켜지기 전까지 /api/design/* 은 존재하지 않는다.
 DESIGN_SESSION_DIR = BASE_DIR / "data" / "design_sessions"
 DESIGN_WORKBENCH_ENABLED = _os_for_auth.environ.get("DESIGN_WORKBENCH_ENABLED") == "1"
@@ -1073,6 +1075,11 @@ _routes_pages.register(
     _sdf_parse_pipes_equipment=_sdf_parse_pipes_equipment,
     _sdf_vertical_pipes=_sdf_vertical_pipes, _to_float=_to_float,
     _write_cad_sdf_learning_profile=_write_cad_sdf_learning_profile)
+import routes.d_output as _routes_d_output
+_routes_d_output.register(
+    app, D_OUTPUT_DIR=D_OUTPUT_DIR, _err500=_err500, _register_job=_register_job,
+    _save_upload=_save_upload, _serve_run_file=_serve_run_file,
+    _sweep_old_run_dirs=_sweep_old_run_dirs)
 import routes.cad_compare as _routes_cad_compare
 _routes_cad_compare.register(
     app, BASE_DIR=BASE_DIR, UPLOAD_DIR=UPLOAD_DIR, _AI_MATCH_MAX_EDGES=_AI_MATCH_MAX_EDGES,

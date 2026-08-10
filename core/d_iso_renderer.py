@@ -477,11 +477,15 @@ def render_iso(
     show_labels: bool = True,
     show_arrows: bool = True,
     section: str = "",
+    also_png: str | Path | None = None,
 ) -> RenderReport:
     """ISO 도면 한 장을 벡터 PDF 로 쓴다.
 
     ``source`` 는 D2 의 BoundModel 이거나, 결과 XML 없이 형상만 그릴 때의
     DisplayModel 이다. 후자면 SDF 만으로 되는 항목(관경·길이·라벨)만 값이 붙는다.
+
+    ``also_png`` 를 주면 같은 도형에서 미리보기 PNG 를 한 장 더 뽑는다. 두 번
+    호출하면 도형을 두 번 짓는다 — 짓는 값은 같으니 한 번만 짓는다.
     """
     bound = source if isinstance(source, BoundModel) else None
     model = bound.model if bound else source
@@ -767,6 +771,12 @@ def render_iso(
                 "Creator": "FNCADnet module D",
                 "Subject": f"link={link.name}; node={node.name}",
             })
+    if also_png is not None:
+        extra = Path(also_png)
+        extra.parent.mkdir(parents=True, exist_ok=True)
+        # dpi 를 올린 뒤에는 되돌리지 않는다 — 벡터 출력이 이미 끝난 뒤라야 한다.
+        fig.set_dpi(PNG_DPI)
+        FigureCanvasAgg(fig).print_png(str(extra))
 
     if unplaced:
         warnings.append(f"양끝 노드를 못 찾은 관로 {len(unplaced)}개 — 그리지 않았다")

@@ -99,9 +99,11 @@ def _drawn(pdf: Path) -> tuple[dict[str, str], dict[str, str]]:
     return links, nodes
 
 
+# 스트림은 줄 길이에 맞춰 아무 데서나 접힌다 — 피연산자 사이를 빈칸 하나로 못 박으면
+# 획 굵기 하나만 바뀌어도 색 연산자가 두 줄로 갈라져 안 보인다.
 _STREAM_OP = re.compile(
-    r"(?P<grey>[\d.]+) G\b|(?P<rgb>(?:[\d.]+ ){3})RG\b|(?P<stack>(?<![\w.])[qQ](?![\w.]))"
-    r"|(?P<x>[\d.\-]+) (?P<y>[\d.\-]+) [mlc]\b")
+    r"(?P<grey>[\d.]+)\s+G\b|(?P<rgb>(?:[\d.]+\s+){3})RG\b|(?P<stack>(?<![\w.])[qQ](?![\w.]))"
+    r"|(?P<x>[\d.\-]+)\s+(?P<y>[\d.\-]+)\s+[mlc]\b")
 
 
 def _shape_digest(pdf: Path) -> str:
@@ -156,6 +158,41 @@ def _stroked_paths(pdf: Path) -> list[tuple[object, list[tuple[float, float]]]]:
             cur.append(point)
     if cur:
         out.append((started, cur))
+    return out
+
+
+_WIDTH_OP = re.compile(
+    r"(?P<grey>[\d.]+)\s+G\b|(?P<rgb>(?:[\d.]+\s+){3})RG\b|(?P<w>[\d.]+)\s+w\b"
+    r"|(?P<x>[\d.\-]+)\s+(?P<y>[\d.\-]+)\s+[mlc]\b")
+
+
+def _stroked_widths(pdf: Path) -> list[tuple[float, object, int]]:
+    """획마다 (굵기 pt, 색, 꼭짓점 수). _stroked_paths 와 달리 굵기를 함께 본다."""
+    from pypdf import PdfReader
+
+    data = PdfReader(str(pdf)).pages[0].get_contents().get_data().decode("latin-1")
+    out: list[tuple[float, object, int]] = []
+    colour: object = None
+    width = 1.0
+    started: object = None
+    started_w, count = 1.0, 0
+    for m in _WIDTH_OP.finditer(data):
+        if m["x"] is None:
+            if m["grey"]:
+                colour = float(m["grey"])
+            elif m["rgb"]:
+                colour = tuple(round(float(v), 4) for v in m["rgb"].split())
+            else:
+                width = float(m["w"])
+            continue
+        if data[m.end() - 1] == "m":
+            if count:
+                out.append((started_w, started, count))
+            started, started_w, count = colour, width, 1
+        else:
+            count += 1
+    if count:
+        out.append((started_w, started, count))
     return out
 
 
@@ -382,6 +419,8 @@ _HEAD_LENGTH = 17.96
 _HEAD_HALF_WIDTH = 10.01
 # 노드 점 지름. 같은 60 장 / 점 3524 개에서 모델 단위 변동계수 0.019, 종이 pt 0.420.
 _NODE_DOT = 9.59
+# 관로 획 굵기. 참조 80 장에서 모델 단위 변동계수 0.006, 종이 pt 0.405.
+_PIPE_WIDTH = 1.0
 
 
 def _head_back(base, tip):
@@ -616,6 +655,25 @@ def test_node_dots_are_sized_in_model_units(hand, tmp_path):
     for pts in dots:
         wide = max(x for x, _ in pts) - min(x for x, _ in pts)
         assert wide == pytest.approx(want, abs=1e-3)
+
+
+def test_pipe_strokes_are_one_width_fixed_in_model_units(hand, tmp_path):
+    # PIPENET 은 선 굵기로 관경을 나타내지 않는다 — 참조 80 장이 관경을 6~8 종류씩
+    # 쓰면서도 획 굵기는 한 장에 한 종류다. 그 굵기도 종이가 아니라 모델 좌표에 있다.
+    pdf = tmp_path / "widths.pdf"
+    render_iso(hand, pdf)
+
+    bores = {p.bore_m for p in hand.model.pipes if p.bore_m}
+    assert len(bores) > 1, "관경이 한 종류면 굵기가 관경을 따라가는지 알 수 없다"
+
+    to_pt = _data_to_pt(hand.model)
+    want = _PIPE_WIDTH * (to_pt(1.0, 0.0)[0] - to_pt(0.0, 0.0)[0])
+    pipe_grey = 0x33 / 255.0
+    widths = {w for w, colour, count in _stroked_widths(pdf)
+              if isinstance(colour, float) and abs(colour - pipe_grey) < 1e-6 and count > 1}
+    assert widths, "관로 획을 찾지 못했다"
+    assert len(widths) == 1, f"한 도면에 굵기가 여러 가지다: {sorted(widths)}"
+    assert widths.pop() == pytest.approx(want, abs=1e-3)
 
 
 # ── 흐름 화살표 ─────────────────────────────────────────────────────────────

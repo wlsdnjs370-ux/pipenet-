@@ -101,6 +101,11 @@ _HEAD_HALF_WIDTH_UNITS = 10.01
 # 좌표다 — 지름을 종이 pt 로 재면 변동계수가 0.420 인데 모델 단위로 재면 0.019 다.
 _NODE_DOT_UNITS = 9.59
 
+# 관로 획 굵기. 참조 80 장은 관경을 6~8 종류씩 쓰면서도 획 굵기는 한 장에 한 종류만
+# 쓴다(중앙 1 종, 최대 2 종) — PIPENET 은 선 굵기로 관경을 나타내지 않는다. 그 하나의
+# 굵기도 종이가 아니라 모델 좌표에 고정이다(모델 단위 변동계수 0.006, 종이 pt 0.405).
+_PIPE_WIDTH_UNITS = 1.0
+
 _KOREAN_FONTS = ("malgun.ttf", "malgunsl.ttf", "NanumGothic.ttf", "gulim.ttc", "batang.ttc")
 
 # 장치 링크 종류별 기호. PIPENET 기호를 베끼지 않고 우리 표기를 쓴다 (지시서 7-2).
@@ -555,15 +560,13 @@ def _text_measurer(fig: Figure, ax, font: FontProperties | None,
     return measure
 
 
-def _line_widths(bores: Sequence[float | None]) -> Callable[[float | None], float]:
-    """선 굵기를 호칭경에 비례시킨다. 관경을 모르는 관로는 가장 가늘게."""
-    known = [b for b in bores if b]
-    top = max(known) if known else 0.0
-    def width(bore: float | None) -> float:
-        if not bore or top <= 0:
-            return 0.4
-        return 0.4 + 1.8 * (bore / top)
-    return width
+def _pt_per_unit(fig: Figure, ax) -> float:
+    """모델 좌표 한 칸이 종이에서 몇 pt 인지. 모델 단위에 고정된 기호를 pt 로만 받는
+    자리(획 굵기)에 넘기려면 이 자가 필요하다. 등축척은 축 상자를 줄이면서 걸리므로
+    먼저 적용해야 가로·세로가 같은 눈금을 갖는다."""
+    ax.apply_aspect()
+    span = ax.transData.transform((1.0, 0.0))[0] - ax.transData.transform((0.0, 0.0))[0]
+    return span * 72.0 / fig.dpi
 
 
 def _rows(bound: BoundModel | None, model: DisplayModel) -> tuple[
@@ -713,18 +716,17 @@ def render_iso(
     unplaced = [label for label, path in paths.items() if path is None]
     placed = {label: path for label, path in paths.items() if path is not None}
 
-    width_of = _line_widths([p.bore_m for p in model.pipes])
-    segments, colours, widths = [], [], []
+    pipe_width = _PIPE_WIDTH_UNITS * _pt_per_unit(fig, ax)
+    segments, colours = [], []
     blank_links: list[str] = []
     banded = link.scope == "pipe" and link.name != "None"
     for label, path in placed.items():
         segments.append(path)
-        widths.append(width_of(links[label].pipe.bore_m))
         band = _band_of(link_values.get(label), link_edges) if banded else None
         colours.append(BAND_COLOURS[band] if band is not None else
                        (_BLANK_COLOUR if banded else "#333333"))
     if segments:
-        ax.add_collection(LineCollection(segments, colors=colours, linewidths=widths,
+        ax.add_collection(LineCollection(segments, colors=colours, linewidths=pipe_width,
                                          capstyle="round", joinstyle="round", zorder=2))
 
     # ── 장치 링크 (펌프·감압밸브·고정손실) ──
@@ -781,12 +783,13 @@ def render_iso(
         ax.add_patch(Polygon(
             [tip, *corners], closed=True, facecolor="none",
             edgecolor=_DERIVED_COLOUR if estimated else "#222222",
-            linewidth=0.4, zorder=6))
+            linewidth=pipe_width, zorder=6))
     if stubs:
-        ax.add_collection(LineCollection(stubs, colors="#333333", linewidths=0.4,
+        ax.add_collection(LineCollection(stubs, colors="#333333", linewidths=pipe_width,
                                          capstyle="round", zorder=2))
     if guessed_stubs:
-        ax.add_collection(LineCollection(guessed_stubs, colors=_DERIVED_COLOUR, linewidths=0.4,
+        ax.add_collection(LineCollection(guessed_stubs, colors=_DERIVED_COLOUR,
+                                         linewidths=pipe_width,
                                          linestyles=[(0, (2.0, 1.5))], zorder=5))
 
     # ── 노드 ──
@@ -816,10 +819,9 @@ def render_iso(
     # 위에 앉아 방향을 가리지 않는다.
     arrow_strokes: list[list[tuple[float, float]]] = []
     arrow_colours: list[str] = []
-    arrow_widths: list[float] = []
     arrow_boxes: list[tuple[float, float, float, float]] = []
     if arrows:
-        for (label, path), colour, width in zip(placed.items(), colours, widths):
+        for (label, path), colour in zip(placed.items(), colours):
             result = links[label].result
             flow = result.flow_m3s if result else None
             if not flow:
@@ -831,13 +833,12 @@ def render_iso(
             wings = _chevron(tip, angle + (180 if flow < 0 else 0), _ARROW_WING_UNITS)
             arrow_strokes.extend(wings)
             arrow_colours.extend([colour] * len(wings))
-            arrow_widths.extend([width] * len(wings))
             xs = [x for wing in wings for x, _ in wing]
             ys = [y for wing in wings for _, y in wing]
             arrow_boxes.append((min(xs), min(ys), max(xs), max(ys)))
     if arrow_strokes:
         ax.add_collection(LineCollection(arrow_strokes, colors=arrow_colours,
-                                         linewidths=arrow_widths, capstyle="butt",
+                                         linewidths=pipe_width, capstyle="butt",
                                          zorder=3))
 
     # ── 글자 (D4 가 자리를 정한다) ──

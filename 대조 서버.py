@@ -37,6 +37,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from werkzeug.utils import secure_filename
 
+from core.upload_names import sanitize_upload_name
 from pipenet_validator import PipenetGuideValidator
 
 
@@ -704,7 +705,7 @@ def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) ->
             original_name = original_name[:-3]
 
     original_suffix = Path(original_name).suffix.lower()
-    filename = secure_filename(original_name)
+    filename = sanitize_upload_name(original_name)
     if not filename:
         filename = f"{field_name}_{int(datetime.now().timestamp())}{original_suffix}"
     elif Path(filename).suffix == "" and original_suffix:
@@ -5442,7 +5443,7 @@ def _inspect_layer_visibility(doc):
 def _inspect_token_path(token: str):
     """이미 업로드된 파일 이름(토큰) → 경로. 업로드 폴더 밖이면 None."""
     token = (token or "").strip()
-    if not token or secure_filename(token) != token:
+    if not token or sanitize_upload_name(token) != token:
         return None
     candidate = UPLOAD_DIR / token
     if candidate.is_file() and candidate.suffix.lower() == ".dxf":
@@ -6056,7 +6057,7 @@ def remote30_extract():
     dxf_token = request.form.get("dxf_token", "").strip()
     dxf_path = None
     if dxf_token:
-        safe_token = secure_filename(dxf_token)
+        safe_token = sanitize_upload_name(dxf_token)
         if safe_token and safe_token == dxf_token:
             candidate = UPLOAD_DIR / safe_token
             if candidate.exists() and candidate.suffix.lower() == ".dxf":
@@ -6187,7 +6188,7 @@ def remote30_ml_detect():
     dxf_token = request.form.get("dxf_token", "").strip()
     dxf_path = None
     if dxf_token:
-        safe_token = secure_filename(dxf_token)
+        safe_token = sanitize_upload_name(dxf_token)
         if safe_token and safe_token == dxf_token:
             cand = UPLOAD_DIR / safe_token
             if cand.exists() and cand.suffix.lower() == ".dxf":
@@ -6663,7 +6664,7 @@ def remote30_export_cad():
     dxf_token = request.form.get("dxf_token", "").strip()
     dxf_path = None
     if dxf_token:
-        safe_token = secure_filename(dxf_token)
+        safe_token = sanitize_upload_name(dxf_token)
         if safe_token and safe_token == dxf_token:
             candidate = UPLOAD_DIR / safe_token
             if candidate.exists() and candidate.suffix.lower() == ".dxf":

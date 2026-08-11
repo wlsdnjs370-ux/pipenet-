@@ -101,8 +101,12 @@ def test_browser_and_server_agree_on_payload_key():
 
     구역 유형을 골라도 CPVC 가 안 나오는데 오류도 안 뜨는 형태라 눈치채기 어렵다.
     """
-    html = (_ROOT / "templates" / "remote30_prototype.html").read_text(encoding="utf-8")
-    assert html.count("material_zones: materialZonesPayload()") == 2
+    import pytest
+
+    html_path = _ROOT / "templates" / "remote30_prototype.html"
+    if not html_path.exists():  # domain-slim 은 모듈 A 화면이 없다
+        pytest.skip("모듈 A 템플릿 없음")
+    assert html_path.read_text(encoding="utf-8").count("material_zones: materialZonesPayload()") == 2
 
     for name in ("r30_prototype.py", "r30_combined.py"):
         path = _ROOT / "routes" / name

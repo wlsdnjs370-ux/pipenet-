@@ -705,6 +705,55 @@ def test_pipe_strokes_are_one_width_fixed_in_model_units(hand, tmp_path):
     assert widths.pop() == pytest.approx(want, abs=1e-3)
 
 
+def test_leader_lines_are_thinner_than_pipes(hand, tmp_path):
+    # 지시선이 관로로 오독되면 안 된다. 종이 pt 로 묶여 있던 0.25pt 는 참조 배율
+    # 폭(0.089~0.167 pt/단위) 어디에서도 배관보다 1.5~2.8 배 굵었다 — 굵기를 배관과
+    # 같은 자(모델 단위)에 태워야 도면 크기와 무관하게 가늘다.
+    pdf = tmp_path / "leaders.pdf"
+    # 두 항목을 함께 켜야 라벨이 붐벼 지시선이 나온다.
+    render_iso(hand, pdf, link_item="Pipe velocity", node_item="Node pressure")
+
+    to_pt = _data_to_pt(hand.model)
+    per_unit = to_pt(1.0, 0.0)[0] - to_pt(0.0, 0.0)[0]
+    strokes = _stroked_widths(pdf)
+    leader_grey = 0x7f / 255.0
+    leaders = {w for w, colour, _ in strokes
+               if isinstance(colour, float) and abs(colour - leader_grey) < 2e-3}
+    assert leaders, "지시선을 찾지 못했다"
+    assert max(leaders) < _PIPE_WIDTH * per_unit, \
+        f"지시선이 배관({_PIPE_WIDTH * per_unit:.4f}pt)보다 굵다: {sorted(leaders)}"
+
+
+def test_our_symbols_scale_with_the_network_not_the_page(hand, tmp_path):
+    # 기기 기호는 지시서 7-2 에 따라 우리 표기라 PIPENET 실측이 없다. 그래도 크기를
+    # 매다는 기준은 망과 같아야 한다 — 종이 pt 로 묶으면 같은 기호가 참조 배율 폭에서
+    # 노드 점의 2.1 배부터 4.0 배까지 널뛴다. 모델을 통째로 키워 배율만 바꿔 본다.
+    import copy
+    import dataclasses
+
+    pdf_a, pdf_b = tmp_path / "a.pdf", tmp_path / "b.pdf"
+    render_iso(hand, pdf_a, link_item="Pipe velocity")
+
+    k = 3.0
+    big = copy.deepcopy(hand)
+    m = big.model
+    m.nodes = tuple(dataclasses.replace(n, x=n.x * k, y=n.y * k) for n in m.nodes)
+    m.pipes = tuple(dataclasses.replace(
+        p, waypoints=tuple((x * k, y * k) for x, y in p.waypoints)) for p in m.pipes)
+    m.texts = tuple(dataclasses.replace(t, x=t.x * k, y=t.y * k) for t in m.texts)
+    render_iso(big, pdf_b, link_item="Pipe velocity")
+
+    # 좌표를 3 배로 늘리면 종이가 그대로이므로 pt/단위 배율은 1/3 이 된다. 모델에
+    # 매달린 굵기는 함께 1/3 이 되고, 종이에 매달린 굵기는 꿈쩍도 하지 않는다.
+    # 기기 테두리가 가장 굵은 획이라 이 값이 우리 기호를 대표한다.
+    def widest(pdf):
+        return max(w for w, colour, _ in _stroked_widths(pdf) if isinstance(colour, float))
+
+    a, b = widest(pdf_a), widest(pdf_b)
+    assert b == pytest.approx(a / k, rel=0.02), \
+        f"배율이 {k:g} 배 달라졌는데 굵기가 {a:.4f} → {b:.4f} 로 따라오지 않았다"
+
+
 def test_band_colours_are_the_ones_pipenet_uses(hand, tmp_path):
     # 참조 40 장 중 범례가 있는 35 장이 전부 이 여섯 색을 이 순서로 쓴다. 렌더러
     # 상수를 가져오지 않고 실측값을 다시 적는다.

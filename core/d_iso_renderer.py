@@ -75,10 +75,20 @@ _NOTE_TYPESIZE = 30.0
 # 지시선. 망보다 연하고 가늘어야 관로로 오독되지 않는다. 값이 없어 회색으로 그린
 # 관로(_BLANK_COLOUR)와는 색이 달라야 한다 — 검사가 둘을 색으로 갈라 본다.
 _LEADER_COLOUR = "#7f7f7f"
+# 굵기는 배관(_PIPE_WIDTH_UNITS = 1.0)의 절반이다. 종이 pt 로 묶여 있던 0.25pt 는
+# 참조 배율 폭(0.089~0.167 pt/단위) 어디에서도 배관보다 1.5~2.8 배 굵어서, 바로 위
+# 주석이 말하는 "가늘어야 한다" 를 한 번도 지키지 못했다.
+_LEADER_WIDTH_UNITS = 0.5
 
-# 기호 크기(pt). 라벨이 피해야 할 자리를 잡는 데도 쓰이므로 그리는 쪽과 한 값이어야 한다.
-_DEVICE_PT = 3.4
-_EQUIPMENT_PT = 2.6
+# 기기·특수기기 기호. 지시서 7-2 에 따라 우리 표기라 PIPENET 에 대응하는 실측이 없다.
+# 다만 크기를 매다는 기준은 망과 같아야 한다 — 종이 pt 로 묶어 두면 같은 기호가 참조
+# 배율 폭에서 노드 점의 2.1 배부터 4.0 배까지 널뛴다. 아래는 크기를 새로 정한 것이
+# 아니라 지금 우리 도면의 생김새(3.4/2.6/0.7/1.4 pt @ 0.185 pt/단위)를 옮긴 값이다.
+# 라벨이 피해야 할 자리를 잡는 데도 쓰이므로 그리는 쪽과 한 값이어야 한다.
+_DEVICE_UNITS = 18.4
+_EQUIPMENT_UNITS = 14.1
+_MARKER_EDGE_UNITS = 3.8        # 기호 테두리
+_DEVICE_LINK_UNITS = 7.6        # 기기를 관로에 잇는 선
 
 # 노즐 스텁. SDF 가 @/n 좌표를 입력노드와 같은 자리에 두면 헤드가 분기점 위에 겹쳐
 # 찍힌다. 원본은 고칠 수 없으므로(지시서 7-3) 그릴 때 방향을 유도한다. 근거는 참조
@@ -544,7 +554,7 @@ def _korean_font() -> FontProperties | None:
 
 
 def _markers(ax, groups: dict[str, list[tuple[float, float]]], *,
-             size: float, face: str, zorder: int) -> None:
+             size: float, edge: float, face: str, zorder: int) -> None:
     """같은 모양끼리 한 번에 찍는다 — 점 하나마다 부르면 PDF 안 표현이 개수에 따라
     달라져, 표시 항목만 바꿔도 도형 지문이 흔들린다."""
     for mark, points in groups.items():
@@ -552,7 +562,7 @@ def _markers(ax, groups: dict[str, list[tuple[float, float]]], *,
             continue
         ax.plot([p[0] for p in points], [p[1] for p in points], linestyle="none",
                 marker=mark, markersize=size, markerfacecolor=face,
-                markeredgecolor="#222222", markeredgewidth=0.7, zorder=zorder)
+                markeredgecolor="#222222", markeredgewidth=edge, zorder=zorder)
 
 
 def _note_size(item, per_unit: float) -> float:
@@ -777,23 +787,26 @@ def render_iso(
         device_points.setdefault(DEVICE_MARKS.get(dev.kind, "s"), []).append(
             ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))
     if device_segments:
-        ax.add_collection(LineCollection(device_segments, colors="#222222", linewidths=1.4,
-                                         zorder=3))
-    _markers(ax, device_points, size=_DEVICE_PT, face="white", zorder=5)
+        ax.add_collection(LineCollection(device_segments, colors="#222222",
+                                         linewidths=_DEVICE_LINK_UNITS * per_unit, zorder=3))
+    device_pt = _DEVICE_UNITS * per_unit
+    equipment_pt = _EQUIPMENT_UNITS * per_unit
+    edge_pt = _MARKER_EDGE_UNITS * per_unit
+    _markers(ax, device_points, size=device_pt, edge=edge_pt, face="white", zorder=5)
 
     # ── 특수기기 (A/V, FLEX) ──
     equipment_points: dict[str, list[tuple[float, float]]] = {}
     for label, path in placed.items():
         for eq in links[label].pipe.equipment:
             # 신축배관은 가위표, 밸브류는 네모. 삼각은 쓰지 않는다 — 노즐 헤드가 같은
-            # 자리에 3.6pt 짜리 검은 삼각으로 앉아 2.6pt 짜리 기기 삼각과 구별되지 않는다.
+            # 자리에 검은 삼각으로 앉아 기기 삼각과 구별되지 않는다.
             mark = "X" if eq.description.upper().startswith(("FX", "FLEX")) else "s"
             equipment_points.setdefault(mark, []).append(
                 _point_at(path, eq.rel_position if eq.rel_position is not None else 0.5))
-    _markers(ax, {"X": equipment_points.get("X", [])}, size=_EQUIPMENT_PT, face="#ffffff",
-             zorder=5)
-    _markers(ax, {"s": equipment_points.get("s", [])}, size=_EQUIPMENT_PT, face="#222222",
-             zorder=5)
+    _markers(ax, {"X": equipment_points.get("X", [])}, size=equipment_pt, edge=edge_pt,
+             face="#ffffff", zorder=5)
+    _markers(ax, {"s": equipment_points.get("s", [])}, size=equipment_pt, edge=edge_pt,
+             face="#222222", zorder=5)
 
     # ── 노즐 ──
     measured_stub = _measured_stub(nozzles, coords)
@@ -928,9 +941,8 @@ def render_iso(
         w, h = measure(item.text)
         fixed.append((item.x, item.y, item.x + w * scale, item.y + h * scale))
     # 기호도 피한다. 값이 밸브나 노즐 위에 얹히면 겹친 라벨이 없어도 읽을 수 없다.
-    per_pt = measure("0")[1] / label_pt
-    for points, size_pt in ((device_points, _DEVICE_PT), (equipment_points, _EQUIPMENT_PT)):
-        half = size_pt * per_pt / 2
+    for points, size in ((device_points, _DEVICE_UNITS), (equipment_points, _EQUIPMENT_UNITS)):
+        half = size / 2
         for group in points.values():
             fixed.extend((x - half, y - half, x + half, y + half) for x, y in group)
     head = _HEAD_LENGTH_UNITS
@@ -940,8 +952,8 @@ def render_iso(
 
     leaders = [lab.leader for lab in labels if lab.leader]
     if leaders:
-        ax.add_collection(LineCollection(leaders, colors=_LEADER_COLOUR, linewidths=0.25,
-                                         zorder=6))
+        ax.add_collection(LineCollection(leaders, colors=_LEADER_COLOUR,
+                                         linewidths=_LEADER_WIDTH_UNITS * per_unit, zorder=6))
     for lab in labels:
         # anchor 모드라야 (x, y) 가 회전 전 상자의 한가운데로 고정된다. 기본 모드는
         # 회전한 뒤의 상자를 다시 맞춰서 D4 가 잡아 둔 자리와 어긋난다.

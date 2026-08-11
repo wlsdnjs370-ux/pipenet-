@@ -41,9 +41,10 @@ KGF_CM2 = 98066.5
 L_MIN = 60000.0
 ATM = 101325.0
 
-# 표제란·범례가 놓이는 위쪽 띠, 각주가 놓이는 아래쪽 띠(pt). 그 사이가 그림틀이다.
-_FRAME_TOP_PT = (1.0 - (12.0 + 16.0 + 18.0) / 297.0) * 297.0 / 25.4 * 72.0
-_FRAME_BOTTOM_PT = (12.0 + 6.0) / 25.4 * 72.0
+# 그림틀이 종이에서 차지하는 세로 구간(pt). 표제란과 범례는 그 아래에 함께 있다.
+_PLATE_BAND = (0.156, 0.930)
+_A4_H_PT = 297.0 / 25.4 * 72.0
+_FRAME_BOTTOM_PT, _FRAME_TOP_PT = (f * _A4_H_PT for f in _PLATE_BAND)
 
 
 @pytest.fixture(scope="module")
@@ -127,7 +128,7 @@ def _shape_digest(pdf: Path) -> str:
             continue
         if grey is not None and abs(grey - leader_grey) < 1e-6:
             continue
-        if float(m["y"]) < _FRAME_TOP_PT:
+        if _FRAME_BOTTOM_PT < float(m["y"]) < _FRAME_TOP_PT:
             pts.append((m["x"], m["y"]))
     assert pts, "그림틀 안에 그려진 것이 없다"
     return hashlib.sha256(repr(pts).encode()).hexdigest()
@@ -197,23 +198,29 @@ def _stroked_widths(pdf: Path) -> list[tuple[float, object, int]]:
 
 
 _FILL_OP = re.compile(
-    r"(?P<rgb>(?:[\d.]+\s+){3})rg\b|(?P<x>[\d.\-]+)\s+(?P<y>[\d.\-]+)\s+m\b")
+    r"(?P<rgb>(?:[\d.]+\s+){3})rg\b|(?P<grey>[\d.]+)\s+g\b"
+    r"|(?P<x>[\d.\-]+)\s+(?P<y>[\d.\-]+)\s+m\b")
 
 
 def _legend_fills(pdf: Path) -> list[tuple[float, ...]]:
-    """범례 칸을 왼쪽부터 읽어 채움색만 돌려준다."""
+    """범례 칸을 읽는 순서대로 — 윗줄 왼쪽에서 아랫줄 오른쪽으로 — 채움색만 돌려준다."""
     from pypdf import PdfReader
 
     data = PdfReader(str(pdf)).pages[0].get_contents().get_data().decode("latin-1")
-    found: list[tuple[float, tuple[float, ...]]] = []
+    found: list[tuple[float, float, tuple[float, ...]]] = []
     colour: tuple[float, ...] | None = None
     for m in _FILL_OP.finditer(data):
         if m["rgb"]:
             colour = tuple(round(float(v), 4) for v in m["rgb"].split())
-        elif colour is not None and colour != (1.0, 1.0, 1.0) and float(m["y"]) > _FRAME_TOP_PT:
-            found.append((float(m["x"]), colour))
-    # 칸마다 경로가 하나씩이라 x 만 보면 줄 세워진다.
-    return [c for _, c in sorted(found)]
+        elif m["grey"]:
+            # 세 성분이 같은 색은 rg 가 아니라 g 한 값으로 적힌다. 이걸 빠뜨리면
+            # 무채색 칸이 앞 칸 색을 그대로 물려받아 검사가 거짓으로 통과한다.
+            colour = (round(float(m["grey"]), 4),) * 3
+        # y 0 은 종이 바탕이다 — 범례 칸이 아니다.
+        elif colour is not None and 0.0 < float(m["y"]) < _FRAME_BOTTOM_PT:
+            found.append((round(float(m["y"]), 1), float(m["x"]), colour))
+    # 칸마다 경로가 하나씩이다. 줄이 여럿이므로 x 만 보면 두 줄이 섞인다.
+    return [c for _, _, c in sorted(found, key=lambda f: (-f[0], f[1]))]
 
 
 def _data_to_pt(model):
@@ -223,8 +230,9 @@ def _data_to_pt(model):
     page = (297.0, 210.0) if span_x / span_y > 297.0 / 210.0 else (210.0, 297.0)
     mm = 72.0 / 25.4
     box_w = (page[0] - 24.0) * mm
-    box_h = (page[1] - (12.0 + 6.0) - (12.0 + 16.0 + 18.0)) * mm
-    box_cx, box_cy = page[0] * mm / 2.0, (12.0 + 6.0) * mm + box_h / 2.0
+    box_h = (_PLATE_BAND[1] - _PLATE_BAND[0]) * page[1] * mm
+    box_cx = page[0] * mm / 2.0
+    box_cy = (sum(_PLATE_BAND) / 2.0) * page[1] * mm
     pad = 0.04 * max(span_x, span_y)
     # 축은 aspect equal 이라 가로세로 같은 배율로 줄고 칸 가운데에 놓인다.
     scale = min(box_w / (span_x + 2 * pad), box_h / (span_y + 2 * pad))
@@ -710,6 +718,20 @@ def test_band_colours_are_the_ones_pipenet_uses(hand, tmp_path):
     assert drawn <= set(want), f"참조에 없는 색을 쓴다: {sorted(drawn - set(want))}"
     # 색만 맞고 순서가 뒤집히면 도면이 거짓말한다. 범례 칸을 왼쪽부터 읽어 확인한다.
     assert _legend_fills(pdf) == want
+
+
+def test_node_bands_are_grey_not_the_link_colours(hand, tmp_path):
+    # 참조 압력 도면 40 장 중 39 장이 노드 범례에 이 무채색 계단을 쓴다 — 검정에서
+    # 시작해 한 칸에 42/255 씩 밝아진다. 관로 띠와 같은 여섯 색을 쓰는 장은 없다.
+    grey = [tuple(round(v / 255.0, 4) for _ in range(3))
+            for v in (0x00, 0x2a, 0x54, 0x7e, 0xa9, 0xd4)]
+
+    pdf = tmp_path / "both.pdf"
+    render_iso(hand, pdf, link_item="Pipe velocity", node_item="Node pressure")
+    fills = _legend_fills(pdf)
+    # 두 벌이 함께 나오면 노드가 위다. 위에서부터 읽으므로 노드 벌이 먼저 온다.
+    assert fills[:6] == grey
+    assert all(len(set(c)) == 1 for c in fills[:6]), "노드 범례에 색이 섞였다"
 
 
 # ── 흐름 화살표 ─────────────────────────────────────────────────────────────

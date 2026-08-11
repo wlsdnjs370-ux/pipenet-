@@ -54,6 +54,9 @@ _NICE_STEPS = (1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 7.5)
 # 낮은 값 → 높은 값. 참조 도면 40 장 중 범례가 있는 35 장이 전부 이 여섯 색을 이
 # 순서로 쓴다. 관로 획에서도 같은 여섯 색만 나온다.
 BAND_COLOURS = ("#ff0000", "#ffac00", "#00ff00", "#00ffff", "#0000ff", "#ff00ff")
+# 노드 값은 같은 여섯 색을 쓰지 않는다. 압력 도면 40 장 중 39 장이 노드 범례에 이
+# 무채색 계단을 쓴다 — 검정에서 시작해 한 칸에 42/255 씩 밝아진다.
+NODE_BAND_COLOURS = ("#000000", "#2a2a2a", "#545454", "#7e7e7e", "#a9a9a9", "#d4d4d4")
 _BLANK_COLOUR = "#9a9a9a"
 
 # 라벨 글꼴 크기(pt)의 기준. SDF 의 typesize 단위는 파일이 밝히지 않으므로 절대 크기로
@@ -107,7 +110,28 @@ _NODE_DOT_UNITS = 9.59
 # 굵기도 종이가 아니라 모델 좌표에 고정이다(모델 단위 변동계수 0.006, 종이 pt 0.405).
 _PIPE_WIDTH_UNITS = 1.0
 
-_KOREAN_FONTS = ("malgun.ttf", "malgunsl.ttf", "NanumGothic.ttf", "gulim.ttc", "batang.ttc")
+# 판면. 참조 세로 도면(595×842 pt)을 재면 표제란과 범례가 위가 아니라 아래 오른쪽
+# 한 덩어리로 모여 있고, 망이 그 위를 다 쓴다(종이 아래에서 0.156~0.930). 표제란을
+# 위에 얹은 머리띠는 우리 배치였다. 아래 값은 종이 모서리에서 잰 pt 이므로 A4 두
+# 방향에 그대로 얹힌다 — 가로 도면은 참조에 범례 있는 장이 없어 재지 못했다.
+_BLOCK_RIGHT_PT = 67.0          # 종이 오른쪽 끝에서 표제란 오른쪽 끝까지
+_BLOCK_WIDTH_PT = 315.5
+_BLOCK_ROWS_PT = (110.1, 95.9, 81.8)    # 글줄 바닥, 종이 아래에서
+_BLOCK_MID_DX_PT = 181.3        # 둘째 칸이 시작하는 자리
+_BLOCK_FONT_PT = 7.0
+_PLATE_BAND = (0.156, 0.930)    # 망이 채우는 세로 구간 (종이 비율)
+
+# 범례. 한 벌이 3 칸 × 2 줄 격자이고 왼쪽에 항목 이름이 두 줄로 붙는다. 값이 큰
+# 쪽으로 왼쪽 위에서 오른쪽 아래로 읽는다. 노드·관로 두 벌이 함께 나오면 노드가 위다.
+_LEGEND_BOTTOM_PT = 28.8        # 맨 아래 벌의 아랫줄 바닥
+_LEGEND_LANE_PT = 28.3          # 벌과 벌 사이
+_LEGEND_ROW_PT = 11.4
+_LEGEND_COL_PT = 90.6
+_LEGEND_SWATCH_DX_PT = 87.8     # 표제란 왼쪽 끝에서 첫 칸까지
+_LEGEND_SWATCH_PT = 8.5
+_LEGEND_LABEL_DX_PT = 11.3      # 칸에서 그 칸 설명까지
+
+_KOREAN_FONTS =("malgun.ttf", "malgunsl.ttf", "NanumGothic.ttf", "gulim.ttc", "batang.ttc")
 
 # 장치 링크 종류별 기호. PIPENET 기호를 베끼지 않고 우리 표기를 쓴다 (지시서 7-2).
 DEVICE_MARKS = {"Pump-fan": "o", "Elastomeric-valve": "D", "Pressure-loss": "s"}
@@ -597,27 +621,31 @@ def _rows(bound: BoundModel | None, model: DisplayModel) -> tuple[
     return links, nozzles, nodes
 
 
-def _draw_legend(fig: Figure, rect: tuple[float, float, float, float], title: str,
-                 edges: Sequence[float], fmt: ValueFormat, font: FontProperties | None) -> None:
-    x, y, w, h = rect
-    fig.text(x, y + h, title, fontsize=5.2, va="top", ha="left",
-             fontproperties=font, weight="bold")
+def _draw_legend(fig: Figure, page_pt: tuple[float, float], lane: int, title: str,
+                 edges: Sequence[float], fmt: ValueFormat, palette: Sequence[str],
+                 font: FontProperties | None) -> None:
+    """범례 한 벌 — 왼쪽에 항목 이름, 오른쪽에 3 칸 2 줄 격자."""
+    w_pt, h_pt = page_pt
+    left = (w_pt - _BLOCK_RIGHT_PT - _BLOCK_WIDTH_PT) / w_pt
+    base = (_LEGEND_BOTTOM_PT + lane * _LEGEND_LANE_PT) / h_pt
+    fig.text(left, base, title, fontsize=_BLOCK_FONT_PT, va="bottom", ha="left",
+             fontproperties=font)
     count = len(edges) + 1 if edges else 1
-    swatch_w, swatch_h = w / (count + 1.2), h * 0.34
-    top = y + h * 0.42
     for i in range(count):
-        left = x + i * swatch_w * 1.15
-        fig.add_artist(Rectangle((left, top), swatch_w * 0.9, swatch_h,
+        row, col = divmod(i, 3)
+        x = left + (_LEGEND_SWATCH_DX_PT + col * _LEGEND_COL_PT) / w_pt
+        y = base + (1 - row) * _LEGEND_ROW_PT / h_pt
+        fig.add_artist(Rectangle((x, y), _LEGEND_SWATCH_PT / w_pt, _LEGEND_SWATCH_PT / h_pt,
                                  transform=fig.transFigure,
-                                 facecolor=BAND_COLOURS[i], edgecolor="none"))
+                                 facecolor=palette[i], edgecolor="none"))
         if not edges:
             label = "전량 동일"
         elif i < len(edges):
             label = f"< {fmt.text(edges[i])}"
         else:
             label = f"≥ {fmt.text(edges[-1])}"
-        fig.text(left, top - h * 0.12, label, fontsize=4.4, va="top", ha="left",
-                 fontproperties=font)
+        fig.text(x + _LEGEND_LABEL_DX_PT / w_pt, y, label, fontsize=_BLOCK_FONT_PT,
+                 va="bottom", ha="left", fontproperties=font)
 
 
 def render_iso(
@@ -698,13 +726,11 @@ def render_iso(
     page = (A4_MM[1], A4_MM[0]) if landscape else A4_MM
     fig = Figure(figsize=(page[0] / _MM_PER_INCH, page[1] / _MM_PER_INCH))
 
-    margin_x, margin_y = 12.0 / page[0], 12.0 / page[1]
-    header_h, legend_h, footer_h = 16.0 / page[1], 9.0 / page[1], 6.0 / page[1]
-    # 범례 칸은 쓰든 안 쓰든 두 줄을 비워 둔다. 표시 항목에 따라 그림틀이 커졌다
-    # 작아지면 같은 망이 다른 축척으로 나와 두 장을 겹쳐 볼 수 없다 (지시서 6).
-    legend_total = legend_h * 2
-    ax_bottom = margin_y + footer_h
-    ax_top = 1.0 - margin_y - header_h - legend_total
+    page_pt = (page[0] / _MM_PER_INCH * 72.0, page[1] / _MM_PER_INCH * 72.0)
+    margin_x = 12.0 / page[0]
+    # 그림틀은 표시 항목과 무관하게 고정이다. 범례가 한 벌이냐 두 벌이냐에 따라
+    # 커졌다 작아지면 같은 망이 다른 축척으로 나와 두 장을 겹쳐 볼 수 없다 (지시서 6).
+    ax_bottom, ax_top = _PLATE_BAND
     ax = fig.add_axes((margin_x, ax_bottom, 1.0 - 2 * margin_x, ax_top - ax_bottom))
     ax.set_aspect("equal")
     ax.set_axis_off()
@@ -807,7 +833,7 @@ def render_iso(
         if node.name != "None" and value is None:
             blank_nodes.append(label)
         node_points.append(point)
-        node_colours.append(BAND_COLOURS[band] if band is not None else "#333333")
+        node_colours.append(NODE_BAND_COLOURS[band] if band is not None else "#333333")
     if node_points:
         ax.add_collection(EllipseCollection(
             [_NODE_DOT_UNITS] * len(node_points), [_NODE_DOT_UNITS] * len(node_points),
@@ -920,42 +946,42 @@ def render_iso(
 
     # ── 표제란 (지시서 7-2: 자체 서식, 생성 출처 명시) ──
     titles = list(bound.title) if bound else []
-    head_y = 1.0 - margin_y
-    fig.text(margin_x, head_y, titles[0] if titles else model.source.stem,
-             fontsize=9, weight="bold", va="top", ha="left", fontproperties=font)
-    subtitle = " · ".join(titles[1:]) if len(titles) > 1 else ""
-    fig.text(margin_x, head_y - 5.0 / page[1], subtitle, fontsize=5.6, va="top",
-             ha="left", fontproperties=font)
-    fig.text(margin_x, head_y - 9.5 / page[1], section or model.source.stem,
-             fontsize=5.6, va="top", ha="left", fontproperties=font)
-    right = 1.0 - margin_x
-    fig.text(right, head_y, "ISO 계통도 — FNCADnet 모듈 D 생성",
-             fontsize=6, va="top", ha="right", fontproperties=font)
+    block_left = (page_pt[0] - _BLOCK_RIGHT_PT - _BLOCK_WIDTH_PT) / page_pt[0]
+    block_mid = block_left + _BLOCK_MID_DX_PT / page_pt[0]
+    block_right = (page_pt[0] - _BLOCK_RIGHT_PT) / page_pt[0]
+    rows = [y / page_pt[1] for y in _BLOCK_ROWS_PT]
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     origin = f"원본 {model.source.name}" + (f" + {bound.document.source.name}" if bound else "")
-    fig.text(right, head_y - 5.0 / page[1], f"{origin} · {stamp}",
-             fontsize=5.0, va="top", ha="right", fontproperties=font)
-    fig.text(right, head_y - 9.5 / page[1],
-             f"관로 {link.name} / 노드 {node.name}",
-             fontsize=5.0, va="top", ha="right", fontproperties=font)
-    fig.add_artist(Rectangle((margin_x, ax_top + legend_total), 1.0 - 2 * margin_x, 0.0006,
-                             transform=fig.transFigure,
-                             facecolor="#333333", edgecolor="none"))
+    # 표시 항목은 범례가 이름째 적어 주므로 여기서 되풀이하지 않는다. 원본 파일명은
+    # 이 칸에 들어가기엔 길어 각주로 뺐다 — 참조의 세 줄 짜임을 그대로 두기 위해서다.
+    cells = (
+        (block_left, rows[0], "left", titles[0] if titles else model.source.stem),
+        (block_left, rows[1], "left", " · ".join(titles[1:]) if len(titles) > 1 else ""),
+        (block_right, rows[1], "right", "FNCADnet 모듈 D 생성"),
+        (block_left, rows[2], "left", f"ISO 계통도 — {section or model.source.stem}"),
+        (block_mid, rows[2], "left", "Page 1 of 1"),
+        (block_right, rows[2], "right", stamp),
+    )
+    for x, y, align, text in cells:
+        fig.text(x, y, text, fontsize=_BLOCK_FONT_PT, va="bottom", ha=align,
+                 fontproperties=font)
 
-    lane = ax_top
+    lane = 0
     if link.name != "None":
-        _draw_legend(fig, (margin_x, lane, (1.0 - 2 * margin_x) * 0.46, legend_h),
-                     f"{link.name} ({link_fmt.symbol})", link_edges, link_fmt, font)
-        lane += legend_h
+        _draw_legend(fig, page_pt, lane, f"{link.name}\n({link_fmt.symbol})",
+                     link_edges, link_fmt, BAND_COLOURS, font)
+        lane += 1
     if node.name != "None":
-        _draw_legend(fig, (margin_x, lane, (1.0 - 2 * margin_x) * 0.46, legend_h),
-                     f"{node.name} ({node_fmt.symbol})", node_edges, node_fmt, font)
+        _draw_legend(fig, page_pt, lane, f"{node.name}\n({node_fmt.symbol})",
+                     node_edges, node_fmt, NODE_BAND_COLOURS, font)
 
-    fig.text(margin_x, margin_y, "PIPENET 이 계산한 결과를 옮겨 그린 도면이다. "
-             "값은 결과 XML 원문이며 이 프로그램이 계산하거나 보간하지 않는다.",
+    # 각주는 표제란 왼쪽에 남는 자리에만 든다 — 한 줄로 흘리면 범례를 덮는다.
+    fig.text(margin_x, 8.0 / page_pt[1],
+             f"{origin}\n"
+             "PIPENET 이 계산한 결과를 옮겨 그린 도면이다.\n"
+             "값은 결과 XML 원문이며 이 프로그램이\n"
+             "계산하거나 보간하지 않는다.",
              fontsize=4.6, va="bottom", ha="left", color="#555555", fontproperties=font)
-    fig.text(right, margin_y, "Page 1 of 1", fontsize=4.6, va="bottom", ha="right",
-             fontproperties=font)
 
     out.parent.mkdir(parents=True, exist_ok=True)
     if out.suffix.lower() == ".png":

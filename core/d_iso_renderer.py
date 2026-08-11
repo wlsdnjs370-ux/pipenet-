@@ -742,11 +742,12 @@ def render_iso(
     equipment_points: dict[str, list[tuple[float, float]]] = {}
     for label, path in placed.items():
         for eq in links[label].pipe.equipment:
-            # 신축배관은 형상이 휘므로 삼각으로, 밸브류는 네모로 구분한다.
-            mark = "v" if eq.description.upper().startswith(("FX", "FLEX")) else "s"
+            # 신축배관은 가위표, 밸브류는 네모. 삼각은 쓰지 않는다 — 노즐 헤드가 같은
+            # 자리에 3.6pt 짜리 검은 삼각으로 앉아 2.6pt 짜리 기기 삼각과 구별되지 않는다.
+            mark = "X" if eq.description.upper().startswith(("FX", "FLEX")) else "s"
             equipment_points.setdefault(mark, []).append(
                 _point_at(path, eq.rel_position if eq.rel_position is not None else 0.5))
-    _markers(ax, {"v": equipment_points.get("v", [])}, size=_EQUIPMENT_PT, face="#ffffff",
+    _markers(ax, {"X": equipment_points.get("X", [])}, size=_EQUIPMENT_PT, face="#ffffff",
              zorder=5)
     _markers(ax, {"s": equipment_points.get("s", [])}, size=_EQUIPMENT_PT, face="#222222",
              zorder=5)

@@ -585,6 +585,22 @@ def test_head_triangle_is_an_outline_with_its_apex_on_the_at_node(hand, tmp_path
             f"헤드 {z.label} 의 삼각형 윤곽이 없다"
 
 
+def test_no_equipment_symbol_is_shaped_like_a_head(hand, tmp_path):
+    # 헤드가 속 빈 삼각형이 된 뒤로 삼각형은 노즐 헤드만의 표시여야 한다. 신축배관
+    # 기기가 2.6pt 짜리 검은 삼각이라 3.6pt 짜리 헤드와 구별되지 않았다.
+    from pypdf import PdfReader
+
+    pdf = tmp_path / "symbols.pdf"
+    render_iso(hand, pdf, link_item="Pipe velocity")
+
+    forms = (PdfReader(str(pdf)).pages[0]["/Resources"].get("/XObject") or {})
+    assert forms, "기호를 재사용 도형으로 찍지 않으면 이 검사가 아무것도 못 본다"
+    for name, ref in forms.items():
+        data = ref.get_object().get_data().decode("latin-1")
+        corners = [ln for ln in data.splitlines() if ln.endswith((" m", " l", " c"))]
+        assert len(corners) != 3, f"{name} 이 삼각형이라 노즐 헤드와 겹친다"
+
+
 # ── 흐름 화살표 ─────────────────────────────────────────────────────────────
 
 # PIPENET 이 직접 출력한 ISO PDF 255 장을 SDF 모델 좌표에 맞춰 실측한 값이다.

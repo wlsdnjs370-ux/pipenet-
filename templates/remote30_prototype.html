@@ -1064,8 +1064,8 @@
       </div>
 
       <div id="wb-empty" class="canvas-empty">
-        <strong>DXF 파일을 업로드하세요</strong>
-        오른쪽 패널에서 .dxf 파일을 선택하고<br>
+        <strong>도면 파일을 업로드하세요</strong>
+        오른쪽 패널에서 .dxf 또는 .dwg 파일을 선택하고<br>
         <em>"배관망 생성"</em> 버튼을 누르면<br>
         4-stage 파이프라인이 실시간으로 진행됩니다.
       </div>
@@ -5336,7 +5336,7 @@
         if (!ents.length) {
           ctx.fillStyle = "#94a3b8";
           ctx.font = "14px ui-monospace, monospace";
-          const msg = "우측 사이드바에서 기계실(옥상수조) DXF (.dxf) 를 업로드하세요.";
+          const msg = "우측 사이드바에서 기계실(옥상수조) 도면 (.dxf / .dwg) 을 업로드하세요.";
           const m = ctx.measureText(msg);
           ctx.fillText(msg, w / 2 - m.width / 2, h / 2);
           return;
@@ -7506,7 +7506,7 @@
           // 빈 상태 안내
           ctx.fillStyle = "#94a3b8";
           ctx.font = "14px ui-monospace, monospace";
-          const msg = "우측 사이드바에서 계통도 DXF (.dxf) 를 업로드하세요.";
+          const msg = "우측 사이드바에서 계통도 도면 (.dxf / .dwg) 을 업로드하세요.";
           const m = ctx.measureText(msg);
           ctx.fillText(msg, w / 2 - m.width / 2, h / 2);
           return;

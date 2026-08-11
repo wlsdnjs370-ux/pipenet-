@@ -12,6 +12,8 @@ from pathlib import Path
 
 from flask import Response, jsonify, make_response, render_template, request
 
+from core.upload_names import sanitize_upload_name
+
 # 같은 job_id 재구독 시 두 제너레이터가 하나의 job 딕셔너리에 스테이지별로 나눠
 # 쓰는 것을 막는다 — r30_prototype.py 와 동일한 이유.
 _JOB_LOCK = threading.Lock()
@@ -19,14 +21,13 @@ _JOB_LOCK = threading.Lock()
 
 def _save_pressure_table_upload(field_name: str, out_dir: Path) -> Path | None:
     """선택적 압력표 파일 업로드 (csv/xlsx) — 파일이 있으면 out_dir 로 저장 후 경로 반환."""
-    from werkzeug.utils import secure_filename as _sec
     f = request.files.get(field_name)
     if not f or not f.filename:
         return None
     suffix = Path(f.filename).suffix.lower()
     if suffix not in {".csv", ".xlsx"}:
         raise ValueError(f"{field_name} 은 .csv 또는 .xlsx 만 허용합니다.")
-    safe = _sec(f.filename) or f"upload{suffix}"
+    safe = sanitize_upload_name(f.filename) or f"upload{suffix}"
     dst = out_dir / safe
     f.save(dst)
     return dst

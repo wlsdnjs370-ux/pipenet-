@@ -47,6 +47,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from werkzeug.utils import secure_filename
 
+from core.upload_names import sanitize_upload_name
 from pipenet_validator import PipenetGuideValidator
 
 
@@ -513,7 +514,7 @@ def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) ->
             original_name = original_name[:-3]
 
     original_suffix = Path(original_name).suffix.lower()
-    filename = secure_filename(original_name)
+    filename = sanitize_upload_name(original_name)
     if not filename:
         filename = f"{field_name}_{int(datetime.now().timestamp())}{original_suffix}"
     elif Path(filename).suffix == "" and original_suffix:

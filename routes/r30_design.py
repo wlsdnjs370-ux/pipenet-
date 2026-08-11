@@ -25,6 +25,7 @@ from flask import (Response, jsonify, make_response, render_template, request,
                    send_from_directory)
 from werkzeug.utils import secure_filename
 
+from core.upload_names import sanitize_upload_name
 from core.design import gate as G
 from core.design import session as S
 from core.design.checks import dimensional as DIM
@@ -272,7 +273,7 @@ def register(app, *, DESIGN_SESSION_DIR, UPLOAD_DIR=None, INSPECT_CACHE_DIR=None
         쓴다.
         """
         token = (token or "").strip()
-        if not token or UPLOAD_DIR is None or secure_filename(token) != token:
+        if not token or UPLOAD_DIR is None or sanitize_upload_name(token) != token:
             return None
         candidate = UPLOAD_DIR / token
         return candidate if candidate.is_file() and candidate.suffix.lower() == ".dxf" else None

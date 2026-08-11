@@ -28,6 +28,7 @@ from openpyxl.utils import get_column_letter
 from werkzeug.utils import secure_filename
 
 from cad_engine import locate_oda_exe
+from core.upload_names import sanitize_upload_name
 from cad_match import _cad_layer_weight
 from pipenet_validator import PipenetGuideValidator
 
@@ -1114,7 +1115,7 @@ def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH,
         dxf_token = request.form.get("dxf_token", "").strip()
         dxf_path = None
         if dxf_token:
-            safe_token = secure_filename(dxf_token)
+            safe_token = sanitize_upload_name(dxf_token)
             if safe_token and safe_token == dxf_token:
                 candidate = UPLOAD_DIR / safe_token
                 if candidate.exists() and candidate.suffix.lower() == ".dxf":
@@ -1245,7 +1246,7 @@ def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH,
         dxf_token = request.form.get("dxf_token", "").strip()
         dxf_path = None
         if dxf_token:
-            safe_token = secure_filename(dxf_token)
+            safe_token = sanitize_upload_name(dxf_token)
             if safe_token and safe_token == dxf_token:
                 cand = UPLOAD_DIR / safe_token
                 if cand.exists() and cand.suffix.lower() == ".dxf":
@@ -1718,7 +1719,7 @@ def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH,
         dxf_token = request.form.get("dxf_token", "").strip()
         dxf_path = None
         if dxf_token:
-            safe_token = secure_filename(dxf_token)
+            safe_token = sanitize_upload_name(dxf_token)
             if safe_token and safe_token == dxf_token:
                 candidate = UPLOAD_DIR / safe_token
                 if candidate.exists() and candidate.suffix.lower() == ".dxf":

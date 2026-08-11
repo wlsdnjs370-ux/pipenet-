@@ -17,9 +17,9 @@ import uuid
 from pathlib import Path
 
 from flask import Response, jsonify, request
-from werkzeug.utils import secure_filename
 
 from core.dxf_parse_progress import parse_dxf_with_progress
+from core.upload_names import sanitize_upload_name
 
 
 def _inspect_layer_visibility(doc):
@@ -62,7 +62,7 @@ def register(app, *, INSPECT_CACHE_DIR, INSPECT_CACHE_VERSION, _save_upload, UPL
     def _token_path(token: str) -> Path | None:
         """이미 업로드된 파일 이름(토큰) → 경로. 업로드 폴더 밖이면 None."""
         token = (token or "").strip()
-        if not token or secure_filename(token) != token:
+        if not token or sanitize_upload_name(token) != token:
             return None
         candidate = UPLOAD_DIR / token
         if candidate.is_file() and candidate.suffix.lower() == ".dxf":

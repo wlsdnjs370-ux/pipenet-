@@ -42,10 +42,10 @@ KGF_CM2 = 98066.5
 L_MIN = 60000.0
 ATM = 101325.0
 
-# 그림틀이 종이에서 차지하는 세로 구간(pt). 표제란과 범례는 그 아래에 함께 있다.
-_PLATE_BAND = (0.156, 0.930)
+# 그림틀이 종이에서 차지하는 세로 구간. 표제란과 범례는 그 아래에 함께 있다.
 _A4_H_PT = 297.0 / 25.4 * 72.0
-_FRAME_BOTTOM_PT, _FRAME_TOP_PT = (f * _A4_H_PT for f in _PLATE_BAND)
+_FRAME_BOTTOM_PT = 131.33               # 종이 아래에서
+_FRAME_TOP_PT = _A4_H_PT - 58.93        # 종이 위에서 58.93
 
 
 @pytest.fixture(scope="module")
@@ -198,9 +198,35 @@ def _stroked_widths(pdf: Path) -> list[tuple[float, object, int]]:
     return out
 
 
+_HAIRLINE_PT = 0.06
+_RULE_OP = re.compile(
+    r"(?P<w>[\d.]+)\s+w\b"
+    r"|(?P<x0>[\d.\-]+)\s+(?P<y0>[\d.\-]+)\s+m\s+(?P<x1>[\d.\-]+)\s+(?P<y1>[\d.\-]+)\s+l\s+S\b")
+
+
+def _rules(pdf: Path) -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float]]]:
+    """판면 괘선(0.06pt 직선)을 가로/세로로 갈라 (고정좌표, 시작, 끝) 로 돌려준다."""
+    from pypdf import PdfReader
+
+    data = PdfReader(str(pdf)).pages[0].get_contents().get_data().decode("latin-1")
+    horizontal: list[tuple[float, float, float]] = []
+    vertical: list[tuple[float, float, float]] = []
+    width = 1.0
+    for m in _RULE_OP.finditer(data):
+        if m["w"]:
+            width = float(m["w"])
+        elif width == _HAIRLINE_PT:
+            x0, y0, x1, y1 = (float(m[k]) for k in ("x0", "y0", "x1", "y1"))
+            if y0 == y1:
+                horizontal.append((y0, min(x0, x1), max(x0, x1)))
+            else:
+                vertical.append((x0, min(y0, y1), max(y0, y1)))
+    return horizontal, vertical
+
+
 _FILL_OP = re.compile(
     r"(?P<rgb>(?:[\d.]+\s+){3})rg\b|(?P<grey>[\d.]+)\s+g\b"
-    r"|(?P<x>[\d.\-]+)\s+(?P<y>[\d.\-]+)\s+m\b")
+    r"|(?P<x>[\d.\-]+)\s+(?P<y>[\d.\-]+)\s+m\b|(?P<paint>[fS])\b")
 
 
 def _legend_fills(pdf: Path) -> list[tuple[float, ...]]:
@@ -210,6 +236,7 @@ def _legend_fills(pdf: Path) -> list[tuple[float, ...]]:
     data = PdfReader(str(pdf)).pages[0].get_contents().get_data().decode("latin-1")
     found: list[tuple[float, float, tuple[float, ...]]] = []
     colour: tuple[float, ...] | None = None
+    start: tuple[float, float] | None = None
     for m in _FILL_OP.finditer(data):
         if m["rgb"]:
             colour = tuple(round(float(v), 4) for v in m["rgb"].split())
@@ -217,9 +244,14 @@ def _legend_fills(pdf: Path) -> list[tuple[float, ...]]:
             # 세 성분이 같은 색은 rg 가 아니라 g 한 값으로 적힌다. 이걸 빠뜨리면
             # 무채색 칸이 앞 칸 색을 그대로 물려받아 검사가 거짓으로 통과한다.
             colour = (round(float(m["grey"]), 4),) * 3
+        elif m["paint"]:
+            # 표제란 괘선도 같은 자리를 지나지만 채우지 않고 S 로 긋고 끝난다.
+            if m["paint"] == "f" and colour is not None and start is not None:
+                found.append((round(start[1], 1), start[0], colour))
+            start = None
         # y 0 은 종이 바탕이다 — 범례 칸이 아니다.
-        elif colour is not None and 0.0 < float(m["y"]) < _FRAME_BOTTOM_PT:
-            found.append((round(float(m["y"]), 1), float(m["x"]), colour))
+        elif 0.0 < float(m["y"]) < _FRAME_BOTTOM_PT:
+            start = (float(m["x"]), float(m["y"]))
     # 칸마다 경로가 하나씩이다. 줄이 여럿이므로 x 만 보면 두 줄이 섞인다.
     return [c for _, _, c in sorted(found, key=lambda f: (-f[0], f[1]))]
 
@@ -231,9 +263,9 @@ def _data_to_pt(model):
     page = (297.0, 210.0) if span_x / span_y > 297.0 / 210.0 else (210.0, 297.0)
     mm = 72.0 / 25.4
     box_w = (page[0] - 24.0) * mm
-    box_h = (_PLATE_BAND[1] - _PLATE_BAND[0]) * page[1] * mm
+    box_h = _FRAME_TOP_PT - _FRAME_BOTTOM_PT
     box_cx = page[0] * mm / 2.0
-    box_cy = (sum(_PLATE_BAND) / 2.0) * page[1] * mm
+    box_cy = (_FRAME_TOP_PT + _FRAME_BOTTOM_PT) / 2.0
     pad = 0.04 * max(span_x, span_y)
     # 축은 aspect equal 이라 가로세로 같은 배율로 줄고 칸 가운데에 놓인다.
     scale = min(box_w / (span_x + 2 * pad), box_h / (span_y + 2 * pad))
@@ -806,6 +838,30 @@ def test_label_height_is_fixed_in_model_units(hand, tmp_path):
     want_note = _NOTE_UNITS * 60.0 / _NOTE_TYPESIZE * per_unit
     assert any(s == pytest.approx(want_note, rel=1e-3) for s in sizes), \
         f"주기 글씨 {want_note:.3f}pt 를 못 찾았다: {sorted(sizes)}"
+
+
+def test_sheet_form_matches_the_reference(hand, tmp_path):
+    # 참조 PIPENET 지면 실측(595.22×842.00pt). 테두리는 네 변 22.68pt(8mm) 안쪽이고
+    # 표제란은 그 오른쪽 아래 모서리에 붙는 362.64pt(128mm) 폭 상자다. 행은 위에서
+    # 5/5/5/10/10mm 이고, 2 행은 절반 · 3 행은 1/4·3/4 에서 갈린다.
+    inset, block_w = 22.68, 362.64
+    w_pt = 210.0 / 25.4 * 72.0
+    pdf = tmp_path / "form.pdf"
+    render_iso(hand, pdf, link_item="Pipe velocity", node_item="Node pressure")
+    horizontal, vertical = _rules(pdf)
+
+    assert min(x for x, _, _ in vertical) == pytest.approx(inset, abs=0.05)
+    assert max(x for x, _, _ in vertical) == pytest.approx(w_pt - inset, abs=0.05)
+    assert min(y for y, _, _ in horizontal) == pytest.approx(inset, abs=0.05)
+    assert max(y for y, _, _ in horizontal) == pytest.approx(_A4_H_PT - inset, abs=0.05)
+
+    left = w_pt - inset - block_w
+    rows = sorted(y for y, x0, x1 in horizontal if x1 - x0 == pytest.approx(block_w, abs=0.05))
+    assert [b - a for a, b in zip([inset] + rows, rows)][::-1] == pytest.approx(
+        [14.22, 14.16, 14.16, 28.32, 28.26], abs=0.05)
+
+    dividers = sorted(x - left for x, y0, y1 in vertical if y1 - y0 == pytest.approx(14.16, abs=0.05))
+    assert dividers == pytest.approx([block_w / 4, block_w / 2, block_w * 3 / 4], abs=0.05)
 
 
 def test_node_bands_are_grey_not_the_link_colours(hand, tmp_path):

@@ -59,10 +59,18 @@ BAND_COLOURS = ("#ff0000", "#ffac00", "#00ff00", "#00ffff", "#0000ff", "#ff00ff"
 NODE_BAND_COLOURS = ("#000000", "#2a2a2a", "#545454", "#7e7e7e", "#a9a9a9", "#d4d4d4")
 _BLANK_COLOUR = "#9a9a9a"
 
-# 라벨 글꼴 크기(pt)의 기준. SDF 의 typesize 단위는 파일이 밝히지 않으므로 절대 크기로
-# 환산하지 않고, Label-display 의 print-font 를 1 로 삼아 상대비만 지킨다.
-_LABEL_PT = 4.6
-_REFERENCE_PRINT_FONT = 48.0
+# 값 글씨 높이. 종이가 아니라 모델 좌표에 고정이다 — 참조 40 장에서 모델 단위
+# 변동계수 0.029, 같은 값을 종이 pt 로 보면 0.172, 종이 비율로 보면 0.286 이다.
+# SDF 의 Label-display/@print-font 는 이 높이를 설명하지 못한다: 값이 40 인 한 장과
+# 36 인 39 장의 실측 높이가 24.168 로 같다.
+_LABEL_UNITS = 24.17
+
+# 도면 주기 높이. 같은 40 장에서 22.56 모델 단위(변동계수 0.011)다. 다만 코퍼스
+# 334 개 SDF 의 typesize 가 8189 개 글자 전부 30 이라, typesize 가 달라지면 어떻게
+# 되는지는 재지 못했다. 이름대로 크기에 비례한다고 보고 30 을 기준으로 늘리되,
+# 근거가 있는 건 30 하나뿐이다 — 우리 손작업 SDF 는 60 을 쓴다.
+_NOTE_UNITS = 22.56
+_NOTE_TYPESIZE = 30.0
 
 # 지시선. 망보다 연하고 가늘어야 관로로 오독되지 않는다. 값이 없어 회색으로 그린
 # 관로(_BLANK_COLOUR)와는 색이 달라야 한다 — 검사가 둘을 색으로 갈라 본다.
@@ -119,6 +127,7 @@ _BLOCK_WIDTH_PT = 315.5
 _BLOCK_ROWS_PT = (110.1, 95.9, 81.8)    # 글줄 바닥, 종이 아래에서
 _BLOCK_MID_DX_PT = 181.3        # 둘째 칸이 시작하는 자리
 _BLOCK_FONT_PT = 7.0
+_FOOTNOTE_PT = 4.6              # 각주는 우리 것이라 참조에 대응하는 글줄이 없다
 _PLATE_BAND = (0.156, 0.930)    # 망이 채우는 세로 구간 (종이 비율)
 
 # 범례. 한 벌이 3 칸 × 2 줄 격자이고 왼쪽에 항목 이름이 두 줄로 붙는다. 값이 큰
@@ -546,10 +555,10 @@ def _markers(ax, groups: dict[str, list[tuple[float, float]]], *,
                 markeredgecolor="#222222", markeredgewidth=0.7, zorder=zorder)
 
 
-def _note_size(item) -> float:
-    """도면 주기 글자 크기(pt). SDF typesize 를 라벨 크기 기준으로 환산한다."""
-    size = _LABEL_PT * (item.typesize or _REFERENCE_PRINT_FONT) / _REFERENCE_PRINT_FONT
-    return max(3.0, min(size, 12.0))
+def _note_size(item, per_unit: float) -> float:
+    """도면 주기 글자 크기(pt). 모델 단위 높이를 종이 pt 로 환산한다."""
+    units = _NOTE_UNITS * (item.typesize or _NOTE_TYPESIZE) / _NOTE_TYPESIZE
+    return units * per_unit
 
 
 def _text_measurer(fig: Figure, ax, font: FontProperties | None,
@@ -743,7 +752,8 @@ def render_iso(
     unplaced = [label for label, path in paths.items() if path is None]
     placed = {label: path for label, path in paths.items() if path is not None}
 
-    pipe_width = _PIPE_WIDTH_UNITS * _pt_per_unit(fig, ax)
+    per_unit = _pt_per_unit(fig, ax)
+    pipe_width = _PIPE_WIDTH_UNITS * per_unit
     segments, colours = [], []
     blank_links: list[str] = []
     banded = link.scope == "pipe" and link.name != "None"
@@ -909,15 +919,16 @@ def render_iso(
             if text:
                 requests.append(LabelRequest(label, text, point, 0.0, "node"))
 
-    measure = _text_measurer(fig, ax, font, _LABEL_PT)
+    label_pt = _LABEL_UNITS * per_unit
+    measure = _text_measurer(fig, ax, font, label_pt)
     # 도면 주기는 SDF 가 정해 둔 자리다. 옮기지 않고 피해야 할 자리로만 넘긴다.
     fixed = []
     for item in model.texts:
-        scale = _note_size(item) / _LABEL_PT
+        scale = _note_size(item, per_unit) / label_pt
         w, h = measure(item.text)
         fixed.append((item.x, item.y, item.x + w * scale, item.y + h * scale))
     # 기호도 피한다. 값이 밸브나 노즐 위에 얹히면 겹친 라벨이 없어도 읽을 수 없다.
-    per_pt = measure("0")[1] / _LABEL_PT
+    per_pt = measure("0")[1] / label_pt
     for points, size_pt in ((device_points, _DEVICE_PT), (equipment_points, _EQUIPMENT_PT)):
         half = size_pt * per_pt / 2
         for group in points.values():
@@ -936,11 +947,11 @@ def render_iso(
         # 회전한 뒤의 상자를 다시 맞춰서 D4 가 잡아 둔 자리와 어긋난다.
         ax.text(lab.x, lab.y, lab.text, rotation=lab.angle, rotation_mode="anchor",
                 ha="center", va="center", color="#111111", fontproperties=font,
-                fontsize=_LABEL_PT, zorder=7)
+                fontsize=label_pt, zorder=7)
 
     # ── 도면 주기 ──
     for text in model.texts:
-        ax.text(text.x, text.y, text.text, fontsize=_note_size(text),
+        ax.text(text.x, text.y, text.text, fontsize=_note_size(text, per_unit),
                 color=text.colour or "#000000", fontproperties=font,
                 ha="left", va="bottom", zorder=8)
 
@@ -981,7 +992,8 @@ def render_iso(
              "PIPENET 이 계산한 결과를 옮겨 그린 도면이다.\n"
              "값은 결과 XML 원문이며 이 프로그램이\n"
              "계산하거나 보간하지 않는다.",
-             fontsize=4.6, va="bottom", ha="left", color="#555555", fontproperties=font)
+             fontsize=_FOOTNOTE_PT, va="bottom", ha="left", color="#555555",
+             fontproperties=font)
 
     out.parent.mkdir(parents=True, exist_ok=True)
     if out.suffix.lower() == ".png":

@@ -7,6 +7,7 @@ XML 을 직접 파싱한 값과 1:1 로 맞춰 본다. 값이 한 자리라도 �
 """
 from __future__ import annotations
 
+import collections
 import hashlib
 import re
 import sys
@@ -718,6 +719,44 @@ def test_band_colours_are_the_ones_pipenet_uses(hand, tmp_path):
     assert drawn <= set(want), f"참조에 없는 색을 쓴다: {sorted(drawn - set(want))}"
     # 색만 맞고 순서가 뒤집히면 도면이 거짓말한다. 범례 칸을 왼쪽부터 읽어 확인한다.
     assert _legend_fills(pdf) == want
+
+
+_LABEL_UNITS = 24.17     # 값 글씨 높이(모델 단위). 변동계수 0.029
+_NOTE_UNITS = 22.56      # 도면 주기 높이(모델 단위). 변동계수 0.011
+_NOTE_TYPESIZE = 30.0    # 그 주기를 잰 도면들의 SDF typesize (코퍼스 334개 전부)
+
+_TF_OP = re.compile(r"/\S+\s+([\d.]+)\s+Tf\b")
+
+
+def _font_sizes(pdf: Path) -> collections.Counter:
+    """PDF 가 실제로 쓴 글자 크기(pt)를 몇 번씩 썼는지 함께 돌려준다."""
+    from pypdf import PdfReader
+
+    data = PdfReader(str(pdf)).pages[0].get_contents().get_data().decode("latin-1")
+    return collections.Counter(round(float(v), 4) for v in _TF_OP.findall(data))
+
+
+def test_label_height_is_fixed_in_model_units(hand, tmp_path):
+    # 참조 40 장에서 값 글씨 높이는 모델 좌표에 고정이다 — 모델 단위 변동계수 0.029,
+    # 종이 pt 로 보면 0.172, 종이 비율로 보면 0.286. 종이에 고정한 크기를 쓰면 큰
+    # 도면에서 글씨만 커진다. 렌더러 상수를 가져오지 않고 실측값을 다시 적는다.
+    pdf = tmp_path / "labels.pdf"
+    render_iso(hand, pdf, link_item="Pipe velocity")
+
+    to_pt = _data_to_pt(hand.model)
+    per_unit = to_pt(1.0, 0.0)[0] - to_pt(0.0, 0.0)[0]
+    sizes = _font_sizes(pdf)
+    # 값 라벨이 압도적으로 많다. 표제란·범례·각주는 종이에 고정이라 섞이면 안 된다.
+    label_pt, count = sizes.most_common(1)[0]
+    assert count > 20, f"값 라벨을 못 찾았다: {sizes.most_common()}"
+    assert label_pt == pytest.approx(_LABEL_UNITS * per_unit, rel=1e-3)
+
+    # 도면 주기도 같은 자에 걸린다. 이 도면의 typesize 는 60 이라 참조(30)의 두 배다.
+    typesize = {t.typesize for t in hand.model.texts}
+    assert typesize == {60.0}, f"주기 typesize 가 달라졌다: {typesize}"
+    want_note = _NOTE_UNITS * 60.0 / _NOTE_TYPESIZE * per_unit
+    assert any(s == pytest.approx(want_note, rel=1e-3) for s in sizes), \
+        f"주기 글씨 {want_note:.3f}pt 를 못 찾았다: {sorted(sizes)}"
 
 
 def test_node_bands_are_grey_not_the_link_colours(hand, tmp_path):

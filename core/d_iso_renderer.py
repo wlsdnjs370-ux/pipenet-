@@ -21,6 +21,7 @@ A4 한 장을 그린다. 계산은 하지 않는다 — 값이 없으면 빈칸�
 from __future__ import annotations
 
 import math
+import statistics
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -70,8 +71,14 @@ _EQUIPMENT_PT = 2.6
 # 노즐 스텁. SDF 가 @/n 좌표를 입력노드와 같은 자리에 두면 헤드가 분기점 위에 겹쳐
 # 찍힌다. 원본은 고칠 수 없으므로(지시서 7-3) 그릴 때 방향을 유도한다. 근거는 참조
 # 코퍼스 SDF 334 개 / 노즐 3437 개 실측이다 — 입사 관로가 있는 3115 개 중 3079 개
-# (98.8%)가 관로의 연장선이고 수직은 0 건, 길이는 도면 span 의 중앙값 1.208% 였다.
-_STUB_SPAN_RATIO = 0.01208
+# (98.8%)가 관로의 연장선이고 수직은 0 건이었다.
+#
+# 길이는 도면 크기를 따라가지 않는다. 같은 표본을 네 기준으로 재면 변동계수가
+# 모델 단위 0.218 · 관로 길이 대비 0.294 · 헤드 간격 대비 0.493 · 도면 span 대비
+# 0.800 이다. 헤드 간격이 3.8 배 벌어져도 스텁은 1.5 배밖에 안 변하니, 축척이 아니라
+# 니플 규격처럼 고정 치수에 가깝다. 실제로 값이 26 종뿐이고 55~62 와 86~88 두 무리로
+# 갈린다 — 아래 상수는 그중 단일 최빈값(3437 개 중 1087 개)이다.
+_STUB_UNITS = 58.0
 # 유도한 것은 실측과 같은 잉크로 그리지 않는다 — 점선 + 이 색으로 갈라 보인다.
 _DERIVED_COLOUR = "#c2410c"
 
@@ -338,13 +345,24 @@ def _incident_dirs(pipes: Sequence[DisplayPipe], coords: dict[str, tuple[float, 
     return out
 
 
+def _measured_stub(nozzles: dict[str, Any],
+                   coords: dict[str, tuple[float, float]]) -> float | None:
+    """같은 도면에서 방향이 있는 헤드가 실제로 얼마나 나와 있는가. 없으면 None."""
+    measured = []
+    for row in nozzles.values():
+        base = coords.get(row.nozzle.input_node)
+        tip = coords.get(row.nozzle.output_node)
+        if base is not None and tip is not None and tip != base:
+            measured.append(math.dist(base, tip))
+    return statistics.median(measured) if measured else None
+
+
 def _nozzle_tips(nozzles: dict[str, Any], pipes: Sequence[DisplayPipe],
-                 coords: dict[str, tuple[float, float]], span: float
+                 coords: dict[str, tuple[float, float]], stub: float
                  ) -> tuple[dict[str, tuple[float, float]], list[str], list[str]]:
     """헤드 삼각형의 꼭짓점 자리. 원본이 방향을 준 것은 그대로 쓰고, 출력노드가
     입력노드와 겹쳐 방향이 없는 것만 유도한다. 어느 쪽인지는 갈라서 돌려준다 —
     유도한 것을 실측인 척 그리지 않기 위해서다."""
-    stub = span * _STUB_SPAN_RATIO
     tips: dict[str, tuple[float, float]] = {}
     derived: list[str] = []
     undirected: list[str] = []
@@ -734,8 +752,9 @@ def render_iso(
              zorder=5)
 
     # ── 노즐 ──
+    measured_stub = _measured_stub(nozzles, coords)
     tips, derived_nozzles, undirected_nozzles = _nozzle_tips(
-        nozzles, model.pipes, coords, max(span_x, span_y))
+        nozzles, model.pipes, coords, measured_stub or _STUB_UNITS)
     is_derived = set(derived_nozzles)
     drawn_nozzles = 0
     nozzle_tips: list[tuple[float, float]] = []
@@ -963,8 +982,11 @@ def render_iso(
     if derived_nozzles:
         warnings.append(
             f"원본이 헤드 자리를 주지 않아 유도해 그린 것 {len(derived_nozzles)}개 — 입사 "
-            f"관로의 연장선에 도면 span 의 {_STUB_SPAN_RATIO * 100:.3f}% 만큼 내고 점선·"
-            f"주황 윤곽으로 갈라 표시했다: {', '.join(derived_nozzles[:12])}"
+            f"관로의 연장선에 {measured_stub or _STUB_UNITS:.1f} 만큼 내고 점선·주황 윤곽으로 "
+            f"갈라 표시했다"
+            + (" (같은 도면의 다른 헤드에서 잰 길이)" if measured_stub
+               else " (이 도면에는 잰 길이가 없어 참조 코퍼스 최빈값)")
+            + f": {', '.join(derived_nozzles[:12])}"
         )
     if undirected_nozzles:
         warnings.append(

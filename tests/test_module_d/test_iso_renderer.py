@@ -371,9 +371,9 @@ def test_report_lists_labels_it_could_not_draw(hand, tmp_path):
 # ── 헤드 배치 ───────────────────────────────────────────────────────────────
 
 # 스텁 길이. 렌더러에서 import 하지 않고 다시 적는다 — 같은 상수를 돌려 쓰면 값이
-# 틀려도 양쪽이 똑같이 틀려서 검사가 통과한다. 근거는 참조 코퍼스 SDF 334 개 /
-# 노즐 3437 개의 중앙값(도면 span 의 1.208%)이다.
-_STUB_RATIO = 0.01208
+# 틀려도 양쪽이 똑같이 틀려서 검사가 통과한다. 도면 크기가 아니라 모델 단위에 붙어
+# 있고(변동계수 0.218 대 0.800), 이 값은 참조 코퍼스 노즐 3437 개의 최빈값이다.
+_STUB_UNITS = 58.0
 
 # 헤드 삼각형. 참조 PDF 60 장 / 기호 638 개 실측이다 — 꼭짓점이 `@` 노드에 앉고
 # 밑변은 그로부터 17.96 모델 단위 뒤, 반폭 10.01 단위다. 스텁은 꼭짓점이 아니라
@@ -393,17 +393,23 @@ def _head_back(base, tip):
 
 
 def _head_tips(bound):
+    import math
+    import statistics
     from types import SimpleNamespace
 
     from core.d_iso_renderer import _nozzle_tips
 
     model = bound.model
-    minx, miny, maxx, maxy = model.bounds()
-    span = max(maxx - minx, maxy - miny)
     coords = {n.label: (n.x, n.y) for n in model.nodes}
     rows = {z.label: SimpleNamespace(nozzle=z) for z in model.nozzles}
-    tips, derived, undirected = _nozzle_tips(rows, model.pipes, coords, span)
-    return tips, derived, undirected, span, coords, model
+    # 유도 길이는 같은 도면의 방향 있는 헤드에서 온다. 없으면 코퍼스 최빈값이다.
+    seen = [math.dist(coords[z.input_node], coords[z.output_node])
+            for z in model.nozzles
+            if z.input_node in coords and z.output_node in coords
+            and coords[z.input_node] != coords[z.output_node]]
+    stub = statistics.median(seen) if seen else _STUB_UNITS
+    tips, derived, undirected = _nozzle_tips(rows, model.pipes, coords, stub)
+    return tips, derived, undirected, stub, coords, model
 
 
 def _outgoing_dirs(model, coords, base):
@@ -443,13 +449,15 @@ def test_heads_without_a_direction_are_derived_and_declared(auto, tmp_path):
     # (지시서 7-3) 그릴 때 유도하되, 유도했다는 사실을 리포트가 전량 실어야 한다.
     import math
 
-    tips, derived, undirected, span, coords, model = _head_tips(auto)
+    tips, derived, undirected, stub, coords, model = _head_tips(auto)
     assert len(derived) == 30 and undirected == []
+    # 자동 SDF 는 방향 있는 헤드가 하나도 없다 — 잴 것이 없으니 코퍼스 값으로 떨어진다.
+    assert stub == _STUB_UNITS
 
     for z in model.nozzles:
         base, tip = coords[z.input_node], tips[z.label]
         assert coords[z.output_node] == base       # 원본이 방향을 주지 않았다는 전제
-        assert math.dist(base, tip) == pytest.approx(span * _STUB_RATIO, rel=1e-9)
+        assert math.dist(base, tip) == pytest.approx(_STUB_UNITS, rel=1e-9)
         # 입사 관로의 반대쪽 — 망 바깥으로 뻗는다 (코퍼스 3115 개 중 98.8% 의 규칙).
         dirs = _outgoing_dirs(model, coords, z.input_node)
         assert dirs
@@ -465,6 +473,29 @@ def test_heads_without_a_direction_are_derived_and_declared(auto, tmp_path):
     report = render_iso(auto, tmp_path / "heads.pdf", link_item="Pipe volumetric flow")
     assert len(report.nozzles_derived) == 30 and report.nozzles_undirected == ()
     assert any("유도해 그린 것 30개" in w for w in report.warnings)
+
+
+def test_a_derived_head_borrows_the_length_the_drawing_already_uses():
+    # 유도 길이는 도면마다 다르다 — 참조 코퍼스에서 값이 26 종뿐인데 55~62 와 86~88
+    # 두 무리로 갈린다. 같은 도면에 이미 잰 길이가 있으면 코퍼스 최빈값보다 그쪽이 옳다.
+    import dataclasses
+    import math
+    import statistics
+
+    bound = bind_results(HAND_SDF, HAND_XML)      # 모듈 fixture 를 건드리지 않는다
+    model = bound.model
+    coords = {n.label: (n.x, n.y) for n in model.nodes}
+    blind, *rest = model.nozzles
+    # 헤드 하나만 방향을 지운다 — 나머지가 길이의 근거로 남는 '섞인 도면'이 된다.
+    model.nozzles = (dataclasses.replace(blind, output_node=blind.input_node), *rest)
+    theirs = statistics.median(
+        [math.dist(coords[z.input_node], coords[z.output_node]) for z in rest])
+    assert theirs != _STUB_UNITS                  # 두 경로가 갈리는 표본이어야 의미가 있다
+
+    tips, derived, undirected, stub, coords, _ = _head_tips(bound)
+    assert derived == [blind.label] and undirected == []
+    assert stub == theirs
+    assert math.dist(coords[blind.input_node], tips[blind.label]) == pytest.approx(theirs)
 
 
 def _stub_of(pdf: Path, colour: object) -> list[list[tuple[float, float]]]:

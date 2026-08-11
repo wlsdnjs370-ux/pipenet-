@@ -91,6 +91,18 @@ class TextElement:
 
 
 @dataclass(frozen=True)
+class SourceDisplay:
+    """PIPENET 이 SDF 에 저장해 둔 자기 화면 설정. 속성이 없으면 None 으로 둔다 —
+    기본값을 지어내면 원본이 무엇을 시켰는지 다시 알 수 없다."""
+    link_labels: bool | None = None
+    node_labels: bool | None = None
+    flow_arrows: bool | None = None
+    link_values: bool | None = None
+    node_values: bool | None = None
+    grid: str = ""
+
+
+@dataclass(frozen=True)
 class Equipment:
     label: str
     description: str        # 'A/V', 'FX', 'PUMP' …
@@ -170,6 +182,29 @@ class DisplayModel:
     warnings: list[str] = field(default_factory=list)
 
     @property
+    def source_display(self) -> SourceDisplay:
+        """원본이 시켜 둔 표시 설정. `label-all` 은 개별 스위치를 덮어쓴다."""
+        label = self.display_options.get("Label-display", {})
+        result = self.display_options.get("Results-display", {})
+        every = _flag(label, "label-all")
+        def named(key: str) -> bool | None:
+            got = _flag(label, key)
+            if every:
+                return True
+            return got
+        return SourceDisplay(
+            link_labels=named("link-labels"),
+            node_labels=named("node-labels"),
+            # 흐름 화살표는 이름이 그럴듯한 `Results-display/@flow-arrows` 가 아니라
+            # `Label-display/@arrows` 가 켠다. 코퍼스에서 flow-arrows="0" 인 13 세트
+            # 전부 PIPENET 원본 PDF 에 화살표가 그려져 있다.
+            flow_arrows=_flag(label, "arrows"),
+            link_values=_flag(result, "links"),
+            node_values=_flag(result, "nodes"),
+            grid=self.grid.get("grid", ""),
+        )
+
+    @property
     def real_nodes(self) -> tuple[DisplayNode, ...]:
         """결과 XML 과 대응하는 노드 — `@` 가상 노드를 뺀 것."""
         return tuple(n for n in self.nodes if not n.virtual)
@@ -186,6 +221,11 @@ class DisplayModel:
         if not xs:
             return None
         return min(xs), min(ys), max(xs), max(ys)
+
+
+def _flag(attrs: dict[str, str], key: str) -> bool | None:
+    raw = attrs.get(key)
+    return None if raw is None else raw.strip() not in ("0", "", "false")
 
 
 def _num(el: ET.Element, key: str) -> float | None:

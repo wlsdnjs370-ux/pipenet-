@@ -21,6 +21,7 @@ A4 한 장을 그린다. 계산은 하지 않는다 — 값이 없으면 빈칸�
 from __future__ import annotations
 
 import math
+import statistics
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +31,7 @@ import matplotlib
 from matplotlib import font_manager
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.backends.backend_pdf import FigureCanvasPdf
-from matplotlib.collections import LineCollection
+from matplotlib.collections import EllipseCollection, LineCollection
 from matplotlib.figure import Figure
 from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Polygon, Rectangle
@@ -50,32 +51,106 @@ BAND_COUNT = 6
 # 등간격 눈금 후보. 밴드 경계를 읽기 좋은 수로 떨어뜨리기 위한 것이고, 값 자체를
 # 반올림하지는 않는다.
 _NICE_STEPS = (1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 7.5)
-# 낮은 값 → 높은 값. 흑백 인쇄에서도 순서가 보이도록 명도를 단조로 깔았다.
-BAND_COLOURS = ("#1f4e9c", "#3d8bcd", "#59b4a8", "#c9a227", "#d9663d", "#a01f1f")
+# 낮은 값 → 높은 값. 참조 도면 40 장 중 범례가 있는 35 장이 전부 이 여섯 색을 이
+# 순서로 쓴다. 관로 획에서도 같은 여섯 색만 나온다.
+BAND_COLOURS = ("#ff0000", "#ffac00", "#00ff00", "#00ffff", "#0000ff", "#ff00ff")
+# 노드 값은 같은 여섯 색을 쓰지 않는다. 압력 도면 40 장 중 39 장이 노드 범례에 이
+# 무채색 계단을 쓴다 — 검정에서 시작해 한 칸에 42/255 씩 밝아진다.
+NODE_BAND_COLOURS = ("#000000", "#2a2a2a", "#545454", "#7e7e7e", "#a9a9a9", "#d4d4d4")
 _BLANK_COLOUR = "#9a9a9a"
 
-# 라벨 글꼴 크기(pt)의 기준. SDF 의 typesize 단위는 파일이 밝히지 않으므로 절대 크기로
-# 환산하지 않고, Label-display 의 print-font 를 1 로 삼아 상대비만 지킨다.
-_LABEL_PT = 4.6
-_REFERENCE_PRINT_FONT = 48.0
+# 값 글씨 높이. 종이가 아니라 모델 좌표에 고정이다 — 참조 40 장에서 모델 단위
+# 변동계수 0.029, 같은 값을 종이 pt 로 보면 0.172, 종이 비율로 보면 0.286 이다.
+# SDF 의 Label-display/@print-font 는 이 높이를 설명하지 못한다: 값이 40 인 한 장과
+# 36 인 39 장의 실측 높이가 24.168 로 같다.
+_LABEL_UNITS = 24.17
+
+# 도면 주기 높이. 같은 40 장에서 22.56 모델 단위(변동계수 0.011)다. 다만 코퍼스
+# 334 개 SDF 의 typesize 가 8189 개 글자 전부 30 이라, typesize 가 달라지면 어떻게
+# 되는지는 재지 못했다. 이름대로 크기에 비례한다고 보고 30 을 기준으로 늘리되,
+# 근거가 있는 건 30 하나뿐이다 — 우리 손작업 SDF 는 60 을 쓴다.
+_NOTE_UNITS = 22.56
+_NOTE_TYPESIZE = 30.0
 
 # 지시선. 망보다 연하고 가늘어야 관로로 오독되지 않는다. 값이 없어 회색으로 그린
 # 관로(_BLANK_COLOUR)와는 색이 달라야 한다 — 검사가 둘을 색으로 갈라 본다.
 _LEADER_COLOUR = "#7f7f7f"
+# 굵기는 배관(_PIPE_WIDTH_UNITS = 1.0)의 절반이다. 종이 pt 로 묶여 있던 0.25pt 는
+# 참조 배율 폭(0.089~0.167 pt/단위) 어디에서도 배관보다 1.5~2.8 배 굵어서, 바로 위
+# 주석이 말하는 "가늘어야 한다" 를 한 번도 지키지 못했다.
+_LEADER_WIDTH_UNITS = 0.5
 
-# 기호 크기(pt). 라벨이 피해야 할 자리를 잡는 데도 쓰이므로 그리는 쪽과 한 값이어야 한다.
-_DEVICE_PT = 3.4
-_EQUIPMENT_PT = 2.6
+# 기기·특수기기 기호. 지시서 7-2 에 따라 우리 표기라 PIPENET 에 대응하는 실측이 없다.
+# 다만 크기를 매다는 기준은 망과 같아야 한다 — 종이 pt 로 묶어 두면 같은 기호가 참조
+# 배율 폭에서 노드 점의 2.1 배부터 4.0 배까지 널뛴다. 아래는 크기를 새로 정한 것이
+# 아니라 지금 우리 도면의 생김새(3.4/2.6/0.7/1.4 pt @ 0.185 pt/단위)를 옮긴 값이다.
+# 라벨이 피해야 할 자리를 잡는 데도 쓰이므로 그리는 쪽과 한 값이어야 한다.
+_DEVICE_UNITS = 18.4
+_EQUIPMENT_UNITS = 14.1
+_MARKER_EDGE_UNITS = 3.8        # 기호 테두리
+_DEVICE_LINK_UNITS = 7.6        # 기기를 관로에 잇는 선
 
 # 노즐 스텁. SDF 가 @/n 좌표를 입력노드와 같은 자리에 두면 헤드가 분기점 위에 겹쳐
 # 찍힌다. 원본은 고칠 수 없으므로(지시서 7-3) 그릴 때 방향을 유도한다. 근거는 참조
 # 코퍼스 SDF 334 개 / 노즐 3437 개 실측이다 — 입사 관로가 있는 3115 개 중 3079 개
-# (98.8%)가 관로의 연장선이고 수직은 0 건, 길이는 도면 span 의 중앙값 1.208% 였다.
-_STUB_SPAN_RATIO = 0.01208
+# (98.8%)가 관로의 연장선이고 수직은 0 건이었다.
+#
+# 길이는 도면 크기를 따라가지 않는다. 같은 표본을 네 기준으로 재면 변동계수가
+# 모델 단위 0.218 · 관로 길이 대비 0.294 · 헤드 간격 대비 0.493 · 도면 span 대비
+# 0.800 이다. 헤드 간격이 3.8 배 벌어져도 스텁은 1.5 배밖에 안 변하니, 축척이 아니라
+# 니플 규격처럼 고정 치수에 가깝다. 실제로 값이 26 종뿐이고 55~62 와 86~88 두 무리로
+# 갈린다 — 아래 상수는 그중 단일 최빈값(3437 개 중 1087 개)이다.
+_STUB_UNITS = 58.0
 # 유도한 것은 실측과 같은 잉크로 그리지 않는다 — 점선 + 이 색으로 갈라 보인다.
 _DERIVED_COLOUR = "#c2410c"
 
-_KOREAN_FONTS = ("malgun.ttf", "malgunsl.ttf", "NanumGothic.ttf", "gulim.ttc", "batang.ttc")
+# 흐름 화살표. PIPENET 이 직접 출력한 ISO PDF 255 장을 SDF 모델 좌표에 맞춰 실측한
+# 값이다 — 채운 삼각형이 아니라 획 두 개짜리 열린 갈매기표이고, 크기는 도면 크기가
+# 아니라 모델 좌표에 붙어 있다(날개 6.76 단위, 변동계수 0.029). 벌어진각 53.13° 는
+# 2·atan(½) 이고, 자리는 관로 호길이의 0.687 지점, 꼭짓점은 4902/4902 가 진행 방향.
+_ARROW_WING_UNITS = 6.76
+_ARROW_HALF_ANGLE = math.degrees(math.atan(0.5))
+_ARROW_AT = 0.687
+
+# 노즐 머리. 같은 참조 PDF 60 장 / 기호 638 개 실측이다 — 채운 삼각형이 아니라 속이
+# 빈 삼각형 윤곽이고(채움 0/638), 꼭짓점이 `@` 노드 좌표에 정확히 앉는다(그린 길이 ÷
+# 모델 길이 1.0004, 변동계수 0.004). 스텁은 꼭짓점이 아니라 삼각형 밑변에서 끝난다.
+# 크기는 화살표와 마찬가지로 모델 좌표에 고정이다(길이 변동계수 0.023, 반폭 0.011).
+_HEAD_LENGTH_UNITS = 17.96
+_HEAD_HALF_WIDTH_UNITS = 10.01
+
+# 노드 점. 같은 60 장 / 점 3524 개 실측이다. 여기서도 기준은 종이가 아니라 모델
+# 좌표다 — 지름을 종이 pt 로 재면 변동계수가 0.420 인데 모델 단위로 재면 0.019 다.
+_NODE_DOT_UNITS = 9.59
+
+# 관로 획 굵기. 참조 80 장은 관경을 6~8 종류씩 쓰면서도 획 굵기는 한 장에 한 종류만
+# 쓴다(중앙 1 종, 최대 2 종) — PIPENET 은 선 굵기로 관경을 나타내지 않는다. 그 하나의
+# 굵기도 종이가 아니라 모델 좌표에 고정이다(모델 단위 변동계수 0.006, 종이 pt 0.405).
+_PIPE_WIDTH_UNITS = 1.0
+
+# 판면. 참조 세로 도면(595×842 pt)을 재면 표제란과 범례가 위가 아니라 아래 오른쪽
+# 한 덩어리로 모여 있고, 망이 그 위를 다 쓴다(종이 아래에서 0.156~0.930). 표제란을
+# 위에 얹은 머리띠는 우리 배치였다. 아래 값은 종이 모서리에서 잰 pt 이므로 A4 두
+# 방향에 그대로 얹힌다 — 가로 도면은 참조에 범례 있는 장이 없어 재지 못했다.
+_BLOCK_RIGHT_PT = 67.0          # 종이 오른쪽 끝에서 표제란 오른쪽 끝까지
+_BLOCK_WIDTH_PT = 315.5
+_BLOCK_ROWS_PT = (110.1, 95.9, 81.8)    # 글줄 바닥, 종이 아래에서
+_BLOCK_MID_DX_PT = 181.3        # 둘째 칸이 시작하는 자리
+_BLOCK_FONT_PT = 7.0
+_FOOTNOTE_PT = 4.6              # 각주는 우리 것이라 참조에 대응하는 글줄이 없다
+_PLATE_BAND = (0.156, 0.930)    # 망이 채우는 세로 구간 (종이 비율)
+
+# 범례. 한 벌이 3 칸 × 2 줄 격자이고 왼쪽에 항목 이름이 두 줄로 붙는다. 값이 큰
+# 쪽으로 왼쪽 위에서 오른쪽 아래로 읽는다. 노드·관로 두 벌이 함께 나오면 노드가 위다.
+_LEGEND_BOTTOM_PT = 28.8        # 맨 아래 벌의 아랫줄 바닥
+_LEGEND_LANE_PT = 28.3          # 벌과 벌 사이
+_LEGEND_ROW_PT = 11.4
+_LEGEND_COL_PT = 90.6
+_LEGEND_SWATCH_DX_PT = 87.8     # 표제란 왼쪽 끝에서 첫 칸까지
+_LEGEND_SWATCH_PT = 8.5
+_LEGEND_LABEL_DX_PT = 11.3      # 칸에서 그 칸 설명까지
+
+_KOREAN_FONTS =("malgun.ttf", "malgunsl.ttf", "NanumGothic.ttf", "gulim.ttc", "batang.ttc")
 
 # 장치 링크 종류별 기호. PIPENET 기호를 베끼지 않고 우리 표기를 쓴다 (지시서 7-2).
 DEVICE_MARKS = {"Pump-fan": "o", "Elastomeric-valve": "D", "Pressure-loss": "s"}
@@ -323,13 +398,24 @@ def _incident_dirs(pipes: Sequence[DisplayPipe], coords: dict[str, tuple[float, 
     return out
 
 
+def _measured_stub(nozzles: dict[str, Any],
+                   coords: dict[str, tuple[float, float]]) -> float | None:
+    """같은 도면에서 방향이 있는 헤드가 실제로 얼마나 나와 있는가. 없으면 None."""
+    measured = []
+    for row in nozzles.values():
+        base = coords.get(row.nozzle.input_node)
+        tip = coords.get(row.nozzle.output_node)
+        if base is not None and tip is not None and tip != base:
+            measured.append(math.dist(base, tip))
+    return statistics.median(measured) if measured else None
+
+
 def _nozzle_tips(nozzles: dict[str, Any], pipes: Sequence[DisplayPipe],
-                 coords: dict[str, tuple[float, float]], span: float
+                 coords: dict[str, tuple[float, float]], stub: float
                  ) -> tuple[dict[str, tuple[float, float]], list[str], list[str]]:
     """헤드 삼각형의 꼭짓점 자리. 원본이 방향을 준 것은 그대로 쓰고, 출력노드가
     입력노드와 겹쳐 방향이 없는 것만 유도한다. 어느 쪽인지는 갈라서 돌려준다 —
     유도한 것을 실측인 척 그리지 않기 위해서다."""
-    stub = span * _STUB_SPAN_RATIO
     tips: dict[str, tuple[float, float]] = {}
     derived: list[str] = []
     undirected: list[str] = []
@@ -369,6 +455,47 @@ def _longest_segment(path: Sequence[tuple[float, float]]
     return mid, angle
 
 
+def _along(path: Sequence[tuple[float, float]], fraction: float
+           ) -> tuple[tuple[float, float], float] | None:
+    """폴리라인 호길이의 `fraction` 지점과 그 자리의 진행각."""
+    spans = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(path, path[1:])]
+    total = sum(spans)
+    if total <= 0:
+        return None
+    want, acc = total * fraction, 0.0
+    for (a, b), span in zip(zip(path, path[1:]), spans):
+        if span and acc + span >= want:
+            t = (want - acc) / span
+            return ((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])),
+                    math.degrees(math.atan2(b[1] - a[1], b[0] - a[0])))
+        acc += span
+    return None
+
+
+def _chevron(tip: tuple[float, float], angle: float, wing: float
+             ) -> list[list[tuple[float, float]]]:
+    """꼭짓점이 `angle` 쪽을 보는 갈매기표 — 획 두 개. 채우지 않는다."""
+    back = [angle + 180 - _ARROW_HALF_ANGLE, angle + 180 + _ARROW_HALF_ANGLE]
+    return [[tip, (tip[0] + wing * math.cos(math.radians(a)),
+                   tip[1] + wing * math.sin(math.radians(a)))] for a in back]
+
+
+def _nozzle_head(base: tuple[float, float], tip: tuple[float, float]
+                 ) -> tuple[tuple[float, float], list[tuple[float, float]]]:
+    """헤드 삼각형의 밑변 가운데와 두 밑각. 꼭짓점은 `@` 노드 자리 그대로다."""
+    dx, dy = tip[0] - base[0], tip[1] - base[1]
+    reach = math.hypot(dx, dy)
+    # 방향이 없는 노즐은 tip 이 입력노드에 얹혀 있다. 아래로 매달아 자리는 보이되
+    # 방향을 지어내지 않는다 — 유도 여부는 리포트가 따로 싣는다.
+    ux, uy = (dx / reach, dy / reach) if reach > 0 else (0.0, -1.0)
+    # 스텁보다 긴 머리는 분기점을 덮는다. 짧으면 그만큼 줄여 밑변이 관로를 넘지 않게.
+    length = min(_HEAD_LENGTH_UNITS, reach) if reach > 0 else _HEAD_LENGTH_UNITS
+    half = _HEAD_HALF_WIDTH_UNITS * length / _HEAD_LENGTH_UNITS
+    back = (tip[0] - ux * length, tip[1] - uy * length)
+    return back, [(back[0] - uy * half, back[1] + ux * half),
+                  (back[0] + uy * half, back[1] - ux * half)]
+
+
 # ── 렌더 ────────────────────────────────────────────────────────────────────
 
 
@@ -378,6 +505,10 @@ class RenderReport:
     link_item: str
     node_item: str
     orientation: str
+    # 실제로 쓴 스위치. None 으로 부르면 원본 SDF 설정이 들어오므로 되읽을 길이 필요하다.
+    link_labels: bool = True
+    node_labels: bool = True
+    flow_arrows: bool = True
     pipes_drawn: int = 0
     pipes_unplaced: tuple[str, ...] = ()
     devices_drawn: int = 0
@@ -423,7 +554,7 @@ def _korean_font() -> FontProperties | None:
 
 
 def _markers(ax, groups: dict[str, list[tuple[float, float]]], *,
-             size: float, face: str, zorder: int) -> None:
+             size: float, edge: float, face: str, zorder: int) -> None:
     """같은 모양끼리 한 번에 찍는다 — 점 하나마다 부르면 PDF 안 표현이 개수에 따라
     달라져, 표시 항목만 바꿔도 도형 지문이 흔들린다."""
     for mark, points in groups.items():
@@ -431,13 +562,13 @@ def _markers(ax, groups: dict[str, list[tuple[float, float]]], *,
             continue
         ax.plot([p[0] for p in points], [p[1] for p in points], linestyle="none",
                 marker=mark, markersize=size, markerfacecolor=face,
-                markeredgecolor="#222222", markeredgewidth=0.7, zorder=zorder)
+                markeredgecolor="#222222", markeredgewidth=edge, zorder=zorder)
 
 
-def _note_size(item) -> float:
-    """도면 주기 글자 크기(pt). SDF typesize 를 라벨 크기 기준으로 환산한다."""
-    size = _LABEL_PT * (item.typesize or _REFERENCE_PRINT_FONT) / _REFERENCE_PRINT_FONT
-    return max(3.0, min(size, 12.0))
+def _note_size(item, per_unit: float) -> float:
+    """도면 주기 글자 크기(pt). 모델 단위 높이를 종이 pt 로 환산한다."""
+    units = _NOTE_UNITS * (item.typesize or _NOTE_TYPESIZE) / _NOTE_TYPESIZE
+    return units * per_unit
 
 
 def _text_measurer(fig: Figure, ax, font: FontProperties | None,
@@ -473,15 +604,13 @@ def _text_measurer(fig: Figure, ax, font: FontProperties | None,
     return measure
 
 
-def _line_widths(bores: Sequence[float | None]) -> Callable[[float | None], float]:
-    """선 굵기를 호칭경에 비례시킨다. 관경을 모르는 관로는 가장 가늘게."""
-    known = [b for b in bores if b]
-    top = max(known) if known else 0.0
-    def width(bore: float | None) -> float:
-        if not bore or top <= 0:
-            return 0.4
-        return 0.4 + 1.8 * (bore / top)
-    return width
+def _pt_per_unit(fig: Figure, ax) -> float:
+    """모델 좌표 한 칸이 종이에서 몇 pt 인지. 모델 단위에 고정된 기호를 pt 로만 받는
+    자리(획 굵기)에 넘기려면 이 자가 필요하다. 등축척은 축 상자를 줄이면서 걸리므로
+    먼저 적용해야 가로·세로가 같은 눈금을 갖는다."""
+    ax.apply_aspect()
+    span = ax.transData.transform((1.0, 0.0))[0] - ax.transData.transform((0.0, 0.0))[0]
+    return span * 72.0 / fig.dpi
 
 
 def _rows(bound: BoundModel | None, model: DisplayModel) -> tuple[
@@ -511,27 +640,31 @@ def _rows(bound: BoundModel | None, model: DisplayModel) -> tuple[
     return links, nozzles, nodes
 
 
-def _draw_legend(fig: Figure, rect: tuple[float, float, float, float], title: str,
-                 edges: Sequence[float], fmt: ValueFormat, font: FontProperties | None) -> None:
-    x, y, w, h = rect
-    fig.text(x, y + h, title, fontsize=5.2, va="top", ha="left",
-             fontproperties=font, weight="bold")
+def _draw_legend(fig: Figure, page_pt: tuple[float, float], lane: int, title: str,
+                 edges: Sequence[float], fmt: ValueFormat, palette: Sequence[str],
+                 font: FontProperties | None) -> None:
+    """범례 한 벌 — 왼쪽에 항목 이름, 오른쪽에 3 칸 2 줄 격자."""
+    w_pt, h_pt = page_pt
+    left = (w_pt - _BLOCK_RIGHT_PT - _BLOCK_WIDTH_PT) / w_pt
+    base = (_LEGEND_BOTTOM_PT + lane * _LEGEND_LANE_PT) / h_pt
+    fig.text(left, base, title, fontsize=_BLOCK_FONT_PT, va="bottom", ha="left",
+             fontproperties=font)
     count = len(edges) + 1 if edges else 1
-    swatch_w, swatch_h = w / (count + 1.2), h * 0.34
-    top = y + h * 0.42
     for i in range(count):
-        left = x + i * swatch_w * 1.15
-        fig.add_artist(Rectangle((left, top), swatch_w * 0.9, swatch_h,
+        row, col = divmod(i, 3)
+        x = left + (_LEGEND_SWATCH_DX_PT + col * _LEGEND_COL_PT) / w_pt
+        y = base + (1 - row) * _LEGEND_ROW_PT / h_pt
+        fig.add_artist(Rectangle((x, y), _LEGEND_SWATCH_PT / w_pt, _LEGEND_SWATCH_PT / h_pt,
                                  transform=fig.transFigure,
-                                 facecolor=BAND_COLOURS[i], edgecolor="none"))
+                                 facecolor=palette[i], edgecolor="none"))
         if not edges:
             label = "전량 동일"
         elif i < len(edges):
             label = f"< {fmt.text(edges[i])}"
         else:
             label = f"≥ {fmt.text(edges[-1])}"
-        fig.text(left, top - h * 0.12, label, fontsize=4.4, va="top", ha="left",
-                 fontproperties=font)
+        fig.text(x + _LEGEND_LABEL_DX_PT / w_pt, y, label, fontsize=_BLOCK_FONT_PT,
+                 va="bottom", ha="left", fontproperties=font)
 
 
 def render_iso(
@@ -541,8 +674,9 @@ def render_iso(
     preset: str | None = None,
     link_item: str | None = None,
     node_item: str | None = None,
-    show_labels: bool = True,
-    show_arrows: bool = True,
+    show_link_labels: bool | None = None,
+    show_node_labels: bool | None = None,
+    show_arrows: bool | None = None,
     section: str = "",
     also_png: str | Path | None = None,
 ) -> RenderReport:
@@ -553,10 +687,21 @@ def render_iso(
 
     ``also_png`` 를 주면 같은 도형에서 미리보기 PNG 를 한 장 더 뽑는다. 두 번
     호출하면 도형을 두 번 짓는다 — 짓는 값은 같으니 한 번만 짓는다.
+
+    이름표·화살표 스위치를 ``None`` 으로 두면 원본 SDF 의 ``<Display-options>``,
+    즉 PIPENET 이 자기 화면에 쓰던 설정을 그대로 따른다. 원본에 그 항목이 없을
+    때만 켠다.
     """
     bound = source if isinstance(source, BoundModel) else None
     model = bound.model if bound else source
     out = Path(output)
+
+    seen = model.source_display
+    def follow(given: bool | None, stored: bool | None) -> bool:
+        return given if given is not None else (True if stored is None else stored)
+    link_labels = follow(show_link_labels, seen.link_labels)
+    node_labels = follow(show_node_labels, seen.node_labels)
+    arrows = follow(show_arrows, seen.flow_arrows)
 
     chosen = PRESETS[preset] if preset else None
     link_name = link_item or (chosen.link if chosen else "None")
@@ -600,13 +745,11 @@ def render_iso(
     page = (A4_MM[1], A4_MM[0]) if landscape else A4_MM
     fig = Figure(figsize=(page[0] / _MM_PER_INCH, page[1] / _MM_PER_INCH))
 
-    margin_x, margin_y = 12.0 / page[0], 12.0 / page[1]
-    header_h, legend_h, footer_h = 16.0 / page[1], 9.0 / page[1], 6.0 / page[1]
-    # 범례 칸은 쓰든 안 쓰든 두 줄을 비워 둔다. 표시 항목에 따라 그림틀이 커졌다
-    # 작아지면 같은 망이 다른 축척으로 나와 두 장을 겹쳐 볼 수 없다 (지시서 6).
-    legend_total = legend_h * 2
-    ax_bottom = margin_y + footer_h
-    ax_top = 1.0 - margin_y - header_h - legend_total
+    page_pt = (page[0] / _MM_PER_INCH * 72.0, page[1] / _MM_PER_INCH * 72.0)
+    margin_x = 12.0 / page[0]
+    # 그림틀은 표시 항목과 무관하게 고정이다. 범례가 한 벌이냐 두 벌이냐에 따라
+    # 커졌다 작아지면 같은 망이 다른 축척으로 나와 두 장을 겹쳐 볼 수 없다 (지시서 6).
+    ax_bottom, ax_top = _PLATE_BAND
     ax = fig.add_axes((margin_x, ax_bottom, 1.0 - 2 * margin_x, ax_top - ax_bottom))
     ax.set_aspect("equal")
     ax.set_axis_off()
@@ -619,18 +762,18 @@ def render_iso(
     unplaced = [label for label, path in paths.items() if path is None]
     placed = {label: path for label, path in paths.items() if path is not None}
 
-    width_of = _line_widths([p.bore_m for p in model.pipes])
-    segments, colours, widths = [], [], []
+    per_unit = _pt_per_unit(fig, ax)
+    pipe_width = _PIPE_WIDTH_UNITS * per_unit
+    segments, colours = [], []
     blank_links: list[str] = []
     banded = link.scope == "pipe" and link.name != "None"
     for label, path in placed.items():
         segments.append(path)
-        widths.append(width_of(links[label].pipe.bore_m))
         band = _band_of(link_values.get(label), link_edges) if banded else None
         colours.append(BAND_COLOURS[band] if band is not None else
                        (_BLANK_COLOUR if banded else "#333333"))
     if segments:
-        ax.add_collection(LineCollection(segments, colors=colours, linewidths=widths,
+        ax.add_collection(LineCollection(segments, colors=colours, linewidths=pipe_width,
                                          capstyle="round", joinstyle="round", zorder=2))
 
     # ── 장치 링크 (펌프·감압밸브·고정손실) ──
@@ -644,31 +787,39 @@ def render_iso(
         device_points.setdefault(DEVICE_MARKS.get(dev.kind, "s"), []).append(
             ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))
     if device_segments:
-        ax.add_collection(LineCollection(device_segments, colors="#222222", linewidths=1.4,
-                                         zorder=3))
-    _markers(ax, device_points, size=_DEVICE_PT, face="white", zorder=5)
+        ax.add_collection(LineCollection(device_segments, colors="#222222",
+                                         linewidths=_DEVICE_LINK_UNITS * per_unit, zorder=3))
+    device_pt = _DEVICE_UNITS * per_unit
+    equipment_pt = _EQUIPMENT_UNITS * per_unit
+    edge_pt = _MARKER_EDGE_UNITS * per_unit
+    _markers(ax, device_points, size=device_pt, edge=edge_pt, face="white", zorder=5)
 
     # ── 특수기기 (A/V, FLEX) ──
     equipment_points: dict[str, list[tuple[float, float]]] = {}
     for label, path in placed.items():
         for eq in links[label].pipe.equipment:
-            # 신축배관은 형상이 휘므로 삼각으로, 밸브류는 네모로 구분한다.
-            mark = "v" if eq.description.upper().startswith(("FX", "FLEX")) else "s"
+            # 신축배관은 가위표, 밸브류는 네모. 삼각은 쓰지 않는다 — 노즐 헤드가 같은
+            # 자리에 검은 삼각으로 앉아 기기 삼각과 구별되지 않는다.
+            mark = "X" if eq.description.upper().startswith(("FX", "FLEX")) else "s"
             equipment_points.setdefault(mark, []).append(
                 _point_at(path, eq.rel_position if eq.rel_position is not None else 0.5))
-    _markers(ax, {"v": equipment_points.get("v", [])}, size=_EQUIPMENT_PT, face="#ffffff",
-             zorder=5)
-    _markers(ax, {"s": equipment_points.get("s", [])}, size=_EQUIPMENT_PT, face="#222222",
-             zorder=5)
+    _markers(ax, {"X": equipment_points.get("X", [])}, size=equipment_pt, edge=edge_pt,
+             face="#ffffff", zorder=5)
+    _markers(ax, {"s": equipment_points.get("s", [])}, size=equipment_pt, edge=edge_pt,
+             face="#222222", zorder=5)
 
     # ── 노즐 ──
-    tri = max(span_x, span_y) * 0.006
+    measured_stub = _measured_stub(nozzles, coords)
     tips, derived_nozzles, undirected_nozzles = _nozzle_tips(
-        nozzles, model.pipes, coords, max(span_x, span_y))
+        nozzles, model.pipes, coords, measured_stub or _STUB_UNITS)
     is_derived = set(derived_nozzles)
     drawn_nozzles = 0
     nozzle_tips: list[tuple[float, float]] = []
+    # 노즐도 입력노드와 출력노드를 잇는 링크다. 그 선을 그리지 않으면 헤드가
+    # 배관에서 떨어져 떠 있는 것처럼 보인다. 실측 자리는 관로와 같은 실선으로,
+    # 유도한 자리는 주황 점선으로 — 지어낸 것을 실측인 척 그리지 않는다.
     stubs: list[list[tuple[float, float]]] = []
+    guessed_stubs: list[list[tuple[float, float]]] = []
     for label, row in nozzles.items():
         base = coords.get(row.nozzle.input_node)
         tip = tips.get(label)
@@ -676,19 +827,19 @@ def render_iso(
             continue
         drawn_nozzles += 1
         nozzle_tips.append(tip)
-        angle = math.atan2(tip[1] - base[1], tip[0] - base[0]) if tip != base else -math.pi / 2
         estimated = label in is_derived
-        if estimated:
-            stubs.append([base, tip])
+        back, corners = _nozzle_head(base, tip)
+        (guessed_stubs if estimated else stubs).append([base, back])
         ax.add_patch(Polygon(
-            [(tip[0], tip[1]),
-             (tip[0] - tri * math.cos(angle - 0.4), tip[1] - tri * math.sin(angle - 0.4)),
-             (tip[0] - tri * math.cos(angle + 0.4), tip[1] - tri * math.sin(angle + 0.4))],
-            closed=True, facecolor="#ffffff" if estimated else "#222222",
-            edgecolor=_DERIVED_COLOUR if estimated else "none",
-            linewidth=0.5 if estimated else 0.0, zorder=6))
+            [tip, *corners], closed=True, facecolor="none",
+            edgecolor=_DERIVED_COLOUR if estimated else "#222222",
+            linewidth=pipe_width, zorder=6))
     if stubs:
-        ax.add_collection(LineCollection(stubs, colors=_DERIVED_COLOUR, linewidths=0.4,
+        ax.add_collection(LineCollection(stubs, colors="#333333", linewidths=pipe_width,
+                                         capstyle="round", zorder=2))
+    if guessed_stubs:
+        ax.add_collection(LineCollection(guessed_stubs, colors=_DERIVED_COLOUR,
+                                         linewidths=pipe_width,
                                          linestyles=[(0, (2.0, 1.5))], zorder=5))
 
     # ── 노드 ──
@@ -705,10 +856,40 @@ def render_iso(
         if node.name != "None" and value is None:
             blank_nodes.append(label)
         node_points.append(point)
-        node_colours.append(BAND_COLOURS[band] if band is not None else "#333333")
+        node_colours.append(NODE_BAND_COLOURS[band] if band is not None else "#333333")
     if node_points:
-        ax.scatter([p[0] for p in node_points], [p[1] for p in node_points],
-                   s=2.5, c=node_colours, marker="o", linewidths=0, zorder=4)
+        ax.add_collection(EllipseCollection(
+            [_NODE_DOT_UNITS] * len(node_points), [_NODE_DOT_UNITS] * len(node_points),
+            [0.0] * len(node_points), units="xy", offsets=node_points,
+            offset_transform=ax.transData, facecolors=node_colours, linewidths=0,
+            zorder=4))
+
+    # ── 흐름 화살표 ──
+    # 라벨보다 먼저 자리를 잡는다. D4 에 피해야 할 자리로 넘겨야 값 글자가 화살표
+    # 위에 앉아 방향을 가리지 않는다.
+    arrow_strokes: list[list[tuple[float, float]]] = []
+    arrow_colours: list[str] = []
+    arrow_boxes: list[tuple[float, float, float, float]] = []
+    if arrows:
+        for (label, path), colour in zip(placed.items(), colours):
+            result = links[label].result
+            flow = result.flow_m3s if result else None
+            if not flow:
+                continue
+            spot = _along(path, _ARROW_AT)
+            if spot is None:
+                continue
+            tip, angle = spot
+            wings = _chevron(tip, angle + (180 if flow < 0 else 0), _ARROW_WING_UNITS)
+            arrow_strokes.extend(wings)
+            arrow_colours.extend([colour] * len(wings))
+            xs = [x for wing in wings for x, _ in wing]
+            ys = [y for wing in wings for _, y in wing]
+            arrow_boxes.append((min(xs), min(ys), max(xs), max(ys)))
+    if arrow_strokes:
+        ax.add_collection(LineCollection(arrow_strokes, colors=arrow_colours,
+                                         linewidths=pipe_width, capstyle="butt",
+                                         zorder=3))
 
     # ── 글자 (D4 가 자리를 정한다) ──
     requests: list[LabelRequest] = []
@@ -717,7 +898,7 @@ def render_iso(
         if angle > 90 or angle < -90:
             angle += 180
         parts = []
-        if show_labels:
+        if link_labels:
             parts.append(label)
         if banded:
             text = link_fmt.text(link_values.get(label))
@@ -739,101 +920,91 @@ def render_iso(
                 continue
             requests.append(LabelRequest(label, text, tip, 0.0, "nozzle"))
 
-    if show_labels or node.name != "None":
+    if node_labels or node.name != "None":
         for label, row in nodes.items():
             point = coords.get(label)
             if point is None:
                 continue
-            parts = [label] if show_labels else []
+            parts = [label] if node_labels else []
             if node.name != "None":
                 parts.append(node_fmt.text(node_values.get(label)))
             text = " ".join(p for p in parts if p)
             if text:
                 requests.append(LabelRequest(label, text, point, 0.0, "node"))
 
-    measure = _text_measurer(fig, ax, font, _LABEL_PT)
+    label_pt = _LABEL_UNITS * per_unit
+    measure = _text_measurer(fig, ax, font, label_pt)
     # 도면 주기는 SDF 가 정해 둔 자리다. 옮기지 않고 피해야 할 자리로만 넘긴다.
     fixed = []
     for item in model.texts:
-        scale = _note_size(item) / _LABEL_PT
+        scale = _note_size(item, per_unit) / label_pt
         w, h = measure(item.text)
         fixed.append((item.x, item.y, item.x + w * scale, item.y + h * scale))
     # 기호도 피한다. 값이 밸브나 노즐 위에 얹히면 겹친 라벨이 없어도 읽을 수 없다.
-    per_pt = measure("0")[1] / _LABEL_PT
-    for points, size_pt in ((device_points, _DEVICE_PT), (equipment_points, _EQUIPMENT_PT)):
-        half = size_pt * per_pt / 2
+    for points, size in ((device_points, _DEVICE_UNITS), (equipment_points, _EQUIPMENT_UNITS)):
+        half = size / 2
         for group in points.values():
             fixed.extend((x - half, y - half, x + half, y + half) for x, y in group)
-    fixed.extend((x - tri, y - tri, x + tri, y + tri) for x, y in nozzle_tips)
+    head = _HEAD_LENGTH_UNITS
+    fixed.extend((x - head, y - head, x + head, y + head) for x, y in nozzle_tips)
+    fixed.extend(arrow_boxes)
     labels, layout = lay_out(requests, measure, obstacles=fixed)
 
     leaders = [lab.leader for lab in labels if lab.leader]
     if leaders:
-        ax.add_collection(LineCollection(leaders, colors=_LEADER_COLOUR, linewidths=0.25,
-                                         zorder=6))
+        ax.add_collection(LineCollection(leaders, colors=_LEADER_COLOUR,
+                                         linewidths=_LEADER_WIDTH_UNITS * per_unit, zorder=6))
     for lab in labels:
         # anchor 모드라야 (x, y) 가 회전 전 상자의 한가운데로 고정된다. 기본 모드는
         # 회전한 뒤의 상자를 다시 맞춰서 D4 가 잡아 둔 자리와 어긋난다.
         ax.text(lab.x, lab.y, lab.text, rotation=lab.angle, rotation_mode="anchor",
                 ha="center", va="center", color="#111111", fontproperties=font,
-                fontsize=_LABEL_PT, zorder=7)
-
-    # ── 흐름 화살표 ──
-    if show_arrows:
-        for label, path in placed.items():
-            result = links[label].result
-            flow = result.flow_m3s if result else None
-            if not flow:
-                continue
-            (mx, my), angle = _longest_segment(path)
-            if flow < 0:
-                angle += 180
-            ax.plot([mx], [my], marker=(3, 0, angle - 90), markersize=2.2,
-                    color="#111111", zorder=6)
+                fontsize=label_pt, zorder=7)
 
     # ── 도면 주기 ──
     for text in model.texts:
-        ax.text(text.x, text.y, text.text, fontsize=_note_size(text),
+        ax.text(text.x, text.y, text.text, fontsize=_note_size(text, per_unit),
                 color=text.colour or "#000000", fontproperties=font,
                 ha="left", va="bottom", zorder=8)
 
     # ── 표제란 (지시서 7-2: 자체 서식, 생성 출처 명시) ──
     titles = list(bound.title) if bound else []
-    head_y = 1.0 - margin_y
-    fig.text(margin_x, head_y, titles[0] if titles else model.source.stem,
-             fontsize=9, weight="bold", va="top", ha="left", fontproperties=font)
-    subtitle = " · ".join(titles[1:]) if len(titles) > 1 else ""
-    fig.text(margin_x, head_y - 5.0 / page[1], subtitle, fontsize=5.6, va="top",
-             ha="left", fontproperties=font)
-    fig.text(margin_x, head_y - 9.5 / page[1], section or model.source.stem,
-             fontsize=5.6, va="top", ha="left", fontproperties=font)
-    right = 1.0 - margin_x
-    fig.text(right, head_y, "ISO 계통도 — FNCADnet 모듈 D 생성",
-             fontsize=6, va="top", ha="right", fontproperties=font)
+    block_left = (page_pt[0] - _BLOCK_RIGHT_PT - _BLOCK_WIDTH_PT) / page_pt[0]
+    block_mid = block_left + _BLOCK_MID_DX_PT / page_pt[0]
+    block_right = (page_pt[0] - _BLOCK_RIGHT_PT) / page_pt[0]
+    rows = [y / page_pt[1] for y in _BLOCK_ROWS_PT]
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     origin = f"원본 {model.source.name}" + (f" + {bound.document.source.name}" if bound else "")
-    fig.text(right, head_y - 5.0 / page[1], f"{origin} · {stamp}",
-             fontsize=5.0, va="top", ha="right", fontproperties=font)
-    fig.text(right, head_y - 9.5 / page[1],
-             f"관로 {link.name} / 노드 {node.name}",
-             fontsize=5.0, va="top", ha="right", fontproperties=font)
-    fig.add_artist(Rectangle((margin_x, ax_top + legend_total), 1.0 - 2 * margin_x, 0.0006,
-                             transform=fig.transFigure,
-                             facecolor="#333333", edgecolor="none"))
+    # 표시 항목은 범례가 이름째 적어 주므로 여기서 되풀이하지 않는다. 원본 파일명은
+    # 이 칸에 들어가기엔 길어 각주로 뺐다 — 참조의 세 줄 짜임을 그대로 두기 위해서다.
+    cells = (
+        (block_left, rows[0], "left", titles[0] if titles else model.source.stem),
+        (block_left, rows[1], "left", " · ".join(titles[1:]) if len(titles) > 1 else ""),
+        (block_right, rows[1], "right", "FNCADnet 모듈 D 생성"),
+        (block_left, rows[2], "left", f"ISO 계통도 — {section or model.source.stem}"),
+        (block_mid, rows[2], "left", "Page 1 of 1"),
+        (block_right, rows[2], "right", stamp),
+    )
+    for x, y, align, text in cells:
+        fig.text(x, y, text, fontsize=_BLOCK_FONT_PT, va="bottom", ha=align,
+                 fontproperties=font)
 
-    lane = ax_top
+    lane = 0
     if link.name != "None":
-        _draw_legend(fig, (margin_x, lane, (1.0 - 2 * margin_x) * 0.46, legend_h),
-                     f"{link.name} ({link_fmt.symbol})", link_edges, link_fmt, font)
-        lane += legend_h
+        _draw_legend(fig, page_pt, lane, f"{link.name}\n({link_fmt.symbol})",
+                     link_edges, link_fmt, BAND_COLOURS, font)
+        lane += 1
     if node.name != "None":
-        _draw_legend(fig, (margin_x, lane, (1.0 - 2 * margin_x) * 0.46, legend_h),
-                     f"{node.name} ({node_fmt.symbol})", node_edges, node_fmt, font)
+        _draw_legend(fig, page_pt, lane, f"{node.name}\n({node_fmt.symbol})",
+                     node_edges, node_fmt, NODE_BAND_COLOURS, font)
 
-    fig.text(margin_x, margin_y, "PIPENET 이 계산한 결과를 옮겨 그린 도면이다. "
-             "값은 결과 XML 원문이며 이 프로그램이 계산하거나 보간하지 않는다.",
-             fontsize=4.6, va="bottom", ha="left", color="#555555", fontproperties=font)
-    fig.text(right, margin_y, "Page 1 of 1", fontsize=4.6, va="bottom", ha="right",
+    # 각주는 표제란 왼쪽에 남는 자리에만 든다 — 한 줄로 흘리면 범례를 덮는다.
+    fig.text(margin_x, 8.0 / page_pt[1],
+             f"{origin}\n"
+             "PIPENET 이 계산한 결과를 옮겨 그린 도면이다.\n"
+             "값은 결과 XML 원문이며 이 프로그램이\n"
+             "계산하거나 보간하지 않는다.",
+             fontsize=_FOOTNOTE_PT, va="bottom", ha="left", color="#555555",
              fontproperties=font)
 
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -871,8 +1042,11 @@ def render_iso(
     if derived_nozzles:
         warnings.append(
             f"원본이 헤드 자리를 주지 않아 유도해 그린 것 {len(derived_nozzles)}개 — 입사 "
-            f"관로의 연장선에 도면 span 의 {_STUB_SPAN_RATIO * 100:.3f}% 만큼 내고 점선·"
-            f"흰 삼각으로 갈라 표시했다: {', '.join(derived_nozzles[:12])}"
+            f"관로의 연장선에 {measured_stub or _STUB_UNITS:.1f} 만큼 내고 점선·주황 윤곽으로 "
+            f"갈라 표시했다"
+            + (" (같은 도면의 다른 헤드에서 잰 길이)" if measured_stub
+               else " (이 도면에는 잰 길이가 없어 참조 코퍼스 최빈값)")
+            + f": {', '.join(derived_nozzles[:12])}"
         )
     if undirected_nozzles:
         warnings.append(
@@ -891,6 +1065,9 @@ def render_iso(
         link_item=link.name,
         node_item=node.name,
         orientation="landscape" if landscape else "portrait",
+        link_labels=link_labels,
+        node_labels=node_labels,
+        flow_arrows=arrows,
         pipes_drawn=len(segments),
         pipes_unplaced=tuple(unplaced),
         devices_drawn=len(device_segments),

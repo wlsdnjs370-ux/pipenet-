@@ -46,6 +46,7 @@ K-Fire_Solver/
 pipenet_converter/
 fire-dxf2sdf/
 templates_hwp/
+routes/제출용[최종]/
 
 # Notebook checkpoints
 .ipynb_checkpoints/

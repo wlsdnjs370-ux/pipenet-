@@ -181,9 +181,11 @@
         <div class="chips" id="node-chips"></div>
         <div class="pick-count" id="pick-count">파일을 먼저 읽어 주세요</div>
         <div class="switches">
-          <label title="끄면 이름표만 사라지고, 고른 표시 항목의 값은 그대로 남습니다"><input id="sw-labels" type="checkbox" checked> 이름표</label>
+          <label title="끄면 관로 이름표만 사라지고, 고른 표시 항목의 값은 그대로 남습니다"><input id="sw-link-labels" type="checkbox" checked> 관로 이름표</label>
+          <label title="끄면 노드 이름표만 사라지고, 고른 표시 항목의 값은 그대로 남습니다"><input id="sw-node-labels" type="checkbox" checked> 노드 이름표</label>
           <label><input id="sw-arrows" type="checkbox" checked> 흐름 화살표</label>
         </div>
+        <div class="pick-count" id="source-display"></div>
         <label class="field" for="section-name">구간 이름 (표제란)</label>
         <input id="section-name" type="text" placeholder="비우면 파일 이름">
         <div class="row" id="preset-row"></div>
@@ -262,6 +264,23 @@
         `<button type="button" class="chip" data-name="${escapeHtml(n)}"` +
         ` aria-pressed="${n === chosen ? "true" : "false"}">${escapeHtml(chipLabel(n))}</button>`
       )).join("");
+    }
+
+    // PIPENET 이 SDF 에 남긴 자기 화면 설정을 스위치 초기값으로 삼는다. 원본이
+    // 말하지 않은 항목은 켠 채로 두고, 무엇을 따랐는지 화면에 적어 둔다.
+    function applySourceDisplay(src) {
+      const say = $("source-display");
+      if (!src) { say.textContent = ""; return; }
+      const seed = (id, value) => {
+        if (value !== null && value !== undefined) $(id).checked = !!value;
+      };
+      seed("sw-link-labels", src.link_labels);
+      seed("sw-node-labels", src.node_labels);
+      seed("sw-arrows", src.flow_arrows);
+      const onoff = (v) => (v === null || v === undefined ? "미지정" : (v ? "켬" : "끔"));
+      say.textContent = `원본 표시 설정을 따랐습니다 — 관로 이름표 ${onoff(src.link_labels)}`
+        + ` · 노드 이름표 ${onoff(src.node_labels)} · 흐름 화살표 ${onoff(src.flow_arrows)}`
+        + (src.grid ? ` · 격자 ${src.grid}` : "");
     }
 
     function chipsPicked(host) {
@@ -400,6 +419,7 @@
 
         fillChips(linkChips, data.link_items, data.saved.link);
         fillChips(nodeChips, data.node_items, data.saved.node);
+        applySourceDisplay(data.source_display);
         refreshPickCount();
         $("section-name").value = data.stem;
 
@@ -459,7 +479,8 @@
           job_id: STATE.jobId,
           link_items: chipsPicked(linkChips),
           node_items: chipsPicked(nodeChips),
-          show_labels: $("sw-labels").checked,
+          show_link_labels: $("sw-link-labels").checked,
+          show_node_labels: $("sw-node-labels").checked,
           show_arrows: $("sw-arrows").checked,
           section: $("section-name").value,
         });

@@ -58,6 +58,19 @@ def _picked(body: dict, key: str, known: frozenset[str], what: str) -> list[str]
     return picked or [_NONE_ITEM]
 
 
+def _switch(body: dict, key: str) -> bool | None:
+    """켬/끔 스위치. 화면이 보내지 않으면 None — 원본 SDF 설정을 따르라는 뜻이다."""
+    raw = body.get(key)
+    return None if raw is None else bool(raw)
+
+
+def _source_display(model) -> dict:
+    """PIPENET 이 SDF 에 남긴 자기 화면 설정. 없는 항목은 null 로 내보낸다."""
+    seen = model.source_display
+    return {"link_labels": seen.link_labels, "node_labels": seen.node_labels,
+            "flow_arrows": seen.flow_arrows, "grid": seen.grid}
+
+
 def _join_summary(bound) -> dict:
     """결합에서 한쪽에만 있던 라벨 — 개수만 세지 않고 전량 싣는다."""
     report = bound.report
@@ -122,6 +135,7 @@ def register(app, *, D_OUTPUT_DIR, _err500, _register_job, _save_upload, _serve_
                 "presets": {name: {"link": p.link, "node": p.node}
                             for name, p in PRESETS.items()},
                 "saved": {"link": model.link_scheme, "node": model.node_scheme},
+                "source_display": _source_display(model),
                 "join": join, "notes": notes})
         except ValueError as exc:
             return jsonify({"ok": False, "message": str(exc)}), 400
@@ -148,8 +162,9 @@ def register(app, *, D_OUTPUT_DIR, _err500, _register_job, _save_upload, _serve_
                                 f"{len(links)} × 노드 {len(nodes)}. {_MAX_SHEETS}장 "
                                 f"이하로 골라 주세요."}), 400
 
-            show_labels = bool(body.get("show_labels", True))
-            show_arrows = bool(body.get("show_arrows", True))
+            show_link_labels = _switch(body, "show_link_labels")
+            show_node_labels = _switch(body, "show_node_labels")
+            show_arrows = _switch(body, "show_arrows")
             section = str(body.get("section", ""))
 
             started = time.perf_counter()
@@ -160,7 +175,8 @@ def register(app, *, D_OUTPUT_DIR, _err500, _register_job, _save_upload, _serve_
                 drawn = render_iso(
                     job["bound"] or job["model"], job["dir"] / f"{stem}.pdf",
                     preset=None, link_item=link_item, node_item=node_item,
-                    show_labels=show_labels, show_arrows=show_arrows, section=section,
+                    show_link_labels=show_link_labels, show_node_labels=show_node_labels,
+                    show_arrows=show_arrows, section=section,
                     also_png=job["dir"] / f"{stem}.png")
                 name = link_item if node_item == _NONE_ITEM else f"{link_item} + {node_item}"
                 made.append((job["dir"] / f"{stem}.pdf", name))
@@ -169,6 +185,9 @@ def register(app, *, D_OUTPUT_DIR, _err500, _register_job, _save_upload, _serve_
                     "pdf": f"{stem}.pdf", "png": f"{stem}.png",
                     "seconds": round(time.perf_counter() - at, 2),
                     "orientation": drawn.orientation,
+                    "switches": {"link_labels": drawn.link_labels,
+                                 "node_labels": drawn.node_labels,
+                                 "flow_arrows": drawn.flow_arrows},
                     "drawn": {"pipes": drawn.pipes_drawn, "nozzles": drawn.nozzles_drawn,
                               "devices": drawn.devices_drawn,
                               "labels": drawn.labels_drawn},

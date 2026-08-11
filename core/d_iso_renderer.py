@@ -34,6 +34,7 @@ from matplotlib.backends.backend_pdf import FigureCanvasPdf
 from matplotlib.collections import EllipseCollection, LineCollection
 from matplotlib.figure import Figure
 from matplotlib.font_manager import FontProperties
+from matplotlib.lines import Line2D
 from matplotlib.patches import Polygon, Rectangle
 
 from core.d_display_model import DisplayModel, DisplayNode, DisplayPipe, UnitSpec
@@ -128,17 +129,21 @@ _NODE_DOT_UNITS = 9.59
 # 굵기도 종이가 아니라 모델 좌표에 고정이다(모델 단위 변동계수 0.006, 종이 pt 0.405).
 _PIPE_WIDTH_UNITS = 1.0
 
-# 판면. 참조 세로 도면(595×842 pt)을 재면 표제란과 범례가 위가 아니라 아래 오른쪽
-# 한 덩어리로 모여 있고, 망이 그 위를 다 쓴다(종이 아래에서 0.156~0.930). 표제란을
-# 위에 얹은 머리띠는 우리 배치였다. 아래 값은 종이 모서리에서 잰 pt 이므로 A4 두
-# 방향에 그대로 얹힌다 — 가로 도면은 참조에 범례 있는 장이 없어 재지 못했다.
-_BLOCK_RIGHT_PT = 67.0          # 종이 오른쪽 끝에서 표제란 오른쪽 끝까지
-_BLOCK_WIDTH_PT = 315.5
-_BLOCK_ROWS_PT = (110.1, 95.9, 81.8)    # 글줄 바닥, 종이 아래에서
-_BLOCK_MID_DX_PT = 181.3        # 둘째 칸이 시작하는 자리
-_BLOCK_FONT_PT = 7.0
+# 판면. 참조 지면(595×842 pt)을 실측한 양식이다. 테두리가 네 변 8mm 안쪽에 있고
+# 표제란은 그 테두리의 오른쪽 아래 모서리에 딱 붙는 128×35mm 상자이며, 행은 위에서
+# 5/5/5/10/10mm 다. 망은 그 위를 다 쓴다. 아래 값은 종이 모서리에서 잰 pt 이므로
+# A4 두 방향에 그대로 얹힌다.
+_FRAME_INSET_PT = 22.68         # 테두리, 종이 네 모서리에서 (8mm)
+_RULE_PT = 0.06                 # 테두리·표제란 괘선 굵기
+_BLOCK_WIDTH_PT = 362.64        # 128mm
+_BLOCK_ROW_PT = (14.22, 14.16, 14.16, 28.32, 28.26)     # 위에서부터 5/5/5/10/10mm
+_BLOCK_INSET_PT = 2.82          # 괘선에서 글씨까지 (1mm)
+_BLOCK_FONT_PT = 8.5
 _FOOTNOTE_PT = 4.6              # 각주는 우리 것이라 참조에 대응하는 글줄이 없다
-_PLATE_BAND = (0.156, 0.930)    # 망이 채우는 세로 구간 (종이 비율)
+# 망이 채우는 세로 구간. 표제란이 종이 모서리에 pt 로 붙어 있으므로 이쪽도 pt 여야
+# 한다 — 종이 비율로 두면 A4 가로에서 망 아래끝이 표제란 위(121.8pt)로 내려온다.
+_PLATE_BOTTOM_PT = 131.33       # 종이 아래에서. 표제란 위에서 9.5pt 뜬다
+_PLATE_TOP_PT = 58.93           # 종이 위에서
 
 # 범례. 한 벌이 3 칸 × 2 줄 격자이고 왼쪽에 항목 이름이 두 줄로 붙는다. 값이 큰
 # 쪽으로 왼쪽 위에서 오른쪽 아래로 읽는다. 노드·관로 두 벌이 함께 나오면 노드가 위다.
@@ -149,6 +154,7 @@ _LEGEND_COL_PT = 90.6
 _LEGEND_SWATCH_DX_PT = 87.8     # 표제란 왼쪽 끝에서 첫 칸까지
 _LEGEND_SWATCH_PT = 8.5
 _LEGEND_LABEL_DX_PT = 11.3      # 칸에서 그 칸 설명까지
+_LEGEND_FONT_PT = 7.0           # 참조에 범례가 없어 표제란 글씨 크기를 따르지 않는다
 
 _KOREAN_FONTS =("malgun.ttf", "malgunsl.ttf", "NanumGothic.ttf", "gulim.ttc", "batang.ttc")
 
@@ -640,14 +646,63 @@ def _rows(bound: BoundModel | None, model: DisplayModel) -> tuple[
     return links, nozzles, nodes
 
 
+def _block_grid(page_pt: tuple[float, float]) -> tuple[float, float, list[float]]:
+    """표제란 격자를 종이 pt 로. 돌려주는 y 는 종이 아래에서 잰 행 경계이고
+    ys[0] 이 맨 아래(테두리와 겹친다), ys[-1] 이 표제란 위다."""
+    right = page_pt[0] - _FRAME_INSET_PT
+    ys = [_FRAME_INSET_PT]
+    for height in reversed(_BLOCK_ROW_PT):
+        ys.append(ys[-1] + height)
+    return right - _BLOCK_WIDTH_PT, right, ys
+
+
+def _draw_furniture(fig: Figure, page_pt: tuple[float, float],
+                    cells: Sequence[tuple[int, float, str]],
+                    font: FontProperties | None) -> None:
+    """테두리와 표제란 괘선을 긋고 칸에 글씨를 넣는다.
+
+    cells 는 (행 번호(위에서 0), 칸 왼쪽(표제란 폭에 대한 비율), 글) 이다.
+    """
+    w_pt, h_pt = page_pt
+    left, right, ys = _block_grid(page_pt)
+    span = right - left
+
+    def rule(x0: float, y0: float, x1: float, y1: float) -> None:
+        fig.add_artist(Line2D((x0 / w_pt, x1 / w_pt), (y0 / h_pt, y1 / h_pt),
+                              transform=fig.transFigure, color="#000000", linewidth=_RULE_PT))
+
+    far_x, far_y = w_pt - _FRAME_INSET_PT, h_pt - _FRAME_INSET_PT
+    rule(_FRAME_INSET_PT, _FRAME_INSET_PT, far_x, _FRAME_INSET_PT)
+    rule(_FRAME_INSET_PT, far_y, far_x, far_y)
+    rule(_FRAME_INSET_PT, _FRAME_INSET_PT, _FRAME_INSET_PT, far_y)
+    rule(far_x, _FRAME_INSET_PT, far_x, far_y)
+
+    for y in ys[1:]:
+        rule(left, y, right, y)
+    rule(left, ys[0], left, ys[-1])
+    # 2 행은 절반, 3 행은 1/4·3/4 에서 갈린다.
+    rule(left + span / 2, ys[3], left + span / 2, ys[4])
+    rule(left + span / 4, ys[2], left + span / 4, ys[3])
+    rule(left + span * 3 / 4, ys[2], left + span * 3 / 4, ys[3])
+
+    top = len(_BLOCK_ROW_PT)
+    for row, frac, text in cells:
+        if not text:
+            continue
+        fig.text((left + span * frac + _BLOCK_INSET_PT) / w_pt,
+                 (ys[top - row - 1] + ys[top - row]) / 2 / h_pt,
+                 text, fontsize=_BLOCK_FONT_PT, va="center", ha="left", fontproperties=font)
+
+
 def _draw_legend(fig: Figure, page_pt: tuple[float, float], lane: int, title: str,
                  edges: Sequence[float], fmt: ValueFormat, palette: Sequence[str],
                  font: FontProperties | None) -> None:
-    """범례 한 벌 — 왼쪽에 항목 이름, 오른쪽에 3 칸 2 줄 격자."""
+    """범례 한 벌 — 왼쪽에 항목 이름, 오른쪽에 3 칸 2 줄 격자. 참조가 비워 둔
+    표제란 아래 두 행(10mm 씩)이 한 벌씩 딱 들어가는 자리다."""
     w_pt, h_pt = page_pt
-    left = (w_pt - _BLOCK_RIGHT_PT - _BLOCK_WIDTH_PT) / w_pt
+    left = (_block_grid(page_pt)[0] + _BLOCK_INSET_PT) / w_pt
     base = (_LEGEND_BOTTOM_PT + lane * _LEGEND_LANE_PT) / h_pt
-    fig.text(left, base, title, fontsize=_BLOCK_FONT_PT, va="bottom", ha="left",
+    fig.text(left, base, title, fontsize=_LEGEND_FONT_PT, va="bottom", ha="left",
              fontproperties=font)
     count = len(edges) + 1 if edges else 1
     for i in range(count):
@@ -663,7 +718,7 @@ def _draw_legend(fig: Figure, page_pt: tuple[float, float], lane: int, title: st
             label = f"< {fmt.text(edges[i])}"
         else:
             label = f"≥ {fmt.text(edges[-1])}"
-        fig.text(x + _LEGEND_LABEL_DX_PT / w_pt, y, label, fontsize=_BLOCK_FONT_PT,
+        fig.text(x + _LEGEND_LABEL_DX_PT / w_pt, y, label, fontsize=_LEGEND_FONT_PT,
                  va="bottom", ha="left", fontproperties=font)
 
 
@@ -749,7 +804,8 @@ def render_iso(
     margin_x = 12.0 / page[0]
     # 그림틀은 표시 항목과 무관하게 고정이다. 범례가 한 벌이냐 두 벌이냐에 따라
     # 커졌다 작아지면 같은 망이 다른 축척으로 나와 두 장을 겹쳐 볼 수 없다 (지시서 6).
-    ax_bottom, ax_top = _PLATE_BAND
+    ax_bottom = _PLATE_BOTTOM_PT / page_pt[1]
+    ax_top = 1.0 - _PLATE_TOP_PT / page_pt[1]
     ax = fig.add_axes((margin_x, ax_bottom, 1.0 - 2 * margin_x, ax_top - ax_bottom))
     ax.set_aspect("equal")
     ax.set_axis_off()
@@ -967,27 +1023,20 @@ def render_iso(
                 color=text.colour or "#000000", fontproperties=font,
                 ha="left", va="bottom", zorder=8)
 
-    # ── 표제란 (지시서 7-2: 자체 서식, 생성 출처 명시) ──
+    # ── 테두리·표제란 (지시서 7-2: 참조의 양식만 따르고 칸 내용은 우리 것) ──
     titles = list(bound.title) if bound else []
-    block_left = (page_pt[0] - _BLOCK_RIGHT_PT - _BLOCK_WIDTH_PT) / page_pt[0]
-    block_mid = block_left + _BLOCK_MID_DX_PT / page_pt[0]
-    block_right = (page_pt[0] - _BLOCK_RIGHT_PT) / page_pt[0]
-    rows = [y / page_pt[1] for y in _BLOCK_ROWS_PT]
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     origin = f"원본 {model.source.name}" + (f" + {bound.document.source.name}" if bound else "")
+    name = " · ".join(titles) if titles else model.source.stem
     # 표시 항목은 범례가 이름째 적어 주므로 여기서 되풀이하지 않는다. 원본 파일명은
-    # 이 칸에 들어가기엔 길어 각주로 뺐다 — 참조의 세 줄 짜임을 그대로 두기 위해서다.
-    cells = (
-        (block_left, rows[0], "left", titles[0] if titles else model.source.stem),
-        (block_left, rows[1], "left", " · ".join(titles[1:]) if len(titles) > 1 else ""),
-        (block_right, rows[1], "right", "FNCADnet 모듈 D 생성"),
-        (block_left, rows[2], "left", f"ISO 계통도 — {section or model.source.stem}"),
-        (block_mid, rows[2], "left", "Page 1 of 1"),
-        (block_right, rows[2], "right", stamp),
-    )
-    for x, y, align, text in cells:
-        fig.text(x, y, text, fontsize=_BLOCK_FONT_PT, va="bottom", ha=align,
-                 fontproperties=font)
+    # 이 칸에 들어가기엔 길어 각주로 뺐다.
+    _draw_furniture(fig, page_pt, (
+        (0, 0.0, f"{name} — {section}" if section else name),
+        (1, 0.5, "FNCADnet 모듈 D 생성"),
+        (2, 0.0, "ISO 계통도"),
+        (2, 0.25, stamp),
+        (2, 0.75, "Page 1 of 1"),
+    ), font)
 
     lane = 0
     if link.name != "None":
@@ -998,8 +1047,9 @@ def render_iso(
         _draw_legend(fig, page_pt, lane, f"{node.name}\n({node_fmt.symbol})",
                      node_edges, node_fmt, NODE_BAND_COLOURS, font)
 
-    # 각주는 표제란 왼쪽에 남는 자리에만 든다 — 한 줄로 흘리면 범례를 덮는다.
-    fig.text(margin_x, 8.0 / page_pt[1],
+    # 각주는 테두리 안, 표제란 왼쪽에 남는 자리에만 든다 — 한 줄로 흘리면 범례를 덮는다.
+    fig.text((_FRAME_INSET_PT + _BLOCK_INSET_PT) / page_pt[0],
+             (_FRAME_INSET_PT + _BLOCK_INSET_PT) / page_pt[1],
              f"{origin}\n"
              "PIPENET 이 계산한 결과를 옮겨 그린 도면이다.\n"
              "값은 결과 XML 원문이며 이 프로그램이\n"

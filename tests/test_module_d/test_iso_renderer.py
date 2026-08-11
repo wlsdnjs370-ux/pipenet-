@@ -380,6 +380,8 @@ _STUB_UNITS = 58.0
 # 이 밑변에서 끝난다.
 _HEAD_LENGTH = 17.96
 _HEAD_HALF_WIDTH = 10.01
+# 노드 점 지름. 같은 60 장 / 점 3524 개에서 모델 단위 변동계수 0.019, 종이 pt 0.420.
+_NODE_DOT = 9.59
 
 
 def _head_back(base, tip):
@@ -599,6 +601,21 @@ def test_no_equipment_symbol_is_shaped_like_a_head(hand, tmp_path):
         data = ref.get_object().get_data().decode("latin-1")
         corners = [ln for ln in data.splitlines() if ln.endswith((" m", " l", " c"))]
         assert len(corners) != 3, f"{name} 이 삼각형이라 노즐 헤드와 겹친다"
+
+
+def test_node_dots_are_sized_in_model_units(hand, tmp_path):
+    # 점 크기도 종이가 아니라 모델 좌표에 붙어 있다 — 도면이 커지면 같이 커진다.
+    pdf = tmp_path / "dots.pdf"
+    render_iso(hand, pdf, link_item="Pipe velocity")
+
+    to_pt = _data_to_pt(hand.model)
+    want = _NODE_DOT * (to_pt(1.0, 0.0)[0] - to_pt(0.0, 0.0)[0])
+    # 점은 베지어 여덟 도막으로 닫힌다 — 도면의 다른 경로와 꼭짓점 수가 겹치지 않는다.
+    dots = [pts for _, pts in _stroked_paths(pdf) if len(pts) == 9 and pts[0] == pts[8]]
+    assert len(dots) == len(hand.model.real_nodes) == 104
+    for pts in dots:
+        wide = max(x for x, _ in pts) - min(x for x, _ in pts)
+        assert wide == pytest.approx(want, abs=1e-3)
 
 
 # ── 흐름 화살표 ─────────────────────────────────────────────────────────────

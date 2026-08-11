@@ -31,7 +31,7 @@ import matplotlib
 from matplotlib import font_manager
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.backends.backend_pdf import FigureCanvasPdf
-from matplotlib.collections import LineCollection
+from matplotlib.collections import EllipseCollection, LineCollection
 from matplotlib.figure import Figure
 from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Polygon, Rectangle
@@ -96,6 +96,10 @@ _ARROW_AT = 0.687
 # 크기는 화살표와 마찬가지로 모델 좌표에 고정이다(길이 변동계수 0.023, 반폭 0.011).
 _HEAD_LENGTH_UNITS = 17.96
 _HEAD_HALF_WIDTH_UNITS = 10.01
+
+# 노드 점. 같은 60 장 / 점 3524 개 실측이다. 여기서도 기준은 종이가 아니라 모델
+# 좌표다 — 지름을 종이 pt 로 재면 변동계수가 0.420 인데 모델 단위로 재면 0.019 다.
+_NODE_DOT_UNITS = 9.59
 
 _KOREAN_FONTS = ("malgun.ttf", "malgunsl.ttf", "NanumGothic.ttf", "gulim.ttc", "batang.ttc")
 
@@ -801,8 +805,11 @@ def render_iso(
         node_points.append(point)
         node_colours.append(BAND_COLOURS[band] if band is not None else "#333333")
     if node_points:
-        ax.scatter([p[0] for p in node_points], [p[1] for p in node_points],
-                   s=2.5, c=node_colours, marker="o", linewidths=0, zorder=4)
+        ax.add_collection(EllipseCollection(
+            [_NODE_DOT_UNITS] * len(node_points), [_NODE_DOT_UNITS] * len(node_points),
+            [0.0] * len(node_points), units="xy", offsets=node_points,
+            offset_transform=ax.transData, facecolors=node_colours, linewidths=0,
+            zorder=4))
 
     # ── 흐름 화살표 ──
     # 라벨보다 먼저 자리를 잡는다. D4 에 피해야 할 자리로 넘겨야 값 글자가 화살표

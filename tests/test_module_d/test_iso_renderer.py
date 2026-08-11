@@ -196,6 +196,26 @@ def _stroked_widths(pdf: Path) -> list[tuple[float, object, int]]:
     return out
 
 
+_FILL_OP = re.compile(
+    r"(?P<rgb>(?:[\d.]+\s+){3})rg\b|(?P<x>[\d.\-]+)\s+(?P<y>[\d.\-]+)\s+m\b")
+
+
+def _legend_fills(pdf: Path) -> list[tuple[float, ...]]:
+    """범례 칸을 왼쪽부터 읽어 채움색만 돌려준다."""
+    from pypdf import PdfReader
+
+    data = PdfReader(str(pdf)).pages[0].get_contents().get_data().decode("latin-1")
+    found: list[tuple[float, tuple[float, ...]]] = []
+    colour: tuple[float, ...] | None = None
+    for m in _FILL_OP.finditer(data):
+        if m["rgb"]:
+            colour = tuple(round(float(v), 4) for v in m["rgb"].split())
+        elif colour is not None and colour != (1.0, 1.0, 1.0) and float(m["y"]) > _FRAME_TOP_PT:
+            found.append((float(m["x"]), colour))
+    # 칸마다 경로가 하나씩이라 x 만 보면 줄 세워진다.
+    return [c for _, c in sorted(found)]
+
+
 def _data_to_pt(model):
     """데이터 좌표 → 페이지 pt. 종이·여백 수치를 렌더러에서 가져오지 않고 다시 적는다."""
     minx, miny, maxx, maxy = model.bounds()
@@ -674,6 +694,22 @@ def test_pipe_strokes_are_one_width_fixed_in_model_units(hand, tmp_path):
     assert widths, "관로 획을 찾지 못했다"
     assert len(widths) == 1, f"한 도면에 굵기가 여러 가지다: {sorted(widths)}"
     assert widths.pop() == pytest.approx(want, abs=1e-3)
+
+
+def test_band_colours_are_the_ones_pipenet_uses(hand, tmp_path):
+    # 참조 40 장 중 범례가 있는 35 장이 전부 이 여섯 색을 이 순서로 쓴다. 렌더러
+    # 상수를 가져오지 않고 실측값을 다시 적는다.
+    want = [(1.0, 0.0, 0.0), (1.0, 0x_ac / 255.0, 0.0), (0.0, 1.0, 0.0),
+            (0.0, 1.0, 1.0), (0.0, 0.0, 1.0), (1.0, 0.0, 1.0)]
+    want = [tuple(round(v, 4) for v in c) for c in want]
+
+    pdf = tmp_path / "bands.pdf"
+    render_iso(hand, pdf, link_item="Pipe velocity")
+    drawn = {colour for colour, _ in _stroked_paths(pdf) if isinstance(colour, tuple)}
+    assert drawn, "띠 색으로 그린 획이 없다"
+    assert drawn <= set(want), f"참조에 없는 색을 쓴다: {sorted(drawn - set(want))}"
+    # 색만 맞고 순서가 뒤집히면 도면이 거짓말한다. 범례 칸을 왼쪽부터 읽어 확인한다.
+    assert _legend_fills(pdf) == want
 
 
 # ── 흐름 화살표 ─────────────────────────────────────────────────────────────

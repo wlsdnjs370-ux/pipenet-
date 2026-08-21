@@ -445,8 +445,12 @@ def test_w7_audit_schema_on_fixture(pipe_ents, layer_categories):
     assert j["snap_eps"]["chosen_mm"] in rp.SNAP_EPS_CANDIDATES_MM
     assert any(t["kept"] for t in j["snap_eps"]["trials"])
     for t in j["snap_eps"]["trials"]:
+        # long_len_mm — 길이 가드가 실제로 본 값(긴 간선 ≥1m 연장). 총 연장으로
+        # 재면 기호 획이 눌려 사라지는 것까지 «배관 손실» 로 세어 옳은 eps 를
+        # 걷어차므로, 무엇을 근거로 채택/기각했는지 함께 남긴다 [2026-08-21].
         assert {"eps_mm", "largest_component", "components", "len_mm",
-                "kept"} == set(t)
+                "long_len_mm", "kept"} == set(t)
+        assert t["long_len_mm"] <= t["len_mm"] + 1e-6
     # 안 붙은 조각은 봉합하지 않는다 — 몇 조각이 얼마나 남았는지 정직하게 보고
     assert {"count", "attached_nodes", "detached_nodes",
             "detached_len_mm"} == set(j["fragments"])

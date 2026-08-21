@@ -1069,6 +1069,12 @@
         <em>"배관망 생성"</em> 버튼을 누르면<br>
         4-stage 파이프라인이 실시간으로 진행됩니다.
       </div>
+      <!-- 도면 자체가 문제일 때(외부참조 시트·헤드 0) 캔버스 위에 바로 띄운다.
+           FxReview 경고함은 뒷단계라 이 사유가 사용자 눈에 안 닿는다. -->
+      <div id="wb-drawing-alert" style="display:none; position:absolute; left:12px;
+           right:12px; top:52px; z-index:6; background:#7f1d1d; color:#fee2e2;
+           border:1px solid #b91c1c; padding:10px 14px; font-size:13px;
+           line-height:1.55;"></div>
       <div class="canvas-overlay">
         <span id="wb-overlay-info" class="pill">대기 중</span>
         <div style="display:flex; gap:6px; align-items:center;">
@@ -1159,7 +1165,7 @@
           <label for="wb-dxf">DXF 입력 (.dxf/.dwg)</label>
           <input id="wb-dxf" type="file" accept=".dxf,.dwg">
         </div>
-        <p id="wb-file-status" class="info-line">파일을 선택하세요. (테스트용 추천: <code>대명동201동 단위세대_layer정리.dxf</code>)</p>
+        <p id="wb-file-status" class="info-line">파일을 선택하세요.</p>
         <button id="wb-clear-dxf" type="button" disabled style="margin-top:4px;padding:5px 10px;background:#fff;color:#b91c1c;border:1px solid #fecaca;font-size:0.72rem;cursor:pointer;border-radius:4px;">🗑 업로드한 도면 삭제</button>
 
         <div style="margin: 10px 0; padding: 8px; background: #f9fafb; border: 1px solid var(--line);">
@@ -3217,7 +3223,7 @@
       state.branch_zones = [];
       runBtn.disabled = true;
       if (_wbClearBtn) _wbClearBtn.disabled = true;
-      fileStatusEl.textContent = "파일을 선택하세요. (테스트용 추천: 대명동201동 단위세대_layer정리.dxf)";
+      fileStatusEl.textContent = "파일을 선택하세요.";
       if (overlayInfoEl) overlayInfoEl.textContent = "";
       alarmXEl.value = ""; alarmYEl.value = "";
       alarmStatusEl.textContent = "미지정 — 자동 식별.";
@@ -3531,6 +3537,13 @@
       if (!state.uploadedFile) return;
       runBtn.disabled = true;
       runBtn.textContent = "▶ 진행 중...";
+      // 지난 실행의 도면 경고 배너를 내린다 — 새 도면에 남아 있으면 오해를 준다.
+      const _alertEl = document.getElementById("wb-drawing-alert");
+      if (_alertEl) {
+        _alertEl.style.display = "none";
+        _alertEl.innerHTML = "";
+        delete _alertEl.dataset.tone;
+      }
       // PR1/1.5/1.6 — Boot overlay + Layer panel + reveal 상태 초기화
       animQueue.clear();
       FinalizeProgress.abort();
@@ -3683,6 +3696,75 @@
         FxReview.open(evt.fx_review, evt.tables);
       } else if (evt.type === "warning") {
         FxReview.addWarning(evt.message || "");
+        // 도면 자체가 원인인 경고는 캔버스 위 배너로도 띄운다 — 이걸 못 보면
+        // "헤드 0개" 만 남아 프로그램이 못 잡은 것처럼 보인다.
+        // 경고는 여러 개가 단계별로 온다(도면 2 → 급수원 3). 덮어쓰지 말고 쌓는다.
+        const _alert = document.getElementById("wb-drawing-alert");
+        const _esc = (t) => String(t == null ? "" : t).replace(/</g, "&lt;");
+        const _pushAlert = (title, body, tone) => {
+          if (!_alert) return null;
+          if (tone === "warn" && _alert.dataset.tone !== "bad") {
+            _alert.style.background = "#78350f";
+            _alert.style.borderColor = "#b45309";
+            _alert.style.color = "#fef3c7";
+            _alert.dataset.tone = "warn";
+          } else if (tone === "bad") {
+            _alert.style.background = "#7f1d1d";
+            _alert.style.borderColor = "#b91c1c";
+            _alert.style.color = "#fee2e2";
+            _alert.dataset.tone = "bad";
+          }
+          const blk = document.createElement("div");
+          if (_alert.childElementCount) blk.style.marginTop = "8px";
+          blk.innerHTML = "<strong>" + _esc(title) + "</strong><br>" + body;
+          _alert.appendChild(blk);
+          _alert.style.display = "block";
+          return blk;
+        };
+
+        if (evt.code === "multi_sheet" && (evt.frames || []).length) {
+          // 한 파일에 도면이 여러 장 — 한 장을 «영역» 으로 집어 주는 단추를 낸다.
+          // 사용자가 직접 드래그해도 되지만, 경계는 프로그램이 이미 재 두었다.
+          const blk = _pushAlert("⚠ 이 파일에 도면이 여러 장 들어 있습니다",
+                                 _esc(evt.message), "warn");
+          if (blk) {
+            const box = document.createElement("div");
+            box.style.cssText = "margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;";
+            evt.frames.forEach((fr) => {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.style.cssText = "padding:5px 10px;background:#fff7ed;"
+                + "color:#7c2d12;border:1px solid #b45309;font-size:12px;"
+                + "cursor:pointer;font-weight:700;";
+              btn.textContent = "도면 " + fr.index + " — 헤드 " + fr.head_count + "개";
+              btn.onclick = () => {
+                state.zones = [fr.bbox.slice()];
+                state.zone_kinds = [null];
+                updateEditCounts();
+                render();
+                editStatusEl.textContent = "도면 " + fr.index
+                  + " 만 계산 대상으로 지정했습니다 (헤드 " + fr.head_count + "개).";
+                box.querySelectorAll("button").forEach((b) => {
+                  b.style.background = "#fff7ed"; b.style.color = "#7c2d12";
+                });
+                btn.style.background = "#7c2d12"; btn.style.color = "#fff7ed";
+              };
+              box.appendChild(btn);
+            });
+            blk.appendChild(box);
+          }
+        } else if (evt.code === "source_not_found") {
+          _pushAlert("⚠ 알람밸브를 못 찾았습니다", _esc(evt.message), "warn");
+        } else if (evt.code === "xref_sheet" || evt.code === "no_heads") {
+          const refs = (evt.xrefs || []).map((x) => x.filename).filter(Boolean);
+          _pushAlert("⚠ 이 도면으로는 헤드를 뽑을 수 없습니다",
+                     _esc(evt.message)
+                     + (refs.length
+                         ? "<br><span style='opacity:.85'>참조 대상: "
+                           + refs.map(_esc).join(" · ") + "</span>"
+                         : ""),
+                     "bad");
+        }
       } else if (evt.type === "awaiting_finalize") {
         overlayInfoEl.textContent = `[Stage 2 완료 — 헤드 ${evt.head_count}개. 편집 후 배관망 완성 클릭]`;
         runBtn.disabled = false;

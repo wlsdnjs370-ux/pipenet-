@@ -113,3 +113,8 @@ samples/dwg/
 data/gnn_outputs/
 data/gnn_training/
 data/closed_vocab_ocr_dataset/
+
+# 타현장 도면 회귀 코퍼스 — 실도면 DXF 수백 MB. 검증 스크립트만 커밋한다.
+data/_genz_dxf/
+data/_graph_corpus_*.json
+data/_mf304_dwg/

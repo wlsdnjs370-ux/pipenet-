@@ -130,7 +130,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, NON_PIPE_GEOMETRY_CATS, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, HEAD_CONNECTOR_MAX_MM, HEAD_CONNECTOR_TOUCH_MM, HEAD_CONNECTOR_MAX_SEGS, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ZONE_MATERIAL_MAP, DEFAULT_ZONE_MATERIAL, ZONE_KIND_PARKING, ZONE_KIND_UNIT_DWELLING, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, LOCAL_RISE_RULES, ELEV_SOURCE_USER, ELEV_SOURCE_DRAWING, ELEV_SOURCE_DEFAULT, ELEV_SOURCE_UNRESOLVED, ELEV_SOURCE_ORDER, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, NON_PIPE_GEOMETRY_CATS, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, SNAP_EPS_GUARD_MIN_EDGE_MM, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, HEAD_CONNECTOR_MAX_MM, HEAD_CONNECTOR_TOUCH_MM, HEAD_CONNECTOR_MAX_SEGS, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ZONE_MATERIAL_MAP, DEFAULT_ZONE_MATERIAL, ZONE_KIND_PARKING, ZONE_KIND_UNIT_DWELLING, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, LOCAL_RISE_RULES, ELEV_SOURCE_USER, ELEV_SOURCE_DRAWING, ELEV_SOURCE_DEFAULT, ELEV_SOURCE_UNRESOLVED, ELEV_SOURCE_ORDER, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 
 def _categorize_layer(name: str) -> str:
@@ -268,6 +268,8 @@ class ParsedDxfBundle:
     promoted_layers: list[dict] = field(default_factory=list)
     # robust bbox 진단 (outlier 가 있을 때 디버깅 + 라벨에 표시)
     bbox_diagnostics: dict = field(default_factory=dict)
+    # 외부참조(XREF) 진단 — 도면 내용이 딴 파일에 있는 «시트» 인지 판정한다.
+    xref_diagnostics: dict = field(default_factory=dict)
 
 
 def _insert_matrix(insert_entity) -> Matrix44:
@@ -361,6 +363,85 @@ def _hatch_outline_paths(entity, matrix: Matrix44 | None) -> list[list[list[floa
     return paths_out
 
 
+def _scan_xrefs(doc, dxf_path: Path) -> dict:
+    """외부참조(XREF) 실측 — 이 도면이 «내용» 인지 «시트» 인지 가른다.
+
+    대형 현장 도서는 도면 한 장을 두 겹으로 만든다. 실제 배관·헤드는 내용
+    파일(예: `MF-1301(…평면도).dwg`, 8.7 MB)에 있고, 사용자가 보는 시트
+    파일(`MF-1301-1(…확대평면도-1).dwg`, 148 KB)은 그 내용을 XREF 로 걸어
+    표제란만 얹은 껍데기다. DWG→DXF 변환은 XREF 를 풀어 주지 않으므로 시트를
+    올리면 modelspace 에 표제란·키플랜 몇 개만 남는다 — **헤드 0개**.
+
+    이때까지 프로그램은 "헤드 0개 인식 완료" 라고만 말해서 인식 실패로 보였다.
+    레이어 이름표에는 `MF-1301(…)|Sp-head` 같은 XREF 레이어가 그대로 남아
+    있으므로, 「이름은 있는데 그 레이어에 그림이 하나도 없다」가 바로 이 증상의
+    지문이다. 여기서 그 지문을 떠 두고 상위 단계가 사람 말로 알린다.
+
+    실측(2026-08-21 청라스타필드 MF-1301-1): XREF 3건
+    (`.\\MF-1301(…).dwg` / `.\\XREF\\B1F.dwg` / `.\\SHEET.dwg`), modelspace 215
+    엔티티, 헤드 0. 같은 폴더의 내용 파일로 돌리면 헤드 14,433개.
+    """
+    refs: list[dict] = []
+    try:
+        blocks = list(doc.blocks)
+    except Exception:  # noqa: BLE001 — 진단이 파싱을 막으면 안 된다
+        return {}
+    for blk in blocks:
+        try:
+            attrs = blk.block.dxf
+            if not (int(getattr(attrs, "flags", 0)) & 4):   # 4 = XREF
+                continue
+            path = str(getattr(attrs, "xref_path", "") or "")
+        except Exception:  # noqa: BLE001
+            continue
+        base = os.path.basename(path.replace("\\", "/")) if path else ""
+        cand = None
+        if base:
+            # 시트와 내용은 보통 같은 폴더(또는 XREF 하위)에 함께 놓인다.
+            for probe in (Path(dxf_path).parent / path.replace("\\", "/"),
+                          Path(dxf_path).parent / base):
+                try:
+                    if probe.is_file():
+                        cand = str(probe.resolve())
+                        break
+                except OSError:
+                    continue
+        refs.append({"name": str(blk.name), "path": path,
+                     "filename": base, "resolved": cand})
+    if not refs:
+        return {}
+    return {"xref_count": len(refs), "xrefs": refs}
+
+
+def _mark_xref_sheet(bundle: ParsedDxfBundle) -> None:
+    """XREF 진단에 «껍데기 시트» 판정을 붙인다. 파싱이 끝난 뒤 부른다.
+
+    판정 근거는 두 가지가 함께 성립할 때뿐이다 —
+      ① 풀리지 않은 XREF 가 있다
+      ② 배관/헤드 계열 레이어에 그려진 것이 사실상 없다
+    ②를 같이 보지 않으면, 내용 도면이 배경 건축만 XREF 로 걸어 둔 흔한
+    경우까지 «껍데기» 로 몰아 멀쩡한 도면을 막는다.
+    """
+    diag = bundle.xref_diagnostics
+    if not diag:
+        return
+    live = 0
+    for ly in bundle.layers:
+        if ly.get("auto_category") in ("PIPE", "HEAD", "ALARM"):
+            live += int(bundle.layer_counts.get(ly["name"], 0))
+    diag["content_entities"] = live
+    # 30 은 표제란·키플랜이 배관 이름 레이어에 몇 개 섞여 있어도 견디는 여유.
+    diag["is_sheet"] = live <= 30
+    named = [x["filename"] for x in diag["xrefs"] if x["filename"]]
+    diag["resolved"] = [x["resolved"] for x in diag["xrefs"] if x["resolved"]]
+    diag["message"] = (
+        "이 파일은 외부참조(XREF) 시트입니다 — 배관·헤드 그림이 이 파일 안에 없고 "
+        f"다른 도면 {len(named)}개를 불러다 씁니다: {', '.join(named[:3])}"
+        + (" …" if len(named) > 3 else "")
+        + ". 참조 대상 도면을 직접 올려 주세요."
+    ) if diag["is_sheet"] else ""
+
+
 def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
     """ezdxf 로 modelspace 파싱 → 캔버스용 entity dict 리스트.
 
@@ -369,6 +450,7 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
     doc = ezdxf.readfile(str(dxf_path))
     msp = doc.modelspace()
     bundle = ParsedDxfBundle()
+    bundle.xref_diagnostics = _scan_xrefs(doc, dxf_path)
 
     # 레이어 가시성
     for ly in doc.layers:
@@ -549,6 +631,9 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
     # 파생 지점(필터·그래프·레이어 패널)이 같은 분류를 본다.
     bundle.promoted_layers = (_promote_headgap_pipe_layers(bundle)
                               + _promote_head_connector_runs(bundle))
+    # 승격까지 끝난 분류로 «껍데기 시트» 를 가른다 — 승격 전에 재면 배관을
+    # 놓친 도면이 시트로 오인된다.
+    _mark_xref_sheet(bundle)
     return bundle
 
 
@@ -557,7 +642,7 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
 # 경로·mtime 키는 무의미 → 파일 내용 해시로 dedup. 파싱 로직이 바뀌면
 # _PARSE_CACHE_VERSION 을 올려 기존 캐시를 무효화한다. 캐시 실패는 전부 조용히 무시
 # (기능/정확도엔 영향 없음, 속도만 손해). 저장 위치는 gitignore 된 data/ 하위.
-_PARSE_CACHE_VERSION = 5  # 5: 헤드 연결관(후렉시블) 승격 추가
+_PARSE_CACHE_VERSION = 6  # 6: 외부참조(XREF) 시트 진단 필드 추가
 _PARSE_CACHE_DIR = _Path(__file__).resolve().parent / "data" / "parse_cache"
 
 
@@ -2527,8 +2612,159 @@ class HeadDetection:
 
 
 
+HEAD_CLUSTER_R_MIN = 250.0   # 대명동·대구오페라처럼 cue 가 겹쳐 있는 도면의 기존 값
+HEAD_CLUSTER_R_MAX = 900.0   # 실측 헤드 간격 하한(1,100mm)의 절반 아래로 묶어 둔 천장
+
+
+def _nn_dist(src: list, dst: list, cell: float,
+             skip_zero: bool = False) -> list[float]:
+    """src 각 점에서 dst 최근접 거리. 격자 3×3 이웃만 본다.
+
+    skip_zero: src 와 dst 가 같은 목록일 때 «자기 자신»(거리 0)을 건너뛴다.
+    거르지 않고 뒤에서 0 을 지우면 모든 점이 0 만 내놓아 표본이 통째로
+    사라진다(2026-08-21 실제로 그렇게 헛돌았다).
+    """
+    if not src or not dst:
+        return []
+    grid: dict[tuple[int, int], list[tuple[float, float]]] = {}
+    for x, y in dst:
+        grid.setdefault((int(x // cell), int(y // cell)), []).append((x, y))
+    out = []
+    for x, y in src:
+        gx, gy = int(x // cell), int(y // cell)
+        best = None
+        for ax in (gx - 1, gx, gx + 1):
+            for ay in (gy - 1, gy, gy + 1):
+                for bx, by in grid.get((ax, ay), ()):
+                    d = math.hypot(x - bx, y - by)
+                    if skip_zero and d <= 1e-6:
+                        continue
+                    if best is None or d < best:
+                        best = d
+        if best is not None:
+            out.append(best)
+    out.sort()
+    return out
+
+
+def auto_head_cluster_r(candidates: list[HeadDetection]) -> float:
+    """헤드 cue 결합 반경을 도면에서 재서 정한다. 고정 250mm 를 대신한다.
+
+    **왜 재야 하나.** 헤드 한 개는 보통 두 가지로 그려진다 — 블록(INSERT)과
+    헤드 원(CIRCLE). 대명동·대구오페라·대우이안은 그 둘이 **같은 점**에 있어
+    250mm 로 묶였다. 그런데 죽전·청라포레스트는 작도 관행이 달라 원 중심이
+    블록 삽입점에서 **270mm** 떨어져 있다(중앙값 270 · 90% 286, 실측
+    2026-08-21). 250mm 문턱을 간발로 넘겨 **헤드 하나가 둘로 세어졌다** —
+    죽전 2,271개가 4,520개로, 청라포레스트 2,833개가 5,645개로.
+
+    문턱을 400 같은 다른 상수로 바꾸는 것은 같은 실수를 자리만 옮기는 것이다.
+    도면이 제 관행을 이미 말해 주고 있으므로 그걸 읽는다 —
+      · 오프셋 = 원/해치 cue 에서 가장 가까운 INSERT cue 까지의 거리 분포
+      · 간격   = INSERT cue 끼리의 최근접 거리 분포 (한 종류만 보므로 겹셈 없음)
+    실측 헤드 간격은 5% 분위에서도 1,100~1,660mm 라 오프셋(≤300)과 사이가
+    넉넉히 벌어져 있다. 그 사이에 반경을 놓는다.
+
+    오프셋이 간격의 40% 를 넘으면 두 분포가 겹친다는 뜻이므로 재지 않고
+    기존 250mm 를 쓴다 — 억지로 묶어 서로 다른 헤드를 합치는 쪽이 훨씬 나쁘다.
+    """
+    ins = [c.pos for c in candidates
+           if c.kind in ("block_match", "head_layer_insert")]
+    others = [c.pos for c in candidates
+              if c.kind not in ("block_match", "head_layer_insert")]
+    if len(ins) < 8 or len(others) < 8:
+        return HEAD_CLUSTER_R_MIN
+
+    offs = _nn_dist(others, ins, cell=HEAD_CLUSTER_R_MAX)
+    # 간격은 한 종류(INSERT)끼리만 잰다 — 자기 자신은 건너뛴다.
+    gaps = _nn_dist(ins, ins, cell=4000.0, skip_zero=True)
+    if len(offs) < 8 or len(gaps) < 8:
+        return HEAD_CLUSTER_R_MIN
+
+    off_p90 = offs[int(len(offs) * 0.90)]
+    gap_p05 = gaps[int(len(gaps) * 0.05)]
+    gap_p01 = gaps[int(len(gaps) * 0.01)]
+    # 천장을 두 겹으로 조인다. 5% 분위만 보면 «가장 촘촘한 1%» 가 반경 안에
+    # 들어오는 도면이 생긴다(대구오페라 실측: 5% 1,586 인데 1% 는 972).
+    # 그 꼬리에서 서로 다른 헤드가 합쳐지면 조용히 적게 세므로 더 보수적으로 간다.
+    ceiling = min(HEAD_CLUSTER_R_MAX, gap_p05 * 0.40, gap_p01 * 0.50)
+    if off_p90 <= HEAD_CLUSTER_R_MIN or off_p90 > ceiling:
+        return HEAD_CLUSTER_R_MIN
+    return max(HEAD_CLUSTER_R_MIN, min(ceiling, off_p90 * 1.25))
+
+
+def _gap_clusters(vals: list[float], gap: float) -> list[tuple[float, float]]:
+    """1차원 값들을 «gap 보다 넓게 벌어진 곳» 에서 끊어 묶는다."""
+    if not vals:
+        return []
+    vs = sorted(vals)
+    out = [[vs[0], vs[0]]]
+    for v in vs[1:]:
+        if v - out[-1][1] > gap:
+            out.append([v, v])
+        else:
+            out[-1][1] = v
+    return [(a, b) for a, b in out]
+
+
+def detect_sheet_frames(heads: list[HeadDetection],
+                        min_heads: int = 12) -> list[dict]:
+    """한 파일에 나란히 놓인 «도면 여러 장» 을 갈라낸다.
+
+    국내 도서는 도면 한 장이 곧 파일 하나가 아니다. `MF - 423~428 지하주차장
+    소화설비 평면도.dwg` 처럼 **여섯 장을 한 파일에 나란히** 담는다. 그런데
+    모듈 A 는 파일 전체를 배관망 하나로 보므로, 헤드 수는 전 도면 합이 되고
+    최불리 30 은 서로 다른 도면의 헤드를 섞어 뽑는다 — 계산이 성립하지 않는다.
+
+    실측(2026-08-21) — 기준 도면만 한 장이고 타현장은 전부 여러 장이다.
+      대명동 폭 43m / 1장 · 청라포레스트 673m / 3장 · 죽전 889m / 6~10장
+      대구오페라 단위세대 261m / 5장(세대별)
+    도면과 도면 사이는 표제란·여백이 들어가 수십 m 씩 비므로, 헤드 간 정상
+    간격(1~3m)과 자릿수가 다르다. 그 빈 골을 찾아 끊는다.
+
+    문턱은 상수가 아니라 **그 도면의 헤드 간격에서 잰다** — 축척·단위가 다른
+    도면에도 같은 규칙이 서게 하려는 것이다. 헤드가 몇 개뿐인 조각은 도면이
+    아니라 범례 표본이나 튄 기호이므로 이웃에 흡수시킨다.
+    """
+    if len(heads) < min_heads * 2:
+        return []
+    pts = [h.pos for h in heads]
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+
+    # 헤드 사이 정상 간격 — 이보다 한참 넓게 벌어져야 «도면 사이» 다.
+    near = _nn_dist(pts, pts, cell=6000.0, skip_zero=True)
+    if len(near) < min_heads:
+        return []
+    spacing = near[int(len(near) * 0.95)]
+    gap = max(15000.0, spacing * 8.0)
+
+    frames: list[dict] = []
+    for x0, x1 in _gap_clusters(xs, gap):
+        band = [p for p in pts if x0 - 1 <= p[0] <= x1 + 1]
+        for y0, y1 in _gap_clusters([p[1] for p in band], gap):
+            cell = [p for p in band if y0 - 1 <= p[1] <= y1 + 1]
+            if not cell:
+                continue
+            frames.append({
+                "bbox": [min(p[0] for p in cell), min(p[1] for p in cell),
+                         max(p[0] for p in cell), max(p[1] for p in cell)],
+                "head_count": len(cell),
+            })
+    # 헤드가 몇 개 안 되는 조각은 도면이 아니다 — 범례 표본·튄 기호다.
+    big = [f for f in frames if f["head_count"] >= min_heads]
+    if len(big) <= 1:
+        return []
+    big.sort(key=lambda f: -f["head_count"])
+    for i, f in enumerate(big, start=1):
+        f["index"] = i
+        b = f["bbox"]
+        f["size_mm"] = [round(b[2] - b[0], 1), round(b[3] - b[1], 1)]
+        f["bbox"] = [round(v, 1) for v in b]
+    return big
+
+
 def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str],
-                 region=None) -> list[HeadDetection]:
+                 region=None, stats: dict | None = None) -> list[HeadDetection]:
     """도면 내 모든 헤드 후보 인식 — 다중 신호 결합 + 근접 클러스터링.
 
     인식 규칙
@@ -2599,7 +2835,10 @@ def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str],
     # 앞선 미사용 후보) 기준 반경 클러스터링이라, 셀 크기를 CLUSTER_R 로 잡으면 반경
     # 내 후보는 항상 seed 셀의 3×3 이웃 안에 있다. 클러스터 집계(max/min/set/len)는
     # 순서 무관이라 결과는 전수 비교와 동일.
-    CLUSTER_R = 250.0
+    CLUSTER_R = auto_head_cluster_r(candidates)
+    if stats is not None:
+        stats["cluster_r"] = round(CLUSTER_R, 1)
+        stats["raw_cues"] = len(candidates)
     grid: dict[tuple[int, int], list[int]] = {}
     for idx, c in enumerate(candidates):
         key = (int(math.floor(c.pos[0] / CLUSTER_R)), int(math.floor(c.pos[1] / CLUSTER_R)))
@@ -4700,12 +4939,16 @@ def auto_snap_eps(
         comps = _connected_components(graph)
         largest = max((len(c) for c in comps), default=0)
         total_len = float(sum(edge_len.values()))
+        # 가드는 긴 간선만 센다 — 기호 획이 눌려 사라지는 것은 «배관 손실» 이
+        # 아니다. 짧은 획까지 세면 옳은 eps 가 길이 가드에 걷어차인다.
+        long_len = float(sum(v for v in edge_len.values()
+                             if v >= SNAP_EPS_GUARD_MIN_EDGE_MM))
         if base_len is None:
-            base_len = total_len
-        keep = total_len >= base_len * SNAP_EPS_MIN_LEN_RATIO
+            base_len = long_len
+        keep = long_len >= base_len * SNAP_EPS_MIN_LEN_RATIO
         trials.append({"eps_mm": eps, "largest_component": largest,
                        "components": len(comps), "len_mm": total_len,
-                       "kept": keep})
+                       "long_len_mm": long_len, "kept": keep})
         if keep and (best is None or largest > best[0]):
             best = (largest, eps)
     chosen = best[1] if best is not None else SNAP_TOL_MM
@@ -7065,6 +7308,15 @@ def run_stages_0_2(
     _diag_msg = ""
     if _ratio >= 2.0:
         _diag_msg = f" · outlier {_outliers}점 제외 (raw bbox 가 robust 의 {_ratio}× — 자동 보정)"
+    # 껍데기 시트는 여기서 잡아 말해 준다. 이걸 안 하면 뒤에서 «헤드 0개» 라고만
+    # 나와서 인식 실패로 보인다 — 실제로는 이 파일 안에 헤드가 없다.
+    _xd = getattr(bundle, "xref_diagnostics", None) or {}
+    if _xd.get("is_sheet"):
+        yield evt({"type": "warning", "stage": 0, "code": "xref_sheet",
+                   "message": _xd.get("message", ""),
+                   "xrefs": _xd.get("xrefs", []),
+                   "resolved": _xd.get("resolved", [])})
+        _diag_msg += f" · ⚠외부참조 시트 (XREF {_xd.get('xref_count', 0)}건)"
     yield evt({"type": "stage", "stage": 0, "status": "done",
                "label": f"DXF 파싱 완료 — {len(bundle.entities):,} entity / {len(bundle.layers)} 레이어{_diag_msg}"})
 
@@ -7083,7 +7335,8 @@ def run_stages_0_2(
     # Stage 2: 헤드 인식
     yield evt({"type": "stage", "stage": 2, "status": "running",
                "label": "도면 내 전체 헤드 후보 인식 (block pattern + CIRCLE/HATCH 시그니처 + 클러스터링)"})
-    head_detections = detect_heads(pipe_ents, layer_categories)
+    _head_stats: dict = {}
+    head_detections = detect_heads(pipe_ents, layer_categories, stats=_head_stats)
     bbox_ents = [{"t": "B", "l": "_head_bbox", "p": list(h.bbox),
                   "k": h.kind, "c": round(h.confidence, 2), "n": h.block_name,
                   "i": idx, "pos": list(h.pos)}
@@ -7099,8 +7352,45 @@ def run_stages_0_2(
                    "by_kind": dict(kind_counter),
                    "avg_confidence": round(sum(h.confidence for h in head_detections) / len(head_detections), 3) if head_detections else 0,
                }})
+    # 한 파일에 도면이 여러 장 들어 있으면 여기서 갈라 알린다. 안 알리면
+    # 최불리 30 이 서로 다른 도면의 헤드를 섞어 뽑아 계산이 성립하지 않는다.
+    _frames = detect_sheet_frames(head_detections)
+    if _frames:
+        yield evt({
+            "type": "warning", "stage": 2, "code": "multi_sheet",
+            "message": (
+                f"이 파일에 도면이 {len(_frames)}장 나란히 들어 있습니다 "
+                f"(헤드 {len(head_detections):,}개는 그 합계입니다). "
+                "한 장을 골라야 최불리 30 헤드가 한 도면 안에서 뽑힙니다."),
+            "frames": _frames})
+
+    _cr = _head_stats.get("cluster_r")
+    _head_label = f"전체 헤드 {len(head_detections)}개 인식 완료"
+    if _frames:
+        _head_label += f" · ⚠도면 {len(_frames)}장 합계"
+    if _cr:
+        # 결합 반경은 도면마다 다르게 재서 정한다 — 어떤 값이 쓰였는지 보여야
+        # 헤드 수가 이상할 때 사용자가 원인을 짚을 수 있다.
+        _head_label += (f" (신호 {_head_stats.get('raw_cues', 0):,}개 · "
+                        f"결합반경 {_cr:.0f}mm)")
+    if not head_detections:
+        # 0 개로 끝날 때는 «왜» 를 반드시 붙인다. 원인을 안 말하면 프로그램이
+        # 못 잡은 것인지 도면에 없는 것인지 사용자가 구분할 수 없다.
+        _xd2 = getattr(bundle, "xref_diagnostics", None) or {}
+        if _xd2.get("is_sheet"):
+            _why = _xd2.get("message", "")
+        elif not any(c == "HEAD" for c in layer_categories.values()):
+            _why = ("HEAD 로 분류된 레이어가 없습니다 — 헤드 레이어 이름이 사전에 "
+                    "없는 규칙일 수 있습니다. 레이어 패널에서 헤드 레이어를 "
+                    "직접 지정해 주세요.")
+        else:
+            _why = ("HEAD 레이어는 있으나 그 안에 블록·원·해치가 없습니다 — "
+                    "헤드가 다른 레이어에 그려졌는지 확인해 주세요.")
+        _head_label += f" · ⚠{_why}"
+        yield evt({"type": "warning", "stage": 2, "code": "no_heads",
+                   "message": _why})
     yield evt({"type": "stage", "stage": 2, "status": "done",
-               "label": f"전체 헤드 {len(head_detections)}개 인식 완료"})
+               "label": _head_label})
 
     # ===== Stage 3 (신규): 전체 배관망 그래프 시각화 =====
     # select_worst30_heads 가 사용할 정확한 내부 그래프를 미리 보여줌.
@@ -7235,6 +7525,25 @@ def run_stages_0_2(
         src_raw_pt, src_kind_preview = _find_source(pipe_ents, layer_categories)
         if src_raw_pt is not None:
             src_raw_pt = node_index.canonical(src_raw_pt[0], src_raw_pt[1])
+        else:
+            # 못 찾으면 뒤에서 «가장 이음 많은 노드» 로 조용히 대체된다. 그 점이
+            # 알람밸브라는 보장이 없고, 최불리 30 은 급수원에서 재는 거리로
+            # 뽑히므로 결과가 통째로 달라진다 — 조용히 넘어가면 안 된다.
+            # (실측: MF-304 의 ALARM 레이어 `Friser` 는 INSERT 가 0개라 블록
+            #  기반 1~3순위가 전부 빈손이다. 밸브를 도형으로 그린 도면이다.)
+            _al = sorted({ly for ly, c in layer_categories.items()
+                          if c == "ALARM"})
+            yield evt({
+                "type": "warning", "stage": 3, "code": "source_not_found",
+                "message": (
+                    "알람밸브를 자동으로 찾지 못했습니다 — 임시로 이음이 가장 "
+                    "많은 노드를 급수원으로 씁니다. 최불리 30 헤드는 급수원에서 "
+                    "재는 거리로 뽑히므로 결과가 실제와 다를 수 있습니다. "
+                    "캔버스에서 알람밸브 위치를 직접 찍어 주세요."
+                    + (f" (ALARM 레이어: {', '.join(_al)} — 여기에 블록(INSERT)이 "
+                       "없으면 자동 식별이 안 됩니다)" if _al
+                       else " (ALARM 으로 분류된 레이어가 없습니다)")),
+                "alarm_layers": _al})
     src_bridge_preview = 0.0
     src_far = False
     if src_raw_pt is not None and graph:

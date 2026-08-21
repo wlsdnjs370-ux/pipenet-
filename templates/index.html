@@ -860,6 +860,16 @@
               <strong>Output Workbench (Reverse)</strong>
               <span>Upload PIPENET output (.sdf / .xml) → render the ISO schematic PDF and the hydraulic calculation report PDF without running PIPENET. Switch the displayed item and redraw instantly, no recalculation.</span>
             </a>
+            <a class="home-module-btn" href="{{ url_for('module_e_cad_editor') }}" target="_blank" rel="noopener">
+              <span class="module-chip">Module E</span>
+              <strong>CAD Project Editor (Desktop)</strong>
+              <span>Launch the offline PySide6 desktop editor: load a DXF, map sprinkler heads via the head library, and save the edited project as a K-solver .kfp. Runs as a native window on the server PC.</span>
+            </a>
+            <a class="home-module-btn" href="{{ url_for('module_f_page') }}">
+              <span class="module-chip">Module F</span>
+              <strong>CAD Import Workbench (Web)</strong>
+              <span>The Module E engine, driven entirely in the browser — no desktop window. Upload a DXF, pick pipe layers and heads on the canvas, tidy the network (join / delete / water source / alarm valve), watch the water reach, then convert to a K-solver .kfp and download it.</span>
+            </a>
           </div>
         </section>
 

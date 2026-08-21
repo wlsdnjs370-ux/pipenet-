@@ -257,6 +257,197 @@
     "rule": "/api/module-d/result/<job_id>/<path:filename>"
   },
   {
+    "endpoint": "module_f_convert_fields",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/convert/fields"
+  },
+  {
+    "endpoint": "module_f_convert_result",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/convert/result"
+  },
+  {
+    "endpoint": "module_f_convert_run",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/convert/run"
+  },
+  {
+    "endpoint": "module_f_download",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/download"
+  },
+  {
+    "endpoint": "module_f_edit_click",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/click"
+  },
+  {
+    "endpoint": "module_f_edit_flow",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/flow"
+  },
+  {
+    "endpoint": "module_f_edit_kind",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/kind"
+  },
+  {
+    "endpoint": "module_f_edit_mode",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/mode"
+  },
+  {
+    "endpoint": "module_f_edit_save",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/save"
+  },
+  {
+    "endpoint": "module_f_edit_state",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/edit/state"
+  },
+  {
+    "endpoint": "module_f_edit_undo",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/undo"
+  },
+  {
+    "endpoint": "module_f_edit_worst",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/worst"
+  },
+  {
+    "endpoint": "module_f_edit_worst_clear",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/worst-clear"
+  },
+  {
+    "endpoint": "module_f_job",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/job"
+  },
+  {
+    "endpoint": "module_f_open",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/open"
+  },
+  {
+    "endpoint": "module_f_pick_auto",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/pick/auto"
+  },
+  {
+    "endpoint": "module_f_pick_click",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/pick/click"
+  },
+  {
+    "endpoint": "module_f_pick_commit",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/pick/commit"
+  },
+  {
+    "endpoint": "module_f_pick_mode",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/pick/mode"
+  },
+  {
+    "endpoint": "module_f_pick_undo",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/pick/undo"
+  },
+  {
+    "endpoint": "module_f_reopen",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/reopen"
+  },
+  {
+    "endpoint": "module_f_saved",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/saved"
+  },
+  {
+    "endpoint": "module_f_world",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/world"
+  },
+  {
     "endpoint": "remote30_auto_process",
     "methods": [
       "OPTIONS",
@@ -873,6 +1064,24 @@
       "OPTIONS"
     ],
     "rule": "/module-d-output"
+  },
+  {
+    "endpoint": "module_e_cad_editor",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/module-e-cad-editor"
+  },
+  {
+    "endpoint": "module_f_page",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/module-f"
   },
   {
     "endpoint": "print_report",

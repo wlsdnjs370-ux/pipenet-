@@ -1087,6 +1087,10 @@ _routes_cad_compare.register(
     _ai_edge_features=_ai_edge_features, _compact_cad_graph_for_sdf=_compact_cad_graph_for_sdf,
     _component_similarity_stats=_component_similarity_stats, _edge_length=_edge_length,
     _recompute_edge_degrees=_recompute_edge_degrees, _save_upload=_save_upload)
+# 모듈 F — 모듈 E(cad_project_editor) 엔진을 브라우저에서 돌리는 워크벤치.
+# 편집기 소스 import·경로 고정은 첫 요청에서 게으르게 한다(서버 기동을 막지 않음).
+import routes.module_f as _routes_module_f
+_routes_module_f.register(app, _save_upload=_save_upload, UPLOAD_DIR=UPLOAD_DIR)
 
 
 if __name__ == "__main__":

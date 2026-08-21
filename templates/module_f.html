@@ -1,0 +1,1217 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Module F · CAD 임포트 워크벤치</title>
+<link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
+<style>
+  /* 각진 구성 — border-radius 0. 면은 색이 아니라 헤어라인으로 나눈다. */
+  :root{
+    --bg:#08090B; --chrome:#0B0D11; --panel:#0E1116; --sunk:#050607;
+    --line:#1B212A; --line-2:#293240; --line-3:#3A4656;
+    --ink:#E8EBEF; --dim:#7A8593; --faint:#4A535F;
+    --accent:#5B8DEF; --accent-dim:#2B4A85; --on-accent:#080A0D;
+    --ok:#3FB68B; --warn:#D9A441; --err:#E05C5C;
+    --sans:'Inter',-apple-system,'Segoe UI','Malgun Gothic',sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+    --h-head:52px; --h-steps:46px; --h-bar:34px;
+  }
+  *{box-sizing:border-box;}
+  ::selection{background:var(--accent-dim);color:#fff;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+  a{color:var(--dim);text-decoration:none;}
+  a:hover{color:var(--ink);}
+
+  /* ── 머리 ─────────────────────────────────────────────── */
+  header{height:var(--h-head);display:flex;align-items:center;gap:16px;
+         padding:0 20px;border-bottom:1px solid var(--line);background:var(--chrome);}
+  header .chip{font:600 10px/1 var(--mono);letter-spacing:.18em;color:var(--accent);
+               border:1px solid var(--accent-dim);padding:6px 9px;}
+  header h1{margin:0;font-size:14px;font-weight:600;letter-spacing:-.01em;}
+  header .sub{color:var(--faint);font-size:11.5px;letter-spacing:.01em;}
+  header .spacer{flex:1;}
+  header .back{font:500 11px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;
+               border:1px solid var(--line-2);padding:7px 12px;color:var(--dim);}
+  header .back:hover{border-color:var(--line-3);color:var(--ink);}
+
+  /* ── 단계 레일 ────────────────────────────────────────── */
+  .steps{height:var(--h-steps);display:flex;align-items:stretch;
+         border-bottom:1px solid var(--line);background:var(--chrome);}
+  .steps div{display:flex;align-items:center;gap:9px;padding:0 20px;
+             border-right:1px solid var(--line);color:var(--faint);
+             font-size:11.5px;font-weight:500;letter-spacing:.02em;
+             counter-increment:step;position:relative;}
+  .steps div::before{content:counter(step,decimal-leading-zero);
+                     font:600 10px/1 var(--mono);letter-spacing:.06em;
+                     border:1px solid var(--line-2);padding:5px 6px;color:var(--faint);}
+  .steps{counter-reset:step;}
+  .steps div.done{color:var(--dim);}
+  .steps div.done::before{border-color:var(--line-3);color:var(--ok);}
+  .steps div.on{color:var(--ink);background:var(--panel);}
+  .steps div.on::before{background:var(--accent);border-color:var(--accent);
+                        color:var(--on-accent);}
+  .steps div.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;
+                       height:1px;background:var(--accent);}
+
+  /* ── 판 ───────────────────────────────────────────────── */
+  .wrap{display:grid;grid-template-columns:352px 1fr;
+        height:calc(100vh - var(--h-head) - var(--h-steps));}
+  .side{border-right:1px solid var(--line);overflow-y:auto;background:var(--panel);}
+  .side::-webkit-scrollbar{width:10px;}
+  .side::-webkit-scrollbar-track{background:var(--panel);}
+  .side::-webkit-scrollbar-thumb{background:var(--line-2);border:3px solid var(--panel);}
+  .stage{position:relative;background:#000;overflow:hidden;}
+  canvas{display:block;width:100%;height:100%;cursor:crosshair;}
+
+  .card{border-bottom:1px solid var(--line);padding:16px 18px 18px;}
+  .card h2{margin:0 0 12px;font:600 10px/1 var(--mono);letter-spacing:.16em;
+           color:var(--faint);text-transform:uppercase;
+           display:flex;align-items:center;gap:10px;}
+  .card h2::after{content:"";flex:1;height:1px;background:var(--line);}
+
+  /* ── 단추 ─────────────────────────────────────────────── */
+  /* 이웃한 단추는 테두리를 겹쳐 한 줄로 합친다 — 2px 이중선이 안 생기게. */
+  .row{display:flex;flex-wrap:wrap;margin-bottom:8px;}
+  .row:last-of-type{margin-bottom:0;}
+  .row button + button{margin-left:-1px;}
+  button{flex:1 1 auto;background:transparent;color:var(--dim);
+         border:1px solid var(--line-2);padding:9px 10px;cursor:pointer;
+         position:relative;
+         font:500 11.5px/1.2 var(--sans);letter-spacing:.02em;
+         white-space:nowrap;transition:background .12s,color .12s,border-color .12s;}
+  button:hover:not(:disabled),button.on{z-index:1;}
+  button:hover:not(:disabled){background:#141920;color:var(--ink);
+                              border-color:var(--line-3);}
+  button.on{background:var(--accent);border-color:var(--accent);
+            color:var(--on-accent);font-weight:600;}
+  button.go{border-color:var(--line-3);color:var(--ink);background:#141920;}
+  button.go:hover:not(:disabled){background:var(--accent);border-color:var(--accent);
+                                 color:var(--on-accent);}
+  button:disabled{opacity:.32;cursor:not-allowed;}
+  /* 변환이 끝나 내려받을 것이 실제로 생겼을 때만 눈에 띄게 한다. */
+  #btn-download:not(:disabled){border-color:var(--ok);color:var(--ok);}
+  #btn-download:not(:disabled):hover{background:var(--ok);color:var(--on-accent);}
+
+  /* ── 입력 ─────────────────────────────────────────────── */
+  input[type=file]{width:100%;font:400 11px/1.4 var(--mono);color:var(--dim);
+                   border:1px dashed var(--line-2);padding:11px;background:var(--sunk);}
+  input[type=file]::file-selector-button{background:transparent;color:var(--dim);
+    border:1px solid var(--line-2);padding:5px 9px;margin-right:9px;cursor:pointer;
+    font:500 11px var(--sans);}
+  input[type=text],select{width:100%;background:var(--sunk);color:var(--ink);
+    border:1px solid var(--line-2);padding:8px 9px;
+    font:400 12px/1.2 var(--mono);}
+  input[type=text]:focus,select:focus{outline:none;border-color:var(--accent-dim);}
+  input[type=text]::placeholder{color:var(--faint);}
+  label.f{display:block;margin-bottom:10px;}
+  label.f > span{display:block;color:var(--dim);font-size:11px;margin-bottom:5px;
+                 letter-spacing:.01em;}
+
+  /* ── 값 표 ────────────────────────────────────────────── */
+  .kv{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:baseline;
+      padding:6px 0;border-bottom:1px solid var(--line);font-size:11.5px;}
+  .kv:last-child{border-bottom:0;}
+  .kv b{font-weight:400;color:var(--dim);}
+  .kv span{font-family:var(--mono);font-size:11.5px;color:var(--ink);
+           font-variant-numeric:tabular-nums;text-align:right;}
+  /* `.kv span` 이 상태색을 덮는다(구체성 0,1,1 > 0,1,0). 값 칸 안에서도
+     완료·미완료·막힘이 색으로 읽혀야 하므로 여기서 되돌린다. */
+  .kv .ok{color:var(--ok);}
+  .kv .warn{color:var(--warn);}
+  .kv .err{color:var(--err);}
+  .grp{margin:16px 0 8px;font:600 10px/1 var(--mono);letter-spacing:.14em;
+       color:var(--faint);text-transform:uppercase;
+       display:flex;align-items:center;gap:9px;}
+  .grp::after{content:"";flex:1;height:1px;background:var(--line);}
+  .grp:first-child{margin-top:0;}
+
+  .dim{color:var(--dim);}
+  .ok{color:var(--ok);} .warn{color:var(--warn);} .err{color:var(--err);}
+
+  /* 모듈 A 에서 빌려온 기능임을 화면에서도 밝힌다. */
+  .tag{font:600 8.5px/1 var(--mono);letter-spacing:.14em;color:var(--accent);
+       border:1px solid var(--accent-dim);padding:3px 5px;margin-left:2px;
+       text-transform:none;}
+  h2 .tag{margin-left:0;}
+
+  /* 레이어 카테고리 요약 막대 */
+  .catbar{display:flex;flex-wrap:wrap;gap:1px;margin:9px 0 0;}
+  .catbar span{border:1px solid var(--line);padding:4px 7px;
+               font:400 10px/1 var(--mono);color:var(--dim);}
+  .catbar span b{color:var(--ink);font-weight:600;margin-left:5px;}
+  .layers .cat{font:600 8.5px/1 var(--mono);letter-spacing:.08em;flex:none;
+               border:1px solid var(--line-2);padding:3px 4px;color:var(--faint);}
+  .layers .cat.PIPE{color:var(--accent);border-color:var(--accent-dim);}
+  .layers .cat.HEAD{color:var(--warn);border-color:#6b5320;}
+  .layers .cat.ALARM{color:#c86bff;border-color:#4a2868;}
+
+  label.chk{display:flex;align-items:center;gap:9px;padding:8px 10px;
+            border:1px solid var(--line);margin-bottom:1px;cursor:pointer;
+            font-size:11.5px;color:var(--dim);}
+  label.chk:hover{background:#0E1116;color:var(--ink);}
+  label.chk input{accent-color:var(--accent);width:13px;height:13px;flex:none;margin:0;}
+  label.chk b{font-weight:600;color:var(--ink);}
+
+  /* ── 로그 ─────────────────────────────────────────────── */
+  #job-line{font:400 11px/1.4 var(--mono);color:var(--dim);margin-bottom:8px;
+            font-variant-numeric:tabular-nums;}
+  pre.log{margin:0;background:var(--sunk);border:1px solid var(--line);
+          padding:10px 11px;max-height:184px;overflow:auto;
+          font:400 10.5px/1.65 var(--mono);white-space:pre-wrap;word-break:break-all;
+          color:#8FA3BF;}
+  pre.log::-webkit-scrollbar{width:8px;}
+  pre.log::-webkit-scrollbar-thumb{background:var(--line-2);}
+  .hint{color:var(--faint);font-size:11px;line-height:1.6;margin:10px 0 0;
+        padding-left:10px;border-left:1px solid var(--line);}
+  .hint b{color:var(--dim);font-weight:500;}
+
+  /* ── 레이어 ───────────────────────────────────────────── */
+  .layers{max-height:236px;overflow:auto;border:1px solid var(--line);
+          background:var(--sunk);}
+  .layers::-webkit-scrollbar{width:8px;}
+  .layers::-webkit-scrollbar-thumb{background:var(--line-2);}
+  .layers label{display:flex;align-items:center;gap:9px;padding:6px 10px;
+                font-size:11px;cursor:pointer;border-bottom:1px solid var(--line);}
+  .layers label:last-child{border-bottom:0;}
+  .layers label:hover{background:#0E1116;}
+  .layers input{accent-color:var(--accent);width:12px;height:12px;flex:none;margin:0;}
+  .layers .sw{width:9px;height:9px;flex:none;}
+  .layers .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .layers .cnt{margin-left:auto;color:var(--faint);flex:none;
+               font:400 10px/1 var(--mono);font-variant-numeric:tabular-nums;}
+
+  /* ── 캔버스 하단 바 ───────────────────────────────────── */
+  .bar{position:absolute;left:0;right:0;bottom:0;height:var(--h-bar);
+       display:flex;align-items:stretch;background:#0B0D11F2;
+       border-top:1px solid var(--line);backdrop-filter:blur(6px);}
+  .bar > span{display:flex;align-items:center;padding:0 14px;font-size:11.5px;}
+  .bar #status{color:var(--dim);}
+  .bar #status.ok{color:var(--ok);} .bar #status.warn{color:var(--warn);}
+  .bar #status.err{color:var(--err);}
+  .bar .grow{flex:1;padding:0;}
+  .bar #coord{font:400 11px/1 var(--mono);color:var(--faint);
+              border-left:1px solid var(--line);font-variant-numeric:tabular-nums;}
+  .bar button{flex:0 0 auto;border:0;border-left:1px solid var(--line);
+              padding:0 16px;font-size:11px;}
+  .bar button:hover{background:#141920;}
+
+  /* ── 진행 가림막 — 퍼센트를 지어내지 않는 무한 막대 ────── */
+  .busy{position:absolute;inset:0;background:#050607E6;display:flex;
+        align-items:center;justify-content:center;z-index:5;}
+  .busy .box{width:320px;border:1px solid var(--line-2);background:var(--panel);
+             padding:20px 22px;}
+  .busy .lbl{font:600 10px/1 var(--mono);letter-spacing:.16em;color:var(--faint);
+             text-transform:uppercase;margin-bottom:12px;}
+  #busy-text{font-size:12px;color:var(--ink);margin-bottom:14px;
+             font-variant-numeric:tabular-nums;}
+  .busy .track{height:2px;background:var(--line);overflow:hidden;}
+  .busy .track i{display:block;height:2px;width:34%;background:var(--accent);
+                 animation:slide 1.15s cubic-bezier(.65,0,.35,1) infinite;}
+  @keyframes slide{0%{transform:translateX(-100%);}100%{transform:translateX(394%);}}
+
+  /* ── 결과 표 ──────────────────────────────────────────── */
+  table.rs{width:100%;border-collapse:collapse;margin-top:10px;}
+  table.rs td{padding:5px 0;border-bottom:1px solid var(--line);
+              font:400 11px/1.4 var(--mono);color:var(--dim);}
+  table.rs td:last-child{text-align:right;color:var(--ink);
+                         font-variant-numeric:tabular-nums;}
+  table.rs tr:last-child td{border-bottom:0;}
+
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+<header>
+  <span class="chip">MODULE F</span>
+  <h1>CAD 임포트 워크벤치</h1>
+  <span class="sub">DXF → 찍기 → 손질 → .kfp · 모듈 E 엔진을 브라우저에서 그대로</span>
+  <span class="spacer"></span>
+  <a class="back" href="/">초기화면</a>
+</header>
+
+<div class="steps">
+  <div id="st-open" class="on">도면 열기</div>
+  <div id="st-pick">찍기</div>
+  <div id="st-edit">손질</div>
+  <div id="st-conv">변환</div>
+</div>
+
+<div class="wrap">
+  <div class="side">
+    <!-- 1. 열기 -->
+    <section class="card" id="panel-open">
+      <h2>새 도면</h2>
+      <label class="f"><span>DXF 파일</span>
+        <input type="file" id="dxf" accept=".dxf">
+      </label>
+      <div class="row"><button id="btn-open" class="go">불러오기</button></div>
+      <p class="hint">DXF 를 읽어 <b>레이어 × 색</b> 묶음을 만듭니다.
+        큰 도면은 수 초에서 수십 초 걸립니다.</p>
+    </section>
+
+    <section class="card" id="panel-resume">
+      <h2>이어서 열기</h2>
+      <label class="f"><span>이미 찍어 둔 도면 — 손질부터 시작</span>
+        <select id="saved"></select>
+      </label>
+      <div class="row"><button id="btn-reopen">배관망 열기</button></div>
+      <p class="hint">데스크톱 <b>모듈 E</b> 로 찍은 것도 같은 폴더를 쓰므로
+        여기 그대로 나옵니다.</p>
+    </section>
+
+    <!-- 2. 찍기 -->
+    <section class="card hidden" id="panel-pick">
+      <h2>자동 추천 <span class="tag">MODULE A</span></h2>
+      <div class="row">
+        <button id="pk-auto-pipe">배관 추천 일괄</button>
+        <button id="pk-auto-head">헤드 추천 일괄</button>
+      </div>
+      <div id="pk-cats" class="catbar"></div>
+      <p class="hint">모듈 A 의 <b>레이어 이름 사전</b>이 고른 묶음을 한 번에
+        찍습니다. 이름만 보는 사전이라 <b>추천일 뿐</b>이며, 빠지거나 남는 것은
+        아래에서 직접 찍어 고치세요.</p>
+
+      <h2 style="margin-top:16px">재료</h2>
+      <div class="row">
+        <button id="pk-pipe">배관 선택</button>
+        <button id="pk-done">선택 완료</button>
+        <button id="pk-undo">되돌리기</button>
+      </div>
+      <h2 style="margin-top:16px">헤드 칸</h2>
+      <div class="row">
+        <button class="slot" data-slot="상향하향">상향 / 하향</button>
+        <button class="slot" data-slot="상하향">상하향</button>
+      </div>
+      <h2 style="margin-top:16px">상태</h2>
+      <div id="pk-info"></div>
+      <div class="row" style="margin-top:14px">
+        <button id="pk-next" class="go">배관망 구성 →</button>
+      </div>
+      <p class="hint">캔버스에서 배관선을 클릭하면 그 <b>레이어 × 색 묶음 전체</b>가
+        재료로 잡힙니다. 완료 후에는 헤드 원(또는 삼각형)을 찍습니다.
+        <b>Shift + 드래그</b> 로 이동, <b>휠</b> 로 확대.</p>
+    </section>
+
+    <!-- 3. 손질 -->
+    <section class="card hidden" id="panel-edit">
+      <h2>손질 모드</h2>
+      <div class="row">
+        <button class="emode" data-mode="이음">이음</button>
+        <button class="emode" data-mode="삭제">삭제</button>
+      </div>
+      <div class="row">
+        <button class="emode" data-mode="급수시작위치">급수 시작</button>
+        <button class="emode" data-mode="알람밸브위치">알람밸브</button>
+      </div>
+      <h2 style="margin-top:16px">고른 헤드 종류</h2>
+      <div class="row">
+        <button class="ekind" data-kind="상향식">상향식</button>
+        <button class="ekind" data-kind="하향식">하향식</button>
+        <button class="ekind" data-kind="상하향식">상하향식</button>
+      </div>
+      <h2 style="margin-top:16px">작업</h2>
+      <div class="row">
+        <button id="ed-flow">물흐름</button>
+        <button id="ed-undo">되돌리기</button>
+        <button id="ed-save">손질 저장</button>
+      </div>
+
+      <h2 style="margin-top:16px">Remote 30 <span class="tag">MODULE A</span></h2>
+      <div class="row">
+        <button id="ed-worst">최불리 30 선정</button>
+        <button id="ed-worst-clear">해제</button>
+      </div>
+      <p class="hint">급수원에서 가장 <b>불리한 헤드 30개</b>와 그 최단경로를
+        고릅니다. NFPC 103 의 계산 대상이며, 손질로 고친 망 위에서 잽니다.</p>
+      <h2 style="margin-top:16px">상태</h2>
+      <div id="ed-info"></div>
+      <div class="row" style="margin-top:14px">
+        <button id="ed-next" class="go">.kfp 변환 →</button>
+      </div>
+      <p class="hint">헤드 종류가 <b>미지정</b>으로 남으면 변환이 막힙니다.
+        헤드를 클릭해 고른 뒤 종류 단추를 누르세요.</p>
+    </section>
+
+    <!-- 4. 변환 -->
+    <section class="card hidden" id="panel-conv">
+      <h2>수직 전개 값</h2>
+      <div id="conv-fields"></div>
+      <label class="f hidden" id="src-wrap"><span>급수원 선택</span>
+        <select id="conv-src"></select>
+      </label>
+
+      <h2 style="margin-top:16px">범위 · 산출물</h2>
+      <label class="chk"><input type="checkbox" id="cv-remote">
+        <span>최불리 30 헤드만 변환 <b class="tag">MODULE A</b></span></label>
+      <label class="chk"><input type="checkbox" id="cv-sdf" checked>
+        <span>PIPENET <b>.sdf + .slf</b> 도 함께 생성</span></label>
+
+      <div class="row" style="margin-top:14px">
+        <button id="btn-convert" class="go">변환 실행</button>
+        <button id="btn-back-edit">← 손질</button>
+      </div>
+      <div class="row">
+        <button id="btn-download" disabled>.kfp</button>
+        <button id="btn-download-sdf" disabled>.sdf</button>
+        <button id="btn-download-set" disabled>한 벌 (zip)</button>
+      </div>
+      <div id="conv-info"></div>
+    </section>
+
+    <section class="card" id="panel-log">
+      <h2>진행</h2>
+      <div id="job-line">대기 중</div>
+      <pre class="log" id="log">아직 실행한 작업이 없습니다.</pre>
+    </section>
+
+    <section class="card hidden" id="panel-layers">
+      <h2>레이어 표시</h2>
+      <div class="row">
+        <button id="ly-all">전체</button>
+        <button id="ly-none">해제</button>
+      </div>
+      <div class="layers" id="layers"></div>
+    </section>
+  </div>
+
+  <div class="stage" id="stage">
+    <canvas id="cv"></canvas>
+    <div class="bar">
+      <span id="status">도면을 여세요.</span>
+      <span class="grow"></span>
+      <span id="coord">—</span>
+      <button id="btn-fit">화면 맞춤</button>
+    </div>
+    <div class="busy hidden" id="busy">
+      <div class="box">
+        <div class="lbl">Working</div>
+        <div id="busy-text">작업 중…</div>
+        <div class="track"><i></i></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const PICK_PX = 10;                       // 모듈 E 의 pick.board.PICK_PX 와 같은 눈금
+
+  const S = {
+    sid: null, key: null, stage: "open",
+    world: null, pick: null, edit: null,
+    hidden: new Set(),                      // 숨긴 레이어 묶음 id
+    view: { scale: 1, ox: 0, oy: 0 },
+    poll: null, convResult: null,
+  };
+
+  // ── 캔버스 기본기 ───────────────────────────────────────────────
+  const cv = $("cv");
+  const ctx = cv.getContext("2d");
+
+  function resize() {
+    const r = cv.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.floor(r.width * dpr));
+    cv.height = Math.max(1, Math.floor(r.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
+  window.addEventListener("resize", resize);
+
+  function cssSize() {
+    const r = cv.parentElement.getBoundingClientRect();
+    return { w: r.width, h: r.height };
+  }
+
+  // 세계좌표 → 화면좌표. DXF 는 y 가 위로 자라므로 뒤집는다.
+  function sx(x) { return (x - S.view.ox) * S.view.scale; }
+  function sy(y) { return cssSize().h - (y - S.view.oy) * S.view.scale; }
+  function wx(px) { return px / S.view.scale + S.view.ox; }
+  function wy(py) { return (cssSize().h - py) / S.view.scale + S.view.oy; }
+
+  function fit(bounds) {
+    if (!bounds) return;
+    const { w, h } = cssSize();
+    const bw = Math.max(1e-6, bounds.maxx - bounds.minx);
+    const bh = Math.max(1e-6, bounds.maxy - bounds.miny);
+    const sc = Math.min(w / bw, h / bh) * 0.92;
+    S.view.scale = sc;
+    S.view.ox = bounds.minx - (w / sc - bw) / 2;
+    S.view.oy = bounds.miny - (h / sc - bh) / 2;
+    draw();
+  }
+
+  function curBounds() {
+    if ((S.stage === "edit" || S.stage === "conv") && S.edit) return S.edit.bounds;
+    if (S.world) return S.world.bounds;
+    return null;
+  }
+
+  $("btn-fit").onclick = () => fit(curBounds());
+
+  let drag = null;
+  cv.addEventListener("mousedown", (e) => {
+    if (e.button === 1 || e.button === 2 || e.shiftKey) {
+      drag = { x: e.offsetX, y: e.offsetY, ox: S.view.ox, oy: S.view.oy };
+      e.preventDefault();
+    }
+  });
+  cv.addEventListener("mousemove", (e) => {
+    $("coord").textContent =
+      `x ${wx(e.offsetX).toFixed(0)}  y ${wy(e.offsetY).toFixed(0)}`;
+    if (!drag) return;
+    S.view.ox = drag.ox - (e.offsetX - drag.x) / S.view.scale;
+    S.view.oy = drag.oy + (e.offsetY - drag.y) / S.view.scale;
+    draw();
+  });
+  window.addEventListener("mouseup", () => { drag = null; });
+  cv.addEventListener("contextmenu", (e) => e.preventDefault());
+  cv.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const k = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const bx = wx(e.offsetX), by = wy(e.offsetY);
+    S.view.scale *= k;
+    S.view.ox = bx - e.offsetX / S.view.scale;
+    S.view.oy = by - (cssSize().h - e.offsetY) / S.view.scale;
+    draw();
+  }, { passive: false });
+
+  cv.addEventListener("click", (e) => {
+    if (e.shiftKey) return;
+    const x = wx(e.offsetX), y = wy(e.offsetY);
+    const maxD = PICK_PX / S.view.scale;
+    if (S.stage === "pick") pickClick(x, y, maxD);
+    else if (S.stage === "edit") editClick(x, y, maxD);
+  });
+
+  // ── 그리기 ─────────────────────────────────────────────────────
+  function draw() {
+    const { w, h } = cssSize();
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, w, h);
+    // 변환 단계에서도 손질한 망을 계속 보여준다 — 값만 채우는 동안 화면이
+    // 검게 비면 무엇을 변환하는지 알 수 없다.
+    if ((S.stage === "edit" || S.stage === "conv") && S.edit) drawEdit();
+    else if (S.world) drawWorld();
+  }
+
+  function drawWorld() {
+    ctx.lineWidth = 1;
+    for (const b of S.world.bundles) {
+      if (S.hidden.has(b.id)) continue;
+      ctx.strokeStyle = b.css;
+      ctx.beginPath();
+      const sg = b.segs;
+      for (let i = 0; i < sg.length; i += 4) {
+        ctx.moveTo(sx(sg[i]), sy(sg[i + 1]));
+        ctx.lineTo(sx(sg[i + 2]), sy(sg[i + 3]));
+      }
+      const cr = b.circles;
+      for (let i = 0; i < cr.length; i += 3) {
+        const r = cr[i + 2] * S.view.scale;
+        if (r < 0.4) continue;
+        ctx.moveTo(sx(cr[i]) + r, sy(cr[i + 1]));
+        ctx.arc(sx(cr[i]), sy(cr[i + 1]), r, 0, Math.PI * 2);
+      }
+      const ar = b.arcs;
+      for (let i = 0; i < ar.length; i += 5) {
+        const r = ar[i + 2] * S.view.scale;
+        if (r < 0.4) continue;
+        // 화면은 y 를 뒤집으므로 각도 방향도 뒤집힌다.
+        const a0 = -ar[i + 3] * Math.PI / 180;
+        const a1 = a0 - ar[i + 4] * Math.PI / 180;
+        ctx.moveTo(sx(ar[i]) + Math.cos(a0) * r, sy(ar[i + 1]) + Math.sin(a0) * r);
+        ctx.arc(sx(ar[i]), sy(ar[i + 1]), r, a0, a1, true);
+      }
+      ctx.stroke();
+    }
+    if (!S.pick) return;
+    const hl = S.pick.highlight;
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = "#b366ff";
+    ctx.beginPath();
+    for (const s of hl.pipe_segs) {
+      ctx.moveTo(sx(s[0]), sy(s[1]));
+      ctx.lineTo(sx(s[2]), sy(s[3]));
+    }
+    for (const s of hl.tri_segs) {
+      ctx.moveTo(sx(s[0]), sy(s[1]));
+      ctx.lineTo(sx(s[2]), sy(s[3]));
+    }
+    ctx.stroke();
+    ctx.strokeStyle = "#ff5cf0";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (const c of hl.head_circles) {
+      const r = Math.max(2.5, c[2] * S.view.scale);
+      ctx.moveTo(sx(c[0]) + r, sy(c[1]));
+      ctx.arc(sx(c[0]), sy(c[1]), r, 0, Math.PI * 2);
+    }
+    ctx.stroke();
+    if (hl.last_click) {
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1;
+      const px = sx(hl.last_click[0]), py = sy(hl.last_click[1]);
+      ctx.beginPath();
+      ctx.moveTo(px - 9, py); ctx.lineTo(px + 9, py);
+      ctx.moveTo(px, py - 9); ctx.lineTo(px, py + 9);
+      ctx.stroke();
+    }
+  }
+
+  function drawEdit() {
+    const e = S.edit;
+    ctx.lineWidth = 1.4;
+    for (const g of e.body_groups) {
+      ctx.strokeStyle = g.css;
+      ctx.beginPath();
+      for (const s of g.segs) {
+        ctx.moveTo(sx(s[0]), sy(s[1]));
+        ctx.lineTo(sx(s[2]), sy(s[3]));
+      }
+      ctx.stroke();
+    }
+    if (e.wet_pipes.length) {
+      ctx.strokeStyle = e.palette.wet;
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      for (const s of e.wet_pipes) {
+        ctx.moveTo(sx(s[0]), sy(s[1]));
+        ctx.lineTo(sx(s[2]), sy(s[3]));
+      }
+      ctx.stroke();
+    }
+    for (const hd of e.heads) {
+      const r = Math.max(2, hd[2] * S.view.scale);
+      ctx.fillStyle = hd[3];
+      ctx.beginPath();
+      ctx.arc(sx(hd[0]), sy(hd[1]), r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#ffffff";
+    for (const m of e.multi_heads) {
+      const r = Math.max(3, m[2] * S.view.scale) + 2;
+      ctx.beginPath();
+      ctx.arc(sx(m[0]), sy(m[1]), r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (e.pending) {
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(sx(e.pending[0][0]), sy(e.pending[0][1]));
+      ctx.lineTo(sx(e.pending[1][0]), sy(e.pending[1][1]));
+      ctx.stroke();
+    }
+    if (e.selected_head) {
+      ctx.strokeStyle = "#fbbf24";
+      ctx.lineWidth = 2.4;
+      const r = Math.max(4, e.selected_head[2] * S.view.scale) + 3;
+      ctx.beginPath();
+      ctx.arc(sx(e.selected_head[0]), sy(e.selected_head[1]), r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Remote 30 — 최불리 경로는 굵은 흰선, 그 헤드는 흰 테두리 원.
+    if (e.worst) {
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2.2;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      for (const s of e.worst.path) {
+        ctx.moveTo(sx(s[0]), sy(s[1]));
+        ctx.lineTo(sx(s[2]), sy(s[3]));
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2;
+      for (const h of e.worst.heads) {
+        const r = Math.max(4, h[2] * S.view.scale) + 2;
+        ctx.beginPath();
+        ctx.arc(sx(h[0]), sy(h[1]), r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    markers(e.sources, e.palette.source, 7);
+    markers(e.valves, e.palette.valve, 6);
+  }
+
+  function markers(list, color, size) {
+    ctx.fillStyle = color;
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1;
+    for (const p of list) {
+      const px = sx(p[0]), py = sy(p[1]);
+      ctx.beginPath();
+      ctx.rect(px - size, py - size, size * 2, size * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  // ── 통신 ───────────────────────────────────────────────────────
+  async function api(path, opts) {
+    const r = await fetch(path, opts);
+    let d;
+    try { d = await r.json(); }
+    catch (err) { throw new Error(`서버 응답을 읽지 못했습니다 (HTTP ${r.status}).`); }
+    if (!r.ok || d.ok === false) throw new Error(d.message || `HTTP ${r.status}`);
+    return d;
+  }
+  const post = (path, body) => api(path, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  function say(msg, cls) {
+    const el = $("status");
+    el.textContent = msg;
+    el.className = cls || "";
+  }
+  function busy(on, text) {
+    $("busy").classList.toggle("hidden", !on);
+    if (text) $("busy-text").textContent = text;
+  }
+
+  function setStage(name) {
+    S.stage = name;
+    const map = { open: "st-open", pick: "st-pick", edit: "st-edit", conv: "st-conv" };
+    const order = ["open", "pick", "edit", "conv"];
+    const idx = order.indexOf(name);
+    order.forEach((k, i) => {
+      const el = $(map[k]);
+      el.classList.toggle("on", i === idx);
+      el.classList.toggle("done", i < idx);
+    });
+    $("panel-open").classList.toggle("hidden", name !== "open");
+    $("panel-resume").classList.toggle("hidden", name !== "open");
+    $("panel-pick").classList.toggle("hidden", name !== "pick");
+    $("panel-edit").classList.toggle("hidden", name !== "edit");
+    $("panel-conv").classList.toggle("hidden", name !== "conv");
+    $("panel-layers").classList.toggle("hidden", name !== "pick");
+    draw();
+  }
+
+  // ── 잡 폴링 ────────────────────────────────────────────────────
+  function watch(onDone) {
+    if (S.poll) clearInterval(S.poll);
+    S.poll = setInterval(async () => {
+      let j;
+      try { j = await api(`/api/module-f/job?sid=${S.sid}`); }
+      catch (err) { stopWatch(); busy(false); say(err.message, "err"); return; }
+      $("log").textContent = j.lines.length ? j.lines.join("\n") : "…";
+      $("log").scrollTop = $("log").scrollHeight;
+      $("job-line").textContent =
+        `${j.phase} · ${j.state === "run" ? "진행 중" : j.state} · ${j.elapsed}s`
+        + (j.queued ? " (다른 작업이 끝나기를 기다리는 중)" : "");
+      if (j.state === "run") { busy(true, `${j.phase} · ${j.elapsed}s`); return; }
+      stopWatch();
+      busy(false);
+      if (j.state === "error") { say(j.error, "err"); return; }
+      // onDone 은 async 다. 여기서 잡지 않으면 실패가 조용히 삼켜진다.
+      Promise.resolve()
+        .then(() => onDone(j))
+        .catch((err) => say(err.message || String(err), "err"));
+    }, 700);
+  }
+  function stopWatch() {
+    if (S.poll) clearInterval(S.poll);
+    S.poll = null;
+  }
+
+  // ── 1. 열기 ────────────────────────────────────────────────────
+  $("btn-open").onclick = async () => {
+    const f = $("dxf").files[0];
+    if (!f) { say("DXF 파일을 고르세요.", "warn"); return; }
+    const fd = new FormData();
+    fd.append("dxf_file", f);
+    busy(true, "업로드 중…");
+    try {
+      const d = await api("/api/module-f/open", { method: "POST", body: fd });
+      S.sid = d.sid;
+      say(`${d.filename} 읽는 중…`);
+      watch(loadWorld);
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  async function loadWorld() {
+    const d = await api(`/api/module-f/world?sid=${S.sid}`);
+    S.world = d.world; S.key = d.key; S.pick = d.state;
+    buildLayers();
+    renderCats();
+    setStage("pick");
+    fit(S.world.bounds);
+    renderPick();
+    const c = S.world.counts, dr = S.world.dropped;
+    let msg = `${S.key} · 선분 ${c.segs.toLocaleString()} · 원 ${c.circles.toLocaleString()}`
+            + ` · 호 ${c.arcs.toLocaleString()}`;
+    if (dr.segs || dr.circles || dr.arcs) {
+      msg += ` — 화면에는 선분 ${dr.segs.toLocaleString()}·원 ${dr.circles.toLocaleString()}`
+           + `·호 ${dr.arcs.toLocaleString()} 개를 뺐습니다(표시 상한). 찍기 판정은 전량 대상입니다.`;
+      say(msg, "warn");
+    } else { say(msg); }
+  }
+
+  async function loadSaved() {
+    try {
+      const d = await api("/api/module-f/saved");
+      const sel = $("saved");
+      sel.innerHTML = "";
+      if (!d.items.length) {
+        sel.innerHTML = '<option value="">— 저장된 찍기 없음 —</option>';
+        $("btn-reopen").disabled = true;
+        return;
+      }
+      $("btn-reopen").disabled = false;
+      for (const it of d.items) {
+        const o = document.createElement("option");
+        o.value = it.key;
+        o.textContent = `${it.key}  ·  ${it.picked_at}`;
+        sel.appendChild(o);
+      }
+    } catch (err) { say(err.message, "err"); }
+  }
+
+  $("btn-reopen").onclick = async () => {
+    const key = $("saved").value;
+    if (!key) { say("이어서 열 도면이 없습니다.", "warn"); return; }
+    busy(true, "배관망 여는 중…");
+    try {
+      const d = await post("/api/module-f/reopen", { key });
+      S.sid = d.sid; S.key = d.key;
+      watch(loadEdit);
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  // ── 레이어 목록 ────────────────────────────────────────────────
+  function buildLayers() {
+    const box = $("layers");
+    box.innerHTML = "";
+    for (const b of S.world.bundles) {
+      const lb = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = true; cb.dataset.id = b.id;
+      cb.onchange = () => {
+        if (cb.checked) S.hidden.delete(b.id); else S.hidden.add(b.id);
+        draw();
+      };
+      const sw = document.createElement("span");
+      sw.className = "sw"; sw.style.background = b.css;
+      const ct = document.createElement("span");
+      ct.className = `cat ${b.cat}`;
+      ct.textContent = b.cat;
+      const tx = document.createElement("span");
+      tx.className = "nm";
+      tx.textContent = `${b.layer} × ${b.name}`;
+      const cn = document.createElement("span");
+      cn.className = "cnt";
+      cn.textContent = `${b.n_seg} / ${b.n_circle}`;
+      lb.append(cb, sw, ct, tx, cn);
+      box.appendChild(lb);
+    }
+  }
+  $("ly-all").onclick = () => {
+    S.hidden.clear();
+    box_all(true); draw();
+  };
+  $("ly-none").onclick = () => {
+    S.hidden = new Set(S.world.bundles.map((b) => b.id));
+    box_all(false); draw();
+  };
+  function box_all(v) {
+    for (const cb of $("layers").querySelectorAll("input")) cb.checked = v;
+  }
+
+  // ── 2. 찍기 ────────────────────────────────────────────────────
+  function renderPick() {
+    const p = S.pick;
+    $("pk-info").innerHTML =
+      kv("모드", p.mode + (p.armed ? ' <span class="ok">찍기 켬</span>'
+                                   : ' <span class="warn">찍기 꺼짐</span>')) +
+      kv("재료 묶음", `${p.materials.length}개` +
+        (p.mat_done ? ' <span class="ok">완료</span>' : ' <span class="warn">미완료</span>')) +
+      kv("헤드 픽", `${p.n_heads}개`) +
+      kv("헤드 칸", p.head_label) +
+      kv("클릭", `${p.n_clicks}회`);
+    for (const b of document.querySelectorAll(".slot")) {
+      b.classList.toggle("on", b.dataset.slot === p.head_label && p.mode === "헤드");
+    }
+    $("pk-pipe").classList.toggle("on", p.mode === "재료" && p.armed);
+    $("pk-done").disabled = p.materials.length === 0;
+    $("pk-next").disabled = !p.mat_done;
+    draw();
+  }
+  function kv(k, v) {
+    return `<div class="kv"><b>${k}</b><span>${v}</span></div>`;
+  }
+
+  // ── 모듈 A 레이어 사전 추천 ────────────────────────────────────
+  const CAT_ORDER = ["PIPE", "HEAD", "ALARM", "TEXT", "ARCH", "EXCLUDE", "OTHER"];
+  function renderCats() {
+    const cats = (S.world && S.world.cats) || {};
+    $("pk-cats").innerHTML = CAT_ORDER
+      .filter((c) => cats[c])
+      .map((c) => `<span>${c}<b>${cats[c]}</b></span>`).join("");
+    $("pk-auto-pipe").disabled = !cats.PIPE;
+    $("pk-auto-head").disabled = !cats.HEAD;
+  }
+
+  async function pickAuto(cat) {
+    try {
+      const d = await post("/api/module-f/pick/auto", { sid: S.sid, cat });
+      S.pick = d.state;
+      renderPick();
+      say(d.message + (d.applied.length ? ` — ${d.applied.join(", ")}` : ""),
+          d.applied.length ? "ok" : "warn");
+    } catch (err) { say(err.message, "err"); }
+  }
+  $("pk-auto-pipe").onclick = () => pickAuto("PIPE");
+  $("pk-auto-head").onclick = () => pickAuto("HEAD");
+
+  async function pickMode(action, slot) {
+    try {
+      const d = await post("/api/module-f/pick/mode", { sid: S.sid, action, slot });
+      S.pick = d.state;
+      renderPick();
+      say(d.message, d.applied ? "" : "warn");
+    } catch (err) { say(err.message, "err"); }
+  }
+  $("pk-pipe").onclick = () => pickMode("pipe");
+  $("pk-done").onclick = () => pickMode("complete");
+  for (const b of document.querySelectorAll(".slot")) {
+    b.onclick = () => pickMode("slot", b.dataset.slot);
+  }
+
+  async function pickClick(x, y, maxD) {
+    try {
+      const d = await post("/api/module-f/pick/click",
+                           { sid: S.sid, x, y, max_d: maxD });
+      S.pick = d.state;
+      renderPick();
+      if (!d.report) {
+        say(S.pick.armed
+            ? "아무것도 잡히지 않았습니다. 더 가까이 클릭하세요."
+            : "먼저 «배관 선택» 또는 헤드 «칸» 단추를 눌러 찍기를 켜세요.", "warn");
+        return;
+      }
+      const r = d.report;
+      say(`${r["모드"]} ${r["동작"]} — ${r["픽"]}`, "ok");
+    } catch (err) { say(err.message, "err"); }
+  }
+
+  $("pk-undo").onclick = async () => {
+    try {
+      const d = await post("/api/module-f/pick/undo", { sid: S.sid });
+      S.pick = d.state;
+      renderPick();
+      say(d.undone ? "한 단계 되돌렸습니다." : "되돌릴 클릭이 없습니다.",
+          d.undone ? "" : "warn");
+    } catch (err) { say(err.message, "err"); }
+  };
+
+  $("pk-next").onclick = async () => {
+    busy(true, "배관망 구성 중…");
+    try {
+      await post("/api/module-f/pick/commit", { sid: S.sid });
+      watch(loadEdit);
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  // ── 3. 손질 ────────────────────────────────────────────────────
+  async function loadEdit() {
+    const d = await api(`/api/module-f/edit/state?sid=${S.sid}`);
+    S.edit = d.state; S.key = d.key;
+    setStage("edit");
+    fit(S.edit.bounds);
+    renderEdit();
+    say(`${S.key} · 노드 ${S.edit.counts.pts.toLocaleString()}`
+      + ` · 간선 ${S.edit.counts.edges.toLocaleString()}`
+      + ` · 헤드 ${S.edit.counts.heads.toLocaleString()}`
+      + ` · 덩이 ${S.edit.counts.bodies}`);
+  }
+
+  function renderEdit() {
+    const e = S.edit;
+    const kinds = Object.entries(e.kinds)
+      .map(([k, n]) => `${k} ${n}`).join(" · ") || "–";
+    const undef = e.kinds["미지정"] || 0;
+    $("ed-info").innerHTML =
+      kv("모드", e.mode) +
+      kv("노드 / 간선", `${e.counts.pts} / ${e.counts.edges}`) +
+      kv("덩이", `${e.counts.bodies}개`) +
+      kv("헤드 종류", kinds) +
+      kv("급수 / 밸브", `${e.sources.length} / ${e.valves.length}`) +
+      kv("이음 / 삭제", `${e.counts.joins} / ${e.counts.deletes}`) +
+      (e.flowed ? kv("물 닿은 헤드",
+        Object.entries(e.wet_counts).map(([k, n]) => `${k} ${n}`).join(" · ")) : "") +
+      (e.worst ? kv("최불리 헤드",
+        `<span class="ok">${e.worst.k}개</span> · 최원 ${e.worst.far_m} m`
+        + ` · 끝 ${e.worst.near_m} m`) : "") +
+      (undef ? `<div class="kv"><b>변환 가능</b><span class="err">미지정 ${undef}개 — 막힘</span></div>`
+             : `<div class="kv"><b>변환 가능</b><span class="ok">헤드 종류 확정</span></div>`);
+    for (const b of document.querySelectorAll(".emode")) {
+      b.classList.toggle("on", b.dataset.mode === e.mode);
+    }
+    for (const b of document.querySelectorAll(".ekind")) {
+      b.disabled = !e.selected_head;
+    }
+    draw();
+  }
+
+  for (const b of document.querySelectorAll(".emode")) {
+    b.onclick = async () => {
+      try {
+        const d = await post("/api/module-f/edit/mode",
+                             { sid: S.sid, mode: b.dataset.mode });
+        // net=false 응답은 body_groups 가 비어 있다 — 망은 그대로 두고 모드만 바꾼다.
+        const keep = S.edit.body_groups;
+        S.edit = d.state;
+        if (!S.edit.body_groups.length) S.edit.body_groups = keep;
+        renderEdit();
+        say(`모드: ${b.dataset.mode}`);
+      } catch (err) { say(err.message, "err"); }
+    };
+  }
+
+  async function editClick(x, y, maxD) {
+    try {
+      const d = await post("/api/module-f/edit/click",
+                           { sid: S.sid, x, y, max_d: maxD });
+      S.edit = d.state;
+      renderEdit();
+      if (!d.report) { say("아무것도 잡히지 않았습니다.", "warn"); return; }
+      const r = d.report;
+      let msg = r["동작"];
+      if (r.kind) msg += ` · ${r.kind}`;
+      if (r.made !== undefined) msg += ` · 만듦 ${r.made} 막힘 ${r.blocked}`;
+      if (r.n !== undefined) msg += ` · ${r.n}개`;
+      say(msg, "ok");
+    } catch (err) { say(err.message, "err"); }
+  }
+
+  for (const b of document.querySelectorAll(".ekind")) {
+    b.onclick = async () => {
+      try {
+        const d = await post("/api/module-f/edit/kind",
+                             { sid: S.sid, kind: b.dataset.kind });
+        S.edit = d.state;
+        renderEdit();
+        say(`헤드 종류를 ${b.dataset.kind} 으로 바꿨습니다.`, "ok");
+      } catch (err) { say(err.message, "err"); }
+    };
+  }
+
+  $("ed-undo").onclick = async () => {
+    try {
+      const d = await post("/api/module-f/edit/undo", { sid: S.sid });
+      S.edit = d.state;
+      renderEdit();
+      say(d.undone ? "한 단계 되돌렸습니다." : "되돌릴 손질이 없습니다.",
+          d.undone ? "" : "warn");
+    } catch (err) { say(err.message, "err"); }
+  };
+
+  $("ed-flow").onclick = async () => {
+    busy(true, "물흐름 계산 중…");
+    try {
+      const d = await post("/api/module-f/edit/flow", { sid: S.sid });
+      S.edit = d.state;
+      renderEdit();
+      const w = d.water;
+      say(`물 닿은 헤드 ${w.wet_heads}/${w.total_heads}`
+        + ` · 젖은 간선 ${w.wet_edges} · 도달 노드 ${w.reach}`, "ok");
+    } catch (err) { say(err.message, "err"); }
+    finally { busy(false); }
+  };
+
+  // ── Remote 30 (모듈 A 개념 · E 그래프 위) ──────────────────────
+  $("ed-worst").onclick = async () => {
+    busy(true, "최불리 헤드 선정 중…");
+    try {
+      const d = await post("/api/module-f/edit/worst", { sid: S.sid, k: 30 });
+      S.edit = d.state;
+      renderEdit();
+      const s = d.summary;
+      say(`최불리 ${s.k} 헤드 — 도달 ${s.reachable}개 중 · `
+        + `최원 ${s.far_m} m · ${s.k}번째 ${s.near_m} m · 경로 ${s.path_edges} 간선`,
+          "ok");
+      $("cv-remote").checked = true;
+    } catch (err) { say(err.message, "err"); }
+    finally { busy(false); }
+  };
+
+  $("ed-worst-clear").onclick = async () => {
+    try {
+      const d = await post("/api/module-f/edit/worst-clear", { sid: S.sid });
+      S.edit = d.state;
+      renderEdit();
+      $("cv-remote").checked = false;
+      say("최불리 선정을 해제했습니다.");
+    } catch (err) { say(err.message, "err"); }
+  };
+
+  $("ed-save").onclick = async () => {
+    try {
+      const d = await post("/api/module-f/edit/save", { sid: S.sid });
+      say(d.message, "ok");
+    } catch (err) { say(err.message, "err"); }
+  };
+
+  $("ed-next").onclick = async () => {
+    setStage("conv");
+    await loadFields();
+    const srcs = S.edit.sources;
+    const wrap = $("src-wrap");
+    const sel = $("conv-src");
+    sel.innerHTML = "";
+    if (srcs.length > 1) {
+      wrap.classList.remove("hidden");
+      srcs.forEach((p, i) => {
+        const o = document.createElement("option");
+        o.value = `Z${i + 1}`;
+        o.textContent = `Z${i + 1} (${p[0]}, ${p[1]})`;
+        sel.appendChild(o);
+      });
+    } else {
+      wrap.classList.add("hidden");
+    }
+    say("변환 값을 확인하고 실행하세요. 빈 칸은 기본값으로 갑니다.");
+  };
+
+  $("btn-back-edit").onclick = () => { setStage("edit"); renderEdit(); };
+
+  // ── 4. 변환 ────────────────────────────────────────────────────
+  let FIELDS = null;
+  async function loadFields() {
+    if (FIELDS) return;
+    const d = await api("/api/module-f/convert/fields");
+    FIELDS = d;
+    const box = $("conv-fields");
+    box.innerHTML = "";
+    for (const g of d.groups) {
+      const h = document.createElement("div");
+      h.className = "grp";
+      h.textContent = g.title;
+      box.appendChild(h);
+      for (const f of g.fields) {
+        const lb = document.createElement("label");
+        lb.className = "f";
+        const sp = document.createElement("span");
+        sp.textContent = f.label;
+        const inp = document.createElement("input");
+        inp.type = "text";
+        inp.dataset.key = f.key;
+        inp.placeholder = f.placeholder || "(비우면 기본값)";
+        const dv = d.defaults[f.key];
+        if (dv !== null && dv !== undefined) inp.value = String(dv);
+        lb.append(sp, inp);
+        box.appendChild(lb);
+      }
+    }
+  }
+
+  function readDto() {
+    const dto = {};
+    for (const inp of $("conv-fields").querySelectorAll("input")) {
+      const raw = inp.value.trim();
+      if (raw === "") { dto[inp.dataset.key] = null; continue; }
+      const n = Number(raw);
+      if (!Number.isFinite(n)) throw new Error(`${inp.dataset.key}: 숫자가 아닙니다 — "${raw}"`);
+      dto[inp.dataset.key] = n;
+    }
+    return dto;
+  }
+
+  $("btn-convert").onclick = async () => {
+    let dto;
+    try { dto = readDto(); }
+    catch (err) { say(err.message, "err"); return; }
+    const wrap = $("src-wrap");
+    const selected = wrap.classList.contains("hidden") ? null : $("conv-src").value;
+    for (const id of ["btn-download", "btn-download-sdf", "btn-download-set"]) {
+      $(id).disabled = true;
+    }
+    $("conv-info").innerHTML = "";
+    busy(true, "변환 중…");
+    try {
+      await post("/api/module-f/convert/run", {
+        sid: S.sid, dto, selected_source: selected,
+        remote_only: $("cv-remote").checked,
+        emit_sdf: $("cv-sdf").checked,
+      });
+      watch(showConvert);
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  // 잡 상태(/job)에는 결과 본문이 없다 — 결과는 따로 받아 온다.
+  async function showConvert() {
+    let r;
+    try {
+      r = (await api(`/api/module-f/convert/result?sid=${S.sid}`)).result || {};
+    } catch (err) { say(err.message, "err"); return; }
+    S.convResult = r;
+    if (!r.ok) {
+      const rows = (r.blockers || [])
+        .map((b) => `<tr><td>${b.code || ""}</td><td>${b.message || ""}</td></tr>`)
+        .join("");
+      $("conv-info").innerHTML =
+        '<div class="kv"><b>결과</b><span class="err">변환 막힘</span></div>'
+        + `<table class="rs">${rows}</table>`;
+      say("변환이 막혔습니다. 사유를 확인하세요.", "err");
+      return;
+    }
+    const s = r.summary, st = r.stats || {};
+    const pick = ["n_heads", "n_vert_head", "n_vert_branch", "n_tees",
+                  "n_combo", "n_valve", "n_raised"];
+    const rows = pick.filter((k) => st[k] !== undefined)
+      .map((k) => `<tr><td>${k}</td><td>${st[k]}</td></tr>`).join("");
+    const sdf = s.sdf;
+    $("conv-info").innerHTML =
+      '<div class="kv"><b>결과</b><span class="ok">변환 완료</span></div>'
+      + kv("범위", s.remote_only
+            ? `<span class="ok">최불리 ${s.heads} 헤드</span>`
+            : `물 닿은 헤드 ${s.heads}개 전량`)
+      + kv("노드 / 배관", `${s.nodes.toLocaleString()} / ${s.pipes.toLocaleString()}`)
+      + kv(".kfp", `${(s.bytes / 1024).toFixed(0)} KB`)
+      + (sdf && sdf.ok
+          ? kv(".sdf", `${(sdf.bytes / 1024).toFixed(0)} KB · 노즐 ${sdf.nozzles}`)
+            + kv(".slf", sdf.slf
+                  ? `<span class="ok">${sdf.slf}</span>`
+                  : '<span class="warn">표준 SLF 없음</span>')
+          : (sdf ? kv(".sdf", '<span class="err">생성 실패</span>') : ""))
+      + `<table class="rs">${rows}</table>`;
+    $("btn-download").disabled = false;
+    $("btn-download-sdf").disabled = !(sdf && sdf.ok);
+    $("btn-download-set").disabled = false;
+    say(`변환 완료 — 노드 ${s.nodes} · 배관 ${s.pipes}`
+      + (sdf && sdf.ok ? " · PIPENET SDF 동봉" : ""), "ok");
+  }
+
+  const dl = (what) => {
+    window.location.href = `/api/module-f/download?sid=${S.sid}&what=${what}`;
+  };
+  $("btn-download").onclick = () => dl("kfp");
+  $("btn-download-sdf").onclick = () => dl("sdf");
+  $("btn-download-set").onclick = () => dl("set");
+
+  // ── 시작 ───────────────────────────────────────────────────────
+  // 상태와 좌표 환산을 밖으로 낸다 — 브라우저 검증 스크립트가 실제 화면 좌표로
+  // 클릭해 보려면 세계↔화면 환산이 밖에서도 보여야 한다. 읽기 전용으로만 쓴다.
+  window.__mf = S;
+  S.toScreenX = sx;
+  S.toScreenY = sy;
+  S.toWorldX = wx;
+  S.toWorldY = wy;
+
+  resize();
+  setStage("open");
+  loadSaved();
+})();
+</script>
+</body>
+</html>

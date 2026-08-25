@@ -198,7 +198,104 @@ def g3():
     return bores
 
 
-ITEMS = {"G1": g1, "G2": g2, "G3": g3}
+# ─────────────────────────────────────────────────────────── G4
+def g4():
+    print("\n[G4] 부속 · 노즐 · 기기")
+    from services.cad_import.design.fitting import (
+        build_equipment, build_fittings, build_nozzles, equivalent_length_m,
+        load_equivalent_lengths)
+
+    lib = load_equivalent_lengths()
+    check("등가길이 라이브러리 적재", bool(lib.get("ELBOW_90_STD")),
+          f"항목 {len(lib)}종 · 90엘보 호칭경 {len(lib.get('ELBOW_90_STD') or {})}칸")
+    check("라이브러리에 없는 칸은 None", equivalent_length_m(lib, "elbow", 15) is None
+          or isinstance(equivalent_length_m(lib, "elbow", 15), float),
+          f"15A 90엘보 = {equivalent_length_m(lib, 'elbow', 15)}")
+
+    # ① 합성 — 90° 꺾임 1곳 → 엘보 1
+    net = {"pipe_data": {"P1": {"start": "N1", "end": "N2"},
+                         "P2": {"start": "N2", "end": "N3"}}}
+    xy = {"N1": (0.0, 0.0), "N2": (10.0, 0.0), "N3": (10.0, 10.0)}
+    par = {"N2": "N1", "N3": "N2"}
+    r = build_fittings(net, xy, {"P1": (50, "text"), "P2": (50, "text")},
+                       parents=par, lib=lib)
+    check("90° 꺾임 → 엘보 1", r["counts"].get("elbow") == 1, str(r["counts"]))
+
+    # ② 직진 통과 분기 → 직류티는 계상하지 않는다
+    net2 = {"pipe_data": {"P1": {"start": "N1", "end": "N2"},
+                          "P2": {"start": "N2", "end": "N3"},
+                          "P3": {"start": "N2", "end": "N4"}}}
+    xy2 = {"N1": (0.0, 0.0), "N2": (10.0, 0.0),
+           "N3": (20.0, 0.0),      # 직진 — 직류티
+           "N4": (10.0, 10.0)}     # 꺾임 — 분류티
+    par2 = {"N2": "N1", "N3": "N2", "N4": "N2"}
+    r2 = build_fittings(net2, xy2, {p_: (50, "text") for p_ in net2["pipe_data"]},
+                        parents=par2, lib=lib)
+    check("직진 갈래는 티 미계상 · 꺾인 갈래만 분류티",
+          r2["counts"].get("tee") == 1 and "P3" in
+          [pid for pid, rec in r2["per_pipe"].items() if rec["fittings"]],
+          f"{r2['counts']} · 티 달린 배관 "
+          f"{[pid for pid, rec in r2['per_pipe'].items() if rec['fittings']]}")
+
+    # ③ 실도면 — 고아 참조 0
+    got = g2()
+    if got is None:
+        return None
+    from services.cad_import.design.bore import decide_bores, extract_dia_text_points
+    w = _world()
+    es = _board()
+    bores = decide_bores(got["kfp"], got["edge_ref"], got["worst"]["loads"],
+                         extract_dia_text_points(w.texts), pts=es.board.pts)
+    kfp = got["kfp"]
+    # ★좌표는 coords[x, y, z] 다. x/y 키로 읽으면 전부 (0,0) 이 되어 각도가
+    #   0 으로 붕괴하고 엘보가 하나도 안 잡힌다(실제로 그렇게 헛돌았다).
+    nxy = {nid: (float(m["coords"][0]), float(m["coords"][1]))
+           for nid, m in (kfp.get("nodes_meta_runtime") or {}).items()
+           if isinstance(m.get("coords"), (list, tuple)) and len(m["coords"]) >= 2}
+    # ★상류를 모르면 fitting_rules 가 엘보를 못 달고 티를 전부 «판정 불가» 로
+    #   센다. 그건 설계된 열화 경로지 정상 결과가 아니다 — 급수원(펌프)을 뿌리로
+    #   BFS 부모를 만들어 진짜 판정을 재게 한다(G5 가 이 순서를 다시 쓴다).
+    meta = kfp.get("nodes_meta_runtime") or {}
+    root = next((nid for nid, m in meta.items()
+                 if str((m or {}).get("type_id", "")) == "pump"), None)
+    if root is None:
+        root = next(iter(nxy), None)
+    adj = {}
+    for pid, pr in (kfp.get("pipe_data") or {}).items():
+        a = pr.get("start") or pr.get("from")
+        b = pr.get("end") or pr.get("to")
+        if a and b:
+            adj.setdefault(a, []).append(b)
+            adj.setdefault(b, []).append(a)
+    par, seen, q = {}, {root}, [root]
+    while q:
+        u = q.pop(0)
+        for v in adj.get(u, ()):
+            if v not in seen:
+                seen.add(v); par[v] = u; q.append(v)
+    check("급수원 뿌리 BFS 가 망을 덮는다", len(seen) >= len(nxy) * 0.9,
+          f"도달 {len(seen)} / 노드 {len(nxy)} · 뿌리 {root}")
+    real = build_fittings(kfp, nxy, bores, parents=par, lib=lib)
+    pipe_ids = set((kfp.get("pipe_data") or {}))
+    check("부속표의 배관이 전부 배관표에 있다(고아 0)",
+          set(real["per_pipe"]) <= pipe_ids,
+          f"부속 {len(real['per_pipe'])} / 배관 {len(pipe_ids)}")
+    check("미해결을 0 으로 채우지 않는다",
+          isinstance(real["unresolved_length"], int)
+          and isinstance(real["unresolved_kind"], int),
+          f"판정불가 {real['unresolved_kind']} · 등가길이 미해결 "
+          f"{real['unresolved_length']}")
+
+    noz = build_nozzles(kfp, k_factor=80.0)
+    check("노즐 수 == 선정 K", len(noz) == len(got["worst"]["heads"]),
+          f"노즐 {len(noz)} / 선정 {len(got['worst']['heads'])}")
+    eq = build_equipment(kfp, valve_nodes=None)
+    check("알람밸브 미지정이면 기기 행 없음", eq == [], f"{len(eq)}행")
+    print(f"      부속 {real['counts']} · 노즐 {len(noz)}")
+    return real
+
+
+ITEMS = {"G1": g1, "G2": g2, "G3": g3, "G4": g4}
 
 
 def main() -> int:

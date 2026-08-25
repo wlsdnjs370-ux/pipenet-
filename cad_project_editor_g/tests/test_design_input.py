@@ -77,7 +77,51 @@ def g1():
     return w
 
 
-ITEMS = {"G1": g1}
+# ─────────────────────────────────────────────────────────── G2
+def g2():
+    print("\n[G2] corridor 제한 전개 + 역참조")
+    from services.cad_import.design.restrict import expand_worst
+    from services.cad_import.design.worst import worst_k_heads
+
+    es = _board()
+    b = es.board
+    w = worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=30)
+    payload = es.convert_payload()
+    # 이 저장본은 급수원이 둘이다 — 기준선과 같은 것(Z1)을 쓴다(BLOCKED B2).
+    srcs = payload.get("sources") or ()
+    sel = srcs[0].get("tag") if len(srcs) > 1 else None
+
+    got = expand_worst(payload, b, w, selected_source=sel)
+    if not check("제한 전개 성공", got.get("ok"), str(got.get("error"))[:90]):
+        return None
+
+    kfp = got["kfp"]
+    pipes = kfp.get("pipe_data") or {}
+    nodes = kfp.get("nodes_meta_runtime") or {}
+    # ★수용 기준은 «입력에 30개를 넣었나» 가 아니라 «전개가 30개를 살렸나» 다.
+    #   hcov 는 입력을 되돌려줄 뿐이라 그걸 세면 빈 망도 초록불이 된다(실제로 그랬다).
+    n_built_heads = sum(1 for m in (kfp.get("nodes_meta_runtime") or {}).values()
+                        if str((m or {}).get("type_id", "")) == "head")
+    check("제한 전개가 살린 헤드 수 == 선정 K",
+          n_built_heads == len(w["heads"]),
+          f"전개 {n_built_heads} / 선정 {len(w['heads'])}  "
+          f"(BLOCKED B4 — 선정과 전개가 «물 닿음» 을 다르게 본다)")
+    check("역참조가 모든 배관을 덮는다", not got["uncovered_pipes"],
+          f"미포함 {len(got['uncovered_pipes'])}개")
+    check("역참조가 board 간선을 가리킨다",
+          all(isinstance(v, tuple) and len(v) == 2
+              and 0 <= v[0] < len(b.pts) and 0 <= v[1] < len(b.pts)
+              for v in got["edge_ref"].values()),
+          f"{len(got['edge_ref'])}건")
+    check("node_ref 존재", bool(got["node_ref"]), f"{len(got['node_ref'])}건")
+    # 제한 전개는 전체망보다 작아야 한다 — 그게 «제한» 의 뜻이다.
+    check("제한망이 corridor 규모다", len(pipes) >= len(w["heads"]),
+          f"배관 {len(pipes)} · 선정 헤드 {len(w['heads'])}개를 먹이려면 그 이상")
+    print(f"      제한망 노드 {len(nodes)} · 배관 {len(pipes)}")
+    return got
+
+
+ITEMS = {"G1": g1, "G2": g2}
 
 
 def main() -> int:

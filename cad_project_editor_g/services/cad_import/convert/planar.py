@@ -599,8 +599,9 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
     head_kind_by_vid = {}
     n_dry_head = 0
     n_center = 0
-    for (hx, hy, _hr), ctr, ns, kind in zip(hcov, head_centers, hnodes,
-                                            kinds_aligned):
+    wet_head_idx: list = []      # [G2] 물닿음으로 인정된 hcov 인덱스
+    for _h_i, ((hx, hy, _hr), ctr, ns, kind) in enumerate(zip(
+            hcov, head_centers, hnodes, kinds_aligned)):
         vid = None
         if ctr is not None and ctr in reach:
             # 편집 완성이 확정한 중심 노드 1:1 — 재선정 없음
@@ -617,6 +618,11 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
             continue
         head_vid[vid] = (hx, hy)
         head_kind_by_vid[vid] = kind
+        # [G2] 이 전개가 «물닿음» 으로 인정한 hcov 번호. 최불리 선정이 board 의
+        # 도달 판정을 쓰는데 이쪽이 더 엄격해(중심 노드가 물길에 닿아야 한다),
+        # 두 집합이 어긋나면 제한 전개가 통째로 가지치기된다. 밖에서 대조할 수
+        # 있도록 내보낸다 — 계산에는 쓰지 않으므로 .kfp 는 그대로다.
+        wet_head_idx.append(_h_i)
     print(f"헤드: 물닿음 {len(head_vid)} · 마른/미부착 {n_dry_head}"
           f" · 중심접속 {n_center}")
 
@@ -661,6 +667,14 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
     #  있던 관통을 허브에서 나눌 뿐이라 총 기하·물길은 그대로다.
     snap_edges = {tuple(sorted((remap[i], remap[j])))
                   for (i, j) in edges if remap[i] != remap[j]}
+    # [G2] 역참조 — 눌린 간선이 «어느 board 간선에서 왔는지». 여러 board 간선이
+    # 한 자리로 눌리면 첫 것을 대표로 둔다(관경 매칭은 선분 위치만 쓰므로
+    # 대표 하나로 충분하다). 이 표가 없으면 G3 의 관경이 엉뚱한 배관에 붙는다.
+    _snap_origin: dict = {}
+    for (i, j) in edges:
+        if remap[i] == remap[j]:
+            continue
+        _snap_origin.setdefault(tuple(sorted((remap[i], remap[j]))), (i, j))
     snap_pos = {v: xform(*pts[v]) for e in snap_edges for v in e}
     snap_edges, n_tee_split = normalize_tee_overlaps(snap_pos, snap_edges)
     print(f"티 겹침 정규화: 관통 쪼갬 {n_tee_split}곳 · 간선 {len(snap_edges)}")
@@ -738,12 +752,14 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         node_cache[key] = nid
         return nid
 
+    node_ref: dict = {}          # [G2] kfp 노드 id → board 노드 인덱스
     for vid in used:
         tgt = remap[vid]
         if tgt in node_id:
             continue
         x, y = final_xy(tgt)
         node_id[tgt] = make_node(x, y, OPT_BASE_Z)
+        node_ref.setdefault(node_id[tgt], vid)
 
     head_nids = set()
     node_head_kinds = {}
@@ -762,6 +778,7 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
 
     pipe_seq = 0
     seen_pairs = set()
+    edge_ref: dict = {}          # [G2] kfp 배관 id → (board_i, board_j)
     for ri, rj in sorted(snap_edges):
         a_id, b_id = node_id[ri], node_id[rj]
         key = tuple(sorted((a_id, b_id)))
@@ -773,6 +790,9 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
             continue
         seen_pairs.add(key)
         pipe_seq += 1
+        origin = _snap_origin.get((ri, rj))
+        if origin is not None:
+            edge_ref[f"P{pipe_seq}"] = origin
         pipe = models.Pipe(f"P{pipe_seq}", a_id, b_id)
         pipe.type = OPT_PIPE_STD
         pipe.nominal_mm = spec.nominal_mm
@@ -877,6 +897,11 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         "origin_mm": (minx, miny),
         "ho": ho,
         "sources": list(user_sources or ()),
+        # [G2] 역참조 — 관경(G3)이 평면 mm 좌표에서 매칭하려면 kfp 배관에서
+        # 원 board 간선으로 되짚을 수 있어야 한다. 기존 키는 그대로 두고 더한다.
+        "edge_ref": edge_ref,
+        "node_ref": node_ref,
+        "wet_head_idx": wet_head_idx,
     }
 
 

@@ -295,7 +295,91 @@ def g4():
     return real
 
 
-ITEMS = {"G1": g1, "G2": g2, "G3": g3, "G4": g4}
+# ─────────────────────────────────────────────────────────── G5
+def g5():
+    print("\n[G5] 5개 테이블 조립")
+    from services.cad_import.design.bore import extract_dia_text_points
+    from services.cad_import.design.tables import build_design_tables
+
+    got = g2()
+    if got is None:
+        return None
+    es = _board()
+    w = _world()
+    tbl = build_design_tables(
+        got["kfp"], got["worst"], got["edge_ref"],
+        extract_dia_text_points(w.texts),
+        board_pts=es.board.pts,
+        excluded_heads=got.get("excluded_heads", 0))
+
+    node_labels = {r["label"] for r in tbl.nodes}
+    orphan = [r["label"] for r in tbl.pipes
+              if r["in"] not in node_labels or r["out"] not in node_labels]
+    check("배관 in/out 이 전부 노드표에 있다(고아 0)", not orphan,
+          f"고아 {len(orphan)}건 {orphan[:4]}")
+
+    fit_orphan = [f["pipe"] for f in tbl.fittings
+                  if f["pipe"] not in {r["label"] for r in tbl.pipes}]
+    check("부속표의 배관이 전부 배관표에 있다", not fit_orphan,
+          f"고아 {len(fit_orphan)}건")
+
+    check("노즐 수 == 선정 K",
+          len(tbl.nozzles) == len(got["worst"]["heads"]),
+          f"노즐 {len(tbl.nozzles)} / 선정 {len(got['worst']['heads'])}")
+
+    # 길이 합 — 수직 전개분을 뺀 평면 성분 기준으로 ±1 %
+    total_len = sum(float(r["length"]) for r in tbl.pipes)
+    vert = sum(abs(float(r["elev"])) for r in tbl.pipes)
+    plane = total_len - vert
+    want = float(got["worst"]["total_m"])
+    # ★두 양은 구조적으로 다르다(BLOCKED B5) — corridor 는 최단경로 «합집합»의
+    #   board 간선(206개), 전개는 물길·막다른관 정리 후 병합된 배관(53개)이다.
+    #   그래서 ±1 % 를 요구할 수 없다. 형상 왜곡은 아래 «배관별 길이차» 로 조인다.
+    within = abs(plane - want) <= max(0.03 * want, 0.05)
+    check("배관 길이 합이 corridor 총연장과 ±3% (B5)", within,
+          f"평면 {plane:.2f} m vs corridor {want} m "
+          f"(차 {plane - want:+.2f} m · 전체 {total_len:.2f} · 수직 {vert:.2f})")
+
+    # 진짜 회귀 신호 — 배관 하나하나가 원 board 간선 길이와 맞는가(형상 왜곡).
+    import math as _m
+    dsum = 0.0
+    for r in tbl.pipes:
+        ref = got["edge_ref"].get(r["label"])
+        if not ref:
+            continue
+        i, j = ref
+        dsum += abs(float(r["length"]) - _m.dist(es.board.pts[i], es.board.pts[j]) / 1000.0)
+    check("배관별 길이가 board 간선과 일치(형상 무왜곡)", dsum <= 0.5,
+          f"절대차 합 {dsum:.3f} m")
+
+    # 표 첫 행 = 급수원 인접 배관 / 트리 꼬리 = 루프 잔여
+    first = tbl.pipes[0] if tbl.pipes else {}
+    root_lab = next((r["label"] for r in tbl.nodes
+                     if r.get("io_node") == "Input"), None)
+    check("첫 배관이 급수원에 붙어 있다",
+          root_lab is not None and first.get("in") == root_lab,
+          f"뿌리 {root_lab} · 첫 배관 in={first.get('in')}")
+    off = [r for r in tbl.pipes if r.get("off_tree")]
+    check("루프 잔여는 표 꼬리에 몰린다",
+          not off or all(r.get("off_tree") for r in tbl.pipes[-len(off):]),
+          f"루프 잔여 {len(off)}건")
+
+    # 단위(§T3) — 노드 좌표만 mm
+    xs = [abs(r["x"]) for r in tbl.nodes if r["x"]]
+    check("노드 좌표가 mm 자리수", bool(xs) and max(xs) > 1000,
+          f"|x| 최대 {max(xs) if xs else 0}")
+
+    keys = {"label", "in", "out", "type", "dia", "length", "elev",
+            "c", "status", "group"}
+    check("배관 행 키가 PipeTables 규약", keys <= set(tbl.pipes[0]),
+          f"빠짐 {sorted(keys - set(tbl.pipes[0]))}")
+    print(f"      노드 {len(tbl.nodes)} · 배관 {len(tbl.pipes)} · "
+          f"노즐 {len(tbl.nozzles)} · 부속 {len(tbl.fittings)} · "
+          f"기기 {len(tbl.equipment)} · meta {len(tbl.meta)}행")
+    return tbl
+
+
+ITEMS = {"G1": g1, "G2": g2, "G3": g3, "G4": g4, "G5": g5}
 
 
 def main() -> int:

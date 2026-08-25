@@ -232,6 +232,53 @@ def inject_pipe_types(sdf_path, sched_by_pipe: dict) -> None:
     _write_sdf_tree(tree, path)
 
 
+# ────────────────────────────────────────── [G14] 템플릿 잔재 정리
+def sanitize_template(sdf_path, slf_filename: str) -> dict:
+    """템플릿에서 묻어온 것을 지우고 라이브러리를 **옆의 SLF** 로 다시 가리킨다.
+
+    템플릿 SDF 의 `<Libraries>` 는 만든 사람 PC 의 절대경로를 담고 있다(CP949 가
+    깨진 채로). 그런 파일은 어디에도 없으므로 PIPENET 은 호칭경↔내경 표를 못 읽고
+    **모든 `Diameter` 가 "Unset"** 이 된다 — Pipe-type 이름은 SDF 에서 읽으니
+    `Type` 열만 멀쩡히 채워져, 관종 바인딩은 됐는데 관경만 안 뜨는 모습이 된다.
+    우리가 옆에 저장한 .slf 는 아무도 읽지 않는다.
+
+    **파일명만** 쓴다(경로 없이). 같은 폴더면 PIPENET 이 알아서 읽고, 절대경로를
+    쓰면 폴더를 옮기는 순간 다시 "Unset" 이 된다.
+
+    덤으로 남의 프로젝트 정보(제목·설명·주기)를 지운다. 우리 산출물에 템플릿
+    원본의 `WATER TANK_PH2F` · `3-1 type_LSP_4F` · `PH1F 4.5M …` 이 남아 있었다.
+
+    모듈 A(`remote30_prototype.py:7063-7082`)와 같은 순서다. 돌려주는 것은
+    무엇을 몇 개 지웠는지 — 검사가 이 수치를 본다.
+    """
+    path = Path(sdf_path)
+    tree = ET.parse(path)
+    root = tree.getroot()
+    got = {"user_lib": 0, "text_element": 0, "title": 0, "net_desc": 0}
+
+    for g in root.iter("Graphics"):
+        for te in list(g.findall("Text-element")):
+            g.remove(te)
+            got["text_element"] += 1
+
+    for libs in root.iter("Libraries"):
+        for ul in list(libs.findall("User-lib")):
+            libs.remove(ul)
+            got["user_lib"] += 1
+        libs.append(ET.Element("User-lib", {"file": str(slf_filename)}))
+
+    for ns in root.iter("Network-spray"):
+        for t in list(ns.findall("Title"))[1:]:
+            ns.remove(t)
+            got["title"] += 1
+        for nd in list(ns.findall("Network-description")):
+            ns.remove(nd)
+            got["net_desc"] += 1
+
+    _write_sdf_tree(tree, path)      # DOCTYPE 보존은 여기서도 그대로다
+    return got
+
+
 def _write_sdf_tree(tree: ET.ElementTree, out_path) -> None:
     """DOCTYPE 을 보존해서 쓴다. `ElementTree.write` 로는 안 된다.
 

@@ -169,7 +169,7 @@ def emit_design_sdf(tables, out_path, *,
 
     from services.cad_import.design.sdf_post import (
         bake_isometric, check_schedule, inject_pipe_types,
-        normalize_node_coords)
+        normalize_node_coords, sanitize_template)
 
     # 관종 이름을 먼저 검사한다 — 오타면 파일을 만들지 않는다(§G10).
     sched_by_pipe = {}
@@ -202,12 +202,20 @@ def emit_design_sdf(tables, out_path, *,
     # writer 는 <Pipe-type> 을 안 쓴다 — 규격 바인딩은 여기서 얹는다(§G9).
     inject_pipe_types(out, sched_by_pipe)
 
+    # ★SLF 를 «먼저» 옆에 놓는다. 정리가 그 파일명을 가리키게 하는데, 아직 없는
+    #   파일을 가리키면 정리한 의미가 없다.
     slf_dst = out.with_suffix(".slf")
     shutil.copyfile(slf_src, slf_dst)
+
+    # 템플릿에서 묻어온 남의 경로·제목을 지우고 라이브러리를 옆의 SLF 로 돌린다(§G14).
+    cleaned = sanitize_template(out, slf_dst.name)
 
     print(f"[G6] SDF {out.name} · {out.stat().st_size:,} bytes "
           f"(노드 {len(net.nodes)} · 배관 {len(net.pipes)} · "
           f"노즐 {len(net.nozzles)})")
     print(f"[G6] SLF {slf_dst.name} · {slf_dst.stat().st_size:,} bytes "
           f"— SDF 는 이 라이브러리 없이 열면 관경이 'Unset' 이 된다")
+    print(f"[G14] 템플릿 잔재 정리 · 남의 라이브러리 경로 {cleaned['user_lib']}건 → "
+          f"'{slf_dst.name}' · 주기 {cleaned['text_element']}건 · "
+          f"제목 {cleaned['title']}건 · 설명 {cleaned['net_desc']}건 지움")
     return out

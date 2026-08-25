@@ -215,6 +215,63 @@ def g12():
 
 
 # ────────────────────────────────────────────── 회귀 (가장 중요)
+# ─────────────────────────────────────────────────────────── G14
+_SYNTH_SDF = r'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Project SYSTEM "spray.dtd">
+<Project version="1.8  (0)">
+  <Network-spray>
+    <Title>우리 제목</Title>
+    <Title>남의 제목 A</Title>
+    <Title>남의 제목 B</Title>
+    <Network-description>남의 설명</Network-description>
+    <Libraries>
+      <User-lib file="C:\Users\someone\Desktop\alpha.slf"/>
+      <User-lib file="D:\lib\beta.slf"/>
+    </Libraries>
+    <Nodes/>
+    <Links/>
+  </Network-spray>
+  <Graphics>
+    <Text-element><Text>주기 1</Text></Text-element>
+    <Text-element><Text>주기 2</Text></Text-element>
+    <Text-element><Text>주기 3</Text></Text-element>
+    <Display-options/>
+  </Graphics>
+</Project>
+'''
+
+
+def g14():
+    print("\n[G14] 템플릿 잔재 정리와 SLF 경로 재작성")
+    from services.cad_import.design.sdf_post import sanitize_template
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    p = OUT / "g14_synth.sdf"
+    p.write_text(_SYNTH_SDF, encoding="utf-8")
+    got = sanitize_template(p, "g14_synth.slf")
+
+    r = ET.parse(str(p)).getroot()
+    libs = [ul.get("file") for lb in r.iter("Libraries")
+            for ul in lb.findall("User-lib")]
+    check("User-lib 하나만 남고 동봉 SLF 를 가리킨다",
+          libs == ["g14_synth.slf"], str(libs))
+    check("절대경로가 아니라 파일명뿐",
+          libs and "\\" not in libs[0] and "/" not in libs[0], str(libs))
+    te = [1 for g in r.iter("Graphics") for _ in g.findall("Text-element")]
+    check("Text-element 0", len(te) == 0, f"{len(te)}개 남음")
+    titles = [t.text for ns in r.iter("Network-spray") for t in ns.findall("Title")]
+    check("Title 은 첫 개만", titles == ["우리 제목"], str(titles))
+    nd = [1 for ns in r.iter("Network-spray") for _ in ns.findall("Network-description")]
+    check("Network-description 0", len(nd) == 0, f"{len(nd)}개 남음")
+    check("지운 수를 정직하게 돌려준다",
+          got == {"user_lib": 2, "text_element": 3, "title": 2, "net_desc": 1},
+          str(got))
+    head = p.read_text(encoding="utf-8").splitlines()[:2]
+    check("DOCTYPE 보존", len(head) > 1
+          and 'DOCTYPE Project SYSTEM "spray.dtd"' in head[1], " / ".join(head))
+    return True
+
+
 def _calc_view(path):
     """SDF 에서 «수리계산에 쓰이는 값» 만 뽑는다. 좌표·Pipe-type 은 뺀다."""
     root = ET.parse(path).getroot()
@@ -317,6 +374,41 @@ def regression():
           head and head[0] == '<?xml version="1.0" encoding="UTF-8"?>',
           head[0] if head else "(없음)")
 
+    # ★[G14] 산출 SDF 가 남의 라이브러리를 가리키면 Type 은 채워져도 Diameter 가
+    #   전부 "Unset" 이 된다 — 관종 바인딩은 됐는데 관경만 안 뜨는 모습이라
+    #   원인을 엉뚱한 데서 찾게 된다.
+    libs = [ul.get("file") for lb in root.iter("Libraries")
+            for ul in lb.findall("User-lib")]
+    check("User-lib 는 동봉 SLF 하나뿐", libs == [plain.with_suffix(".slf").name],
+          str(libs))
+    check("경로가 아니라 파일명 — 폴더를 옮겨도 산다",
+          bool(libs) and "\\" not in libs[0] and "/" not in libs[0], str(libs))
+    check("가리킨 SLF 가 옆에 실제로 있다",
+          (plain.parent / libs[0]).is_file() if libs else False,
+          libs[0] if libs else "(없음)")
+
+    txt = plain.read_text(encoding="utf-8", errors="replace")
+    leaks = {w: txt.count(w) for w in
+             ("Officetell", "WATER TANK", "3-1 type", "PH1F")}
+    check("남의 프로젝트 정보가 안 남는다", not any(leaks.values()), str(leaks))
+    titles = [t.text for ns in root.iter("Network-spray") for t in ns.findall("Title")]
+    check("제목은 우리 것 하나뿐", len(titles) == 1, str(titles))
+
+    # 폴더째 옮겨도 관경이 산다 — 상대 참조라야 성립한다.
+    import shutil as _sh
+    moved = OUT / "g14_moved"
+    if moved.is_dir():
+        _sh.rmtree(moved)
+    moved.mkdir(parents=True)
+    _sh.copyfile(plain, moved / plain.name)
+    _sh.copyfile(plain.with_suffix(".slf"), moved / plain.with_suffix(".slf").name)
+    mr = ET.parse(str(moved / plain.name)).getroot()
+    mlibs = [ul.get("file") for lb in mr.iter("Libraries")
+             for ul in lb.findall("User-lib")]
+    check("다른 폴더로 옮겨도 라이브러리를 찾는다",
+          bool(mlibs) and (moved / mlibs[0]).is_file(),
+          f"{mlibs} · 옆에 있음 {bool(mlibs) and (moved / mlibs[0]).is_file()}")
+
     # ★같은 표로 두 번 저장 — 창은 표를 들고 있다가 다시 저장할 수 있다.
     #   방출이 표를 in-place 로 굽으면 두 번째 저장이 어긋난다.
     t = tables()
@@ -338,7 +430,7 @@ def regression():
 
 
 def main() -> int:
-    for fn in (g9, g10, g11, g12, regression):
+    for fn in (g9, g10, g11, g12, g14, regression):
         fn()
     print("\n" + "=" * 56)
     if FAILS:

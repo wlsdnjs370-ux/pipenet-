@@ -257,9 +257,18 @@ class CadImportFlow:
         res = getattr(convert_dlg, "result", None) if convert_dlg else None
         if isinstance(res, dict):
             sel = res.get("selected_source")
+        # 변환 창이 받은 값을 그대로 넘긴다 — 헤드 접속관 길이가 `.kfp` 와
+        # `.sdf` 에서 달라지면 같은 도면인데 두 망이 나온다.
+        ckw = None
+        if convert_dlg is not None and hasattr(convert_dlg, "read_dto"):
+            try:
+                from services.cad_import.dto import dto_to_convert_kwargs
+                ckw = dto_to_convert_kwargs(convert_dlg.read_dto())
+            except Exception as exc:      # noqa: BLE001
+                print(f"[G19] 변환 설정을 읽지 못해 기본값으로 갑니다: {exc}")
         try:
             dlg = DesignInputDialog(mw, session=session, payload=payload,
-                                    selected_source=sel)
+                                    selected_source=sel, convert_kwargs=ckw)
         except Exception as exc:      # noqa: BLE001
             QMessageBox.warning(mw, "수리계산 입력", str(exc))
             return

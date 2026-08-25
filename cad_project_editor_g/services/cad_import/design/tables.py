@@ -96,7 +96,8 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
                         nozzle_flow_lmin=80, valve_nodes=None,
                         excluded_heads=0, board_pts=None,
                         default_schedule=None,
-                        schedule_by_pipe=None) -> PipeTablesG:
+                        schedule_by_pipe=None,
+                        tree_loads=None) -> PipeTablesG:
     """제한 전개 망 → 5개 테이블. 지시서 §1 공개 시그니처.
 
     `bores` / `fittings` 는 G3 · G4 결과를 받는다. 없으면 여기서 만들지 않고
@@ -133,10 +134,14 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
     # ── 관경·부속 (없으면 지금 만든다)
     if bores is None:
         bores = decide_bores(net, edge_ref, (worst or {}).get("loads") or {},
-                             dia_text_pts, pts=board_pts)
+                             dia_text_pts, pts=board_pts,
+                             tree_loads=tree_loads)
     node_xy = {n: xy(n) for n in meta_nodes}
+    node_z = {n: z(n) for n in meta_nodes}
     if fittings is None:
-        fittings = build_fittings(net, node_xy, bores, parents=parent)
+        # 표고를 함께 넘긴다 — 세로 구간은 평면 좌표만으로 판정할 수 없다(§G19).
+        fittings = build_fittings(net, node_xy, bores, parents=parent,
+                                  node_z=node_z)
 
     # ── ① 노드표 — BFS 순서대로 번호. 뿌리가 Input.
     label_of: dict = {}

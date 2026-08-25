@@ -114,7 +114,8 @@ def match_diameter_for_segment(a, b, dia_text_pts,
     return best
 
 
-def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None) -> dict:
+def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None,
+                 tree_loads=None) -> dict:
     """kfp 배관마다 (호칭경 mm, 근거). 지시서 §1 공개 시그니처.
 
     `net`  : 제한 전개 결과 kfp dict (`pipe_data` 를 쓴다)
@@ -122,10 +123,19 @@ def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None) -> dict:
     `loads`    : {(i,j): 담당 헤드 수}          — worst["loads"] 그대로(§T4)
     `dia_text_pts` : [(x, y, dia_mm)] — `extract_dia_text_points` 결과
     `pts`      : board 노드 좌표(mm). 없으면 텍스트 매칭을 건너뛴다.
+    `tree_loads` : {pipe_id: 담당 헤드 수} — 역참조가 **없는** 배관용.
+        헤드 접속관·가지 상승은 도면에 그려진 선이 아니라 대응할 board 간선이
+        없다. 그 자리를 0 으로 두면 별표1 이 전부 25A 를 주고, 제 아래 헤드
+        스무 개를 받는 가지 상승관까지 25A 가 된다. 망에서 직접 센 값을 쓴다.
+        **안 넘기면 여기서 직접 센다** — 부르는 쪽이 잊으면 조용히 25A 가 되고,
+        그 잘못은 표를 한참 들여다봐야 보인다(실측: 검사 경로만 그랬다).
 
     반환: {pipe_id: (dia_mm, source)} · source ∈ {text, nfpc_min, nfpc_fallback}
     """
     pipes = (net or {}).get("pipe_data") or {}
+    if tree_loads is None and any(pid not in edge_ref for pid in pipes):
+        from services.cad_import.design.restrict import tree_loads as _tl
+        tree_loads = _tl(net)
     out: dict = {}
     for pid in pipes:
         ref = edge_ref.get(pid)
@@ -133,6 +143,8 @@ def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None) -> dict:
         if ref is not None:
             i, j = ref
             n_head = int(loads.get((min(i, j), max(i, j)), 0))
+        elif tree_loads:
+            n_head = int(tree_loads.get(pid, 0))
         nfpc_min = nfpc_min_bore_mm(n_head)
 
         text = None

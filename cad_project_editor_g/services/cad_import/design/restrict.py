@@ -91,8 +91,95 @@ def attachable_heads(payload: dict, *, selected_source=None,
             "dropped": max(0, total - len(wet))}
 
 
+def _ends(pr):
+    """배관 행의 양 끝. 전개 결과는 start/end, 표는 from/to 를 쓴다."""
+    return pr.get("start") or pr.get("from"), pr.get("end") or pr.get("to")
+
+
+def tree_loads(kfp) -> dict:
+    """배관마다 «그 아래에 달린 헤드 수». 급수원을 뿌리로 한 트리에서 센다.
+
+    ★board 간선 역참조(`edge_ref`)로는 셀 수 없는 배관이 있다 — 헤드 접속관과
+      가지 상승관은 도면에 그려진 선이 아니라 변환이 만든 세로 구간이라 대응할
+      board 간선이 없다. 그런 배관의 담당 헤드 수를 0 으로 두면 별표1 이 전부
+      25A 를 주고, 가지 상승관이 제 아래 헤드 스무 개를 25A 로 받게 된다.
+    """
+    nodes = (kfp or {}).get("nodes_meta_runtime") or {}
+    pipes = (kfp or {}).get("pipe_data") or {}
+    adj: dict = {}
+    for pid, pr in pipes.items():
+        a, b = _ends(pr)
+        if a is None or b is None:
+            continue
+        adj.setdefault(a, []).append((b, pid))
+        adj.setdefault(b, []).append((a, pid))
+    root = next((n for n, m in nodes.items()
+                 if str((m or {}).get("type_id", "")) == "pump"), None)
+    if root is None:
+        root = next(iter(nodes), None)
+    if root is None:
+        return {}
+    heads = {n for n, m in nodes.items()
+             if str((m or {}).get("type_id", "")) == "head"}
+
+    # 뿌리에서 뻗는 순서를 먼저 잡고, 거꾸로 접으면서 헤드를 센다.
+    order, parent_pipe, parent = [], {}, {root: None}
+    stack = [root]
+    seen = {root}
+    while stack:
+        cur = stack.pop()
+        order.append(cur)
+        for nxt, pid in adj.get(cur, ()):
+            if nxt in seen:
+                continue
+            seen.add(nxt)
+            parent[nxt] = cur
+            parent_pipe[nxt] = pid
+            stack.append(nxt)
+    count = {n: (1 if n in heads else 0) for n in seen}
+    out: dict = {}
+    for n in reversed(order):
+        p = parent.get(n)
+        if p is None:
+            continue
+        count[p] = count.get(p, 0) + count.get(n, 0)
+        out[parent_pipe[n]] = count[n]
+    return out
+
+
+def apply_vertical(payload, built, *, convert_kwargs=None):
+    """제한 전개 평면망에 **정상 변환과 같은** 세로 처리를 얹는다.
+
+    ★이걸 안 하면 설계 SDF 는 «평면 그래프» 그대로 나간다 — 헤드 접속관(①②③④)도
+      가지 상승도 없고 **모든 표고가 0** 이다. 그러면 헤드가 가지배관 위의 통과점이
+      되어 화면에서 세울 스텁이 없고, 무엇보다 정수두 차가 통째로 빠진 채
+      수리계산이 나간다. `.kfp` 는 이 처리를 거치는데 `.sdf` 만 안 거쳤다.
+
+    변환 창이 받은 값(`convert_kwargs`)을 그대로 쓴다 — 사람이 고른 헤드 접속관
+    길이가 `.kfp` 와 `.sdf` 에서 달라지면 두 산출물이 다른 망이 된다.
+    """
+    from services.cad_import.convert.engine import convert_to_kfp
+    from services.cad_import.dto import default_dto, dto_to_convert_kwargs
+
+    kw = dict(convert_kwargs or dto_to_convert_kwargs(default_dto()))
+    sub = dict(payload or {})
+    sub["kfp"] = built["kfp"]
+    sub.pop("kfp_path", None)
+    for k in ("hcov", "head_kinds", "node_head_kinds", "origin_mm"):
+        if built.get(k) is not None:
+            sub[k] = built[k]
+    if built.get("sources"):
+        sub["sources"] = built["sources"]
+    r = convert_to_kfp(sub, None, **kw)
+    if not r.get("ok"):
+        codes = [b.get("code") for b in (r.get("blockers") or [])]
+        return None, f"세로 처리 실패: {codes}"
+    return r["kfp"], None
+
+
 def expand_worst(payload: dict, board, worst: dict, *,
-                 selected_source=None, key: str | None = None) -> dict:
+                 selected_source=None, key: str | None = None,
+                 convert_kwargs=None, vertical: bool = True) -> dict:
     """제한 payload 로 **두 번째 전개**를 돌린다. 파일을 쓰지 않는다.
 
     기존 `convert_to_kfp` 의 저장 경로·반환 규약은 건드리지 않는다(§3) — 이쪽은
@@ -126,14 +213,39 @@ def expand_worst(payload: dict, board, worst: dict, *,
                 "error": built.get("error") or "제한 전개가 .kfp 를 내지 못했습니다.",
                 "code": built.get("code")}
 
+    # ★평면 그래프 «그대로» 내면 헤드 접속관도 가지 상승도 없고 표고가 전부 0 이다.
+    #   `.kfp` 는 이 처리를 거치는데 `.sdf` 만 안 거쳐서, 같은 도면인데 두 산출물이
+    #   다른 망이었다. 여기서 같은 처리를 얹는다.
+    flat = built["kfp"]
+    loads_by_pipe = {}
+    if vertical:
+        raised, verr = apply_vertical(payload, built,
+                                      convert_kwargs=convert_kwargs)
+        if raised is None:
+            return {"ok": False, "error": verr}
+        n0 = len(flat.get("nodes_meta_runtime") or {})
+        p0 = len(flat.get("pipe_data") or {})
+        built["kfp"] = raised
+        loads_by_pipe = tree_loads(raised)
+        print(f"[G19] 세로 처리 · 노드 {n0} → "
+              f"{len(raised.get('nodes_meta_runtime') or {})} · 배관 {p0} → "
+              f"{len(raised.get('pipe_data') or {})} "
+              f"(헤드 접속관·가지 상승이 여기서 생긴다)")
+
     kfp = built["kfp"]
     pipes = kfp.get("pipe_data") or {}
     edge_ref = built.get("edge_ref") or {}
     # 덮지 못한 배관은 조용히 넘기지 않는다 — 관경이 엉뚱해질 자리다(§G2 수용 기준).
     uncovered = [pid for pid in pipes if pid not in edge_ref]
-    if uncovered:
+    if uncovered and not vertical:
+        # 세로 처리를 안 켰는데 덮이지 않는 배관이 있으면 그건 이상한 일이다.
         print(f"[G2] 역참조 미포함 배관 {len(uncovered)}개 — "
               f"예: {uncovered[:5]}")
+    elif uncovered:
+        # 세로 구간은 도면에 그려진 선이 아니라 대응할 board 간선이 없다.
+        # 이상한 것이 아니라 «당연히 없는» 것이므로 그렇게 말한다.
+        print(f"[G2] 세로 구간 {len(uncovered)}개는 도면 선이 아니라 역참조가 "
+              f"없습니다 — 관경은 담당 헤드 수로 정합니다.")
     print(f"[G2] 제한 전개 · 노드 {len(kfp.get('nodes_meta_runtime') or {})} · "
           f"배관 {len(pipes)} · 역참조 {len(edge_ref)}/{len(pipes)}")
     return {
@@ -142,6 +254,7 @@ def expand_worst(payload: dict, board, worst: dict, *,
         "edge_ref": edge_ref,
         "node_ref": built.get("node_ref") or {},
         "uncovered_pipes": uncovered,
+        "tree_loads": loads_by_pipe,
         "hcov": built.get("hcov"),
         "head_kinds": built.get("head_kinds"),
         "node_head_kinds": built.get("node_head_kinds"),
@@ -151,7 +264,8 @@ def expand_worst(payload: dict, board, worst: dict, *,
 
 
 def select_and_expand(payload: dict, board, *, k=None, only_heads=None,
-                      selected_source=None, key: str | None = None) -> dict:
+                      selected_source=None, key: str | None = None,
+                      convert_kwargs=None, vertical: bool = True) -> dict:
     """최불리 선정 → corridor 제한 전개를 한 번에. G7 창이 부르는 진입점.
 
     ★선정 후보를 **전개가 붙일 수 있는 헤드**로 먼저 좁힌다(BLOCKED B4 · 1안).
@@ -186,7 +300,8 @@ def select_and_expand(payload: dict, board, *, k=None, only_heads=None,
         return {"ok": False, "error": "급수원에서 닿는 헤드가 없습니다."}
 
     got = expand_worst(payload, b, worst,
-                       selected_source=selected_source, key=key)
+                       selected_source=selected_source, key=key,
+                       convert_kwargs=convert_kwargs, vertical=vertical)
     if not got.get("ok"):
         return got
 

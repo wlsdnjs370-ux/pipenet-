@@ -448,18 +448,41 @@ def regression():
           head and head[0] == '<?xml version="1.0" encoding="UTF-8"?>',
           head[0] if head else "(없음)")
 
-    # ★[G15] 실도면 B1F 의 헤드는 «관말» 이 아니다 — 배관이 양쪽에 붙은 관통
-    #   노드다. 그래서 세울 스텁 자체가 없고, 지시서 G15-4 가 정한 대로 세우지
-    #   않고 센다. 아래는 그 셈이 빠짐없이 맞아떨어지는지 본다 — 조용히 옮기거나
-    #   조용히 빠뜨리는 것을 막는다.
+    # ★[G15] 헤드는 관말이어야 세울 수 있다. 세로 처리(§G19) 전에는 헤드가
+    #   가지배관 위의 관통 노드라 30개 중 0개가 섰다. 이제 전부 선다.
     from services.cad_import.design.emit import _head_attachments
     _t = tables()
     hn, hp, loose = _head_attachments(_t)
     check("헤드 셈이 빠짐없다(세운 것 + 못 세운 것 = 전체)",
           len(hp) + loose == len(hn),
           f"헤드 {len(hn)} = 세울 수 있음 {len(hp)} + 관통 {loose}")
-    print(f"       └ B1F 실측: 헤드 {len(hn)}개가 모두 관통 노드(붙은 배관 2개)라 "
-          f"세울 스텁이 없다 — BLOCKED B11")
+    check("실도면 헤드가 전부 관말이다(세울 수 있다)",
+          loose == 0 and len(hp) == len(hn),
+          f"관말 {len(hp)}/{len(hn)} · 관통 {loose}")
+
+    # ★그리고 실제로 섰는지 파일에서 확인한다 — 부모와 x 가 «완전히» 같고
+    #   y 차이가 stub 하나뿐이어야 스텁이 수직이다(§G15 수용 기준).
+    iso_root = ET.parse(iso).getroot()
+    pos = {}
+    for n in iso_root.iter("Node"):
+        q = n.find("Position")
+        if q is not None:
+            pos[str(n.get("label"))] = (float(q.get("x")), float(q.get("y")))
+    dx_bad, dys = [], []
+    for h, par in hp.items():
+        if h not in pos or par not in pos:
+            continue
+        if pos[h][0] != pos[par][0]:
+            dx_bad.append(h)
+        dys.append(round(abs(pos[h][1] - pos[par][1]), 6))
+    check("헤드 x 가 부모와 완전히 같다", not dx_bad,
+          f"어긋난 헤드 {len(dx_bad)}개 / {len(hp)}")
+    # writer 가 좌표를 `.6g` 로 찍으므로 두 값의 차에 최대 0.01 쯤 흔들림이
+    # 남는다(75.0 vs 74.999). 그 자 안에서 하나인지 본다.
+    spread = (max(dys) - min(dys)) if dys else 0.0
+    check("헤드 y 차이가 stub 하나뿐이다", spread <= 0.01 and dys,
+          f"{min(dys):.3f}~{max(dys):.3f} (헤드 {len(dys)}개 · "
+          f"흔들림 {spread:.4f} 은 writer 자리수)" if dys else "헤드 없음")
 
     # ★[G14] 산출 SDF 가 남의 라이브러리를 가리키면 Type 은 채워져도 Diameter 가
     #   전부 "Unset" 이 된다 — 관종 바인딩은 됐는데 관경만 안 뜨는 모습이라

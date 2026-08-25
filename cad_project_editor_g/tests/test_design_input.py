@@ -8,6 +8,7 @@ Qt 없이 돈다(헤드리스). 실도면 통합은 tests/_out/ 아래에만 쓴
 """
 from __future__ import annotations
 
+import math
 import os
 import sys
 from pathlib import Path
@@ -111,8 +112,34 @@ def g2():
           n_built_heads == len(w["heads"]),
           f"전개 {n_built_heads} / 선정 {len(w['heads'])}  "
           f"(BLOCKED B4 — 선정과 전개가 «물 닿음» 을 다르게 본다)")
-    check("역참조가 모든 배관을 덮는다", not got["uncovered_pipes"],
-          f"미포함 {len(got['uncovered_pipes'])}개")
+    # ★세로 처리(§G19) 뒤로는 «도면에 그려진 선» 이 아닌 배관이 생긴다 —
+    #   헤드 접속관·가지 상승은 변환이 만든 구간이라 대응할 board 간선이 없다.
+    #   그래서 「전부 덮인다」가 아니라 「덮이지 않은 것은 전부 세로 구간이고,
+    #   그 담당 헤드 수를 망에서 세어 두었다」를 확인한다. 느슨해진 것이 아니라
+    #   판정 대상이 정확해진 것이다.
+    meta_n = kfp.get("nodes_meta_runtime") or {}
+    tl = got.get("tree_loads") or {}
+
+    def _xyz(nid):
+        c = (meta_n.get(nid) or {}).get("coords") or (0.0, 0.0, 0.0)
+        return (float(c[0]), float(c[1]), float(c[2]) if len(c) > 2 else 0.0)
+
+    not_vertical, no_load = [], []
+    for pid in got["uncovered_pipes"]:
+        pr = (kfp.get("pipe_data") or {}).get(pid) or {}
+        a = pr.get("start") or pr.get("from")
+        z = pr.get("end") or pr.get("to")
+        pa, pb = _xyz(a), _xyz(z)
+        flat = math.hypot(pb[0] - pa[0], pb[1] - pa[1])
+        if not (flat < 1e-6 and abs(pb[2] - pa[2]) > 1e-9):
+            not_vertical.append(pid)
+        if not tl.get(pid):
+            no_load.append(pid)
+    check("역참조가 «도면에 그려진» 배관을 전부 덮는다", not not_vertical,
+          f"세로가 아닌데 미포함 {len(not_vertical)}개 "
+          f"(세로 구간 {len(got['uncovered_pipes'])}개는 정상)")
+    check("세로 구간도 담당 헤드 수를 안다", not no_load,
+          f"담당 헤드 수를 모르는 세로 구간 {len(no_load)}개")
     check("역참조가 board 간선을 가리킨다",
           all(isinstance(v, tuple) and len(v) == 2
               and 0 <= v[0] < len(b.pts) and 0 <= v[1] < len(b.pts)

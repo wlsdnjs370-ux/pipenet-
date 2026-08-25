@@ -71,12 +71,15 @@ class DesignInputDialog(QDialog):
     """기준개수 K 를 받아 최불리 배관망을 확정하고 .sdf + .slf 를 낸다."""
 
     def __init__(self, parent=None, *, session=None, payload=None,
-                 selected_source=None, k=30):
+                 selected_source=None, k=30, convert_kwargs=None):
         super().__init__(parent)
         self.setWindowTitle("수리계산 입력 (PIPENET SDF)")
         self._session = session
         self._payload = payload
         self._selected_source = selected_source
+        # ★변환 창에서 사람이 고른 헤드 접속관 길이. 이 값이 여기까지 와야
+        #   `.kfp` 와 `.sdf` 가 같은 망이 된다 — 다르면 두 산출물이 다른 도면이다.
+        self._convert_kwargs = convert_kwargs
         self._result = None          # 마지막 계산 결과(창을 다시 열어도 유지)
         self._tables = None
         self._sheets = []
@@ -295,6 +298,7 @@ class DesignInputDialog(QDialog):
         only = self._only_heads()
         payload = self._payload
         sel = self._selected_source
+        ckw = self._convert_kwargs
 
         def job():
             from services.cad_import.design.bore import extract_dia_text_points
@@ -302,7 +306,7 @@ class DesignInputDialog(QDialog):
             from services.cad_import.design.tables import build_design_tables
 
             got = select_and_expand(payload, board, k=k, only_heads=only,
-                                    selected_source=sel)
+                                    selected_source=sel, convert_kwargs=ckw)
             if not got.get("ok"):
                 return {"ok": False, "error": got.get("error")}
             texts = self._dia_texts()
@@ -311,7 +315,8 @@ class DesignInputDialog(QDialog):
                 board_pts=board.pts,
                 excluded_heads=got.get("excluded_heads", 0),
                 valve_nodes=None,
-                default_schedule=sched)
+                default_schedule=sched,
+                tree_loads=got.get("tree_loads"))
             return {"ok": True, "got": got, "tables": tbl}
 
         self.btn_run.setEnabled(False)

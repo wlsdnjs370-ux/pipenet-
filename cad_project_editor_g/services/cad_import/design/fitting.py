@@ -76,7 +76,29 @@ def _pipe_ends(net, pid):
     return p.get("start") or p.get("from"), p.get("end") or p.get("to")
 
 
-def build_fittings(net, node_xy, bores, *, parents=None, lib=None) -> dict:
+def _dir3(a, b):
+    """a→b 의 단위 방향(3차원). 길이가 0 이면 None."""
+    d = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+    n = math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2])
+    if n < 1e-9:
+        return None
+    return (d[0] / n, d[1] / n, d[2] / n)
+
+
+def _deflect3_deg(u, v):
+    """두 방향 사이 편향(도). 0 이면 그대로 직진, 90 이면 직각으로 꺾임."""
+    dot = max(-1.0, min(1.0, u[0] * v[0] + u[1] * v[1] + u[2] * v[2]))
+    return math.degrees(math.acos(dot))
+
+
+def _is_vertical(a, b) -> bool:
+    """평면에서 겹치고 높이만 다른 구간 — 헤드 접속관·가지 상승이 그렇다."""
+    return (math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-6
+            and abs(b[2] - a[2]) > 1e-9)
+
+
+def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
+                   node_z=None) -> dict:
     """배관마다 부속 목록과 등가길이 합.
 
     `net`     : 제한 전개 kfp dict
@@ -84,6 +106,13 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None) -> dict:
     `bores`   : {pipe_id: (dia_mm, source)} — G3 결과
     `parents` : {node_id: 상류 node_id} — 급수원 BFS 의 부모. 없으면 티 판정이
                 「상류를 모름」이 되어 전부 티로 두고 판정 불가로 센다.
+    `node_z`  : {node_id: 표고} — 없으면 전부 0 으로 본다.
+
+    ★평면 좌표만으로는 **세로 구간을 판정할 수 없다**. `bearing_deg` 는 같은 점에
+      대해 `atan2(0,0)=0`(동쪽)을 돌려주므로, 헤드 접속관처럼 위아래로만 가는
+      구간은 «가로 배관이 어느 방위를 보고 있었나» 에 따라 엘보가 되기도 하고
+      직선이 되기도 했다. 지어낸 값이다. 그래서 각을 **3차원으로 잰다** —
+      가로에서 세로로 꺾이면 정확히 90° 가 나오고 엘보가 된다.
 
     반환::
 
@@ -94,6 +123,13 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None) -> dict:
     lib = lib if lib is not None else load_equivalent_lengths()
     pipes = (net or {}).get("pipe_data") or {}
     parents = parents or {}
+    node_z = node_z or {}
+
+    def at(nid):
+        xy = node_xy.get(nid)
+        if xy is None:
+            return None
+        return (float(xy[0]), float(xy[1]), float(node_z.get(nid, 0.0) or 0.0))
 
     # 노드마다 붙은 배관 — 엘보·티 판정의 재료
     incident: dict = {}
@@ -116,17 +152,22 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None) -> dict:
             continue
         up = parents.get(nid)
         up_xy = node_xy.get(up) if up else None
+        here3 = at(nid)
+        up3 = at(up) if up else None
 
-        if len(links) == 2 and up_xy is not None:
+        if len(links) == 2 and up3 is not None and here3 is not None:
             # 관통 — 꺾였으면 엘보 1개. 어느 배관에 달아도 손실은 같으므로
             # 하류 쪽(부모가 아닌 쪽)에 단다.
             downs = [(pid, o) for pid, o in links if o != up]
             if len(downs) == 1:
                 pid, other = downs[0]
-                o_xy = node_xy.get(other)
-                if o_xy is not None:
-                    ang = fr.deflection_deg(fr.bearing_deg(up_xy, here),
-                                            fr.bearing_deg(here, o_xy))
+                o3 = at(other)
+                if o3 is not None:
+                    # 3차원으로 잰다 — 세로 구간도 이 한 줄로 옳게 갈린다.
+                    u, v = _dir3(up3, here3), _dir3(here3, o3)
+                    if u is None or v is None:
+                        continue
+                    ang = _deflect3_deg(u, v)
                     # ★똑바로 지나가는 자리는 부속이 없는 것이 정답이다.
                     #   fitting_rules 는 「직선인지 확신 못 함」과 「부속으로 못
                     #   보냄」을 같은 None 으로 돌려주므로, 여기서 편향 0 을
@@ -145,11 +186,22 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None) -> dict:
         if len(links) >= 3:
             # 분기 — 직류티는 계상하지 않는다(fitting_rules 가 가린다).
             downs = [(pid, o) for pid, o in links if o != up]
-            ds = [(pid, node_xy.get(o)) for pid, o in downs
-                  if node_xy.get(o) is not None]
-            if len(ds) < 2:
+            # ★위아래로 갈라지는 갈래는 평면에서 «같은 점» 이라 방위를 잴 수
+            #   없다. 그러나 가로 본관에서 세로로 빠지는 것은 언제나 분류티다 —
+            #   따로 세고, 평면 규칙에는 가로 갈래만 넘긴다.
+            vert, flat_downs = [], []
+            for pid, o in downs:
+                o3 = at(o)
+                if here3 is not None and o3 is not None and _is_vertical(here3, o3):
+                    vert.append(pid)
+                elif node_xy.get(o) is not None:
+                    flat_downs.append((pid, node_xy.get(o)))
+            for pid in vert:
+                per_pipe[pid]["fittings"].append(fr.TEE)
+                counts[fr.TEE] = counts.get(fr.TEE, 0) + 1
+            if len(flat_downs) < 2:
                 continue
-            labels, bad = fr.tee_fittings(here, up_xy, ds)
+            labels, bad = fr.tee_fittings(here, up_xy, flat_downs)
             unresolved_kind += bad
             for pid in labels:
                 per_pipe[pid]["fittings"].append(fr.TEE)

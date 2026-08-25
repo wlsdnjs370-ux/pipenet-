@@ -42,10 +42,28 @@ def main() -> int:
     check("G 트리 존재", pages.CAD_EDITOR_G_MAIN.exists(), str(g_root.name))
     check("E 와 다른 트리", str(g_root) != str(e_root),
           f"{e_root.name} ≠ {g_root.name}")
-    n_g = sum(1 for _r, _d, fs in os.walk(g_root) for f in fs if f.endswith(".py"))
-    n_e = sum(1 for r, _d, fs in os.walk(e_root) for f in fs
-              if f.endswith(".py") and "docs" not in r and "__pycache__" not in r)
-    check("소스가 온전히 복제됨", n_g == n_e, f"G {n_g}개 / E {n_e}개")
+    def rels(root):
+        out = set()
+        for r, _d, fs in os.walk(root):
+            if "docs" in r or "__pycache__" in r:
+                continue
+            for f in fs:
+                if f.endswith(".py"):
+                    out.add(os.path.relpath(os.path.join(r, f), root))
+        return out
+
+    g_files, e_files = rels(g_root), rels(e_root)
+    # ★«개수 동일» 을 요구하면 안 된다. G 는 복제본이지 사본이 아니라서, 제 몫의
+    #   기능(수리계산 입력 design/·창·검사)이 붙으면 개수가 커진다. 확인해야 할
+    #   것은 «E 의 것이 하나도 빠지지 않았나» 다.
+    missing = sorted(e_files - g_files)
+    check("E 의 소스가 하나도 빠지지 않음", not missing,
+          f"G {len(g_files)}개 ⊇ E {len(e_files)}개"
+          + (f" · 빠짐 {missing[:3]}" if missing else ""))
+    added = sorted(g_files - e_files)
+    if added:
+        print(f"      G 고유 {len(added)}개 (이번 작업 산출): "
+              f"{', '.join(a.replace(os.sep, '/') for a in added[:3])} …")
     # 편집기는 작업 폴더를 제 위치에서 잡는다 → 트리가 다르면 캐시도 갈라진다.
     check("작업 폴더가 갈라짐",
           not (g_root / "docs").exists() or

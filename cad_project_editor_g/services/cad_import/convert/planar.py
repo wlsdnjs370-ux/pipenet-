@@ -848,6 +848,25 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
     print(f"노드정리(SSOT): 삭제 {len(res_clean['removed'])}"
           f" · 실패 {len(res_clean['failed'])}")
 
+    # [G2] 역참조 복구 — 노드정리는 일직선 배관 여럿을 하나로 **병합하고 새 id 를
+    # 매긴다**. 그래서 배관 생성 때 적어 둔 edge_ref 가 최종 배관을 못 덮는다
+    # (실측: 배관 53개 중 36개 미포함). 병합된 배관의 두 끝은 살아남은 원래
+    # 노드이므로 node_ref 로 board 노드를 되짚어 채운다 — 병합된 조각들은
+    # 일직선이라 그 두 끝이 같은 직선을 정의하고, 관경 텍스트 매칭에는 그것으로
+    # 충분하다. 없는 것을 지어내지 않고 «아는 것만» 채운다.
+    for _pid, _pipe in list(getattr(editor.graph, "pipes", {}).items()):
+        if _pid in edge_ref:
+            continue
+        _bi = node_ref.get(getattr(_pipe, "start", None))
+        _bj = node_ref.get(getattr(_pipe, "end", None))
+        if _bi is not None and _bj is not None:
+            edge_ref[_pid] = (_bi, _bj)
+    # 최종 배관에 없는 낡은 키(병합으로 사라진 배관)는 버린다 — 남겨 두면
+    # 「덮었다」는 착시가 생긴다.
+    _final = set(getattr(editor.graph, "pipes", {}))
+    for _pid in [k for k in edge_ref if k not in _final]:
+        edge_ref.pop(_pid, None)
+
     if out:
         editor.save_json(out)
         e2 = PipeEditor()

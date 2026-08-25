@@ -80,7 +80,7 @@ def g1():
 # ─────────────────────────────────────────────────────────── G2
 def g2():
     print("\n[G2] corridor 제한 전개 + 역참조")
-    from services.cad_import.design.restrict import expand_worst
+    from services.cad_import.design.restrict import select_and_expand
     from services.cad_import.design.worst import worst_k_heads
 
     es = _board()
@@ -91,9 +91,14 @@ def g2():
     srcs = payload.get("sources") or ()
     sel = srcs[0].get("tag") if len(srcs) > 1 else None
 
-    got = expand_worst(payload, b, w, selected_source=sel)
-    if not check("제한 전개 성공", got.get("ok"), str(got.get("error"))[:90]):
+    # BLOCKED B4 · 1안 — 선정 후보를 «전개가 붙일 수 있는 헤드» 로 먼저 좁힌다.
+    got = select_and_expand(payload, b, k=30, selected_source=sel)
+    if not check("선정+제한 전개 성공", got.get("ok"), str(got.get("error"))[:90]):
         return None
+    w = got["worst"]
+    check("제외 헤드 수가 드러난다", "excluded_heads" in got,
+          f"후보 {got.get('candidate_heads')} / 도면 {got.get('total_heads')}"
+          f" · 제외 {got.get('excluded_heads')}")
 
     kfp = got["kfp"]
     pipes = kfp.get("pipe_data") or {}

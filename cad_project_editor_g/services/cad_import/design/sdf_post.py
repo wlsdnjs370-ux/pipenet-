@@ -52,6 +52,11 @@ DEFAULT_SCHEDULE = SCHEDULE_NAMES[0]
 COS30 = 0.8660254037844387
 SIN30 = 0.5
 
+# 레퍼런스 SDF 의 머리. 큰따옴표·대문자 UTF-8 까지 그대로다 — 여기 손대지 않는다.
+SDF_HEADER = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Project SYSTEM "spray.dtd">
+"""
+
 
 class UnknownSchedule(ValueError):
     """`SCHEDULE_DEFS` 에 없는 관종 이름. 조용히 기본값으로 떨어지지 않는다."""
@@ -224,4 +229,18 @@ def inject_pipe_types(sdf_path, sched_by_pipe: dict) -> None:
             links.insert(0, ET.Element("Pipe-set"))
         break
 
-    tree.write(path, encoding="utf-8", xml_declaration=True)
+    _write_sdf_tree(tree, path)
+
+
+def _write_sdf_tree(tree: ET.ElementTree, out_path) -> None:
+    """DOCTYPE 을 보존해서 쓴다. `ElementTree.write` 로는 안 된다.
+
+    ★`write` 는 `<!DOCTYPE ...>` 를 버리고 XML 선언도 작은따옴표·소문자로 쓴다.
+      레퍼런스 SDF 의 머리는 `<?xml version="1.0" encoding="UTF-8"?>` +
+      `<!DOCTYPE Project SYSTEM "spray.dtd">` 이고, **DOCTYPE 이 빠지면 일부
+      PIPENET 설치에서 파일 열기·연산이 거부된다**(모듈 A 가 같은 이유로
+      `write_sdf_tree` 를 따로 둔다). 우리 화면에서 열린다고 남의 PC 에서 열리는
+      것이 아니다 — 그 실패는 도면 탓으로 오해되기 쉽다.
+    """
+    body = ET.tostring(tree.getroot(), encoding="unicode")
+    Path(out_path).write_text(SDF_HEADER + body, encoding="utf-8")

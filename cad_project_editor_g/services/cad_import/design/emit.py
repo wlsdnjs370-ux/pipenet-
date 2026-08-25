@@ -16,6 +16,7 @@ SDF 를 «만들어졌다» 고 돌려주는 것이 가장 나쁜 결과다.
 """
 from __future__ import annotations
 
+import copy as _copy
 import os
 import shutil
 import sys
@@ -176,8 +177,16 @@ def emit_design_sdf(tables, out_path, *,
         sched_by_pipe[str(row.get("label"))] = check_schedule(
             row.get("type") or "")
 
+    # ★부른 쪽의 표를 건드리지 않는다. 정규화·베이크는 노드 좌표를 in-place 로
+    #   바꾸는데, 창은 `self._tables` 를 들고 있다가 **다시 저장**할 수 있다.
+    #   그대로 두면 두 번째 저장에서 이미 굽힌 좌표를 또 굽어 망이 어긋나고,
+    #   아이소를 껐다 켠 저장은 조용히 등각 그림이 된다. 노드만 복제하면 된다 —
+    #   배관·노즐·부속·장비 행은 여기서 바뀌지 않는다.
+    tables = _copy.copy(tables)
+    tables.nodes = [dict(n) for n in (getattr(tables, "nodes", None) or ())]
+
     # ★순서가 중요하다: 정규화 → 베이크. 바꾸면 lift 배율이 어긋난다(§G12).
-    #   좌표를 바꾸므로 표는 이 시점부터 «표시용» 이다 — 길이·표고는 안 건드린다.
+    #   좌표를 바꾸므로 이 복제본은 이 시점부터 «표시용» 이다 — 길이·표고는 안 건드린다.
     normalize_node_coords(tables, canvas_units=canvas_units)
     if iso:
         bake_isometric(tables, iso_z_scale=iso_z_scale,

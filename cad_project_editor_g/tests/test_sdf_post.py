@@ -285,6 +285,55 @@ def regression():
     names = [s.findtext("Pipe-type/Name") for s in root.findall(".//Links/Pipe-set")]
     check("Pipe-type 6종 노출 + placeholder",
           names[0] is None and len([n for n in names if n]) == 6, str(names))
+
+    # ★호칭경이 제 schedule 의 Pipe-size 에 실제로 있는가. 없으면 PIPENET 이
+    #   내경을 못 찾아 Diameter 가 "Unset" 이 된다 — G9 수용 기준인데 지금까지
+    #   눈으로만 봤다. 관경 판정이 0 을 흘려도 여기서 잡힌다.
+    unbound, no_type = [], 0
+    for links in root.iter("Links"):
+        for ps in links.findall("Pipe-set"):
+            nm = ps.findtext("Pipe-type/Name")
+            sizes = {round(float(e.get("size")), 6)
+                     for e in ps.findall("Pipe-type/Pipe-size")}
+            for pipe in ps.findall("Pipe"):
+                if not nm:
+                    no_type += 1
+                    continue
+                b = round(float(pipe.get("bore") or 0), 6)
+                if b not in sizes:
+                    unbound.append((pipe.get("label"), b, nm))
+    check("Type 열이 빈 배관이 없다('None defined' 자리)", no_type == 0,
+          f"{no_type}개")
+    check("호칭경이 schedule 에 묶인다('Unset' 자리)", not unbound,
+          f"안 묶인 것 {unbound[:3]}" if unbound else "61개 전부")
+
+    # ★DOCTYPE — 없으면 «일부» PIPENET 설치에서만 안 열린다. 내 화면에서 열렸다는
+    #   것이 증거가 못 된다. 모듈 A 가 같은 이유로 헤더를 직접 붙인다.
+    head = plain.read_text(encoding="utf-8")[:120].splitlines()[:2]
+    check("SDF 머리에 DOCTYPE 이 있다",
+          len(head) > 1 and 'DOCTYPE Project SYSTEM "spray.dtd"' in head[1],
+          " / ".join(head))
+    check("XML 선언이 레퍼런스와 같은 표기",
+          head and head[0] == '<?xml version="1.0" encoding="UTF-8"?>',
+          head[0] if head else "(없음)")
+
+    # ★같은 표로 두 번 저장 — 창은 표를 들고 있다가 다시 저장할 수 있다.
+    #   방출이 표를 in-place 로 굽으면 두 번째 저장이 어긋난다.
+    t = tables()
+    once = emit_design_sdf(t, OUT / "reg_twice_a.sdf", iso=True, iso_z_scale=2.0)
+    twice = emit_design_sdf(t, OUT / "reg_twice_b.sdf", iso=True, iso_z_scale=2.0)
+
+    def pos(p):
+        r = ET.parse(p).getroot()
+        return [(n.get("label"), q.get("x"), q.get("y"))
+                for n in r.iter("Node") for q in n.iter("Position")]
+
+    check("같은 표로 두 번 저장해도 그림이 같다", pos(once) == pos(twice),
+          "두 번째가 어긋남" if pos(once) != pos(twice) else "동일")
+    # 껐다 저장하면 평면으로 돌아와야 한다 — 첫 저장의 등각이 남으면 안 된다.
+    off = emit_design_sdf(t, OUT / "reg_twice_c.sdf")
+    check("아이소 저장 뒤 평면 저장이 평면이다", pos(off) == pos(plain),
+          "등각이 남았다" if pos(off) != pos(plain) else "동일")
     return True
 
 

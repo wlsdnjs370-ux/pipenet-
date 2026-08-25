@@ -248,6 +248,70 @@ def g13(a_selection):
     return {"g": gs, "a": rs, "a_err": a_err, "verdict": verdict}
 
 
+# [G18] 보정 지시서 ② §2 가 적어 둔 수치. 이 보정은 표시/흐름만 건드렸으므로
+#       아래가 하나라도 달라지면 위상이나 계산이 흔들린 것이다.
+G18_REFERENCE = {
+    "헤드": 30, "최원 유하거리 (m)": 171.87, "설계면적 폭 (m)": 54.25,
+    "corridor 총연장 (m)": 207.31, "주배관 담당 헤드 수": 30,
+    "노드": 62, "배관": 61, "노즐": 30, "기기": 0, "루프 잔여": 0,
+    "관경 근거 — 도면 텍스트": 27, "관경 근거 — 별표1 보강": 0,
+    "관경 근거 — 별표1 폴백": 34,
+    "부속": 20, "부속 판정 불가": 3, "등가길이 미해결": 0,
+}
+
+
+def g18():
+    """[G18] 처음부터 끝까지 한 번 돌린 값이 §2 기준선과 같은가."""
+    print("")
+    print("[G18] 보정 전 기준선과 대조")
+    from services.cad_import.design.bore import extract_dia_text_points
+    from services.cad_import.design.restrict import select_and_expand
+    from services.cad_import.design.tables import build_design_tables
+    from services.cad_import.edit.session import EditSession
+    from services.cad_import.pipeline import handoff, stage1 as s1
+
+    es = EditSession.open(KEY, out_dir=None, load_saved=True, use_cache=True)
+    payload = es.convert_payload()
+    srcs = payload.get("sources") or ()
+    sel = srcs[0].get("tag") if len(srcs) > 1 else None
+    got = select_and_expand(payload, es.board, k=30, selected_source=sel)
+    if not got.get("ok"):
+        print("  !! 제한 전개 실패:", got.get("error"))
+        return None
+    spec = _ROOT / "docs" / "import" / "0단계_새찍기" / f"{KEY}_찍은스펙.json"
+    src = json.loads(spec.read_text(encoding="utf-8")).get("source_dxf")
+    world = handoff.load_world(KEY, src, s1.World) if src else None
+    texts = extract_dia_text_points(world.texts) if world else []
+    tbl = build_design_tables(got["kfp"], got["worst"], got["edge_ref"], texts,
+                              board_pts=es.board.pts,
+                              excluded_heads=got.get("excluded_heads", 0))
+    m = dict(tbl.meta)
+    w = got["worst"]
+    cur = {
+        "헤드": len(w.get("heads") or []),
+        "최원 유하거리 (m)": w.get("far_m"),
+        "설계면적 폭 (m)": w.get("span_m"),
+        "corridor 총연장 (m)": w.get("total_m"),
+        "주배관 담당 헤드 수": w.get("max_load"),
+        "노드": len(tbl.nodes), "배관": len(tbl.pipes),
+        "노즐": len(tbl.nozzles), "기기": len(tbl.equipment),
+        "루프 잔여": m.get("루프 잔여 배관(표 꼬리)"),
+        "관경 근거 — 도면 텍스트": m.get("관경 근거 — 도면 텍스트"),
+        "관경 근거 — 별표1 보강": m.get("관경 근거 — 별표1 보강 (text<min)"),
+        "관경 근거 — 별표1 폴백": m.get("관경 근거 — 별표1 폴백 (text 없음)"),
+        "부속": len(tbl.fittings),
+        "부속 판정 불가": m.get("부속 판정 불가"),
+        "등가길이 미해결": m.get("등가길이 미해결"),
+    }
+    diff = [(k, v, cur.get(k)) for k, v in G18_REFERENCE.items()
+            if str(cur.get(k)) != str(v)]
+    for k, v in G18_REFERENCE.items():
+        mark = "OK  " if str(cur.get(k)) == str(v) else "FAIL"
+        print(f"  [{mark}] {k} · 기준 {v} / 지금 {cur.get(k)}")
+    print("  -> " + ("전부 같다" if not diff else f"다른 항목 {len(diff)}개"))
+    return {"cur": cur, "ref": G18_REFERENCE, "same": not diff, "diff": diff}
+
+
 def main() -> int:
     print("[G8] 모듈 A 대조\n")
     g = g_side()
@@ -377,6 +441,42 @@ def main() -> int:
                          f"G9 이전(`9d581f8^`) 방출기 산출 `{old_t}` / 지금 `{cur_t}`. "
                          "좌표 정규화와 아이소매트릭은 표시만 바꾼다는 증거다.")
         lines.append("")
+    # [G18] 처음부터 끝까지 한 번 — §2 기준선과 견준다.
+    r18 = g18()
+    if r18:
+        lines += ["", "## [G18] 보정 ② 전후 대조 (지시서 §2 기준선)", "",
+                  "이 보정은 표시(SLF 경로·헤드 수직·좌표)와 흐름(산출물 선택)만",
+                  "건드렸다. 아래가 하나라도 달라지면 위상이나 계산이 흔들린 것이다.",
+                  "",
+                  "| 항목 | 보정 전(§2) | 보정 후 | |", "|---|---|---|---|"]
+        for k, v in r18["ref"].items():
+            now = r18["cur"].get(k)
+            same = "같음" if str(now) == str(v) else "**다름**"
+            lines.append(f"| {k} | {v} | {now} | {same} |")
+        lines += [
+            "", "### 화면 증빙", "",
+            "PIPENET 은 이 환경에서 띄울 수 없어 **그 화면 캡처는 내지 못했다.**",
+            "대신 두 가지를 낸다.", "",
+            "1. **미리보기 캡처** — 저장될 좌표를 그대로 그린 화면이다. 「미리보기",
+            "   좌표 == 저장된 SDF 의 `<Position>`」은 `tests/test_design_dialog.py`",
+            "   가 writer 자리수(`.6g`)로 62/62 문자열 일치까지 확인한다. 그래서 이",
+            "   그림은 PIPENET 이 그릴 형태와 같은 좌표에서 나온 것이다.",
+            "2. **파일 수준 확인** — PIPENET 화면에서 볼 `Type`·`Diameter` 두 열이",
+            "   무엇을 보여줄지는 파일에서 직접 셀 수 있다(`tests/test_sdf_post.py`).",
+            "   Type 이 빈 배관 0건 · 호칭경이 schedule 에 안 묶인 배관 0건 ·",
+            "   User-lib 가 옆의 `.slf` 파일명 하나 · 그 SLF 가 쓰인 호칭경 6종",
+            "   (25·40·50·65·100·150)을 전부 정의.", "",
+            "![아이소매트릭 미리보기](images/module_g_preview_iso.png)", "",
+            "*배관 굵기는 담당 헤드 수에 비례한다. 파란 원이 급수원, 붉은 △ 가 헤드다.*",
+            "", "![배관표 미리보기](images/module_g_preview_table.png)", "",
+            "*`관종` 이 전 행 `KSD 3507`, `호칭경` 이 65/25/150/40 로 채워진다 —",
+            "PIPENET 의 `Type`·`Diameter` 열이 보여 줄 값이 이것이다. `관경 근거` 는",
+            "이 보정에서 이어 붙인 열이다.*", "",
+            "캡처는 `python tests/_capture_preview.py` 로 다시 만든다.", "",
+        ]
+        tail = ("전부 같다" if r18["same"]
+                else "다른 항목 " + str(len(r18["diff"])) + "개")
+        lines += ["", f"-> **{tail}**", ""]
     DOC.write_text("\n".join(lines), encoding="utf-8")
     print(f"\n  대조표: {DOC}")
     return 0

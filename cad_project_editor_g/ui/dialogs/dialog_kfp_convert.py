@@ -60,8 +60,15 @@ def _head_library_items(parent=None) -> list[dict]:
         items = list(editor.get_head_items() or [])
         if items:
             return items
-    from ui.controllers.misc_controller import MiscController
-    lib = MiscController.load_library_json("nozzle_library.json") or {}
+    # ★대비책은 **없을 수도 있는** 모듈에 기댄다(`misc_controller` 는 이 트리에
+    #   없다). 편집기가 헤드를 하나도 안 돌려주면 여기서 ImportError 로 창이
+    #   통째로 죽었다 — 목록이 비는 것과 창이 안 뜨는 것은 다른 일이다.
+    try:
+        from ui.controllers.misc_controller import MiscController
+        lib = MiscController.load_library_json("nozzle_library.json") or {}
+    except Exception as exc:      # noqa: BLE001
+        print(f"[변환] 헤드 라이브러리를 읽지 못했습니다 — 목록을 비웁니다: {exc}")
+        return []
     for cat in lib.get("categories", []):
         if cat.get("category_id") == "head":
             return list(cat.get("items", []))
@@ -223,6 +230,10 @@ def try_convert(payload, dto, selected_source=None):
     return convert_to_kfp(payload, None, **dto_to_convert_kwargs(dto))
 
 
+# [G17] 산출물 선택은 이 실행 동안 기억한다 — 매번 같은 것을 다시 고르지 않게.
+OUTPUT_CHOICE = {"kfp": True, "sdf": True}
+
+
 class KfpConvertDialog(QDialog):
     def __init__(self, parent=None, payload=None, multi_heads=None):
         super().__init__(parent)
@@ -277,6 +288,7 @@ class KfpConvertDialog(QDialog):
 
         self._source_row = self._build_source_row()
         root.addWidget(self._source_row)
+        root.addWidget(self._build_outputs())
         self._fill_sources()
         self._apply_present_kinds()
 
@@ -289,6 +301,31 @@ class KfpConvertDialog(QDialog):
         btns.addWidget(self.btn_back)
         btns.addWidget(self.btn_convert)
         root.addLayout(btns)
+
+    def _build_outputs(self) -> QGroupBox:
+        """[G17] 산출물 고르기 — `.kfp` 저장을 **강제로 통과시키지 않는다**.
+
+        지금까지는 변환이 끝나면 무조건 `.kfp` 저장 대화상자와 완료 알림을 거친
+        뒤에야 수리계산 입력 창이 떴다. SDF 만 필요한 사람에게는 불필요한 문이다.
+
+        고른 값은 세션에 남는다 — 매번 같은 것을 다시 고르게 하지 않는다.
+        """
+        box = QGroupBox(_t("cad.convert.group_outputs"))
+        row = QHBoxLayout(box)
+        self.chk_out_kfp = QCheckBox(_t("cad.convert.out_kfp"))
+        self.chk_out_sdf = QCheckBox(_t("cad.convert.out_sdf"))
+        want = dict(OUTPUT_CHOICE)
+        self.chk_out_kfp.setChecked(bool(want.get("kfp", True)))
+        self.chk_out_sdf.setChecked(bool(want.get("sdf", True)))
+        row.addWidget(self.chk_out_kfp)
+        row.addWidget(self.chk_out_sdf)
+        row.addStretch(1)
+        return box
+
+    def _outputs(self) -> dict:
+        return {"kfp": bool(self.chk_out_kfp.isChecked()),
+                "sdf": bool(self.chk_out_sdf.isChecked())}
+
 
     def _build_branch(self) -> QGroupBox:
         box = QGroupBox(_t("cad.convert.group_branch"))
@@ -457,6 +494,13 @@ class KfpConvertDialog(QDialog):
         self.reject()
 
     def _on_convert(self) -> None:
+        # ★산출물 확인이 **맨 앞**이다. 무거운 변환을 다 돌린 뒤에 「만들 게
+        #   없습니다」라고 말하는 것은 시간을 버리게 하는 일이다(§G17).
+        want = self._outputs()
+        if not (want["kfp"] or want["sdf"]):
+            QMessageBox.warning(self, _t("cad.convert.title"),
+                                _t("cad.convert.no_outputs"))
+            return
         try:
             dto = self.read_dto()
         except ValueError:
@@ -467,6 +511,8 @@ class KfpConvertDialog(QDialog):
             QMessageBox.warning(
                 self, _t("cad.convert.title"), _t("cad.convert.err_no_graph"))
             return
+        OUTPUT_CHOICE.update(want)
+
         QApplication.setOverrideCursor(Qt.WaitCursor)
         QApplication.processEvents()
         try:
@@ -487,6 +533,7 @@ class KfpConvertDialog(QDialog):
         self.result = {
             "ok": True, "reason": "converted",
             "path": None, "kfp": self.result_kfp,
+            "outputs": want,          # [G17] 흐름이 이 값만 보고 갈린다
         }
         if self._multi_heads:
             QMessageBox.warning(

@@ -210,15 +210,30 @@ class CadImportFlow:
         _restore_wait_cursor()
         result = dlg.exec()
         if result == QDialog.Accepted:
-            self._save_converted_kfp(mw, session, dlg.result)
-            # [G7] .kfp 를 저장한 «뒤» 네 번째 창을 연다. 순서가 중요하다 —
-            # 수리계산 입력 창이 떠 있어도 .kfp 저장은 이미 끝나 있어야
-            # 서로 영향을 주지 않는다(§G7 수용 기준).
-            self._open_design_input(mw, session, dlg)
+            self._after_convert(mw, session, dlg)
             return True
         if result == QDialog.Rejected:
             return False
         return True
+
+    def _after_convert(self, mw, session, dlg):
+        """[G17] 고른 산출물만 만든다.
+
+        종전에는 `.kfp` 저장 대화상자와 완료 알림을 **무조건** 통과해야 수리계산
+        입력 창이 떴다 — SDF 만 필요한 사람에게는 불필요한 문이었다.
+        `outputs` 가 없으면(옛 호출부) 종전대로 둘 다 한다.
+
+        분기를 여기 따로 둔 것은 검사가 「고른 것만 불린다」를 확인할 이음매가
+        필요해서다. 창을 띄우지 않고 이 함수만 부르면 된다.
+        """
+        want = (getattr(dlg, "result", None) or {}).get("outputs")             or {"kfp": True, "sdf": True}
+        if want.get("kfp"):
+            self._save_converted_kfp(mw, session, dlg.result)
+        if want.get("sdf"):
+            # [G7] `.kfp` 를 저장한 «뒤» 네 번째 창을 연다. 순서가 중요하다 —
+            # 수리계산 입력 창이 떠 있어도 `.kfp` 저장은 이미 끝나 있어야
+            # 서로 영향을 주지 않는다(§G7 수용 기준). 이 순서는 그대로 둔다.
+            self._open_design_input(mw, session, dlg)
 
     def _open_design_input(self, mw, session, convert_dlg=None):
         """[G7] 수리계산 입력(SDF) 창. 실패해도 앞 단계를 무르지 않는다.

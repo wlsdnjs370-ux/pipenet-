@@ -69,5 +69,9 @@
   "cad.convert.warn_multi_arm": "빨간색 테두리 헤드는 최종 변환후 정상 연결 여부를 확인하세요",
   "cad.convert.warn_main_walk": "호가 있지만 메인/가지 구분을 하지 못했습니다. 최종 변환후 가지 수직을 확인하세요",
   "cad.convert.saved": "저장했습니다.\n{path}",
-  "cad.convert.save_title": "KFP 저장"
+  "cad.convert.save_title": "KFP 저장",
+  "cad.convert.group_outputs": "산출물",
+  "cad.convert.out_kfp": ".kfp 저장",
+  "cad.convert.out_sdf": "수리계산 입력(.sdf) 만들기",
+  "cad.convert.no_outputs": "산출물을 하나도 고르지 않았습니다.\n.kfp 저장이나 수리계산 입력 중 적어도 하나는 골라야 합니다."
 }

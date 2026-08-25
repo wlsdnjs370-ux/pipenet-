@@ -1117,6 +1117,15 @@
     "rule": "/module-f"
   },
   {
+    "endpoint": "module_g_cad_editor",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/module-g-cad-editor"
+  },
+  {
     "endpoint": "print_report",
     "methods": [
       "GET",

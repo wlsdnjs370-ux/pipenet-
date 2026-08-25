@@ -1,0 +1,309 @@
+{
+  "schema_version": "2.0",
+  "categories": [
+    {
+      "category_id": "head",
+      "display_name": "Head",
+      "is_system_protected": true,
+      "type_id": "head",
+      "items": [
+        {
+          "id": "HEAD_20",
+          "display_name": "20(1.4)",
+          "K_SI": 20.0,
+          "K_US": 1.4,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_27",
+          "display_name": "27(1.9)",
+          "K_SI": 27.0,
+          "K_US": 1.9,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_40",
+          "display_name": "40(2.8)",
+          "K_SI": 40.0,
+          "K_US": 2.8,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_60",
+          "display_name": "60(4.2)",
+          "K_SI": 60.0,
+          "K_US": 4.2,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_80",
+          "display_name": "80(5.6)",
+          "K_SI": 80.0,
+          "K_US": 5.6,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_115",
+          "display_name": "115(8.0)",
+          "K_SI": 115.0,
+          "K_US": 8.0,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_160",
+          "display_name": "160(11.2)",
+          "K_SI": 160.0,
+          "K_US": 11.2,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_200",
+          "display_name": "200(14.0)",
+          "K_SI": 200.0,
+          "K_US": 14.0,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_240",
+          "display_name": "240(16.8)",
+          "K_SI": 240.0,
+          "K_US": 16.8,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_280",
+          "display_name": "280(19.6)",
+          "K_SI": 280.0,
+          "K_US": 19.6,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_320",
+          "display_name": "320(22.4)",
+          "K_SI": 320.0,
+          "K_US": 22.4,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_360",
+          "display_name": "360(25.2)",
+          "K_SI": 360.0,
+          "K_US": 25.2,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_400",
+          "display_name": "400(28.0)",
+          "K_SI": 400.0,
+          "K_US": 28.0,
+          "is_system_protected": true
+        },
+        {
+          "id": "HEAD_480",
+          "display_name": "480(33.6)",
+          "K_SI": 480.0,
+          "K_US": 33.6,
+          "is_system_protected": true
+        }
+      ]
+    },
+    {
+      "category_id": "water_spray",
+      "display_name": "Water Spray",
+      "is_system_protected": true,
+      "type_id": "nozzle",
+      "items": [
+        {
+          "id": "USER_NOZZLE_7AE4",
+          "display_name": "70L/min",
+          "K_val": 37.4,
+          "Q_lpm": 70.0,
+          "P_bar": 0.0,
+          "min_p": 2.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_NOZZLE_2D9C",
+          "display_name": "26L/min",
+          "K_val": 13.9,
+          "Q_lpm": 26.0,
+          "P_bar": 0.0,
+          "min_p": 2.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_NOZZLE_2193",
+          "display_name": "45L/min",
+          "K_val": 24.1,
+          "Q_lpm": 45.0,
+          "P_bar": 0.0,
+          "min_p": 2.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_NOZZLE_C761",
+          "display_name": "60L/min",
+          "K_val": 32.1,
+          "Q_lpm": 60.0,
+          "P_bar": 0.0,
+          "min_p": 2.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_NOZZLE_03AF",
+          "display_name": "85L/min",
+          "K_val": 45.4,
+          "Q_lpm": 85.0,
+          "P_bar": 0.0,
+          "min_p": 2.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_NOZZLE_65E5",
+          "display_name": "90L/min",
+          "K_val": 48.1,
+          "Q_lpm": 90.0,
+          "P_bar": 0.0,
+          "min_p": 2.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_NOZZLE_9C96",
+          "display_name": "102L/min",
+          "K_val": 54.5,
+          "Q_lpm": 102.0,
+          "P_bar": 0.0,
+          "min_p": 2.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_NOZZLE_A7C1",
+          "display_name": "120L/min",
+          "K_val": 64.1,
+          "Q_lpm": 120.0,
+          "P_bar": 0.0,
+          "min_p": 2.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_NOZZLE_2477",
+          "display_name": "140L/min",
+          "K_val": 74.8,
+          "Q_lpm": 140.0,
+          "P_bar": 0.0,
+          "min_p": 2.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_NOZZLE_3115",
+          "display_name": "180L/min",
+          "K_val": 96.2,
+          "Q_lpm": 180.0,
+          "P_bar": 0.0,
+          "min_p": 2.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_NOZZLE_3953",
+          "display_name": "127L/min",
+          "K_val": 67.9,
+          "Q_lpm": 127.0,
+          "P_bar": 0.0,
+          "min_p": 2.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        }
+      ]
+    },
+    {
+      "category_id": "hose_nozzle",
+      "display_name": "Hose Nozzle",
+      "is_system_protected": true,
+      "type_id": "nozzle",
+      "items": [
+        {
+          "id": "USER_HOSENOZZ_7BA4",
+          "display_name": "40A Y",
+          "K_val": 103.9,
+          "Q_lpm": 135.5,
+          "P_bar": 0.0,
+          "min_p": 1.7,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_HOSENOZZ_ECFC",
+          "display_name": "40A SL10S",
+          "K_val": 118.3,
+          "Q_lpm": 154.2,
+          "P_bar": 0.0,
+          "min_p": 1.7,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_HOSENOZZ_00EC",
+          "display_name": "65A SL11A",
+          "K_val": 219.2,
+          "Q_lpm": 410.0,
+          "P_bar": 0.0,
+          "min_p": 3.5,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_HOSENOZZ_35F7",
+          "display_name": "65A Y",
+          "K_val": 248.3,
+          "Q_lpm": 465.5,
+          "P_bar": 0.0,
+          "min_p": 3.5,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_HOSENOZZ_C452",
+          "display_name": "65A SL11S",
+          "K_val": 236.2,
+          "Q_lpm": 441.9,
+          "P_bar": 0.0,
+          "min_p": 3.5,
+          "type": "FIXED",
+          "is_system_protected": false
+        },
+        {
+          "id": "USER_HOSENOZZ_3267",
+          "display_name": "Monitor a",
+          "K_val": 718.0,
+          "Q_lpm": 1900.0,
+          "P_bar": 0.0,
+          "min_p": 7.0,
+          "type": "FIXED",
+          "is_system_protected": false
+        }
+      ]
+    },
+    {
+      "category_id": "etc",
+      "display_name": "Etc",
+      "is_system_protected": false,
+      "type_id": "nozzle",
+      "color_rgb": [
+        255,
+        20,
+        147
+      ],
+      "items": []
+    }
+  ]
+}

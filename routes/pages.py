@@ -44,7 +44,16 @@ DESIGN_AUTOMATION_BIND_HOST = "127.0.0.1"
 # 중복 실행을 막는다.
 CAD_EDITOR_ROOT = Path(__file__).resolve().parent.parent / "cad_project_editor"
 CAD_EDITOR_MAIN = CAD_EDITOR_ROOT / "main.py"
+# 모듈 G — E 의 편집기를 통째로 복제한 별개 트리. 편집기가 작업 폴더를 제
+# 위치(_APP_ROOT/docs/import)에서 잡으므로, 트리가 다르면 캐시·찍은스펙도
+# 저절로 갈라진다. 같은 트리를 두 번 띄우면 그 캐시를 두 프로세스가 함께
+# 헤집게 되므로 «복제» 는 카드만이 아니라 소스까지여야 한다.
+CAD_EDITOR_G_ROOT = Path(__file__).resolve().parent.parent / "cad_project_editor_g"
+CAD_EDITOR_G_MAIN = CAD_EDITOR_G_ROOT / "main.py"
 _cad_editor_proc: dict = {"handle": None}
+# G 는 제 핸들을 갖는다 — E 와 핸들을 나눠 쓰면 한쪽이 «이미 실행 중»
+# 으로 오판해 서로를 못 띄운다.
+_cad_editor_g_proc: dict = {"handle": None}
 
 
 def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH, DESIGN_AUTOMATION_PORT, DESIGN_AUTOMATION_ROOT, DESIGN_AUTOMATION_SERVER_PATH, DESIGN_AUTOMATION_STDERR_PATH, DESIGN_AUTOMATION_STDOUT_PATH, EXPORT_SCHEMA, REMOTE30_OUTPUT_DIR, UPDATE_HISTORY_PATH, UPLOAD_DIR, _approx_arc_points, _bbox, _ensure_design_automation_static_layout, _entity_preview_row, _fig_to_data_url, _is_local_port_open, _load_cad_sdf_learning_profile, _mark_similar_cad_pipe_entities, _norm_point, _normalize_layer_name, _point_on_polyline, _save_upload, _sdf_av_node, _sdf_bore_reductions, _sdf_branch_nodes, _sdf_build_adjacency, _sdf_dijkstra, _sdf_farthest_heads, _sdf_fitting_stats, _sdf_graph_pipes, _sdf_length_checks, _sdf_parse_nodes, _sdf_parse_nozzles, _sdf_parse_pipes_equipment, _sdf_vertical_pipes, _to_float, _write_cad_sdf_learning_profile):
@@ -947,6 +956,77 @@ def register(app, *, _analyze_sdf_sprinkler_network, DESIGN_AUTOMATION_PID_PATH,
     <h1>CAD 프로젝트 편집기</h1>
     {status_line}
     <p class="note">DXF를 불러와 헤드를 매핑하고, 편집한 결과를 K-solver .kfp로 저장하는 데스크톱 프로그램입니다. 인터넷 연결 없이 동작합니다.</p>
+    <p class="note">데스크톱 프로그램이라 브라우저 안에는 표시되지 않고, 서버를 실행 중인 PC 화면에 창으로 열립니다.</p>
+    <a class="btn" href="/" onclick="window.close();return false;">이 창 닫기</a>
+  </div>
+</body>
+</html>"""
+        response = make_response(page)
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        return response
+
+    @app.get("/module-g-cad-editor")
+    def module_g_cad_editor():
+        """모듈 G — 모듈 E 를 복제한 편집기. 트리도 프로세스도 E 와 따로다.
+
+        E 와 동시에 띄울 수 있고, 찍은스펙·표시캐시는 각자의 트리 아래
+        `docs/import` 에 쌓이므로 서로를 덮지 않는다.
+        """
+        if not CAD_EDITOR_G_MAIN.exists():
+            return (
+                "모듈 G 편집기 프로그램을 찾을 수 없습니다: "
+                f"{html_lib.escape(str(CAD_EDITOR_G_MAIN))}",
+                500,
+            )
+        proc = _cad_editor_g_proc.get("handle")
+        already_running = proc is not None and proc.poll() is None
+        launch_error = ""
+        if not already_running:
+            try:
+                _cad_editor_g_proc["handle"] = subprocess.Popen(
+                    [sys.executable, str(CAD_EDITOR_G_MAIN)],
+                    cwd=str(CAD_EDITOR_G_ROOT),
+                )
+            except Exception as exc:
+                launch_error = str(exc)
+
+        if launch_error:
+            status_line = (
+                "<p class=\"err\">편집기를 실행하지 못했습니다: "
+                f"{html_lib.escape(launch_error)}</p>"
+            )
+        elif already_running:
+            status_line = "<p class=\"ok\">모듈 G 편집기가 이미 실행 중입니다. 서버 화면에서 창을 확인하세요.</p>"
+        else:
+            status_line = "<p class=\"ok\">모듈 G 편집기를 실행했습니다. 서버(이 PC) 화면에 창이 열립니다.</p>"
+
+        page = f"""<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Module G · CAD 프로젝트 편집기 (사본)</title>
+  <style>
+    body {{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+           background:#0a1228; color:#e5e7eb; font-family:"Malgun Gothic","맑은 고딕",sans-serif; }}
+    .box {{ max-width:560px; padding:36px 40px; background:#111827; border:1px solid #1f2937;
+            border-radius:16px; box-shadow:0 18px 60px rgba(0,0,0,.45); }}
+    .chip {{ display:inline-block; font-size:12px; letter-spacing:.14em; font-weight:800; color:#93c5fd;
+             border:1px solid #1d4ed8; border-radius:999px; padding:5px 12px; margin-bottom:14px; }}
+    h1 {{ margin:0 0 10px; font-size:22px; }}
+    p {{ margin:8px 0; line-height:1.6; font-size:14px; color:#cbd5e1; }}
+    .ok {{ color:#86efac; font-weight:700; }}
+    .err {{ color:#fca5a5; font-weight:700; }}
+    .note {{ font-size:12.5px; color:#94a3b8; }}
+    a.btn {{ display:inline-block; margin-top:18px; padding:10px 18px; background:#1d4ed8; color:#fff;
+             font-weight:800; text-decoration:none; border-radius:10px; }}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <span class="chip">MODULE G</span>
+    <h1>CAD 프로젝트 편집기 (사본)</h1>
+    {status_line}
+    <p class="note">모듈 E 를 그대로 복제한 편집기입니다. 소스 트리가 따로라 E 와 동시에 띄울 수 있고, 찍은 스펙·손질 결과도 서로 섞이지 않습니다.</p>
     <p class="note">데스크톱 프로그램이라 브라우저 안에는 표시되지 않고, 서버를 실행 중인 PC 화면에 창으로 열립니다.</p>
     <a class="btn" href="/" onclick="window.close();return false;">이 창 닫기</a>
   </div>

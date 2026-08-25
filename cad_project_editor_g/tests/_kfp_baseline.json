@@ -1,6 +1,12 @@
 {
-  "shape": "a959174abb8944407e041e758796a78adadc8cd038bed9e91a600a14389d2422",
-  "bytes": 1155193,
-  "nodes": 604,
-  "pipes": 603
+  "shape": "71c5a5cc8e3a790d0a9587b111a355d106089320c3b603243ce19830d21e27a5",
+  "bytes": 1258141,
+  "nodes": 662,
+  "pipes": 661,
+  "board": {
+    "pts": 19791,
+    "edges": 19797,
+    "disks": 3163,
+    "sources": 1
+  }
 }

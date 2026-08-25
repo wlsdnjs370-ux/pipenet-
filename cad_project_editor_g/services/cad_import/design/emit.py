@@ -84,13 +84,23 @@ def tables_to_network(tables, *, project_title: str):
 
     for row in tables.nodes:
         lab = str(row["label"])
-        net.nodes[lab] = m.Node(
+        io = "Input" if row.get("io_node") == "Input" else "No"
+        node = m.Node(
             node_id=lab,
-            x=float(row.get("x", 0)) / 1000.0,      # mm → m
-            y=float(row.get("y", 0)) / 1000.0,
-            z=float(row.get("elevation", 0.0)),     # 이미 m
-            node_type=("input" if row.get("io_node") == "Input" else "base"),
+            # ★/1000 을 하지 않는다. 좌표는 `normalize_node_coords` 가 이미
+            #   캔버스 단위로 맞춰 놓았다 — 여기서 또 나누면 다시 한 점에 뭉친다.
+            x=float(row.get("x", 0)),
+            y=float(row.get("y", 0)),
+            z=float(row.get("elevation", 0.0)),     # 수리 표고(m) — 손대지 않는다
+            node_type=("input" if io == "Input" else "base"),
         )
+        # PIPENET 규약은 "No"/"Input" 이다. writer 는 metadata 가 없으면
+        # node_type("base")를 그대로 흘려보내 규약 밖 값이 나간다(§증상 3).
+        try:
+            node.metadata["io_node"] = io
+        except Exception:      # noqa: BLE001 — 메타를 못 실어도 좌표는 살린다
+            pass
+        net.nodes[lab] = node
 
     fit_by_pipe: dict = {}
     for f in tables.fittings:
@@ -140,8 +150,15 @@ def tables_to_network(tables, *, project_title: str):
 
 
 def emit_design_sdf(tables, out_path, *,
-                    project_title: str = "Module G 수리계산 입력") -> Path:
+                    project_title: str = "Module G 수리계산 입력",
+                    iso: bool = False, iso_z_scale: float = 1.0,
+                    canvas_units: float = 3000.0,
+                    iso_ref_label=None, iso_no_lift_labels=None) -> Path:
     """SDF + SLF 를 **한 쌍으로** 저장한다. 자산이 없으면 아무것도 안 만든다.
+
+    `iso` / `iso_z_scale` / `canvas_units` 는 **표시 전용**이다(§G12). 수리계산은
+    length·elevation·rise 로 하므로 이 값을 어떻게 두어도 계산 결과는 같다.
+    기본값으로 부르면 종전 호출부가 그대로 동작한다(§3).
 
     반환: 쓴 .sdf 경로. .slf 는 같은 stem 으로 옆에 놓인다.
     """
@@ -149,12 +166,32 @@ def emit_design_sdf(tables, out_path, *,
     template = resolve_template_sdf()
     slf_src = resolve_standard_slf()
 
+    from services.cad_import.design.sdf_post import (
+        bake_isometric, check_schedule, inject_pipe_types,
+        normalize_node_coords)
+
+    # 관종 이름을 먼저 검사한다 — 오타면 파일을 만들지 않는다(§G10).
+    sched_by_pipe = {}
+    for row in getattr(tables, "pipes", None) or ():
+        sched_by_pipe[str(row.get("label"))] = check_schedule(
+            row.get("type") or "")
+
+    # ★순서가 중요하다: 정규화 → 베이크. 바꾸면 lift 배율이 어긋난다(§G12).
+    #   좌표를 바꾸므로 표는 이 시점부터 «표시용» 이다 — 길이·표고는 안 건드린다.
+    normalize_node_coords(tables, canvas_units=canvas_units)
+    if iso:
+        bake_isometric(tables, iso_z_scale=iso_z_scale,
+                       ref_label=iso_ref_label,
+                       no_lift_labels=iso_no_lift_labels)
+
     _, write_sdf = _pc_models()
     net = tables_to_network(tables, project_title=project_title)
 
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     write_sdf(net, out, template_path=template)
+    # writer 는 <Pipe-type> 을 안 쓴다 — 규격 바인딩은 여기서 얹는다(§G9).
+    inject_pipe_types(out, sched_by_pipe)
 
     slf_dst = out.with_suffix(".slf")
     shutil.copyfile(slf_src, slf_dst)

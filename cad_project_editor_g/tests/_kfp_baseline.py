@@ -49,6 +49,9 @@ def build_kfp() -> tuple[Path, dict]:
     res = convert_to_kfp(payload, str(out), **dto_to_convert_kwargs(default_dto()))
     if not res["ok"]:
         raise SystemExit(f"변환 실패: {res.get('blockers')}")
+    b = es.board
+    res["_board"] = {"pts": len(b.pts), "edges": len(b.edges),
+                     "disks": len(b.disks), "sources": len(b.sources)}
     return out, res
 
 
@@ -81,6 +84,7 @@ def main() -> int:
     kfp = res["kfp"]
     cur["nodes"] = len(kfp.get("nodes_meta_runtime") or {})
     cur["pipes"] = len(kfp.get("pipe_data") or {})
+    cur["board"] = res.get("_board")
 
     if mode == "make":
         BASE.write_text(json.dumps(cur, ensure_ascii=False, indent=2),
@@ -93,8 +97,18 @@ def main() -> int:
         print("!! 기준선이 없다 — 먼저 `make` 로 만들 것")
         return 1
     old = json.loads(BASE.read_text(encoding="utf-8"))
+    # ★board 가 다르면 그것은 «입력이 바뀐 것» 이지 코드 회귀가 아니다.
+    #   둘을 같은 빨간불로 알리면 진짜 회귀가 났을 때 그 경고를 안 믿게 된다(B6).
+    board_same = (old.get("board") is None or old.get("board") == cur.get("board"))
     same = (old.get("shape") == cur["shape"]
             and old["nodes"] == cur["nodes"] and old["pipes"] == cur["pipes"])
+    if not board_same:
+        print(f"  기준선 board {old.get('board')}")
+        print(f"  현재   board {cur.get('board')}")
+        print("\n[정보] 입력(board)이 달라졌다 — 코드 회귀가 아니다."
+              "\n       작업 폴더의 표시 캐시가 다시 만들어진 것이다(BLOCKED B6)."
+              "\n       코드를 검증하려면 `make` 로 기준선을 다시 뜬 뒤 비교하라.")
+        return 2
     print(f"  기준선 노드 {old['nodes']} 배관 {old['pipes']} "
           f"모양 {str(old.get('shape'))[:16]}…")
     print(f"  현재   노드 {cur['nodes']} 배관 {cur['pipes']} "

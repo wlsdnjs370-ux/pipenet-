@@ -170,6 +170,39 @@ def _head_attachments(tables) -> tuple[set, dict, int]:
     return heads, parent, len([h for h, v in touching.items() if len(v) != 1])
 
 
+def display_tables(tables, *, iso: bool = False, iso_z_scale: float = 1.0,
+                   canvas_units: float = 3000.0, iso_ref_label=None,
+                   iso_no_lift_labels=None, head_stub_ratio: float = 0.025):
+    """**저장에 쓰는 것과 같은** 표시 좌표 사본을 만든다. (사본, 헤드 셈)
+
+    ★미리보기와 저장이 좌표를 따로 계산하면 미리보기가 거짓말이 된다(§G16).
+      그래서 이 함수 하나만 쓴다 — 창은 이 사본을 그리고, 방출은 이 사본을 쓴다.
+
+    부른 쪽의 표는 건드리지 않는다. 노드 행만 복제하면 된다 — 배관·노즐·부속·
+    장비 행은 여기서 바뀌지 않는다.
+    """
+    from services.cad_import.design.sdf_post import (
+        bake_isometric, normalize_node_coords)
+
+    view = _copy.copy(tables)
+    view.nodes = [dict(n) for n in (getattr(tables, "nodes", None) or ())]
+
+    # ★순서가 중요하다: 정규화 → 베이크. 바꾸면 lift 배율이 어긋난다(§G12).
+    normalize_node_coords(view, canvas_units=canvas_units)
+    stood = None
+    if iso:
+        # 헤드는 같이 돌리지 않고 화면 수직으로 세운다(§G15). 평면 보기에서는
+        # 부착점과 같은 자리에 있는 것이 옳으므로 여기서만 한다.
+        head_nodes, head_parent, loose = _head_attachments(view)
+        stood = bake_isometric(view, iso_z_scale=iso_z_scale,
+                               ref_label=iso_ref_label,
+                               no_lift_labels=iso_no_lift_labels,
+                               head_nodes=head_nodes, head_parent=head_parent,
+                               head_stub_ratio=head_stub_ratio)
+        stood["loose"] = loose
+    return view, stood
+
+
 def emit_design_sdf(tables, out_path, *,
                     project_title: str = "Module G 수리계산 입력",
                     iso: bool = False, iso_z_scale: float = 1.0,
@@ -189,8 +222,7 @@ def emit_design_sdf(tables, out_path, *,
     slf_src = resolve_standard_slf()
 
     from services.cad_import.design.sdf_post import (
-        bake_isometric, check_schedule, inject_pipe_types,
-        normalize_node_coords, sanitize_template)
+        check_schedule, inject_pipe_types, sanitize_template)
 
     # 관종 이름을 먼저 검사한다 — 오타면 파일을 만들지 않는다(§G10).
     sched_by_pipe = {}
@@ -198,28 +230,12 @@ def emit_design_sdf(tables, out_path, *,
         sched_by_pipe[str(row.get("label"))] = check_schedule(
             row.get("type") or "")
 
-    # ★부른 쪽의 표를 건드리지 않는다. 정규화·베이크는 노드 좌표를 in-place 로
-    #   바꾸는데, 창은 `self._tables` 를 들고 있다가 **다시 저장**할 수 있다.
-    #   그대로 두면 두 번째 저장에서 이미 굽힌 좌표를 또 굽어 망이 어긋나고,
-    #   아이소를 껐다 켠 저장은 조용히 등각 그림이 된다. 노드만 복제하면 된다 —
-    #   배관·노즐·부속·장비 행은 여기서 바뀌지 않는다.
-    tables = _copy.copy(tables)
-    tables.nodes = [dict(n) for n in (getattr(tables, "nodes", None) or ())]
-
-    # ★순서가 중요하다: 정규화 → 베이크. 바꾸면 lift 배율이 어긋난다(§G12).
-    #   좌표를 바꾸므로 이 복제본은 이 시점부터 «표시용» 이다 — 길이·표고는 안 건드린다.
-    normalize_node_coords(tables, canvas_units=canvas_units)
-    stood = None
-    if iso:
-        # 헤드는 같이 돌리지 않고 화면 수직으로 세운다(§G15). 평면 보기에서는
-        # 부착점과 같은 자리에 있는 것이 옳으므로 여기서만 한다.
-        head_nodes, head_parent, loose = _head_attachments(tables)
-        stood = bake_isometric(tables, iso_z_scale=iso_z_scale,
-                               ref_label=iso_ref_label,
-                               no_lift_labels=iso_no_lift_labels,
-                               head_nodes=head_nodes, head_parent=head_parent,
-                               head_stub_ratio=head_stub_ratio)
-        stood["loose"] = loose
+    # ★표시 좌표는 미리보기와 **같은 함수**로 만든다 — 창이 그린 것과 파일에
+    #   들어가는 것이 다르면 미리보기가 거짓말이 된다(§G16).
+    tables, stood = display_tables(
+        tables, iso=iso, iso_z_scale=iso_z_scale, canvas_units=canvas_units,
+        iso_ref_label=iso_ref_label, iso_no_lift_labels=iso_no_lift_labels,
+        head_stub_ratio=head_stub_ratio)
 
     _, write_sdf = _pc_models()
     net = tables_to_network(tables, project_title=project_title)

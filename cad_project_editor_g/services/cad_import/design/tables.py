@@ -164,7 +164,7 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
     # ── ② 배관표 — 트리 순서(물 흐르는 방향) → 꼬리에 루프 잔여
     def pipe_row(pid, a, b, *, off):
         pr = pipes_raw.get(pid) or {}
-        dia, _src = (bores.get(pid) or (0, "?"))
+        dia, src = (bores.get(pid) or (0, "?"))
         row = {
             "label": pid,
             "in": label_of.get(a, "?"), "out": label_of.get(b, "?"),
@@ -173,6 +173,10 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
             "length": round(float(pr.get("length_m") or 0.0), 3),   # m
             "elev": round(z(b) - z(a), 3),                          # m
             "c": DEFAULT_C, "status": "Normal", "group": "Unset",
+            # 관경을 무엇이 정했는지 행에 남긴다 — 요약의 집계만으로는 «이 배관»
+            # 이 도면 텍스트에서 온 것인지 별표1 폴백인지 확인할 길이 없다(§G16).
+            # SDF 방출은 이름 붙인 칸만 읽으므로 이 칸이 파일을 바꾸지 않는다.
+            "dia_src": src,
         }
         if off:
             row["off_tree"] = True     # 「길이 잘못 트인」 후보 — 꼬리에 몰린다

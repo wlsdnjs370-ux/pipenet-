@@ -13,11 +13,14 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import QThread, Qt
+from PySide6.QtCore import QPointF, QThread, Qt
+from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog,
-    QFormLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton,
-    QSpinBox, QVBoxLayout, QWidget,
+    QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog,
+    QDoubleSpinBox, QFileDialog, QFormLayout, QGraphicsScene, QGraphicsView,
+    QGroupBox, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QPushButton,
+    QScrollArea, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem,
+    QTabWidget, QVBoxLayout, QWidget,
 )
 
 _WARN_EXCLUDED_RATIO = 0.5      # 이 비율을 넘게 빠지면 경고색으로 알린다
@@ -42,6 +45,28 @@ class _DesignThread(QThread):
             self.error = exc
 
 
+class _PreviewView(QGraphicsView):
+    """휠 줌 · 드래그 팬. 그리는 좌표는 저장에 쓰는 사본 그대로다(§G16)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setScene(QGraphicsScene(self))
+        self.setRenderHint(QPainter.Antialiasing, True)
+        self.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setBackgroundBrush(QColor("#ffffff"))
+
+    def wheelEvent(self, ev):
+        f = 1.15 if ev.angleDelta().y() > 0 else 1 / 1.15
+        self.scale(f, f)
+
+    def fit(self):
+        r = self.scene().itemsBoundingRect()
+        if r.isEmpty():
+            return
+        self.fitInView(r.adjusted(-40, -40, 40, 40), Qt.KeepAspectRatio)
+
+
 class DesignInputDialog(QDialog):
     """기준개수 K 를 받아 최불리 배관망을 확정하고 .sdf + .slf 를 낸다."""
 
@@ -55,13 +80,19 @@ class DesignInputDialog(QDialog):
         self._result = None          # 마지막 계산 결과(창을 다시 열어도 유지)
         self._tables = None
         self._sheets = []
-        self.resize(560, 620)
+        self._preview_points = {}     # 검사가 SDF Position 과 견주는 값(§G16)
+        self._pipe_items = {}
+        self.resize(1200, 780)
+        self.setMinimumSize(1000, 640)
         self._build(k)
         self._load_sheets()
 
     # ── 화면 ────────────────────────────────────────────────────────────
     def _build(self, k):
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        split = QSplitter(Qt.Horizontal, self)
+        left_panel = QWidget()
+        root = QVBoxLayout(left_panel)
 
         box_in = QGroupBox("설계 범위")
         form = QFormLayout()
@@ -145,6 +176,68 @@ class DesignInputDialog(QDialog):
         btn_close.clicked.connect(self.reject)
         close.addWidget(btn_close)
         root.addLayout(close)
+
+        # ── 오른쪽: 미리보기. 저장하기 전에 형태와 표 값을 여기서 본다(§G16).
+        scroll = QScrollArea()
+        scroll.setWidget(left_panel)
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumWidth(360)
+        split.addWidget(scroll)
+
+        tabs = QTabWidget()
+        iso_page = QWidget()
+        ilay = QVBoxLayout(iso_page)
+        self.view_iso = _PreviewView(self)
+        ilay.addWidget(self.view_iso, 1)
+        bar = QHBoxLayout()
+        btn_fit = QPushButton("화면에 맞추기")
+        btn_fit.clicked.connect(lambda: self.view_iso.fit())
+        bar.addWidget(btn_fit)
+        bar.addWidget(QLabel("휠로 확대·축소 · 끌어서 이동"))
+        bar.addStretch(1)
+        ilay.addLayout(bar)
+        tabs.addTab(iso_page, "아이소매트릭")
+
+        tbl_page = QWidget()
+        tlay = QVBoxLayout(tbl_page)
+        self.cmb_table = QComboBox()
+        for label, key in self._TABLES:
+            self.cmb_table.addItem(label, key)
+        self.cmb_table.currentIndexChanged.connect(self._on_table_switch)
+        top = QHBoxLayout()
+        top.addWidget(QLabel("표"))
+        top.addWidget(self.cmb_table)
+        top.addWidget(QLabel("저장될 값 그대로입니다."))
+        top.addStretch(1)
+        tlay.addLayout(top)
+        self.tbl = QTableWidget()
+        self.tbl.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tbl.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tbl.horizontalHeader().setSectionResizeMode(
+            QHeaderView.Interactive)
+        self.tbl.itemSelectionChanged.connect(self._on_table_row)
+        tlay.addWidget(self.tbl, 1)
+        tabs.addTab(tbl_page, "표")
+
+        split.addWidget(tabs)
+        split.setStretchFactor(0, 0)
+        split.setStretchFactor(1, 1)
+        split.setSizes([400, 800])
+        outer.addWidget(split)
+
+        # 보기 설정을 바꾸면 **다시 그리기만** 한다 — 최불리 선정은 그대로다.
+        for w in (self.chk_iso,):
+            w.toggled.connect(self._redraw)
+        for w in (self.spin_zscale, self.spin_canvas, self.spin_stub):
+            w.valueChanged.connect(self._redraw)
+        self.cmb_ref.currentIndexChanged.connect(self._redraw)
+
+    def _on_table_switch(self):
+        if self._tables is None:
+            return
+        from services.cad_import.design.emit import display_tables
+        view, _ = display_tables(self._tables, **self._view_opts())
+        self._fill_tables(view)
 
     def _load_sheets(self):
         """도면이 여러 장일 때만 장 고르기를 보인다."""
@@ -243,6 +336,7 @@ class DesignInputDialog(QDialog):
         self._tables = res["tables"]
         self.btn_save.setEnabled(True)
         self._render(res["got"], res["tables"])
+        self._redraw()
 
     def _dia_texts(self):
         """치수 텍스트 — handoff 캐시에서. 못 읽으면 빈 목록(관경은 별표1 폴백)."""
@@ -305,6 +399,162 @@ class DesignInputDialog(QDialog):
         else:
             self.lbl_warn.hide()
 
+    # ── 미리보기 ────────────────────────────────────────────────────────
+    def _view_opts(self) -> dict:
+        """보기 설정 — 미리보기와 저장이 **같은 값**을 쓴다(§G16)."""
+        return {
+            "iso": self.chk_iso.isChecked(),
+            "iso_z_scale": float(self.spin_zscale.value()),
+            "canvas_units": float(self.spin_canvas.value()),
+            "iso_ref_label": (self._valve_label()
+                              if self.cmb_ref.currentData() == "valve" else None),
+            "head_stub_ratio": float(self.spin_stub.value()) / 100.0,
+        }
+
+    def _loads_by_pipe(self) -> dict:
+        """배관별 담당 헤드 수 — 간선 굵기가 이걸 따른다. 없으면 빈 dict."""
+        got = self._result or {}
+        loads = ((got.get("worst") or {}).get("loads")) or {}
+        ref = got.get("edge_ref") or {}
+        out = {}
+        for pid, edge in ref.items():
+            try:
+                i, j = int(edge[0]), int(edge[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            out[str(pid)] = int(loads.get((min(i, j), max(i, j)), 0))
+        return out
+
+    def _redraw(self):
+        """설정이 바뀌면 여기만 다시 돈다 — 최불리 선정은 다시 하지 않는다."""
+        if self._tables is None:
+            return
+        from services.cad_import.design.emit import display_tables
+
+        view, _stood = display_tables(self._tables, **self._view_opts())
+        at = {str(n.get("label")): (float(n.get("x", 0)), float(n.get("y", 0)))
+              for n in view.nodes}
+        elev = {str(n.get("label")): float(n.get("elevation", 0) or 0)
+                for n in view.nodes}
+        # 검사가 이 값을 저장된 SDF 의 Position 과 견준다(§4).
+        self._preview_points = at
+
+        sc = self.view_iso.scene()
+        sc.clear()
+        self._pipe_items = {}
+        loads = self._loads_by_pipe()
+        max_load = max(loads.values(), default=0) or 1
+
+        # ① 배관 — 굵기는 담당 헤드 수에 비례한다. 주배관이 한눈에 보인다.
+        for row in view.pipes:
+            a, b = at.get(str(row.get("in"))), at.get(str(row.get("out")))
+            if a is None or b is None:
+                continue
+            n = loads.get(str(row.get("label")), 0)
+            w = 1.0 + 5.0 * (n / max_load)
+            pen = QPen(QColor("#334155"), w)
+            pen.setCapStyle(Qt.RoundCap)
+            # Qt 는 y 가 아래로 자란다 — 도면 위아래가 뒤집히지 않게 음수로 그린다.
+            it = sc.addLine(a[0], -a[1], b[0], -b[1], pen)
+            it.setToolTip(f"{row.get('label')} · {row.get('dia')}A · "
+                          f"{row.get('length')} m · 담당 {n}")
+            self._pipe_items[str(row.get("label"))] = (it, pen)
+
+        # ② 헤드 — 상향 △ / 하향 ▽. 방향 규칙은 베이크와 **같다**(표고 차 부호).
+        parent_of = {}
+        for row in view.pipes:
+            a, b = str(row.get("in")), str(row.get("out"))
+            parent_of.setdefault(b, a)
+            parent_of.setdefault(a, b)
+        head_pen = QPen(QColor("#b91c1c"), 1.2)
+        head_br = QBrush(QColor("#fecaca"))
+        for row in view.nozzles:
+            lab = str(row.get("in"))
+            p = at.get(lab)
+            if p is None:
+                continue
+            up = elev.get(lab, 0.0) - elev.get(parent_of.get(lab, ""), 0.0) >= 0
+            s = 9.0
+            y = -p[1]
+            tri = (QPolygonF([QPointF(p[0], y - s), QPointF(p[0] - s, y + s * 0.6),
+                              QPointF(p[0] + s, y + s * 0.6)])
+                   if up else
+                   QPolygonF([QPointF(p[0], y + s), QPointF(p[0] - s, y - s * 0.6),
+                              QPointF(p[0] + s, y - s * 0.6)]))
+            sc.addPolygon(tri, head_pen, head_br).setToolTip(
+                f"헤드 {lab} · {'상향식' if up else '하향식'}")
+
+        # ③ 급수원과 알람밸브 — 어디서 물이 들어오는지 먼저 보여야 한다.
+        for n in view.nodes:
+            if str(n.get("io_node")) != "Input":
+                continue
+            p = at.get(str(n.get("label")))
+            if p:
+                sc.addEllipse(p[0] - 11, -p[1] - 11, 22, 22,
+                              QPen(QColor("#1d4ed8"), 2),
+                              QBrush(QColor("#bfdbfe"))).setToolTip("급수원")
+        av = self._valve_label()
+        if av and at.get(str(av)):
+            p = at[str(av)]
+            sc.addRect(p[0] - 9, -p[1] - 9, 18, 18,
+                       QPen(QColor("#15803d"), 2),
+                       QBrush(QColor("#bbf7d0"))).setToolTip("알람밸브 A/V")
+
+        self.view_iso.fit()
+        self._fill_tables(view)
+
+    _TABLES = (("노드", "nodes"), ("배관", "pipes"),
+               ("노즐", "nozzles"), ("부속", "fittings"))
+    _COL_NAMES = {"label": "이름", "in": "시작", "out": "끝", "type": "관종",
+                  "dia": "호칭경(mm)", "length": "길이(m)", "elev": "표고차(m)",
+                  "dia_src": "관경 근거", "elevation": "표고(m)",
+                  "io_node": "입출력", "flow_lmin": "유량(L/min)",
+                  "count": "개수", "pipe": "배관", "x": "x", "y": "y"}
+    # 근거는 사람 말로 보여 준다 — 「nfpc_fallback」은 화면에 쓸 말이 아니다.
+    _BORE_SRC = {"text": "도면 텍스트", "nfpc_min": "별표1 보강(텍스트<최소)",
+                 "nfpc_fallback": "별표1 (텍스트 없음)"}
+
+    def _fill_tables(self, view):
+        """저장될 값 그대로 보여 준다. 배관표에는 관경 근거를 함께 둔다."""
+        which = self.cmb_table.currentData() or "nodes"
+        rows = list(getattr(view, which, []) or [])
+        cols: list = []
+        for r in rows:
+            for k in r:
+                if k not in cols:
+                    cols.append(k)
+        t = self.tbl
+        t.clear()
+        t.setColumnCount(len(cols))
+        t.setRowCount(len(rows))
+        t.setHorizontalHeaderLabels([self._COL_NAMES.get(c, str(c))
+                                     for c in cols])
+        for i, r in enumerate(rows):
+            for j, c in enumerate(cols):
+                v = r.get(c, "")
+                if c == "dia_src":
+                    v = self._BORE_SRC.get(str(v), v)
+                t.setItem(i, j, QTableWidgetItem("" if v is None else str(v)))
+        t.resizeColumnsToContents()
+
+    def _on_table_row(self):
+        """행을 고르면 그 배관을 도면에서 강조한다."""
+        if (self.cmb_table.currentData() or "nodes") != "pipes":
+            return
+        rows = self.tbl.selectionModel().selectedRows() if self.tbl.selectionModel() else []
+        picked = {self.tbl.item(ix.row(), 0).text() for ix in rows
+                  if self.tbl.item(ix.row(), 0)}
+        for lab, (it, pen) in self._pipe_items.items():
+            if lab in picked:
+                hp = QPen(QColor("#ea580c"), max(pen.widthF() + 2.0, 3.0))
+                hp.setCapStyle(Qt.RoundCap)
+                it.setPen(hp)
+                it.setZValue(2)
+            else:
+                it.setPen(pen)
+                it.setZValue(0)
+
+
     # ── 저장 ────────────────────────────────────────────────────────────
     def _on_save(self):
         if self._tables is None:
@@ -318,16 +568,11 @@ class DesignInputDialog(QDialog):
         if not path:
             return
         try:
-            out = emit_design_sdf(
-                self._tables, path,
-                project_title=f"{key} 수리계산 입력",
-                iso=self.chk_iso.isChecked(),
-                iso_z_scale=float(self.spin_zscale.value()),
-                canvas_units=float(self.spin_canvas.value()),
-                # 알람밸브를 영점으로 — 안 그러면 이음매에서 두 망이 찢어진다.
-                iso_ref_label=self._valve_label()
-                if self.cmb_ref.currentData() == "valve" else None,
-                head_stub_ratio=float(self.spin_stub.value()) / 100.0)
+            # ★미리보기와 **같은** 설정으로 낸다. 두 곳에 적으면 언젠가 어긋나고,
+            #   그러면 화면에서 본 것과 파일이 달라진다(§G16).
+            out = emit_design_sdf(self._tables, path,
+                                  project_title=f"{key} 수리계산 입력",
+                                  **self._view_opts())
         except AssetMissing as exc:
             QMessageBox.critical(self, "수리계산 입력", str(exc))
             return

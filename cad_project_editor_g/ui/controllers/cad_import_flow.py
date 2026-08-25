@@ -211,10 +211,52 @@ class CadImportFlow:
         result = dlg.exec()
         if result == QDialog.Accepted:
             self._save_converted_kfp(mw, session, dlg.result)
+            # [G7] .kfp 를 저장한 «뒤» 네 번째 창을 연다. 순서가 중요하다 —
+            # 수리계산 입력 창이 떠 있어도 .kfp 저장은 이미 끝나 있어야
+            # 서로 영향을 주지 않는다(§G7 수용 기준).
+            self._open_design_input(mw, session, dlg)
             return True
         if result == QDialog.Rejected:
             return False
         return True
+
+    def _open_design_input(self, mw, session, convert_dlg=None):
+        """[G7] 수리계산 입력(SDF) 창. 실패해도 앞 단계를 무르지 않는다.
+
+        `.kfp` 는 솔버가 전체망에서 설계구역을 스스로 고르고, `.sdf` 는 G 가
+        앵커 방식으로 미리 고른다 — 둘이 다를 수 있고 그것은 버그가 아니다(§T2).
+        """
+        try:
+            from ui.dialogs.dialog_design_input import DesignInputDialog
+        except Exception as exc:      # noqa: BLE001
+            print(f"[G7] 수리계산 입력 창을 열지 못했습니다: {exc}")
+            return
+        payload = getattr(convert_dlg, "payload", None)
+        if payload is None:
+            try:
+                payload = session.convert_payload()
+            except Exception as exc:  # noqa: BLE001
+                QMessageBox.warning(mw, "수리계산 입력", str(exc))
+                return
+        sel = None
+        res = getattr(convert_dlg, "result", None) if convert_dlg else None
+        if isinstance(res, dict):
+            sel = res.get("selected_source")
+        try:
+            dlg = DesignInputDialog(mw, session=session, payload=payload,
+                                    selected_source=sel)
+        except Exception as exc:      # noqa: BLE001
+            QMessageBox.warning(mw, "수리계산 입력", str(exc))
+            return
+        # 직전 K·선정 결과는 창 객체가 들고 있다 — 세션에 얹어 다시 열 때 잇는다.
+        prev = getattr(session, "_design_dialog_state", None)
+        if isinstance(prev, dict) and prev.get("k"):
+            dlg.spin_k.setValue(int(prev["k"]))
+        dlg.exec()
+        try:
+            session._design_dialog_state = {"k": int(dlg.spin_k.value())}
+        except Exception:             # noqa: BLE001
+            pass
 
     def _save_converted_kfp(self, mw, session, result):
         _hide_cad_import_dialogs()

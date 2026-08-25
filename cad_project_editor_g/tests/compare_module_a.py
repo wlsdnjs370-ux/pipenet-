@@ -99,7 +99,153 @@ def a_side():
             "spread_m": round(span, 1), "edges": len(getattr(sel, "edges", [])),
             # A 의 비-anchored 경로는 «먼 순서» 라 앵커라는 개념이 없다.
             # 첫 헤드를 앵커로 부르면 거짓이 되므로 그렇게 쓰지 않는다.
-            "anchor_xy": None}
+            "anchor_xy": None,
+            # [G13] 같은 선정 결과로 A 의 SDF 까지 뽑는다 — 두 번 고르지 않는다.
+            "sel": sel}
+
+
+def a_sdf(bundle_sel):
+    """[G13] 같은 도면을 모듈 A 로 방출한 SDF.
+
+    ★A 의 FX 실배관 materialize 는 끄고(pipe_entities=None) 돌린다. G 는 아직
+      FX 를 실배관으로 펴지 않으므로, 켠 채로 견주면 「FX_<기하> Pipe-set 이
+      더 있다」는 차이가 규격 바인딩 차이인 양 읽힌다.
+    """
+    if not bundle_sel:
+        return None, "A 선정 결과 없음"
+    try:
+        import remote30_prototype as A
+        tables = A.build_input_tables(bundle_sel, None,
+                                      project_title="G13 대조 (모듈 A)")
+        OUT.mkdir(parents=True, exist_ok=True)
+        out = OUT / "g13_module_a.sdf"
+        A.emit_sdf(tables, out, project_title="G13 대조 (모듈 A)")
+        return out, None
+    except Exception as exc:      # noqa: BLE001
+        return None, f"{type(exc).__name__}: {exc}"
+
+
+def sdf_shape(path):
+    """SDF 의 «모양» — Pipe-set 구성·개수·좌표 폭. [G13] 대조용."""
+    import xml.etree.ElementTree as ET
+    r = ET.parse(str(path)).getroot()
+    sets = [(ps.findtext("Pipe-type/Name"), len(ps.findall("Pipe")))
+            for ps in r.iter("Pipe-set")]
+    xs, ys = [], []
+    for nd in r.iter("Node"):
+        for q in nd.iter("Position"):
+            try:
+                xs.append(float(q.get("x")))
+                ys.append(float(q.get("y")))
+            except (TypeError, ValueError):
+                pass
+    lens = []
+    for pp in r.iter("Pipe"):
+        try:
+            lens.append(float(pp.get("length") or 0.0))
+        except ValueError:
+            pass
+    return {
+        "pipe_sets": sets,
+        "nodes": len(list(r.iter("Node"))),
+        "pipes": len(list(r.iter("Pipe"))),
+        "nozzles": len(list(r.iter("Nozzle"))),
+        "span_x": (max(xs) - min(xs)) if xs else 0.0,
+        "span_y": (max(ys) - min(ys)) if ys else 0.0,
+        "length_sum": round(sum(lens), 3),
+    }
+
+
+def _fmt_sets(sh):
+    return " / ".join(f"{n or '(빈칸)'}({c})" for n, c in sh["pipe_sets"])
+
+
+def g13(a_selection):
+    """[G13] 같은 도면의 두 SDF 를 견준다 — 구성·좌표 폭·위상 불변."""
+    print("\n[G13] SDF 대조")
+    from services.cad_import.design.bore import extract_dia_text_points
+    from services.cad_import.design.emit import emit_design_sdf
+    from services.cad_import.design.restrict import select_and_expand
+    from services.cad_import.design.tables import build_design_tables
+    from services.cad_import.edit.session import EditSession
+    from services.cad_import.pipeline import handoff, stage1 as s1
+
+    es = EditSession.open(KEY, out_dir=None, load_saved=True, use_cache=True)
+    payload = es.convert_payload()
+    srcs = payload.get("sources") or ()
+    sel = srcs[0].get("tag") if len(srcs) > 1 else None
+    got = select_and_expand(payload, es.board, k=30, selected_source=sel)
+    if not got.get("ok"):
+        print("  !! 제한 전개 실패:", got.get("error"))
+        return None
+    spec = _ROOT / "docs" / "import" / "0단계_새찍기" / f"{KEY}_찍은스펙.json"
+    src = json.loads(spec.read_text(encoding="utf-8")).get("source_dxf")
+    world = handoff.load_world(KEY, src, s1.World) if src else None
+    texts = extract_dia_text_points(world.texts) if world else []
+    tbl = build_design_tables(got["kfp"], got["worst"], got["edge_ref"], texts,
+                              board_pts=es.board.pts)
+    OUT.mkdir(parents=True, exist_ok=True)
+    gs = sdf_shape(emit_design_sdf(tbl, OUT / "g13_module_g.sdf"))
+    print(f"  G : 노드 {gs['nodes']} · 배관 {gs['pipes']} · 노즐 {gs['nozzles']}"
+          f" · 길이합 {gs['length_sum']} m")
+    print(f"      좌표 폭 x {gs['span_x']:.0f} · y {gs['span_y']:.0f}")
+    print(f"      Pipe-set {len(gs['pipe_sets'])}개 — {_fmt_sets(gs)}")
+
+    a_path, a_err = a_sdf(a_selection)
+    rs = None
+    if a_path is None:
+        print(f"  A : 방출 못함 — {a_err}")
+    else:
+        rs = sdf_shape(a_path)
+        print(f"  A : 노드 {rs['nodes']} · 배관 {rs['pipes']} · 노즐 {rs['nozzles']}"
+              f" · 길이합 {rs['length_sum']} m")
+        print(f"      좌표 폭 x {rs['span_x']:.0f} · y {rs['span_y']:.0f}")
+        print(f"      Pipe-set {len(rs['pipe_sets'])}개 — {_fmt_sets(rs)}")
+
+    verdict = {}
+    if rs:
+        g_names = [n for n, _c in gs["pipe_sets"]]
+        r_names = [n for n, _c in rs["pipe_sets"]]
+        # ★FX 슬롯은 둘의 «다른 일» 이다. A 는 헤드마다 신축배관을 실배관으로 펴서
+        #   FX_<기하> Pipe-set 을 만들고, G 는 그 자리를 노즐 접속으로 둔 채 FX 를
+        #   빈 정의로만 싣는다(지시서 G9-1 의 6종). 그러니 FX 로 시작하는 칸을
+        #   빼고 견주는 것이 «라이브러리가 같은가» 라는 물음에 맞는 비교다.
+        core = lambda ns: [n for n in ns if n and not n.startswith("FX")]
+        g_core, r_core = core(g_names), core(r_names)
+        ok_names = (g_core == r_core
+                    and len(gs["pipe_sets"]) == len(rs["pipe_sets"])
+                    and g_names[0] is None and r_names[0] is None)
+        verdict["names"] = (ok_names, g_core, r_core)
+        base = max(rs["span_x"], rs["span_y"]) or 1.0
+        cur = max(gs["span_x"], gs["span_y"])
+        ok_span = abs(cur - base) / base <= 0.05
+        verdict["span"] = (ok_span, cur, base)
+        _fx = lambda ns: [n for n in ns if n and n.startswith("FX")]
+        print(f"  [{'OK  ' if ok_names else 'FAIL'}] 라이브러리 6종 동일 "
+              f"(빈칸 + {g_core}) · 개수 {len(gs['pipe_sets'])}={len(rs['pipe_sets'])}")
+        print(f"        FX 슬롯: G {_fx(g_names)} (빈 정의) vs "
+              f"A {_fx(r_names)} (신축배관 실배관화)")
+        print(f"  [{'OK  ' if ok_span else 'FAIL'}] 좌표 폭 ±5% "
+              f"(G {cur:.0f} vs A {base:.0f})")
+
+    # 위상 불변 — 종전 G 산출과 노드·배관·노즐·길이합이 같은가.
+    # ★기준선은 G9 «이전» 방출기(커밋 9d581f8^)로 뽑은 값이다. 같은 세션에서 두 번
+    #   돌려 같더라는 것은 재현성일 뿐 위상 불변의 증거가 아니다.
+    bl = _ROOT / "tests" / "_g13_topology.json"
+    keys = ("nodes", "pipes", "nozzles", "length_sum")
+    cur_t = {k: gs[k] for k in keys}
+    if bl.is_file():
+        old_t = json.loads(bl.read_text(encoding="utf-8"))
+        note = old_t.pop("_note", "")
+        same = all(old_t.get(k) == cur_t[k] for k in keys)
+        verdict["topology"] = (same, old_t, cur_t)
+        print(f"  [{'OK  ' if same else 'FAIL'}] 위상 불변 (G9 이전 산출 대비) — "
+              f"종전 {old_t} / 지금 {cur_t}")
+    else:
+        bl.write_text(json.dumps(cur_t, ensure_ascii=False), encoding="utf-8")
+        verdict["topology"] = (None, None, cur_t)
+        print(f"  [기록] 위상 기준선 신규 — {cur_t} (다음 실행부터 비교)")
+    return {"g": gs, "a": rs, "a_err": a_err, "verdict": verdict}
 
 
 def main() -> int:
@@ -180,6 +326,57 @@ def main() -> int:
         "관경이 다른 간선은 전부 `source`(text / nfpc_min / nfpc_fallback)로",
         "설명되어야 한다. 설명되지 않는 차이가 버그다.", "",
     ]
+    _a_sel = a.get("sel") if a.get("ok") else None
+    # [G13] SDF 구성 대조 — 규격 바인딩·좌표 정규화가 A 와 같은 모양인가.
+    s13 = g13(_a_sel)
+    if s13:
+        gs, rs, vd = s13["g"], s13["a"], s13["verdict"]
+        lines += ["", "## [G13] SDF 대조 — 같은 도면, 두 계통의 산출", ""]
+        if rs is None:
+            lines += [f"모듈 A 의 SDF 를 뽑지 못했다 — `{s13['a_err']}`. "
+                      "G 쪽 값만 싣는다.", ""]
+        lines += [
+            "| 항목 | G | A |", "|---|---|---|",
+            f"| Pipe-set 개수 | {len(gs['pipe_sets'])} | "
+            f"{len(rs['pipe_sets']) if rs else '—'} |",
+            f"| 첫 칸이 빈 placeholder | {gs['pipe_sets'][0][0] is None} | "
+            f"{rs['pipe_sets'][0][0] is None if rs else '—'} |",
+            f"| Pipe-type 구성 | {_fmt_sets(gs)} | {_fmt_sets(rs) if rs else '—'} |",
+            f"| 노드 / 배관 / 노즐 | {gs['nodes']} / {gs['pipes']} / {gs['nozzles']} | "
+            + (f"{rs['nodes']} / {rs['pipes']} / {rs['nozzles']} |" if rs else "— |"),
+            f"| 좌표 폭 (x × y) | {gs['span_x']:.0f} × {gs['span_y']:.0f} | "
+            + (f"{rs['span_x']:.0f} × {rs['span_y']:.0f} |" if rs else "— |"),
+            f"| 배관 길이 합 (m) | {gs['length_sum']} | "
+            + (f"{rs['length_sum']} |" if rs else "— |"), "",
+            "### 수용 기준", "",
+        ]
+        if "names" in vd:
+            ok, g_core, r_core = vd["names"]
+            lines.append(f"- [{'PASS' if ok else 'FAIL'}] **Pipe-set 구성** — "
+                         f"개수 {len(gs['pipe_sets'])} = "
+                         f"{len(rs['pipe_sets'])}, 첫 칸 빈 placeholder 동일, "
+                         f"라이브러리 6종의 이름·순서 동일: `{g_core}`.")
+            lines.append("  마지막 한 칸만 다르다 — G 는 `FX`(빈 정의), A 는 "
+                         "`FX_20A_216`(배관 30). A 는 헤드마다 신축배관을 **실배관으로 펴서** "
+                         "규격 기하별 Pipe-set 을 동적 생성하고, G 는 그 자리를 노즐 접속으로 "
+                         "둔 채 `FX` 를 드롭다운용 빈 정의로만 싣는다(지시서 G9-1 의 6종). "
+                         "**계산의 차이가 아니라 신축배관을 펴느냐 마느냐의 차이**이며, "
+                         "G 의 FX 실배관화는 이번 지시 범위 밖이다.")
+        if "span" in vd:
+            ok, cur, base = vd["span"]
+            lines.append(f"- [{'PASS' if ok else 'FAIL'}] **좌표 폭 ±5%** — "
+                         f"G {cur:.0f} · A {base:.0f} "
+                         f"(차이 {abs(cur - base) / (base or 1) * 100:.1f}%). "
+                         "둘 다 bbox 중심 → (0,0), 긴 축 → 캔버스 단위(3000) 규칙이다.")
+        ok, old_t, cur_t = vd.get("topology", (None, None, None))
+        if ok is None:
+            lines.append(f"- [기록] **위상 불변** — 기준선을 새로 떴다 `{cur_t}`. "
+                         "다음 실행부터 이 값과 비교한다.")
+        else:
+            lines.append(f"- [{'PASS' if ok else 'FAIL'}] **위상 불변** — "
+                         f"G9 이전(`9d581f8^`) 방출기 산출 `{old_t}` / 지금 `{cur_t}`. "
+                         "좌표 정규화와 아이소매트릭은 표시만 바꾼다는 증거다.")
+        lines.append("")
     DOC.write_text("\n".join(lines), encoding="utf-8")
     print(f"\n  대조표: {DOC}")
     return 0

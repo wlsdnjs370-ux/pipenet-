@@ -25,7 +25,8 @@ from dataclasses import dataclass, field
 
 # 전개 좌표(m) → 표 좌표(mm)
 M_TO_MM = 1000.0
-DEFAULT_PIPE_TYPE = "KSD 3507"
+# 관종의 권위는 `design/sdf_post.SCHEDULE_DEFS` 다(SLF 의 Item-name 과 정합).
+# 여기서 다시 적으면 두 곳이 갈라지므로, 기본값도 그쪽에서 받는다.
 DEFAULT_C = 120
 
 
@@ -93,7 +94,9 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
                         project_title="Module G 수리계산 입력",
                         bores=None, fittings=None, nozzle_k=80.0,
                         nozzle_flow_lmin=80, valve_nodes=None,
-                        excluded_heads=0, board_pts=None) -> PipeTablesG:
+                        excluded_heads=0, board_pts=None,
+                        default_schedule=None,
+                        schedule_by_pipe=None) -> PipeTablesG:
     """제한 전개 망 → 5개 테이블. 지시서 §1 공개 시그니처.
 
     `bores` / `fittings` 는 G3 · G4 결과를 받는다. 없으면 여기서 만들지 않고
@@ -101,6 +104,13 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
     """
     from services.cad_import.design.bore import decide_bores, source_counts
     from services.cad_import.design.fitting import build_fittings
+    from services.cad_import.design.sdf_post import DEFAULT_SCHEDULE, check_schedule
+
+    # 관종 이름을 **먼저** 검사한다. 오타가 조용히 기본값으로 떨어지면 PIPENET
+    # 에서 다시 "None defined" 가 되고, 그때는 원인을 도면 탓으로 오해하게 된다.
+    default_schedule = check_schedule(default_schedule or DEFAULT_SCHEDULE)
+    schedule_by_pipe = {str(k): check_schedule(v)
+                        for k, v in (schedule_by_pipe or {}).items()}
 
     meta_nodes = (net or {}).get("nodes_meta_runtime") or {}
     pipes_raw = (net or {}).get("pipe_data") or {}
@@ -158,7 +168,7 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         row = {
             "label": pid,
             "in": label_of.get(a, "?"), "out": label_of.get(b, "?"),
-            "type": DEFAULT_PIPE_TYPE,
+            "type": schedule_by_pipe.get(pid, default_schedule),
             "dia": int(dia),                       # 호칭경 mm
             "length": round(float(pr.get("length_m") or 0.0), 3),   # m
             "elev": round(z(b) - z(a), 3),                          # m
@@ -222,6 +232,7 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         ("설계면적 폭 (m)", str((worst or {}).get("span_m", ""))),
         ("corridor 총연장 (m)", str((worst or {}).get("total_m", ""))),
         ("주배관 담당 헤드 수", str((worst or {}).get("max_load", ""))),
+        ("배관 규격(기본)", default_schedule),
         ("관경 근거 — 도면 텍스트", str(src.get("text", 0))),
         ("관경 근거 — 별표1 보강 (text<min)", str(src.get("nfpc_min", 0))),
         ("관경 근거 — 별표1 폴백 (text 없음)", str(src.get("nfpc_fallback", 0))),

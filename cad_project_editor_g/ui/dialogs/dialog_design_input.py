@@ -15,8 +15,9 @@ import os
 
 from PySide6.QtCore import QThread, Qt
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
-    QLabel, QMessageBox, QPushButton, QSpinBox, QComboBox, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog,
+    QFormLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton,
+    QSpinBox, QVBoxLayout, QWidget,
 )
 
 _WARN_EXCLUDED_RATIO = 0.5      # 이 비율을 넘게 빠지면 경고색으로 알린다
@@ -73,8 +74,37 @@ class DesignInputDialog(QDialog):
         self.cmb_sheet.addItem("전체", 0)
         self.lbl_sheet = QLabel("도면 장")
         form.addRow(self.lbl_sheet, self.cmb_sheet)
+        # [G10] 배관 규격 — 이름은 SLF 의 Item-name 과 같아야 PIPENET 이 내경을
+        # 바인딩한다. 배관별 지정은 아직 미정이라(BLOCKED B8) 전체 기본값만 연다.
+        from services.cad_import.design.sdf_post import SCHEDULE_NAMES
+        self.cmb_sched = QComboBox()
+        for n in SCHEDULE_NAMES:
+            self.cmb_sched.addItem(n, n)
+        form.addRow("배관 규격 (전체 기본값)", self.cmb_sched)
         box_in.setLayout(form)
         root.addWidget(box_in)
+
+        # [G12] 표시 전용 조절 — 수리계산 결과는 바뀌지 않는다.
+        box_view = QGroupBox("보기 (표시 전용 · 수리계산 결과는 바뀌지 않습니다)")
+        vform = QFormLayout()
+        self.chk_iso = QCheckBox("30° 등각으로 굽기")
+        vform.addRow("아이소매트릭 보기", self.chk_iso)
+        self.spin_zscale = QDoubleSpinBox()
+        self.spin_zscale.setRange(0.5, 3.0)
+        self.spin_zscale.setSingleStep(0.1)
+        self.spin_zscale.setValue(1.0)
+        vform.addRow("고도 펼침 배율", self.spin_zscale)
+        self.spin_canvas = QSpinBox()
+        self.spin_canvas.setRange(500, 20000)
+        self.spin_canvas.setSingleStep(500)
+        self.spin_canvas.setValue(3000)
+        vform.addRow("캔버스 크기", self.spin_canvas)
+        self.cmb_ref = QComboBox()
+        self.cmb_ref.addItem("알람밸브 (없으면 표고 중앙)", "valve")
+        self.cmb_ref.addItem("표고 중앙", "mid")
+        vform.addRow("lift 영점", self.cmb_ref)
+        box_view.setLayout(vform)
+        root.addWidget(box_view)
 
         row = QHBoxLayout()
         self.btn_run = QPushButton("최불리 배관망 확정")
@@ -160,6 +190,7 @@ class DesignInputDialog(QDialog):
             return
 
         k = int(self.spin_k.value())
+        sched = str(self.cmb_sched.currentData() or "")
         only = self._only_heads()
         payload = self._payload
         sel = self._selected_source
@@ -178,7 +209,8 @@ class DesignInputDialog(QDialog):
                 got["kfp"], got["worst"], got["edge_ref"], texts,
                 board_pts=board.pts,
                 excluded_heads=got.get("excluded_heads", 0),
-                valve_nodes=None)
+                valve_nodes=None,
+                default_schedule=sched)
             return {"ok": True, "got": got, "tables": tbl}
 
         self.btn_run.setEnabled(False)
@@ -278,8 +310,15 @@ class DesignInputDialog(QDialog):
         if not path:
             return
         try:
-            out = emit_design_sdf(self._tables, path,
-                                  project_title=f"{key} 수리계산 입력")
+            out = emit_design_sdf(
+                self._tables, path,
+                project_title=f"{key} 수리계산 입력",
+                iso=self.chk_iso.isChecked(),
+                iso_z_scale=float(self.spin_zscale.value()),
+                canvas_units=float(self.spin_canvas.value()),
+                # 알람밸브를 영점으로 — 안 그러면 이음매에서 두 망이 찢어진다.
+                iso_ref_label=self._valve_label()
+                if self.cmb_ref.currentData() == "valve" else None)
         except AssetMissing as exc:
             QMessageBox.critical(self, "수리계산 입력", str(exc))
             return
@@ -291,6 +330,13 @@ class DesignInputDialog(QDialog):
             f"저장했습니다.\n\n{out}\n{out.with_suffix('.slf')}\n\n"
             "SDF 는 옆의 .slf 와 **한 쌍**입니다. 라이브러리 없이 열면 "
             "관경이 'Unset' 으로 뜹니다.")
+
+    def _valve_label(self):
+        """알람밸브 노드의 표 라벨. 손질에서 안 찍었으면 None(표고 중앙으로)."""
+        for row in (self._tables.equipment if self._tables else ()):
+            if str(row.get("desc")) == "A/V":
+                return row.get("in")
+        return None
 
     # 창을 닫았다 다시 열어도 직전 결과를 쓰기 위한 접근자
     @property

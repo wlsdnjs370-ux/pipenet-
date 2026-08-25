@@ -103,6 +103,52 @@ def _raises(fn, exc):
     return False
 
 
+# ─────────────────────────────────────────────────────────── G10
+def g10():
+    print("\n[G10] 관종 선택을 표까지 잇기")
+    from services.cad_import.design.sdf_post import UnknownSchedule
+    from services.cad_import.design.tables import build_design_tables
+
+    net = {"pipe_data": {"P1": {"start": "N1", "end": "N2", "length_m": 1.0}},
+           "nodes_meta_runtime": {
+               "N1": {"coords": [0.0, 0.0, 0.0], "type_id": "pump"},
+               "N2": {"coords": [1.0, 0.0, 0.0], "type_id": "base"}}}
+    worst = {"heads": [], "loads": {(0, 1): 1}}
+
+    t = build_design_tables(net, worst, {"P1": (0, 1)}, [])
+    check("기본 관종은 KSD 3507", t.pipes[0]["type"] == "KSD 3507",
+          t.pipes[0]["type"])
+    check("meta 에 관종이 남는다", ("배관 규격(기본)", "KSD 3507") in t.meta)
+
+    t2 = build_design_tables(net, worst, {"P1": (0, 1)}, [],
+                             default_schedule="CPVC2")
+    check("기본값을 바꾸면 표가 따라온다", t2.pipes[0]["type"] == "CPVC2",
+          t2.pipes[0]["type"])
+
+    t3 = build_design_tables(net, worst, {"P1": (0, 1)}, [],
+                             schedule_by_pipe={"P1": "KSD 3576"})
+    check("배관별 지정이 먹는다", t3.pipes[0]["type"] == "KSD 3576",
+          t3.pipes[0]["type"])
+
+    check("없는 이름은 오류(조용히 기본값 아님)",
+          _raises(lambda: build_design_tables(net, worst, {"P1": (0, 1)}, [],
+                                              default_schedule="KSD3507"),
+                  UnknownSchedule), "공백 빠진 이름")
+
+    # 없는 이름을 주면 **파일을 만들지 않아야** 한다.
+    from services.cad_import.design.emit import emit_design_sdf
+    bad = OUT / "should_not_exist_g10.sdf"
+    if bad.exists():
+        bad.unlink()
+    t_bad = build_design_tables(net, worst, {"P1": (0, 1)}, [])
+    t_bad.pipes[0]["type"] = "NOPE"
+    check("잘못된 관종이면 파일을 안 만든다",
+          _raises(lambda: emit_design_sdf(t_bad, bad), UnknownSchedule)
+          and not bad.exists(), str(bad.name))
+    return True
+
+
+
 # ─────────────────────────────────────────────────────────── G11
 def g11():
     print("\n[G11] 좌표 정규화")
@@ -243,7 +289,7 @@ def regression():
 
 
 def main() -> int:
-    for fn in (g9, g11, g12, regression):
+    for fn in (g9, g10, g11, g12, regression):
         fn()
     print("\n" + "=" * 56)
     if FAILS:

@@ -150,11 +150,32 @@ def tables_to_network(tables, *, project_title: str):
     return net
 
 
+def _head_attachments(tables) -> tuple[set, dict, int]:
+    """헤드 노드와 그 부착(부모) 노드 — [G15] 수직 세우기의 입력.
+
+    헤드 = 노즐이 물려 있는 노드(`tables.nozzles[].in`). 부모 = 그 노드에 붙은
+    **유일한** 배관의 반대편 끝. 배관이 둘 이상이면 관말이 아니라는 뜻이라
+    세우지 않고 세기만 한다 — 위상이 의심스러운 자리를 조용히 지나치지 않는다.
+    """
+    heads = {str(r.get("in")) for r in (getattr(tables, "nozzles", None) or ())
+             if r.get("in") is not None}
+    touching: dict = {}
+    for row in (getattr(tables, "pipes", None) or ()):
+        a, b = str(row.get("in")), str(row.get("out"))
+        if a in heads:
+            touching.setdefault(a, []).append(b)
+        if b in heads:
+            touching.setdefault(b, []).append(a)
+    parent = {h: v[0] for h, v in touching.items() if len(v) == 1}
+    return heads, parent, len([h for h, v in touching.items() if len(v) != 1])
+
+
 def emit_design_sdf(tables, out_path, *,
                     project_title: str = "Module G 수리계산 입력",
                     iso: bool = False, iso_z_scale: float = 1.0,
                     canvas_units: float = 3000.0,
-                    iso_ref_label=None, iso_no_lift_labels=None) -> Path:
+                    iso_ref_label=None, iso_no_lift_labels=None,
+                    head_stub_ratio: float = 0.025) -> Path:
     """SDF + SLF 를 **한 쌍으로** 저장한다. 자산이 없으면 아무것도 안 만든다.
 
     `iso` / `iso_z_scale` / `canvas_units` 는 **표시 전용**이다(§G12). 수리계산은
@@ -188,10 +209,17 @@ def emit_design_sdf(tables, out_path, *,
     # ★순서가 중요하다: 정규화 → 베이크. 바꾸면 lift 배율이 어긋난다(§G12).
     #   좌표를 바꾸므로 이 복제본은 이 시점부터 «표시용» 이다 — 길이·표고는 안 건드린다.
     normalize_node_coords(tables, canvas_units=canvas_units)
+    stood = None
     if iso:
-        bake_isometric(tables, iso_z_scale=iso_z_scale,
-                       ref_label=iso_ref_label,
-                       no_lift_labels=iso_no_lift_labels)
+        # 헤드는 같이 돌리지 않고 화면 수직으로 세운다(§G15). 평면 보기에서는
+        # 부착점과 같은 자리에 있는 것이 옳으므로 여기서만 한다.
+        head_nodes, head_parent, loose = _head_attachments(tables)
+        stood = bake_isometric(tables, iso_z_scale=iso_z_scale,
+                               ref_label=iso_ref_label,
+                               no_lift_labels=iso_no_lift_labels,
+                               head_nodes=head_nodes, head_parent=head_parent,
+                               head_stub_ratio=head_stub_ratio)
+        stood["loose"] = loose
 
     _, write_sdf = _pc_models()
     net = tables_to_network(tables, project_title=project_title)
@@ -215,6 +243,13 @@ def emit_design_sdf(tables, out_path, *,
           f"노즐 {len(net.nozzles)})")
     print(f"[G6] SLF {slf_dst.name} · {slf_dst.stat().st_size:,} bytes "
           f"— SDF 는 이 라이브러리 없이 열면 관경이 'Unset' 이 된다")
+    if stood:
+        msg = (f"[G15] 헤드 {stood['heads']}개 중 {stood['vertical']}개를 화면 "
+               f"수직으로 세움 (스텁 {stood['stub']:.1f} unit)")
+        if stood["not_terminal"]:
+            msg += (f" · 배관이 둘 이상 붙어 못 세운 헤드 {stood['not_terminal']}개"
+                    f" — 관말이 아니라 위상이 의심스럽습니다")
+        print(msg)
     print(f"[G14] 템플릿 잔재 정리 · 남의 라이브러리 경로 {cleaned['user_lib']}건 → "
           f"'{slf_dst.name}' · 주기 {cleaned['text_element']}건 · "
           f"제목 {cleaned['title']}건 · 설명 {cleaned['net_desc']}건 지움")

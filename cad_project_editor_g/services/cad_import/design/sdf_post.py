@@ -105,8 +105,10 @@ def normalize_node_coords(tables, *, canvas_units: float = 3000.0) -> float:
 
 # ────────────────────────────────────────────── [G12] 아이소매트릭 베이크
 def bake_isometric(tables, *, iso_z_scale: float = 1.0,
-                   ref_label=None, no_lift_labels=None) -> None:
-    """30° 등각투영을 x,y 에 in-place 로 굽는다.
+                   ref_label=None, no_lift_labels=None,
+                   head_nodes=None, head_parent=None,
+                   head_stub_ratio: float = 0.025) -> dict:
+    """30° 등각투영을 x,y 에 in-place 로 굽는다. 헤드만은 화면 수직으로 세운다.
 
     공식은 `routes/r30_combined.py:_bake_isometric_node_coords` 와 **같아야 한다** —
     다른 공식을 쓰면 같은 망이 SDF·KFP·HAS 에서 다르게 보인다::
@@ -120,12 +122,25 @@ def bake_isometric(tables, *, iso_z_scale: float = 1.0,
     `no_lift_labels` 는 라이저·기계실 계통도처럼 schematic y 가 이미 수직을
     인코딩한 노드 — lift 를 또 더하면 이중부호로 구부러진다.
 
+    ★**헤드는 같이 돌리지 않는다**(§G15). 같이 돌리면 헤드 스텁이 가지배관과 같은
+      기울기로 눕는다. 헤드는 부착(부모) 노드의 등각 좌표를 그대로 물려받고 화면
+      Y 로만 `stub` 만큼 움직인다 — 그래서 `head.x' == parent.x'` 가 **정확히**
+      성립해 스텁이 수직으로 선다. 방향은 표고 차의 부호가 정한다(위=상향식,
+      아래=하향식). DTO 를 다시 읽지 않는다 — 표고 차가 이미 그 정보를 담고 있고,
+      상하향식이 섞인 도면도 자동으로 갈린다.
+
+      헤드에 배관이 둘 이상 붙어 있으면 세우지 않고 **세어서 돌려준다**. 관말이
+      아니라는 뜻이라 위상이 의심스럽고, 조용히 넘기면 그 의심이 사라진다.
+
     ★`elevation` 은 건드리지 않는다(표시 전용 변환이다).
     """
     nodes = getattr(tables, "nodes", None) or []
     if not nodes:
-        return
+        return {"heads": 0, "vertical": 0, "not_terminal": 0}
     no_lift = {str(x) for x in (no_lift_labels or ())}
+    heads = {str(x) for x in (head_nodes or ())}
+    parent_of = {str(k): str(v) for k, v in (head_parent or {}).items()}
+
     xs = [float(n.get("x", 0) or 0) for n in nodes]
     ys = [float(n.get("y", 0) or 0) for n in nodes]
     elevs = [float(n.get("elevation", 0) or 0) for n in nodes]
@@ -139,13 +154,46 @@ def bake_isometric(tables, *, iso_z_scale: float = 1.0,
     e_range = e_max - e_min
     diag = math.hypot(max(xs) - min(xs), max(ys) - min(ys)) if xs else 0.0
     lift = (diag * 0.5 * iso_z_scale / e_range) if e_range > 0 else 0.0
+    # 스텁 길이는 캔버스에 비례한다. 정규화가 이미 가장 긴 축을 캔버스 단위로
+    # 맞춰 놓았으므로 지금 폭이 곧 그 값이다 — 인자를 하나 더 받지 않아도 된다.
+    stub = max(max(xs) - min(xs), max(ys) - min(ys)) * float(head_stub_ratio)
+
+    elev_of = {str(n.get("label")): float(n.get("elevation", 0) or 0)
+               for n in nodes}
+    # 세울 수 있는 헤드 = 부모를 아는 헤드. 나머지는 보통 노드처럼 돌린다.
+    standable = {h for h in heads if h in parent_of}
+    baked: dict = {}
     for n in nodes:
+        lab = str(n.get("label"))
+        if lab in standable:
+            continue                      # 부모를 굽고 난 뒤에 얹는다
         x = float(n.get("x", 0) or 0)
         y = float(n.get("y", 0) or 0)
         e = float(n.get("elevation", 0) or 0)
-        dy = 0.0 if str(n.get("label")) in no_lift else (e - e_ref) * lift
+        dy = 0.0 if lab in no_lift else (e - e_ref) * lift
         n["x"] = (x - y) * COS30
         n["y"] = (x + y) * SIN30 + dy
+        baked[lab] = (n["x"], n["y"])
+
+    vertical = 0
+    for n in nodes:
+        lab = str(n.get("label"))
+        if lab not in standable:
+            continue
+        pxy = baked.get(parent_of[lab])
+        if pxy is None:                   # 부모도 헤드였다 — 지어내지 않는다
+            x = float(n.get("x", 0) or 0)
+            y = float(n.get("y", 0) or 0)
+            n["x"] = (x - y) * COS30
+            n["y"] = (x + y) * SIN30
+            continue
+        de = elev_of.get(lab, 0.0) - elev_of.get(parent_of[lab], 0.0)
+        n["x"] = pxy[0]
+        n["y"] = pxy[1] + (stub if de >= 0 else -stub)
+        vertical += 1
+
+    return {"heads": len(heads), "vertical": vertical,
+            "not_terminal": len(heads) - len(standable), "stub": stub}
 
 
 # ─────────────────────────────────────────── [G9] Pipe-type 주입

@@ -103,6 +103,14 @@ class DesignInputDialog(QDialog):
         self.cmb_ref.addItem("알람밸브 (없으면 표고 중앙)", "valve")
         self.cmb_ref.addItem("표고 중앙", "mid")
         vform.addRow("lift 영점", self.cmb_ref)
+        # 헤드 스텁 — 등각에서 헤드를 화면 수직으로 세울 때 그 길이(§G15).
+        # 캔버스 크기에 대한 비율이라 캔버스를 키워도 비례가 유지된다.
+        self.spin_stub = QDoubleSpinBox()
+        self.spin_stub.setRange(0.5, 10.0)
+        self.spin_stub.setSingleStep(0.5)
+        self.spin_stub.setValue(2.5)
+        self.spin_stub.setSuffix(" %")
+        vform.addRow("헤드 스텁 길이", self.spin_stub)
         box_view.setLayout(vform)
         root.addWidget(box_view)
 
@@ -318,7 +326,8 @@ class DesignInputDialog(QDialog):
                 canvas_units=float(self.spin_canvas.value()),
                 # 알람밸브를 영점으로 — 안 그러면 이음매에서 두 망이 찢어진다.
                 iso_ref_label=self._valve_label()
-                if self.cmb_ref.currentData() == "valve" else None)
+                if self.cmb_ref.currentData() == "valve" else None,
+                head_stub_ratio=float(self.spin_stub.value()) / 100.0)
         except AssetMissing as exc:
             QMessageBox.critical(self, "수리계산 입력", str(exc))
             return

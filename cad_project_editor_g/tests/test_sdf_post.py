@@ -215,6 +215,80 @@ def g12():
 
 
 # ────────────────────────────────────────────── 회귀 (가장 중요)
+# ─────────────────────────────────────────────────────────── G15
+def g15():
+    print("\n[G15] 헤드는 화면 수직으로 선다")
+    from services.cad_import.design.sdf_post import bake_isometric
+
+    # 가지배관 1—2—3 에 헤드가 스텁으로 달린 망.
+    #   헤드 U(상향식) : 부모 2 보다 표고가 높다  → 화면 위로
+    #   헤드 D(하향식) : 부모 3 보다 표고가 낮다  → 화면 아래로
+    def mk():
+        return _T(
+            [{"label": "1", "x": 0.0, "y": 0.0, "elevation": 0.0},
+             {"label": "2", "x": 1000.0, "y": 0.0, "elevation": 0.0},
+             {"label": "3", "x": 2000.0, "y": 1000.0, "elevation": 0.0},
+             {"label": "U", "x": 1000.0, "y": 0.0, "elevation": 0.3},
+             {"label": "D", "x": 2000.0, "y": 1000.0, "elevation": -0.3}],
+            pipes=[{"label": "P1", "in": "1", "out": "2"},
+                   {"label": "P2", "in": "2", "out": "3"},
+                   {"label": "S1", "in": "2", "out": "U"},
+                   {"label": "S2", "in": "3", "out": "D"}])
+
+    t = mk()
+    got = bake_isometric(t, head_nodes={"U", "D"},
+                         head_parent={"U": "2", "D": "3"},
+                         head_stub_ratio=0.025)
+    at = {str(n["label"]): (n["x"], n["y"]) for n in t.nodes}
+    stub = got["stub"]
+    check("헤드 둘을 다 세웠다", got["vertical"] == 2, str(got))
+    check("상향식 x 가 부모와 정확히 같다", at["U"][0] == at["2"][0],
+          f"{at['U'][0]:.6f} vs {at['2'][0]:.6f}")
+    check("하향식 x 가 부모와 정확히 같다", at["D"][0] == at["3"][0],
+          f"{at['D'][0]:.6f} vs {at['3'][0]:.6f}")
+    check("상향식은 위로 stub 만큼",
+          abs((at["U"][1] - at["2"][1]) - stub) < 1e-9,
+          f"{at['U'][1] - at['2'][1]:.4f} = +{stub:.4f}")
+    check("하향식은 아래로 stub 만큼",
+          abs((at["D"][1] - at["3"][1]) + stub) < 1e-9,
+          f"{at['D'][1] - at['3'][1]:.4f} = -{stub:.4f}")
+
+    # 스텁 길이는 조절된다.
+    t2 = mk()
+    g2 = bake_isometric(t2, head_nodes={"U", "D"},
+                        head_parent={"U": "2", "D": "3"}, head_stub_ratio=0.05)
+    check("스텁 비율이 길이를 정한다", abs(g2["stub"] - stub * 2) < 1e-9,
+          f"{stub:.2f} → {g2['stub']:.2f}")
+
+    # 표고가 같으면 위로 본다(지시서 G15-2). 지어내지 않는다.
+    t3 = _T([{"label": "2", "x": 0.0, "y": 0.0, "elevation": 0.0},
+             {"label": "U", "x": 0.0, "y": 0.0, "elevation": 0.0}],
+            pipes=[{"label": "S", "in": "2", "out": "U"}])
+    bake_isometric(t3, head_nodes={"U"}, head_parent={"U": "2"})
+    a3 = {str(n["label"]): (n["x"], n["y"]) for n in t3.nodes}
+    check("표고 차가 0 이면 위로", a3["U"][1] >= a3["2"][1],
+          f"{a3['U'][1]:.4f} vs {a3['2'][1]:.4f}")
+
+    # 관말이 아닌 헤드는 세우지 않고 «센다».
+    t4 = _T([{"label": "1", "x": 0.0, "y": 0.0, "elevation": 0.0},
+             {"label": "H", "x": 100.0, "y": 0.0, "elevation": 0.0},
+             {"label": "2", "x": 200.0, "y": 0.0, "elevation": 0.0}],
+            pipes=[{"label": "A", "in": "1", "out": "H"},
+                   {"label": "B", "in": "H", "out": "2"}])
+    g4 = bake_isometric(t4, head_nodes={"H"}, head_parent={})
+    check("관통 헤드는 세우지 않고 센다",
+          g4["vertical"] == 0 and g4["not_terminal"] == 1, str(g4))
+
+    # 기존 호출부(헤드 인자 없이)는 그대로 돌아야 한다.
+    t5 = _T([{"label": "1", "x": 0.0, "y": 0.0, "elevation": 0.0},
+             {"label": "2", "x": 100.0, "y": 0.0, "elevation": 0.0}])
+    bake_isometric(t5)
+    check("헤드 인자 없이 부르면 종전과 같다",
+          abs(t5.nodes[1]["y"] - 100.0 * 0.5) < 1e-9,
+          f"y={t5.nodes[1]['y']:.4f}")
+    return True
+
+
 # ─────────────────────────────────────────────────────────── G14
 _SYNTH_SDF = r'''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE Project SYSTEM "spray.dtd">
@@ -374,6 +448,19 @@ def regression():
           head and head[0] == '<?xml version="1.0" encoding="UTF-8"?>',
           head[0] if head else "(없음)")
 
+    # ★[G15] 실도면 B1F 의 헤드는 «관말» 이 아니다 — 배관이 양쪽에 붙은 관통
+    #   노드다. 그래서 세울 스텁 자체가 없고, 지시서 G15-4 가 정한 대로 세우지
+    #   않고 센다. 아래는 그 셈이 빠짐없이 맞아떨어지는지 본다 — 조용히 옮기거나
+    #   조용히 빠뜨리는 것을 막는다.
+    from services.cad_import.design.emit import _head_attachments
+    _t = tables()
+    hn, hp, loose = _head_attachments(_t)
+    check("헤드 셈이 빠짐없다(세운 것 + 못 세운 것 = 전체)",
+          len(hp) + loose == len(hn),
+          f"헤드 {len(hn)} = 세울 수 있음 {len(hp)} + 관통 {loose}")
+    print(f"       └ B1F 실측: 헤드 {len(hn)}개가 모두 관통 노드(붙은 배관 2개)라 "
+          f"세울 스텁이 없다 — BLOCKED B11")
+
     # ★[G14] 산출 SDF 가 남의 라이브러리를 가리키면 Type 은 채워져도 Diameter 가
     #   전부 "Unset" 이 된다 — 관종 바인딩은 됐는데 관경만 안 뜨는 모습이라
     #   원인을 엉뚱한 데서 찾게 된다.
@@ -430,7 +517,7 @@ def regression():
 
 
 def main() -> int:
-    for fn in (g9, g10, g11, g12, g14, regression):
+    for fn in (g9, g10, g11, g12, g14, g15, regression):
         fn()
     print("\n" + "=" * 56)
     if FAILS:

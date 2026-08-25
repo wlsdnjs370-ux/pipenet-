@@ -73,10 +73,31 @@ def main():
         j = r.get_json()
         nf = sum(len(g["fields"]) for g in (j.get("groups") or []))
         check("변환 폼 필드", j.get("ok") and nf >= 12, f"{nf}칸")
+        # 칸 이름이 「① (m)」 뿐이라 그림이 붙어야 어느 토막인지 읽힌다.
+        figs = [g["title"] for g in (j.get("groups") or []) if g.get("diagram")]
+        check("변환 폼 그림 대응", len(figs) == 5, " · ".join(figs))
+        for key in ("branch", "upright", "pendant", "combo", "valve"):
+            r = c.get(f"/api/module-f/diagram/{key}")
+            check(f"그림 {key}",
+                  r.status_code == 200 and r.data[:8] == b"\x89PNG\r\n\x1a\n",
+                  f"HTTP {r.status_code} · {len(r.data):,}B")
+        r = c.get("/api/module-f/diagram/nonexistent")
+        check("그림 키 화이트리스트", r.status_code == 404, f"HTTP {r.status_code}")
 
         print("\n[1] 만료 세션 방어")
         r = c.get("/api/module-f/world?sid=nonexistent")
         check("없는 sid → 410", r.status_code == 410, f"HTTP {r.status_code}")
+        # 도면 키는 파일 이름이지 경로가 아니다. E 는 키를 경로에 그대로 끼워
+        # 넣으므로(정규화하는 것은 handoff_path 뿐) 문 앞에서 막아야 한다.
+        EVIL_KEYS = ["../../../../Users/admin/Desktop/PWNED",
+                     r'..\..\..\Windows\Temp\x',
+                     '..', '.', 'a/b', r'C:\Windows\x',
+                     'tab	key', '']
+        for evil in EVIL_KEYS:
+            r = c.post("/api/module-f/reopen", json={"key": evil})
+            if not check(f"경로 키 거절 {evil[:24]!r}", r.status_code == 400,
+                         f"HTTP {r.status_code}"):
+                break
 
         if not os.path.isfile(DXF):
             print(f"\n!! 시험용 DXF 없음: {DXF} — 2~4단 생략")
@@ -176,6 +197,81 @@ def main():
         check("헤드 미선택 시 종류변경 거절", r.status_code == 400,
               f"HTTP {r.status_code}")
 
+        print("\n[3-C] 모듈 A 이식 — 자동 이음 (도면에서 잰 여유)")
+        before = c.get(f"/api/module-f/edit/state?sid={sid2}").get_json()["state"]
+        n_body0 = before["counts"]["bodies"]
+        n_edge0 = before["counts"]["edges"]
+        check("덩이·도달 요약", isinstance(before.get("body_stat"), dict),
+              json.dumps(before.get("body_stat"), ensure_ascii=False))
+        check("도면 장 감지", isinstance(before.get("sheets"), list),
+              f"{len(before.get('sheets') or [])}장")
+        r = c.post("/api/module-f/edit/autojoin/scan", json={"sid": sid2})
+        j = r.get_json()
+        aj = (j.get("state") or {}).get("autojoin") or {}
+        check("끊긴 곳 찾기", j.get("ok") and aj.get("n", 0) > 0,
+              f"여유 {aj.get('eps_mm')}mm · 후보 {aj.get('n')}곳"
+              f" · 관끝 {aj.get('ends')}")
+        check("여유는 사다리에서 고른 값",
+              aj.get("eps_mm") in (30.0, 50.0, 75.0, 100.0, 150.0, 200.0,
+                                   250.0, 300.0, 400.0, 500.0, 650.0, 800.0),
+              str(aj.get("eps_mm")))
+        check("사다리 시행표", len(aj.get("trials") or []) == 12,
+              f"{len(aj.get('trials') or [])}행")
+        check("후보는 화면용 점선 좌표로만",
+              len(aj.get("lines") or []) == aj.get("n"),
+              f"{len(aj.get('lines') or [])}선")
+        check("후보만으로는 망이 안 바뀜",
+              (j["state"]["counts"]["edges"] == n_edge0
+               and j["state"]["counts"]["bodies"] == n_body0),
+              f"간선 {j['state']['counts']['edges']} · 덩이 "
+              f"{j['state']['counts']['bodies']}")
+        r = c.post("/api/module-f/edit/autojoin/apply", json={"sid": sid2})
+        check("자동 이음 수락", r.get_json().get("ok"), str(r.get_json())[:120])
+        # ★가림막이 캔버스만 덮던 시절엔 옆 패널 단추가 작업 중에도 눌렸다.
+        #   두 번 들어가면 낡은 후보로 또 붙어 되돌리기 한 번으로 복구가 안 된다.
+        r2 = c.post("/api/module-f/edit/autojoin/apply", json={"sid": sid2})
+        check("작업 중 중복 제출 거절", r2.status_code == 409,
+              f"HTTP {r2.status_code}")
+        jb = wait(c, sid2, "자동 이음", limit=900)
+        mid0 = c.get(f"/api/module-f/edit/state?sid={sid2}").get_json()["state"]
+        rep = mid0.get("autojoin_report") or {}
+        check("자동 이음 완료",
+              jb["state"] == "done" and rep.get("made", 0) > 0,
+              f"붙임 {rep.get('made')} · 막힘 {rep.get('blocked')}"
+              f" · 이미이어짐 {rep.get('skipped')} · {rep.get('kinds')}")
+        check("덩이 감소",
+              rep.get("bodies_after", 10 ** 9) < n_body0,
+              f"{n_body0} → {rep.get('bodies_after')}")
+        check("붙인 뒤 후보 표시 해제", mid0.get("autojoin") is None,
+              str(mid0.get("autojoin"))[:60])
+        check("E 가 대부분 받아들임 — 걸름이 듣는다",
+              rep.get("made", 0) >= (rep.get("made", 0) + rep.get("blocked", 0)) * 0.5,
+              f"붙임 {rep.get('made')} / 후보 "
+              f"{rep.get('made', 0) + rep.get('blocked', 0)}")
+        # 덩이 수는 대리지표다. 진짜 성과는 «급수원에서 물이 닿는 헤드».
+        wet0 = (before.get("body_stat") or {}).get("source_heads", 0)
+        r = c.post("/api/module-f/edit/flow", json={"sid": sid2})
+        j = r.get_json()
+        wet1 = (j.get("water") or {}).get("wet_heads", 0) if j.get("ok") else 0
+        check("물 닿는 헤드가 늘어남", wet1 > wet0 * 1.5,
+              f"{wet0} → {wet1} / {(j.get('water') or {}).get('total_heads')}")
+
+        # ★스냅샷을 하나만 남기므로 되돌리기 «한 번» 이 묶음 전체를 되돌려야 한다.
+        r = c.post("/api/module-f/edit/undo", json={"sid": sid2})
+        back = r.get_json()["state"]
+        check("되돌리기 한 번으로 원상복구",
+              back["counts"]["bodies"] == n_body0
+              and back["counts"]["edges"] == n_edge0,
+              f"덩이 {back['counts']['bodies']}(원래 {n_body0}) · "
+              f"간선 {back['counts']['edges']}(원래 {n_edge0})")
+
+        r = c.post("/api/module-f/edit/save", json={"sid": sid2})
+        j = r.get_json()
+        check("손질 저장", j.get("ok"), str(j.get("message"))[:70])
+        check("응답에 서버 경로가 없다",
+              "path" not in j and ":" not in str(j.get("file", "")),
+              f"file={j.get('file')}")
+
         print("\n[3-A] 모듈 A 이식 — 레이어 자동 추천")
         cats = wd.get("cats") or {}
         check("레이어 카테고리 분류", bool(cats),
@@ -205,8 +301,26 @@ def main():
             check("경로 간선 축소", 0 < s["path_edges"] < st["counts"]["edges"],
                   f"{s['path_edges']} / 전체 {st['counts']['edges']}")
             w = j["state"]["worst"]
-            check("화면 좌표 동봉", len(w["heads"]) == 30 and len(w["path"]) > 0,
-                  f"헤드 {len(w['heads'])} · 경로 {len(w['path'])}")
+            check("최불리망 좌표 동봉",
+                  len(w["heads"]) == 30 and len(w["corridor"]) > 0,
+                  f"헤드 {len(w['heads'])} · corridor {len(w['corridor'])}")
+            # ★설계면적 — 앵커 방식은 «먼 순서» 와 달리 헤드가 뭉쳐야 한다.
+            #   퍼짐(대각)을 재서 배관 연장보다 한참 작은지 본다.
+            import math as _m
+            hp = [(h[0], h[1]) for h in w["heads"]]
+            xs = [p_[0] for p_ in hp]; ys = [p_[1] for p_ in hp]
+            diag_m = _m.hypot(max(xs) - min(xs), max(ys) - min(ys)) / 1000.0
+            check("설계면적으로 뭉침(퍼짐 < 총연장)",
+                  diag_m < s["total_m"],
+                  f"퍼짐 {diag_m:.1f} m · 배관연장 {s['total_m']} m · 폭 {s['span_m']} m")
+            check("앵커 = 최원 유하거리", w.get("anchor") is not None
+                  and abs(s["far_m"] - w["far_m"]) < 0.01,
+                  f"앵커 {w.get('anchor')} · 최원 {s['far_m']} m")
+            # 담당 헤드 수 — 주배관은 여러 헤드를 먹이고, 말단 가지는 load=1.
+            loads = [c_[4] for c_ in w["corridor"]]
+            check("담당 헤드 수(load) 실림",
+                  s["max_load"] >= 1 and s["max_load"] == max(loads),
+                  f"최대 {s['max_load']} · load=1 가지 {sum(1 for x in loads if x == 1)}개")
         r = c.post("/api/module-f/edit/worst-clear", json={"sid": sid2})
         check("선정 해제", r.get_json()["state"]["worst"] is None)
         c.post("/api/module-f/edit/worst", json={"sid": sid2, "k": 30})

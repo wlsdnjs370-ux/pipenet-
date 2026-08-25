@@ -283,6 +283,15 @@
     "rule": "/api/module-f/convert/run"
   },
   {
+    "endpoint": "module_f_diagram",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/diagram/<key>"
+  },
+  {
     "endpoint": "module_f_download",
     "methods": [
       "GET",
@@ -290,6 +299,30 @@
       "OPTIONS"
     ],
     "rule": "/api/module-f/download"
+  },
+  {
+    "endpoint": "module_f_edit_autojoin_apply",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/autojoin/apply"
+  },
+  {
+    "endpoint": "module_f_edit_autojoin_clear",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/autojoin/clear"
+  },
+  {
+    "endpoint": "module_f_edit_autojoin_scan",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/autojoin/scan"
   },
   {
     "endpoint": "module_f_edit_click",

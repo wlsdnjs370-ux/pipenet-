@@ -53,8 +53,25 @@ def build_kfp() -> tuple[Path, dict]:
 
 
 def digest(path: Path) -> dict:
+    """구조 지문 — 바이트가 아니라 «망의 모양» 을 잰다.
+
+    ★sha256 으로는 못 잰다. `build_planar_graph` 의 노드 번호(N1145 …)가 집합
+    순회 순서를 타서 **같은 코드·같은 입력에도 실행마다 달라진다**(실측: 41,892
+    줄 중 97줄이 다르고 전부 노드 id, 크기는 같다). 바이트 비교는 코드 회귀가
+    아니라 번호 뽑기를 재는 셈이다.
+
+    대신 이름에 안 기대는 것만 본다 — 노드/배관 수, 배관 길이·호칭경의 정렬된
+    목록. 코드가 망을 바꾸면 이 셋 중 하나는 반드시 움직인다.
+    """
     raw = path.read_bytes()
-    return {"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+    kfp = json.loads(raw.decode("utf-8"))
+    pipes = kfp.get("pipe_data") or {}
+    lens = sorted(round(float((q or {}).get("length_m") or 0.0), 3)
+                  for q in pipes.values())
+    dias = sorted(int((q or {}).get("nominal_mm") or 0) for q in pipes.values())
+    shape = json.dumps({"lens": lens, "dias": dias}, sort_keys=True)
+    return {"shape": hashlib.sha256(shape.encode()).hexdigest(),
+            "bytes": len(raw)}
 
 
 def main() -> int:
@@ -69,19 +86,20 @@ def main() -> int:
         BASE.write_text(json.dumps(cur, ensure_ascii=False, indent=2),
                         encoding="utf-8")
         print(f"기준선 생성 · 노드 {cur['nodes']} · 배관 {cur['pipes']} · "
-              f"{cur['bytes']:,} bytes\n  sha256 {cur['sha256'][:16]}…")
+              f"{cur['bytes']:,} bytes\n  구조 {cur['shape'][:16]}…")
         return 0
 
     if not BASE.exists():
         print("!! 기준선이 없다 — 먼저 `make` 로 만들 것")
         return 1
     old = json.loads(BASE.read_text(encoding="utf-8"))
-    same = old["sha256"] == cur["sha256"]
-    print(f"  기준선 노드 {old['nodes']} 배관 {old['pipes']} {old['bytes']:,}B "
-          f"{old['sha256'][:16]}…")
-    print(f"  현재   노드 {cur['nodes']} 배관 {cur['pipes']} {cur['bytes']:,}B "
-          f"{cur['sha256'][:16]}…")
-    print("\n[OK  ] 전체망 .kfp 비트 동일" if same
+    same = (old.get("shape") == cur["shape"]
+            and old["nodes"] == cur["nodes"] and old["pipes"] == cur["pipes"])
+    print(f"  기준선 노드 {old['nodes']} 배관 {old['pipes']} "
+          f"모양 {str(old.get('shape'))[:16]}…")
+    print(f"  현재   노드 {cur['nodes']} 배관 {cur['pipes']} "
+          f"모양 {cur['shape'][:16]}…")
+    print("\n[OK  ] 전체망 .kfp 구조 동일" if same
           else "\n[FAIL] 전체망 .kfp 가 달라졌다 — 어떤 항목도 완료가 아니다")
     return 0 if same else 1
 

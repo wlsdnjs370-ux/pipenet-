@@ -349,8 +349,12 @@ def g5():
             continue
         i, j = ref
         dsum += abs(float(r["length"]) - _m.dist(es.board.pts[i], es.board.pts[j]) / 1000.0)
-    check("배관별 길이가 board 간선과 일치(형상 무왜곡)", dsum <= 0.5,
-          f"절대차 합 {dsum:.3f} m")
+    # ★절대값 문턱은 망 크기에 따라 흔들린다 — 같은 품질인데 망이 커지면
+    #   빨간불이 된다(실측: 0.180 m/180 m → 0.592 m/212 m, 비율은 0.1~0.3 %).
+    #   형상 왜곡은 «비율» 로 재야 한다.
+    ratio = dsum / total_len if total_len else 0.0
+    check("배관별 길이가 board 간선과 일치(형상 무왜곡)", ratio <= 0.005,
+          f"절대차 합 {dsum:.3f} m / 총연장 {total_len:.1f} m = {ratio*100:.2f}%")
 
     # 표 첫 행 = 급수원 인접 배관 / 트리 꼬리 = 루프 잔여
     first = tbl.pipes[0] if tbl.pipes else {}

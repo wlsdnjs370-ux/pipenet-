@@ -118,6 +118,61 @@ def _summary(got: dict, tbl) -> dict:
     }
 
 
+def _classify_excluded(sess: dict, got: dict, board) -> dict:
+    """[F-5] 빠진 헤드를 세 갈래로 가른다 — «제외 2,864» 를 숫자로 쪼갠다.
+
+        찍히지 않음     A 후보인데 board 에 없는 것 (suggest 를 돌린 세션만)
+        이음 끊김       board 물길은 닿는데 전개가 못 붙인 것 (B4 부착 실패)
+        물길 미도달     board 물길 자체가 안 닿는 것 (이음 끊김의 상류)
+
+    좌표를 함께 돌려준다 — 화면이 분류별로 켜고 끌 수 있어야 어디를 이어야
+    하는지 보인다. 숫자만 주면 «크다» 만 알고 «어디» 를 모른다.
+    """
+    disks = getattr(board, "disks", []) or []
+    total = len(disks)
+    # board 물길 도달 — 급수원 성분에 붙은 헤드.
+    try:
+        wet_board = set((board.water_state() or {}).get("wet_heads") or [])
+    except Exception as exc:  # noqa: BLE001
+        print(f"[설계] 물길 분류 실패 — 미도달로 못 가른다: {exc}")
+        wet_board = None
+    # 전개가 붙일 수 있는 헤드 — 엔진의 공개 probe 를 그대로 쓴다.
+    attach = None
+    try:
+        from services.cad_import.design.restrict import attachable_heads
+        es = sess.get("edit")
+        probe = attachable_heads(es.convert_payload())
+        if probe.get("ok"):
+            attach = set(probe.get("wet") or ())
+    except Exception as exc:  # noqa: BLE001
+        print(f"[설계] 부착 probe 실패 — 이음 끊김을 못 가른다: {exc}")
+
+    def xy(i):
+        d = disks[i]
+        return [round(float(d[0]), 1), round(float(d[1]), 1)]
+
+    out = {"total": total}
+    if wet_board is not None:
+        dry = [i for i in range(total) if i not in wet_board]
+        out["dry"] = {"n": len(dry), "xy": [xy(i) for i in dry]}
+        if attach is not None:
+            unatt = [i for i in wet_board if i not in attach and i < total]
+            out["unattached"] = {"n": len(unatt), "xy": [xy(i) for i in unatt]}
+    # 찍히지 않음 — suggest 후보 중 어느 board 헤드와도 250mm 안에 없는 것.
+    cands = sess.get("suggest")
+    if cands:
+        import math as _m
+        centers = [(float(d[0]), float(d[1])) for d in disks]
+        missing = []
+        for c_ in cands:
+            cx, cy = float(c_["x"]), float(c_["y"])
+            if not any(_m.hypot(cx - px, cy - py) <= 250.0
+                       for px, py in centers):
+                missing.append([round(cx, 1), round(cy, 1)])
+        out["unpicked"] = {"n": len(missing), "xy": missing}
+    return out
+
+
 def emit_design_files(sess: dict, UPLOAD_DIR, cfg: dict | None = None):
     """[F-4 공유] 세션의 확정된 표 → .sdf+.slf 한 쌍. (경로, 오류) 를 돌려준다.
 
@@ -208,9 +263,19 @@ def register(app, *, UPLOAD_DIR):
             except UnknownSchedule as exc:
                 return {"ok": False, "error": str(exc)}
             # 표는 메모리에만 — emit 을 눌러야 파일이 생긴다.
+            marks = _classify_excluded(sess, got, es.board)
             sess["design"] = {"got": got, "tables": tbl, "k": cfg["k"],
-                              "schedule": cfg["schedule"]}
+                              "schedule": cfg["schedule"], "marks": marks}
             s = _summary(got, tbl)
+            s["excluded_detail"] = {
+                k2: v2["n"] for k2, v2 in marks.items()
+                if isinstance(v2, dict)}
+            det = s["excluded_detail"]
+            print("[설계] 제외 사유 — "
+                  + " · ".join(f"{lab} {det[k2]:,}" for k2, lab in
+                               (("dry", "물길 미도달"),
+                                ("unattached", "이음 끊김"),
+                                ("unpicked", "찍히지 않음")) if k2 in det))
             print(f"[설계] 표 확정 · 헤드 {s['k']} · 앵커 {s['far_m']} m · "
                   f"배관 {s['counts']['pipes']} · 제외 {s['excluded_heads']:,}")
             return {"ok": True, "summary": s}
@@ -309,6 +374,9 @@ def register(app, *, UPLOAD_DIR):
             "stood": stood,
             "view": {"nodes": nodes, "pipes": pipes},
             "tables": tbl.as_dict(),        # 저장될 값 그대로 (F-3 표 4종)
+            # [F-5] 제외 사유 분류 — mm 세계좌표. 설계 캔버스(정규화 좌표)가
+            # 아니라 손질 망 위에 그려야 «어디» 인지 보인다.
+            "marks": d.get("marks") or {},
         })
 
     @app.post("/api/module-f/design/emit")

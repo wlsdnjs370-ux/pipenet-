@@ -472,6 +472,14 @@
     "rule": "/api/module-f/pick/mode"
   },
   {
+    "endpoint": "module_f_pick_suggest",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/pick/suggest"
+  },
+  {
     "endpoint": "module_f_pick_undo",
     "methods": [
       "OPTIONS",

@@ -342,6 +342,23 @@
     </section>
 
     <!-- 3. 손질 -->
+    <section class="card hidden" id="panel-suggest">
+      <h2>찍기 후보 제안 <b class="tag">MODULE A</b></h2>
+      <p class="hint">모듈 A 의 인식(R1~R5)이 헤드 후보를 표시합니다.
+        <b>후보일 뿐, 확정은 사용자의 반영입니다</b> — 반영은 사람 클릭과
+        같은 찍기 경로로만 들어갑니다.</p>
+      <div class="row">
+        <button id="pk-suggest">후보 제안</button>
+        <button id="pk-suggest-apply" disabled>전체 반영</button>
+        <button id="pk-suggest-clear" disabled>후보 지우기</button>
+      </div>
+      <div id="pk-suggest-info" class="hint"></div>
+      <p class="hint">후보 표시를 클릭하면 그 후보만 반영에서 제외/복원됩니다.
+        신뢰도: <span style="color:#22c55e">●</span> 높음(≥0.9)
+        <span style="color:#eab308">●</span> 중간(≥0.75)
+        <span style="color:#94a3b8">●</span> 낮음</p>
+    </section>
+
     <section class="card hidden" id="panel-edit">
       <h2>손질 모드</h2>
       <div class="row">
@@ -495,6 +512,16 @@
       </div>
       <div id="dg-summary" class="hint">아직 확정하지 않았습니다.</div>
 
+      <h2 style="margin-top:12px">제외 사유 보기</h2>
+      <p class="hint">켜면 캔버스가 손질 망 위에 그 분류의 헤드를 표시합니다
+        (설계 미리보기와 좌표계가 달라 겹쳐 그리지 않습니다).</p>
+      <label class="chk"><input type="checkbox" id="dg-mk-dry">
+        <span><span style="color:#64748b">●</span> 물길 미도달</span></label>
+      <label class="chk"><input type="checkbox" id="dg-mk-unatt">
+        <span><span style="color:#eab308">●</span> 이음 끊김(부착 실패)</span></label>
+      <label class="chk"><input type="checkbox" id="dg-mk-unpicked">
+        <span><span style="color:#a855f7">●</span> 찍히지 않음(후보 제안 대비)</span></label>
+
       <h2 style="margin-top:12px">표 <span class="hint" style="display:inline">
         — 저장될 값 그대로</span></h2>
       <div class="row">
@@ -549,6 +576,8 @@
   const S = {
     sid: null, key: null, stage: "open",
     world: null, pick: null, edit: null, design: null,
+    suggest: null,                          // [F-5] 찍기 후보 (제안만)
+    suggestOff: new Set(),                  // 반영에서 제외한 후보 index
     hidden: new Set(),                      // 숨긴 레이어 묶음 id
     view: { scale: 1, ox: 0, oy: 0 },
     poll: null, convResult: null,
@@ -671,9 +700,15 @@
     ctx.fillRect(0, 0, w, h);
     // 변환 단계에서도 손질한 망을 계속 보여준다 — 값만 채우는 동안 화면이
     // 검게 비면 무엇을 변환하는지 알 수 없다.
-    if (S.stage === "design" && S.design) drawDesign();
+    if (S.stage === "design" && S.design) {
+      if (designMarksOn() && S.edit) { drawEdit(); drawDesignMarks(); }
+      else drawDesign();
+    }
     else if ((S.stage === "edit" || S.stage === "conv") && S.edit) drawEdit();
-    else if (S.world) drawWorld();
+    else if (S.world) {
+      drawWorld();
+      if (S.stage === "pick" && S.suggest) drawSuggest();
+    }
   }
 
   function drawWorld() {
@@ -918,6 +953,7 @@
     $("panel-conv").classList.toggle("hidden", name !== "conv");
     $("panel-design").classList.toggle("hidden", name !== "design");
     $("panel-layers").classList.toggle("hidden", name !== "pick");
+    $("panel-suggest").classList.toggle("hidden", name !== "pick");
     draw();
   }
 
@@ -1647,6 +1683,7 @@
     });
     const d = await api(`/api/module-f/design/preview?${q}`);
     S.design = { view: d.view, tables: d.tables, settings: d.settings,
+                 marks: d.marks || {},
                  hilite: (S.design && S.design.hilite) || new Set() };
     const xs = d.view.nodes.map(n => n.x), ys = d.view.nodes.map(n => n.y);
     fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
@@ -1771,7 +1808,183 @@
          ? kv('<span class="warn">제외 헤드</span>',
               `${s.excluded_heads.toLocaleString()}개 (후보 ${s.candidate_heads}`
               + ` / 도면 ${s.total_heads.toLocaleString()})`)
+         : "")
+      + (s.excluded_detail
+         ? kv("제외 사유",
+              [["dry", "물길 미도달"], ["unattached", "이음 끊김"],
+               ["unpicked", "찍히지 않음"]]
+                .filter(([k]) => k in s.excluded_detail)
+                .map(([k, lab]) =>
+                  `${lab} ${s.excluded_detail[k].toLocaleString()}`)
+                .join(" · "))
          : "");
+  }
+
+  // ── [F-5] 찍기 후보 제안 — 표시는 여기, 반영은 기존 찍기 경로로만 ──
+  function suggestColor(conf) {
+    return conf >= 0.9 ? "#22c55e" : conf >= 0.75 ? "#eab308" : "#94a3b8";
+  }
+
+  function drawSuggest() {
+    for (let i = 0; i < S.suggest.length; i++) {
+      const c = S.suggest[i];
+      const px = sx(c.x), py = sy(c.y);
+      ctx.beginPath();
+      ctx.arc(px, py, 6, 0, Math.PI * 2);
+      ctx.strokeStyle = suggestColor(c.conf);
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      if (S.suggestOff.has(i)) {
+        ctx.beginPath();
+        ctx.moveTo(px - 5, py - 5); ctx.lineTo(px + 5, py + 5);
+        ctx.moveTo(px - 5, py + 5); ctx.lineTo(px + 5, py - 5);
+        ctx.strokeStyle = "#ef4444";
+        ctx.stroke();
+      }
+    }
+    ctx.lineWidth = 1;
+  }
+
+  function suggestInfo() {
+    const n = S.suggest ? S.suggest.length : 0;
+    const off = S.suggestOff.size;
+    $("pk-suggest-info").innerHTML = n
+      ? kv("후보", `${n}개 · 제외 ${off}개 · 반영 예정 ${n - off}개`)
+      : "";
+  }
+
+  $("pk-suggest").onclick = async () => {
+    busy(true, "모듈 A 인식으로 후보를 찾는 중…");
+    try {
+      await post("/api/module-f/pick/suggest", { sid: S.sid });
+      watch(async () => {
+        try {
+          const j = await api(`/api/module-f/convert/result?sid=${S.sid}`);
+          const r = (j.result || {});
+          if (!r.ok) throw new Error("후보 제안 실패 — 진행 로그를 확인하세요.");
+          S.suggest = r.candidates || [];
+          S.suggestOff = new Set();
+          $("pk-suggest-apply").disabled = !S.suggest.length;
+          $("pk-suggest-clear").disabled = !S.suggest.length;
+          suggestInfo();
+          draw();
+          const b = r.bands || {};
+          say(`후보 ${r.n}개 — ${Object.entries(b)
+            .map(([k, v]) => `${k} ${v}`).join(" · ")}. 후보일 뿐, `
+            + "확정은 사용자의 반영입니다.", "ok");
+        } catch (err) { say(err.message, "err"); }
+      });
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  $("pk-suggest-clear").onclick = () => {
+    S.suggest = null;
+    S.suggestOff = new Set();
+    $("pk-suggest-apply").disabled = true;
+    $("pk-suggest-clear").disabled = true;
+    suggestInfo();
+    draw();
+  };
+
+  $("pk-suggest-apply").onclick = async () => {
+    if (!S.suggest || !S.suggest.length) return;
+    if (!S.pick || !S.pick.mat_done) {
+      say("재료 선택을 먼저 완료해야 헤드를 반영할 수 있습니다.", "warn");
+      return;
+    }
+    busy(true, "후보를 찍기 경로로 반영 중…");
+    let okN = 0, dupN = 0, failN = 0, lastState = null;
+    try {
+      for (let i = 0; i < S.suggest.length; i++) {
+        if (S.suggestOff.has(i)) continue;
+        const c = S.suggest[i];
+        // ★사람 클릭과 같은 API — E 의 확정 규칙이 그대로 심판한다.
+        //   E 가 그 자리에서 헤드 표시를 못 찾으면 그 후보는 반영되지 않는다.
+        //   찍기는 «문양 서명» 단위 토글이라, 이미 찍힌 서명 위의 후보는
+        //   «취소» 로 응답한다 — 즉시 되클릭해 복원하고 «이미 반영» 으로 센다.
+        const d = await post("/api/module-f/pick/click",
+                             { sid: S.sid, x: c.x, y: c.y, max_d: 300 });
+        const act = d.report && d.report["동작"];
+        if (act === "추가") okN++;
+        else if (act === "취소") {
+          const d2 = await post("/api/module-f/pick/click",
+                                { sid: S.sid, x: c.x, y: c.y, max_d: 300 });
+          if (d2.state) lastState = d2.state;
+          dupN++;
+        }
+        else failN++;
+        if (d.state) lastState = d.state;
+        if (i % 50 === 0) busy(true, `반영 중… ${i}/${S.suggest.length}`);
+      }
+      if (lastState) S.pick = lastState;
+      say(`새 문양 ${okN}개 반영 · 이미 찍힌 문양 ${dupN}개 · E 가 거른 후보 `
+        + `${failN}개 — 거른 것은 그 자리에 헤드 표시가 없다는 뜻입니다.`,
+        failN ? "warn" : "ok");
+      renderPick();
+      draw();
+    } catch (err) { say(err.message, "err"); }
+    finally { busy(false); }
+  };
+
+  // 후보 클릭 → 반영 제외/복원 (찍기 단계, 후보 있을 때만)
+  cv.addEventListener("mousedown", (e) => {
+    if (S.stage !== "pick" || !S.suggest || e.button !== 0) return;
+    for (let i = 0; i < S.suggest.length; i++) {
+      const c = S.suggest[i];
+      const dx = sx(c.x) - e.offsetX, dy = sy(c.y) - e.offsetY;
+      if (dx * dx + dy * dy <= 64) {
+        if (S.suggestOff.has(i)) S.suggestOff.delete(i);
+        else S.suggestOff.add(i);
+        suggestInfo();
+        draw();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        return;
+      }
+    }
+  }, true);
+
+  // ── [F-5] 설계 제외 사유 토글 ──
+  function designMarksOn() {
+    return $("dg-mk-dry").checked || $("dg-mk-unatt").checked
+      || $("dg-mk-unpicked").checked;
+  }
+
+  function drawDesignMarks() {
+    const m = (S.design && S.design.marks) || {};
+    const draws = [
+      ["dry", "dg-mk-dry", "#64748b"],
+      ["unattached", "dg-mk-unatt", "#eab308"],
+      ["unpicked", "dg-mk-unpicked", "#a855f7"],
+    ];
+    for (const [key, id, color] of draws) {
+      if (!$(id).checked || !m[key]) continue;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.4;
+      for (const [x, y] of m[key].xy) {
+        const px = sx(x), py = sy(y);
+        ctx.beginPath();
+        ctx.arc(px, py, 5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.lineWidth = 1;
+  }
+
+  for (const id of ["dg-mk-dry", "dg-mk-unatt", "dg-mk-unpicked"]) {
+    $(id).onchange = () => {
+      // 제외 사유는 손질 망(mm) 좌표다 — 켜면 그 좌표계로 화면을 맞춘다.
+      if (designMarksOn() && S.edit) {
+        const bb = S.edit.bounds;
+        if (bb) fit(bb);
+      } else if (S.design) {
+        const xs = S.design.view.nodes.map(n => n.x);
+        const ys = S.design.view.nodes.map(n => n.y);
+        fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
+              miny: Math.min(...ys), maxy: Math.max(...ys) });
+      }
+      draw();
+    };
   }
 
   $("btn-to-design").onclick = () => setStage("design");

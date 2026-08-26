@@ -6,7 +6,7 @@ import time
 
 from flask import jsonify, request
 
-from routes.module_f.common import _fail
+from routes.module_f.common import _fail, _r1
 from routes.module_f.jobs import _job_running, _run_job, _sess
 from routes.module_f.remote30 import _sheet_frames
 from routes.module_f.views import _pick_state
@@ -112,6 +112,59 @@ def register(app):
         rep = ps.click(x, y, max_d=max_d)
         return jsonify({"ok": True, "report": rep,
                         "state": _pick_state(sess)})
+
+    @app.post("/api/module-f/pick/suggest")
+    def module_f_pick_suggest():
+        """[F-5 · D2] 찍기 후보 제안 — 모듈 A 의 detect_heads(R1~R5·신뢰도).
+
+        후보를 «제안만» 한다. board 는 여기서 절대 바뀌지 않는다 — 반영은
+        화면이 기존 찍기 경로(사람 클릭과 같은 /pick/click)로만 한다.
+        E 의 「표시가 없으면 추측하지 않는다」 확정 게이트를 우회하는 별도
+        주입 경로를 만들지 않는 것이 D2 의 요점이다.
+
+        인식이 실패해도(A import 불가 포함) 찍기는 종전대로 동작한다 —
+        잡이 error 로 끝날 뿐 세션은 멀쩡하다.
+        """
+        body = request.get_json(silent=True) or {}
+        try:
+            sess = _sess(body.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        if sess.get("pick") is None:
+            return _fail("찍기 세션이 없습니다.")
+        dxf = sess.get("dxf")
+        if not dxf:
+            return _fail("올린 DXF 가 없는 세션입니다 — 후보 제안은 "
+                         "도면을 올린 찍기 세션에서만 됩니다.")
+        if _job_running(sess):
+            return _fail("이미 작업이 돌고 있습니다. 끝난 뒤에 다시 눌러 주세요.",
+                         409)
+
+        def job():
+            from pathlib import Path as _P
+            # 모듈 A 는 저장소 루트의 읽기 전용 참조다 — import 만 한다.
+            import remote30_prototype as A
+            print("[제안] 모듈 A 인식(R1~R5) 시작 — 도면을 A 방식으로 읽는 중…")
+            bundle = A.parse_dxf_bundle_cached(_P(dxf))
+            layers = {ly.get("name"): A._categorize_layer(ly.get("name") or "")
+                      for ly in (bundle.layers or [])}
+            heads = A.detect_heads(bundle.entities, layers)
+            cands = [{"x": _r1(h.pos[0]), "y": _r1(h.pos[1]),
+                      "conf": round(float(h.confidence), 2),
+                      "kind": str(h.kind), "layer": str(h.layer or "")}
+                     for h in heads]
+            cands.sort(key=lambda c: -c["conf"])
+            sess["suggest"] = cands
+            bands = {"높음(≥0.9)": sum(1 for c in cands if c["conf"] >= 0.9),
+                     "중간(≥0.75)": sum(1 for c in cands
+                                       if 0.75 <= c["conf"] < 0.9),
+                     "낮음": sum(1 for c in cands if c["conf"] < 0.75)}
+            print(f"[제안] 후보 {len(cands)}개 · {bands}")
+            return {"ok": True, "n": len(cands), "bands": bands,
+                    "candidates": cands}
+
+        _run_job(sess, "찍기 후보 제안", job)
+        return jsonify({"ok": True})
 
     @app.post("/api/module-f/pick/undo")
     def module_f_pick_undo():

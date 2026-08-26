@@ -25,9 +25,10 @@ TPL = ROOT / "templates" / "module_f.html"
 
 # [H-0] 슬롯 화면이 부르는 이름들. 하나라도 다른 스코프에 있으면 클릭하는 순간
 # ReferenceError 다 — 서버 테스트로는 절대 안 잡힌다.
-TARGETS = ("renderSlots", "loadSlots", "switchSlot")
+TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
+           "drawDesign")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
-           "draw", "$")
+           "draw", "$", "kv", "sx", "sy")
 
 FAILS: list[str] = []
 
@@ -116,6 +117,9 @@ def main() -> int:
         "EventSource", "setTimeout", "clearTimeout", "setInterval",
         "clearInterval", "encodeURIComponent", "parseFloat", "parseInt",
         "isNaN", "Error", "requestAnimationFrame", "alert", "confirm",
+        # 문자열 안의 CSS 함수 — 호출이 아니다(`"rgba(248,113,113,.45)"`).
+        # 문자열 리터럴을 정규식으로 가르려다 더 틀리느니 이름으로 뺀다.
+        "rgba", "rgb", "hsl", "hsla", "url", "var", "calc", "translate",
     }
     call = re.compile(r"\b([A-Za-z_$][\w$]*)\s*\(")
     for name in TARGETS:

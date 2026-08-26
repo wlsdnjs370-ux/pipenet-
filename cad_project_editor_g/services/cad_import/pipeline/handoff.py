@@ -167,6 +167,20 @@ def save_world(key, source_path, world):
 
 
 def _meta_matches(meta, source_path):
+    """캐시가 이 원본의 것인가.
+
+    ★mtime 은 «빠른 길» 이지 판정 권한이 아니다. 예전에는 mtime 불일치를 곧
+      거부로 썼는데, 같은 파일을 다시 올리기만 해도 내용이 한 바이트도 안
+      바뀐 채 mtime 만 새로 찍힌다 — 그러면 멀쩡한 캐시를 통째로 버렸다.
+
+      실측(B1F): size·sha256 이 모두 같은데 mtime 만 174초 어긋나 캐시가
+      기각됐고, 그 안에 있던 치수 텍스트 3,168행(치수로 읽히는 것 533개)이
+      함께 사라져 관경이 **100% 별표1 폴백**이 됐다. 화면에는 아무 말도
+      나오지 않는다 — 관경표가 조용히 규약값으로만 채워질 뿐이다.
+
+      내용 동일성의 근거는 sha256 하나면 충분하다. mtime 이 같으면 그것으로
+      115MB 해싱을 건너뛰고(빠른 길), 다르면 해싱해서 내용으로 판정한다.
+    """
     if meta.get("format") != FORMAT:
         return False
     if meta.get("prep_sha256") != _compatible_prep_digest():
@@ -177,8 +191,8 @@ def _meta_matches(meta, source_path):
         return False
     if meta.get("source_size") != str(st.st_size):
         return False
-    if meta.get("source_mtime_ns") != str(st.st_mtime_ns):
-        return False
+    if meta.get("source_mtime_ns") == str(st.st_mtime_ns):
+        return True          # 빠른 길 — 크기·mtime 이 같으면 해싱하지 않는다
     return meta.get("source_sha256") == _sha256_file(source_path)
 
 

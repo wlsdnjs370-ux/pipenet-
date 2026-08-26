@@ -57,19 +57,36 @@ def _dia_texts(sess: dict) -> list:
 
     G 데스크톱 4번째 창(`dialog_design_input._dia_texts`)과 같은 경로다 —
     여기가 다르면 같은 도면의 관경 근거가 웹과 데스크톱에서 갈라진다.
+
+    ★실패를 조용히 넘기지 않는다. 여기가 빈 목록을 돌려주면 관경이 **전부**
+      별표1 폴백이 되는데, 화면에는 «폴백 100%» 라는 결과만 남고 원인은
+      어디에도 안 나온다. 실측으로 그렇게 한 번 당했다 — 원본 DXF 의 mtime 만
+      바뀌어 handoff 캐시가 기각되면서 치수 텍스트 533개가 통째로 사라졌고,
+      관경표는 아무 경고 없이 규약값으로만 채워졌다.
     """
+    key = sess.get("key")
     try:
         import json
         from services.cad_import.design.bore import extract_dia_text_points
         from services.cad_import.pipeline import handoff, stage1 as s1
-        key = sess.get("key")
         spec = os.path.join(handoff.pick_out_dir(), f"{key}_찍은스펙.json")
         with open(spec, encoding="utf-8") as f:
             src = json.load(f).get("source_dxf")
         w = handoff.load_world(key, src, s1.World)
-        return extract_dia_text_points(w.texts) if w is not None else []
+        if w is None:
+            print(f"[설계] ★치수 텍스트 없음 — handoff 캐시를 쓸 수 없습니다"
+                  f" (원본: {src}). 관경은 전부 별표1 로 정해집니다.")
+            return []
+        pts = extract_dia_text_points(w.texts)
+        if not pts:
+            print(f"[설계] ★도면 문자 {len(w.texts):,}개 중 치수로 읽힌 것이"
+                  f" 0개입니다 — 관경은 전부 별표1 로 정해집니다.")
+        else:
+            print(f"[설계] 치수 텍스트 {len(pts):,}개"
+                  f" (도면 문자 {len(w.texts):,}개 중)")
+        return pts
     except Exception as exc:  # noqa: BLE001
-        print(f"[설계] 치수 텍스트를 읽지 못했습니다 — 관경은 별표1 로만: {exc}")
+        print(f"[설계] ★치수 텍스트를 읽지 못했습니다 — 관경은 별표1 로만: {exc}")
         return []
 
 

@@ -533,6 +533,13 @@
       </div>
       <div id="dg-summary" class="hint">아직 확정하지 않았습니다.</div>
 
+      <h2 style="margin-top:12px">관경 근거 보기</h2>
+      <p class="hint">캔버스 배관을 <b>무엇이 호칭경을 정했는지</b>로 나눕니다.
+        도면에서 읽은 것은 실선, 규약(별표1)으로만 정한 것은 <b>점선</b>입니다.</p>
+      <label class="chk"><input type="checkbox" id="dg-bore-color" checked>
+        <span>관경 근거로 색 나누기</span></label>
+      <div id="dg-bore-legend" class="hint">확정하면 집계가 나옵니다.</div>
+
       <h2 style="margin-top:12px">제외 사유 보기</h2>
       <p class="hint">켜면 캔버스가 손질 망 위에 그 분류의 헤드를 표시합니다
         (설계 미리보기와 좌표계가 달라 겹쳐 그리지 않습니다).</p>
@@ -597,6 +604,7 @@
   const S = {
     sid: null, key: null, stage: "open",
     slot: "plan",                           // [H-0] 활성 도면 슬롯 (S650)
+    boreColor: true,                        // 관경 근거로 배관 색 나누기
     world: null, pick: null, edit: null, design: null,
     suggest: null,                          // [F-5] 찍기 후보 (제안만)
     suggestOff: new Set(),                  // 반영에서 제외한 후보 index
@@ -1820,6 +1828,7 @@
     fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
           miny: Math.min(...ys), maxy: Math.max(...ys) });
     renderDesignTable();
+    renderBoreLegend();
     draw();
   }
 
@@ -1832,13 +1841,18 @@
       const a = at[p.a], b = at[p.b];
       if (!a || !b) continue;
       const hot = S.design.hilite.has(p.label);
-      ctx.strokeStyle = hot ? "#f97316" : "#94a3b8";
+      // 관경을 무엇이 정했는지로 가른다. 규약으로만 정한 구간은 점선이다 —
+      // 도면에서 읽은 실측과 규약 추정을 한 모양으로 그리면 구분이 안 된다.
+      const st = S.boreColor ? BORE_STYLE[p.src] : null;
+      ctx.strokeStyle = hot ? "#f97316" : (st ? st.color : "#94a3b8");
+      ctx.setLineDash(hot || !st ? [] : st.dash);
       ctx.lineWidth = (1 + 4 * (p.load || 0) / maxLoad) + (hot ? 2 : 0);
       ctx.beginPath();
       ctx.moveTo(sx(a.x), sy(a.y));
       ctx.lineTo(sx(b.x), sy(b.y));
       ctx.stroke();
     }
+    ctx.setLineDash([]);      // ★되돌린다 — 안 하면 아래 노드 기호까지 점선이 된다
     ctx.lineWidth = 1.2;
     for (const n of v.nodes) {
       const px = sx(n.x), py = sy(n.y);
@@ -1888,6 +1902,37 @@
     rel_pos: "위치", desc: "설명", off_tree: "루프 잔여" };
   const DG_SRC = { text: "도면 텍스트", nfpc_min: "별표1 보강",
                    nfpc_fallback: "별표1 폴백" };
+  // 관경 근거별 캔버스 표시. 규약으로만 정한 것(별표1 폴백)은 점선 — 도면에서
+  // 읽은 실측과 한 모양으로 그리지 않는다는 이 저장소의 규약을 따른다.
+  const BORE_STYLE = {
+    text:          { color: "#38bdf8", dash: [],     tip: "도면 치수 텍스트에서 읽음" },
+    nfpc_min:      { color: "#facc15", dash: [],     tip: "도면 값이 별표1 최소보다 작아 안전측으로 올림" },
+    nfpc_fallback: { color: "#64748b", dash: [6, 4], tip: "가까운 치수 텍스트가 없어 담당 헤드 수로 정함" },
+  };
+
+  function renderBoreLegend() {
+    const box = $("dg-bore-legend");
+    if (!S.design || !S.design.view) {
+      box.textContent = "확정하면 집계가 나옵니다.";
+      return;
+    }
+    const pipes = S.design.view.pipes || [];
+    const n = {};
+    for (const p of pipes) n[p.src] = (n[p.src] || 0) + 1;
+    const total = pipes.length || 1;
+    let html = "";
+    for (const k of ["text", "nfpc_min", "nfpc_fallback"]) {
+      const st = BORE_STYLE[k];
+      const c = n[k] || 0;
+      const mark = `<span style="color:${st.color}" title="${st.tip}">`
+        + `${st.dash.length ? "┈┈" : "━━"}</span>`;
+      html += kv(`${mark} ${DG_SRC[k]}`,
+                 `${c}개 · ${(c / total * 100).toFixed(1)}%`);
+    }
+    const unknown = pipes.filter(p => !BORE_STYLE[p.src]).length;
+    if (unknown) html += kv("근거 없음", `${unknown}개`);
+    box.innerHTML = html;
+  }
 
   function renderDesignTable() {
     if (!S.design) return;
@@ -2101,6 +2146,11 @@
     }
     ctx.lineWidth = 1;
   }
+
+  $("dg-bore-color").onchange = () => {
+    S.boreColor = $("dg-bore-color").checked;
+    draw();
+  };
 
   for (const id of ["dg-mk-dry", "dg-mk-unatt", "dg-mk-unpicked"]) {
     $(id).onchange = () => {

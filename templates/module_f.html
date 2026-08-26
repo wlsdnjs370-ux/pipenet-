@@ -293,14 +293,9 @@
   <a class="back" href="/">초기화면</a>
 </header>
 
-<div class="steps">
-  <div id="st-open" class="on">도면 열기</div>
-  <div id="st-pick">찍기</div>
-  <div id="st-edit">손질</div>
-  <div id="st-conv">변환</div>
-  <div id="st-design">수리계산</div>
-  <div id="st-merge">통합</div>
-</div>
+<!-- 단계바는 활성 슬롯의 «실제 흐름» 으로 그린다 — 계통도에 찍기·손질·변환은
+     없다. 평면도 기준 6칸을 늘 띄우면 다른 슬롯에서 어긋난다. -->
+<div class="steps" id="steps"></div>
 
 <!-- [H-0] 도면 슬롯 — 특허 S650(평면도·계통도·기계실에 같은 절차 반복) -->
 <div class="slots" id="slots">
@@ -479,6 +474,17 @@
         <select id="ed-src" class="hidden" title="어느 급수원 기준의 최불리인지"></select>
         <button id="ed-worst">최불리 30 선정</button>
         <button id="ed-worst-clear">해제</button>
+      </div>
+      <!-- 영역 지정 — 모듈 A 의 zones -->
+      <label class="chk"><input type="checkbox" id="ed-zone-arm">
+        <span>영역으로 후보 가두기 <b class="tag">MODULE A</b></span></label>
+      <p class="hint">켜고 캔버스를 <b>드래그</b>하면 사각형이 그려집니다. 그 안의
+        헤드만 앵커·설계면적 후보가 됩니다 — 도면 장 나누기가 안 맞거나 주차장·
+        기계실처럼 빼야 할 구역이 섞였을 때 씁니다. 여러 개면 <b>합집합</b>입니다.</p>
+      <div id="ed-zones" class="hint">지정한 영역이 없습니다 — 도면 전체가 후보입니다.</div>
+      <div class="row">
+        <button id="ed-zone-undo">마지막 영역 지우기</button>
+        <button id="ed-zone-clear">전부 지우기</button>
       </div>
       <p class="hint">급수원에서 가장 불리한 헤드(<b class="tag">앵커</b>·빨간
         겹원)를 찾고, 그 둘레로 <b>배관 거리가 가까운 30개</b>를 묶어 <b>설계면적</b>을
@@ -666,6 +672,7 @@
   const S = {
     sid: null, key: null, stage: "open",
     slot: "plan",                           // [H-0] 활성 도면 슬롯 (S650)
+    zones: [],                              // 최불리 후보를 가둘 사각형 (A 의 zones)
     boreColor: true,                        // 관경 근거로 배관 색 나누기
     // [H-2 · H-3] 계통도·기계실이 찍는 두 점 · 무엇을 찍는 중인지
     sub: { picks: [null, null], arm: null, summary: null },
@@ -724,7 +731,16 @@
   $("btn-fit").onclick = () => fit(curBounds());
 
   let drag = null;
+  // 영역 지정 드래그 — 켜져 있을 때만 왼쪽 버튼을 가로챈다(패닝은 그대로).
+  let zoneDrag = null;
   cv.addEventListener("mousedown", (e) => {
+    if (e.button === 0 && !e.shiftKey && S.stage === "edit"
+        && $("ed-zone-arm").checked) {
+      zoneDrag = { x0: wx(e.offsetX), y0: wy(e.offsetY),
+                   x1: wx(e.offsetX), y1: wy(e.offsetY) };
+      e.preventDefault();
+      return;
+    }
     if (e.button === 1 || e.button === 2 || e.shiftKey) {
       drag = { x: e.offsetX, y: e.offsetY, ox: S.view.ox, oy: S.view.oy };
       e.preventDefault();
@@ -733,12 +749,32 @@
   cv.addEventListener("mousemove", (e) => {
     $("coord").textContent =
       `x ${wx(e.offsetX).toFixed(0)}  y ${wy(e.offsetY).toFixed(0)}`;
+    if (zoneDrag) {
+      zoneDrag.x1 = wx(e.offsetX);
+      zoneDrag.y1 = wy(e.offsetY);
+      draw();
+      return;
+    }
     if (!drag) return;
     S.view.ox = drag.ox - (e.offsetX - drag.x) / S.view.scale;
     S.view.oy = drag.oy + (e.offsetY - drag.y) / S.view.scale;
     draw();
   });
-  window.addEventListener("mouseup", () => { drag = null; });
+  window.addEventListener("mouseup", () => {
+    drag = null;
+    if (zoneDrag) {
+      const z = zoneDrag;
+      zoneDrag = null;
+      // 손이 떨려 생긴 점은 영역이 아니다 — 화면에서 8px 넘게 끈 것만 받는다.
+      const px = Math.abs(z.x1 - z.x0) * S.view.scale;
+      const py = Math.abs(z.y1 - z.y0) * S.view.scale;
+      if (px < 8 || py < 8) { draw(); return; }
+      S.zones.push([Math.min(z.x0, z.x1), Math.min(z.y0, z.y1),
+                    Math.max(z.x0, z.x1), Math.max(z.y0, z.y1)]);
+      renderZones();
+      draw();
+    }
+  });
   cv.addEventListener("contextmenu", (e) => e.preventDefault());
   cv.addEventListener("wheel", (e) => {
     e.preventDefault();
@@ -971,6 +1007,24 @@
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+      // 최원 유하거리 «경로» — 급수원 → 앵커. corridor 의 부분집합이지만
+      // 굵기만으로는 그 거리가 어느 줄인지 읽을 수 없어 따로 덧그린다.
+      // 기준압이 어느 관을 타고 오는지가 보여야 관경을 키울지 경로를 줄일지
+      // 정할 수 있다.
+      const ap = e.worst.anchor_path || [];
+      if (ap.length > 1) {
+        ctx.strokeStyle = "#ff3b3b";
+        ctx.globalAlpha = 0.85;
+        ctx.lineWidth = 2.2;
+        ctx.setLineDash([9, 5]);
+        ctx.beginPath();
+        ctx.moveTo(sx(ap[0][0]), sy(ap[0][1]));
+        for (let i = 1; i < ap.length; i++) ctx.lineTo(sx(ap[i][0]), sy(ap[i][1]));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      }
+      ctx.strokeStyle = "#ffffff";
       ctx.lineCap = "butt";
       ctx.lineWidth = 2;
       for (const h of e.worst.heads) {
@@ -993,6 +1047,7 @@
         ctx.stroke();
       }
     }
+    drawZones();
     markers(e.sources, e.palette.source, 7);
     markers(e.valves, e.palette.valve, 6);
   }
@@ -1034,30 +1089,90 @@
     if (text) $("busy-text").textContent = text;
   }
 
+  // 슬롯마다 «실제로 밟는 단계» 가 다르다. 계통도·기계실은 찍을 재료가 없어
+  // 찍기·손질·변환이 통째로 없다 — 두 점을 찍어 경로를 뽑으면 끝이다.
+  // 통합(S700)은 슬롯에 딸리지 않는다: 세 슬롯의 결과를 모으는 자리라 어느
+  // 슬롯에서 보든 맨 끝에 붙는다.
+  const STAGE_FLOW = {
+    plan: ["open", "pick", "edit", "conv", "design"],
+    system: ["open", "sub"],
+    machineroom: ["open", "sub"],
+  };
+  const STAGE_LABEL = {
+    open: "도면 열기", pick: "찍기", edit: "손질", conv: "변환",
+    design: "수리계산", sub: "경로 추출", merge: "통합",
+  };
+  // 각 단계가 켜는 패널. 한 곳에 모아 둔다 — 예전에는 toggle 이 아홉 줄로
+  // 흩어져 있어 패널을 하나 늘릴 때마다 빠뜨릴 자리가 늘었다.
+  const STAGE_PANELS = {
+    open: ["panel-open", "panel-resume"],
+    pick: ["panel-pick", "panel-layers", "panel-suggest"],
+    edit: ["panel-edit"],
+    conv: ["panel-conv"],
+    design: ["panel-design"],
+    // 레이어 토글은 여기서도 쓴다 — 건축 배경을 못 끄면 두 점을 찍기 어렵다.
+    sub: ["panel-sub", "panel-layers"],
+    merge: ["panel-merge"],
+  };
+  const ALL_PANELS = [...new Set(Object.values(STAGE_PANELS).flat())];
+
+  function stageFlow() {
+    return (STAGE_FLOW[S.slot] || STAGE_FLOW.plan).concat(["merge"]);
+  }
+
+  // 지금 갈 수 있는 단계인가 — 재료가 없는 곳으로 보내면 빈 화면만 나온다.
+  function stageReachable(name) {
+    if (name === "open") return true;
+    if (name === "merge") return !!S.sid;
+    if (name === "sub") return !!S.world;
+    if (name === "pick") return !!S.world;
+    if (name === "edit" || name === "conv") return !!S.edit;
+    if (name === "design") return !!S.edit;
+    return false;
+  }
+
+  function renderSteps() {
+    const flow = stageFlow();
+    const idx = flow.indexOf(S.stage);
+    const box = $("steps");
+    box.innerHTML = "";
+    flow.forEach((k, i) => {
+      const el = document.createElement("div");
+      el.textContent = STAGE_LABEL[k];
+      if (i === idx) el.classList.add("on");
+      else if (idx >= 0 && i < idx) el.classList.add("done");
+      const ok = stageReachable(k);
+      el.style.cursor = ok ? "pointer" : "default";
+      el.style.opacity = ok ? "" : ".45";
+      if (ok) el.onclick = () => gotoStage(k);
+      box.appendChild(el);
+    });
+  }
+
+  // 단계바를 눌러 오갈 수 있게 한다 — 「어디로 가려면 어느 단추를 눌러야
+  // 하는지」를 외우지 않아도 되게. 갈 수 없는 단계는 흐리게 두고 막는다.
+  async function gotoStage(name) {
+    if (name === S.stage || !stageReachable(name)) return;
+    try {
+      if (name === "merge") { await loadMerge(); return; }
+      if (name === "sub") { await loadSub(); return; }
+      if (name === "design") { setStage("design"); await designPreview(); return; }
+      setStage(name);
+    } catch (err) { say(err.message, "err"); }
+  }
+
   function setStage(name) {
     S.stage = name;
-    const map = { open: "st-open", pick: "st-pick", edit: "st-edit",
-                  conv: "st-conv", design: "st-design", merge: "st-merge" };
-    const order = ["open", "pick", "edit", "conv", "design", "merge"];
-    const idx = order.indexOf(name);
-    order.forEach((k, i) => {
-      const el = $(map[k]);
-      el.classList.toggle("on", i === idx);
-      el.classList.toggle("done", i < idx);
-    });
-    $("panel-open").classList.toggle("hidden", name !== "open");
-    $("panel-resume").classList.toggle("hidden", name !== "open");
-    $("panel-sub").classList.toggle("hidden", name !== "sub");
-    $("panel-pick").classList.toggle("hidden", name !== "pick");
-    $("panel-edit").classList.toggle("hidden", name !== "edit");
-    $("panel-conv").classList.toggle("hidden", name !== "conv");
-    $("panel-design").classList.toggle("hidden", name !== "design");
-    $("panel-merge").classList.toggle("hidden", name !== "merge");
-    // 레이어 토글은 계통도·기계실에서도 쓴다 — 건축 배경을 끄지 못하면
-    // 배관 위의 두 점을 찍기가 어렵다.
-    $("panel-layers").classList.toggle("hidden",
-                                       name !== "pick" && name !== "sub");
-    $("panel-suggest").classList.toggle("hidden", name !== "pick");
+    const want = new Set(STAGE_PANELS[name] || []);
+    for (const id of ALL_PANELS) {
+      $(id).classList.toggle("hidden", !want.has(id));
+    }
+    // 「이어서 열기」는 평면도만의 개념이다(찍은 스펙 목록) — 계통도·기계실
+    // 슬롯에서 띄우면 남의 도면 목록을 이 슬롯에 여는 것처럼 보인다.
+    if (name === "open" && S.slot !== "plan") {
+      $("panel-resume").classList.add("hidden");
+    }
+    renderSteps();
     draw();
   }
 
@@ -1184,6 +1299,62 @@
     } else { say(msg); }
   }
 
+  // ── 최불리 후보 영역 (모듈 A 의 zones) ─────────────────────────
+  // 도면 장 나누기는 «자동으로 잰 경계» 라 실무에서 늘 맞지는 않는다. 한 층에
+  // 방화구획이 여럿이거나 계산에서 빼야 할 구역이 섞이면 앵커가 그리로 튄다 —
+  // 그때는 사람이 직접 가두는 수밖에 없다.
+  function drawZones() {
+    const live = zoneDrag
+      ? [[Math.min(zoneDrag.x0, zoneDrag.x1), Math.min(zoneDrag.y0, zoneDrag.y1),
+          Math.max(zoneDrag.x0, zoneDrag.x1), Math.max(zoneDrag.y0, zoneDrag.y1)]]
+      : [];
+    const all = S.zones.concat(live);
+    if (!all.length) return;
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < all.length; i++) {
+      const [x0, y0, x1, y1] = all[i];
+      const px = sx(x0), py = sy(y1);
+      const w = (x1 - x0) * S.view.scale, h = (y1 - y0) * S.view.scale;
+      const live_i = i >= S.zones.length;
+      ctx.strokeStyle = live_i ? "#facc15" : "#38bdf8";
+      ctx.setLineDash(live_i ? [6, 4] : []);
+      ctx.fillStyle = live_i ? "rgba(250,204,21,.10)" : "rgba(56,189,248,.10)";
+      ctx.fillRect(px, py, w, h);
+      ctx.strokeRect(px, py, w, h);
+      if (!live_i) {
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "11px sans-serif";
+        ctx.fillText(`영역 ${i + 1}`, px + 4, py + 13);
+      }
+    }
+    ctx.restore();
+    ctx.setLineDash([]);
+  }
+
+  function renderZones() {
+    const box = $("ed-zones");
+    if (!S.zones.length) {
+      box.textContent = "지정한 영역이 없습니다 — 도면 전체가 후보입니다.";
+      return;
+    }
+    let html = "";
+    for (let i = 0; i < S.zones.length; i++) {
+      const [x0, y0, x1, y1] = S.zones[i];
+      html += kv(`영역 ${i + 1}`,
+        `${(x1 - x0).toFixed(0)} × ${(y1 - y0).toFixed(0)} mm`);
+    }
+    box.innerHTML = html;
+  }
+
+  $("ed-zone-undo").onclick = () => { S.zones.pop(); renderZones(); draw(); };
+  $("ed-zone-clear").onclick = () => { S.zones = []; renderZones(); draw(); };
+  $("ed-zone-arm").onchange = () => {
+    say($("ed-zone-arm").checked
+      ? "캔버스를 드래그해 영역을 그리세요. (화면 이동은 Shift+드래그)"
+      : "영역 그리기를 껐습니다.");
+  };
+
   // ── 도면 슬롯 [H-0] 특허 S650 ──────────────────────────────────
   // 평면도 하나로 끝나지 않는다 — 계통도·기계실에 같은 절차를 반복하고
   // S700 이 셋을 결합한다. 여기서는 슬롯을 켜고 바꾸는 것까지가 전부다.
@@ -1197,7 +1368,10 @@
       box.appendChild(n);
       return;
     }
+    // 슬롯이 바뀌면 밟는 단계도 바뀐다 — 단계바를 다시 그린다.
+    const changed = S.slot !== d.active;
     S.slot = d.active;
+    if (changed) renderSteps();
     for (const it of d.slots) {
       const b = document.createElement("button");
       b.className = (it.active ? "on " : "") + (it.opened ? "has" : "");
@@ -1227,6 +1401,7 @@
     busy(true, "도면 바꾸는 중…");
     try {
       const d = await post("/api/module-f/slot/switch", { sid: S.sid, kind });
+      S.slot = kind;          // 단계바 흐름이 곧바로 이 슬롯 것이어야 한다
       renderSlots(d);
       const cur = d.slots.find((s) => s.active);
       // 슬롯마다 어디까지 갔는지가 다르다 — 그 단계로 되돌려 놓는다.
@@ -1739,7 +1914,12 @@
       (e.worst ? kv("최불리망 <span class=\"tag\">설계면적</span>",
         `<span class="ok">${e.worst.k}개</span> · 앵커 ${e.worst.far_m} m`
         + ` · 폭 ${e.worst.span_m} m`
+        + (e.worst.zones && e.worst.zones.length
+           ? ` · 영역 ${e.worst.zones.length}곳` : "")
         + (e.worst.source ? ` · <b class="tag">${e.worst.source}</b> 기준` : ""))
+      + kv('최원 유하거리 <span class="tag">경로</span>',
+           `<span style="color:#ff3b3b">┈┈</span> ${e.worst.far_m} m`
+           + ` · 절점 ${(e.worst.anchor_path || []).length}개`)
         + kv("배관 연장 / 주배관 부하",
           `${e.worst.total_m} m · <span class="ok">${e.worst.max_load}</span>개 담당`)
         : "") +
@@ -1951,13 +2131,16 @@
       const body = { sid: S.sid, k: 30, sheet };
       const src = ($("ed-src") || {}).value;
       if (src) body.source = src;
+      if (S.zones.length) body.zones = S.zones;
       const d = await post("/api/module-f/edit/worst", body);
       setEdit(d.state);
       renderEdit();
       const s = d.summary;
-      say(`최불리 ${s.k} 헤드 — 도달 ${s.reachable}개 중 · `
-        + `최원 ${s.far_m} m · ${s.k}번째 ${s.near_m} m · 경로 ${s.path_edges} 간선`
+      say(`최불리 ${s.k} 헤드 — 후보 ${s.candidates}개 중 · `
+        + `최원 유하거리 ${s.far_m} m (경로 ${s.anchor_path_m} m)`
+        + ` · ${s.k}번째 ${s.near_m} m`
         + (s.source ? ` · 급수원 ${s.source} 기준` : "")
+        + (s.zones ? ` · 영역 ${s.zones}곳 안` : "")
         + (s.sheet ? ` · 도면 ${s.sheet}장 안` : ""),
           "ok");
       $("cv-worst-kfp").checked = true;
@@ -2218,6 +2401,24 @@
       ctx.stroke();
     }
     ctx.setLineDash([]);      // ★되돌린다 — 안 하면 아래 노드 기호까지 점선이 된다
+    // 최원 유하거리 경로 — 손질 단계와 같은 빨간 점선. 두 단계가 같은 줄을
+    // 가리켜야 «이 관을 키우면 그 압이 오른다» 가 이어진다.
+    const dap = v.anchor_path || [];
+    if (dap.length > 1) {
+      ctx.strokeStyle = "#ff3b3b";
+      ctx.lineWidth = 2.4;
+      ctx.setLineDash([9, 5]);
+      ctx.beginPath();
+      let started = false;
+      for (const lab of dap) {
+        const n = at[lab];
+        if (!n) continue;
+        if (started) ctx.lineTo(sx(n.x), sy(n.y));
+        else { ctx.moveTo(sx(n.x), sy(n.y)); started = true; }
+      }
+      if (started) ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.lineWidth = 1.2;
     for (const n of v.nodes) {
       const px = sx(n.x), py = sy(n.y);
@@ -2252,6 +2453,14 @@
         ctx.strokeStyle = "#22c55e";
         ctx.lineWidth = 2;
         ctx.strokeRect(px - 7, py - 7, 14, 14);
+        ctx.lineWidth = 1.2;
+      }
+      // 앵커 = 기준압을 잡는 지점. 손질 단계와 같은 빨간 겹원.
+      if (n.anchor) {
+        ctx.strokeStyle = "#ff3b3b";
+        ctx.lineWidth = 2.6;
+        ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(px, py, 14, 0, Math.PI * 2); ctx.stroke();
         ctx.lineWidth = 1.2;
       }
     }
@@ -2343,6 +2552,11 @@
         + ` · 노즐 ${s.counts.nozzles} · 부속 ${s.counts.fittings}`)
       + kv("관경 근거", `텍스트 ${b.text} · 별표1 보강 ${b.nfpc_min}`
         + ` · 별표1 폴백 ${b.nfpc_fallback}`)
+      + (S.design && S.design.view && S.design.view.anchor
+         ? kv('최원 유하거리 <span class="tag">경로</span>',
+              `<span style="color:#ff3b3b">┈┈</span> 앵커 절점`
+              + ` ${S.design.view.anchor} · ${S.design.view.anchor_path_m} m`)
+         : "")
       + kv("부속 판정 불가",
            `${s.fitting_unresolved} · 등가길이 미해결 ${s.eq_len_unresolved}`)
       + (s.excluded_heads

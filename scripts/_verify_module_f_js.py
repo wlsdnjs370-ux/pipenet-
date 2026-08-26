@@ -30,7 +30,10 @@ TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            "armSub", "subExtract", "renderSubSummary", "drawSubPicks",
            "loadSub", "loadWorldRaw", "subSpec",
            "loadMergeModes", "setMergeMode", "loadMergeState",
-           "renderMergeSummary", "loadMerge")
+           "renderMergeSummary", "loadMerge",
+           "drawZones", "renderZones",
+           "renderSteps", "gotoStage", "stageFlow", "stageReachable",
+           "setStage")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 

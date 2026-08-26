@@ -95,7 +95,8 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
         head_far[hi] = src_dist[node]
 
     reachable = len(head_far)
-    empty = {"heads": [], "anchor": None, "edges": set(), "nodes": set(),
+    empty = {"heads": [], "anchor": None, "anchor_path": [],
+             "anchor_path_m": 0.0, "edges": set(), "nodes": set(),
              "loads": {}, "reachable": reachable, "unreachable": 0,
              "far_m": 0.0, "near_m": 0.0, "span_m": 0.0, "total_m": 0.0,
              "max_load": 0}
@@ -126,9 +127,34 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
             cur = nxt
 
     total = sum(math.dist(pts[a], pts[b]) for a, b in loads)
+
+    # ④ 최원 유하거리 «경로» — 급수원 → 앵커. corridor 전체가 아니라 그 한 줄이다.
+    #
+    # far_m 은 이 경로의 길이인데, 화면에는 corridor 만 굵기로 그려져 있어서
+    # «어느 줄이 그 거리인지» 가 안 보였다. 기준압을 잡는 지점이 앵커라면
+    # 그 압이 어느 관을 타고 오는지도 같이 보여야 한다 — 관경을 키울지
+    # 경로를 줄일지는 그 줄을 봐야 정할 수 있다.
+    #
+    # prev 는 ① 의 급수원 기점 Dijkstra 가 남긴 최단경로 트리다. 앵커의 부착
+    # 노드에서 거슬러 올라가면 그 경로가 그대로 나온다(다시 풀지 않는다).
+    anchor_path: list[int] = []
+    cur = head_node.get(anchor)
+    seen: set[int] = set()
+    while cur is not None and cur not in seen:
+        anchor_path.append(cur)
+        seen.add(cur)
+        cur = prev.get(cur)
+    anchor_path.reverse()          # 급수원 → 앵커 방향
+    anchor_path_m = round(
+        sum(math.dist(pts[anchor_path[i]], pts[anchor_path[i + 1]])
+            for i in range(len(anchor_path) - 1)) / 1000.0, 2)
+
     return {
         "heads": picked,
         "anchor": anchor,
+        # 급수원에서 앵커까지의 절점 열. 화면이 이 줄을 따로 그린다.
+        "anchor_path": anchor_path,
+        "anchor_path_m": anchor_path_m,
         "dists": {hi: head_far[hi] for hi in picked},
         "edges": set(loads),
         "loads": loads,

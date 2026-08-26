@@ -259,6 +259,40 @@ def register(app):
             sheet_no = want
             print(f"[최불리] 도면 {want} 장 안으로 범위를 좁힘 — 헤드 {len(only)}개")
 
+        # ── 영역 지정 (모듈 A 의 zones) — 사람이 사각형으로 후보를 가둔다.
+        #
+        # 도면 장 나누기는 «자동으로 잰 경계» 라 실무에서 늘 맞지는 않는다.
+        # 한 층에 방화구획이 여럿이거나, 계산에서 빼야 할 구역(주차장·기계실)이
+        # 섞여 있으면 앵커가 그리로 튄다 — 그때는 사람이 직접 가두는 수밖에 없다.
+        # A 가 같은 이유로 zones 를 갖는다.
+        #
+        # 여러 개면 합집합이다(∪). 장 선택과 함께 쓰면 교집합이 된다 —
+        # «이 장의 이 구역» 이 자연스러운 읽기다.
+        zones = body.get("zones")
+        if zones:
+            try:
+                rects = []
+                for z in zones:
+                    x0, y0, x1, y1 = (float(z[0]), float(z[1]),
+                                      float(z[2]), float(z[3]))
+                    rects.append((min(x0, x1), min(y0, y1),
+                                  max(x0, x1), max(y0, y1)))
+            except (TypeError, ValueError, IndexError):
+                return _fail("영역 좌표가 올바르지 않습니다 "
+                             "([[x0,y0,x1,y1], …] 형식).")
+            if not rects:
+                return _fail("영역이 비었습니다.")
+            in_zone = {hi for hi, d in enumerate(b.disks)
+                       if any(x0 <= float(d[0]) <= x1 and y0 <= float(d[1]) <= y1
+                              for x0, y0, x1, y1 in rects)}
+            if not in_zone:
+                return _fail(f"영역 {len(rects)}곳 안에 헤드가 없습니다. "
+                             "영역을 다시 그리세요.")
+            only = in_zone if only is None else (only & in_zone)
+            if not only:
+                return _fail("고른 도면 장과 영역이 겹치는 헤드가 없습니다.")
+            print(f"[최불리] 영역 {len(rects)}곳으로 범위를 좁힘 — 헤드 {len(only)}개")
+
         # [F-1 · D4] 급수원이 여럿이면 «어느 하나 기준» 인지 사람이 정한다 —
         # 전체망 .kfp 변환의 source_selection_required 와 같은 규약(태그 Z1…
         # 또는 1부터 번호). 어느 급수원에서든 가장 먼 헤드는 앵커가 못 된다:
@@ -297,7 +331,10 @@ def register(app):
         w["sheet"] = sheet_no
         w["source_tag"] = picked_tag          # 화면이 «어느 급수원 기준» 인지 안다
         w["source_index"] = src_index
+        w["zones"] = [list(r) for r in rects] if zones else []
+        w["candidates"] = len(only) if only is not None else w["reachable"]
         sess["worst"] = w
+        sess["worst_zones"] = w["zones"]      # 다시 누를 때 같은 영역을 쓴다
         return jsonify({
             "ok": True,
             "summary": {"k": len(w["heads"]), "reachable": w["reachable"],
@@ -307,6 +344,11 @@ def register(app):
                         "max_load": w.get("max_load", 0),
                         "sheet": sheet_no,
                         "source": picked_tag,
+                        "zones": len(w["zones"]),
+                        "candidates": w["candidates"],
+                        # 최원 유하거리 «경로» — 그 거리가 어느 줄인지.
+                        "anchor_path_m": w.get("anchor_path_m", 0.0),
+                        "anchor_path_nodes": len(w.get("anchor_path") or ()),
                         "path_edges": len(w["edges"])},
             "state": _edit_state(sess)})
 

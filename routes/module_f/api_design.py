@@ -363,6 +363,51 @@ def register(app, *, UPLOAD_DIR):
         heads = {str(r.get("in")) for r in view.nozzles}
         av = _valve_label(tbl)
 
+        # ── 최원 유하거리 «경로» — 급수원 → 앵커 (표 라벨 기준)
+        #
+        # 손질 단계에서는 board 절점으로 그렸지만 여기는 설계 표의 좌표계다.
+        # 표에 이미 «앵커 노드» 가 meta 로 적혀 있으니 그것에서 급수원까지
+        # 되짚는다. `parent_of` 는 양방향 첫이웃이라 트리가 아니다 — 여기서
+        # 급수원 기점 BFS 로 제대로 된 부모를 만든다(안 그러면 되짚다 맴돈다).
+        anchor_lab = dict(tbl.meta).get("앵커 노드")
+        anchor_lab = str(anchor_lab) if anchor_lab not in (None, "?") else None
+        root = next((lab for lab, n in at.items()
+                     if str(n.get("io_node")) == "Input"), None)
+        anchor_path: list[str] = []
+        anchor_path_m = 0.0
+        if anchor_lab and root:
+            adj: dict[str, list[tuple[str, str]]] = {}
+            plen: dict[str, float] = {}
+            for row in view.pipes:
+                a, b2 = str(row.get("in")), str(row.get("out"))
+                pid = str(row.get("label"))
+                try:
+                    plen[pid] = float(row.get("length") or 0.0)
+                except (TypeError, ValueError):
+                    plen[pid] = 0.0
+                adj.setdefault(a, []).append((b2, pid))
+                adj.setdefault(b2, []).append((a, pid))
+            par: dict[str, tuple[str, str]] = {}
+            seen = {root}
+            queue = [root]
+            while queue:
+                cur = queue.pop(0)
+                for nxt, pid in adj.get(cur, ()):
+                    if nxt in seen:
+                        continue
+                    seen.add(nxt)
+                    par[nxt] = (cur, pid)
+                    queue.append(nxt)
+            if anchor_lab in seen:
+                cur = anchor_lab
+                while cur != root:
+                    up, pid = par[cur]
+                    anchor_path.append(cur)
+                    anchor_path_m += plen.get(pid, 0.0)
+                    cur = up
+                anchor_path.append(root)
+                anchor_path.reverse()
+
         nodes = []
         for lab, n in at.items():
             # ★반올림하지 않는다 — writer 는 좌표를 `.6g`(유효 6자리)로 찍는데
@@ -379,6 +424,8 @@ def register(app, *, UPLOAD_DIR):
                 rec["input"] = True
             if av is not None and lab == str(av):
                 rec["valve"] = True
+            if anchor_lab and lab == anchor_lab:
+                rec["anchor"] = True      # 기준압을 잡는 지점
             nodes.append(rec)
         pipes = [{"label": str(r.get("label")),
                   "a": str(r.get("in")), "b": str(r.get("out")),
@@ -389,7 +436,11 @@ def register(app, *, UPLOAD_DIR):
         return jsonify({
             "ok": True, "settings": cfg,
             "stood": stood,
-            "view": {"nodes": nodes, "pipes": pipes},
+            "view": {"nodes": nodes, "pipes": pipes,
+                     # 최원 유하거리 경로 — far_m 이 «어느 줄» 인지.
+                     "anchor": anchor_lab,
+                     "anchor_path": anchor_path,
+                     "anchor_path_m": round(anchor_path_m, 2)},
             "tables": tbl.as_dict(),        # 저장될 값 그대로 (F-3 표 4종)
             # [F-5] 제외 사유 분류 — mm 세계좌표. 설계 캔버스(정규화 좌표)가
             # 아니라 손질 망 위에 그려야 «어디» 인지 보인다.

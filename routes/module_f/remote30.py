@@ -22,10 +22,15 @@ def _worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
 
 
 def _worst_view(sess: dict) -> dict | None:
-    """화면용 — 최불리 배관망(corridor)·앵커·담당 헤드 수.
+    """화면용 — 최불리 배관망(corridor)·앵커·최원 유하거리 경로·담당 헤드 수.
 
     corridor 간선은 좌표 4개 + load 를 함께 싣는다(화면이 굵기/색을 정한다).
     앵커는 «가장 불리한 지점» 이라 따로 강조한다.
+
+    ★`anchor_path` 는 corridor 와 **겹치는 부분집합**이다. 그래도 따로 싣는다 —
+      far_m 이 곧 이 줄의 길이인데, corridor 를 굵기로만 그리면 그 거리가 어느
+      줄인지 화면에서 읽을 수 없다. 기준압을 잡는 지점이 앵커라면 그 압이 어느
+      관을 타고 오는지도 같이 보여야 관경을 키울지 경로를 줄일지 정할 수 있다.
     """
     w = sess.get("worst")
     if not w:
@@ -34,6 +39,7 @@ def _worst_view(sess: dict) -> dict | None:
     pts = b.pts
     disks = b.disks
     an = w.get("anchor")
+    path = [n for n in (w.get("anchor_path") or ()) if 0 <= n < len(pts)]
     return {
         "k": len(w["heads"]),
         "reachable": w["reachable"],
@@ -45,10 +51,16 @@ def _worst_view(sess: dict) -> dict | None:
         "sheet": w.get("sheet"),
         # [F-1] 어느 급수원 기준의 최불리인지 — 화면이 이것을 그대로 보여 준다.
         "source": w.get("source_tag"),
+        # 사람이 가둔 영역 — 다시 그릴 수 있게 그대로 돌려준다.
+        "zones": [[_r1(v) for v in z] for z in (w.get("zones") or ())],
+        "candidates": w.get("candidates", w["reachable"]),
         "heads": [[_r1(disks[hi][0]), _r1(disks[hi][1]), _r1(disks[hi][2])]
                   for hi in w["heads"] if hi < len(disks)],
         "anchor": ([_r1(disks[an][0]), _r1(disks[an][1]), _r1(disks[an][2])]
                    if isinstance(an, int) and an < len(disks) else None),
+        # 급수원 → 앵커. 절점 열을 그대로 준다(화면이 한 줄로 잇는다).
+        "anchor_path": [[_r1(pts[n][0]), _r1(pts[n][1])] for n in path],
+        "anchor_path_m": w.get("anchor_path_m", 0.0),
         "corridor": [[_r1(pts[a][0]), _r1(pts[a][1]),
                       _r1(pts[c][0]), _r1(pts[c][1]), int(load)]
                      for (a, c), load in w.get("loads", {}).items()],

@@ -70,7 +70,9 @@ _machine_room_path_to_dict    (2125)
 | # | 항목 | 결정 |
 |---|---|---|
 | H-D1 | A 엔진 소유권 | **import 재사용.** A 를 고치지도, F 안에 베끼지도 않는다. `api_pick.py` 의 D2 선례와 같은 구도 |
-| H-D2 | S700 오케스트레이션 | `r30_combined.remote30_combined_build()` 본문(669~1313, 약 590줄)을 **모듈 레벨 순수 함수로 승격**해 A·F 가 공유. 세 번째 사본 금지(F 지시서 D1 승계). `_remap_riser_to_head_av`(S740)도 함께 승격 |
+| H-D2 | S700 오케스트레이션 | ~~라우트 본문 승격~~ → **접합만 한다.** 실측 결과 S700 원시함수가 이미 전부 모듈 레벨이다(`core/remote30_full_network.py`: `build_riser`·`prepend_machine_room_to_riser`·`stitch_riser_and_heads`·`emit_full_sdf`). 승격할 이유가 없어졌고 `r30_combined.py` 동결도 **그대로 유지**한다. 아래 H-D7 참조 |
+| H-D7 | 평면 쪽이 다르다 | A 의 590줄 라우트는 대부분 «A 의 평면 경로»(`_PROTOTYPE_JOBS` → `build_input_tables`)다. F 의 평면은 사람이 손질한 board 위 G 의 `select_and_expand`→`build_design_tables` 다. **다른 것은 평면 쪽뿐이고 S700 은 공유돼 있다** — 그래서 F 는 제 오케스트레이션을 갖되 원시함수는 공유한다. 사본은 생기지 않는다 |
+| H-D8 | 기준점 번호 | 특허 S550 «기준점 번호 = 10» · S740 «10 을 공통 절점으로 결합». A 의 헤드망도 `{10,11,12,…}`, 라이저 빌더 4종 모두 `av_node_label="10"`. 그런데 G 는 BFS 로 1 부터 매긴다 → **+9 오프셋**으로 정확히 일치. 라벨이 박힌 자리(배관·노즐·부속·기기의 in/out)를 빠짐없이 옮기되 **배관 이름(label·pipe)은 옮기지 않는다** |
 | H-D3 | 도면 슬롯 | 세션이 **평면도 · 계통도 · 기계실 3슬롯**을 갖는다(S650). 평면도는 필수, 나머지 둘은 선택. 슬롯마다 제1~4국면을 독립 수행 |
 | H-D4 | 급수방식 | **사람이 고른다**(S710, 4종). 자동 추정 금지 — E 의 「표시가 없으면 추측하지 않는다」 승계 |
 | H-D5 | 기준점 규약 | 결합 절점은 **기준점 번호 10**(S550·S740). F-1 의 `source_selection_required` 규약과 통일 |

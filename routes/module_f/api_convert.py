@@ -179,6 +179,22 @@ def register(app, *, UPLOAD_DIR):
             return send_file(sdf, as_attachment=True,
                              download_name=f"{stem}.sdf",
                              mimetype="application/xml")
+        if what == "design":
+            # [F-2] 수리계산 입력 한 벌 — SDF 는 옆의 SLF 와 한 쌍이다(파일명
+            # 참조라 따로 열면 관경이 Unset). 그래서 낱개가 아니라 zip 으로만 준다.
+            dsdf = sess.get("design_sdf_path")
+            dslf = sess.get("design_slf_path")
+            if not dsdf or not os.path.isfile(dsdf):
+                return _fail("아직 만든 수리계산 입력이 없습니다.", 404)
+            out_dir = Path(UPLOAD_DIR) / "module_f"
+            zip_path = out_dir / f"{sess['id']}_design.zip"
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+                z.write(dsdf, os.path.basename(dsdf))
+                if dslf and os.path.isfile(dslf):
+                    z.write(dslf, os.path.basename(dslf))
+            return send_file(str(zip_path), as_attachment=True,
+                             download_name=f"{stem}_수리계산입력_설계.zip",
+                             mimetype="application/zip")
         if what != "set":
             return _fail(f"내려받을 대상이 아닙니다: {what}")
 

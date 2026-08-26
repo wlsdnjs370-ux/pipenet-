@@ -1,0 +1,323 @@
+# -*- coding: utf-8 -*-
+"""[F-2] 수리계산 입력 라우트 — G 의 design/ 을 그대로 HTTP 로 연다.
+
+엔진 함수는 전부 `cad_project_editor_g/services/cad_import/design/` 에서
+import 한다 — 여기서는 판단하지 않는다(F 를 위해 G 를 몰래 바꾸는 것 금지).
+
+    POST /api/module-f/design/build     최불리 → 제한 전개 → 5표 (메모리)
+    GET  /api/module-f/design/preview   정규화+베이크 좌표 (저장 좌표 그대로)
+    POST /api/module-f/design/emit      .sdf + .slf 저장 → 내려받기 링크
+
+★미리보기 전용 좌표계는 없다. preview 와 emit 은 **같은 함수**
+(`display_tables`)의 사본을 쓴다 — 화면과 파일이 달라지면 미리보기가 무의미하다
+(G16 원칙 그대로).
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from flask import jsonify, request, send_file
+
+from routes.module_f.common import (
+    REMOTE_K_DEFAULT, _boot, _fail, _r1)
+from routes.module_f.jobs import _job_running, _run_job, _sess
+
+# 설정 7종(지시서 F-2) — body 로 받고 세션에 기억한다.
+_DEFAULT_SETTINGS = {
+    "k": REMOTE_K_DEFAULT,           # 기준개수
+    "schedule": "KSD 3507",          # 배관 규격 기본값
+    "iso": True,                     # 아이소매트릭 보기
+    "iso_z_scale": 1.0,              # 고도 펼침 배율
+    "canvas_units": 3000.0,          # 캔버스 크기
+    "lift_ref": "valve",             # lift 영점 (valve | mid)
+    "head_stub_pct": 2.5,            # 헤드 스텁 길이 (%)
+}
+
+
+def _settings(sess: dict, body: dict) -> dict:
+    """설정 7종 — 준 것만 덮고 세션에 기억한다."""
+    cur = dict(sess.get("design_settings") or _DEFAULT_SETTINGS)
+    for key, cast in (("k", int), ("schedule", str), ("iso", bool),
+                      ("iso_z_scale", float), ("canvas_units", float),
+                      ("lift_ref", str), ("head_stub_pct", float)):
+        if key in body and body[key] is not None:
+            try:
+                cur[key] = cast(body[key])
+            except (TypeError, ValueError):
+                return_fail = f"설정 값이 올바르지 않습니다: {key}={body[key]!r}"
+                raise ValueError(return_fail)
+    cur["k"] = max(1, min(int(cur["k"]), 200))
+    sess["design_settings"] = cur
+    return cur
+
+
+def _dia_texts(sess: dict) -> list:
+    """치수 텍스트 — handoff 캐시에서. 못 읽으면 빈 목록(관경은 별표1 폴백).
+
+    G 데스크톱 4번째 창(`dialog_design_input._dia_texts`)과 같은 경로다 —
+    여기가 다르면 같은 도면의 관경 근거가 웹과 데스크톱에서 갈라진다.
+    """
+    try:
+        import json
+        from services.cad_import.design.bore import extract_dia_text_points
+        from services.cad_import.pipeline import handoff, stage1 as s1
+        key = sess.get("key")
+        spec = os.path.join(handoff.pick_out_dir(), f"{key}_찍은스펙.json")
+        with open(spec, encoding="utf-8") as f:
+            src = json.load(f).get("source_dxf")
+        w = handoff.load_world(key, src, s1.World)
+        return extract_dia_text_points(w.texts) if w is not None else []
+    except Exception as exc:  # noqa: BLE001
+        print(f"[설계] 치수 텍스트를 읽지 못했습니다 — 관경은 별표1 로만: {exc}")
+        return []
+
+
+def _valve_label(tables):
+    """알람밸브 노드의 표 라벨 — G 대화상자 `_valve_label` 과 같은 규칙."""
+    for row in (getattr(tables, "equipment", None) or ()):
+        if str(row.get("desc")) == "A/V":
+            return row.get("in")
+    return None
+
+
+def _view_opts(cfg: dict) -> dict:
+    """설정 7종 → display_tables/emit_design_sdf 인자. 두 곳이 같은 값을 쓴다."""
+    return {
+        "iso": bool(cfg["iso"]),
+        "iso_z_scale": float(cfg["iso_z_scale"]),
+        "canvas_units": float(cfg["canvas_units"]),
+        "head_stub_ratio": float(cfg["head_stub_pct"]) / 100.0,
+    }
+
+
+def _summary(got: dict, tbl) -> dict:
+    """build 요약 — G 대화상자 `_render` 가 보여주는 그 수치들."""
+    meta = dict(tbl.meta)
+    w = got.get("worst") or {}
+    return {
+        "k": len(w.get("heads") or []),
+        "far_m": w.get("far_m"), "near_m": w.get("near_m"),
+        "span_m": w.get("span_m"), "total_m": w.get("total_m"),
+        "max_load": w.get("max_load"),
+        "source": w.get("source_tag"),
+        "counts": {"nodes": len(tbl.nodes), "pipes": len(tbl.pipes),
+                   "nozzles": len(tbl.nozzles), "fittings": len(tbl.fittings),
+                   "equipment": len(tbl.equipment)},
+        "bore_src": {
+            "text": meta.get("관경 근거 — 도면 텍스트"),
+            "nfpc_min": meta.get("관경 근거 — 별표1 보강 (text<min)"),
+            "nfpc_fallback": meta.get("관경 근거 — 별표1 폴백 (text 없음)"),
+        },
+        "fitting_unresolved": meta.get("부속 판정 불가"),
+        "eq_len_unresolved": meta.get("등가길이 미해결"),
+        "loops": meta.get("루프 잔여 배관(표 꼬리)"),
+        "excluded_heads": got.get("excluded_heads", 0),
+        "candidate_heads": got.get("candidate_heads", 0),
+        "total_heads": got.get("total_heads", 0),
+    }
+
+
+def register(app, *, UPLOAD_DIR):
+    # ─────────────────────────────────────── 수리계산 입력 (설계)
+    @app.post("/api/module-f/design/build")
+    def module_f_design_build():
+        """최불리 선정 → corridor 제한 전개 → 5표. 파일은 쓰지 않는다."""
+        body = request.get_json(silent=True) or {}
+        try:
+            sess = _sess(body.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        es = sess.get("edit")
+        if es is None:
+            return _fail("손질 세션이 없습니다.")
+        if not getattr(es.board, "sources", None):
+            return _fail("급수 시작 위치를 먼저 찍어야 설계면적을 고를 수 있습니다.")
+        undecided = sum(1 for kk in getattr(es.board, "disk_kinds", []) or []
+                        if kk == "미지정")
+        if undecided:
+            return _fail(f"헤드 종류가 미지정인 것이 {undecided}개 있습니다. "
+                         "손질에서 종류를 정한 뒤 다시 시도하세요.")
+        if _job_running(sess):
+            return _fail("이미 작업이 돌고 있습니다. 끝난 뒤에 다시 눌러 주세요.",
+                         409)
+        try:
+            _boot()
+            cfg = _settings(sess, body)
+        except ValueError as exc:
+            return _fail(str(exc))
+        source = body.get("source")
+
+        def job():
+            from services.cad_import.design.restrict import select_and_expand
+            from services.cad_import.design.tables import build_design_tables
+            from services.cad_import.design.sdf_post import UnknownSchedule
+
+            payload = es.convert_payload()
+            srcs = payload.get("sources") or ()
+            sel = source if source is not None else (
+                srcs[0].get("tag") if len(srcs) > 1 and isinstance(srcs[0], dict)
+                else None)
+            got = select_and_expand(payload, es.board, k=cfg["k"],
+                                    selected_source=sel)
+            if not got.get("ok"):
+                return {"ok": False, "error": got.get("error")}
+            texts = _dia_texts(sess)
+            try:
+                tbl = build_design_tables(
+                    got["kfp"], got["worst"], got["edge_ref"], texts,
+                    board_pts=es.board.pts,
+                    excluded_heads=got.get("excluded_heads", 0),
+                    default_schedule=cfg["schedule"],
+                    tree_loads=got.get("tree_loads"))
+            except UnknownSchedule as exc:
+                return {"ok": False, "error": str(exc)}
+            # 표는 메모리에만 — emit 을 눌러야 파일이 생긴다.
+            sess["design"] = {"got": got, "tables": tbl, "k": cfg["k"],
+                              "schedule": cfg["schedule"]}
+            s = _summary(got, tbl)
+            print(f"[설계] 표 확정 · 헤드 {s['k']} · 앵커 {s['far_m']} m · "
+                  f"배관 {s['counts']['pipes']} · 제외 {s['excluded_heads']:,}")
+            return {"ok": True, "summary": s}
+
+        _run_job(sess, "수리계산 입력", job)
+        return jsonify({"ok": True})
+
+    @app.get("/api/module-f/design/preview")
+    def module_f_design_preview():
+        """emit 에 넘길 좌표 **그대로** — 표시 전용 좌표계를 따로 두지 않는다.
+
+        보기 설정만 바뀌면 build 를 다시 돌지 않는다 — 캐시한 표에 표시 변환만
+        다시 얹는다(G16 의 «최불리 재계산 없이 다시 그리기» 그대로).
+        """
+        try:
+            sess = _sess(request.args.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        d = sess.get("design")
+        if not d:
+            job = sess.get("job") or {}
+            if job.get("phase") == "수리계산 입력" and job.get("state") == "run":
+                return _fail("아직 계산 중입니다.", 409)
+            return _fail("먼저 design/build 로 표를 확정하세요.", 404)
+        # 보기 설정 — 쿼리로 덮을 수 있고, 덮은 값은 기억된다.
+        # (iso 는 문자열 "false" 를 bool() 로 캐스팅하면 True 가 되므로 따로 푼다.)
+        try:
+            cfg = _settings(sess, {k: request.args.get(k)
+                                   for k in ("iso_z_scale", "canvas_units",
+                                             "lift_ref", "head_stub_pct")
+                                   if request.args.get(k) is not None})
+        except ValueError as exc:
+            return _fail(str(exc))
+        if "iso" in request.args:
+            cfg["iso"] = request.args.get("iso") in ("1", "true", "True", "on")
+            sess["design_settings"] = cfg
+
+        from services.cad_import.design.emit import display_tables
+        tbl = d["tables"]
+        view, stood = display_tables(
+            tbl, **_view_opts(cfg),
+            iso_ref_label=(_valve_label(tbl)
+                           if cfg["lift_ref"] == "valve" else None))
+
+        # 담당 헤드 수 — 간선 굵기의 근거. 도면 간선은 worst.loads, 세로
+        # 구간(역참조 없음)은 tree_loads 가 안다.
+        got = d["got"]
+        loads = ((got.get("worst") or {}).get("loads")) or {}
+        ref = got.get("edge_ref") or {}
+        tree = got.get("tree_loads") or {}
+        load_of = {}
+        for pid, edge in ref.items():
+            try:
+                i, j = int(edge[0]), int(edge[1])
+                load_of[str(pid)] = int(loads.get((min(i, j), max(i, j)), 0))
+            except (TypeError, ValueError, IndexError):
+                continue
+        for pid, n in tree.items():
+            load_of.setdefault(str(pid), int(n))
+
+        at = {str(n.get("label")): n for n in view.nodes}
+        elev = {lab: float(n.get("elevation", 0) or 0) for lab, n in at.items()}
+        parent_of = {}
+        for row in view.pipes:
+            a, b = str(row.get("in")), str(row.get("out"))
+            parent_of.setdefault(b, a)
+            parent_of.setdefault(a, b)
+        heads = {str(r.get("in")) for r in view.nozzles}
+        av = _valve_label(tbl)
+
+        nodes = []
+        for lab, n in at.items():
+            # ★반올림하지 않는다 — writer 는 좌표를 `.6g`(유효 6자리)로 찍는데
+            #   소수 3자리 반올림은 그보다 거칠어(실측: -75.9731 → -75.973)
+            #   「preview == 저장 Position」 이 깨진다. 같은 double 을 그대로
+            #   보내면 양쪽을 `.6g` 로 찍었을 때 정확히 같은 문자열이 된다.
+            rec = {"label": lab, "x": float(n.get("x", 0)),
+                   "y": float(n.get("y", 0))}
+            if lab in heads:
+                rec["head"] = True
+                rec["up"] = (elev.get(lab, 0.0)
+                             - elev.get(parent_of.get(lab, ""), 0.0)) >= 0
+            if str(n.get("io_node")) == "Input":
+                rec["input"] = True
+            if av is not None and lab == str(av):
+                rec["valve"] = True
+            nodes.append(rec)
+        pipes = [{"label": str(r.get("label")),
+                  "a": str(r.get("in")), "b": str(r.get("out")),
+                  "dia": r.get("dia"), "len_m": r.get("length"),
+                  "src": r.get("dia_src"),
+                  "load": load_of.get(str(r.get("label")), 0)}
+                 for r in view.pipes]
+        return jsonify({
+            "ok": True, "settings": cfg,
+            "stood": stood,
+            "view": {"nodes": nodes, "pipes": pipes},
+            "tables": tbl.as_dict(),        # 저장될 값 그대로 (F-3 표 4종)
+        })
+
+    @app.post("/api/module-f/design/emit")
+    def module_f_design_emit():
+        """.sdf + .slf 한 쌍을 쓴다. 자산이 없으면 실패(G 정책 그대로)."""
+        body = request.get_json(silent=True) or {}
+        try:
+            sess = _sess(body.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        d = sess.get("design")
+        if not d:
+            return _fail("먼저 design/build 로 표를 확정하세요.", 404)
+        try:
+            cfg = _settings(sess, body)
+        except ValueError as exc:
+            return _fail(str(exc))
+
+        from services.cad_import.design.emit import AssetMissing, emit_design_sdf
+        key = sess.get("key") or "design"
+        # ★파일 이름이 곧 SDF 안의 User-lib 참조다(G14 — 파일명만 담는다).
+        #   G 데스크톱과 같은 이름이라야 산출이 바이트까지 같다. 세션끼리 안
+        #   섞이게 폴더를 세션별로 가른다.
+        out_dir = Path(UPLOAD_DIR) / "module_f" / f"{sess['id']}_design"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{key}_수리계산입력.sdf"
+        tbl = d["tables"]
+        try:
+            out = emit_design_sdf(
+                tbl, out_path,
+                project_title=f"{key} 수리계산 입력",
+                **_view_opts(cfg),
+                iso_ref_label=(_valve_label(tbl)
+                               if cfg["lift_ref"] == "valve" else None))
+        except AssetMissing as exc:
+            return _fail(str(exc), 500)
+        except Exception as exc:  # noqa: BLE001
+            return _fail(f"{type(exc).__name__}: {exc}", 500)
+        slf = out.with_suffix(".slf")
+        sess["design_sdf_path"] = str(out)
+        sess["design_slf_path"] = str(slf)
+        return jsonify({
+            "ok": True,
+            "sdf": {"name": out.name, "bytes": out.stat().st_size},
+            "slf": {"name": slf.name, "bytes": slf.stat().st_size},
+            "download": f"/api/module-f/download?sid={sess['id']}&what=design",
+        })

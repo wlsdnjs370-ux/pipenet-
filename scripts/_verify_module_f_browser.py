@@ -446,8 +446,8 @@ with sync_playwright() as pw:
     if not loads or max(loads) != w["max_load"] or max(loads) < 2:
         bad(f"담당 헤드 수(load)가 corridor 에 안 실렸다: max={w['max_load']}")
     print(f"   load 분포: 최대 {max(loads)} · load=1 가지 {sum(1 for x in loads if x == 1)}개")
-    if not page.is_checked("#cv-remote"):
-        bad("최불리 선정 후 «최불리 30만 변환» 이 자동으로 켜지지 않았다")
+    if not page.is_checked("#cv-worst-kfp"):
+        bad("최불리 선정 후 «최불리 .kfp» 가 자동으로 켜지지 않았다")
     page.wait_for_timeout(500)
     after = page.evaluate(WHITE)
     print(f"   흰 픽셀 {before} → {after} (증가 {after - before})")
@@ -488,6 +488,10 @@ with sync_playwright() as pw:
     if conv_px < 500:
         bad(f"변환 단계에서 망이 사라졌다 (픽셀 {conv_px})")
     page.screenshot(path=str(SHOT / "6_convert_form.png"))
+    # [F-4] 이 시점엔 설계 표가 아직이라 «최불리 .sdf» 는 끈다 — 켠 채 누르면
+    # worst_required 안내로 수리계산 패널로 이동한다(그 흐름은 [9-A]가 본다).
+    if page.is_checked("#cv-worst-sdf"):
+        page.uncheck("#cv-worst-sdf")
     page.click("#btn-convert")
     page.wait_for_function(
         "!document.querySelector('#btn-download').disabled "
@@ -499,15 +503,17 @@ with sync_playwright() as pw:
     page.screenshot(path=str(SHOT / "7_converted.png"))
 
     conv = page.inner_text("#conv-info").replace("\n", " ")
-    if "최불리 30 헤드" not in conv:
-        bad(f"최불리 범위로 변환되지 않았다: {conv[:160]}")
-    for bid in ("btn-download-sdf", "btn-download-set"):
+    if "최불리 .kfp" not in conv or "K30" not in conv:
+        bad(f"최불리 .kfp 가 변환되지 않았다: {conv[:160]}")
+    if "전체망 .kfp" not in conv:
+        bad(f"전체망 .kfp 가 변환되지 않았다: {conv[:160]}")
+    for bid in ("btn-download-worst", "btn-download-set"):
         if page.evaluate(f"() => document.getElementById('{bid}').disabled"):
             bad(f"{bid} 가 잠긴 채로 남았다")
 
-    print("[8] 내려받기 — .kfp / .sdf / 한 벌")
+    print("[8] 내려받기 — 전체망 .kfp / 최불리 .kfp / 한 벌")
     sid = page.evaluate("() => window.__mf.sid")
-    for what, head in (("kfp", b"{"), ("sdf", b"<"), ("set", b"PK")):
+    for what, head in (("kfp", b"{"), ("worst-kfp", b"{"), ("set", b"PK")):
         got = page.request.get(f"{BASE}/api/module-f/download?sid={sid}&what={what}")
         body = got.body()
         print(f"   {what:4s} HTTP {got.status} · {len(body):,} bytes · {body[:2]!r}")
@@ -580,6 +586,29 @@ with sync_playwright() as pw:
     print(f"   design zip HTTP {got.status} · {len(body):,} bytes")
     if got.status != 200 or not body.startswith(b"PK"):
         bad(f"design 내려받기 실패: HTTP {got.status}")
+
+    print("[9-A] 표 확정 뒤 — «최불리 .sdf» 체크가 변환에서 통한다")
+    page.click("#dg-back")      # 변환 패널로
+    page.wait_for_function(
+        "document.querySelector('#st-conv').classList.contains('on')",
+        timeout=10_000)
+    page.uncheck("#cv-full-kfp")
+    page.uncheck("#cv-worst-kfp")
+    page.check("#cv-worst-sdf")
+    page.click("#btn-convert")
+    page.wait_for_function(
+        "!document.querySelector('#btn-download-design').disabled "
+        "|| document.querySelector('#conv-info').textContent.includes('막힘')",
+        timeout=300_000)
+    conv2 = page.inner_text("#conv-info").replace("\n", " ")
+    if "최불리 .sdf" not in conv2:
+        bad(f"최불리 .sdf 만 고른 변환이 실패: {conv2[:160]}")
+    if page.evaluate("() => document.getElementById('btn-download').disabled") is False:
+        bad(".sdf 만 골랐는데 전체망 .kfp 버튼이 켜졌다")
+    got = page.request.get(f"{BASE}/api/module-f/download?sid={sid}&what=design")
+    if got.status != 200 or not got.body().startswith(b"PK"):
+        bad(f"design 내려받기 실패: HTTP {got.status}")
+    page.screenshot(path=str(SHOT / "10_outputs.png"))
 
     browser.close()
 

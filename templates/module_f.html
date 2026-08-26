@@ -434,19 +434,22 @@
         <select id="conv-src"></select>
       </label>
 
-      <h2 style="margin-top:16px">범위 · 산출물</h2>
-      <label class="chk"><input type="checkbox" id="cv-remote">
-        <span>최불리 30 헤드만 변환 <b class="tag">MODULE A</b></span></label>
-      <label class="chk"><input type="checkbox" id="cv-sdf" checked>
-        <span>PIPENET <b>.sdf + .slf</b> 도 함께 생성</span></label>
+      <h2 style="margin-top:16px">산출물</h2>
+      <label class="chk"><input type="checkbox" id="cv-full-kfp" checked>
+        <span>전체망 <b>.kfp</b></span></label>
+      <label class="chk"><input type="checkbox" id="cv-worst-kfp">
+        <span>최불리 <b>.kfp</b> <b class="tag">MODULE A</b></span></label>
+      <label class="chk"><input type="checkbox" id="cv-worst-sdf" checked>
+        <span>최불리 <b>.sdf(+.slf)</b> <b class="tag">MODULE G</b></span></label>
 
       <div class="row" style="margin-top:14px">
         <button id="btn-convert" class="go">변환 실행</button>
         <button id="btn-back-edit">← 손질</button>
       </div>
       <div class="row">
-        <button id="btn-download" disabled>.kfp</button>
-        <button id="btn-download-sdf" disabled>.sdf</button>
+        <button id="btn-download" disabled>전체망 .kfp</button>
+        <button id="btn-download-worst" disabled>최불리 .kfp</button>
+        <button id="btn-download-design" disabled>설계 .sdf</button>
         <button id="btn-download-set" disabled>한 벌 (zip)</button>
       </div>
       <div id="conv-info"></div>
@@ -1417,7 +1420,7 @@
         + (s.source ? ` · 급수원 ${s.source} 기준` : "")
         + (s.sheet ? ` · 도면 ${s.sheet}장 안` : ""),
           "ok");
-      $("cv-remote").checked = true;
+      $("cv-worst-kfp").checked = true;
     } catch (err) { say(err.message, "err"); }
     finally { busy(false); }
   };
@@ -1427,7 +1430,7 @@
       const d = await post("/api/module-f/edit/worst-clear", { sid: S.sid });
       setEdit(d.state);
       renderEdit();
-      $("cv-remote").checked = false;
+      $("cv-worst-kfp").checked = false;
       say("최불리 선정을 해제했습니다.");
     } catch (err) { say(err.message, "err"); }
   };
@@ -1521,17 +1524,33 @@
     catch (err) { say(err.message, "err"); return; }
     const wrap = $("src-wrap");
     const selected = wrap.classList.contains("hidden") ? null : $("conv-src").value;
-    for (const id of ["btn-download", "btn-download-sdf", "btn-download-set"]) {
+    for (const id of ["btn-download", "btn-download-worst",
+                      "btn-download-design", "btn-download-set"]) {
       $(id).disabled = true;
     }
     $("conv-info").innerHTML = "";
     busy(true, "변환 중…");
+    const outputs = {
+      full_kfp: $("cv-full-kfp").checked,
+      worst_kfp: $("cv-worst-kfp").checked,
+      worst_sdf: $("cv-worst-sdf").checked,
+    };
+    if (!outputs.full_kfp && !outputs.worst_kfp && !outputs.worst_sdf) {
+      busy(false);
+      say("산출물을 하나도 고르지 않았습니다.", "err");
+      return;
+    }
     try {
-      await post("/api/module-f/convert/run", {
-        sid: S.sid, dto, selected_source: selected,
-        remote_only: $("cv-remote").checked,
-        emit_sdf: $("cv-sdf").checked,
+      const d = await post("/api/module-f/convert/run", {
+        sid: S.sid, dto, selected_source: selected, outputs,
       });
+      if (d && d.ok === false && d.code === "worst_required") {
+        // 막지 않는다 — 최불리 선정이 아직이면 수리계산 패널로 안내한다(D3).
+        busy(false);
+        say(d.message, "warn");
+        setStage("design");
+        return;
+      }
       watch(showConvert);
     } catch (err) { busy(false); say(err.message, "err"); }
   };
@@ -1553,38 +1572,43 @@
       say("변환이 막혔습니다. 사유를 확인하세요.", "err");
       return;
     }
-    const s = r.summary, st = r.stats || {};
+    const s = r.summary || {}, st = r.stats || {};
     const pick = ["n_heads", "n_vert_head", "n_vert_branch", "n_tees",
                   "n_combo", "n_valve", "n_raised"];
-    const rows = pick.filter((k) => st[k] !== undefined)
+    const rows = pick.filter((k) => k in st)
       .map((k) => `<tr><td>${k}</td><td>${st[k]}</td></tr>`).join("");
-    const sdf = s.sdf;
-    $("conv-info").innerHTML =
-      '<div class="kv"><b>결과</b><span class="ok">변환 완료</span></div>'
-      + kv("범위", s.remote_only
-            ? `<span class="ok">최불리 ${s.heads} 헤드</span>`
-            : `물 닿은 헤드 ${s.heads}개 전량`)
-      + kv("노드 / 배관", `${s.nodes.toLocaleString()} / ${s.pipes.toLocaleString()}`)
-      + kv(".kfp", `${(s.bytes / 1024).toFixed(0)} KB`)
-      + (sdf && sdf.ok
-          ? kv(".sdf", `${(sdf.bytes / 1024).toFixed(0)} KB · 노즐 ${sdf.nozzles}`)
-            + kv(".slf", sdf.slf
-                  ? `<span class="ok">${sdf.slf}</span>`
-                  : '<span class="warn">표준 SLF 없음</span>')
-          : (sdf ? kv(".sdf", '<span class="err">생성 실패</span>') : ""))
-      + `<table class="rs">${rows}</table>`;
-    $("btn-download").disabled = false;
-    $("btn-download-sdf").disabled = !(sdf && sdf.ok);
-    $("btn-download-set").disabled = false;
-    say(`변환 완료 — 노드 ${s.nodes} · 배관 ${s.pipes}`
-      + (sdf && sdf.ok ? " · PIPENET SDF 동봉" : ""), "ok");
+    let html = "";
+    if (s.full) {
+      html += kv("전체망 .kfp",
+        `노드 ${s.full.nodes.toLocaleString()} · 배관 ${s.full.pipes.toLocaleString()}`
+        + ` · ${(s.full.bytes / 1024).toFixed(0)} KB`);
+    }
+    if (s.worst) {
+      html += kv(`최불리 .kfp <b class="tag">K${s.worst.k}</b>`,
+        `노드 ${s.worst.nodes} · 배관 ${s.worst.pipes}`
+        + ` · ${(s.worst.bytes / 1024).toFixed(0)} KB`);
+    }
+    if (s.design) {
+      html += kv("최불리 .sdf",
+        `<span class="ok">${s.design.sdf}</span>`
+        + ` · ${(s.design.bytes / 1024).toFixed(0)} KB (+.slf)`);
+    }
+    $("conv-info").innerHTML = html + `<table class="rs">${rows}</table>`;
+    $("btn-download").disabled = !s.full;
+    $("btn-download-worst").disabled = !s.worst;
+    $("btn-download-design").disabled = !s.design;
+    $("btn-download-set").disabled = !(s.full || s.worst || s.design);
+    const made = [s.full && "전체망 .kfp", s.worst && "최불리 .kfp",
+                  s.design && "최불리 .sdf"].filter(Boolean).join(" · ");
+    say(`변환 완료 — ${made}`, "ok");
   }
 
   const dl = (what) => {
     window.location.href = `/api/module-f/download?sid=${S.sid}&what=${what}`;
   };
   $("btn-download").onclick = () => dl("kfp");
-  $("btn-download-sdf").onclick = () => dl("sdf");
+  $("btn-download-worst").onclick = () => dl("worst-kfp");
+  $("btn-download-design").onclick = () => dl("design");
   $("btn-download-set").onclick = () => dl("set");
 
   // ── 시작 ───────────────────────────────────────────────────────

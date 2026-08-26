@@ -118,6 +118,41 @@ def _summary(got: dict, tbl) -> dict:
     }
 
 
+def emit_design_files(sess: dict, UPLOAD_DIR, cfg: dict | None = None):
+    """[F-4 공유] 세션의 확정된 표 → .sdf+.slf 한 쌍. (경로, 오류) 를 돌려준다.
+
+    design/emit 라우트와 변환 단계의 «최불리 .sdf» 체크가 **같은 함수**를 탄다 —
+    두 경로가 각자 emit 을 들고 있으면 설정 한쪽만 고쳐지는 날이 온다.
+    """
+    d = sess.get("design")
+    if not d:
+        return None, "먼저 수리계산 입력에서 표를 확정하세요."
+    cfg = cfg or dict(sess.get("design_settings") or _DEFAULT_SETTINGS)
+
+    from services.cad_import.design.emit import AssetMissing, emit_design_sdf
+    key = sess.get("key") or "design"
+    # ★파일 이름이 곧 SDF 안의 User-lib 참조다(G14 — 파일명만 담는다).
+    #   G 데스크톱과 같은 이름이라야 산출이 같다. 세션끼리 안 섞이게 폴더를 가른다.
+    out_dir = Path(UPLOAD_DIR) / "module_f" / f"{sess['id']}_design"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{key}_수리계산입력.sdf"
+    tbl = d["tables"]
+    try:
+        out = emit_design_sdf(
+            tbl, out_path,
+            project_title=f"{key} 수리계산 입력",
+            **_view_opts(cfg),
+            iso_ref_label=(_valve_label(tbl)
+                           if cfg["lift_ref"] == "valve" else None))
+    except AssetMissing as exc:
+        return None, str(exc)
+    except Exception as exc:  # noqa: BLE001
+        return None, f"{type(exc).__name__}: {exc}"
+    sess["design_sdf_path"] = str(out)
+    sess["design_slf_path"] = str(out.with_suffix(".slf"))
+    return out, None
+
+
 def register(app, *, UPLOAD_DIR):
     # ─────────────────────────────────────── 수리계산 입력 (설계)
     @app.post("/api/module-f/design/build")
@@ -292,29 +327,10 @@ def register(app, *, UPLOAD_DIR):
         except ValueError as exc:
             return _fail(str(exc))
 
-        from services.cad_import.design.emit import AssetMissing, emit_design_sdf
-        key = sess.get("key") or "design"
-        # ★파일 이름이 곧 SDF 안의 User-lib 참조다(G14 — 파일명만 담는다).
-        #   G 데스크톱과 같은 이름이라야 산출이 바이트까지 같다. 세션끼리 안
-        #   섞이게 폴더를 세션별로 가른다.
-        out_dir = Path(UPLOAD_DIR) / "module_f" / f"{sess['id']}_design"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"{key}_수리계산입력.sdf"
-        tbl = d["tables"]
-        try:
-            out = emit_design_sdf(
-                tbl, out_path,
-                project_title=f"{key} 수리계산 입력",
-                **_view_opts(cfg),
-                iso_ref_label=(_valve_label(tbl)
-                               if cfg["lift_ref"] == "valve" else None))
-        except AssetMissing as exc:
-            return _fail(str(exc), 500)
-        except Exception as exc:  # noqa: BLE001
-            return _fail(f"{type(exc).__name__}: {exc}", 500)
+        out, err = emit_design_files(sess, UPLOAD_DIR, cfg)
+        if err:
+            return _fail(err, 500)
         slf = out.with_suffix(".slf")
-        sess["design_sdf_path"] = str(out)
-        sess["design_slf_path"] = str(slf)
         return jsonify({
             "ok": True,
             "sdf": {"name": out.name, "bytes": out.stat().st_size},

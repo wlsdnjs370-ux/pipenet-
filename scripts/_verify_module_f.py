@@ -334,8 +334,12 @@ def main():
         check("선정 해제", r.get_json()["state"]["worst"] is None)
         c.post("/api/module-f/edit/worst", json={"sid": sid2, "k": 30})
 
-        print("\n[4] 변환 → 내려받기")
-        r = c.post("/api/module-f/convert/run", json={"sid": sid2, "dto": {}})
+        print("\n[4] 변환(전체망 .kfp) → 내려받기")
+        # [F-4] 산출 3종 계약. 옛 want_sdf(전체망 문법 재직렬화)는 은퇴했다 —
+        # 수리계산 입력 SDF 는 design 경로가 만든다.
+        r = c.post("/api/module-f/convert/run",
+                   json={"sid": sid2, "dto": {},
+                         "outputs": {"full_kfp": True}})
         if not check("변환 요청 수락", r.get_json().get("ok"), str(r.get_json())[:160]):
             return
         if wait(c, sid2, "KFP 변환")["state"] != "done":
@@ -345,13 +349,9 @@ def main():
         if not check("변환 성공", res.get("ok"),
                      json.dumps(res.get("blockers"), ensure_ascii=False)[:220]):
             return
-        s = res["summary"]
+        s = res["summary"]["full"]
         check("KFP 내용", s["nodes"] > 0 and s["pipes"] > 0,
               f"노드 {s['nodes']} · 배관 {s['pipes']} · {s['bytes']:,}B")
-        sdf = s.get("sdf") or {}
-        check("PIPENET SDF 동시 생성", sdf.get("ok"),
-              f"{sdf.get('bytes', 0):,}B · 노즐 {sdf.get('nozzles')}"
-              f" · SLF {sdf.get('slf')}")
 
         r = c.get(f"/api/module-f/download?sid={sid2}&what=kfp")
         ok_dl = r.status_code == 200 and len(r.data) > 1000
@@ -363,9 +363,6 @@ def main():
                       f"키 {len(kfp)}개")
             except Exception as exc:  # noqa: BLE001
                 check("KFP 파싱", False, str(exc))
-        r = c.get(f"/api/module-f/download?sid={sid2}&what=sdf")
-        check("내려받기 .sdf", r.status_code == 200 and r.data[:5] == b"<?xml",
-              f"HTTP {r.status_code} · {len(r.data):,}B")
         r = c.get(f"/api/module-f/download?sid={sid2}&what=set")
         import io as _io
         import zipfile as _zip
@@ -373,21 +370,27 @@ def main():
                  f"HTTP {r.status_code} · {len(r.data):,}B"):
             names = _zip.ZipFile(_io.BytesIO(r.data)).namelist()
             exts = sorted({os.path.splitext(n)[1] for n in names})
-            check("한 벌 구성", {".kfp", ".sdf", ".slf"} <= set(exts), str(exts))
+            check("한 벌 구성(.kfp 포함)", ".kfp" in set(exts), str(exts))
 
-        print("\n[4-A] 최불리 30 범위로 변환")
+        print("\n[4-A] 최불리 .kfp — 파일명에 K 가 박힌다")
         r = c.post("/api/module-f/convert/run",
-                   json={"sid": sid2, "dto": {}, "remote_only": True})
+                   json={"sid": sid2, "dto": {},
+                         "outputs": {"worst_kfp": True}})
         if check("범위 제한 변환 수락", r.get_json().get("ok")):
-            if wait(c, sid2, "Remote 30 변환")["state"] == "done":
+            if wait(c, sid2, "KFP 변환")["state"] == "done":
                 rr = c.get(f"/api/module-f/convert/result?sid={sid2}").get_json()["result"]
                 if check("범위 제한 변환 성공", rr.get("ok"),
                          json.dumps(rr.get("blockers"), ensure_ascii=False)[:200]):
-                    s2 = rr["summary"]
-                    check("헤드 30개로 좁혀짐", s2["heads"] == 30 and s2["remote_only"],
-                          f"헤드 {s2['heads']} · 노드 {s2['nodes']} · 배관 {s2['pipes']}")
+                    s2 = rr["summary"]["worst"]
+                    check("K30 으로 좁혀짐", s2["k"] == 30
+                          and "최불리K30" in s2["filename"],
+                          f"{s2['filename']} · 노드 {s2['nodes']} · 배관 {s2['pipes']}")
                     check("전량 대비 작아짐", s2["pipes"] < s["pipes"],
                           f"배관 {s2['pipes']} < 전량 {s['pipes']}")
+                    r = c.get(f"/api/module-f/download?sid={sid2}&what=worst-kfp")
+                    check("내려받기 최불리 .kfp",
+                          r.status_code == 200 and len(r.data) > 1000,
+                          f"HTTP {r.status_code} · {len(r.data):,}B")
 
         print("\n[5] Qt 미사용 확인")
         qt = [m for m in sys.modules if m.startswith("PySide6")]

@@ -136,7 +136,11 @@ def _restrict_to_worst(payload: dict, board, worst: dict) -> dict:
 
 
 def _emit_pipenet(sess: dict, kfp: dict, out_dir: Path) -> dict:
-    """.kfp → PIPENET .sdf(+표준 .slf). 11번 모듈의 변환기를 그대로 쓴다.
+    """[F-4 · D3 로 은퇴] .kfp → PIPENET .sdf 문법 재직렬화.
+
+    설계구역 없는 전체망 SDF 는 수리계산 입력이 아니라는 것이 확정 결정이라
+    UI 경로에서 빠졌다. 수리계산 입력 SDF 는 design/emit(G 엔진)이 만든다.
+    함수는 진단 스크립트 호환으로만 남긴다 — 새 호출부를 만들지 말 것.
 
     모듈 A 는 제 표(`PipeTables`)에서 SDF 를 직접 찍지만, 모듈 F 의 산출물은
     모듈 E 계열의 .kfp 다. 여기서 SDF 를 새로 짜면 규약이 셋으로 갈라지므로,

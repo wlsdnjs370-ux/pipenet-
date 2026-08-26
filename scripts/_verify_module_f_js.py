@@ -26,9 +26,11 @@ TPL = ROOT / "templates" / "module_f.html"
 # [H-0] 슬롯 화면이 부르는 이름들. 하나라도 다른 스코프에 있으면 클릭하는 순간
 # ReferenceError 다 — 서버 테스트로는 절대 안 잡힌다.
 TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
-           "drawDesign")
+           "drawDesign", "renderSubPanel", "renderSubPicks", "subClick",
+           "armSub", "subExtract", "renderSubSummary", "drawSubPicks",
+           "loadSub", "loadWorldRaw", "subSpec")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
-           "draw", "$", "kv", "sx", "sy")
+           "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 
 FAILS: list[str] = []
 

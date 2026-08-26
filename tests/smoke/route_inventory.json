@@ -441,6 +441,14 @@
     "rule": "/api/module-f/job/stream"
   },
   {
+    "endpoint": "module_f_machineroom_extract",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/machineroom/extract"
+  },
+  {
     "endpoint": "module_f_open",
     "methods": [
       "OPTIONS",
@@ -537,6 +545,23 @@
       "POST"
     ],
     "rule": "/api/module-f/slot/switch"
+  },
+  {
+    "endpoint": "module_f_sub_state",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/sub/state"
+  },
+  {
+    "endpoint": "module_f_system_extract",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/system/extract"
   },
   {
     "endpoint": "module_f_world",

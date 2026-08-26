@@ -19,6 +19,43 @@ from routes.module_f.common import _boot, _fail
 from routes.module_f.jobs import _job_running, _new_session, _run_job, _sess
 from routes.module_f.slots import (
     SLOT_LABELS, _check_slot_kind, _slot_state, _slot_switch)
+from routes.module_f.world import _world_payload
+
+
+def _sub_open_job(sess: dict, dxf, kind: str):
+    """[H-2 · H-3] 계통도·기계실을 여는 잡 — 평면도와 다른 제1국면.
+
+    평면도는 사람이 재료를 찍어야 하므로 E 의 `PickSession` 으로 간다. 계통도·
+    기계실은 찍을 재료가 없다 — 두 점(펌프↔알람밸브 / 수원↔연결점)을 잇는
+    경로가 전부라, 도면을 그대로 띄워 놓고 사람이 그 두 점을 찍는다.
+
+    그래서 여기서는 A 의 시각화 파서로 읽어 캔버스에만 올린다. 추출은 두 점이
+    정해진 뒤 `/api/module-f/<kind>/extract` 에서 한다.
+    """
+    import os
+    import time
+
+    from routes.module_f.subdrawing import entities_to_world, parse_subdrawing
+
+    def job():
+        t0 = time.perf_counter()
+        label = SLOT_LABELS[kind]
+        print(f"[{label}] DXF 읽는 중 — {os.path.basename(str(dxf))}")
+        entities, parsed = parse_subdrawing(dxf)
+        sess["entities"] = entities
+        sess["key"] = os.path.splitext(os.path.basename(str(dxf)))[0]
+        payload = _world_payload(entities_to_world(entities))
+        sess["world"] = payload
+        skipped = parsed.get("skipped") or {}
+        print(f"[{label}] 완료 {time.perf_counter() - t0:.1f}s · "
+              f"도형 {len(entities):,} · 선분 {payload['counts']['segs']:,}"
+              + (f" · 못 읽은 것 {sum(skipped.values())}" if skipped else ""))
+        if skipped:
+            # 조용히 넘기지 않는다 — 못 그린 것이 배관이면 경로가 끊긴다.
+            print(f"[{label}] 못 읽은 종류: "
+                  + ", ".join(f"{k}×{v}" for k, v in sorted(skipped.items())))
+        return {"key": sess["key"], "entities": len(entities)}
+    return job
 
 
 def register(app, *, _save_upload):
@@ -93,6 +130,10 @@ def register(app, *, _save_upload):
             _slot_switch(sess, kind)
             sess["dxf"] = str(dxf)
 
-        _run_job(sess, f"{SLOT_LABELS[kind]} 읽기", _open_job(sess, dxf))
+        # 평면도만 E 의 찍기로 간다 — 계통도·기계실은 찍을 재료가 없다(S650 의
+        # «같은 절차» 는 같은 구현을 뜻하지 않는다. subdrawing.py 머리말 참조).
+        job = (_open_job(sess, dxf) if kind == "plan"
+               else _sub_open_job(sess, dxf, kind))
+        _run_job(sess, f"{SLOT_LABELS[kind]} 읽기", job)
         return jsonify({"ok": True, "sid": sess["id"], "kind": kind,
                         "filename": os.path.basename(str(dxf))})

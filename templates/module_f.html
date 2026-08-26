@@ -329,6 +329,36 @@
         여기 그대로 나옵니다.</p>
     </section>
 
+    <!-- [H-2 · H-3] 계통도 · 기계실 — 두 점을 찍어 경로를 뽑는다 -->
+    <section class="card hidden" id="panel-sub">
+      <h2><span id="sub-title">계통도</span> 추출
+        <b class="tag">MODULE A</b></h2>
+      <p class="hint" id="sub-help">도면에서 <b>펌프</b>와 <b>알람밸브</b> 두 곳을
+        차례로 찍으세요. 그 사이의 실제 배관 경로가 입상관이 됩니다.</p>
+      <div class="row">
+        <button id="sub-pick-a">① <span id="sub-lab-a">펌프</span> 찍기</button>
+        <button id="sub-pick-b">② <span id="sub-lab-b">알람밸브</span> 찍기</button>
+      </div>
+      <div id="sub-picks" class="hint">아직 찍지 않았습니다.</div>
+      <label class="f"><span>클릭 허용 거리 (mm)</span>
+        <input type="number" id="sub-snap" value="2500" min="1" max="50000"
+               step="500"></label>
+      <label class="f hidden" id="sub-ceiling-row"><span>기계실 천장고 (m)</span>
+        <input type="number" id="sub-ceiling" step="0.1" placeholder="미입력 = 표고 미확정">
+      </label>
+      <div class="row">
+        <button id="sub-extract" class="go">경로 추출</button>
+        <button id="sub-clear">찍은 점 지우기</button>
+      </div>
+      <div class="row hidden" id="sub-clean-row">
+        <button id="sub-clean">깨끗한 배관망으로 통째 읽기</button>
+      </div>
+      <p class="hint hidden" id="sub-clean-help">풀 계통도가 조각나 경로가 튀면,
+        손으로 정리한 배관망 DXF 를 올려 <b>파일에 그려진 단일 망</b>을 그대로
+        읽습니다(추측 연결 없음).</p>
+      <div id="sub-summary" class="hint">아직 추출하지 않았습니다.</div>
+    </section>
+
     <!-- 2. 찍기 -->
     <section class="card hidden" id="panel-pick">
       <h2>자동 추천 <span class="tag">MODULE A</span></h2>
@@ -605,6 +635,8 @@
     sid: null, key: null, stage: "open",
     slot: "plan",                           // [H-0] 활성 도면 슬롯 (S650)
     boreColor: true,                        // 관경 근거로 배관 색 나누기
+    // [H-2 · H-3] 계통도·기계실이 찍는 두 점 · 무엇을 찍는 중인지
+    sub: { picks: [null, null], arm: null, summary: null },
     world: null, pick: null, edit: null, design: null,
     suggest: null,                          // [F-5] 찍기 후보 (제안만)
     suggestOff: new Set(),                  // 반영에서 제외한 후보 index
@@ -691,6 +723,7 @@
     const maxD = PICK_PX / S.view.scale;
     if (S.stage === "pick") pickClick(x, y, maxD);
     else if (S.stage === "edit") editClick(x, y, maxD);
+    else if (S.stage === "sub") subClick(x, y);
   });
 
   // ── 되돌리기 단축키 ────────────────────────────────────────────
@@ -738,6 +771,9 @@
     else if (S.world) {
       drawWorld();
       if (S.stage === "pick" && S.suggest) drawSuggest();
+      // [H-2 · H-3] 찍은 두 점을 도면 위에 남긴다 — 어디를 찍었는지 안 보이면
+      // 추출이 틀렸을 때 클릭이 문제인지 도면이 문제인지 가릴 수 없다.
+      if (S.stage === "sub") drawSubPicks();
     }
   }
 
@@ -978,11 +1014,15 @@
     });
     $("panel-open").classList.toggle("hidden", name !== "open");
     $("panel-resume").classList.toggle("hidden", name !== "open");
+    $("panel-sub").classList.toggle("hidden", name !== "sub");
     $("panel-pick").classList.toggle("hidden", name !== "pick");
     $("panel-edit").classList.toggle("hidden", name !== "edit");
     $("panel-conv").classList.toggle("hidden", name !== "conv");
     $("panel-design").classList.toggle("hidden", name !== "design");
-    $("panel-layers").classList.toggle("hidden", name !== "pick");
+    // 레이어 토글은 계통도·기계실에서도 쓴다 — 건축 배경을 끄지 못하면
+    // 배관 위의 두 점을 찍기가 어렵다.
+    $("panel-layers").classList.toggle("hidden",
+                                       name !== "pick" && name !== "sub");
     $("panel-suggest").classList.toggle("hidden", name !== "pick");
     draw();
   }
@@ -1075,15 +1115,27 @@
       const d = await api("/api/module-f/slot/open", { method: "POST", body: fd });
       S.sid = d.sid;
       say(`${d.filename} 읽는 중…`);
-      watch(loadWorld);
+      // 평면도는 찍기로, 계통도·기계실은 두 점 찍기로 간다.
+      watch(d.kind === "plan" ? loadWorld : async () => {
+        await loadWorldRaw();
+        fit(S.world.bounds);
+        await loadSub();
+        loadSlots();
+      });
     } catch (err) { busy(false); say(err.message, "err"); }
   };
 
-  async function loadWorld() {
+  // 도면만 받아 캔버스에 올린다 — 찍기판이 없는 슬롯(계통도·기계실)도 쓴다.
+  async function loadWorldRaw() {
     const d = await api(`/api/module-f/world?sid=${S.sid}`);
     S.world = d.world; S.key = d.key; S.pick = d.state;
     buildLayers();
     renderCats();
+    return d;
+  }
+
+  async function loadWorld() {
+    await loadWorldRaw();
     setStage("pick");
     fit(S.world.bounds);
     renderPick();
@@ -1144,16 +1196,174 @@
       renderSlots(d);
       const cur = d.slots.find((s) => s.active);
       // 슬롯마다 어디까지 갔는지가 다르다 — 그 단계로 되돌려 놓는다.
-      if (cur.stage === "edit") { await loadEdit(); }
-      else if (cur.stage === "pick") { await loadWorld(); }
-      else {
+      S.sub = { picks: [null, null], arm: null, summary: null };
+      if (!cur.opened) {
         S.world = null; S.edit = null; S.key = null;
         setStage("open");
         say(`${cur.label} — 아직 도면이 없습니다. DXF 를 여세요.`);
-      }
+      } else if (kind !== "plan") {
+        // 계통도·기계실은 찍기·손질을 거치지 않는다 — 두 점 찍기로 바로 간다.
+        await loadWorldRaw();
+        await loadSub();
+      } else if (cur.stage === "edit") { await loadEdit(); }
+      else { await loadWorld(); }
     } catch (err) { say(err.message, "err"); }
     finally { busy(false); }
   }
+
+  // ── [H-2 · H-3] 계통도 · 기계실 — 두 점을 찍어 경로를 뽑는다 ──────
+  // 계통도는 펌프↔알람밸브, 기계실은 수원↔입상관 연결점. 두 점은 **사람이
+  // 찍는다** — 도면마다 기호가 달라 자동 탐지가 조용히 틀리면 경로가 통째로
+  // 다른 곳으로 간다(특허 S220 의 우선순위에서 «사용자 지정» 만 쓴다).
+  const SUB_SPEC = {
+    system: {
+      title: "계통도", a: "펌프", b: "알람밸브",
+      help: "도면에서 <b>펌프</b>와 <b>알람밸브</b> 두 곳을 차례로 찍으세요. "
+          + "그 사이의 실제 배관 경로가 입상관이 됩니다.",
+      path: "/api/module-f/system/extract",
+      keys: ["pump_x", "pump_y", "av_x", "av_y"],
+      clean: true, ceiling: false,
+    },
+    machineroom: {
+      title: "기계실", a: "수원(탱크 토출구)", b: "입상관 연결점",
+      help: "도면에서 <b>수원(탱크 토출구)</b>과 <b>입상관 연결점</b>을 차례로 "
+          + "찍으세요. 기계실은 평면 좌표를 그대로 보존합니다.",
+      path: "/api/module-f/machineroom/extract",
+      keys: ["source_x", "source_y", "conn_x", "conn_y"],
+      clean: false, ceiling: true,
+    },
+  };
+
+  function subSpec() { return SUB_SPEC[S.slot] || SUB_SPEC.system; }
+
+  function renderSubPanel() {
+    const sp = subSpec();
+    $("sub-title").textContent = sp.title;
+    $("sub-help").innerHTML = sp.help;
+    $("sub-lab-a").textContent = sp.a;
+    $("sub-lab-b").textContent = sp.b;
+    $("sub-clean-row").classList.toggle("hidden", !sp.clean);
+    $("sub-clean-help").classList.toggle("hidden", !sp.clean);
+    $("sub-ceiling-row").classList.toggle("hidden", !sp.ceiling);
+    renderSubPicks();
+  }
+
+  function renderSubPicks() {
+    const sp = subSpec(), p = S.sub.picks;
+    const fmt = (q) => q ? `${q[0].toFixed(0)}, ${q[1].toFixed(0)}` : "—";
+    $("sub-picks").innerHTML =
+      kv(`① ${sp.a}`, fmt(p[0])) + kv(`② ${sp.b}`, fmt(p[1]))
+      + (S.sub.arm != null
+         ? kv("지금", `<span class="warn">${S.sub.arm === 0 ? sp.a : sp.b}</span> 를 캔버스에서 찍으세요`)
+         : "");
+  }
+
+  function subClick(x, y) {
+    if (S.sub.arm == null) return;
+    S.sub.picks[S.sub.arm] = [x, y];
+    S.sub.arm = null;
+    renderSubPicks();
+    draw();
+  }
+
+  function armSub(i) {
+    S.sub.arm = i;
+    renderSubPicks();
+    say(`${i === 0 ? subSpec().a : subSpec().b} 위치를 캔버스에서 찍으세요.`);
+  }
+
+  async function subExtract(clean) {
+    const sp = subSpec();
+    const body = { sid: S.sid,
+                   snap_tolerance_mm: Number($("sub-snap").value || 2500) };
+    if (clean) {
+      body.clean = true;
+    } else {
+      if (!S.sub.picks[0] || !S.sub.picks[1]) {
+        say("두 곳을 모두 찍어야 경로를 뽑을 수 있습니다.", "warn");
+        return;
+      }
+      body[sp.keys[0]] = S.sub.picks[0][0];
+      body[sp.keys[1]] = S.sub.picks[0][1];
+      body[sp.keys[2]] = S.sub.picks[1][0];
+      body[sp.keys[3]] = S.sub.picks[1][1];
+      if (sp.ceiling) {
+        const c = $("sub-ceiling").value;
+        if (c !== "") body.ceiling_m = Number(c);
+      }
+    }
+    busy(true, `${sp.title} 경로 추출 중…`);
+    try {
+      const d = await post(sp.path, body);
+      S.sub.summary = d.summary;
+      renderSubSummary(d);
+      loadSlots();
+      say(`${sp.title} 추출 완료 — 절점 ${d.summary.nodes} · 배관 ${d.summary.pipes}`
+        + ` · 연장 ${d.summary.total_m} m`, "ok");
+    } catch (err) {
+      // 미도달을 성공으로 위장하지 않는다 — 특허 S340 의 규범이다.
+      S.sub.summary = null;
+      $("sub-summary").innerHTML =
+        `<span class="err">추출 실패 — ${err.message}</span>`;
+      say(err.message, "err");
+    } finally { busy(false); }
+  }
+
+  function renderSubSummary(d) {
+    const s = (d && d.summary) || null;
+    if (!s) { $("sub-summary").textContent = "아직 추출하지 않았습니다."; return; }
+    let html = kv("절점 / 배관", `${s.nodes} / ${s.pipes}`)
+      + kv("연장", `${s.total_m} m`);
+    if (s.av_node_label) html += kv("알람밸브 절점", s.av_node_label);
+    if (s.source_node_label) html += kv("수원 절점", s.source_node_label);
+    if (s.conn_node_label) html += kv("연결 절점", s.conn_node_label);
+    if (d.mode) html += kv("방식", d.mode === "clean_network"
+                           ? "깨끗한 배관망 통째" : "두 점 최단경로");
+    if (s.bridges) html += kv('<span class="warn">추측 연결</span>',
+                              `${s.bridges}곳 — 실측이 아닙니다`);
+    if (s.elevation_unresolved) html += kv('<span class="warn">표고</span>',
+                                           "천장고 미입력 — 첫 구간 미확정");
+    $("sub-summary").innerHTML = html;
+  }
+
+  function drawSubPicks() {
+    const sp = subSpec();
+    const marks = [[S.sub.picks[0], "#3b82f6", sp.a],
+                   [S.sub.picks[1], "#22c55e", sp.b]];
+    ctx.lineWidth = 2;
+    for (const [q, color, label] of marks) {
+      if (!q) continue;
+      const px = sx(q[0]), py = sy(q[1]);
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px - 15, py); ctx.lineTo(px + 15, py);
+      ctx.moveTo(px, py - 15); ctx.lineTo(px, py + 15);
+      ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.font = "11px sans-serif";
+      ctx.fillText(label, px + 14, py - 8);
+    }
+    ctx.lineWidth = 1;
+  }
+
+  async function loadSub() {
+    const d = await api(`/api/module-f/sub/state?sid=${S.sid}`);
+    setStage("sub");
+    renderSubPanel();
+    renderSubSummary(d);
+    if (S.world) fit(S.world.bounds);
+    draw();
+  }
+
+  $("sub-pick-a").onclick = () => armSub(0);
+  $("sub-pick-b").onclick = () => armSub(1);
+  $("sub-clear").onclick = () => {
+    S.sub.picks = [null, null]; S.sub.arm = null;
+    renderSubPicks(); draw();
+  };
+  $("sub-extract").onclick = () => subExtract(false);
+  $("sub-clean").onclick = () => subExtract(true);
 
   async function loadSaved() {
     try {

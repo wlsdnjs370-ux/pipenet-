@@ -183,5 +183,8 @@ def register(app, *, _save_upload):
             return _fail(str(exc), 410)
         if sess.get("world") is None:
             return _fail("도면이 아직 준비되지 않았습니다.")
+        # [H-2] 계통도·기계실 슬롯에는 찍기판이 없다 — 도면만 내려보낸다.
+        # `_pick_state` 는 sess["pick"] 을 전제하므로 여기서 갈라야 한다.
+        state = _pick_state(sess) if sess.get("pick") is not None else None
         return jsonify({"ok": True, "world": sess["world"],
-                        "key": sess["key"], "state": _pick_state(sess)})
+                        "key": sess["key"], "state": state})

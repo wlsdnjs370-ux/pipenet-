@@ -1,0 +1,28 @@
+{
+  "agree": true,
+  "combined": {
+    "attached": false,
+    "nodes": 59,
+    "nozzles": 2,
+    "pipes": 58
+  },
+  "formats": {
+    "has": {
+      "nozzles": 2,
+      "total_m": 155.858
+    },
+    "kfp": {
+      "nozzles": 2,
+      "total_m": 155.858
+    },
+    "sdf": {
+      "nozzles": 2,
+      "total_m": 155.858
+    }
+  },
+  "riser": {
+    "av_node_label": "10",
+    "nodes": 56,
+    "pipes": 55
+  }
+}

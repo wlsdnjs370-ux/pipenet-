@@ -13,11 +13,19 @@ from pathlib import Path
 
 from flask import jsonify
 
-EDITOR_ROOT = Path(__file__).resolve().parents[2] / "cad_project_editor"
-# 찍은스펙·표시캐시·유저손질이 쌓이는 곳. 데스크톱 E 는 cwd 가 편집기 폴더라
+# [F-0 · D1] F 가 무는 엔진은 G 다. E(cad_project_editor)는 동결 레퍼런스로
+# 은퇴했다 — G1~G18 이 만든 design/(최불리·관경·부속·SDF 방출)은 G 트리에만
+# 있고, 두 트리는 services/domain 패키지 이름이 같아 한 프로세스에 둘 다
+# 올리면 어느 쪽이 import 되는지가 순서 우연에 걸린다. 그래서 재지정은
+# 절반이 아니라 전부다: 경로도, 작업폴더도, sys.path 도 G 하나만.
+EDITOR_ROOT = Path(__file__).resolve().parents[2] / "cad_project_editor_g"
+# 은퇴한 E 루트 — _boot() 가 «절대 path 에 없어야 한다» 를 검사할 때 쓴다.
+RETIRED_E_ROOT = Path(__file__).resolve().parents[2] / "cad_project_editor"
+# 찍은스펙·표시캐시·유저손질이 쌓이는 곳. 데스크톱 G 는 cwd 가 편집기 폴더라
 # 상대경로 "docs/import" 로 여기를 가리킨다. 웹서버는 cwd 가 프로젝트 루트라
 # 같은 상대경로가 엉뚱한 곳을 가리키므로, 부팅 때 절대경로로 고정한다.
-# 같은 폴더를 쓰므로 데스크톱에서 찍은 도면이 웹에서 그대로 이어진다.
+# 같은 폴더를 쓰므로 데스크톱 G 에서 찍은 도면이 웹에서 그대로 이어진다.
+# E 작업폴더에 있던 저장본은 scripts/_migrate_f_workdir.py 가 1회 복사했다.
 IMPORT_WORK_ROOT = EDITOR_ROOT / "docs" / "import"
 
 # 헤드 종류·수직 전개를 설명하는 그림. 모듈 E 의 대화상자가 쓰는 바로 그
@@ -101,13 +109,27 @@ def _boot() -> None:
         if _booted:
             return
         if not (EDITOR_ROOT / "main.py").exists():
-            raise RuntimeError(f"모듈 E 소스를 찾을 수 없습니다: {EDITOR_ROOT}")
+            raise RuntimeError(f"모듈 G 엔진 소스를 찾을 수 없습니다: {EDITOR_ROOT}")
+        # ★은퇴한 E 루트가 path 에 있으면 조용히 치우지 않고 세운다(D1).
+        #   두 트리의 services 이름이 같아, E 가 먼저면 이후의 모든 import 가
+        #   엉뚱한 엔진으로 간다 — 그 오염은 여기서 막는 것이 마지막 기회다.
+        _e = str(RETIRED_E_ROOT)
+        if _e in sys.path:
+            raise RuntimeError(
+                "은퇴한 모듈 E 루트가 sys.path 에 올라 있습니다 — 모듈 F 는 "
+                f"G 엔진 하나만 물어야 합니다: {_e}")
         root = str(EDITOR_ROOT)
         # append 다 — insert(0) 로 앞에 두면 편집기의 services/domain 이 본
         # 프로젝트의 같은 이름 패키지를 가릴 수 있다. 지금은 겹치는 이름이
         # 없지만, 나중에 생겨도 본 서버가 먼저 이기게 둔다.
         if root not in sys.path:
             sys.path.append(root)
+        import services as _svc
+        # 이미 다른 데서 services 를 E 로 실어 놨어도 여기서 잡힌다.
+        _svc_file = str(Path(getattr(_svc, "__file__", "") or "").resolve())
+        if not _svc_file.startswith(str(EDITOR_ROOT.resolve())):
+            raise RuntimeError(
+                f"services 가 G 엔진이 아닌 곳에서 import 되었습니다: {_svc_file}")
         from services.cad_import.pipeline import disp_cache, handoff
         work = str(IMPORT_WORK_ROOT)
         handoff.import_write_root = lambda: work

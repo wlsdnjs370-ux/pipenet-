@@ -249,12 +249,21 @@ def main():
               f"붙임 {rep.get('made')} / 후보 "
               f"{rep.get('made', 0) + rep.get('blocked', 0)}")
         # 덩이 수는 대리지표다. 진짜 성과는 «급수원에서 물이 닿는 헤드».
+        #
+        # ★「1.5배 늘어난다」는 특정 저장본(옛 B1F — 급수원 옆이 141mm 로 끊긴
+        #   판)의 사실이지 코드의 성질이 아니다. 저장본은 사용자가 언제든 다시
+        #   저장한다(실측: 08-26 아침 세션이 3163→3105 헤드로 재저장 — 코드
+        #   회귀 아님, _kfp_baseline 의 board 지문으로 확인). 사용자 데이터에
+        #   기대는 기대치는 여기 두지 않는다 — 증가 폭의 골든 검증은 F-7 이
+        #   «고정 픽스처» 로 한다. 여기서는 코드의 성질만 세운다: 이음이
+        #   물길을 끊어 헤드를 «잃게» 만들면 안 된다.
         wet0 = (before.get("body_stat") or {}).get("source_heads", 0)
         r = c.post("/api/module-f/edit/flow", json={"sid": sid2})
         j = r.get_json()
         wet1 = (j.get("water") or {}).get("wet_heads", 0) if j.get("ok") else 0
-        check("물 닿는 헤드가 늘어남", wet1 > wet0 * 1.5,
-              f"{wet0} → {wet1} / {(j.get('water') or {}).get('total_heads')}")
+        check("이음 뒤 물 닿는 헤드가 줄지 않음", wet1 >= wet0,
+              f"{wet0} → {wet1} / {(j.get('water') or {}).get('total_heads')}"
+              + ("" if wet1 > wet0 else " (이 저장본은 이음이 물길을 못 늘림 — 데이터 사실)"))
 
         # ★스냅샷을 하나만 남기므로 되돌리기 «한 번» 이 묶음 전체를 되돌려야 한다.
         r = c.post("/api/module-f/edit/undo", json={"sid": sid2})

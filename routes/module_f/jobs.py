@@ -120,7 +120,12 @@ def _run_job(sess: dict, phase: str, fn) -> dict:
             try:
                 job["result"] = fn()
                 job["state"] = "done"
-            except Exception as exc:  # noqa: BLE001 — 무엇이 나든 화면에 알린다
+            # ★BaseException 까지다. 엔진은 CLI 태생이라 실패를 SystemExit 로
+            #   던지는 곳이 있다(실측: 원본 DXF 없는 키 reopen →
+            #   `raise SystemExit("DXF를 못 찾음: apt")`). Exception 만 잡으면
+            #   워커가 소리 없이 죽고 잡이 영원히 «run» 으로 남아, 사용자는
+            #   멈춘 진행바만 보게 된다 — 실패가 있으면 실패라고 말해야 한다.
+            except BaseException as exc:  # noqa: BLE001 — 무엇이 나든 화면에 알린다
                 job["state"] = "error"
                 job["error"] = f"{type(exc).__name__}: {exc}"
                 sink("!! " + job["error"])

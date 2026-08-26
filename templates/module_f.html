@@ -406,6 +406,7 @@
         <select id="ed-sheet"></select>
       </label>
       <div class="row">
+        <select id="ed-src" class="hidden" title="어느 급수원 기준의 최불리인지"></select>
         <button id="ed-worst">최불리 30 선정</button>
         <button id="ed-worst-clear">해제</button>
       </div>
@@ -1115,6 +1116,7 @@
 
   function renderEdit() {
     const e = S.edit;
+    syncWorstSourceSelect(e);   // [F-1] 급수원 2곳 이상이면 기준 선택을 보인다
     const kinds = Object.entries(e.kinds)
       .map(([k, n]) => `${k} ${n}`).join(" · ") || "–";
     const undef = e.kinds["미지정"] || 0;
@@ -1138,7 +1140,8 @@
         Object.entries(e.wet_counts).map(([k, n]) => `${k} ${n}`).join(" · ")) : "") +
       (e.worst ? kv("최불리망 <span class=\"tag\">설계면적</span>",
         `<span class="ok">${e.worst.k}개</span> · 앵커 ${e.worst.far_m} m`
-        + ` · 폭 ${e.worst.span_m} m`)
+        + ` · 폭 ${e.worst.span_m} m`
+        + (e.worst.source ? ` · <b class="tag">${e.worst.source}</b> 기준` : ""))
         + kv("배관 연장 / 주배관 부하",
           `${e.worst.total_m} m · <span class="ok">${e.worst.max_load}</span>개 담당`)
         : "") +
@@ -1328,17 +1331,35 @@
   };
 
   // ── Remote 30 (모듈 A 개념 · E 그래프 위) ──────────────────────
+  // [F-1] 어느 급수원 기준의 최불리인지 — kfp 변환과 같은 규약(Z1, Z2…).
+  function syncWorstSourceSelect(e) {
+    const sel = $("ed-src");
+    if (!sel) return;
+    const n = (e.sources || []).length;
+    if (n < 2) { sel.classList.add("hidden"); sel.innerHTML = ""; return; }
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">어느 급수원 기준?</option>'
+      + e.sources.map((p, i) =>
+          `<option value="Z${i + 1}">Z${i + 1} (${Math.round(p[0])}, ${Math.round(p[1])})</option>`
+        ).join("");
+    if (keep) sel.value = keep;
+    sel.classList.remove("hidden");
+  }
+
   $("ed-worst").onclick = async () => {
     busy(true, "최불리 헤드 선정 중…");
     try {
       const sheet = Number(($("ed-sheet") || {}).value || 0);
-      const d = await post("/api/module-f/edit/worst",
-                           { sid: S.sid, k: 30, sheet });
+      const body = { sid: S.sid, k: 30, sheet };
+      const src = ($("ed-src") || {}).value;
+      if (src) body.source = src;
+      const d = await post("/api/module-f/edit/worst", body);
       setEdit(d.state);
       renderEdit();
       const s = d.summary;
       say(`최불리 ${s.k} 헤드 — 도달 ${s.reachable}개 중 · `
         + `최원 ${s.far_m} m · ${s.k}번째 ${s.near_m} m · 경로 ${s.path_edges} 간선`
+        + (s.source ? ` · 급수원 ${s.source} 기준` : "")
         + (s.sheet ? ` · 도면 ${s.sheet}장 안` : ""),
           "ok");
       $("cv-remote").checked = true;

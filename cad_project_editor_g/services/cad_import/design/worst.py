@@ -19,7 +19,7 @@ REMOTE_K_DEFAULT = 30
 
 
 def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
-                   only_heads=None) -> dict:
+                   only_heads=None, source_index: int | None = None) -> dict:
     """앵커 기반 «최불리 배관망» 추출 — 수리계산의 설계면적 그 자체.
 
     ─ 왜 «먼 순서 K개» 가 아니라 앵커인가 ────────────────────────────
@@ -39,7 +39,21 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
 
     `only_heads` : 도면이 여러 장일 때 한 장으로 범위를 좁힌다. 앵커도 그
         범위 안에서 고른다(장이 다르면 앵커가 남의 도면으로 튄다).
+    `source_index` : [F-1 · D4] 급수원이 여럿일 때 **어느 하나 기준**인지.
+        지정하면 `sources[source_index]` 하나만 seed 로 Dijkstra 를 돈다 —
+        전체망 `.kfp` 변환의 `source_selection_required` 와 같은 규약이다.
+        급수원이 둘이면 앵커·최원 유하거리가 달라지므로, «어느 급수원에서든
+        가장 먼 헤드» 는 수리계산 입력이 못 된다(BLOCKED B2 — 이것으로 해소).
+        `None` 이면 종전 그대로 전부 seed(하위호환 — 산출 비트 동일).
     """
+    if source_index is not None:
+        src_list = list(sources)
+        if not (0 <= int(source_index) < len(src_list)):
+            raise ValueError(
+                f"급수원 번호가 범위를 벗어났습니다: {source_index} "
+                f"(급수원 {len(src_list)}곳)")
+        sources = [src_list[int(source_index)]]
+
     adj: dict[int, list[int]] = {}
     for a, b in edges:
         adj.setdefault(a, []).append(b)

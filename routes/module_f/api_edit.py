@@ -259,12 +259,44 @@ def register(app):
             sheet_no = want
             print(f"[최불리] 도면 {want} 장 안으로 범위를 좁힘 — 헤드 {len(only)}개")
 
+        # [F-1 · D4] 급수원이 여럿이면 «어느 하나 기준» 인지 사람이 정한다 —
+        # 전체망 .kfp 변환의 source_selection_required 와 같은 규약(태그 Z1…
+        # 또는 1부터 번호). 어느 급수원에서든 가장 먼 헤드는 앵커가 못 된다:
+        # 급수원마다 최원 유하거리가 다르기 때문이다(G BLOCKED B2 — 이것으로 해소).
+        src_index = None
+        picked_tag = None
+        cands = [{"tag": f"Z{i + 1}",
+                  "x": _r1(b.pts[n][0]), "y": _r1(b.pts[n][1])}
+                 for i, n in enumerate(b.sources)
+                 if isinstance(n, int) and 0 <= n < len(b.pts)]
+        want_src = str(body.get("source") or "").strip()
+        # ★명시가 우선이다 — 1곳뿐이어도 틀린 태그를 조용히 무시하면, 사용자는
+        #   Z2 기준을 골랐다고 믿은 채 Z1 결과를 읽게 된다.
+        if want_src:
+            for i in range(len(b.sources)):
+                if want_src.upper() == f"Z{i + 1}" or want_src == str(i + 1):
+                    src_index, picked_tag = i, f"Z{i + 1}"
+                    break
+            if src_index is None:
+                return jsonify({"ok": False, "code": "source_selection_required",
+                                "message": f"급수원 '{want_src}'를 찾지 못했습니다.",
+                                "sources": cands}), 400
+        elif len(b.sources) == 1:
+            src_index, picked_tag = 0, "Z1"      # 1곳이면 자동으로 그것
+        else:
+            return jsonify({"ok": False, "code": "source_selection_required",
+                            "message": "급수원이 여러 곳입니다. 어느 급수원 기준의 "
+                                       "최불리인지 하나를 지정하세요.",
+                            "sources": cands}), 400
+
         w = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=k,
-                           only_heads=only)
+                           only_heads=only, source_index=src_index)
         if not w["heads"]:
             sess["worst"] = None
             return _fail("급수원에서 닿는 헤드가 없습니다. 이음·급수 위치를 확인하세요.")
         w["sheet"] = sheet_no
+        w["source_tag"] = picked_tag          # 화면이 «어느 급수원 기준» 인지 안다
+        w["source_index"] = src_index
         sess["worst"] = w
         return jsonify({
             "ok": True,
@@ -274,6 +306,7 @@ def register(app):
                         "total_m": w.get("total_m", 0.0),
                         "max_load": w.get("max_load", 0),
                         "sheet": sheet_no,
+                        "source": picked_tag,
                         "path_edges": len(w["edges"])},
             "state": _edit_state(sess)})
 

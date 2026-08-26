@@ -73,6 +73,33 @@ def g1():
     check("설계면적 폭이 corridor 총연장보다 작다",
           w["span_m"] < w["total_m"],
           f"폭 {w['span_m']} m / 총연장 {w['total_m']} m")
+
+    # [F-1 · D4] 급수원 지정 — B2 해소 규약.
+    # 미지정(None)은 종전과 비트 동일해야 하고, 지정은 그 급수원 하나만 seed 다.
+    w_none = worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=30,
+                           source_index=None)
+    check("source_index=None 은 종전과 동일(하위호환)", w == w_none,
+          f"far {w['far_m']} m")
+    if len(b.sources) == 1:
+        w_z1 = worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=30,
+                             source_index=0)
+        check("급수원 1곳 — Z1 지정 == 미지정", w_z1 == w,
+              f"far {w_z1['far_m']} m")
+    # 합성 2급수원 — 지정마다 다른 답이 나와야 한다.
+    pts2 = [(0.0, 0.0), (10_000.0, 0.0), (60_000.0, 0.0)]
+    edges2 = [(0, 1), (1, 2)]
+    hnodes2 = [[1], [2]]
+    wa = worst_k_heads(pts2, edges2, hnodes2, [0, 2], k=1, source_index=0)
+    wb = worst_k_heads(pts2, edges2, hnodes2, [0, 2], k=1, source_index=1)
+    check("2급수원 합성 — 지정이 앵커를 가른다",
+          wa["far_m"] != wb["far_m"] and wa["anchor"] != wb["anchor"],
+          f"Z1 {wa['far_m']} m(앵커 {wa['anchor']}) vs "
+          f"Z2 {wb['far_m']} m(앵커 {wb['anchor']})")
+    try:
+        worst_k_heads(pts2, edges2, hnodes2, [0, 2], k=1, source_index=9)
+        check("범위 밖 번호는 오류", False, "예외가 안 났다")
+    except ValueError as exc:
+        check("범위 밖 번호는 오류", "범위" in str(exc), str(exc)[:40])
     print(f"      앵커 {w['far_m']} m · 폭 {w['span_m']} m · "
           f"연장 {w['total_m']} m · max_load {w['max_load']}")
     return w
@@ -88,7 +115,8 @@ def g2():
     b = es.board
     w = worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=30)
     payload = es.convert_payload()
-    # 이 저장본은 급수원이 둘이다 — 기준선과 같은 것(Z1)을 쓴다(BLOCKED B2).
+    # 급수원 지정 규약(F-1·D4)에 따라 기준선과 같은 Z1 을 쓴다 — B2 는 해소됐다.
+    # (현 저장본은 급수원 1곳이라 어느 쪽이든 같지만, 규약을 문구로 남긴다.)
     srcs = payload.get("sources") or ()
     sel = srcs[0].get("tag") if len(srcs) > 1 else None
 

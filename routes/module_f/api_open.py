@@ -124,6 +124,49 @@ def register(app, *, _save_upload):
         view["key"] = sess.get("key")
         return jsonify(view)
 
+    @app.get("/api/module-f/job/stream")
+    def module_f_job_stream():
+        """[F-6] 진행 스트리밍 — 잡 상태·로그 줄을 SSE 로 흘린다.
+
+        r30_prototype 의 SSE 패턴을 참조하되 세션·잡 규약은 F 것 그대로다:
+        상태의 원천은 여전히 `_run_job` 의 sess["job"]/sess["log"] 이고, 이
+        스트림은 그것을 읽어 보내기만 한다. 폴링(/api/module-f/job)은
+        하위호환으로 남는다 — EventSource 가 없는 환경은 그리로 돌아간다.
+        """
+        try:
+            sess = _sess(request.args.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+
+        def gen():
+            import json as _json
+            sent = 0
+            idle_beats = 0
+            while True:
+                view = _job_view(sess)
+                lines = sess.get("log") or []
+                # 새 로그 줄 — 줄 단위 이벤트로.
+                while sent < len(lines):
+                    yield ("event: line\ndata: "
+                           + _json.dumps(lines[sent], ensure_ascii=False)
+                           + "\n\n")
+                    sent += 1
+                yield ("event: state\ndata: "
+                       + _json.dumps(view, ensure_ascii=False) + "\n\n")
+                if view.get("state") in ("done", "error"):
+                    return
+                if view.get("state") == "idle":
+                    # 잡이 아직 안 붙었을 수 있다 — 몇 박자는 기다려 준다.
+                    idle_beats += 1
+                    if idle_beats > 25:
+                        return
+                time.sleep(0.4)
+
+        from flask import Response
+        return Response(gen(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache",
+                                 "X-Accel-Buffering": "no"})
+
     @app.get("/api/module-f/world")
     def module_f_world():
         try:

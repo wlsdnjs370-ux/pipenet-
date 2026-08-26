@@ -432,6 +432,15 @@
     "rule": "/api/module-f/job"
   },
   {
+    "endpoint": "module_f_job_stream",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/job/stream"
+  },
+  {
     "endpoint": "module_f_open",
     "methods": [
       "OPTIONS",

@@ -580,7 +580,7 @@
     suggestOff: new Set(),                  // 반영에서 제외한 후보 index
     hidden: new Set(),                      // 숨긴 레이어 묶음 id
     view: { scale: 1, ox: 0, oy: 0 },
-    poll: null, convResult: null,
+    poll: null, es: null, convResult: null,
   };
 
   // ── 캔버스 기본기 ───────────────────────────────────────────────
@@ -957,31 +957,77 @@
     draw();
   }
 
-  // ── 잡 폴링 ────────────────────────────────────────────────────
+  // ── 잡 진행 — SSE 우선, 미지원·오류 시 폴링 폴백 [F-6] ──────────
+  function jobRender(j) {
+    $("log").textContent = j.lines && j.lines.length ? j.lines.join("\n") : "…";
+    $("log").scrollTop = $("log").scrollHeight;
+    $("job-line").textContent =
+      `${j.phase} · ${j.state === "run" ? "진행 중" : j.state} · ${j.elapsed}s`
+      + (j.queued ? " (다른 작업이 끝나기를 기다리는 중)" : "");
+  }
+  function jobFinish(j, onDone) {
+    stopWatch();
+    busy(false);
+    if (j.state === "error") { say(j.error, "err"); return; }
+    // onDone 은 async 다. 여기서 잡지 않으면 실패가 조용히 삼켜진다.
+    Promise.resolve()
+      .then(() => onDone(j))
+      .catch((err) => say(err.message || String(err), "err"));
+  }
+
   function watch(onDone) {
-    if (S.poll) clearInterval(S.poll);
-    S.poll = setInterval(async () => {
-      let j;
-      try { j = await api(`/api/module-f/job?sid=${S.sid}`); }
-      catch (err) { stopWatch(); busy(false); say(err.message, "err"); return; }
-      $("log").textContent = j.lines.length ? j.lines.join("\n") : "…";
+    stopWatch();
+    if (window.EventSource) {
+      try { return watchStream(onDone); } catch (e) { /* 폴백 */ }
+    }
+    return watchPoll(onDone);
+  }
+
+  function watchStream(onDone) {
+    // 진행 줄이 «생기는 순간» 흐른다 — 0.7초 폴링 박자를 기다리지 않는다.
+    const es = new EventSource(`/api/module-f/job/stream?sid=${S.sid}`);
+    S.es = es;
+    const lines = [];
+    es.addEventListener("line", (ev) => {
+      lines.push(JSON.parse(ev.data));
+      if (lines.length > 400) lines.splice(0, 200);
+      $("log").textContent = lines.join("\n");
       $("log").scrollTop = $("log").scrollHeight;
+    });
+    es.addEventListener("state", (ev) => {
+      const j = JSON.parse(ev.data);
       $("job-line").textContent =
         `${j.phase} · ${j.state === "run" ? "진행 중" : j.state} · ${j.elapsed}s`
         + (j.queued ? " (다른 작업이 끝나기를 기다리는 중)" : "");
       if (j.state === "run") { busy(true, `${j.phase} · ${j.elapsed}s`); return; }
-      stopWatch();
-      busy(false);
-      if (j.state === "error") { say(j.error, "err"); return; }
-      // onDone 은 async 다. 여기서 잡지 않으면 실패가 조용히 삼켜진다.
-      Promise.resolve()
-        .then(() => onDone(j))
-        .catch((err) => say(err.message || String(err), "err"));
+      if (j.state === "idle") return;      // 잡이 아직 안 붙었다 — 서버가 기다린다
+      jobFinish(j, onDone);
+    });
+    es.onerror = () => {
+      // 프록시가 스트림을 못 넘기는 환경 — 조용히 폴링으로 돌아간다.
+      if (S.es === es) {
+        es.close();
+        S.es = null;
+        watchPoll(onDone);
+      }
+    };
+  }
+
+  function watchPoll(onDone) {
+    S.poll = setInterval(async () => {
+      let j;
+      try { j = await api(`/api/module-f/job?sid=${S.sid}`); }
+      catch (err) { stopWatch(); busy(false); say(err.message, "err"); return; }
+      jobRender(j);
+      if (j.state === "run") { busy(true, `${j.phase} · ${j.elapsed}s`); return; }
+      jobFinish(j, onDone);
     }, 700);
   }
+
   function stopWatch() {
     if (S.poll) clearInterval(S.poll);
     S.poll = null;
+    if (S.es) { S.es.close(); S.es = null; }
   }
 
   // ── 1. 열기 ────────────────────────────────────────────────────

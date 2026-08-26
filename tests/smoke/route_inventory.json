@@ -514,6 +514,31 @@
     "rule": "/api/module-f/saved"
   },
   {
+    "endpoint": "module_f_slot_open",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/slot/open"
+  },
+  {
+    "endpoint": "module_f_slot_state",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/slot/state"
+  },
+  {
+    "endpoint": "module_f_slot_switch",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/slot/switch"
+  },
+  {
     "endpoint": "module_f_world",
     "methods": [
       "GET",

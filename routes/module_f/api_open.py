@@ -15,6 +15,35 @@ from routes.module_f.views import _pick_state
 from routes.module_f.world import _saved_keys, _world_payload
 
 
+def _open_job(sess: dict, dxf):
+    """DXF 한 장을 찍기 세션으로 여는 잡을 만든다.
+
+    [H-0] 슬롯 열기(`/api/module-f/slot/open`)와 같은 것을 쓴다 — 계통도·기계실도
+    특허 S650 대로 «같은 절차» 를 밟으므로, 여기가 갈라지면 도면 종류에 따라
+    제1국면이 달라진다.
+    """
+    def job():
+        from services.cad_import.pick.session import PickSession
+        t0 = time.perf_counter()
+        print(f"[찍기] DXF 읽는 중 — {os.path.basename(str(dxf))}")
+        ps = PickSession.open(str(dxf))
+        _check_key(ps.key)   # 올린 파일 이름에서 딴 키도 같은 자를 통과시킨다
+        # E 의 찍기판은 열자마자 armed 가 아니다 — Qt 대화상자도 "배관 선택"
+        # 을 눌러야 클릭이 먹는다. 웹에서는 첫 할 일이 어차피 그것뿐이라
+        # 같은 호출을 미리 해 둔다(엔진 상태는 단추를 누른 것과 동일).
+        ps.select_pipe()
+        sess["pick"] = ps
+        sess["key"] = ps.key
+        payload = _world_payload(ps.world)
+        sess["world"] = payload
+        print(f"[찍기] 완료 {time.perf_counter() - t0:.1f}s · "
+              f"선분 {payload['counts']['segs']} · "
+              f"원 {payload['counts']['circles']} · "
+              f"호 {payload['counts']['arcs']}")
+        return {"key": ps.key}
+    return job
+
+
 def register(app, *, _save_upload):
     @app.get("/module-f")
     def module_f_page():
@@ -56,28 +85,7 @@ def register(app, *, _save_upload):
             return _fail(f"도면을 저장하지 못했습니다: {exc}", 500)
 
         sess = _new_session(dxf=str(dxf))
-
-        def job():
-            from services.cad_import.pick.session import PickSession
-            t0 = time.perf_counter()
-            print(f"[찍기] DXF 읽는 중 — {os.path.basename(str(dxf))}")
-            ps = PickSession.open(str(dxf))
-            _check_key(ps.key)   # 올린 파일 이름에서 딴 키도 같은 자를 통과시킨다
-            # E 의 찍기판은 열자마자 armed 가 아니다 — Qt 대화상자도 "배관 선택"
-            # 을 눌러야 클릭이 먹는다. 웹에서는 첫 할 일이 어차피 그것뿐이라
-            # 같은 호출을 미리 해 둔다(엔진 상태는 단추를 누른 것과 동일).
-            ps.select_pipe()
-            sess["pick"] = ps
-            sess["key"] = ps.key
-            payload = _world_payload(ps.world)
-            sess["world"] = payload
-            print(f"[찍기] 완료 {time.perf_counter() - t0:.1f}s · "
-                  f"선분 {payload['counts']['segs']} · "
-                  f"원 {payload['counts']['circles']} · "
-                  f"호 {payload['counts']['arcs']}")
-            return {"key": ps.key}
-
-        _run_job(sess, "도면 읽기", job)
+        _run_job(sess, "도면 읽기", _open_job(sess, dxf))
         return jsonify({"ok": True, "sid": sess["id"],
                         "filename": os.path.basename(str(dxf))})
 

@@ -15,7 +15,7 @@
     --ok:#3FB68B; --warn:#D9A441; --err:#E05C5C;
     --sans:'Inter',-apple-system,'Segoe UI','Malgun Gothic',sans-serif;
     --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
-    --h-head:52px; --h-steps:46px; --h-bar:34px;
+    --h-head:52px; --h-steps:46px; --h-bar:34px; --h-slots:38px;
   }
   *{box-sizing:border-box;}
   ::selection{background:var(--accent-dim);color:#fff;}
@@ -55,9 +55,25 @@
   .steps div.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;
                        height:1px;background:var(--accent);}
 
+  /* ── 도면 슬롯 [H-0] 특허 S650 ────────────────────────── */
+  .slots{height:var(--h-slots);display:flex;align-items:stretch;
+         border-bottom:1px solid var(--line);background:var(--panel);}
+  .slots button{display:flex;align-items:center;gap:8px;padding:0 18px;
+                border:0;border-right:1px solid var(--line);background:none;
+                color:var(--faint);font:500 11.5px/1 inherit;
+                letter-spacing:.02em;cursor:pointer;}
+  .slots button:hover{color:var(--dim);background:var(--chrome);}
+  .slots button.on{color:var(--ink);background:var(--chrome);
+                   box-shadow:inset 0 -2px 0 var(--accent);}
+  .slots button .dot{width:6px;height:6px;border-radius:50%;
+                     background:var(--line-3);}
+  .slots button.has .dot{background:var(--ok);}
+  .slots .note{display:flex;align-items:center;padding:0 16px;
+               color:var(--faint);font-size:11px;}
+
   /* ── 판 ───────────────────────────────────────────────── */
   .wrap{display:grid;grid-template-columns:352px 1fr;
-        height:calc(100vh - var(--h-head) - var(--h-steps));}
+        height:calc(100vh - var(--h-head) - var(--h-steps) - var(--h-slots));}
   .side{border-right:1px solid var(--line);overflow-y:auto;background:var(--panel);}
   .side::-webkit-scrollbar{width:10px;}
   .side::-webkit-scrollbar-track{background:var(--panel);}
@@ -283,6 +299,11 @@
   <div id="st-edit">손질</div>
   <div id="st-conv">변환</div>
   <div id="st-design">수리계산</div>
+</div>
+
+<!-- [H-0] 도면 슬롯 — 특허 S650(평면도·계통도·기계실에 같은 절차 반복) -->
+<div class="slots" id="slots">
+  <span class="note">도면을 열면 슬롯이 켜집니다</span>
 </div>
 
 <div class="wrap">
@@ -575,6 +596,7 @@
 
   const S = {
     sid: null, key: null, stage: "open",
+    slot: "plan",                           // [H-0] 활성 도면 슬롯 (S650)
     world: null, pick: null, edit: null, design: null,
     suggest: null,                          // [F-5] 찍기 후보 (제안만)
     suggestOff: new Set(),                  // 반영에서 제외한 후보 index
@@ -1036,9 +1058,13 @@
     if (!f) { say("DXF 파일을 고르세요.", "warn"); return; }
     const fd = new FormData();
     fd.append("dxf_file", f);
+    // [H-0] 활성 슬롯으로 넣는다. 세션이 이미 있으면 그 세션의 슬롯을 채운다
+    // (S650 회귀 한 바퀴) — 없으면 새 세션이 이 종류로 시작한다.
+    fd.append("kind", S.slot);
+    if (S.sid) fd.append("sid", S.sid);
     busy(true, "업로드 중…");
     try {
-      const d = await api("/api/module-f/open", { method: "POST", body: fd });
+      const d = await api("/api/module-f/slot/open", { method: "POST", body: fd });
       S.sid = d.sid;
       say(`${d.filename} 읽는 중…`);
       watch(loadWorld);
@@ -1053,6 +1079,7 @@
     setStage("pick");
     fit(S.world.bounds);
     renderPick();
+    loadSlots();
     const c = S.world.counts, dr = S.world.dropped;
     let msg = `${S.key} · 선분 ${c.segs.toLocaleString()} · 원 ${c.circles.toLocaleString()}`
             + ` · 호 ${c.arcs.toLocaleString()}`;
@@ -1061,6 +1088,63 @@
            + `·호 ${dr.arcs.toLocaleString()} 개를 뺐습니다(표시 상한). 찍기 판정은 전량 대상입니다.`;
       say(msg, "warn");
     } else { say(msg); }
+  }
+
+  // ── 도면 슬롯 [H-0] 특허 S650 ──────────────────────────────────
+  // 평면도 하나로 끝나지 않는다 — 계통도·기계실에 같은 절차를 반복하고
+  // S700 이 셋을 결합한다. 여기서는 슬롯을 켜고 바꾸는 것까지가 전부다.
+  function renderSlots(d) {
+    const box = $("slots");
+    box.innerHTML = "";
+    if (!d || !d.slots) {
+      const n = document.createElement("span");
+      n.className = "note";
+      n.textContent = "도면을 열면 슬롯이 켜집니다";
+      box.appendChild(n);
+      return;
+    }
+    S.slot = d.active;
+    for (const it of d.slots) {
+      const b = document.createElement("button");
+      b.className = (it.active ? "on " : "") + (it.opened ? "has" : "");
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      b.appendChild(dot);
+      b.appendChild(document.createTextNode(
+        it.key ? `${it.label} · ${it.key}` : it.label));
+      b.onclick = () => switchSlot(it.kind);
+      box.appendChild(b);
+    }
+    const note = document.createElement("span");
+    note.className = "note";
+    const n = d.slots.filter((s) => s.opened).length;
+    note.textContent = `${n}/3 열림 — 계통도·기계실은 선택입니다`;
+    box.appendChild(note);
+  }
+
+  async function loadSlots() {
+    if (!S.sid) { renderSlots(null); return; }
+    try { renderSlots(await api(`/api/module-f/slot/state?sid=${S.sid}`)); }
+    catch (err) { renderSlots(null); }
+  }
+
+  async function switchSlot(kind) {
+    if (!S.sid || kind === S.slot) return;
+    busy(true, "도면 바꾸는 중…");
+    try {
+      const d = await post("/api/module-f/slot/switch", { sid: S.sid, kind });
+      renderSlots(d);
+      const cur = d.slots.find((s) => s.active);
+      // 슬롯마다 어디까지 갔는지가 다르다 — 그 단계로 되돌려 놓는다.
+      if (cur.stage === "edit") { await loadEdit(); }
+      else if (cur.stage === "pick") { await loadWorld(); }
+      else {
+        S.world = null; S.edit = null; S.key = null;
+        setStage("open");
+        say(`${cur.label} — 아직 도면이 없습니다. DXF 를 여세요.`);
+      }
+    } catch (err) { say(err.message, "err"); }
+    finally { busy(false); }
   }
 
   async function loadSaved() {
@@ -1245,6 +1329,7 @@
   async function loadEdit() {
     const d = await api(`/api/module-f/edit/state?sid=${S.sid}`);
     setEdit(d.state); S.key = d.key;
+    loadSlots();
     setStage("edit");
     fit(S.edit.bounds);
     renderEdit();

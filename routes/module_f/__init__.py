@@ -30,7 +30,7 @@
 from __future__ import annotations
 
 from routes.module_f import (api_convert, api_design, api_edit, api_open,
-                             api_pick)
+                             api_pick, api_slot)
 from routes.module_f.common import (  # noqa: F401  (진단 스크립트가 쓴다)
     AUTOJOIN_ANG_TOL_DEG, AUTOJOIN_LADDER_MM, AUTOJOIN_MAX_PAIRS,
     AUTOJOIN_PLATEAU, DIAGRAMS, EDITOR_ROOT, GROUP_DIAGRAM, IMPORT_WORK_ROOT,
@@ -44,6 +44,10 @@ from routes.module_f.jobs import (  # noqa: F401
 from routes.module_f.remote30 import (  # noqa: F401
     _emit_pipenet, _restrict_to_worst, _sheet_frames, _worst_k_heads,
     _worst_view)
+from routes.module_f.slots import (  # noqa: F401
+    SESSION_KEYS, SLOT_KINDS, SLOT_LABELS, _check_slot_kind, _slot_active,
+    _slot_blank, _slot_capture, _slot_init, _slot_progress, _slot_restore,
+    _slot_state, _slot_switch)
 from routes.module_f.views import (  # noqa: F401
     _autojoin_view, _edit_state, _net_rev, _pick_state)
 from routes.module_f.world import (  # noqa: F401
@@ -57,6 +61,7 @@ def register(app, *, _save_upload, UPLOAD_DIR):
     쓴다. 예전에는 한 `register()` 가 둘 다 들고 스물여덟 라우트를 품었다.
     """
     api_open.register(app, _save_upload=_save_upload)
+    api_slot.register(app, _save_upload=_save_upload)
     api_pick.register(app)
     api_edit.register(app)
     api_design.register(app, UPLOAD_DIR=UPLOAD_DIR)

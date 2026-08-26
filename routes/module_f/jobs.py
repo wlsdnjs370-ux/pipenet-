@@ -9,6 +9,7 @@ import traceback
 import uuid
 
 from routes.module_f.common import LOG_TAIL, SESSION_TTL_SECONDS
+from routes.module_f.slots import _slot_blank, _slot_init
 
 _SESSIONS: dict[str, dict] = {}
 _SESSIONS_LOCK = threading.Lock()
@@ -73,16 +74,18 @@ def _sweep() -> None:
 
 
 def _new_session(**kw) -> dict:
+    """세션 하나 = 도면 슬롯 세 칸(S650). `slot=` 으로 첫 활성 슬롯을 고른다.
+
+    평면 dict 는 그대로 둔다 — 그 내용이 곧 활성 슬롯의 도면 상태다(slots.py).
+    """
     _sweep()
     sid = uuid.uuid4().hex[:16]
     sess = {
         "id": sid, "created": time.time(), "touched": time.time(),
-        "dxf": None, "key": None, "pick": None, "edit": None,
-        "world": None, "kfp": None, "kfp_path": None,
-        "water_path": None, "worst": None,
-        "sdf_path": None, "slf_path": None,
         "job": None, "log": [],
     }
+    sess.update(_slot_blank())
+    _slot_init(sess, kw.pop("slot", "plan"))
     sess.update(kw)
     with _SESSIONS_LOCK:
         _SESSIONS[sid] = sess

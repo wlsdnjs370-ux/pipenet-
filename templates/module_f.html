@@ -282,6 +282,7 @@
   <div id="st-pick">찍기</div>
   <div id="st-edit">손질</div>
   <div id="st-conv">변환</div>
+  <div id="st-design">수리계산</div>
 </div>
 
 <div class="wrap">
@@ -449,6 +450,57 @@
         <button id="btn-download-set" disabled>한 벌 (zip)</button>
       </div>
       <div id="conv-info"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="btn-to-design">수리계산 입력 →</button>
+      </div>
+    </section>
+
+    <!-- 5. 수리계산 입력 (설계) — G16 의 웹판 -->
+    <section class="card hidden" id="panel-design">
+      <h2>수리계산 입력 <b class="tag">MODULE G 엔진</b></h2>
+      <label class="f"><span>기준개수 K (NFPC 103)</span>
+        <input type="number" id="dg-k" value="30" min="1" max="200"></label>
+      <label class="f"><span>배관 규격 (전체 기본값)</span>
+        <select id="dg-sched">
+          <!-- 이름은 SLF 의 Item-name 과 철자·공백까지 같아야 한다(엔진 SCHEDULE_DEFS 가 권위) -->
+          <option>KSD 3507</option><option>KSD 3562</option>
+          <option>KSD 3576</option><option>DP</option>
+          <option>CPVC2</option><option>FX</option>
+        </select></label>
+
+      <h2 style="margin-top:12px">보기 <span class="hint" style="display:inline">
+        — 표시 전용 · 수리계산 결과는 바뀌지 않습니다</span></h2>
+      <label class="chk"><input type="checkbox" id="dg-iso" checked>
+        <span>30° 아이소매트릭으로 보기</span></label>
+      <label class="f"><span>고도 펼침 배율</span>
+        <input type="number" id="dg-zscale" value="1.0" min="0.5" max="3" step="0.1"></label>
+      <label class="f"><span>캔버스 크기</span>
+        <input type="number" id="dg-canvas" value="3000" min="500" max="20000" step="500"></label>
+      <label class="f"><span>lift 영점</span>
+        <select id="dg-ref"><option value="valve">알람밸브 (없으면 표고 중앙)</option>
+          <option value="mid">표고 중앙</option></select></label>
+      <label class="f"><span>헤드 스텁 길이 (%)</span>
+        <input type="number" id="dg-stub" value="2.5" min="0.5" max="10" step="0.5"></label>
+
+      <div class="row" style="margin-top:12px">
+        <button id="dg-build" class="go">표 확정 (최불리 → 5표)</button>
+        <button id="dg-back">← 변환</button>
+      </div>
+      <div class="row">
+        <button id="dg-emit" disabled>.sdf + .slf 저장</button>
+        <button id="dg-download" disabled>내려받기 (zip)</button>
+      </div>
+      <div id="dg-summary" class="hint">아직 확정하지 않았습니다.</div>
+
+      <h2 style="margin-top:12px">표 <span class="hint" style="display:inline">
+        — 저장될 값 그대로</span></h2>
+      <div class="row">
+        <select id="dg-table">
+          <option value="pipes">배관</option><option value="nodes">노드</option>
+          <option value="nozzles">노즐</option><option value="fittings">부속</option>
+        </select>
+      </div>
+      <div id="dg-grid" style="max-height:300px;overflow:auto"></div>
     </section>
 
     <section class="card" id="panel-log">
@@ -493,7 +545,7 @@
 
   const S = {
     sid: null, key: null, stage: "open",
-    world: null, pick: null, edit: null,
+    world: null, pick: null, edit: null, design: null,
     hidden: new Set(),                      // 숨긴 레이어 묶음 id
     view: { scale: 1, ox: 0, oy: 0 },
     poll: null, convResult: null,
@@ -616,7 +668,8 @@
     ctx.fillRect(0, 0, w, h);
     // 변환 단계에서도 손질한 망을 계속 보여준다 — 값만 채우는 동안 화면이
     // 검게 비면 무엇을 변환하는지 알 수 없다.
-    if ((S.stage === "edit" || S.stage === "conv") && S.edit) drawEdit();
+    if (S.stage === "design" && S.design) drawDesign();
+    else if ((S.stage === "edit" || S.stage === "conv") && S.edit) drawEdit();
     else if (S.world) drawWorld();
   }
 
@@ -846,8 +899,9 @@
 
   function setStage(name) {
     S.stage = name;
-    const map = { open: "st-open", pick: "st-pick", edit: "st-edit", conv: "st-conv" };
-    const order = ["open", "pick", "edit", "conv"];
+    const map = { open: "st-open", pick: "st-pick", edit: "st-edit",
+                  conv: "st-conv", design: "st-design" };
+    const order = ["open", "pick", "edit", "conv", "design"];
     const idx = order.indexOf(name);
     order.forEach((k, i) => {
       const el = $(map[k]);
@@ -859,6 +913,7 @@
     $("panel-pick").classList.toggle("hidden", name !== "pick");
     $("panel-edit").classList.toggle("hidden", name !== "edit");
     $("panel-conv").classList.toggle("hidden", name !== "conv");
+    $("panel-design").classList.toggle("hidden", name !== "design");
     $("panel-layers").classList.toggle("hidden", name !== "pick");
     draw();
   }
@@ -1542,9 +1597,211 @@
   S.toWorldY = wy;
 
   resize();
+
+  // ── 5. 수리계산 입력 (설계) — G16 의 웹판 ──────────────────────────
+  // 캔버스는 위의 기존 인프라(S.view·fit·sx/sy)를 그대로 쓴다. 좌표는
+  // /design/preview 가 주는 «저장에 쓰는 그 값» 이다 — 여기서 다시 계산하는
+  // 순간 미리보기가 거짓말이 된다.
+  function designSettings() {
+    return {
+      k: Number($("dg-k").value || 30),
+      schedule: $("dg-sched").value,
+      iso: $("dg-iso").checked,
+      iso_z_scale: Number($("dg-zscale").value || 1),
+      canvas_units: Number($("dg-canvas").value || 3000),
+      lift_ref: $("dg-ref").value,
+      head_stub_pct: Number($("dg-stub").value || 2.5),
+    };
+  }
+
+  async function designPreview() {
+    const cfg = designSettings();
+    const q = new URLSearchParams({
+      sid: S.sid, iso: cfg.iso ? "1" : "0",
+      iso_z_scale: cfg.iso_z_scale, canvas_units: cfg.canvas_units,
+      lift_ref: cfg.lift_ref, head_stub_pct: cfg.head_stub_pct,
+    });
+    const d = await api(`/api/module-f/design/preview?${q}`);
+    S.design = { view: d.view, tables: d.tables, settings: d.settings,
+                 hilite: (S.design && S.design.hilite) || new Set() };
+    const xs = d.view.nodes.map(n => n.x), ys = d.view.nodes.map(n => n.y);
+    fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
+          miny: Math.min(...ys), maxy: Math.max(...ys) });
+    renderDesignTable();
+    draw();
+  }
+
+  function drawDesign() {
+    const v = S.design.view;
+    const at = {};
+    for (const n of v.nodes) at[n.label] = n;
+    const maxLoad = Math.max(1, ...v.pipes.map(p => p.load || 0));
+    for (const p of v.pipes) {
+      const a = at[p.a], b = at[p.b];
+      if (!a || !b) continue;
+      const hot = S.design.hilite.has(p.label);
+      ctx.strokeStyle = hot ? "#f97316" : "#94a3b8";
+      ctx.lineWidth = (1 + 4 * (p.load || 0) / maxLoad) + (hot ? 2 : 0);
+      ctx.beginPath();
+      ctx.moveTo(sx(a.x), sy(a.y));
+      ctx.lineTo(sx(b.x), sy(b.y));
+      ctx.stroke();
+    }
+    ctx.lineWidth = 1.2;
+    for (const n of v.nodes) {
+      const px = sx(n.x), py = sy(n.y);
+      if (n.head) {
+        // 상향 △ / 하향 ▽ — 방향 규칙은 베이크와 같다(표고 차 부호).
+        const s = 7;
+        ctx.beginPath();
+        if (n.up) {
+          ctx.moveTo(px, py - s);
+          ctx.lineTo(px - s, py + s * 0.6);
+          ctx.lineTo(px + s, py + s * 0.6);
+        } else {
+          ctx.moveTo(px, py + s);
+          ctx.lineTo(px - s, py - s * 0.6);
+          ctx.lineTo(px + s, py - s * 0.6);
+        }
+        ctx.closePath();
+        ctx.fillStyle = "rgba(248,113,113,.45)";
+        ctx.strokeStyle = "#ef4444";
+        ctx.fill();
+        ctx.stroke();
+      }
+      if (n.input) {
+        ctx.beginPath();
+        ctx.arc(px, py, 9, 0, Math.PI * 2);
+        ctx.strokeStyle = "#3b82f6";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.lineWidth = 1.2;
+      }
+      if (n.valve) {
+        ctx.strokeStyle = "#22c55e";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px - 7, py - 7, 14, 14);
+        ctx.lineWidth = 1.2;
+      }
+    }
+  }
+
+  // 표 4종 — 저장될 값 그대로. 배관 표에는 관경 근거를 사람 말로 잇는다.
+  const DG_COLS = { label: "이름", in: "시작", out: "끝", type: "관종",
+    dia: "호칭경(mm)", length: "길이(m)", elev: "표고차(m)", c: "C",
+    status: "상태", group: "그룹", dia_src: "관경 근거", elevation: "표고(m)",
+    io_node: "입출력", x: "x", y: "y", flow_lmin: "유량(L/min)",
+    count: "개수", pipe: "배관", pressure_pa: "압력(Pa)",
+    flow_m3s: "유량(m³/s)", lib: "라이브러리", eq_len: "등가길이(m)",
+    rel_pos: "위치", desc: "설명", off_tree: "루프 잔여" };
+  const DG_SRC = { text: "도면 텍스트", nfpc_min: "별표1 보강",
+                   nfpc_fallback: "별표1 폴백" };
+
+  function renderDesignTable() {
+    if (!S.design) return;
+    const which = $("dg-table").value;
+    const rows = (S.design.tables[which] || []);
+    const cols = [];
+    for (const r of rows) {
+      for (const k in r) if (!cols.includes(k)) cols.push(k);
+    }
+    let html = "<table><thead><tr>"
+      + cols.map(c => `<th>${DG_COLS[c] || c}</th>`).join("")
+      + "</tr></thead><tbody>";
+    for (const r of rows) {
+      html += `<tr data-label="${r.label != null ? r.label : ""}">`
+        + cols.map(c => {
+            let v = r[c];
+            if (c === "dia_src") v = DG_SRC[v] || v;
+            return `<td>${v != null ? v : ""}</td>`;
+          }).join("") + "</tr>";
+    }
+    $("dg-grid").innerHTML = html + "</tbody></table>";
+    // 행 → 캔버스 강조 (배관 표에서만 뜻이 있다)
+    for (const tr of $("dg-grid").querySelectorAll("tr[data-label]")) {
+      tr.onclick = () => {
+        const lab = tr.dataset.label;
+        if (which !== "pipes" || !lab) return;
+        if (S.design.hilite.has(lab)) S.design.hilite.delete(lab);
+        else S.design.hilite.add(lab);
+        tr.classList.toggle("hl");
+        draw();
+      };
+    }
+  }
+
+  function renderDesignSummary(s) {
+    const b = s.bore_src || {};
+    $("dg-summary").innerHTML =
+      kv("설계면적", `<span class="ok">${s.k}개</span> · 앵커 ${s.far_m} m`
+        + (s.source ? ` · <b class="tag">${s.source}</b> 기준` : ""))
+      + kv("폭 / corridor", `${s.span_m} m / ${s.total_m} m`)
+      + kv("주배관 담당", `${s.max_load}개`)
+      + kv("표", `노드 ${s.counts.nodes} · 배관 ${s.counts.pipes}`
+        + ` · 노즐 ${s.counts.nozzles} · 부속 ${s.counts.fittings}`)
+      + kv("관경 근거", `텍스트 ${b.text} · 별표1 보강 ${b.nfpc_min}`
+        + ` · 별표1 폴백 ${b.nfpc_fallback}`)
+      + kv("부속 판정 불가",
+           `${s.fitting_unresolved} · 등가길이 미해결 ${s.eq_len_unresolved}`)
+      + (s.excluded_heads
+         ? kv('<span class="warn">제외 헤드</span>',
+              `${s.excluded_heads.toLocaleString()}개 (후보 ${s.candidate_heads}`
+              + ` / 도면 ${s.total_heads.toLocaleString()})`)
+         : "");
+  }
+
+  $("btn-to-design").onclick = () => setStage("design");
+  $("dg-back").onclick = () => setStage("conv");
+
+  $("dg-build").onclick = async () => {
+    busy(true, "최불리 선정과 표 확정 중…");
+    try {
+      const d = await post("/api/module-f/design/build",
+                           { sid: S.sid, ...designSettings() });
+      if (!d.ok) throw new Error(d.message || "확정 실패");
+      watch(async () => {
+        try {
+          const j = await api(`/api/module-f/convert/result?sid=${S.sid}`);
+          const sum = (j.result && j.result.summary) || null;
+          if (!sum) throw new Error((j.result && j.result.error) || "확정 실패");
+          renderDesignSummary(sum);
+          await designPreview();
+          $("dg-emit").disabled = false;
+          say("표 확정 — 미리보기와 표는 저장될 값 그대로입니다.", "ok");
+        } catch (err) { say(err.message, "err"); }
+      });
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  // 보기 설정이 바뀌면 preview 만 다시 — 최불리 재계산 없음(0.5초 규약).
+  for (const id of ["dg-iso", "dg-zscale", "dg-canvas", "dg-ref", "dg-stub"]) {
+    $(id).onchange = () => {
+      if (S.design) designPreview().catch(err => say(err.message, "err"));
+    };
+  }
+  $("dg-table").onchange = renderDesignTable;
+
+  $("dg-emit").onclick = async () => {
+    busy(true, ".sdf + .slf 저장 중…");
+    try {
+      const d = await post("/api/module-f/design/emit",
+                           { sid: S.sid, ...designSettings() });
+      if (!d.ok) throw new Error(d.message || "저장 실패");
+      S.designDownload = d.download;
+      $("dg-download").disabled = false;
+      say(`저장 — ${d.sdf.name} (${d.sdf.bytes.toLocaleString()}B)`
+        + ` + ${d.slf.name}. SDF 는 옆의 .slf 와 한 쌍입니다.`, "ok");
+    } catch (err) { say(err.message, "err"); }
+    finally { busy(false); }
+  };
+  $("dg-download").onclick = () => {
+    if (S.designDownload) window.location.href = S.designDownload;
+  };
+
   setStage("open");
   loadSaved();
 })();
+
 </script>
 </body>
 </html>

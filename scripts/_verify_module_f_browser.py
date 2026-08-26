@@ -514,6 +514,73 @@ with sync_playwright() as pw:
         if got.status != 200 or not body.startswith(head):
             bad(f"{what} 내려받기 실패: HTTP {got.status} {len(body)}B")
 
+    print("[9] 수리계산 입력 패널 (F-3)")
+    page.click("#btn-to-design")
+    page.wait_for_function(
+        "document.querySelector('#st-design').classList.contains('on')",
+        timeout=10_000)
+    page.click("#dg-build")
+    page.wait_for_function(
+        "() => !document.getElementById('dg-emit').disabled",
+        timeout=300_000)
+    summary = page.inner_text("#dg-summary").replace("\n", " · ")
+    print("   요약:", summary[:220])
+    for word in ("설계면적", "앵커", "관경 근거", "제외 헤드"):
+        if word not in summary:
+            bad(f"요약에 «{word}» 가 없다")
+
+    # 캔버스에 실제로 그려졌는가 — 검은 화면이면 미리보기가 아니다.
+    drawn = page.evaluate("""() => {
+      const c = document.getElementById('cv');
+      const g = c.getContext('2d');
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let on = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] || d[i+1] || d[i+2]) on++;
+      return on;
+    }""")
+    print("   미리보기 픽셀:", drawn)
+    if drawn < 1000:
+        bad(f"설계 미리보기가 안 그려졌다 — 켜진 픽셀 {drawn}")
+    page.screenshot(path=str(SHOT / "9_design_iso.png"))
+
+    # 보기 설정 변경 — 표 값은 그대로, 그림만 바뀐다(표시 전용 증명).
+    tbl_before = page.inner_text("#dg-grid")[:4000]
+    page.fill("#dg-canvas", "6000")
+    page.dispatch_event("#dg-canvas", "change")
+    page.wait_for_timeout(700)
+    tbl_after = page.inner_text("#dg-grid")[:4000]
+    if tbl_before != tbl_after:
+        bad("보기 설정 변경이 표 값을 바꿨다 — 표시 전용이 아니다")
+    page.fill("#dg-canvas", "3000")
+    page.dispatch_event("#dg-canvas", "change")
+    page.wait_for_timeout(700)
+
+    # 표 4종 전환 + 배관 표의 관경 근거 열
+    page.select_option("#dg-table", "pipes")
+    head_row = page.inner_text("#dg-grid table thead")
+    if "관경 근거" not in head_row:
+        bad(f"배관 표에 관경 근거 열이 없다: {head_row[:120]}")
+    for which in ("nodes", "nozzles", "fittings"):
+        page.select_option("#dg-table", which)
+        n_rows = page.eval_on_selector_all("#dg-grid tbody tr", "e => e.length")
+        print(f"   표 {which}: {n_rows}행")
+        if n_rows == 0:
+            bad(f"표 {which} 가 비었다")
+    page.select_option("#dg-table", "pipes")
+    page.screenshot(path=str(SHOT / "9_design_table.png"))
+
+    # 저장 → 내려받기 (zip 한 벌)
+    page.click("#dg-emit")
+    page.wait_for_function(
+        "() => !document.getElementById('dg-download').disabled",
+        timeout=120_000)
+    got = page.request.get(
+        f"{BASE}/api/module-f/download?sid={sid}&what=design")
+    body = got.body()
+    print(f"   design zip HTTP {got.status} · {len(body):,} bytes")
+    if got.status != 200 or not body.startswith(b"PK"):
+        bad(f"design 내려받기 실패: HTTP {got.status}")
+
     browser.close()
 
 print()

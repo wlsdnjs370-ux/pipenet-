@@ -28,7 +28,9 @@ TPL = ROOT / "templates" / "module_f.html"
 TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            "drawDesign", "renderSubPanel", "renderSubPicks", "subClick",
            "armSub", "subExtract", "renderSubSummary", "drawSubPicks",
-           "loadSub", "loadWorldRaw", "subSpec")
+           "loadSub", "loadWorldRaw", "subSpec",
+           "loadMergeModes", "setMergeMode", "loadMergeState",
+           "renderMergeSummary", "loadMerge")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 
@@ -65,18 +67,25 @@ def _top_level_names(body: str) -> set[str]:
 
 
 def _body_of(body: str, name: str) -> str:
-    """최상위 함수 하나의 본문 — 다음 최상위 선언 전까지."""
+    """최상위 함수 하나의 본문 — 닫는 중괄호까지.
+
+    ★«다음 최상위 선언까지» 로 끊으면 안 된다. 이 템플릿의 최상위에는 선언이
+      아닌 것도 온다(`$("x").onclick = async () => {…}`). 그것을 만나지 못한
+      채 흘러가면 **다음 블록을 함께 삼켜** 남의 이름을 이 함수 것으로 보고한다
+      (실측: renderMergeSummary 가 뒤따르는 onclick 의 `async`·`of` 를 물었다).
+
+      이 파일의 최상위 함수는 정확히 2칸 들여쓴 `}` 로 닫힌다 — 그것을 끝으로 본다.
+    """
     lines = body.splitlines()
     start = None
     pat = re.compile(rf"^  (?:async\s+)?function\s+{re.escape(name)}\s*\(")
-    nxt = re.compile(r"^  (?:async\s+)?function\s+|^  (?:const|let|var)\s+")
     for i, line in enumerate(lines):
         if start is None:
             if pat.match(line):
                 start = i
             continue
-        if nxt.match(line):
-            return "\n".join(lines[start:i])
+        if line == "  }":
+            return "\n".join(lines[start:i + 1])
     return "\n".join(lines[start:]) if start is not None else ""
 
 
@@ -136,7 +145,9 @@ def main() -> int:
             # 메서드 호출(.foo(...))·예약어는 뺀다
             and not re.search(rf"\.\s*{m.group(1)}\s*\($", src[:m.start(1) + len(m.group(1)) + 1])
             and m.group(1) not in ("if", "for", "while", "switch", "catch",
-                                   "return", "typeof", "function", "await")
+                                   "return", "typeof", "function", "await",
+                                   "async", "of", "in", "new", "delete",
+                                   "void", "yield", "throw")
         })
         # 메서드 호출은 앞에 점이 붙는다 — 줄 단위로 다시 걸러낸다.
         real = [u for u in unknown

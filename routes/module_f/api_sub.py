@@ -149,8 +149,14 @@ def register(app):
         except Exception as exc:  # noqa: BLE001
             return _fail(f"기계실 추출에 실패했습니다: {exc}", 500)
 
+        # 사람이 찍은 연결점을 함께 남긴다 — 결합(S740) 때 기계실 평면을 어디에
+        # 붙일지의 기준이다. 추출 결과 dict 에는 라벨만 있고 좌표는 없다.
+        mr["conn_xy"] = [conn[0], conn[1]]
         sess["machineroom"] = mr
         summary = riser_summary(mr)
+        # 실측 edge 와 추정 edge 를 갈라 보고한다 — 통합해 그리면 안 된다.
+        summary["plan_edges"] = len(mr.get("plan_edges") or ())
+        summary["plan_edges_estimated"] = len(mr.get("plan_edges_estimated") or ())
         # 천장고가 없으면 첫 구간 표고가 미확정으로 남는다 — 숨기지 않는다.
         summary["ceiling_m"] = ceiling
         summary["elevation_unresolved"] = ceiling is None

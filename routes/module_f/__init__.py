@@ -29,8 +29,8 @@
 """
 from __future__ import annotations
 
-from routes.module_f import (api_convert, api_design, api_edit, api_open,
-                             api_pick, api_slot, api_sub)
+from routes.module_f import (api_convert, api_design, api_edit, api_merge,
+                             api_open, api_pick, api_slot, api_sub)
 from routes.module_f.common import (  # noqa: F401  (진단 스크립트가 쓴다)
     AUTOJOIN_ANG_TOL_DEG, AUTOJOIN_LADDER_MM, AUTOJOIN_MAX_PAIRS,
     AUTOJOIN_PLATEAU, DIAGRAMS, EDITOR_ROOT, GROUP_DIAGRAM, IMPORT_WORK_ROOT,
@@ -67,3 +67,4 @@ def register(app, *, _save_upload, UPLOAD_DIR):
     api_edit.register(app)
     api_design.register(app, UPLOAD_DIR=UPLOAD_DIR)
     api_convert.register(app, UPLOAD_DIR=UPLOAD_DIR)
+    api_merge.register(app, UPLOAD_DIR=UPLOAD_DIR)

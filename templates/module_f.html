@@ -299,6 +299,7 @@
   <div id="st-edit">손질</div>
   <div id="st-conv">변환</div>
   <div id="st-design">수리계산</div>
+  <div id="st-merge">통합</div>
 </div>
 
 <!-- [H-0] 도면 슬롯 — 특허 S650(평면도·계통도·기계실에 같은 절차 반복) -->
@@ -561,6 +562,9 @@
         <button id="dg-emit" disabled>.sdf + .slf 저장</button>
         <button id="dg-download" disabled>내려받기 (zip)</button>
       </div>
+      <div class="row">
+        <button id="dg-to-merge">통합으로 → <span class="tag">S700</span></button>
+      </div>
       <div id="dg-summary" class="hint">아직 확정하지 않았습니다.</div>
 
       <h2 style="margin-top:12px">관경 근거 보기</h2>
@@ -589,6 +593,34 @@
         </select>
       </div>
       <div id="dg-grid" style="max-height:300px;overflow:auto"></div>
+    </section>
+
+    <!-- [H-4 · H-5 · H-6] 제5국면 S700 — 세 도면을 한 배관망으로 -->
+    <section class="card hidden" id="panel-merge">
+      <h2>통합 <span class="tag">특허 제5국면 S700</span></h2>
+      <p class="hint">평면도 · 계통도 · 기계실을 하나의 배관망으로 결합합니다.
+        <b>계통도·기계실은 선택</b>입니다 — 없으면 평면도 단독으로 지나갑니다.</p>
+
+      <h2 style="margin-top:12px">① 급수방식 <span class="hint"
+        style="display:inline">— S710 · 사람이 고릅니다</span></h2>
+      <div id="mg-modes"></div>
+      <label class="f hidden" id="mg-drop-row"><span>수원 낙차 (m)</span>
+        <input type="number" id="mg-drop" value="0" step="0.5" min="0"></label>
+      <p class="hint hidden" id="mg-drop-help">펌프 가압일 때 수원(기계실)이
+        최저 헤드보다 몇 m 아래인지. 도면에 z 가 없어 도출할 수 없습니다 —
+        미지정(0)이면 실양정이 과소평가됩니다.</p>
+
+      <h2 style="margin-top:12px">② 재료</h2>
+      <div id="mg-ready" class="hint">확인 중…</div>
+
+      <div class="row" style="margin-top:12px">
+        <button id="mg-build" class="go">결합 (S720 → S740)</button>
+      </div>
+      <div class="row">
+        <button id="mg-emit" disabled>산출 (S750 → S770)</button>
+        <button id="mg-download" disabled>내려받기 (zip)</button>
+      </div>
+      <div id="mg-summary" class="hint">아직 결합하지 않았습니다.</div>
     </section>
 
     <section class="card" id="panel-log">
@@ -637,6 +669,7 @@
     boreColor: true,                        // 관경 근거로 배관 색 나누기
     // [H-2 · H-3] 계통도·기계실이 찍는 두 점 · 무엇을 찍는 중인지
     sub: { picks: [null, null], arm: null, summary: null },
+    merge: null,                            // [H-5] 통합 상태 한 장
     world: null, pick: null, edit: null, design: null,
     suggest: null,                          // [F-5] 찍기 후보 (제안만)
     suggestOff: new Set(),                  // 반영에서 제외한 후보 index
@@ -1004,8 +1037,8 @@
   function setStage(name) {
     S.stage = name;
     const map = { open: "st-open", pick: "st-pick", edit: "st-edit",
-                  conv: "st-conv", design: "st-design" };
-    const order = ["open", "pick", "edit", "conv", "design"];
+                  conv: "st-conv", design: "st-design", merge: "st-merge" };
+    const order = ["open", "pick", "edit", "conv", "design", "merge"];
     const idx = order.indexOf(name);
     order.forEach((k, i) => {
       const el = $(map[k]);
@@ -1019,6 +1052,7 @@
     $("panel-edit").classList.toggle("hidden", name !== "edit");
     $("panel-conv").classList.toggle("hidden", name !== "conv");
     $("panel-design").classList.toggle("hidden", name !== "design");
+    $("panel-merge").classList.toggle("hidden", name !== "merge");
     // 레이어 토글은 계통도·기계실에서도 쓴다 — 건축 배경을 끄지 못하면
     // 배관 위의 두 점을 찍기가 어렵다.
     $("panel-layers").classList.toggle("hidden",
@@ -1355,6 +1389,127 @@
     if (S.world) fit(S.world.bounds);
     draw();
   }
+
+  // ── [H-4 · H-5 · H-6] 통합 — 특허 제5국면 S700 ────────────────────
+  async function loadMergeModes() {
+    const d = await api("/api/module-f/merge/modes");
+    const box = $("mg-modes");
+    box.innerHTML = "";
+    for (const m of d.modes) {
+      const lb = document.createElement("label");
+      lb.className = "chk";
+      const rb = document.createElement("input");
+      rb.type = "radio"; rb.name = "mg-mode"; rb.value = m.key;
+      rb.onchange = () => setMergeMode(m.key);
+      const sp = document.createElement("span");
+      sp.textContent = m.label;
+      lb.appendChild(rb); lb.appendChild(sp);
+      box.appendChild(lb);
+    }
+  }
+
+  async function setMergeMode(key) {
+    const body = { sid: S.sid, mode: key };
+    const isPump = key === "hsp_pump";
+    $("mg-drop-row").classList.toggle("hidden", !isPump);
+    $("mg-drop-help").classList.toggle("hidden", !isPump);
+    if (isPump) body.source_drop_m = Number($("mg-drop").value || 0);
+    try {
+      const d = await post("/api/module-f/merge/mode", body);
+      say(`급수방식: ${d.label}`, "ok");
+      await loadMergeState();
+    } catch (err) { say(err.message, "err"); }
+  }
+
+  async function loadMergeState() {
+    const d = await api(`/api/module-f/merge/state?sid=${S.sid}`);
+    S.merge = d;
+    let html = "";
+    for (const k of ["plan", "system", "machineroom"]) {
+      const ok = d.ready[k];
+      const need = k === "plan";
+      html += kv(d.labels[k],
+        ok ? '<span class="ok">있음</span>'
+           : (need ? '<span class="err">없음 — 필요</span>'
+                   : '<span class="dim">없음 — 선택</span>'));
+    }
+    if (d.mode_label) html += kv("급수방식", d.mode_label);
+    $("mg-ready").innerHTML = html;
+    $("mg-build").disabled = !d.can_build;
+    if (d.mode) {
+      const rb = document.querySelector(`input[name=mg-mode][value=${d.mode}]`);
+      if (rb) rb.checked = true;
+      const isPump = d.mode === "hsp_pump";
+      $("mg-drop-row").classList.toggle("hidden", !isPump);
+      $("mg-drop-help").classList.toggle("hidden", !isPump);
+    }
+    if (d.summary) renderMergeSummary(d.summary);
+    $("mg-emit").disabled = !(d.summary && d.summary.merged);
+    return d;
+  }
+
+  function renderMergeSummary(s) {
+    if (!s) { $("mg-summary").textContent = "아직 결합하지 않았습니다."; return; }
+    let html = "";
+    if (!s.merged) {
+      html += kv('<span class="warn">결합 없음</span>',
+                 "계통도가 없어 평면도 단독입니다");
+    } else {
+      html += kv("절점 / 배관", `${s.nodes} / ${s.pipes}`)
+            + kv("노즐", `${s.nozzles}`)
+            + kv("펌프 / 밸브", `${s.pumps || 0} / ${s.valves || 0}`)
+            + kv("기계실 접속", s.attached
+                 ? '<span class="ok">접속됨</span>'
+                 : '<span class="warn">미접속</span>');
+    }
+    // 어느 단계가 실제로 돌았는지 — 「붙였다」고 말하려면 근거가 있어야 한다.
+    for (const line of (s.steps || [])) html += kv("·", line);
+    $("mg-summary").innerHTML = html;
+  }
+
+  $("mg-build").onclick = async () => {
+    busy(true, "배관망 결합 중…");
+    try {
+      await post("/api/module-f/merge/build", { sid: S.sid });
+      watch(async () => {
+        const d = await loadMergeState();
+        if (d.summary && d.summary.merged) {
+          say(`결합 완료 — 절점 ${d.summary.nodes} · 배관 ${d.summary.pipes}`, "ok");
+        } else {
+          say("평면도 단독으로 지나갔습니다 (계통도 없음).", "warn");
+        }
+      });
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  $("mg-emit").onclick = async () => {
+    busy(true, "산출물 생성 중…");
+    try {
+      await post("/api/module-f/merge/emit", { sid: S.sid });
+      watch(async () => {
+        $("mg-download").disabled = false;
+        say("산출 완료 — zip 으로 내려받으세요.", "ok");
+      });
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  $("mg-download").onclick = () => {
+    window.location = `/api/module-f/merge/download?sid=${S.sid}&what=zip`;
+  };
+
+  $("mg-drop").onchange = () => {
+    if (S.merge && S.merge.mode === "hsp_pump") setMergeMode("hsp_pump");
+  };
+
+  async function loadMerge() {
+    setStage("merge");
+    try {
+      await loadMergeModes();
+      await loadMergeState();
+    } catch (err) { say(err.message, "err"); }
+  }
+
+  $("dg-to-merge").onclick = () => loadMerge();
 
   $("sub-pick-a").onclick = () => armSub(0);
   $("sub-pick-b").onclick = () => armSub(1);

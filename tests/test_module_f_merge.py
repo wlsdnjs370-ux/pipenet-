@@ -24,7 +24,7 @@ for _p in (_ROOT, os.path.join(_ROOT, "core")):
 
 from routes.module_f.merge import (  # noqa: E402
     ANCHOR_LABEL, LABEL_OFFSET, SUPPLY_MODES, HeadTables, MergeError,
-    _shift, check_supply_mode, to_head_tables, zone_type_of)
+    _shift, check_supply_mode, merge_network, to_head_tables, zone_type_of)
 
 
 class _G:
@@ -179,6 +179,86 @@ def test_급수방식이_엔진_ZoneType과_1대1():
     assert {z.value for z in ZoneType} == set(SUPPLY_MODES)
     for m in SUPPLY_MODES:
         assert zone_type_of(m) == ZoneType(m)
+
+
+# ─────────────────────────────────────────────── S720~S740 오케스트레이션
+def _riser(n: int = 4) -> dict:
+    """기준점 10 으로 끝나는 최소 입상관 — 1 → n2 … → 10."""
+    labels = ["1"] + [f"n{i}" for i in range(2, n)] + ["10"]
+    nodes = [{"label": l, "x": 0, "y": i * 1000, "elevation": float(i),
+              "io_node": "Input" if i == 0 else "No"}
+             for i, l in enumerate(labels)]
+    pipes = [{"label": f"r{i}", "in": labels[i], "out": labels[i + 1],
+              "dia": 100, "length": 1.0}
+             for i in range(len(labels) - 1)]
+    return {"nodes": nodes, "pipes": pipes, "av_node_label": "10"}
+
+
+def test_계통도가_없으면_평면도_단독():
+    """지시서 H-5 — 결합할 입상관이 없으면 그냥 지나간다. 그것도 정상이다."""
+    got = merge_network(_sample(), mode="lsp_gravity")
+    assert got["combined"] is None
+    assert got["attached"] is False
+    assert any("평면도 단독" in s for s in got["steps"])
+
+
+def test_급수방식을_안_고르면_결합하지_않는다():
+    with pytest.raises(MergeError, match="급수방식"):
+        merge_network(_sample(), riser=_riser(), mode=None)
+
+
+def test_빈_계통도는_올린다():
+    with pytest.raises(MergeError, match="비어 있"):
+        merge_network(_sample(), riser={"nodes": [], "pipes": []},
+                      mode="lsp_gravity")
+
+
+def test_AV가_없는_계통도는_올린다():
+    r = _riser()
+    r["av_node_label"] = ""
+    with pytest.raises(MergeError, match="알람밸브"):
+        merge_network(_sample(), riser=r, mode="lsp_gravity")
+
+
+def test_결합하면_기준점을_공유한다():
+    """S740 — 라이저의 10 과 헤드망의 10 은 한 절점이다."""
+    from routes.module_f.merge import combined_summary
+    r = _riser(5)
+    got = merge_network(_sample(), riser=r, mode="lsp_gravity")
+    s = combined_summary(got)
+    assert s["merged"] is True
+    # 라이저 5 + 헤드망 3 − 공통 1 = 7
+    assert s["nodes"] == len(r["nodes"]) + 3 - 1
+    assert s["nozzles"] == 1
+
+
+def test_결합_단계가_기록된다():
+    """「붙였다」고 말하려면 근거가 있어야 한다."""
+    got = merge_network(_sample(), riser=_riser(), mode="hsp_pump")
+    joined = " · ".join(got["steps"])
+    assert "S740" in joined and "S720" in joined
+    assert "펌프 가압" in joined
+
+
+def test_기계실이_비면_접속하지_않는다():
+    got = merge_network(_sample(), riser=_riser(), machineroom=None,
+                        mode="lsp_gravity")
+    assert got["attached"] is False
+
+
+def test_붙지_못한_기계실을_붙었다고_하지_않는다():
+    """엔진은 못 붙이면 원본 라이저를 조용히 돌려준다 — 그 조용함을 옮기지 않는다."""
+    got = merge_network(_sample(), riser=_riser(),
+                        machineroom={"nodes": [], "pipes": []},
+                        mode="lsp_gravity")
+    assert got["attached"] is False
+
+
+def test_요약은_평면도_단독도_센다():
+    from routes.module_f.merge import combined_summary
+    s = combined_summary(merge_network(_sample(), mode="lsp_gravity"))
+    assert s["merged"] is False
+    assert s["nodes"] == 3 and s["nozzles"] == 1
 
 
 def test_라이저_빌더가_넷다_기준점_10을_세운다():

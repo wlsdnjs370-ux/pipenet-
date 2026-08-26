@@ -213,6 +213,141 @@ def zone_type_of(mode: str):
     return ZoneType(check_supply_mode(mode))
 
 
+def riser_tables_from(riser: dict):
+    """계통도 추출 결과(dict) → 엔진의 `RiserTables`.
+
+    `extract_system_path` 는 dict 를 돌려주고 S730·S740 은 `RiserTables` 를
+    받는다. 좌표는 **손대지 않는다** — 계통도의 실좌표를 수직 막대로 재배치하는
+    일은 `stitch_riser_and_heads` 안의 `_layout_riser_as_schematic` 이 이미
+    한다(그 함수의 주석이 v1 실좌표 경로를 명시적으로 다룬다). 여기서 미리
+    옮기면 그 배치와 이중으로 어긋난다.
+    """
+    from remote30_full_network import RiserTables
+    r = riser or {}
+    nodes = list(r.get("nodes") or [])
+    pipes = list(r.get("pipes") or [])
+    if not nodes or not pipes:
+        raise MergeError("계통도 추출 결과가 비어 있습니다 — 입상관을 만들 수 없습니다.")
+    av = str(r.get("av_node_label") or "")
+    if not av:
+        raise MergeError("계통도에 알람밸브 절점이 없습니다 (S740 결합점).")
+    return RiserTables(nodes=nodes, pipes=pipes,
+                       pumps=list(r.get("pumps") or []),
+                       valves=list(r.get("valves") or []),
+                       av_node_label=av)
+
+
+def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
+                  source_drop_m: float = 0.0, pump=None,
+                  head_orientation: str = "pendent",
+                  head_stub_pct: float = 2.5):
+    """S720 → S730 → S740 — 세 도면을 한 배관망으로.
+
+    `head_tbl` 은 G 의 설계 표(`PipeTablesG`) 그대로 받는다 — 라벨 옮기기는
+    여기서 한다. `riser`·`machineroom` 은 각 슬롯의 추출 결과 dict 이며 **없어도
+    된다**: 계통도가 없으면 평면도 단독으로 지나간다(지시서 H-5).
+
+    반환: {"combined", "head_tables", "attached", "steps"} — steps 는 어느
+    단계가 실제로 돌았는지다. 화면이 «기계실을 붙였다» 고 말하려면 근거가 있어야
+    한다(붙이지 못했는데 붙였다고 하면 그 순간 보고가 거짓이 된다).
+    """
+    from remote30_full_network import (
+        normalize_pipe_bores, prepend_machine_room_to_riser,
+        stitch_riser_and_heads)
+
+    mode = check_supply_mode(mode)
+    is_pump = mode in PUMP_MODES
+    ht = to_head_tables(head_tbl)
+    steps: list[str] = ["S740 기준점 10 정합"]
+
+    if not riser:
+        # 계통도가 없다 — 평면도 단독. 결합할 입상관이 없으므로 여기서 끝난다.
+        return {"combined": None, "head_tables": ht, "attached": False,
+                "mode": mode, "steps": steps + ["계통도 없음 — 평면도 단독"]}
+
+    rt = riser_tables_from(riser)
+    steps.append(f"S720 입상관 ({SUPPLY_MODES[mode]}) · 절점 {len(rt.nodes)}")
+
+    mr_labels: list[str] = []
+    mr_plan_edges = None
+    mr_conn_xy = None
+    attached = False
+    if machineroom:
+        mr_labels = [str(n.get("label")) for n in (machineroom.get("nodes") or ())]
+        mr_plan_edges = machineroom.get("plan_edges")
+        conn = machineroom.get("conn_xy")
+        if conn and len(conn) >= 2:
+            try:
+                mr_conn_xy = (float(conn[0]), float(conn[1]))
+            except (TypeError, ValueError):
+                mr_conn_xy = None
+        rt, attached = prepend_machine_room_to_riser(
+            machineroom, rt, at_bottom=is_pump,
+            source_drop_below_lowest_m=float(source_drop_m or 0.0))
+        # ★붙었는지를 그대로 전한다. 엔진은 못 붙이면 원본 라이저를 조용히
+        #   돌려준다(안전) — 그 조용함을 화면까지 들고 가면 안 된다.
+        steps.append(f"S730 기계실 전단 접속 · {'성공' if attached else '미접속'}"
+                     + (f" · 수원 낙차 {source_drop_m} m" if is_pump else ""))
+        if not attached:
+            mr_labels = []
+
+    combined = stitch_riser_and_heads(
+        rt, ht,
+        machine_room_labels=mr_labels or None,
+        pump_junction_label=(str(rt.nodes[0].get("label"))
+                             if (attached and rt.nodes) else None),
+        machine_room_plan_edges=mr_plan_edges,
+        machine_room_at_bottom=is_pump,
+        machine_room_conn_xy=mr_conn_xy,
+    )
+
+    if is_pump and pump:
+        from remote30_full_network import insert_source_pump
+        try:
+            combined = insert_source_pump(
+                combined,
+                rated_q_lpm=float(pump.get("rated_q_lpm") or 0.0),
+                rated_h_m=float(pump.get("rated_h_m") or 0.0),
+                count=int(pump.get("count") or 1))
+            steps.append("펌프 삽입 (수원 직후)")
+        except (TypeError, ValueError) as exc:
+            raise MergeError(f"펌프 제원이 올바르지 않습니다: {exc}") from None
+
+    # 관경 꼬임 정규화 — 상류(입상관)가 하류(가지)보다 얇아지는 것을 편다.
+    # 결합 전에는 두 망이 각자 관경을 정했으므로 이음매에서 꼬이기 쉽다.
+    try:
+        fixed = normalize_pipe_bores(combined.nodes, combined.pipes)
+        steps.append(f"관경 정규화 · 고친 배관 {fixed}")
+    except Exception as exc:  # noqa: BLE001 — 정규화 실패로 결합을 버리지 않는다
+        steps.append(f"관경 정규화 건너뜀 ({type(exc).__name__}: {exc})")
+
+    return {"combined": combined, "head_tables": ht, "attached": attached,
+            "mode": mode, "steps": steps}
+
+
+def combined_summary(got: dict) -> dict:
+    """결합 결과 한 장 — 화면·산출이 같은 수치를 말하게 한다."""
+    c = got.get("combined")
+    if c is None:
+        return {"merged": False, "mode": got.get("mode"),
+                "steps": got.get("steps") or [],
+                "nodes": len(got["head_tables"].nodes),
+                "pipes": len(got["head_tables"].pipes),
+                "nozzles": len(got["head_tables"].nozzles)}
+    return {
+        "merged": True,
+        "mode": got.get("mode"),
+        "attached": bool(got.get("attached")),
+        "steps": got.get("steps") or [],
+        "nodes": len(getattr(c, "nodes", ()) or ()),
+        "pipes": len(getattr(c, "pipes", ()) or ()),
+        "nozzles": len(getattr(c, "nozzles", ()) or ()),
+        "pumps": len(getattr(c, "pumps", ()) or ()),
+        "valves": len(getattr(c, "valves", ()) or ()),
+        "fittings": len(getattr(c, "fittings", ()) or ()),
+    }
+
+
 def build_riser_for(mode: str, ctx):
     """S720 — 고른 급수방식으로 입상관을 만든다.
 

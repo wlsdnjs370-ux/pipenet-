@@ -449,6 +449,57 @@
     "rule": "/api/module-f/machineroom/extract"
   },
   {
+    "endpoint": "module_f_merge_build",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/merge/build"
+  },
+  {
+    "endpoint": "module_f_merge_download",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/merge/download"
+  },
+  {
+    "endpoint": "module_f_merge_emit",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/merge/emit"
+  },
+  {
+    "endpoint": "module_f_merge_mode",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/merge/mode"
+  },
+  {
+    "endpoint": "module_f_merge_modes",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/merge/modes"
+  },
+  {
+    "endpoint": "module_f_merge_state",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/merge/state"
+  },
+  {
     "endpoint": "module_f_open",
     "methods": [
       "OPTIONS",

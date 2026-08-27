@@ -15,6 +15,8 @@
 """
 from __future__ import annotations
 
+import os
+
 from flask import jsonify, request
 
 from routes.module_f.auto import AutoError, detect_head_candidates, preview_view, run_auto
@@ -61,6 +63,10 @@ def register(app):
             # ★기본값을 채우지 않는다. 아직 안 고른 슬롯을 «수동» 이라고
             #   답하면 화면이 고르지도 않은 길의 단계를 펼친다.
             "method": sess.get("method"),
+            # 올려는 뒀는데 아직 안 읽은 슬롯으로 돌아왔을 때 화면이 무엇을
+            # 올렸는지 말할 수 있게.
+            "dxf_name": (os.path.basename(str(sess["dxf"]))
+                         if sess.get("dxf") else None),
             "opened": bool(sess.get("entities")),
             "alarm": sess.get("auto_alarm"),
             # ★개수가 아니라 사각형 그대로 돌려준다. 슬롯을 오갔다 오면 화면은

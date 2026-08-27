@@ -631,6 +631,14 @@
     "rule": "/api/module-f/slot/open"
   },
   {
+    "endpoint": "module_f_slot_read",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/slot/read"
+  },
+  {
     "endpoint": "module_f_slot_state",
     "methods": [
       "GET",

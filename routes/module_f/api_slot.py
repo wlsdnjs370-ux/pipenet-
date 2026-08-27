@@ -18,7 +18,7 @@ from routes.module_f.api_open import _open_job
 from routes.module_f.common import _boot, _check_key, _fail
 from routes.module_f.jobs import _job_running, _new_session, _run_job, _sess
 from routes.module_f.slots import (
-    SLOT_LABELS, _check_slot_kind, _slot_state, _slot_switch)
+    SLOT_LABELS, _check_slot_kind, _slot_active, _slot_state, _slot_switch)
 from routes.module_f.world import _world_payload
 
 
@@ -133,10 +133,19 @@ def register(app, *, _save_upload):
 
     @app.post("/api/module-f/slot/open")
     def module_f_slot_open():
-        """도면 종류를 지정해 DXF 를 연다(S650 의 회귀 한 바퀴).
+        """도면을 이 슬롯에 **놓는다** — 올리기까지. 읽지는 않는다.
+
+        ★읽기를 여기서 시작하지 않는 이유: 평면도는 방식마다 파서가 다르다
+          (자동 = A 의 `parse_dxf_bundle`, 수동 = E 의 `PickSession.open`).
+          방식을 모르는 채로 읽으려면 둘 다 돌리거나 하나를 찍어야 하는데,
+          둘 다 돌리면 큰 도면에서 파싱을 두 번 하고(B1F 는 한 번이 9초가
+          넘는다) 하나를 찍으면 사람이 고르기도 전에 길이 정해진다.
+
+          그래서 «놓기» 와 «읽기» 를 가른다. 순서도 그것이 맞다 — 도면을
+          올린 다음에 어떻게 읽을지 고른다. 읽기는 `/slot/read` 다.
 
         `sid` 가 있으면 그 세션의 해당 슬롯으로, 없으면 새 세션을 그 슬롯으로
-        시작한다. 열기 자체는 평면도와 **같은 잡**이다.
+        시작한다.
         """
         try:
             kind = _check_slot_kind(request.form.get("kind"))
@@ -161,20 +170,48 @@ def register(app, *, _save_upload):
         except Exception as exc:  # noqa: BLE001
             return _fail(f"도면을 저장하지 못했습니다: {exc}", 500)
 
-        # 평면도만 방식이 갈린다 — 자동(A 위상 검출) / 수동(E 색 찍기).
-        # 같은 것을 뽑지만 오는 길이 다르고, 도면이 어느 쪽에 맞는지는 사람이
-        # 안다(auto.py 머리말).
-        method = str(request.form.get("method") or "manual").strip().lower()
-        if method not in ("manual", "auto"):
-            return _fail(f"그런 방식이 없습니다: {method!r} (manual | auto)")
-        if kind != "plan":
-            method = "manual"          # 계통도·기계실은 두 점 찍기 하나뿐이다
-
         if sess is None:
             sess = _new_session(slot=kind, dxf=str(dxf))
         else:
             _slot_switch(sess, kind)
             sess["dxf"] = str(dxf)
+        # 올린 것뿐 — 아직 읽지 않았다. 앞서 이 슬롯에 있던 것은 지운다.
+        sess["method"] = None
+        for k in ("world", "pick", "edit", "entities", "layer_cat", "auto",
+                  "auto_diag", "auto_heads", "auto_alarm", "auto_zones"):
+            sess.pop(k, None)
+
+        return jsonify({"ok": True, "sid": sess["id"], "kind": kind,
+                        "filename": os.path.basename(str(dxf)),
+                        # 평면도만 방식을 물어야 한다 — 계통도·기계실은 두 점
+                        # 찍기 하나뿐이라 곧바로 읽으면 된다.
+                        "needs_method": kind == "plan"})
+
+    @app.post("/api/module-f/slot/read")
+    def module_f_slot_read():
+        """올려 둔 도면을 **읽기 시작한다** — 평면도는 방식을 여기서 정한다.
+
+        올리기(`/slot/open`)와 가른 이유는 그쪽 머리말에 있다. 방식이 정해져야
+        어느 파서로 읽을지가 정해지므로, 이 호출이 곧 «길을 고르는» 순간이다.
+        """
+        body = request.get_json(silent=True) or {}
+        try:
+            sess = _sess(body.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        if _job_running(sess):
+            return _fail("작업이 끝난 뒤에 읽을 수 있습니다.", 409)
+        dxf = sess.get("dxf")
+        if not dxf or not os.path.isfile(str(dxf)):
+            return _fail("먼저 도면을 올리세요.", 400)
+        kind = _slot_active(sess)
+
+        method = str(body.get("method") or "").strip().lower()
+        if kind == "plan":
+            if method not in ("manual", "auto"):
+                return _fail("추출 방식을 고르세요 — 자동(auto) 또는 수동(manual).")
+        else:
+            method = "manual"          # 계통도·기계실은 갈릴 것이 없다
         sess["method"] = method
 
         # 계통도·기계실은 찍을 재료가 없다(S650 의 «같은 절차» 는 같은 구현을

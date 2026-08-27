@@ -331,21 +331,28 @@
       <label class="f"><span>DXF 파일</span>
         <input type="file" id="dxf" accept=".dxf">
       </label>
-      <!-- 같은 평면도에서 같은 것을 뽑는 길이 둘이다. 순서가 다르다.
-           계통도·기계실 슬롯에는 이 갈림이 없다(두 점 찍기 하나뿐). -->
-      <div id="open-method">
-        <label class="chk">
-          <input type="radio" name="open-method" id="open-m-auto" value="auto">
-          <span><b>자동</b> — 알람밸브·영역만 찍으면 나머지는 검출
-            <span class="tag">MODULE A</span></span></label>
-        <!-- 기본 선택을 두지 않는다 — 고르기 전에는 어느 길로 갈지 모르므로
-             아래 단계바도 「도면 열기」 하나만 보인다. -->
-        <label class="chk">
-          <input type="radio" name="open-method" id="open-m-manual" value="manual">
-          <span><b>수동</b> — 색으로 배관·헤드를 직접 찍기
-            <span class="tag">MODULE E</span></span></label>
-      </div>
       <div class="row"><button id="btn-open" class="go">불러오기</button></div>
+    </section>
+
+    <!-- 방식 고르기 — 도면을 «올린 뒤» 에 묻는다. 순서가 그것이 맞고,
+         파서가 갈리므로 고르기 전에는 읽기를 시작할 수도 없다.
+         계통도·기계실에는 이 갈림이 없다(두 점 찍기 하나뿐). -->
+    <section class="card hidden" id="panel-method">
+      <h2>추출 방식</h2>
+      <div id="mth-file" class="hint">—</div>
+      <div class="row" style="margin-top:10px">
+        <button id="mth-auto" class="go">자동으로 읽기</button>
+      </div>
+      <div class="hint">알람밸브·영역만 찍으면 헤드 검출·그래프·최불리까지
+        자동 <span class="tag">MODULE A</span></div>
+      <div class="row" style="margin-top:10px">
+        <button id="mth-manual" class="go">수동으로 읽기</button>
+      </div>
+      <div class="hint">색으로 배관·헤드를 직접 찍고 손질
+        <span class="tag">MODULE E</span></div>
+      <div class="row" style="margin-top:12px">
+        <button id="mth-cancel">← 다른 도면</button>
+      </div>
     </section>
 
     <section class="card" id="panel-resume">
@@ -1195,6 +1202,8 @@
   // 흩어져 있어 패널을 하나 늘릴 때마다 빠뜨릴 자리가 늘었다.
   const STAGE_PANELS = {
     open: ["panel-open", "panel-resume"],
+    // 올린 뒤 방식을 묻는 자리 — 「도면 열기」 단계 안의 두 번째 화면이다.
+    method: ["panel-method"],
     pick: ["panel-pick", "panel-layers"],
     edit: ["panel-edit"],
     conv: ["panel-conv"],
@@ -1210,6 +1219,7 @@
     // ★평면도는 방식을 고르기 전까지 흐름이 «없다». 수동 흐름을 미리 펼쳐
     //   놓으면 자동을 고를 사람에게 찍기·손질·변환을 먼저 보여 주게 된다 —
     //   아직 정해지지도 않은 길이다. 고른 뒤에 그 길만 보인다.
+    //   («방식 고르기» 는 도면 열기 단계 안이라 칸을 따로 두지 않는다.)
     if (S.slot === "plan" && !S.method) return ["open"];
     const key = (S.slot === "plan" && S.method === "auto") ? "plan_auto" : S.slot;
     return (STAGE_FLOW[key] || STAGE_FLOW.plan).concat(["merge"]);
@@ -1230,7 +1240,9 @@
 
   function renderSteps() {
     const flow = stageFlow();
-    const idx = flow.indexOf(S.stage);
+    // 「방식 고르기」는 도면 열기 단계 안의 두 번째 화면이다 — 칸을 따로 두지
+    // 않고 「도면 열기」를 켠 채로 둔다.
+    const idx = flow.indexOf(S.stage === "method" ? "open" : S.stage);
     const box = $("steps");
     box.innerHTML = "";
     flow.forEach((k, i) => {
@@ -1271,13 +1283,10 @@
     for (const id of ALL_PANELS) {
       $(id).classList.toggle("hidden", !want.has(id));
     }
-    // 「이어서 열기」와 「추출 방식」은 평면도만의 개념이다 — 계통도·기계실
-    // 슬롯에서 띄우면 남의 것을 이 슬롯에 여는 것처럼 보인다.
+    // 「이어서 열기」는 평면도만의 개념이다(찍은 스펙 목록) — 계통도·기계실
+    // 슬롯에서 띄우면 남의 도면 목록을 이 슬롯에 여는 것처럼 보인다.
     if (name === "open") {
-      const isPlan = S.slot === "plan";
-      $("panel-resume").classList.toggle("hidden", !isPlan);
-      $("open-method").classList.toggle("hidden", !isPlan);
-      syncOpenMethod();
+      $("panel-resume").classList.toggle("hidden", S.slot !== "plan");
     }
     renderSteps();
     draw();
@@ -1403,20 +1412,34 @@
     // (S650 회귀 한 바퀴) — 없으면 새 세션이 이 종류로 시작한다.
     fd.append("kind", S.slot);
     if (S.sid) fd.append("sid", S.sid);
-    // 평면도만 방식이 갈린다 — 자동(A 위상 검출) / 수동(E 색 찍기).
-    // 파서가 갈리므로 연 뒤에는 못 바꾼다 — 고르지 않았으면 여기서 세운다.
-    const picked = document.querySelector("input[name=open-method]:checked");
-    if (S.slot === "plan" && !picked) {
-      say("추출 방식(자동 / 수동)을 먼저 고르세요.", "warn");
-      return;
-    }
-    fd.append("method", S.slot === "plan" ? picked.value : "manual");
     busy(true, "업로드 중…");
     try {
+      // 올리기까지다 — 읽기는 방식이 정해진 뒤(`/slot/read`).
       const d = await api("/api/module-f/slot/open", { method: "POST", body: fd });
       S.sid = d.sid;
-      S.method = d.method || "manual";
+      S.method = null;
       S.zones = []; S.autoAlarm = null; S.autoHeads = []; S.autoDone = false;
+      S.world = null; S.edit = null; S.key = null;
+      busy(false);
+      if (d.needs_method) {
+        $("mth-file").innerHTML = kv("도면", d.filename);
+        setStage("method");
+        say("어떻게 읽을지 고르세요.");
+      } else {
+        // 계통도·기계실은 갈릴 것이 없다 — 곧바로 읽는다.
+        await readSlot("manual");
+      }
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  // 올려 둔 도면을 읽기 시작한다 — 이 호출이 곧 「길을 고르는」 순간이다.
+  async function readSlot(method) {
+    busy(true, "도면 읽는 중…");
+    try {
+      const d = await post("/api/module-f/slot/read",
+                           { sid: S.sid, method });
+      S.method = d.method || "manual";
+      renderSteps();
       say(`${d.filename} 읽는 중…`);
       // 세 갈래 — 평면도 수동은 찍기로, 평면도 자동은 알람밸브·영역으로,
       // 계통도·기계실은 두 점 찍기로.
@@ -1429,7 +1452,11 @@
         loadSlots();
       });
     } catch (err) { busy(false); say(err.message, "err"); }
-  };
+  }
+
+  $("mth-auto").onclick = () => readSlot("auto");
+  $("mth-manual").onclick = () => readSlot("manual");
+  $("mth-cancel").onclick = () => { setStage("open"); say("다른 도면을 고르세요."); };
 
   // 도면만 받아 캔버스에 올린다 — 찍기판이 없는 슬롯(계통도·기계실)도 쓴다.
   async function loadWorldRaw() {
@@ -1625,13 +1652,16 @@
       // 하고, 아직 안 연 슬롯이면 «안 고른» 상태 그대로여야 한다.
       const st = await api(`/api/module-f/auto/state?sid=${S.sid}`);
       S.method = st.method || null;
-      for (const r of document.querySelectorAll("input[name=open-method]")) {
-        r.checked = (r.value === S.method);
-      }
       if (!cur.opened) {
         S.world = null; S.edit = null; S.key = null;
         setStage("open");
         say(`${cur.label} — 아직 도면이 없습니다. DXF 를 여세요.`);
+      } else if (kind === "plan" && !S.method) {
+        // 올려는 뒀는데 아직 안 읽은 슬롯 — 방식부터 다시 묻는다.
+        S.world = null; S.edit = null;
+        $("mth-file").innerHTML = kv("도면", (st.dxf_name || cur.key || ""));
+        setStage("method");
+        say("어떻게 읽을지 고르세요.");
       } else if (kind !== "plan") {
         // 계통도·기계실은 찍기·손질을 거치지 않는다 — 두 점 찍기로 바로 간다.
         await loadWorldRaw();
@@ -2091,10 +2121,6 @@
       S.sid = d.sid; S.key = d.key;
       // 저장본은 찍기가 끝난 것이라 언제나 수동 경로다(손질부터 시작).
       S.method = "manual";
-      // 라디오도 맞춘다 — 상태와 화면이 다른 말을 하면 다음 열기가 헷갈린다.
-      $("open-m-manual").checked = true;
-      $("open-m-auto").checked = false;
-      syncOpenMethod();
       renderSteps();
       watch(loadEdit);
     } catch (err) { busy(false); say(err.message, "err"); }
@@ -2811,23 +2837,6 @@
 
   $("dg-back-auto").onclick = () => loadAuto();
 
-  // 방식을 고르는 순간 그 길의 단계가 나타난다 — 고르기 전에는 「도면 열기」뿐.
-  for (const id of ["open-m-auto", "open-m-manual"]) {
-    $(id).onchange = () => {
-      S.method = $(id).value;
-      syncOpenMethod();
-      renderSteps();
-    };
-  }
-
-  function syncOpenMethod() {
-    // 평면도에서 방식을 안 고르면 열 수 없다 — 파서가 갈리므로 나중에 못 바꾼다.
-    const need = S.slot === "plan";
-    const picked = !!document.querySelector("input[name=open-method]:checked");
-    $("btn-open").disabled = need && !picked;
-    $("btn-open").title = (need && !picked)
-      ? "추출 방식을 먼저 고르세요" : "";
-  }
 
   async function designPreview() {
     const cfg = designSettings();

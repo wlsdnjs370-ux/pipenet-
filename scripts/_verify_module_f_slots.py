@@ -99,6 +99,21 @@ def main() -> int:
         check("/slot/open 은 DXF 없으면 400", r.status_code == 400,
               f"HTTP {r.status_code}")
 
+        # 올리기와 읽기가 갈렸다 — 안 올린 채로 읽으라면 막힌다.
+        r = c.post("/api/module-f/slot/read",
+                   json={"sid": sid, "method": "auto"})
+        check("안 올린 채 /slot/read 는 400", r.status_code == 400,
+              f"HTTP {r.status_code}")
+        # 평면도는 방식을 고르지 않으면 읽지 않는다(파서가 갈린다).
+        sess["dxf"] = __import__("os").path.abspath(__file__)   # 존재하는 파일
+        r = c.post("/api/module-f/slot/read", json={"sid": sid})
+        check("평면도는 방식 없이 못 읽는다", r.status_code == 400,
+              (r.get_json() or {}).get("message", "")[:50])
+        r = c.post("/api/module-f/slot/read",
+                   json={"sid": sid, "method": "없는방식"})
+        check("모르는 방식은 400", r.status_code == 400, f"HTTP {r.status_code}")
+        sess["dxf"] = None
+
         # ⑤ 잡이 도는 중에는 슬롯을 못 바꾼다 — 워커가 남의 슬롯에 쓰는 것을 막는다.
         sess["job"] = {"state": "run", "phase": "도면 읽기", "started": 0.0,
                        "ended": None, "error": None, "result": None}
@@ -110,7 +125,8 @@ def main() -> int:
         rules = {r.rule for r in app.url_map.iter_rules()}
         for path in ("/api/module-f/open", "/api/module-f/reopen",
                      "/api/module-f/world", "/api/module-f/slot/state",
-                     "/api/module-f/slot/switch", "/api/module-f/slot/open"):
+                     "/api/module-f/slot/switch", "/api/module-f/slot/open",
+                     "/api/module-f/slot/read"):
             check(f"라우트 존재 {path}", path in rules)
 
     print()

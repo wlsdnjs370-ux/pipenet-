@@ -112,25 +112,10 @@ def main() -> int:
                 "#steps div", "els => els.map(e => e.textContent.trim())")
             check("고르기 전 단계바는 «도면 열기» 뿐",
                   steps == ["도면 열기"], " · ".join(steps))
-            check("고르기 전에는 열 수 없다", page.is_disabled("#btn-open"))
-
-            page.check("#open-m-manual")
-            page.wait_for_timeout(200)
-            steps = page.eval_on_selector_all(
-                "#steps div", "els => els.map(e => e.textContent.trim())")
-            check("수동을 고르면 수동 흐름이 뜬다",
-                  steps == ["도면 열기", "찍기", "손질", "변환", "수리계산", "통합"],
-                  " · ".join(steps))
-            page.check("#open-m-auto")
-            page.wait_for_timeout(200)
-            steps = page.eval_on_selector_all(
-                "#steps div", "els => els.map(e => e.textContent.trim())")
-            check("자동을 고르면 자동 흐름으로 바뀐다",
-                  steps == ["도면 열기", "자동 추출", "수리계산", "통합"],
-                  " · ".join(steps))
-            check("고른 뒤에는 열 수 있다", not page.is_disabled("#btn-open"))
-            page.check("#open-m-manual")     # 아래 검사는 수동 기준이다
-            page.wait_for_timeout(200)
+            check("방식 묻는 화면은 처음엔 안 보인다",
+                  not page.is_visible("#panel-method"))
+            check("올리기는 처음부터 열려 있다",
+                  not page.is_disabled("#btn-open"))
 
             # ── 슬롯 탭이 그려졌나 (세션 전에는 안내문)
             slots = page.inner_text("#slots").strip()
@@ -138,19 +123,25 @@ def main() -> int:
 
             # ── 추출 방식 갈림 (A 자동 / E 수동)
             check("방식 고르는 자리가 있다",
-                  page.query_selector("#open-method") is not None)
-            check("자동도 고를 수 있다",
-                  page.query_selector("#open-m-auto") is not None)
+                  page.query_selector("#panel-method") is not None)
+            check("자동·수동 단추가 있다",
+                  page.query_selector("#mth-auto") is not None
+                  and page.query_selector("#mth-manual") is not None)
             check("자동 추출 패널이 있다",
                   page.query_selector("#panel-auto") is not None)
             for aid in ("au-anchor", "au-zone-arm", "au-heads", "au-run",
                         "au-k-preset", "au-k"):
                 check(f"#{aid} 존재", page.query_selector(f"#{aid}") is not None)
-            page.check("#open-m-manual")     # 아래 검사는 수동 기준이다
 
             # ── 갈 수 없는 단계는 막힌다. ★도면을 열기 «전» 에 봐야 한다 —
             #    열고 나면 찍기가 실제로 도달 가능해져 이 검사가 뜻을 잃는다.
-            page.click("#steps div:nth-child(2)")     # 찍기 — 재료 없음
+            #    (지금 단계바는 「도면 열기」 한 칸뿐이라 누를 다음 칸이 없다 —
+            #     그 자체가 「갈 수 없다」의 표현이다.)
+            steps_now = page.eval_on_selector_all(
+                "#steps div", "els => els.map(e => e.textContent.trim())")
+            check("고르기 전에는 다음 단계 자체가 없다",
+                  steps_now == ["도면 열기"], " · ".join(steps_now))
+            page.click("#steps div:nth-child(1)")
             page.wait_for_timeout(300)
             after = page.eval_on_selector_all(
                 "#steps div.on", "els => els.map(e => e.textContent.trim())")
@@ -254,8 +245,16 @@ def main() -> int:
             if small is None:
                 check("작업 중 진행 자동열림", False, "시험용 DXF 없음")
             else:
+                # 올리기 → 방식 묻기 → 수동으로 읽기 (순서가 이렇게 바뀌었다)
                 page.set_input_files("#dxf", str(small))
                 page.click("#btn-open")
+                page.wait_for_selector("#panel-method:not(.hidden)",
+                                       timeout=60000)
+                check("올리면 방식을 묻는다",
+                      page.is_visible("#mth-auto")
+                      and small.name in page.inner_text("#mth-file"),
+                      page.inner_text("#mth-file").strip()[:50])
+                page.click("#mth-manual")
                 opened = False
                 for _ in range(400):          # 25ms × 400 = 10s
                     page.wait_for_timeout(25)
@@ -279,9 +278,11 @@ def main() -> int:
                 # ── 자동 방식으로 같은 도면을 다시 연다 — 단계바가 갈리나
                 page.reload(wait_until="load")
                 page.wait_for_timeout(700)
-                page.check("#open-m-auto")
                 page.set_input_files("#dxf", str(small))
                 page.click("#btn-open")
+                page.wait_for_selector("#panel-method:not(.hidden)",
+                                       timeout=60000)
+                page.click("#mth-auto")
                 # ★단계바는 라디오를 고르는 순간 이미 바뀐다 — 그것으로 기다리면
                 #   파싱이 끝나기 전에 다음으로 넘어간다(실측으로 헤드 0개가 났다).
                 #   실제로 열렸는지는 자동 패널이 뜨는 것으로 본다.

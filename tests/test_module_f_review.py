@@ -156,12 +156,20 @@ def test_sweep_은_스로틀된다():
 
 
 # ─────────────────────────────────────────── ⑤ 키 검사
-def test_자동_경로도_같은_키_자를_쓴다():
+def test_두_길_다_같은_키_자를_쓴다():
+    """읽기가 공통이 되면서 키 검사도 한 자리로 모였다 — 그 자리를 확인한다.
+
+    키는 뒤에서 산출 파일 이름이 된다. 자동·수동 어느 길로 가든 `_open_job`
+    (찍기판)이 도면을 열므로 거기 하나면 둘 다 덮인다.
+    """
     import inspect
 
-    from routes.module_f import api_slot
-    src = inspect.getsource(api_slot._auto_open_job)
-    assert "_check_key(" in src, "자동 경로가 키 검사를 건너뛴다"
+    from routes.module_f import api_open, api_slot
+    assert "_check_key(" in inspect.getsource(api_open._open_job), \
+        "공통 열기가 키 검사를 건너뛴다"
+    # 자동은 보태기만 한다 — 키를 새로 정하지 않는다(덮으면 두 길이 갈린다).
+    aug = inspect.getsource(api_slot._auto_augment_job)
+    assert 'sess["key"] =' not in aug, "자동이 키를 덮어쓴다"
 
 
 def test_키_자가_경로를_막는다():

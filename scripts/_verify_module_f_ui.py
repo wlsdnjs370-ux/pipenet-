@@ -245,18 +245,13 @@ def main() -> int:
             if small is None:
                 check("작업 중 진행 자동열림", False, "시험용 DXF 없음")
             else:
-                # 올리기 → 방식 묻기 → 수동으로 읽기 (순서가 이렇게 바뀌었다)
+                # 불러오기 = 읽어서 «화면에 띄우기» 까지 (방식과 무관한 공통)
                 page.set_input_files("#dxf", str(small))
                 page.click("#btn-open")
-                page.wait_for_selector("#panel-method:not(.hidden)",
-                                       timeout=60000)
-                check("올리면 방식을 묻는다",
-                      page.is_visible("#mth-auto")
-                      and small.name in page.inner_text("#mth-file"),
-                      page.inner_text("#mth-file").strip()[:50])
-                page.click("#mth-manual")
+                # ★진행 자동열림은 «불러오기» 잡에서 본다 — 방식 고르기(수동)는
+                #   이제 잡이 없어(추가 0초) 열릴 일이 없다.
                 opened = False
-                for _ in range(400):          # 25ms × 400 = 10s
+                for _ in range(600):          # 25ms × 600 = 15s
                     page.wait_for_timeout(25)
                     if "hidden" not in (page.get_attribute("#log-body", "class") or ""):
                         opened = True
@@ -266,6 +261,8 @@ def main() -> int:
                     chip = page.inner_text("#job-chip").strip()
                     check("제목 옆에 도는 단계가 뜬다",
                           bool(chip) and chip != "—", chip)
+                page.wait_for_selector("#panel-method:not(.hidden)",
+                                       timeout=120000)
                 closed = False
                 for _ in range(90):
                     page.wait_for_timeout(500)
@@ -274,6 +271,35 @@ def main() -> int:
                         break
                 check("끝나면 다시 접힌다", closed,
                       page.inner_text("#job-line").strip()[:60])
+                check("불러오면 방식을 묻는다", page.is_visible("#mth-auto"))
+                # ★도면이 실제로 화면에 있어야 한다 — 방식을 고르기 전에
+                #   화면이 비어 있으면 무엇을 고르는지 모른 채 고르게 된다.
+                drawn = page.evaluate(
+                    """() => {
+                      const c = document.getElementById('cv');
+                      const g = c.getContext('2d');
+                      const d = g.getImageData(0, 0, c.width, c.height).data;
+                      let lit = 0;
+                      for (let i = 0; i < d.length; i += 4) {
+                        if (d[i] || d[i+1] || d[i+2]) lit++;
+                      }
+                      return lit;
+                    }""")
+                check("방식을 고르기 전에 도면이 보인다", drawn > 500,
+                      f"칠해진 픽셀 {drawn:,}")
+                check("올린 도면 이름이 뜬다",
+                      "선분" in page.inner_text("#mth-file"),
+                      page.inner_text("#mth-file").strip().replace("\n", " ")[:60])
+                # ★수동은 더 읽을 것이 없다 — 찍기판이 이미 섰다. 곧바로
+                #   찍기 단계로 넘어가야 한다(잡 없음).
+                page.click("#mth-manual")
+                page.wait_for_selector("#panel-pick:not(.hidden)", timeout=30000)
+                steps_m = page.eval_on_selector_all(
+                    "#steps div", "els => els.map(e => e.textContent.trim())")
+                check("수동은 기다림 없이 찍기로 간다",
+                      steps_m == ["도면 열기", "찍기", "손질", "변환",
+                                  "수리계산", "통합"],
+                      " · ".join(steps_m))
 
                 # ── 자동 방식으로 같은 도면을 다시 연다 — 단계바가 갈리나
                 page.reload(wait_until="load")
@@ -281,7 +307,7 @@ def main() -> int:
                 page.set_input_files("#dxf", str(small))
                 page.click("#btn-open")
                 page.wait_for_selector("#panel-method:not(.hidden)",
-                                       timeout=60000)
+                                       timeout=120000)
                 page.click("#mth-auto")
                 # ★단계바는 라디오를 고르는 순간 이미 바뀐다 — 그것으로 기다리면
                 #   파싱이 끝나기 전에 다음으로 넘어간다(실측으로 헤드 0개가 났다).

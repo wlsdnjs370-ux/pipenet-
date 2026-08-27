@@ -99,20 +99,35 @@ def main() -> int:
         check("/slot/open 은 DXF 없으면 400", r.status_code == 400,
               f"HTTP {r.status_code}")
 
-        # 올리기와 읽기가 갈렸다 — 안 올린 채로 읽으라면 막힌다.
+        # 읽기(공통)와 방식 고르기가 갈렸다 — 안 올렸으면 고를 것도 없다.
         r = c.post("/api/module-f/slot/read",
                    json={"sid": sid, "method": "auto"})
         check("안 올린 채 /slot/read 는 400", r.status_code == 400,
               f"HTTP {r.status_code}")
-        # 평면도는 방식을 고르지 않으면 읽지 않는다(파서가 갈린다).
+        # 올렸어도 «다 읽기 전» 이면 고를 수 없다 — 무엇을 고르는지 못 본다.
         sess["dxf"] = __import__("os").path.abspath(__file__)   # 존재하는 파일
+        r = c.post("/api/module-f/slot/read",
+                   json={"sid": sid, "method": "auto"})
+        check("다 읽기 전에는 409", r.status_code == 409,
+              (r.get_json() or {}).get("message", "")[:40])
+        # 다 읽은 뒤 — 평면도는 방식을 안 고르면 못 넘어간다(파서가 갈린다).
+        sess["world"] = {"bounds": {}, "counts": {}}
         r = c.post("/api/module-f/slot/read", json={"sid": sid})
-        check("평면도는 방식 없이 못 읽는다", r.status_code == 400,
+        check("평면도는 방식 없이 못 넘어간다", r.status_code == 400,
               (r.get_json() or {}).get("message", "")[:50])
         r = c.post("/api/module-f/slot/read",
                    json={"sid": sid, "method": "없는방식"})
         check("모르는 방식은 400", r.status_code == 400, f"HTTP {r.status_code}")
+        # 수동은 더 읽을 것이 없다 — 잡을 안 돌린다.
+        r = c.post("/api/module-f/slot/read",
+                   json={"sid": sid, "method": "manual"})
+        d2 = r.get_json() or {}
+        check("수동은 잡을 안 돌린다",
+              r.status_code == 200 and d2.get("started") is False,
+              f"HTTP {r.status_code} · started={d2.get('started')}")
         sess["dxf"] = None
+        sess.pop("world", None)
+        sess["method"] = None
 
         # ⑤ 잡이 도는 중에는 슬롯을 못 바꾼다 — 워커가 남의 슬롯에 쓰는 것을 막는다.
         sess["job"] = {"state": "run", "phase": "도면 읽기", "started": 0.0,

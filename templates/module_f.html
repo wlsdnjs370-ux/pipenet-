@@ -1420,37 +1420,37 @@
       S.method = null;
       S.zones = []; S.autoAlarm = null; S.autoHeads = []; S.autoDone = false;
       S.world = null; S.edit = null; S.key = null;
-      busy(false);
-      if (d.needs_method) {
-        $("mth-file").innerHTML = kv("도면", d.filename);
+      say(`${d.filename} 읽는 중…`);
+      // 읽어서 화면에 띄우는 것까지는 방식과 무관하다 — 도면을 먼저 보여 준
+      // 뒤에 어떻게 읽을지 묻는다.
+      watch(async () => {
+        await loadWorldRaw();
+        fit(S.world.bounds);
+        if (!d.needs_method) { await loadSub(); loadSlots(); return; }
+        $("mth-file").innerHTML =
+          kv("도면", `${S.key} · 선분 ${S.world.counts.segs.toLocaleString()}`);
         setStage("method");
-        say("어떻게 읽을지 고르세요.");
-      } else {
-        // 계통도·기계실은 갈릴 것이 없다 — 곧바로 읽는다.
-        await readSlot("manual");
-      }
+        loadSlots();
+        say("도면을 읽었습니다 — 어떻게 추출할지 고르세요.");
+      });
     } catch (err) { busy(false); say(err.message, "err"); }
   };
 
-  // 올려 둔 도면을 읽기 시작한다 — 이 호출이 곧 「길을 고르는」 순간이다.
+  // 어느 길로 갈지 정한다. 도면은 이미 읽혀 화면에 있다 — 수동은 더 읽을
+  // 것이 없고(찍기판이 이미 섰다), 자동만 A 의 파서를 한 번 더 돌린다.
   async function readSlot(method) {
-    busy(true, "도면 읽는 중…");
+    busy(true, method === "auto" ? "자동 추출 준비 중…" : "여는 중…");
     try {
-      const d = await post("/api/module-f/slot/read",
-                           { sid: S.sid, method });
+      const d = await post("/api/module-f/slot/read", { sid: S.sid, method });
       S.method = d.method || "manual";
       renderSteps();
-      say(`${d.filename} 읽는 중…`);
-      // 세 갈래 — 평면도 수동은 찍기로, 평면도 자동은 알람밸브·영역으로,
-      // 계통도·기계실은 두 점 찍기로.
-      watch(async () => {
-        if (d.kind === "plan" && S.method !== "auto") { await loadWorld(); return; }
-        await loadWorldRaw();
-        fit(S.world.bounds);
-        if (d.kind === "plan") await loadAuto();
-        else await loadSub();
+      const go = async () => {
+        if (S.method === "auto") { await loadAuto(); }
+        else { await loadWorld(); }
         loadSlots();
-      });
+      };
+      if (d.started) { watch(go); }      // 자동 — 파싱을 기다린다
+      else { busy(false); await go(); }  // 수동 — 기다릴 것이 없다
     } catch (err) { busy(false); say(err.message, "err"); }
   }
 
@@ -1657,11 +1657,12 @@
         setStage("open");
         say(`${cur.label} — 아직 도면이 없습니다. DXF 를 여세요.`);
       } else if (kind === "plan" && !S.method) {
-        // 올려는 뒀는데 아직 안 읽은 슬롯 — 방식부터 다시 묻는다.
-        S.world = null; S.edit = null;
+        // 읽어는 뒀는데 방식을 아직 안 고른 슬롯 — 도면을 띄우고 다시 묻는다.
+        await loadWorldRaw();
+        fit(S.world.bounds);
         $("mth-file").innerHTML = kv("도면", (st.dxf_name || cur.key || ""));
         setStage("method");
-        say("어떻게 읽을지 고르세요.");
+        say("어떻게 추출할지 고르세요.");
       } else if (kind !== "plan") {
         // 계통도·기계실은 찍기·손질을 거치지 않는다 — 두 점 찍기로 바로 간다.
         await loadWorldRaw();

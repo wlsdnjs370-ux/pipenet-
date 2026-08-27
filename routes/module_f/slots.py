@@ -120,7 +120,12 @@ def _slot_progress(state: dict) -> dict:
     단계 판정은 `/api/module-f/job` 의 stage 규약과 같은 것을 쓴다. 두 곳이
     다르게 답하면 화면이 슬롯 탭과 단계 표시에서 서로 다른 말을 하게 된다.
     """
-    if state.get("edit") is not None:
+    # ★자동 경로도 찍기판(PickSession)으로 도면을 연다 — 그것이 가장 싸다.
+    #   그래서 `pick` 이 있다는 것만으로 「찍기 중」 이라고 하면 안 된다.
+    #   자동은 제 단계 이름을 갖는다.
+    if str(state.get("method") or "") == "auto":
+        stage = "auto" if state.get("auto") else "auto-ready"
+    elif state.get("edit") is not None:
         stage = "edit"
     elif state.get("pick") is not None:
         stage = "pick"
@@ -129,6 +134,7 @@ def _slot_progress(state: dict) -> dict:
     return {
         "opened": bool(state.get("key") or state.get("dxf")),
         "stage": stage,
+        "method": state.get("method"),
         "key": state.get("key"),
         # 제4국면(S500)까지 갔는가 — 병합(S700)이 쓸 수 있는 슬롯인지의 근거.
         "designed": bool(state.get("design_sdf_path")),

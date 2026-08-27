@@ -152,6 +152,24 @@ def main() -> int:
                       ".kinds img", "els => els.length") == 0)
             check("헤드 후보 제안이 찍기 카드 안으로",
                   page.query_selector("#panel-pick #pk-suggest") is not None)
+
+            # ── 자동 추천은 접혀 있고, 제목을 누르면 열린다
+            cls = page.get_attribute("#pk-auto-body", "class") or ""
+            check("자동 추천은 처음엔 접혀 있다", "hidden" in cls, cls)
+            page.eval_on_selector("#panel-pick",
+                                  "el => el.classList.remove('hidden')")
+            page.click("h2.fold[data-fold=pk-auto-body]")
+            page.wait_for_timeout(200)
+            cls = page.get_attribute("#pk-auto-body", "class") or ""
+            check("제목을 누르면 펼쳐진다", "hidden" not in cls, cls)
+            check("펼치면 배관 추천 일괄이 보인다",
+                  page.is_visible("#pk-auto-pipe"))
+            page.click("h2.fold[data-fold=pk-auto-body]")
+            page.wait_for_timeout(200)
+            check("다시 누르면 접힌다",
+                  "hidden" in (page.get_attribute("#pk-auto-body", "class") or ""))
+            page.eval_on_selector("#panel-pick",
+                                  "el => el.classList.add('hidden')")
             # 표가 몇 개인지가 아니라 «한 판 안에서 겹치는가» 를 본다 — 패널이
             # 다르면 동시에 보이지 않으므로 중복이 아니다(손질 패널에 셋이
             # 몰려 있던 것이 문제였다).

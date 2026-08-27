@@ -35,7 +35,7 @@ TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            "renderSteps", "gotoStage", "stageFlow", "stageReachable",
            "setStage", "loadRefCounts", "drawEdit",
            "openConvModal", "closeConvModal", "renderConvSummary",
-           "readDto", "loadFields")
+           "readDto", "loadFields", "toggleFold")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 

@@ -87,6 +87,17 @@
            display:flex;align-items:center;gap:10px;}
   .card h2::after{content:"";flex:1;height:1px;background:var(--line);}
 
+  /* ── 접이식 묶음 ───────────────────────────────────────────
+     자잘한 단추가 늘 펼쳐져 있으면 정작 그 단계에서 할 일이 안 보인다.
+     제목 자체가 단추가 되고, 누르면 아래가 열린다. */
+  h2.fold{cursor:pointer;user-select:none;}
+  h2.fold:hover{color:var(--dim);}
+  h2.fold .caret{flex:none;font:400 9px/1 var(--mono);color:var(--faint);
+                 transition:transform .12s ease;}
+  h2.fold.on .caret{transform:rotate(90deg);color:var(--accent);}
+  h2.fold.on{color:var(--ink);}
+  .foldbody.hidden{display:none;}
+
   /* ── 단추 ─────────────────────────────────────────────── */
   /* 이웃한 단추는 테두리를 겹쳐 한 줄로 합친다 — 2px 이중선이 안 생기게. */
   .row{display:flex;flex-wrap:wrap;margin-bottom:8px;}
@@ -359,18 +370,21 @@
     <!-- 2. 찍기 — 자동 추천 두 갈래(레이어 사전 · 헤드 인식)를 한 카드에 둔다.
          둘 다 모듈 A 것이라 카드를 나누면 MODULE A 표가 두 번 뜬다. -->
     <section class="card hidden" id="panel-pick">
-      <h2>자동 추천 <span class="tag">MODULE A</span></h2>
-      <div class="row">
-        <button id="pk-auto-pipe">배관 추천 일괄</button>
-        <button id="pk-auto-head">헤드 추천 일괄</button>
+      <h2 class="fold" data-fold="pk-auto-body"><span class="caret">▶</span>자동 추천
+        <span class="tag">MODULE A</span></h2>
+      <div class="foldbody hidden" id="pk-auto-body">
+        <div class="row">
+          <button id="pk-auto-pipe">배관 추천 일괄</button>
+          <button id="pk-auto-head">헤드 추천 일괄</button>
+        </div>
+        <div id="pk-cats" class="catbar"></div>
+        <div class="row" style="margin-top:9px">
+          <button id="pk-suggest">헤드 후보 제안</button>
+          <button id="pk-suggest-apply" disabled>전체 반영</button>
+          <button id="pk-suggest-clear" disabled>후보 지우기</button>
+        </div>
+        <div id="pk-suggest-info" class="hint"></div>
       </div>
-      <div id="pk-cats" class="catbar"></div>
-      <div class="row" style="margin-top:9px">
-        <button id="pk-suggest">헤드 후보 제안</button>
-        <button id="pk-suggest-apply" disabled>전체 반영</button>
-        <button id="pk-suggest-clear" disabled>후보 지우기</button>
-      </div>
-      <div id="pk-suggest-info" class="hint"></div>
       <h2 style="margin-top:16px">재료</h2>
       <div class="row">
         <button id="pk-pipe">배관 선택</button>
@@ -1307,6 +1321,22 @@
            + `·호 ${dr.arcs.toLocaleString()} 개를 뺐습니다(표시 상한). 찍기 판정은 전량 대상입니다.`;
       say(msg, "warn");
     } else { say(msg); }
+  }
+
+  // ── 접이식 묶음 ────────────────────────────────────────────────
+  // `<h2 class="fold" data-fold="본문-id">` 하나로 걸린다. 제목이 곧 단추다.
+  // 자잘한 단추가 늘 펼쳐져 있으면 정작 그 단계에서 할 일이 안 보인다.
+  function toggleFold(h2, open) {
+    const body = $(h2.dataset.fold);
+    if (!body) return;
+    const next = (open === undefined) ? body.classList.contains("hidden") : open;
+    body.classList.toggle("hidden", !next);
+    h2.classList.toggle("on", next);
+  }
+
+  for (const h2 of document.querySelectorAll("h2.fold")) {
+    h2.onclick = () => toggleFold(h2);
+    toggleFold(h2, false);          // 처음엔 접어 둔다
   }
 
   // ── 기준개수 (NFTC 103 표 2.1.1.1) ─────────────────────────────

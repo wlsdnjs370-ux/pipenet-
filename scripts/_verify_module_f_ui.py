@@ -144,6 +144,47 @@ def main() -> int:
             wv = page.input_value("#ed-worst-view")
             check("나머지 배관망 기본 = 비활성 점선", wv == "dim", wv)
 
+            # ── 수직 전개 값이 «창» 으로 뜨나 (모듈 E 의 대화상자 자리)
+            check("변환 칸이 옆판에 없다",
+                  page.query_selector("#panel-conv #conv-fields") is None,
+                  "옆판에 그대로 박혀 있다")
+            check("변환 칸이 창 안에 있다",
+                  page.query_selector("#conv-modal #conv-fields") is not None)
+            check("창은 처음엔 닫혀 있다",
+                  "hidden" in (page.get_attribute("#conv-modal", "class") or ""))
+            # 칸을 채워 넣고 창을 열어 본다 — 서버에서 받은 칸이 그려지는지.
+            page.evaluate(
+                "() => document.getElementById('conv-fields').innerHTML ="
+                " '<label class=\"f\"><span>① (m)</span>"
+                "<input type=\"text\" data-key=\"t1\" value=\"1.5\"></label>'")
+            page.eval_on_selector("#panel-conv",
+                                  "el => el.classList.remove('hidden')")
+            page.click("#btn-conv-fields")
+            page.wait_for_timeout(200)
+            check("단추를 누르면 창이 뜬다",
+                  "hidden" not in (page.get_attribute("#conv-modal", "class") or ""))
+            # 취소하면 고친 값이 되돌아가야 한다.
+            page.fill("#conv-modal input[data-key=t1]", "9.9")
+            page.click("#conv-cancel")
+            page.wait_for_timeout(200)
+            back = page.eval_on_selector(
+                "#conv-fields input[data-key=t1]", "el => el.value")
+            check("취소하면 값이 되돌아간다", back == "1.5", back)
+            check("취소하면 창이 닫힌다",
+                  "hidden" in (page.get_attribute("#conv-modal", "class") or ""))
+            # 확인은 값을 남긴다.
+            page.click("#btn-conv-fields")
+            page.fill("#conv-modal input[data-key=t1]", "2.75")
+            page.click("#conv-ok")
+            page.wait_for_timeout(200)
+            kept = page.eval_on_selector(
+                "#conv-fields input[data-key=t1]", "el => el.value")
+            check("확인하면 값이 남는다", kept == "2.75", kept)
+            summ = page.inner_text("#conv-summary").strip()
+            check("옆판에 채운 칸 요약이 뜬다", "1" in summ, summ[:40])
+            page.eval_on_selector("#panel-conv",
+                                  "el => el.classList.add('hidden')")
+
             # ── 단계바 클릭이 터지지 않나 (갈 수 없는 곳은 막혀야 한다)
             page.click("#steps div:nth-child(2)")     # 찍기 — 재료 없음
             page.wait_for_timeout(300)
@@ -158,6 +199,47 @@ def main() -> int:
 
             page.screenshot(path=str(ROOT / "data" / "_ui_verify.png"),
                             full_page=False)
+            # 변환 창 — 서버가 주는 진짜 칸으로 한 장.
+            page.evaluate("() => { window.__f = null; }")
+            fields = page.evaluate(
+                "async () => (await (await fetch("
+                "'/api/module-f/convert/fields')).json())")
+            if fields and fields.get("groups"):
+                page.evaluate(
+                    """(d) => {
+                      const box = document.getElementById('conv-fields');
+                      box.innerHTML = '';
+                      for (const g of d.groups) {
+                        const h = document.createElement('div');
+                        h.className = 'grp'; h.textContent = g.title;
+                        box.appendChild(h);
+                        if (g.diagram) {
+                          const f = document.createElement('div');
+                          f.className = 'grpfig';
+                          const im = document.createElement('img');
+                          im.className = 'diagram';
+                          im.src = '/api/module-f/diagram/' + g.diagram;
+                          f.appendChild(im); box.appendChild(f);
+                        }
+                        for (const fl of g.fields) {
+                          const lb = document.createElement('label');
+                          lb.className = 'f';
+                          const sp = document.createElement('span');
+                          sp.textContent = fl.label;
+                          const inp = document.createElement('input');
+                          inp.type = 'text'; inp.dataset.key = fl.key;
+                          const dv = d.defaults[fl.key];
+                          if (dv !== null && dv !== undefined) inp.value = String(dv);
+                          lb.append(sp, inp); box.appendChild(lb);
+                        }
+                      }
+                      document.getElementById('conv-modal')
+                              .classList.remove('hidden');
+                    }""", fields)
+                page.wait_for_timeout(700)
+                page.screenshot(path=str(ROOT / "data" / "_ui_conv_modal.png"))
+                page.eval_on_selector(
+                    "#conv-modal", "el => el.classList.add('hidden')")
             # 숨은 패널도 한 장 — 설명을 걷어낸 뒤 배치가 어색하지 않은지 눈으로.
             for pid, shot in (("panel-edit", "_ui_edit.png"),
                               ("panel-design", "_ui_design.png"),

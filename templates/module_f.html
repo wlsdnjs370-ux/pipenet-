@@ -273,6 +273,24 @@
                  animation:slide 1.15s cubic-bezier(.65,0,.35,1) infinite;}
   @keyframes slide{0%{transform:translateX(-100%);}100%{transform:translateX(394%);}}
 
+  /* ── 창(모달) ─────────────────────────────────────────────
+     모듈 E 는 이 값들을 대화상자로 받는다. 옆판에 펼쳐 넣으면 그림 다섯 장이
+     세로로 쌓여 다른 단추가 화면 밖으로 밀린다 — 원본처럼 창으로 띄운다. */
+  .modal{position:fixed;inset:0;background:#050607E6;display:flex;
+         align-items:center;justify-content:center;z-index:60;}
+  .modal .sheet{width:min(560px,92vw);max-height:88vh;display:flex;
+                flex-direction:column;border:1px solid var(--line-2);
+                background:var(--panel);}
+  .modal .sheet > header{display:flex;align-items:center;gap:10px;
+                         padding:14px 18px;border-bottom:1px solid var(--line);}
+  .modal .sheet > header h3{margin:0;font-size:13px;font-weight:600;
+                            letter-spacing:.01em;}
+  .modal .sheet > .body{padding:14px 18px;overflow-y:auto;flex:1;}
+  .modal .sheet > footer{display:flex;gap:1px;padding:12px 18px;
+                         border-top:1px solid var(--line);}
+  .modal .sheet > footer button{flex:1;}
+  .modal .sheet > footer .spacer{flex:2;}
+
   /* ── 결과 표 ──────────────────────────────────────────── */
   table.rs{width:100%;border-collapse:collapse;margin-top:10px;}
   table.rs td{padding:5px 0;border-bottom:1px solid var(--line);
@@ -474,7 +492,10 @@
     <!-- 4. 변환 -->
     <section class="card hidden" id="panel-conv">
       <h2>수직 전개 값</h2>
-      <div id="conv-fields"></div>
+      <div class="row">
+        <button id="btn-conv-fields">값 입력…</button>
+      </div>
+      <div id="conv-summary" class="hint">—</div>
       <label class="f hidden" id="src-wrap"><span>급수원 선택</span>
         <select id="conv-src"></select>
       </label>
@@ -616,6 +637,19 @@
         <div class="track"><i></i></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- 수직 전개 값 — 모듈 E 의 대화상자와 같은 자리 -->
+<div class="modal hidden" id="conv-modal">
+  <div class="sheet">
+    <header><h3>수직 전개 값</h3></header>
+    <div class="body"><div id="conv-fields"></div></div>
+    <footer>
+      <span class="spacer"></span>
+      <button id="conv-cancel">취소</button>
+      <button id="conv-ok" class="go">확인</button>
+    </footer>
   </div>
 </div>
 
@@ -1139,6 +1173,12 @@
       if (name === "merge") { await loadMerge(); return; }
       if (name === "sub") { await loadSub(); return; }
       if (name === "design") { setStage("design"); await designPreview(); return; }
+      if (name === "conv") {
+        setStage("conv");
+        await loadFields();
+        renderConvSummary();
+        return;
+      }
       setStage(name);
     } catch (err) { say(err.message, "err"); }
   }
@@ -2190,6 +2230,9 @@
     } else {
       wrap.classList.add("hidden");
     }
+    // 모듈 E 는 이 단계에서 대화상자를 띄운다 — 같은 자리에서 같은 것을 묻는다.
+    renderConvSummary();
+    openConvModal();
     say("변환 값을 확인하고 실행하세요. 빈 칸은 기본값으로 갑니다.");
   };
 
@@ -2247,6 +2290,67 @@
     }
     return dto;
   }
+
+  // ── 수직 전개 값 창 — 모듈 E 의 대화상자와 같은 자리 ────────────
+  // 옆판에 펼쳐 넣으면 그림 다섯 장이 세로로 쌓여 다른 단추가 화면 밖으로
+  // 밀린다. 창으로 띄우고, 옆판에는 채워진 값 요약만 남긴다.
+  let convSnapshot = null;      // 취소하면 되돌릴 값
+
+  function openConvModal() {
+    convSnapshot = {};
+    for (const inp of $("conv-fields").querySelectorAll("input")) {
+      convSnapshot[inp.dataset.key] = inp.value;
+    }
+    $("conv-modal").classList.remove("hidden");
+    const first = $("conv-fields").querySelector("input");
+    if (first) first.focus();
+  }
+
+  function closeConvModal(revert) {
+    if (revert && convSnapshot) {
+      for (const inp of $("conv-fields").querySelectorAll("input")) {
+        if (inp.dataset.key in convSnapshot) inp.value = convSnapshot[inp.dataset.key];
+      }
+    }
+    convSnapshot = null;
+    $("conv-modal").classList.add("hidden");
+    renderConvSummary();
+  }
+
+  function renderConvSummary() {
+    const box = $("conv-summary");
+    const inputs = [...$("conv-fields").querySelectorAll("input")];
+    if (!inputs.length) { box.textContent = "—"; return; }
+    // 묶음별로 «몇 칸 중 몇 칸이 채워졌나» — 어느 그림의 값인지는 창에서 본다.
+    const filled = inputs.filter((i) => i.value.trim() !== "").length;
+    let html = kv("채운 칸", `${filled} / ${inputs.length}`);
+    for (const g of (FIELDS ? FIELDS.groups : [])) {
+      const vals = g.fields
+        .map((f) => {
+          const el = $("conv-fields").querySelector(`input[data-key="${f.key}"]`);
+          return el && el.value.trim() !== "" ? el.value.trim() : null;
+        })
+        .filter((v) => v !== null);
+      if (vals.length) html += kv(g.title, vals.join(" · ") + " m");
+    }
+    box.innerHTML = html;
+  }
+
+  $("btn-conv-fields").onclick = () => openConvModal();
+  $("conv-ok").onclick = () => {
+    try { readDto(); }        // 숫자가 아니면 닫지 않는다 — 창 안에서 고치게
+    catch (err) { say(err.message, "err"); return; }
+    closeConvModal(false);
+  };
+  $("conv-cancel").onclick = () => closeConvModal(true);
+  $("conv-modal").addEventListener("click", (e) => {
+    if (e.target === $("conv-modal")) closeConvModal(true);   // 바깥 클릭 = 취소
+  });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("conv-modal").classList.contains("hidden")) {
+      closeConvModal(true);
+    }
+  });
 
   $("btn-convert").onclick = async () => {
     let dto;

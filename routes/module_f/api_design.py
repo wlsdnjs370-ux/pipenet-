@@ -461,6 +461,10 @@ def register(app, *, UPLOAD_DIR):
             sess = _sess(body.get("sid"))
         except ValueError as exc:
             return _fail(str(exc), 410)
+        # ★「표 확정」 잡이 도는 동안 저장하면 — 새 표가 나오기 직전의 «옛 표» 로
+        #   파일이 써진다. 사용자는 방금 누른 확정이 반영됐다고 읽는다.
+        if _job_running(sess):
+            return _fail("작업이 끝난 뒤에 저장할 수 있습니다.", 409)
         d = sess.get("design")
         if not d:
             return _fail("먼저 design/build 로 표를 확정하세요.", 404)

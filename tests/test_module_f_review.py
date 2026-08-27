@@ -86,6 +86,22 @@ def test_모든_board_변경_라우트가_헬퍼를_탄다():
         assert "_edit_session(" in body, f"{fn} 이 가드를 안 탄다"
 
 
+def test_설정을_바꾸는_라우트도_가드를_탄다():
+    """2차 검토에서 나온 것 — design/emit · merge/mode 가 무가드였다.
+
+    emit 은 «표 확정» 잡이 도는 동안 옛 표로 파일을 쓰고, merge/mode 는 결합
+    잡이 돌면서 읽는 값(급수방식·낙차·펌프)을 바꾼다.
+    """
+    import inspect
+
+    from routes.module_f import api_design, api_merge
+    for mod, fn in ((api_design, "module_f_design_emit"),
+                    (api_merge, "module_f_merge_mode")):
+        src = inspect.getsource(mod)
+        i = src.index(f"def {fn}(")
+        assert "_job_running" in src[i:i + 900], f"{fn} 이 가드를 안 탄다"
+
+
 # ─────────────────────────────────────────── ② 영역 상한
 def test_영역_상한이_있다():
     assert 1 <= MAX_ZONES <= 1000

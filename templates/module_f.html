@@ -2091,6 +2091,10 @@
       S.sid = d.sid; S.key = d.key;
       // 저장본은 찍기가 끝난 것이라 언제나 수동 경로다(손질부터 시작).
       S.method = "manual";
+      // 라디오도 맞춘다 — 상태와 화면이 다른 말을 하면 다음 열기가 헷갈린다.
+      $("open-m-manual").checked = true;
+      $("open-m-auto").checked = false;
+      syncOpenMethod();
       renderSteps();
       watch(loadEdit);
     } catch (err) { busy(false); say(err.message, "err"); }

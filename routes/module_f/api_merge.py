@@ -77,6 +77,10 @@ def register(app, *, UPLOAD_DIR):
             sess = _sess(body.get("sid"))
         except ValueError as exc:
             return _fail(str(exc), 410)
+        # ★결합 잡은 급수방식·낙차·펌프 제원을 «돌면서» 읽는다(merge_network 호출
+        #   시점). 도는 중에 바꾸면 로그에 찍힌 방식과 실제 쓰인 값이 갈린다.
+        if _job_running(sess):
+            return _fail("작업이 끝난 뒤에 바꿀 수 있습니다.", 409)
         try:
             mode = check_supply_mode(body.get("mode"))
         except MergeError as exc:

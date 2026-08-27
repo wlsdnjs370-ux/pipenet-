@@ -86,6 +86,70 @@ def test_헤드가_없으면_범위를_못_만든다():
         region_around([])
 
 
+# ── 한 파일에 도면 여러 장 (실측 B1F: 헤드 3,338 · 전부의 bbox 2,241 x 2,172 m
+#    인데 실제 도면은 253 x 142 m — 도면 밖 이상점이 범위를 9배로 부풀렸다)
+def _sheet(x0, y0, rows, cols=6, step=2000.0):
+    """정상 간격(2 m)으로 놓인 헤드 격자 하나 — 도면 한 장 흉내."""
+    return [{"x": x0 + c * step, "y": y0 + r * step}
+            for r in range(rows) for c in range(cols)]
+
+
+def _spans(rect):
+    return rect[2] - rect[0], rect[3] - rect[1]
+
+
+def test_여러_장이면_알람밸브가_놓인_장으로_좁힌다():
+    """전부의 bbox 로 잡으면 다른 장의 헤드까지 최불리 후보가 된다."""
+    near = _sheet(0, 0, rows=5)                    # 30개 · 10 x 8 m
+    far = _sheet(500_000, 0, rows=5)               # 500 m 떨어진 다른 장
+    r = region_around(near + far, (0.0, 0.0), pad_mm=0.0)[0]
+
+    w, h = _spans(r)
+    assert w < 20_000, f"장을 안 갈랐다 — 범위 폭 {w:,.0f} mm"
+    reg = head_region_of([r])
+    assert all(reg.contains((p["x"], p["y"])) for p in near)
+    assert not any(reg.contains((p["x"], p["y"])) for p in far)
+
+
+def test_알람밸브를_반대쪽_장에_찍으면_그쪽이_잡힌다():
+    near = _sheet(0, 0, rows=5)
+    far = _sheet(500_000, 0, rows=5)
+    r = region_around(near + far, (500_000.0, 0.0), pad_mm=0.0)[0]
+
+    reg = head_region_of([r])
+    assert all(reg.contains((p["x"], p["y"])) for p in far)
+    assert not any(reg.contains((p["x"], p["y"])) for p in near)
+
+
+def test_알람밸브가_어느_장에도_없으면_헤드가_많은_장():
+    """경계 밖에 찍혀도 «전부» 로 되돌아가지는 않는다."""
+    big = _sheet(0, 0, rows=6)                     # 36개
+    small = _sheet(500_000, 0, rows=3)             # 18개
+    r = region_around(big + small, (250_000.0, 900_000.0), pad_mm=0.0)[0]
+
+    reg = head_region_of([r])
+    assert all(reg.contains((p["x"], p["y"])) for p in big)
+    assert not any(reg.contains((p["x"], p["y"])) for p in small)
+
+
+def test_한_장짜리는_헤드_전부를_그대로_쓴다():
+    """멀쩡한 한 장을 괜히 쪼개면 설계면적이 잘려 나간다."""
+    one = _sheet(0, 0, rows=6)
+    r = region_around(one, (0.0, 0.0), pad_mm=0.0)[0]
+
+    reg = head_region_of([r])
+    assert all(reg.contains((p["x"], p["y"])) for p in one)
+
+
+def test_자동_추출이_알람밸브를_범위_생성에_넘긴다():
+    """안 넘기면 «헤드가 많은 장» 으로만 물러서, 사람이 찍은 곳이 무시된다."""
+    import inspect
+
+    from routes.module_f import auto
+    src = inspect.getsource(auto.run_auto)
+    assert "region_around(cand, (float(alarm_xy[0]), float(alarm_xy[1])))" in src
+
+
 def test_빈_사각형은_여전히_올린다():
     with pytest.raises(AutoError, match="비었"):
         head_region_of([])

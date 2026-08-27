@@ -7881,9 +7881,19 @@
             _fragLine += `<br>&nbsp;&nbsp;<span style="color:#b45309;">⚠ 층 미상 교차 ${_xc}곳 — 티로 잇지 않고 그대로 둠 (실제 분기면 수동 확인 필요)</span>`;
           }
         }
+        // 어느 선정 경로가 돌았는지 — 조용히 갈리면 «이상하다» 고만 느낀다.
+        let _pathLine = "";
+        if (data.anchored === false) {
+          _pathLine = `<br>&nbsp;&nbsp;<span style="color:#b45309;">⚠ 알람밸브를 안 찍어 옛 경로로 선정 — ` +
+            `30개가 한 구역에 안 뭉칠 수 있습니다(실측 B1F: 대각 134m 로 흩어짐 · 설계면적 아님). ` +
+            `알람밸브를 찍고 다시 빌드하세요</span>`;
+        } else if (data.region_auto) {
+          _pathLine = `<br>&nbsp;&nbsp;<span style="color:#1e40af;">◎ 헤드 영역을 안 그려 ` +
+            `검출한 헤드에서 범위를 만들어 썼습니다 (알람밸브가 놓인 도면 장)</span>`;
+        }
         _cmbResultBox.innerHTML =
           `✓ <strong>${data.title}</strong> 배관망 통합 완료 — 아래 [포맷 출력] 에서 내보내세요<br>` +
-          `&nbsp;&nbsp;Node ${data.nodes} / Pipe ${data.pipes} / Pump ${data.pumps} / Valve ${data.valves} / Nozzle ${data.nozzles}` + _mrLine + _loadLine + _fragLine + `<br>` +
+          `&nbsp;&nbsp;Node ${data.nodes} / Pipe ${data.pipes} / Pump ${data.pumps} / Valve ${data.valves} / Nozzle ${data.nozzles}` + _mrLine + _pathLine + _loadLine + _fragLine + `<br>` +
           `<div style="margin-top:8px; padding:8px 10px; background:#ffffff; border:1px solid var(--line); font-size:0.72rem; color:#0a1228; line-height:1.5;">` +
           `<strong>⚠ PIPENET 사용 시</strong>: SDF 는 <strong>.zip 으로 받아 압축을 푼 후</strong> 폴더 안의 <code>.sdf</code> 를 여세요.<br>` +
           `(압축 안에서 .sdf 를 바로 열면 .slf 라이브러리 분리로 내경(Internal) 이 Unset 으로 표시되고 "pipe bore must be given" 오류 발생.)` +

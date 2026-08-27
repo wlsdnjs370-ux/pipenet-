@@ -860,7 +860,38 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
         if on_residual_cycle not in ("preserve", "force_tree"):
             on_residual_cycle = "preserve"
         # 2앵커(anchored) 경로는 알람밸브 좌표 + 헤드 영역이 모두 있을 때만 — 둘 중
-        # 하나라도 없으면 앵커를 세울 수 없어 기존 비-anchored 경로를 그대로 쓴다.
+        # 하나라도 없으면 앵커를 세울 수 없다.
+        #
+        # ★영역을 «안 그렸다» 는 이유로 옛 경로에 떨어지게 두지 않는다.
+        #   실측(B1F 110MB · scripts/_probe_a_fallback.py · 알람밸브 동일):
+        #
+        #       앵커 경로   급수원 결합    14 mm · 영역 게이트 있음
+        #       옛  경로   급수원 결합   152 mm · 영역 게이트 없음
+        #
+        #   헤드군 자체는 둘 다 34.0 m 로 뭉쳤다 — 옛 경로가 «틀린» 것은 아니다.
+        #   다만 옛 경로에서는 급수원을 10배 먼 데서 잡고, 영역 게이트가 없어
+        #   범례·다른 장의 문자까지 관경 판독에 섞이며, load_mode(급수 미기여
+        #   구간 제거)가 조용히 무시된다. 사람은 그 사실을 화면에서 알 수 없다.
+        #
+        #   영역은 헤드군을 «좁히는» 선택이지 시작 조건이 아니므로, 알람밸브만
+        #   찍혀 있으면 검출한 헤드에서 범위를 만들어 앵커 경로로 간다.
+        #
+        #   알람밸브까지 없으면 여전히 옛 경로다 — 그때는 앵커를 세울 수가 없다.
+        #   대신 응답의 anchored=False 로 화면이 그 사실을 말한다.
+        region_auto = False
+        if alarm_xy and not zones:
+            from remote30_prototype import detect_heads, head_bbox_for_region
+            try:
+                _hs = detect_heads(plane_job.get("pipe_ents", []),
+                                   plane_job.get("layer_cat", {}))
+                _auto = head_bbox_for_region(
+                    [(h.pos[0], h.pos[1]) for h in (_hs or ())], alarm_xy)
+            except Exception as exc:  # noqa: BLE001 — 못 만들면 종전대로 간다
+                print(f"[A] 영역 자동 생성 실패: {type(exc).__name__}: {exc}")
+                _auto = []
+            if _auto:
+                zones = _auto
+                region_auto = True
         use_anchored = bool(alarm_xy) and bool(zones)
         anchored_audit: dict = {}
         try:
@@ -1304,6 +1335,10 @@ def register(app, *, COMBINED_OUTPUT_DIR, OVERALL_OUTPUT_DIR, PROTOTYPE_OUTPUT_D
             "machine_room_attached": mr_attached,
             "geometry": geometry,
             "velocity_report": velocity_report,
+            # 어느 선정 경로가 돌았는지 — 조용히 갈리면 사람이 «이상하다» 고만
+            # 느낀다. 영역을 안 그려 검출에서 만들어 썼으면 그것도 말한다.
+            "anchored": use_anchored,
+            "region_auto": region_auto,
             # W7 — anchored 실행일 때만 추출 근거 리포트 직렬화.
             # 비-anchored(현행 select_worst30_heads)에선 키 자체가 없음 → 응답 불변.
             **({"extraction_audit": selection.audit.to_json_dict()}

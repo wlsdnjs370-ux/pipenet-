@@ -115,25 +115,35 @@ def head_region_of(rects):
     return HeadRegion.from_rects([tuple(float(v) for v in r) for r in rects])
 
 
-def region_around(heads, pad_mm: float = AUTO_REGION_PAD_MM):
-    """검출한 헤드 전체를 감싸는 사각형 하나.
+def sheet_of(pts, alarm_xy=None):
+    """헤드가 놓인 «도면 장» 하나. 한 장짜리면 None — 규칙은 A 에 있다."""
+    from remote30_prototype import sheet_frame_at
+    if len(pts) < 24:                      # A 의 장 나누기 최소 표본
+        return None
+    return sheet_frame_at(pts, alarm_xy)
+
+
+def region_around(heads, alarm_xy=None, pad_mm: float = AUTO_REGION_PAD_MM):
+    """영역을 안 그렸을 때 쓸 «기본 범위» — 헤드가 실제로 놓인 자리.
 
     `select_worst30_heads_anchored` 는 `head_region` 을 필수로 받는다 — 앵커를
-    세우려면 «어디의 헤드인가» 가 있어야 하기 때문이다. 그런데 사람 입장에서
-    기본값은 «도면에서 찾은 헤드 전부» 다. 영역을 그리는 것은 그것을 «좁히는»
-    선택이지, 시작하기 위한 조건이 아니다.
+    세우려면 «어디의 헤드인가» 가 있어야 하기 때문이다. 사람 입장에서 기본값은
+    «도면에서 찾은 헤드» 이므로, 안 그렸으면 검출 결과에서 만들어 쓴다. 영역을
+    그리는 것은 그것을 «좁히는» 선택이지, 시작하기 위한 조건이 아니다.
 
-    그래서 안 그렸으면 검출 결과에서 만들어 쓴다.
+    범위를 «검출한 헤드 전부의 bbox» 로 잡으면 안 되는 이유(한 파일에 도면
+    여러 장)와 그 실측은 `remote30_prototype.head_bbox_for_region` 에 적었다 —
+    A 화면과 F 자동이 같은 규칙을 쓰도록 거기 한 곳에 둔다.
     """
+    from remote30_prototype import head_bbox_for_region
+
     pts = [(float(h["x"]), float(h["y"])) for h in (heads or ())]
-    if not pts:
+    rects = head_bbox_for_region(pts, alarm_xy, pad_mm)
+    if not rects:
         raise AutoError(
             "도면에서 헤드를 찾지 못했습니다 — 헤드 검출을 먼저 해 보고, "
             "그래도 0개면 이 도면은 자동 추출로 읽을 수 없습니다.")
-    xs = [p[0] for p in pts]
-    ys = [p[1] for p in pts]
-    return [[min(xs) - pad_mm, min(ys) - pad_mm,
-             max(xs) + pad_mm, max(ys) + pad_mm]]
+    return [list(r) for r in rects]
 
 
 def run_auto(entities, layer_cat, *, alarm_xy, rects, k: int = 30,
@@ -148,10 +158,20 @@ def run_auto(entities, layer_cat, *, alarm_xy, rects, k: int = 30,
 
     if alarm_xy is None:
         raise AutoError("알람밸브 위치를 도면에서 찍으세요.")
-    # 영역은 «좁히는» 선택이다 — 안 그렸으면 검출한 헤드 전부를 범위로 삼는다.
+    # 영역은 «좁히는» 선택이다 — 안 그렸으면 검출에서 만든다. 그때 알람밸브를
+    # 같이 넘겨, 한 파일에 여러 장이면 «알람밸브가 놓인 장» 으로 좁힌다.
     region_auto = not rects
+    sheet_note = None
     if region_auto:
-        rects = region_around(detect_head_candidates(entities, layer_cat))
+        cand = detect_head_candidates(entities, layer_cat)
+        pts = [(float(h["x"]), float(h["y"])) for h in (cand or ())]
+        sheet = sheet_of(pts, (float(alarm_xy[0]), float(alarm_xy[1])))
+        if sheet is not None:
+            x0, y0, x1, y1 = [float(v) for v in sheet["bbox"]]
+            n = sum(1 for p in pts if x0 <= p[0] <= x1 and y0 <= p[1] <= y1)
+            sheet_note = (f"도면 {sheet.get('index')}장 "
+                          f"(헤드 {n:,}/{len(pts):,})")
+        rects = region_around(cand, (float(alarm_xy[0]), float(alarm_xy[1])))
     region = head_region_of(rects)
     audit: dict = {}
     try:
@@ -174,6 +194,7 @@ def run_auto(entities, layer_cat, *, alarm_xy, rects, k: int = 30,
     # 영역을 사람이 그린 것인지 검출에서 만든 것인지 — 화면이 말할 수 있게.
     summary["region_auto"] = region_auto
     summary["zones"] = len(rects)
+    summary["sheet"] = sheet_note        # 여러 장이면 어느 장으로 좁혔는지
     return {"tables": tables, "selection": sel, "rects": rects,
             "summary": summary}
 

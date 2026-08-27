@@ -2763,6 +2763,81 @@ def detect_sheet_frames(heads: list[HeadDetection],
     return big
 
 
+def sheet_frame_at(points: list[tuple], alarm_xy: tuple | None = None) -> dict | None:
+    """헤드가 놓인 «도면 장» 하나를 고른다. 한 장짜리면 None.
+
+    고르는 기준은 **알람밸브가 놓인 장**이다. 알람밸브가 앵커이고 설계면적은
+    그 둘레에 서므로, 다른 장의 헤드는 애초에 후보가 아니다. 알람밸브가 어느
+    장에도 안 들어가면(경계 밖) 헤드가 가장 많은 장으로 물러선다.
+    """
+    class _P:                       # detect_sheet_frames 가 보는 것은 .pos 뿐
+        __slots__ = ("pos",)
+
+        def __init__(self, p):
+            self.pos = p
+
+    try:
+        frames = detect_sheet_frames([_P(p) for p in points])
+    except Exception as exc:  # noqa: BLE001 — 장을 못 갈라도 추출은 돌아야 한다
+        print(f"[영역] 도면 장 나누기 건너뜀: {type(exc).__name__}: {exc}")
+        return None
+    if len(frames or ()) < 2:
+        return None
+
+    def _in(f, p):
+        x0, y0, x1, y1 = [float(v) for v in f["bbox"]]
+        return x0 <= p[0] <= x1 and y0 <= p[1] <= y1
+
+    hit = None
+    if alarm_xy is not None:
+        a = (float(alarm_xy[0]), float(alarm_xy[1]))
+        hit = next((f for f in frames if _in(f, a)), None)
+    if hit is None:
+        hit = max(frames, key=lambda f: sum(1 for p in points if _in(f, p)))
+    return hit
+
+
+def head_bbox_for_region(points: list[tuple], alarm_xy: tuple | None = None,
+                         pad_mm: float = 1000.0) -> list[tuple]:
+    """영역을 안 그렸을 때 쓸 «기본 범위» 사각형 하나. 헤드가 없으면 빈 목록.
+
+    영역은 헤드군을 «좁히는» 선택이지 추출을 시작하기 위한 조건이 아니다.
+    그래서 안 그렸으면 검출한 헤드에서 만들어 쓴다.
+
+    ★그런데 «검출한 헤드 전부의 bbox» 로 잡으면 안 된다. 실측(B1F 110MB):
+
+          헤드 3,338개 · 전부의 bbox   2,241 x 2,172 m
+          알람밸브가 놓인 장             253 x   142 m  (헤드 3,268)  ← 도면
+          도면 밖 이상점 70개이 범위를 9배로 부풀린다
+
+      국내 도서는 도면 한 장이 곧 파일 하나가 아니므로(detect_sheet_frames 참조),
+      먼저 «장» 을 가르고 그 장에 든 헤드만으로 범위를 만든다.
+
+    여유(pad)를 두는 이유: 헤드 중심만으로 자르면 기호 반경과 접속관 끝이 경계
+    밖으로 나가 region 게이트에서 떨어진다.
+    """
+    pts = [(float(p[0]), float(p[1])) for p in (points or ())]
+    if not pts:
+        return []
+
+    used, note = pts, ""
+    sheet = sheet_frame_at(pts, alarm_xy) if len(pts) >= 24 else None
+    if sheet is not None:
+        x0, y0, x1, y1 = [float(v) for v in sheet["bbox"]]
+        inside = [p for p in pts if x0 <= p[0] <= x1 and y0 <= p[1] <= y1]
+        if inside:
+            used = inside
+            note = (f" — 도면 {sheet.get('index')}장 안으로 좁힘"
+                    f"(헤드 {len(inside):,}/{len(pts):,})")
+
+    xs = [p[0] for p in used]
+    ys = [p[1] for p in used]
+    print(f"[영역] 기본 범위 {(max(xs) - min(xs)) / 1000:,.0f} x "
+          f"{(max(ys) - min(ys)) / 1000:,.0f} m{note}")
+    return [(min(xs) - pad_mm, min(ys) - pad_mm,
+             max(xs) + pad_mm, max(ys) + pad_mm)]
+
+
 def detect_heads(pipe_entities: list[dict], layer_categories: dict[str, str],
                  region=None, stats: dict | None = None) -> list[HeadDetection]:
     """도면 내 모든 헤드 후보 인식 — 다중 신호 결합 + 근접 클러스터링.

@@ -158,6 +158,18 @@ def main() -> int:
 
             page.screenshot(path=str(ROOT / "data" / "_ui_verify.png"),
                             full_page=False)
+            # 숨은 패널도 한 장 — 설명을 걷어낸 뒤 배치가 어색하지 않은지 눈으로.
+            for pid, shot in (("panel-edit", "_ui_edit.png"),
+                              ("panel-design", "_ui_design.png"),
+                              ("panel-merge", "_ui_merge.png"),
+                              ("panel-sub", "_ui_sub.png")):
+                page.eval_on_selector(
+                    ".side",
+                    "el => [...el.children].forEach(c => c.classList.add('hidden'))")
+                page.eval_on_selector(
+                    f"#{pid}", "el => el.classList.remove('hidden')")
+                page.wait_for_timeout(150)
+                page.screenshot(path=str(ROOT / "data" / shot))
             browser.close()
     finally:
         proc.terminate()

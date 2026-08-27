@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
@@ -288,7 +288,6 @@
 <header>
   <span class="chip">MODULE F</span>
   <h1>CAD 임포트 워크벤치</h1>
-  <span class="sub">DXF → 찍기 → 손질 → .kfp · 모듈 E 엔진을 브라우저에서 그대로</span>
   <span class="spacer"></span>
   <a class="back" href="/">초기화면</a>
 </header>
@@ -311,8 +310,6 @@
         <input type="file" id="dxf" accept=".dxf">
       </label>
       <div class="row"><button id="btn-open" class="go">불러오기</button></div>
-      <p class="hint">DXF 를 읽어 <b>레이어 × 색</b> 묶음을 만듭니다.
-        큰 도면은 수 초에서 수십 초 걸립니다.</p>
     </section>
 
     <section class="card" id="panel-resume">
@@ -321,21 +318,17 @@
         <select id="saved"></select>
       </label>
       <div class="row"><button id="btn-reopen">배관망 열기</button></div>
-      <p class="hint">데스크톱 <b>모듈 E</b> 로 찍은 것도 같은 폴더를 쓰므로
-        여기 그대로 나옵니다.</p>
     </section>
 
     <!-- [H-2 · H-3] 계통도 · 기계실 — 두 점을 찍어 경로를 뽑는다 -->
     <section class="card hidden" id="panel-sub">
       <h2><span id="sub-title">계통도</span> 추출
         <b class="tag">MODULE A</b></h2>
-      <p class="hint" id="sub-help">도면에서 <b>펌프</b>와 <b>알람밸브</b> 두 곳을
-        차례로 찍으세요. 그 사이의 실제 배관 경로가 입상관이 됩니다.</p>
       <div class="row">
         <button id="sub-pick-a">① <span id="sub-lab-a">펌프</span> 찍기</button>
         <button id="sub-pick-b">② <span id="sub-lab-b">알람밸브</span> 찍기</button>
       </div>
-      <div id="sub-picks" class="hint">아직 찍지 않았습니다.</div>
+      <div id="sub-picks" class="hint">—</div>
       <label class="f"><span>클릭 허용 거리 (mm)</span>
         <input type="number" id="sub-snap" value="2500" min="1" max="50000"
                step="500"></label>
@@ -349,10 +342,7 @@
       <div class="row hidden" id="sub-clean-row">
         <button id="sub-clean">깨끗한 배관망으로 통째 읽기</button>
       </div>
-      <p class="hint hidden" id="sub-clean-help">풀 계통도가 조각나 경로가 튀면,
-        손으로 정리한 배관망 DXF 를 올려 <b>파일에 그려진 단일 망</b>을 그대로
-        읽습니다(추측 연결 없음).</p>
-      <div id="sub-summary" class="hint">아직 추출하지 않았습니다.</div>
+      <div id="sub-summary" class="hint">—</div>
     </section>
 
     <!-- 2. 찍기 -->
@@ -363,10 +353,6 @@
         <button id="pk-auto-head">헤드 추천 일괄</button>
       </div>
       <div id="pk-cats" class="catbar"></div>
-      <p class="hint">모듈 A 의 <b>레이어 이름 사전</b>이 고른 묶음을 한 번에
-        찍습니다. 이름만 보는 사전이라 <b>추천일 뿐</b>이며, 빠지거나 남는 것은
-        아래에서 직접 찍어 고치세요.</p>
-
       <h2 style="margin-top:16px">재료</h2>
       <div class="row">
         <button id="pk-pipe">배관 선택</button>
@@ -383,27 +369,17 @@
       <div class="row" style="margin-top:14px">
         <button id="pk-next" class="go">배관망 구성 →</button>
       </div>
-      <p class="hint">캔버스에서 배관선을 클릭하면 그 <b>레이어 × 색 묶음 전체</b>가
-        재료로 잡힙니다. 완료 후에는 헤드 원(또는 삼각형)을 찍습니다.
-        <b>Shift + 드래그</b> 로 이동, <b>휠</b> 로 확대.</p>
     </section>
 
     <!-- 3. 손질 -->
     <section class="card hidden" id="panel-suggest">
       <h2>찍기 후보 제안 <b class="tag">MODULE A</b></h2>
-      <p class="hint">모듈 A 의 인식(R1~R5)이 헤드 후보를 표시합니다.
-        <b>후보일 뿐, 확정은 사용자의 반영입니다</b> — 반영은 사람 클릭과
-        같은 찍기 경로로만 들어갑니다.</p>
       <div class="row">
         <button id="pk-suggest">후보 제안</button>
         <button id="pk-suggest-apply" disabled>전체 반영</button>
         <button id="pk-suggest-clear" disabled>후보 지우기</button>
       </div>
       <div id="pk-suggest-info" class="hint"></div>
-      <p class="hint">후보 표시를 클릭하면 그 후보만 반영에서 제외/복원됩니다.
-        신뢰도: <span style="color:#22c55e">●</span> 높음(≥0.9)
-        <span style="color:#eab308">●</span> 중간(≥0.75)
-        <span style="color:#94a3b8">●</span> 낮음</p>
     </section>
 
     <section class="card hidden" id="panel-edit">
@@ -456,14 +432,6 @@
         <select id="ed-aj-eps"></select>
       </label>
       <div id="ed-aj-info"></div>
-      <p class="hint">이음매 여유를 <b>도면에서 재서</b>(모듈 A) 끊긴 관 끝을
-        짝짓고, 실제로 붙일지는 <b>모듈 E 의 이음 규칙</b>(일직선·T자·직각)이
-        정합니다. 후보는 <b>주황 점선</b>으로만 그려집니다 — 「모두 잇기」 전에는
-        망이 바뀌지 않고, 되돌리기 한 번이면 통째로 되돌아갑니다.
-        <b>끝이 관 옆구리에 닿는 T분기</b>도 후보에 넣습니다(끝끼리만 보면 큰
-        조각이 안 붙습니다). 이미 이어진 조각끼리는 <b>가장 가까운 한 곳만</b>
-        잇습니다 — 나머지 접점은 눈으로 보고 직접 찍으세요.</p>
-
       <h2 style="margin-top:16px">Remote 30 <span class="tag">MODULE A</span></h2>
       <div id="ed-sheets" class="banner hidden"></div>
       <label class="f hidden" id="ed-sheet-wrap" style="margin-top:9px">
@@ -475,8 +443,7 @@
         <select id="ed-k-preset"></select></label>
       <label class="f"><span>기준개수 K</span>
         <input type="number" id="ed-k" value="30" min="1" max="200"></label>
-      <p class="hint" id="ed-k-why">표에서 고르면 K 가 따라옵니다. 표에 없는
-        경우만 직접 고치세요 — 기준개수는 수원량·펌프 유량까지 함께 정합니다.</p>
+      <div class="hint" id="ed-k-why"></div>
       <div class="row">
         <select id="ed-src" class="hidden" title="어느 급수원 기준의 최불리인지"></select>
         <button id="ed-worst">최불리 선정</button>
@@ -485,10 +452,7 @@
       <!-- 영역 지정 — 모듈 A 의 zones -->
       <label class="chk"><input type="checkbox" id="ed-zone-arm">
         <span>영역으로 후보 가두기 <b class="tag">MODULE A</b></span></label>
-      <p class="hint">켜고 캔버스를 <b>드래그</b>하면 사각형이 그려집니다. 그 안의
-        헤드만 앵커·설계면적 후보가 됩니다 — 도면 장 나누기가 안 맞거나 주차장·
-        기계실처럼 빼야 할 구역이 섞였을 때 씁니다. 여러 개면 <b>합집합</b>입니다.</p>
-      <div id="ed-zones" class="hint">지정한 영역이 없습니다 — 도면 전체가 후보입니다.</div>
+      <div id="ed-zones" class="hint">영역 없음 · 도면 전체</div>
       <div class="row">
         <button id="ed-zone-undo">마지막 영역 지우기</button>
         <button id="ed-zone-clear">전부 지우기</button>
@@ -500,21 +464,11 @@
           <option value="dim" selected>아주 얇은 점선으로 (비활성)</option>
           <option value="only">감추기 — 최불리망만</option>
         </select></label>
-      <p class="hint">최불리를 선정한 뒤에만 걸립니다. <b>표시만</b> 바뀌고 망은
-        그대로입니다 — 산출물 범위는 「변환」 단계의 체크박스가 정합니다.</p>
-      <p class="hint">급수원에서 가장 불리한 헤드(<b class="tag">앵커</b>·빨간
-        겹원)를 찾고, 그 둘레로 <b>배관 거리가 가까운 30개</b>를 묶어 <b>설계면적</b>을
-        만듭니다 — 도면 곳곳에 흩어진 30개가 아니라 실제로 함께 방수되는 무리입니다.
-        그 30개를 급수원까지 잇는 <b>배관망(corridor)</b>을 굵기로 그리는데,
-        굵을수록 <b>담당 헤드가 많은 주배관</b>(NFPC 별표1 관경 결정값)입니다.
-        손질로 고친 망 위에서 잽니다.</p>
       <h2 style="margin-top:16px">상태</h2>
       <div id="ed-info"></div>
       <div class="row" style="margin-top:14px">
         <button id="ed-next" class="go">.kfp 변환 →</button>
       </div>
-      <p class="hint">헤드 종류가 <b>미지정</b>으로 남으면 변환이 막힙니다.
-        헤드를 클릭해 고른 뒤 종류 단추를 누르세요.</p>
     </section>
 
     <!-- 4. 변환 -->
@@ -562,8 +516,7 @@
           <option>CPVC2</option><option>FX</option>
         </select></label>
 
-      <h2 style="margin-top:12px">보기 <span class="hint" style="display:inline">
-        — 표시 전용 · 수리계산 결과는 바뀌지 않습니다</span></h2>
+      <h2 style="margin-top:12px">보기</h2>
       <label class="chk"><input type="checkbox" id="dg-iso" checked>
         <span>30° 아이소매트릭으로 보기</span></label>
       <label class="f"><span>고도 펼침 배율</span>
@@ -585,20 +538,16 @@
         <button id="dg-download" disabled>내려받기 (zip)</button>
       </div>
       <div class="row">
-        <button id="dg-to-merge">통합으로 → <span class="tag">S700</span></button>
+        <button id="dg-to-merge">통합으로 →</button>
       </div>
-      <div id="dg-summary" class="hint">아직 확정하지 않았습니다.</div>
+      <div id="dg-summary" class="hint">—</div>
 
       <h2 style="margin-top:12px">관경 근거 보기</h2>
-      <p class="hint">캔버스 배관을 <b>무엇이 호칭경을 정했는지</b>로 나눕니다.
-        도면에서 읽은 것은 실선, 규약(별표1)으로만 정한 것은 <b>점선</b>입니다.</p>
       <label class="chk"><input type="checkbox" id="dg-bore-color" checked>
         <span>관경 근거로 색 나누기</span></label>
-      <div id="dg-bore-legend" class="hint">확정하면 집계가 나옵니다.</div>
+      <div id="dg-bore-legend" class="hint">—</div>
 
       <h2 style="margin-top:12px">제외 사유 보기</h2>
-      <p class="hint">켜면 캔버스가 손질 망 위에 그 분류의 헤드를 표시합니다
-        (설계 미리보기와 좌표계가 달라 겹쳐 그리지 않습니다).</p>
       <label class="chk"><input type="checkbox" id="dg-mk-dry">
         <span><span style="color:#64748b">●</span> 물길 미도달</span></label>
       <label class="chk"><input type="checkbox" id="dg-mk-unatt">
@@ -606,8 +555,7 @@
       <label class="chk"><input type="checkbox" id="dg-mk-unpicked">
         <span><span style="color:#a855f7">●</span> 찍히지 않음(후보 제안 대비)</span></label>
 
-      <h2 style="margin-top:12px">표 <span class="hint" style="display:inline">
-        — 저장될 값 그대로</span></h2>
+      <h2 style="margin-top:12px">표</h2>
       <div class="row">
         <select id="dg-table">
           <option value="pipes">배관</option><option value="nodes">노드</option>
@@ -619,36 +567,28 @@
 
     <!-- [H-4 · H-5 · H-6] 제5국면 S700 — 세 도면을 한 배관망으로 -->
     <section class="card hidden" id="panel-merge">
-      <h2>통합 <span class="tag">특허 제5국면 S700</span></h2>
-      <p class="hint">평면도 · 계통도 · 기계실을 하나의 배관망으로 결합합니다.
-        <b>계통도·기계실은 선택</b>입니다 — 없으면 평면도 단독으로 지나갑니다.</p>
-
-      <h2 style="margin-top:12px">① 급수방식 <span class="hint"
-        style="display:inline">— S710 · 사람이 고릅니다</span></h2>
+      <h2>통합</h2>
+      <h2 style="margin-top:12px">급수방식</h2>
       <div id="mg-modes"></div>
       <label class="f hidden" id="mg-drop-row"><span>수원 낙차 (m)</span>
         <input type="number" id="mg-drop" value="0" step="0.5" min="0"></label>
-      <p class="hint hidden" id="mg-drop-help">펌프 가압일 때 수원(기계실)이
-        최저 헤드보다 몇 m 아래인지. 도면에 z 가 없어 도출할 수 없습니다 —
-        미지정(0)이면 실양정이 과소평가됩니다.</p>
-
-      <h2 style="margin-top:12px">② 재료</h2>
-      <div id="mg-ready" class="hint">확인 중…</div>
+      <h2 style="margin-top:12px">재료</h2>
+      <div id="mg-ready" class="hint">—</div>
 
       <div class="row" style="margin-top:12px">
-        <button id="mg-build" class="go">결합 (S720 → S740)</button>
+        <button id="mg-build" class="go">결합</button>
       </div>
       <div class="row">
-        <button id="mg-emit" disabled>산출 (S750 → S770)</button>
+        <button id="mg-emit" disabled>산출</button>
         <button id="mg-download" disabled>내려받기 (zip)</button>
       </div>
-      <div id="mg-summary" class="hint">아직 결합하지 않았습니다.</div>
+      <div id="mg-summary" class="hint">—</div>
     </section>
 
     <section class="card" id="panel-log">
       <h2>진행</h2>
       <div id="job-line">대기 중</div>
-      <pre class="log" id="log">아직 실행한 작업이 없습니다.</pre>
+      <pre class="log" id="log">—</pre>
     </section>
 
     <section class="card hidden" id="panel-layers">
@@ -1362,7 +1302,7 @@
 
   $("ed-k-preset").onchange = () => {
     const i = $("ed-k-preset").value;
-    if (i === "") { $("ed-k-why").textContent = "직접 입력한 값을 씁니다."; return; }
+    if (i === "") { $("ed-k-why").textContent = ""; return; }
     const row = S.refCounts[Number(i)];
     if (!row) return;
     $("ed-k").value = row.count;
@@ -1408,10 +1348,7 @@
 
   function renderZones() {
     const box = $("ed-zones");
-    if (!S.zones.length) {
-      box.textContent = "지정한 영역이 없습니다 — 도면 전체가 후보입니다.";
-      return;
-    }
+    if (!S.zones.length) { box.textContent = "영역 없음 · 도면 전체"; return; }
     let html = "";
     for (let i = 0; i < S.zones.length; i++) {
       const [x0, y0, x1, y1] = S.zones[i];
@@ -1501,16 +1438,12 @@
   const SUB_SPEC = {
     system: {
       title: "계통도", a: "펌프", b: "알람밸브",
-      help: "도면에서 <b>펌프</b>와 <b>알람밸브</b> 두 곳을 차례로 찍으세요. "
-          + "그 사이의 실제 배관 경로가 입상관이 됩니다.",
       path: "/api/module-f/system/extract",
       keys: ["pump_x", "pump_y", "av_x", "av_y"],
       clean: true, ceiling: false,
     },
     machineroom: {
       title: "기계실", a: "수원(탱크 토출구)", b: "입상관 연결점",
-      help: "도면에서 <b>수원(탱크 토출구)</b>과 <b>입상관 연결점</b>을 차례로 "
-          + "찍으세요. 기계실은 평면 좌표를 그대로 보존합니다.",
       path: "/api/module-f/machineroom/extract",
       keys: ["source_x", "source_y", "conn_x", "conn_y"],
       clean: false, ceiling: true,
@@ -1522,11 +1455,9 @@
   function renderSubPanel() {
     const sp = subSpec();
     $("sub-title").textContent = sp.title;
-    $("sub-help").innerHTML = sp.help;
     $("sub-lab-a").textContent = sp.a;
     $("sub-lab-b").textContent = sp.b;
     $("sub-clean-row").classList.toggle("hidden", !sp.clean);
-    $("sub-clean-help").classList.toggle("hidden", !sp.clean);
     $("sub-ceiling-row").classList.toggle("hidden", !sp.ceiling);
     renderSubPicks();
   }
@@ -1594,7 +1525,7 @@
 
   function renderSubSummary(d) {
     const s = (d && d.summary) || null;
-    if (!s) { $("sub-summary").textContent = "아직 추출하지 않았습니다."; return; }
+    if (!s) { $("sub-summary").textContent = "—"; return; }
     let html = kv("절점 / 배관", `${s.nodes} / ${s.pipes}`)
       + kv("연장", `${s.total_m} m`);
     if (s.av_node_label) html += kv("알람밸브 절점", s.av_node_label);
@@ -1661,7 +1592,6 @@
     const body = { sid: S.sid, mode: key };
     const isPump = key === "hsp_pump";
     $("mg-drop-row").classList.toggle("hidden", !isPump);
-    $("mg-drop-help").classList.toggle("hidden", !isPump);
     if (isPump) body.source_drop_m = Number($("mg-drop").value || 0);
     try {
       const d = await post("/api/module-f/merge/mode", body);
@@ -1690,7 +1620,6 @@
       if (rb) rb.checked = true;
       const isPump = d.mode === "hsp_pump";
       $("mg-drop-row").classList.toggle("hidden", !isPump);
-      $("mg-drop-help").classList.toggle("hidden", !isPump);
     }
     if (d.summary) renderMergeSummary(d.summary);
     $("mg-emit").disabled = !(d.summary && d.summary.merged);
@@ -1698,7 +1627,7 @@
   }
 
   function renderMergeSummary(s) {
-    if (!s) { $("mg-summary").textContent = "아직 결합하지 않았습니다."; return; }
+    if (!s) { $("mg-summary").textContent = "—"; return; }
     let html = "";
     if (!s.merged) {
       html += kv('<span class="warn">결합 없음</span>',
@@ -2565,7 +2494,7 @@
   function renderBoreLegend() {
     const box = $("dg-bore-legend");
     if (!S.design || !S.design.view) {
-      box.textContent = "확정하면 집계가 나옵니다.";
+      box.textContent = "—";
       return;
     }
     const pipes = S.design.view.pipes || [];

@@ -414,6 +414,132 @@ def test_채택은_board_에_쓰지_않는다():
         assert banned not in body, f"채택이 주입 경로를 만들었다: {banned}"
 
 
+# ═══════════════════════════════════════════ 자동 화면 — 눈에 보이게
+def test_검출_헤드는_빨강이다():
+    """신뢰도 색(초록/노랑/회색)은 어두운 도면 위에서 티가 안 났다."""
+    html = _script()
+    assert 'const HEAD_MARK = "#ff3b30";' in html
+    i = html.index("function drawAuto(dim)")
+    seg = html[i:i + 500]
+    assert "ctx.fillStyle = HEAD_MARK;" in seg
+    assert "suggestColor" not in seg, "아직 신뢰도 색을 쓴다"
+
+
+def test_추출_뒤에는_나머지_도면을_내린다():
+    """뽑아낸 망이 드러나야 한다 — 다만 지우지는 않는다(어디서 뽑혔나)."""
+    html = _script()
+    i = html.index("function drawWorld(dim)")
+    seg = html[i:i + 400]
+    assert "ctx.globalAlpha = 0.16" in seg
+    assert "ctx.setLineDash([2, 4])" in seg
+
+
+def test_내린_뒤에는_원래대로_되돌린다():
+    """알파·점선을 안 되돌리면 다음에 그리는 것이 전부 흐려진다."""
+    html = _script()
+    i = html.index("function drawWorld(dim)")
+    seg = html[i:i + 1800]
+    assert "if (dim) { ctx.globalAlpha = 1; ctx.setLineDash([]); return; }" in seg
+
+
+def test_뽑은_배관망을_따로_그린다():
+    html = _script()
+    assert "function drawAutoNet()" in html
+    i = html.index("function drawAutoNet()")
+    seg = html[i:i + 900]
+    assert "S.autoView" in seg
+    assert "n.head" in seg and "n.input" in seg, "말단·급수 절점 표시가 없다"
+
+
+def test_추출_전에는_안_내린다():
+    """돌리기도 전에 도면이 흐려지면 무엇을 찍는지 안 보인다."""
+    html = _script()
+    i = html.index("const focus = S.stage")
+    seg = html[i:i + 300]
+    assert "S.autoDone && S.autoView" in seg
+
+
+def test_추출_뒤_화면이_뽑은_자리로_맞춰진다():
+    """흐리게 내리는 것만으로는 안 드러난다 — 도면 971m 대 설계면적 25m."""
+    html = _script()
+    assert "function autoNetBounds()" in html
+    i = html.index("function curBounds()")
+    seg = html[i:i + 700]
+    assert 'S.stage === "auto" && S.autoDone' in seg, "「화면 맞춤」이 도면 전체로 간다"
+    j = html.index("await loadAutoView();")
+    assert "autoNetBounds()" in html[j:j + 600]
+
+
+def test_뽑은_망을_실제로_받아_온다():
+    html = _script()
+    assert "async function loadAutoView()" in html
+    i = html.index("async function loadAutoView()")
+    assert "/api/module-f/auto/preview" in html[i:i + 400]
+
+
+def test_추출_명칭이_바뀌었다():
+    html = _script()
+    assert ">배관망 추출<" in html
+    assert "③ 최불리 추출" in html
+    # 「추리」로 시작하는 활용형이 하나도 없어야 한다 — 단추만 고치고 안내
+    # 문구를 두면 화면 안에서 이름이 둘로 갈린다.
+    assert "추리" not in html, "옛 이름이 남아 있다"
+
+
+def test_서버_로그도_같은_이름을_쓴다():
+    from routes.module_f import api_auto
+    src = _src(api_auto.register)
+    assert "[자동] 최불리 추출 —" in src
+    assert "추리기" not in src
+
+
+# ═══════════════════════════════════════════ F-8e. 실측·골든
+def test_골든_도구가_있다():
+    p = os.path.join(_ROOT, "scripts", "_golden_module_f_kfp.py")
+    assert os.path.isfile(p), "전체망 .kfp 비트동일을 잴 도구가 없다"
+
+
+def test_실측_도구가_있다():
+    p = os.path.join(_ROOT, "scripts", "_measure_module_f_lanes.py")
+    assert os.path.isfile(p)
+
+
+def test_실측은_사용자_저장본을_안_건드린다():
+    """공유 작업폴더에 쓰면 사용자의 B1F 저장본을 덮는다 — 임시 폴더로 돌린다."""
+    for name in ("_measure_module_f_lanes.py", "_golden_module_f_kfp.py"):
+        src = open(os.path.join(_ROOT, "scripts", name),
+                   encoding="utf-8").read()
+        assert "TemporaryDirectory" in src, name
+        assert "handoff.import_write_root = lambda: work" in src, name
+
+
+def test_실측이_사람조작과_클릭을_가른다():
+    """「전체 반영」은 단추 한 번이지만 화면이 후보마다 클릭을 태운다."""
+    src = open(os.path.join(_ROOT, "scripts", "_measure_module_f_lanes.py"),
+               encoding="utf-8").read()
+    assert '"human"' in src and '"clicks"' in src
+    assert src.count('"human"') >= 3, "세 차선 모두에 사람 조작 수가 없다"
+
+
+def test_물닿음은_marks_에서_읽는다():
+    """손질 heads 길이를 세면 물길 판정을 안 탄 board 전체가 된다."""
+    src = open(os.path.join(_ROOT, "scripts", "_measure_module_f_lanes.py"),
+               encoding="utf-8").read()
+    assert "design/preview" in src
+    assert 'marks.get("total")' in src
+
+
+@pytest.mark.skipif(
+    not os.path.isfile(os.path.join(_ROOT, "docs", "module_f_lanes.md")),
+    reason="F-8e 실측이 아직 안 끝났다 — 리포트가 생기면 이 검사가 살아난다")
+def test_차선_리포트가_있다():
+    p = os.path.join(_ROOT, "docs", "module_f_lanes.md")
+    txt = open(p, encoding="utf-8").read()
+    for lane in ("자동", "혼합", "수동"):
+        assert lane in txt, f"{lane} 차선이 표에 없다"
+    assert "비트 동일" in txt, "골든 결과가 없다"
+
+
 def test_채택의_유일한_쓰기는_클릭이다_():
     """읽기(by_bundle)는 /pick/auto 가 이미 쓰던 것 — 쓰기는 click 뿐이다."""
     body = _src(adopt)
@@ -468,10 +594,63 @@ def test_맞는_후보가_0개면_혼합을_잠근다():
 def test_정찰이_실패하면_혼합만_잠근다():
     """수동·자동 두 길은 인식과 무관하게 열려 있어야 한다."""
     html = _script()
-    i = html.index('if (r.state === "error")')
-    seg = html[i:i + 400]
+    i = html.index('r.state === "none" || r.state === "error"')
+    seg = html[i:i + 600]
     assert '$("mth-mixed").disabled = true;' in seg
     assert "mth-manual" not in seg and "mth-auto" not in seg
+    assert "왜 잠겼는지" or "시작할 수 없습니다" in seg
+
+
+def test_정찰_수치는_띠_칸으로_세운다():
+    """긴 한 줄로 늘어놓으면 좁은 옆판에서 글자가 토막나 안 읽힌다."""
+    html = _script()
+    assert 'class="bands"' in html
+    i = html.index("function renderRecon()")
+    seg = html[i:i + 1400]
+    assert 'cell("hi", "높음 ≥0.9"' in seg
+    assert 'cell("lo", "낮음"' in seg
+
+
+def test_도면_이름은_한_줄로_자른다():
+    """길면 카드를 밀어낸다 — 자르고 전체는 툴팁에 둔다."""
+    html = _script()
+    assert 'class="fname" id="mth-file"' in html
+    assert "text-overflow:ellipsis" in html
+    assert '$("mth-file").title = nm;' in html
+
+
+def test_모듈_표는_문장_꼬리에_안_매달린다():
+    """한글이 접히고 나면 테두리 칩이 꼬리처럼 남아 줄이 꼬여 보인다."""
+    html = _script()
+    i = html.index('<div class="lane">')
+    seg = html[i:i + 1400]
+    # 표가 설명 «앞» 에 오고, 설명은 제 span 안에 갇힌다
+    assert '<p><span class="tag">MODULE A</span><span>' in seg
+    assert '<p><span class="tag">A + E</span><span>' in seg
+    j = html.index("  .lane > p{")
+    css = html[j:j + 500]
+    assert "display:flex" in css
+    assert "flex:0 0 auto" in html[j:j + 700], "표가 같이 접힌다"
+
+
+def test_한글이_단어_가운데서_안_잘린다():
+    """「배관 묶음」이 「배관 묶」/「음」으로 갈리면 읽는 눈이 매번 걸린다."""
+    html = _script()
+    i = html.index("  .hint{")
+    assert "word-break:keep-all" in html[i:i + 300]
+    j = html.index("  .kv{")
+    assert "word-break:keep-all" in html[j:j + 300]
+
+
+def test_라벨은_안_쪼개진다():
+    """값이 길 때 라벨이 먼저 쪼개지면 「배관 / 묶음」 처럼 토막난다."""
+    html = _script()
+    i = html.index("  .kv{")
+    seg = html[i:i + 700]
+    assert "grid-template-columns:minmax(0,auto) minmax(0,1fr)" in seg
+    assert "white-space:nowrap" in seg
+    # 라벨이 길어지는 날에도 값 칸을 밀어내지 않고 제가 말줄임돼야 한다.
+    assert "text-overflow:ellipsis" in seg
 
 
 def test_혼합은_채택까지만_하고_멈춘다():

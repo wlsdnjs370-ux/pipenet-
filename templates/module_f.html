@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
@@ -137,12 +137,21 @@
                  letter-spacing:.01em;}
 
   /* ── 값 표 ────────────────────────────────────────────── */
-  .kv{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:baseline;
-      padding:6px 0;border-bottom:1px solid var(--line);font-size:11.5px;}
+  /* 라벨은 줄지 않고(auto), 값이 남는 폭을 갖는다(1fr). 반대로 두면 값이
+     길 때 라벨이 먼저 쪼개져 「배관 / 묶음」 처럼 토막난다.
+     `min-width:0` 이 없으면 그리드 칸이 내용보다 작아지지 못해 넘친다. */
+  .kv{display:grid;gap:12px;align-items:baseline;
+      grid-template-columns:minmax(0,auto) minmax(0,1fr);
+      padding:6px 0;border-bottom:1px solid var(--line);font-size:11.5px;
+      word-break:keep-all;}
   .kv:last-child{border-bottom:0;}
-  .kv b{font-weight:400;color:var(--dim);}
+  /* 라벨은 안 접는다. 다만 minmax(0,…) 로 «줄어들 수는» 있게 둬서, 라벨이
+     길어지는 날에도 값 칸을 밀어내지 않고 제가 말줄임된다. */
+  .kv b{font-weight:400;color:var(--dim);white-space:nowrap;
+        overflow:hidden;text-overflow:ellipsis;}
   .kv span{font-family:var(--mono);font-size:11.5px;color:var(--ink);
-           font-variant-numeric:tabular-nums;text-align:right;}
+           font-variant-numeric:tabular-nums;text-align:right;min-width:0;
+           overflow-wrap:anywhere;}
   /* `.kv span` 이 상태색을 덮는다(구체성 0,1,1 > 0,1,0). 값 칸 안에서도
      완료·미완료·막힘이 색으로 읽혀야 하므로 여기서 되돌린다. */
   .kv .ok{color:var(--ok);}
@@ -227,9 +236,41 @@
           color:#8FA3BF;}
   pre.log::-webkit-scrollbar{width:8px;}
   pre.log::-webkit-scrollbar-thumb{background:var(--line-2);}
+  /* 한글은 기본값(break-word)에서 단어 한가운데가 잘린다 — 「배관 묶음」이
+     「배관 묶」/「음」으로 갈리면 읽는 눈이 매번 걸린다. 어절은 붙여 둔다. */
   .hint{color:var(--faint);font-size:11px;line-height:1.6;margin:10px 0 0;
-        padding-left:10px;border-left:1px solid var(--line);}
+        padding-left:10px;border-left:1px solid var(--line);
+        word-break:keep-all;overflow-wrap:break-word;}
   .hint b{color:var(--dim);font-weight:500;}
+
+  /* ── 도면 이름 · 차선 카드 ───────────────────────────── */
+  /* 파일 이름은 길다. 줄바꿈으로 카드를 밀어내느니 한 줄로 자르고 툴팁에 둔다. */
+  .fname{font:400 11.5px/1.5 var(--mono);color:var(--ink);
+         background:var(--sunk);border:1px solid var(--line);
+         padding:8px 10px;margin-bottom:10px;
+         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* 신뢰도 띠 — 숫자를 나란히 세워 한 번에 훑게 한다. */
+  .bands{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+         background:var(--line);border:1px solid var(--line);margin-bottom:10px;}
+  .bands div{background:var(--sunk);padding:7px 8px;text-align:center;}
+  .bands i{display:block;font-style:normal;color:var(--faint);font-size:10px;
+           letter-spacing:.02em;margin-bottom:3px;}
+  .bands b{font:500 13px var(--mono);font-variant-numeric:tabular-nums;}
+  .bands .hi b{color:var(--ok);} .bands .lo b{color:var(--faint);}
+  /* 차선 한 칸 — 단추와 그 설명이 한 덩이로 보이게 묶는다. */
+  .lane{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);}
+  .lane:first-of-type{border-top:0;}
+  .lane > button{width:100%;}
+  /* 표는 안 접히는 왼쪽 칸, 설명은 남는 폭 안에서만 접힌다 — 칩이 문장 꼬리에
+     매달려 줄이 꼬이는 것을 구조로 막는다. */
+  .lane > p{display:flex;gap:8px;align-items:flex-start;
+            margin:8px 0 0;color:var(--faint);font-size:11px;line-height:1.55;
+            word-break:keep-all;overflow-wrap:break-word;}
+  .lane > p > .tag{flex:0 0 auto;margin:1px 0 0;}
+  .lane > p > span:not(.tag){flex:1 1 auto;min-width:0;}
+  .lane > label.f{margin:10px 0 0;}
+  /* 「이 기준으로 N개를 찍습니다」 — 칩이 없으므로 그냥 한 덩이로 둔다. */
+  #mth-mixed-why{display:block;}
 
   /* ── 레이어 ───────────────────────────────────────────── */
   .layers{max-height:236px;overflow:auto;border:1px solid var(--line);
@@ -339,30 +380,36 @@
          계통도·기계실에는 이 갈림이 없다(두 점 찍기 하나뿐). -->
     <section class="card hidden" id="panel-method">
       <h2>추출 방식</h2>
-      <div id="mth-file" class="hint">—</div>
-      <!-- [F-8c] 정찰 수치 — 고르기 전에 도면이 무엇인지 먼저 보여 준다. -->
-      <div id="mth-recon" class="hint">—</div>
+      <!-- 도면 이름은 길다 — 한 줄로 자르고 전체는 툴팁으로 둔다. 값 표(kv)에
+           넣으면 좁은 옆판에서 글자가 토막나 읽히지 않는다. -->
+      <div class="fname" id="mth-file">—</div>
+      <!-- [F-8c] 정찰 수치 — 고르기 전에 도면이 무엇인지 먼저 보여 준다.
+           숫자는 «띠 칸» 으로 세워 눈이 한 번에 훑게 한다. -->
+      <div id="mth-recon"></div>
 
-      <div class="row" style="margin-top:10px">
+      <!-- 표(tag)는 «글 뒤에» 붙이지 않는다. 한글 문장이 접히고 나면 테두리
+           칩이 꼬리처럼 남아 줄이 꼬여 보인다. 왼쪽 고정 칸으로 빼서 설명은
+           제 폭 안에서만 접히게 한다. -->
+      <div class="lane">
         <button id="mth-auto" class="go">자동으로 계속</button>
+        <p><span class="tag">MODULE A</span><span>알람밸브·영역만 찍으면
+          헤드 검출·그래프·최불리까지 자동으로 갑니다.</span></p>
       </div>
-      <div class="hint">알람밸브·영역만 찍으면 헤드 검출·그래프·최불리까지
-        자동 <span class="tag">MODULE A</span></div>
 
-      <div class="row" style="margin-top:10px">
+      <div class="lane">
         <button id="mth-mixed" class="go">인식 결과로 찍기 시작</button>
+        <p><span class="tag">A + E</span><span>인식한 배관·헤드를 미리 찍어
+          두고, 틀린 것만 손봅니다.</span></p>
+        <label class="f" id="mth-conf-row"><span>채택 기준 (신뢰도 이상)</span>
+          <select id="mth-conf"></select></label>
+        <p id="mth-mixed-why"></p>
       </div>
-      <div class="hint">인식한 배관·헤드를 미리 찍어 두고, 틀린 것만 손봅니다
-        <span class="tag">A + E</span></div>
-      <label class="f" id="mth-conf-row"><span>채택 기준 (신뢰도 이상)</span>
-        <select id="mth-conf"></select></label>
-      <div class="hint" id="mth-mixed-why"></div>
 
-      <div class="row" style="margin-top:10px">
+      <div class="lane">
         <button id="mth-manual" class="go">처음부터 수동</button>
+        <p><span class="tag">MODULE E</span><span>색으로 배관·헤드를 직접 찍고
+          손질합니다.</span></p>
       </div>
-      <div class="hint">색으로 배관·헤드를 직접 찍고 손질
-        <span class="tag">MODULE E</span></div>
 
       <div class="row" style="margin-top:12px">
         <button id="mth-cancel">← 다른 도면</button>
@@ -429,14 +476,14 @@
         </div>
       </div>
 
-      <h2 style="margin-top:14px">③ 최불리 추리기</h2>
+      <h2 style="margin-top:14px">③ 최불리 추출</h2>
       <label class="f"><span>기준개수 (NFTC 103 표 2.1.1.1)</span>
         <select id="au-k-preset"></select></label>
       <label class="f"><span>기준개수 K</span>
         <input type="number" id="au-k" value="30" min="1" max="200"></label>
       <div class="hint" id="au-k-why"></div>
       <div class="row" style="margin-top:10px">
-        <button id="au-run" class="go">배관망 추리기</button>
+        <button id="au-run" class="go">배관망 추출</button>
       </div>
       <div id="au-summary" class="hint">—</div>
       <div class="row" style="margin-top:10px">
@@ -790,6 +837,7 @@
     // [A 방식] 자동 추출 — 방식·알람밸브·헤드 후보·완료 여부
     method: null, autoAlarm: null, autoArm: null,
     autoHeads: [], autoDone: false, autoSummary: null,
+    autoView: null,                         // 뽑아낸 배관망(절점·배관)
     world: null, pick: null, edit: null, design: null,
     suggest: null,                          // [F-5] 찍기 후보 (제안만)
     suggestOff: new Set(),                  // 반영에서 제외한 후보 index
@@ -841,8 +889,28 @@
     draw();
   }
 
+  // 뽑아낸 배관망이 놓인 자리 — 없으면 null.
+  function autoNetBounds() {
+    const ns = (S.autoView && S.autoView.nodes) || [];
+    if (!ns.length) return null;
+    const xs = ns.map((n) => n.x), ys = ns.map((n) => n.y);
+    const bx = Math.min(...xs), by = Math.min(...ys);
+    const bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by;
+    // 설계면적 둘레가 조금은 보여야 «어디서 뽑혔나» 를 읽는다.
+    const pad = Math.max(bw, bh, 1000) * 0.25;
+    return { minx: bx - pad, miny: by - pad,
+             maxx: bx + bw + pad, maxy: by + bh + pad };
+  }
+
   function curBounds() {
     if ((S.stage === "edit" || S.stage === "conv") && S.edit) return S.edit.bounds;
+    // 추출이 끝났으면 「화면 맞춤」도 뽑은 망을 기준으로 삼는다 — 도면 전체로
+    // 맞추면 27개짜리 설계면적이 화면에서 점 하나가 된다(실측 LH306: 도면
+    // 971m 대 헤드군 25m).
+    if (S.stage === "auto" && S.autoDone) {
+      const b = autoNetBounds();
+      if (b) return b;
+    }
     if (S.world) return S.world.bounds;
     return null;
   }
@@ -967,17 +1035,27 @@
       if (S.stage === "edit") drawHandoffHints();
     }
     else if (S.world) {
-      drawWorld();
+      // 자동 추출이 끝났으면 도면 전체를 내리고 뽑아낸 망만 살린다.
+      const focus = S.stage === "auto" && S.autoDone && S.autoView;
+      drawWorld(focus);
       if (S.stage === "pick" && S.suggest) drawSuggest();
       // [H-2 · H-3] 찍은 두 점을 도면 위에 남긴다 — 어디를 찍었는지 안 보이면
       // 추출이 틀렸을 때 클릭이 문제인지 도면이 문제인지 가릴 수 없다.
       if (S.stage === "sub") drawSubPicks();
-      if (S.stage === "auto") { drawZones(); drawAuto(); }
+      if (S.stage === "auto") {
+        drawZones();
+        if (focus) drawAutoNet();
+        drawAuto(focus);
+      }
     }
   }
 
-  function drawWorld() {
+  // `dim` — 뽑아낸 배관망을 돋보이게 하려고 나머지를 거의 투명한 점선으로
+  // 내린다. 지우지는 않는다: 어디서 뽑혔는지 보이지 않으면 결과가 옳은지
+  // 판단할 수가 없다.
+  function drawWorld(dim) {
     ctx.lineWidth = 1;
+    if (dim) { ctx.globalAlpha = 0.16; ctx.setLineDash([2, 4]); }
     for (const b of S.world.bundles) {
       if (S.hidden.has(b.id)) continue;
       ctx.strokeStyle = b.css;
@@ -1006,6 +1084,7 @@
       }
       ctx.stroke();
     }
+    if (dim) { ctx.globalAlpha = 1; ctx.setLineDash([]); return; }
     if (!S.pick) return;
     const hl = S.pick.highlight;
     ctx.lineWidth = 2.2;
@@ -1494,8 +1573,11 @@
         await loadWorldRaw();
         fit(S.world.bounds);
         if (!d.needs_method) { await loadSub(); loadSlots(); return; }
-        $("mth-file").innerHTML =
-          kv("도면", `${S.key} · 선분 ${S.world.counts.segs.toLocaleString()}`);
+        // 한 줄로 자르고 전체 이름은 툴팁에 — 좁은 옆판에서 제목이 토막나면
+        // 어느 도면을 여는지가 안 읽힌다.
+        const nm = `${S.key} · 선분 ${S.world.counts.segs.toLocaleString()}`;
+        $("mth-file").textContent = nm;
+        $("mth-file").title = nm;
         setStage("method");
         await loadRecon();          // [F-8c] 카드에 정찰 수치를 채운다
         loadSlots();
@@ -1560,28 +1642,31 @@
     const box = $("mth-recon"), why = $("mth-mixed-why");
     const r = S.recon;
     fillConf();
-    if (!r || r.state === "none") {
-      box.innerHTML = kv("자동 인식", "결과 없음");
+    if (!r || r.state === "none" || r.state === "error") {
+      const bad = r && r.state === "error";
+      box.innerHTML = `<div class="hint">자동 인식 `
+        + (bad ? `<span class="warn">실패</span>` : "결과 없음") + "</div>";
       $("mth-mixed").disabled = true;
       $("mth-conf-row").classList.add("hidden");
-      why.textContent = "인식 결과가 없어 이 길로는 시작할 수 없습니다.";
-      return;
-    }
-    if (r.state === "error") {
-      box.innerHTML = kv("자동 인식", `<span class="warn">실패</span>`);
-      $("mth-mixed").disabled = true;
-      $("mth-conf-row").classList.add("hidden");
-      why.textContent = `인식이 실패해 이 길로는 시작할 수 없습니다 — ${r.error}`;
+      why.innerHTML = bad
+        ? `<span class="warn">인식이 실패해 이 길로는 시작할 수 없습니다.</span>`
+        : "인식 결과가 없어 이 길로는 시작할 수 없습니다.";
+      if (bad) why.title = r.error || "";
       return;
     }
     const b = r.bands || {}, bd = r.bundles || {};
+    const cell = (cls, label, n) =>
+      `<div class="${cls}"><i>${label}</i><b>${num(n).toLocaleString()}</b></div>`;
     box.innerHTML =
-      kv("배관 묶음", `${num(bd.PIPE)}개`
-         + (num(bd.HEAD) ? ` · 헤드 레이어 ${num(bd.HEAD)}` : ""))
-      + kv("헤드 후보", `${r.n.toLocaleString()}개 — `
-           + `높음 ${num(b["높음(≥0.9)"]).toLocaleString()}`
-           + ` · 중간 ${num(b["중간(≥0.75)"]).toLocaleString()}`
-           + ` · 낮음 ${num(b["낮음"]).toLocaleString()}`);
+      `<div class="bands">`
+      + cell("hi", "높음 ≥0.9", b["높음(≥0.9)"])
+      + cell("", "중간 ≥0.75", b["중간(≥0.75)"])
+      + cell("lo", "낮음", b["낮음"])
+      + `</div>`
+      + `<div class="hint">헤드 후보 <b>${r.n.toLocaleString()}</b>개 · `
+      + `배관 묶음 <b>${num(bd.PIPE)}</b>개`
+      + (num(bd.HEAD) ? ` · 헤드 레이어 <b>${num(bd.HEAD)}</b>개` : "")
+      + `</div>`;
     $("mth-conf-row").classList.remove("hidden");
     renderConfHint();
   }
@@ -1595,9 +1680,9 @@
     const n = reconPick();
     $("mth-mixed").disabled = n === 0;
     $("mth-mixed-why").innerHTML = n
-      ? `지금 기준으로 <b>${n.toLocaleString()}개</b>를 찍습니다.`
+      ? `이 기준으로 <b>${n.toLocaleString()}개</b>를 찍습니다.`
       : '<span class="warn">이 기준에 맞는 후보가 없습니다 — '
-        + "기준을 낮추거나 다른 길로 가세요.</span>";
+        + "기준을 낮춰 보세요.</span>";
   }
 
   $("mth-conf").onchange = renderConfHint;
@@ -2080,6 +2165,17 @@
     $("au-summary").innerHTML = html;
   }
 
+  // 뽑아낸 망을 받아 둔다 — 화면이 «무엇이 뽑혔나» 를 그릴 수 있어야 한다.
+  // 실패해도 자동 경로는 그대로 돈다(그림이 없을 뿐이다).
+  async function loadAutoView() {
+    S.autoView = null;
+    if (!S.autoDone) return;
+    try {
+      const d = await api(`/api/module-f/auto/preview?sid=${S.sid}`);
+      S.autoView = d.view || null;
+    } catch (err) { S.autoView = null; }
+  }
+
   async function loadAuto() {
     setStage("auto");
     try {
@@ -2089,7 +2185,11 @@
       // 영역은 서버가 들고 있다 — 슬롯을 오갔다 와도 그대로 되살린다.
       if (Array.isArray(d.zones)) S.zones = d.zones.map((z) => z.slice());
       renderAuto(d);
-      if (S.world) fit(S.world.bounds);
+      await loadAutoView();
+      // 추출을 끝낸 슬롯으로 돌아오면 그 자리로 다시 맞춘다.
+      const b = autoNetBounds();
+      if (b) fit(b);
+      else if (S.world) fit(S.world.bounds);
       draw();
     } catch (err) { say(err.message, "err"); }
   }
@@ -2134,7 +2234,7 @@
       S.autoHeads = d.heads || [];
       renderAuto(null);
       let msg = d.n
-        ? `헤드 ${d.n.toLocaleString()}개를 찾았습니다 — 그대로 추리거나, `
+        ? `헤드 ${d.n.toLocaleString()}개를 찾았습니다 — 그대로 추출하거나, `
           + `「범위 좁히기」로 구역을 지정하세요.`
         : "헤드를 찾지 못했습니다 — 알람밸브 위치나 도면 레이어를 확인하세요.";
       if (d.dropped) {
@@ -2158,9 +2258,17 @@
         renderAuto(d);
         $("dg-k").value = k;
         renderSteps();
+        // 뽑힌 망을 받아 와야 나머지를 내리고 이것만 살릴 수 있다.
+        await loadAutoView();
+        // ★흐리게 내리는 것만으로는 안 드러난다 — 도면이 971 m 인데 설계면적은
+        //   25 m 라, 화면을 도면 전체로 두면 결과가 점 하나로 남는다. 뽑은
+        //   자리로 맞춰 준다(사람이 다시 「화면 맞춤」을 눌러도 여기로 온다).
+        const b = autoNetBounds();
+        if (b) fit(b); else draw();
         if (d.summary) {
           say(`자동 추출 완료 — 헤드 ${d.summary.k} · 최원 ${d.summary.far_m} m`
-              + ` · 절점 ${d.summary.nodes}`, "ok");
+              + ` · 절점 ${d.summary.nodes}. 뽑은 자리로 화면을 맞추고 나머지`
+              + " 도면은 흐리게 내렸습니다.", "ok");
         }
       });
     } catch (err) { busy(false); say(err.message, "err"); }
@@ -2172,13 +2280,45 @@
     catch (err) { say(err.message, "err"); }
   };
 
-  function drawAuto() {
-    // 헤드 후보 — 신뢰도로 색을 나눈다(찍기 후보 제안과 같은 규약).
-    for (const h of (S.autoHeads || [])) {
-      ctx.fillStyle = suggestColor(h.conf);
-      ctx.globalAlpha = 0.75;
+  // 뽑아낸 배관망 — 도면을 내린 위에 이것만 밝게 얹는다.
+  function drawAutoNet() {
+    const v = S.autoView;
+    if (!v || !v.pipes || !v.pipes.length) return;
+    const at = {};
+    for (const n of (v.nodes || [])) at[n.label] = n;
+    ctx.lineWidth = 2.6;
+    ctx.strokeStyle = "#22d3ee";
+    ctx.beginPath();
+    for (const p of v.pipes) {
+      const a = at[p.a], b = at[p.b];
+      if (!a || !b) continue;
+      ctx.moveTo(sx(a.x), sy(a.y));
+      ctx.lineTo(sx(b.x), sy(b.y));
+    }
+    ctx.stroke();
+    // 뽑힌 헤드(노즐)와 급수 절점은 따로 찍는다 — 선만 보면 어디가 말단인지
+    // 모른다.
+    for (const n of (v.nodes || [])) {
+      if (!n.head && !n.input) continue;
+      ctx.fillStyle = n.input ? "#3b82f6" : "#22d3ee";
       ctx.beginPath();
-      ctx.arc(sx(h.x), sy(h.y), 3.5, 0, Math.PI * 2);
+      ctx.arc(sx(n.x), sy(n.y), n.input ? 5 : 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.lineWidth = 1;
+  }
+
+  // 검출한 헤드는 «빨강» 이다. 신뢰도 색(초록/노랑/회색)은 어두운 도면 위에서
+  // 티가 안 나 무엇이 잡혔는지 한눈에 안 들어왔다 — 띠는 옆 패널 숫자로 읽는다.
+  const HEAD_MARK = "#ff3b30";
+
+  function drawAuto(dim) {
+    // 헤드 후보 — 추출이 끝나면 한 발 물러선다(뽑힌 망이 주인공이다).
+    for (const h of (S.autoHeads || [])) {
+      ctx.fillStyle = HEAD_MARK;
+      ctx.globalAlpha = dim ? 0.3 : 0.9;
+      ctx.beginPath();
+      ctx.arc(sx(h.x), sy(h.y), dim ? 2.6 : 4, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;

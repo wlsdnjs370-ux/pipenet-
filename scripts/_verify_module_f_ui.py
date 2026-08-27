@@ -25,6 +25,51 @@ ROOT = Path(__file__).resolve().parent.parent
 # 서버가 받은 값과 여기서 타이핑한 값이 달라진다(실측으로 로그인이 실패했다).
 PASSWORD = "ui-verify-pw-2026"
 FAILS: list[str] = []
+# 지시서 §6 이 청하는 화면 캡처가 여기 쌓인다.
+SHOTS = ROOT / "data" / "_f8_shots"
+
+# 캔버스를 «눈으로» 검사한다 — 색이 실제로 칠해졌는지는 픽셀만이 안다.
+_CANVAS_HEAD = """() => {
+  const c = document.getElementById('cv');
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let n = 0;
+"""
+_COUNT_LIT = _CANVAS_HEAD + """
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] + d[i+1] + d[i+2] > 60) n++;
+  }
+  return n;
+}"""
+# 빨강 — 검출 헤드 표시(#ff3b30). 붉은 기가 확실히 우세한 픽셀만 센다.
+_COUNT_RED = _CANVAS_HEAD + """
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] > 150 && d[i] > d[i+1] * 2 && d[i] > d[i+2] * 2) n++;
+  }
+  return n;
+}"""
+# 청록 — 뽑아낸 배관망(#22d3ee).
+_COUNT_CYAN = _CANVAS_HEAD + """
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i+2] > 140 && d[i+1] > 110 && d[i+2] > d[i] * 2) n++;
+  }
+  return n;
+}"""
+# «환하게 남은 배경» — 뽑은 망(청록)도 헤드(빨강)도 아닌데 환한 픽셀.
+#
+# ★내림을 «칠해진 픽셀 총량» 으로 재면 안 된다. 추출 뒤에는 뽑은 자리로 화면을
+#   확대하므로 도면이 커져 총량은 오히려 는다(실측 1,293 → 21,150). 재야 할
+#   것은 양이 아니라 «밝기» 다: alpha 0.16 으로 내린 선은 최대 채널이 40 언저리라
+#   120 을 못 넘는다. 그러므로 이 값이 작다 = 배경이 실제로 내려가 있다.
+_COUNT_BRIGHT_BG = _CANVAS_HEAD + """
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i+1], b = d[i+2];
+    if (Math.max(r, g, b) <= 120) continue;
+    if (b > 140 && g > 110 && b > r * 2) continue;          // 뽑은 망
+    if (r > 150 && r > g * 2 && r > b * 2) continue;        // 검출 헤드
+    n++;
+  }
+  return n;
+}"""
 
 
 def check(label: str, cond: bool, detail: str = "") -> bool:
@@ -53,7 +98,8 @@ def main() -> int:
                 "LOGIN_PASSWORD": PASSWORD,
                 "DESIGN_WORKBENCH_ENABLED": "1",
                 "PYTHONIOENCODING": "utf-8"})
-    print(f"임시 서버 :{port} 기동 중…")
+    SHOTS.mkdir(parents=True, exist_ok=True)
+    print(f"임시 서버 :{port} 기동 중… (캡처 → {SHOTS})")
     proc = subprocess.Popen([sys.executable, "serve.py"], cwd=str(ROOT),
                             env=env, stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL)
@@ -328,7 +374,7 @@ def main() -> int:
                           " · ".join(steps))
                     # ★알람밸브만 없으면 막힌다. 영역은 «좁히는» 선택이라
                     #   그것 때문에 막히면 안 된다.
-                    check("알람밸브 전에는 검출·추리기가 막힌다",
+                    check("알람밸브 전에는 검출·추출이 막힌다",
                           page.is_disabled("#au-run")
                           and page.is_disabled("#au-heads"))
                     check("범위 좁히기는 접혀 있다",
@@ -370,8 +416,8 @@ def main() -> int:
                         page.evaluate(
                             "() => document.querySelectorAll('#steps div')[1].click()")
                         page.wait_for_timeout(700)
-                        # 영역 없이도 추리기가 열려야 한다 — 영역은 선택이다.
-                        check("영역 없이도 추리기가 열린다",
+                        # 영역 없이도 추출이 열려야 한다 — 영역은 선택이다.
+                        check("영역 없이도 추출이 열린다",
                               not page.is_disabled("#au-run"),
                               page.inner_text("#au-zones").strip())
                         page.click("#au-heads")
@@ -380,6 +426,14 @@ def main() -> int:
                               "검출된 헤드" in page.inner_text("#au-heads-info"),
                               page.inner_text("#au-heads-info").strip()
                               .replace("\n", " ")[:50])
+                        # ★검출 표시가 «빨강» 인가 — 어두운 도면 위에서 티가
+                        #   나야 한다. 캔버스 픽셀을 직접 센다.
+                        red_lit = page.evaluate(_COUNT_RED)
+                        check("검출 헤드가 빨강으로 찍힌다", red_lit > 20,
+                              f"빨간 픽셀 {red_lit:,}")
+                        page.screenshot(path=str(SHOTS / "1_헤드검출_빨강.png"))
+
+                        bg_before = page.evaluate(_COUNT_BRIGHT_BG)
                         page.click("#au-run")
                         done = False
                         for _ in range(600):        # 100ms × 600 = 60s
@@ -389,6 +443,25 @@ def main() -> int:
                                 break
                         check("자동 추출이 끝난다", done,
                               page.inner_text("#au-summary").strip()[:70])
+                        # ★추출이 끝나면 나머지 도면이 내려가야 한다. 총량이
+                        #   아니라 «밝기» 로 잰다 — 화면을 뽑은 자리로 확대하므로
+                        #   총량은 오히려 는다(실측 1,293 → 21,150).
+                        page.wait_for_timeout(1200)
+                        bg_after = page.evaluate(_COUNT_BRIGHT_BG)
+                        lit_after = page.evaluate(_COUNT_LIT)
+                        cyan = page.evaluate(_COUNT_CYAN)
+                        check("추출 뒤 나머지 도면이 흐려진다",
+                              bg_after < max(60, cyan * 0.25),
+                              f"환한 배경 {bg_before:,} → {bg_after:,} "
+                              f"(칠해진 픽셀 전체 {lit_after:,})")
+                        check("뽑은 배관망이 살아 있다", cyan > 20,
+                              f"청록 픽셀 {cyan:,}")
+                        # ★흐리게 내리는 것만으로는 안 드러난다 — 도면이 971m
+                        #   인데 설계면적은 25m 라, 화면을 도면 전체로 두면
+                        #   결과가 점 하나로 남는다. 뽑은 자리로 맞춰야 한다.
+                        check("뽑은 자리로 화면이 맞춰진다", cyan > 300,
+                              f"청록 픽셀 {cyan:,} (점 하나면 100 미만)")
+                        page.screenshot(path=str(SHOTS / "2_추출후_나머지흐림.png"))
                         page.click("#au-to-design")
                         page.wait_for_timeout(1200)
                     check("자동에서 「표 확정」이 감춰진다",
@@ -431,6 +504,28 @@ def main() -> int:
                 rc = page.inner_text("#mth-recon").strip().replace("\n", " ")
                 check("카드에 정찰 수치가 뜬다",
                       "헤드 후보" in rc and "배관 묶음" in rc, rc[:80])
+                page.screenshot(path=str(SHOTS / "0_방식카드.png"))
+                # ★설명이 몇 줄로 접히는가 — 칩이 꼬리에 매달리면 한 줄이 더
+                #   생기고 줄이 꼬여 보인다. 높이로 잰다(11px · 줄간 1.55).
+                lanes = page.evaluate(
+                    """() => [...document.querySelectorAll('#panel-method .lane > p')]
+                         .filter(p => p.id !== 'mth-mixed-why')
+                         .map(p => ({h: Math.round(p.getBoundingClientRect().height),
+                                     t: p.textContent.trim().slice(0, 14)}))""")
+                worst = max((l["h"] for l in lanes), default=0)
+                check("차선 설명이 두 줄 안에 든다", worst <= 40,
+                      " · ".join(f"{l['t']}…{l['h']}px" for l in lanes))
+                # 표 칩이 설명과 같은 줄에서 시작하는가(왼쪽 고정 칸)
+                tag_ok = page.evaluate(
+                    """() => [...document.querySelectorAll('#panel-method .lane > p')]
+                         .filter(p => p.querySelector('.tag'))
+                         .every(p => {
+                           const t = p.querySelector('.tag').getBoundingClientRect();
+                           const s = p.querySelector('span:not(.tag)')
+                                      .getBoundingClientRect();
+                           return t.left < s.left && Math.abs(t.top - s.top) < 8;
+                         })""")
+                check("표가 설명 왼쪽에 나란히 선다", bool(tag_ok))
                 check("세 차선 단추가 다 있다",
                       page.is_visible("#mth-auto")
                       and page.is_visible("#mth-mixed")
@@ -446,6 +541,13 @@ def main() -> int:
                 #   일이 없는 단추는 «고장» 으로 읽힌다. A 는 알려진 블록 참조만
                 #   0.95 를 주므로 헤드를 레이어에 직접 그린 도면은 높음 0 이다.
                 why0 = page.inner_text("#mth-mixed-why").strip()
+                # 사유 문구도 두 줄 안에 들어야 한다 — 마지막 낱말 하나만
+                # 다음 줄로 넘어가면 카드가 어수선해 보인다.
+                wh = page.evaluate(
+                    "() => Math.round(document.getElementById('mth-mixed-why')"
+                    ".getBoundingClientRect().height)")
+                check("채택 기준 안내가 두 줄 안에 든다", wh <= 40,
+                      f"{wh}px · {why0[:40]}")
                 if "후보가 없습니다" in why0:
                     check("맞는 후보가 0개면 잠기고 사유를 말한다",
                           page.is_disabled("#mth-mixed"), why0[:70])
@@ -474,6 +576,7 @@ def main() -> int:
                 info = page.inner_text("#pk-adopt-info").strip().replace("\n", " ")
                 check("채택 결과가 화면에 남는다",
                       "재료" in info and "헤드" in info, info[:90])
+                page.screenshot(path=str(SHOTS / "3_채택직후_찍기화면.png"))
                 st = page.evaluate(
                     """async (sid) => (await (await fetch(
                         '/api/module-f/world?sid=' + sid)).json()).state""",

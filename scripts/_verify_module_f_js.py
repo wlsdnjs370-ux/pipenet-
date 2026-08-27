@@ -45,7 +45,9 @@ TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            "loadRecon", "applyAdopt",
            "drawSuggest", "suggestInfo", "suggestColor",
            # [F-8d] 탈출로 — 자동 → 손질 이어받기
-           "renderHandoff", "applyHint", "drawHandoffHints")
+           "renderHandoff", "applyHint", "drawHandoffHints",
+           # 자동 화면 — 뽑은 망 강조 · 검출 헤드 빨강
+           "drawWorld", "drawAutoNet", "loadAutoView")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 

@@ -178,7 +178,7 @@ def register(app):
 
         def job():
             zones = sess.get("auto_zones") or []
-            print(f"[자동] 최불리 추리기 — 기준개수 {k} · 범위 "
+            print(f"[자동] 최불리 추출 — 기준개수 {k} · 범위 "
                   + (f"영역 {len(zones)}곳" if zones else "도면 전체"))
             got = run_auto(sess["entities"], sess["layer_cat"],
                            alarm_xy=sess["auto_alarm"],

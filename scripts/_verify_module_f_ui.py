@@ -104,6 +104,15 @@ def main() -> int:
             slots = page.inner_text("#slots").strip()
             check("슬롯 자리 있음", bool(slots), slots[:50])
 
+            # ── 갈 수 없는 단계는 막힌다. ★도면을 열기 «전» 에 봐야 한다 —
+            #    열고 나면 찍기가 실제로 도달 가능해져 이 검사가 뜻을 잃는다.
+            page.click("#steps div:nth-child(2)")     # 찍기 — 재료 없음
+            page.wait_for_timeout(300)
+            after = page.eval_on_selector_all(
+                "#steps div.on", "els => els.map(e => e.textContent.trim())")
+            check("재료 없는 단계로는 안 넘어간다", after == ["도면 열기"],
+                  " · ".join(after))
+
             # ── 새로 만든 패널들이 DOM 에 있나
             for pid in ("panel-sub", "panel-merge", "panel-design",
                         "ed-zone-arm", "ed-zones", "dg-bore-legend",
@@ -170,6 +179,58 @@ def main() -> int:
                   "hidden" in (page.get_attribute("#pk-auto-body", "class") or ""))
             page.eval_on_selector("#panel-pick",
                                   "el => el.classList.add('hidden')")
+
+            # ── 진행·레이어도 접혀 있다
+            for bid, label in (("log-body", "진행"), ("layers-body", "레이어")):
+                cls = page.get_attribute(f"#{bid}", "class") or ""
+                check(f"{label}는 처음엔 접혀 있다", "hidden" in cls, cls)
+            check("진행 로그가 안 보인다", not page.is_visible("#log"))
+            # 작업이 돌면 저절로 열려야 한다 — 큰 도면은 십 분을 넘긴다.
+            page.evaluate(
+                "() => document.querySelector('h2.fold[data-fold=\"log-body\"]')"
+                ".click()")
+            page.wait_for_timeout(200)
+            check("눌러서 펼치면 로그가 보인다", page.is_visible("#log"))
+            check("진행 표(job-chip)가 있다",
+                  page.query_selector("#job-chip") is not None)
+            page.evaluate(
+                "() => document.querySelector('h2.fold[data-fold=\"log-body\"]')"
+                ".click()")
+
+            # ── 작업이 실제로 돌 때 저절로 열리나 — 작은 도면 한 장으로.
+            #    큰 도면은 파싱이 십 분을 넘겨 검증에 못 쓴다.
+            # ★도면이 너무 작으면 잡이 1초 안에 끝나 «도는 동안» 을 관측할 수
+            #   없다(실측: 분기티.dxf 0.8s — 열렸다 닫히는 것을 못 잡았다).
+            #   몇 초 걸리는 것을 고른다.
+            small = next((p for p in [
+                ROOT / "samples" / "dxf" / "LH306동_평면도.dxf",
+                ROOT / "data" / "sample_problem" / "대명동201동 단위세대_layer정리.dxf",
+                ROOT / "samples" / "dxf" / "분기티.dxf",
+            ] if p.is_file()), None)
+            if small is None:
+                check("작업 중 진행 자동열림", False, "시험용 DXF 없음")
+            else:
+                page.set_input_files("#dxf", str(small))
+                page.click("#btn-open")
+                opened = False
+                for _ in range(400):          # 25ms × 400 = 10s
+                    page.wait_for_timeout(25)
+                    if "hidden" not in (page.get_attribute("#log-body", "class") or ""):
+                        opened = True
+                        break
+                check("작업이 돌면 진행이 저절로 열린다", opened, small.name)
+                if opened:
+                    chip = page.inner_text("#job-chip").strip()
+                    check("제목 옆에 도는 단계가 뜬다",
+                          bool(chip) and chip != "—", chip)
+                closed = False
+                for _ in range(90):
+                    page.wait_for_timeout(500)
+                    if "hidden" in (page.get_attribute("#log-body", "class") or ""):
+                        closed = True
+                        break
+                check("끝나면 다시 접힌다", closed,
+                      page.inner_text("#job-line").strip()[:60])
             # 표가 몇 개인지가 아니라 «한 판 안에서 겹치는가» 를 본다 — 패널이
             # 다르면 동시에 보이지 않으므로 중복이 아니다(손질 패널에 셋이
             # 몰려 있던 것이 문제였다).
@@ -226,14 +287,6 @@ def main() -> int:
             check("옆판에 채운 칸 요약이 뜬다", "1" in summ, summ[:40])
             page.eval_on_selector("#panel-conv",
                                   "el => el.classList.add('hidden')")
-
-            # ── 단계바 클릭이 터지지 않나 (갈 수 없는 곳은 막혀야 한다)
-            page.click("#steps div:nth-child(2)")     # 찍기 — 재료 없음
-            page.wait_for_timeout(300)
-            after = page.eval_on_selector_all(
-                "#steps div.on", "els => els.map(e => e.textContent.trim())")
-            check("재료 없는 단계로는 안 넘어간다", after == ["도면 열기"],
-                  " · ".join(after))
 
             # ── 콘솔 오류 0
             check("콘솔 오류 없음", not errors,

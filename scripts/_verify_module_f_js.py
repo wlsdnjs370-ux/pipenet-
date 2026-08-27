@@ -35,7 +35,8 @@ TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            "renderSteps", "gotoStage", "stageFlow", "stageReachable",
            "setStage", "loadRefCounts", "drawEdit",
            "openConvModal", "closeConvModal", "renderConvSummary",
-           "readDto", "loadFields", "toggleFold")
+           "readDto", "loadFields", "toggleFold", "logFold", "jobChip",
+           "jobRender", "jobFinish")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 
@@ -143,9 +144,19 @@ def main() -> int:
         if not src:
             check(f"{name} 본문 추출", False, "함수를 찾지 못함")
             continue
+        # ★매개변수도 선언이다. 콜백을 받는 함수(`jobFinish(j, onDone)`)에서
+        #   그 이름을 부르면 «미해석» 으로 잘못 잡혔다.
+        sig = re.match(r"^\s*(?:async\s+)?function\s+\w+\s*\(([^)]*)\)", src)
+        params = set()
+        if sig:
+            for p in sig.group(1).split(","):
+                p = p.strip().split("=")[0].strip()
+                if re.fullmatch(r"[A-Za-z_$][\w$]*", p):
+                    params.add(p)
+        known_here = known | params
         unknown = sorted({
             m.group(1) for m in call.finditer(src)
-            if m.group(1) not in known
+            if m.group(1) not in known_here
             and not re.search(rf"\b(?:function|const|let|var)\s+{m.group(1)}\b", src)
             # 메서드 호출(.foo(...))·예약어는 뺀다
             and not re.search(rf"\.\s*{m.group(1)}\s*\($", src[:m.start(1) + len(m.group(1)) + 1])

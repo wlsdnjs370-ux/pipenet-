@@ -608,19 +608,27 @@
       <div id="mg-summary" class="hint">—</div>
     </section>
 
+    <!-- 진행 — 평소엔 접혀 있고, 작업이 도는 동안·실패했을 때만 저절로 열린다.
+         ★없애지는 않는다. 큰 도면은 파싱이 십 분을 넘기고, 그때 화면이 아무
+           말도 안 하면 멈춘 것과 구별되지 않는다. -->
     <section class="card" id="panel-log">
-      <h2>진행</h2>
-      <div id="job-line">대기 중</div>
-      <pre class="log" id="log">—</pre>
+      <h2 class="fold" data-fold="log-body"><span class="caret">▶</span>진행
+        <span id="job-chip" class="tag hidden">—</span></h2>
+      <div class="foldbody hidden" id="log-body">
+        <div id="job-line">대기 중</div>
+        <pre class="log" id="log">—</pre>
+      </div>
     </section>
 
     <section class="card hidden" id="panel-layers">
-      <h2>레이어 표시</h2>
-      <div class="row">
-        <button id="ly-all">전체</button>
-        <button id="ly-none">해제</button>
+      <h2 class="fold" data-fold="layers-body"><span class="caret">▶</span>레이어 표시</h2>
+      <div class="foldbody hidden" id="layers-body">
+        <div class="row">
+          <button id="ly-all">전체</button>
+          <button id="ly-none">해제</button>
+        </div>
+        <div class="layers" id="layers"></div>
       </div>
-      <div class="layers" id="layers"></div>
     </section>
   </div>
 
@@ -1201,17 +1209,56 @@
   }
 
   // ── 잡 진행 — SSE 우선, 미지원·오류 시 폴링 폴백 [F-6] ──────────
-  function jobRender(j) {
-    $("log").textContent = j.lines && j.lines.length ? j.lines.join("\n") : "…";
-    $("log").scrollTop = $("log").scrollHeight;
+  //
+  // 진행 묶음은 평소 접혀 있다. 다만 **작업이 도는 동안에는 저절로 편다** —
+  // 큰 도면은 파싱이 십 분을 넘기고, 그때 화면이 아무 말도 안 하면 멈춘 것과
+  // 구별되지 않는다. 끝나면 다시 접되 실패했을 때는 열어 둔다(무엇이 잘못됐는지
+  // 읽어야 한다). 제목 옆 표에는 어느 단계가 도는지만 짧게 남긴다.
+  let jobWasRunning = false;      // 시작하는 순간에만 편다 — 매 박자 열면
+                                  // 사용자가 접어 둔 것을 계속 되돌린다
+  function logFold(open) {
+    const h2 = document.querySelector('h2.fold[data-fold="log-body"]');
+    if (h2) toggleFold(h2, open);
+  }
+  function jobChip(text) {
+    const chip = $("job-chip");
+    chip.textContent = text || "—";
+    chip.classList.toggle("hidden", !text);
+  }
+  // ★진행 «상태» 는 한 곳에서만 그린다. 예전에는 SSE 경로가 job-line 을 제
+  //   손으로 다시 그려, jobRender 에 붙인 것이 스트림에서는 아예 돌지 않았다
+  //   (실측: 진행 자동열림이 SSE 에서만 안 먹었다). 두 경로가 같은 것을 그리면
+  //   한쪽만 고쳐지는 날이 반드시 온다.
+  function jobStatus(j) {
     $("job-line").textContent =
       `${j.phase} · ${j.state === "run" ? "진행 중" : j.state} · ${j.elapsed}s`
       + (j.queued ? " (다른 작업이 끝나기를 기다리는 중)" : "");
+    if (j.state === "run") {
+      jobChip(`${j.phase} ${j.elapsed}s`);
+      if (!jobWasRunning) logFold(true);
+      jobWasRunning = true;
+    }
+  }
+
+  // 폴링 전용 — 로그 «본문» 까지 서버 tail 로 채운다. 스트림은 줄이 생기는
+  // 대로 쌓으므로(line 이벤트) 여기서 tail 로 덮으면 오히려 짧아진다.
+  function jobRender(j) {
+    $("log").textContent = j.lines && j.lines.length ? j.lines.join("\n") : "…";
+    $("log").scrollTop = $("log").scrollHeight;
+    jobStatus(j);
   }
   function jobFinish(j, onDone) {
     stopWatch();
     busy(false);
-    if (j.state === "error") { say(j.error, "err"); return; }
+    jobWasRunning = false;
+    if (j.state === "error") {
+      jobChip("실패");
+      logFold(true);            // 실패는 열어 둔다 — 읽어야 고친다
+      say(j.error, "err");
+      return;
+    }
+    jobChip("");
+    logFold(false);
     // onDone 은 async 다. 여기서 잡지 않으면 실패가 조용히 삼켜진다.
     Promise.resolve()
       .then(() => onDone(j))
@@ -1239,9 +1286,7 @@
     });
     es.addEventListener("state", (ev) => {
       const j = JSON.parse(ev.data);
-      $("job-line").textContent =
-        `${j.phase} · ${j.state === "run" ? "진행 중" : j.state} · ${j.elapsed}s`
-        + (j.queued ? " (다른 작업이 끝나기를 기다리는 중)" : "");
+      jobStatus(j);            // 진행 줄·표·자동열림 — 폴링과 같은 한 벌
       if (j.state === "run") { busy(true, `${j.phase} · ${j.elapsed}s`); return; }
       if (j.state === "idle") return;      // 잡이 아직 안 붙었다 — 서버가 기다린다
       jobFinish(j, onDone);

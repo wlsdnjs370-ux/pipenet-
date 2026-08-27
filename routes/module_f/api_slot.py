@@ -15,7 +15,7 @@ import os
 from flask import jsonify, request
 
 from routes.module_f.api_open import _open_job
-from routes.module_f.common import _boot, _fail
+from routes.module_f.common import _boot, _check_key, _fail
 from routes.module_f.jobs import _job_running, _new_session, _run_job, _sess
 from routes.module_f.slots import (
     SLOT_LABELS, _check_slot_kind, _slot_state, _slot_switch)
@@ -42,7 +42,8 @@ def _auto_open_job(sess: dict, dxf):
         sess["entities"] = ents
         sess["layer_cat"] = layer_cat
         sess["auto_diag"] = diag
-        sess["key"] = os.path.splitext(os.path.basename(str(dxf)))[0]
+        # 키는 뒤에서 산출 파일 이름이 된다 — 수동 경로와 같은 자를 통과시킨다.
+        sess["key"] = _check_key(os.path.splitext(os.path.basename(str(dxf)))[0])
         sess["world"] = _world_payload(entities_to_world(ents))
         print(f"[자동] 완료 {time.perf_counter() - t0:.1f}s · "
               f"도형 {diag['entities']:,} · 레이어 {diag['layers']}")

@@ -64,13 +64,34 @@ class _Tee:
 
 
 # ─────────────────────────────────────────────────────────── 세션
-def _sweep() -> None:
+# 한 세션이 붙드는 것이 가볍지 않다 — 슬롯마다 도면 하나치 도형 목록이 앉는다
+# (실측: LH306동 21,715개 · B1F 는 그 몇 배). 만료로만 회수하면 아무도 새 도면을
+# 안 여는 동안 계속 쌓인다.
+MAX_SESSIONS = 24
+_last_sweep = 0.0
+SWEEP_EVERY_SECONDS = 60.0
+
+
+def _sweep(force: bool = False) -> None:
+    """만료 세션 회수 + 수 상한. 자주 불리므로 1분에 한 번만 실제로 돈다."""
+    global _last_sweep
     now = time.time()
+    if not force and (now - _last_sweep) < SWEEP_EVERY_SECONDS:
+        return
+    _last_sweep = now
     with _SESSIONS_LOCK:
         dead = [k for k, s in _SESSIONS.items()
                 if now - s.get("touched", 0) > SESSION_TTL_SECONDS]
         for k in dead:
             _SESSIONS.pop(k, None)
+        # 그래도 넘치면 오래 안 만진 것부터 — 단, 도는 작업은 건드리지 않는다.
+        if len(_SESSIONS) > MAX_SESSIONS:
+            idle = sorted(
+                (s for s in _SESSIONS.values()
+                 if not ((s.get("job") or {}).get("state") == "run")),
+                key=lambda s: s.get("touched", 0))
+            for s in idle[:len(_SESSIONS) - MAX_SESSIONS]:
+                _SESSIONS.pop(s.get("id"), None)
 
 
 def _new_session(**kw) -> dict:
@@ -78,7 +99,7 @@ def _new_session(**kw) -> dict:
 
     평면 dict 는 그대로 둔다 — 그 내용이 곧 활성 슬롯의 도면 상태다(slots.py).
     """
-    _sweep()
+    _sweep(force=True)          # 새 세션을 만들 때는 반드시 한 번 훑는다
     sid = uuid.uuid4().hex[:16]
     sess = {
         "id": sid, "created": time.time(), "touched": time.time(),
@@ -93,6 +114,9 @@ def _new_session(**kw) -> dict:
 
 
 def _sess(sid: str) -> dict:
+    # 회수를 «새 도면 열 때» 에만 걸면, 아무도 안 여는 동안 만료된 세션이
+    # 도형 목록을 그대로 붙들고 있다. 여기서도 훑는다(1분 스로틀).
+    _sweep()
     with _SESSIONS_LOCK:
         found = _SESSIONS.get(str(sid or ""))
     if found is None:

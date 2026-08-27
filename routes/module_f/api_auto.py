@@ -23,9 +23,23 @@ from routes.module_f.jobs import _job_running, _run_job, _sess
 from routes.module_f.slots import _slot_active
 
 
+# 영역 개수 상한 — `HeadRegion.contains` 는 사각형마다 훑으므로 헤드 × 영역으로
+# 늘어난다. 손으로 그리는 것이라 실제로는 몇 개면 충분하다.
+MAX_ZONES = 64
+# 화면에 그리는 헤드 후보 상한. 넘으면 «조용히» 자르지 않고 몇 개를 뺐는지 싣는다.
+HEAD_PREVIEW_CAP = 4000
+
+
 def _need_auto(body_or_args):
-    """자동 슬롯이고 도면이 읽혀 있는가."""
+    """자동 슬롯이고 도면이 읽혀 있는가 — 작업이 도는 중이면 거절한다.
+
+    ★잡이 도는 동안 이 세션의 값을 바꾸면, 워커가 읽는 것과 화면이 보는 것이
+      갈린다. 잡 자체는 시작할 때 값을 읽으므로 계산이 틀어지진 않지만, 끝난
+      뒤 「내가 넣은 영역으로 뽑힌 것」이라고 오해하게 된다.
+    """
     sess = _sess(body_or_args.get("sid"))
+    if _job_running(sess):
+        return sess, "작업이 끝난 뒤에 바꿀 수 있습니다."
     if _slot_active(sess) != "plan":
         return sess, "평면도 슬롯에서만 자동 추출을 씁니다."
     if sess.get("method") != "auto":
@@ -90,10 +104,16 @@ def register(app):
             return _fail(str(exc), 410)
         if why:
             return _fail(why, 409)
+        raw = body.get("zones") or []
+        if len(raw) > MAX_ZONES:
+            return _fail(f"영역이 너무 많습니다: {len(raw)}곳 "
+                         f"(최대 {MAX_ZONES}). 넓은 사각형 하나로 묶으세요.")
         try:
-            rects = [[float(v) for v in r[:4]] for r in (body.get("zones") or [])]
+            rects = [[float(v) for v in r[:4]] for r in raw]
         except (TypeError, ValueError, IndexError):
             return _fail("영역 좌표가 올바르지 않습니다 ([[x0,y0,x1,y1], …]).")
+        if any(len(r) != 4 for r in rects):
+            return _fail("영역은 [x0,y0,x1,y1] 네 값이어야 합니다.")
         sess["auto_zones"] = rects
         return jsonify({"ok": True, "zones": len(rects)})
 
@@ -114,7 +134,12 @@ def register(app):
         except Exception as exc:  # noqa: BLE001
             return _fail(f"헤드 후보를 찾지 못했습니다: {exc}", 500)
         sess["auto_heads"] = heads
-        return jsonify({"ok": True, "n": len(heads), "heads": heads[:4000]})
+        # 조용히 자르지 않는다 — 몇 개를 뺐는지 응답에 실어 화면이 그대로
+        # 말하게 한다(이 저장소의 표시 상한 규약).
+        shown = heads[:HEAD_PREVIEW_CAP]
+        return jsonify({"ok": True, "n": len(heads), "heads": shown,
+                        "shown": len(shown),
+                        "dropped": len(heads) - len(shown)})
 
     @app.post("/api/module-f/auto/run")
     def module_f_auto_run():

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """모듈 F 라우트 — 2단계 손질(이음·삭제·급수·종류·자동 이음·최불리)."""
 from __future__ import annotations
 
@@ -12,6 +12,29 @@ from routes.module_f.graph import _autojoin_apply, _autojoin_scan
 from routes.module_f.jobs import _job_running, _run_job, _sess
 from routes.module_f.remote30 import _worst_k_heads
 from routes.module_f.views import _edit_state
+
+
+def _edit_session(body, *, need_board: bool = True):
+    """손질 세션을 꺼낸다 — **작업이 도는 중이면 거절한다.**
+
+    ★board 는 스레드 안전하지 않다. 무거운 작업(자동 이음 적용·수리계산 확정)은
+      워커 스레드에서 같은 board 를 고치는데, 손질 라우트는 요청 스레드에서
+      고친다. 둘이 겹치면 노드·간선이 반쯤 바뀐 상태가 되고, 그 손상은 한참
+      뒤 «전개 실패» 로만 드러난다.
+
+      화면의 가림막은 캔버스만 덮어 옆 패널 단추는 눌린다(실측) — 진짜 방벽은
+      여기다. 예전에는 자동 이음 «적용» 에만 있었고 클릭·되돌리기·물흐름·
+      최불리에는 없었다.
+
+    반환: (sess, es, 실패응답). 실패응답이 있으면 그대로 돌려주면 된다.
+    """
+    sess = _sess(body.get("sid"))          # ValueError 는 호출자가 410 으로
+    if _job_running(sess):
+        return sess, None, _fail("작업이 끝난 뒤에 손질할 수 있습니다.", 409)
+    es = sess.get("edit")
+    if need_board and es is None:
+        return sess, None, _fail("손질 세션이 없습니다.")
+    return sess, es, None
 
 
 def register(app):
@@ -52,12 +75,11 @@ def register(app):
     def module_f_edit_mode():
         body = request.get_json(silent=True) or {}
         try:
-            sess = _sess(body.get("sid"))
+            sess, es, bad = _edit_session(body)
         except ValueError as exc:
             return _fail(str(exc), 410)
-        es = sess.get("edit")
-        if es is None:
-            return _fail("손질 세션이 없습니다.")
+        if bad:
+            return bad
         from services.cad_import.edit.session import (
             MODE_DELETE, MODE_JOIN, MODE_SOURCE, MODE_VALVE)
         allowed = {MODE_JOIN, MODE_DELETE, MODE_SOURCE, MODE_VALVE}
@@ -71,12 +93,11 @@ def register(app):
     def module_f_edit_click():
         body = request.get_json(silent=True) or {}
         try:
-            sess = _sess(body.get("sid"))
+            sess, es, bad = _edit_session(body)
         except ValueError as exc:
             return _fail(str(exc), 410)
-        es = sess.get("edit")
-        if es is None:
-            return _fail("손질 세션이 없습니다.")
+        if bad:
+            return bad
         try:
             x = float(body.get("x"))
             y = float(body.get("y"))
@@ -96,12 +117,11 @@ def register(app):
         """고른 헤드의 종류를 덮는다. 미지정이 남으면 변환이 막힌다."""
         body = request.get_json(silent=True) or {}
         try:
-            sess = _sess(body.get("sid"))
+            sess, es, bad = _edit_session(body)
         except ValueError as exc:
             return _fail(str(exc), 410)
-        es = sess.get("edit")
-        if es is None:
-            return _fail("손질 세션이 없습니다.")
+        if bad:
+            return bad
         from services.cad_import.kinds import CONFIRMED_KINDS
         kind = str(body.get("kind") or "")
         if kind not in CONFIRMED_KINDS:
@@ -116,12 +136,11 @@ def register(app):
     def module_f_edit_undo():
         body = request.get_json(silent=True) or {}
         try:
-            sess = _sess(body.get("sid"))
+            sess, es, bad = _edit_session(body)
         except ValueError as exc:
             return _fail(str(exc), 410)
-        es = sess.get("edit")
-        if es is None:
-            return _fail("손질 세션이 없습니다.")
+        if bad:
+            return bad
         ok = es.undo()
         if ok:
             sess["water_path"] = None
@@ -136,12 +155,11 @@ def register(app):
         """끊긴 관 끝을 짝짓고 이을 여유를 도면에서 잰다. 아직 붙이지 않는다."""
         body = request.get_json(silent=True) or {}
         try:
-            sess = _sess(body.get("sid"))
+            sess, es, bad = _edit_session(body)
         except ValueError as exc:
             return _fail(str(exc), 410)
-        es = sess.get("edit")
-        if es is None:
-            return _fail("손질 세션이 없습니다.")
+        if bad:
+            return bad
         try:
             force = body.get("eps_mm")
             force = None if force in (None, "", 0) else float(force)
@@ -175,17 +193,15 @@ def register(app):
         """후보를 모듈 E 의 이음 판정에 태운다. 무거워서 잡으로 돌린다."""
         body = request.get_json(silent=True) or {}
         try:
-            sess = _sess(body.get("sid"))
+            sess, es, bad = _edit_session(body)
         except ValueError as exc:
             return _fail(str(exc), 410)
-        es = sess.get("edit")
-        if es is None:
-            return _fail("손질 세션이 없습니다.")
+        if bad:
+            return bad
+        # 잡 실행 중 거절은 이제 `_edit_session` 이 한다(손질 라우트 전부에).
         scan = sess.get("autojoin")
         if not scan or not scan.get("cands"):
             return _fail("먼저 «끊긴 곳 찾기» 를 눌러 후보를 뽑으세요.")
-        if _job_running(sess):
-            return _fail("이미 작업이 돌고 있습니다. 끝난 뒤에 다시 눌러 주세요.", 409)
 
         def job():
             rep = _autojoin_apply(es.board, scan)
@@ -217,12 +233,11 @@ def register(app):
     def module_f_edit_flow():
         body = request.get_json(silent=True) or {}
         try:
-            sess = _sess(body.get("sid"))
+            sess, es, bad = _edit_session(body)
         except ValueError as exc:
             return _fail(str(exc), 410)
-        es = sess.get("edit")
-        if es is None:
-            return _fail("손질 세션이 없습니다.")
+        if bad:
+            return bad
         state = es.flow()
         if state is None:
             return _fail("급수 시작 위치를 먼저 찍어야 물흐름을 볼 수 있습니다.")
@@ -246,12 +261,11 @@ def register(app):
         """Remote 30 — 급수원에서 가장 불리한 K 헤드와 그 경로를 고른다."""
         body = request.get_json(silent=True) or {}
         try:
-            sess = _sess(body.get("sid"))
+            sess, es, bad = _edit_session(body)
         except ValueError as exc:
             return _fail(str(exc), 410)
-        es = sess.get("edit")
-        if es is None:
-            return _fail("손질 세션이 없습니다.")
+        if bad:
+            return bad
         b = es.board
         if not b.sources:
             return _fail("급수 시작 위치를 먼저 찍어야 최불리 헤드를 고를 수 있습니다.")
@@ -290,6 +304,10 @@ def register(app):
         # «이 장의 이 구역» 이 자연스러운 읽기다.
         zones = body.get("zones")
         if zones:
+            from routes.module_f.api_auto import MAX_ZONES
+            if len(zones) > MAX_ZONES:
+                return _fail(f"영역이 너무 많습니다: {len(zones)}곳 "
+                             f"(최대 {MAX_ZONES}). 넓은 사각형 하나로 묶으세요.")
             try:
                 rects = []
                 for z in zones:
@@ -388,12 +406,11 @@ def register(app):
     def module_f_edit_save():
         body = request.get_json(silent=True) or {}
         try:
-            sess = _sess(body.get("sid"))
+            sess, es, bad = _edit_session(body)
         except ValueError as exc:
             return _fail(str(exc), 410)
-        es = sess.get("edit")
-        if es is None:
-            return _fail("손질 세션이 없습니다.")
+        if bad:
+            return bad
         path = es.commit()
         # 파일 이름만 돌려준다 — 서버 폴더 구조는 밖으로 나갈 이유가 없다.
         return jsonify({"ok": True, "file": os.path.basename(path),

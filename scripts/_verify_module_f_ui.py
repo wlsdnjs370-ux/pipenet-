@@ -370,6 +370,19 @@ def main() -> int:
                     check("관경 근거 색칠이 꺼지고 잠긴다",
                           page.is_disabled("#dg-bore-color")
                           and not page.is_checked("#dg-bore-color"))
+                    # ★검토에서 나온 것 — 자동 경로에서 산출 저장이 영영
+                    #   잠겨 있었다(계통도 없이 뽑으면 저장할 길이 없었다).
+                    check("자동에서도 «.sdf + .slf 저장» 이 열린다",
+                          not page.is_disabled("#dg-emit"))
+                    page.click("#dg-emit")
+                    saved = False
+                    for _ in range(400):        # 100ms × 400 = 40s
+                        page.wait_for_timeout(100)
+                        if not page.is_disabled("#dg-download"):
+                            saved = True
+                            break
+                    check("자동 경로 산출이 실제로 저장된다", saved,
+                          page.inner_text("#status").strip()[:70])
             # 표가 몇 개인지가 아니라 «한 판 안에서 겹치는가» 를 본다 — 패널이
             # 다르면 동시에 보이지 않으므로 중복이 아니다(손질 패널에 셋이
             # 몰려 있던 것이 문제였다).

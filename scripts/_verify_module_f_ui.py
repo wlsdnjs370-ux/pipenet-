@@ -326,8 +326,14 @@ def main() -> int:
                     check("단계바가 자동 흐름이다",
                           steps == ["도면 열기", "자동 추출", "수리계산", "통합"],
                           " · ".join(steps))
-                    check("영역·알람밸브 전에는 실행이 막힌다",
-                          page.is_disabled("#au-run"))
+                    # ★알람밸브만 없으면 막힌다. 영역은 «좁히는» 선택이라
+                    #   그것 때문에 막히면 안 된다.
+                    check("알람밸브 전에는 검출·추리기가 막힌다",
+                          page.is_disabled("#au-run")
+                          and page.is_disabled("#au-heads"))
+                    check("범위 좁히기는 접혀 있다",
+                          "hidden" in (page.get_attribute("#au-zone-body",
+                                                          "class") or ""))
 
                     # ── 자동 경로를 실제로 끝까지 돌린다.
                     #    알람밸브는 «헤드 좌표» 를 쓴다 — bbox 모서리엔 배관이
@@ -349,18 +355,13 @@ def main() -> int:
                             const d = (h.x-cx)**2 + (h.y-cy)**2;
                             if (d < bd) { bd = d; best = h; }
                           }
-                          const pad = 1000;
                           await j('/api/module-f/auto/anchor',
                                   {sid, x: best.x, y: best.y});
-                          await j('/api/module-f/auto/zones', {sid, zones: [[
-                            Math.min(...xs)-pad, Math.min(...ys)-pad,
-                            Math.max(...xs)+pad, Math.max(...ys)+pad]]});
                           return {ok: true, n: hs.n};
                         }""", seen.get("sid"))
-                    check("헤드 후보·알람밸브·영역 준비", bool(ran.get("ok")),
-                          str(ran.get("why") or f"후보 {ran.get('n')}개"))
+                    check("헤드 검출·알람밸브 준비", bool(ran.get("ok")),
+                          str(ran.get("why") or f"헤드 {ran.get('n')}개"))
                     if ran.get("ok"):
-                        # 화면이 서버 상태를 되살리는가 — 영역이 되돌아와야 한다.
                         # ★같은 단계를 다시 누르면 gotoStage 가 그냥 돌아간다 —
                         #   다른 단계를 거쳐 와야 재적재가 돈다.
                         page.evaluate(
@@ -369,11 +370,16 @@ def main() -> int:
                         page.evaluate(
                             "() => document.querySelectorAll('#steps div')[1].click()")
                         page.wait_for_timeout(700)
-                        check("영역이 서버에서 되살아난다",
-                              "영역 1곳" in page.inner_text("#au-zones"),
+                        # 영역 없이도 추리기가 열려야 한다 — 영역은 선택이다.
+                        check("영역 없이도 추리기가 열린다",
+                              not page.is_disabled("#au-run"),
                               page.inner_text("#au-zones").strip())
-                        check("준비되면 실행이 열린다",
-                              not page.is_disabled("#au-run"))
+                        page.click("#au-heads")
+                        page.wait_for_timeout(2500)
+                        check("헤드 검출이 화면에 뜬다",
+                              "검출된 헤드" in page.inner_text("#au-heads-info"),
+                              page.inner_text("#au-heads-info").strip()
+                              .replace("\n", " ")[:50])
                         page.click("#au-run")
                         done = False
                         for _ in range(600):        # 100ms × 600 = 60s

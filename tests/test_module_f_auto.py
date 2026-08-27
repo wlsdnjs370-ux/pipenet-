@@ -21,7 +21,8 @@ for _p in (_ROOT, os.path.join(_ROOT, "core")):
         sys.path.insert(0, _p)
 
 from routes.module_f.auto import (  # noqa: E402
-    LABEL_OFFSET_FOR_AUTO, AutoError, head_region_of, preview_view, summarize)
+    LABEL_OFFSET_FOR_AUTO, AutoError, head_region_of, preview_view,
+    region_around, summarize)
 from routes.module_f.merge import (  # noqa: E402
     ANCHOR_LABEL, LABEL_OFFSET, label_offset_for, to_head_tables)
 
@@ -66,10 +67,27 @@ def test_자동_표에_9를_먹이면_기준점이_사라진다():
 
 
 # ─────────────────────────────────────────── ② 필수 입력
-def test_영역이_없으면_올린다():
-    with pytest.raises(AutoError, match="영역"):
-        head_region_of(None)
-    with pytest.raises(AutoError, match="영역"):
+def test_영역이_없으면_검출에서_만든다():
+    """영역은 «좁히는» 선택이지 시작 조건이 아니다 — 안 그리면 헤드 전부."""
+    heads = [{"x": 0, "y": 0}, {"x": 1000, "y": 500}, {"x": -200, "y": 800}]
+    r = region_around(heads, pad_mm=100.0)
+    assert len(r) == 1
+    x0, y0, x1, y1 = r[0]
+    assert x0 == -300.0 and y0 == -100.0        # 최소 − 여유
+    assert x1 == 1100.0 and y1 == 900.0         # 최대 + 여유
+    # 만든 사각형은 모든 헤드를 담는다
+    reg = head_region_of(r)
+    assert all(reg.contains((h["x"], h["y"])) for h in heads)
+
+
+def test_헤드가_없으면_범위를_못_만든다():
+    """0개인데 조용히 넘어가면 «영역 밖» 으로 오해한다 — 도면 탓임을 말한다."""
+    with pytest.raises(AutoError, match="헤드를 찾지 못"):
+        region_around([])
+
+
+def test_빈_사각형은_여전히_올린다():
+    with pytest.raises(AutoError, match="비었"):
         head_region_of([])
 
 

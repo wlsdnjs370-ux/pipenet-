@@ -92,14 +92,38 @@ def detect_head_candidates(entities, layer_cat, rects=None):
     return out
 
 
+# 검출한 헤드를 감싸는 사각형에 둘 여유(mm). 헤드 중심만으로 자르면 기호 반경과
+# 접속관 끝이 경계 밖으로 나가 region 게이트에서 떨어진다.
+AUTO_REGION_PAD_MM = 1000.0
+
+
 def head_region_of(rects):
-    """사각형 목록 → A 의 `HeadRegion`. 없으면 올린다(anchored 는 필수 인자)."""
+    """사각형 목록 → A 의 `HeadRegion`."""
     if not rects:
-        raise AutoError(
-            "헤드 영역을 먼저 그리세요 — 자동 추출은 «어디의 헤드인가» 가 있어야 "
-            "앵커를 세웁니다 (도면 전체를 쓰려면 도면을 감싸는 사각형 하나를 그리세요).")
+        raise AutoError("영역이 비었습니다.")
     from remote30_graph import HeadRegion
     return HeadRegion.from_rects([tuple(float(v) for v in r) for r in rects])
+
+
+def region_around(heads, pad_mm: float = AUTO_REGION_PAD_MM):
+    """검출한 헤드 전체를 감싸는 사각형 하나.
+
+    `select_worst30_heads_anchored` 는 `head_region` 을 필수로 받는다 — 앵커를
+    세우려면 «어디의 헤드인가» 가 있어야 하기 때문이다. 그런데 사람 입장에서
+    기본값은 «도면에서 찾은 헤드 전부» 다. 영역을 그리는 것은 그것을 «좁히는»
+    선택이지, 시작하기 위한 조건이 아니다.
+
+    그래서 안 그렸으면 검출 결과에서 만들어 쓴다.
+    """
+    pts = [(float(h["x"]), float(h["y"])) for h in (heads or ())]
+    if not pts:
+        raise AutoError(
+            "도면에서 헤드를 찾지 못했습니다 — 헤드 검출을 먼저 해 보고, "
+            "그래도 0개면 이 도면은 자동 추출로 읽을 수 없습니다.")
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    return [[min(xs) - pad_mm, min(ys) - pad_mm,
+             max(xs) + pad_mm, max(ys) + pad_mm]]
 
 
 def run_auto(entities, layer_cat, *, alarm_xy, rects, k: int = 30,
@@ -114,6 +138,10 @@ def run_auto(entities, layer_cat, *, alarm_xy, rects, k: int = 30,
 
     if alarm_xy is None:
         raise AutoError("알람밸브 위치를 도면에서 찍으세요.")
+    # 영역은 «좁히는» 선택이다 — 안 그렸으면 검출한 헤드 전부를 범위로 삼는다.
+    region_auto = not rects
+    if region_auto:
+        rects = region_around(detect_head_candidates(entities, layer_cat))
     region = head_region_of(rects)
     audit: dict = {}
     try:
@@ -132,8 +160,12 @@ def run_auto(entities, layer_cat, *, alarm_xy, rects, k: int = 30,
         sel, entities, project_title=project_title,
         anchor_window=audit.get("anchor_window"))
 
-    return {"tables": tables, "selection": sel,
-            "summary": summarize(sel, tables)}
+    summary = summarize(sel, tables)
+    # 영역을 사람이 그린 것인지 검출에서 만든 것인지 — 화면이 말할 수 있게.
+    summary["region_auto"] = region_auto
+    summary["zones"] = len(rects)
+    return {"tables": tables, "selection": sel, "rects": rects,
+            "summary": summary}
 
 
 def summarize(sel, tables) -> dict:

@@ -125,7 +125,12 @@ def register(app):
 
     @app.post("/api/module-f/auto/heads")
     def module_f_auto_heads():
-        """헤드 후보만 먼저 — 영역을 어디에 그릴지 정하려면 이게 있어야 한다."""
+        """② 헤드 검출 — 도면에서 헤드를 **전부** 찾는다.
+
+        모듈 A 의 `detect_heads`(R1~R5·신뢰도) 그대로다. 이것이 「알람밸브 찍고
+        나면 자동으로 헤드가 다 나온다」의 그 단계이고, 범위(영역)의 기본값도
+        여기서 나온다 — 영역을 그리는 것은 그것을 «좁히는» 선택일 뿐이다.
+        """
         body = request.get_json(silent=True) or {}
         try:
             sess, why = _need_auto(body)
@@ -140,6 +145,9 @@ def register(app):
         except Exception as exc:  # noqa: BLE001
             return _fail(f"헤드 후보를 찾지 못했습니다: {exc}", 500)
         sess["auto_heads"] = heads
+        print(f"[자동] 헤드 검출 {len(heads):,}개"
+              + (f" (영역 {len(sess['auto_zones'])}곳 안)"
+                 if sess.get("auto_zones") else " (도면 전체)"))
         # 조용히 자르지 않는다 — 몇 개를 뺐는지 응답에 실어 화면이 그대로
         # 말하게 한다(이 저장소의 표시 상한 규약).
         shown = heads[:HEAD_PREVIEW_CAP]
@@ -161,8 +169,7 @@ def register(app):
             return _fail("작업이 끝난 뒤에 실행할 수 있습니다.", 409)
         if not sess.get("auto_alarm"):
             return _fail("알람밸브 위치를 먼저 찍으세요.", 400)
-        if not sess.get("auto_zones"):
-            return _fail("헤드 영역을 먼저 그리세요.", 400)
+        # 영역은 «좁히는» 선택이다 — 안 그렸으면 검출한 헤드 전부를 범위로.
         try:
             k = max(1, min(int(body.get("k") or REMOTE_K_DEFAULT), 200))
         except (TypeError, ValueError):
@@ -170,11 +177,12 @@ def register(app):
         sess["auto_k"] = k
 
         def job():
-            print(f"[자동] 위상 검출 시작 — 기준개수 {k} · 영역 "
-                  f"{len(sess['auto_zones'])}곳")
+            zones = sess.get("auto_zones") or []
+            print(f"[자동] 최불리 추리기 — 기준개수 {k} · 범위 "
+                  + (f"영역 {len(zones)}곳" if zones else "도면 전체"))
             got = run_auto(sess["entities"], sess["layer_cat"],
                            alarm_xy=sess["auto_alarm"],
-                           rects=sess["auto_zones"], k=k,
+                           rects=zones, k=k,
                            project_title=f"모듈 F 자동 — {sess.get('key') or ''}",
                            progress_cb=lambda f, m: print(f"[자동] {m}"))
             sess["auto"] = got

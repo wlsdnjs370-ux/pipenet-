@@ -391,26 +391,38 @@
     <!-- [A 방식] 자동 추출 — 알람밸브 한 점 + 헤드 영역만 사람이 정한다 -->
     <section class="card hidden" id="panel-auto">
       <h2>자동 추출 <span class="tag">MODULE A</span></h2>
+      <h2>① 알람밸브</h2>
       <div class="row">
-        <button id="au-anchor">① 알람밸브 찍기</button>
+        <button id="au-anchor">도면에서 찍기</button>
         <button id="au-anchor-clear">지우기</button>
       </div>
       <div id="au-anchor-info" class="hint">—</div>
-      <label class="chk"><input type="checkbox" id="au-zone-arm">
-        <span>② 헤드 영역 그리기</span></label>
-      <div id="au-zones" class="hint">영역 없음</div>
+
+      <h2 style="margin-top:14px">② 헤드 검출</h2>
       <div class="row">
-        <button id="au-zone-undo">마지막 지우기</button>
-        <button id="au-zone-clear">전부 지우기</button>
-        <button id="au-heads">헤드 후보 보기</button>
+        <button id="au-heads" class="go">헤드 검출</button>
       </div>
-      <label class="f" style="margin-top:9px"><span>기준개수 (NFTC 103 표 2.1.1.1)</span>
+      <div id="au-heads-info" class="hint">—</div>
+      <h2 class="fold" style="margin-top:10px" data-fold="au-zone-body">
+        <span class="caret">▶</span>범위 좁히기</h2>
+      <div class="foldbody hidden" id="au-zone-body">
+        <label class="chk"><input type="checkbox" id="au-zone-arm">
+          <span>영역 그리기</span></label>
+        <div id="au-zones" class="hint">영역 없음 · 도면 전체</div>
+        <div class="row">
+          <button id="au-zone-undo">마지막 지우기</button>
+          <button id="au-zone-clear">전부 지우기</button>
+        </div>
+      </div>
+
+      <h2 style="margin-top:14px">③ 최불리 추리기</h2>
+      <label class="f"><span>기준개수 (NFTC 103 표 2.1.1.1)</span>
         <select id="au-k-preset"></select></label>
       <label class="f"><span>기준개수 K</span>
         <input type="number" id="au-k" value="30" min="1" max="200"></label>
       <div class="hint" id="au-k-why"></div>
-      <div class="row" style="margin-top:12px">
-        <button id="au-run" class="go">③ 추출 실행</button>
+      <div class="row" style="margin-top:10px">
+        <button id="au-run" class="go">배관망 추리기</button>
       </div>
       <div id="au-summary" class="hint">—</div>
       <div class="row" style="margin-top:10px">
@@ -1825,9 +1837,14 @@
       : "—";
     $("au-zones").textContent = S.zones.length
       ? `영역 ${S.zones.length}곳`
-      : "영역 없음";
-    const ready = !!a && S.zones.length > 0;
-    $("au-run").disabled = !ready;
+      : "영역 없음 · 도면 전체";
+    $("au-heads-info").innerHTML = S.autoHeads.length
+      ? kv("검출된 헤드", `<span class="ok">${S.autoHeads.length.toLocaleString()}개</span>`
+           + (S.zones.length ? ` · 영역 ${S.zones.length}곳 안` : " · 도면 전체"))
+      : "—";
+    // 영역은 «좁히는» 선택이다 — 알람밸브만 있으면 돌릴 수 있다.
+    $("au-run").disabled = !a;
+    $("au-heads").disabled = !a;
     $("au-to-design").disabled = !S.autoDone;
     if (d && d.summary) {
       S.autoSummary = d.summary;
@@ -1837,10 +1854,13 @@
 
   function renderAutoSummary(s) {
     if (!s) { $("au-summary").textContent = "—"; return; }
-    let html = kv("헤드", `<span class="ok">${s.k}개</span>`)
+    let html = kv("설계면적 헤드", `<span class="ok">${s.k}개</span>`)
       + kv("최원 / 최근", `${s.far_m} m / ${s.near_m} m`)
-      + kv("표", `절점 ${s.nodes} · 배관 ${s.pipes} · 노즐 ${s.nozzles}`
-           + ` · 부속 ${s.fittings}`);
+      + kv("배관망", `절점 ${s.nodes} · 배관 ${s.pipes} · 노즐 ${s.nozzles}`
+           + ` · 부속 ${s.fittings}`)
+      + kv("범위", s.region_auto
+           ? "도면 전체 (검출된 헤드에서 자동)"
+           : `영역 ${s.zones}곳`);
     // 급수원이 그래프에서 멀어 갈아탄 것은 숨기지 않는다.
     if (s.source_fallback) {
       html += kv('<span class="warn">급수원 대체</span>',
@@ -1902,7 +1922,11 @@
     try {
       const d = await post("/api/module-f/auto/heads", { sid: S.sid });
       S.autoHeads = d.heads || [];
-      let msg = `헤드 후보 ${d.n.toLocaleString()}개 — 영역을 이 둘레로 그리세요.`;
+      renderAuto(null);
+      let msg = d.n
+        ? `헤드 ${d.n.toLocaleString()}개를 찾았습니다 — 그대로 추리거나, `
+          + `「범위 좁히기」로 구역을 지정하세요.`
+        : "헤드를 찾지 못했습니다 — 알람밸브 위치나 도면 레이어를 확인하세요.";
       if (d.dropped) {
         msg += ` (화면에는 ${d.dropped.toLocaleString()}개를 뺐습니다 — 표시`
              + ` 상한. 추출은 전량 대상입니다.)`;

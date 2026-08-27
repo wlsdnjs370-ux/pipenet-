@@ -104,6 +104,19 @@ def main() -> int:
             slots = page.inner_text("#slots").strip()
             check("슬롯 자리 있음", bool(slots), slots[:50])
 
+            # ── 추출 방식 갈림 (A 자동 / E 수동)
+            check("방식 고르는 자리가 있다",
+                  page.query_selector("#open-method") is not None)
+            check("기본은 수동", page.is_checked("#open-m-manual"))
+            check("자동도 고를 수 있다",
+                  page.query_selector("#open-m-auto") is not None)
+            check("자동 추출 패널이 있다",
+                  page.query_selector("#panel-auto") is not None)
+            for aid in ("au-anchor", "au-zone-arm", "au-heads", "au-run",
+                        "au-k-preset", "au-k"):
+                check(f"#{aid} 존재", page.query_selector(f"#{aid}") is not None)
+            page.check("#open-m-manual")     # 아래 검사는 수동 기준이다
+
             # ── 갈 수 없는 단계는 막힌다. ★도면을 열기 «전» 에 봐야 한다 —
             #    열고 나면 찍기가 실제로 도달 가능해져 이 검사가 뜻을 잃는다.
             page.click("#steps div:nth-child(2)")     # 찍기 — 재료 없음
@@ -231,6 +244,31 @@ def main() -> int:
                         break
                 check("끝나면 다시 접힌다", closed,
                       page.inner_text("#job-line").strip()[:60])
+
+                # ── 자동 방식으로 같은 도면을 다시 연다 — 단계바가 갈리나
+                page.reload(wait_until="load")
+                page.wait_for_timeout(700)
+                page.check("#open-m-auto")
+                page.set_input_files("#dxf", str(small))
+                page.click("#btn-open")
+                got_auto = False
+                for _ in range(200):          # 100ms × 200 = 20s
+                    page.wait_for_timeout(100)
+                    steps = page.eval_on_selector_all(
+                        "#steps div", "els => els.map(e => e.textContent.trim())")
+                    if "자동 추출" in steps:
+                        got_auto = True
+                        break
+                check("자동으로 열면 단계바가 갈린다", got_auto,
+                      " · ".join(page.eval_on_selector_all(
+                          "#steps div", "els => els.map(e => e.textContent.trim())")))
+                if got_auto:
+                    check("찍기·손질 단계가 없다",
+                          "찍기" not in steps and "손질" not in steps,
+                          " · ".join(steps))
+                    check("자동 패널이 보인다", page.is_visible("#panel-auto"))
+                    check("영역·알람밸브 전에는 실행이 막힌다",
+                          page.is_disabled("#au-run"))
             # 표가 몇 개인지가 아니라 «한 판 안에서 겹치는가» 를 본다 — 패널이
             # 다르면 동시에 보이지 않으므로 중복이 아니다(손질 패널에 셋이
             # 몰려 있던 것이 문제였다).

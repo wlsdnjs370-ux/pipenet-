@@ -237,8 +237,20 @@ def riser_tables_from(riser: dict):
                        av_node_label=av)
 
 
+def label_offset_for(method) -> int:
+    """평면도가 어느 길로 왔는지에 따라 라벨 오프셋이 갈린다.
+
+    G(수동 · E 경로)의 표는 BFS 로 **1** 부터 매기므로 +9 를 먹여 기준점을 10 으로
+    올린다. 모듈 A(자동)의 `build_input_tables` 는 **처음부터 10** 이다
+    (`counter = [10]`) — 거기에 또 +9 를 먹이면 기준점이 19 가 되어 S740 결합이
+    성립하지 않는다. 두 경로의 표가 같은 자리에 들어가므로 여기서 가른다.
+    """
+    return 0 if str(method or "").lower() == "auto" else LABEL_OFFSET
+
+
 def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
                   source_drop_m: float = 0.0, pump=None,
+                  method: str = "manual",
                   head_orientation: str = "pendent",
                   head_stub_pct: float = 2.5):
     """S720 → S730 → S740 — 세 도면을 한 배관망으로.
@@ -257,8 +269,11 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
 
     mode = check_supply_mode(mode)
     is_pump = mode in PUMP_MODES
-    ht = to_head_tables(head_tbl)
-    steps: list[str] = ["S740 기준점 10 정합"]
+    off = label_offset_for(method)
+    ht = to_head_tables(head_tbl, offset=off)
+    steps: list[str] = [
+        "S740 기준점 10 정합"
+        + (" (자동 경로 — 이미 10)" if off == 0 else f" (+{off})")]
 
     if not riser:
         # 계통도가 없다 — 평면도 단독. 결합할 입상관이 없으므로 여기서 끝난다.

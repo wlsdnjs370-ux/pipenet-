@@ -1,0 +1,171 @@
+# -*- coding: utf-8 -*-
+"""[A 방식] 모듈 F 라우트 — 평면도 자동 추출(모듈 A 위상 검출).
+
+수동(E)이 「색으로 배관을 찍고 헤드를 찍고 급수원을 찍는」 길이라면, 여기는
+「알람밸브 한 점 + 헤드 영역」만 사람이 정하고 나머지를 A 가 하는 길이다.
+
+    /auto/state      지금 무엇이 준비됐나 (도면 · 알람밸브 · 영역)
+    /auto/heads      헤드 후보만 먼저 (영역을 정하기 전에 어디 있나 보려고)
+    /auto/anchor     알람밸브 위치 지정
+    /auto/run        선정 실행 → 5종 입력표
+    /auto/preview    결과 캔버스 payload
+
+★결과는 수동 경로와 **같은 자리**에 놓인다(`sess["design"]`) — 그래야 수리계산
+  표·통합·산출이 두 길을 구분하지 않고 받는다. 다른 것은 오는 길뿐이다.
+"""
+from __future__ import annotations
+
+from flask import jsonify, request
+
+from routes.module_f.auto import AutoError, detect_head_candidates, preview_view, run_auto
+from routes.module_f.common import REMOTE_K_DEFAULT, _fail
+from routes.module_f.jobs import _job_running, _run_job, _sess
+from routes.module_f.slots import _slot_active
+
+
+def _need_auto(body_or_args):
+    """자동 슬롯이고 도면이 읽혀 있는가."""
+    sess = _sess(body_or_args.get("sid"))
+    if _slot_active(sess) != "plan":
+        return sess, "평면도 슬롯에서만 자동 추출을 씁니다."
+    if sess.get("method") != "auto":
+        return sess, "이 도면은 수동(색 찍기)으로 열렸습니다."
+    if not sess.get("entities"):
+        return sess, "도면이 아직 준비되지 않았습니다."
+    return sess, None
+
+
+def register(app):
+    @app.get("/api/module-f/auto/state")
+    def module_f_auto_state():
+        try:
+            sess = _sess(request.args.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        return jsonify({
+            "ok": True,
+            "method": sess.get("method") or "manual",
+            "opened": bool(sess.get("entities")),
+            "alarm": sess.get("auto_alarm"),
+            "zones": len(sess.get("auto_zones") or ()),
+            "k": int(sess.get("auto_k") or REMOTE_K_DEFAULT),
+            "diag": sess.get("auto_diag"),
+            "done": bool(sess.get("auto")),
+            "summary": (sess.get("auto") or {}).get("summary"),
+        })
+
+    @app.post("/api/module-f/auto/anchor")
+    def module_f_auto_anchor():
+        """알람밸브(기준점) 위치 — 특허 S210·S220 의 «사용자 지정»."""
+        body = request.get_json(silent=True) or {}
+        try:
+            sess, why = _need_auto(body)
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        if why:
+            return _fail(why, 409)
+        x, y = body.get("x"), body.get("y")
+        if x is None or y is None:
+            sess["auto_alarm"] = None            # 지우기
+            return jsonify({"ok": True, "alarm": None})
+        try:
+            sess["auto_alarm"] = [float(x), float(y)]
+        except (TypeError, ValueError):
+            return _fail(f"좌표가 숫자가 아닙니다: {x!r}, {y!r}")
+        return jsonify({"ok": True, "alarm": sess["auto_alarm"]})
+
+    @app.post("/api/module-f/auto/zones")
+    def module_f_auto_zones():
+        """헤드 영역 — anchored 선정의 필수 입력(`head_region`)."""
+        body = request.get_json(silent=True) or {}
+        try:
+            sess, why = _need_auto(body)
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        if why:
+            return _fail(why, 409)
+        try:
+            rects = [[float(v) for v in r[:4]] for r in (body.get("zones") or [])]
+        except (TypeError, ValueError, IndexError):
+            return _fail("영역 좌표가 올바르지 않습니다 ([[x0,y0,x1,y1], …]).")
+        sess["auto_zones"] = rects
+        return jsonify({"ok": True, "zones": len(rects)})
+
+    @app.post("/api/module-f/auto/heads")
+    def module_f_auto_heads():
+        """헤드 후보만 먼저 — 영역을 어디에 그릴지 정하려면 이게 있어야 한다."""
+        body = request.get_json(silent=True) or {}
+        try:
+            sess, why = _need_auto(body)
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        if why:
+            return _fail(why, 409)
+        try:
+            heads = detect_head_candidates(
+                sess["entities"], sess["layer_cat"],
+                rects=sess.get("auto_zones") or None)
+        except Exception as exc:  # noqa: BLE001
+            return _fail(f"헤드 후보를 찾지 못했습니다: {exc}", 500)
+        sess["auto_heads"] = heads
+        return jsonify({"ok": True, "n": len(heads), "heads": heads[:4000]})
+
+    @app.post("/api/module-f/auto/run")
+    def module_f_auto_run():
+        """선정 실행. 무거우므로 잡으로 돌린다."""
+        body = request.get_json(silent=True) or {}
+        try:
+            sess, why = _need_auto(body)
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        if why:
+            return _fail(why, 409)
+        if _job_running(sess):
+            return _fail("작업이 끝난 뒤에 실행할 수 있습니다.", 409)
+        if not sess.get("auto_alarm"):
+            return _fail("알람밸브 위치를 먼저 찍으세요.", 400)
+        if not sess.get("auto_zones"):
+            return _fail("헤드 영역을 먼저 그리세요.", 400)
+        try:
+            k = max(1, min(int(body.get("k") or REMOTE_K_DEFAULT), 200))
+        except (TypeError, ValueError):
+            k = REMOTE_K_DEFAULT
+        sess["auto_k"] = k
+
+        def job():
+            print(f"[자동] 위상 검출 시작 — 기준개수 {k} · 영역 "
+                  f"{len(sess['auto_zones'])}곳")
+            got = run_auto(sess["entities"], sess["layer_cat"],
+                           alarm_xy=sess["auto_alarm"],
+                           rects=sess["auto_zones"], k=k,
+                           project_title=f"모듈 F 자동 — {sess.get('key') or ''}",
+                           progress_cb=lambda f, m: print(f"[자동] {m}"))
+            sess["auto"] = got
+            # ★수동 경로와 같은 자리에 놓는다 — 하류가 두 길을 구분하지 않는다.
+            #   `got` 은 G 의 제한전개 산출이라 자동 경로엔 없다. 빈 dict 를 두면
+            #   미리보기의 담당 헤드 수가 0 으로 떨어질 뿐 나머지는 그대로 돈다.
+            sess["design"] = {"got": {}, "tables": got["tables"], "k": k,
+                              "schedule": None, "marks": {}, "method": "auto"}
+            s = got["summary"]
+            print(f"[자동] 완료 — 헤드 {s['k']} · 절점 {s['nodes']} · "
+                  f"배관 {s['pipes']} · 최원 {s['far_m']} m")
+            if s["source_fallback"]:
+                print("[자동] ★급수원이 그래프에서 멀어 최근접 절점으로 대체됐습니다 "
+                      "— 알람밸브 위치를 확인하세요.")
+            return s
+
+        _run_job(sess, "자동 추출", job)
+        return jsonify({"ok": True, "sid": sess["id"]})
+
+    @app.get("/api/module-f/auto/preview")
+    def module_f_auto_preview():
+        try:
+            sess = _sess(request.args.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        got = sess.get("auto")
+        if not got:
+            return _fail("아직 자동 추출을 실행하지 않았습니다.", 404)
+        return jsonify({"ok": True, "view": preview_view(got["tables"]),
+                        "summary": got["summary"],
+                        "tables": got["tables"].as_dict()})

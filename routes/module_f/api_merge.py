@@ -52,8 +52,11 @@ def _materials(sess: dict) -> dict:
         key, _label = _SLOT_PICK[kind]
         val = _slot_value(sess, kind, key)
         if kind == "plan" and isinstance(val, dict):
+            # 어느 길로 온 표인지 함께 들고 간다 — 라벨 오프셋이 갈린다.
+            out["plan_method"] = val.get("method") or "manual"
             val = val.get("tables")
         out[kind] = val
+    out.setdefault("plan_method", "manual")
     return out
 
 
@@ -138,6 +141,9 @@ def register(app, *, UPLOAD_DIR):
 
         def job():
             print(f"[결합] S700 시작 — 급수방식 {SUPPLY_MODES[mode]}")
+            print(f"[결합]   평면도 경로: "
+                  + ("자동(A 위상 검출)" if mats["plan_method"] == "auto"
+                     else "수동(E 색 찍기)"))
             for kind in SLOT_KINDS:
                 print(f"[결합]   {_SLOT_PICK[kind][1]}: "
                       + ("있음" if mats[kind] else "없음"))
@@ -145,7 +151,8 @@ def register(app, *, UPLOAD_DIR):
                 mats["plan"], riser=mats["system"],
                 machineroom=mats["machineroom"], mode=mode,
                 source_drop_m=sess.get("source_drop_m", 0.0),
-                pump=sess.get("pump_spec"))
+                pump=sess.get("pump_spec"),
+                method=mats["plan_method"])
             sess["merged"] = got
             summary = combined_summary(got)
             sess["merge_summary"] = summary

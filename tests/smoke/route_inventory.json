@@ -257,6 +257,56 @@
     "rule": "/api/module-d/result/<job_id>/<path:filename>"
   },
   {
+    "endpoint": "module_f_auto_anchor",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/auto/anchor"
+  },
+  {
+    "endpoint": "module_f_auto_heads",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/auto/heads"
+  },
+  {
+    "endpoint": "module_f_auto_preview",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/auto/preview"
+  },
+  {
+    "endpoint": "module_f_auto_run",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/auto/run"
+  },
+  {
+    "endpoint": "module_f_auto_state",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/auto/state"
+  },
+  {
+    "endpoint": "module_f_auto_zones",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/auto/zones"
+  },
+  {
     "endpoint": "module_f_convert_fields",
     "methods": [
       "GET",

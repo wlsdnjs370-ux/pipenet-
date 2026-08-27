@@ -22,6 +22,42 @@ from routes.module_f.slots import (
 from routes.module_f.world import _world_payload
 
 
+def _auto_open_job(sess: dict, dxf):
+    """[A 방식] 평면도를 «자동 추출» 로 연다 — 모듈 A 의 파서로 읽는다.
+
+    수동(E)은 찍기판(PickSession)을 만들지만 여기는 그럴 이유가 없다. A 의
+    위상 검출은 entity 목록과 레이어 분류 위에서 바로 돈다 — 사람이 정할 것은
+    알람밸브 한 점과 헤드 영역뿐이다.
+    """
+    import os
+    import time
+
+    from routes.module_f.auto import parse_plan
+    from routes.module_f.subdrawing import entities_to_world
+
+    def job():
+        t0 = time.perf_counter()
+        print(f"[자동] DXF 읽는 중 — {os.path.basename(str(dxf))}")
+        ents, layer_cat, diag = parse_plan(dxf)
+        sess["entities"] = ents
+        sess["layer_cat"] = layer_cat
+        sess["auto_diag"] = diag
+        sess["key"] = os.path.splitext(os.path.basename(str(dxf)))[0]
+        sess["world"] = _world_payload(entities_to_world(ents))
+        print(f"[자동] 완료 {time.perf_counter() - t0:.1f}s · "
+              f"도형 {diag['entities']:,} · 레이어 {diag['layers']}")
+        cats = diag.get("cats") or {}
+        print("[자동] 레이어 용도: "
+              + " · ".join(f"{k} {v}" for k, v in sorted(cats.items())))
+        # 외부참조 시트면 도면 내용이 딴 파일에 있다 — 헤드 0개로 끝난다.
+        xr = diag.get("xref") or {}
+        if xr.get("is_xref_shell"):
+            print("[자동] ★이 파일은 외부참조(XREF) 껍데기입니다 — 도면 내용이 "
+                  "딴 파일에 있어 헤드를 찾지 못할 수 있습니다.")
+        return {"key": sess["key"], "entities": diag["entities"]}
+    return job
+
+
 def _sub_open_job(sess: dict, dxf, kind: str):
     """[H-2 · H-3] 계통도·기계실을 여는 잡 — 평면도와 다른 제1국면.
 
@@ -124,16 +160,34 @@ def register(app, *, _save_upload):
         except Exception as exc:  # noqa: BLE001
             return _fail(f"도면을 저장하지 못했습니다: {exc}", 500)
 
+        # 평면도만 방식이 갈린다 — 자동(A 위상 검출) / 수동(E 색 찍기).
+        # 같은 것을 뽑지만 오는 길이 다르고, 도면이 어느 쪽에 맞는지는 사람이
+        # 안다(auto.py 머리말).
+        method = str(request.form.get("method") or "manual").strip().lower()
+        if method not in ("manual", "auto"):
+            return _fail(f"그런 방식이 없습니다: {method!r} (manual | auto)")
+        if kind != "plan":
+            method = "manual"          # 계통도·기계실은 두 점 찍기 하나뿐이다
+
         if sess is None:
             sess = _new_session(slot=kind, dxf=str(dxf))
         else:
             _slot_switch(sess, kind)
             sess["dxf"] = str(dxf)
+        sess["method"] = method
 
-        # 평면도만 E 의 찍기로 간다 — 계통도·기계실은 찍을 재료가 없다(S650 의
-        # «같은 절차» 는 같은 구현을 뜻하지 않는다. subdrawing.py 머리말 참조).
-        job = (_open_job(sess, dxf) if kind == "plan"
-               else _sub_open_job(sess, dxf, kind))
-        _run_job(sess, f"{SLOT_LABELS[kind]} 읽기", job)
+        # 계통도·기계실은 찍을 재료가 없다(S650 의 «같은 절차» 는 같은 구현을
+        # 뜻하지 않는다. subdrawing.py 머리말 참조).
+        if kind != "plan":
+            job = _sub_open_job(sess, dxf, kind)
+            phase = f"{SLOT_LABELS[kind]} 읽기"
+        elif method == "auto":
+            job = _auto_open_job(sess, dxf)
+            phase = "평면도 읽기 (자동)"
+        else:
+            job = _open_job(sess, dxf)
+            phase = "평면도 읽기"
+        _run_job(sess, phase, job)
         return jsonify({"ok": True, "sid": sess["id"], "kind": kind,
+                        "method": method,
                         "filename": os.path.basename(str(dxf))})

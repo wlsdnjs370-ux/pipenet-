@@ -331,6 +331,18 @@
       <label class="f"><span>DXF 파일</span>
         <input type="file" id="dxf" accept=".dxf">
       </label>
+      <!-- 같은 평면도에서 같은 것을 뽑는 길이 둘이다. 순서가 다르다.
+           계통도·기계실 슬롯에는 이 갈림이 없다(두 점 찍기 하나뿐). -->
+      <div id="open-method">
+        <label class="chk">
+          <input type="radio" name="open-method" id="open-m-auto" value="auto">
+          <span><b>자동</b> — 알람밸브·영역만 찍으면 나머지는 검출
+            <span class="tag">MODULE A</span></span></label>
+        <label class="chk">
+          <input type="radio" name="open-method" id="open-m-manual" value="manual" checked>
+          <span><b>수동</b> — 색으로 배관·헤드를 직접 찍기
+            <span class="tag">MODULE E</span></span></label>
+      </div>
       <div class="row"><button id="btn-open" class="go">불러오기</button></div>
     </section>
 
@@ -365,6 +377,36 @@
         <button id="sub-clean">깨끗한 배관망으로 통째 읽기</button>
       </div>
       <div id="sub-summary" class="hint">—</div>
+    </section>
+
+    <!-- [A 방식] 자동 추출 — 알람밸브 한 점 + 헤드 영역만 사람이 정한다 -->
+    <section class="card hidden" id="panel-auto">
+      <h2>자동 추출 <span class="tag">MODULE A</span></h2>
+      <div class="row">
+        <button id="au-anchor">① 알람밸브 찍기</button>
+        <button id="au-anchor-clear">지우기</button>
+      </div>
+      <div id="au-anchor-info" class="hint">—</div>
+      <label class="chk"><input type="checkbox" id="au-zone-arm">
+        <span>② 헤드 영역 그리기</span></label>
+      <div id="au-zones" class="hint">영역 없음</div>
+      <div class="row">
+        <button id="au-zone-undo">마지막 지우기</button>
+        <button id="au-zone-clear">전부 지우기</button>
+        <button id="au-heads">헤드 후보 보기</button>
+      </div>
+      <label class="f" style="margin-top:9px"><span>기준개수 (NFTC 103 표 2.1.1.1)</span>
+        <select id="au-k-preset"></select></label>
+      <label class="f"><span>기준개수 K</span>
+        <input type="number" id="au-k" value="30" min="1" max="200"></label>
+      <div class="hint" id="au-k-why"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="au-run" class="go">③ 추출 실행</button>
+      </div>
+      <div id="au-summary" class="hint">—</div>
+      <div class="row" style="margin-top:10px">
+        <button id="au-to-design">수리계산 입력 →</button>
+      </div>
     </section>
 
     <!-- 2. 찍기 — 자동 추천 두 갈래(레이어 사전 · 헤드 인식)를 한 카드에 둔다.
@@ -678,6 +720,9 @@
     // [H-2 · H-3] 계통도·기계실이 찍는 두 점 · 무엇을 찍는 중인지
     sub: { picks: [null, null], arm: null, summary: null },
     merge: null,                            // [H-5] 통합 상태 한 장
+    // [A 방식] 자동 추출 — 방식·알람밸브·헤드 후보·완료 여부
+    method: "manual", autoAlarm: null, autoArm: null,
+    autoHeads: [], autoDone: false,
     world: null, pick: null, edit: null, design: null,
     suggest: null,                          // [F-5] 찍기 후보 (제안만)
     suggestOff: new Set(),                  // 반영에서 제외한 후보 index
@@ -735,8 +780,9 @@
   // 영역 지정 드래그 — 켜져 있을 때만 왼쪽 버튼을 가로챈다(패닝은 그대로).
   let zoneDrag = null;
   cv.addEventListener("mousedown", (e) => {
-    if (e.button === 0 && !e.shiftKey && S.stage === "edit"
-        && $("ed-zone-arm").checked) {
+    const armed = (S.stage === "edit" && $("ed-zone-arm").checked)
+               || (S.stage === "auto" && $("au-zone-arm").checked);
+    if (e.button === 0 && !e.shiftKey && armed) {
       zoneDrag = { x0: wx(e.offsetX), y0: wy(e.offsetY),
                    x1: wx(e.offsetX), y1: wy(e.offsetY) };
       e.preventDefault();
@@ -772,7 +818,10 @@
       if (px < 8 || py < 8) { draw(); return; }
       S.zones.push([Math.min(z.x0, z.x1), Math.min(z.y0, z.y1),
                     Math.max(z.x0, z.x1), Math.max(z.y0, z.y1)]);
-      renderZones();
+      // 자동 경로는 영역이 서버의 필수 입력이라 곧바로 올린다(anchored 의
+      // head_region). 수동은 최불리 선정을 누를 때 함께 보낸다.
+      if (S.stage === "auto") pushAutoZones();
+      else renderZones();
       draw();
     }
   });
@@ -794,6 +843,7 @@
     if (S.stage === "pick") pickClick(x, y, maxD);
     else if (S.stage === "edit") editClick(x, y, maxD);
     else if (S.stage === "sub") subClick(x, y);
+    else if (S.stage === "auto") autoClick(x, y);
   });
 
   // ── 되돌리기 단축키 ────────────────────────────────────────────
@@ -844,6 +894,7 @@
       // [H-2 · H-3] 찍은 두 점을 도면 위에 남긴다 — 어디를 찍었는지 안 보이면
       // 추출이 틀렸을 때 클릭이 문제인지 도면이 문제인지 가릴 수 없다.
       if (S.stage === "sub") drawSubPicks();
+      if (S.stage === "auto") { drawZones(); drawAuto(); }
     }
   }
 
@@ -1119,14 +1170,17 @@
   // 찍기·손질·변환이 통째로 없다 — 두 점을 찍어 경로를 뽑으면 끝이다.
   // 통합(S700)은 슬롯에 딸리지 않는다: 세 슬롯의 결과를 모으는 자리라 어느
   // 슬롯에서 보든 맨 끝에 붙는다.
+  // 평면도는 방식에 따라 밟는 단계가 통째로 다르다. 자동은 찍기·손질·변환이
+  // 없다 — 알람밸브와 영역만 정하면 검출이 표까지 낸다.
   const STAGE_FLOW = {
     plan: ["open", "pick", "edit", "conv", "design"],
+    plan_auto: ["open", "auto", "design"],
     system: ["open", "sub"],
     machineroom: ["open", "sub"],
   };
   const STAGE_LABEL = {
     open: "도면 열기", pick: "찍기", edit: "손질", conv: "변환",
-    design: "수리계산", sub: "경로 추출", merge: "통합",
+    design: "수리계산", sub: "경로 추출", auto: "자동 추출", merge: "통합",
   };
   // 각 단계가 켜는 패널. 한 곳에 모아 둔다 — 예전에는 toggle 이 아홉 줄로
   // 흩어져 있어 패널을 하나 늘릴 때마다 빠뜨릴 자리가 늘었다.
@@ -1138,12 +1192,14 @@
     design: ["panel-design"],
     // 레이어 토글은 여기서도 쓴다 — 건축 배경을 못 끄면 두 점을 찍기 어렵다.
     sub: ["panel-sub", "panel-layers"],
+    auto: ["panel-auto", "panel-layers"],
     merge: ["panel-merge"],
   };
   const ALL_PANELS = [...new Set(Object.values(STAGE_PANELS).flat())];
 
   function stageFlow() {
-    return (STAGE_FLOW[S.slot] || STAGE_FLOW.plan).concat(["merge"]);
+    const key = (S.slot === "plan" && S.method === "auto") ? "plan_auto" : S.slot;
+    return (STAGE_FLOW[key] || STAGE_FLOW.plan).concat(["merge"]);
   }
 
   // 지금 갈 수 있는 단계인가 — 재료가 없는 곳으로 보내면 빈 화면만 나온다.
@@ -1151,9 +1207,11 @@
     if (name === "open") return true;
     if (name === "merge") return !!S.sid;
     if (name === "sub") return !!S.world;
+    if (name === "auto") return !!S.world;
     if (name === "pick") return !!S.world;
     if (name === "edit" || name === "conv") return !!S.edit;
-    if (name === "design") return !!S.edit;
+    // 수리계산은 두 길 다에서 온다 — 자동은 표가 이미 나왔을 때만.
+    if (name === "design") return S.method === "auto" ? !!S.autoDone : !!S.edit;
     return false;
   }
 
@@ -1182,6 +1240,7 @@
     try {
       if (name === "merge") { await loadMerge(); return; }
       if (name === "sub") { await loadSub(); return; }
+      if (name === "auto") { await loadAuto(); return; }
       if (name === "design") { setStage("design"); await designPreview(); return; }
       if (name === "conv") {
         setStage("conv");
@@ -1199,10 +1258,12 @@
     for (const id of ALL_PANELS) {
       $(id).classList.toggle("hidden", !want.has(id));
     }
-    // 「이어서 열기」는 평면도만의 개념이다(찍은 스펙 목록) — 계통도·기계실
-    // 슬롯에서 띄우면 남의 도면 목록을 이 슬롯에 여는 것처럼 보인다.
-    if (name === "open" && S.slot !== "plan") {
-      $("panel-resume").classList.add("hidden");
+    // 「이어서 열기」와 「추출 방식」은 평면도만의 개념이다 — 계통도·기계실
+    // 슬롯에서 띄우면 남의 것을 이 슬롯에 여는 것처럼 보인다.
+    if (name === "open") {
+      const isPlan = S.slot === "plan";
+      $("panel-resume").classList.toggle("hidden", !isPlan);
+      $("open-method").classList.toggle("hidden", !isPlan);
     }
     renderSteps();
     draw();
@@ -1328,16 +1389,26 @@
     // (S650 회귀 한 바퀴) — 없으면 새 세션이 이 종류로 시작한다.
     fd.append("kind", S.slot);
     if (S.sid) fd.append("sid", S.sid);
+    // 평면도만 방식이 갈린다 — 자동(A 위상 검출) / 수동(E 색 찍기).
+    const method = S.slot === "plan"
+      ? (document.querySelector("input[name=open-method]:checked") || {}).value || "manual"
+      : "manual";
+    fd.append("method", method);
     busy(true, "업로드 중…");
     try {
       const d = await api("/api/module-f/slot/open", { method: "POST", body: fd });
       S.sid = d.sid;
+      S.method = d.method || "manual";
+      S.zones = []; S.autoAlarm = null; S.autoHeads = []; S.autoDone = false;
       say(`${d.filename} 읽는 중…`);
-      // 평면도는 찍기로, 계통도·기계실은 두 점 찍기로 간다.
-      watch(d.kind === "plan" ? loadWorld : async () => {
+      // 세 갈래 — 평면도 수동은 찍기로, 평면도 자동은 알람밸브·영역으로,
+      // 계통도·기계실은 두 점 찍기로.
+      watch(async () => {
+        if (d.kind === "plan" && S.method !== "auto") { await loadWorld(); return; }
         await loadWorldRaw();
         fit(S.world.bounds);
-        await loadSub();
+        if (d.kind === "plan") await loadAuto();
+        else await loadSub();
         loadSlots();
       });
     } catch (err) { busy(false); say(err.message, "err"); }
@@ -1388,31 +1459,43 @@
   // 30 고정이 아니다. 용도·층수·부착높이에 따라 10 · 20 · 30 으로 갈리고,
   // 이 값은 설계면적 헤드 수뿐 아니라 수원량·펌프 유량까지 함께 정한다.
   // 표는 서버(core/nftc_rules.py)가 유일한 출처다 — 여기 옮겨 적지 않는다.
+  // 표는 두 경로(수동 손질 · 자동 추출)가 같이 쓴다 — 한 번 받아 둘 다 채운다.
+  const K_PICKERS = [
+    { sel: "ed-k-preset", num: "ed-k", why: "ed-k-why" },
+    { sel: "au-k-preset", num: "au-k", why: "au-k-why" },
+  ];
+
   async function loadRefCounts() {
-    const sel = $("ed-k-preset");
+    let rows = [];
     try {
       const d = await api("/api/module-f/worst/reference-counts");
-      sel.innerHTML = '<option value="">— 직접 입력 —</option>'
-        + (d.rows || []).map((r, i) =>
-            `<option value="${i}">${r.count}개 · ${r.label}</option>`).join("");
-      S.refCounts = d.rows || [];
+      rows = d.rows || [];
       if (d.message) say(d.message, "warn");
-    } catch (err) {
-      sel.innerHTML = '<option value="">— 직접 입력 —</option>';
-      S.refCounts = [];
+    } catch (err) { rows = []; }
+    S.refCounts = rows;
+    const html = '<option value="">— 직접 입력 —</option>'
+      + rows.map((r, i) =>
+          `<option value="${i}">${r.count}개 · ${r.label}</option>`).join("");
+    for (const p of K_PICKERS) {
+      const el = $(p.sel);
+      if (el) el.innerHTML = html;
     }
   }
 
-  $("ed-k-preset").onchange = () => {
-    const i = $("ed-k-preset").value;
-    if (i === "") { $("ed-k-why").textContent = ""; return; }
-    const row = S.refCounts[Number(i)];
-    if (!row) return;
-    $("ed-k").value = row.count;
-    $("ed-k-why").innerHTML =
-      `<b>${row.count}개</b> — ${row.label} <span class="tag">${row.rule_id}</span>`;
-  };
-  $("ed-k").oninput = () => { $("ed-k-preset").value = ""; };
+  for (const p of K_PICKERS) {
+    const sel = $(p.sel);
+    if (!sel) continue;
+    sel.onchange = () => {
+      const i = sel.value;
+      if (i === "") { $(p.why).textContent = ""; return; }
+      const row = S.refCounts[Number(i)];
+      if (!row) return;
+      $(p.num).value = row.count;
+      $(p.why).innerHTML =
+        `<b>${row.count}개</b> — ${row.label} <span class="tag">${row.rule_id}</span>`;
+    };
+    $(p.num).oninput = () => { sel.value = ""; };
+  }
 
   $("ed-worst-view").onchange = () => draw();
 
@@ -1520,6 +1603,10 @@
       const cur = d.slots.find((s) => s.active);
       // 슬롯마다 어디까지 갔는지가 다르다 — 그 단계로 되돌려 놓는다.
       S.sub = { picks: [null, null], arm: null, summary: null };
+      S.zones = []; S.autoHeads = []; S.autoAlarm = null; S.autoDone = false;
+      // 방식도 슬롯에 딸린다 — 자동으로 연 평면도로 돌아오면 자동 화면이어야 한다.
+      const st = await api(`/api/module-f/auto/state?sid=${S.sid}`);
+      S.method = st.method || "manual";
       if (!cur.opened) {
         S.world = null; S.edit = null; S.key = null;
         setStage("open");
@@ -1528,6 +1615,9 @@
         // 계통도·기계실은 찍기·손질을 거치지 않는다 — 두 점 찍기로 바로 간다.
         await loadWorldRaw();
         await loadSub();
+      } else if (S.method === "auto") {
+        await loadWorldRaw();
+        await loadAuto();
       } else if (cur.stage === "edit") { await loadEdit(); }
       else { await loadWorld(); }
     } catch (err) { say(err.message, "err"); }
@@ -1671,6 +1761,147 @@
     renderSubSummary(d);
     if (S.world) fit(S.world.bounds);
     draw();
+  }
+
+  // ── [A 방식] 자동 추출 — 알람밸브 한 점 + 헤드 영역 ────────────────
+  // 수동(E)이 색으로 배관·헤드를 직접 찍는 길이라면, 여기는 두 가지만 정하고
+  // 헤드 검출·그래프 복원·앵커·최불리를 모듈 A 에 맡긴다.
+  function renderAuto(d) {
+    const a = (d && d.alarm) || S.autoAlarm;
+    $("au-anchor-info").innerHTML = a
+      ? kv("알람밸브", `${a[0].toFixed(0)}, ${a[1].toFixed(0)}`)
+      : "—";
+    $("au-zones").textContent = S.zones.length
+      ? `영역 ${S.zones.length}곳`
+      : "영역 없음";
+    const ready = !!a && S.zones.length > 0;
+    $("au-run").disabled = !ready;
+    $("au-to-design").disabled = !S.autoDone;
+    if (d && d.summary) renderAutoSummary(d.summary);
+  }
+
+  function renderAutoSummary(s) {
+    if (!s) { $("au-summary").textContent = "—"; return; }
+    let html = kv("헤드", `<span class="ok">${s.k}개</span>`)
+      + kv("최원 / 최근", `${s.far_m} m / ${s.near_m} m`)
+      + kv("표", `절점 ${s.nodes} · 배관 ${s.pipes} · 노즐 ${s.nozzles}`
+           + ` · 부속 ${s.fittings}`);
+    // 급수원이 그래프에서 멀어 갈아탄 것은 숨기지 않는다.
+    if (s.source_fallback) {
+      html += kv('<span class="warn">급수원 대체</span>',
+                 `${s.source_bridge_mm} mm 떨어져 최근접 절점으로 — `
+                 + `알람밸브 위치를 확인하세요`);
+    }
+    $("au-summary").innerHTML = html;
+  }
+
+  async function loadAuto() {
+    setStage("auto");
+    try {
+      const d = await api(`/api/module-f/auto/state?sid=${S.sid}`);
+      S.autoDone = !!d.done;
+      if (d.alarm) S.autoAlarm = d.alarm;
+      renderAuto(d);
+      if (S.world) fit(S.world.bounds);
+      draw();
+    } catch (err) { say(err.message, "err"); }
+  }
+
+  function autoClick(x, y) {
+    if (S.autoArm !== "anchor") return;
+    S.autoArm = null;
+    S.autoAlarm = [x, y];
+    post("/api/module-f/auto/anchor", { sid: S.sid, x, y })
+      .then(() => { renderAuto(null); draw(); })
+      .catch((err) => say(err.message, "err"));
+  }
+
+  async function pushAutoZones() {
+    try { await post("/api/module-f/auto/zones", { sid: S.sid, zones: S.zones }); }
+    catch (err) { say(err.message, "err"); }
+    renderAuto(null);
+  }
+
+  $("au-anchor").onclick = () => {
+    S.autoArm = "anchor";
+    say("알람밸브 위치를 캔버스에서 찍으세요.");
+  };
+  $("au-anchor-clear").onclick = async () => {
+    S.autoAlarm = null; S.autoArm = null;
+    try { await post("/api/module-f/auto/anchor", { sid: S.sid }); }
+    catch (err) { say(err.message, "err"); }
+    renderAuto(null); draw();
+  };
+  $("au-zone-undo").onclick = () => { S.zones.pop(); pushAutoZones(); draw(); };
+  $("au-zone-clear").onclick = () => { S.zones = []; pushAutoZones(); draw(); };
+  $("au-zone-arm").onchange = () => {
+    say($("au-zone-arm").checked
+      ? "캔버스를 드래그해 헤드 영역을 그리세요. (화면 이동은 Shift+드래그)"
+      : "영역 그리기를 껐습니다.");
+  };
+
+  $("au-heads").onclick = async () => {
+    busy(true, "헤드 후보 찾는 중…");
+    try {
+      const d = await post("/api/module-f/auto/heads", { sid: S.sid });
+      S.autoHeads = d.heads || [];
+      say(`헤드 후보 ${d.n.toLocaleString()}개 — 영역을 이 둘레로 그리세요.`,
+          d.n ? "ok" : "warn");
+      draw();
+    } catch (err) { say(err.message, "err"); }
+    finally { busy(false); }
+  };
+
+  $("au-run").onclick = async () => {
+    const k = Math.max(1, Math.min(200, Number($("au-k").value || 30)));
+    busy(true, "자동 추출 중…");
+    try {
+      await post("/api/module-f/auto/run", { sid: S.sid, k });
+      watch(async () => {
+        const d = await api(`/api/module-f/auto/state?sid=${S.sid}`);
+        S.autoDone = !!d.done;
+        renderAuto(d);
+        $("dg-k").value = k;
+        renderSteps();
+        if (d.summary) {
+          say(`자동 추출 완료 — 헤드 ${d.summary.k} · 최원 ${d.summary.far_m} m`
+              + ` · 절점 ${d.summary.nodes}`, "ok");
+        }
+      });
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  $("au-to-design").onclick = async () => {
+    setStage("design");
+    try { await designPreview(); }
+    catch (err) { say(err.message, "err"); }
+  };
+
+  function drawAuto() {
+    // 헤드 후보 — 신뢰도로 색을 나눈다(찍기 후보 제안과 같은 규약).
+    for (const h of (S.autoHeads || [])) {
+      ctx.fillStyle = suggestColor(h.conf);
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      ctx.arc(sx(h.x), sy(h.y), 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // 알람밸브 = 기준점. 손질 경로의 급수원과 같은 파란 겹원.
+    if (S.autoAlarm) {
+      const px = sx(S.autoAlarm[0]), py = sy(S.autoAlarm[1]);
+      ctx.strokeStyle = "#3b82f6";
+      ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px - 15, py); ctx.lineTo(px + 15, py);
+      ctx.moveTo(px, py - 15); ctx.lineTo(px, py + 15);
+      ctx.stroke();
+      ctx.fillStyle = "#3b82f6";
+      ctx.font = "11px sans-serif";
+      ctx.fillText("알람밸브", px + 14, py - 8);
+      ctx.lineWidth = 1;
+    }
   }
 
   // ── [H-4 · H-5 · H-6] 통합 — 특허 제5국면 S700 ────────────────────

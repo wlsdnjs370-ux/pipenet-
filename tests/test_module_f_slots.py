@@ -100,6 +100,35 @@ def test_같은_슬롯으로_바꾸면_그대로():
     assert s["key"] == "평면.dxf"
 
 
+def test_전환이_겹쳐도_상태가_안_섞인다():
+    """3차 검토 — 같은 sid 의 전환 «둘» 이 겹치면 순회 중 변경으로 죽거나
+    두 슬롯이 반쯤 섞였다. 전환은 _SWITCH_LOCK 으로 직렬화된다."""
+    import threading
+
+    s = _sess()
+    s["key"] = "평면.dxf"
+    errs: list[BaseException] = []
+
+    def flip(n):
+        try:
+            for _ in range(n):
+                _slot_switch(s, "system")
+                _slot_switch(s, "plan")
+        except BaseException as exc:  # noqa: BLE001
+            errs.append(exc)
+
+    ts = [threading.Thread(target=flip, args=(200,)) for _ in range(4)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert not errs, f"전환 경쟁으로 죽었다: {errs[0]!r}"
+    # 어느 쪽이 활성이든 상태는 온전해야 한다 — 평면도의 key 가 살아 있다.
+    _slot_switch(s, "plan")
+    assert s["key"] == "평면.dxf"
+    assert set(s["slots"]) == {"system", "machineroom"}
+
+
 def test_capture_는_세션전역을_빼고_걷는다():
     s = _sess()
     s["key"] = "k"

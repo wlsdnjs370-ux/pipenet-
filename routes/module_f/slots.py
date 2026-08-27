@@ -24,6 +24,15 @@ S700 이 그 셋을 하나의 배관망으로 결합한다. 그런데 F 의 세�
 """
 from __future__ import annotations
 
+import threading
+
+# 슬롯 전환은 평면 dict 를 «순회하며 지우고 다시 채운다». waitress 는 멀티스레드라
+# 같은 sid 로 전환 요청이 겹치면(더블클릭·재시도) 순회 중 변경으로 죽거나 —
+# 더 나쁘게 — 두 슬롯의 상태가 반쯤 섞인 채 남는다. 전환만 직렬화한다.
+# 세션 dict 안에 Lock 을 넣으면 안 된다: SESSION_KEYS 밖이라 _slot_capture 가
+# 슬롯 상태로 쓸어가 «슬롯마다 다른 락» 이 된다.
+_SWITCH_LOCK = threading.Lock()
+
 SLOT_KINDS = ("plan", "system", "machineroom")
 SLOT_LABELS = {
     "plan": "평면도",
@@ -88,15 +97,20 @@ def _slot_restore(sess: dict, state: dict) -> None:
 
 
 def _slot_switch(sess: dict, kind) -> str:
-    """활성 슬롯을 바꾼다 — 현재 것을 저장소로, 대상 것을 평면으로."""
+    """활성 슬롯을 바꾼다 — 현재 것을 저장소로, 대상 것을 평면으로.
+
+    전환은 직렬화한다(모듈 머리말의 `_SWITCH_LOCK`). 잡 실행 중 409 는 워커와의
+    경쟁만 막는다 — 같은 sid 의 전환 요청 «둘» 이 겹치는 것은 여기서 막는다.
+    """
     target = _check_slot_kind(kind)
-    active = _slot_active(sess)
-    if target == active:
-        return active
-    store = sess.setdefault("slots", {})
-    store[active] = _slot_capture(sess)
-    _slot_restore(sess, store.pop(target, None) or _slot_blank())
-    sess["active"] = target
+    with _SWITCH_LOCK:
+        active = _slot_active(sess)
+        if target == active:
+            return active
+        store = sess.setdefault("slots", {})
+        store[active] = _slot_capture(sess)
+        _slot_restore(sess, store.pop(target, None) or _slot_blank())
+        sess["active"] = target
     return target
 
 

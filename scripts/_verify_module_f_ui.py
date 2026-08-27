@@ -377,9 +377,53 @@ def main() -> int:
                     check("알람밸브 전에는 검출·추출이 막힌다",
                           page.is_disabled("#au-run")
                           and page.is_disabled("#au-heads"))
-                    check("범위 좁히기는 접혀 있다",
-                          "hidden" in (page.get_attribute("#au-zone-body",
-                                                          "class") or ""))
+                    # ★범위 지정은 접이식이 아니라 «3단계» 다 — 어느 구역을
+                    #   뽑을지가 결과를 가르므로 접어 두면 안 된다.
+                    check("범위 지정이 3단계로 서 있다",
+                          page.is_visible("#au-s3")
+                          and page.is_visible("#au-zone-draw"),
+                          page.inner_text("#au-s3").strip()
+                          .replace("\n", " ")[:50])
+                    check("접이식 잔재가 없다",
+                          page.query_selector("#au-zone-body") is None)
+                    steps_lbl = page.eval_on_selector_all(
+                        "#panel-auto .step-h",
+                        "els => els.map(e => e.textContent.trim())")
+                    check("단계가 1·2·3·4 로 선다", len(steps_lbl) == 4,
+                          " / ".join(s[:16] for s in steps_lbl))
+                    check("3단계가 범위 지정이다",
+                          len(steps_lbl) > 2 and "범위 지정" in steps_lbl[2],
+                          steps_lbl[2][:24] if len(steps_lbl) > 2 else "")
+                    check("4단계가 최불리 추출이다",
+                          len(steps_lbl) > 3 and "최불리 추출" in steps_lbl[3],
+                          steps_lbl[3][:24] if len(steps_lbl) > 3 else "")
+                    check("안 그리면 «도면 전체» 라고 말한다",
+                          "도면 전체" in page.inner_text("#au-s3"),
+                          page.inner_text("#au-s3-mark").strip())
+
+                    # ★「알람밸브 지정 버튼이 어디 있는지 모르겠다」를 받고 세운
+                    #   단계 제목 — 실제로 «읽을 수 있는 크기» 인지 잰다.
+                    #   .card h2 는 10px·faint 라 눈에 안 들어왔다.
+                    sz = page.evaluate(
+                        """() => {
+                          const h = document.querySelector('#au-s1 .step-h');
+                          const cs = getComputedStyle(h);
+                          return {px: parseFloat(cs.fontSize),
+                                  txt: h.textContent.trim()};
+                        }""")
+                    check("① 단계 제목이 읽을 수 있는 크기다",
+                          sz["px"] >= 12, f"{sz['px']}px · {sz['txt'][:24]}")
+                    check("제목에 «알람밸브» 와 «시작 노드» 가 있다",
+                          "알람밸브" in sz["txt"] and "시작 노드" in sz["txt"],
+                          sz["txt"][:40])
+                    check("단추가 무엇을 찍는지 말한다",
+                          "알람밸브" in page.inner_text("#au-anchor"),
+                          page.inner_text("#au-anchor").strip())
+                    check("손질의 «급수 시작» 과 다름을 밝힌다",
+                          "급수 시작" in page.inner_text("#au-s1"),
+                          page.inner_text("#au-s1").strip()
+                          .replace("\n", " ")[:60])
+                    page.screenshot(path=str(SHOTS / "4_자동_단계.png"))
 
                     # ── 자동 경로를 실제로 끝까지 돌린다.
                     #    알람밸브는 «헤드 좌표» 를 쓴다 — bbox 모서리엔 배관이
@@ -443,6 +487,18 @@ def main() -> int:
                                 break
                         check("자동 추출이 끝난다", done,
                               page.inner_text("#au-summary").strip()[:70])
+                        # 끝난 단계는 초록 ✓ 로 표시된다 — 순서가 눈에 보인다.
+                        marks = page.evaluate(
+                            """() => ['au-s1','au-s2','au-s3','au-s4'].map(id => ({
+                                 id, done: document.getElementById(id)
+                                        .classList.contains('done'),
+                                 m: document.getElementById(id + '-mark')
+                                        .textContent.trim()}))""")
+                        # 3단계(범위)는 «선택» 이라 안 그렸으면 done 이 아니다.
+                        need = [m for m in marks if m["id"] != "au-s3"]
+                        check("끝낸 단계가 ✓ 로 표시된다",
+                              all(m["done"] for m in need),
+                              " · ".join(f"{m['id']}{m['m']}" for m in marks))
                         # ★추출이 끝나면 나머지 도면이 내려가야 한다. 총량이
                         #   아니라 «밝기» 로 잰다 — 화면을 뽑은 자리로 확대하므로
                         #   총량은 오히려 는다(실측 1,293 → 21,150).

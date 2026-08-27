@@ -480,7 +480,7 @@ def test_뽑은_망을_실제로_받아_온다():
 def test_추출_명칭이_바뀌었다():
     html = _script()
     assert ">배관망 추출<" in html
-    assert "③ 최불리 추출" in html
+    assert "<b>4</b>최불리 추출" in html
     # 「추리」로 시작하는 활용형이 하나도 없어야 한다 — 단추만 고치고 안내
     # 문구를 두면 화면 안에서 이름이 둘로 갈린다.
     assert "추리" not in html, "옛 이름이 남아 있다"
@@ -491,6 +491,71 @@ def test_서버_로그도_같은_이름을_쓴다():
     src = _src(api_auto.register)
     assert "[자동] 최불리 추출 —" in src
     assert "추리기" not in src
+
+
+def test_알람밸브_단계가_눈에_보인다():
+    """`.card h2` 는 10px·faint 구분선이라 「① 알람밸브」가 안 보였다 —
+    「알람밸브 지정 버튼이 어디 있는지 모르겠다」는 말을 실제로 들었다."""
+    html = _script()
+    assert 'id="au-s1"' in html
+    assert "<b>1</b>알람밸브 (시작 노드)" in html
+    i = html.index("  .step-h{")
+    seg = html[i:i + 300]
+    assert "12.5px" in seg, "제목이 여전히 작다"
+
+
+def test_단추가_무엇을_찍는지_말한다():
+    html = _script()
+    i = html.index('id="au-anchor"')
+    assert "알람밸브 찍기" in html[i:i + 120], "«도면에서 찍기» 로는 무엇인지 모른다"
+
+
+def test_손질의_급수시작과_다름을_밝힌다():
+    """모듈 E 의 물흐름/급수 시작과 혼동한다는 지적을 화면에서 직접 푼다."""
+    html = _script()
+    i = html.index('id="au-s1"')
+    assert "급수 시작" in html[i:i + 500]
+
+
+def test_끝낸_단계가_표시된다():
+    """순서가 섞여 보인다는 지적 — «무엇을 이미 했나» 를 화면이 말한다."""
+    html = _script()
+    for sid in ("au-s1", "au-s2", "au-s3", "au-s4"):
+        assert f'id="{sid}-mark"' in html
+    i = html.index("const mark = (id, on, txt)")
+    seg = html[i:i + 800]
+    assert 'mark("au-s1"' in seg and 'mark("au-s4"' in seg
+
+
+def test_범위_지정이_3단계로_승격됐다():
+    """어느 구역을 뽑을지가 결과를 가른다 — 접이식에 묻어 두면 안 된다."""
+    html = _script()
+    assert "<b>3</b>범위 지정" in html
+    assert 'id="au-zone-draw"' in html
+    # 접이식 잔재가 남으면 두 벌이 된다
+    assert 'data-fold="au-zone-body"' not in html
+    assert 'id="au-zone-body"' not in html
+
+
+def test_범위는_안_그려도_되는_단계다():
+    """필수로 보이면 사람이 «그려야만 되는 줄» 알고 멈춘다."""
+    html = _script()
+    i = html.index('id="au-s3"')
+    seg = html[i:i + 700]
+    assert "도면 전체" in seg
+    j = html.index('mark("au-s3"')
+    assert '"도면 전체"' in html[j:j + 300], "안 그렸을 때 표시가 없다"
+
+
+def test_영역_무장은_체크박스_상태를_그대로_쓴다():
+    """캔버스 드래그 판정이 그 값을 읽는다 — 단추만 만들고 끊으면 안 그려진다."""
+    html = _script()
+    assert 'id="au-zone-arm"' in html
+    i = html.index('$("au-zone-draw").onclick')
+    seg = html[i:i + 500]
+    assert '$("au-zone-arm").checked = on;' in seg
+    assert '$("au-zone-arm").checked' in html[html.index("const armed ="):
+                                              html.index("const armed =") + 300]
 
 
 # ═══════════════════════════════════════════ F-8e. 실측·골든

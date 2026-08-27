@@ -107,10 +107,30 @@ def main() -> int:
             page.wait_for_timeout(900)
 
             # ── 단계바가 슬롯 흐름대로 그려졌나 (평면도가 기본)
+            # 방식을 고르기 전에는 「도면 열기」 하나뿐 — 어느 길로 갈지 모른다.
             steps = page.eval_on_selector_all(
                 "#steps div", "els => els.map(e => e.textContent.trim())")
-            want = ["도면 열기", "찍기", "손질", "변환", "수리계산", "통합"]
-            check("단계바 = 평면도 흐름", steps == want, " · ".join(steps))
+            check("고르기 전 단계바는 «도면 열기» 뿐",
+                  steps == ["도면 열기"], " · ".join(steps))
+            check("고르기 전에는 열 수 없다", page.is_disabled("#btn-open"))
+
+            page.check("#open-m-manual")
+            page.wait_for_timeout(200)
+            steps = page.eval_on_selector_all(
+                "#steps div", "els => els.map(e => e.textContent.trim())")
+            check("수동을 고르면 수동 흐름이 뜬다",
+                  steps == ["도면 열기", "찍기", "손질", "변환", "수리계산", "통합"],
+                  " · ".join(steps))
+            page.check("#open-m-auto")
+            page.wait_for_timeout(200)
+            steps = page.eval_on_selector_all(
+                "#steps div", "els => els.map(e => e.textContent.trim())")
+            check("자동을 고르면 자동 흐름으로 바뀐다",
+                  steps == ["도면 열기", "자동 추출", "수리계산", "통합"],
+                  " · ".join(steps))
+            check("고른 뒤에는 열 수 있다", not page.is_disabled("#btn-open"))
+            page.check("#open-m-manual")     # 아래 검사는 수동 기준이다
+            page.wait_for_timeout(200)
 
             # ── 슬롯 탭이 그려졌나 (세션 전에는 안내문)
             slots = page.inner_text("#slots").strip()
@@ -119,7 +139,6 @@ def main() -> int:
             # ── 추출 방식 갈림 (A 자동 / E 수동)
             check("방식 고르는 자리가 있다",
                   page.query_selector("#open-method") is not None)
-            check("기본은 수동", page.is_checked("#open-m-manual"))
             check("자동도 고를 수 있다",
                   page.query_selector("#open-m-auto") is not None)
             check("자동 추출 패널이 있다",
@@ -263,22 +282,23 @@ def main() -> int:
                 page.check("#open-m-auto")
                 page.set_input_files("#dxf", str(small))
                 page.click("#btn-open")
+                # ★단계바는 라디오를 고르는 순간 이미 바뀐다 — 그것으로 기다리면
+                #   파싱이 끝나기 전에 다음으로 넘어간다(실측으로 헤드 0개가 났다).
+                #   실제로 열렸는지는 자동 패널이 뜨는 것으로 본다.
                 got_auto = False
-                for _ in range(200):          # 100ms × 200 = 20s
+                for _ in range(300):          # 100ms × 300 = 30s
                     page.wait_for_timeout(100)
-                    steps = page.eval_on_selector_all(
-                        "#steps div", "els => els.map(e => e.textContent.trim())")
-                    if "자동 추출" in steps:
+                    if (page.is_visible("#panel-auto")
+                            and page.is_hidden("#busy")):
                         got_auto = True
                         break
-                check("자동으로 열면 단계바가 갈린다", got_auto,
-                      " · ".join(page.eval_on_selector_all(
-                          "#steps div", "els => els.map(e => e.textContent.trim())")))
+                steps = page.eval_on_selector_all(
+                    "#steps div", "els => els.map(e => e.textContent.trim())")
+                check("자동으로 열면 자동 화면으로 간다", got_auto, " · ".join(steps))
                 if got_auto:
-                    check("찍기·손질 단계가 없다",
-                          "찍기" not in steps and "손질" not in steps,
+                    check("단계바가 자동 흐름이다",
+                          steps == ["도면 열기", "자동 추출", "수리계산", "통합"],
                           " · ".join(steps))
-                    check("자동 패널이 보인다", page.is_visible("#panel-auto"))
                     check("영역·알람밸브 전에는 실행이 막힌다",
                           page.is_disabled("#au-run"))
 

@@ -338,8 +338,10 @@
           <input type="radio" name="open-method" id="open-m-auto" value="auto">
           <span><b>자동</b> — 알람밸브·영역만 찍으면 나머지는 검출
             <span class="tag">MODULE A</span></span></label>
+        <!-- 기본 선택을 두지 않는다 — 고르기 전에는 어느 길로 갈지 모르므로
+             아래 단계바도 「도면 열기」 하나만 보인다. -->
         <label class="chk">
-          <input type="radio" name="open-method" id="open-m-manual" value="manual" checked>
+          <input type="radio" name="open-method" id="open-m-manual" value="manual">
           <span><b>수동</b> — 색으로 배관·헤드를 직접 찍기
             <span class="tag">MODULE E</span></span></label>
       </div>
@@ -728,7 +730,7 @@
     sub: { picks: [null, null], arm: null, summary: null },
     merge: null,                            // [H-5] 통합 상태 한 장
     // [A 방식] 자동 추출 — 방식·알람밸브·헤드 후보·완료 여부
-    method: "manual", autoAlarm: null, autoArm: null,
+    method: null, autoAlarm: null, autoArm: null,
     autoHeads: [], autoDone: false, autoSummary: null,
     world: null, pick: null, edit: null, design: null,
     suggest: null,                          // [F-5] 찍기 후보 (제안만)
@@ -1205,6 +1207,10 @@
   const ALL_PANELS = [...new Set(Object.values(STAGE_PANELS).flat())];
 
   function stageFlow() {
+    // ★평면도는 방식을 고르기 전까지 흐름이 «없다». 수동 흐름을 미리 펼쳐
+    //   놓으면 자동을 고를 사람에게 찍기·손질·변환을 먼저 보여 주게 된다 —
+    //   아직 정해지지도 않은 길이다. 고른 뒤에 그 길만 보인다.
+    if (S.slot === "plan" && !S.method) return ["open"];
     const key = (S.slot === "plan" && S.method === "auto") ? "plan_auto" : S.slot;
     return (STAGE_FLOW[key] || STAGE_FLOW.plan).concat(["merge"]);
   }
@@ -1271,6 +1277,7 @@
       const isPlan = S.slot === "plan";
       $("panel-resume").classList.toggle("hidden", !isPlan);
       $("open-method").classList.toggle("hidden", !isPlan);
+      syncOpenMethod();
     }
     renderSteps();
     draw();
@@ -1397,10 +1404,13 @@
     fd.append("kind", S.slot);
     if (S.sid) fd.append("sid", S.sid);
     // 평면도만 방식이 갈린다 — 자동(A 위상 검출) / 수동(E 색 찍기).
-    const method = S.slot === "plan"
-      ? (document.querySelector("input[name=open-method]:checked") || {}).value || "manual"
-      : "manual";
-    fd.append("method", method);
+    // 파서가 갈리므로 연 뒤에는 못 바꾼다 — 고르지 않았으면 여기서 세운다.
+    const picked = document.querySelector("input[name=open-method]:checked");
+    if (S.slot === "plan" && !picked) {
+      say("추출 방식(자동 / 수동)을 먼저 고르세요.", "warn");
+      return;
+    }
+    fd.append("method", S.slot === "plan" ? picked.value : "manual");
     busy(true, "업로드 중…");
     try {
       const d = await api("/api/module-f/slot/open", { method: "POST", body: fd });
@@ -1611,9 +1621,13 @@
       // 슬롯마다 어디까지 갔는지가 다르다 — 그 단계로 되돌려 놓는다.
       S.sub = { picks: [null, null], arm: null, summary: null };
       S.zones = []; S.autoHeads = []; S.autoAlarm = null; S.autoDone = false;
-      // 방식도 슬롯에 딸린다 — 자동으로 연 평면도로 돌아오면 자동 화면이어야 한다.
+      // 방식도 슬롯에 딸린다 — 자동으로 연 평면도로 돌아오면 자동 화면이어야
+      // 하고, 아직 안 연 슬롯이면 «안 고른» 상태 그대로여야 한다.
       const st = await api(`/api/module-f/auto/state?sid=${S.sid}`);
-      S.method = st.method || "manual";
+      S.method = st.method || null;
+      for (const r of document.querySelectorAll("input[name=open-method]")) {
+        r.checked = (r.value === S.method);
+      }
       if (!cur.opened) {
         S.world = null; S.edit = null; S.key = null;
         setStage("open");
@@ -2071,6 +2085,9 @@
     try {
       const d = await post("/api/module-f/reopen", { key });
       S.sid = d.sid; S.key = d.key;
+      // 저장본은 찍기가 끝난 것이라 언제나 수동 경로다(손질부터 시작).
+      S.method = "manual";
+      renderSteps();
       watch(loadEdit);
     } catch (err) { busy(false); say(err.message, "err"); }
   };
@@ -2785,6 +2802,24 @@
   }
 
   $("dg-back-auto").onclick = () => loadAuto();
+
+  // 방식을 고르는 순간 그 길의 단계가 나타난다 — 고르기 전에는 「도면 열기」뿐.
+  for (const id of ["open-m-auto", "open-m-manual"]) {
+    $(id).onchange = () => {
+      S.method = $(id).value;
+      syncOpenMethod();
+      renderSteps();
+    };
+  }
+
+  function syncOpenMethod() {
+    // 평면도에서 방식을 안 고르면 열 수 없다 — 파서가 갈리므로 나중에 못 바꾼다.
+    const need = S.slot === "plan";
+    const picked = !!document.querySelector("input[name=open-method]:checked");
+    $("btn-open").disabled = need && !picked;
+    $("btn-open").title = (need && !picked)
+      ? "추출 방식을 먼저 고르세요" : "";
+  }
 
   async function designPreview() {
     const cfg = designSettings();

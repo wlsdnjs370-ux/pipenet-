@@ -39,7 +39,7 @@ TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            "jobRender", "jobFinish",
            "renderAuto", "renderAutoSummary", "loadAuto", "autoClick",
            "pushAutoZones", "drawAuto",
-           "syncDesignForMethod", "renderAutoDesignSummary")
+           "syncDesignForMethod", "renderAutoDesignSummary", "syncOpenMethod")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 

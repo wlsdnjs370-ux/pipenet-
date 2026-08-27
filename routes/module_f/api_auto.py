@@ -44,7 +44,9 @@ def register(app):
             return _fail(str(exc), 410)
         return jsonify({
             "ok": True,
-            "method": sess.get("method") or "manual",
+            # ★기본값을 채우지 않는다. 아직 안 고른 슬롯을 «수동» 이라고
+            #   답하면 화면이 고르지도 않은 길의 단계를 펼친다.
+            "method": sess.get("method"),
             "opened": bool(sess.get("entities")),
             "alarm": sess.get("auto_alarm"),
             # ★개수가 아니라 사각형 그대로 돌려준다. 슬롯을 오갔다 오면 화면은

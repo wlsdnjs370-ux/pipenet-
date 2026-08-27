@@ -41,6 +41,8 @@ def _auto_augment_job(sess: dict, dxf):
         t0 = time.perf_counter()
         print(f"[자동] 위상 검출용으로 다시 읽는 중 — "
               f"{os.path.basename(str(dxf))}")
+        print("[자동]   (자동은 모듈 A 의 파서를 따로 씁니다. 처음 한 번만 "
+              "오래 걸리고, 같은 도면은 다음부터 즉시입니다.)")
         ents, layer_cat, diag = parse_plan(dxf)
         sess["entities"] = ents
         sess["layer_cat"] = layer_cat

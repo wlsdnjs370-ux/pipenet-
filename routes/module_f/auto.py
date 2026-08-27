@@ -35,10 +35,20 @@ def parse_plan(dxf_path):
     A 의 `parse_dxf_bundle` 을 쓴다 — 헤드 검출·그래프 복원이 이 파서의 entity
     모양을 전제한다. 시각화용 파서(`parse_dxf_for_view`)와 섞으면 레이어 승격
     (헤드 틈 지문으로 PIPE 로 올리는 것) 같은 판정이 통째로 빠진다.
-    """
-    from remote30_prototype import _categorize_layer, parse_dxf_bundle
 
-    bundle = parse_dxf_bundle(dxf_path)
+    ★캐시본을 쓴다. 화면은 도면을 이미 찍기판으로 한 번 읽었고(그쪽이 싸다),
+      자동을 고르면 A 의 파서로 **또** 읽어야 한다 — 그 값이 실측으로 크다
+      (LH306 16MB 에서 5.0s, 큰 도면은 수십 초). A 는 파일 «내용 해시» 로
+      디스크 캐시하는 `parse_dxf_bundle_cached` 를 이미 갖고 있는데 안 쓰고
+      있었다: 같은 도면을 다시 열면 5.02s → 0.06s (86배).
+
+      내용 해시 키라 파일을 다시 올려도(mtime 만 바뀌어도) 캐시가 산다 —
+      handoff 가 mtime 때문에 캐시를 통째로 버리던 것과 같은 함정을 여기서는
+      처음부터 피한다.
+    """
+    from remote30_prototype import _categorize_layer, parse_dxf_bundle_cached
+
+    bundle = parse_dxf_bundle_cached(dxf_path)
     ents = list(bundle.entities or ())
     if not ents:
         raise AutoError("도면에서 도형을 읽지 못했습니다.")

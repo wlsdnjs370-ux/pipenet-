@@ -1451,14 +1451,16 @@
   // 어느 길로 갈지 정한다. 도면은 이미 읽혀 화면에 있다 — 수동은 더 읽을
   // 것이 없고(찍기판이 이미 섰다), 자동만 A 의 파서를 한 번 더 돌린다.
   async function readSlot(method) {
-    busy(true, method === "auto" ? "자동 추출 준비 중…" : "여는 중…");
+    busy(true, method === "auto"
+      ? "자동 추출 준비 중… (처음 한 번만 오래 걸립니다)"
+      : "여는 중…");
     try {
       const d = await post("/api/module-f/slot/read", { sid: S.sid, method });
       S.method = d.method || "manual";
       renderSteps();
       const go = async () => {
         if (S.method === "auto") { await loadAuto(); }
-        else { await loadWorld(); }
+        else { await loadWorld(true); }   // 이미 받아 둔 도면을 그대로 쓴다
         loadSlots();
       };
       if (d.started) { watch(go); }      // 자동 — 파싱을 기다린다
@@ -1479,8 +1481,11 @@
     return d;
   }
 
-  async function loadWorld() {
-    await loadWorldRaw();
+  // `reuse` — 이미 받아 둔 도면을 그대로 쓴다. 「불러오기」가 방금 받아 온
+  // 것을 「수동으로 읽기」에서 또 받을 이유가 없다(실측 LH306 1.44 MB —
+  // 내려받고 파싱하고 레이어 목록을 다시 짓는 값이 통째로 헛일이다).
+  async function loadWorld(reuse) {
+    if (!reuse || !S.world) await loadWorldRaw();
     setStage("pick");
     fit(S.world.bounds);
     renderPick();

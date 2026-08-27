@@ -416,6 +416,105 @@ def main() -> int:
                             break
                     check("자동 경로 산출이 실제로 저장된다", saved,
                           page.inner_text("#status").strip()[:70])
+            # ── [F-8c] 혼합 차선 — 업로드 → 카드 → 「인식 결과로 찍기 시작」
+            if small is not None:
+                print("\n  ── [F-8c] 혼합 차선")
+                page.reload(wait_until="load")
+                page.wait_for_timeout(700)
+                clicks = 0
+                page.set_input_files("#dxf", str(small))   # 파일 고르기는 클릭 아님
+                page.click("#btn-open"); clicks += 1
+                page.wait_for_selector("#panel-method:not(.hidden)",
+                                       timeout=120000)
+
+                # 카드가 정찰 수치로 채워졌나 — 고르기 «전» 에 보여야 한다.
+                rc = page.inner_text("#mth-recon").strip().replace("\n", " ")
+                check("카드에 정찰 수치가 뜬다",
+                      "헤드 후보" in rc and "배관 묶음" in rc, rc[:80])
+                check("세 차선 단추가 다 있다",
+                      page.is_visible("#mth-auto")
+                      and page.is_visible("#mth-mixed")
+                      and page.is_visible("#mth-manual"))
+                confs = page.eval_on_selector_all(
+                    "#mth-conf option", "els => els.map(e => e.value)")
+                check("채택 기준을 화면에서 고를 수 있다 (D-F8-4)",
+                      confs and confs[0] == "0.9", " · ".join(confs))
+                check("기본 기준은 0.9 다 (D-F8-4)",
+                      page.input_value("#mth-conf") == "0.9")
+
+                # ★기준에 맞는 후보가 0개면 단추가 잠겨야 한다 — 눌러도 아무
+                #   일이 없는 단추는 «고장» 으로 읽힌다. A 는 알려진 블록 참조만
+                #   0.95 를 주므로 헤드를 레이어에 직접 그린 도면은 높음 0 이다.
+                why0 = page.inner_text("#mth-mixed-why").strip()
+                if "후보가 없습니다" in why0:
+                    check("맞는 후보가 0개면 잠기고 사유를 말한다",
+                          page.is_disabled("#mth-mixed"), why0[:70])
+                else:
+                    check("기본 기준으로 찍을 것이 있다",
+                          not page.is_disabled("#mth-mixed"), why0[:70])
+
+                # 기준을 낮추면 대상이 늘고 단추가 열린다.
+                page.select_option("#mth-conf", "0.75")
+                page.wait_for_timeout(200)
+                why1 = page.inner_text("#mth-mixed-why").strip()
+                check("기준을 바꾸면 예정 수가 따라간다", why1 != why0, why1[:60])
+                check("기준을 낮추면 혼합이 열린다",
+                      not page.is_disabled("#mth-mixed"), why1[:70])
+
+                page.click("#mth-mixed"); clicks += 1
+                page.wait_for_selector("#panel-pick:not(.hidden)",
+                                       timeout=180000)
+                for _ in range(900):        # 100ms × 900 = 90s
+                    page.wait_for_timeout(100)
+                    if page.is_hidden("#busy"):
+                        break
+                check("올린 뒤 클릭 두 번으로 찍기 화면까지", clicks == 2,
+                      f"{clicks}번")
+
+                info = page.inner_text("#pk-adopt-info").strip().replace("\n", " ")
+                check("채택 결과가 화면에 남는다",
+                      "재료" in info and "헤드" in info, info[:90])
+                st = page.evaluate(
+                    """async (sid) => (await (await fetch(
+                        '/api/module-f/world?sid=' + sid)).json()).state""",
+                    seen.get("sid"))
+                check("재료가 실제로 찍혀 있다",
+                      len((st or {}).get("materials") or []) > 0,
+                      f"{len((st or {}).get('materials') or [])}묶음")
+                check("헤드가 실제로 찍혀 있다", (st or {}).get("n_heads", 0) > 0,
+                      f"{(st or {}).get('n_heads')}픽")
+                check("클릭 기록이 남는다 (사람 클릭과 같은 경로)",
+                      (st or {}).get("n_clicks", 0) > 0,
+                      f"{(st or {}).get('n_clicks')}회")
+
+                # 유령 — 점선으로 남고, 그 자리를 누르면 정상 찍기로 간다.
+                ghost_n = page.evaluate(
+                    "() => document.getElementById('pk-adopt-info')"
+                    ".textContent.match(/유령 (\\d+)/)")
+                check("유령 수가 화면에 적힌다", ghost_n is not None,
+                      str(ghost_n))
+                check("낮은 신뢰도 토글이 있다",
+                      page.query_selector("#pk-show-low") is not None)
+
+                # ★유령 위의 클릭을 «후보 제외» 가 가로채면 안 된다 — 사람이
+                #   직접 찍으려고 누르는 자리다. 코드로 확인한다.
+                guard = page.evaluate(
+                    """() => {
+                      const s = [...document.querySelectorAll('script')]
+                        .map(e => e.textContent).join('');
+                      return s.includes('if (S.ghosts && S.ghosts.has(i)) continue;');
+                    }""")
+                check("유령 위 클릭을 가로채지 않는다", bool(guard))
+
+                # 수동 차선 회귀 — 같은 화면에서 기존 단추가 그대로 동작한다.
+                steps_x = page.eval_on_selector_all(
+                    "#steps div", "els => els.map(e => e.textContent.trim())")
+                check("혼합은 수동 흐름을 그대로 쓴다",
+                      steps_x == ["도면 열기", "찍기", "손질", "변환",
+                                  "수리계산", "통합"], " · ".join(steps_x))
+                check("「배관망 구성」 으로 사람이 확정한다 (D-F8-5)",
+                      page.is_visible("#pk-next"))
+
             # 표가 몇 개인지가 아니라 «한 판 안에서 겹치는가» 를 본다 — 패널이
             # 다르면 동시에 보이지 않으므로 중복이 아니다(손질 패널에 셋이
             # 몰려 있던 것이 문제였다).

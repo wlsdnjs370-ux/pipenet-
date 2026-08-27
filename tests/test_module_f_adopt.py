@@ -414,6 +414,125 @@ def test_채택은_board_에_쓰지_않는다():
         assert banned not in body, f"채택이 주입 경로를 만들었다: {banned}"
 
 
+def test_채택의_유일한_쓰기는_클릭이다_():
+    """읽기(by_bundle)는 /pick/auto 가 이미 쓰던 것 — 쓰기는 click 뿐이다."""
+    body = _src(adopt)
+    assert "ps.click(" in body
+    assert body.count("ps.board.") == 1
+    assert "ps.board.by_bundle.get(" in body
+
+
+# ═══════════════════════════════════════════ F-8c. 세 차선
+def _script() -> str:
+    path = os.path.join(_ROOT, "templates", "module_f.html")
+    html = open(path, encoding="utf-8").read()
+    return html
+
+
+def test_방식_카드에_세_차선이_있다():
+    html = _script()
+    for bid in ("mth-auto", "mth-mixed", "mth-manual"):
+        assert f'id="{bid}"' in html, f"#{bid} 가 없다"
+
+
+def test_카드에_정찰_수치_자리가_있다():
+    html = _script()
+    assert 'id="mth-recon"' in html
+    assert "renderRecon" in html and "loadRecon" in html
+
+
+def test_채택_기준을_화면에서_고른다():
+    """D-F8-4 — 기본 0.9, 화면에서 조절 가능."""
+    html = _script()
+    assert 'id="mth-conf"' in html
+    assert "const CONF_CHOICES" in html
+    i = html.index("const CONF_CHOICES")
+    seg = html[i:i + 260]
+    assert "[0.9," in seg and "[0.75," in seg
+    assert 'sel.value = "0.9"' in html, "기본이 0.9 가 아니다"
+
+
+def test_맞는_후보가_0개면_혼합을_잠근다():
+    """눌러도 아무 일이 안 일어나는 단추는 «고장» 으로 읽힌다.
+
+    흔한 일이다 — A 는 알려진 블록 참조만 0.95 를 주므로 헤드를 레이어에 직접
+    그린 도면은 높음 띠가 0 이 된다(실측 LH306 0/42 · B1F 72/3,338).
+    """
+    html = _script()
+    i = html.index("function renderConfHint()")
+    seg = html[i:i + 600]
+    assert '$("mth-mixed").disabled = n === 0;' in seg
+    assert "후보가 없습니다" in seg, "왜 잠겼는지 안 말한다"
+
+
+def test_정찰이_실패하면_혼합만_잠근다():
+    """수동·자동 두 길은 인식과 무관하게 열려 있어야 한다."""
+    html = _script()
+    i = html.index('if (r.state === "error")')
+    seg = html[i:i + 400]
+    assert '$("mth-mixed").disabled = true;' in seg
+    assert "mth-manual" not in seg and "mth-auto" not in seg
+
+
+def test_혼합은_채택까지만_하고_멈춘다():
+    """D-F8-5 — commit 까지 자동으로 가지 않는다. 확정은 사람이 한다."""
+    html = _script()
+    i = html.index('$("mth-mixed").onclick')
+    seg = html[i:i + 1400]
+    assert "/api/module-f/pick/adopt" in seg
+    assert "pick/commit" not in seg, "사람 확정을 건너뛴다"
+
+
+def test_혼합은_수동_흐름을_쓴다():
+    """혼합은 찍기·손질을 그대로 밟는다 — 새 흐름을 만들지 않는다."""
+    html = _script()
+    i = html.index('$("mth-mixed").onclick')
+    seg = html[i:i + 1400]
+    assert 'method: "manual"' in seg
+    assert 'S.method = "manual"' in seg
+
+
+def test_유령은_점선으로_그린다():
+    """추정과 실측을 한 선으로 그리지 않는다 — 저장소 규약."""
+    html = _script()
+    i = html.index("function drawSuggest()")
+    seg = html[i:i + 1200]
+    assert "ctx.setLineDash(ghost ? [3, 3] : [])" in seg
+
+
+def test_유령_위의_클릭은_가로채지_않는다():
+    """유령은 «아직 안 찍힌 것» — 사람이 직접 찍으려고 누르는 자리다."""
+    html = _script()
+    i = html.index("후보 클릭 → 반영 제외/복원")
+    seg = html[i:i + 1200]
+    assert "if (S.ghosts && S.ghosts.has(i)) continue;" in seg
+    assert "if (!S.showLow && Number(c.conf) < 0.75) continue;" in seg
+
+
+def test_낮은_띠는_접어_둔다():
+    """3천 점 위에 또 겹치면 아무것도 안 보인다."""
+    html = _script()
+    assert 'id="pk-show-low"' in html
+    i = html.index("function drawSuggest()")
+    assert "!S.showLow" in html[i:i + 1200]
+
+
+def test_후보_좌표는_찍기로_갈_때만_받는다():
+    """카드는 수치만 받는다 — 3천 점을 카드 그릴 때마다 내려보내지 않는다."""
+    html = _script()
+    i = html.index("async function loadRecon()")
+    assert "heads=1" not in html[i:i + 400], "카드가 좌표까지 받는다"
+    j = html.index("async function applyAdopt(")
+    assert "heads=1" in html[j:j + 500], "채택 뒤에도 좌표를 안 받는다"
+
+
+def test_후보_지우기가_유령도_같이_걷는다():
+    html = _script()
+    i = html.index('$("pk-suggest-clear").onclick')
+    seg = html[i:i + 600]
+    assert "S.ghosts = null;" in seg and "S.adopted = null;" in seg
+
+
 def test_채택의_유일한_쓰기는_클릭이다():
     """읽기(by_bundle)는 /pick/auto 가 이미 쓰던 것 — 쓰기는 click 뿐이다."""
     body = _src(adopt)

@@ -39,7 +39,11 @@ TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            "jobRender", "jobFinish",
            "renderAuto", "renderAutoSummary", "loadAuto", "autoClick",
            "pushAutoZones", "drawAuto",
-           "syncDesignForMethod", "renderAutoDesignSummary", "readSlot")
+           "syncDesignForMethod", "renderAutoDesignSummary", "readSlot",
+           # [F-8c] 정찰 카드 · 채택 · 유령 오버레이
+           "fillConf", "reconPick", "renderConfHint", "renderRecon",
+           "loadRecon", "applyAdopt",
+           "drawSuggest", "suggestInfo", "suggestColor")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 

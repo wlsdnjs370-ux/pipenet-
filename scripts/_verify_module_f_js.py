@@ -33,7 +33,7 @@ TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            "renderMergeSummary", "loadMerge",
            "drawZones", "renderZones",
            "renderSteps", "gotoStage", "stageFlow", "stageReachable",
-           "setStage")
+           "setStage", "loadRefCounts", "drawEdit")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 

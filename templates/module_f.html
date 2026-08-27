@@ -470,9 +470,16 @@
         <span>계산할 도면 장</span>
         <select id="ed-sheet"></select>
       </label>
+      <!-- 기준개수 — NFTC 103 표 2.1.1.1 에서 고른다. 30 고정이 아니다. -->
+      <label class="f" style="margin-top:9px"><span>기준개수 (NFTC 103 표 2.1.1.1)</span>
+        <select id="ed-k-preset"></select></label>
+      <label class="f"><span>기준개수 K</span>
+        <input type="number" id="ed-k" value="30" min="1" max="200"></label>
+      <p class="hint" id="ed-k-why">표에서 고르면 K 가 따라옵니다. 표에 없는
+        경우만 직접 고치세요 — 기준개수는 수원량·펌프 유량까지 함께 정합니다.</p>
       <div class="row">
         <select id="ed-src" class="hidden" title="어느 급수원 기준의 최불리인지"></select>
-        <button id="ed-worst">최불리 30 선정</button>
+        <button id="ed-worst">최불리 선정</button>
         <button id="ed-worst-clear">해제</button>
       </div>
       <!-- 영역 지정 — 모듈 A 의 zones -->
@@ -486,6 +493,15 @@
         <button id="ed-zone-undo">마지막 영역 지우기</button>
         <button id="ed-zone-clear">전부 지우기</button>
       </div>
+      <!-- 선정 뒤 «그것만» 보기 -->
+      <label class="f" style="margin-top:9px"><span>선정 뒤 나머지 배관망</span>
+        <select id="ed-worst-view">
+          <option value="all">그대로 보기</option>
+          <option value="dim" selected>아주 얇은 점선으로 (비활성)</option>
+          <option value="only">감추기 — 최불리망만</option>
+        </select></label>
+      <p class="hint">최불리를 선정한 뒤에만 걸립니다. <b>표시만</b> 바뀌고 망은
+        그대로입니다 — 산출물 범위는 「변환」 단계의 체크박스가 정합니다.</p>
       <p class="hint">급수원에서 가장 불리한 헤드(<b class="tag">앵커</b>·빨간
         겹원)를 찾고, 그 둘레로 <b>배관 거리가 가까운 30개</b>를 묶어 <b>설계면적</b>을
         만듭니다 — 도면 곳곳에 흩어진 30개가 아니라 실제로 함께 방수되는 무리입니다.
@@ -673,6 +689,7 @@
     sid: null, key: null, stage: "open",
     slot: "plan",                           // [H-0] 활성 도면 슬롯 (S650)
     zones: [],                              // 최불리 후보를 가둘 사각형 (A 의 zones)
+    refCounts: [],                          // NFTC 103 표 2.1.1.1 (서버가 준다)
     boreColor: true,                        // 관경 근거로 배관 색 나누기
     // [H-2 · H-3] 계통도·기계실이 찍는 두 점 · 무엇을 찍는 중인지
     sub: { picks: [null, null], arm: null, summary: null },
@@ -912,19 +929,33 @@
 
   function drawEdit() {
     const e = S.edit;
+    // 최불리를 고른 뒤에는 «그것만» 보고 싶을 때가 있다. 표시만 바꾼다 —
+    // 망은 그대로고, 산출물 범위는 「변환」 단계의 체크박스가 정한다.
+    // (선정 전에는 걸지 않는다: 아무것도 안 보이는 화면이 되어 버린다.)
+    const wv = e.worst ? $("ed-worst-view").value : "all";
     ctx.lineWidth = 1.4;
-    for (const g of e.body_groups) {
-      ctx.strokeStyle = g.css;
-      ctx.beginPath();
-      // segs 는 평평한 배열이다 — [x1,y1,x2,y2, x1,y1,x2,y2, …] (찍기 캔버스와 같은 규약)
-      const sg = g.segs;
-      for (let i = 0; i < sg.length; i += 4) {
-        ctx.moveTo(sx(sg[i]), sy(sg[i + 1]));
-        ctx.lineTo(sx(sg[i + 2]), sy(sg[i + 3]));
+    if (wv !== "only") {
+      ctx.save();
+      if (wv === "dim") {
+        ctx.globalAlpha = 0.22;
+        ctx.lineWidth = 0.6;
+        ctx.setLineDash([2, 5]);
       }
-      ctx.stroke();
+      for (const g of e.body_groups) {
+        ctx.strokeStyle = g.css;
+        ctx.beginPath();
+        // segs 는 평평한 배열이다 — [x1,y1,x2,y2, x1,y1,x2,y2, …] (찍기 캔버스와 같은 규약)
+        const sg = g.segs;
+        for (let i = 0; i < sg.length; i += 4) {
+          ctx.moveTo(sx(sg[i]), sy(sg[i + 1]));
+          ctx.lineTo(sx(sg[i + 2]), sy(sg[i + 3]));
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+      ctx.setLineDash([]);
     }
-    if (e.wet_pipes.length) {
+    if (e.wet_pipes.length && wv === "all") {
       ctx.strokeStyle = e.palette.wet;
       ctx.lineWidth = 2.6;
       ctx.beginPath();
@@ -937,7 +968,7 @@
     // 자동 이음 «후보» — 아직 배관이 아니다. 실측 배관과 절대 같이 그리지 않는다:
     // 점선 + 다른 색. 틈이 수십 mm 라 화면 맞춤에서는 선이 1픽셀도 안 되므로,
     // 끊긴 자리마다 작은 고리를 하나 얹어 «여기가 그 자리» 를 보이게 한다.
-    if (e.autojoin && e.autojoin.lines.length) {
+    if (e.autojoin && e.autojoin.lines.length && wv === "all") {
       ctx.save();
       ctx.strokeStyle = "#ff9900";
       ctx.lineWidth = 1.6;
@@ -959,12 +990,19 @@
       ctx.stroke();
       ctx.restore();
     }
-    for (const hd of e.heads) {
-      const r = Math.max(2, hd[2] * S.view.scale);
-      ctx.fillStyle = hd[3];
-      ctx.beginPath();
-      ctx.arc(sx(hd[0]), sy(hd[1]), r, 0, Math.PI * 2);
-      ctx.fill();
+    // 선정 밖 헤드 — «최불리망만» 에서는 감추고, «비활성» 에서는 흐리게.
+    // 선정된 30개는 아래에서 흰 고리로 다시 그려지므로 여기서 빠져도 보인다.
+    if (wv !== "only") {
+      ctx.save();
+      if (wv === "dim") ctx.globalAlpha = 0.25;
+      for (const hd of e.heads) {
+        const r = Math.max(2, hd[2] * S.view.scale);
+        ctx.fillStyle = hd[3];
+        ctx.beginPath();
+        ctx.arc(sx(hd[0]), sy(hd[1]), r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
     }
     ctx.lineWidth = 2;
     ctx.strokeStyle = "#ffffff";
@@ -1027,10 +1065,14 @@
       ctx.strokeStyle = "#ffffff";
       ctx.lineCap = "butt";
       ctx.lineWidth = 2;
+      // 「최불리망만」 에서는 도면 헤드가 통째로 감춰지므로 여기서 속을 채운다 —
+      // 안 그러면 선정된 30개가 빈 고리로만 남아 헤드로 읽히지 않는다.
+      ctx.fillStyle = "rgba(255,255,255,.30)";
       for (const h of e.worst.heads) {
         const r = Math.max(4, h[2] * S.view.scale) + 2;
         ctx.beginPath();
         ctx.arc(sx(h[0]), sy(h[1]), r, 0, Math.PI * 2);
+        if (wv === "only") ctx.fill();
         ctx.stroke();
       }
       // 앵커 = 가장 불리한 지점(기준압을 잡는 헤드). 빨간 겹원으로 못박는다.
@@ -1298,6 +1340,38 @@
       say(msg, "warn");
     } else { say(msg); }
   }
+
+  // ── 기준개수 (NFTC 103 표 2.1.1.1) ─────────────────────────────
+  // 30 고정이 아니다. 용도·층수·부착높이에 따라 10 · 20 · 30 으로 갈리고,
+  // 이 값은 설계면적 헤드 수뿐 아니라 수원량·펌프 유량까지 함께 정한다.
+  // 표는 서버(core/nftc_rules.py)가 유일한 출처다 — 여기 옮겨 적지 않는다.
+  async function loadRefCounts() {
+    const sel = $("ed-k-preset");
+    try {
+      const d = await api("/api/module-f/worst/reference-counts");
+      sel.innerHTML = '<option value="">— 직접 입력 —</option>'
+        + (d.rows || []).map((r, i) =>
+            `<option value="${i}">${r.count}개 · ${r.label}</option>`).join("");
+      S.refCounts = d.rows || [];
+      if (d.message) say(d.message, "warn");
+    } catch (err) {
+      sel.innerHTML = '<option value="">— 직접 입력 —</option>';
+      S.refCounts = [];
+    }
+  }
+
+  $("ed-k-preset").onchange = () => {
+    const i = $("ed-k-preset").value;
+    if (i === "") { $("ed-k-why").textContent = "직접 입력한 값을 씁니다."; return; }
+    const row = S.refCounts[Number(i)];
+    if (!row) return;
+    $("ed-k").value = row.count;
+    $("ed-k-why").innerHTML =
+      `<b>${row.count}개</b> — ${row.label} <span class="tag">${row.rule_id}</span>`;
+  };
+  $("ed-k").oninput = () => { $("ed-k-preset").value = ""; };
+
+  $("ed-worst-view").onchange = () => draw();
 
   // ── 최불리 후보 영역 (모듈 A 의 zones) ─────────────────────────
   // 도면 장 나누기는 «자동으로 잰 경계» 라 실무에서 늘 맞지는 않는다. 한 층에
@@ -2128,13 +2202,17 @@
     busy(true, "최불리 헤드 선정 중…");
     try {
       const sheet = Number(($("ed-sheet") || {}).value || 0);
-      const body = { sid: S.sid, k: 30, sheet };
+      const k = Math.max(1, Math.min(200, Number($("ed-k").value || 30)));
+      const body = { sid: S.sid, k, sheet };
       const src = ($("ed-src") || {}).value;
       if (src) body.source = src;
       if (S.zones.length) body.zones = S.zones;
       const d = await post("/api/module-f/edit/worst", body);
       setEdit(d.state);
       renderEdit();
+      // 수리계산 단계도 같은 K 로 돈다 — 두 곳이 갈리면 손질에서 본 30개와
+      // 표에 실린 K 가 달라져 「어느 쪽이 설계면적인가」 가 사라진다.
+      $("dg-k").value = k;
       const s = d.summary;
       say(`최불리 ${s.k} 헤드 — 후보 ${s.candidates}개 중 · `
         + `최원 유하거리 ${s.far_m} m (경로 ${s.anchor_path_m} m)`
@@ -2797,6 +2875,7 @@
 
   setStage("open");
   loadSaved();
+  loadRefCounts();
 })();
 
 </script>

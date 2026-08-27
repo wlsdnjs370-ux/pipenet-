@@ -15,6 +15,26 @@ from routes.module_f.views import _edit_state
 
 
 def register(app):
+    @app.get("/api/module-f/worst/reference-counts")
+    def module_f_reference_counts():
+        """NFTC 103 표 2.1.1.1 — 기준개수를 고를 수 있게 그대로 내려보낸다.
+
+        표를 화면에 옮겨 적지 않는다. 법정 수치를 두 곳에 두면 개정이 왔을 때
+        한쪽만 고쳐지고, 그 어긋남은 산출로만 드러난다 — `core/nftc_rules.py`
+        가 유일한 출처다.
+        """
+        try:
+            from nftc_rules import reference_count_options
+            rows = reference_count_options()
+        except Exception as exc:  # noqa: BLE001 — 표가 없어도 직접 입력은 된다
+            print(f"[최불리] 기준개수 표를 읽지 못했습니다: {exc}")
+            return jsonify({"ok": True, "rows": [], "default": REMOTE_K_DEFAULT,
+                            "source": None,
+                            "message": f"표를 읽지 못했습니다 — 직접 입력하세요: {exc}"})
+        return jsonify({"ok": True, "rows": rows,
+                        "default": REMOTE_K_DEFAULT,
+                        "source": "NFTC 103 표 2.1.1.1"})
+
     # ─────────────────────────────────────────── 2. 손질
     @app.get("/api/module-f/edit/state")
     def module_f_edit_state():

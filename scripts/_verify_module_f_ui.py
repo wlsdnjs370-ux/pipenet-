@@ -106,8 +106,43 @@ def main() -> int:
 
             # ── 새로 만든 패널들이 DOM 에 있나
             for pid in ("panel-sub", "panel-merge", "panel-design",
-                        "ed-zone-arm", "ed-zones", "dg-bore-legend"):
+                        "ed-zone-arm", "ed-zones", "dg-bore-legend",
+                        "ed-k-preset", "ed-k", "ed-worst-view"):
                 check(f"#{pid} 존재", page.query_selector(f"#{pid}") is not None)
+
+            # ── 기준개수 표가 서버에서 채워졌나 (화면이 표를 옮겨 적지 않는다)
+            opts = page.eval_on_selector_all(
+                "#ed-k-preset option",
+                "els => els.map(e => e.textContent.trim())")
+            check("기준개수 표가 채워진다", len(opts) > 1, f"{len(opts)}행")
+            counts = set()
+            for o in opts[1:]:
+                head = o.split("개")[0].strip()
+                if head.isdigit():
+                    counts.add(int(head))
+            check("표에 10 · 20 · 30 이 다 있다", {10, 20, 30} <= counts,
+                  str(sorted(counts)))
+
+            # ── 표에서 고르면 K 가 따라오나
+            #    손질 패널은 지금 단계(도면 열기)에서 숨어 있다 — 검사 동안만
+            #    펼친다. 숨긴 채로는 Playwright 가 select 를 못 건드린다.
+            if len(opts) > 1:
+                page.eval_on_selector(
+                    "#panel-edit", "el => el.classList.remove('hidden')")
+                page.select_option("#ed-k-preset", "0")
+                page.wait_for_timeout(200)
+                k = page.input_value("#ed-k")
+                first_count = opts[1].split("개")[0].strip()
+                check("표를 고르면 K 가 따라온다", k == first_count,
+                      f"K={k} · 표={first_count}")
+                why = page.inner_text("#ed-k-why").strip()
+                check("고른 근거가 화면에 남는다", "NFTC-211" in why, why[:60])
+                page.eval_on_selector(
+                    "#panel-edit", "el => el.classList.add('hidden')")
+
+            # ── 보기 모드 기본값
+            wv = page.input_value("#ed-worst-view")
+            check("나머지 배관망 기본 = 비활성 점선", wv == "dim", wv)
 
             # ── 단계바 클릭이 터지지 않나 (갈 수 없는 곳은 막혀야 한다)
             page.click("#steps div:nth-child(2)")     # 찍기 — 재료 없음

@@ -624,6 +624,15 @@
     "rule": "/api/module-f/world"
   },
   {
+    "endpoint": "module_f_reference_counts",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/worst/reference-counts"
+  },
+  {
     "endpoint": "remote30_auto_process",
     "methods": [
       "OPTIONS",

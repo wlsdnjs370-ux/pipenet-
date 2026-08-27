@@ -144,6 +144,30 @@ def main() -> int:
             wv = page.input_value("#ed-worst-view")
             check("나머지 배관망 기본 = 비활성 점선", wv == "dim", wv)
 
+            # ── 걷어낸 것들이 정말 없나 (지운 뒤 JS 가 부르면 죽는다)
+            for gone in ("pk-info", "panel-suggest"):
+                check(f"#{gone} 없음", page.query_selector(f"#{gone}") is None)
+            check("헤드 종류에 그림 없음",
+                  page.eval_on_selector_all(
+                      ".kinds img", "els => els.length") == 0)
+            check("헤드 후보 제안이 찍기 카드 안으로",
+                  page.query_selector("#panel-pick #pk-suggest") is not None)
+            # 표가 몇 개인지가 아니라 «한 판 안에서 겹치는가» 를 본다 — 패널이
+            # 다르면 동시에 보이지 않으므로 중복이 아니다(손질 패널에 셋이
+            # 몰려 있던 것이 문제였다).
+            worst = page.evaluate(
+                """() => {
+                  let mx = 0, who = '';
+                  for (const p of document.querySelectorAll('.side section')) {
+                    const n = [...p.querySelectorAll('.tag')]
+                      .filter(e => e.textContent.trim() === 'MODULE A').length;
+                    if (n > mx) { mx = n; who = p.id; }
+                  }
+                  return {n: mx, id: who};
+                }""")
+            check("한 패널 안에서 MODULE A 표가 겹치지 않는다",
+                  worst["n"] <= 1, f"{worst['id']} 에 {worst['n']}개")
+
             # ── 수직 전개 값이 «창» 으로 뜨나 (모듈 E 의 대화상자 자리)
             check("변환 칸이 옆판에 없다",
                   page.query_selector("#panel-conv #conv-fields") is None,
@@ -241,10 +265,12 @@ def main() -> int:
                 page.eval_on_selector(
                     "#conv-modal", "el => el.classList.add('hidden')")
             # 숨은 패널도 한 장 — 설명을 걷어낸 뒤 배치가 어색하지 않은지 눈으로.
-            for pid, shot in (("panel-edit", "_ui_edit.png"),
+            for pid, shot in (("panel-pick", "_ui_pick.png"),
+                              ("panel-edit", "_ui_edit.png"),
                               ("panel-design", "_ui_design.png"),
                               ("panel-merge", "_ui_merge.png"),
-                              ("panel-sub", "_ui_sub.png")):
+                              ("panel-sub", "_ui_sub.png"),
+                              ("panel-conv", "_ui_conv.png")):
                 page.eval_on_selector(
                     ".side",
                     "el => [...el.children].forEach(c => c.classList.add('hidden'))")

@@ -61,6 +61,14 @@ _COUNT_BLUE = _CANVAS_HEAD + """
   }
   return n;
 }"""
+# 주황 — 분기(티) 표시(#f59e0b). 붉은 헤드(#ff3b30)와는 초록 성분으로 가른다.
+_COUNT_AMBER = _CANVAS_HEAD + """
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i+1], b = d[i+2];
+    if (r > 150 && g > 90 && g < r * 0.92 && b < g * 0.6) n++;
+  }
+  return n;
+}"""
 # «환하게 남은 배경» — 뽑은 망(청록)도 헤드(빨강)도 아닌데 환한 픽셀.
 #
 # ★내림을 «칠해진 픽셀 총량» 으로 재면 안 된다. 추출 뒤에는 뽑은 자리로 화면을
@@ -71,8 +79,10 @@ _COUNT_BRIGHT_BG = _CANVAS_HEAD + """
   for (let i = 0; i < d.length; i += 4) {
     const r = d[i], g = d[i+1], b = d[i+2];
     if (Math.max(r, g, b) <= 120) continue;
-    if (b > 140 && g > 110 && b > r * 2) continue;          // 뽑은 망
-    if (r > 150 && r > g * 2 && r > b * 2) continue;        // 검출 헤드
+    if (b > 140 && g > 110 && b > r * 2) continue;          // 뽑은 망(청록)
+    if (r > 150 && r > g * 2 && r > b * 2) continue;        // 검출 헤드(빨강)
+    if (r > 150 && g > 90 && g < r * 0.92 && b < g * 0.6) continue;  // 분기(주황)
+    if (b > 140 && b > r * 1.5) continue;                   // 검출망(파랑)
     n++;
   }
   return n;
@@ -601,6 +611,24 @@ def main() -> int:
                         check("뽑은 자리로 화면이 맞춰진다", cyan > 300,
                               f"청록 픽셀 {cyan:,} (점 하나면 100 미만)")
                         page.screenshot(path=str(SHOTS / "2_추출후_나머지흐림.png"))
+
+                        # ★티와 교차가 화면에서 갈려야 한다 — 「그냥 봐선
+                        #   구분이 안 간다」를 받고 붙인 것.
+                        ji = page.inner_text("#au-junc-info").strip()
+                        check("이음자리 수가 화면에 적힌다",
+                              "분기(티)" in ji and "교차" in ji,
+                              ji.replace("\n", " ")[:70])
+                        amber = page.evaluate(_COUNT_AMBER)
+                        check("분기(티)가 주황으로 찍힌다", amber > 30,
+                              f"주황 픽셀 {amber:,}")
+                        page.click("#au-junc")           # 꺼 보고
+                        page.wait_for_timeout(400)
+                        off = page.evaluate(_COUNT_AMBER)
+                        check("이음자리 표시를 끌 수 있다", off < amber * 0.4,
+                              f"켬 {amber:,} → 끔 {off:,}")
+                        page.click("#au-junc")           # 다시 켠다
+                        page.wait_for_timeout(400)
+                        page.screenshot(path=str(SHOTS / "6_이음자리.png"))
                         page.click("#au-to-design")
                         page.wait_for_timeout(1200)
                     check("자동에서 「표 확정」이 감춰진다",

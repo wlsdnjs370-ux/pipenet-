@@ -698,6 +698,153 @@ def test_되돌릴_것이_없으면_그렇게_말한다():
     assert "되돌릴 것이 없습니다" in html[i:i + 1600]
 
 
+# ═══════════════════════════════════════════ 이음자리 — 티 · 교차
+def test_T자는_분기다():
+    """가로선 «중간» 에 세로선 끝점이 얹히면 물이 갈라진다 — 부속(티)이 선다."""
+    from routes.module_f.auto import junction_marks
+    got = junction_marks([((0, 0), (100, 0)), ((100, 0), (200, 0)),
+                          ((100, 0), (100, 80))])
+    assert got["tees"] == [[100.0, 0.0]]
+    assert got["crosses"] == []
+
+
+def test_X자는_교차다():
+    """서로의 중간에서 만나고 공유 노드가 없다 — 평면 좌표로는 못 가린다."""
+    from routes.module_f.auto import junction_marks
+    got = junction_marks([((0, 50), (200, 50)), ((100, 0), (100, 120))])
+    assert got["crosses"] == [[100.0, 50.0]]
+    assert got["tees"] == []
+
+
+def test_이어진_직선은_아무것도_아니다():
+    """차수 2 는 그냥 관이 이어진 것이다 — 표시하면 화면이 점으로 뒤덮인다."""
+    from routes.module_f.auto import junction_marks
+    got = junction_marks([((0, 0), (100, 0)), ((100, 0), (200, 0))])
+    assert got["tees"] == [] and got["crosses"] == []
+
+
+def test_끝점이_얹힌_곳은_교차로_안_센다():
+    """한쪽 끝점이 걸쳐 있으면 그것은 티다 — 둘 다로 세면 같은 자리에 두 표시."""
+    from routes.module_f.auto import junction_marks
+    got = junction_marks([((0, 0), (200, 0)), ((100, 0), (100, 80))])
+    assert got["crosses"] == [], "티 자리를 교차로도 셌다"
+
+
+def test_두_망_모두에_이음자리가_실린다():
+    """검출망(3단계)과 뽑은 망(5단계) 둘 다에서 구분이 보여야 한다."""
+    from routes.module_f import auto
+    assert "junction_marks(" in _src(auto.network_view)
+    assert "junction_marks(" in _src(auto.preview_view)
+
+
+def test_티와_교차는_채움으로_가른다():
+    """모양을 아주 다르게 하면 비교가 안 되고, 같게 하면 구분이 안 된다."""
+    html = _script()
+    i = html.index("function drawJunctions(v)")
+    seg = html[i:i + 1000]
+    assert "ctx.fill();" in seg          # 티 — 채운 원
+    assert "ctx.setLineDash([2, 2])" in seg   # 교차 — 점선 빈 원
+    assert "JUNC_TEE" in seg and "JUNC_X" in seg
+
+
+def test_교차는_왜_못_가리는지_말한다():
+    """색만으로는 못 읽는다 — 숫자와 사유를 함께 적는다."""
+    html = _script()
+    i = html.index("function renderJunctions()")
+    seg = html[i:i + 900]
+    assert "분기(티)" in seg and "교차" in seg
+    assert "스쳐 지나" in seg
+
+
+def test_이음자리_표시는_끌_수_있다():
+    html = _script()
+    assert 'id="au-junc"' in html
+    assert '$("au-junc").onchange' in html
+    i = html.index("function drawJunctions(v)")
+    assert "S.showJunc" in html[i:i + 200]
+
+
+# ═══════════════════════════════════════════ 「이 레이어를 배관으로 취급」
+def test_지정하면_PIPE_로_올라간다():
+    from routes.module_f.auto import FORCED_PIPE_SUFFIX, apply_pipe_overrides
+    ents = [{"l": "셔터", "c": None, "t": "L", "p": [0, 0, 10, 0]},
+            {"l": "벽", "c": 1, "t": "L", "p": [0, 5, 10, 5]}]
+    cat = {"셔터": "OTHER", "벽": "ARCH"}
+    out, c2 = apply_pipe_overrides(ents, cat, [{"layer": "셔터", "color": None}])
+    assert c2["셔터" + FORCED_PIPE_SUFFIX] == "PIPE"
+    assert out[0]["l"] == "셔터" + FORCED_PIPE_SUFFIX
+    assert out[1]["l"] == "벽", "지정 안 한 묶음까지 건드렸다"
+
+
+def test_원본을_고치지_않는다():
+    """`parse_dxf_bundle_cached` 가 돌려준 목록이다 — 여기서 고치면 다음
+    열기가 오염된 채로 시작한다."""
+    from routes.module_f.auto import apply_pipe_overrides
+    ents = [{"l": "셔터", "c": None, "t": "L", "p": [0, 0, 10, 0]}]
+    cat = {"셔터": "OTHER"}
+    out, c2 = apply_pipe_overrides(ents, cat, [{"layer": "셔터", "color": None}])
+    assert ents[0]["l"] == "셔터", "원본 entity 를 고쳤다"
+    assert cat == {"셔터": "OTHER"}, "원본 분류표를 고쳤다"
+    assert out[0] is not ents[0], "사본이 아니다"
+
+
+def test_색까지_가려서_올린다():
+    """같은 레이어에 배관과 도면선이 섞여 있는 경우가 실제로 있다."""
+    from routes.module_f.auto import FORCED_PIPE_SUFFIX, apply_pipe_overrides
+    ents = [{"l": "L", "c": 1, "t": "L", "p": [0, 0, 1, 0]},
+            {"l": "L", "c": 2, "t": "L", "p": [0, 1, 1, 1]}]
+    out, c2 = apply_pipe_overrides(ents, {"L": "OTHER"},
+                                   [{"layer": "L", "color": 1}])
+    assert out[0]["l"] == "L" + FORCED_PIPE_SUFFIX
+    assert out[1]["l"] == "L", "다른 색까지 올렸다"
+
+
+def test_지정이_없으면_그대로_넘긴다():
+    """빈 지정에 사본을 만들면 큰 도면에서 헛일이 된다."""
+    from routes.module_f.auto import apply_pipe_overrides
+    ents, cat = [{"l": "x"}], {"x": "OTHER"}
+    o, c = apply_pipe_overrides(ents, cat, [])
+    assert o is ents and c is cat
+
+
+def test_자동의_모든_입구가_지정을_거친다():
+    """한 군데만 빠져도 헤드 검출과 망 검출이 다른 도면을 본다."""
+    from routes.module_f import api_auto
+    src = _src(api_auto.register)
+    assert src.count("_pipe_ents(sess)") >= 3, "입구를 빠뜨렸다"
+    for call in ("detect_head_candidates(\n                ents, cat",
+                 "run_network(ents, cat", "run_auto(ents, cat"):
+        assert call in src, call
+
+
+def test_지정이_바뀌면_앞선_결과를_버린다():
+    """남겨 두면 사람이 «새 지정으로 나온 것» 이라고 읽는다."""
+    from routes.module_f import api_auto
+    src = _src(api_auto.register)
+    i = src.index('@app.post("/api/module-f/auto/pipe-layers")')
+    j = src.index("    @app.", i + 10)
+    seg = src[i:j]
+    for k in ("auto_net", "auto", "design", "auto_heads"):
+        assert f'"{k}"' in seg, k
+
+
+def test_클릭으로_묶음을_고른다():
+    """수동 차선의 «색으로 찍기» 와 같은 결정 — 목록에서 고르는 게 아니다."""
+    html = _script()
+    assert 'id="au-pipe-pick"' in html
+    i = html.index("function autoClick(x, y)")
+    seg = html[i:i + 900]
+    assert 'S.autoArm === "pipe"' in seg
+    assert "bundleAt(x, y" in seg
+
+
+def test_지정_묶음도_새_도면에서_지워진다():
+    from routes.module_f import api_slot
+    body = _src(api_slot.register)
+    i = body.index('sess["method"] = None')
+    assert '"auto_pipe_layers"' in body[i:i + 900]
+
+
 # ═══════════════════════════════════════════ F-8e. 실측·골든
 def test_골든_도구가_있다():
     p = os.path.join(_ROOT, "scripts", "_golden_module_f_kfp.py")

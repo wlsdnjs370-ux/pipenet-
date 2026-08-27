@@ -307,6 +307,14 @@
     "rule": "/api/module-f/auto/network-view"
   },
   {
+    "endpoint": "module_f_auto_pipe_layers",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/auto/pipe-layers"
+  },
+  {
     "endpoint": "module_f_auto_preview",
     "methods": [
       "GET",

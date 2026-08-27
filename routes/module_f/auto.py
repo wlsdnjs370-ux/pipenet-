@@ -201,6 +201,59 @@ def run_auto(entities, layer_cat, *, alarm_xy, rects, k: int = 30,
             "summary": summary}
 
 
+# 사람이 지정한 묶음은 파생 레이어로 옮겨 올린다 — R10b 가 쓰는 그 방식이다.
+# A 의 분류표는 «레이어 이름» 이 열쇠라, 이름을 새로 만들어야 색 단위로 가를 수
+# 있다(같은 레이어에 배관과 도면선이 섞인 경우가 실제로 있다).
+FORCED_PIPE_SUFFIX = " (배관 지정)"
+
+
+def _bundle_key(e):
+    c = e.get("c")
+    return (str(e.get("l") or "0"), tuple(c) if isinstance(c, list) else c)
+
+
+def apply_pipe_overrides(entities, layer_cat, picks):
+    """「이 레이어를 배관으로 취급」 — 사람이 찍은 묶음을 PIPE 로 올린다.
+
+    자동 차선에는 이 길이 없었다. 레이어 이름 사전이 OTHER 로 떨어뜨리면
+    그것으로 끝이라, 사람이 보기에 명백한 배관도 손댈 수가 없었다(실측 B1F
+    `현장조사#셔터`). 수동 차선은 색으로 찍어 확정하는 길이 이미 있다 —
+    자동에도 같은 결정을 준다.
+
+    ★추측 규칙을 늘리는 대신 사람이 정하게 한다. 「선을 따라 헤드가 정렬」 같은
+      지문은 실측에서 건축선(A-B1)에 28줄이나 걸려 벽을 배관으로 먹는다.
+
+    ★entity 를 그 자리에서 고치면 안 된다 — `parse_dxf_bundle_cached` 가 돌려준
+      것은 «캐시된» 목록이라, 여기서 고치면 다음 열기가 오염된 채로 시작한다.
+      고칠 것만 사본으로 바꾼다.
+    """
+    picks = [p for p in (picks or ()) if p]
+    if not picks:
+        return entities, layer_cat
+    want = set()
+    for p in picks:
+        ly = str(p.get("layer") if isinstance(p, dict) else p[0])
+        c = (p.get("color") if isinstance(p, dict) else p[1])
+        want.add((ly, tuple(c) if isinstance(c, list) else c))
+
+    cat = dict(layer_cat)
+    out = []
+    moved = 0
+    for e in entities:
+        if _bundle_key(e) in want:
+            ly = str(e.get("l") or "0")
+            new = ly + FORCED_PIPE_SUFFIX
+            e = dict(e)                      # ★사본 — 캐시를 더럽히지 않는다
+            e["l"] = new
+            cat[new] = "PIPE"
+            moved += 1
+        out.append(e)
+    if moved:
+        print(f"[자동] 사람이 지정한 배관 {len(want)}묶음 · entity {moved:,}개를 "
+              f"PIPE 로 올림")
+    return out, cat
+
+
 def run_network(entities, layer_cat, *, alarm_xy, rects=None, prune=True,
                 progress_cb=None) -> dict:
     """[S270 · S310] 배관망 검출 — 최불리를 고르기 «전» 의 단계.
@@ -274,15 +327,65 @@ def run_network(entities, layer_cat, *, alarm_xy, rects=None, prune=True,
     }
 
 
+# 축평행 판정 여유 — A 의 평면화가 쓰는 것과 같은 자를 쓴다.
+JUNCTION_TOL_MM = 1.0
+
+
+def junction_marks(segs) -> dict:
+    """이음자리를 «티» 와 «그냥 교차» 로 가른다.
+
+    화면에서 이 둘이 같아 보이면 배관망을 읽을 수가 없다 — 물이 갈라지는
+    자리인지, 층이 달라 스쳐 지나가는 자리인지가 안 보이기 때문이다.
+
+    판정은 A 가 `planarize_edges` 에서 쓰는 규칙 그대로다:
+
+        티(분기)   그 점이 실제 **노드**이고 거기 붙은 관이 셋 이상이다.
+                  → 물이 갈라진다. 부속(티)이 서는 자리.
+        교차       두 관이 서로의 **중간**에서 만난다(양쪽 다 끝점이 아니다).
+                  → 평면 좌표만으로는 티인지 스쳐 지나감인지 못 가린다.
+                    A 는 이것을 «자르지 않고 센다»(unmarked_crossings).
+
+    감사에는 개수만 남아 좌표가 없다. 그래서 그려진 도형에서 다시 판정한다 —
+    화면에 그리려면 자리가 있어야 하기 때문이다.
+
+    segs: [((x0,y0),(x1,y1)), …]
+    """
+    tol = JUNCTION_TOL_MM
+    deg: dict = {}
+    for p, q in segs:
+        deg[p] = deg.get(p, 0) + 1
+        deg[q] = deg.get(q, 0) + 1
+    tees = [[_r1(n[0]), _r1(n[1])] for n, d in deg.items() if d >= 3]
+
+    # 축평행 구간만 본다 — 비스듬한 선끼리의 교차는 이 도면 규약 밖이다.
+    spans = []
+    for p, q in segs:
+        if abs(p[0] - q[0]) <= tol and abs(p[1] - q[1]) > tol:
+            spans.append((0, p[0], min(p[1], q[1]), max(p[1], q[1])))  # 세로
+        elif abs(p[1] - q[1]) <= tol and abs(p[0] - q[0]) > tol:
+            spans.append((1, p[1], min(p[0], q[0]), max(p[0], q[0])))  # 가로
+    crosses = []
+    ver = [s for s in spans if s[0] == 0]
+    hor = [s for s in spans if s[0] == 1]
+    for _, vx, vlo, vhi in ver:
+        for _, hy, hlo, hhi in hor:
+            # ★양쪽 «안쪽» 에서 만나야 교차다. 한쪽 끝점이 얹혀 있으면 그것은
+            #   티이고, 위의 차수 검사가 이미 잡았다.
+            if (vlo + tol < hy < vhi - tol) and (hlo + tol < vx < hhi - tol):
+                crosses.append([_r1(vx), _r1(hy)])
+    return {"tees": tees, "crosses": crosses}
+
+
 def network_view(sel) -> dict:
-    """검출한 망을 캔버스가 그릴 수 있게 — 선분과 헤드 점."""
+    """검출한 망을 캔버스가 그릴 수 있게 — 선분·헤드·이음자리."""
     ed = list(getattr(sel, "edges", None) or ())
     segs = []
     for e in ed:
         segs += [_r1(e[0][0]), _r1(e[0][1]), _r1(e[1][0]), _r1(e[1][1])]
     hs = getattr(sel, "heads", None) or ()
     return {"segs": segs,
-            "heads": [[_r1(h.pos[0]), _r1(h.pos[1])] for h in hs]}
+            "heads": [[_r1(h.pos[0]), _r1(h.pos[1])] for h in hs],
+            **junction_marks([(e[0], e[1]) for e in ed])}
 
 
 def summarize(sel, tables) -> dict:
@@ -326,4 +429,9 @@ def preview_view(tables) -> dict:
               "b": str(r.get("out")), "dia": r.get("dia"),
               "len_m": r.get("length")}
              for r in (getattr(tables, "pipes", None) or ())]
-    return {"nodes": nodes, "pipes": pipes}
+    # 이음자리 — 뽑은 망에서도 «티» 와 «그냥 교차» 를 갈라 준다. 화면에서 둘이
+    # 같아 보이면 물이 갈라지는 자리인지 스쳐 지나가는 자리인지 못 읽는다.
+    at = {n["label"]: (n["x"], n["y"]) for n in nodes}
+    segs = [(at[p["a"]], at[p["b"]])
+            for p in pipes if p["a"] in at and p["b"] in at]
+    return {"nodes": nodes, "pipes": pipes, **junction_marks(segs)}

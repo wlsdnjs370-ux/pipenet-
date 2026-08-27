@@ -32,6 +32,17 @@ MAX_ZONES = 64
 HEAD_PREVIEW_CAP = 4000
 
 
+def _pipe_ents(sess):
+    """자동이 볼 도형 — 사람이 「배관으로 취급」이라 지정한 묶음을 올려서 준다.
+
+    자동 경로의 «모든» 입구가 이걸 거쳐야 한다. 한 군데라도 빠뜨리면 헤드 검출과
+    망 검출이 서로 다른 도면을 보게 된다.
+    """
+    from routes.module_f.auto import apply_pipe_overrides
+    return apply_pipe_overrides(sess["entities"], sess["layer_cat"],
+                                sess.get("auto_pipe_layers"))
+
+
 def _need_auto(body_or_args):
     """자동 슬롯이고 도면이 읽혀 있는가 — 작업이 도는 중이면 거절한다.
 
@@ -74,6 +85,8 @@ def register(app):
             #   3곳» 이라 적히면서 캔버스에는 아무것도 안 그려져, 지워진 줄 알고
             #   다시 그리게 된다.
             "zones": [list(z) for z in (sess.get("auto_zones") or ())],
+            # 사람이 「배관으로 취급」이라 찍은 묶음 — 슬롯을 오갔다 와도 되살린다.
+            "pipe_layers": list(sess.get("auto_pipe_layers") or ()),
             "k": int(sess.get("auto_k") or REMOTE_K_DEFAULT),
             "diag": sess.get("auto_diag"),
             "done": bool(sess.get("auto")),
@@ -123,6 +136,48 @@ def register(app):
         sess["auto_zones"] = rects
         return jsonify({"ok": True, "zones": len(rects)})
 
+    @app.post("/api/module-f/auto/pipe-layers")
+    def module_f_auto_pipe_layers():
+        """「이 레이어를 배관으로 취급」 — 사람이 찍은 레이어×색 묶음.
+
+        자동 차선에는 이 길이 없었다. 레이어 이름 사전이 OTHER 로 떨어뜨리면
+        그것으로 끝이라, 사람이 보기에 명백한 배관도 손댈 수가 없었다.
+
+        ★추측 규칙을 늘리지 않는 이유: 「선을 따라 헤드가 일정 간격·일정 거리로
+          정렬」을 지문으로 재 봤더니 건축선(A-B1)에 28줄이 걸렸다. 벽이 배관과
+          나란히 지나가기 때문이다. 그런 규칙은 다른 현장에서 벽을 배관으로 먹는다.
+          수동 차선은 색으로 찍어 확정하는 길이 이미 있다 — 자동에도 그 결정을 준다.
+
+        body: {sid, layers: [{layer, color}, …]}
+        """
+        body = request.get_json(silent=True) or {}
+        try:
+            sess, why = _need_auto(body)
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        if why:
+            return _fail(why, 409)
+        raw = body.get("layers")
+        if raw is None:
+            raw = []
+        if not isinstance(raw, list) or len(raw) > 64:
+            return _fail("배관으로 취급할 묶음 목록이 올바르지 않습니다 "
+                         "(최대 64묶음).")
+        picks = []
+        for it in raw:
+            if not isinstance(it, dict) or not str(it.get("layer") or "").strip():
+                return _fail("묶음은 {layer, color} 형식이어야 합니다.")
+            picks.append({"layer": str(it["layer"]), "color": it.get("color")})
+        sess["auto_pipe_layers"] = picks
+        # 지정이 바뀌면 앞서 뽑은 것은 «다른 도면» 의 결과다 — 남겨 두면 사람이
+        # 새 지정으로 나온 줄 안다.
+        for k in ("auto_net", "auto", "design", "auto_heads"):
+            sess.pop(k, None)
+        n = sum(1 for e in sess["entities"]
+                if any(str(e.get("l") or "0") == p["layer"] for p in picks))
+        print(f"[자동] 배관으로 취급 — {len(picks)}묶음 · entity {n:,}개")
+        return jsonify({"ok": True, "layers": picks, "entities": n})
+
     @app.post("/api/module-f/auto/heads")
     def module_f_auto_heads():
         """② 헤드 검출 — 도면에서 헤드를 **전부** 찾는다.
@@ -139,9 +194,9 @@ def register(app):
         if why:
             return _fail(why, 409)
         try:
+            ents, cat = _pipe_ents(sess)
             heads = detect_head_candidates(
-                sess["entities"], sess["layer_cat"],
-                rects=sess.get("auto_zones") or None)
+                ents, cat, rects=sess.get("auto_zones") or None)
         except Exception as exc:  # noqa: BLE001
             return _fail(f"헤드 후보를 찾지 못했습니다: {exc}", 500)
         sess["auto_heads"] = heads
@@ -184,7 +239,8 @@ def register(app):
         def job():
             print(f"[망검출] S270 담당 헤드 수 · S310 거리 측정 "
                   + ("(물 안 가는 관로 잘라냄)" if prune else "(가지치기 끔)"))
-            got = run_network(sess["entities"], sess["layer_cat"],
+            ents, cat = _pipe_ents(sess)
+            got = run_network(ents, cat,
                               alarm_xy=sess["auto_alarm"],
                               rects=sess.get("auto_zones") or None,
                               prune=prune,
@@ -245,7 +301,8 @@ def register(app):
             zones = sess.get("auto_zones") or []
             print(f"[자동] 최불리 추출 — 기준개수 {k} · 범위 "
                   + (f"영역 {len(zones)}곳" if zones else "도면 전체"))
-            got = run_auto(sess["entities"], sess["layer_cat"],
+            ents, cat = _pipe_ents(sess)
+            got = run_auto(ents, cat,
                            alarm_xy=sess["auto_alarm"],
                            rects=zones, k=k,
                            project_title=f"모듈 F 자동 — {sess.get('key') or ''}",

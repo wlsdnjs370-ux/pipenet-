@@ -51,7 +51,11 @@ TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            # 되돌리기 — 모든 단계에서
            "snapAuto", "snapSub", "markUndo", "undoStep",
            # [S270·S310] 배관망 검출
-           "renderAutoNet", "loadAutoNetView", "netBounds", "drawAutoNetwork")
+           "renderAutoNet", "loadAutoNetView", "netBounds", "drawAutoNetwork",
+           # 이음자리 — 티 · 교차
+           "renderJunctions", "drawJunctions",
+           # 「이 레이어를 배관으로 취급」
+           "segDist2", "bundleAt", "renderPipeLayers", "pushPipeLayers")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 

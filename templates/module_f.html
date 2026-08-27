@@ -491,6 +491,15 @@
           <button id="au-heads" class="go">헤드 검출</button>
         </div>
         <div id="au-heads-info" class="hint">—</div>
+        <!-- 「이 레이어를 배관으로 취급」 — 이름 사전이 OTHER 로 떨어뜨린 선을
+             사람이 찍어 올린다. 수동 차선의 «색으로 찍기» 와 같은 결정이다.
+             추측 규칙을 늘리면 벽선을 배관으로 먹으므로(실측 A-B1 28줄),
+             확정은 사람이 한다. -->
+        <div class="row" style="margin-top:10px">
+          <button id="au-pipe-pick">배관으로 취급할 선 찍기</button>
+          <button id="au-pipe-clear">지정 지우기</button>
+        </div>
+        <div id="au-pipe-info" class="hint">—</div>
       </div>
 
       <!-- [S270 · S310] 배관망 검출 — 최불리를 고르기 «전» 의 단계.
@@ -540,6 +549,11 @@
         </div>
       </div>
       <div id="au-summary" class="hint">—</div>
+      <!-- 이음자리 — 물이 갈라지는 «티» 와, 평면 좌표로는 못 가리는 «교차».
+           둘이 화면에서 같아 보이면 배관망을 읽을 수가 없다. -->
+      <label class="chk"><input type="checkbox" id="au-junc" checked>
+        <span>이음자리 표시 (티 · 교차)</span></label>
+      <div id="au-junc-info" class="hint"></div>
       <div class="row" style="margin-top:10px">
         <button id="au-to-design">수리계산 입력 →</button>
       </div>
@@ -894,6 +908,8 @@
     autoView: null,                         // 뽑아낸 배관망(절점·배관)
     // [S270 · S310] 검출한 망 — 최불리를 고르기 «전» 의 것
     autoNet: null, autoNetView: null,
+    showJunc: true,                         // 이음자리(티·교차) 표시
+    autoPipe: [],                           // 「배관으로 취급」 지정 묶음
     world: null, pick: null, edit: null, design: null,
     suggest: null,                          // [F-5] 찍기 후보 (제안만)
     suggestOff: new Set(),                  // 반영에서 제외한 후보 index
@@ -2272,6 +2288,8 @@
     mark("au-s5", S.autoDone, "✓ 추출됨");
     $("au-network").disabled = !a;
     renderAutoNet();
+    renderJunctions();
+    renderPipeLayers();
     $("au-zone-draw").classList.toggle("on", $("au-zone-arm").checked);
     $("au-zone-undo").disabled = !S.zones.length;
     $("au-zone-clear").disabled = !S.zones.length;
@@ -2328,6 +2346,17 @@
       if (d.alarm) S.autoAlarm = d.alarm;
       // 영역은 서버가 들고 있다 — 슬롯을 오갔다 와도 그대로 되살린다.
       if (Array.isArray(d.zones)) S.zones = d.zones.map((z) => z.slice());
+      // 「배관으로 취급」 지정도 서버가 들고 있다 — 색·이름은 도면에서 되찾는다.
+      if (Array.isArray(d.pipe_layers)) {
+        const by = new Map((S.world ? S.world.bundles : [])
+          .map((b) => [`${b.layer}|${b.color}`, b]));
+        S.autoPipe = d.pipe_layers.map((p) => {
+          const b = by.get(`${p.layer}|${p.color}`);
+          return { id: b ? b.id : `${p.layer}${p.color}`, layer: p.layer,
+                   color: p.color, css: b ? b.css : "#94a3b8",
+                   name: b ? b.name : "" };
+        });
+      }
       await loadAutoNetView();   // 검출한 망을 먼저 되살린다(단계 표시가 쓴다)
       renderAuto(d);
       await loadAutoView();
@@ -2340,6 +2369,24 @@
   }
 
   function autoClick(x, y) {
+    if (S.autoArm === "pipe") {
+      S.autoArm = null;
+      $("au-pipe-pick").classList.remove("on");
+      const b = bundleAt(x, y, PICK_PX * 3 / S.view.scale);
+      if (!b) { say("그 자리에서 선을 찾지 못했습니다.", "warn"); return; }
+      S.autoPipe = S.autoPipe || [];
+      if (S.autoPipe.some((q) => q.id === b.id)) {
+        say(`이미 지정한 묶음입니다 — ${b.layer}`, "warn");
+        return;
+      }
+      markUndo(`배관 지정 — ${b.layer}`);
+      S.autoPipe.push({ id: b.id, layer: b.layer, color: b.color,
+                        css: b.css, name: b.name });
+      say(`${b.layer} 를 배관으로 취급합니다 — 헤드 검출부터 다시 하세요.`,
+          "ok");
+      pushPipeLayers();
+      return;
+    }
     if (S.autoArm !== "anchor") return;
     S.autoArm = null;
     $("au-anchor").classList.remove("on");
@@ -2475,7 +2522,141 @@
     }
     ctx.stroke();
     ctx.lineWidth = 1;
+    drawJunctions(v);
   }
+
+  // ── 이음자리 — «티» 와 «그냥 교차» ──────────────────────────────
+  // 둘을 같은 크기·같은 자리에 그리되 «채움» 으로 가른다. 모양을 아주 다르게
+  // 하면 비교가 안 되고, 같게 하면 구분이 안 된다.
+  //
+  //   티(분기)  ● 채운 원        물이 갈라진다 — 부속(티)이 서는 자리
+  //   교차      ○ 빈 원 + 사선   평면 좌표로는 티인지 스쳐 지나감인지 못 가린다
+  //
+  // 「추정은 점선」이라는 저장소 규약을 여기에도 그대로 쓴다 — 확정 못한 쪽이
+  // 점선이다.
+  const JUNC_TEE = "#f59e0b";     // 분기 — 눈에 띄어야 한다
+  const JUNC_X = "#94a3b8";       // 교차 — 판단 보류라 조용히
+
+  // 무엇을 보고 있는지 숫자와 범례로 함께 말한다 — 색만으로는 못 읽는다.
+  function renderJunctions() {
+    const v = S.autoView || S.autoNetView;
+    const box = $("au-junc-info");
+    if (!v || (!v.tees && !v.crosses)) { box.innerHTML = ""; return; }
+    const t = (v.tees || []).length, x = (v.crosses || []).length;
+    box.innerHTML =
+      `<span style="color:${JUNC_TEE}">●</span> 분기(티) <b>${t}</b>곳`
+      + ` &nbsp; <span style="color:${JUNC_X}">◌</span> 교차 <b>${x}</b>곳`
+      + (x ? `<br><span class="dim">교차는 평면 좌표만으로 티인지 층이 달라 `
+             + `스쳐 지나가는지 못 가립니다 — 자르지 않고 표시만 합니다.</span>`
+           : "");
+  }
+
+  $("au-junc").onchange = (e) => { S.showJunc = e.target.checked; draw(); };
+
+  function drawJunctions(v) {
+    if (!v || !S.showJunc) return;
+    const R = 4.5;
+    for (const p of (v.tees || [])) {
+      ctx.beginPath();
+      ctx.arc(sx(p[0]), sy(p[1]), R, 0, Math.PI * 2);
+      ctx.fillStyle = JUNC_TEE;
+      ctx.fill();
+    }
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([2, 2]);
+    for (const p of (v.crosses || [])) {
+      const px = sx(p[0]), py = sy(p[1]);
+      ctx.beginPath();
+      ctx.arc(px, py, R, 0, Math.PI * 2);
+      ctx.strokeStyle = JUNC_X;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();                    // 사선 하나 — «가리지 못함» 의 표
+      ctx.moveTo(px - R * 0.7, py + R * 0.7);
+      ctx.lineTo(px + R * 0.7, py - R * 0.7);
+      ctx.stroke();
+      ctx.setLineDash([2, 2]);
+    }
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+  }
+
+  // ── 「이 레이어를 배관으로 취급」 ─────────────────────────────
+  // 수동 차선은 색으로 찍어 재료를 확정한다. 자동에는 그 길이 없어, 이름 사전이
+  // OTHER 로 떨어뜨린 선은 손댈 방법이 아예 없었다(실측 B1F `현장조사#셔터`).
+  // 지문 규칙을 늘리는 대신 사람이 찍게 한다 — 「선을 따라 헤드가 정렬」 지문은
+  // 건축선(A-B1)에 28줄이 걸려 벽을 배관으로 먹는다.
+  function segDist2(px, py, x0, y0, x1, y1) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const L2 = dx * dx + dy * dy;
+    let t = L2 > 0 ? ((px - x0) * dx + (py - y0) * dy) / L2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const cx = x0 + t * dx, cy = y0 + t * dy;
+    return (px - cx) ** 2 + (py - cy) ** 2;
+  }
+
+  // 클릭 자리의 «레이어×색» 묶음 — 화면이 그리는 그 단위 그대로다.
+  function bundleAt(x, y, maxD) {
+    if (!S.world) return null;
+    let best = null, bd = maxD * maxD;
+    for (const b of S.world.bundles) {
+      if (S.hidden.has(b.id)) continue;
+      const sg = b.segs;
+      for (let i = 0; i < sg.length; i += 4) {
+        const d = segDist2(x, y, sg[i], sg[i + 1], sg[i + 2], sg[i + 3]);
+        if (d < bd) { bd = d; best = b; }
+      }
+    }
+    return best;
+  }
+
+  function renderPipeLayers() {
+    const ls = S.autoPipe || [];
+    const box = $("au-pipe-info");
+    $("au-pipe-clear").disabled = !ls.length;
+    if (!ls.length) {
+      box.innerHTML = '<span class="dim">지정 없음 — 레이어 이름 사전이 '
+        + "고른 배관만 씁니다.</span>";
+      return;
+    }
+    box.innerHTML = ls.map((b) =>
+      `<div class="kv"><b><i style="display:inline-block;width:9px;`
+      + `height:9px;background:${b.css};margin-right:6px"></i>${b.layer}</b>`
+      + `<span>${b.name || ""}</span></div>`).join("")
+      + `<div class="dim" style="margin-top:5px">이 묶음을 배관으로 올려 `
+      + `추출합니다.</div>`;
+  }
+
+  async function pushPipeLayers() {
+    try {
+      await post("/api/module-f/auto/pipe-layers", {
+        sid: S.sid,
+        layers: (S.autoPipe || []).map((b) => ({ layer: b.layer,
+                                                 color: b.color })),
+      });
+    } catch (err) { say(err.message, "err"); return; }
+    // 지정이 바뀌면 앞서 뽑은 것은 «다른 도면» 의 결과다 — 서버가 지웠으니
+    // 화면도 같이 비운다.
+    S.autoHeads = []; S.autoDone = false;
+    S.autoNet = null; S.autoNetView = null; S.autoView = null;
+    renderPipeLayers();
+    renderAuto(null);
+    draw();
+  }
+
+  $("au-pipe-pick").onclick = () => {
+    S.autoArm = "pipe";
+    $("au-pipe-pick").classList.add("on");
+    say("배관으로 취급할 선을 도면에서 클릭하세요 — 그 레이어×색 묶음이 "
+        + "통째로 배관이 됩니다.");
+  };
+
+  $("au-pipe-clear").onclick = () => {
+    if (!(S.autoPipe || []).length) return;
+    markUndo("배관 지정 지우기");
+    S.autoPipe = [];
+    pushPipeLayers();
+  };
 
   $("au-heads").onclick = async () => {
     busy(true, "헤드 후보 찾는 중…");
@@ -2556,6 +2737,7 @@
       ctx.fill();
     }
     ctx.lineWidth = 1;
+    drawJunctions(v);      // 뽑은 망에도 티/교차를 갈라 표시한다
   }
 
   // 검출한 헤드는 «빨강» 이다. 신뢰도 색(초록/노랑/회색)은 어두운 도면 위에서

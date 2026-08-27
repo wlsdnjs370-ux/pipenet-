@@ -265,6 +265,23 @@
     "rule": "/api/module-f/auto/anchor"
   },
   {
+    "endpoint": "module_f_auto_handoff",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/auto/handoff"
+  },
+  {
+    "endpoint": "module_f_auto_handoff_hints",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/auto/handoff-hints"
+  },
+  {
     "endpoint": "module_f_auto_heads",
     "methods": [
       "OPTIONS",

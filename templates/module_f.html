@@ -442,6 +442,13 @@
       <div class="row" style="margin-top:10px">
         <button id="au-to-design">수리계산 입력 →</button>
       </div>
+      <!-- [F-8d] 탈출로 — 자동 결과가 이상할 때 처음부터 다시 시작하지 않는다.
+           같은 세션의 찍기판이 살아 있으므로 채택 → 스펙 → 손질까지 잡 하나로. -->
+      <div class="row" style="margin-top:10px">
+        <button id="au-handoff" disabled>손질로 이어받기</button>
+      </div>
+      <div class="hint">자동 결과가 이상하면 인식 결과를 찍어 손질로 넘깁니다
+        <span class="tag">A → E</span></div>
     </section>
 
     <!-- 2. 찍기 — 자동 추천 두 갈래(레이어 사전 · 헤드 인식)를 한 카드에 둔다.
@@ -487,6 +494,16 @@
     </section>
 
     <section class="card hidden" id="panel-edit">
+      <!-- [F-8d] 자동에서 이어받았을 때만 — 자동이 알던 자리를 «제안» 으로
+           넘긴다. 반영은 아래 손질 모드와 같은 클릭 경로로만 들어간다. -->
+      <div class="hidden" id="ed-handoff-box">
+        <h2>자동에서 이어받음 <span class="tag">A → E</span></h2>
+        <div id="ed-handoff-info" class="hint">—</div>
+        <div class="row">
+          <button id="ed-hint-alarm">알람밸브 제안 반영</button>
+          <button id="ed-hint-source">급수 시작 제안 반영</button>
+        </div>
+      </div>
       <h2>손질 모드</h2>
       <div class="row">
         <button class="emode" data-mode="이음">이음</button>
@@ -781,6 +798,7 @@
     adopted: null,                          // 채택된 후보 index
     ghosts: null,                           // 찍히지 못한 후보 index (유령)
     showLow: false,                         // 낮은 띠 후보 표시 토글
+    handoff: null,                          // [F-8d] 자동 → 손질 이어받기 제안
     hidden: new Set(),                      // 숨긴 레이어 묶음 id
     view: { scale: 1, ox: 0, oy: 0 },
     poll: null, es: null, convResult: null,
@@ -942,7 +960,12 @@
       if (designMarksOn() && S.edit) { drawEdit(); drawDesignMarks(); }
       else drawDesign();
     }
-    else if ((S.stage === "edit" || S.stage === "conv") && S.edit) drawEdit();
+    else if ((S.stage === "edit" || S.stage === "conv") && S.edit) {
+      drawEdit();
+      // [F-8d] 자동이 알던 자리 — «제안» 이라 점선 고리로만 그린다. 반영은
+      // 사람이 단추를 눌러 기존 손질 클릭 경로로만 들어간다.
+      if (S.stage === "edit") drawHandoffHints();
+    }
     else if (S.world) {
       drawWorld();
       if (S.stage === "pick" && S.suggest) drawSuggest();
@@ -1459,6 +1482,11 @@
       S.method = null;
       S.zones = []; S.autoAlarm = null; S.autoHeads = []; S.autoDone = false;
       S.world = null; S.edit = null; S.key = null;
+      // 새 도면이다 — 앞 도면의 정찰·채택·이어받기 표시는 뜻이 없다.
+      S.recon = null; S.suggest = null; S.ghosts = null; S.adopted = null;
+      S.handoff = null;
+      $("pk-adopt-box").classList.add("hidden");
+      renderHandoff();
       say(`${d.filename} 읽는 중…`);
       // 읽어서 화면에 띄우는 것까지는 방식과 무관하다 — 도면을 먼저 보여 준
       // 뒤에 어떻게 읽을지 묻는다.
@@ -2022,6 +2050,8 @@
     $("au-run").disabled = !a;
     $("au-heads").disabled = !a;
     $("au-to-design").disabled = !S.autoDone;
+    // [F-8d] 이어받기는 «자동 결과를 본 뒤» 의 길이다 — 돌리기 전에는 뜻이 없다.
+    $("au-handoff").disabled = !S.autoDone;
     if (d && d.summary) {
       S.autoSummary = d.summary;
       renderAutoSummary(d.summary);
@@ -3041,6 +3071,89 @@
   }
 
   $("dg-back-auto").onclick = () => loadAuto();
+
+  // ── [F-8d] 탈출로 — 자동 결과를 손질로 이어받는다 ────────────────
+  // 자동이 마음에 안 든다고 처음부터 다시 시작하게 두지 않는다. 같은 세션의
+  // 찍기판은 살아 있다 — 채택 → 스펙 저장 → 손질 진입까지 서버 잡 하나다.
+  $("au-handoff").onclick = async () => {
+    busy(true, "인식 결과를 찍어 손질로 넘기는 중…");
+    try {
+      await post("/api/module-f/auto/handoff", { sid: S.sid });
+      watch(async () => {
+        const j = await api(`/api/module-f/convert/result?sid=${S.sid}`);
+        const r = j.result || {};
+        S.method = "manual";          // 자동 흐름을 떠난다 — 단계바가 갈린다
+        S.handoff = r.alarm || r.source ? r : null;
+        renderSteps();
+        await loadEdit();             // 손질 화면 진입 (기존 경로)
+        renderHandoff();
+        draw();
+        const g = Number(r.head_skipped) || 0;
+        say(`손질로 이어받았습니다 — 재료 ${(r.mat_applied || []).length}묶음 · `
+          + `헤드 ${(Number(r.head_applied) || 0)
+                    + (Number(r.head_already) || 0)}개.`
+          + (g ? ` 점선 ${g}개는 찍지 못했습니다.` : "")
+          + " 알람밸브·급수 시작은 제안으로 표시했습니다 — 단추로 반영하세요.",
+            g ? "warn" : "ok");
+      });
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  function renderHandoff() {
+    const box = $("ed-handoff-box"), h = S.handoff;
+    box.classList.toggle("hidden", !h);
+    if (!h) return;
+    $("ed-handoff-info").innerHTML =
+      kv("찍은 것", `재료 ${(h.mat_applied || []).length}묶음 · `
+         + `헤드 ${(Number(h.head_applied) || 0)
+                   + (Number(h.head_already) || 0)}개`
+         + (Number(h.head_skipped)
+            ? ` · <span class="warn">유령 ${h.head_skipped}</span>` : ""))
+      + kv("제안", h.alarm
+           ? `알람밸브 · 급수 시작 (${h.alarm[0].toFixed(0)}, `
+             + `${h.alarm[1].toFixed(0)})`
+           : "자동이 알람밸브를 안 찍어 제안이 없습니다");
+    $("ed-hint-alarm").disabled = !h.alarm;
+    $("ed-hint-source").disabled = !h.source;
+  }
+
+  // 반영은 «기존 손질 클릭 경로» 로만 — 여기서도 주입은 없다(D-F8-3).
+  async function applyHint(kind) {
+    const h = S.handoff;
+    const xy = kind === "알람밸브위치" ? (h && h.alarm) : (h && h.source);
+    if (!xy) return;
+    busy(true, "제안을 반영하는 중…");
+    try {
+      await post("/api/module-f/edit/mode", { sid: S.sid, mode: kind });
+      const d = await post("/api/module-f/edit/click",
+                           { sid: S.sid, x: xy[0], y: xy[1], max_d: 3000 });
+      if (d.state) S.edit = d.state;
+      renderEdit();
+      draw();
+      say(`${kind} 를 제안 자리에 반영했습니다.`, "ok");
+    } catch (err) { say(err.message, "err"); }
+    finally { busy(false); }
+  }
+
+  $("ed-hint-alarm").onclick = () => applyHint("알람밸브위치");
+  $("ed-hint-source").onclick = () => applyHint("급수시작위치");
+
+  function drawHandoffHints() {
+    const h = S.handoff;
+    if (!h) return;
+    // 제안은 점선 고리다 — 확정된 것(실선)과 한눈에 갈려야 한다.
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1.8;
+    for (const [xy, color] of [[h.alarm, "#f97316"], [h.source, "#38bdf8"]]) {
+      if (!xy) continue;
+      ctx.beginPath();
+      ctx.arc(sx(xy[0]), sy(xy[1]), 11, 0, Math.PI * 2);
+      ctx.strokeStyle = color;
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+  }
 
 
   async function designPreview() {

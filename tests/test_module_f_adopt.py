@@ -533,6 +533,103 @@ def test_후보_지우기가_유령도_같이_걷는다():
     assert "S.ghosts = null;" in seg and "S.adopted = null;" in seg
 
 
+# ═══════════════════════════════════════════ F-8d. 탈출로
+def _auto_src() -> str:
+    from routes.module_f import api_auto
+    return _src(api_auto.register)
+
+
+def test_이어받기_라우트가_있다():
+    src = _auto_src()
+    assert '@app.post("/api/module-f/auto/handoff")' in src
+    assert '@app.get("/api/module-f/auto/handoff-hints")' in src
+
+
+def test_이어받기는_잡_하나로_끝낸다():
+    """채택 → 스펙 저장 → 손질 진입. 사람이 세 번 기다리게 하지 않는다."""
+    src = _auto_src()
+    i = src.index('@app.post("/api/module-f/auto/handoff")')
+    seg = src[i:i + 4600]
+    assert "adopt_bundles(ps, world" in seg
+    assert "adopt_heads(ps, select_heads(cands)" in seg
+    assert "ps.commit()" in seg
+    assert "EditSession.open(" in seg
+    assert src.count('_run_job(sess, "손질로 이어받기", job)') == 1
+
+
+def test_이어받기는_후보_전체를_준다():
+    """자동이 영역으로 좁혔더라도 넓게 준다 — 좁히기는 손질에서 한다."""
+    src = _auto_src()
+    i = src.index('@app.post("/api/module-f/auto/handoff")')
+    seg = src[i:i + 4600]
+    assert "select_heads(cands)" in seg
+    assert "conf_min" not in seg, "이어받기가 후보를 미리 잘라낸다"
+
+
+def test_이어받기는_자동_결과를_지우지_않는다():
+    """손질 뒤 사람이 다시 최불리를 고르면 그때 덮인다(기존 규약)."""
+    src = _auto_src()
+    i = src.index('@app.post("/api/module-f/auto/handoff")')
+    seg = src[i:i + 4600]
+    assert 'sess.pop("auto"' not in seg and 'sess["auto"] = None' not in seg
+    assert 'sess.pop("design"' not in seg
+    assert 'sess["method"] = "manual"' in seg, "자동 흐름을 안 떠난다"
+
+
+def test_이어받기는_자동을_돌린_뒤에만():
+    src = _auto_src()
+    i = src.index('@app.post("/api/module-f/auto/handoff")')
+    seg = src[i:i + 4600]
+    assert 'if not sess.get("auto"):' in seg
+    assert 'ps = sess.get("pick")' in seg
+    assert "_job_running(sess)" in seg
+
+
+def test_알람밸브와_급수시작은_제안_둘로_나뉜다():
+    """합칠지는 미결(BLOCKED §5) — 지금은 사람이 각각 반영한다."""
+    src = _auto_src()
+    i = src.index('sess["handoff"] = {')
+    seg = src[i:i + 400]
+    assert '"alarm":' in seg and '"source":' in seg
+
+
+def test_이어받기_제안_반영은_기존_클릭_경로다():
+    """D-F8-3 — 여기서도 주입은 없다."""
+    html = _script()
+    i = html.index("async function applyHint(")
+    seg = html[i:i + 800]
+    assert "/api/module-f/edit/mode" in seg
+    assert "/api/module-f/edit/click" in seg
+
+
+def test_이어받기_단추가_자동_화면에_있다():
+    html = _script()
+    assert 'id="au-handoff"' in html
+    i = html.index('$("au-to-design").disabled = !S.autoDone;')
+    assert '$("au-handoff").disabled = !S.autoDone;' in html[i:i + 300]
+
+
+def test_제안은_점선으로_그린다():
+    """확정된 것(실선)과 한눈에 갈려야 한다."""
+    html = _script()
+    i = html.index("function drawHandoffHints()")
+    seg = html[i:i + 700]
+    assert "ctx.setLineDash([4, 4])" in seg
+
+
+def test_손질_화면에_제안_반영_단추가_있다():
+    html = _script()
+    for bid in ("ed-handoff-box", "ed-hint-alarm", "ed-hint-source"):
+        assert f'id="{bid}"' in html, f"#{bid} 가 없다"
+
+
+def test_새_도면을_올리면_이어받기_표시가_사라진다():
+    html = _script()
+    i = html.index("S.zones = []; S.autoAlarm = null;")
+    seg = html[i:i + 500]
+    assert "S.handoff = null;" in seg and "S.recon = null;" in seg
+
+
 def test_채택의_유일한_쓰기는_클릭이다():
     """읽기(by_bundle)는 /pick/auto 가 이미 쓰던 것 — 쓰기는 click 뿐이다."""
     body = _src(adopt)

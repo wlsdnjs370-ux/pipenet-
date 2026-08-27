@@ -214,3 +214,103 @@ def register(app):
         return jsonify({"ok": True, "view": preview_view(got["tables"]),
                         "summary": got["summary"],
                         "tables": got["tables"].as_dict()})
+
+    @app.post("/api/module-f/auto/handoff")
+    def module_f_auto_handoff():
+        """[F-8d] 탈출로 — 자동 결과가 이상할 때 손질로 이어받는다.
+
+        자동이 마음에 안 든다고 처음부터 다시 시작하게 두지 않는다. 같은
+        세션의 찍기판(`sess["pick"]`)은 살아 있다 — 자동 차선도 열기는 같은
+        `/open` 을 탄다. 그것을 그대로 써서 채택 → 스펙 저장 → 손질 진입까지
+        **잡 하나**로 잇는다.
+
+        채택 범위는 «정찰 후보 전체» 다. 자동이 영역으로 좁혔더라도 이어받기는
+        넓게 준다 — 좁히는 것은 손질에서 사람이 할 일이고, 여기서 미리 잘라
+        두면 그 결정을 되돌릴 방법이 없다.
+
+        자동이 알던 것(알람밸브)은 **제안** 으로만 넘긴다. 반영은 손질의 기존
+        클릭 경로(`edit/mode` + `edit/click`)로만 한다 — D-F8-3 은 여기서도
+        같다. 알람밸브 자리와 급수 시작 자리를 하나로 합칠지는 미결이라
+        (BLOCKED §5) 제안 두 개로 나눠 둔다.
+        """
+        from routes.module_f.adopt import adopt_bundles, adopt_heads, select_heads
+        from routes.module_f.remote30 import _sheet_frames
+        from routes.module_f.views import _pick_state
+
+        body = request.get_json(silent=True) or {}
+        try:
+            sess = _sess(body.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        if _job_running(sess):
+            return _fail("작업이 끝난 뒤에 이어받을 수 있습니다.", 409)
+        if _slot_active(sess) != "plan":
+            return _fail("평면도 슬롯에서만 이어받을 수 있습니다.", 409)
+        if not sess.get("auto"):
+            return _fail("아직 자동 추출을 실행하지 않았습니다.", 409)
+        ps = sess.get("pick")
+        if ps is None:
+            return _fail("찍기판이 없는 세션입니다 — 도면을 다시 여세요.", 409)
+        rec = sess.get("recon") or {}
+        if rec.get("error"):
+            return _fail(f"정찰이 실패한 도면이라 이어받을 것이 없습니다. "
+                         f"({rec['error']})", 409)
+
+        cands = list(rec.get("heads") or ())
+        world = sess.get("world") or {}
+        alarm = sess.get("auto_alarm")
+
+        def job():
+            from services.cad_import.edit.session import EditSession
+            print(f"[이어받기] 자동 결과를 손질로 — 후보 {len(cands)}개 전부")
+            ps.select_pipe()
+            mat = adopt_bundles(ps, world, "PIPE")
+            print(f"[이어받기] 재료 {len(mat['applied'])}묶음 "
+                  f"(건너뜀 {len(mat['skipped'])})")
+            if not ps.complete_pipe():
+                raise RuntimeError(
+                    "재료를 하나도 못 찍었습니다 — 배관 레이어를 직접 찍어 주세요.")
+            ps.set_slot(ps.head_label)
+            got = adopt_heads(ps, select_heads(cands),
+                              progress=lambda n, t, a, d, b: print(
+                                  f"[이어받기] {n}/{t} — 찍힘 {a} · 이미 {d} · 유령 {b}"))
+            print(f"[이어받기] 헤드 — 찍힘 {got['applied']} · "
+                  f"이미 반영 {got['already']} · 유령 {len(got['skipped'])}")
+
+            spec_path = ps.commit()
+            print(f"[찍기] 스펙 저장 — {spec_path}")
+            print("[손질] 찍은 스펙으로 배관망을 다시 구성하는 중…")
+            es = EditSession.open(ps.key, out_dir=None, load_saved=False,
+                                  use_cache=False)
+            sess["edit"] = es
+            sess["sheets"] = _sheet_frames(es.board)
+            # ★자동 흐름을 떠난다 — 단계바·슬롯 진행이 손질 쪽을 가리켜야 한다.
+            #   `auto`·`design` 은 지우지 않는다: 손질 뒤 사람이 다시 최불리를
+            #   고르면 그때 덮인다(기존 규약).
+            sess["method"] = "manual"
+            # 자동이 알던 것 — «제안» 이다. 반영은 손질 클릭으로만 한다.
+            sess["handoff"] = {
+                "alarm": list(alarm) if alarm else None,
+                "source": list(alarm) if alarm else None,
+                "mat_applied": mat["applied"],
+                "head_applied": got["applied"],
+                "head_already": got["already"],
+                "head_skipped": len(got["skipped"]),
+                "skipped_heads": got["skipped"],
+            }
+            print(f"[손질] 완료 · 노드 {len(es.board.pts)} · "
+                  f"간선 {len(es.board.edges)} · 헤드 {len(es.board.disks)}")
+            return {"ok": True, "spec_path": spec_path,
+                    **sess["handoff"], "pick": _pick_state(sess)}
+
+        _run_job(sess, "손질로 이어받기", job)
+        return jsonify({"ok": True})
+
+    @app.get("/api/module-f/auto/handoff-hints")
+    def module_f_auto_handoff_hints():
+        """이어받기가 넘긴 제안 — 새로고침해도 오버레이가 다시 뜨게."""
+        try:
+            sess = _sess(request.args.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        return jsonify({"ok": True, "handoff": sess.get("handoff")})

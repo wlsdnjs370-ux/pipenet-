@@ -43,7 +43,9 @@ TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            # [F-8c] 정찰 카드 · 채택 · 유령 오버레이
            "fillConf", "reconPick", "renderConfHint", "renderRecon",
            "loadRecon", "applyAdopt",
-           "drawSuggest", "suggestInfo", "suggestColor")
+           "drawSuggest", "suggestInfo", "suggestColor",
+           # [F-8d] 탈출로 — 자동 → 손질 이어받기
+           "renderHandoff", "applyHint", "drawHandoffHints")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 

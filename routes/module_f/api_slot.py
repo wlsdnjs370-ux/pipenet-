@@ -189,11 +189,15 @@ def register(app, *, _save_upload):
         sess["method"] = None
         for k in ("world", "pick", "edit", "entities", "layer_cat", "auto",
                   "auto_diag", "auto_heads", "auto_alarm", "auto_zones",
-                  "design", "worst", "water_path"):
+                  "design", "worst", "water_path",
+                  # [F-8a] 정찰·제안은 «그 도면» 의 것이다. 남겨 두면 새 도면을
+                  # 올렸는데 카드가 앞 도면의 후보 수를 그린다.
+                  "recon", "suggest"):
             sess.pop(k, None)
 
         # 읽어서 화면에 띄우는 것까지가 공통이다.
-        job = (_open_job(sess, dxf) if kind == "plan"
+        # [D-F8-2] 정찰은 평면도만 — `_open_job` 이 종류를 보고 가른다.
+        job = (_open_job(sess, dxf, kind=kind) if kind == "plan"
                else _sub_open_job(sess, dxf, kind))
         _run_job(sess, f"{SLOT_LABELS[kind]} 읽기", job)
         return jsonify({"ok": True, "sid": sess["id"], "kind": kind,

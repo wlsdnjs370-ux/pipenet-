@@ -15,12 +15,16 @@ from routes.module_f.views import _pick_state
 from routes.module_f.world import _saved_keys, _world_payload
 
 
-def _open_job(sess: dict, dxf):
+def _open_job(sess: dict, dxf, *, kind: str = "plan"):
     """DXF 한 장을 찍기 세션으로 여는 잡을 만든다.
 
     [H-0] 슬롯 열기(`/api/module-f/slot/open`)와 같은 것을 쓴다 — 계통도·기계실도
     특허 S650 대로 «같은 절차» 를 밟으므로, 여기가 갈라지면 도면 종류에 따라
     제1국면이 달라진다.
+
+    [F-8a] 평면도는 찍기판을 연 «뒤에» 정찰까지 같은 잡에서 이어 돌린다
+    (D-F8-1 — 버튼이 아니라 업로드 직후 자동). 순서가 요점이다: `sess["world"]`
+    는 정찰 전에 이미 앉으므로 화면은 정찰이 도는 동안에도 도면을 그린다.
     """
     def job():
         from services.cad_import.pick.session import PickSession
@@ -36,12 +40,42 @@ def _open_job(sess: dict, dxf):
         sess["key"] = ps.key
         payload = _world_payload(ps.world)
         sess["world"] = payload
-        print(f"[찍기] 완료 {time.perf_counter() - t0:.1f}s · "
+        t_open = time.perf_counter() - t0
+        print(f"[찍기] 완료 {t_open:.1f}s · "
               f"선분 {payload['counts']['segs']} · "
               f"원 {payload['counts']['circles']} · "
               f"호 {payload['counts']['arcs']}")
+        # ★여기부터가 덤이다 — 위까지로 도면은 이미 화면에 그려진다.
+        #   [D-F8-2] 계통도·기계실은 두 점 경로가 전부라 헤드 검출이 무의미하다.
+        if str(kind) == "plan":
+            _recon_into(sess, dxf, payload, t_open)
         return {"key": ps.key}
     return job
+
+
+def _recon_into(sess: dict, dxf, payload: dict, t_open: float) -> None:
+    """[F-8a] 정찰을 돌려 `sess["recon"]` 에 남긴다.
+
+    ★정찰 실패는 열기 실패가 아니다(F-8a-4). A 를 못 부르든 도면이 이상하든
+      찍기는 종전대로 돌아야 하므로, 무엇이 나오든 여기서 삼키고 사유만 남긴다.
+      `_run_job` 이 BaseException 까지 잡는 것과 같은 이유로 여기도 그렇게 한다
+      — 엔진 계열 코드는 실패를 SystemExit 로 던지는 곳이 있다.
+    """
+    from routes.module_f.recon import (
+        BAND_HIGH, BAND_LOW, BAND_MID, run_recon)
+    print(f"[정찰] 자동 인식 중… — 도면은 이미 화면에 있습니다(+{t_open:.1f}s)")
+    try:
+        rec = run_recon(dxf, world=payload)
+    except BaseException as exc:  # noqa: BLE001 — 열기를 죽이지 않는다
+        why = f"{type(exc).__name__}: {exc}"
+        sess["recon"] = {"error": why}
+        print(f"[정찰] 건너뜀 — {why} (찍기는 종전대로 쓸 수 있습니다)")
+        return
+    sess["recon"] = rec
+    b, n = rec["bundles"], rec["bands"]
+    print(f"[정찰] 배관 묶음 {b.get('PIPE', 0)} · 헤드 후보 {len(rec['heads'])} "
+          f"(높음 {n[BAND_HIGH]}·중간 {n[BAND_MID]}·낮음 {n[BAND_LOW]}) "
+          f"— {rec['elapsed_ms'] / 1000:.1f}s")
 
 
 def register(app, *, _save_upload):
@@ -85,7 +119,8 @@ def register(app, *, _save_upload):
             return _fail(f"도면을 저장하지 못했습니다: {exc}", 500)
 
         sess = _new_session(dxf=str(dxf))
-        _run_job(sess, "도면 읽기", _open_job(sess, dxf))
+        # 이 문은 평면도 전용이다 — 계통도·기계실은 `/slot/open` 으로 들어온다.
+        _run_job(sess, "도면 읽기", _open_job(sess, dxf, kind="plan"))
         return jsonify({"ok": True, "sid": sess["id"],
                         "filename": os.path.basename(str(dxf))})
 
@@ -174,6 +209,24 @@ def register(app, *, _save_upload):
         return Response(gen(), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache",
                                  "X-Accel-Buffering": "no"})
+
+    @app.get("/api/module-f/recon")
+    def module_f_recon():
+        """[F-8a] 정찰 결과 조회 — 새로고침해도 카드가 다시 채워지게.
+
+        수치만 준다. 후보 좌표 수천 개는 `heads=1` 로 따로 청한다 — 카드를
+        그릴 때마다 3천 점을 내려보내면 새로고침이 그만큼 무거워진다.
+        """
+        from routes.module_f.recon import recon_view
+        try:
+            sess = _sess(request.args.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        rec = sess.get("recon")
+        out = {"ok": True, "recon": recon_view(rec)}
+        if request.args.get("heads") in ("1", "true", "yes"):
+            out["heads"] = (rec or {}).get("heads") or []
+        return jsonify(out)
 
     @app.get("/api/module-f/world")
     def module_f_world():

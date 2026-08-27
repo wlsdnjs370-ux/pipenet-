@@ -6,7 +6,7 @@ import time
 
 from flask import jsonify, request
 
-from routes.module_f.common import _fail, _r1
+from routes.module_f.common import _fail
 from routes.module_f.jobs import _job_running, _run_job, _sess
 from routes.module_f.remote30 import _sheet_frames
 from routes.module_f.views import _pick_state
@@ -141,26 +141,16 @@ def register(app):
                          409)
 
         def job():
-            from pathlib import Path as _P
-            # 모듈 A 는 저장소 루트의 읽기 전용 참조다 — import 만 한다.
-            import remote30_prototype as A
-            print("[제안] 모듈 A 인식(R1~R5) 시작 — 도면을 A 방식으로 읽는 중…")
-            bundle = A.parse_dxf_bundle_cached(_P(dxf))
-            layers = {ly.get("name"): A._categorize_layer(ly.get("name") or "")
-                      for ly in (bundle.layers or [])}
-            heads = A.detect_heads(bundle.entities, layers)
-            cands = [{"x": _r1(h.pos[0]), "y": _r1(h.pos[1]),
-                      "conf": round(float(h.confidence), 2),
-                      "kind": str(h.kind), "layer": str(h.layer or "")}
-                     for h in heads]
-            cands.sort(key=lambda c: -c["conf"])
+            # [F-8a] 인식 자체는 `recon.run_recon` 하나뿐이다 — 열기 잡의 정찰과
+            # 같은 것을 쓴다. 둘이 각자 A 를 부르면 언젠가 한쪽만 고쳐져 카드와
+            # 찍기 화면이 서로 다른 후보 수를 말하게 된다.
+            from routes.module_f.recon import run_recon
+            rec = run_recon(dxf, world=sess.get("world"), tag="제안")
+            cands = rec["heads"]
             sess["suggest"] = cands
-            bands = {"높음(≥0.9)": sum(1 for c in cands if c["conf"] >= 0.9),
-                     "중간(≥0.75)": sum(1 for c in cands
-                                       if 0.75 <= c["conf"] < 0.9),
-                     "낮음": sum(1 for c in cands if c["conf"] < 0.75)}
-            print(f"[제안] 후보 {len(cands)}개 · {bands}")
-            return {"ok": True, "n": len(cands), "bands": bands,
+            # 정찰을 안 돌린 세션(옛 흐름)이라면 이 결과를 그대로 정찰로도 쓴다.
+            sess.setdefault("recon", rec)
+            return {"ok": True, "n": len(cands), "bands": rec["bands"],
                     "candidates": cands}
 
         _run_job(sess, "찍기 후보 제안", job)

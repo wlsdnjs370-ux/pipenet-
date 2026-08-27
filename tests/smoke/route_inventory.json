@@ -606,6 +606,15 @@
     "rule": "/api/module-f/pick/undo"
   },
   {
+    "endpoint": "module_f_recon",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/recon"
+  },
+  {
     "endpoint": "module_f_reopen",
     "methods": [
       "OPTIONS",

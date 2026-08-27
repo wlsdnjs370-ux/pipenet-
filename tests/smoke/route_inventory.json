@@ -558,6 +558,14 @@
     "rule": "/api/module-f/open"
   },
   {
+    "endpoint": "module_f_pick_adopt",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/pick/adopt"
+  },
+  {
     "endpoint": "module_f_pick_auto",
     "methods": [
       "OPTIONS",

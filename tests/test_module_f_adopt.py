@@ -199,3 +199,228 @@ def test_정찰은_board_에_손대지_않는다():
     body = _src(recon)
     for banned in ("board.mat", "board.heads", "ps.board", ".click("):
         assert banned not in body, f"정찰이 board 경로를 만졌다: {banned}"
+
+
+# ═══════════════════════════════════════════ F-8b. 채택
+from routes.module_f import adopt  # noqa: E402
+
+
+class _FakePS:
+    """E 의 찍기판을 «토글» 성질만 남기고 흉내 낸다.
+
+    실물 board 없이 확인할 수 있는 것은 여기까지다 — 서명 단위 토글을 채택이
+    올바로 다루는가. 실도면 동일성은 scripts/_verify_module_f_adopt.py 가 잰다.
+    """
+
+    def __init__(self, shapes, *, sig=None):
+        self.shapes = dict(shapes)      # (x, y) → 서명
+        self.sig = sig or {}            # 켜져 있는 서명
+        self.on: set = set()
+        self.calls: list = []
+        self.board = self
+        self.by_bundle = {}
+        self.mat_done = True
+        self.head_label = "상향"
+
+    # PickSession 쪽 표면
+    def select_pipe(self):
+        return True
+
+    def complete_pipe(self):
+        return True
+
+    def set_slot(self, label):
+        return True
+
+    def click(self, x, y, max_d=None):
+        self.calls.append((x, y))
+        s = self.shapes.get((x, y))
+        if s is None:
+            return None                 # 찍을 도형이 없다 = 유령
+        if s in self.on:
+            self.on.discard(s)
+            return {"동작": "취소"}
+        self.on.add(s)
+        return {"동작": "추가"}
+
+
+def test_같은_서명을_두_번_채택해도_꺼지지_않는다():
+    """토글을 모르면 후보가 서로를 꺼서 결과가 0 에 수렴한다."""
+    ps = _FakePS({(0.0, 0.0): "A", (1.0, 1.0): "A", (2.0, 2.0): "B"})
+    picks = [(0, {"x": 0.0, "y": 0.0, "conf": 1.0}),
+             (1, {"x": 1.0, "y": 1.0, "conf": 1.0}),
+             (2, {"x": 2.0, "y": 2.0, "conf": 1.0})]
+    got = adopt.adopt_heads(ps, picks)
+
+    assert ps.on == {"A", "B"}, "서명이 꺼진 채 끝났다"
+    assert got["applied"] == 2 and got["already"] == 1
+    assert got["skipped"] == []
+
+
+def test_되켜기는_클릭_두_번으로_기록된다():
+    """화면이 하는 그대로 — 채택은 클릭의 나열이지 별도 경로가 아니다."""
+    ps = _FakePS({(0.0, 0.0): "A", (1.0, 1.0): "A"})
+    got = adopt.adopt_heads(ps, [(0, {"x": 0.0, "y": 0.0}),
+                                 (1, {"x": 1.0, "y": 1.0})])
+    assert ps.calls == [(0.0, 0.0), (1.0, 1.0), (1.0, 1.0)]
+    assert got["clicked"] == [[0.0, 0.0], [1.0, 1.0], [1.0, 1.0]]
+
+
+def test_찍을_도형이_없으면_유령으로_남는다():
+    """E 의 확정 게이트를 우회하지 않는다 — 실패는 실패로 센다."""
+    ps = _FakePS({(0.0, 0.0): "A"})
+    got = adopt.adopt_heads(ps, [(0, {"x": 0.0, "y": 0.0, "conf": 0.95}),
+                                 (7, {"x": 9.0, "y": 9.0, "conf": 0.8})])
+    assert got["applied"] == 1
+    assert [s["i"] for s in got["skipped"]] == [7]
+    g = got["skipped"][0]
+    assert (g["x"], g["y"], g["conf"]) == (9.0, 9.0, 0.8)
+    assert g["why"] == adopt.WHY_NO_SHAPE
+    assert ps.on == {"A"}, "유령이 board 를 바꿨다"
+
+
+def test_유령_좌표는_클릭_목록에_안_들어간다():
+    """되짚어 재생할 때 없던 클릭이 끼면 동일성이 깨진다."""
+    ps = _FakePS({(0.0, 0.0): "A"})
+    got = adopt.adopt_heads(ps, [(0, {"x": 0.0, "y": 0.0}),
+                                 (1, {"x": 9.0, "y": 9.0})])
+    assert got["clicked"] == [[0.0, 0.0]]
+
+
+def test_거리_상한이_없으면_남의_헤드를_찍는다():
+    """`_click_head` 는 max_d=None 이면 거리와 무관하게 최근접을 받는다."""
+    assert adopt.ADOPT_MAX_D_MM == 300.0
+    sig = inspect.signature(adopt.adopt_heads)
+    assert sig.parameters["max_d"].default == adopt.ADOPT_MAX_D_MM
+
+
+def test_클릭에_상한을_실제로_넘긴다(monkeypatch):
+    seen = []
+
+    class _P(_FakePS):
+        def click(self, x, y, max_d=None):
+            seen.append(max_d)
+            return super().click(x, y, max_d=max_d)
+
+    adopt.adopt_heads(_P({(0.0, 0.0): "A"}), [(0, {"x": 0.0, "y": 0.0})],
+                      max_d=123.0)
+    assert seen == [123.0]
+
+
+# ── 후보 고르기
+def _cands():
+    return [{"x": 0, "y": 0, "conf": 0.95}, {"x": 1, "y": 1, "conf": 0.9},
+            {"x": 2, "y": 2, "conf": 0.8}, {"x": 3, "y": 3, "conf": 0.5}]
+
+
+def test_문턱은_경계를_포함한다():
+    got = adopt.select_heads(_cands(), conf_min=0.9)
+    assert [i for i, _ in got] == [0, 1]
+
+
+def test_번호로_고르면_문턱은_무시된다():
+    got = adopt.select_heads(_cands(), conf_min=0.9, indices=[2, 3])
+    assert [i for i, _ in got] == [2, 3]
+
+
+def test_조건이_없으면_전부():
+    assert len(adopt.select_heads(_cands())) == 4
+    assert adopt.select_heads([]) == []
+
+
+def test_걸러도_원래_번호가_그대로다():
+    """번호를 다시 매기면 화면이 «몇 번이 유령인가» 를 후보 목록과 못 맞춘다.
+
+    가운데가 빠져 번호에 구멍이 나는 경우로 본다 — 다시 매기면 [0,1] 이 된다.
+    """
+    cands = [{"conf": 0.95}, {"conf": 0.5}, {"conf": 0.9}, {"conf": 0.8}]
+    assert [i for i, _ in adopt.select_heads(cands, conf_min=0.9)] == [0, 2]
+
+
+# ── 재료 — /pick/auto 와 한 몸통
+def test_재료_채택은_묶음_중점을_클릭한다():
+    ps = _FakePS({})
+    ps.by_bundle = {("SP", 1): [((0.0, 0.0), (10.0, 20.0))]}
+    ps.shapes = {(5.0, 10.0): "SP1"}
+    got = adopt.adopt_bundles(
+        ps, {"bundles": [{"layer": "SP", "color": 1, "cat": "PIPE"}]}, "PIPE")
+    assert ps.calls == [(5.0, 10.0)], "중점이 아니다"
+    assert got["applied"] == ["SP"] and got["skipped"] == []
+
+
+def test_선분이_없는_묶음은_건너뛴다():
+    ps = _FakePS({})
+    got = adopt.adopt_bundles(
+        ps, {"bundles": [{"layer": "빈", "color": 7, "cat": "PIPE"}]}, "PIPE")
+    assert got["applied"] == [] and got["skipped"] == ["빈"]
+
+
+def test_pick_auto_가_같은_몸통을_쓴다():
+    """두 길이 갈리면 「추천 일괄」과 「채택」이 다른 결과를 낸다."""
+    from routes.module_f import api_pick
+    body = _src(api_pick.register)
+    assert "adopt_bundles(ps, world, want)" in body
+    # 옛 몸통이 남아 있으면 안 된다
+    assert "for b in targets:" not in body
+
+
+# ── 라우트 계약
+def test_채택_라우트가_있다():
+    from routes.module_f import api_pick
+    assert '@app.post("/api/module-f/pick/adopt")' in _src(api_pick.register)
+
+
+def test_채택은_잡으로_돈다():
+    """후보 수천 개 클릭은 무겁다 — 요청 스레드에서 돌리면 게이트웨이가 끊는다."""
+    from routes.module_f import api_pick
+    body = _src(api_pick.register)
+    i = body.index('@app.post("/api/module-f/pick/adopt")')
+    seg = body[i:i + 5200]
+    assert '_run_job(sess, "인식 결과 채택", job)' in seg
+    assert "_job_running(sess)" in seg
+
+
+def test_채택도_재료_0개면_거부한다():
+    """board 의 complete_materials 판정 그대로 — 우회로를 만들지 않는다."""
+    from routes.module_f import api_pick
+    body = _src(api_pick.register)
+    i = body.index('@app.post("/api/module-f/pick/adopt")')
+    assert "if not ps.complete_pipe():" in body[i:i + 5200]
+
+
+def test_채택_응답이_계약대로다():
+    from routes.module_f import api_pick
+    body = _src(api_pick.register)
+    i = body.index('@app.post("/api/module-f/pick/adopt")')
+    seg = body[i:i + 5200]
+    for k in ("mat_applied", "mat_skipped", "head_applied", "head_skipped",
+              "skipped_heads"):
+        assert f'"{k}"' in seg, f"응답에 {k} 가 없다"
+    assert '"state"' in seg, "갱신된 찍기 상태를 안 돌려준다"
+
+
+def test_정찰이_실패한_도면은_채택을_거절한다():
+    from routes.module_f import api_pick
+    body = _src(api_pick.register)
+    i = body.index('@app.post("/api/module-f/pick/adopt")')
+    assert 'rec.get("error")' in body[i:i + 5200]
+
+
+# ── 금지 목록 (§3) — 채택도 클릭 경로뿐
+def test_채택은_board_에_쓰지_않는다():
+    body = _src(adopt)
+    for banned in ("board.mat =", "board.heads =", "board.mat.append",
+                   "board.heads.append", "board.clicks", "write_pick"):
+        assert banned not in body, f"채택이 주입 경로를 만들었다: {banned}"
+
+
+def test_채택의_유일한_쓰기는_클릭이다():
+    """읽기(by_bundle)는 /pick/auto 가 이미 쓰던 것 — 쓰기는 click 뿐이다."""
+    body = _src(adopt)
+    writes = {"ps.click(", "ps.select_pipe(", "ps.complete_pipe(",
+              "ps.set_slot("}
+    assert "ps.click(" in body
+    # board 를 통해 무언가를 «호출» 하는 곳은 by_bundle 조회뿐
+    assert body.count("ps.board.") == 1
+    assert "ps.board.by_bundle.get(" in body
+    assert writes  # 계약 문서화용

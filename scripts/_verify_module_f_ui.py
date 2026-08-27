@@ -54,6 +54,13 @@ _COUNT_CYAN = _CANVAS_HEAD + """
   }
   return n;
 }"""
+# 파랑 — 검출한 배관망(#60a5fa). 최불리(청록)와는 파랑이 더 세다는 점으로 가른다.
+_COUNT_BLUE = _CANVAS_HEAD + """
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i+2] > 140 && d[i+2] > d[i+1] * 1.25 && d[i+2] > d[i] * 1.8) n++;
+  }
+  return n;
+}"""
 # «환하게 남은 배경» — 뽑은 망(청록)도 헤드(빨강)도 아닌데 환한 픽셀.
 #
 # ★내림을 «칠해진 픽셀 총량» 으로 재면 안 된다. 추출 뒤에는 뽑은 자리로 화면을
@@ -389,17 +396,19 @@ def main() -> int:
                     steps_lbl = page.eval_on_selector_all(
                         "#panel-auto .step-h",
                         "els => els.map(e => e.textContent.trim())")
-                    check("단계가 1·2·3·4 로 선다", len(steps_lbl) == 4,
+                    check("단계가 1~5 로 선다", len(steps_lbl) == 5,
                           " / ".join(s[:16] for s in steps_lbl))
-                    check("3단계가 범위 지정이다",
-                          len(steps_lbl) > 2 and "범위 지정" in steps_lbl[2],
-                          steps_lbl[2][:24] if len(steps_lbl) > 2 else "")
-                    check("4단계가 최불리 추출이다",
-                          len(steps_lbl) > 3 and "최불리 추출" in steps_lbl[3],
-                          steps_lbl[3][:24] if len(steps_lbl) > 3 else "")
+                    want = ["알람밸브", "헤드 검출", "배관망 검출",
+                            "범위 지정", "최불리 추출"]
+                    for n, w in enumerate(want):
+                        check(f"{n + 1}단계가 {w} 다",
+                              len(steps_lbl) > n and w in steps_lbl[n],
+                              steps_lbl[n][:24] if len(steps_lbl) > n else "")
                     check("안 그리면 «도면 전체» 라고 말한다",
-                          "도면 전체" in page.inner_text("#au-s3"),
-                          page.inner_text("#au-s3-mark").strip())
+                          "도면 전체" in page.inner_text("#au-s4"),
+                          page.inner_text("#au-s4-mark").strip())
+                    check("S270 가지치기가 기본으로 켜져 있다",
+                          page.is_checked("#au-prune"))
 
                     # ★「알람밸브 지정 버튼이 어디 있는지 모르겠다」를 받고 세운
                     #   단계 제목 — 실제로 «읽을 수 있는 크기» 인지 잰다.
@@ -451,6 +460,55 @@ def main() -> int:
                         }""", seen.get("sid"))
                     check("헤드 검출·알람밸브 준비", bool(ran.get("ok")),
                           str(ran.get("why") or f"헤드 {ran.get('n')}개"))
+
+                    # ★Ctrl+Z 가 자동 단계에서도 먹어야 한다 — 「배관망이 잘못
+                    #   그려져서 되돌리려는데 못 되돌린다」를 받고 붙인 것.
+                    #   영역을 그린 뒤 Ctrl+Z 로 사라지는지 실제로 눌러 본다.
+                    # ★알람밸브는 위에서 «API 로» 찍었다 — 화면은 아직 모른다.
+                    #   다른 단계를 거쳐 돌아와야 loadAuto 가 돌아 서버 상태를
+                    #   화면으로 읽어 온다(같은 단계를 다시 누르면 그냥 돌아간다).
+                    page.evaluate(
+                        "() => document.querySelectorAll('#steps div')[0].click()")
+                    page.wait_for_timeout(300)
+                    page.evaluate(
+                        "() => document.querySelectorAll('#steps div')[1].click()")
+                    page.wait_for_timeout(900)
+                    check("알람밸브가 화면에 실렸다",
+                          "알람밸브" in page.inner_text("#au-anchor-info"),
+                          page.inner_text("#au-anchor-info").strip()
+                          .replace("\n", " ")[:40])
+                    # 영역 그리기를 켜고 캔버스를 끌어 사각형 하나를 만든다.
+                    page.click("#au-zone-draw")
+                    box = page.eval_on_selector(
+                        "#cv", "el => { const r = el.getBoundingClientRect();"
+                               " return {x: r.x, y: r.y, w: r.width, h: r.height}; }")
+                    page.mouse.move(box["x"] + box["w"] * 0.30,
+                                    box["y"] + box["h"] * 0.30)
+                    page.mouse.down()
+                    page.mouse.move(box["x"] + box["w"] * 0.60,
+                                    box["y"] + box["h"] * 0.60, steps=8)
+                    page.mouse.up()
+                    page.wait_for_timeout(500)
+                    z1 = page.inner_text("#au-zones").strip()
+                    check("영역이 그려진다", "영역 1곳" in z1, z1)
+                    page.click("#au-zone-draw")          # 무장 해제
+                    page.keyboard.press("Control+z")
+                    page.wait_for_timeout(700)
+                    z2 = page.inner_text("#au-zones").strip()
+                    check("Ctrl+Z 로 영역이 되돌아간다",
+                          "영역 없음" in z2, f"{z1} → {z2}")
+                    srv = page.evaluate(
+                        """async (sid) => (await (await fetch(
+                            '/api/module-f/auto/state?sid=' + sid)).json())""",
+                        seen.get("sid"))
+                    zs = srv.get("zones")
+                    check("서버의 영역도 같이 되돌아간다",
+                          isinstance(zs, list) and len(zs) == 0,
+                          f"서버 {len(zs) if isinstance(zs, list) else zs}곳")
+                    # ★되돌리기가 «건드리지 않아야 할 것» — 알람밸브는 그대로여야
+                    #   한다. 스냅샷이 비어 있으면 서버의 알람밸브까지 지운다.
+                    check("되돌려도 알람밸브는 남는다", bool(srv.get("alarm")),
+                          str(srv.get("alarm")))
                     if ran.get("ok"):
                         # ★같은 단계를 다시 누르면 gotoStage 가 그냥 돌아간다 —
                         #   다른 단계를 거쳐 와야 재적재가 돈다.
@@ -470,6 +528,30 @@ def main() -> int:
                               "검출된 헤드" in page.inner_text("#au-heads-info"),
                               page.inner_text("#au-heads-info").strip()
                               .replace("\n", " ")[:50])
+
+                        # ★[S270·S310] 배관망 검출 — 최불리 앞에 서야 한다.
+                        page.click("#au-network")
+                        netted = False
+                        for _ in range(900):        # 100ms × 900 = 90s
+                            page.wait_for_timeout(100)
+                            if page.is_hidden("#busy") and \
+                                    "도달 헤드" in page.inner_text("#au-net-info"):
+                                netted = True
+                                break
+                        ni = page.inner_text("#au-net-info").strip()
+                        check("배관망 검출이 끝난다", netted,
+                              ni.replace("\n", " ")[:80])
+                        check("거리 분포가 뜬다 (S310)",
+                              "거리" in ni and "최원" in ni,
+                              ni.replace("\n", " ")[:80])
+                        check("3단계가 ✓ 로 닫힌다",
+                              "done" in (page.get_attribute("#au-s3", "class")
+                                         or ""),
+                              page.inner_text("#au-s3-mark").strip())
+                        blue = page.evaluate(_COUNT_BLUE)
+                        check("검출한 망이 화면에 깔린다", blue > 200,
+                              f"파랑 픽셀 {blue:,}")
+                        page.screenshot(path=str(SHOTS / "5_배관망검출.png"))
                         # ★검출 표시가 «빨강» 인가 — 어두운 도면 위에서 티가
                         #   나야 한다. 캔버스 픽셀을 직접 센다.
                         red_lit = page.evaluate(_COUNT_RED)
@@ -489,13 +571,14 @@ def main() -> int:
                               page.inner_text("#au-summary").strip()[:70])
                         # 끝난 단계는 초록 ✓ 로 표시된다 — 순서가 눈에 보인다.
                         marks = page.evaluate(
-                            """() => ['au-s1','au-s2','au-s3','au-s4'].map(id => ({
-                                 id, done: document.getElementById(id)
-                                        .classList.contains('done'),
-                                 m: document.getElementById(id + '-mark')
-                                        .textContent.trim()}))""")
-                        # 3단계(범위)는 «선택» 이라 안 그렸으면 done 이 아니다.
-                        need = [m for m in marks if m["id"] != "au-s3"]
+                            """() => ['au-s1','au-s2','au-s3','au-s4','au-s5']
+                                 .map(id => ({
+                                   id, done: document.getElementById(id)
+                                          .classList.contains('done'),
+                                   m: document.getElementById(id + '-mark')
+                                          .textContent.trim()}))""")
+                        # 4단계(범위 지정)는 «선택» 이라 안 그렸으면 done 이 아니다.
+                        need = [m for m in marks if m["id"] != "au-s4"]
                         check("끝낸 단계가 ✓ 로 표시된다",
                               all(m["done"] for m in need),
                               " · ".join(f"{m['id']}{m['m']}" for m in marks))

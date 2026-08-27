@@ -480,7 +480,7 @@ def test_뽑은_망을_실제로_받아_온다():
 def test_추출_명칭이_바뀌었다():
     html = _script()
     assert ">배관망 추출<" in html
-    assert "<b>4</b>최불리 추출" in html
+    assert "<b>5</b>최불리 추출" in html
     # 「추리」로 시작하는 활용형이 하나도 없어야 한다 — 단추만 고치고 안내
     # 문구를 두면 화면 안에서 이름이 둘로 갈린다.
     assert "추리" not in html, "옛 이름이 남아 있다"
@@ -520,17 +520,17 @@ def test_손질의_급수시작과_다름을_밝힌다():
 def test_끝낸_단계가_표시된다():
     """순서가 섞여 보인다는 지적 — «무엇을 이미 했나» 를 화면이 말한다."""
     html = _script()
-    for sid in ("au-s1", "au-s2", "au-s3", "au-s4"):
+    for sid in ("au-s1", "au-s2", "au-s3", "au-s4", "au-s5"):
         assert f'id="{sid}-mark"' in html
     i = html.index("const mark = (id, on, txt)")
-    seg = html[i:i + 800]
-    assert 'mark("au-s1"' in seg and 'mark("au-s4"' in seg
+    seg = html[i:i + 900]
+    assert 'mark("au-s1"' in seg and 'mark("au-s5"' in seg
 
 
-def test_범위_지정이_3단계로_승격됐다():
+def test_범위_지정이_단계로_승격됐다():
     """어느 구역을 뽑을지가 결과를 가른다 — 접이식에 묻어 두면 안 된다."""
     html = _script()
-    assert "<b>3</b>범위 지정" in html
+    assert "<b>4</b>범위 지정" in html
     assert 'id="au-zone-draw"' in html
     # 접이식 잔재가 남으면 두 벌이 된다
     assert 'data-fold="au-zone-body"' not in html
@@ -540,11 +540,97 @@ def test_범위_지정이_3단계로_승격됐다():
 def test_범위는_안_그려도_되는_단계다():
     """필수로 보이면 사람이 «그려야만 되는 줄» 알고 멈춘다."""
     html = _script()
-    i = html.index('id="au-s3"')
+    i = html.index('id="au-s4"')
     seg = html[i:i + 700]
     assert "도면 전체" in seg
-    j = html.index('mark("au-s3"')
+    j = html.index('mark("au-s4"')
     assert '"도면 전체"' in html[j:j + 300], "안 그렸을 때 표시가 없다"
+
+
+# ── [S270 · S310] 배관망 검출 — 최불리를 고르기 «전» 의 단계
+def test_배관망_검출이_3단계다():
+    """논리 문서 순서: S270 가지치기 → S310 거리 → S315 범위 → S320 최불리."""
+    html = _script()
+    assert "<b>3</b>배관망 검출" in html
+    assert 'id="au-network"' in html
+    # 순서가 뒤집히면 «거리를 어디서 재는지» 를 못 보고 결과만 받는다
+    assert html.index("<b>3</b>배관망 검출") < html.index("<b>4</b>범위 지정")
+    assert html.index("<b>4</b>범위 지정") < html.index("<b>5</b>최불리 추출")
+
+
+def test_거리_분포를_보여준다():
+    """최불리는 «거리를 내림차순으로 자른 것» 이다 — 그 재료를 보여야 한다."""
+    html = _script()
+    i = html.index("function renderAutoNet()")
+    seg = html[i:i + 1200]
+    assert "거리 (밸브→헤드)" in seg
+    for k in ("near_m", "mid_m", "far_m"):
+        assert k in seg, k
+    assert "도달 헤드" in seg
+
+
+def test_S270_가지치기를_화면에서_고른다():
+    """A 는 load_mode 를 기본 off 로 둔다 — 논리 문서는 켜는 것을 전제한다."""
+    html = _script()
+    assert 'id="au-prune"' in html
+    i = html.index('id="au-prune"')
+    assert "checked" in html[i:i + 60], "기본이 꺼져 있다"
+    j = html.index('$("au-network").onclick')
+    assert 'prune: $("au-prune").checked' in html[j:j + 400]
+
+
+def test_망_검출은_서버가_S270을_켠다():
+    from routes.module_f import api_auto
+    src = _src(api_auto.register)
+    i = src.index('@app.post("/api/module-f/auto/network")')
+    seg = src[i:i + 2200]
+    assert 'body.get("prune", True)' in seg, "기본이 꺼져 있다"
+    assert "prune=prune" in seg
+
+
+def test_아직_안_돌린_것은_오류가_아니다():
+    """404 로 답하면 단계에 들어올 때마다 콘솔에 붉은 줄이 남는다 —
+    진짜 오류가 그 사이에 묻힌다."""
+    from routes.module_f import api_auto
+    src = _src(api_auto.register)
+    i = src.index('@app.get("/api/module-f/auto/network-view")')
+    # 창을 길이로 자르면 다음 라우트까지 넘어간다 — 경계에서 끊는다.
+    j = src.index("    @app.", i + 10)
+    seg = src[i:j]
+    assert '"summary": None, "view": None' in seg
+    # 주석에도 «404» 라고 적혀 있다 — 실행되는 줄만 본다.
+    code = "\n".join(ln for ln in seg.splitlines()
+                     if not ln.lstrip().startswith("#"))
+    assert ", 404)" not in code, "아직 안 돌린 것을 오류로 답한다"
+
+
+def test_망_검출은_도달_헤드_전부로_돈다():
+    """S320 앞까지가 이 단계다 — k 를 전부로 줘야 «물 닿는 망 전체» 가 나온다."""
+    from routes.module_f import auto
+    src = _src(auto.run_network)
+    assert "k_all = max(1, len(cand))" in src
+    assert "k=k_all" in src
+    assert "load_mode=bool(prune)" in src
+
+
+def test_검출망은_최불리와_다른_색이다():
+    """둘이 같은 색이면 «무엇이 뽑힌 것» 인지 구분이 안 된다."""
+    html = _script()
+    i = html.index("function drawAutoNetwork()")
+    seg = html[i:i + 600]
+    assert "#60a5fa" in seg               # 검출망 — 파랑
+    j = html.index("function drawAutoNet()")
+    assert "#22d3ee" in html[j:j + 600]   # 최불리 — 청록
+
+
+def test_검출망도_새_도면에서_지워진다():
+    from routes.module_f import api_slot
+    body = _src(api_slot.register)
+    i = body.index('sess["method"] = None')
+    assert '"auto_net"' in body[i:i + 800]
+    html = _script()
+    k = html.index("S.recon = null; S.suggest = null;")
+    assert "S.autoNet = null" in html[k:k + 400]
 
 
 def test_영역_무장은_체크박스_상태를_그대로_쓴다():
@@ -556,6 +642,60 @@ def test_영역_무장은_체크박스_상태를_그대로_쓴다():
     assert '$("au-zone-arm").checked = on;' in seg
     assert '$("au-zone-arm").checked' in html[html.index("const armed ="):
                                               html.index("const armed =") + 300]
+
+
+# ═══════════════════════════════════════════ 되돌리기 — 모든 단계에서
+def test_되돌리기가_단계마다_있다():
+    """자동에서 Ctrl+Z 가 아무 일도 안 하던 것 — 「못 되돌리잖아」."""
+    html = _script()
+    i = html.index("async function undoStep()")
+    seg = html[i:i + 1600]
+    # 엔진이 기록을 들고 있는 단계는 그 단추를 그대로 누른다
+    assert '$("pk-undo").click()' in seg and '$("ed-undo").click()' in seg
+    # 자동·계통도는 화면이 쌓은 기록에서 되돌린다
+    assert 'item.stage === "auto"' in seg
+    assert 'item.stage === "sub"' in seg
+
+
+def test_자동_되돌리기가_서버까지_되돌린다():
+    """화면만 되돌리면 서버는 옛 알람밸브·영역을 그대로 들고 있다."""
+    html = _script()
+    i = html.index("async function undoStep()")
+    seg = html[i:i + 1600]
+    assert "/api/module-f/auto/anchor" in seg
+    assert "/api/module-f/auto/zones" in seg
+
+
+def test_되돌릴_자리마다_기록을_남긴다():
+    html = _script()
+    for label in ("알람밸브 찍기", "알람밸브 지우기", "영역 그리기",
+                  "마지막 영역 지우기", "찍은 점 지우기"):
+        assert f'markUndo("{label}")' in html or f'markUndo(`{label}' in html \
+            or f'markUndo("{label}' in html, label
+
+
+def test_기록은_스냅샷이다():
+    """참조를 그대로 담으면 나중 변경이 «과거» 까지 바꿔 버린다."""
+    html = _script()
+    i = html.index("function snapAuto()")
+    seg = html[i:i + 400]
+    assert "S.autoAlarm.slice()" in seg
+    assert "S.zones.map((z) => z.slice())" in seg
+
+
+def test_도면이_바뀌면_기록을_버린다():
+    """남겨 두면 Ctrl+Z 가 앞 도면의 좌표를 이 도면에 씌운다."""
+    html = _script()
+    i = html.index("S.recon = null; S.suggest = null;")
+    assert "S.undo = [];" in html[i:i + 400]
+    j = html.index("S.sub = { picks: [null, null], arm: null, summary: null };")
+    assert "S.undo = [];" in html[j:j + 400], "슬롯을 바꿔도 기록이 남는다"
+
+
+def test_되돌릴_것이_없으면_그렇게_말한다():
+    html = _script()
+    i = html.index("async function undoStep()")
+    assert "되돌릴 것이 없습니다" in html[i:i + 1600]
 
 
 # ═══════════════════════════════════════════ F-8e. 실측·골든

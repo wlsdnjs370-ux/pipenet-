@@ -47,7 +47,11 @@ TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            # [F-8d] 탈출로 — 자동 → 손질 이어받기
            "renderHandoff", "applyHint", "drawHandoffHints",
            # 자동 화면 — 뽑은 망 강조 · 검출 헤드 빨강
-           "drawWorld", "drawAutoNet", "loadAutoView")
+           "drawWorld", "drawAutoNet", "loadAutoView",
+           # 되돌리기 — 모든 단계에서
+           "snapAuto", "snapSub", "markUndo", "undoStep",
+           # [S270·S310] 배관망 검출
+           "renderAutoNet", "loadAutoNetView", "netBounds", "drawAutoNetwork")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 

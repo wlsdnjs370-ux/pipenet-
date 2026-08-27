@@ -290,6 +290,23 @@
     "rule": "/api/module-f/auto/heads"
   },
   {
+    "endpoint": "module_f_auto_network",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/auto/network"
+  },
+  {
+    "endpoint": "module_f_auto_network_view",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/auto/network-view"
+  },
+  {
     "endpoint": "module_f_auto_preview",
     "methods": [
       "GET",

@@ -21,6 +21,8 @@
 """
 from __future__ import annotations
 
+from routes.module_f.common import _r1
+
 # A 의 표는 이미 기준점이 10 이다 — 통합 앞에서 라벨을 옮기지 않는다.
 LABEL_OFFSET_FOR_AUTO = 0
 
@@ -197,6 +199,90 @@ def run_auto(entities, layer_cat, *, alarm_xy, rects, k: int = 30,
     summary["sheet"] = sheet_note        # 여러 장이면 어느 장으로 좁혔는지
     return {"tables": tables, "selection": sel, "rects": rects,
             "summary": summary}
+
+
+def run_network(entities, layer_cat, *, alarm_xy, rects=None, prune=True,
+                progress_cb=None) -> dict:
+    """[S270 · S310] 배관망 검출 — 최불리를 고르기 «전» 의 단계.
+
+    `scripts/평면도 배관망 추출논리.pdf` 의 순서가 이렇다:
+
+        S270  관로마다 «담당 헤드 수» 를 센다 (말단 → 밸브 한 번)
+              → 0 인 관로(시험배관·드레인)를 잘라낸다 → 트리
+        S310  밸브에서 각 헤드까지 관로 길이를 누적한다
+        S315  (선택) 대상 구역 밖은 표시만 남긴다      ← 범위 지정
+        S320  내림차순 정렬 → 상위 기준개수 = 최불리
+        S330  선정 헤드 경로 합집합 → 최소 배관망
+
+    S320 앞까지가 여기다. 그래서 `k` 를 «도달한 헤드 전부» 로 준다 — 그러면
+    S330 의 합집합이 곧 «물이 닿는 망 전체» 가 되고, 거리도 전부 나온다.
+    최불리는 그 목록을 내림차순으로 자르는 일이라 다음 단계에서 한다.
+
+    prune: S270 의 가지치기(`load_mode`). A 는 이것을 기본 off 로 두는데,
+        논리 문서는 켜는 것을 전제로 쓰여 있다. 화면에서 고를 수 있게 인자로
+        뺀다 — 끄면 시험배관·드레인이 남은 채로 거리를 재게 된다.
+    """
+    from remote30_prototype import select_worst30_heads_anchored
+
+    if alarm_xy is None:
+        raise AutoError("알람밸브 위치를 도면에서 찍으세요.")
+    cand = detect_head_candidates(entities, layer_cat)
+    if not cand:
+        raise AutoError("도면에서 헤드를 찾지 못했습니다.")
+    if not rects:
+        rects = region_around(cand, (float(alarm_xy[0]), float(alarm_xy[1])))
+    region = head_region_of(rects)
+    # ★«전부» 를 고르면 S330 의 합집합이 물 닿는 망 전체가 된다.
+    k_all = max(1, len(cand))
+    audit: dict = {}
+    try:
+        sel = select_worst30_heads_anchored(
+            entities, layer_cat, (float(alarm_xy[0]), float(alarm_xy[1])),
+            region, k=k_all, audit_out=audit, load_mode=bool(prune),
+            progress_cb=progress_cb)
+    except ValueError as exc:
+        raise AutoError(str(exc)) from None
+    if not getattr(sel, "heads", None):
+        raise AutoError(
+            "급수원에 닿는 헤드를 찾지 못했습니다 — 알람밸브 위치를 확인하세요.")
+
+    dists = sorted(float(d) for d in (getattr(sel, "distances", None) or ()))
+    ed = list(getattr(sel, "edges", None) or ())
+    pruned = audit.get("pruned") or {}
+    fr = audit.get("fragments") or {}
+    unreach = (audit.get("heads") or {}).get("unreachable") or []
+    return {
+        "selection": sel, "rects": rects, "audit": audit,
+        "summary": {
+            "detected": len(cand),
+            "reached": len(dists),
+            "unreached": len(unreach),
+            "nodes": len({n for e in ed for n in (e[0], e[1])}),
+            "pipes": len(ed),
+            "len_m": round(sum(float(e[2]) for e in ed) / 1000.0, 1),
+            # S310 이 낸 것 — 이 분포가 곧 최불리의 재료다.
+            "near_m": round(dists[0] / 1000.0, 2) if dists else 0.0,
+            "mid_m": round(dists[len(dists) // 2] / 1000.0, 2) if dists else 0.0,
+            "far_m": round(dists[-1] / 1000.0, 2) if dists else 0.0,
+            # S270 이 잘라낸 것 — 켰을 때만 값이 있다.
+            "pruned": bool(prune),
+            "cut_pipes": int(pruned.get("dead_edge_count") or 0),
+            "cut_m": round(float(pruned.get("dead_len_mm") or 0.0) / 1000.0, 1),
+            "fragments": int(fr.get("count") or 0),
+            "frag_m": round(float(fr.get("detached_len_mm") or 0.0) / 1000.0, 1),
+        },
+    }
+
+
+def network_view(sel) -> dict:
+    """검출한 망을 캔버스가 그릴 수 있게 — 선분과 헤드 점."""
+    ed = list(getattr(sel, "edges", None) or ())
+    segs = []
+    for e in ed:
+        segs += [_r1(e[0][0]), _r1(e[0][1]), _r1(e[1][0]), _r1(e[1][1])]
+    hs = getattr(sel, "heads", None) or ()
+    return {"segs": segs,
+            "heads": [[_r1(h.pos[0]), _r1(h.pos[1])] for h in hs]}
 
 
 def summarize(sel, tables) -> dict:

@@ -493,11 +493,28 @@
         <div id="au-heads-info" class="hint">—</div>
       </div>
 
+      <!-- [S270 · S310] 배관망 검출 — 최불리를 고르기 «전» 의 단계.
+           논리 문서(scripts/평면도 배관망 추출논리.pdf)의 순서 그대로다:
+           담당 헤드 수로 물 안 가는 관로를 자르고(S270), 밸브에서 각 헤드까지
+           거리를 잰다(S310). 이 단계가 없으면 사람은 «거리를 어디서 재는지» 를
+           못 보고 결과만 받는다. -->
+      <div class="step" id="au-s3">
+        <div class="step-h"><b>3</b>배관망 검출 <i id="au-s3-mark"></i></div>
+        <p class="step-p">배관을 이어 망을 만들고, 알람밸브에서 각 헤드까지
+          거리를 잽니다. 최불리는 이 거리를 내림차순으로 자른 것입니다.</p>
+        <label class="chk"><input type="checkbox" id="au-prune" checked>
+          <span>물 안 가는 관로 잘라내기 (시험배관·드레인)</span></label>
+        <div class="row" style="margin-top:8px">
+          <button id="au-network" class="go">배관망 검출</button>
+        </div>
+        <div id="au-net-info" class="hint">—</div>
+      </div>
+
       <!-- 범위 지정은 접어 두면 안 된다 — 어느 구역을 뽑을지가 결과를 가른다.
            안 그리면 «도면 전체» 로 가므로 «선택» 이지만, 고르는 단계 자체는
-           보여야 한다. -->
-      <div class="step" id="au-s3">
-        <div class="step-h"><b>3</b>범위 지정 <i id="au-s3-mark"></i></div>
+           보여야 한다. (논리 문서의 S315) -->
+      <div class="step" id="au-s4">
+        <div class="step-h"><b>4</b>범위 지정 <i id="au-s4-mark"></i></div>
         <p class="step-p">뽑을 구역을 사각형으로 그립니다. 안 그리면 도면
           전체에서 가장 불리한 헤드군을 찾습니다.</p>
         <div class="row">
@@ -511,8 +528,8 @@
         <div id="au-zones" class="hint">영역 없음 · 도면 전체</div>
       </div>
 
-      <div class="step" id="au-s4">
-        <div class="step-h"><b>4</b>최불리 추출 <i id="au-s4-mark"></i></div>
+      <div class="step" id="au-s5">
+        <div class="step-h"><b>5</b>최불리 추출 <i id="au-s5-mark"></i></div>
         <label class="f"><span>기준개수 (NFTC 103 표 2.1.1.1)</span>
           <select id="au-k-preset"></select></label>
         <label class="f"><span>기준개수 K</span>
@@ -875,6 +892,8 @@
     method: null, autoAlarm: null, autoArm: null,
     autoHeads: [], autoDone: false, autoSummary: null,
     autoView: null,                         // 뽑아낸 배관망(절점·배관)
+    // [S270 · S310] 검출한 망 — 최불리를 고르기 «전» 의 것
+    autoNet: null, autoNetView: null,
     world: null, pick: null, edit: null, design: null,
     suggest: null,                          // [F-5] 찍기 후보 (제안만)
     suggestOff: new Set(),                  // 반영에서 제외한 후보 index
@@ -884,6 +903,9 @@
     ghosts: null,                           // 찍히지 못한 후보 index (유령)
     showLow: false,                         // 낮은 띠 후보 표시 토글
     handoff: null,                          // [F-8d] 자동 → 손질 이어받기 제안
+    // 되돌리기 — 자동·계통도는 기록이 화면 쪽에만 있어 여기에 쌓는다.
+    // (찍기·손질은 엔진이 제 기록을 들고 있다)
+    undo: [],
     hidden: new Set(),                      // 숨긴 레이어 묶음 id
     view: { scale: 1, ox: 0, oy: 0 },
     poll: null, es: null, convResult: null,
@@ -994,6 +1016,7 @@
       const px = Math.abs(z.x1 - z.x0) * S.view.scale;
       const py = Math.abs(z.y1 - z.y0) * S.view.scale;
       if (px < 8 || py < 8) { draw(); return; }
+      markUndo("영역 그리기");
       S.zones.push([Math.min(z.x0, z.x1), Math.min(z.y0, z.y1),
                     Math.max(z.x0, z.x1), Math.max(z.y0, z.y1)]);
       // 자동 경로는 영역이 서버의 필수 입력이라 곧바로 올린다(anchored 의
@@ -1047,11 +1070,63 @@
       say("작업이 끝난 뒤에 되돌릴 수 있습니다.", "warn");
       return;
     }
-    const btn = S.stage === "pick" ? $("pk-undo")
-              : S.stage === "edit" ? $("ed-undo") : null;
-    if (btn) btn.click();
-    else say("이 단계에는 되돌릴 것이 없습니다.", "warn");
+    undoStep();
   });
+
+  // ── 되돌리기 — 모든 단계에서 한 박자씩 ──────────────────────────
+  // 찍기·손질은 엔진이 제 기록을 들고 있어 단추를 그대로 누른다. 자동·계통도는
+  // 그 기록이 «화면 쪽» 에만 있으므로 여기서 직접 쌓는다. 눌러도 아무 일이
+  // 없으면 사람은 프로그램이 고장 났다고 읽는다 — 실제로 그 말을 들었다.
+  const UNDO_CAP = 60;
+
+  function snapAuto() {
+    return { alarm: S.autoAlarm ? S.autoAlarm.slice() : null,
+             zones: S.zones.map((z) => z.slice()) };
+  }
+  function snapSub() {
+    return { picks: S.sub.picks.map((p) => (p ? p.slice() : null)) };
+  }
+
+  // 되돌릴 «직전» 에 부른다 — 바꾸기 전 모습을 담아 둔다.
+  function markUndo(label) {
+    const st = S.stage;
+    const snap = st === "auto" ? snapAuto() : st === "sub" ? snapSub() : null;
+    if (!snap) return;
+    S.undo.push({ stage: st, snap, label });
+    if (S.undo.length > UNDO_CAP) S.undo.shift();
+  }
+
+  async function undoStep() {
+    // 엔진이 기록을 들고 있는 단계는 그 단추를 그대로 누른다 — 여기서 API 를
+    // 따로 부르면 단추와 단축키의 동작이 갈라진다.
+    if (S.stage === "pick") { $("pk-undo").click(); return; }
+    if (S.stage === "edit") { $("ed-undo").click(); return; }
+
+    const i = [...S.undo].reverse().findIndex((u) => u.stage === S.stage);
+    if (i < 0) { say("이 단계에는 되돌릴 것이 없습니다.", "warn"); return; }
+    const item = S.undo.splice(S.undo.length - 1 - i, 1)[0];
+
+    if (item.stage === "auto") {
+      S.autoAlarm = item.snap.alarm ? item.snap.alarm.slice() : null;
+      S.zones = item.snap.zones.map((z) => z.slice());
+      S.autoArm = null;
+      $("au-anchor").classList.remove("on");
+      try {
+        await post("/api/module-f/auto/anchor", S.autoAlarm
+          ? { sid: S.sid, x: S.autoAlarm[0], y: S.autoAlarm[1] }
+          : { sid: S.sid });
+        await post("/api/module-f/auto/zones", { sid: S.sid, zones: S.zones });
+      } catch (err) { say(err.message, "err"); return; }
+      renderAuto(null);
+      draw();
+    } else if (item.stage === "sub") {
+      S.sub.picks = item.snap.picks.map((p) => (p ? p.slice() : null));
+      S.sub.arm = null;
+      renderSubPicks();
+      draw();
+    }
+    say(`되돌렸습니다 — ${item.label}`, "ok");
+  }
 
   // ── 그리기 ─────────────────────────────────────────────────────
   function draw() {
@@ -1081,6 +1156,8 @@
       if (S.stage === "sub") drawSubPicks();
       if (S.stage === "auto") {
         drawZones();
+        // 검출한 망(파랑)을 먼저 깔고, 뽑은 최불리(청록)를 그 위에 얹는다.
+        drawAutoNetwork();
         if (focus) drawAutoNet();
         drawAuto(focus);
       }
@@ -1600,7 +1677,11 @@
       S.world = null; S.edit = null; S.key = null;
       // 새 도면이다 — 앞 도면의 정찰·채택·이어받기 표시는 뜻이 없다.
       S.recon = null; S.suggest = null; S.ghosts = null; S.adopted = null;
-      S.handoff = null;
+      S.handoff = null; S.autoNet = null; S.autoNetView = null;
+      S.autoView = null;
+      // ★되돌리기 기록도 함께 버린다. 남겨 두면 Ctrl+Z 가 «앞 도면의 좌표» 를
+      //   되살려 이 도면에 씌운다.
+      S.undo = [];
       $("pk-adopt-box").classList.add("hidden");
       renderHandoff();
       say(`${d.filename} 읽는 중…`);
@@ -1986,6 +2067,9 @@
       // 슬롯마다 어디까지 갔는지가 다르다 — 그 단계로 되돌려 놓는다.
       S.sub = { picks: [null, null], arm: null, summary: null };
       S.zones = []; S.autoHeads = []; S.autoAlarm = null; S.autoDone = false;
+      // 슬롯이 바뀌면 되돌릴 대상도 바뀐다 — 기록을 넘기면 남의 좌표가 온다.
+      S.undo = []; S.autoView = null;
+      S.autoNet = null; S.autoNetView = null;
       // 방식도 슬롯에 딸린다 — 자동으로 연 평면도로 돌아오면 자동 화면이어야
       // 하고, 아직 안 연 슬롯이면 «안 고른» 상태 그대로여야 한다.
       const st = await api(`/api/module-f/auto/state?sid=${S.sid}`);
@@ -2057,6 +2141,7 @@
 
   function subClick(x, y) {
     if (S.sub.arm == null) return;
+    markUndo(`${S.sub.arm === 0 ? subSpec().a : subSpec().b} 찍기`);
     S.sub.picks[S.sub.arm] = [x, y];
     S.sub.arm = null;
     renderSubPicks();
@@ -2177,12 +2262,16 @@
     mark("au-s1", !!a, "✓ 찍음");
     mark("au-s2", S.autoHeads.length > 0,
          S.autoHeads.length ? `✓ ${S.autoHeads.length.toLocaleString()}개` : "");
+    const ns = S.autoNet;
+    mark("au-s3", !!ns, ns ? `✓ 도달 ${ns.reached.toLocaleString()}` : "");
     // 범위는 «선택» 이다 — 안 그렸다고 미완으로 보이면 안 된다. 그린 곳이
     // 있으면 개수를, 없으면 «도면 전체» 임을 그 자리에서 말한다.
-    mark("au-s3", S.zones.length > 0,
+    mark("au-s4", S.zones.length > 0,
          S.zones.length ? `✓ ${S.zones.length}곳` : "");
-    if (!S.zones.length) $("au-s3-mark").textContent = "도면 전체";
-    mark("au-s4", S.autoDone, "✓ 추출됨");
+    if (!S.zones.length) $("au-s4-mark").textContent = "도면 전체";
+    mark("au-s5", S.autoDone, "✓ 추출됨");
+    $("au-network").disabled = !a;
+    renderAutoNet();
     $("au-zone-draw").classList.toggle("on", $("au-zone-arm").checked);
     $("au-zone-undo").disabled = !S.zones.length;
     $("au-zone-clear").disabled = !S.zones.length;
@@ -2239,6 +2328,7 @@
       if (d.alarm) S.autoAlarm = d.alarm;
       // 영역은 서버가 들고 있다 — 슬롯을 오갔다 와도 그대로 되살린다.
       if (Array.isArray(d.zones)) S.zones = d.zones.map((z) => z.slice());
+      await loadAutoNetView();   // 검출한 망을 먼저 되살린다(단계 표시가 쓴다)
       renderAuto(d);
       await loadAutoView();
       // 추출을 끝낸 슬롯으로 돌아오면 그 자리로 다시 맞춘다.
@@ -2253,6 +2343,7 @@
     if (S.autoArm !== "anchor") return;
     S.autoArm = null;
     $("au-anchor").classList.remove("on");
+    markUndo("알람밸브 찍기");
     S.autoAlarm = [x, y];
     post("/api/module-f/auto/anchor", { sid: S.sid, x, y })
       .then(() => { renderAuto(null); draw(); })
@@ -2273,13 +2364,23 @@
         + "찾습니다.");
   };
   $("au-anchor-clear").onclick = async () => {
+    markUndo("알람밸브 지우기");
     S.autoAlarm = null; S.autoArm = null;
+    $("au-anchor").classList.remove("on");
     try { await post("/api/module-f/auto/anchor", { sid: S.sid }); }
     catch (err) { say(err.message, "err"); }
     renderAuto(null); draw();
   };
-  $("au-zone-undo").onclick = () => { S.zones.pop(); pushAutoZones(); draw(); };
-  $("au-zone-clear").onclick = () => { S.zones = []; pushAutoZones(); draw(); };
+  $("au-zone-undo").onclick = () => {
+    if (!S.zones.length) return;
+    markUndo("마지막 영역 지우기");
+    S.zones.pop(); pushAutoZones(); draw();
+  };
+  $("au-zone-clear").onclick = () => {
+    if (!S.zones.length) return;
+    markUndo(`영역 ${S.zones.length}곳 전부 지우기`);
+    S.zones = []; pushAutoZones(); draw();
+  };
   // 단추가 무장 상태를 켜고 끈다 — 체크박스는 그 상태의 원천으로만 남는다
   // (캔버스 드래그 판정이 그 값을 읽는다).
   $("au-zone-draw").onclick = () => {
@@ -2289,6 +2390,92 @@
     say(on ? "캔버스를 드래그해 뽑을 구역을 그리세요. (화면 이동은 Shift+드래그)"
            : "영역 그리기를 껐습니다.");
   };
+
+  // ── [S270 · S310] 배관망 검출 ────────────────────────────────
+  // 최불리는 «거리를 내림차순으로 자른 것» 이다. 그 거리를 어디서 어떻게 재는지
+  // 가 안 보이면 사람은 결과만 받고 믿을 근거가 없다.
+  function renderAutoNet() {
+    const s = S.autoNet;
+    if (!s) { $("au-net-info").textContent = "—"; return; }
+    let html = kv("배관망", `절점 ${s.nodes.toLocaleString()} · `
+                  + `배관 ${s.pipes.toLocaleString()} · ${s.len_m} m`)
+      + kv("도달 헤드", `<span class="ok">${s.reached.toLocaleString()}</span>`
+           + ` / ${s.detected.toLocaleString()}`
+           + (s.unreached
+              ? ` · <span class="warn">미도달 ${s.unreached.toLocaleString()}</span>`
+              : ""))
+      + kv("거리 (밸브→헤드)",
+           `최근 ${s.near_m} · 중앙 ${s.mid_m} · <b>최원 ${s.far_m}</b> m`);
+    if (s.pruned && s.cut_pipes) {
+      html += kv("잘라낸 관로",
+                 `${s.cut_pipes.toLocaleString()}개 · ${s.cut_m} m `
+                 + `<span class="dim">(물 안 가는 배관)</span>`);
+    }
+    if (s.fragments) {
+      html += kv('<span class="warn">미연결 조각</span>',
+                 `${s.fragments.toLocaleString()}개 · ${s.frag_m} m`);
+    }
+    $("au-net-info").innerHTML = html;
+  }
+
+  async function loadAutoNetView() {
+    S.autoNet = null; S.autoNetView = null;
+    try {
+      const d = await api(`/api/module-f/auto/network-view?sid=${S.sid}`);
+      S.autoNet = d.summary || null;
+      S.autoNetView = d.view || null;
+    } catch (err) { /* 아직 안 돌렸다 — 빈 채로 둔다 */ }
+  }
+
+  $("au-network").onclick = async () => {
+    busy(true, "배관망을 잇고 거리를 재는 중…");
+    try {
+      await post("/api/module-f/auto/network",
+                 { sid: S.sid, prune: $("au-prune").checked });
+      watch(async () => {
+        await loadAutoNetView();
+        renderAuto(null);
+        if (S.autoNetView) fit(netBounds() || curBounds());
+        draw();
+        const s = S.autoNet;
+        if (s) {
+          say(`배관망 검출 완료 — 도달 헤드 ${s.reached.toLocaleString()}`
+            + `/${s.detected.toLocaleString()} · 최원 ${s.far_m} m`
+            + (s.cut_pipes ? ` · 물 안 가는 관로 ${s.cut_pipes}개 잘라냄` : ""),
+              s.unreached ? "warn" : "ok");
+        }
+      });
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  function netBounds() {
+    const sg = S.autoNetView && S.autoNetView.segs;
+    if (!sg || !sg.length) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < sg.length; i += 2) {
+      if (sg[i] < x0) x0 = sg[i];
+      if (sg[i] > x1) x1 = sg[i];
+      if (sg[i + 1] < y0) y0 = sg[i + 1];
+      if (sg[i + 1] > y1) y1 = sg[i + 1];
+    }
+    const pad = Math.max(x1 - x0, y1 - y0, 1000) * 0.06;
+    return { minx: x0 - pad, miny: y0 - pad, maxx: x1 + pad, maxy: y1 + pad };
+  }
+
+  // 검출한 망 — 최불리(청록)와 구분되게 파랑으로 얇게 깐다.
+  function drawAutoNetwork() {
+    const v = S.autoNetView;
+    if (!v || !v.segs || !v.segs.length) return;
+    ctx.strokeStyle = "#60a5fa";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let i = 0; i < v.segs.length; i += 4) {
+      ctx.moveTo(sx(v.segs[i]), sy(v.segs[i + 1]));
+      ctx.lineTo(sx(v.segs[i + 2]), sy(v.segs[i + 3]));
+    }
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
 
   $("au-heads").onclick = async () => {
     busy(true, "헤드 후보 찾는 중…");
@@ -2524,6 +2711,8 @@
   $("sub-pick-a").onclick = () => armSub(0);
   $("sub-pick-b").onclick = () => armSub(1);
   $("sub-clear").onclick = () => {
+    if (!S.sub.picks.some(Boolean)) return;
+    markUndo("찍은 점 지우기");
     S.sub.picks = [null, null]; S.sub.arm = null;
     renderSubPicks(); draw();
   };

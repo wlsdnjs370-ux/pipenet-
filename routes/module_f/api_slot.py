@@ -189,6 +189,8 @@ def register(app, *, _save_upload):
         sess["method"] = None
         for k in ("world", "pick", "edit", "entities", "layer_cat", "auto",
                   "auto_diag", "auto_heads", "auto_alarm", "auto_zones",
+                  # [S270·S310] 검출한 망도 «그 도면» 의 것이다.
+                  "auto_net",
                   "design", "worst", "water_path",
                   # [F-8a] 정찰·제안은 «그 도면» 의 것이다. 남겨 두면 새 도면을
                   # 올렸는데 카드가 앞 도면의 후보 수를 그린다.

@@ -155,6 +155,71 @@ def register(app):
                         "shown": len(shown),
                         "dropped": len(heads) - len(shown)})
 
+    @app.post("/api/module-f/auto/network")
+    def module_f_auto_network():
+        """[S270 · S310] 배관망 검출 — 최불리를 고르기 «전» 의 단계.
+
+        `scripts/평면도 배관망 추출논리.pdf` 의 순서에서 S320(내림차순 정렬) 앞
+        까지다. 담당 헤드 수로 물 안 가는 관로를 자르고(S270), 밸브에서 각 헤드
+        까지 거리를 잰다(S310). 최불리는 그 목록을 자르는 일이라 다음 단계다.
+
+        이 단계가 없으면 사람은 «거리를 어디서 재는지» 를 못 보고 결과만 받는다.
+        """
+        from routes.module_f.auto import network_view, run_network
+
+        body = request.get_json(silent=True) or {}
+        try:
+            sess, why = _need_auto(body)
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        if why:
+            return _fail(why, 409)
+        if _job_running(sess):
+            return _fail("작업이 끝난 뒤에 실행할 수 있습니다.", 409)
+        if not sess.get("auto_alarm"):
+            return _fail("알람밸브 위치를 먼저 찍으세요.", 400)
+        # S270 가지치기 — A 는 기본 off 지만 논리 문서는 켜는 것을 전제한다.
+        prune = bool(body.get("prune", True))
+
+        def job():
+            print(f"[망검출] S270 담당 헤드 수 · S310 거리 측정 "
+                  + ("(물 안 가는 관로 잘라냄)" if prune else "(가지치기 끔)"))
+            got = run_network(sess["entities"], sess["layer_cat"],
+                              alarm_xy=sess["auto_alarm"],
+                              rects=sess.get("auto_zones") or None,
+                              prune=prune,
+                              progress_cb=lambda f, m: print(f"[망검출] {m}"))
+            sess["auto_net"] = got
+            s = got["summary"]
+            print(f"[망검출] 완료 — 절점 {s['nodes']:,} · 배관 {s['pipes']:,} · "
+                  f"연장 {s['len_m']:,.1f} m")
+            print(f"[망검출] 도달 헤드 {s['reached']:,}/{s['detected']:,} · "
+                  f"거리 최근 {s['near_m']} m · 중앙 {s['mid_m']} m · "
+                  f"최원 {s['far_m']} m")
+            if s["cut_pipes"]:
+                print(f"[망검출] 물 안 가는 관로 {s['cut_pipes']:,}개 · "
+                      f"{s['cut_m']:,.1f} m 잘라냄 (S270)")
+            return s
+
+        _run_job(sess, "배관망 검출", job)
+        return jsonify({"ok": True})
+
+    @app.get("/api/module-f/auto/network-view")
+    def module_f_auto_network_view():
+        """검출한 망의 도형 — 새로고침·슬롯 왕복에도 다시 그릴 수 있게."""
+        from routes.module_f.auto import network_view
+        try:
+            sess = _sess(request.args.get("sid"))
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        got = sess.get("auto_net")
+        # ★«아직 안 돌렸다» 는 오류가 아니다. 404 로 답하면 화면이 단계에 들어올
+        #   때마다 콘솔에 붉은 줄을 남긴다 — 진짜 오류가 그 사이에 묻힌다.
+        if not got:
+            return jsonify({"ok": True, "summary": None, "view": None})
+        return jsonify({"ok": True, "summary": got["summary"],
+                        "view": network_view(got["selection"])})
+
     @app.post("/api/module-f/auto/run")
     def module_f_auto_run():
         """선정 실행. 무거우므로 잡으로 돌린다."""

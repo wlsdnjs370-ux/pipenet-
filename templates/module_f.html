@@ -571,15 +571,19 @@
     <!-- 5. 수리계산 입력 (설계) — G16 의 웹판 -->
     <section class="card hidden" id="panel-design">
       <h2>수리계산 입력</h2>
-      <label class="f"><span>기준개수 K (NFPC 103)</span>
-        <input type="number" id="dg-k" value="30" min="1" max="200"></label>
-      <label class="f"><span>배관 규격 (전체 기본값)</span>
-        <select id="dg-sched">
-          <!-- 이름은 SLF 의 Item-name 과 철자·공백까지 같아야 한다(엔진 SCHEDULE_DEFS 가 권위) -->
-          <option>KSD 3507</option><option>KSD 3562</option>
-          <option>KSD 3576</option><option>DP</option>
-          <option>CPVC2</option><option>FX</option>
-        </select></label>
+      <!-- 표를 «여기서 만드는» 입력들. 자동 경로에서는 표가 이미 나와 있으므로
+           통째로 숨긴다 — 누르면 「손질 세션이 없습니다」로 막히기만 한다. -->
+      <div id="dg-build-inputs">
+        <label class="f"><span>기준개수 K (NFPC 103)</span>
+          <input type="number" id="dg-k" value="30" min="1" max="200"></label>
+        <label class="f"><span>배관 규격 (전체 기본값)</span>
+          <select id="dg-sched">
+            <!-- 이름은 SLF 의 Item-name 과 철자·공백까지 같아야 한다(엔진 SCHEDULE_DEFS 가 권위) -->
+            <option>KSD 3507</option><option>KSD 3562</option>
+            <option>KSD 3576</option><option>DP</option>
+            <option>CPVC2</option><option>FX</option>
+          </select></label>
+      </div>
 
       <h2 style="margin-top:12px">보기</h2>
       <label class="chk"><input type="checkbox" id="dg-iso" checked>
@@ -594,9 +598,12 @@
       <label class="f"><span>헤드 스텁 길이 (%)</span>
         <input type="number" id="dg-stub" value="2.5" min="0.5" max="10" step="0.5"></label>
 
-      <div class="row" style="margin-top:12px">
+      <div class="row" style="margin-top:12px" id="dg-build-row">
         <button id="dg-build" class="go">표 확정 (최불리 → 5표)</button>
         <button id="dg-back">← 변환</button>
+      </div>
+      <div class="row hidden" style="margin-top:12px" id="dg-back-auto-row">
+        <button id="dg-back-auto">← 자동 추출</button>
       </div>
       <div class="row">
         <button id="dg-emit" disabled>.sdf + .slf 저장</button>
@@ -722,7 +729,7 @@
     merge: null,                            // [H-5] 통합 상태 한 장
     // [A 방식] 자동 추출 — 방식·알람밸브·헤드 후보·완료 여부
     method: "manual", autoAlarm: null, autoArm: null,
-    autoHeads: [], autoDone: false,
+    autoHeads: [], autoDone: false, autoSummary: null,
     world: null, pick: null, edit: null, design: null,
     suggest: null,                          // [F-5] 찍기 후보 (제안만)
     suggestOff: new Set(),                  // 반영에서 제외한 후보 index
@@ -1777,7 +1784,10 @@
     const ready = !!a && S.zones.length > 0;
     $("au-run").disabled = !ready;
     $("au-to-design").disabled = !S.autoDone;
-    if (d && d.summary) renderAutoSummary(d.summary);
+    if (d && d.summary) {
+      S.autoSummary = d.summary;
+      renderAutoSummary(d.summary);
+    }
   }
 
   function renderAutoSummary(s) {
@@ -1801,6 +1811,8 @@
       const d = await api(`/api/module-f/auto/state?sid=${S.sid}`);
       S.autoDone = !!d.done;
       if (d.alarm) S.autoAlarm = d.alarm;
+      // 영역은 서버가 들고 있다 — 슬롯을 오갔다 와도 그대로 되살린다.
+      if (Array.isArray(d.zones)) S.zones = d.zones.map((z) => z.slice());
       renderAuto(d);
       if (S.world) fit(S.world.bounds);
       draw();
@@ -2761,6 +2773,19 @@
     };
   }
 
+  // 수리계산 패널의 «표를 만드는» 입력은 수동 경로 것이다. 자동은 표가 이미
+  // 나와 있어 그 단추가 「손질 세션이 없습니다」로 막히기만 한다.
+  function syncDesignForMethod() {
+    const auto = S.method === "auto";
+    $("dg-build-inputs").classList.toggle("hidden", auto);
+    $("dg-build-row").classList.toggle("hidden", auto);
+    $("dg-back-auto-row").classList.toggle("hidden", !auto);
+    // 자동은 「변환」 단계를 거치지 않으므로 그 산출물 단추도 뜻이 없다.
+    $("dg-to-merge").classList.toggle("hidden", false);
+  }
+
+  $("dg-back-auto").onclick = () => loadAuto();
+
   async function designPreview() {
     const cfg = designSettings();
     const q = new URLSearchParams({
@@ -2775,9 +2800,28 @@
     const xs = d.view.nodes.map(n => n.x), ys = d.view.nodes.map(n => n.y);
     fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
           miny: Math.min(...ys), maxy: Math.max(...ys) });
+    syncDesignForMethod();
     renderDesignTable();
     renderBoreLegend();
+    if (S.method === "auto") renderAutoDesignSummary();
     draw();
+  }
+
+  // 자동 경로는 「표 확정」을 거치지 않아 요약이 빈 채로 남는다 — 자동 추출이
+  // 낸 수치를 그대로 옮긴다(두 경로가 같은 것을 말하게).
+  function renderAutoDesignSummary() {
+    const s = S.autoSummary;
+    if (!s) { $("dg-summary").textContent = "—"; return; }
+    let html = kv("설계면적", `<span class="ok">${s.k}개</span>`
+                  + ` · 최원 ${s.far_m} m`)
+      + kv("표", `절점 ${s.nodes} · 배관 ${s.pipes} · 노즐 ${s.nozzles}`
+           + ` · 부속 ${s.fittings}`)
+      + kv("경로", '자동 <span class="tag">MODULE A</span>');
+    if (s.source_fallback) {
+      html += kv('<span class="warn">급수원 대체</span>',
+                 `${s.source_bridge_mm} mm 떨어져 최근접 절점으로`);
+    }
+    $("dg-summary").innerHTML = html;
   }
 
   function drawDesign() {
@@ -2890,6 +2934,19 @@
       box.textContent = "—";
       return;
     }
+    // ★자동(A) 경로의 배관 행에는 관경 «근거» 칸이 없다(A 의 build_input_tables
+    //   는 dia_src 를 남기지 않는다). 규칙은 수동과 같지만 배관별 근거를 기록
+    //   하지 않을 뿐이다. 없는 것을 「전부 근거 없음」으로 그리면 도면에 치수가
+    //   없다는 뜻으로 읽힌다 — 사실이 아니다. 그래서 비운다고 말한다.
+    if (S.method === "auto") {
+      box.innerHTML = kv("관경 근거",
+        "자동 경로는 배관별 근거를 남기지 않습니다");
+      $("dg-bore-color").disabled = true;
+      $("dg-bore-color").checked = false;
+      S.boreColor = false;
+      return;
+    }
+    $("dg-bore-color").disabled = false;
     const pipes = S.design.view.pipes || [];
     const n = {};
     for (const p of pipes) n[p.src] = (n[p.src] || 0) + 1;

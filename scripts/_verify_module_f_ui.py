@@ -71,12 +71,24 @@ def main() -> int:
         check("임시 서버 기동", True, f":{port}")
 
         errors: list[str] = []
+        # sid 는 화면 JS 안(IIFE)에만 있다. 그것을 꺼내자고 프로덕션에 전역을
+        # 심지 않는다 — 열기 응답에서 그대로 주우면 된다.
+        seen: dict = {}
         with sync_playwright() as pw:
             browser = pw.chromium.launch()
             page = browser.new_page()
             page.on("console", lambda m: errors.append(m.text)
                     if m.type == "error" else None)
             page.on("pageerror", lambda e: errors.append(str(e)))
+
+            def _grab(resp):
+                if "/api/module-f/slot/open" not in resp.url:
+                    return
+                try:
+                    seen["sid"] = (resp.json() or {}).get("sid")
+                except Exception:  # noqa: BLE001
+                    pass
+            page.on("response", _grab)
 
             page.goto(f"{base}/module-f", wait_until="load")
             if page.query_selector("input[type=password]"):
@@ -269,6 +281,75 @@ def main() -> int:
                     check("자동 패널이 보인다", page.is_visible("#panel-auto"))
                     check("영역·알람밸브 전에는 실행이 막힌다",
                           page.is_disabled("#au-run"))
+
+                    # ── 자동 경로를 실제로 끝까지 돌린다.
+                    #    알람밸브는 «헤드 좌표» 를 쓴다 — bbox 모서리엔 배관이
+                    #    없어 25m 결합 한도에 걸린다(실측).
+                    ran = page.evaluate(
+                        """async (sid) => {
+                          const j = async (u, b) => (await fetch(u, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(b)})).json();
+                          const hs = await j('/api/module-f/auto/heads', {sid});
+                          if (!hs.ok || !hs.n) return {ok: false, why: 'heads 0'};
+                          const xs = hs.heads.map(h => h.x);
+                          const ys = hs.heads.map(h => h.y);
+                          const cx = xs.reduce((a,b)=>a+b,0)/xs.length;
+                          const cy = ys.reduce((a,b)=>a+b,0)/ys.length;
+                          let best = hs.heads[0], bd = Infinity;
+                          for (const h of hs.heads) {
+                            const d = (h.x-cx)**2 + (h.y-cy)**2;
+                            if (d < bd) { bd = d; best = h; }
+                          }
+                          const pad = 1000;
+                          await j('/api/module-f/auto/anchor',
+                                  {sid, x: best.x, y: best.y});
+                          await j('/api/module-f/auto/zones', {sid, zones: [[
+                            Math.min(...xs)-pad, Math.min(...ys)-pad,
+                            Math.max(...xs)+pad, Math.max(...ys)+pad]]});
+                          return {ok: true, n: hs.n};
+                        }""", seen.get("sid"))
+                    check("헤드 후보·알람밸브·영역 준비", bool(ran.get("ok")),
+                          str(ran.get("why") or f"후보 {ran.get('n')}개"))
+                    if ran.get("ok"):
+                        # 화면이 서버 상태를 되살리는가 — 영역이 되돌아와야 한다.
+                        # ★같은 단계를 다시 누르면 gotoStage 가 그냥 돌아간다 —
+                        #   다른 단계를 거쳐 와야 재적재가 돈다.
+                        page.evaluate(
+                            "() => document.querySelectorAll('#steps div')[0].click()")
+                        page.wait_for_timeout(300)
+                        page.evaluate(
+                            "() => document.querySelectorAll('#steps div')[1].click()")
+                        page.wait_for_timeout(700)
+                        check("영역이 서버에서 되살아난다",
+                              "영역 1곳" in page.inner_text("#au-zones"),
+                              page.inner_text("#au-zones").strip())
+                        check("준비되면 실행이 열린다",
+                              not page.is_disabled("#au-run"))
+                        page.click("#au-run")
+                        done = False
+                        for _ in range(600):        # 100ms × 600 = 60s
+                            page.wait_for_timeout(100)
+                            if not page.is_disabled("#au-to-design"):
+                                done = True
+                                break
+                        check("자동 추출이 끝난다", done,
+                              page.inner_text("#au-summary").strip()[:70])
+                        page.click("#au-to-design")
+                        page.wait_for_timeout(1200)
+                    check("자동에서 「표 확정」이 감춰진다",
+                          not page.is_visible("#dg-build-row"))
+                    check("자동에서 K·규격 입력이 감춰진다",
+                          not page.is_visible("#dg-build-inputs"))
+                    check("자동에는 「← 자동 추출」 이 뜬다",
+                          page.is_visible("#dg-back-auto-row"))
+                    legend = page.inner_text("#dg-bore-legend").strip()
+                    check("관경 근거를 정직하게 비운다",
+                          "자동 경로는" in legend, legend[:60])
+                    check("관경 근거 색칠이 꺼지고 잠긴다",
+                          page.is_disabled("#dg-bore-color")
+                          and not page.is_checked("#dg-bore-color"))
             # 표가 몇 개인지가 아니라 «한 판 안에서 겹치는가» 를 본다 — 패널이
             # 다르면 동시에 보이지 않으므로 중복이 아니다(손질 패널에 셋이
             # 몰려 있던 것이 문제였다).

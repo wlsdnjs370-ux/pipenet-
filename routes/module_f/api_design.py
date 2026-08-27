@@ -237,6 +237,12 @@ def register(app, *, UPLOAD_DIR):
             return _fail(str(exc), 410)
         es = sess.get("edit")
         if es is None:
+            # 자동(A) 경로는 표가 이미 나와 있다 — 여기서 다시 만들 것이 없다.
+            # 화면은 이 단추를 감추지만, 옛 클라이언트가 부를 수 있으므로
+            # «손질 세션이 없다» 대신 무엇이 잘못됐는지 말한다.
+            if sess.get("method") == "auto":
+                return _fail("자동 경로는 «자동 추출» 이 이미 표를 냈습니다 — "
+                             "여기서 다시 확정하지 않습니다.", 409)
             return _fail("손질 세션이 없습니다.")
         if not getattr(es.board, "sources", None):
             return _fail("급수 시작 위치를 먼저 찍어야 설계면적을 고를 수 있습니다.")

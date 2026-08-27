@@ -47,7 +47,11 @@ def register(app):
             "method": sess.get("method") or "manual",
             "opened": bool(sess.get("entities")),
             "alarm": sess.get("auto_alarm"),
-            "zones": len(sess.get("auto_zones") or ()),
+            # ★개수가 아니라 사각형 그대로 돌려준다. 슬롯을 오갔다 오면 화면은
+            #   제 상태를 잃는데, 서버는 그대로 들고 있다 — 개수만 주면 «영역
+            #   3곳» 이라 적히면서 캔버스에는 아무것도 안 그려져, 지워진 줄 알고
+            #   다시 그리게 된다.
+            "zones": [list(z) for z in (sess.get("auto_zones") or ())],
             "k": int(sess.get("auto_k") or REMOTE_K_DEFAULT),
             "diag": sess.get("auto_diag"),
             "done": bool(sess.get("auto")),

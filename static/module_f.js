@@ -278,6 +278,7 @@
       }
       else if (designMarksOn() && S.edit) { drawEdit(); drawDesignMarks(); }
       else drawDesign();
+      drawFocus();      // [F-10f] 「확인할 것」에서 고른 자리를 마지막에 덧그린다
     }
     else if ((S.stage === "edit" || S.stage === "conv") && S.edit) {
       // [F-10c] 배경 도면을 «밑에» 깐다 — 전사 17:53 · 23:06. corridor 만 뜨면
@@ -3089,7 +3090,10 @@
     const d = await api(`/api/module-f/design/preview?${q}`);
     S.design = { view: d.view, tables: d.tables, settings: d.settings,
                  marks: d.marks || {},
+                 // [F-10f] 이상 목록이 부속·등가길이 수치를 여기서 읽는다.
+                 summary: (S.design && S.design.summary) || null,
                  hilite: (S.design && S.design.hilite) || new Set() };
+    renderIssues();
     const xs = d.view.nodes.map(n => n.x), ys = d.view.nodes.map(n => n.y);
     fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
           miny: Math.min(...ys), maxy: Math.max(...ys) });
@@ -3295,7 +3299,185 @@
     }
   }
 
+  // ── [F-10f] 이상 표시 — 전수 검수 대신 ──────────────────────────
+  //
+  // 전사 27:36 「클릭을 다 클릭을 하는 것도 불편할 수 있거든」 · 27:41 「뭔가
+  // 좀 이상하면 표시를 해서 확인을 해서 수정을 하고」. 집계 숫자로만 있던 것을
+  // **항목** 으로 내린다. 목록이 0 이면 그것이 사람 검수의 완료 신호다.
+  //
+  // ★새 계산을 만들지 않는다 — 전부 이미 화면에 와 있는 자료다. 관경 근거는
+  //   배관 행의 `src`, 제외 사유는 `marks`, 유령은 채택 결과. 그래서 서버를
+  //   한 줄도 안 바꿨고, 산출물이 안 변한다는 것이 자명하다(D-F10-7).
+  const ISSUE_CAP = 40;              // 조용히 자르지 않는다 — 남은 수를 적는다
+
+  function collectIssues() {
+    const out = [];
+    const s = (S.design && S.design.summary) || null;
+    const v = (S.design && S.design.view) || null;
+
+    // ① 관경 별표1 폴백 — 도면에 치수 텍스트가 없어 담당 헤드 수로 정한 배관.
+    if (v && v.pipes) {
+      const at = {};
+      for (const n of v.nodes) at[String(n.label)] = n;
+      const fb = v.pipes.filter((p) => p.src === "nfpc_fallback");
+      if (fb.length) {
+        out.push({
+          key: "bore", color: "#64748b", n: fb.length,
+          label: "관경 — 별표1 폴백 (도면 치수 없음)",
+          items: fb.slice(0, ISSUE_CAP).map((p) => {
+            const a = at[String(p.a)], b2 = at[String(p.b)];
+            return {
+              text: `${p.label} · ${p.dia}A · 담당 ${p.load}`,
+              x: (a && b2) ? (a.x + b2.x) / 2 : null,
+              y: (a && b2) ? (a.y + b2.y) / 2 : null,
+              frame: "iso",
+            };
+          }),
+        });
+      }
+    }
+
+    // ② 유령 — 채택이 못 찍은 후보. 좌표는 mm(평면)다.
+    if (S.ghosts && S.ghosts.size && S.suggest) {
+      const gs = [...S.ghosts].filter((i) => S.suggest[i]);
+      if (gs.length) {
+        out.push({
+          key: "ghost", color: "#f472b6", n: gs.length,
+          label: "유령 — 채택이 못 찍은 헤드 후보",
+          items: gs.slice(0, ISSUE_CAP).map((i) => ({
+            text: `후보 #${i} · 신뢰도 ${S.suggest[i].conf}`,
+            x: S.suggest[i].x, y: S.suggest[i].y, frame: "plan",
+          })),
+        });
+      }
+    }
+
+    // ③ 제외 사유 — F-5 가 이미 갈라 둔 세 갈래. 좌표는 mm(평면)다.
+    const m = (S.design && S.design.marks) || {};
+    for (const [key, label, color] of [
+      ["dry", "물길 미도달 헤드", "#64748b"],
+      ["unattached", "이음 끊김 (부착 실패)", "#eab308"],
+      ["unpicked", "찍히지 않음 (후보 제안 대비)", "#a855f7"],
+    ]) {
+      const g = m[key];
+      if (!g || !g.n) continue;
+      out.push({
+        key, color, n: g.n, label,
+        items: (g.xy || []).slice(0, ISSUE_CAP).map((p, i) => ({
+          text: `${label} #${i + 1}`, x: p[0], y: p[1], frame: "plan",
+        })),
+      });
+    }
+
+    // ④ 부속·등가길이 — 엔진이 «개수만» 센다. 자리를 지어내지 않는다.
+    if (s) {
+      for (const [key, label, n] of [
+        ["fitting", "부속 판정 불가", s.fitting_unresolved],
+        ["eqlen", "등가길이 미해결", s.eq_len_unresolved],
+      ]) {
+        if (!Number(n)) continue;
+        out.push({
+          key, color: "#f59e0b", n: Number(n), label,
+          note: "자리를 특정할 수 없습니다 — 엔진이 개수만 셉니다.",
+          items: [],
+        });
+      }
+    }
+    return out;
+  }
+
+  function renderIssues() {
+    const box = $("dg-issues"), chip = $("dg-issues-n");
+    if (!box) return;
+    // ★표가 없으면 «없다» 가 아니라 «아직 모른다» 다. 안 재고 「이상 없음」이라
+    //   적으면 그것은 완료 신호를 위조하는 것이다(저장소 규약: 정직한 진행 표시).
+    if (!S.design || !S.design.view) {
+      chip.textContent = "—";
+      chip.classList.remove("ok");
+      box.innerHTML = '<div class="hint">표를 확정하면 확인할 것이 '
+        + "여기 모입니다.</div>";
+      return;
+    }
+    const groups = collectIssues();
+    const total = groups.reduce((a, g) => a + g.n, 0);
+    chip.textContent = total ? `${total.toLocaleString()}건` : "없음";
+    chip.classList.toggle("ok", !total);
+    if (!total) {
+      // 완료 신호 — 이것이 「다 봤다」의 뜻이다.
+      box.innerHTML = '<div class="ok">확인할 이상 없음</div>';
+      return;
+    }
+    box.innerHTML = groups.map((g, gi) => {
+      const head = `<div class="kv"><b><span style="color:${g.color}">●</span> `
+        + `${g.label}</b><span>${g.n.toLocaleString()}건</span></div>`;
+      if (g.note) return head + `<div class="hint">${g.note}</div>`;
+      const rows = g.items.map((it, ii) =>
+        `<div class="issue" data-g="${gi}" data-i="${ii}">${it.text}</div>`
+      ).join("");
+      const rest = g.n - g.items.length;
+      return head + rows
+        + (rest > 0 ? `<div class="hint">… 그 외 ${rest.toLocaleString()}건`
+                      + " (목록은 40건까지 보입니다)</div>" : "");
+    }).join("");
+    S.issues = groups;
+    for (const el of box.querySelectorAll(".issue")) {
+      el.onclick = () => {
+        const g = S.issues[Number(el.dataset.g)];
+        const it = g && g.items[Number(el.dataset.i)];
+        if (it && it.x !== null && it.y !== null) focusIssue(it, g.color);
+      };
+    }
+  }
+
+  // 항목을 누르면 그 자리로 옮겨 가 강조한다. 좌표계가 둘이라(설계 vs 평면)
+  // 먼저 «맞는 화면» 으로 돌린 뒤 옮긴다 — 안 그러면 엉뚱한 자리를 비춘다.
+  function focusIssue(it, color) {
+    const wantPlan = it.frame === "plan";
+    const el = $("dg-plan");
+    if (el && el.checked !== wantPlan) {
+      el.checked = wantPlan;
+      renderPlanUnderlay();
+    }
+    const bb = wantPlan
+      ? (S.edit && S.edit.bounds)
+      : null;
+    let span;
+    if (bb) span = Math.max(bb.maxx - bb.minx, bb.maxy - bb.miny);
+    else if (S.design) {
+      const xs = S.design.view.nodes.map((n) => n.x);
+      const ys = S.design.view.nodes.map((n) => n.y);
+      span = Math.max(Math.max(...xs) - Math.min(...xs),
+                      Math.max(...ys) - Math.min(...ys));
+    } else span = 1000;
+    const pad = Math.max(span * 0.06, 1e-6);
+    fit({ minx: it.x - pad, maxx: it.x + pad,
+          miny: it.y - pad, maxy: it.y + pad });
+    S.focus = { x: it.x, y: it.y, color: color || "#ff3b3b",
+                frame: it.frame };
+    draw();
+    say(`${it.text} — 그 자리로 옮겼습니다.`);
+  }
+
+  // 강조 고리 — «어디를 보라» 는 표시다. 표시 전용이라 아무것도 안 바꾼다.
+  function drawFocus() {
+    const f = S.focus;
+    if (!f) return;
+    const onPlan = planUnderlayOn() || designMarksOn();
+    if ((f.frame === "plan") !== onPlan) return;   // 지금 그 좌표계가 아니다
+    ctx.save();
+    ctx.strokeStyle = f.color;
+    ctx.lineWidth = 2;
+    for (const r of [10, 16]) {          // 겹고리 — 한 겹은 배경에 묻힌다
+      ctx.beginPath();
+      ctx.arc(sx(f.x), sy(f.y), r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function renderDesignSummary(s) {
+    S.design = S.design || {};
+    S.design.summary = s;          // [F-10f] 이상 목록이 이 수치를 그대로 쓴다
     const b = s.bore_src || {};
     $("dg-summary").innerHTML =
       kv("설계면적", `<span class="ok">${s.k}개</span> · 앵커 ${s.far_m} m`

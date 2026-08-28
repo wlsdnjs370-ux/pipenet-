@@ -1014,6 +1014,25 @@ def main() -> int:
                           page.evaluate(
                               "() => document.getElementById('dg-plan-row')"
                               ".classList.contains('hidden')"))
+                    # ── [F-10f] 이상 표시 — 안 재고 «없다» 고 하지 않는다
+                    print("\n  ── [F-10f] 확인할 것")
+                    # ★`renderIssues` 는 화면 JS 안(IIFE)에 있다 — 밖에서 부르면
+                    #   ReferenceError 로 콘솔이 더러워진다. 표를 안 확정한
+                    #   세션의 «기본 상태» 를 그대로 읽는다. 채워진 뒤의 동작은
+                    #   단위 시험이 지키고, F-10g 완주에서 눈으로 본다.
+                    st10f = page.evaluate(
+                        """() => ({
+                          chip: (document.getElementById('dg-issues-n')
+                                 || {}).textContent || '',
+                          body: (document.getElementById('dg-issues')
+                                 || {}).textContent || '',
+                        })""")
+                    check("확인할 것 목록 자리가 있다 (F-10f)",
+                          bool(st10f.get("chip")))
+                    # 표를 아직 안 확정한 세션이다 — «이상 없음» 이라 하면 안 된다.
+                    check("표가 없으면 «이상 없음» 이라 하지 않는다",
+                          "이상 없음" not in str(st10f.get("body")),
+                          str(st10f.get("body")).strip()[:50])
                     page.evaluate(
                         "() => document.getElementById('panel-design')"
                         ".classList.add('hidden')")

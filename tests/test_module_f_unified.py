@@ -608,6 +608,77 @@ def test_밑그림은_산출물을_안_건드린다():
             assert banned not in src, f"{mod.__name__} 에 {banned} 가 있다"
 
 
+# ═══════════════════════════════════════════ F-10f. 이상 표시
+def test_이상_목록이_있고_0이면_완료를_말한다():
+    """전사 27:41 「뭔가 좀 이상하면 표시를 해서 확인을 해서 수정을 하고」.
+
+    목록이 0 이면 그것이 사람 검수의 «완료 신호» 다 — 「확인할 이상 없음」.
+    """
+    html = _screen()
+    assert 'id="dg-issues"' in html and 'id="dg-issues-n"' in html
+    assert "확인할 이상 없음" in html
+    i = html.index("function renderIssues()")
+    seg = html[i:i + 1200]
+    assert "확인할 이상 없음" in seg, "0 일 때 완료를 안 말한다"
+    # ★안 재고 «없다» 고 하면 완료 신호를 위조하는 것이다. 표가 없으면
+    #   «아직 모른다» 여야 한다(저장소 규약: 정직한 진행 표시).
+    assert "if (!S.design || !S.design.view)" in seg
+    assert "표를 확정하면" in seg
+
+
+def test_이상_목록의_합계가_요약과_같은_자료다():
+    """수용 기준 — 같은 데이터의 두 얼굴.
+
+    목록이 새 계산을 하면 요약과 어긋날 수 있다. 그래서 **이미 화면에 온
+    자료** 만 쓴다: 관경 근거는 배관 행의 `src`, 부속·등가길이는 요약 수치
+    그대로, 제외 사유는 `marks`, 유령은 채택 결과.
+    """
+    html = _screen()
+    i = html.index("function collectIssues()")
+    seg = html[i:i + 3200]
+    # 관경 폴백은 요약의 nfpc_fallback 과 같은 판정을 쓴다.
+    assert 'p.src === "nfpc_fallback"' in seg
+    # 부속·등가길이는 «요약 수치 그대로» 를 쓴다 — 다시 세지 않는다.
+    assert "s.fitting_unresolved" in seg and "s.eq_len_unresolved" in seg
+    # 제외 사유는 F-5 의 marks 를 그대로 쓴다.
+    for k in ("dry", "unattached", "unpicked"):
+        assert f'"{k}"' in seg
+    # 새로 서버를 부르지 않는다 — 부르면 그 순간 요약과 다른 시점이 된다.
+    assert "api(" not in seg and "post(" not in seg
+
+
+def test_자리를_모르는_이상은_그렇게_말한다():
+    """엔진이 개수만 세는 항목(부속·등가길이)은 자리를 지어내지 않는다."""
+    html = _screen()
+    i = html.index("function collectIssues()")
+    seg = html[i:i + 3200]
+    assert "자리를 특정할 수 없습니다" in seg
+    # 자리를 아는 항목만 클릭 대상이 된다.
+    j = html.index("el.onclick = () => {", html.index("function renderIssues()"))
+    assert "it.x !== null" in html[j:j + 300]
+
+
+def test_이상_목록은_잘라도_말한다():
+    """조용히 자르지 않는다 — 몇 건을 안 보여주는지 적는다(저장소 규약)."""
+    html = _screen()
+    assert "const ISSUE_CAP" in html
+    i = html.index("function renderIssues()")
+    seg = html[i:i + 1400]
+    assert "그 외" in seg and "rest" in seg
+
+
+def test_이상_표시는_산출물을_안_건드린다():
+    """표시 전용 증명 — 서버에 이 기능의 자리가 아예 없다."""
+    import inspect
+
+    from routes.module_f import api_design, views
+
+    for mod in (api_design, views):
+        src = inspect.getsource(mod)
+        for banned in ("collectIssues", "dg_issues", "issues"):
+            assert banned not in src, f"{mod.__name__} 에 {banned} 가 있다"
+
+
 # ═══════════════════════════════════════════ 정찰이 깨져도 흐름은 산다
 def test_정찰이_실패해도_찍기는_열린다():
     """수용 기준 — 모듈 A 가 아예 안 되는 도면에서도 «묻지 않고» 찍기로.

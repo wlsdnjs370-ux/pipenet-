@@ -235,6 +235,14 @@
         word-break:keep-all;overflow-wrap:break-word;}
   .hint b{color:var(--dim);font-weight:500;}
 
+  /* ── [F-10f] 「확인할 것」 목록 ────────────────────────── */
+  /* 누를 수 있다는 것이 보여야 한다 — 누르면 캔버스가 그 자리로 간다. */
+  .issue{font:400 11px/1.7 var(--mono);color:var(--dim);cursor:pointer;
+         padding:2px 8px;margin-left:10px;border-left:1px solid var(--line-2);
+         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .issue:hover{color:var(--ink);background:var(--panel);
+               border-left-color:var(--accent);}
+
   /* ── 도면 이름 · 차선 카드 ───────────────────────────── */
   /* 파일 이름은 길다. 줄바꿈으로 카드를 밀어내느니 한 줄로 자르고 툴팁에 둔다. */
   .fname{font:400 11.5px/1.5 var(--mono);color:var(--ink);

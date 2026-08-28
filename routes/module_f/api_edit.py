@@ -15,6 +15,29 @@ from routes.module_f.remote30 import _worst_k_heads
 from routes.module_f.views import _edit_state
 
 
+# [F-10b] 원클릭이 배관을 찾는 허용 거리. 손질 화면의 클릭이 쓰는 값과 같은
+# 자리이지만, 원클릭은 «한 번에 끝내는» 것이라 화면이 값을 안 보낸다 — 여기서
+# 기본을 준다. 손질 클릭의 기본 허용치와 같은 크기로 잡았다.
+ANCHOR_CLICK_MAX_D_MM = 2000.0
+
+
+def _wfail(msg: str, code: int = 400) -> dict:
+    """최불리 계산의 실패를 «자료» 로 만든다 — 응답이 아니라.
+
+    ★`jsonify` 를 여기서 부르면 안 된다. 원클릭(F-10b)은 이 계산을 **워커
+      스레드** 에서 돌리는데, 그쪽에는 Flask 앱 컨텍스트가 없어 `jsonify` 가
+      「Working outside of application context」로 죽는다(실측). 자료로 돌려
+      두면 라우트는 응답으로 바꾸고 잡은 예외 문장으로 바꾼다.
+    """
+    return {"code": code, "payload": {"ok": False, "message": msg}}
+
+
+def _wfail_text(fail: dict) -> str:
+    """실패 자료에서 사람이 읽을 문장만."""
+    return str((fail or {}).get("payload", {}).get("message")
+               or "최불리 계산에 실패했습니다.")
+
+
 def _edit_session(body, *, need_board: bool = True):
     """손질 세션을 꺼낸다 — **작업이 도는 중이면 거절한다.**
 
@@ -216,10 +239,27 @@ def register(app):
     @route_session(_edit_session, post=True)
     def module_f_edit_worst(sess, body):
         """Remote 30 — 급수원에서 가장 불리한 K 헤드와 그 경로를 고른다."""
+        summary, fail = _compute_worst(sess, body)
+        if fail is not None:
+            return jsonify(fail["payload"]), fail["code"]
+        return jsonify({"ok": True, "summary": summary,
+                        "state": _edit_state(sess)})
+
+    def _compute_worst(sess, body):
+        """[Remote 30] 최불리 K 헤드와 경로 — «두 라우트가 나눠 쓰는» 몸통.
+
+        `/edit/worst`(사람이 K·영역을 정하고 누름)와 `/edit/anchor-click`
+        (알람밸브 원클릭이 뒤이어 자동 실행)이 **같은 계산**을 써야 한다.
+        베껴 두면 언젠가 한쪽만 고쳐지고, 그 어긋남은 산출로만 드러난다.
+
+        반환: (요약 dict, None) 또는 (None, 실패응답). 실패응답은 그대로
+        돌려주면 되는 Flask 응답이다 — 상태 코드가 자리마다 다르므로
+        문장만 넘기지 않는다.
+        """
         es = sess["edit"]
         b = es.board
         if not b.sources:
-            return _fail("급수 시작 위치를 먼저 찍어야 최불리 헤드를 고를 수 있습니다.")
+            return None, _wfail("급수 시작 위치를 먼저 찍어야 최불리 헤드를 고를 수 있습니다.")
         try:
             k = int(body.get("k") or REMOTE_K_DEFAULT)
         except (TypeError, ValueError):
@@ -237,7 +277,7 @@ def register(app):
         if want and sheets:
             hit = next((f for f in sheets if int(f.get("index", 0)) == want), None)
             if hit is None:
-                return _fail(f"그런 도면 장이 없습니다: {want}")
+                return None, _wfail(f"그런 도면 장이 없습니다: {want}")
             x0, y0, x1, y1 = [float(v) for v in hit["bbox"]]
             only = {hi for hi, d in enumerate(b.disks)
                     if x0 <= float(d[0]) <= x1 and y0 <= float(d[1]) <= y1}
@@ -257,7 +297,7 @@ def register(app):
         if zones:
             from routes.module_f.api_auto import MAX_ZONES
             if len(zones) > MAX_ZONES:
-                return _fail(f"영역이 너무 많습니다: {len(zones)}곳 "
+                return None, _wfail(f"영역이 너무 많습니다: {len(zones)}곳 "
                              f"(최대 {MAX_ZONES}). 넓은 사각형 하나로 묶으세요.")
             try:
                 rects = []
@@ -267,19 +307,19 @@ def register(app):
                     rects.append((min(x0, x1), min(y0, y1),
                                   max(x0, x1), max(y0, y1)))
             except (TypeError, ValueError, IndexError):
-                return _fail("영역 좌표가 올바르지 않습니다 "
+                return None, _wfail("영역 좌표가 올바르지 않습니다 "
                              "([[x0,y0,x1,y1], …] 형식).")
             if not rects:
-                return _fail("영역이 비었습니다.")
+                return None, _wfail("영역이 비었습니다.")
             in_zone = {hi for hi, d in enumerate(b.disks)
                        if any(x0 <= float(d[0]) <= x1 and y0 <= float(d[1]) <= y1
                               for x0, y0, x1, y1 in rects)}
             if not in_zone:
-                return _fail(f"영역 {len(rects)}곳 안에 헤드가 없습니다. "
+                return None, _wfail(f"영역 {len(rects)}곳 안에 헤드가 없습니다. "
                              "영역을 다시 그리세요.")
             only = in_zone if only is None else (only & in_zone)
             if not only:
-                return _fail("고른 도면 장과 영역이 겹치는 헤드가 없습니다.")
+                return None, _wfail("고른 도면 장과 영역이 겹치는 헤드가 없습니다.")
             print(f"[최불리] 영역 {len(rects)}곳으로 범위를 좁힘 — 헤드 {len(only)}개")
 
         # [F-1 · D4] 급수원이 여럿이면 «어느 하나 기준» 인지 사람이 정한다 —
@@ -301,22 +341,24 @@ def register(app):
                     src_index, picked_tag = i, f"Z{i + 1}"
                     break
             if src_index is None:
-                return jsonify({"ok": False, "code": "source_selection_required",
-                                "message": f"급수원 '{want_src}'를 찾지 못했습니다.",
-                                "sources": cands}), 400
+                return None, {"code": 400, "payload": {
+                    "ok": False, "code": "source_selection_required",
+                    "message": f"급수원 '{want_src}'를 찾지 못했습니다.",
+                    "sources": cands}}
         elif len(b.sources) == 1:
             src_index, picked_tag = 0, "Z1"      # 1곳이면 자동으로 그것
         else:
-            return jsonify({"ok": False, "code": "source_selection_required",
-                            "message": "급수원이 여러 곳입니다. 어느 급수원 기준의 "
-                                       "최불리인지 하나를 지정하세요.",
-                            "sources": cands}), 400
+            return None, {"code": 400, "payload": {
+                "ok": False, "code": "source_selection_required",
+                "message": "급수원이 여러 곳입니다. 어느 급수원 기준의 "
+                           "최불리인지 하나를 지정하세요.",
+                "sources": cands}}
 
         w = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=k,
                            only_heads=only, source_index=src_index)
         if not w["heads"]:
             sess["worst"] = None
-            return _fail("급수원에서 닿는 헤드가 없습니다. 이음·급수 위치를 확인하세요.")
+            return None, _wfail("급수원에서 닿는 헤드가 없습니다. 이음·급수 위치를 확인하세요.")
         w["sheet"] = sheet_no
         w["source_tag"] = picked_tag          # 화면이 «어느 급수원 기준» 인지 안다
         w["source_index"] = src_index
@@ -324,22 +366,104 @@ def register(app):
         w["candidates"] = len(only) if only is not None else w["reachable"]
         sess["worst"] = w
         sess["worst_zones"] = w["zones"]      # 다시 누를 때 같은 영역을 쓴다
-        return jsonify({
-            "ok": True,
-            "summary": {"k": len(w["heads"]), "reachable": w["reachable"],
-                        "far_m": w["far_m"], "near_m": w["near_m"],
-                        "span_m": w.get("span_m", 0.0),
-                        "total_m": w.get("total_m", 0.0),
-                        "max_load": w.get("max_load", 0),
-                        "sheet": sheet_no,
-                        "source": picked_tag,
-                        "zones": len(w["zones"]),
-                        "candidates": w["candidates"],
-                        # 최원 유하거리 «경로» — 그 거리가 어느 줄인지.
-                        "anchor_path_m": w.get("anchor_path_m", 0.0),
-                        "anchor_path_nodes": len(w.get("anchor_path") or ()),
-                        "path_edges": len(w["edges"])},
-            "state": _edit_state(sess)})
+        sess["worst_k"] = k                   # [F-10b] 원클릭이 이 값을 쓴다
+        return {"k": len(w["heads"]), "reachable": w["reachable"],
+                "far_m": w["far_m"], "near_m": w["near_m"],
+                "span_m": w.get("span_m", 0.0),
+                "total_m": w.get("total_m", 0.0),
+                "max_load": w.get("max_load", 0),
+                "sheet": sheet_no,
+                "source": picked_tag,
+                "zones": len(w["zones"]),
+                "candidates": w["candidates"],
+                # 최원 유하거리 «경로» — 그 거리가 어느 줄인지.
+                "anchor_path_m": w.get("anchor_path_m", 0.0),
+                "anchor_path_nodes": len(w.get("anchor_path") or ()),
+                "path_edges": len(w["edges"])}, None
+
+    @app.post("/api/module-f/edit/anchor-click")
+    @route_session(_edit_session, post=True)
+    def module_f_edit_anchor_click(sess, body):
+        """[F-10b · D-F10-4] 알람밸브 클릭 한 번 = 두 픽 + 최불리.
+
+        2026-08-27 전사 06:48 · 17:15 · 22:54 — 「알람밸브를 클릭하는 순간 물길
+        따라 쭉 가면서 얘만 반짝반짝하고 나머지는 흐려진다」. 그 «한 번» 을
+        여기서 만든다.
+
+        ★두 픽은 **기존 클릭 경로** 로만 넣는다(D-F10-6). `board` 에 직접 쓰지
+          않는다 — 그래야 되돌리기가 사람 클릭과 똑같이 먹고, 찍은 기록도 남는다.
+          `es.click` 은 토글이므로 «갈아끼우기» 도 클릭이다: 있던 자리를 한 번
+          눌러 끄고, 새 자리를 눌러 켠다.
+
+        ★B1 은 해소가 아니라 «공존 유지» 다(D-F10-4). 뿌리=급수시작위치,
+          밸브=기기 행이라는 현행 규약은 그대로다 — 원클릭이 둘을 같은 점에
+          놓을 뿐이다.
+
+        최불리는 `_compute_worst` 로 «같은 잡 안에서» 이어 돌린다(실측 ~18초).
+        K 는 저장된 값(`worst_k`), 없으면 기본 30.
+
+        body: {sid, x, y, [max_d], [k], [zones], [sheet]}
+        """
+        es = sess["edit"]
+        try:
+            x = float(body.get("x"))
+            y = float(body.get("y"))
+        except (TypeError, ValueError):
+            return _fail("알람밸브 좌표가 올바르지 않습니다.")
+        try:
+            max_d = float(body.get("max_d") or ANCHOR_CLICK_MAX_D_MM)
+        except (TypeError, ValueError):
+            max_d = ANCHOR_CLICK_MAX_D_MM
+        # K 는 «저장된 값» 이 기본이다 — 원클릭은 K 를 묻지 않는다.
+        want = dict(body)
+        want.setdefault("k", sess.get("worst_k") or REMOTE_K_DEFAULT)
+
+        from services.cad_import.edit.session import MODE_SOURCE, MODE_VALVE
+        b = es.board
+
+        def _pick(mode, existing):
+            """한 종류의 픽을 이 좌표로 옮긴다 — 전부 클릭 경로다."""
+            es.set_mode(mode)
+            moved = 0
+            # 있던 것을 먼저 끈다(토글). 좌표로 눌러야 클릭 기록이 남는다.
+            for n in list(existing):
+                if not isinstance(n, int) or not (0 <= n < len(b.pts)):
+                    continue
+                px, py = float(b.pts[n][0]), float(b.pts[n][1])
+                if abs(px - x) < 1e-6 and abs(py - y) < 1e-6:
+                    continue                    # 이미 그 자리다 — 끄면 안 된다
+                es.click(px, py, max_d)
+                moved += 1
+            rep = es.click(x, y, max_d)
+            return rep, moved
+
+        def job():
+            print(f"[원클릭] 알람밸브 ({x:.0f}, {y:.0f}) — 밸브·급수 두 픽을 "
+                  f"클릭 경로로 놓는 중…")
+            v_rep, v_moved = _pick(MODE_VALVE, b.valves)
+            s_rep, s_moved = _pick(MODE_SOURCE, b.sources)
+            if v_rep is None or s_rep is None:
+                raise RuntimeError(
+                    "그 자리에서 배관을 찾지 못했습니다 — 배관 위를 클릭하세요 "
+                    f"(허용 {max_d:.0f}mm).")
+            if v_moved or s_moved:
+                print(f"[원클릭] 기존 픽을 갈아끼움 — 밸브 {v_moved} · "
+                      f"급수 {s_moved} (되돌리기로 복구 가능)")
+            # ★급수원이 하나뿐이므로 «지정 급수원» 모호성이 없다(F-1 규약 유지).
+            print(f"[원클릭] 급수원 {len(b.sources)}곳 — "
+                  f"이 클릭이 유일 급수원이라 Z1 기준으로 계산합니다.")
+            summary, fail = _compute_worst(sess, want)
+            if fail is not None:
+                raise RuntimeError(_wfail_text(fail))
+            print(f"[원클릭] 최불리 {summary['k']}개 · 최원 {summary['far_m']} m "
+                  f"· 담당 최대 {summary['max_load']} · 배관 {summary['path_edges']}")
+            return {"ok": True, "summary": summary,
+                    "anchor": [_r1(x), _r1(y)],
+                    "replaced": {"valve": v_moved, "source": s_moved},
+                    "state": _edit_state(sess)}
+
+        _run_job(sess, "알람밸브 원클릭", job)
+        return jsonify({"ok": True, "sid": sess["id"]})
 
     @app.post("/api/module-f/edit/worst-clear")
     @route_session(_edit_session, post=True)

@@ -804,6 +804,8 @@
       S.recon = null; S.suggest = null; S.ghosts = null; S.adopted = null;
       S.handoff = null; S.autoNet = null; S.autoNetView = null;
       S.autoView = null;
+      // [F-10b] 화면 손질 모드도 도면에 딸린다 — 새 도면은 원클릭부터.
+      S.emode = null;
       // ★되돌리기 기록도 함께 버린다. 남겨 두면 Ctrl+Z 가 «앞 도면의 좌표» 를
       //   되살려 이 도면에 씌운다.
       S.undo = [];
@@ -1286,6 +1288,8 @@
       // 슬롯이 바뀌면 되돌릴 대상도 바뀐다 — 기록을 넘기면 남의 좌표가 온다.
       S.undo = []; S.autoView = null;
       S.autoNet = null; S.autoNetView = null;
+      S.emode = null;                 // [F-10b] 슬롯마다 손질 모드도 새로
+
       // 방식도 슬롯에 딸린다 — 자동으로 연 평면도로 돌아오면 자동 화면이어야
       // 하고, 아직 안 연 슬롯이면 «안 고른» 상태 그대로여야 한다.
       const st = await api(`/api/module-f/auto/state?sid=${S.sid}`);
@@ -2285,6 +2289,10 @@
   async function loadEdit() {
     const d = await api(`/api/module-f/edit/state?sid=${S.sid}`);
     setEdit(d.state); S.key = d.key;
+    // [F-10b] 손질에 들어오면 기본은 «알람밸브 원클릭» 이다 — 상무 시연이
+    //   28분 내내 요구한 그 한 번이 첫 동작이 되게 한다. 이미 다른 모드를
+    //   고른 뒤라면(모드 전환은 서버에 남는다) 그것을 지킨다.
+    if (!S.emode) setUiMode(ONECLICK);
     loadSlots();
     setStage("edit");
     fit(S.edit.bounds);
@@ -2333,9 +2341,13 @@
         : "") +
       (undef ? `<div class="kv"><b>변환 가능</b><span class="err">미지정 ${undef}개 — 막힘</span></div>`
              : `<div class="kv"><b>변환 가능</b><span class="ok">헤드 종류 확정</span></div>`);
+    // [F-10b] 화면 모드가 «원클릭» 이면 서버 모드로 덮지 않는다 — 원클릭은
+    //   서버 모드가 아니라 둘을 한 번에 놓는 «행동» 이라 서버엔 이름이 없다.
+    const uiMode = S.emode || e.mode;
     for (const b of document.querySelectorAll(".emode")) {
-      b.classList.toggle("on", b.dataset.mode === e.mode);
+      b.classList.toggle("on", b.dataset.mode === uiMode);
     }
+    $("ed-anchor-note").classList.toggle("hidden", uiMode !== ONECLICK);
     // 종류 단추의 점 색은 캔버스 헤드 색과 같은 표에서 온다 — 붙박이로 적으면
     // 색표를 고쳤을 때 그림과 도면이 어긋난다.
     const pal = (e.palette && e.palette.kinds) || {};
@@ -2453,19 +2465,63 @@
     wrap.classList.remove("hidden");
   }
 
+  // [F-10b · D-F10-4] 「알람밸브 원클릭」은 서버 모드가 아니라 **화면 모드** 다.
+  //   서버의 손질 모드는 이음·삭제·급수시작위치·알람밸브위치 넷 그대로이고,
+  //   원클릭은 그중 둘을 한 번에 놓는 «행동» 이다. 그래서 모드 전환을 서버에
+  //   보내지 않고 여기서만 기억한다 — 엔진 계약을 늘리지 않는다.
+  const ONECLICK = "원클릭";
+
+  // 최불리 기준개수 — 원클릭과 「최불리 선정」이 같은 값을 써야 한다. 두 곳이
+  // 갈리면 손질에서 본 개수와 표에 실린 K 가 달라진다.
+  const edK = () => Math.max(1, Math.min(200, Number($("ed-k").value || 30)));
+
+  function setUiMode(mode) {
+    S.emode = mode;
+    for (const b of document.querySelectorAll(".emode")) {
+      b.classList.toggle("on", b.dataset.mode === mode);
+    }
+    $("ed-anchor-note").classList.toggle("hidden", mode !== ONECLICK);
+  }
+
   for (const b of document.querySelectorAll(".emode")) {
     b.onclick = async () => {
+      const mode = b.dataset.mode;
+      if (mode === ONECLICK) { setUiMode(mode); say("알람밸브를 클릭하세요."); return; }
       try {
         const d = await post("/api/module-f/edit/mode",
-                             { sid: S.sid, mode: b.dataset.mode });
+                             { sid: S.sid, mode });
         setEdit(d.state);
+        setUiMode(mode);
         renderEdit();
-        say(`모드: ${b.dataset.mode}`);
+        say(`모드: ${mode}`);
       } catch (err) { say(err.message, "err"); }
     };
   }
 
+  // 알람밸브 한 번 = 두 픽 + 최불리. 서버가 한 잡으로 한다(D-F10-4).
+  async function anchorClick(x, y, maxD) {
+    busy(true, "알람밸브 원클릭 — 두 자리를 놓고 최불리를 계산하는 중…");
+    try {
+      await post("/api/module-f/edit/anchor-click",
+                 { sid: S.sid, x, y, max_d: maxD, k: edK() });
+      watch(async () => {
+        const j = await api(`/api/module-f/convert/result?sid=${S.sid}`);
+        const r = j.result || {};
+        if (r.state) { setEdit(r.state); }
+        else { await loadEdit(); }
+        renderEdit();
+        draw();
+        const s = r.summary;
+        if (s) {
+          say(`최불리 ${s.k}개 · 최원 ${s.far_m} m · 담당 최대 ${s.max_load}개`
+              + ` · 배관 ${s.path_edges}`, "ok");
+        }
+      });
+    } catch (err) { busy(false); say(err.message, "err"); }
+  }
+
   async function editClick(x, y, maxD) {
+    if (S.emode === ONECLICK) { await anchorClick(x, y, maxD); return; }
     try {
       const d = await post("/api/module-f/edit/click",
                            { sid: S.sid, x, y, max_d: maxD });

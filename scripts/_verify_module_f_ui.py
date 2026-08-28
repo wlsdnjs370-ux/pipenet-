@@ -375,6 +375,27 @@ def main() -> int:
                                   "수리계산", "통합"],
                       " · ".join(steps_m))
 
+                # ── [F-10b] 손질 기본 모드가 «알람밸브 원클릭» 인가
+                #    이 도면(LH306)은 게이트에 막혀 찍기에 서 있으므로, 손질
+                #    화면을 직접 열어 확인한다. 클릭→corridor 왕복은 corridor
+                #    가 눈에 보이는 F-10c 에서 잰다.
+                if page.query_selector("#panel-edit") is not None:
+                    on = page.evaluate(
+                        """() => {
+                          const b = document.querySelector(
+                            '.emode[data-mode="원클릭"]');
+                          return b ? {has: true, txt: b.textContent.trim()}
+                                   : {has: false};
+                        }""")
+                    check("손질에 «알람밸브 원클릭» 단추가 있다 (F-10b)",
+                          bool(on.get("has")), str(on.get("txt")))
+                    note = page.evaluate(
+                        "() => (document.getElementById('ed-anchor-note')"
+                        " || {}).textContent || ''")
+                    check("원클릭 안내가 한 줄로 있다",
+                          "알람밸브를 클릭하면" in note,
+                          note.strip().replace("\n", " ")[:60])
+
                 # ── [D-F10-2] 자동 차선은 고급 안 한 줄로 살아 있다
                 page.reload(wait_until="load")
                 page.wait_for_timeout(700)

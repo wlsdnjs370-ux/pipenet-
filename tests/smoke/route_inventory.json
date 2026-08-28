@@ -418,6 +418,14 @@
     "rule": "/api/module-f/download"
   },
   {
+    "endpoint": "module_f_edit_anchor_click",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/anchor-click"
+  },
+  {
     "endpoint": "module_f_edit_autojoin_apply",
     "methods": [
       "OPTIONS",

@@ -1253,7 +1253,7 @@ def _floor_for_node_y(node_y: float,
     return None, None
 
 
-from remote30_graph import (_point_to_segment_dist, _round_pt, _NodeIndex, _is_triangle_shape, _edge_dir, _midpoint, _dijkstra_from, _shortest_path, _nearest_graph_node, _connected_components, HeadRegion)  # noqa: E501  (Phase2b core)
+from remote30_graph import (_point_to_segment_dist, _round_pt, _NodeIndex, _is_triangle_shape, _edge_dir, _midpoint, _dijkstra_from, _path_from_prev, _shortest_path, _nearest_graph_node, _connected_components, HeadRegion)  # noqa: E501  (Phase2b core)
 
 
 def _match_diameter_for_segment(
@@ -5244,7 +5244,11 @@ def _finalize_selection(
             _hgrid_add(h.pos)  # 성장 그래프 — 뒤 헤드가 이 노드에 스냅 가능
 
     _pcb(0.76, "알람밸브→전체 헤드 거리 계산 중")
-    dist_map = _dijkstra_from(graph, edge_len, src)
+    # ★나무까지 같이 받는다. 아래에서 헤드마다 경로를 되찾는데, 예전에는 그때마다
+    #   `_shortest_path` 로 Dijkstra 를 새로 돌렸다 — 같은 src 에서 나가는 같은
+    #   나무를 헤드 수만큼 다시 세운 셈이다(B1F 실측 2,206회 · 40.5초).
+    _prev: dict = {}
+    dist_map = _dijkstra_from(graph, edge_len, src, prev_out=_prev)
 
     # head 후보들을 그래프 노드로 스냅 후 거리 정렬 — 도달 불가도 가능한 한 포함
     head_with_d: list[tuple[HeadCandidate, tuple[float, float], float]] = []
@@ -5282,7 +5286,10 @@ def _finalize_selection(
     cycle_dropped = 0
     _n_top = len(top_k)
     for _si, (_, head_node, _) in enumerate(top_k, 1):
-        path = _shortest_path(graph, edge_len, src, head_node)
+        # 위에서 세운 나무를 되돌아 걷는다. `_shortest_path` 와 같은 그래프·같은
+        # 가중치·같은 힙이라 나무가 같고, 따라서 나오는 경로도 같다(패널티
+        # 인자를 안 쓰는 호출이었다). 반환 규약도 그대로다.
+        path = _path_from_prev(_prev, src, head_node)
         for a, b in zip(path, path[1:]):
             key = (min(a, b), max(a, b))
             if key in sub_edges_seen:

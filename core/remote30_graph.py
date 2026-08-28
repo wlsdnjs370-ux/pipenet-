@@ -90,8 +90,19 @@ def _edge_dir(p: tuple, q: tuple) -> tuple[float, float]:
 def _midpoint(p: tuple, q: tuple) -> tuple[float, float]:
     return ((p[0] + q[0]) / 2, (p[1] + q[1]) / 2)
 
-def _dijkstra_from(graph: dict, edge_len: dict, src: tuple[float, float]) -> dict[tuple[float, float], float]:
-    """단순 Dijkstra — 모든 노드까지의 거리."""
+def _dijkstra_from(graph: dict, edge_len: dict, src: tuple[float, float],
+                   prev_out: dict | None = None) -> dict[tuple[float, float], float]:
+    """단순 Dijkstra — 모든 노드까지의 거리.
+
+    prev_out: 주면 «최단경로 나무»(각 노드의 직전 노드)를 여기 채운다. 그러면
+        같은 src 에서 나가는 경로를 노드마다 다시 풀 필요가 없다 —
+        `_path_from_prev` 로 되돌아 걷기만 하면 된다. 안 주면 예전과 똑같이
+        거리만 돌려주므로 기존 호출자는 영향이 없다.
+
+        이 인자가 없던 시절, 호출자는 거리 맵을 한 번 만든 뒤 헤드마다
+        `_shortest_path` 로 Dijkstra 를 **또** 돌렸다(B1F 실측: 2,206회 ·
+        40.5초 · 배관망 검출 전체의 절반). 같은 나무를 2,206번 다시 세운 셈이다.
+    """
     dist: dict[tuple[float, float], float] = {src: 0.0}
     pq: list[tuple[float, tuple[float, float]]] = [(0.0, src)]
     while pq:
@@ -104,8 +115,28 @@ def _dijkstra_from(graph: dict, edge_len: dict, src: tuple[float, float]) -> dic
             nd = d + w
             if nd < dist.get(v, float("inf")):
                 dist[v] = nd
+                if prev_out is not None:
+                    prev_out[v] = u
                 heapq.heappush(pq, (nd, v))
     return dist
+
+
+def _path_from_prev(prev: dict, src: tuple[float, float],
+                    tgt: tuple[float, float]) -> list[tuple[float, float]]:
+    """`_dijkstra_from(prev_out=…)` 이 채운 나무에서 src → tgt 경로를 되찾는다.
+
+    반환 규약은 `_shortest_path` 와 똑같다 — 같은 자리에 그대로 끼울 수 있게.
+    닿지 않으면 빈 목록, src==tgt 면 [src].
+    """
+    if src == tgt:
+        return [src]
+    if tgt not in prev:
+        return []
+    out = [tgt]
+    while out[-1] in prev:
+        out.append(prev[out[-1]])
+    out.reverse()
+    return out if out and out[0] == src else []
 
 def _shortest_path(graph: dict, edge_len: dict, src: tuple[float, float], tgt: tuple[float, float],
                    penalty_keys: set | None = None, penalty_mm: float = 1.0e9) -> list[tuple[float, float]]:

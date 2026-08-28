@@ -1062,6 +1062,110 @@ def main() -> int:
                     # 표를 안 확정한 세션이라 채울 것이 없다 — 열려 있으면 안 된다.
                     check("채울 것이 없으면 저장 단추가 안 뜬다",
                           bool(st18.get("hidden")))
+
+                    # ── [F-11b] 채우고·지우는 화면을 «실제로 그려» 본다.
+                    #
+                    # 여기까지 진짜 흐름으로 오려면 도면 한 장을 통째로 확정해야
+                    # 한다(대명동 실측 수 분). 대신 **엔진이 내는 그 모양** 의
+                    # 표를 넣고 진짜 그리기 함수를 부른다 — 개수·규칙은 서버
+                    # 프로브(`_probe_f11b_override.py`)가 따로 재고, 여기서는
+                    # 「화면이 서는가」만 본다. 구문 검사로는 안 잡히는 회귀가
+                    # 여기 살기 때문이다(함수-지역 헬퍼 → ReferenceError).
+                    f11b = page.evaluate(
+                        """() => {
+                          const S = window.__mf;
+                          S.fitKinds = [
+                            {value: "none",  label: "직선 — 부속 없음"},
+                            {value: "elbow", label: "90° 엘보"}];
+                          S.design = {
+                            view: {nodes: [{label: "1", x: 0, y: 0},
+                                           {label: "2", x: 1, y: 0}],
+                                   pipes: [{label: "P1", a: "1", b: "2",
+                                            dia: 25, src: "text", load: 1}]},
+                            tables: {
+                              pipes: [{label: "P1", in: "1", out: "2",
+                                       dia: 25, type: "SCH40"},
+                                      {label: "P2", in: "2", out: "3",
+                                       dia: 50, type: "SCH40"}],
+                              fittings: [{pipe: "P1", in: "1", out: "2",
+                                          type: "tee", count: "1"},
+                                         {pipe: "P2", in: "2", out: "3",
+                                          type: "elbow", count: "1"}],
+                              unresolved: {
+                                kind_items: [{node: "9", pipe: "P9",
+                                              where: "상류", angle_deg: 31}],
+                                pairs: [{kind: "tee", dia: 125, n: 2}],
+                                length_items: [{kind: "tee", dia: 125,
+                                                pipe: "P7"}],
+                                applied: [
+                                  {what: "kind", node: "1", pipe: "P1",
+                                   kind: "tee", note: "도면에서 확인"},
+                                  {what: "eq_len", kind: "elbow", dia: 50,
+                                   m: 1.5, note: "제조사 표"}],
+                              },
+                            },
+                            marks: {}, summary: null, hilite: new Set(),
+                          };
+                          S.ovDirty = false;
+                          S.renderIssues();
+                          const box = document.getElementById('dg-issues');
+                          const out = {
+                            sel: box.querySelectorAll('.ovk').length,
+                            num: box.querySelectorAll('.ovm').length,
+                            del: box.querySelectorAll('.ovdel').length,
+                            filled: (document.getElementById('dg-ov-n')
+                                     || {}).textContent || '',
+                            face: box.textContent.includes('직접 입력'),
+                          };
+                          // 배지 — 저장만 하고 재확정 전인 상태.
+                          S.ovDirty = true;
+                          S.countFilled();
+                          const n = document.getElementById('dg-ov-n');
+                          out.dirty = n.textContent;
+                          out.warn = n.className.includes('warn');
+                          out.row = !document.getElementById('dg-ov-row')
+                                     .className.includes('hidden');
+                          S.ovDirty = false;
+                          // 표 — 부속표에서 «직접 입력» 이 다른 얼굴인가.
+                          document.getElementById('dg-table').value = 'fittings';
+                          S.renderDesignTable();
+                          const g = document.getElementById('dg-grid');
+                          out.head = g.textContent.includes('근거');
+                          out.cell = (g.querySelector('.ovcell')
+                                      || {}).textContent || '';
+                          out.cells = g.querySelectorAll('.ovcell').length;
+                          // 관경 표에는 그 칸이 없어야 한다 — 없는 칸을 안 만든다.
+                          document.getElementById('dg-table').value = 'pipes';
+                          S.renderDesignTable();
+                          out.pipes_head =
+                            document.getElementById('dg-grid')
+                              .textContent.includes('근거');
+                          return out;
+                        }""")
+                    check("못 가린 자리에 고르는 칸이 붙는다 (F-11b-1)",
+                          f11b.get("sel") == 1 and f11b.get("num") == 1,
+                          f"종류 {f11b.get('sel')} · 등가길이 {f11b.get('num')}")
+                    check("채운 자리에 «지우기» 가 붙는다 (F-11b-4)",
+                          f11b.get("del") == 2, f"{f11b.get('del')}개")
+                    check("채운 자리가 목록에서 구별된다 (F-11b-3)",
+                          bool(f11b.get("face")))
+                    check("★재확정 전에는 배지가 사실을 말한다 (F-11b-2)",
+                          "표 확정 필요" in str(f11b.get("dirty"))
+                          and bool(f11b.get("warn")) and bool(f11b.get("row")),
+                          f"{f11b.get('dirty')} · warn={f11b.get('warn')}")
+                    check("배지가 「채운 칸」을 덮어쓰지 않는다",
+                          "채운 칸" in str(f11b.get("filled")),
+                          str(f11b.get("filled")))
+                    check("부속표에 «근거» 칸이 선다 (F-11b-3)",
+                          bool(f11b.get("head")) and f11b.get("cells") == 2,
+                          f"{f11b.get('cells')}행 · {f11b.get('cell')}")
+                    check("표에도 사유가 실린다",
+                          "직접 입력" in str(f11b.get("cell"))
+                          and "도면에서 확인" in str(f11b.get("cell")),
+                          str(f11b.get("cell"))[:50])
+                    check("채운 것이 없는 표는 안 건드린다",
+                          not f11b.get("pipes_head"))
+
                     page.evaluate(
                         "() => document.getElementById('panel-design')"
                         ".classList.add('hidden')")

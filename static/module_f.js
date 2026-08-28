@@ -2992,6 +2992,14 @@
   S.toScreenY = sy;
   S.toWorldX = wx;
   S.toWorldY = wy;
+  // [F-11b] 직접 입력 화면은 «표가 확정된 뒤» 에만 서는 자리다 — 거기까지
+  //   브라우저로 완주하려면 도면 한 장을 통째로 돌려야 한다(대명동 실측 수 분).
+  //   그래서 그리는 함수도 같이 낸다. 검증은 진짜 표를 넣고 진짜 함수를 부른다.
+  //   ★구문 검사만으로는 안 잡히는 회귀가 여기 산다: 함수-지역 헬퍼를 다른
+  //     스코프에서 부르면 ReferenceError 로 화면만 조용히 빈다(저장소 규약).
+  S.renderIssues = renderIssues;
+  S.renderDesignTable = renderDesignTable;
+  S.countFilled = countFilled;
 
   resize();
 
@@ -3305,6 +3313,38 @@
     box.innerHTML = html;
   }
 
+  // [F-11b-3] 사람이 채운 자리는 표에서도 «다른 얼굴» 이어야 한다 — 자동이 낸
+  //   값과 같은 얼굴로 두면 나중에 그 수치를 누가 정했는지 알 길이 없다.
+  //
+  //   ★엔진의 부속표에는 그런 칸이 없고, 이 항목에서 서버는 불변이다(지시서
+  //     F-11b 수용기준). 그래서 화면이 «이미 받아 둔» `unresolved.applied` 를
+  //     표에 겹쳐 놓는다 — 새 판정이 아니라 표시다. 개수는 여전히 엔진 한
+  //     곳에서만 나오므로 둘이 어긋날 수 없다.
+  //   ★맞춤은 (배관, 종류) 로 한다. 부속표 행에는 «어느 노드인지» 가 없어 더
+  //     좁힐 수 없다 — 한 배관에 같은 종류가 둘이면 둘 다 표시된다. 넓게
+  //     보이는 쪽이 «채운 걸 안 보여 주는» 쪽보다 정직하다.
+  function overrideNoteOf(row, which) {
+    if (which !== "fittings") return null;
+    const t = S.design.tables || {};
+    const app = (t.unresolved || {}).applied || [];
+    if (!app.length) return null;
+    const dia = ((t.pipes || []).find(
+      (p) => String(p.label) === String(row.pipe)) || {}).dia;
+    for (const a of app) {
+      // 등가길이는 «(종류, 호칭경) 쌍» 이 단위라 배관이 아니라 그 쌍으로 맞춘다.
+      const hit = a.what === "kind"
+        ? (String(a.pipe) === String(row.pipe)
+           && String(a.kind) === String(row.type))
+        : (String(a.kind) === String(row.type)
+           && Number(a.dia) === Number(dia));
+      if (hit) {
+        return (a.what === "kind" ? "직접 입력 — 부속" : "직접 입력 — 등가길이")
+          + (a.note ? ` · ${a.note}` : "");
+      }
+    }
+    return null;
+  }
+
   function renderDesignTable() {
     if (!S.design) return;
     const which = $("dg-table").value;
@@ -3313,17 +3353,23 @@
     for (const r of rows) {
       for (const k in r) if (!cols.includes(k)) cols.push(k);
     }
+    // 채운 자리가 있을 때만 «근거» 칸을 덧붙인다 — 없으면 표를 안 건드린다.
+    const notes = rows.map((r) => overrideNoteOf(r, which));
+    const hasOv = notes.some(Boolean);
     let html = "<table><thead><tr>"
       + cols.map(c => `<th>${DG_COLS[c] || c}</th>`).join("")
+      + (hasOv ? "<th>근거</th>" : "")
       + "</tr></thead><tbody>";
-    for (const r of rows) {
+    rows.forEach((r, i) => {
       html += `<tr data-label="${r.label != null ? r.label : ""}">`
         + cols.map(c => {
             let v = r[c];
             if (c === "dia_src") v = DG_SRC[v] || v;
             return `<td>${v != null ? v : ""}</td>`;
-          }).join("") + "</tr>";
-    }
+          }).join("")
+        + (hasOv ? `<td class="ovcell">${notes[i] || ""}</td>` : "")
+        + "</tr>";
+    });
     $("dg-grid").innerHTML = html + "</tbody></table>";
     // 행 → 캔버스 강조 (배관 표에서만 뜻이 있다)
     for (const tr of $("dg-grid").querySelectorAll("tr[data-label]")) {
@@ -3500,6 +3546,11 @@
                    : `${a.kind} ${a.dia}A · ${a.m} m`)
               + (a.note ? ` — ${a.note}` : ""),
             x: mx, y: my, frame: "iso",
+            // [F-11b-4] 지우는 길 — 지우면 그 자리는 다시 미해결로 돌아간다.
+            //   막다른 길을 만들지 않는 것이 «완결성» 이다(지시서 §0.1).
+            del: (a.what === "kind"
+                  ? { type: "kind", node: String(a.node), pipe: String(a.pipe) }
+                  : { type: "eq_len", kind: String(a.kind), dia: Number(a.dia) }),
           };
         }),
       });
@@ -3537,6 +3588,11 @@
       const rows = g.items.map((it, ii) => {
         const line = `<div class="issue" data-g="${gi}" data-i="${ii}">`
           + `${it.text}</div>`;
+        // [F-11b-4] 채운 자리에는 지우는 단추를 단다.
+        if (it.del) {
+          return line + `<div class="ovrow"><button class="ovdel"`
+            + ` data-id="${gi}-${ii}">직접 입력 지우기</button></div>`;
+        }
         if (!it.ov) return line;
         // 채울 수 있는 자리에는 그 자리에서 바로 넣는 칸을 붙인다.
         const id = `${gi}-${ii}`;
@@ -3576,10 +3632,13 @@
     }
     // 채울 칸이 하나라도 있으면 저장 단추를 연다.
     const fillable = groups.some((g) => g.items.some((it) => it.ov));
-    $("dg-ov-row").classList.toggle("hidden", !fillable);
+    // [F-11b-2] 「표를 다시 확정해야 값이 들어간다」를 배지로 — F-10d 의
+    //   «다시 계산» 배지와 같은 자리·같은 문법이다. 저장 뒤 재확정까지 자동으로
+    //   이어 주지만, ★그 재확정이 실패하면 이 배지가 남아 사실을 말한다.
+    //   그래서 채울 칸이 없어도(다 채웠어도) 배지 줄은 서 있어야 한다.
+    $("dg-ov-row").classList.toggle("hidden", !fillable && !S.ovDirty);
     $("dg-ov-why").classList.toggle("hidden", !fillable);
     if (fillable) {
-      $("dg-ov-n").textContent = "채운 칸 0";
       $("dg-ov-why").innerHTML =
         "규칙이 <b>못 가린 자리에만</b> 쓰입니다 — 자동이 옳게 판정한 값은 "
         + "바뀌지 않습니다. 저장한 뒤 <b>「표 확정」을 다시</b> 눌러야 "
@@ -3588,18 +3647,61 @@
         el.onchange = countFilled;
         el.oninput = countFilled;
       }
-      countFilled();
+    }
+    countFilled();     // 배지·저장 단추는 «항상» 지금 사실에 맞춘다
+    for (const el of box.querySelectorAll(".ovdel")) {
+      el.onclick = () => {
+        const [gi, ii] = el.dataset.id.split("-").map(Number);
+        const d = S.issues[gi].items[ii].del;
+        if (d) dropOverride(d);
+      };
     }
   }
 
-  /** 지금 몇 칸이 채워졌나 — 저장 전에 사람이 보고 안다. */
+  // [F-11b-4] 직접 입력 하나를 지운다 — 지운 자리는 다시 미해결로 돌아가
+  // 목록에 재등장한다. 잘못 채운 값에 갇히지 않는 것이 «완결성» 이다.
+  async function dropOverride(d) {
+    const prev = S.fitOverrides || {};
+    const keep = (rows, key, gone) =>
+      (rows || []).filter((r) => key(r) !== gone);
+    const body = { sid: S.sid };
+    if (d.type === "kind") {
+      body.kind = keep(prev.kind, (r) => `${r.node}|${r.pipe}`,
+                       `${d.node}|${d.pipe}`);
+    } else {
+      body.eq_len = keep(prev.eq_len, (r) => `${r.kind}|${r.dia}`,
+                         `${d.kind}|${d.dia}`);
+    }
+    busy(true, "직접 입력을 지우는 중…");
+    try {
+      const r = await post("/api/module-f/design/fitting-override", body);
+      S.fitOverrides = r.overrides || {};
+      // ★저장은 «값이 바뀌는 일» 이지 표시가 아니다. 재확정 전까지는 산출이
+      //   아직 옛 값이므로 그 사실을 배지로 든다(아래 저장 경로와 같은 규약).
+      S.ovDirty = !!r.needs_rebuild;
+      busy(false);
+      say("직접 입력을 지웠습니다 — 표를 다시 확정합니다.", "ok");
+      $("dg-build").click();     // 값이 바뀌는 일이라 재확정까지 이어 준다
+    } catch (err) { busy(false); say(err.message, "err"); }
+  }
+
+  /** 지금 몇 칸이 채워졌나 — 저장 전에 사람이 보고 안다.
+   *
+   * ★배지 자리는 하나다. 「표 확정 필요」와 「채운 칸 n」이 같은 칸을 쓰므로
+   *   **여기 한 곳에서만** 쓴다. 두 곳에서 쓰면 나중 것이 앞 것을 덮는다 —
+   *   실제로 그랬다: 배지를 세워 놓고 곧바로 「채운 칸 0」이 지워 버렸다.
+   */
   function countFilled() {
     const box = $("dg-issues");
     let n = 0;
     for (const el of box.querySelectorAll(".ovk, .ovm")) {
       if (String(el.value || "").trim() !== "") n += 1;
     }
-    $("dg-ov-n").textContent = `채운 칸 ${n}`;
+    const el = $("dg-ov-n");
+    el.textContent = S.ovDirty
+      ? "표 확정 필요 — 저장한 직접 입력이 아직 산출에 안 들어갔습니다"
+      : `채운 칸 ${n}`;
+    el.classList.toggle("warn", !!S.ovDirty);
     $("dg-ov-save").disabled = n === 0;
   }
 
@@ -3641,6 +3743,10 @@
         eq_len: merge(prev.eq_len, eq_len, (r) => `${r.kind}|${r.dia}`),
       });
       S.fitOverrides = d.overrides || {};
+      // [F-11b-2] 아직 «저장만» 된 상태다 — 재확정이 끝나야 산출이 바뀐다.
+      //   배지를 여기서 세우고, 재확정이 성공한 자리에서만 내린다. 재확정이
+      //   실패하면 배지가 남아 「안 들어갔다」를 화면이 말한다.
+      S.ovDirty = !!d.needs_rebuild;
       say(d.message || "직접 입력을 저장했습니다.", "ok");
       // 값이 바뀌는 일이라 표시만 고치고 끝내지 않는다 — 다시 확정한다.
       $("dg-build").click();
@@ -4019,6 +4125,9 @@
           const j = await api(`/api/module-f/convert/result?sid=${S.sid}`);
           const sum = (j.result && j.result.summary) || null;
           if (!sum) throw new Error((j.result && j.result.error) || "확정 실패");
+          // [F-11b-2] 재확정이 «성공한» 여기서만 배지를 내린다 — 위 throw 로
+          //   빠지면 배지가 남아 「저장했지만 아직 안 들어갔다」를 말한다.
+          S.ovDirty = false;
           renderDesignSummary(sum);
           await designPreview();
           $("dg-emit").disabled = false;

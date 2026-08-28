@@ -136,3 +136,99 @@ def test_게이트가_규칙이_고른_임계로_판단한다():
     assert "reconPick(0.9)" not in seg
     # 막을 때도 «왜» 를 규칙의 문장으로 말한다.
     assert "a.why" in seg
+
+
+# ═══════════════════════════════════════════ F-11b. 직접 입력을 «지우는» 길
+def test_채운_값에_갇히지_않는다():
+    """[§0.1 완결성] 막다른 길 0 — 잘못 채운 값을 지울 길이 화면에 있어야 한다.
+
+    서버는 이미 「빈 배열을 보내면 지운다」를 규약으로 갖고 있었지만, 그 규약을
+    부를 단추가 화면에 없으면 사람에게는 없는 기능이다.
+    """
+    html = _screen()
+    assert "직접 입력 지우기" in html, "지우는 단추가 없다"
+    assert "async function dropOverride(d)" in html
+    i = html.index("async function dropOverride(d)")
+    seg = html[i:i + 1200]
+    # 지운 뒤 값이 실제로 바뀌므로 재확정까지 이어 준다 — 저장 경로와 같은 규약.
+    assert '$("dg-build").click()' in seg, "지우고 재확정으로 안 이어진다"
+
+
+def test_지울_때_다른_갈래는_안_건드린다():
+    """서버 규약: «칸을 안 보내면 그 갈래는 그대로, 빈 배열이면 지운다».
+
+    한 갈래를 지우면서 다른 갈래를 «안 보내는» 것이 그래서 중요하다. 둘 다
+    보내면서 한쪽을 빈 배열로 두면, 부속을 지울 때 등가길이까지 날아간다.
+    """
+    html = _screen()
+    i = html.index("async function dropOverride(d)")
+    seg = html[i:i + 1200]
+    # 몸통을 먼저 만들고 «해당 갈래만» 채운다.
+    assert "const body = { sid: S.sid };" in seg
+    assert 'if (d.type === "kind") {' in seg
+    # 두 갈래를 한꺼번에 싣지 않는다.
+    assert "body.kind" in seg and "body.eq_len" in seg
+    assert seg.index("body.kind") < seg.index("body.eq_len")
+    assert "else" in seg[seg.index("body.kind"):seg.index("body.eq_len")]
+
+
+def test_표_확정_필요_배지는_한_곳에서만_써진다():
+    """[F-11b-2] 같은 칸을 두 곳에서 쓰면 나중 것이 앞 것을 덮는다.
+
+    ★실제로 그랬다. `renderIssues` 가 「표 확정 필요」를 세워 놓고, 바로 뒤의
+      `countFilled()` 가 「채운 칸 0」으로 지워 버려 배지가 뜰 수 없었다.
+      그래서 `dg-ov-n` 에 쓰는 곳을 한 곳으로 못 박는다.
+    """
+    html = _screen()
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    writes = js.count('$("dg-ov-n").textContent')
+    assert writes == 0, "배지를 직접 쓰는 곳이 남아 있다"
+    i = js.index("function countFilled()")
+    seg = js[i:i + 900]
+    assert 'const el = $("dg-ov-n");' in seg
+    assert "S.ovDirty" in seg, "배지가 «아직 안 들어갔다» 를 안 본다"
+    assert "표 확정 필요" in seg
+
+
+def test_배지를_세우는_곳과_내리는_곳이_다_있다():
+    """[정직한 진행 표시] 세울 곳만 있고 내릴 곳이 없으면 배지가 영영 남는다.
+
+    반대로 «세울 곳» 이 없으면 배지는 영영 안 뜬다 — 화면에 코드만 있고
+    기능은 없는 상태가 된다. 양쪽을 다 못 박는다.
+    """
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    # 세운다 — 저장·지움 두 경로 모두 서버의 `needs_rebuild` 를 그대로 쓴다.
+    assert js.count("S.ovDirty = !!") == 2, "저장·지움 둘 다 배지를 세워야 한다"
+    # 내린다 — «재확정이 성공한» 자리에서만.
+    i = js.index('$("dg-build").onclick')
+    seg = js[i:i + 1400]
+    assert "S.ovDirty = false;" in seg
+    assert seg.index("확정 실패") < seg.index("S.ovDirty = false;"), \
+        "실패로 빠지는 throw 앞에서 배지를 내리면 거짓말이 된다"
+
+
+def test_표에서도_직접_입력이_다른_얼굴이다():
+    """[F-11b-3] 목록만이 아니라 «표» 에서도 구별돼야 한다.
+
+    엔진의 부속표에는 그런 칸이 없고 이 항목에서 서버는 불변이다. 그래서
+    화면이 이미 받아 둔 `unresolved.applied` 를 표에 겹쳐 놓는다 — 새 판정이
+    아니라 표시다.
+    """
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    assert "function overrideNoteOf(row, which)" in js
+    i = js.index("function overrideNoteOf(row, which)")
+    seg = js[i:i + 1400]
+    assert 'if (which !== "fittings") return null;' in seg, "부속표에만 쓴다"
+    assert "직접 입력 — 부속" in seg and "직접 입력 — 등가길이" in seg
+    assert "a.note" in seg, "사유가 표에 안 실린다"
+    # 채운 자리가 없으면 표를 안 건드린다 — 없는 칸을 만들지 않는다.
+    j = js.index("function renderDesignTable()")
+    tab = js[j:j + 1400]
+    assert "const hasOv = notes.some(Boolean);" in tab
+    assert 'hasOv ? "<th>근거</th>" : ""' in tab
+    css = open(os.path.join(_ROOT, "static", "module_f.css"),
+               encoding="utf-8").read()
+    assert ".ovcell" in css and ".ovdel" in css

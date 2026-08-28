@@ -960,8 +960,19 @@
     return lo >= 0.9 ? hi : lo >= 0.75 ? hi + mid : hi + mid + low;
   }
 
+  // [F-11a · D-F11-2] 기본 채택 임계는 «도면 분포» 가 정한다(서버의 지배 띠
+  //   규칙). 다만 사람이 고급에서 손으로 고르면 그것이 이긴다 — 규칙은 기본값
+  //   이지 잠금이 아니다.
   function confMin() {
     fillConf();
+    if (S.confManual) {
+      const v = parseFloat($("adv-conf").value);
+      if (Number.isFinite(v)) return v;
+    }
+    const a = (S.recon && S.recon.adopt) || null;
+    if (a && a.conf_min !== null && a.conf_min !== undefined) {
+      return Number(a.conf_min);
+    }
     const v = parseFloat($("adv-conf").value);
     return Number.isFinite(v) ? v : 0.9;
   }
@@ -981,16 +992,18 @@
       return { ok: false,
         why: "자동 인식이 배관 레이어를 찾지 못했습니다 — 색으로 직접 찍어 주세요." };
     }
-    // ★기본 기준으로 찍을 헤드가 하나도 없으면 조립이 죽는다. 실측:
-    //   LH306 은 높음 띠가 0 이라(0/42) 0.9 로 채택하면 헤드 0 이 되고,
-    //   그 스펙으로 조립하면 엔진이 `KeyError: 'heads'` 로 끝난다(0.75 면
-    //   정상). 엔진은 고칠 수 없으니(읽기 전용) 문 앞에서 가른다.
-    //   기준을 «자동으로 낮추지» 않는다 — 기본값 0.9 는 D-F8-4 의 결정이고,
-    //   낮추는 판단은 이 지시서가 준 권한 밖이다(BLOCKED 에 적었다).
-    if (!reconPick(0.9)) {
+    // ★찍을 헤드가 하나도 없으면 조립이 죽는다(엔진이 `KeyError: 'heads'`).
+    //   엔진은 읽기 전용이라 문 앞에서 가른다 — 이 게이트는 최후 방어로 남는다.
+    //
+    //   [F-11a · D-F11-2] 판단 기준이 «절대 0.9» 에서 «규칙이 고른 임계» 로
+    //   바뀌었다. 예전에는 LH306(높음 0/42)이 여기서 막혔는데, 이제 지배 띠
+    //   규칙이 중간까지 채택하므로 살아서 지나간다. 규칙조차 0 을 내는
+    //   도면에서만 이 문이 닫힌다.
+    if (!reconPick(confMin())) {
+      const a = (r.adopt || {});
       return { ok: false,
-        why: "자동 인식에 «높음(≥0.9)» 헤드가 없어 이 기준으로는 찍을 것이 "
-          + "없습니다 — 직접 찍거나, 고급에서 채택 기준을 낮춰 다시 채택하세요." };
+        why: (a.why || "자동 인식이 찍을 만한 헤드 후보를 못 찾았습니다.")
+          + " — 직접 찍거나, 고급에서 채택 기준을 낮춰 다시 채택하세요." };
     }
     return { ok: true };
   }
@@ -1020,7 +1033,12 @@
       + `<div class="hint">헤드 후보 <b>${r.n.toLocaleString()}</b>개 · `
       + `배관 묶음 <b>${num(bd.PIPE)}</b>개`
       + (num(bd.HEAD) ? ` · 헤드 레이어 <b>${num(bd.HEAD)}</b>개` : "")
-      + `</div>`;
+      + `</div>`
+      // [F-11a] 어느 규칙이 발동했는지 카드에도 적는다 — 조용한 규칙 전환은
+      //   새 은닉 오류다. 사람이 손으로 고른 뒤에는 그렇다고 말한다.
+      + (r.adopt ? `<div class="hint">${S.confManual
+            ? "채택 기준을 <b>직접 고른</b> 상태입니다."
+            : r.adopt.why}</div>` : "");
     $("adv-conf-row").classList.remove("hidden");
     renderConfHint();
   }
@@ -1039,7 +1057,13 @@
         + "기준을 낮춰 보세요.</span>";
   }
 
-  $("adv-conf").onchange = renderConfHint;
+  // 사람이 손으로 고르는 순간 «수동» 이 된다 — 그 뒤로는 규칙이 안 이긴다.
+  $("adv-conf").onchange = () => {
+    S.confManual = true;
+    // 카드도 다시 그린다 — 「규칙이 정했다」가 「직접 고른 상태」로 바뀌어야
+    // 화면이 사실을 말한다.
+    renderRecon();
+  };
 
   async function loadRecon() {
     try {
@@ -1088,10 +1112,14 @@
           watch(async () => {
             await loadEdit();
             const g = (S.ghosts && S.ghosts.size) || 0;
+            // [F-11a] 어느 규칙으로 채택했는지 배너에도 한 줄 — 사람이 고른
+            //   기억이 없는 길이라 «왜 이만큼인가» 를 화면이 말해야 한다.
+            const a = (S.recon && S.recon.adopt) || null;
             startNote(`자동 인식 결과로 시작했습니다 — 채택 `
               + `<b>${num(r.head_applied).toLocaleString()}</b>개`
               + (g ? ` · 유령 <b>${g.toLocaleString()}</b>개` : "")
-              + ` · 단계바의 「찍기」로 내려가 고칠 수 있습니다.`);
+              + ` · 단계바의 「찍기」로 내려가 고칠 수 있습니다.`
+              + (a && !S.confManual ? `<br>${a.why}` : ""));
             resolve(true);
           });
         } catch (err) {

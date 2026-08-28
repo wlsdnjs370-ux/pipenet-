@@ -55,7 +55,10 @@ def test_흐름이_스스로_갈린다():
     # 갈림의 세 이유가 전부 «사유 문장» 을 들고 있다.
     assert "자동 인식이 실패했습니다" in seg
     assert "배관 레이어를 찾지 못했습니다" in seg
-    assert "높음(≥0.9)» 헤드가 없어" in seg
+    # [F-11a · D-F11-2] 셋째 사유는 이제 «지배 띠 규칙» 의 문장을 그대로 쓴다.
+    #   예전에는 「높음(≥0.9) 헤드가 없어」라고 절대 임계를 못 박았는데, 그
+    #   임계 자체가 도면 분포로 바뀌었다(recon.dominant_band).
+    assert "a.why" in seg and "고급에서 채택 기준을 낮춰" in seg
     j = html.index("async function autoStart()")
     body = html[j:j + 1200]
     assert "reconReady()" in body
@@ -64,22 +67,30 @@ def test_흐름이_스스로_갈린다():
     assert "confirm(" not in body and "prompt(" not in body
 
 
-def test_기본_기준을_저절로_낮추지_않는다():
-    """D-F8-4 는 그대로다 — 낮추는 것은 사람이 고급에서 한다.
+def test_기준을_프로그램이_정하되_반드시_말한다():
+    """[D-F11-2 가 D-F8-4 를 개정했다] 기준을 도면 분포가 정한다.
 
-    LH306 은 높음 띠가 0 이라(0/42) 0.9 로는 헤드가 하나도 안 찍히고, 그
-    스펙으로 조립하면 엔진이 `KeyError: 'heads'` 로 죽는다(실측). 그래서 «막고
-    사유를 적는» 쪽을 골랐다 — 기준을 프로그램이 낮추면 사람이 모르는 사이에
-    낮은 신뢰도 후보가 산출에 들어간다.
+    ★예전 규약은 「기준을 프로그램이 낮추지 않는다」였다. 그 이유는 「사람이
+      모르는 사이에 낮은 신뢰도 후보가 들어간다」였는데, 절대 임계 0.9 는
+      A 의 신뢰도가 사실상 이진값이라 도면마다 뒤집혀 **퇴화**했다
+      (B1F 72/3,338 → 최불리 2개 · LH306 0/42 → 조립 불가).
+
+      그래서 결정이 바뀌었다: 프로그램이 정하되 **반드시 말한다.** 「모르는
+      사이에」가 사라지면 원래 걱정도 사라진다. 규칙은 결정적이고, 발동한
+      규칙이 카드와 배너에 적히고, 사람이 고르면 사람이 이긴다.
     """
     html = _screen()
     i = html.index("function reconReady()")
-    seg = html[i:i + 1200]
-    assert "reconPick(0.9)" in seg, "기본 기준으로 재지 않는다"
-    assert 'sel.value = "0.9"' in html
-    # 자동으로 기준을 갈아끼우는 코드가 없어야 한다.
-    j = html.index("async function autoStart()")
-    assert re.search(r'\$\("adv-conf"\)\.value\s*=', html[j:j + 1200]) is None
+    seg = html[i:i + 1400]
+    assert "reconPick(confMin())" in seg, "아직 절대 임계로 판단한다"
+    # 기본 임계는 «서버의 규칙» 에서 온다.
+    j = html.index("function confMin()")
+    body = html[j:j + 700]
+    assert "S.recon" in body and "adopt" in body
+    # 화면이 제멋대로 임계 칸을 갈아끼우지 않는다 — 사람이 고른 값을 덮으면
+    # 그것이 곧 「모르는 사이에」다.
+    k = html.index("async function autoStart()")
+    assert re.search(r'\$\("adv-conf"\)\.value\s*=', html[k:k + 1200]) is None
 
 
 def test_확정_지점은_손질이고_되돌릴_수_있다():

@@ -740,10 +740,12 @@ def main() -> int:
                       "헤드 후보" in rc and "배관 묶음" in rc, rc[:80])
                 confs = page.eval_on_selector_all(
                     "#adv-conf option", "els => els.map(e => e.value)")
-                check("채택 기준을 화면에서 고를 수 있다 (D-F8-4)",
+                check("채택 기준을 화면에서 고를 수 있다",
                       confs and confs[0] == "0.9", " · ".join(confs))
-                check("기본 기준은 0.9 다 (D-F8-4)",
-                      page.input_value("#adv-conf") == "0.9")
+                # [F-11a · D-F11-2] 어느 규칙이 발동했는지 카드가 말해야 한다 —
+                #   조용한 규칙 전환은 새 은닉 오류다.
+                check("발동한 채택 규칙이 카드에 적힌다",
+                      ("채택했습니다" in rc) or ("직접 고른" in rc), rc[-70:])
                 why0 = page.inner_text("#adv-conf-why").strip()
                 if "후보가 없습니다" in why0:
                     check("맞는 후보가 0개면 잠기고 사유를 말한다",
@@ -751,10 +753,21 @@ def main() -> int:
                 else:
                     check("기본 기준으로 찍을 것이 있다",
                           not page.is_disabled("#adv-readopt"), why0[:70])
+                # 수동으로 고르면 «수동이 이긴다» — 규칙은 기본값이지 잠금이 아니다.
+                page.select_option("#adv-conf", "0")      # 「전부」 — 값은 "0"
+                page.wait_for_timeout(250)
+                why1 = page.inner_text("#adv-conf-why").strip()
+                check("기준을 바꾸면 예정 수가 따라간다", why1 != why0,
+                      f"{why0[:28]} → {why1[:28]}")
+                manual = page.evaluate(
+                    """async () => {
+                      const el = document.getElementById('adv-recon');
+                      return (el ? el.textContent : '');
+                    }""")
+                check("수동으로 고르면 그렇다고 밝힌다",
+                      "직접 고른" in manual, manual[-60:])
                 page.select_option("#adv-conf", "0.75")
                 page.wait_for_timeout(200)
-                why1 = page.inner_text("#adv-conf-why").strip()
-                check("기준을 바꾸면 예정 수가 따라간다", why1 != why0, why1[:60])
 
                 # [D-F10-3] 확정 지점은 손질이지만, 되돌리기로 찍기까지 내려간다.
                 if got_edit:

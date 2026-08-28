@@ -48,6 +48,48 @@ def count_bands(cands) -> dict:
     return out
 
 
+# ── [F-11a · D-F11-2] 지배 띠 채택 — 절대 임계를 «도면 분포» 로 ──────
+#
+# 절대 임계 0.9 는 퇴화한다. A 의 신뢰도가 사실상 이진값이기 때문이다 —
+# `KNOWN_HEAD_BLOCKS` 블록 참조만 0.95 를 받고, 나머지 HEAD 도형은 0.70~0.89
+# 에 몰린다. 그래서 블록을 쓴 도면과 직접 작도한 도면 사이에서 0.9 가
+# «대부분» 과 «거의 없음» 으로 갈린다. 실측:
+#
+#     대명동 단위세대   높음  87 / 119   (73%)  → 정상
+#     B1F 현장조사      높음  72 / 3,338 ( 2%)  → 최불리 2개로 퇴화
+#     LH306동 평면도    높음   0 / 42    ( 0%)  → 조립 불가(§16 게이트로 막힘)
+#
+# 그래서 임계를 도면의 «분포» 가 정하게 한다. 높음이 지배적이면 높음만,
+# 아니면 중간까지 — 규칙은 결정적이고, 발동한 규칙은 반드시 화면에 적는다
+# (조용한 규칙 전환은 새 은닉 오류다).
+DOMINANT_BAND_RATIO = 0.5
+
+
+def dominant_band(bands: dict) -> dict:
+    """채택 임계를 도면 분포로 정한다. 화면이 그대로 읽어 적을 수 있는 모양.
+
+    반환:
+        conf_min  채택 임계(0.9 / 0.75) 또는 None(채택할 것이 없음)
+        rule      "high" | "high_mid" | "none"
+        n         그 임계로 채택되는 후보 수
+        why       사람이 읽을 한 줄 — 배너·카드가 이 문장을 그대로 쓴다
+    """
+    hi = int((bands or {}).get(BAND_HIGH) or 0)
+    mid = int((bands or {}).get(BAND_MID) or 0)
+    low = int((bands or {}).get(BAND_LOW) or 0)
+    total = hi + mid + low
+    if total and hi / total >= DOMINANT_BAND_RATIO:
+        return {"conf_min": CONF_HIGH, "rule": "high", "n": hi,
+                "why": f"후보 대부분이 높음 띠(블록 기반)라 높음만 "
+                       f"채택했습니다 — {hi:,}개"}
+    if hi + mid > 0:
+        return {"conf_min": CONF_MID, "rule": "high_mid", "n": hi + mid,
+                "why": f"이 도면은 후보 대부분이 중간 띠(블록 미사용)라 "
+                       f"중간까지 채택했습니다 — {hi + mid:,}개"}
+    return {"conf_min": None, "rule": "none", "n": 0,
+            "why": "자동 인식이 찍을 만한 헤드 후보를 못 찾았습니다."}
+
+
 def bundle_counts(world) -> dict:
     """레이어 사전이 추천한 묶음 수 — 찍기 화면이 세는 것과 같은 값.
 
@@ -104,7 +146,12 @@ def recon_view(rec) -> dict:
         return {"state": "none"}
     if rec.get("error"):
         return {"state": "error", "error": rec["error"]}
+    bands = rec.get("bands") or {}
     return {"state": "ok", "bundles": rec.get("bundles") or {},
-            "bands": rec.get("bands") or {},
+            "bands": bands,
             "n": len(rec.get("heads") or ()),
+            # [F-11a] 이 도면의 분포가 정한 채택 임계와 «그 이유». 화면이
+            # 고르는 것이 아니라 여기서 정해 내려보낸다 — 규칙이 한 곳에만
+            # 있어야 카드와 배너가 다른 말을 하지 않는다.
+            "adopt": dominant_band(bands),
             "elapsed_ms": rec.get("elapsed_ms")}

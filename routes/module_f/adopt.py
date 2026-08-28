@@ -47,19 +47,31 @@ def adopt_bundles(ps, world, cat: str = "PIPE") -> dict:
     want = str(cat or "PIPE").upper()
     targets = [b for b in ((world or {}).get("bundles") or [])
                if b.get("cat") == want]
-    applied, skipped = [], []
+    applied, skipped, already = [], [], []
     for b in targets:
         segs = ps.board.by_bundle.get((b["layer"], b["color"])) or []
         if not segs:
             skipped.append(b["layer"])
             continue
         a, c = segs[0]
-        rep = ps.click((a[0] + c[0]) / 2.0, (a[1] + c[1]) / 2.0)
-        if rep is None or rep.get("동작") != "추가":
-            skipped.append(b["layer"])
-        else:
+        mx, my = (a[0] + c[0]) / 2.0, (a[1] + c[1]) / 2.0
+        rep = ps.click(mx, my)
+        act = (rep or {}).get("동작")
+        if act == "추가":
             applied.append(b["layer"])
-    return {"applied": applied, "skipped": skipped, "targets": len(targets)}
+        elif act == "취소":
+            # ★이미 찍힌 서명을 껐다 — 곧바로 되켠다. 이 파일 머리말의 그
+            #   규약인데 `adopt_heads` 만 지키고 여기는 안 지키고 있었다.
+            #   그래서 «다시 채택» 이 앞서 찍은 재료를 통째로 꺼 버렸다
+            #   (실측 LH306: 재료 6묶음 → 0묶음 · 헤드 3 → 0 · 그 뒤
+            #   「재료를 하나도 못 찍었습니다」로 조립까지 막혔다).
+            #   같은 수정을 두 번 시키지 않는다는 «수렴성» 이 여기서 깨졌다.
+            ps.click(mx, my)
+            already.append(b["layer"])
+        else:
+            skipped.append(b["layer"])
+    return {"applied": applied, "skipped": skipped, "already": already,
+            "targets": len(targets)}
 
 
 def select_heads(cands, *, conf_min=None, indices=None) -> list:

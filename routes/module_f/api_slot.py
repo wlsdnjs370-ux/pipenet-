@@ -16,7 +16,8 @@ from flask import jsonify, request
 
 from routes.module_f.api_open import _open_job
 from routes.module_f.common import _boot, _check_key, _fail
-from routes.module_f.jobs import _job_running, _new_session, _run_job, _sess
+from routes.module_f.jobs import (_job_running, _new_session, _run_job, _sess,
+                                  route_session)
 from routes.module_f.slots import (
     SLOT_LABELS, _check_slot_kind, _slot_active, _slot_state, _slot_switch)
 from routes.module_f.world import _world_payload
@@ -100,29 +101,22 @@ def _sub_open_job(sess: dict, dxf, kind: str):
 
 def register(app, *, _save_upload):
     @app.get("/api/module-f/slot/state")
-    def module_f_slot_state():
+    @route_session()
+    def module_f_slot_state(sess, body):
         """세 슬롯의 진행 한 장 — S650 이 «남은 도면이 있나» 를 묻는 자리."""
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         out = _slot_state(sess)
         out["ok"] = True
         return jsonify(out)
 
     @app.post("/api/module-f/slot/switch")
-    def module_f_slot_switch():
+    @route_session(post=True)
+    def module_f_slot_switch(sess, body):
         """활성 슬롯을 바꾼다. 작업이 도는 중에는 거절한다.
 
         ★잡이 도는 중에 슬롯을 바꾸면 워커가 **다른 슬롯의 평면 dict** 에 결과를
           쓴다. `_open_job` 의 클로저가 붙잡은 것은 세션이지 슬롯이 아니기
           때문이다 — 계통도를 읽던 잡이 평면도의 찍기 상태를 덮어쓴다.
         """
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         if _job_running(sess):
             return _fail("작업이 끝난 뒤에 도면을 바꿀 수 있습니다.", 409)
         try:
@@ -211,7 +205,8 @@ def register(app, *, _save_upload):
                         "needs_method": kind == "plan"})
 
     @app.post("/api/module-f/slot/read")
-    def module_f_slot_read():
+    @route_session(post=True)
+    def module_f_slot_read(sess, body):
         """읽어 놓은 도면을 **어느 길로 갈지 정한다**.
 
         도면은 `/slot/open` 이 이미 읽어 화면에 띄웠다. 여기서 갈리는 것은
@@ -223,11 +218,6 @@ def register(app, *, _save_upload):
         `started` 로 잡을 돌렸는지 알린다 — 화면이 기다릴지 바로 넘어갈지를
         그것으로 가른다.
         """
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         if _job_running(sess):
             return _fail("작업이 끝난 뒤에 고를 수 있습니다.", 409)
         dxf = sess.get("dxf")

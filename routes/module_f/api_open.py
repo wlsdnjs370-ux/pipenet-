@@ -9,7 +9,8 @@ from flask import jsonify, render_template, request, send_file
 
 from routes.module_f.common import (
     DIAGRAMS, IMPORT_WORK_ROOT, _boot, _check_key, _fail)
-from routes.module_f.jobs import _job_view, _new_session, _run_job, _sess
+from routes.module_f.jobs import (_job_view, _new_session, _run_job, _sess,
+                                  route_session)
 from routes.module_f.remote30 import _sheet_frames
 from routes.module_f.views import _pick_state
 from routes.module_f.world import _saved_keys, _world_payload
@@ -155,11 +156,8 @@ def register(app, *, _save_upload):
         return jsonify({"ok": True, "sid": sess["id"], "key": key})
 
     @app.get("/api/module-f/job")
-    def module_f_job():
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
+    @route_session()
+    def module_f_job(sess, body):
         view = _job_view(sess)
         view["ok"] = True
         view["stage"] = ("edit" if sess.get("edit") is not None
@@ -168,7 +166,8 @@ def register(app, *, _save_upload):
         return jsonify(view)
 
     @app.get("/api/module-f/job/stream")
-    def module_f_job_stream():
+    @route_session()
+    def module_f_job_stream(sess, body):
         """[F-6] 진행 스트리밍 — 잡 상태·로그 줄을 SSE 로 흘린다.
 
         r30_prototype 의 SSE 패턴을 참조하되 세션·잡 규약은 F 것 그대로다:
@@ -176,11 +175,6 @@ def register(app, *, _save_upload):
         스트림은 그것을 읽어 보내기만 한다. 폴링(/api/module-f/job)은
         하위호환으로 남는다 — EventSource 가 없는 환경은 그리로 돌아간다.
         """
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-
         def gen():
             import json as _json
             sent = 0
@@ -211,17 +205,14 @@ def register(app, *, _save_upload):
                                  "X-Accel-Buffering": "no"})
 
     @app.get("/api/module-f/recon")
-    def module_f_recon():
+    @route_session()
+    def module_f_recon(sess, body):
         """[F-8a] 정찰 결과 조회 — 새로고침해도 카드가 다시 채워지게.
 
         수치만 준다. 후보 좌표 수천 개는 `heads=1` 로 따로 청한다 — 카드를
         그릴 때마다 3천 점을 내려보내면 새로고침이 그만큼 무거워진다.
         """
         from routes.module_f.recon import recon_view
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         rec = sess.get("recon")
         out = {"ok": True, "recon": recon_view(rec)}
         if request.args.get("heads") in ("1", "true", "yes"):
@@ -229,11 +220,8 @@ def register(app, *, _save_upload):
         return jsonify(out)
 
     @app.get("/api/module-f/world")
-    def module_f_world():
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
+    @route_session()
+    def module_f_world(sess, body):
         if sess.get("world") is None:
             return _fail("도면이 아직 준비되지 않았습니다.")
         # [H-2] 계통도·기계실 슬롯에는 찍기판이 없다 — 도면만 내려보낸다.

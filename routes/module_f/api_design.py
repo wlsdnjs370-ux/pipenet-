@@ -21,7 +21,7 @@ from flask import jsonify, request, send_file
 
 from routes.module_f.common import (
     REMOTE_K_DEFAULT, _boot, _fail, _r1)
-from routes.module_f.jobs import _job_running, _run_job, _sess
+from routes.module_f.jobs import _job_running, _run_job, _sess, route_session
 
 # 설정 7종(지시서 F-2) — body 로 받고 세션에 기억한다.
 _DEFAULT_SETTINGS = {
@@ -228,13 +228,9 @@ def emit_design_files(sess: dict, UPLOAD_DIR, cfg: dict | None = None):
 def register(app, *, UPLOAD_DIR):
     # ─────────────────────────────────────── 수리계산 입력 (설계)
     @app.post("/api/module-f/design/build")
-    def module_f_design_build():
+    @route_session(post=True)
+    def module_f_design_build(sess, body):
         """최불리 선정 → corridor 제한 전개 → 5표. 파일은 쓰지 않는다."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         es = sess.get("edit")
         if es is None:
             # 자동(A) 경로는 표가 이미 나와 있다 — 여기서 다시 만들 것이 없다.
@@ -307,16 +303,13 @@ def register(app, *, UPLOAD_DIR):
         return jsonify({"ok": True})
 
     @app.get("/api/module-f/design/preview")
-    def module_f_design_preview():
+    @route_session()
+    def module_f_design_preview(sess, body):
         """emit 에 넘길 좌표 **그대로** — 표시 전용 좌표계를 따로 두지 않는다.
 
         보기 설정만 바뀌면 build 를 다시 돌지 않는다 — 캐시한 표에 표시 변환만
         다시 얹는다(G16 의 «최불리 재계산 없이 다시 그리기» 그대로).
         """
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         d = sess.get("design")
         if not d:
             job = sess.get("job") or {}
@@ -454,13 +447,9 @@ def register(app, *, UPLOAD_DIR):
         })
 
     @app.post("/api/module-f/design/emit")
-    def module_f_design_emit():
+    @route_session(post=True)
+    def module_f_design_emit(sess, body):
         """.sdf + .slf 한 쌍을 쓴다. 자산이 없으면 실패(G 정책 그대로)."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         # ★「표 확정」 잡이 도는 동안 저장하면 — 새 표가 나오기 직전의 «옛 표» 로
         #   파일이 써진다. 사용자는 방금 누른 확정이 반영됐다고 읽는다.
         if _job_running(sess):

@@ -16,7 +16,7 @@ from __future__ import annotations
 from flask import jsonify, request
 
 from routes.module_f.common import _fail
-from routes.module_f.jobs import _job_running, _sess
+from routes.module_f.jobs import _job_running, _sess, route_session
 from routes.module_f.slots import _slot_active
 from routes.module_f.subdrawing import (
     extract_machineroom, extract_system, extract_system_clean, riser_summary)
@@ -59,20 +59,13 @@ def _need_slot(body, kind: str):
 def register(app):
     # ─────────────────────────────────── 계통도 (S720)
     @app.post("/api/module-f/system/extract")
-    def module_f_system_extract():
+    @route_session(lambda b: _need_slot(b, "system"), post=True)
+    def module_f_system_extract(sess, body):
         """펌프 → 알람밸브 경로 = 입상관.
 
         Body: sid · pump_x · pump_y · av_x · av_y · [snap_tolerance_mm]
               [waypoints:[[x,y],…]] · [clean:true]
         """
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, why = _need_slot(body, "system")
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if why:
-            return _fail(why, 409)
-
         # 조각난 풀 계통도용 폴백 — 두 점 없이 파일의 단일망을 통째로 읽는다.
         if bool(body.get("clean")):
             try:
@@ -114,20 +107,13 @@ def register(app):
 
     # ─────────────────────────────────── 기계실 (S730)
     @app.post("/api/module-f/machineroom/extract")
-    def module_f_machineroom_extract():
+    @route_session(lambda b: _need_slot(b, "machineroom"), post=True)
+    def module_f_machineroom_extract(sess, body):
         """수원(탱크) → 입상관 연결점 경로. 좌표는 평면 그대로 보존한다.
 
         Body: sid · source_x · source_y · conn_x · conn_y
               [snap_tolerance_mm] · [ceiling_m]
         """
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, why = _need_slot(body, "machineroom")
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if why:
-            return _fail(why, 409)
-
         try:
             src = _xy(body, "source_x", "source_y", "수원(탱크 토출구)")
             conn = _xy(body, "conn_x", "conn_y", "입상관 연결점")
@@ -164,12 +150,9 @@ def register(app):
 
     # ─────────────────────────────────── 추출 결과 되읽기
     @app.get("/api/module-f/sub/state")
-    def module_f_sub_state():
+    @route_session()
+    def module_f_sub_state(sess, body):
         """지금 슬롯의 추출 결과 요약 — 없으면 빈 것으로 답한다."""
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         kind = _slot_active(sess)
         got = sess.get("riser") if kind == "system" else sess.get("machineroom")
         return jsonify({

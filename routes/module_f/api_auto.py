@@ -21,7 +21,7 @@ from flask import jsonify, request
 
 from routes.module_f.auto import AutoError, detect_head_candidates, preview_view, run_auto
 from routes.module_f.common import REMOTE_K_DEFAULT, _fail
-from routes.module_f.jobs import _job_running, _run_job, _sess
+from routes.module_f.jobs import _job_running, _run_job, _sess, route_session
 from routes.module_f.slots import _slot_active
 
 
@@ -64,11 +64,8 @@ def _need_auto(body_or_args):
 
 def register(app):
     @app.get("/api/module-f/auto/state")
-    def module_f_auto_state():
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
+    @route_session()
+    def module_f_auto_state(sess, body):
         return jsonify({
             "ok": True,
             # ★기본값을 채우지 않는다. 아직 안 고른 슬롯을 «수동» 이라고
@@ -94,15 +91,9 @@ def register(app):
         })
 
     @app.post("/api/module-f/auto/anchor")
-    def module_f_auto_anchor():
+    @route_session(_need_auto, post=True)
+    def module_f_auto_anchor(sess, body):
         """알람밸브(기준점) 위치 — 특허 S210·S220 의 «사용자 지정»."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, why = _need_auto(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if why:
-            return _fail(why, 409)
         x, y = body.get("x"), body.get("y")
         if x is None or y is None:
             sess["auto_alarm"] = None            # 지우기
@@ -114,15 +105,9 @@ def register(app):
         return jsonify({"ok": True, "alarm": sess["auto_alarm"]})
 
     @app.post("/api/module-f/auto/zones")
-    def module_f_auto_zones():
+    @route_session(_need_auto, post=True)
+    def module_f_auto_zones(sess, body):
         """헤드 영역 — anchored 선정의 필수 입력(`head_region`)."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, why = _need_auto(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if why:
-            return _fail(why, 409)
         raw = body.get("zones") or []
         if len(raw) > MAX_ZONES:
             return _fail(f"영역이 너무 많습니다: {len(raw)}곳 "
@@ -137,7 +122,8 @@ def register(app):
         return jsonify({"ok": True, "zones": len(rects)})
 
     @app.post("/api/module-f/auto/pipe-layers")
-    def module_f_auto_pipe_layers():
+    @route_session(_need_auto, post=True)
+    def module_f_auto_pipe_layers(sess, body):
         """「이 레이어를 배관으로 취급」 — 사람이 찍은 레이어×색 묶음.
 
         자동 차선에는 이 길이 없었다. 레이어 이름 사전이 OTHER 로 떨어뜨리면
@@ -150,13 +136,6 @@ def register(app):
 
         body: {sid, layers: [{layer, color}, …]}
         """
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, why = _need_auto(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if why:
-            return _fail(why, 409)
         raw = body.get("layers")
         if raw is None:
             raw = []
@@ -179,20 +158,14 @@ def register(app):
         return jsonify({"ok": True, "layers": picks, "entities": n})
 
     @app.post("/api/module-f/auto/heads")
-    def module_f_auto_heads():
+    @route_session(_need_auto, post=True)
+    def module_f_auto_heads(sess, body):
         """② 헤드 검출 — 도면에서 헤드를 **전부** 찾는다.
 
         모듈 A 의 `detect_heads`(R1~R5·신뢰도) 그대로다. 이것이 「알람밸브 찍고
         나면 자동으로 헤드가 다 나온다」의 그 단계이고, 범위(영역)의 기본값도
         여기서 나온다 — 영역을 그리는 것은 그것을 «좁히는» 선택일 뿐이다.
         """
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, why = _need_auto(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if why:
-            return _fail(why, 409)
         try:
             ents, cat = _pipe_ents(sess)
             heads = detect_head_candidates(
@@ -211,7 +184,8 @@ def register(app):
                         "dropped": len(heads) - len(shown)})
 
     @app.post("/api/module-f/auto/network")
-    def module_f_auto_network():
+    @route_session(_need_auto, post=True)
+    def module_f_auto_network(sess, body):
         """[S270 · S310] 배관망 검출 — 최불리를 고르기 «전» 의 단계.
 
         `scripts/평면도 배관망 추출논리.pdf` 의 순서에서 S320(내림차순 정렬) 앞
@@ -222,13 +196,6 @@ def register(app):
         """
         from routes.module_f.auto import network_view, run_network
 
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, why = _need_auto(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if why:
-            return _fail(why, 409)
         if _job_running(sess):
             return _fail("작업이 끝난 뒤에 실행할 수 있습니다.", 409)
         if not sess.get("auto_alarm"):
@@ -261,13 +228,10 @@ def register(app):
         return jsonify({"ok": True})
 
     @app.get("/api/module-f/auto/network-view")
-    def module_f_auto_network_view():
+    @route_session()
+    def module_f_auto_network_view(sess, body):
         """검출한 망의 도형 — 새로고침·슬롯 왕복에도 다시 그릴 수 있게."""
         from routes.module_f.auto import network_view
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         got = sess.get("auto_net")
         # ★«아직 안 돌렸다» 는 오류가 아니다. 404 로 답하면 화면이 단계에 들어올
         #   때마다 콘솔에 붉은 줄을 남긴다 — 진짜 오류가 그 사이에 묻힌다.
@@ -277,15 +241,9 @@ def register(app):
                         "view": network_view(got["selection"])})
 
     @app.post("/api/module-f/auto/run")
-    def module_f_auto_run():
+    @route_session(_need_auto, post=True)
+    def module_f_auto_run(sess, body):
         """선정 실행. 무거우므로 잡으로 돌린다."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, why = _need_auto(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if why:
-            return _fail(why, 409)
         if _job_running(sess):
             return _fail("작업이 끝난 뒤에 실행할 수 있습니다.", 409)
         if not sess.get("auto_alarm"):
@@ -325,11 +283,8 @@ def register(app):
         return jsonify({"ok": True, "sid": sess["id"]})
 
     @app.get("/api/module-f/auto/preview")
-    def module_f_auto_preview():
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
+    @route_session()
+    def module_f_auto_preview(sess, body):
         got = sess.get("auto")
         if not got:
             return _fail("아직 자동 추출을 실행하지 않았습니다.", 404)
@@ -338,7 +293,8 @@ def register(app):
                         "tables": got["tables"].as_dict()})
 
     @app.post("/api/module-f/auto/handoff")
-    def module_f_auto_handoff():
+    @route_session(post=True)
+    def module_f_auto_handoff(sess, body):
         """[F-8d] 탈출로 — 자동 결과가 이상할 때 손질로 이어받는다.
 
         자동이 마음에 안 든다고 처음부터 다시 시작하게 두지 않는다. 같은
@@ -359,11 +315,6 @@ def register(app):
         from routes.module_f.remote30 import _sheet_frames
         from routes.module_f.views import _pick_state
 
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         if _job_running(sess):
             return _fail("작업이 끝난 뒤에 이어받을 수 있습니다.", 409)
         if _slot_active(sess) != "plan":
@@ -429,10 +380,7 @@ def register(app):
         return jsonify({"ok": True})
 
     @app.get("/api/module-f/auto/handoff-hints")
-    def module_f_auto_handoff_hints():
+    @route_session()
+    def module_f_auto_handoff_hints(sess, body):
         """이어받기가 넘긴 제안 — 새로고침해도 오버레이가 다시 뜨게."""
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         return jsonify({"ok": True, "handoff": sess.get("handoff")})

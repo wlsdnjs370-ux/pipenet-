@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """모듈 F 라우트 — 2단계 손질(이음·삭제·급수·종류·자동 이음·최불리)."""
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ from flask import jsonify, request
 
 from routes.module_f.common import REMOTE_K_DEFAULT, _fail, _r1
 from routes.module_f.graph import _autojoin_apply, _autojoin_scan
-from routes.module_f.jobs import _job_running, _run_job, _sess
+from routes.module_f.jobs import (_job_running, _run_job, _sess,
+                                  route_session)
 from routes.module_f.remote30 import _worst_k_heads
 from routes.module_f.views import _edit_state
 
@@ -26,15 +27,16 @@ def _edit_session(body, *, need_board: bool = True):
       여기다. 예전에는 자동 이음 «적용» 에만 있었고 클릭·되돌리기·물흐름·
       최불리에는 없었다.
 
-    반환: (sess, es, 실패응답). 실패응답이 있으면 그대로 돌려주면 된다.
+    반환: `route_session` 규약대로 «(sess, 사유)». 사유는 «(문장, 코드)» 라
+    옮겨 오기 전의 상태 코드가 그대로 지켜진다. 통과했으면 손질 세션은
+    `sess["edit"]` 에 있다.
     """
-    sess = _sess(body.get("sid"))          # ValueError 는 호출자가 410 으로
+    sess = _sess(body.get("sid"))          # ValueError 는 데코레이터가 410 으로
     if _job_running(sess):
-        return sess, None, _fail("작업이 끝난 뒤에 손질할 수 있습니다.", 409)
-    es = sess.get("edit")
-    if need_board and es is None:
-        return sess, None, _fail("손질 세션이 없습니다.")
-    return sess, es, None
+        return sess, ("작업이 끝난 뒤에 손질할 수 있습니다.", 409)
+    if need_board and sess.get("edit") is None:
+        return sess, ("손질 세션이 없습니다.", 400)
+    return sess, None
 
 
 def register(app):
@@ -60,26 +62,16 @@ def register(app):
 
     # ─────────────────────────────────────────── 2. 손질
     @app.get("/api/module-f/edit/state")
-    def module_f_edit_state():
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if sess.get("edit") is None:
-            return _fail("손질 세션이 없습니다.")
+    @route_session(_edit_session)
+    def module_f_edit_state(sess, body):
         # 화면이 처음 여는 길이다 — 제 사본이 없으므로 망 도형을 반드시 싣는다.
         return jsonify({"ok": True, "key": sess["key"],
                         "state": _edit_state(sess, full=True)})
 
     @app.post("/api/module-f/edit/mode")
-    def module_f_edit_mode():
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, es, bad = _edit_session(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if bad:
-            return bad
+    @route_session(_edit_session, post=True)
+    def module_f_edit_mode(sess, body):
+        es = sess["edit"]
         from services.cad_import.edit.session import (
             MODE_DELETE, MODE_JOIN, MODE_SOURCE, MODE_VALVE)
         allowed = {MODE_JOIN, MODE_DELETE, MODE_SOURCE, MODE_VALVE}
@@ -90,14 +82,9 @@ def register(app):
         return jsonify({"ok": True, "state": _edit_state(sess)})
 
     @app.post("/api/module-f/edit/click")
-    def module_f_edit_click():
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, es, bad = _edit_session(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if bad:
-            return bad
+    @route_session(_edit_session, post=True)
+    def module_f_edit_click(sess, body):
+        es = sess["edit"]
         try:
             x = float(body.get("x"))
             y = float(body.get("y"))
@@ -113,15 +100,10 @@ def register(app):
                         "state": _edit_state(sess)})
 
     @app.post("/api/module-f/edit/kind")
-    def module_f_edit_kind():
+    @route_session(_edit_session, post=True)
+    def module_f_edit_kind(sess, body):
         """고른 헤드의 종류를 덮는다. 미지정이 남으면 변환이 막힌다."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, es, bad = _edit_session(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if bad:
-            return bad
+        es = sess["edit"]
         from services.cad_import.kinds import CONFIRMED_KINDS
         kind = str(body.get("kind") or "")
         if kind not in CONFIRMED_KINDS:
@@ -133,14 +115,9 @@ def register(app):
                         "state": _edit_state(sess)})
 
     @app.post("/api/module-f/edit/undo")
-    def module_f_edit_undo():
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, es, bad = _edit_session(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if bad:
-            return bad
+    @route_session(_edit_session, post=True)
+    def module_f_edit_undo(sess, body):
+        es = sess["edit"]
         ok = es.undo()
         if ok:
             sess["water_path"] = None
@@ -151,15 +128,10 @@ def register(app):
                         "state": _edit_state(sess)})
 
     @app.post("/api/module-f/edit/autojoin/scan")
-    def module_f_edit_autojoin_scan():
+    @route_session(_edit_session, post=True)
+    def module_f_edit_autojoin_scan(sess, body):
         """끊긴 관 끝을 짝짓고 이을 여유를 도면에서 잰다. 아직 붙이지 않는다."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, es, bad = _edit_session(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if bad:
-            return bad
+        es = sess["edit"]
         try:
             force = body.get("eps_mm")
             force = None if force in (None, "", 0) else float(force)
@@ -189,15 +161,10 @@ def register(app):
                         "state": _edit_state(sess)})
 
     @app.post("/api/module-f/edit/autojoin/apply")
-    def module_f_edit_autojoin_apply():
+    @route_session(_edit_session, post=True)
+    def module_f_edit_autojoin_apply(sess, body):
         """후보를 모듈 E 의 이음 판정에 태운다. 무거워서 잡으로 돌린다."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, es, bad = _edit_session(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if bad:
-            return bad
+        es = sess["edit"]
         # 잡 실행 중 거절은 이제 `_edit_session` 이 한다(손질 라우트 전부에).
         scan = sess.get("autojoin")
         if not scan or not scan.get("cands"):
@@ -217,27 +184,16 @@ def register(app):
         return jsonify({"ok": True, "sid": sess["id"]})
 
     @app.post("/api/module-f/edit/autojoin/clear")
-    def module_f_edit_autojoin_clear():
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if sess.get("edit") is None:
-            return _fail("손질 세션이 없습니다.")
+    @route_session(_edit_session, post=True)
+    def module_f_edit_autojoin_clear(sess, body):
         sess["autojoin"] = None
         sess["aj_seq"] = sess.get("aj_seq", 0) + 1
         return jsonify({"ok": True, "state": _edit_state(sess)})
 
     @app.post("/api/module-f/edit/flow")
-    def module_f_edit_flow():
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, es, bad = _edit_session(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if bad:
-            return bad
+    @route_session(_edit_session, post=True)
+    def module_f_edit_flow(sess, body):
+        es = sess["edit"]
         state = es.flow()
         if state is None:
             return _fail("급수 시작 위치를 먼저 찍어야 물흐름을 볼 수 있습니다.")
@@ -257,15 +213,10 @@ def register(app):
             "state": _edit_state(sess)})
 
     @app.post("/api/module-f/edit/worst")
-    def module_f_edit_worst():
+    @route_session(_edit_session, post=True)
+    def module_f_edit_worst(sess, body):
         """Remote 30 — 급수원에서 가장 불리한 K 헤드와 그 경로를 고른다."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, es, bad = _edit_session(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if bad:
-            return bad
+        es = sess["edit"]
         b = es.board
         if not b.sources:
             return _fail("급수 시작 위치를 먼저 찍어야 최불리 헤드를 고를 수 있습니다.")
@@ -391,26 +342,15 @@ def register(app):
             "state": _edit_state(sess)})
 
     @app.post("/api/module-f/edit/worst-clear")
-    def module_f_edit_worst_clear():
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if sess.get("edit") is None:
-            return _fail("손질 세션이 없습니다.")
+    @route_session(_edit_session, post=True)
+    def module_f_edit_worst_clear(sess, body):
         sess["worst"] = None
         return jsonify({"ok": True, "state": _edit_state(sess)})
 
     @app.post("/api/module-f/edit/save")
-    def module_f_edit_save():
-        body = request.get_json(silent=True) or {}
-        try:
-            sess, es, bad = _edit_session(body)
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if bad:
-            return bad
+    @route_session(_edit_session, post=True)
+    def module_f_edit_save(sess, body):
+        es = sess["edit"]
         path = es.commit()
         # 파일 이름만 돌려준다 — 서버 폴더 구조는 밖으로 나갈 이유가 없다.
         return jsonify({"ok": True, "file": os.path.basename(path),

@@ -7,23 +7,29 @@ import time
 from flask import jsonify, request
 
 from routes.module_f.common import _fail
-from routes.module_f.jobs import _job_running, _run_job, _sess
+from routes.module_f.jobs import _job_running, _run_job, _sess, route_session
 from routes.module_f.remote30 import _sheet_frames
 from routes.module_f.views import _pick_state
+
+
+def _need_pick(body):
+    """찍기판이 선 세션인가 — 이 파일의 라우트 일곱 곳이 같은 검사를 했다.
+
+    찍기 라우트는 예외 없이 `sess["pick"]` 을 만진다. 없는데 들어오면 하나같이
+    같은 문장으로 400 을 냈으므로, 그 판단을 한 자리로 모은다.
+    """
+    sess = _sess(body.get("sid"))
+    if sess.get("pick") is None:
+        return sess, "찍기 세션이 없습니다."
+    return sess, None
 
 
 def register(app):
     # ─────────────────────────────────────────── 1. 찍기
     @app.post("/api/module-f/pick/mode")
-    def module_f_pick_mode():
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        ps = sess.get("pick")
-        if ps is None:
-            return _fail("찍기 세션이 없습니다.")
+    @route_session(_need_pick, post=True, why_code=400)
+    def module_f_pick_mode(sess, body):
+        ps = sess["pick"]
         action = str(body.get("action") or "")
         if action == "pipe":
             ok = ps.select_pipe()
@@ -42,21 +48,15 @@ def register(app):
                         "state": _pick_state(sess)})
 
     @app.post("/api/module-f/pick/auto")
-    def module_f_pick_auto():
+    @route_session(_need_pick, post=True, why_code=400)
+    def module_f_pick_auto(sess, body):
         """모듈 A 의 레이어 사전이 고른 묶음을 한 번에 찍는다.
 
         `board.mat` 에 직접 밀어넣지 않고 **그 묶음의 실제 선분 중점**으로
         정상 클릭 경로(`PickSession.click`)를 태운다. 그래야 클릭 기록·되돌리기
         ·스펙 저장이 사람이 찍은 것과 완전히 같은 상태가 된다.
         """
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        ps = sess.get("pick")
-        if ps is None:
-            return _fail("찍기 세션이 없습니다.")
+        ps = sess["pick"]
         want = str(body.get("cat") or "PIPE").upper()
         if want not in {"PIPE", "HEAD", "ALARM"}:
             return _fail(f"추천 카테고리가 아닙니다: {want}")
@@ -85,15 +85,9 @@ def register(app):
             "state": _pick_state(sess)})
 
     @app.post("/api/module-f/pick/click")
-    def module_f_pick_click():
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        ps = sess.get("pick")
-        if ps is None:
-            return _fail("찍기 세션이 없습니다.")
+    @route_session(_need_pick, post=True, why_code=400)
+    def module_f_pick_click(sess, body):
+        ps = sess["pick"]
         try:
             x = float(body.get("x"))
             y = float(body.get("y"))
@@ -106,7 +100,8 @@ def register(app):
                         "state": _pick_state(sess)})
 
     @app.post("/api/module-f/pick/suggest")
-    def module_f_pick_suggest():
+    @route_session(_need_pick, post=True, why_code=400)
+    def module_f_pick_suggest(sess, body):
         """[F-5 · D2] 찍기 후보 제안 — 모듈 A 의 detect_heads(R1~R5·신뢰도).
 
         후보를 «제안만» 한다. board 는 여기서 절대 바뀌지 않는다 — 반영은
@@ -117,13 +112,6 @@ def register(app):
         인식이 실패해도(A import 불가 포함) 찍기는 종전대로 동작한다 —
         잡이 error 로 끝날 뿐 세션은 멀쩡하다.
         """
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        if sess.get("pick") is None:
-            return _fail("찍기 세션이 없습니다.")
         dxf = sess.get("dxf")
         if not dxf:
             return _fail("올린 DXF 가 없는 세션입니다 — 후보 제안은 "
@@ -149,7 +137,8 @@ def register(app):
         return jsonify({"ok": True})
 
     @app.post("/api/module-f/pick/adopt")
-    def module_f_pick_adopt():
+    @route_session(_need_pick, post=True, why_code=400)
+    def module_f_pick_adopt(sess, body):
         """[F-8b] 정찰 결과를 찍기 스펙으로 채택한다 — 전 과정이 클릭 경로다.
 
         body: {sid, materials: true, heads: {conf_min: 0.9} | {indices: [...]}}
@@ -164,14 +153,7 @@ def register(app):
         from routes.module_f.adopt import (
             ADOPT_MAX_D_MM, adopt_bundles, adopt_heads, select_heads)
 
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        ps = sess.get("pick")
-        if ps is None:
-            return _fail("찍기 세션이 없습니다.")
+        ps = sess["pick"]
         if _job_running(sess):
             return _fail("이미 작업이 돌고 있습니다. 끝난 뒤에 다시 눌러 주세요.",
                          409)
@@ -252,30 +234,18 @@ def register(app):
         return jsonify({"ok": True})
 
     @app.post("/api/module-f/pick/undo")
-    def module_f_pick_undo():
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        ps = sess.get("pick")
-        if ps is None:
-            return _fail("찍기 세션이 없습니다.")
+    @route_session(_need_pick, post=True, why_code=400)
+    def module_f_pick_undo(sess, body):
+        ps = sess["pick"]
         undone = ps.undo()
         return jsonify({"ok": True, "undone": undone,
                         "state": _pick_state(sess)})
 
     @app.post("/api/module-f/pick/commit")
-    def module_f_pick_commit():
+    @route_session(_need_pick, post=True, why_code=400)
+    def module_f_pick_commit(sess, body):
         """찍은 스펙을 저장하고, 그 스펙으로 1~6단계를 다시 돌려 손질망을 만든다."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
-        ps = sess.get("pick")
-        if ps is None:
-            return _fail("찍기 세션이 없습니다.")
+        ps = sess["pick"]
         if not ps.mat_done:
             return _fail("재료(배관) 선택을 완료해야 다음으로 넘어갈 수 있습니다.")
         if _job_running(sess):

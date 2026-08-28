@@ -49,28 +49,37 @@ def app_ctx():
 
 # ─────────────────────────────────────────── ① 손질 가드
 def test_손질_헬퍼가_작업중을_거절한다(app_ctx):
+    """헬퍼는 `route_session` 규약대로 «(sess, 사유)» 를 돌려준다.
+
+    사유는 «(문장, 코드)» 다 — 자리를 데코레이터로 옮기면서도 옮기기 전의
+    상태 코드를 그대로 지키기 위한 모양이다.
+    """
     from routes.module_f.api_edit import _edit_session
     sess = jobs._new_session()
     sess["edit"] = object()
-    _s, es, bad = _edit_session({"sid": sess["id"]})
-    assert bad is None and es is not None
+    _s, why = _edit_session({"sid": sess["id"]})
+    assert why is None and sess["edit"] is not None
 
     sess["job"] = {"state": "run", "phase": "자동 이음", "started": 0.0,
                    "ended": None, "error": None, "result": None}
-    _s, es, bad = _edit_session({"sid": sess["id"]})
-    assert bad is not None, "작업이 도는데 board 를 내줬다"
-    assert bad[1] == 409
+    _s, why = _edit_session({"sid": sess["id"]})
+    assert why is not None, "작업이 도는데 board 를 내줬다"
+    assert why[1] == 409
 
 
 def test_손질_헬퍼가_세션없음도_가른다(app_ctx):
     from routes.module_f.api_edit import _edit_session
     sess = jobs._new_session()          # edit 없음
-    _s, es, bad = _edit_session({"sid": sess["id"]})
-    assert es is None and bad is not None and bad[1] == 400
+    _s, why = _edit_session({"sid": sess["id"]})
+    assert why is not None and why[1] == 400
 
 
 def test_모든_board_변경_라우트가_헬퍼를_탄다():
-    """새 라우트가 늘어도 가드를 빠뜨리지 않게 — 소스로 확인한다."""
+    """새 라우트가 늘어도 가드를 빠뜨리지 않게 — 소스로 확인한다.
+
+    가드는 이제 함수 «앞» 의 `@route_session(_edit_session, …)` 에 있다.
+    그래서 def 줄 앞뒤를 함께 본다 — 몸통만 보면 «있는데 없다» 고 나온다.
+    """
     import inspect
 
     from routes.module_f import api_edit
@@ -82,8 +91,9 @@ def test_모든_board_변경_라우트가_헬퍼를_탄다():
                "module_f_edit_autojoin_scan",
                "module_f_edit_autojoin_apply"):
         i = src.index(f"def {fn}(")
-        body = src[i:i + 700]
-        assert "_edit_session(" in body, f"{fn} 이 가드를 안 탄다"
+        around = src[max(0, i - 200):i + 700]
+        assert "_edit_session" in around, f"{fn} 이 가드를 안 탄다"
+        assert "route_session(" in around, f"{fn} 이 가드를 안 탄다"
 
 
 def test_설정을_바꾸는_라우트도_가드를_탄다():

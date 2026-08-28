@@ -20,7 +20,7 @@ import os
 from flask import jsonify, request, send_file
 
 from routes.module_f.common import _fail
-from routes.module_f.jobs import _job_running, _run_job, _sess
+from routes.module_f.jobs import _job_running, _run_job, _sess, route_session
 from routes.module_f.merge import (
     SUPPLY_MODES, MergeError, check_supply_mode, combined_summary,
     merge_network)
@@ -70,13 +70,9 @@ def register(app, *, UPLOAD_DIR):
                                   for k, v in SUPPLY_MODES.items()]})
 
     @app.post("/api/module-f/merge/mode")
-    def module_f_merge_mode():
+    @route_session(post=True)
+    def module_f_merge_mode(sess, body):
         """급수방식을 고른다. 자동 추정하지 않는다 — 도면에 없는 값이다."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         # ★결합 잡은 급수방식·낙차·펌프 제원을 «돌면서» 읽는다(merge_network 호출
         #   시점). 도는 중에 바꾸면 로그에 찍힌 방식과 실제 쓰인 값이 갈린다.
         if _job_running(sess):
@@ -102,12 +98,9 @@ def register(app, *, UPLOAD_DIR):
 
     # ─────────────────────────────────── 상태
     @app.get("/api/module-f/merge/state")
-    def module_f_merge_state():
+    @route_session()
+    def module_f_merge_state(sess, body):
         """재료가 갖춰졌나 · 무엇이 비었나 — S650 이 «남은 도면» 을 묻는 자리."""
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         mats = _materials(sess)
         return jsonify({
             "ok": True,
@@ -124,13 +117,9 @@ def register(app, *, UPLOAD_DIR):
 
     # ─────────────────────────────────── S720~S740
     @app.post("/api/module-f/merge/build")
-    def module_f_merge_build():
+    @route_session(post=True)
+    def module_f_merge_build(sess, body):
         """세 도면을 한 배관망으로. 무거우므로 잡으로 돌린다."""
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         if _job_running(sess):
             return _fail("작업이 끝난 뒤에 결합할 수 있습니다.", 409)
 
@@ -171,18 +160,14 @@ def register(app, *, UPLOAD_DIR):
 
     # ─────────────────────────────────── S750 · S760 · S770
     @app.post("/api/module-f/merge/emit")
-    def module_f_merge_emit():
+    @route_session(post=True)
+    def module_f_merge_emit(sess, body):
         """결합망 → 입력파일 3종 + 압축.
 
         S760 은 «별도 산출이 아니라 S750 의 결과 파일 자체를 원본으로» 삼는다
         (특허 도 9 주석). 그래서 SDF 를 먼저 쓰고 그 파일에서 나머지를 만든다 —
         형식마다 따로 뽑으면 같은 배관망을 가리킨다는 보장이 사라진다.
         """
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         if _job_running(sess):
             return _fail("작업이 끝난 뒤에 저장할 수 있습니다.", 409)
         got = sess.get("merged")
@@ -211,12 +196,9 @@ def register(app, *, UPLOAD_DIR):
         return jsonify({"ok": True, "sid": sess["id"]})
 
     @app.get("/api/module-f/merge/download")
-    def module_f_merge_download():
+    @route_session()
+    def module_f_merge_download(sess, body):
         """산출물 내려받기 — 세션이 만든 것만."""
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         what = str(request.args.get("what") or "zip")
         files = sess.get("merge_files") or {}
         path = files.get(what)

@@ -9,7 +9,8 @@ from pathlib import Path
 from flask import jsonify, request, send_file
 
 from routes.module_f.common import GROUP_DIAGRAM, _boot, _fail
-from routes.module_f.jobs import _job_running, _job_view, _run_job, _sess
+from routes.module_f.jobs import (_job_running, _job_view, _run_job, _sess,
+                                  route_session)
 from routes.module_f.remote30 import _restrict_to_worst
 
 
@@ -50,12 +51,8 @@ def register(app, *, UPLOAD_DIR):
                 "xy": [round(float(v), 1) for v in (xy or [0, 0])[:2]]}
 
     @app.post("/api/module-f/convert/run")
-    def module_f_convert_run():
-        body = request.get_json(silent=True) or {}
-        try:
-            sess = _sess(body.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
+    @route_session(post=True)
+    def module_f_convert_run(sess, body):
         es = sess.get("edit")
         if es is None:
             return _fail("손질 세션이 없습니다.")
@@ -222,22 +219,16 @@ def register(app, *, UPLOAD_DIR):
         return jsonify({"ok": True})
 
     @app.get("/api/module-f/convert/result")
-    def module_f_convert_result():
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
+    @route_session()
+    def module_f_convert_result(sess, body):
         job = sess.get("job") or {}
         return jsonify({"ok": True, "job": _job_view(sess),
                         "result": job.get("result")})
 
     @app.get("/api/module-f/download")
-    def module_f_download():
+    @route_session()
+    def module_f_download(sess, body):
         """`what=kfp|sdf|set` — 낱개 또는 한 벌(zip)."""
-        try:
-            sess = _sess(request.args.get("sid"))
-        except ValueError as exc:
-            return _fail(str(exc), 410)
         what = (request.args.get("what") or "kfp").lower()
         stem = sess.get("key") or "cad"
         kfp = sess.get("kfp_path")

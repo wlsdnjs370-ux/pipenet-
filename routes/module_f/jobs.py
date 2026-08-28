@@ -2,13 +2,16 @@
 """세션과 무거운 작업 — 진행 표시는 «실제로 찍힌 줄» 로만 한다."""
 from __future__ import annotations
 
+import functools
 import sys
 import threading
 import time
 import traceback
 import uuid
 
-from routes.module_f.common import LOG_TAIL, SESSION_TTL_SECONDS
+from flask import request
+
+from routes.module_f.common import LOG_TAIL, SESSION_TTL_SECONDS, _fail
 from routes.module_f.slots import _slot_blank, _slot_init
 
 _SESSIONS: dict[str, dict] = {}
@@ -58,9 +61,6 @@ class _Tee:
 
     def isatty(self):
         return False
-
-
-# ─────────────────────────────────────────────────────────── 세션
 
 
 # ─────────────────────────────────────────────────────────── 세션
@@ -125,6 +125,58 @@ def _sess(sid: str) -> dict:
     return found
 
 
+def route_session(resolve=None, *, post: bool = False, why_code: int = 409):
+    """라우트 앞머리 — 요청 꺼내기 · 세션 찾기 · 실패 응답을 한 자리에.
+
+    라우트 60개가 저마다 이 네댓 줄을 손으로 적고 있었다(실측 43곳 · 188줄):
+
+        body = request.get_json(silent=True) or {}
+        try:
+            sess, why = _need_auto(body)
+        except ValueError as exc:
+            return _fail(str(exc), 410)
+        if why:
+            return _fail(why, 409)
+
+    베끼는 자리는 «빠뜨릴 수 있는 자리» 다. 한곳에 모아 두면 새 라우트가 가드를
+    잊을 수 없고, 만료 응답(410)·충돌 응답(409)의 뜻이 한 군데서만 정해진다.
+
+    핸들러는 `(sess, body)` 를 받는다 — body 는 POST 면 JSON dict, GET 이면
+    `request.args`. 둘 다 `.get()` 이 되므로 쓰는 쪽은 같다.
+
+    resolve: 안 주면 `_sess(body["sid"])`. 주면 «(sess, 사유)» 를 돌려주는
+        함수로 보고(`_need_auto` 꼴), 사유가 있으면 막는다. 세션만 돌려주는
+        함수도 그대로 받는다.
+    why_code: 사유가 있을 때의 상태 코드. 기본 409(«지금은 안 된다»)지만,
+        옮겨 오기 전에 400 으로 답하던 자리는 400 을 그대로 준다 — 리팩터가
+        화면이 보는 코드를 바꾸면 안 된다.
+
+    ★`@app.get(...)` 아래에 붙인다. Flask 는 함수 이름을 엔드포인트로 쓰므로
+      `functools.wraps` 로 이름을 지켜야 한다.
+    """
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(*a, **kw):
+            body = (request.get_json(silent=True) or {}) if post else request.args
+            try:
+                got = resolve(body) if resolve is not None else _sess(body.get("sid"))
+            except ValueError as exc:
+                return _fail(str(exc), 410)
+            if isinstance(got, tuple):
+                sess, why = got
+                if why:
+                    # 사유는 문장 하나, 또는 «(문장, 코드)» — 라우트마다 코드가
+                    # 다른 자리를 옮겨 올 때 그 코드를 그대로 지키기 위해서다.
+                    if isinstance(why, tuple):
+                        return _fail(why[0], why[1])
+                    return _fail(why, why_code)
+            else:
+                sess = got
+            return fn(sess, body, *a, **kw)
+        return wrapper
+    return deco
+
+
 def _run_job(sess: dict, phase: str, fn) -> dict:
     """무거운 단계 하나를 백그라운드로 돌린다. 진행은 실제 출력 줄로만 보고."""
     job = {"state": "run", "phase": phase, "started": time.time(),
@@ -179,9 +231,6 @@ def _job_view(sess: dict) -> dict:
         "lines": sess["log"][-LOG_TAIL:],
         "queued": _HEAVY_LOCK.locked() and job["state"] == "run",
     }
-
-
-# ─────────────────────────────────────────────────────────── 도형 직렬화
 
 
 def _job_running(sess: dict) -> bool:

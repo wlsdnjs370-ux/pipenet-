@@ -169,6 +169,11 @@
     const maxD = PICK_PX / S.view.scale;
     if (S.stage === "pick") pickClick(x, y, maxD);
     else if (S.stage === "edit") editClick(x, y, maxD);
+    // [F-10e] 평면에서 보는 동안은 «그 자리에서» 고칠 수 있어야 한다. 손질과
+    //   같은 클릭 경로를 그대로 태운다 — 새 길을 만들지 않는다(D-F10-6).
+    else if (S.stage === "design" && planUnderlayOn() && S.edit) {
+      editClick(x, y, maxD);
+    }
     else if (S.stage === "sub") subClick(x, y);
     else if (S.stage === "auto") autoClick(x, y);
   });
@@ -263,7 +268,15 @@
     // 변환 단계에서도 손질한 망을 계속 보여준다 — 값만 채우는 동안 화면이
     // 검게 비면 무엇을 변환하는지 알 수 없다.
     if (S.stage === "design" && S.design) {
-      if (designMarksOn() && S.edit) { drawEdit(); drawDesignMarks(); }
+      // [F-10e] «평면에서 보기» — 밑그림(배경 도면)까지 깔아 손질 화면과 같은
+      //   그림을 만든다. 여기서는 밑그림과 최불리망이 같은 세계 좌표라
+      //   어긋날 수가 없다(아이소 아래에 깔지 않는 이유는 BLOCKED §17).
+      if (planUnderlayOn() && S.edit) {
+        if (editBgOn() && S.world) drawWorld(true, EDIT_BG_ALPHA);
+        drawEdit();
+        drawDesignMarks();
+      }
+      else if (designMarksOn() && S.edit) { drawEdit(); drawDesignMarks(); }
       else drawDesign();
     }
     else if ((S.stage === "edit" || S.stage === "conv") && S.edit) {
@@ -2406,6 +2419,9 @@
     const nEdits = e.edits_since_worst || 0;
     $("ed-recalc-row").classList.toggle("hidden", !nEdits);
     $("ed-edits").textContent = `마지막 계산 후 수정 ${nEdits}건`;
+    // [F-10e] 평면에서 보는 동안 고치면 그 배지도 같이 따라와야 한다 — 두
+    //   화면이 같은 수를 보지 않으면 어느 쪽이 사실인지 알 수 없다.
+    renderPlanUnderlay();
 
     // [F-10b] 화면 모드가 «원클릭» 이면 서버 모드로 덮지 않는다 — 원클릭은
     //   서버 모드가 아니라 둘을 한 번에 놓는 «행동» 이라 서버엔 이름이 없다.
@@ -3488,6 +3504,90 @@
     }
     ctx.lineWidth = 1;
   }
+
+  // ── [F-10e] 평면에서 보기 — 밑그림 + 그 자리 수정 ────────────────
+  //
+  // 전사 24:47 의 요구는 「밑에 배관이 흐릿하게 보이고, 안 맞는 게 있으면 그
+  // 자리에서 클릭해 고친다」이다. 그것을 **평면** 에서 만족시킨다.
+  //
+  // ★아이소 «아래» 에 깔지 않은 이유는 취향이 아니라 실측이다(BLOCKED §17):
+  //   설계 좌표계는 board 의 변환이 아니라 빌드마다 새로 생성되는 스키매틱
+  //   배치다. board→설계 전역 아핀이 없고(최대 잔차 도면의 9.3%), K 를 바꾸면
+  //   같은 절점이 중앙값 11,281 만큼 옮겨진다. 겹쳐 그리면 어긋난 그림 위에서
+  //   엉뚱한 배관을 고치게 된다 — 지시서 스스로 「의미가 없다」고 한 상태다.
+  const planUnderlayOn = () => {
+    const el = $("dg-plan");
+    return !!(el && el.checked);
+  };
+
+  function fitDesignView() {
+    if (planUnderlayOn() && S.edit && S.edit.bounds) { fit(S.edit.bounds); return; }
+    if (designMarksOn() && S.edit && S.edit.bounds) { fit(S.edit.bounds); return; }
+    if (!S.design) return;
+    const xs = S.design.view.nodes.map(n => n.x);
+    const ys = S.design.view.nodes.map(n => n.y);
+    fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
+          miny: Math.min(...ys), maxy: Math.max(...ys) });
+  }
+
+  function renderPlanUnderlay() {
+    const on = planUnderlayOn();
+    $("dg-plan-row").classList.toggle("hidden", !on);
+    $("dg-plan-row2").classList.toggle("hidden", !on);
+    const n = (S.edit && S.edit.edits_since_worst) || 0;
+    $("dg-edits").textContent = `마지막 계산 후 수정 ${n}건`;
+    const mode = (S.edit && S.edit.mode) || "";
+    for (const b of document.querySelectorAll(".dgmode")) {
+      b.classList.toggle("on", b.dataset.mode === mode);
+    }
+  }
+
+  $("dg-plan").onchange = async () => {
+    // 손질 상태를 안 들고 있으면 평면을 그릴 수 없다 — 한 번 받아 둔다.
+    if (planUnderlayOn() && !S.edit) {
+      try {
+        const d = await api(`/api/module-f/edit/state?sid=${S.sid}`);
+        setEdit(d.state);
+      } catch (err) { say(err.message, "err"); }
+    }
+    renderPlanUnderlay();
+    fitDesignView();
+    draw();
+  };
+
+  for (const b of document.querySelectorAll(".dgmode")) {
+    b.onclick = async () => {
+      try {
+        const d = await post("/api/module-f/edit/mode",
+                             { sid: S.sid, mode: b.dataset.mode });
+        setEdit(d.state);
+        renderPlanUnderlay();
+        draw();
+        say(`모드: ${b.dataset.mode} — 흐린 배관을 클릭해 고치세요.`);
+      } catch (err) { say(err.message, "err"); }
+    };
+  }
+
+  // 다시 계산 → 표 확정 → 아이소 갱신. 셋이 한 단추다 — 「고쳤으니 다시」가
+  // 사람 머릿속에서는 한 동작이기 때문이다. 자동 재실행은 여전히 없다(D-F10-5).
+  $("dg-recalc").onclick = async () => {
+    busy(true, "고친 망으로 최불리를 다시 계산 중…");
+    try {
+      // ★K 는 «이 화면의» 값(dg-k)을 쓴다. 손질의 ed-k 를 쓰면 표가 확정되는
+      //   K 와 최불리 K 가 갈려 「어느 쪽이 설계면적인가」가 사라진다.
+      const sheet = Number(($("ed-sheet") || {}).value || 0);
+      const k = Math.max(1, Math.min(200, Number($("dg-k").value || 30)));
+      const body = { sid: S.sid, k, sheet };
+      const src = ($("ed-src") || {}).value;
+      if (src) body.source = src;
+      if (S.zones.length) body.zones = S.zones;
+      const d = await post("/api/module-f/edit/worst", body);
+      setEdit(d.state);
+      renderPlanUnderlay();
+      busy(false);
+      $("dg-build").click();          // 표 확정 → designPreview → 아이소 갱신
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
 
   $("dg-bore-color").onchange = () => {
     S.boreColor = $("dg-bore-color").checked;

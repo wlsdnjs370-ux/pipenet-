@@ -539,6 +539,75 @@ def test_다시_계산은_자동이_아니다():
         assert frag in panel, f"{frag} 가 손질 패널 밖에 있다"
 
 
+# ═══════════════════════════════════════════ F-10e. 밑그림 — «평면» 에서
+#
+# 지시서는 밑그림을 아이소 «아래» 에 깔라고 했으나, 실측으로 그 전제가
+# 성립하지 않는다(BLOCKED §17): 설계 좌표계는 board 의 변환이 아니라 빌드마다
+# 새로 생성되는 스키매틱 배치다. 그래서 사용자가 «평면에서 본다» 를 골랐다.
+def test_밑그림은_평면에서_본다():
+    """[F-10e] 밑그림 + 그 자리 수정을 평면 화면에서 만족시킨다."""
+    html = _screen()
+    assert 'id="dg-plan"' in html, "평면에서 보기 토글이 없다"
+    assert "planUnderlayOn" in html
+    # 밑그림은 손질 화면과 «같은» 배경을 쓴다 — 두 화면이 다른 그림을 보이면
+    # 어느 쪽이 사실인지 알 수 없다.
+    i = html.index("if (planUnderlayOn() && S.edit) {")
+    seg = html[i:i + 400]
+    assert "drawWorld(true, EDIT_BG_ALPHA)" in seg
+    assert "drawEdit()" in seg
+
+
+def test_평면_밑그림에서_그_자리_수정된다():
+    """클릭은 손질과 «같은 경로» 다 — 새 길을 만들지 않는다(D-F10-6)."""
+    html = _screen()
+    i = html.index('S.stage === "design" && planUnderlayOn()')
+    seg = html[i:i + 200]
+    assert "editClick(" in seg, "설계 화면 클릭이 손질 경로를 안 탄다"
+    # 다시 계산 → 표 확정 → 아이소 갱신이 한 단추다.
+    j = html.index('$("dg-recalc").onclick')
+    body = html[j:j + 900]
+    assert "/api/module-f/edit/worst" in body
+    assert '$("dg-build").click()' in body, "아이소가 안 갱신된다"
+
+
+def test_아이소_좌표에_손대지_않았다():
+    """수용 기준 — 밑그림 켬/끔은 표시 전용, 끔 상태는 종전 아이소와 같다.
+
+    ★G16: 아이소에 그리는 corridor 좌표는 emit 에 쓰는 그 사본이다. 밑그림
+      때문에 좌표를 손보면 미리보기가 거짓말이 된다.
+    """
+    html = _screen()
+    # 토글은 화면만 다시 그린다 — 서버를 부르는 것은 «손질 상태 받아오기»
+    # 하나뿐이고 그것도 읽기(GET)다.
+    # ★창을 «다음 핸들러 앞» 에서 끊는다. 넉넉히 잡으면 옆 핸들러의 정당한
+    #   호출이 딸려 들어와 없는 결함을 잡는다(실측으로 한 번 겪었다).
+    j = html.index('$("dg-plan").onchange')
+    end = html.index('document.querySelectorAll(".dgmode")', j)
+    seg = html[j:end]
+    assert "post(" not in seg, "토글이 서버 상태를 바꾼다"
+    assert "draw()" in seg
+    # 설계 미리보기는 여전히 엔진의 display_tables 결과를 그대로 쓴다.
+    import inspect
+
+    from routes.module_f import api_design
+
+    src = inspect.getsource(api_design)
+    assert "display_tables" in src
+    assert "underlay" not in src, "설계 라우트에 밑그림 좌표가 섞였다"
+
+
+def test_밑그림은_산출물을_안_건드린다():
+    """표시 전용 증명 — 서버에 밑그림 상태를 저장하는 자리가 없다."""
+    import inspect
+
+    from routes.module_f import api_design, views
+
+    for mod in (api_design, views):
+        src = inspect.getsource(mod)
+        for banned in ("dg_plan", "plan_underlay", "underlay"):
+            assert banned not in src, f"{mod.__name__} 에 {banned} 가 있다"
+
+
 # ═══════════════════════════════════════════ 정찰이 깨져도 흐름은 산다
 def test_정찰이_실패해도_찍기는_열린다():
     """수용 기준 — 모듈 A 가 아예 안 되는 도면에서도 «묻지 않고» 찍기로.

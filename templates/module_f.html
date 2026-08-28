@@ -422,6 +422,23 @@
       </div>
 
       <h2 style="margin-top:12px">보기</h2>
+      <!-- [F-10e] 전사 24:47 「아이소만 뜨게 하지 말고 밑에 배관이 흐릿하게
+           보이게 하는데 안 맞는 게 있으면 손으로 클릭」.
+           ★밑그림을 «아이소 아래» 에 깔지 않는다 — 설계 좌표계는 board 의
+             변환이 아니라 빌드마다 새로 생성되는 스키매틱 배치라서, 겹쳐
+             그리면 어긋난 그림 위에서 엉뚱한 배관을 고치게 된다(실측 근거는
+             BLOCKED §17). 대신 «평면» 으로 돌려 본다 — 거기서는 밑그림과
+             최불리망이 같은 세계 좌표라 어긋날 수가 없다. -->
+      <label class="chk"><input type="checkbox" id="dg-plan">
+        <span>평면에서 보기 — 배관 밑그림 위에서 그 자리 수정</span></label>
+      <div class="row hidden" id="dg-plan-row">
+        <button class="dgmode" data-mode="이음">이음 (살리기)</button>
+        <button class="dgmode" data-mode="삭제">삭제</button>
+      </div>
+      <div class="row hidden" id="dg-plan-row2">
+        <button id="dg-recalc" class="go">다시 계산 → 아이소 갱신</button>
+        <span class="tag" id="dg-edits">수정 0건</span>
+      </div>
       <label class="chk"><input type="checkbox" id="dg-iso" checked>
         <span>30° 아이소매트릭으로 보기</span></label>
       <label class="f"><span>고도 펼침 배율</span>

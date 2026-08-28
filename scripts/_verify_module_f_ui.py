@@ -954,6 +954,70 @@ def main() -> int:
                           f"칠해진 픽셀 {lit:,}")
                     page.screenshot(path=str(SHOTS / "6_위계_B1F.png"))
 
+                    # ── [F-10e] 밑그림을 «평면» 에서 본다
+                    #    아이소 아래에 깔지 않은 이유는 BLOCKED §17 (실측).
+                    print("\n  ── [F-10e] 평면 밑그림")
+                    page.evaluate(
+                        "() => document.getElementById('panel-design')"
+                        ".classList.remove('hidden')")
+                    has = page.evaluate(
+                        """() => ({
+                          toggle: !!document.getElementById('dg-plan'),
+                          on: !!(document.getElementById('dg-plan') || {}).checked,
+                          rows: !document.getElementById('dg-plan-row')
+                                  .classList.contains('hidden'),
+                        })""")
+                    check("평면에서 보기 토글이 있다 (F-10e)",
+                          bool(has.get("toggle")))
+                    check("처음엔 꺼져 있다 — 종전 아이소 그대로",
+                          not has.get("on") and not has.get("rows"))
+                    page.evaluate(
+                        """() => {
+                          const el = document.getElementById('dg-plan');
+                          el.checked = true;
+                          el.dispatchEvent(new Event('change'));
+                        }""")
+                    page.wait_for_timeout(700)
+                    shown = page.evaluate(
+                        """() => ({
+                          rows: !document.getElementById('dg-plan-row')
+                                  .classList.contains('hidden'),
+                          badge: (document.getElementById('dg-edits')
+                                  || {}).textContent || '',
+                        })""")
+                    check("켜면 수정 도구와 배지가 함께 뜬다",
+                          bool(shown.get("rows"))
+                          and "수정" in str(shown.get("badge")),
+                          str(shown.get("badge"))[:40])
+                    lit2 = page.evaluate(
+                        """() => {
+                          const c = document.getElementById('cv');
+                          const g = c.getContext('2d');
+                          const d = g.getImageData(0, 0, c.width, c.height).data;
+                          let n = 0;
+                          for (let i = 0; i < d.length; i += 4) {
+                            if (d[i] || d[i+1] || d[i+2]) n++;
+                          }
+                          return n;
+                        }""")
+                    check("평면 밑그림이 실제로 그려진다", lit2 > 500,
+                          f"칠해진 픽셀 {lit2:,}")
+                    page.screenshot(path=str(SHOTS / "7_평면밑그림.png"))
+                    page.evaluate(
+                        """() => {
+                          const el = document.getElementById('dg-plan');
+                          el.checked = false;
+                          el.dispatchEvent(new Event('change'));
+                        }""")
+                    page.wait_for_timeout(400)
+                    check("끄면 도구가 함께 접힌다",
+                          page.evaluate(
+                              "() => document.getElementById('dg-plan-row')"
+                              ".classList.contains('hidden')"))
+                    page.evaluate(
+                        "() => document.getElementById('panel-design')"
+                        ".classList.add('hidden')")
+
             # ── 콘솔 오류 0
             check("콘솔 오류 없음", not errors,
                   " | ".join(errors[:3]) if errors else "")

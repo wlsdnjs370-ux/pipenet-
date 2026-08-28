@@ -70,12 +70,24 @@ def check(label: str, cond: bool, detail: str = "") -> bool:
     return cond
 
 
-def _script_body(html: str) -> str:
-    """가장 긴 <script> 본문 — 이 템플릿의 앱 코드다."""
-    bodies = re.findall(r"<script[^>]*>(.*?)</script>", html, re.S)
-    if not bodies:
-        raise SystemExit("module_f.html 에 <script> 가 없습니다.")
-    return max(bodies, key=len)
+JS = ROOT / "static" / "module_f.js"
+
+
+def _script_body(html: str) -> tuple[str, str]:
+    """앱 코드 본문과 그 출처. 인라인이든 정적 파일이든 같은 것을 돌려준다.
+
+    화면 JS 는 정적 파일로 떼어져 있다(템플릿의 87%가 인라인 자산이었다).
+    인라인이 남아 있으면 그것을, 없으면 `static/module_f.js` 를 읽는다 —
+    이 검증기가 «어디에 적혀 있는가» 에 매이지 않게 한다.
+    """
+    bodies = [b for b in re.findall(r"<script[^>]*>(.*?)</script>", html, re.S)
+              if b.strip()]
+    if bodies:
+        return max(bodies, key=len), "템플릿 <script>"
+    if JS.is_file():
+        return JS.read_text(encoding="utf-8"), f"static/{JS.name}"
+    raise SystemExit("앱 JS 를 못 찾음 — 템플릿의 <script> 도 "
+                     f"{JS} 도 없습니다.")
 
 
 def _top_level_names(body: str) -> set[str]:
@@ -117,8 +129,8 @@ def _body_of(body: str, name: str) -> str:
 def main() -> int:
     sys.stdout.reconfigure(errors="replace")
     html = TPL.read_text(encoding="utf-8")
-    body = _script_body(html)
-    print(f"module_f.html · <script> {len(body.splitlines())} 줄")
+    body, origin = _script_body(html)
+    print(f"{origin} · {len(body.splitlines())} 줄")
 
     # ① 구문
     node = shutil.which("node")

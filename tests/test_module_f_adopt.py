@@ -902,9 +902,20 @@ def test_채택의_유일한_쓰기는_클릭이다_():
 
 # ═══════════════════════════════════════════ F-8c. 세 차선
 def _script() -> str:
-    path = os.path.join(_ROOT, "templates", "module_f.html")
-    html = open(path, encoding="utf-8").read()
-    return html
+    """화면 소스 한 덩이 — 마크업 + CSS + JS.
+
+    자산을 `static/module_f.css` · `static/module_f.js` 로 떼어낸 뒤로 이 셋이
+    나뉘어 있다(템플릿의 87%가 인라인이었다). 아래 시험들이 보는 것은 «이
+    문자열이 화면 소스에 있는가» 지 «어느 파일에 있는가» 가 아니므로, 셋을
+    합쳐 돌려준다 — 자산을 더 쪼개도 시험이 따라 깨지지 않는다.
+    """
+    parts = [open(os.path.join(_ROOT, "templates", "module_f.html"),
+                  encoding="utf-8").read()]
+    for rel in (("static", "module_f.css"), ("static", "module_f.js")):
+        p = os.path.join(_ROOT, *rel)
+        if os.path.isfile(p):
+            parts.append(open(p, encoding="utf-8").read())
+    return "\n".join(parts)
 
 
 def test_방식_카드에_세_차선이_있다():

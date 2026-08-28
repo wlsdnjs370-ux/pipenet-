@@ -1,0 +1,356 @@
+  /* 각진 구성 — border-radius 0. 면은 색이 아니라 헤어라인으로 나눈다. */
+  :root{
+    --bg:#08090B; --chrome:#0B0D11; --panel:#0E1116; --sunk:#050607;
+    --line:#1B212A; --line-2:#293240; --line-3:#3A4656;
+    --ink:#E8EBEF; --dim:#7A8593; --faint:#4A535F;
+    --accent:#5B8DEF; --accent-dim:#2B4A85; --on-accent:#080A0D;
+    --ok:#3FB68B; --warn:#D9A441; --err:#E05C5C;
+    --sans:'Inter',-apple-system,'Segoe UI','Malgun Gothic',sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+    --h-head:52px; --h-steps:46px; --h-bar:34px; --h-slots:38px;
+  }
+  *{box-sizing:border-box;}
+  ::selection{background:var(--accent-dim);color:#fff;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+  a{color:var(--dim);text-decoration:none;}
+  a:hover{color:var(--ink);}
+
+  /* ── 머리 ─────────────────────────────────────────────── */
+  header{height:var(--h-head);display:flex;align-items:center;gap:16px;
+         padding:0 20px;border-bottom:1px solid var(--line);background:var(--chrome);}
+  header .chip{font:600 10px/1 var(--mono);letter-spacing:.18em;color:var(--accent);
+               border:1px solid var(--accent-dim);padding:6px 9px;}
+  header h1{margin:0;font-size:14px;font-weight:600;letter-spacing:-.01em;}
+  header .sub{color:var(--faint);font-size:11.5px;letter-spacing:.01em;}
+  header .spacer{flex:1;}
+  header .back{font:500 11px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;
+               border:1px solid var(--line-2);padding:7px 12px;color:var(--dim);}
+  header .back:hover{border-color:var(--line-3);color:var(--ink);}
+
+  /* ── 단계 레일 ────────────────────────────────────────── */
+  .steps{height:var(--h-steps);display:flex;align-items:stretch;
+         border-bottom:1px solid var(--line);background:var(--chrome);}
+  .steps div{display:flex;align-items:center;gap:9px;padding:0 20px;
+             border-right:1px solid var(--line);color:var(--faint);
+             font-size:11.5px;font-weight:500;letter-spacing:.02em;
+             counter-increment:step;position:relative;}
+  .steps div::before{content:counter(step,decimal-leading-zero);
+                     font:600 10px/1 var(--mono);letter-spacing:.06em;
+                     border:1px solid var(--line-2);padding:5px 6px;color:var(--faint);}
+  .steps{counter-reset:step;}
+  .steps div.done{color:var(--dim);}
+  .steps div.done::before{border-color:var(--line-3);color:var(--ok);}
+  .steps div.on{color:var(--ink);background:var(--panel);}
+  .steps div.on::before{background:var(--accent);border-color:var(--accent);
+                        color:var(--on-accent);}
+  .steps div.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;
+                       height:1px;background:var(--accent);}
+
+  /* ── 도면 슬롯 [H-0] 특허 S650 ────────────────────────── */
+  .slots{height:var(--h-slots);display:flex;align-items:stretch;
+         border-bottom:1px solid var(--line);background:var(--panel);}
+  .slots button{display:flex;align-items:center;gap:8px;padding:0 18px;
+                border:0;border-right:1px solid var(--line);background:none;
+                color:var(--faint);font:500 11.5px/1 inherit;
+                letter-spacing:.02em;cursor:pointer;}
+  .slots button:hover{color:var(--dim);background:var(--chrome);}
+  .slots button.on{color:var(--ink);background:var(--chrome);
+                   box-shadow:inset 0 -2px 0 var(--accent);}
+  .slots button .dot{width:6px;height:6px;border-radius:50%;
+                     background:var(--line-3);}
+  .slots button.has .dot{background:var(--ok);}
+  .slots .note{display:flex;align-items:center;padding:0 16px;
+               color:var(--faint);font-size:11px;}
+
+  /* ── 판 ───────────────────────────────────────────────── */
+  .wrap{display:grid;grid-template-columns:352px 1fr;
+        height:calc(100vh - var(--h-head) - var(--h-steps) - var(--h-slots));}
+  .side{border-right:1px solid var(--line);overflow-y:auto;background:var(--panel);}
+  .side::-webkit-scrollbar{width:10px;}
+  .side::-webkit-scrollbar-track{background:var(--panel);}
+  .side::-webkit-scrollbar-thumb{background:var(--line-2);border:3px solid var(--panel);}
+  .stage{position:relative;background:#000;overflow:hidden;}
+  canvas{display:block;width:100%;height:100%;cursor:crosshair;}
+
+  .card{border-bottom:1px solid var(--line);padding:16px 18px 18px;}
+  .card h2{margin:0 0 12px;font:600 10px/1 var(--mono);letter-spacing:.16em;
+           color:var(--faint);text-transform:uppercase;
+           display:flex;align-items:center;gap:10px;}
+  .card h2::after{content:"";flex:1;height:1px;background:var(--line);}
+
+  /* ── 접이식 묶음 ───────────────────────────────────────────
+     자잘한 단추가 늘 펼쳐져 있으면 정작 그 단계에서 할 일이 안 보인다.
+     제목 자체가 단추가 되고, 누르면 아래가 열린다. */
+  h2.fold{cursor:pointer;user-select:none;}
+  h2.fold:hover{color:var(--dim);}
+  h2.fold .caret{flex:none;font:400 9px/1 var(--mono);color:var(--faint);
+                 transition:transform .12s ease;}
+  h2.fold.on .caret{transform:rotate(90deg);color:var(--accent);}
+  h2.fold.on{color:var(--ink);}
+  .foldbody.hidden{display:none;}
+
+  /* ── 단추 ─────────────────────────────────────────────── */
+  /* 이웃한 단추는 테두리를 겹쳐 한 줄로 합친다 — 2px 이중선이 안 생기게. */
+  .row{display:flex;flex-wrap:wrap;margin-bottom:8px;}
+  .row:last-of-type{margin-bottom:0;}
+  .row button + button{margin-left:-1px;}
+  button{flex:1 1 auto;background:transparent;color:var(--dim);
+         border:1px solid var(--line-2);padding:9px 10px;cursor:pointer;
+         position:relative;
+         font:500 11.5px/1.2 var(--sans);letter-spacing:.02em;
+         white-space:nowrap;transition:background .12s,color .12s,border-color .12s;}
+  button:hover:not(:disabled),button.on{z-index:1;}
+  button:hover:not(:disabled){background:#141920;color:var(--ink);
+                              border-color:var(--line-3);}
+  button.on{background:var(--accent);border-color:var(--accent);
+            color:var(--on-accent);font-weight:600;}
+  button.go{border-color:var(--line-3);color:var(--ink);background:#141920;}
+  button.go:hover:not(:disabled){background:var(--accent);border-color:var(--accent);
+                                 color:var(--on-accent);}
+  button:disabled{opacity:.32;cursor:not-allowed;}
+  /* 변환이 끝나 내려받을 것이 실제로 생겼을 때만 눈에 띄게 한다. */
+  #btn-download:not(:disabled){border-color:var(--ok);color:var(--ok);}
+  #btn-download:not(:disabled):hover{background:var(--ok);color:var(--on-accent);}
+
+  /* ── 입력 ─────────────────────────────────────────────── */
+  input[type=file]{width:100%;font:400 11px/1.4 var(--mono);color:var(--dim);
+                   border:1px dashed var(--line-2);padding:11px;background:var(--sunk);}
+  input[type=file]::file-selector-button{background:transparent;color:var(--dim);
+    border:1px solid var(--line-2);padding:5px 9px;margin-right:9px;cursor:pointer;
+    font:500 11px var(--sans);}
+  input[type=text],select{width:100%;background:var(--sunk);color:var(--ink);
+    border:1px solid var(--line-2);padding:8px 9px;
+    font:400 12px/1.2 var(--mono);}
+  input[type=text]:focus,select:focus{outline:none;border-color:var(--accent-dim);}
+  input[type=text]::placeholder{color:var(--faint);}
+  label.f{display:block;margin-bottom:10px;}
+  label.f > span{display:block;color:var(--dim);font-size:11px;margin-bottom:5px;
+                 letter-spacing:.01em;}
+
+  /* ── 값 표 ────────────────────────────────────────────── */
+  /* 라벨은 줄지 않고(auto), 값이 남는 폭을 갖는다(1fr). 반대로 두면 값이
+     길 때 라벨이 먼저 쪼개져 「배관 / 묶음」 처럼 토막난다.
+     `min-width:0` 이 없으면 그리드 칸이 내용보다 작아지지 못해 넘친다. */
+  .kv{display:grid;gap:12px;align-items:baseline;
+      grid-template-columns:minmax(0,auto) minmax(0,1fr);
+      padding:6px 0;border-bottom:1px solid var(--line);font-size:11.5px;
+      word-break:keep-all;}
+  .kv:last-child{border-bottom:0;}
+  /* 라벨은 안 접는다. 다만 minmax(0,…) 로 «줄어들 수는» 있게 둬서, 라벨이
+     길어지는 날에도 값 칸을 밀어내지 않고 제가 말줄임된다. */
+  .kv b{font-weight:400;color:var(--dim);white-space:nowrap;
+        overflow:hidden;text-overflow:ellipsis;}
+  .kv span{font-family:var(--mono);font-size:11.5px;color:var(--ink);
+           font-variant-numeric:tabular-nums;text-align:right;min-width:0;
+           overflow-wrap:anywhere;}
+  /* `.kv span` 이 상태색을 덮는다(구체성 0,1,1 > 0,1,0). 값 칸 안에서도
+     완료·미완료·막힘이 색으로 읽혀야 하므로 여기서 되돌린다. */
+  .kv .ok{color:var(--ok);}
+  .kv .warn{color:var(--warn);}
+  .kv .err{color:var(--err);}
+  .grp{margin:16px 0 8px;font:600 10px/1 var(--mono);letter-spacing:.14em;
+       color:var(--faint);text-transform:uppercase;
+       display:flex;align-items:center;gap:9px;}
+  .grp::after{content:"";flex:1;height:1px;background:var(--line);}
+  .grp:first-child{margin-top:0;}
+
+  .dim{color:var(--dim);}
+  .ok{color:var(--ok);} .warn{color:var(--warn);} .err{color:var(--err);}
+
+  /* 모듈 A 에서 빌려온 기능임을 화면에서도 밝힌다. */
+  .tag{font:600 8.5px/1 var(--mono);letter-spacing:.14em;color:var(--accent);
+       border:1px solid var(--accent-dim);padding:3px 5px;margin-left:2px;
+       text-transform:none;}
+  h2 .tag{margin-left:0;}
+
+  /* ── 설명 그림 ────────────────────────────────────────── */
+  /* 모듈 E 가 대화상자에 띄우는 그 PNG 다. 원본은 «검정 선 + 투명 배경» 이라
+     어두운 판에 그대로 얹으면 안 보인다 — E 는 다크 테마에서 픽셀을 뒤집는다.
+     여기서도 같은 일을 CSS 로 한다(알파는 invert 에 안 걸려 배경은 그대로). */
+  .diagram{display:block;filter:invert(1);}
+  /* 종류 고르기 — 색 점은 캔버스 헤드 색과 같은 값이어야 읽힌다. 색은 붙박이가
+     아니라 상태의 palette.kinds 에서 받는다(E 의 KIND_COLORS 가 원본). */
+  .kinds{display:grid;grid-template-columns:repeat(3,1fr);gap:0;}
+  .kinds button{flex:none;margin:0;padding:9px 5px 8px;text-align:center;
+                display:block;}
+  .kinds button + button{margin-left:-1px;}
+  .kinds button:disabled{opacity:.62;}
+  .kinds .nm{display:flex;align-items:center;justify-content:center;gap:5px;
+             font-weight:600;}
+  .kinds .dot{width:9px;height:9px;flex:none;background:var(--faint);}
+  .kinds .cnt{display:block;margin-top:4px;color:var(--faint);
+              font:400 10px/1 var(--mono);font-variant-numeric:tabular-nums;}
+  /* 미지정은 «바꾸는» 칸이 아니다 — 도면 위 회색이 무엇인지 알리는 줄이다. */
+  .kindnote{display:flex;align-items:center;gap:7px;margin-top:9px;
+            font-size:11px;color:var(--dim);}
+  .kindnote .dot{width:9px;height:9px;flex:none;background:var(--faint);}
+  .kindnote .cnt{margin-left:auto;font:400 10px/1 var(--mono);color:var(--faint);
+                 font-variant-numeric:tabular-nums;}
+  /* 미지정이 하나라도 남으면 변환이 막힌다 — 색으로 먼저 알린다. `.err` 만으로는
+     뒤에 오는 `.kindnote` 가 색을 도로 덮는다(구체성 같음 → 나중 규칙 승). */
+  .kindnote.err, .kindnote.err .cnt{color:var(--err);}
+  /* 짚고 넘어가야 하는 사실 — 도면이 여러 장이라거나, 급수원이 못 닿는다거나. */
+  .banner{margin:9px 0 0;padding:8px 10px;border:1px solid #6b5320;
+          background:#17130a;color:var(--warn);font-size:11px;line-height:1.55;}
+  .banner b{color:#f0c674;font-weight:600;}
+  .banner.hidden{display:none;}
+
+  /* 변환 칸 그림 — 칸 이름이 ①②③④ 뿐이라 그림이 곧 이름표다. */
+  .grpfig{margin:0 0 10px;padding:8px 0;border:1px solid var(--line);
+          background:var(--sunk);}
+  .grpfig .diagram{height:132px;width:100%;object-fit:contain;opacity:.82;}
+
+  /* 레이어 카테고리 요약 막대 */
+  .catbar{display:flex;flex-wrap:wrap;gap:1px;margin:9px 0 0;}
+  .catbar span{border:1px solid var(--line);padding:4px 7px;
+               font:400 10px/1 var(--mono);color:var(--dim);}
+  .catbar span b{color:var(--ink);font-weight:600;margin-left:5px;}
+  .layers .cat{font:600 8.5px/1 var(--mono);letter-spacing:.08em;flex:none;
+               border:1px solid var(--line-2);padding:3px 4px;color:var(--faint);}
+  .layers .cat.PIPE{color:var(--accent);border-color:var(--accent-dim);}
+  .layers .cat.HEAD{color:var(--warn);border-color:#6b5320;}
+  .layers .cat.ALARM{color:#c86bff;border-color:#4a2868;}
+
+  label.chk{display:flex;align-items:center;gap:9px;padding:8px 10px;
+            border:1px solid var(--line);margin-bottom:1px;cursor:pointer;
+            font-size:11.5px;color:var(--dim);}
+  label.chk:hover{background:#0E1116;color:var(--ink);}
+  label.chk input{accent-color:var(--accent);width:13px;height:13px;flex:none;margin:0;}
+  label.chk b{font-weight:600;color:var(--ink);}
+
+  /* ── 로그 ─────────────────────────────────────────────── */
+  #job-line{font:400 11px/1.4 var(--mono);color:var(--dim);margin-bottom:8px;
+            font-variant-numeric:tabular-nums;}
+  pre.log{margin:0;background:var(--sunk);border:1px solid var(--line);
+          padding:10px 11px;max-height:184px;overflow:auto;
+          font:400 10.5px/1.65 var(--mono);white-space:pre-wrap;word-break:break-all;
+          color:#8FA3BF;}
+  pre.log::-webkit-scrollbar{width:8px;}
+  pre.log::-webkit-scrollbar-thumb{background:var(--line-2);}
+  /* 한글은 기본값(break-word)에서 단어 한가운데가 잘린다 — 「배관 묶음」이
+     「배관 묶」/「음」으로 갈리면 읽는 눈이 매번 걸린다. 어절은 붙여 둔다. */
+  .hint{color:var(--faint);font-size:11px;line-height:1.6;margin:10px 0 0;
+        padding-left:10px;border-left:1px solid var(--line);
+        word-break:keep-all;overflow-wrap:break-word;}
+  .hint b{color:var(--dim);font-weight:500;}
+
+  /* ── 도면 이름 · 차선 카드 ───────────────────────────── */
+  /* 파일 이름은 길다. 줄바꿈으로 카드를 밀어내느니 한 줄로 자르고 툴팁에 둔다. */
+  .fname{font:400 11.5px/1.5 var(--mono);color:var(--ink);
+         background:var(--sunk);border:1px solid var(--line);
+         padding:8px 10px;margin-bottom:10px;
+         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* 신뢰도 띠 — 숫자를 나란히 세워 한 번에 훑게 한다. */
+  .bands{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+         background:var(--line);border:1px solid var(--line);margin-bottom:10px;}
+  .bands div{background:var(--sunk);padding:7px 8px;text-align:center;}
+  .bands i{display:block;font-style:normal;color:var(--faint);font-size:10px;
+           letter-spacing:.02em;margin-bottom:3px;}
+  .bands b{font:500 13px var(--mono);font-variant-numeric:tabular-nums;}
+  .bands .hi b{color:var(--ok);} .bands .lo b{color:var(--faint);}
+  /* 차선 한 칸 — 단추와 그 설명이 한 덩이로 보이게 묶는다. */
+  .lane{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);}
+  .lane:first-of-type{border-top:0;}
+  .lane > button{width:100%;}
+  /* 표는 안 접히는 왼쪽 칸, 설명은 남는 폭 안에서만 접힌다 — 칩이 문장 꼬리에
+     매달려 줄이 꼬이는 것을 구조로 막는다. */
+  .lane > p{display:flex;gap:8px;align-items:flex-start;
+            margin:8px 0 0;color:var(--faint);font-size:11px;line-height:1.55;
+            word-break:keep-all;overflow-wrap:break-word;}
+  .lane > p > .tag{flex:0 0 auto;margin:1px 0 0;}
+  .lane > p > span:not(.tag){flex:1 1 auto;min-width:0;}
+  .lane > label.f{margin:10px 0 0;}
+  /* 「이 기준으로 N개를 찍습니다」 — 칩이 없으므로 그냥 한 덩이로 둔다. */
+  #mth-mixed-why{display:block;}
+
+  /* ── 단계 (자동 추출 ①②③) ───────────────────────────────
+     .card h2 는 10px·faint 구분선이라 «① 알람밸브» 가 눈에 안 들어왔다.
+     번호 칩과 읽을 수 있는 제목으로 세우고, 끝난 단계는 초록으로 표시한다. */
+  .step{margin-top:14px;padding-top:14px;border-top:1px solid var(--line);}
+  .step:first-of-type{margin-top:4px;}
+  .step-h{display:flex;align-items:center;gap:8px;margin-bottom:9px;
+          font:500 12.5px/1.3 var(--sans);color:var(--ink);
+          word-break:keep-all;}
+  .step-h > b{flex:0 0 auto;width:17px;height:17px;border-radius:50%;
+              display:inline-flex;align-items:center;justify-content:center;
+              font:600 10px/1 var(--mono);color:var(--faint);
+              border:1px solid var(--line-2);background:var(--sunk);}
+  .step-h > i{flex:0 0 auto;font-style:normal;font-size:11px;color:var(--ok);}
+  .step.done .step-h > b{color:var(--ok);border-color:var(--ok);}
+  .step-p{margin:0 0 9px;color:var(--faint);font-size:11px;line-height:1.55;
+          word-break:keep-all;overflow-wrap:break-word;}
+
+  /* ── 레이어 ───────────────────────────────────────────── */
+  .layers{max-height:236px;overflow:auto;border:1px solid var(--line);
+          background:var(--sunk);}
+  .layers::-webkit-scrollbar{width:8px;}
+  .layers::-webkit-scrollbar-thumb{background:var(--line-2);}
+  .layers label{display:flex;align-items:center;gap:9px;padding:6px 10px;
+                font-size:11px;cursor:pointer;border-bottom:1px solid var(--line);}
+  .layers label:last-child{border-bottom:0;}
+  .layers label:hover{background:#0E1116;}
+  .layers input{accent-color:var(--accent);width:12px;height:12px;flex:none;margin:0;}
+  .layers .sw{width:9px;height:9px;flex:none;}
+  .layers .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .layers .cnt{margin-left:auto;color:var(--faint);flex:none;
+               font:400 10px/1 var(--mono);font-variant-numeric:tabular-nums;}
+
+  /* ── 캔버스 하단 바 ───────────────────────────────────── */
+  .bar{position:absolute;left:0;right:0;bottom:0;height:var(--h-bar);
+       display:flex;align-items:stretch;background:#0B0D11F2;
+       border-top:1px solid var(--line);backdrop-filter:blur(6px);}
+  .bar > span{display:flex;align-items:center;padding:0 14px;font-size:11.5px;}
+  .bar #status{color:var(--dim);}
+  .bar #status.ok{color:var(--ok);} .bar #status.warn{color:var(--warn);}
+  .bar #status.err{color:var(--err);}
+  .bar .grow{flex:1;padding:0;}
+  .bar #coord{font:400 11px/1 var(--mono);color:var(--faint);
+              border-left:1px solid var(--line);font-variant-numeric:tabular-nums;}
+  .bar button{flex:0 0 auto;border:0;border-left:1px solid var(--line);
+              padding:0 16px;font-size:11px;}
+  .bar button:hover{background:#141920;}
+
+  /* ── 진행 가림막 — 퍼센트를 지어내지 않는 무한 막대 ────── */
+  /* 캔버스만 덮으면 옆 패널 단추가 작업 중에도 눌려 같은 작업이 두 번 돈다
+     (실측: 자동 이음이 겹쳐 붙고 되돌리기 한 번으로 복구 불가). 화면을 덮는다. */
+  .busy{position:fixed;inset:0;background:#050607E6;display:flex;
+        align-items:center;justify-content:center;z-index:50;}
+  .busy .box{width:320px;border:1px solid var(--line-2);background:var(--panel);
+             padding:20px 22px;}
+  .busy .lbl{font:600 10px/1 var(--mono);letter-spacing:.16em;color:var(--faint);
+             text-transform:uppercase;margin-bottom:12px;}
+  #busy-text{font-size:12px;color:var(--ink);margin-bottom:14px;
+             font-variant-numeric:tabular-nums;}
+  .busy .track{height:2px;background:var(--line);overflow:hidden;}
+  .busy .track i{display:block;height:2px;width:34%;background:var(--accent);
+                 animation:slide 1.15s cubic-bezier(.65,0,.35,1) infinite;}
+  @keyframes slide{0%{transform:translateX(-100%);}100%{transform:translateX(394%);}}
+
+  /* ── 창(모달) ─────────────────────────────────────────────
+     모듈 E 는 이 값들을 대화상자로 받는다. 옆판에 펼쳐 넣으면 그림 다섯 장이
+     세로로 쌓여 다른 단추가 화면 밖으로 밀린다 — 원본처럼 창으로 띄운다. */
+  .modal{position:fixed;inset:0;background:#050607E6;display:flex;
+         align-items:center;justify-content:center;z-index:60;}
+  .modal .sheet{width:min(560px,92vw);max-height:88vh;display:flex;
+                flex-direction:column;border:1px solid var(--line-2);
+                background:var(--panel);}
+  .modal .sheet > header{display:flex;align-items:center;gap:10px;
+                         padding:14px 18px;border-bottom:1px solid var(--line);}
+  .modal .sheet > header h3{margin:0;font-size:13px;font-weight:600;
+                            letter-spacing:.01em;}
+  .modal .sheet > .body{padding:14px 18px;overflow-y:auto;flex:1;}
+  .modal .sheet > footer{display:flex;gap:1px;padding:12px 18px;
+                         border-top:1px solid var(--line);}
+  .modal .sheet > footer button{flex:1;}
+  .modal .sheet > footer .spacer{flex:2;}
+
+  /* ── 결과 표 ──────────────────────────────────────────── */
+  table.rs{width:100%;border-collapse:collapse;margin-top:10px;}
+  table.rs td{padding:5px 0;border-bottom:1px solid var(--line);
+              font:400 11px/1.4 var(--mono);color:var(--dim);}
+  table.rs td:last-child{text-align:right;color:var(--ink);
+                         font-variant-numeric:tabular-nums;}
+  table.rs tr:last-child td{border-bottom:0;}
+
+  .hidden{display:none !important;}

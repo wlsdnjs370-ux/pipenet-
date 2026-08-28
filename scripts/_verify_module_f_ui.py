@@ -768,10 +768,18 @@ def main() -> int:
 
                 # ★유령 위의 클릭을 «후보 제외» 가 가로채면 안 된다 — 사람이
                 #   직접 찍으려고 누르는 자리다. 코드로 확인한다.
+                # 화면 JS 는 정적 파일로 떼어져 있다 — 인라인 textContent 만
+                # 훑으면 «있는데 없다» 고 나온다. 붙어 있는 script 를 인라인·
+                # 외부 가리지 않고 모아 본다.
                 guard = page.evaluate(
-                    """() => {
-                      const s = [...document.querySelectorAll('script')]
-                        .map(e => e.textContent).join('');
+                    """async () => {
+                      const els = [...document.querySelectorAll('script')];
+                      const parts = await Promise.all(els.map(async e => {
+                        if (!e.src) return e.textContent || '';
+                        try { return await (await fetch(e.src)).text(); }
+                        catch (_) { return ''; }
+                      }));
+                      const s = parts.join('');
                       return s.includes('if (S.ghosts && S.ghosts.has(i)) continue;');
                     }""")
                 check("유령 위 클릭을 가로채지 않는다", bool(guard))

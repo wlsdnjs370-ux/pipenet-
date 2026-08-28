@@ -44,9 +44,20 @@ def test_캐시는_내용_해시로_건다():
 
 # ─────────────────────────────────────────── ② 재다운로드
 def _script() -> str:
+    """화면 JS 본문 — 인라인이든 정적 파일이든 같은 것을 돌려준다.
+
+    자산을 `static/module_f.js` 로 떼어낸 뒤로 템플릿엔 <script src> 만 남는다.
+    이 시험이 보는 것은 «코드가 무엇을 하는가» 지 «어디에 적혀 있는가» 가
+    아니므로, 출처를 가리지 않고 읽는다.
+    """
     path = os.path.join(_ROOT, "templates", "module_f.html")
     html = open(path, encoding="utf-8").read()
-    return max(re.findall(r"<script[^>]*>(.*?)</script>", html, re.S), key=len)
+    bodies = [b for b in re.findall(r"<script[^>]*>(.*?)</script>", html, re.S)
+              if b.strip()]
+    if bodies:
+        return max(bodies, key=len)
+    return open(os.path.join(_ROOT, "static", "module_f.js"),
+                encoding="utf-8").read()
 
 
 def test_수동은_받아_둔_도면을_다시_받지_않는다():

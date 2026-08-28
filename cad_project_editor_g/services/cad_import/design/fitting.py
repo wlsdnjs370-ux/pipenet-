@@ -145,6 +145,11 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
     counts: dict = {}
     unresolved_kind = 0
     n_straight = 0
+    # ★세는 그 자리에서 «어느 배관인지» 를 함께 남긴다(순수 추가). 예전에는
+    #   `+= 1` 만 하고 버려서, 화면이 「3건」만 알고 «어디» 를 몰랐다. 그러면
+    #   사람이 손으로 채울 수가 없다. 개수는 여전히 여기서만 정해지므로,
+    #   목록과 개수가 어긋날 수 없다.
+    unresolved_kind_items: list = []
 
     for nid, links in incident.items():
         here = node_xy.get(nid)
@@ -178,6 +183,10 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
                         continue
                     kinds, bad = fr.elbow_fittings([ang])
                     unresolved_kind += bad
+                    if bad:
+                        unresolved_kind_items.append(
+                            {"pipe": str(pid), "node": str(nid), "where": "관통",
+                             "n": int(bad), "angle_deg": round(float(ang), 1)})
                     for k in kinds:
                         per_pipe[pid]["fittings"].append(k)
                         counts[k] = counts.get(k, 0) + 1
@@ -203,12 +212,24 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
                 continue
             labels, bad = fr.tee_fittings(here, up_xy, flat_downs)
             unresolved_kind += bad
+            if bad:
+                # 분기는 «자리» 가 단위다 — 어느 갈래인지까지는 규칙이 못 가른
+                # 것이므로, 그 노드에 걸린 갈래들을 함께 남긴다.
+                unresolved_kind_items.append(
+                    {"pipe": str(flat_downs[0][0]), "node": str(nid),
+                     "where": "분기", "n": int(bad),
+                     "branches": [str(p) for p, _ in flat_downs]})
             for pid in labels:
                 per_pipe[pid]["fittings"].append(fr.TEE)
                 counts[fr.TEE] = counts.get(fr.TEE, 0) + 1
 
     # 등가길이 — 라이브러리에 없으면 0 으로 메우지 않고 센다.
     unresolved_length = 0
+    # 세는 자리에서 «어느 배관의 어느 부속·어느 호칭경» 인지 함께 남긴다.
+    # 라이브러리 구멍은 (종류, 호칭경) 쌍이 단위라 그 쌍도 따로 모아 둔다 —
+    # 사람이 한 번 채우면 같은 쌍을 쓰는 배관이 한꺼번에 풀린다.
+    unresolved_length_items: list = []
+    unresolved_pairs: dict = {}
     for pid, rec in per_pipe.items():
         dia = (bores.get(pid) or (None, None))[0]
         total = 0.0
@@ -216,6 +237,11 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
             L = None if dia is None else equivalent_length_m(lib, kind, dia)
             if L is None:
                 unresolved_length += 1
+                unresolved_length_items.append(
+                    {"pipe": str(pid), "kind": str(kind),
+                     "dia": (int(dia) if dia is not None else None)})
+                key = (str(kind), int(dia) if dia is not None else -1)
+                unresolved_pairs[key] = unresolved_pairs.get(key, 0) + 1
                 continue
             total += L
         rec["equivalent_length"] = round(total, 3)
@@ -228,7 +254,14 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
     return {"per_pipe": per_pipe, "counts": counts,
             "straight": n_straight,
             "unresolved_kind": unresolved_kind,
-            "unresolved_length": unresolved_length}
+            "unresolved_length": unresolved_length,
+            # ★아래 셋은 순수 추가다. 기존 호출자는 안 읽으므로 영향이 없고,
+            #   개수는 여전히 위에서만 정해지므로 목록과 어긋날 수 없다.
+            "unresolved_kind_items": unresolved_kind_items,
+            "unresolved_length_items": unresolved_length_items,
+            "unresolved_pairs": [{"kind": k, "dia": (d if d >= 0 else None),
+                                  "n": n}
+                                 for (k, d), n in sorted(unresolved_pairs.items())]}
 
 
 def build_nozzles(net, *, k_factor, required_pressure_bar=0.0) -> list[dict]:

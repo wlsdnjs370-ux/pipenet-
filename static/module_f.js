@@ -3373,19 +3373,54 @@
       });
     }
 
-    // ④ 부속·등가길이 — 엔진이 «개수만» 센다. 자리를 지어내지 않는다.
-    if (s) {
-      for (const [key, label, n] of [
-        ["fitting", "부속 판정 불가", s.fitting_unresolved],
-        ["eqlen", "등가길이 미해결", s.eq_len_unresolved],
-      ]) {
-        if (!Number(n)) continue;
-        out.push({
-          key, color: "#f59e0b", n: Number(n), label,
-          note: "자리를 특정할 수 없습니다 — 엔진이 개수만 셉니다.",
-          items: [],
-        });
-      }
+    // ④ 부속 판정 불가 · 등가길이 미해결 — 이제 «어느 배관인지» 까지 온다.
+    //    엔진이 세는 그 자리에서 목록도 함께 남기므로(§18) 개수와 어긋날 수
+    //    없다. 자리를 아는 항목은 눌러서 그 배관으로 갈 수 있다.
+    const un = (S.design && S.design.tables && S.design.tables.unresolved) || {};
+    const nodeAt = {};
+    if (v && v.nodes) for (const n of v.nodes) nodeAt[String(n.label)] = n;
+    const pipeAt = {};
+    if (v && v.pipes) for (const p of v.pipes) pipeAt[String(p.label)] = p;
+    const mid = (pid) => {
+      const p = pipeAt[String(pid)];
+      const a = p && nodeAt[String(p.a)], b2 = p && nodeAt[String(p.b)];
+      return (a && b2) ? [(a.x + b2.x) / 2, (a.y + b2.y) / 2] : [null, null];
+    };
+
+    const ki = un.kind_items || [];
+    if (ki.length) {
+      out.push({
+        key: "fitting", color: "#f59e0b",
+        n: ki.reduce((a, x) => a + (Number(x.n) || 0), 0),
+        label: "부속 판정 불가 — 지어내지 않고 비워 둔 자리",
+        items: ki.slice(0, ISSUE_CAP).map((x) => {
+          const [mx, my] = mid(x.pipe);
+          return {
+            text: `${x.pipe} · ${x.where}`
+              + (x.angle_deg !== undefined && x.angle_deg !== null
+                 ? ` · 편향 ${x.angle_deg}°` : "")
+              + ` (노드 ${x.node})`,
+            x: mx, y: my, frame: "iso",
+          };
+        }),
+      });
+    }
+    const li = un.length_items || [];
+    if (li.length) {
+      // 라이브러리 구멍은 «(종류, 호칭경) 쌍» 이 단위다 — 한 번 채우면 같은
+      // 쌍을 쓰는 배관이 한꺼번에 풀린다. 그래서 쌍을 먼저 적는다.
+      const pairs = (un.pairs || [])
+        .map((p) => `${p.kind} ${p.dia}A ${p.n}건`).join(" · ");
+      out.push({
+        key: "eqlen", color: "#f59e0b", n: li.length,
+        label: "등가길이 미해결 — 라이브러리에 그 호칭경 값이 없음",
+        note: pairs ? `채울 값: ${pairs}` : "",
+        items: li.slice(0, ISSUE_CAP).map((x) => {
+          const [mx, my] = mid(x.pipe);
+          return { text: `${x.pipe} · ${x.kind} · ${x.dia}A`,
+                   x: mx, y: my, frame: "iso" };
+        }),
+      });
     }
     return out;
   }
@@ -3413,8 +3448,10 @@
     }
     box.innerHTML = groups.map((g, gi) => {
       const head = `<div class="kv"><b><span style="color:${g.color}">●</span> `
-        + `${g.label}</b><span>${g.n.toLocaleString()}건</span></div>`;
-      if (g.note) return head + `<div class="hint">${g.note}</div>`;
+        + `${g.label}</b><span>${g.n.toLocaleString()}건</span></div>`
+        // 덧말은 항목을 «가리지» 않는다 — 둘 다 필요하다(예: 채울 값 목록).
+        + (g.note ? `<div class="hint">${g.note}</div>` : "");
+      if (!g.items.length) return head;
       const rows = g.items.map((it, ii) =>
         `<div class="issue" data-g="${gi}" data-i="${ii}">${it.text}</div>`
       ).join("");

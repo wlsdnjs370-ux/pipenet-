@@ -635,11 +635,13 @@ def test_이상_목록의_합계가_요약과_같은_자료다():
     """
     html = _screen()
     i = html.index("function collectIssues()")
-    seg = html[i:i + 3200]
+    seg = html[i:i + 4200]
     # 관경 폴백은 요약의 nfpc_fallback 과 같은 판정을 쓴다.
     assert 'p.src === "nfpc_fallback"' in seg
-    # 부속·등가길이는 «요약 수치 그대로» 를 쓴다 — 다시 세지 않는다.
-    assert "s.fitting_unresolved" in seg and "s.eq_len_unresolved" in seg
+    # [§18] 부속·등가길이는 «엔진이 센 그 자리» 의 목록을 그대로 쓴다.
+    #   F 가 다시 판정하면 규칙이 두 벌이 되어 언젠가 갈린다.
+    assert "S.design.tables.unresolved" in seg
+    assert "kind_items" in seg and "length_items" in seg
     # 제외 사유는 F-5 의 marks 를 그대로 쓴다.
     for k in ("dry", "unattached", "unpicked"):
         assert f'"{k}"' in seg
@@ -647,15 +649,52 @@ def test_이상_목록의_합계가_요약과_같은_자료다():
     assert "api(" not in seg and "post(" not in seg
 
 
-def test_자리를_모르는_이상은_그렇게_말한다():
-    """엔진이 개수만 세는 항목(부속·등가길이)은 자리를 지어내지 않는다."""
+def test_자리를_모르는_항목은_클릭_대상이_아니다():
+    """좌표가 없는 항목을 눌러도 엉뚱한 데로 가면 안 된다.
+
+    [§18] 부속·등가길이는 이제 «어느 배관인지» 를 엔진에서 받으므로 대개
+    좌표가 있다. 그래도 표에 없는 배관 id 가 오면 좌표가 비는데, 그때
+    누르면 아무 일도 없어야 한다.
+    """
     html = _screen()
-    i = html.index("function collectIssues()")
-    seg = html[i:i + 3200]
-    assert "자리를 특정할 수 없습니다" in seg
-    # 자리를 아는 항목만 클릭 대상이 된다.
     j = html.index("el.onclick = () => {", html.index("function renderIssues()"))
     assert "it.x !== null" in html[j:j + 300]
+
+
+def test_미해결_목록은_엔진이_센_그_자리에서_나온다():
+    """[§18] 목록과 개수가 어긋날 수 없다 — 같은 자리에서 나오기 때문이다.
+
+    F 가 부속 판정을 다시 구현하면 규칙이 두 벌이 되고, 그 어긋남은
+    «엉뚱한 배관을 미해결로 찍어 사람이 멀쩡한 값을 덮어쓰는» 형태로
+    드러난다(표시 오류가 아니라 계산 오류다). 그래서 엔진이 세는 그 줄
+    바로 옆에서 목록도 함께 쌓는다.
+    """
+    import inspect
+
+    from services.cad_import.design import fitting
+
+    src = inspect.getsource(fitting.build_fittings)
+    # 세는 곳과 담는 곳이 붙어 있어야 한다.
+    for count_line, item_line in (
+        ("unresolved_kind += bad", "unresolved_kind_items.append"),
+        ("unresolved_length += 1", "unresolved_length_items.append"),
+    ):
+        assert count_line in src and item_line in src
+        i = src.index(count_line)
+        assert item_line in src[i:i + 700], f"{item_line} 가 세는 자리에서 멀다"
+    # 반환에 셋 다 실린다.
+    for key in ("unresolved_kind_items", "unresolved_length_items",
+                "unresolved_pairs"):
+        assert f'"{key}"' in src
+
+
+def test_미해결_목록이_표까지_실려_온다():
+    """엔진이 남겨도 표가 안 들고 오면 화면은 여전히 개수만 본다."""
+    from services.cad_import.design.tables import PipeTablesG
+
+    t = PipeTablesG()
+    assert hasattr(t, "unresolved")
+    assert "unresolved" in t.as_dict()
 
 
 def test_이상_목록은_잘라도_말한다():

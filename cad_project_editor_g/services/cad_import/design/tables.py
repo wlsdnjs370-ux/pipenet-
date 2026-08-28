@@ -40,12 +40,18 @@ class PipeTablesG:
     fittings: list = field(default_factory=list)   # {pipe,in,out,type,count}
     equipment: list = field(default_factory=list)  # {pipe,in,out,label,desc,eq_len,rel_pos}
     meta: list = field(default_factory=list)       # [(key, value)]
+    # 「부속 판정 불가」·「등가길이 미해결」이 **어느 배관인지**. meta 는 개수만
+    # 담아 왔는데, 개수만으로는 사람이 손으로 채울 수가 없다. 세는 자리
+    # (`build_fittings`)가 이미 아는 것을 버리지 않고 여기까지 들고 온다.
+    #   {"kind_items": [...], "length_items": [...], "pairs": [...]}
+    unresolved: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return {"nodes": self.nodes, "pipes": self.pipes,
                 "nozzles": self.nozzles, "fittings": self.fittings,
                 "equipment": self.equipment,
-                "meta": [list(m) for m in self.meta]}
+                "meta": [list(m) for m in self.meta],
+                "unresolved": self.unresolved}
 
 
 def _ends(pr):
@@ -245,6 +251,8 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         ("관경 근거 — 도면 텍스트", str(src.get("text", 0))),
         ("관경 근거 — 별표1 보강 (text<min)", str(src.get("nfpc_min", 0))),
         ("관경 근거 — 별표1 폴백 (text 없음)", str(src.get("nfpc_fallback", 0))),
+        # 개수는 여전히 `build_fittings` 한 곳에서만 정해진다 — 아래 목록도
+        # 같은 자리에서 나오므로 둘이 어긋날 수 없다.
         ("부속 판정 불가", str(fittings.get("unresolved_kind", 0))),
         ("등가길이 미해결", str(fittings.get("unresolved_length", 0))),
         ("루프 잔여 배관(표 꼬리)", str(len(off_tree))),
@@ -253,6 +261,12 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         ("전개가 못 붙여 제외한 헤드", str(excluded_heads)),
         ("설계구역 선정", "모듈 G 앵커 방식 (SDF 전용 · .kfp 는 솔버가 따로 고른다)"),
     ]
+    # 미해결이 «어느 배관인지» — 개수와 같은 자리에서 나온 목록이다.
+    tbl.unresolved = {
+        "kind_items": list(fittings.get("unresolved_kind_items") or ()),
+        "length_items": list(fittings.get("unresolved_length_items") or ()),
+        "pairs": list(fittings.get("unresolved_pairs") or ()),
+    }
     return tbl
 
 

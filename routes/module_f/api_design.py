@@ -420,7 +420,15 @@ def register(app, *, UPLOAD_DIR):
             job = sess.get("job") or {}
             if job.get("phase") == "수리계산 입력" and job.get("state") == "run":
                 return _fail("아직 계산 중입니다.", 409)
-            return _fail("먼저 design/build 로 표를 확정하세요.", 404)
+            # ★«아직 확정 안 함» 은 오류가 아니다. 404 로 답하면 사람이 수리계산
+            #   화면에 들어올 때마다 브라우저 콘솔에 붉은 줄이 남고, 진짜 오류가
+            #   그 사이에 묻힌다. 같은 이유로 `auto/network-view` 는 이미
+            #   «없음» 을 200 으로 답한다 — 그 규약을 여기에도 맞춘다.
+            return jsonify({"ok": True, "view": None, "tables": None,
+                            "marks": {}, "stood": None,
+                            "settings": dict(sess.get("design_settings")
+                                             or _DEFAULT_SETTINGS),
+                            "message": "먼저 「표 확정」을 눌러 주세요."})
         # 보기 설정 — 쿼리로 덮을 수 있고, 덮은 값은 기억된다.
         # (iso 는 문자열 "false" 를 bool() 로 캐스팅하면 True 가 되므로 따로 푼다.)
         try:

@@ -777,6 +777,56 @@ def test_직접_입력_라우트가_엉터리_값을_막는다():
         assert "표 확정" in (r.get_json() or {}).get("message", "")
 
 
+def test_화면이_그_자리에서_채우게_한다():
+    """[§18] 항목 바로 아래에 채우는 칸 — 따로 떨어뜨리면 어느 자리 값인지 모른다."""
+    html = _screen()
+    assert 'id="dg-ov-save"' in html and 'id="dg-ov-n"' in html
+    i = html.index("function renderIssues()")
+    seg = html[i:i + 2600]
+    assert "it.ov" in seg, "채울 수 있는 자리를 안 가린다"
+    assert 'class="ovk"' in seg and 'class="ovm"' in seg
+    assert 'class="ovn"' in seg, "사유 칸이 없다"
+    # 종류는 서버가 준 목록에서만 고른다 — 자유 입력은 문제를 옮길 뿐이다.
+    assert "S.fitKinds" in seg
+    assert "loadFitKinds" in html
+
+
+def test_저장하면_다시_확정하라고_말한다():
+    """값이 바뀌는 일이라 표시만 고치고 끝내면 안 된다.
+
+    저장은 세션에만 남는다 — 표를 다시 확정해야 산출에 들어간다. 화면이 그
+    사실을 말하고, 실제로 다시 확정까지 이어 준다.
+    """
+    html = _screen()
+    i = html.index('$("dg-ov-save").onclick')
+    seg = html[i:i + 2000]
+    assert "/api/module-f/design/fitting-override" in seg
+    assert '$("dg-build").click()' in seg, "다시 확정으로 안 이어진다"
+    # 안내 문구가 «못 가린 자리에만» 이라는 성질을 밝힌다.
+    assert "못 가린 자리에만" in html
+    assert "「표 확정」을 다시" in html
+
+
+def test_채운_자리는_직접_입력으로_남는다():
+    """자동이 낸 값과 사람이 넣은 값을 같은 얼굴로 두지 않는다."""
+    html = _screen()
+    i = html.index("function collectIssues()")
+    seg = html[i:i + 5200]
+    assert 'key: "applied"' in seg
+    assert "직접 입력 — 사람이 채운 자리" in seg
+    # 사유도 함께 보인다.
+    assert "a.note" in seg
+
+
+def test_등가길이는_쌍_단위로_채운다():
+    """[§18 ②] 라이브러리 구멍은 (종류, 호칭경) 쌍이 단위다."""
+    html = _screen()
+    i = html.index("function collectIssues()")
+    seg = html[i:i + 5200]
+    assert 'type: "eq_len", kind: String(p.kind), dia: Number(p.dia)' in seg
+    assert "한 쌍을 채우면" in seg
+
+
 def test_미해결_목록이_표까지_실려_온다():
     """엔진이 남겨도 표가 안 들고 오면 화면은 여전히 개수만 본다."""
     from services.cad_import.design.tables import PipeTablesG
@@ -791,7 +841,7 @@ def test_이상_목록은_잘라도_말한다():
     html = _screen()
     assert "const ISSUE_CAP" in html
     i = html.index("function renderIssues()")
-    seg = html[i:i + 1400]
+    seg = html[i:i + 2600]      # 채우기 칸이 붙어 함수가 길어졌다
     assert "그 외" in seg and "rest" in seg
 
 

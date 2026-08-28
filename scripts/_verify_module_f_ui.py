@@ -1033,6 +1033,22 @@ def main() -> int:
                     check("표가 없으면 «이상 없음» 이라 하지 않는다",
                           "이상 없음" not in str(st10f.get("body")),
                           str(st10f.get("body")).strip()[:50])
+                    # ── [§18] 직접 입력 — 자리·칸이 실제로 서 있나
+                    st18 = page.evaluate(
+                        """() => ({
+                          save: !!document.getElementById('dg-ov-save'),
+                          n: !!document.getElementById('dg-ov-n'),
+                          why: (document.getElementById('dg-ov-why')
+                                || {}).textContent || '',
+                          hidden: (document.getElementById('dg-ov-row')
+                                   || {className: ''}).className
+                                   .includes('hidden'),
+                        })""")
+                    check("직접 입력 저장 자리가 있다 (§18)",
+                          bool(st18.get("save")) and bool(st18.get("n")))
+                    # 표를 안 확정한 세션이라 채울 것이 없다 — 열려 있으면 안 된다.
+                    check("채울 것이 없으면 저장 단추가 안 뜬다",
+                          bool(st18.get("hidden")))
                     page.evaluate(
                         "() => document.getElementById('panel-design')"
                         ".classList.add('hidden')")

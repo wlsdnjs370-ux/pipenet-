@@ -483,6 +483,16 @@
         <span class="tag" id="dg-issues-n">—</span></h2>
       <div id="dg-issues-body">
         <div id="dg-issues" class="hint">—</div>
+        <!-- [§18] 규칙이 못 가린 자리를 사람이 채운다 — 「직접 입력」.
+             ★자동이 낸 값과 사람이 넣은 값을 같은 얼굴로 두지 않는다:
+               채운 자리는 목록에 「직접 입력」으로 표시되고 산출물 meta 에도
+               건수가 남는다. 채우기는 «못 가린 자리에만» 쓰이므로 규칙이
+               옳게 판정한 값은 바뀌지 않는다. -->
+        <div class="row hidden" id="dg-ov-row">
+          <button id="dg-ov-save" class="go">직접 입력 저장</button>
+          <span class="tag" id="dg-ov-n">—</span>
+        </div>
+        <p class="hint hidden" id="dg-ov-why"></p>
       </div>
 
       <h2 style="margin-top:12px">관경 근거 보기</h2>

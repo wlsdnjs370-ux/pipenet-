@@ -3093,7 +3093,14 @@
                  // [F-10f] 이상 목록이 부속·등가길이 수치를 여기서 읽는다.
                  summary: (S.design && S.design.summary) || null,
                  hilite: (S.design && S.design.hilite) || new Set() };
+    // [§18] 고를 수 있는 부속 종류를 서버에서 받아 둔다 — 목록을 그리기 전에
+    //   있어야 «고르세요» 칸이 빈 채로 뜨지 않는다.
+    if (!S.fitKinds) await loadFitKinds();
     renderIssues();
+    // ★«아직 확정 안 함» 은 오류가 아니라 상태다(서버가 200 · view:null 로
+    //   답한다). 그릴 것이 없으면 여기서 조용히 멈춘다 — 화면은 「표 확정」
+    //   단추가 선 채로 남는다.
+    if (!d.view) { if (d.message) say(d.message); return; }
     const xs = d.view.nodes.map(n => n.x), ys = d.view.nodes.map(n => n.y);
     fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
           miny: Math.min(...ys), maxy: Math.max(...ys) });
@@ -3314,6 +3321,24 @@
   //   한 줄도 안 바꿨고, 산출물이 안 변한다는 것이 자명하다(D-F10-7).
   const ISSUE_CAP = 40;              // 조용히 자르지 않는다 — 남은 수를 적는다
 
+  // ── [§18] 직접 입력 — 규칙이 못 가린 자리를 사람이 채운다 ──────
+  //
+  // ★고를 수 있는 종류는 «서버가» 준다. 자유 입력으로 두면 라이브러리에 없는
+  //   이름이 들어와 부속 판정은 풀리지만 등가길이가 다시 미해결이 된다
+  //   (실측: 「엘베」로 적었더니 판정 불가 3→2, 등가길이 0→1). 문제를 옮길 뿐이다.
+  const kindLabel = (v) => {
+    const hit = (S.fitKinds || []).find((k) => k.value === String(v));
+    return hit ? hit.label : String(v);
+  };
+
+  async function loadFitKinds() {
+    try {
+      const d = await api(`/api/module-f/design/fitting-override?sid=${S.sid}`);
+      S.fitKinds = d.kinds || [];
+      S.fitOverrides = d.overrides || {};
+    } catch (err) { S.fitKinds = S.fitKinds || []; }
+  }
+
   function collectIssues() {
     const out = [];
     const s = (S.design && S.design.summary) || null;
@@ -3401,24 +3426,53 @@
                  ? ` · 편향 ${x.angle_deg}°` : "")
               + ` (노드 ${x.node})`,
             x: mx, y: my, frame: "iso",
+            // [§18] 이 자리를 채울 재료 — 자리(노드·배관)가 단위다.
+            ov: { type: "kind", node: String(x.node), pipe: String(x.pipe) },
           };
         }),
       });
     }
-    const li = un.length_items || [];
-    if (li.length) {
-      // 라이브러리 구멍은 «(종류, 호칭경) 쌍» 이 단위다 — 한 번 채우면 같은
-      // 쌍을 쓰는 배관이 한꺼번에 풀린다. 그래서 쌍을 먼저 적는다.
-      const pairs = (un.pairs || [])
-        .map((p) => `${p.kind} ${p.dia}A ${p.n}건`).join(" · ");
+    // 등가길이는 «(종류, 호칭경) 쌍» 이 채우기 단위다 — 한 번 채우면 그 쌍을
+    // 쓰는 배관이 한꺼번에 풀린다. 그래서 배관이 아니라 쌍을 항목으로 세운다.
+    const pairs = un.pairs || [];
+    if (pairs.length) {
+      const li = un.length_items || [];
+      const firstPipe = (kind, dia) => {
+        const hit = li.find((x) => String(x.kind) === String(kind)
+                                && String(x.dia) === String(dia));
+        return hit ? hit.pipe : null;
+      };
       out.push({
-        key: "eqlen", color: "#f59e0b", n: li.length,
+        key: "eqlen", color: "#f59e0b",
+        n: li.length,
         label: "등가길이 미해결 — 라이브러리에 그 호칭경 값이 없음",
-        note: pairs ? `채울 값: ${pairs}` : "",
-        items: li.slice(0, ISSUE_CAP).map((x) => {
-          const [mx, my] = mid(x.pipe);
-          return { text: `${x.pipe} · ${x.kind} · ${x.dia}A`,
-                   x: mx, y: my, frame: "iso" };
+        note: "한 쌍을 채우면 그 쌍을 쓰는 배관이 한꺼번에 풀립니다.",
+        items: pairs.slice(0, ISSUE_CAP).map((p) => {
+          const [mx, my] = mid(firstPipe(p.kind, p.dia));
+          return {
+            text: `${p.kind} · ${p.dia}A — ${p.n}건`,
+            x: mx, y: my, frame: "iso",
+            ov: { type: "eq_len", kind: String(p.kind), dia: Number(p.dia) },
+          };
+        }),
+      });
+    }
+    // 채운 자리를 목록에 남긴다 — 값이 어디서 왔는지 나중에도 알 수 있어야 한다.
+    const app = un.applied || [];
+    if (app.length) {
+      out.push({
+        key: "applied", color: "#22c55e", n: app.length,
+        label: "직접 입력 — 사람이 채운 자리",
+        note: "표 확정에 이미 반영된 값입니다.",
+        items: app.slice(0, ISSUE_CAP).map((a) => {
+          const [mx, my] = mid(a.pipe);
+          return {
+            text: (a.what === "kind"
+                   ? `${a.pipe} · ${kindLabel(a.kind)}`
+                   : `${a.kind} ${a.dia}A · ${a.m} m`)
+              + (a.note ? ` — ${a.note}` : ""),
+            x: mx, y: my, frame: "iso",
+          };
         }),
       });
     }
@@ -3452,9 +3506,26 @@
         // 덧말은 항목을 «가리지» 않는다 — 둘 다 필요하다(예: 채울 값 목록).
         + (g.note ? `<div class="hint">${g.note}</div>` : "");
       if (!g.items.length) return head;
-      const rows = g.items.map((it, ii) =>
-        `<div class="issue" data-g="${gi}" data-i="${ii}">${it.text}</div>`
-      ).join("");
+      const rows = g.items.map((it, ii) => {
+        const line = `<div class="issue" data-g="${gi}" data-i="${ii}">`
+          + `${it.text}</div>`;
+        if (!it.ov) return line;
+        // 채울 수 있는 자리에는 그 자리에서 바로 넣는 칸을 붙인다.
+        const id = `${gi}-${ii}`;
+        // 이름을 `box` 로 두면 바깥의 목록 상자를 가린다 — 지금은 안 쓰지만
+        // 가려진 이름은 나중에 조용히 틀린다.
+        const field = it.ov.type === "kind"
+          ? `<select class="ovk" data-id="${id}">`
+            + `<option value="">— 고르세요 —</option>`
+            + (S.fitKinds || []).map((k) =>
+                `<option value="${k.value}">${k.label}</option>`).join("")
+            + `</select>`
+          : `<input class="ovm" data-id="${id}" type="number" step="0.01"`
+            + ` min="0" placeholder="등가길이 m">`;
+        return line + `<div class="ovrow" data-id="${id}">${field}`
+          + `<input class="ovn" data-id="${id}" maxlength="200"`
+          + ` placeholder="사유 (어디서 확인했는지)"></div>`;
+      }).join("");
       const rest = g.n - g.items.length;
       return head + rows
         + (rest > 0 ? `<div class="hint">… 그 외 ${rest.toLocaleString()}건`
@@ -3468,7 +3539,85 @@
         if (it && it.x !== null && it.y !== null) focusIssue(it, g.color);
       };
     }
+    // ★확인할 것이 «처음 생겼을 때» 한 번만 펴 준다. 매번 펴면 사람이 접어
+    //   둔 것을 계속 되돌리게 된다(진행 표시가 쓰는 그 규약과 같다).
+    if (total && !S.issuesOpened) {
+      S.issuesOpened = true;
+      const h2 = document.querySelector('h2.fold[data-fold="dg-issues-body"]');
+      if (h2) toggleFold(h2, true);
+    }
+    // 채울 칸이 하나라도 있으면 저장 단추를 연다.
+    const fillable = groups.some((g) => g.items.some((it) => it.ov));
+    $("dg-ov-row").classList.toggle("hidden", !fillable);
+    $("dg-ov-why").classList.toggle("hidden", !fillable);
+    if (fillable) {
+      $("dg-ov-n").textContent = "채운 칸 0";
+      $("dg-ov-why").innerHTML =
+        "규칙이 <b>못 가린 자리에만</b> 쓰입니다 — 자동이 옳게 판정한 값은 "
+        + "바뀌지 않습니다. 저장한 뒤 <b>「표 확정」을 다시</b> 눌러야 "
+        + "산출에 들어갑니다.";
+      for (const el of box.querySelectorAll(".ovk, .ovm, .ovn")) {
+        el.onchange = countFilled;
+        el.oninput = countFilled;
+      }
+      countFilled();
+    }
   }
+
+  /** 지금 몇 칸이 채워졌나 — 저장 전에 사람이 보고 안다. */
+  function countFilled() {
+    const box = $("dg-issues");
+    let n = 0;
+    for (const el of box.querySelectorAll(".ovk, .ovm")) {
+      if (String(el.value || "").trim() !== "") n += 1;
+    }
+    $("dg-ov-n").textContent = `채운 칸 ${n}`;
+    $("dg-ov-save").disabled = n === 0;
+  }
+
+  // 채운 것만 모아 보낸다. 빈 칸은 «안 정했다» 이지 «지운다» 가 아니다.
+  $("dg-ov-save").onclick = async () => {
+    const box = $("dg-issues");
+    const note = (id) => {
+      const el = box.querySelector(`.ovn[data-id="${id}"]`);
+      return el ? String(el.value || "").trim() : "";
+    };
+    const kind = [], eq_len = [];
+    for (const el of box.querySelectorAll(".ovk")) {
+      const v = String(el.value || "").trim();
+      if (!v) continue;
+      const [gi, ii] = el.dataset.id.split("-").map(Number);
+      const ov = S.issues[gi].items[ii].ov;
+      kind.push({ node: ov.node, pipe: ov.pipe, kind: v, note: note(el.dataset.id) });
+    }
+    for (const el of box.querySelectorAll(".ovm")) {
+      const v = String(el.value || "").trim();
+      if (v === "") continue;
+      const [gi, ii] = el.dataset.id.split("-").map(Number);
+      const ov = S.issues[gi].items[ii].ov;
+      eq_len.push({ kind: ov.kind, dia: ov.dia, m: Number(v),
+                    note: note(el.dataset.id) });
+    }
+    if (!kind.length && !eq_len.length) { say("채운 칸이 없습니다.", "warn"); return; }
+    try {
+      // 이전에 저장한 것과 «합친다» — 한 번에 다 채우지 않아도 되게.
+      const prev = S.fitOverrides || {};
+      const merge = (old, add, key) => {
+        const m = new Map((old || []).map((r) => [key(r), r]));
+        for (const r of add) m.set(key(r), r);
+        return [...m.values()];
+      };
+      const d = await post("/api/module-f/design/fitting-override", {
+        sid: S.sid,
+        kind: merge(prev.kind, kind, (r) => `${r.node}|${r.pipe}`),
+        eq_len: merge(prev.eq_len, eq_len, (r) => `${r.kind}|${r.dia}`),
+      });
+      S.fitOverrides = d.overrides || {};
+      say(d.message || "직접 입력을 저장했습니다.", "ok");
+      // 값이 바뀌는 일이라 표시만 고치고 끝내지 않는다 — 다시 확정한다.
+      $("dg-build").click();
+    } catch (err) { say(err.message, "err"); }
+  };
 
   // 항목을 누르면 그 자리로 옮겨 가 강조한다. 좌표계가 둘이라(설계 vs 평면)
   // 먼저 «맞는 화면» 으로 돌린 뒤 옮긴다 — 안 그러면 엉뚱한 자리를 비춘다.

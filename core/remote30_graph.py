@@ -209,7 +209,7 @@ class _NearestNodeIndex:
       것이 되어 최적화가 아니다.
     """
 
-    __slots__ = ("_rank", "_cell", "_grid", "_empty")
+    __slots__ = ("_rank", "_cell", "_grid", "_empty", "_lo", "_hi")
 
     def __init__(self, graph: dict) -> None:
         nodes = list(graph)
@@ -217,6 +217,7 @@ class _NearestNodeIndex:
         self._empty = not nodes
         if self._empty:
             self._cell, self._grid = 1.0, {}
+            self._lo = self._hi = (0, 0)
             return
         xs = [n[0] for n in nodes]
         ys = [n[1] for n in nodes]
@@ -230,6 +231,18 @@ class _NearestNodeIndex:
             grid.setdefault((int(n[0] // self._cell), int(n[1] // self._cell)),
                             []).append(n)
         self._grid = grid
+        ks = grid.keys()
+        self._lo = (min(k[0] for k in ks), min(k[1] for k in ks))
+        self._hi = (max(k[0] for k in ks), max(k[1] for k in ks))
+
+    def _scan_all(self, pt):
+        """선형 탐색 — 원본과 글자 그대로 같은 규칙(먼저 삽입된 노드가 이김)."""
+        best, bestd = None, float("inf")
+        for n in self._rank:
+            d = (n[0] - pt[0]) ** 2 + (n[1] - pt[1]) ** 2
+            if d < bestd:
+                bestd, best = d, n
+        return best
 
     def nearest(self, pt: tuple[float, float]) -> tuple[float, float] | None:
         if pt in self._rank:            # 원본의 이른 반환과 같다
@@ -238,34 +251,41 @@ class _NearestNodeIndex:
             return None
         cell = self._cell
         gx, gy = int(pt[0] // cell), int(pt[1] // cell)
-        best = None
-        bestd = float("inf")
+        lo, hi = self._lo, self._hi
+        # ★구름 «밖» 의 점은 격자로 찾으면 안 된다. 테를 구름에 닿을 때까지
+        #   넓혀야 하는데, 멀리 있는 점은 그 횟수가 노드 수와 무관하게 커진다
+        #   (실측: LH306 42헤드 · 절점 201 에서 90초 — 선형 탐색은 179ms).
+        #   밖이면 한 번 훑는 편이 언제나 싸다. 답은 어차피 같다.
+        if not (lo[0] <= gx <= hi[0] and lo[1] <= gy <= hi[1]):
+            return self._scan_all(pt)
+        # 안쪽이면 테를 넓히며 찾는다. 테 «둘레» 만 훑는다 — 정사각형을 통째로
+        # 돌면 테마다 O(r²) 이 되어 넓힐수록 제곱으로 는다.
+        span = max(hi[0] - lo[0], hi[1] - lo[1]) + 1
+        best, bestd = None, float("inf")
         r = 0
         while True:
-            # 반지름 r 의 «테» 만 훑는다(안쪽은 이미 봤다).
-            for i in range(gx - r, gx + r + 1):
-                for j in range(gy - r, gy + r + 1):
-                    if r and abs(i - gx) != r and abs(j - gy) != r:
-                        continue
-                    for n in self._grid.get((i, j), ()):
-                        d = (n[0] - pt[0]) ** 2 + (n[1] - pt[1]) ** 2
-                        if d < bestd or (d == bestd and best is not None
-                                         and self._rank[n] < self._rank[best]):
-                            bestd, best = d, n
+            if r == 0:
+                cells = ((gx, gy),)
+            else:
+                cells = []
+                for i in range(gx - r, gx + r + 1):
+                    cells.append((i, gy - r))
+                    cells.append((i, gy + r))
+                for j in range(gy - r + 1, gy + r):
+                    cells.append((gx - r, j))
+                    cells.append((gx + r, j))
+            for key in cells:
+                for n in self._grid.get(key, ()):
+                    d = (n[0] - pt[0]) ** 2 + (n[1] - pt[1]) ** 2
+                    if d < bestd or (d == bestd and best is not None
+                                     and self._rank[n] < self._rank[best]):
+                        bestd, best = d, n
             # 찾았어도 한 테 더 봐야 한다 — 대각선 이웃 칸이 더 가까울 수 있다.
             if best is not None and (r * cell) ** 2 >= bestd:
                 return best
             r += 1
-            if r > 2 and best is None and r * cell > _NEAREST_GIVEUP_SPAN:
-                # 격자가 비었다 — 그럴 리 없지만, 무한히 넓히지는 않는다.
-                return min(self._rank,
-                           key=lambda n: ((n[0] - pt[0]) ** 2
-                                          + (n[1] - pt[1]) ** 2,
-                                          self._rank[n]))
-
-
-# 격자를 넓히다 포기하는 거리 — 실좌표 도면의 대각선보다 크게 잡는다.
-_NEAREST_GIVEUP_SPAN = 1.0e12
+            if r > span:                # 격자를 다 훑었다 — 남은 것은 선형뿐
+                return best if best is not None else self._scan_all(pt)
 
 
 def _connected_components(graph: dict) -> list[set]:

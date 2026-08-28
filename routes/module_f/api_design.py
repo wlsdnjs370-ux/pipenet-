@@ -278,7 +278,11 @@ def register(app, *, UPLOAD_DIR):
                     board_pts=es.board.pts,
                     excluded_heads=got.get("excluded_heads", 0),
                     default_schedule=cfg["schedule"],
-                    tree_loads=got.get("tree_loads"))
+                    tree_loads=got.get("tree_loads"),
+                    # [§18] 사람이 손으로 채운 값 — 규칙이 못 가린 자리에만
+                    #   쓰인다(엔진이 그렇게 판단한다). 세션에 남아 있으므로
+                    #   「다시 계산」·「표 확정」을 다시 눌러도 그대로 간다.
+                    fitting_overrides=sess.get("fitting_overrides"))
             except UnknownSchedule as exc:
                 return {"ok": False, "error": str(exc)}
             # 표는 메모리에만 — emit 을 눌러야 파일이 생긴다.
@@ -301,6 +305,107 @@ def register(app, *, UPLOAD_DIR):
 
         _run_job(sess, "수리계산 입력", job)
         return jsonify({"ok": True})
+
+    @app.post("/api/module-f/design/fitting-override")
+    @route_session(post=True)
+    def module_f_design_fitting_override(sess, body):
+        """[§18] 규칙이 못 가린 자리를 사람이 채운다 — 「직접 입력」.
+
+        모듈 A 의 방식을 그대로 따른다(`override_flag`·`override_note`):
+        ⑴ 값을 덮고, ⑵ **덮었다는 사실과 사유를 함께 남기고**, ⑶ 화면과
+        산출물이 「직접 입력」이라고 밝힌다. 자동이 낸 값과 사람이 넣은 값을
+        같은 얼굴로 두지 않는 것이 이 방식의 요점이다.
+
+        ★단위가 둘인 이유는 문제의 성격이 다르기 때문이다:
+          · 부속 판정 — **자리(노드·배관)** 단위. 기하가 자리마다 달라 못 묶는다.
+          · 등가길이 — **(종류, 호칭경) 쌍** 단위. 라이브러리 구멍이라 한 번
+            채우면 그 쌍을 쓰는 배관이 한꺼번에 풀린다.
+
+        ★여기서 «판정» 을 하지 않는다. 어느 자리가 미해결인지는 엔진이 정하고
+          (`build_fittings`), 이 값은 그 자리에만 쓰인다. F 가 다시 판정하면
+          규칙이 두 벌이 되어 언젠가 갈린다.
+
+        body: {sid, kind: [{node, pipe, kind, note}], eq_len: [{kind, dia, m, note}]}
+              칸을 안 보내면 그 갈래는 그대로 둔다. 빈 배열을 보내면 지운다.
+        표를 다시 확정해야 값이 산출에 들어간다 — 그 사실을 응답에 실어 준다.
+        """
+        cur = dict(sess.get("fitting_overrides") or {})
+        for key, need in (("kind", ("node", "pipe", "kind")),
+                          ("eq_len", ("kind", "dia", "m"))):
+            if key not in body:
+                continue
+            rows = body.get(key)
+            if rows is None:
+                rows = []
+            if not isinstance(rows, list) or len(rows) > 500:
+                return _fail(f"{key} 목록이 올바르지 않습니다 (최대 500).")
+            clean = []
+            for r in rows:
+                if not isinstance(r, dict):
+                    return _fail(f"{key} 항목은 객체여야 합니다.")
+                if any(str(r.get(n) or "").strip() == "" for n in need):
+                    return _fail(f"{key} 항목에 {', '.join(need)} 가 다 있어야 합니다.")
+                row = {n: r.get(n) for n in need}
+                if key == "eq_len":
+                    try:
+                        row["dia"] = int(r["dia"])
+                        row["m"] = float(r["m"])
+                    except (TypeError, ValueError):
+                        return _fail("호칭경은 정수, 등가길이는 숫자여야 합니다.")
+                    if row["m"] < 0:
+                        return _fail("등가길이는 음수일 수 없습니다.")
+                note = str(r.get("note") or "").strip()
+                if len(note) > 200:
+                    return _fail("사유가 너무 깁니다 (200자).")
+                row["note"] = note
+                clean.append(row)
+            cur[key] = clean
+        sess["fitting_overrides"] = cur
+        n_k, n_e = len(cur.get("kind") or ()), len(cur.get("eq_len") or ())
+        print(f"[설계] 직접 입력 — 부속 {n_k}자리 · 등가길이 {n_e}쌍 "
+              f"(표를 다시 확정해야 산출에 들어간다)")
+        return jsonify({
+            "ok": True, "overrides": cur,
+            "counts": {"kind": n_k, "eq_len": n_e},
+            # 표시가 아니라 «값» 이 바뀌는 일이다 — 다시 확정하라고 분명히 말한다.
+            "needs_rebuild": bool(sess.get("design")),
+            "message": ("직접 입력을 저장했습니다 — "
+                        "「표 확정」을 다시 눌러야 산출에 반영됩니다."),
+        })
+
+    @app.get("/api/module-f/design/fitting-override")
+    @route_session()
+    def module_f_design_fitting_override_get(sess, body):
+        """지금 저장된 직접 입력 + **고를 수 있는 부속 종류**.
+
+        ★종류를 자유 입력으로 두면 안 된다. 라이브러리에 없는 이름을 넣으면
+          그 부속의 등가길이가 다시 «미해결» 이 된다(실측: 「엘베」라고 적었더니
+          부속 판정 불가 3→2 로 줄면서 등가길이 미해결이 0→1 로 늘었다).
+          그래서 엔진이 아는 이름만 내려보내고 화면은 그중에서 고르게 한다.
+
+        「직선 — 부속 없음」도 정답의 하나다. 22.5° 미만은 45° 엘보보다 직선에
+        가깝지만 collinear merge 가 흡수를 거부한 각이라 프로그램이 단정할 수
+        없어 판정 불가로 셌다 — 사람은 도면을 보고 단정할 수 있다.
+        """
+        kinds = [{"value": "none", "label": "직선 — 부속 없음"}]
+        try:
+            import sys as _s
+            core = str(Path(__file__).resolve().parents[2] / "core")
+            if core not in _s.path:
+                _s.path.append(core)
+            import fitting_rules as fr
+            kinds += [
+                {"value": fr.ELBOW_45, "label": "45° 엘보"},
+                {"value": fr.ELBOW_90, "label": "90° 엘보"},
+                {"value": fr.TEE, "label": "티"},
+            ]
+        except Exception as exc:  # noqa: BLE001 — 목록을 못 읽어도 조회는 된다
+            print(f"[설계] 부속 종류 목록을 못 읽었습니다: {exc}")
+        cur = dict(sess.get("fitting_overrides") or {})
+        applied = ((sess.get("design") or {}).get("tables"))
+        applied = (getattr(applied, "unresolved", None) or {}).get("applied") or []
+        return jsonify({"ok": True, "overrides": cur, "applied": applied,
+                        "kinds": kinds})
 
     @app.get("/api/module-f/design/preview")
     @route_session()

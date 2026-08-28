@@ -98,7 +98,7 @@ def _is_vertical(a, b) -> bool:
 
 
 def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
-                   node_z=None) -> dict:
+                   node_z=None, overrides=None) -> dict:
     """배관마다 부속 목록과 등가길이 합.
 
     `net`     : 제한 전개 kfp dict
@@ -107,6 +107,20 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
     `parents` : {node_id: 상류 node_id} — 급수원 BFS 의 부모. 없으면 티 판정이
                 「상류를 모름」이 되어 전부 티로 두고 판정 불가로 센다.
     `node_z`  : {node_id: 표고} — 없으면 전부 0 으로 본다.
+    `overrides`: 사람이 손으로 채운 값. 규칙이 못 가린 자리에만 쓴다 —
+                 **판정을 덮어쓰지 않는다.** 자동이 답을 낸 자리는 건드리지
+                 않으므로, 이 인자를 줘도 «규칙이 옳게 판정한 값» 은 안 바뀐다::
+
+                     {"kind":   [{"node","pipe","kind","note"}],   # 자리 단위
+                      "eq_len": [{"kind","dia","m","note"}]}       # (종류,호칭경) 쌍
+
+                 단위가 다른 이유는 문제의 성격이 다르기 때문이다. 부속 판정은
+                 자리마다 기하가 달라 묶을 수 없고, 등가길이는 «라이브러리에
+                 그 호칭경이 없다» 는 구멍이라 쌍을 한 번 채우면 그 쌍을 쓰는
+                 배관이 한꺼번에 풀린다.
+
+                 쓴 것은 `applied_overrides` 로 돌려준다 — 자동이 낸 값과
+                 사람이 넣은 값을 같은 얼굴로 두지 않기 위해서다.
 
     ★평면 좌표만으로는 **세로 구간을 판정할 수 없다**. `bearing_deg` 는 같은 점에
       대해 `atan2(0,0)=0`(동쪽)을 돌려주므로, 헤드 접속관처럼 위아래로만 가는
@@ -124,6 +138,30 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
     pipes = (net or {}).get("pipe_data") or {}
     parents = parents or {}
     node_z = node_z or {}
+
+    # 사람이 채운 값 — 찾기 쉬운 표로 바꿔 둔다. 값이 숫자가 아니거나 칸이
+    # 비면 «없는 것» 으로 본다: 잘못 넣은 값을 조용히 계산에 넣지 않는다.
+    ov = overrides or {}
+    ov_kind: dict = {}
+    for r in (ov.get("kind") or ()):
+        k = str((r or {}).get("kind") or "").strip()
+        if k:
+            ov_kind[(str(r.get("node")), str(r.get("pipe")))] = (k, r.get("note"))
+    # ★「직선 — 부속 없음」도 사람이 낼 수 있는 정답이다. 22.5° 미만은 45° 엘보
+    #   보다 직선에 가깝지만, collinear merge 가 흡수를 거부한 각이라 프로그램이
+    #   단정할 수 없어 판정 불가로 셌다(fitting_rules 주석). 사람은 도면을 보고
+    #   단정할 수 있으므로 그 답을 받는다 — 부속을 «안 다는» 것으로 해결된다.
+    NO_FITTING = "none"
+    ov_eq: dict = {}
+    for r in (ov.get("eq_len") or ()):
+        try:
+            m = float((r or {}).get("m"))
+        except (TypeError, ValueError):
+            continue
+        if m < 0:
+            continue
+        ov_eq[(str(r.get("kind")), int(r.get("dia")))] = (m, r.get("note"))
+    applied_overrides: list = []
 
     def at(nid):
         xy = node_xy.get(nid)
@@ -182,6 +220,18 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
                         n_straight += 1
                         continue
                     kinds, bad = fr.elbow_fittings([ang])
+                    if bad:
+                        # 사람이 이 자리를 채웠으면 그것을 쓴다. 규칙이 답을
+                        # 낸 자리(bad == 0)에는 손대지 않는다.
+                        hit = ov_kind.get((str(nid), str(pid)))
+                        if hit:
+                            if hit[0] != NO_FITTING:
+                                kinds = list(kinds) + [hit[0]] * int(bad)
+                            bad = 0
+                            applied_overrides.append(
+                                {"what": "kind", "node": str(nid),
+                                 "pipe": str(pid), "kind": hit[0],
+                                 "note": hit[1]})
                     unresolved_kind += bad
                     if bad:
                         unresolved_kind_items.append(
@@ -211,6 +261,20 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
             if len(flat_downs) < 2:
                 continue
             labels, bad = fr.tee_fittings(here, up_xy, flat_downs)
+            if bad:
+                # 분기는 «자리» 가 단위다 — 대표 배관으로 찾는다. 사람이 고른
+                # 종류를 그대로 단다(티로 굳히지 않는다 — 직류/분류가 갈린다).
+                rep = str(flat_downs[0][0])
+                hit = ov_kind.get((str(nid), rep))
+                if hit:
+                    if hit[0] != NO_FITTING:
+                        for _ in range(int(bad)):
+                            per_pipe[rep]["fittings"].append(hit[0])
+                            counts[hit[0]] = counts.get(hit[0], 0) + 1
+                    applied_overrides.append(
+                        {"what": "kind", "node": str(nid), "pipe": rep,
+                         "kind": hit[0], "note": hit[1]})
+                    bad = 0
             unresolved_kind += bad
             if bad:
                 # 분기는 «자리» 가 단위다 — 어느 갈래인지까지는 규칙이 못 가른
@@ -235,6 +299,15 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
         total = 0.0
         for kind in rec["fittings"]:
             L = None if dia is None else equivalent_length_m(lib, kind, dia)
+            if L is None and dia is not None:
+                # 라이브러리 구멍을 사람이 채웠으면 그 값을 쓴다. 라이브러리에
+                # 값이 «있는» 자리는 건드리지 않는다 — 덮어쓰기가 아니라 채우기다.
+                hit = ov_eq.get((str(kind), int(dia)))
+                if hit:
+                    L = hit[0]
+                    applied_overrides.append(
+                        {"what": "eq_len", "kind": str(kind), "dia": int(dia),
+                         "m": hit[0], "note": hit[1], "pipe": str(pid)})
             if L is None:
                 unresolved_length += 1
                 unresolved_length_items.append(
@@ -251,6 +324,11 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
               f"호칭경 값이 없다(0 으로 채우지 않았다).")
     if unresolved_kind:
         print(f"[G4] 부속 판정 불가 {unresolved_kind}건 — 지어내지 않고 셌다.")
+    if applied_overrides:
+        n_k = sum(1 for a in applied_overrides if a["what"] == "kind")
+        n_e = sum(1 for a in applied_overrides if a["what"] == "eq_len")
+        print(f"[G4] ★직접 입력 적용 — 부속 {n_k}자리 · 등가길이 {n_e}건. "
+              f"자동이 못 가린 자리에만 썼다.")
     return {"per_pipe": per_pipe, "counts": counts,
             "straight": n_straight,
             "unresolved_kind": unresolved_kind,
@@ -259,6 +337,8 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
             #   개수는 여전히 위에서만 정해지므로 목록과 어긋날 수 없다.
             "unresolved_kind_items": unresolved_kind_items,
             "unresolved_length_items": unresolved_length_items,
+            # 사람이 넣은 값을 쓴 자리 — 자동이 낸 값과 같은 얼굴로 두지 않는다.
+            "applied_overrides": applied_overrides,
             "unresolved_pairs": [{"kind": k, "dia": (d if d >= 0 else None),
                                   "n": n}
                                  for (k, d), n in sorted(unresolved_pairs.items())]}

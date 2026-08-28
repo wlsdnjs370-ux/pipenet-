@@ -103,7 +103,8 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
                         excluded_heads=0, board_pts=None,
                         default_schedule=None,
                         schedule_by_pipe=None,
-                        tree_loads=None) -> PipeTablesG:
+                        tree_loads=None,
+                        fitting_overrides=None) -> PipeTablesG:
     """제한 전개 망 → 5개 테이블. 지시서 §1 공개 시그니처.
 
     `bores` / `fittings` 는 G3 · G4 결과를 받는다. 없으면 여기서 만들지 않고
@@ -147,7 +148,8 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
     if fittings is None:
         # 표고를 함께 넘긴다 — 세로 구간은 평면 좌표만으로 판정할 수 없다(§G19).
         fittings = build_fittings(net, node_xy, bores, parents=parent,
-                                  node_z=node_z)
+                                  node_z=node_z,
+                                  overrides=fitting_overrides)
 
     # ── ① 노드표 — BFS 순서대로 번호. 뿌리가 Input.
     label_of: dict = {}
@@ -255,6 +257,14 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         # 같은 자리에서 나오므로 둘이 어긋날 수 없다.
         ("부속 판정 불가", str(fittings.get("unresolved_kind", 0))),
         ("등가길이 미해결", str(fittings.get("unresolved_length", 0))),
+        # ★사람이 넣은 값을 쓴 자리는 **산출물에도** 남긴다. 자동이 낸 값과
+        #   같은 얼굴로 두면, 나중에 그 수치를 누가 정했는지 알 수 없다.
+        ("직접 입력 — 부속 판정",
+         str(sum(1 for a in (fittings.get("applied_overrides") or ())
+                 if a.get("what") == "kind"))),
+        ("직접 입력 — 등가길이",
+         str(sum(1 for a in (fittings.get("applied_overrides") or ())
+                 if a.get("what") == "eq_len"))),
         ("루프 잔여 배관(표 꼬리)", str(len(off_tree))),
         # ★B4 1안 — 전개가 못 붙인 헤드는 후보에서 뺐다. 조용히 빼면 「더 불리한
         #   헤드가 있는데 못 본 채」 수리계산이 나간다. 산출물에도 남긴다.
@@ -266,6 +276,8 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         "kind_items": list(fittings.get("unresolved_kind_items") or ()),
         "length_items": list(fittings.get("unresolved_length_items") or ()),
         "pairs": list(fittings.get("unresolved_pairs") or ()),
+        # 사람이 넣은 값을 쓴 자리 — 화면이 「직접 입력」이라고 밝힐 재료다.
+        "applied": list(fittings.get("applied_overrides") or ()),
     }
     return tbl
 

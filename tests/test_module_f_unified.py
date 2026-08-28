@@ -688,6 +688,95 @@ def test_미해결_목록은_엔진이_센_그_자리에서_나온다():
         assert f'"{key}"' in src
 
 
+def test_직접_입력은_못_가린_자리에만_쓰인다():
+    """[§18] ★가장 중요한 안전 성질 — 규칙이 낸 값은 안 바뀐다.
+
+    사람이 한 자리를 채웠다고 산출 전체가 조용히 달라지면 안 된다. 그래서
+    덮어쓰기 조회는 «판정 불가일 때» 안에서만 일어난다. 소스로 못 박는다 —
+    조회가 그 밖으로 나가는 순간 «채우기» 가 «덮어쓰기» 로 바뀐다.
+    """
+    import inspect
+    import re as _re
+
+    from services.cad_import.design import fitting
+
+    src = inspect.getsource(fitting.build_fittings)
+    for probe in ("ov_kind.get(", "ov_eq.get("):
+        i = src.index(probe)
+        # 그 줄 앞쪽 400자 안에 «미해결일 때» 라는 조건이 있어야 한다.
+        before = src[max(0, i - 400):i]
+        assert _re.search(r"if bad:|if L is None and dia is not None:", before), \
+            f"{probe} 가 «판정 불가» 밖에서 불린다"
+
+
+def test_직접_입력은_아는_종류만_고르게_한다():
+    """자유 입력이면 라이브러리에 없는 이름이 들어와 등가길이가 다시 미해결이 된다.
+
+    실측으로 겪었다 — 「엘베」라고 적었더니 부속 판정 불가는 3→2 로 줄면서
+    등가길이 미해결이 0→1 로 늘었다. 그래서 서버가 고를 수 있는 목록을 준다.
+    """
+    import inspect
+
+    from routes.module_f import api_design
+
+    src = inspect.getsource(api_design)
+    i = src.index("def module_f_design_fitting_override_get")
+    seg = src[i:i + 2000]
+    assert '"kinds"' in seg
+    assert "ELBOW_45" in seg and "ELBOW_90" in seg and "TEE" in seg
+    # 「직선 — 부속 없음」도 정답의 하나다(22.5° 미만).
+    assert '"none"' in seg and "직선" in seg
+
+
+def test_직접_입력은_산출물에도_남는다():
+    """자동이 낸 값과 사람이 넣은 값을 같은 얼굴로 두지 않는다(모듈 A 방식)."""
+    import inspect
+
+    from services.cad_import.design import tables
+
+    src = inspect.getsource(tables.build_design_tables)
+    assert "직접 입력 — 부속 판정" in src
+    assert "직접 입력 — 등가길이" in src
+    # 사유도 함께 남아야 한다 — 「누가 왜 정했나」가 값과 같이 있어야 한다.
+    fsrc = inspect.getsource(
+        __import__("services.cad_import.design.fitting",
+                   fromlist=["build_fittings"]).build_fittings)
+    assert '"note"' in fsrc and "applied_overrides" in fsrc
+
+
+def test_직접_입력_라우트가_엉터리_값을_막는다():
+    """빈 칸·음수·숫자 아닌 값이 조용히 계산에 들어가면 안 된다."""
+    import importlib
+
+    os.environ.setdefault("LOGIN_PASSWORD", "probe")
+    srv = importlib.import_module("대조 서버")
+    srv.app.config["TESTING"] = True
+    with srv.app.test_client() as c:
+        with c.session_transaction() as s:
+            s["authed"] = True
+        from routes.module_f import jobs
+        sess = jobs._new_session()
+        sid = sess["id"]
+        bad = [
+            {"kind": [{"node": "N1", "pipe": "", "kind": "elbow"}]},
+            {"eq_len": [{"kind": "elbow", "dia": "가나", "m": 1.0}]},
+            {"eq_len": [{"kind": "elbow", "dia": 40, "m": -1}]},
+            {"kind": [{"node": "N1", "pipe": "P1", "kind": "elbow",
+                       "note": "x" * 201}]},
+        ]
+        for body in bad:
+            r = c.post("/api/module-f/design/fitting-override",
+                       json={"sid": sid, **body})
+            assert r.status_code == 400, (body, r.get_json())
+        # 옳은 값은 통과하고, «다시 확정하라» 고 말한다.
+        r = c.post("/api/module-f/design/fitting-override", json={
+            "sid": sid,
+            "kind": [{"node": "N1", "pipe": "P1", "kind": "none",
+                      "note": "현장 확인"}]})
+        assert r.status_code == 200, r.get_json()
+        assert "표 확정" in (r.get_json() or {}).get("message", "")
+
+
 def test_미해결_목록이_표까지_실려_온다():
     """엔진이 남겨도 표가 안 들고 오면 화면은 여전히 개수만 본다."""
     from services.cad_import.design.tables import PipeTablesG

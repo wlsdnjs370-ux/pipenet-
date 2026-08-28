@@ -391,6 +391,23 @@
     "rule": "/api/module-f/design/emit"
   },
   {
+    "endpoint": "module_f_design_fitting_override",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/design/fitting-override"
+  },
+  {
+    "endpoint": "module_f_design_fitting_override_get",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/design/fitting-override"
+  },
+  {
     "endpoint": "module_f_design_preview",
     "methods": [
       "GET",

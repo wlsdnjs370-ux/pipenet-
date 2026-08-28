@@ -77,8 +77,12 @@ def a_side():
         # A 의 실제 진입점 — 파일 내용 해시로 캐시하는 번들 파서.
         bundle = A.parse_dxf_bundle_cached(Path(src))
         ents = bundle.entities
-        # 레이어 카테고리는 A 의 이름 사전이 정한다(라우트도 이 값을 넘긴다).
-        layers = {ly.get("name"): A._categorize_layer(ly.get("name") or "")
+        # 레이어 카테고리는 «번들이 매긴 값» 을 그대로 쓴다 — A 의 라우트가
+        # 넘기는 것이 이것이다(remote30_prototype.py 의 Stage 0:
+        # `{ly["name"]: ly["auto_category"] for ly in bundle.layers}`).
+        # 이름으로 다시 매기면 파서 끝의 레이어 승격이 빠져, G 를 «A 가 실제로
+        # 내는 값이 아닌» 기준과 대조하게 된다.
+        layers = {ly.get("name"): (ly.get("auto_category") or "OTHER")
                   for ly in (bundle.layers or [])}
     except Exception as exc:      # noqa: BLE001
         return {"ok": False, "error": f"A 파싱 실패: {type(exc).__name__} {exc}"}

@@ -75,7 +75,11 @@ def run_recon(dxf, *, world=None, tag: str = "정찰") -> dict:
 
     print(f"[{tag}] 모듈 A 인식(R1~R5) 시작 — 도면을 A 방식으로 읽는 중…")
     bundle = A.parse_dxf_bundle_cached(Path(str(dxf)))
-    layers = {ly.get("name"): A._categorize_layer(ly.get("name") or "")
+    # ★번들이 이미 매긴 분류를 그대로 쓴다. 같은 dict 를 돌면서 이름으로 다시
+    #   매기면 파서 끝의 레이어 승격이 사라진다 — 그 분류가 곧바로 detect_heads
+    #   로 들어가므로 헤드 검출이 직접 손해를 본다(B1F 「6-소화-FLX (연결관
+    #   승격)」 28 entity 가 OTHER 로 되돌아갔다).
+    layers = {ly.get("name"): (ly.get("auto_category") or "OTHER")
               for ly in (bundle.layers or [])}
     heads = A.detect_heads(bundle.entities, layers)
 

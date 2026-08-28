@@ -55,9 +55,21 @@ def parse_plan(dxf_path):
     if not ents:
         raise AutoError("도면에서 도형을 읽지 못했습니다.")
 
+    # ★번들이 «이미 정한» 분류를 쓴다. 이름으로 다시 매기면 파서가 끝에 붙인
+    #   레이어 승격이 증발한다 — 위 도크스트링이 경고하는 그것이다. 실측:
+    #   `"<원이름> (배관 승격)"` 은 이름 사전이 우연히 PIPE 로 받아주지만
+    #   `"<원이름> (연결관 승격)"` 은 OTHER 로 떨어진다(B1F 28 entity ·
+    #   대명동 16). 연결관은 헤드를 가지관에 붙이는 선이라, 잃으면 그 헤드가
+    #   HEAD_DROP_MAX_MM 에 걸려 통째로 탈락한다.
+    #   이름 사전 폴백은 번들에 없는 이름에만 — 승격분은 번들에만 있다.
+    bundle_cat = {str(ly.get("name")): str(ly.get("auto_category") or "OTHER")
+                  for ly in (bundle.layers or ())}
     names = {str(e.get("l") or "0") for e in ents}
     layer_cat = {}
     for n in names:
+        if n in bundle_cat:
+            layer_cat[n] = bundle_cat[n]
+            continue
         try:
             layer_cat[n] = _categorize_layer(n)
         except Exception:  # noqa: BLE001 — 한 이름이 막혀도 나머지는 분류한다

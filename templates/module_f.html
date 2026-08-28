@@ -334,6 +334,13 @@
         <button id="ed-worst">최불리 선정</button>
         <button id="ed-worst-clear">해제</button>
       </div>
+      <!-- [F-10d · D-F10-5] 결과 위에서 고친 뒤 «다시 계산» 은 사람이 한 번만.
+           수정마다 자동으로 다시 돌리지 않는다 — 검출이 실측 ~18초라 클릭
+           하나가 18초짜리가 되어 버린다. -->
+      <div class="row hidden" id="ed-recalc-row">
+        <button id="ed-recalc" class="go">최불리 다시 계산</button>
+        <span class="tag" id="ed-edits">수정 0건</span>
+      </div>
       <!-- 영역 지정 — 모듈 A 의 zones -->
       <label class="chk"><input type="checkbox" id="ed-zone-arm">
         <span>영역으로 후보 가두기</span></label>

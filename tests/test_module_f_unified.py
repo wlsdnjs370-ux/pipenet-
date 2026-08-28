@@ -449,6 +449,96 @@ def test_선정_헤드는_동그라미다():
     assert "#ff3b3b" in html[j:j + 400], "앵커가 따로 강조되지 않는다"
 
 
+# ═══════════════════════════════════════════ F-10d. 결과 위 수정
+def test_수정을_세고_다시_계산하면_0으로_돌아온다(tmp_path):
+    """수용 기준 — 수정 3건 후 배지가 3건, 다시 계산 후 0.
+
+    ★수정마다 최불리를 다시 돌리지 않는다(D-F10-5). 검출이 실측 ~18초라
+      클릭 하나가 18초짜리가 되어 버린다.
+    """
+    import pytest
+
+    if not os.path.isfile(_DXF):
+        pytest.skip("표본 도면 없음")
+    c = _client(tmp_path)
+    sid, st = _build_edit(c, _DXF, conf=0.9)
+    x, y = _a_pipe_point(st)
+    c.post("/api/module-f/edit/anchor-click", json={"sid": sid, "x": x, "y": y})
+    assert _wait(c, sid)["state"] == "done"
+
+    def state():
+        return c.get(f"/api/module-f/edit/state?sid={sid}").get_json()["state"]
+
+    s0 = state()
+    assert s0["edits_since_worst"] == 0, "계산 직후인데 수정이 쌓여 있다"
+    assert s0.get("worst"), "최불리가 없다"
+
+    # 삭제 모드로 세 번 두드린다 — board 를 바꾸는 클릭이면 세어야 한다.
+    c.post("/api/module-f/edit/mode", json={"sid": sid, "mode": "삭제"})
+    pts = _pipe_points(st)
+    hit = 0
+    for (px, py) in pts:
+        if hit >= 3:
+            break
+        r = c.post("/api/module-f/edit/click",
+                   json={"sid": sid, "x": px, "y": py, "max_d": 300.0})
+        if (r.get_json() or {}).get("report"):
+            hit += 1
+    assert hit == 3, f"board 를 바꾸는 클릭이 {hit}번밖에 안 됐다"
+    s1 = state()
+    assert s1["edits_since_worst"] == 3, s1["edits_since_worst"]
+    # 낡은 corridor 를 «진짜처럼» 남기지 않는다 — 절점 번호가 어긋난다.
+    assert not s1.get("worst"), "낡은 최불리가 그대로 남았다"
+
+    # 다시 계산 — 픽은 그대로다(급수원·밸브를 다시 안 찍는다).
+    r = c.post("/api/module-f/edit/worst", json={"sid": sid, "k": 30})
+    assert r.status_code == 200, r.get_json()
+    s2 = state()
+    assert s2["edits_since_worst"] == 0, s2["edits_since_worst"]
+    assert s2.get("worst"), "다시 계산했는데 최불리가 없다"
+    assert len(s2["sources"]) == 1 and len(s2["valves"]) == 1, "픽이 사라졌다"
+
+
+def test_되돌리기도_수정으로_센다(tmp_path):
+    """되돌리기도 망을 바꾼다 — 세지 않으면 배지가 거짓말을 한다."""
+    import pytest
+
+    if not os.path.isfile(_DXF):
+        pytest.skip("표본 도면 없음")
+    c = _client(tmp_path)
+    sid, st = _build_edit(c, _DXF, conf=0.9)
+    x, y = _a_pipe_point(st)
+    c.post("/api/module-f/edit/anchor-click", json={"sid": sid, "x": x, "y": y})
+    assert _wait(c, sid)["state"] == "done"
+    c.post("/api/module-f/edit/undo", json={"sid": sid})
+    s = c.get(f"/api/module-f/edit/state?sid={sid}").get_json()["state"]
+    assert s["edits_since_worst"] >= 1, s["edits_since_worst"]
+
+
+def test_다시_계산은_자동이_아니다():
+    """D-F10-5 — 수정마다 worst 를 다시 돌리는 코드가 없어야 한다."""
+    html = _screen()
+    # 클릭 처리에서 곧바로 최불리를 부르면 그것이 자동 재실행이다.
+    i = html.index("async function editClick(")
+    seg = html[i:i + 1200]
+    assert "/edit/worst" not in seg, "클릭이 최불리를 자동으로 다시 돌린다"
+    # 다시 계산은 «사람이 누르는 단추» 다.
+    assert 'id="ed-recalc"' in html
+    assert '$("ed-recalc").onclick' in html
+    j = html.index('$("ed-recalc").onclick')
+    assert "runWorst(" in html[j:j + 200]
+    # 배지는 서버가 센 값을 그대로 쓴다.
+    assert "edits_since_worst" in html
+    # ★수정→다시 계산 왕복이 «화면 전환 없이» 되려면 셋이 한 패널에 있어야
+    #   한다: 손질 모드(살리기·제거) · 다시 계산 단추 · 배지.
+    i = html.index('id="panel-edit"')
+    j = html.index("</section>", i)
+    panel = html[i:j]
+    for frag in ('data-mode="이음"', 'data-mode="삭제"',
+                 'id="ed-recalc"', 'id="ed-edits"'):
+        assert frag in panel, f"{frag} 가 손질 패널 밖에 있다"
+
+
 # ═══════════════════════════════════════════ 정찰이 깨져도 흐름은 산다
 def test_정찰이_실패해도_찍기는_열린다():
     """수용 기준 — 모듈 A 가 아예 안 되는 도면에서도 «묻지 않고» 찍기로.

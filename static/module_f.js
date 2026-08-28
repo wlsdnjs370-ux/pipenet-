@@ -2401,6 +2401,12 @@
         : "") +
       (undef ? `<div class="kv"><b>변환 가능</b><span class="err">미지정 ${undef}개 — 막힘</span></div>`
              : `<div class="kv"><b>변환 가능</b><span class="ok">헤드 종류 확정</span></div>`);
+    // [F-10d] 마지막 계산 뒤 고친 건수 — 0 이면 배지를 아예 감춘다. 늘 떠
+    //   있으면 «지금 뭔가 밀려 있다» 는 신호가 아니라 장식이 된다.
+    const nEdits = e.edits_since_worst || 0;
+    $("ed-recalc-row").classList.toggle("hidden", !nEdits);
+    $("ed-edits").textContent = `마지막 계산 후 수정 ${nEdits}건`;
+
     // [F-10b] 화면 모드가 «원클릭» 이면 서버 모드로 덮지 않는다 — 원클릭은
     //   서버 모드가 아니라 둘을 한 번에 놓는 «행동» 이라 서버엔 이름이 없다.
     const uiMode = S.emode || e.mode;
@@ -2649,11 +2655,11 @@
     sel.classList.remove("hidden");
   }
 
-  $("ed-worst").onclick = async () => {
-    busy(true, "최불리 헤드 선정 중…");
+  async function runWorst(label) {
+    busy(true, label);
     try {
       const sheet = Number(($("ed-sheet") || {}).value || 0);
-      const k = Math.max(1, Math.min(200, Number($("ed-k").value || 30)));
+      const k = edK();
       const body = { sid: S.sid, k, sheet };
       const src = ($("ed-src") || {}).value;
       if (src) body.source = src;
@@ -2676,7 +2682,12 @@
       $("cv-worst-kfp").checked = true;
     } catch (err) { say(err.message, "err"); }
     finally { busy(false); }
-  };
+  }
+
+  $("ed-worst").onclick = () => runWorst("최불리 헤드 선정 중…");
+  // [F-10d] 결과 위에서 고친 뒤 — 픽은 그대로 두고 최불리만 다시 돌린다.
+  //   같은 몸통(`_compute_worst`)을 타므로 「최불리 선정」과 답이 같다.
+  $("ed-recalc").onclick = () => runWorst("고친 망으로 최불리를 다시 계산 중…");
 
   $("ed-worst-clear").onclick = async () => {
     try {

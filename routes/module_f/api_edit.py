@@ -21,6 +21,23 @@ from routes.module_f.views import _edit_state
 ANCHOR_CLICK_MAX_D_MM = 2000.0
 
 
+def _note_edit(sess: dict) -> None:
+    """[F-10d · D-F10-5] 「마지막 계산 후 수정 n건」을 센다.
+
+    수정할 때마다 최불리를 다시 돌리지 **않는다** — 검출이 실측 ~18초라 클릭이
+    18초짜리가 되어 버린다. 대신 몇 건을 고쳤는지 세어 두고 사람이 「다시 계산」
+    을 누를 때 한 번만 돈다.
+
+    ★낡은 corridor 를 «그대로 두고 흐리게» 두지는 않는다. corridor 는 절점
+      «인덱스» 로 board 를 가리키는데(`_worst_view`), 절점이 지워지면 그 번호가
+      다른 절점을 가리켜 **엉뚱한 망을 진짜처럼** 그리게 된다. 그래서 지우고,
+      대신 몇 건을 고쳤는지와 다시 계산할 자리를 화면에 남긴다.
+    """
+    sess["water_path"] = None
+    sess["worst"] = None
+    sess["worst_edits"] = int(sess.get("worst_edits") or 0) + 1
+
+
 def _wfail(msg: str, code: int = 400) -> dict:
     """최불리 계산의 실패를 «자료» 로 만든다 — 응답이 아니라.
 
@@ -117,8 +134,7 @@ def register(app):
         rep = es.click(x, y, max_d)
         if rep and rep.get("동작") not in ("헤드선택",):
             # 망이 바뀌면 앞서 잡아 둔 물길·최불리 선정은 더 이상 사실이 아니다.
-            sess["water_path"] = None
-            sess["worst"] = None
+            _note_edit(sess)
         return jsonify({"ok": True, "report": rep,
                         "state": _edit_state(sess)})
 
@@ -143,8 +159,7 @@ def register(app):
         es = sess["edit"]
         ok = es.undo()
         if ok:
-            sess["water_path"] = None
-            sess["worst"] = None
+            _note_edit(sess)
             # 자동 이음을 되돌렸을 수도 있다 — 지난 결과를 남겨두면 거짓말이 된다.
             sess["autojoin_report"] = None
         return jsonify({"ok": True, "undone": bool(ok),
@@ -196,8 +211,7 @@ def register(app):
         def job():
             rep = _autojoin_apply(es.board, scan)
             # 망이 바뀌었으니 앞서 잡아 둔 물길·최불리는 더 이상 사실이 아니다.
-            sess["water_path"] = None
-            sess["worst"] = None
+            _note_edit(sess)
             sess["autojoin"] = None
             sess["aj_seq"] = sess.get("aj_seq", 0) + 1
             sess["autojoin_report"] = rep
@@ -367,6 +381,12 @@ def register(app):
         sess["worst"] = w
         sess["worst_zones"] = w["zones"]      # 다시 누를 때 같은 영역을 쓴다
         sess["worst_k"] = k                   # [F-10b] 원클릭이 이 값을 쓴다
+        sess["worst_edits"] = 0               # [F-10d] 배지를 0 으로 되돌린다
+        # 다시 계산이 «같은 조건» 으로 돌 수 있게 기억한다 — 사람이 K·영역·
+        # 급수원을 다시 고르게 하면 그것 자체가 새 결정이 된다.
+        sess["worst_args"] = {"k": k, "sheet": sheet_no,
+                              "source": picked_tag,
+                              "zones": w["zones"]}
         return {"k": len(w["heads"]), "reachable": w["reachable"],
                 "far_m": w["far_m"], "near_m": w["near_m"],
                 "span_m": w.get("span_m", 0.0),
@@ -468,7 +488,10 @@ def register(app):
     @app.post("/api/module-f/edit/worst-clear")
     @route_session(_edit_session, post=True)
     def module_f_edit_worst_clear(sess, body):
+        # 사람이 «해제» 를 누른 것이라 수정 배지도 함께 지운다 — 셀 기준(마지막
+        # 계산)이 사라졌는데 「수정 3건」만 남으면 무엇에 대한 3건인지 모른다.
         sess["worst"] = None
+        sess["worst_edits"] = 0
         return jsonify({"ok": True, "state": _edit_state(sess)})
 
     @app.post("/api/module-f/edit/save")

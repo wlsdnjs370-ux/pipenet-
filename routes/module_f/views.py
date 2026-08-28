@@ -175,6 +175,10 @@ def _edit_state(sess: dict, full: bool = False) -> dict:
         "body_stat": sess.get("body_stat") or _body_stat(b),
         "palette": {"source": EDIT_SOURCE, "valve": EDIT_VALVE,
                     "wet": EDIT_WET_PIPE, "kinds": dict(KIND_COLORS)},
+        # [F-10d · D-F10-5] 마지막 최불리 계산 뒤로 몇 건을 고쳤나. 수정마다
+        # 다시 돌리지 않는 대신(검출 실측 ~18초) 이 수를 화면에 배지로 띄우고,
+        # 「다시 계산」은 사람이 한 번만 누른다.
+        "edits_since_worst": int(sess.get("worst_edits") or 0),
         # 이 이름들은 «안 바뀌었으니 들고 있던 것을 그대로 쓰라» 는 뜻이다.
         # 빈 배열만으로는 «비었다» 와 구별되지 않아 물길이 조용히 사라졌었다.
         "keep": keep,

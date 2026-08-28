@@ -173,10 +173,11 @@ def main() -> int:
             # 방식을 고르기 전에는 「도면 열기」 하나뿐 — 어느 길로 갈지 모른다.
             steps = page.eval_on_selector_all(
                 "#steps div", "els => els.map(e => e.textContent.trim())")
-            check("고르기 전 단계바는 «도면 열기» 뿐",
+            check("열기 전 단계바는 «도면 열기» 뿐",
                   steps == ["도면 열기"], " · ".join(steps))
-            check("방식 묻는 화면은 처음엔 안 보인다",
-                  not page.is_visible("#panel-method"))
+            # [F-10a · D-F10-1] 방식 질문 자체가 없어졌다.
+            check("방식 묻는 화면이 아예 없다",
+                  page.query_selector("#panel-method") is None)
             check("올리기는 처음부터 열려 있다",
                   not page.is_disabled("#btn-open"))
 
@@ -184,12 +185,11 @@ def main() -> int:
             slots = page.inner_text("#slots").strip()
             check("슬롯 자리 있음", bool(slots), slots[:50])
 
-            # ── 추출 방식 갈림 (A 자동 / E 수동)
-            check("방식 고르는 자리가 있다",
-                  page.query_selector("#panel-method") is not None)
-            check("자동·수동 단추가 있다",
-                  page.query_selector("#mth-auto") is not None
-                  and page.query_selector("#mth-manual") is not None)
+            # ── [D-F10-2] 자동 차선은 «고급» 안 한 줄로 남는다(엔드포인트 보존)
+            check("고급 카드가 있다",
+                  page.query_selector("#panel-advanced") is not None)
+            check("자동 차선 입구가 고급에 있다",
+                  page.query_selector("#adv-auto") is not None)
             check("자동 추출 패널이 있다",
                   page.query_selector("#panel-auto") is not None)
             for aid in ("au-anchor", "au-zone-arm", "au-heads", "au-run",
@@ -202,7 +202,7 @@ def main() -> int:
             #     그 자체가 「갈 수 없다」의 표현이다.)
             steps_now = page.eval_on_selector_all(
                 "#steps div", "els => els.map(e => e.textContent.trim())")
-            check("고르기 전에는 다음 단계 자체가 없다",
+            check("열기 전에는 다음 단계 자체가 없다",
                   steps_now == ["도면 열기"], " · ".join(steps_now))
             page.click("#steps div:nth-child(1)")
             page.wait_for_timeout(300)
@@ -324,8 +324,21 @@ def main() -> int:
                     chip = page.inner_text("#job-chip").strip()
                     check("제목 옆에 도는 단계가 뜬다",
                           bool(chip) and chip != "—", chip)
-                page.wait_for_selector("#panel-method:not(.hidden)",
-                                       timeout=120000)
+                # [F-10a · D-F10-1] 질문 없이 흐른다 — 정찰이 성하면 손질까지,
+                #   못 쓰겠으면 찍기까지. 둘 중 어디든 «사람 결정 0회» 다.
+                landed = None
+                for _ in range(900):          # 200ms × 900 = 180s
+                    page.wait_for_timeout(200)
+                    if page.is_visible("#panel-edit"):
+                        landed = "edit"
+                        break
+                    if page.is_visible("#panel-pick"):
+                        landed = "pick"
+                        break
+                check("불러오면 «묻지 않고» 흘러간다", landed is not None,
+                      f"도착 = {landed}")
+                check("방식 카드가 뜨지 않는다",
+                      page.query_selector("#panel-method") is None)
                 closed = False
                 for _ in range(90):
                     page.wait_for_timeout(500)
@@ -334,9 +347,7 @@ def main() -> int:
                         break
                 check("끝나면 다시 접힌다", closed,
                       page.inner_text("#job-line").strip()[:60])
-                check("불러오면 방식을 묻는다", page.is_visible("#mth-auto"))
-                # ★도면이 실제로 화면에 있어야 한다 — 방식을 고르기 전에
-                #   화면이 비어 있으면 무엇을 고르는지 모른 채 고르게 된다.
+                # ★도면이 실제로 화면에 있어야 한다.
                 drawn = page.evaluate(
                     """() => {
                       const c = document.getElementById('cv');
@@ -348,30 +359,37 @@ def main() -> int:
                       }
                       return lit;
                     }""")
-                check("방식을 고르기 전에 도면이 보인다", drawn > 500,
+                check("도착한 화면에 도면이 보인다", drawn > 500,
                       f"칠해진 픽셀 {drawn:,}")
-                check("올린 도면 이름이 뜬다",
-                      "선분" in page.inner_text("#mth-file"),
-                      page.inner_text("#mth-file").strip().replace("\n", " ")[:60])
-                # ★수동은 더 읽을 것이 없다 — 찍기판이 이미 섰다. 곧바로
-                #   찍기 단계로 넘어가야 한다(잡 없음).
-                page.click("#mth-manual")
-                page.wait_for_selector("#panel-pick:not(.hidden)", timeout=30000)
+                note = page.inner_text("#start-note").strip().replace("\n", " ")
+                check("무엇으로 시작했는지 배너가 말한다", bool(note) and note != "—",
+                      note[:70])
+                page.click('#panel-advanced h2.fold')
+                check("올린 도면 이름이 고급에 뜬다",
+                      "선분" in page.inner_text("#adv-file"),
+                      page.inner_text("#adv-file").strip().replace("\n", " ")[:60])
                 steps_m = page.eval_on_selector_all(
                     "#steps div", "els => els.map(e => e.textContent.trim())")
-                check("수동은 기다림 없이 찍기로 간다",
+                check("기본 흐름은 수동 경로 그대로다",
                       steps_m == ["도면 열기", "찍기", "손질", "변환",
                                   "수리계산", "통합"],
                       " · ".join(steps_m))
 
-                # ── 자동 방식으로 같은 도면을 다시 연다 — 단계바가 갈리나
+                # ── [D-F10-2] 자동 차선은 고급 안 한 줄로 살아 있다
                 page.reload(wait_until="load")
                 page.wait_for_timeout(700)
                 page.set_input_files("#dxf", str(small))
                 page.click("#btn-open")
-                page.wait_for_selector("#panel-method:not(.hidden)",
-                                       timeout=120000)
-                page.click("#mth-auto")
+                # ★«도착했고 또 조용해질 때까지» 기다린다. 화면만 보고 누르면
+                #   아직 도는 잡 위에 클릭을 얹게 되고, 그 클릭은 삼켜진다.
+                for _ in range(1800):
+                    page.wait_for_timeout(200)
+                    if (page.is_visible("#panel-edit")
+                            or page.is_visible("#panel-pick")) \
+                            and page.is_hidden("#busy"):
+                        break
+                page.click('#panel-advanced h2.fold')
+                page.click("#adv-auto")
                 # ★단계바는 라디오를 고르는 순간 이미 바뀐다 — 그것으로 기다리면
                 #   파싱이 끝나기 전에 다음으로 넘어간다(실측으로 헤드 0개가 났다).
                 #   실제로 열렸는지는 자동 패널이 뜨는 것으로 본다.
@@ -656,89 +674,84 @@ def main() -> int:
                             break
                     check("자동 경로 산출이 실제로 저장된다", saved,
                           page.inner_text("#status").strip()[:70])
-            # ── [F-8c] 혼합 차선 — 업로드 → 카드 → 「인식 결과로 찍기 시작」
+            # ── [F-10a] 기본 흐름 — 업로드 한 번으로 손질까지, 질문 0
             if small is not None:
-                print("\n  ── [F-8c] 혼합 차선")
+                print("\n  ── [F-10a] 기본 흐름 (질문 없음)")
                 page.reload(wait_until="load")
                 page.wait_for_timeout(700)
                 clicks = 0
                 page.set_input_files("#dxf", str(small))   # 파일 고르기는 클릭 아님
                 page.click("#btn-open"); clicks += 1
-                page.wait_for_selector("#panel-method:not(.hidden)",
-                                       timeout=120000)
+                # 채택·조립이 잇달아 도는 동안 기다린다. 도착지는 «도면이»
+                # 정한다 — 정찰이 성하면 손질, 못 쓰겠으면 찍기. 어느 쪽이든
+                # 사람 결정은 0회이고, 그 0회가 이 항목의 수용 기준이다.
+                got_edit = False
+                landed = None
+                for _ in range(1800):       # 200ms × 1800 = 360s
+                    page.wait_for_timeout(200)
+                    if page.is_visible("#panel-edit") and page.is_hidden("#busy"):
+                        got_edit, landed = True, "손질"
+                        break
+                    if page.is_visible("#panel-pick") and page.is_hidden("#busy"):
+                        landed = "찍기"
+                        break
+                check("★올린 뒤 «사람 결정 0회» 로 도착한다",
+                      landed is not None and clicks == 1,
+                      f"클릭 {clicks}회(불러오기뿐) · 도착 {landed}")
+                page.screenshot(path=str(SHOTS / "0_기본흐름_도착.png"))
 
-                # 카드가 정찰 수치로 채워졌나 — 고르기 «전» 에 보여야 한다.
-                rc = page.inner_text("#mth-recon").strip().replace("\n", " ")
-                check("카드에 정찰 수치가 뜬다",
+                note = page.inner_text("#start-note").strip().replace("\n", " ")
+                check("시작 배너가 무엇으로 왔는지 말한다",
+                      "자동 인식" in note or "직접 찍어" in note, note[:80])
+                if got_edit:
+                    check("손질로 갔으면 배너가 되돌릴 길을 알린다",
+                          "찍기" in note, note[:80])
+                else:
+                    # 폴백이면 «왜» 가 있어야 한다 — 묻지 않았으므로 화면이
+                    # 대신 말해야 사람이 다음 수를 안다(D-F10-1).
+                    check("찍기로 갔으면 배너가 사유를 말한다",
+                          "직접 찍" in note or "찾지 못했" in note, note[:80])
+
+                # [D-F10-2] 고급 — 정찰 수치와 채택 기준이 여기 산다.
+                page.click('#panel-advanced h2.fold')
+                rc = page.inner_text("#adv-recon").strip().replace("\n", " ")
+                check("고급에 정찰 수치가 뜬다",
                       "헤드 후보" in rc and "배관 묶음" in rc, rc[:80])
-                page.screenshot(path=str(SHOTS / "0_방식카드.png"))
-                # ★설명이 몇 줄로 접히는가 — 칩이 꼬리에 매달리면 한 줄이 더
-                #   생기고 줄이 꼬여 보인다. 높이로 잰다(11px · 줄간 1.55).
-                lanes = page.evaluate(
-                    """() => [...document.querySelectorAll('#panel-method .lane > p')]
-                         .filter(p => p.id !== 'mth-mixed-why')
-                         .map(p => ({h: Math.round(p.getBoundingClientRect().height),
-                                     t: p.textContent.trim().slice(0, 14)}))""")
-                worst = max((l["h"] for l in lanes), default=0)
-                check("차선 설명이 두 줄 안에 든다", worst <= 40,
-                      " · ".join(f"{l['t']}…{l['h']}px" for l in lanes))
-                # 표 칩이 설명과 같은 줄에서 시작하는가(왼쪽 고정 칸)
-                tag_ok = page.evaluate(
-                    """() => [...document.querySelectorAll('#panel-method .lane > p')]
-                         .filter(p => p.querySelector('.tag'))
-                         .every(p => {
-                           const t = p.querySelector('.tag').getBoundingClientRect();
-                           const s = p.querySelector('span:not(.tag)')
-                                      .getBoundingClientRect();
-                           return t.left < s.left && Math.abs(t.top - s.top) < 8;
-                         })""")
-                check("표가 설명 왼쪽에 나란히 선다", bool(tag_ok))
-                check("세 차선 단추가 다 있다",
-                      page.is_visible("#mth-auto")
-                      and page.is_visible("#mth-mixed")
-                      and page.is_visible("#mth-manual"))
                 confs = page.eval_on_selector_all(
-                    "#mth-conf option", "els => els.map(e => e.value)")
+                    "#adv-conf option", "els => els.map(e => e.value)")
                 check("채택 기준을 화면에서 고를 수 있다 (D-F8-4)",
                       confs and confs[0] == "0.9", " · ".join(confs))
                 check("기본 기준은 0.9 다 (D-F8-4)",
-                      page.input_value("#mth-conf") == "0.9")
-
-                # ★기준에 맞는 후보가 0개면 단추가 잠겨야 한다 — 눌러도 아무
-                #   일이 없는 단추는 «고장» 으로 읽힌다. A 는 알려진 블록 참조만
-                #   0.95 를 주므로 헤드를 레이어에 직접 그린 도면은 높음 0 이다.
-                why0 = page.inner_text("#mth-mixed-why").strip()
-                # 사유 문구도 두 줄 안에 들어야 한다 — 마지막 낱말 하나만
-                # 다음 줄로 넘어가면 카드가 어수선해 보인다.
-                wh = page.evaluate(
-                    "() => Math.round(document.getElementById('mth-mixed-why')"
-                    ".getBoundingClientRect().height)")
-                check("채택 기준 안내가 두 줄 안에 든다", wh <= 40,
-                      f"{wh}px · {why0[:40]}")
+                      page.input_value("#adv-conf") == "0.9")
+                why0 = page.inner_text("#adv-conf-why").strip()
                 if "후보가 없습니다" in why0:
                     check("맞는 후보가 0개면 잠기고 사유를 말한다",
-                          page.is_disabled("#mth-mixed"), why0[:70])
+                          page.is_disabled("#adv-readopt"), why0[:70])
                 else:
                     check("기본 기준으로 찍을 것이 있다",
-                          not page.is_disabled("#mth-mixed"), why0[:70])
-
-                # 기준을 낮추면 대상이 늘고 단추가 열린다.
-                page.select_option("#mth-conf", "0.75")
+                          not page.is_disabled("#adv-readopt"), why0[:70])
+                page.select_option("#adv-conf", "0.75")
                 page.wait_for_timeout(200)
-                why1 = page.inner_text("#mth-mixed-why").strip()
+                why1 = page.inner_text("#adv-conf-why").strip()
                 check("기준을 바꾸면 예정 수가 따라간다", why1 != why0, why1[:60])
-                check("기준을 낮추면 혼합이 열린다",
-                      not page.is_disabled("#mth-mixed"), why1[:70])
 
-                page.click("#mth-mixed"); clicks += 1
-                page.wait_for_selector("#panel-pick:not(.hidden)",
-                                       timeout=180000)
-                for _ in range(900):        # 100ms × 900 = 90s
-                    page.wait_for_timeout(100)
-                    if page.is_hidden("#busy"):
-                        break
-                check("올린 뒤 클릭 두 번으로 찍기 화면까지", clicks == 2,
-                      f"{clicks}번")
+                # [D-F10-3] 확정 지점은 손질이지만, 되돌리기로 찍기까지 내려간다.
+                if got_edit:
+                    page.click("#steps div:nth-child(2)")
+                    page.wait_for_selector("#panel-pick:not(.hidden)",
+                                           timeout=30000)
+                check("단계바로 찍기까지 내려간다",
+                      page.is_visible("#panel-pick"))
+
+                # ★기준을 낮춰 «다시 채택» — 자동으로 낮추지 않는 것이 규약이라
+                #   (D-F8-4 기본 0.9 유지), 낮추는 것은 사람의 몫이다. 이 길이
+                #   기본 흐름과 같은 채택 경로(adoptRun)를 탄다.
+                if not page.is_disabled("#adv-readopt"):
+                    page.click("#adv-readopt")
+                    for _ in range(1800):
+                        page.wait_for_timeout(200)
+                        if page.is_visible("#panel-pick") and page.is_hidden("#busy"):
+                            break
 
                 info = page.inner_text("#pk-adopt-info").strip().replace("\n", " ")
                 check("채택 결과가 화면에 남는다",

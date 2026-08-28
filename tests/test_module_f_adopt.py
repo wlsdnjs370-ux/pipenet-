@@ -918,22 +918,44 @@ def _script() -> str:
     return "\n".join(parts)
 
 
-def test_방식_카드에_세_차선이_있다():
+def test_방식_질문이_화면에서_사라졌다():
+    """[F-10a · D-F10-1] 「추출 방식」 카드는 없앴다.
+
+    업로드 시점에는 이 도면이 자동으로 될지 사람도 모른다 — 답할 수 없는
+    질문이었다. 차선은 «코드» 로 살아 있고(아래 시험), UI 개념으로만 소멸했다.
+    """
     html = _script()
-    for bid in ("mth-auto", "mth-mixed", "mth-manual"):
-        assert f'id="{bid}"' in html, f"#{bid} 가 없다"
+    assert 'id="panel-method"' not in html
+    for bid in ("mth-auto", "mth-mixed", "mth-manual", "mth-conf"):
+        assert f'id="{bid}"' not in html, f"#{bid} 가 남아 있다"
+
+
+def test_차선은_코드로_살아_있다():
+    """[F-10a] 없앤 것은 질문뿐 — 엔드포인트는 하나도 안 없앴다.
+
+    이 시험이 F-10 의 핵심 보존 조건이다(지시서 §3). 화면을 합치되 코드는
+    합치지 않는다: A 의 자동 추출과 E 의 물길 판정은 「이어져 있다」의 정의가
+    달라, 그래프를 섞으면 G-BLOCKED B4(헤드 물닿음 0)가 재현된다.
+    """
+    html = _script()
+    for path in ("/api/module-f/pick/adopt", "/api/module-f/pick/suggest",
+                 "/api/module-f/slot/read"):
+        assert path in html, f"{path} 를 화면이 더는 안 부른다"
+    # 자동 차선 입구는 «고급» 안 한 줄로 남는다(D-F10-2).
+    assert 'id="adv-auto"' in html
+    assert 'readSlot("auto")' in html
 
 
 def test_카드에_정찰_수치_자리가_있다():
     html = _script()
-    assert 'id="mth-recon"' in html
+    assert 'id="adv-recon"' in html
     assert "renderRecon" in html and "loadRecon" in html
 
 
 def test_채택_기준을_화면에서_고른다():
-    """D-F8-4 — 기본 0.9, 화면에서 조절 가능."""
+    """D-F8-4 — 기본 0.9. 질문이 사라졌으므로 «설정» 으로 옮겼다(F-10a)."""
     html = _script()
-    assert 'id="mth-conf"' in html
+    assert 'id="adv-conf"' in html
     assert "const CONF_CHOICES" in html
     i = html.index("const CONF_CHOICES")
     seg = html[i:i + 260]
@@ -941,7 +963,7 @@ def test_채택_기준을_화면에서_고른다():
     assert 'sel.value = "0.9"' in html, "기본이 0.9 가 아니다"
 
 
-def test_맞는_후보가_0개면_혼합을_잠근다():
+def test_맞는_후보가_0개면_다시채택을_잠근다():
     """눌러도 아무 일이 안 일어나는 단추는 «고장» 으로 읽힌다.
 
     흔한 일이다 — A 는 알려진 블록 참조만 0.95 를 주므로 헤드를 레이어에 직접
@@ -950,18 +972,26 @@ def test_맞는_후보가_0개면_혼합을_잠근다():
     html = _script()
     i = html.index("function renderConfHint()")
     seg = html[i:i + 600]
-    assert '$("mth-mixed").disabled = n === 0;' in seg
+    assert '$("adv-readopt").disabled = n === 0;' in seg
     assert "후보가 없습니다" in seg, "왜 잠겼는지 안 말한다"
 
 
-def test_정찰이_실패하면_혼합만_잠근다():
-    """수동·자동 두 길은 인식과 무관하게 열려 있어야 한다."""
+def test_정찰이_실패하면_묻지_않고_찍기로_간다():
+    """[F-10a · D-F10-1] 실패해도 «사람에게 묻지 않는다» — 사유만 적는다.
+
+    예전에는 혼합 단추를 잠그고 사람이 다른 차선을 고르게 했다. 이제 고를
+    것이 없으므로, 갈림은 프로그램이 판단하고 화면은 왜 그리 갔는지 말한다.
+    """
     html = _script()
-    i = html.index('r.state === "none" || r.state === "error"')
-    seg = html[i:i + 600]
-    assert '$("mth-mixed").disabled = true;' in seg
-    assert "mth-manual" not in seg and "mth-auto" not in seg
-    assert "왜 잠겼는지" or "시작할 수 없습니다" in seg
+    i = html.index("function reconReady()")
+    seg = html[i:i + 900]
+    assert "배관 레이어를 찾지 못했습니다" in seg, "사유를 안 말한다"
+    assert "직접 찍어 주세요" in seg
+    # 갈림은 autoStart 안에서 «질문 없이» 끝난다.
+    j = html.index("async function autoStart()")
+    body = html[j:j + 900]
+    assert "reconReady()" in body
+    assert "startNote(gate.why, true)" in body
 
 
 def test_정찰_수치는_띠_칸으로_세운다():
@@ -977,23 +1007,9 @@ def test_정찰_수치는_띠_칸으로_세운다():
 def test_도면_이름은_한_줄로_자른다():
     """길면 카드를 밀어낸다 — 자르고 전체는 툴팁에 둔다."""
     html = _script()
-    assert 'class="fname" id="mth-file"' in html
+    assert 'class="fname" id="adv-file"' in html
     assert "text-overflow:ellipsis" in html
-    assert '$("mth-file").title = nm;' in html
-
-
-def test_모듈_표는_문장_꼬리에_안_매달린다():
-    """한글이 접히고 나면 테두리 칩이 꼬리처럼 남아 줄이 꼬여 보인다."""
-    html = _script()
-    i = html.index('<div class="lane">')
-    seg = html[i:i + 1400]
-    # 표가 설명 «앞» 에 오고, 설명은 제 span 안에 갇힌다
-    assert '<p><span class="tag">MODULE A</span><span>' in seg
-    assert '<p><span class="tag">A + E</span><span>' in seg
-    j = html.index("  .lane > p{")
-    css = html[j:j + 500]
-    assert "display:flex" in css
-    assert "flex:0 0 auto" in html[j:j + 700], "표가 같이 접힌다"
+    assert '$("adv-file").title = nm;' in html
 
 
 def test_한글이_단어_가운데서_안_잘린다():
@@ -1016,20 +1032,31 @@ def test_라벨은_안_쪼개진다():
     assert "text-overflow:ellipsis" in seg
 
 
-def test_혼합은_채택까지만_하고_멈춘다():
-    """D-F8-5 — commit 까지 자동으로 가지 않는다. 확정은 사람이 한다."""
+def test_확정_지점이_손질_화면으로_내려갔다():
+    """[D-F10-3] D-F8-5 개정 — «확정은 사람» 은 유지, 그 «자리» 가 옮겨졌다.
+
+    예전에는 찍기 화면에서 멈춰 사람이 「배관망 구성」을 눌렀다. 이제 조립까지
+    흘러가고, 확정은 결과(손질) 화면에서 한다. 검토가 필요하면 되돌리기로
+    찍기까지 내려간다 — 그래서 배너가 그 길을 알려야 한다.
+    """
     html = _script()
-    i = html.index('$("mth-mixed").onclick')
-    seg = html[i:i + 1400]
+    i = html.index("async function adoptRun(")
+    seg = html[i:i + 2000]
     assert "/api/module-f/pick/adopt" in seg
-    assert "pick/commit" not in seg, "사람 확정을 건너뛴다"
+    assert "/api/module-f/pick/commit" in seg, "조립까지 안 간다"
+    assert 'if (to !== "edit")' in seg, "언제 멈출지 고를 수 없다"
+    assert "「찍기」로 내려가 고칠 수 있습니다" in seg, "되돌릴 길을 안 알린다"
 
 
-def test_혼합은_수동_흐름을_쓴다():
-    """혼합은 찍기·손질을 그대로 밟는다 — 새 흐름을 만들지 않는다."""
+def test_기본_흐름은_수동_경로를_쓴다():
+    """기본 흐름은 찍기·손질을 그대로 밟는다 — 새 흐름을 만들지 않는다.
+
+    A 선정 결과를 E board 로 옮기는 코드를 만들지 않는다는 뜻이기도 하다
+    (지시서 §3 «그래프 이식 금지» · B4 실측).
+    """
     html = _script()
-    i = html.index('$("mth-mixed").onclick')
-    seg = html[i:i + 1400]
+    i = html.index("async function autoStart()")
+    seg = html[i:i + 1200]
     assert 'method: "manual"' in seg
     assert 'S.method = "manual"' in seg
 

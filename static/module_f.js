@@ -583,10 +583,12 @@
   // 흩어져 있어 패널을 하나 늘릴 때마다 빠뜨릴 자리가 늘었다.
   const STAGE_PANELS = {
     open: ["panel-open", "panel-resume"],
-    // 올린 뒤 방식을 묻는 자리 — 「도면 열기」 단계 안의 두 번째 화면이다.
-    method: ["panel-method"],
-    pick: ["panel-pick", "panel-layers"],
-    edit: ["panel-edit"],
+    // [F-10a] 「방식」 단계는 없앴다 — 물을 것이 없어졌다(D-F10-1).
+    //   시작 배너와 고급은 찍기·손질 양쪽에 붙는다: 자동으로 흘러온 길이라
+    //   사람이 고른 기억이 없으므로 화면이 무엇으로 시작했는지 말해 주고,
+    //   설정(채택 기준)과 자동 차선 입구는 접힌 채로 곁에 둔다.
+    pick: ["panel-start", "panel-pick", "panel-advanced", "panel-layers"],
+    edit: ["panel-start", "panel-edit", "panel-advanced"],
     conv: ["panel-conv"],
     design: ["panel-design"],
     // 레이어 토글은 여기서도 쓴다 — 건축 배경을 못 끄면 두 점을 찍기 어렵다.
@@ -597,10 +599,9 @@
   const ALL_PANELS = [...new Set(Object.values(STAGE_PANELS).flat())];
 
   function stageFlow() {
-    // ★평면도는 방식을 고르기 전까지 흐름이 «없다». 수동 흐름을 미리 펼쳐
-    //   놓으면 자동을 고를 사람에게 찍기·손질·변환을 먼저 보여 주게 된다 —
-    //   아직 정해지지도 않은 길이다. 고른 뒤에 그 길만 보인다.
-    //   («방식 고르기» 는 도면 열기 단계 안이라 칸을 따로 두지 않는다.)
+    // [F-10a] 방식을 묻지 않으므로 기본 흐름은 처음부터 정해져 있다. 다만
+    //   도면을 아직 안 읽었으면 「도면 열기」 하나만 보인다 — 갈 수 있는
+    //   곳이 그것뿐이라서다. (자동 차선을 고급에서 고르면 그때 갈린다.)
     if (S.slot === "plan" && !S.method) return ["open"];
     const key = (S.slot === "plan" && S.method === "auto") ? "plan_auto" : S.slot;
     return (STAGE_FLOW[key] || STAGE_FLOW.plan).concat(["merge"]);
@@ -621,9 +622,7 @@
 
   function renderSteps() {
     const flow = stageFlow();
-    // 「방식 고르기」는 도면 열기 단계 안의 두 번째 화면이다 — 칸을 따로 두지
-    // 않고 「도면 열기」를 켠 채로 둔다.
-    const idx = flow.indexOf(S.stage === "method" ? "open" : S.stage);
+    const idx = flow.indexOf(S.stage);
     const box = $("steps");
     box.innerHTML = "";
     flow.forEach((k, i) => {
@@ -820,12 +819,13 @@
         // 한 줄로 자르고 전체 이름은 툴팁에 — 좁은 옆판에서 제목이 토막나면
         // 어느 도면을 여는지가 안 읽힌다.
         const nm = `${S.key} · 선분 ${S.world.counts.segs.toLocaleString()}`;
-        $("mth-file").textContent = nm;
-        $("mth-file").title = nm;
-        setStage("method");
-        await loadRecon();          // [F-8c] 카드에 정찰 수치를 채운다
+        $("adv-file").textContent = nm;
+        $("adv-file").title = nm;
+        await loadRecon();          // [F-8c] 정찰 수치
         loadSlots();
-        say("도면을 읽었습니다 — 어떻게 추출할지 고르세요.");
+        // [F-10a · D-F10-1] 여기서 묻지 않는다. 정찰이 성했으면 채택→조립까지
+        //   흘려보내고, 못 쓰겠으면 «묻지 않고» 찍기 화면으로 내려간다.
+        await autoStart();
       });
     } catch (err) { busy(false); say(err.message, "err"); }
   };
@@ -850,9 +850,13 @@
     } catch (err) { busy(false); say(err.message, "err"); }
   }
 
-  // ── [F-8c] 세 차선 ────────────────────────────────────────────
-  // 정찰은 열기 잡 안에서 이미 돌았다(F-8a). 여기서는 결과를 읽어 카드를
-  // 채우기만 한다 — 실패했으면 수치 없이 두 차선만 열어 둔다.
+  // ── [F-10a] 기본 흐름 — 묻지 않고 흐른다 ──────────────────────
+  //
+  // 차선은 코드로 살아 있다(엔드포인트·테스트 그대로). 사라진 것은 «질문»
+  // 하나다: 업로드 시점에는 이 도면이 자동으로 될지 사람도 모르므로,
+  // 「어떻게 추출할까요」는 답할 수 없는 질문이었다(D-F10-1).
+  //
+  // 대신 정찰 결과가 스스로 답한다. 정찰은 열기 잡 안에서 이미 돌았다(F-8a).
   const CONF_CHOICES = [
     [0.9, "높음 (≥0.9) — 기본"],
     [0.75, "중간 이상 (≥0.75)"],
@@ -860,7 +864,7 @@
   ];
 
   function fillConf() {
-    const sel = $("mth-conf");
+    const sel = $("adv-conf");
     if (sel.options.length) return;
     for (const [v, label] of CONF_CHOICES) {
       const o = document.createElement("option");
@@ -868,34 +872,66 @@
       o.textContent = label;
       sel.appendChild(o);
     }
-    sel.value = "0.9";
+    sel.value = "0.9";              // D-F8-4 — 기본값은 그대로다
   }
 
   const num = (v) => Number(v) || 0;
 
-  // 고른 문턱으로 몇 개가 채택 대상인가 — 누르기 전에 보여 준다.
-  function reconPick() {
-    const lo = parseFloat($("mth-conf").value);
+  // 고른 문턱으로 몇 개가 채택 대상인가.
+  function reconPick(lo) {
+    if (lo === undefined) lo = confMin();
     const b = (S.recon && S.recon.bands) || {};
     const hi = num(b["높음(≥0.9)"]), mid = num(b["중간(≥0.75)"]);
     const low = num(b["낮음"]);
     return lo >= 0.9 ? hi : lo >= 0.75 ? hi + mid : hi + mid + low;
   }
 
+  function confMin() {
+    fillConf();
+    const v = parseFloat($("adv-conf").value);
+    return Number.isFinite(v) ? v : 0.9;
+  }
+
+  // 정찰이 성해서 «자동으로 시작할 수 있는가». 이 판단이 곧 흐름의 갈림이고,
+  // 사람에게 묻지 않는다 — 못 쓰겠으면 찍기 화면으로 내려가 사유를 적는다.
+  //   ★배관 묶음이 0 이면 채택할 재료가 없다. 재료 없이 채택을 부르면 서버가
+  //     「재료를 하나도 못 찍었습니다」로 끝나므로, 그 전에 갈라야 한다.
+  function reconReady() {
+    const r = S.recon;
+    if (!r || r.state !== "ok") {
+      return { ok: false, why: (r && r.state === "error")
+        ? `자동 인식이 실패했습니다 — 색으로 직접 찍어 주세요. (${r.error || ""})`
+        : "자동 인식 결과가 없습니다 — 색으로 직접 찍어 주세요." };
+    }
+    if (!num((r.bundles || {}).PIPE)) {
+      return { ok: false,
+        why: "자동 인식이 배관 레이어를 찾지 못했습니다 — 색으로 직접 찍어 주세요." };
+    }
+    // ★기본 기준으로 찍을 헤드가 하나도 없으면 조립이 죽는다. 실측:
+    //   LH306 은 높음 띠가 0 이라(0/42) 0.9 로 채택하면 헤드 0 이 되고,
+    //   그 스펙으로 조립하면 엔진이 `KeyError: 'heads'` 로 끝난다(0.75 면
+    //   정상). 엔진은 고칠 수 없으니(읽기 전용) 문 앞에서 가른다.
+    //   기준을 «자동으로 낮추지» 않는다 — 기본값 0.9 는 D-F8-4 의 결정이고,
+    //   낮추는 판단은 이 지시서가 준 권한 밖이다(BLOCKED 에 적었다).
+    if (!reconPick(0.9)) {
+      return { ok: false,
+        why: "자동 인식에 «높음(≥0.9)» 헤드가 없어 이 기준으로는 찍을 것이 "
+          + "없습니다 — 직접 찍거나, 고급에서 채택 기준을 낮춰 다시 채택하세요." };
+    }
+    return { ok: true };
+  }
+
   function renderRecon() {
-    const box = $("mth-recon"), why = $("mth-mixed-why");
+    const box = $("adv-recon");
     const r = S.recon;
     fillConf();
     if (!r || r.state === "none" || r.state === "error") {
       const bad = r && r.state === "error";
       box.innerHTML = `<div class="hint">자동 인식 `
         + (bad ? `<span class="warn">실패</span>` : "결과 없음") + "</div>";
-      $("mth-mixed").disabled = true;
-      $("mth-conf-row").classList.add("hidden");
-      why.innerHTML = bad
-        ? `<span class="warn">인식이 실패해 이 길로는 시작할 수 없습니다.</span>`
-        : "인식 결과가 없어 이 길로는 시작할 수 없습니다.";
-      if (bad) why.title = r.error || "";
+      if (bad) box.title = r.error || "";
+      $("adv-conf-row").classList.add("hidden");
+      $("adv-conf-why").textContent = "";
       return;
     }
     const b = r.bands || {}, bd = r.bundles || {};
@@ -911,25 +947,25 @@
       + `배관 묶음 <b>${num(bd.PIPE)}</b>개`
       + (num(bd.HEAD) ? ` · 헤드 레이어 <b>${num(bd.HEAD)}</b>개` : "")
       + `</div>`;
-    $("mth-conf-row").classList.remove("hidden");
+    $("adv-conf-row").classList.remove("hidden");
     renderConfHint();
   }
 
-  // ★기준을 만족하는 후보가 0개면 단추를 잠근다. 눌러도 아무 일이 안 일어나는
-  //   단추를 열어 두면 사람은 프로그램이 고장 났다고 읽는다. 실측으로 흔한
-  //   일이다 — A 는 «알려진 블록 참조» 만 0.95 를 주므로, 헤드를 레이어에 직접
-  //   그린 도면은 높음 띠가 0 이 된다(LH306 0/42 · B1F 72/3,338).
+  // 기준을 만족하는 후보가 몇 개인지 적는다. 0 이면 다시 채택을 잠근다 —
+  // 눌러도 아무 일이 안 일어나는 단추는 고장으로 읽힌다. 실측으로 흔하다:
+  // A 는 «알려진 블록 참조» 에만 0.95 를 주므로, 헤드를 레이어에 직접 그린
+  // 도면은 높음 띠가 0 이 된다(LH306 0/42 · B1F 72/3,338).
   function renderConfHint() {
     if (!S.recon || S.recon.state !== "ok") return;
     const n = reconPick();
-    $("mth-mixed").disabled = n === 0;
-    $("mth-mixed-why").innerHTML = n
+    $("adv-readopt").disabled = n === 0;
+    $("adv-conf-why").innerHTML = n
       ? `이 기준으로 <b>${n.toLocaleString()}개</b>를 찍습니다.`
       : '<span class="warn">이 기준에 맞는 후보가 없습니다 — '
         + "기준을 낮춰 보세요.</span>";
   }
 
-  $("mth-conf").onchange = renderConfHint;
+  $("adv-conf").onchange = renderConfHint;
 
   async function loadRecon() {
     try {
@@ -939,32 +975,86 @@
     renderRecon();
   }
 
-  $("mth-auto").onclick = () => readSlot("auto");
-  $("mth-manual").onclick = () => readSlot("manual");
-  $("mth-cancel").onclick = () => { setStage("open"); say("다른 도면을 고르세요."); };
+  // 시작 배너 — 무엇으로 시작했는지, 되돌릴 수 있는지 한 줄.
+  function startNote(html, warn) {
+    const box = $("start-note");
+    box.innerHTML = html;
+    box.classList.toggle("warn", !!warn);
+  }
 
-  // 혼합 — 채택한 뒤 «찍기 화면» 에서 멈춘다. commit 까지 자동으로 가지 않는다
-  // (D-F8-5): 사람이 찍힌 상태를 보고 유령을 처리한 뒤 「배관망 구성」을 누른다.
-  $("mth-mixed").onclick = async () => {
-    const lo = parseFloat($("mth-conf").value);
-    busy(true, "인식 결과를 찍는 중…");
-    try {
-      await post("/api/module-f/slot/read", { sid: S.sid, method: "manual" });
-      S.method = "manual";
-      renderSteps();
-      await post("/api/module-f/pick/adopt", {
-        sid: S.sid, materials: true, heads: { conf_min: lo },
-      });
+  // [D-F10-2] 자동 차선은 고급 안 한 줄로 남는다 — 엔드포인트·테스트·특허
+  //   실시예는 그대로다. 화면에서만 «질문» 이 아니라 «선택» 이 되었다.
+  $("adv-auto").onclick = (ev) => { ev.preventDefault(); readSlot("auto"); };
+
+  // 인식 결과를 찍는다 — 채택까지. `to` 가 "edit" 이면 조립까지 이어서 간다.
+  async function adoptRun(lo, to) {
+    await post("/api/module-f/pick/adopt", {
+      sid: S.sid, materials: true, heads: { conf_min: lo },
+    });
+    return new Promise((resolve) => {
       watch(async () => {
         const j = await api(`/api/module-f/convert/result?sid=${S.sid}`);
         const r = j.result || {};
         await loadWorld(true);            // 찍기 화면으로 (도면은 이미 있다)
-        if (!r.ok) { say(r.error || "채택에 실패했습니다.", "err"); return; }
+        if (!r.ok) {
+          startNote(r.error || "채택에 실패했습니다 — 직접 찍어 주세요.", true);
+          say(r.error || "채택에 실패했습니다.", "err");
+          resolve(false);
+          return;
+        }
         if (r.state) S.pick = r.state;
         await applyAdopt(r, lo);
         renderPick();
         draw();
+        if (to !== "edit") { resolve(true); return; }
+        // ★조립도 잡이다. 세션 잡은 한 번에 하나이므로 «끝난 뒤» 에 건다.
+        busy(true, "배관망 구성 중…");
+        try {
+          await post("/api/module-f/pick/commit", { sid: S.sid });
+          watch(async () => {
+            await loadEdit();
+            const g = (S.ghosts && S.ghosts.size) || 0;
+            startNote(`자동 인식 결과로 시작했습니다 — 채택 `
+              + `<b>${num(r.head_applied).toLocaleString()}</b>개`
+              + (g ? ` · 유령 <b>${g.toLocaleString()}</b>개` : "")
+              + ` · 단계바의 「찍기」로 내려가 고칠 수 있습니다.`);
+            resolve(true);
+          });
+        } catch (err) {
+          busy(false);
+          startNote(`배관망 구성에 실패했습니다 — 찍기에서 고쳐 주세요. `
+            + `(${err.message})`, true);
+          resolve(false);
+        }
       });
+    });
+  }
+
+  // [F-10a · D-F10-1] 업로드 뒤 «질문 0» 으로 손질까지. 못 가면 찍기에서 멈추되
+  //   그것도 묻지 않는다 — 왜 멈췄는지 배너에 적을 뿐이다.
+  async function autoStart() {
+    const gate = reconReady();
+    await post("/api/module-f/slot/read", { sid: S.sid, method: "manual" });
+    S.method = "manual";
+    renderSteps();
+    if (!gate.ok) {
+      busy(false);
+      await loadWorld(true);
+      startNote(gate.why, true);
+      say(gate.why, "warn");
+      return;
+    }
+    busy(true, "인식 결과를 찍는 중…");
+    try {
+      await adoptRun(confMin(), "edit");
+    } catch (err) { busy(false); say(err.message, "err"); }
+  }
+
+  // 기준을 바꿔 다시 채택 — 찍기 화면에서 멈춘다(사람이 보고 판단할 자리다).
+  $("adv-readopt").onclick = async () => {
+    busy(true, "인식 결과를 다시 찍는 중…");
+    try {
+      await adoptRun(confMin(), "pick");
     } catch (err) { busy(false); say(err.message, "err"); }
   };
 
@@ -1205,12 +1295,16 @@
         setStage("open");
         say(`${cur.label} — 아직 도면이 없습니다. DXF 를 여세요.`);
       } else if (kind === "plan" && !S.method) {
-        // 읽어는 뒀는데 방식을 아직 안 고른 슬롯 — 도면을 띄우고 다시 묻는다.
+        // [F-10a] 읽어는 뒀는데 아직 길이 안 정해진 슬롯. 예전에는 여기서 방식을
+        //   다시 물었다 — 이제 묻지 않고 열기 때와 같은 판단으로 흘려보낸다
+        //   (새로고침 같은 이유로 흐름이 중간에 끊겼을 때 오는 자리다).
         await loadWorldRaw();
         fit(S.world.bounds);
-        $("mth-file").innerHTML = kv("도면", (st.dxf_name || cur.key || ""));
-        setStage("method");
-        say("어떻게 추출할지 고르세요.");
+        const nm = st.dxf_name || cur.key || "";
+        $("adv-file").textContent = nm;
+        $("adv-file").title = nm;
+        await loadRecon();
+        await autoStart();
       } else if (kind !== "plan") {
         // 계통도·기계실은 찍기·손질을 거치지 않는다 — 두 점 찍기로 바로 간다.
         await loadWorldRaw();

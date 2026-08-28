@@ -426,19 +426,23 @@ def test_검출_헤드는_빨강이다():
 
 
 def test_추출_뒤에는_나머지_도면을_내린다():
-    """뽑아낸 망이 드러나야 한다 — 다만 지우지는 않는다(어디서 뽑혔나)."""
+    """뽑아낸 망이 드러나야 한다 — 다만 지우지는 않는다(어디서 뽑혔나).
+
+    [F-10c] 농도를 인자로 받게 됐다(손질 밑그림은 더 흐리다). 기본값은
+    그대로 0.16 이어야 자동 추출 화면의 표시가 안 바뀐다.
+    """
     html = _script()
-    i = html.index("function drawWorld(dim)")
-    seg = html[i:i + 400]
-    assert "ctx.globalAlpha = 0.16" in seg
+    i = html.index("function drawWorld(dim")
+    seg = html[i:i + 500]
+    assert "0.16" in seg, "기본 농도가 바뀌었다"
     assert "ctx.setLineDash([2, 4])" in seg
 
 
 def test_내린_뒤에는_원래대로_되돌린다():
     """알파·점선을 안 되돌리면 다음에 그리는 것이 전부 흐려진다."""
     html = _script()
-    i = html.index("function drawWorld(dim)")
-    seg = html[i:i + 1800]
+    i = html.index("function drawWorld(dim")
+    seg = html[i:i + 1900]
     assert "if (dim) { ctx.globalAlpha = 1; ctx.setLineDash([]); return; }" in seg
 
 

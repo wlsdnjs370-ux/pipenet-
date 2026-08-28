@@ -267,6 +267,11 @@
       else drawDesign();
     }
     else if ((S.stage === "edit" || S.stage === "conv") && S.edit) {
+      // [F-10c] 배경 도면을 «밑에» 깐다 — 전사 17:53 · 23:06. corridor 만 뜨면
+      //   어디서 뽑힌 망인지 안 보여 결과가 옳은지 판단할 수가 없다.
+      //   board 보다 더 흐리게(0.07) 둬서 위계가 배경 → 비corridor → corridor
+      //   순으로 읽히게 한다.
+      if (editBgOn() && S.world) drawWorld(true, EDIT_BG_ALPHA);
       drawEdit();
       // [F-8d] 자동이 알던 자리 — «제안» 이라 점선 고리로만 그린다. 반영은
       // 사람이 단추를 눌러 기존 손질 클릭 경로로만 들어간다.
@@ -293,9 +298,16 @@
   // `dim` — 뽑아낸 배관망을 돋보이게 하려고 나머지를 거의 투명한 점선으로
   // 내린다. 지우지는 않는다: 어디서 뽑혔는지 보이지 않으면 결과가 옳은지
   // 판단할 수가 없다.
-  function drawWorld(dim) {
+  //
+  // [F-10c] `alpha` 로 농도를 바꿀 수 있다 — 손질 밑그림은 board 보다 더
+  // 흐려야 위계가 «배경 → 비corridor → corridor» 순으로 읽힌다. dim 경로로
+  // 부르면 묶음만 그리고 일찍 끝나므로 찍기 하이라이트가 딸려오지 않는다.
+  function drawWorld(dim, alpha) {
     ctx.lineWidth = 1;
-    if (dim) { ctx.globalAlpha = 0.16; ctx.setLineDash([2, 4]); }
+    if (dim) {
+      ctx.globalAlpha = (alpha === undefined ? 0.16 : alpha);
+      ctx.setLineDash([2, 4]);
+    }
     for (const b of S.world.bundles) {
       if (S.hidden.has(b.id)) continue;
       ctx.strokeStyle = b.css;
@@ -357,6 +369,49 @@
       ctx.moveTo(px, py - 9); ctx.lineTo(px, py + 9);
       ctx.stroke();
     }
+  }
+
+  // ── [F-10c] 시각 위계 — 반짝 · 페이드 · 동그라미 ───────────────
+  //
+  // 전사 06:57 「반짝반짝」 · 08:57 「도면은 그대로 있잖아」 · 23:45 「동그라미를
+  // 치는 게 더 보기가 좋다」. 셋을 한꺼번에 만든다:
+  //
+  //   배경 도면      가장 흐리게(EDIT_BG_ALPHA) — 사라지지 않는다
+  //   비corridor 망   흐린 점선 (`ed-worst-view` 기본 «dim»)
+  //   corridor       굵게 + 담당 헤드 수 비례 굵기 + 은은한 펄스
+  //   선정 헤드       흰 동그라미 · 앵커는 빨간 겹원
+  //
+  // ★펄스는 «몇 번 하고 멈춘다». 계속 깜빡이면 눈이 피로하고, 전사의 의도는
+  //   강조지 점멸 지속이 아니다(지시서 F-10c 표의 단서 그대로).
+  const EDIT_BG_ALPHA = 0.07;
+  const PULSE_MS = 1800;        // 약 2~3회
+  const PULSE_CYCLES = 2.5;
+  let pulseT0 = 0;
+  let pulseRAF = 0;
+
+  const editBgOn = () => {
+    const el = $("ed-bg");
+    return !el || el.checked;
+  };
+
+  /** 0 이면 펄스 없음. 끝나면 스스로 0 으로 떨어진다. */
+  function pulseAmt() {
+    if (!pulseT0) return 0;
+    const t = (performance.now() - pulseT0) / PULSE_MS;
+    if (t >= 1) { pulseT0 = 0; return 0; }
+    // 뒤로 갈수록 잦아든다 — 끝이 뚝 끊기지 않게.
+    return (1 - t) * (0.5 - 0.5 * Math.cos(2 * Math.PI * PULSE_CYCLES * t));
+  }
+
+  function startPulse() {
+    pulseT0 = performance.now();
+    if (pulseRAF) return;
+    const step = () => {
+      draw();
+      if (pulseT0) { pulseRAF = requestAnimationFrame(step); }
+      else { pulseRAF = 0; draw(); }   // 마지막 한 장은 «정지» 상태로
+    };
+    pulseRAF = requestAnimationFrame(step);
   }
 
   function drawEdit() {
@@ -465,12 +520,15 @@
     // 곧 NFPC 별표1 의 관경 서열이라, 수리계산 대상 망이 한눈에 읽힌다.
     if (e.worst) {
       const wm = e.worst.max_load || 1;
+      // [F-10c] 은은한 펄스 — 방금 뽑힌 corridor 를 몇 번 도드라지게 한 뒤
+      //   가만히 둔다. 굵기와 밝기를 같이 살짝 올린다.
+      const p = pulseAmt();
       ctx.strokeStyle = "#ffffff";
       ctx.lineCap = "round";
       for (const s of e.worst.corridor) {
         const load = s[4] || 1;
-        ctx.globalAlpha = 0.5 + 0.5 * (load / wm);
-        ctx.lineWidth = 1.4 + 3.6 * Math.sqrt(load / wm);
+        ctx.globalAlpha = Math.min(1, (0.5 + 0.5 * (load / wm)) + 0.35 * p);
+        ctx.lineWidth = (1.4 + 3.6 * Math.sqrt(load / wm)) * (1 + 0.45 * p);
         ctx.beginPath();
         ctx.moveTo(sx(s[0]), sy(s[1]));
         ctx.lineTo(sx(s[2]), sy(s[3]));
@@ -1178,7 +1236,9 @@
     $(p.num).oninput = () => { sel.value = ""; };
   }
 
+  // 표시 전용 토글 둘 — 서버에 아무것도 안 보낸다(세션 상태 불변).
   $("ed-worst-view").onchange = () => draw();
+  $("ed-bg").onchange = () => draw();
 
   // ── 최불리 후보 영역 (모듈 A 의 zones) ─────────────────────────
   // 도면 장 나누기는 «자동으로 잰 경계» 라 실무에서 늘 맞지는 않는다. 한 층에
@@ -2513,6 +2573,7 @@
         draw();
         const s = r.summary;
         if (s) {
+          startPulse();          // [F-10c] 방금 뜬 corridor 를 몇 번 도드라지게
           say(`최불리 ${s.k}개 · 최원 ${s.far_m} m · 담당 최대 ${s.max_load}개`
               + ` · 배관 ${s.path_edges}`, "ok");
         }
@@ -2600,6 +2661,7 @@
       const d = await post("/api/module-f/edit/worst", body);
       setEdit(d.state);
       renderEdit();
+      startPulse();              // [F-10c] 원클릭과 같은 연출 — 길만 다르다
       // 수리계산 단계도 같은 K 로 돈다 — 두 곳이 갈리면 손질에서 본 30개와
       // 표에 실린 K 가 달라져 「어느 쪽이 설계면적인가」 가 사라진다.
       $("dg-k").value = k;

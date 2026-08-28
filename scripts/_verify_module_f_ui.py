@@ -884,6 +884,76 @@ def main() -> int:
             page.eval_on_selector("#panel-conv",
                                   "el => el.classList.add('hidden')")
 
+            # ── [F-10c] 위계 렌더 전환이 큰 도면에서도 빠른가
+            #    수용 기준은 «B1F(선분 1.9만) 0.5초 안» 이다. 업로드는 110MB 라
+            #    「이어서 열기」의 저장본으로 연다 — 사용자가 실제로 쓰는 길이다.
+            print("\n  ── [F-10c] 위계 렌더 전환 (B1F)")
+            page.reload(wait_until="load")
+            page.wait_for_timeout(700)
+            keys = page.eval_on_selector_all(
+                "#saved option", "els => els.map(e => e.value)")
+            b1f = next((k for k in keys if "B1F" in k and "현장조사" in k), None)
+            if not b1f:
+                check("B1F 저장본이 목록에 있다", False,
+                      f"{len(keys)}개 · 건너뜀")
+            else:
+                page.select_option("#saved", b1f)
+                page.click("#btn-reopen")
+                got = False
+                for _ in range(1800):        # 200ms × 1800 = 360s
+                    page.wait_for_timeout(200)
+                    if page.is_visible("#panel-edit") and page.is_hidden("#busy"):
+                        got = True
+                        break
+                check("B1F 저장본이 손질로 열린다", got, b1f[:40])
+                if got:
+                    n = page.evaluate(
+                        """() => [...document.querySelectorAll('#ed-info .kv')]
+                             .map(e => e.textContent).join(' ')""")
+                    # 토글 왕복 시간을 잰다 — 그리기가 끝난 뒤의 시각을 쓴다.
+                    ms = page.evaluate(
+                        """async () => {
+                          const t = [];
+                          const flip = async (id, v) => {
+                            const el = document.getElementById(id);
+                            const t0 = performance.now();
+                            if (el.type === 'checkbox') el.checked = v;
+                            else el.value = v;
+                            el.dispatchEvent(new Event('change'));
+                            await new Promise(r => requestAnimationFrame(
+                              () => requestAnimationFrame(r)));
+                            t.push(performance.now() - t0);
+                          };
+                          await flip('ed-bg', false);
+                          await flip('ed-bg', true);
+                          await flip('ed-worst-view', 'all');
+                          await flip('ed-worst-view', 'dim');
+                          return Math.round(Math.max(...t));
+                        }""")
+                    check("위계 렌더 전환이 0.5초 안에 끝난다 (F-10c)",
+                          ms <= 500, f"가장 느린 전환 {ms} ms · {n[:60]}")
+                    # 표시 전용 — 왕복해도 옆판 수치가 그대로여야 한다.
+                    n2 = page.evaluate(
+                        """() => [...document.querySelectorAll('#ed-info .kv')]
+                             .map(e => e.textContent).join(' ')""")
+                    check("토글로 왕복해도 상태가 그대로다", n2 == n,
+                          "표시 전용")
+                    # 그리고 배경을 켠 상태에서 «도면이 실제로 보여야» 한다.
+                    lit = page.evaluate(
+                        """() => {
+                          const c = document.getElementById('cv');
+                          const g = c.getContext('2d');
+                          const d = g.getImageData(0, 0, c.width, c.height).data;
+                          let n = 0;
+                          for (let i = 0; i < d.length; i += 4) {
+                            if (d[i] || d[i+1] || d[i+2]) n++;
+                          }
+                          return n;
+                        }""")
+                    check("배경 도면이 흐리게나마 보인다", lit > 500,
+                          f"칠해진 픽셀 {lit:,}")
+                    page.screenshot(path=str(SHOTS / "6_위계_B1F.png"))
+
             # ── 콘솔 오류 0
             check("콘솔 오류 없음", not errors,
                   " | ".join(errors[:3]) if errors else "")

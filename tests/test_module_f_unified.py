@@ -386,6 +386,69 @@ def test_원클릭이_기존_픽을_갈아끼운다(tmp_path):
     assert len(s["valves"]) == 1, s["valves"]
 
 
+# ═══════════════════════════════════════════ F-10c. 시각 위계
+def test_배경_도면이_사라지지_않는다():
+    """전사 08:57 「도면은 그대로 있잖아」 · 17:53 「밑에 배경도면 보이잖아」.
+
+    위계는 «지우기» 가 아니라 «농도» 다. 배경이 사라지면 어디서 뽑힌 망인지
+    안 보여 결과가 옳은지 판단할 수가 없다.
+    """
+    html = _screen()
+    assert 'id="ed-bg"' in html and "checked" in html
+    assert "EDIT_BG_ALPHA" in html
+    i = html.index("const EDIT_BG_ALPHA")
+    # 아주 흐리되 0 은 아니다 — 0 이면 «사라진» 것이다.
+    m = re.search(r"const EDIT_BG_ALPHA\s*=\s*([0-9.]+)", html[i:i + 80])
+    assert m and 0.0 < float(m.group(1)) < 0.2, html[i:i + 60]
+    # 비corridor 배관망의 기본은 «감추기» 가 아니라 «흐리게» 다.
+    j = html.index('id="ed-worst-view"')
+    seg = html[j:j + 400]
+    assert 'value="dim" selected' in seg, "기본이 흐리기가 아니다"
+
+
+def test_펄스는_몇_번_하고_멈춘다():
+    """전사 06:57 «반짝반짝» 의 의도는 강조지 점멸 «지속» 이 아니다.
+
+    계속 깜빡이면 눈이 피로하고, 캔버스를 매 프레임 다시 그리므로 큰 도면에서
+    비용도 계속 든다.
+    """
+    html = _screen()
+    i = html.index("function pulseAmt()")
+    seg = html[i:i + 500]
+    assert "pulseT0 = 0" in seg, "스스로 멈추지 않는다"
+    m = re.search(r"const PULSE_MS\s*=\s*(\d+)", html)
+    assert m and int(m.group(1)) <= 3000, "너무 오래 반짝인다"
+    m2 = re.search(r"const PULSE_CYCLES\s*=\s*([0-9.]+)", html)
+    assert m2 and float(m2.group(1)) <= 3.0, "2~3회를 넘는다"
+    # 새 corridor 가 나왔을 때만 시작한다 — 두 길(원클릭·최불리 선정) 모두에서.
+    assert html.count("startPulse()") >= 3
+
+
+def test_위계_토글은_표시_전용이다():
+    """수용 기준 — 토글로 왕복해도 세션 상태가 안 바뀐다.
+
+    토글이 서버를 부르면 그것은 표시가 아니라 «상태 변경» 이다. 두 토글의
+    onchange 가 `draw()` 하나만 부르는지 소스로 못 박는다.
+    """
+    html = _screen()
+    for el in ("ed-worst-view", "ed-bg"):
+        i = html.index(f'$("{el}").onchange')
+        line = html[i:html.index("\n", i)]
+        assert "draw()" in line, line
+        assert "post(" not in line and "api(" not in line, line
+
+
+def test_선정_헤드는_동그라미다():
+    """전사 23:45 「헤드를 그냥 이렇게 역력하는 것보다 동그라미를 치는 게 더
+    보기가 좋다」 — 선정 30개는 고리로, 앵커는 겹원으로."""
+    html = _screen()
+    i = html.index("for (const h of e.worst.heads)")
+    seg = html[i:i + 400]
+    assert "ctx.arc(" in seg and "ctx.stroke()" in seg
+    j = html.index("if (e.worst.anchor)")
+    assert "#ff3b3b" in html[j:j + 400], "앵커가 따로 강조되지 않는다"
+
+
 # ═══════════════════════════════════════════ 정찰이 깨져도 흐름은 산다
 def test_정찰이_실패해도_찍기는_열린다():
     """수용 기준 — 모듈 A 가 아예 안 되는 도면에서도 «묻지 않고» 찍기로.

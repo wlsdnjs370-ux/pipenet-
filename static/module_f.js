@@ -3126,7 +3126,11 @@
   }
 
   function drawDesign() {
-    const v = S.design.view;
+    // ★표 요약만 받고 미리보기는 아직인 상태가 있다(renderDesignSummary 가
+    //   먼저 돈다). 그때 그리려 들면 「Cannot read properties of undefined」로
+    //   화면이 멈춘다 — 그릴 것이 없으면 조용히 돌아간다.
+    const v = S.design && S.design.view;
+    if (!v || !v.nodes) return;
     const at = {};
     for (const n of v.nodes) at[n.label] = n;
     const maxLoad = Math.max(1, ...v.pipes.map(p => p.load || 0));
@@ -3443,7 +3447,7 @@
       : null;
     let span;
     if (bb) span = Math.max(bb.maxx - bb.minx, bb.maxy - bb.miny);
-    else if (S.design) {
+    else if (S.design && S.design.view) {
       const xs = S.design.view.nodes.map((n) => n.x);
       const ys = S.design.view.nodes.map((n) => n.y);
       span = Math.max(Math.max(...xs) - Math.min(...xs),
@@ -3705,7 +3709,10 @@
   function fitDesignView() {
     if (planUnderlayOn() && S.edit && S.edit.bounds) { fit(S.edit.bounds); return; }
     if (designMarksOn() && S.edit && S.edit.bounds) { fit(S.edit.bounds); return; }
-    if (!S.design) return;
+    // ★`S.design` 은 있는데 `view` 가 없을 수 있다 — 표 요약만 받고 미리보기는
+    //   아직인 상태다(renderDesignSummary 가 먼저 돈다). 그때 `.view.nodes` 를
+    //   읽으면 「Cannot read properties of undefined」로 화면이 멈춘다.
+    if (!S.design || !S.design.view) return;
     const xs = S.design.view.nodes.map(n => n.x);
     const ys = S.design.view.nodes.map(n => n.y);
     fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
@@ -3779,15 +3786,7 @@
   for (const id of ["dg-mk-dry", "dg-mk-unatt", "dg-mk-unpicked"]) {
     $(id).onchange = () => {
       // 제외 사유는 손질 망(mm) 좌표다 — 켜면 그 좌표계로 화면을 맞춘다.
-      if (designMarksOn() && S.edit) {
-        const bb = S.edit.bounds;
-        if (bb) fit(bb);
-      } else if (S.design) {
-        const xs = S.design.view.nodes.map(n => n.x);
-        const ys = S.design.view.nodes.map(n => n.y);
-        fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
-              miny: Math.min(...ys), maxy: Math.max(...ys) });
-      }
+      fitDesignView();      // 같은 판단이 두 곳에 있으면 한쪽만 고쳐진다
       draw();
     };
   }

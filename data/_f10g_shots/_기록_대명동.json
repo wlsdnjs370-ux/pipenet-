@@ -1,0 +1,60 @@
+{
+  "clicks": 17,
+  "minutes": 0.8,
+  "steps": [
+    {
+      "name": "① 업로드 → 손질 진입",
+      "clicks": 1,
+      "sec": 5.5,
+      "detail": "도착 손질 · 자동 인식 결과로 시작했습니다 — 채택 3개 · 유령 2개 · 단계바의 「찍기」"
+    },
+    {
+      "name": "② 알람밸브 원클릭 → corridor",
+      "clicks": 2,
+      "sec": 0.7,
+      "detail": "최불리 30개 · 최원 50.71 m · 찍은 횟수 1"
+    },
+    {
+      "name": "③ 흐린 배관 살리기",
+      "clicks": 8,
+      "sec": 3.3,
+      "detail": "이은 곳 2건 · 후보 97곳 · 급수 1 · 밸브 1 · 클릭별 급수/밸브 1/1 1/1 1/1 1/1"
+    },
+    {
+      "name": "④ 최불리 다시 계산",
+      "clicks": 9,
+      "sec": 0.5,
+      "detail": "마지막 계산 후 수정 4건 → 수정 0건 · 최불리 30개 · 급수 1"
+    },
+    {
+      "name": "⑤ 표 확정 → 아이소",
+      "clicks": 11,
+      "sec": 14.7,
+      "detail": "확인할 것 66건 · 설계면적 30개 · 앵커 50.71 m 폭 / corridor 41.4 "
+    },
+    {
+      "name": "⑥ 평면 밑그림에서 살리기",
+      "clicks": 15,
+      "sec": 1.6,
+      "detail": "이은 곳 1건"
+    },
+    {
+      "name": "⑦ 다시 계산 → 아이소 갱신",
+      "clicks": 16,
+      "sec": 11.8,
+      "detail": "66건"
+    },
+    {
+      "name": "⑧ 산출 (.sdf + .slf)",
+      "clicks": 17,
+      "sec": 0.3,
+      "detail": "저장 — 1. 입력도면 대명동 단위세대 평면도_수리계산입력.sdf (78,151B) + 1"
+    }
+  ],
+  "problems": [
+    "콘솔 오류 1건",
+    "  · Failed to load resource: the server responded with a status of 404 (NOT FOUND)",
+    "400 이상 응답 1건",
+    "  · 404 module-f/design/preview?sid=ba9717c5915947c6&iso=1&iso_z_scale=1&canva"
+  ]
+}

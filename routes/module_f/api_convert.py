@@ -215,7 +215,10 @@ def register(app, *, UPLOAD_DIR):
             return {"ok": True, "stats": stats, "summary": summary,
                     "diagnostics": []}
 
-        _run_job(sess, "KFP 변환", job)
+        # 잡 이름은 화면 진행표시에 그대로 뜬다. 이 단계는 .kfp 만 내는 것이
+        # 아니라 .sdf(+.slf) 도 낸다 — 한 형식 이름을 단계 이름으로 쓰면
+        # 나머지 산출이 없는 것처럼 읽힌다.
+        _run_job(sess, "수리계산 입력 변환", job)
         return jsonify({"ok": True})
 
     @app.get("/api/module-f/convert/result")

@@ -342,7 +342,7 @@ def main():
                          "outputs": {"full_kfp": True}})
         if not check("변환 요청 수락", r.get_json().get("ok"), str(r.get_json())[:160]):
             return
-        if wait(c, sid2, "KFP 변환")["state"] != "done":
+        if wait(c, sid2, "수리계산 입력 변환")["state"] != "done":
             FAILS.append("변환 잡 실패")
             return
         res = c.get(f"/api/module-f/convert/result?sid={sid2}").get_json()["result"]
@@ -377,7 +377,7 @@ def main():
                    json={"sid": sid2, "dto": {},
                          "outputs": {"worst_kfp": True}})
         if check("범위 제한 변환 수락", r.get_json().get("ok")):
-            if wait(c, sid2, "KFP 변환")["state"] == "done":
+            if wait(c, sid2, "수리계산 입력 변환")["state"] == "done":
                 rr = c.get(f"/api/module-f/convert/result?sid={sid2}").get_json()["result"]
                 if check("범위 제한 변환 성공", rr.get("ok"),
                          json.dumps(rr.get("blockers"), ensure_ascii=False)[:200]):

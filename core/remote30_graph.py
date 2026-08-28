@@ -195,6 +195,79 @@ def _nearest_graph_node(graph: dict, pt: tuple[float, float]) -> tuple[float, fl
             best = n
     return best
 
+class _NearestNodeIndex:
+    """`_nearest_graph_node` 를 여러 번 물을 때 쓰는 격자 색인.
+
+    같은 그래프에 헤드마다 물으면 선형 탐색이 헤드 × 노드로 든다 — B1F 실측
+    9,810회 · 10.8초(배관망 검출의 26%). 격자에 한 번 담아 두고 가까운 칸부터
+    넓혀 가며 찾으면 그 값이 사라진다.
+
+    ★답은 선형 탐색과 «똑같다». 거리뿐 아니라 **무승부 규칙**까지 맞춘다 —
+      원본은 `for n in graph` 를 돌며 `d < bestd` 일 때만 갈아치우므로, 같은
+      거리면 먼저 나온(먼저 삽입된) 노드가 이긴다. 그래서 후보를 모은 뒤
+      `(거리, 삽입순번)` 으로 고른다. 여기를 대충 맞추면 «더 빠른데 답이 다른»
+      것이 되어 최적화가 아니다.
+    """
+
+    __slots__ = ("_rank", "_cell", "_grid", "_empty")
+
+    def __init__(self, graph: dict) -> None:
+        nodes = list(graph)
+        self._rank = {n: i for i, n in enumerate(nodes)}
+        self._empty = not nodes
+        if self._empty:
+            self._cell, self._grid = 1.0, {}
+            return
+        xs = [n[0] for n in nodes]
+        ys = [n[1] for n in nodes]
+        w = max(xs) - min(xs)
+        h = max(ys) - min(ys)
+        # 노드당 대략 한 칸. 한 점에 몰려 있으면(w=h=0) 칸 하나로 떨어진다.
+        span = max(w, h)
+        self._cell = max(span / max(1.0, len(nodes) ** 0.5), 1e-9)
+        grid: dict = {}
+        for n in nodes:
+            grid.setdefault((int(n[0] // self._cell), int(n[1] // self._cell)),
+                            []).append(n)
+        self._grid = grid
+
+    def nearest(self, pt: tuple[float, float]) -> tuple[float, float] | None:
+        if pt in self._rank:            # 원본의 이른 반환과 같다
+            return pt
+        if self._empty:
+            return None
+        cell = self._cell
+        gx, gy = int(pt[0] // cell), int(pt[1] // cell)
+        best = None
+        bestd = float("inf")
+        r = 0
+        while True:
+            # 반지름 r 의 «테» 만 훑는다(안쪽은 이미 봤다).
+            for i in range(gx - r, gx + r + 1):
+                for j in range(gy - r, gy + r + 1):
+                    if r and abs(i - gx) != r and abs(j - gy) != r:
+                        continue
+                    for n in self._grid.get((i, j), ()):
+                        d = (n[0] - pt[0]) ** 2 + (n[1] - pt[1]) ** 2
+                        if d < bestd or (d == bestd and best is not None
+                                         and self._rank[n] < self._rank[best]):
+                            bestd, best = d, n
+            # 찾았어도 한 테 더 봐야 한다 — 대각선 이웃 칸이 더 가까울 수 있다.
+            if best is not None and (r * cell) ** 2 >= bestd:
+                return best
+            r += 1
+            if r > 2 and best is None and r * cell > _NEAREST_GIVEUP_SPAN:
+                # 격자가 비었다 — 그럴 리 없지만, 무한히 넓히지는 않는다.
+                return min(self._rank,
+                           key=lambda n: ((n[0] - pt[0]) ** 2
+                                          + (n[1] - pt[1]) ** 2,
+                                          self._rank[n]))
+
+
+# 격자를 넓히다 포기하는 거리 — 실좌표 도면의 대각선보다 크게 잡는다.
+_NEAREST_GIVEUP_SPAN = 1.0e12
+
+
 def _connected_components(graph: dict) -> list[set]:
     """그래프의 connected component 들."""
     seen = set()

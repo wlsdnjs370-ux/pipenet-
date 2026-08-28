@@ -1253,7 +1253,7 @@ def _floor_for_node_y(node_y: float,
     return None, None
 
 
-from remote30_graph import (_point_to_segment_dist, _round_pt, _NodeIndex, _is_triangle_shape, _edge_dir, _midpoint, _dijkstra_from, _path_from_prev, _shortest_path, _nearest_graph_node, _connected_components, HeadRegion)  # noqa: E501  (Phase2b core)
+from remote30_graph import (_point_to_segment_dist, _round_pt, _NodeIndex, _NearestNodeIndex, _is_triangle_shape, _edge_dir, _midpoint, _dijkstra_from, _path_from_prev, _shortest_path, _nearest_graph_node, _connected_components, HeadRegion)  # noqa: E501  (Phase2b core)
 
 
 def _match_diameter_for_segment(
@@ -2980,8 +2980,11 @@ def find_unreachable_region_heads(
                 comp.add(m)
                 stack.append(m)
     unreachable: list[tuple[float, float]] = []
+    # 헤드마다 전 노드를 훑으면 헤드 × 노드로 든다(B1F 실측 3,338 × 28,985).
+    # 격자 색인은 «똑같은 답» 을 낸다 — 무승부 규칙까지 맞춰 뒀다.
+    _near = _NearestNodeIndex(graph)
     for h in heads:
-        near = _nearest_graph_node(graph, h.pos)
+        near = _near.nearest(h.pos)
         if near is None:
             unreachable.append(h.pos)
             continue
@@ -3067,9 +3070,11 @@ def attach_source(
     """
     ax, ay = float(alarm_xy[0]), float(alarm_xy[1])
     head_count: dict = {}
+    # 위와 같은 이유로 격자 색인 — 답은 선형 탐색과 동일하다.
+    _near = _NearestNodeIndex(graph)
     for h in accepted_heads:
         pos = h.pos if hasattr(h, "pos") else (float(h[0]), float(h[1]))
-        near = _nearest_graph_node(graph, pos)
+        near = _near.nearest(pos)
         if near is None:
             continue
         if math.hypot(pos[0] - near[0], pos[1] - near[1]) <= HEAD_DROP_MAX_MM:

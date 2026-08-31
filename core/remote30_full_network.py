@@ -222,7 +222,7 @@ class FloorRow:
     말해 주고, 그 상대위치가 무엇인지는 가리지 못한다. 같은 현장 수작업 모델의
     알람밸브 표고와 대조해도 차이가 계열마다 달라 하나의 기준면으로 안 모인다
     (자연낙차 LSP/MSP 6.35 일정, HSP 6.50~6.65, 지하 LOOP 3.70, LLSP 4.20~5.70).
-    그래서 부호·오프셋을 맞추는 작업은 하지 않았다 — BLOCKED.md §19.
+    그래서 부호·오프셋을 맞추는 작업은 하지 않았다 — BLOCKED.md §26.
 
     현재 코드는 ``-head_drop_m`` 을 알람밸브 노드 표고로 그대로 쓴다. 이것은
     확정된 규약이 아니라 기존 동작이며, 기준면이 정해지면 바뀔 수 있다.
@@ -430,7 +430,7 @@ _RECORD_ONLY_FIELDS: frozenset[str] = frozenset({
     "machine_room_ceiling_m",     # 기계실 추출 경로(프로토타입) 전용 — 통합 산출에는 기계실이 없다.
     "roof_tank_water_level_m",
     "ceiling_zones",              # 상향/하향은 material_zones 의 구역 유형이 가른다.
-    # 아래 셋은 표고 기준면이 확정돼야 표고에 반영할 수 있다 (BLOCKED.md §19).
+    # 아래 셋은 표고 기준면이 확정돼야 표고에 반영할 수 있다 (BLOCKED.md §26).
     "tee_branch_above_slab_m",
     "top_floor_extra_height_m",
     "water_hammer_arrester",      # 부속 형상이 갈리지만 라이저에 그 부속이 아직 없다.

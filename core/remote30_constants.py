@@ -226,7 +226,7 @@ RISER_PRV_APPROACH_M = 0.5          # 라이저 → PRV 입구 (r5)
 TEE_TO_ALARM_VALVE_RISE_M = 1.0
 TEE_TO_ALARM_VALVE_RUN_M = 0.5
 
-# 현업 관행값 — 산출물에는 아직 반영하지 않는다(표고 기준면 미확정, BLOCKED.md §19).
+# 현업 관행값 — 산출물에는 아직 반영하지 않는다(표고 기준면 미확정, BLOCKED.md §26).
 # 값만 서류에 남기고 "채웠으니 반영됐다" 로 읽히지 않게 기록 전용으로 표시한다.
 TEE_BRANCH_ABOVE_SLAB_M = 0.6       # 입상관 T분기 = 그 층 바닥 + 600mm
 TOP_FLOOR_EXTRA_HEIGHT_M = 0.25     # 최상층은 단열재분만큼 층고가 높다

@@ -151,3 +151,70 @@ def test_BLOCKED_번호에_중복이_없다():
     nums = re.findall(r"^## (\d+(?:-\d+)?)\.", _read("BLOCKED.md"), re.M)
     dup = sorted({n for n in nums if nums.count(n) > 1})
     assert not dup, f"BLOCKED 번호가 겹친다: {dup}"
+
+
+# ══════════════════════════════════════════ module_f.js — 조용히 깨지는 꼴
+def _js_stripped() -> str:
+    """문자열·주석을 지운 소스. **줄 수는 보존한다.**
+
+    통째로 지우면 그 뒤 줄 번호가 밀려 지적이 엉뚱한 줄을 가리킨다 —
+    조사할 때 실제로 두 줄씩 어긋났다.
+    """
+    def keep(m):
+        return '""' + "\n" * m.group(0).count("\n")
+
+    out = re.sub(r"//[^\n]*", "", _js())
+    out = re.sub(r"/\*.*?\*/",
+                 lambda m: "\n" * m.group(0).count("\n"), out, flags=re.S)
+    out = re.sub(r'"(?:\\.|[^"\\])*"', keep, out)
+    out = re.sub(r"'(?:\\.|[^'\\])*'", keep, out)
+    return re.sub(r"`(?:\\.|[^`\\])*`", keep, out, flags=re.S)
+
+
+def test_상태에_읽히지_않는_필드가_없다():
+    """`S.x` 를 담아 두기만 하고 아무도 안 읽으면, 다음 사람이 그것을
+    «신뢰할 수 있는 최신값» 으로 오해한다.
+
+    ★검증용으로 일부러 내보내는 것은 뺀다 — 화면이 안 읽는 것이 정상이다.
+      코드의 「[검증 내보내기]」 표시를 보고 가른다. 목록을 시험에 손으로
+      적으면 하나 늘 때마다 시험이 시끄러워진다.
+    """
+    raw, src = _js(), _js_stripped()
+    writes = {}
+    for m in re.finditer(r"\bS\.(\w+)\s*=(?!=)", src):
+        writes[m.group(1)] = writes.get(m.group(1), 0) + 1
+    # 읽기는 **원본** 에서 센다 — 템플릿 리터럴 안의 읽기를 놓치면 안 된다.
+    no_comment = re.sub(r"//[^\n]*", "", raw)
+    exported: set = set()
+    mk = raw.find("[검증 내보내기]")
+    if mk >= 0:
+        exported = set(re.findall(r"\bS\.(\w+)\s*=",
+                                  raw[mk:raw.find("\n\n", mk)]))
+    dead = sorted(
+        k for k, n in writes.items()
+        if k not in exported
+        and len(re.findall(rf"\bS\.{re.escape(k)}\b", no_comment)) - n <= 0)
+    assert not dead, f"쓰기만 하고 아무도 안 읽는 상태 필드: {dead}"
+
+
+def test_같은_요소에_같은_핸들러를_두_번_걸지_않는다():
+    """`$("x").onclick` 을 두 번 걸면 **앞의 것이 조용히 죽는다.**"""
+    seen: dict = {}
+    for m in re.finditer(r'\$\("([\w-]+)"\)\.(on\w+)\s*=', _js()):
+        seen.setdefault((m.group(1), m.group(2)), []).append(
+            _js()[:m.start()].count("\n") + 1)
+    twice = {f"#{k[0]}.{k[1]}": v for k, v in seen.items() if len(v) > 1}
+    assert not twice, f"핸들러를 겹쳐 건다(앞의 것이 죽는다): {twice}"
+
+
+def test_JS_에_var_와_느슨한_비교가_없다():
+    """`var` 는 블록 스코프가 아니라 루프에서 어긋난다.
+
+    ★`x != null` 은 예외다 — null 과 undefined 를 한 번에 거르는 관용구이고,
+      `!==` 로 바꾸면 undefined 를 놓쳐 **오히려 틀린 코드**가 된다.
+    """
+    src = _js_stripped()
+    assert not re.findall(r"\bvar\s+\w", src), "var 가 남아 있다"
+    loose = [src[:m.start()].count("\n") + 1
+             for m in re.finditer(r"[^=!<>]([=!]=)(?!=)(?!\s*null\b)", src)]
+    assert not loose, f"느슨한 비교(줄): {loose}"

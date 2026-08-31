@@ -34,7 +34,7 @@
     undo: [],
     hidden: new Set(),                      // 숨긴 레이어 묶음 id
     view: { scale: 1, ox: 0, oy: 0 },
-    poll: null, es: null, convResult: null,
+    poll: null, es: null,
   };
 
   // ── 캔버스 기본기 ───────────────────────────────────────────────
@@ -2954,7 +2954,9 @@
     try {
       r = (await api(`/api/module-f/convert/result?sid=${S.sid}`)).result || {};
     } catch (err) { say(err.message, "err"); return; }
-    S.convResult = r;
+    // [정리 2026-08-31] `S.convResult = r` 을 지웠다 — 담아 두기만 하고 아무도
+    //   안 읽었다. 상태에 «읽히지 않는 값» 이 있으면 다음 사람이 그것을 신뢰할
+    //   수 있는 최신값으로 오해한다. 아래 코드는 지역 `r` 만 쓴다.
     if (!r.ok) {
       const rows = (r.blockers || [])
         .map((b) => `<tr><td>${b.code || ""}</td><td>${b.message || ""}</td></tr>`)
@@ -3005,6 +3007,12 @@
   $("btn-download-set").onclick = () => dl("set");
 
   // ── 시작 ───────────────────────────────────────────────────────
+  //
+  // [검증 내보내기] 아래 블록의 `S.*` 는 **화면이 안 읽는다** — 브라우저 검증
+  //   스크립트만 쓴다. 그래서 「쓰기만 하고 아무도 안 읽는 필드」 감사에서
+  //   걸리는데, 그것이 정상이다. 감사기(`scripts/_probe_f_js_audit.py`)가
+  //   이 표시를 보고 건너뛴다 — 표시를 지우면 감사가 다시 시끄러워진다.
+  //
   // 상태와 좌표 환산을 밖으로 낸다 — 브라우저 검증 스크립트가 실제 화면 좌표로
   // 클릭해 보려면 세계↔화면 환산이 밖에서도 보여야 한다. 읽기 전용으로만 쓴다.
   window.__mf = S;

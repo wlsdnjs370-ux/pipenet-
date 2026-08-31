@@ -1,0 +1,52 @@
+# 줄바꿈 규약 — 저장소는 LF, 작업본은 각자 플랫폼.
+#
+# 이 파일이 없으면 규약이 «사람마다 다른 git 설정» 에 달려 있게 된다. 지금
+# 이 저장소는 `core.autocrlf=true` 인 기계에서 커밋되어 왔고, 그래서 추적
+# 파일 2,326개 중 903개가 「저장소 LF · 작업본 CRLF」다. 설정이 다른 기계에서
+# clone 하면 그 903개가 통째로 «변경됨» 으로 뜬다 — 내용은 한 글자도 안
+# 바뀌었는데. 규약을 파일로 못 박아 그 사고를 막는다.
+#
+# ★`eol=lf` 는 일부러 안 쓴다. 그것을 쓰면 작업본까지 LF 로 바꿔 903개 파일이
+#   다음 checkout 에 전부 다시 써지고, Windows 편집기로 여는 사람이 곤란해진다.
+#   `text=auto` 는 «저장소에 넣을 때만» 정규화하므로 지금 동작과 같다 —
+#   즉 이 커밋은 규약을 적어 둘 뿐 파일을 안 건드린다.
+* text=auto
+
+# 바이너리 — 정규화하면 파일이 깨진다. 확장자를 안 적으면 git 이 내용을 보고
+# 추측하는데, 추측이 틀리는 날이 «파일이 깨지는 날» 이다.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.pptx  binary
+*.docx  binary
+*.xlsx  binary
+*.hwp   binary
+*.hwpx  binary
+*.sqlite3 binary
+*.pkl   binary
+*.cache binary
+
+# ★DXF·SDF·SLF·KFP 에 `-text` 를 «일부러 안 걸었다» — 남겨 두는 숙제다.
+#
+#   이 커밋의 조건은 「실내용 변경이 없음」이다. 그런데 `-text` 를 걸면 저장
+#   blob 이 바뀐다. 실측:
+#
+#       git ls-files --eol   →   i/lf  w/crlf    (저장소 LF · 작업본 CRLF)
+#       -text 를 걸고 renormalize  →  16개 파일의 blob 이 CRLF 로 바뀜
+#
+#   즉 이 파일들은 **이미 커밋 때 LF 로 정규화되어 저장돼 있고**, checkout 때
+#   CRLF 로 풀린다. PIPENET 은 Windows 프로그램이라 원본이 CRLF 였을 가능성이
+#   높으므로, 저장된 레퍼런스는 벤더 원본과 줄바꿈이 다를 수 있다.
+#
+#   고쳐야 하는지는 **재 봐야 안다** — 골든 비교가 파일을 바이트로 읽는지,
+#   PIPENET 이 LF 를 받아들이는지. 안 재고 16개 blob 을 바꾸면 이 커밋의
+#   조건을 스스로 깨는 셈이라 여기서는 손대지 않고 적어만 둔다.

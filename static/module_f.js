@@ -2265,9 +2265,29 @@
       const tx = document.createElement("span");
       tx.className = "nm";
       tx.textContent = `${b.layer} × ${b.name}`;
+      // 잰 값만 적는다 — «배관다움» 같은 판정은 **안 붙인다**.
+      //
+      // ★붙이려다 실측이 막았다. 「긴 선분이 많으면 배관」이 그럴듯해 보이지만
+      //   정반대로 작동한다: 평면도의 진짜 배관 레이어는 부속·꺾임 때문에 긴
+      //   선분이 10~18% 뿐이고(대명동 `-소화(SP가지관)` 10% · LH306 `pipe`
+      //   18%), 계통도의 층 구획선은 100% 다. 판정을 지어내면 이름 사전이
+      //   틀린 자리에 «틀린 확신» 을 하나 더 얹게 된다.
+      //
+      // ★개수는 «도면에 있는 수»(n_all) 를 쓴다. 종전에는 그려 보낸 수를
+      //   적었는데 그것은 상한에서 잘린 값이라 큰 도면에서 거짓말이 된다.
       const cn = document.createElement("span");
       cn.className = "cnt";
-      cn.textContent = `${b.n_seg} / ${b.n_circle}`;
+      const n = (b.n_all !== undefined ? b.n_all : b.n_seg);
+      const cir = (b.n_circle_all !== undefined ? b.n_circle_all : b.n_circle);
+      cn.textContent = `${num(b.len_m).toLocaleString()} m · ${n.toLocaleString()}`
+        + (cir ? ` · ○${cir.toLocaleString()}` : "");
+      cn.title = `총 연장 ${num(b.len_m).toLocaleString()} m`
+        + ` · 선분 ${n.toLocaleString()}개`
+        + ` · 중앙 선분 길이 ${num(b.len_mid).toLocaleString()} mm`
+        + (cir ? ` · 원 ${cir.toLocaleString()}개` : "")
+        + (b.n_arc_all ? ` · 호 ${b.n_arc_all.toLocaleString()}개` : "")
+        + (b.n_seg < n ? `\n(화면에는 ${b.n_seg.toLocaleString()}개만 그립니다`
+                         + " — 세는 것과 그리는 것은 다릅니다)" : "");
       lb.append(cb, sw, ct, tx, cn);
       box.appendChild(lb);
     }

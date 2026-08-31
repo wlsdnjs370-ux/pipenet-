@@ -53,10 +53,40 @@ def _world_payload(world) -> dict:
     n_seg = n_cir = n_arc = 0
     shown_seg = shown_cir = shown_arc = 0
 
+    # ── 묶음마다 «도면에 실제로 몇 개 있나» 를 따로 센다.
+    #
+    # ★아래 `n_seg` 는 **그려 보낸** 수다(MAX_SEGS 에서 잘린다). 그것을 목록에
+    #   개수로 적으면 큰 도면에서 거짓말이 된다 — 사람이 「이 레이어는 500개
+    #   짜리」라고 읽는데 실제로는 3,000개일 수 있다. 세는 것과 그리는 것을
+    #   가른다.
+    # ★길이도 같이 잰다. 어느 묶음이 배관인지 고를 때 «몇 개» 보다 «총 몇 m»
+    #   가 쓸모 있다. 판정은 하지 않는다 — 판정하려다 틀린 규칙을 만들 뻔했다
+    #   (실측: 평면도의 진짜 배관은 긴 선분이 10~18% 뿐이고, 층 구획선이
+    #   100% 다. 「길면 배관」은 정반대로 작동한다).
+    import math as _math
+    from statistics import median as _median
+    stat: dict[tuple, dict] = {}
+
+    def bump(ly, c, *, seg_mm=None, circle=False, arc=False):
+        k = (ly, int(c) if isinstance(c, int) else c)
+        st = stat.get(k)
+        if st is None:
+            st = stat[k] = {"n": 0, "mm": 0.0, "lens": [], "cir": 0, "arc": 0}
+        if seg_mm is not None:
+            st["n"] += 1
+            st["mm"] += seg_mm
+            if len(st["lens"]) < 20000:      # 중앙값 표본 — 메모리 상한
+                st["lens"].append(seg_mm)
+        if circle:
+            st["cir"] += 1
+        if arc:
+            st["arc"] += 1
+
     for ly, c, a, b in world.segs:
         n_seg += 1
         grow(a[0], a[1])
         grow(b[0], b[1])
+        bump(ly, c, seg_mm=_math.hypot(b[0] - a[0], b[1] - a[1]))
         if shown_seg >= MAX_SEGS:
             continue
         s = slot(ly, c)
@@ -68,6 +98,7 @@ def _world_payload(world) -> dict:
         n_cir += 1
         grow(cx - r, cy - r)
         grow(cx + r, cy + r)
+        bump(ly, c, circle=True)
         if shown_cir >= MAX_CIRCLES:
             continue
         s = slot(ly, c)
@@ -80,6 +111,7 @@ def _world_payload(world) -> dict:
         n_arc += 1
         grow(cx - r, cy - r)
         grow(cx + r, cy + r)
+        bump(ly, c, arc=True)
         if shown_arc >= MAX_ARCS:
             continue
         ang = angs[i] if i < len(angs) else None
@@ -93,8 +125,26 @@ def _world_payload(world) -> dict:
         minx = miny = 0.0
         maxx = maxy = 1.0
 
+    # 잰 것을 묶음에 붙인다. `n_seg` 는 «그린 수», `n_all` 은 «도면에 있는 수» —
+    # 둘이 다르면 화면이 그 사실을 말한다.
+    for k, b in bundles.items():
+        st = stat.get(k) or {"n": 0, "mm": 0.0, "lens": [], "cir": 0, "arc": 0}
+        b["n_all"] = st["n"]
+        b["len_m"] = round(st["mm"] / 1000.0, 1)
+        b["len_mid"] = int(round(_median(st["lens"]))) if st["lens"] else 0
+        b["n_circle_all"] = st["cir"]
+        b["n_arc_all"] = st["arc"]
+
+    # 순서는 종전 뜻(«덩치 큰 것부터»)을 지키되 **잘리지 않은 수**로 센다.
+    #
+    # ★종전에는 `n_seg`(그려 보낸 수)로 정렬했다. 상한에 걸린 큰 도면에서는
+    #   그 값이 «먼저 그려진 순» 이라 사실상 임의였다.
+    # ★«총 연장» 순도 재 봤지만 **더 낫다고 못 보였다** — 계통도에서는 층
+    #   구획선(4,028 m · 1,108선분 · 중앙 4,350mm)이, 기계실에서는 잡선
+    #   `l4`(1,336 m)가 여전히 1등이다. 도면 테두리 4선분이 430 m 를 내기도
+    #   한다. 그래서 순서를 바꾸지 않고 **수치를 옆에 적어** 사람이 보게 한다.
     ordered = sorted(bundles.items(),
-                     key=lambda kv: -(kv[1]["n_seg"] + kv[1]["n_circle"]))
+                     key=lambda kv: -(kv[1]["n_all"] + kv[1]["n_circle_all"]))
     out = []
     for i, ((ly, c), b) in enumerate(ordered):
         b = dict(b)

@@ -509,3 +509,59 @@ def test_직접_입력_일람이_감사_화면으로_선다():
         assert w in aud, f"일람에 {w} 가 없다"
     # «없다» 와 «아직 모른다» 를 가른다.
     assert "표를 확정하면 여기 모입니다" in aud
+
+
+# ═══════════════════════════════════ 찍기 묶음 — 잰 값만, 판정은 없다
+class _World:
+    """`_world_payload` 가 받는 최소 모양 — 선분 셋, 원 하나."""
+
+    segs = [("SP", 1, (0.0, 0.0), (1000.0, 0.0)),
+            ("SP", 1, (1000.0, 0.0), (1000.0, 500.0)),
+            ("헤드", 2, (0.0, 0.0), (10.0, 0.0))]
+    circles = [("헤드", 2, 5.0, 5.0, 3.0)]
+    arcs = []
+    arc_ang = []
+
+
+def test_묶음_개수는_그린_수가_아니라_있는_수다():
+    """★종전에는 «그려 보낸 수» 를 목록에 적었다 — 상한에 걸린 큰 도면에서는
+    사람이 「이 레이어는 500개짜리」로 읽는데 실제로는 수천 개일 수 있다.
+    세는 것과 그리는 것을 가른다.
+    """
+    from routes.module_f.world import _world_payload
+
+    d = _world_payload(_World())
+    by = {(b["layer"], b["color"]): b for b in d["bundles"]}
+    sp = by[("SP", 1)]
+    assert sp["n_all"] == 2 and sp["n_seg"] == 2
+    assert sp["len_m"] == 1.5, "총 연장을 안 잰다"
+    # 500·1000 두 개의 중앙값 = 750 (짝수 개는 가운데 둘의 평균).
+    assert sp["len_mid"] == 750, "중앙 선분 길이를 안 잰다"
+    hd = by[("헤드", 2)]
+    assert hd["n_circle_all"] == 1
+
+
+def test_묶음에_배관다움_같은_판정을_붙이지_않는다():
+    """[실측이 막은 것] 선분 길이로는 배관과 격자선이 안 갈린다.
+
+    이름 사전이 «맞는» 도면의 진짜 배관 레이어는 부속·꺾임 때문에 긴 선분이
+    10~18% 뿐이다(대명동 `-소화(SP가지관)` 10% · LH306 `pipe` 18%). 반면
+    계통도의 층 구획선은 100% 다. 「길면 배관」은 정반대로 작동한다 —
+    이름 사전이 틀린 자리에 «틀린 확신» 을 하나 더 얹게 된다.
+
+    그래서 화면은 **잰 값만** 적는다. 이 시험은 그 결정을 못 박는다.
+    """
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    i = js.index("function buildLayers()")
+    seg = js[i:js.index('$("ly-all")', i)]
+    # ★주석은 빼고 본다. 「왜 판정을 안 붙였나」를 적은 주석에 그 낱말이 나오는데,
+    #   그것까지 걸면 이유를 적을 수 없게 된다 — 시험이 문서화를 막으면 안 된다.
+    code = "\n".join(ln for ln in seg.splitlines()
+                     if not ln.lstrip().startswith("//"))
+    for word in ("배관다움", "기호다움", "배관일 것"):
+        assert word not in code, f"묶음 목록이 «{word}» 라고 판정한다"
+    # 잰 값은 있어야 한다 — 아무것도 안 보여 주면 고를 수가 없다.
+    assert "b.len_m" in seg and "b.len_mid" in seg and "b.n_all" in seg
+    # 잘려 그린다는 사실도 숨기지 않는다.
+    assert "b.n_seg < n" in seg and "세는 것과 그리는 것은 다릅니다" in seg

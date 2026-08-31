@@ -766,6 +766,17 @@ def register(app, *, UPLOAD_DIR):
         # 표에 이미 «앵커 노드» 가 meta 로 적혀 있으니 그것에서 급수원까지
         # 되짚는다. `parent_of` 는 양방향 첫이웃이라 트리가 아니다 — 여기서
         # 급수원 기점 BFS 로 제대로 된 부모를 만든다(안 그러면 되짚다 맴돈다).
+        #
+        # ★★지금 이 아래 블록은 **한 번도 안 돈다.** 엔진의 `_anchor_node()` 가
+        #   무조건 None 을 돌려주는 스텁이라 meta 의 「앵커 노드」가 항상 '?' 다
+        #   (BLOCKED §30). 그래서 화면은 최원 유하거리가 «어느 줄인지» 를 못
+        #   그린다 — 숫자(far_m)만 있고 그 줄은 없다.
+        #
+        #   코드를 지우지 않고 둔 이유: 못 잇는 원인이 «좌표계가 안 이어진다»
+        #   (BLOCKED §17)는 엔진 쪽 사정이고, 그것이 풀리면 이 계산은 그대로
+        #   맞다. 다만 **되는 것처럼 보이는 코드는 위험하므로** 여기 크게 적어
+        #   둔다. 시험도 「아직 안 선다」를 못 박아 뒀다 — 고쳐지면 그 시험이
+        #   실패하면서 알려 준다.
         anchor_lab = dict(tbl.meta).get("앵커 노드")
         anchor_lab = str(anchor_lab) if anchor_lab not in (None, "?") else None
         root = next((lab for lab, n in at.items()

@@ -258,6 +258,119 @@ def _bore_ov_map(sess) -> dict:
     return out
 
 
+# ── [F-11d-1] 직접 입력의 «안정 키» ─────────────────────────────────
+#
+# 부속 직접 입력의 키 `(node, pipe)` 는 둘 다 제한 전개(corridor)에서 새로
+# 매겨지는 이름이다. corridor 가 바뀌면 BFS 가 다시 돌아 번호가 재배열된다.
+#
+# 실측(BLOCKED §22 · 대명동, 기준개수 K 30→20):
+#     배관 라벨   공통 자리 105개 중 **105개가 옮겨감**
+#     (node,pipe) 키  4 → 2 · **그대로 0**       ← 하나도 안 남는다
+#     board 노드쌍 키 4 → 2 · **그대로 2**       ← 살아남은 자리를 다 지킨다
+#
+# 그래서 **세션에는 안정 키로 담고, 엔진에 넘길 때 번역한다.**
+# `build_fittings(overrides=)` 는 `(node, pipe)` 를 받고 그 파일은 이 지시서에서
+# 읽기 전용이므로(§3) 엔진을 바꾸지 않는다.
+#
+# ★이 번역은 «판정» 이 아니라 «이름 바꾸기» 다. 어느 자리가 미해결인지는 엔진이
+#   정하고(`build_fittings`), 여기서는 그 자리를 corridor 가 바뀌어도 가리킬 수
+#   있는 이름으로 옮겨 적을 뿐이다. F 가 판정을 다시 하면 규칙이 두 벌이 된다.
+
+_SPOT_MM = 1          # 좌표 반올림 자리 — 같은 board 점이면 같은 값이 나온다
+
+
+def _kfp_ends(net, pid):
+    """배관의 두 끝 노드. kfp 는 start/end 와 from/to 두 이름을 다 쓴다."""
+    pr = ((net or {}).get("pipe_data") or {}).get(str(pid)) or {}
+    return pr.get("start") or pr.get("from"), pr.get("end") or pr.get("to")
+
+
+def _node_xyz(net, nid):
+    c = (((net or {}).get("nodes_meta_runtime") or {}).get(nid) or {}
+         ).get("coords") or None
+    if not c:
+        return None
+    return tuple(round(float(v), _SPOT_MM) for v in (list(c) + [0.0, 0.0])[:3])
+
+
+def spot_key(got, node, pipe):
+    """`(kfp node, kfp pipe)` → 안정 키 `(board 노드쌍, 그 자리 좌표)`.
+
+    배관은 board 간선으로, 자리는 좌표로 가리킨다 — 둘 다 corridor 가 바뀌어도
+    같은 값이다. 역참조가 없는 배관(헤드 접속관·가지 상승)은 board 간선이 없어
+    안정 키를 못 만든다 — None 을 돌려주고 부르는 쪽이 «구키로 남긴다».
+    """
+    net = (got or {}).get("kfp") or {}
+    ref = ((got or {}).get("edge_ref") or {}).get(str(pipe))
+    if ref is None:
+        return None
+    xyz = _node_xyz(net, node)
+    if xyz is None:
+        return None
+    try:
+        a, b = int(ref[0]), int(ref[1])
+    except (TypeError, ValueError, IndexError):
+        return None
+    return (min(a, b), max(a, b)), xyz
+
+
+def spot_index(got) -> dict:
+    """이번 빌드의 `안정 키 → (node, pipe)` — 번역의 반대 방향.
+
+    배관마다 두 끝을 다 넣는다. 어느 끝인지는 좌표가 가른다.
+    """
+    net = (got or {}).get("kfp") or {}
+    out = {}
+    for pid, ref in ((got or {}).get("edge_ref") or {}).items():
+        try:
+            a, b = int(ref[0]), int(ref[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        pair = (min(a, b), max(a, b))
+        for nid in _kfp_ends(net, pid):
+            if nid is None:
+                continue
+            xyz = _node_xyz(net, nid)
+            if xyz is not None:
+                out[(pair, xyz)] = (str(nid), str(pid))
+    return out
+
+
+def fitting_ov_for_engine(sess, got) -> tuple:
+    """세션의 직접 입력 → 엔진이 받는 모양 + **적용 못 한 것**.
+
+    ★못 적용한 것을 조용히 버리지 않는다(지시서 F-11d-2 「조용한 소실 금지」).
+      그 자리가 corridor 에서 빠졌거나, 미해결이 아니게 됐거나, 안정 키를 못
+      만드는 배관이면 값이 안 들어간다 — 사람은 그 사실을 알아야 한다.
+    """
+    cur = dict(sess.get("fitting_overrides") or {})
+    idx = spot_index(got)
+    out_kind, missed = [], []
+    for r in (cur.get("kind") or ()):
+        node, pipe = r.get("node"), r.get("pipe")
+        key = _row_key(r)
+        if key is not None and key in idx:
+            node, pipe = idx[key]           # 안정 키가 이번 빌드의 이름을 준다
+        elif key is not None:
+            missed.append({**r, "why": "그 자리가 이번 계산 범위에 없습니다"})
+            continue
+        # 안정 키가 없는 구(舊) 항목은 적어 둔 이름 그대로 시도한다(읽기 호환).
+        out_kind.append({"node": node, "pipe": pipe,
+                         "kind": r.get("kind"), "note": r.get("note")})
+    return ({"kind": out_kind, "eq_len": list(cur.get("eq_len") or ())},
+            missed)
+
+
+def _row_key(r):
+    """저장된 한 줄에서 안정 키를 꺼낸다. 구(舊) 항목이면 None."""
+    try:
+        a, b = int(r["a"]), int(r["b"])
+        xyz = tuple(round(float(r[k]), _SPOT_MM) for k in ("nx", "ny", "nz"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return (min(a, b), max(a, b)), xyz
+
+
 def register(app, *, UPLOAD_DIR):
     # ─────────────────────────────────────── 수리계산 입력 (설계)
     @app.post("/api/module-f/design/build")
@@ -305,6 +418,10 @@ def register(app, *, UPLOAD_DIR):
             if not got.get("ok"):
                 return {"ok": False, "error": got.get("error")}
             texts = _dia_texts(sess)
+            # [F-11d] 직접 입력을 **이번 계산의 이름으로 번역**한다. 세션에는
+            #   corridor 가 바뀌어도 같은 자리를 가리키는 안정 키로 담겨 있다
+            #   (BLOCKED §22). 못 옮긴 것은 버리지 않고 세어 화면에 올린다.
+            fit_ov, fit_missed = fitting_ov_for_engine(sess, got)
             try:
                 tbl = build_design_tables(
                     got["kfp"], got["worst"], got["edge_ref"], texts,
@@ -315,13 +432,46 @@ def register(app, *, UPLOAD_DIR):
                     # [§18] 사람이 손으로 채운 값 — 규칙이 못 가린 자리에만
                     #   쓰인다(엔진이 그렇게 판단한다). 세션에 남아 있으므로
                     #   「다시 계산」·「표 확정」을 다시 눌러도 그대로 간다.
-                    fitting_overrides=sess.get("fitting_overrides"),
+                    fitting_overrides=fit_ov,
                     # [F-11c] 관경 덮기 — 부속과 달리 «규칙 값도» 덮는다
                     #   (D-F11-3). 키는 board 노드쌍이라 corridor 가 다시
                     #   계산돼도 같은 자리를 가리킨다(D-F11-4).
                     bore_overrides=_bore_ov_map(sess))
             except UnknownSchedule as exc:
                 return {"ok": False, "error": str(exc)}
+            # ★[F-11d-2] 넘긴 것 중 «엔진이 실제로 쓴 것» 을 맞대 본다.
+            #   자리가 corridor 에 남아 있어도 그 사이에 미해결이 아니게 됐으면
+            #   값은 안 들어간다 — 그것도 «적용 못 한 수정» 이다. 개수만 세면
+            #   사람은 들어간 줄 안다.
+            used = {(str(a.get("node")), str(a.get("pipe")))
+                    for a in ((getattr(tbl, "unresolved", None) or {})
+                              .get("applied") or ())
+                    if a.get("what") == "kind"}
+            sent = {(str(r.get("node")), str(r.get("pipe"))): r
+                    for r in (fit_ov.get("kind") or ())}
+            for k2, r in sent.items():
+                if k2 not in used:
+                    fit_missed.append(
+                        {**r, "why": "그 자리는 이제 «판정 불가» 가 아닙니다 "
+                                     "— 자동이 답을 냈습니다"})
+            # 등가길이 쌍도 같은 방식으로 맞댄다((종류,호칭경) 이 단위다).
+            used_eq = {(str(a.get("kind")), int(a.get("dia")))
+                       for a in ((getattr(tbl, "unresolved", None) or {})
+                                 .get("applied") or ())
+                       if a.get("what") == "eq_len" and a.get("dia") is not None}
+            for r in (fit_ov.get("eq_len") or ()):
+                try:
+                    kk = (str(r.get("kind")), int(r.get("dia")))
+                except (TypeError, ValueError):
+                    continue
+                if kk not in used_eq:
+                    fit_missed.append(
+                        {**r, "what": "eq_len",
+                         "why": "그 (종류, 호칭경) 쌍이 이번 계산에 없습니다"})
+            if fit_missed:
+                print(f"[설계] ★적용 못 한 직접 입력 {len(fit_missed)}건 — "
+                      "조용히 버리지 않고 화면에 올린다")
+            sess["ov_missed"] = fit_missed
             # 표는 메모리에만 — emit 을 눌러야 파일이 생긴다.
             marks = _classify_excluded(sess, got, es.board)
             sess["design"] = {"got": got, "tables": tbl, "k": cfg["k"],
@@ -395,10 +545,29 @@ def register(app, *, UPLOAD_DIR):
                 if len(note) > 200:
                     return _fail("사유가 너무 깁니다 (200자).")
                 row["note"] = note
+                if key == "kind":
+                    # [F-11d-1] 받은 자리를 «안정 키» 로도 적어 둔다. 화면은
+                    #   지금처럼 (node, pipe) 로 가리키면 되고, 그 이름이 다음
+                    #   계산에서 다른 자리를 뜻하게 되는 것을 여기서 막는다.
+                    #   이미 안정 키를 실어 보냈으면 그것을 그대로 믿는다.
+                    st = _row_key(r)
+                    if st is None:
+                        # ★`sess["design"]` 이 아니라 그 안의 `got` 이다 —
+                        #   `kfp`·`edge_ref` 는 거기 있다. 한 겹 위를 넘기면
+                        #   조용히 None 이 되어 «안정 키가 안 붙은 채» 저장된다.
+                        st = spot_key((sess.get("design") or {}).get("got"),
+                                      row.get("node"), row.get("pipe"))
+                    if st is not None:
+                        (row["a"], row["b"]), xyz = st
+                        row["nx"], row["ny"], row["nz"] = xyz
                 clean.append(row)
             cur[key] = clean
         sess["fitting_overrides"] = cur
         n_k, n_e = len(cur.get("kind") or ()), len(cur.get("eq_len") or ())
+        n_st = sum(1 for r in (cur.get("kind") or ()) if _row_key(r))
+        if n_k:
+            print(f"[설계] 직접 입력 부속 {n_k}자리 중 안정 키 {n_st}자리 "
+                  f"(나머지는 board 역참조가 없어 구키로 남는다)")
         print(f"[설계] 직접 입력 — 부속 {n_k}자리 · 등가길이 {n_e}쌍 "
               f"(표를 다시 확정해야 산출에 들어간다)")
         return jsonify({
@@ -685,6 +854,9 @@ def register(app, *, UPLOAD_DIR):
             # [F-5] 제외 사유 분류 — mm 세계좌표. 설계 캔버스(정규화 좌표)가
             # 아니라 손질 망 위에 그려야 «어디» 인지 보인다.
             "marks": d.get("marks") or {},
+            # [F-11d-2] 직접 입력 중 «이번 계산에 못 들어간 것». 조용한 소실
+            #   금지 — 개수만 세면 사람은 들어간 줄 안다. 사유를 함께 싣는다.
+            "ov_missed": sess.get("ov_missed") or [],
         })
 
     @app.post("/api/module-f/design/emit")

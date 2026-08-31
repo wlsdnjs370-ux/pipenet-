@@ -3126,6 +3126,9 @@
     const d = await api(`/api/module-f/design/preview?${q}`);
     S.design = { view: d.view, tables: d.tables, settings: d.settings,
                  marks: d.marks || {},
+                 // [F-11d-2] 이번 계산에 «못 들어간» 직접 입력. 조용한 소실
+                 //   금지 — 목록으로 올라가 사유까지 보인다.
+                 ovMissed: d.ov_missed || [],
                  // [F-10f] 이상 목록이 부속·등가길이 수치를 여기서 읽는다.
                  summary: (S.design && S.design.summary) || null,
                  hilite: (S.design && S.design.hilite) || new Set() };
@@ -3652,6 +3655,30 @@
         }),
       });
     }
+    // ★[F-11d-2] 적용 «못 한» 수정 — 조용한 소실 금지.
+    //
+    // 사람이 채운 값이 다음 계산에서 안 들어가는 일이 있다: 그 자리가 corridor
+    // 에서 빠졌거나, 자동이 답을 내서 «판정 불가» 가 아니게 됐거나. 개수만 세면
+    // 사람은 들어간 줄 안다. 사유와 함께 목록으로 올린다.
+    const miss = (S.design && S.design.ovMissed) || [];
+    if (miss.length) {
+      out.push({
+        key: "ovmiss", color: "#ef4444", n: miss.length,
+        label: "적용 못 한 수정 — 직접 입력이 이번 산출에 안 들어갔습니다",
+        note: "값은 지워지지 않았습니다. 자리가 돌아오면 다시 적용됩니다.",
+        items: miss.slice(0, ISSUE_CAP).map((m) => {
+          const [mx, my] = mid(m.pipe);
+          const what = m.what === "eq_len"
+            ? `${m.kind} ${m.dia}A · ${m.m} m`
+            : `${m.pipe || "?"} · ${kindLabel(m.kind)}`;
+          return {
+            text: `${what} — ${m.why || "사유 없음"}`
+              + (m.note ? ` (사유 「${m.note}」)` : ""),
+            x: mx, y: my, frame: "iso",
+          };
+        }),
+      });
+    }
     // 채운 자리를 목록에 남긴다 — 값이 어디서 왔는지 나중에도 알 수 있어야 한다.
     const app = un.applied || [];
     if (app.length) {
@@ -3682,6 +3709,10 @@
   function renderIssues() {
     const box = $("dg-issues"), chip = $("dg-issues-n");
     if (!box) return;
+    // ★일람은 **여기 맨 앞에서** 그린다. 아래에 조기 반환이 둘 있어(표 없음 ·
+    //   이상 0건) 끝에 두면 그 두 경우에 일람이 안 그려진다 — 「이상 없음」인
+    //   도면일수록 감사 화면이 필요한데 하필 그때 비는 셈이다.
+    renderAudit();
     // ★표가 없으면 «없다» 가 아니라 «아직 모른다» 다. 안 재고 「이상 없음」이라
     //   적으면 그것은 완료 신호를 위조하는 것이다(저장소 규약: 정직한 진행 표시).
     if (!S.design || !S.design.view) {
@@ -3804,6 +3835,69 @@
       say("직접 입력을 지웠습니다 — 표를 다시 확정합니다.", "ok");
       $("dg-build").click();     // 값이 바뀌는 일이라 재확정까지 이어 준다
     } catch (err) { busy(false); say(err.message, "err"); }
+  }
+
+  // ── [F-11d-3] 직접 입력 일람 — 감사 화면 ────────────────────────
+  //
+  // 「확인할 것」은 «지금 고칠 것» 을 보여 주는 자리다. 이쪽은 성격이 다르다 —
+  // 나중에 「이 수치를 누가·왜 정했나」를 되짚는 자리라, 산출에 들어간 것과
+  // 못 들어간 것을 **한자리에** 모아 둔다. 새로 계산하지 않는다: 전부 이미
+  // 화면에 와 있는 자료다(applied · ovMissed · boreRows · fitOverrides).
+  function renderAudit() {
+    const box = $("dg-audit"), chip = $("dg-audit-n");
+    if (!box) return;
+    const t = (S.design && S.design.tables) || null;
+    const un = (t && t.unresolved) || {};
+    const rows = [];
+    for (const a of (un.applied || [])) {
+      rows.push({
+        ok: true,
+        what: a.what === "kind" ? "부속" : "등가길이",
+        where: a.what === "kind"
+          ? `${a.pipe} · 노드 ${a.node}`
+          : `${a.kind} ${a.dia}A (그 쌍을 쓰는 배관 전부)`,
+        val: a.what === "kind" ? kindLabel(a.kind) : `${a.m} m`,
+        note: a.note || "",
+      });
+    }
+    for (const [lab, b] of Object.entries((t && t.bore_overrides) || {})) {
+      rows.push({
+        ok: true, what: "관경", where: `${lab} · 노드 ${b.a}–${b.b}`,
+        val: `${b.dia}A (원래 ${DG_SRC[b.orig_src] || b.orig_src} `
+          + `${b.orig_dia}A)`,
+        note: b.note || "",
+      });
+    }
+    for (const m of ((S.design && S.design.ovMissed) || [])) {
+      rows.push({
+        ok: false,
+        what: m.what === "eq_len" ? "등가길이" : "부속",
+        where: m.what === "eq_len"
+          ? `${m.kind} ${m.dia}A` : `${m.pipe || "?"} · 노드 ${m.node || "?"}`,
+        val: m.what === "eq_len" ? `${m.m} m` : kindLabel(m.kind),
+        note: m.note || "", why: m.why || "",
+      });
+    }
+    chip.textContent = rows.length ? `${rows.length}건` : "없음";
+    chip.classList.toggle("ok", !rows.length);
+    if (!rows.length) {
+      // ★«없다» 와 «아직 모른다» 를 가른다 — 표가 없으면 잰 적이 없는 것이다.
+      box.innerHTML = t
+        ? '<div class="hint">직접 입력한 값이 없습니다 — 전부 자동이 낸 값입니다.</div>'
+        : '<div class="hint">표를 확정하면 여기 모입니다.</div>';
+      return;
+    }
+    const n_ok = rows.filter((r) => r.ok).length;
+    box.innerHTML =
+      `<div class="kv"><b>산출에 들어감 ${n_ok}건</b>`
+      + `<span>${rows.length - n_ok ? `못 들어감 ${rows.length - n_ok}건` : ""}`
+      + `</span></div>`
+      + rows.map((r) =>
+          `<div class="issue"><span style="color:${r.ok ? "#22c55e" : "#ef4444"}">`
+          + `●</span> <b>${r.what}</b> — ${r.where} → <b>${r.val}</b>`
+          + (r.note ? ` · 사유 「${r.note}」` : " · <i>사유 없음</i>")
+          + (r.why ? `<br><span class="dim">${r.why}</span>` : "")
+          + `</div>`).join("");
   }
 
   /** 지금 몇 칸이 채워졌나 — 저장 전에 사람이 보고 안다.

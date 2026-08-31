@@ -1237,6 +1237,49 @@ def main() -> int:
                     check("배관 표가 아니면 관경 덮기가 감춰진다",
                           bool(f11c.get("hidden_elsewhere")))
 
+                    # ── [F-11d] 적용 못 한 수정 · 직접 입력 일람(감사 화면)
+                    f11d = page.evaluate(
+                        """() => {
+                          const S = window.__mf;
+                          S.design.ovMissed = [
+                            {what: "kind", node: "N9", pipe: "P9",
+                             kind: "tee", note: "도면 확인",
+                             why: "그 자리가 이번 계산 범위에 없습니다"}];
+                          S.renderIssues();
+                          const box = document.getElementById('dg-issues');
+                          const aud = document.getElementById('dg-audit');
+                          const out = {
+                            miss: box.textContent.includes('적용 못 한 수정'),
+                            why: box.textContent.includes(
+                              '그 자리가 이번 계산 범위에 없습니다'),
+                            kept: box.textContent.includes(
+                              '값은 지워지지 않았습니다'),
+                            chip: (document.getElementById('dg-audit-n')
+                                   || {}).textContent || '',
+                            aud: aud.textContent,
+                          };
+                          // ★표가 없을 때도 일람이 «아직 모른다» 를 말하는가.
+                          S.design = null;
+                          S.renderIssues();
+                          out.empty = (document.getElementById('dg-audit')
+                                       || {}).textContent || '';
+                          return out;
+                        }""")
+                    check("적용 못 한 수정이 목록에 선다 (F-11d-2)",
+                          bool(f11d.get("miss")))
+                    check("★사유가 함께 보인다", bool(f11d.get("why")))
+                    check("값이 지워진 게 아니라고 밝힌다",
+                          bool(f11d.get("kept")))
+                    check("직접 입력 일람이 세 갈래를 모은다 (F-11d-3)",
+                          all(w in str(f11d.get("aud"))
+                              for w in ("부속", "등가길이", "관경")),
+                          str(f11d.get("chip")))
+                    check("일람에 못 들어간 것도 사유와 함께 선다",
+                          "범위에 없습니다" in str(f11d.get("aud")))
+                    check("표가 없으면 «없다» 가 아니라 «아직 모른다» 다",
+                          "표를 확정하면" in str(f11d.get("empty")),
+                          str(f11d.get("empty"))[:40])
+
                     page.evaluate(
                         "() => document.getElementById('panel-design')"
                         ".classList.add('hidden')")

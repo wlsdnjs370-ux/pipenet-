@@ -387,3 +387,125 @@ def test_관경_덮을_자리는_노드쌍으로_가리킨다():
     j = js.index("function renderBoreOv()")
     seg2 = js[j:j + 2200]
     assert "못 덮는 것" in seg2
+
+
+# ═══════════════════════════════════════════ F-11d. 수정이 살아남는가
+def _got():
+    """최소 `got` — 배관 둘, 노드 셋. 안정 키 왕복을 재기에 충분하다."""
+    return {
+        "kfp": {
+            "pipe_data": {"P1": {"start": "N1", "end": "N2"},
+                          "P2": {"start": "N2", "end": "N3"}},
+            "nodes_meta_runtime": {
+                "N1": {"coords": (0.0, 0.0, 0.0)},
+                "N2": {"coords": (1.5, 2.5, 0.0)},
+                "N3": {"coords": (3.0, 2.5, 1.0)}},
+        },
+        # 배관 라벨은 corridor 마다 새로 매겨지지만 board 노드쌍은 그대로다.
+        "edge_ref": {"P1": (7, 3), "P2": (3, 9)},
+    }
+
+
+def test_안정_키는_배관_이름이_바뀌어도_같은_자리를_가리킨다():
+    """[F-11d-1 · BLOCKED §22] 실측이 시킨 이행이다.
+
+    corridor 가 바뀌면 `(node, pipe)` 는 **하나도 안 남는다**(K 30→20 에서
+    4 → 그대로 0). board 노드쌍 키는 살아남은 자리를 다 지킨다(그대로 2).
+    그래서 세션에는 안정 키로 담고 엔진에 넘길 때 번역한다.
+    """
+    from routes.module_f.api_design import spot_index, spot_key
+
+    got = _got()
+    key = spot_key(got, "N2", "P1")
+    assert key is not None
+    (a, b), xyz = key
+    assert (a, b) == (3, 7), "노드쌍을 정렬해서 담아야 한다"
+    assert xyz[:2] == (1.5, 2.5)
+
+    # 같은 물리 자리를 «이름이 다른» 빌드에서 되찾는다.
+    later = _got()
+    later["kfp"]["pipe_data"] = {"P77": {"start": "N9", "end": "N8"},
+                                 "P78": {"start": "N8", "end": "N5"}}
+    later["kfp"]["nodes_meta_runtime"] = {
+        "N9": {"coords": (0.0, 0.0, 0.0)},
+        "N8": {"coords": (1.5, 2.5, 0.0)},
+        "N5": {"coords": (3.0, 2.5, 1.0)}}
+    later["edge_ref"] = {"P77": (3, 7), "P78": (9, 3)}
+    assert spot_index(later)[key] == ("N8", "P77"), "이름이 바뀌면 못 찾는다"
+
+
+def test_역참조_없는_배관은_안정_키를_못_만든다():
+    """헤드 접속관·가지 상승은 board 간선이 없다 — 조용히 아무 값이나 주면 안 된다."""
+    from routes.module_f.api_design import spot_key
+
+    got = _got()
+    got["edge_ref"] = {}
+    assert spot_key(got, "N2", "P1") is None
+
+
+def test_적용_못_한_수정을_조용히_버리지_않는다():
+    """[F-11d-2] 개수만 세면 사람은 «들어간 줄» 안다 — 사유와 함께 남긴다."""
+    from routes.module_f.api_design import fitting_ov_for_engine
+
+    got = _got()
+    sess = {"fitting_overrides": {"kind": [
+        # ① 이번 빌드에 있는 자리 — 그 빌드의 이름으로 번역돼야 한다.
+        {"a": 3, "b": 7, "nx": 1.5, "ny": 2.5, "nz": 0.0,
+         "kind": "none", "note": "확인함", "node": "옛이름", "pipe": "옛배관"},
+        # ② 이번 빌드에 없는 자리 — 버리지 않고 사유와 함께 센다.
+        {"a": 100, "b": 200, "nx": 0.0, "ny": 0.0, "nz": 0.0,
+         "kind": "tee", "note": ""},
+    ]}}
+    ov, missed = fitting_ov_for_engine(sess, got)
+    assert len(ov["kind"]) == 1
+    assert ov["kind"][0]["node"] == "N2" and ov["kind"][0]["pipe"] == "P1", \
+        "안정 키가 이번 빌드의 이름을 주지 못했다"
+    assert len(missed) == 1 and "없습니다" in missed[0]["why"]
+
+
+def test_구키_항목은_읽기_호환으로_남는다():
+    """이미 저장된 옛 항목을 깨뜨리지 않는다 — 적어 둔 이름 그대로 시도한다."""
+    from routes.module_f.api_design import fitting_ov_for_engine
+
+    sess = {"fitting_overrides": {"kind": [
+        {"node": "N2", "pipe": "P1", "kind": "none", "note": ""}]}}
+    ov, missed = fitting_ov_for_engine(sess, _got())
+    assert ov["kind"][0]["pipe"] == "P1" and not missed
+
+
+def test_적용_못_한_수정이_화면에_올라간다():
+    """[F-11d-2] 조용한 소실 금지 — 목록에 무리로 서고 사유가 보인다."""
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    i = js.index("function collectIssues()")
+    seg = js[i:js.index("function renderIssues()", i)]
+    assert 'key: "ovmiss"' in seg
+    assert "적용 못 한 수정" in seg
+    assert "m.why" in seg, "사유가 안 보인다"
+    # 값이 지워진 것이 아니라는 것도 말해 준다 — 안 그러면 다시 채우게 된다.
+    assert "값은 지워지지 않았습니다" in seg
+
+
+def test_직접_입력_일람이_감사_화면으로_선다():
+    """[F-11d-3] 「이 수치를 누가·왜 정했나」를 되짚는 자리.
+
+    ★조기 반환보다 **앞에서** 그려야 한다. `renderIssues` 에는 반환이 둘
+      (표 없음·이상 0건) 있어서, 끝에 두면 「이상 없음」인 도면에서 일람이
+      통째로 빈다 — 하필 그때 감사 화면이 필요한데.
+    """
+    html = _screen()
+    assert 'id="dg-audit"' in html and 'data-fold="dg-audit-body"' in html
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    assert "function renderAudit()" in js
+    i = js.index("function renderIssues()")
+    seg = js[i:i + 700]
+    assert "renderAudit();" in seg
+    assert seg.index("renderAudit();") < seg.index("collectIssues()")
+    # 세 갈래(부속·등가길이·관경)를 한자리에 모은다.
+    a = js.index("function renderAudit()")
+    aud = js[a:js.index("function countFilled()", a)]
+    for w in ("부속", "등가길이", "관경", "bore_overrides", "ovMissed"):
+        assert w in aud, f"일람에 {w} 가 없다"
+    # «없다» 와 «아직 모른다» 를 가른다.
+    assert "표를 확정하면 여기 모입니다" in aud

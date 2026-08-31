@@ -821,8 +821,11 @@ def test_저장하면_다시_확정하라고_말한다():
 def test_채운_자리는_직접_입력으로_남는다():
     """자동이 낸 값과 사람이 넣은 값을 같은 얼굴로 두지 않는다."""
     html = _screen()
+    # ★창을 «글자 수» 로 잡으면 안 된다 — 이 함수에 무리가 하나 더 붙는 순간
+    #   찾던 것이 창 밖으로 밀려나 «없어졌다» 고 틀리게 실패한다(F-11d 에서
+    #   실제로 그랬다). 함수의 끝을 경계로 잡는다.
     i = html.index("function collectIssues()")
-    seg = html[i:i + 5200]
+    seg = html[i:html.index("function renderIssues()", i)]
     assert 'key: "applied"' in seg
     assert "직접 입력 — 사람이 채운 자리" in seg
     # 사유도 함께 보인다.
@@ -832,8 +835,11 @@ def test_채운_자리는_직접_입력으로_남는다():
 def test_등가길이는_쌍_단위로_채운다():
     """[§18 ②] 라이브러리 구멍은 (종류, 호칭경) 쌍이 단위다."""
     html = _screen()
+    # ★창을 «글자 수» 로 잡으면 안 된다 — 이 함수에 무리가 하나 더 붙는 순간
+    #   찾던 것이 창 밖으로 밀려나 «없어졌다» 고 틀리게 실패한다(F-11d 에서
+    #   실제로 그랬다). 함수의 끝을 경계로 잡는다.
     i = html.index("function collectIssues()")
-    seg = html[i:i + 5200]
+    seg = html[i:html.index("function renderIssues()", i)]
     assert 'type: "eq_len", kind: String(p.kind), dia: Number(p.dia)' in seg
     assert "한 쌍을 채우면" in seg
 

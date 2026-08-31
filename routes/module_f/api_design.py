@@ -17,11 +17,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from flask import jsonify, request, send_file
+from flask import jsonify, request
 
 from routes.module_f.common import (
-    REMOTE_K_DEFAULT, _boot, _fail, _r1)
-from routes.module_f.jobs import _job_running, _run_job, _sess, route_session
+    REMOTE_K_DEFAULT, _boot, _fail)
+from routes.module_f.jobs import _job_running, _run_job, route_session
 
 # 설정 7종(지시서 F-2) — body 로 받고 세션에 기억한다.
 _DEFAULT_SETTINGS = {

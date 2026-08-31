@@ -54,8 +54,7 @@ from routes.module_f.jobs import (  # noqa: F401
     _HEAVY_LOCK, _SESSIONS, _job_running, _job_view, _new_session, _run_job,
     _sess, _sweep, route_session)
 from routes.module_f.remote30 import (  # noqa: F401
-    _emit_pipenet, _restrict_to_worst, _sheet_frames, _worst_k_heads,
-    _worst_view)
+    _restrict_to_worst, _sheet_frames, _worst_k_heads, _worst_view)
 from routes.module_f.slots import (  # noqa: F401
     SESSION_KEYS, SLOT_KINDS, SLOT_LABELS, _check_slot_kind, _slot_active,
     _slot_blank, _slot_capture, _slot_init, _slot_progress, _slot_restore,

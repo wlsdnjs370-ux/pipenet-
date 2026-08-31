@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import math
-import os
 
 from routes.module_f.common import REMOTE_K_DEFAULT, _r1
+
 
 def _worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
                    only_heads=None, source_index=None) -> dict:
@@ -147,49 +147,13 @@ def _restrict_to_worst(payload: dict, board, worst: dict) -> dict:
     return out
 
 
-def _emit_pipenet(sess: dict, kfp: dict, out_dir: Path) -> dict:
-    """[F-4 · D3 로 은퇴] .kfp → PIPENET .sdf 문법 재직렬화.
-
-    설계구역 없는 전체망 SDF 는 수리계산 입력이 아니라는 것이 확정 결정이라
-    UI 경로에서 빠졌다. 수리계산 입력 SDF 는 design/emit(G 엔진)이 만든다.
-    함수는 진단 스크립트 호환으로만 남긴다 — 새 호출부를 만들지 말 것.
-
-    모듈 A 는 제 표(`PipeTables`)에서 SDF 를 직접 찍지만, 모듈 F 의 산출물은
-    모듈 E 계열의 .kfp 다. 여기서 SDF 를 새로 짜면 규약이 셋으로 갈라지므로,
-    이미 있는 KFP↔SDF 변환기(`kfp_sdf_converter`)를 태운다.
-    SDF 는 SLF(라이브러리) 없이 열면 PIPENET 이 "pipe bore must be given" 을
-    내므로 항상 한 세트로 묶는다.
-    """
-    info: dict = {"ok": False}
-    try:
-        from kfp_sdf_converter import emit_sdf_xml, kfp_dict_to_network
-        net = kfp_dict_to_network(kfp)
-        xml = emit_sdf_xml(net)
-    except Exception as exc:  # noqa: BLE001 — SDF 실패가 .kfp 를 무르게 하면 안 된다
-        print(f"[변환] SDF 생성 실패 — .kfp 는 정상입니다: {exc}")
-        info["error"] = f"{type(exc).__name__}: {exc}"
-        return info
-
-    sdf_path = out_dir / f"{sess['id']}.sdf"
-    sdf_path.write_text(xml, encoding="utf-8")
-    sess["sdf_path"] = str(sdf_path)
-    info.update({
-        "ok": True, "bytes": sdf_path.stat().st_size,
-        "nodes": xml.count("<Node "), "pipes": xml.count("<Pipe "),
-        "nozzles": xml.count("<Nozzle "),
-    })
-
-    try:
-        from kfp_sdf_converter import _resolve_standard_slf
-        slf = _resolve_standard_slf()
-    except Exception:  # noqa: BLE001
-        slf = None
-    if slf and os.path.isfile(str(slf)):
-        sess["slf_path"] = str(slf)
-        info["slf"] = os.path.basename(str(slf))
-    else:
-        info["slf"] = None
-        print("[변환] 표준 SLF 를 찾지 못했습니다 — SDF 만 담습니다.")
-    print(f"[변환] PIPENET SDF · 노드 {info['nodes']} · 배관 {info['pipes']} · "
-          f"노즐 {info['nozzles']} · {info['bytes']:,} bytes")
-    return info
+# [정리 2026-08-31] `_emit_pipenet(sess, kfp, out_dir)` 를 지웠다.
+#
+#   도크스트링이 「진단 스크립트 호환으로만 남긴다」고 적혀 있었는데 **그 이유가
+#   더는 참이 아니다** — 저장소 전체(비추적 파일 포함)를 훑어도 부르는 곳이 없다.
+#   남은 언급은 리팩터링 이전 스냅샷(`data/_module_f_before_refactor.py`)과
+#   작업지시서뿐이다. 틀린 이유를 단 채로 코드를 두면 다음 사람이 그 이유를
+#   믿고 손대지 못한다 — 죽은 코드보다 «죽은 이유» 가 더 오래 남는다.
+#
+#   기능 자체는 D3 로 은퇴했다 — 설계구역 없는 전체망 SDF 는 수리계산 입력이
+#   아니다. 수리계산 입력 SDF 는 `design/emit`(G 엔진)이 만든다.

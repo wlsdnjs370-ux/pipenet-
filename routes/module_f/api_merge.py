@@ -20,7 +20,7 @@ import os
 from flask import jsonify, request, send_file
 
 from routes.module_f.common import _fail
-from routes.module_f.jobs import _job_running, _run_job, _sess, route_session
+from routes.module_f.jobs import _job_running, _run_job, route_session
 from routes.module_f.merge import (
     SUPPLY_MODES, MergeError, check_supply_mode, combined_summary,
     merge_network)
@@ -134,7 +134,7 @@ def register(app, *, UPLOAD_DIR):
 
         def job():
             print(f"[결합] S700 시작 — 급수방식 {SUPPLY_MODES[mode]}")
-            print(f"[결합]   평면도 경로: "
+            print("[결합]   평면도 경로: "
                   + ("자동(A 위상 검출)" if mats["plan_method"] == "auto"
                      else "수동(E 색 찍기)"))
             for kind in SLOT_KINDS:
@@ -184,8 +184,9 @@ def register(app, *, UPLOAD_DIR):
         def job():
             from routes.module_f.emit import emit_merged
             print("[결합] S750 입력파일 생성")
-            files = emit_merged(got["combined"], out_dir,
-                               title=f"모듈 F 통합 — {sess.get('key') or ''}")
+            files = emit_merged(
+                got["combined"], out_dir,
+                title=f"모듈 F 통합 — {sess.get('key') or ''}")
             sess["merge_files"] = files
             for k, v in files.items():
                 if v:

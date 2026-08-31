@@ -9,8 +9,7 @@ from pathlib import Path
 from flask import jsonify, request, send_file
 
 from routes.module_f.common import GROUP_DIAGRAM, _boot, _fail
-from routes.module_f.jobs import (_job_running, _job_view, _run_job, _sess,
-                                  route_session)
+from routes.module_f.jobs import (_job_running, _job_view, _run_job, route_session)
 from routes.module_f.remote30 import _restrict_to_worst
 
 
@@ -59,9 +58,10 @@ def register(app, *, UPLOAD_DIR):
         dto = body.get("dto") or {}
         selected = body.get("selected_source")
         # [F-4 · D3] 산출 3종 체크 — 전체망 .kfp / 최불리 .kfp / 최불리 .sdf.
-        # 옛 호출부(remote_only)는 그 뜻대로 옮겨 읽는다. 기존 emit_sdf →
-        # _emit_pipenet(전체망 문법 재직렬화) 경로는 은퇴했다 — 설계구역 없는
-        # SDF 는 수리계산 입력이 아니라는 것이 확정 결정이다(D3).
+        # 옛 호출부(remote_only)는 그 뜻대로 옮겨 읽는다. 전체망을 PIPENET 문법
+        # 으로 재직렬화하던 경로는 은퇴했다 — 설계구역 없는 SDF 는 수리계산
+        # 입력이 아니라는 것이 확정 결정이다(D3). 그 함수도 2026-08-31 에
+        # 지웠다(`remote30.py` 의 정리 주석 참조).
         outputs = body.get("outputs")
         if outputs is None:
             remote_only = bool(body.get("remote_only"))

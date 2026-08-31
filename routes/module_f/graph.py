@@ -13,6 +13,8 @@ from routes.module_f.common import (
     AUTOJOIN_PLATEAU, _r1)
 
 # ────────────────────────────────────────────── 자동 이음 · 도면 장 · 덩이
+
+
 def _body_index(board):
     """노드 → 덩이 번호, 덩이별 노드 수."""
     bodies = board.bodies()

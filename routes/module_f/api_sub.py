@@ -13,7 +13,7 @@
 """
 from __future__ import annotations
 
-from flask import jsonify, request
+from flask import jsonify
 
 from routes.module_f.common import _fail
 from routes.module_f.jobs import _job_running, _sess, route_session

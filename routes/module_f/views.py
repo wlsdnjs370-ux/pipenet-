@@ -11,6 +11,7 @@ from routes.module_f.graph import _body_stat
 from routes.module_f.remote30 import _worst_view
 from routes.module_f.world import _pts_bounds
 
+
 def _pick_state(sess: dict) -> dict:
     ps = sess["pick"]
     hl = ps.highlight_geom()

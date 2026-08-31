@@ -15,7 +15,7 @@ import os
 from flask import jsonify, request
 
 from routes.module_f.api_open import _open_job
-from routes.module_f.common import _boot, _check_key, _fail
+from routes.module_f.common import _boot, _fail
 from routes.module_f.jobs import (_job_running, _new_session, _run_job, _sess,
                                   route_session)
 from routes.module_f.slots import (

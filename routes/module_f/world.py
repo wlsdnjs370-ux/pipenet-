@@ -9,6 +9,7 @@ import time
 from routes.module_f.common import (
     MAX_ARCS, MAX_CIRCLES, MAX_SEGS, _layer_category, _r1)
 
+
 def _world_payload(world) -> dict:
     """DXF 세계 → 캔버스가 그릴 수 있는 묶음별 좌표 다발.
 

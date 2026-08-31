@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import os
 
-from flask import jsonify, request
+from flask import jsonify
 
-from routes.module_f.auto import AutoError, detect_head_candidates, preview_view, run_auto
+from routes.module_f.auto import detect_head_candidates, preview_view, run_auto
 from routes.module_f.common import REMOTE_K_DEFAULT, _fail
 from routes.module_f.jobs import _job_running, _run_job, _sess, route_session
 from routes.module_f.slots import _slot_active
@@ -194,7 +194,7 @@ def register(app):
 
         이 단계가 없으면 사람은 «거리를 어디서 재는지» 를 못 보고 결과만 받는다.
         """
-        from routes.module_f.auto import network_view, run_network
+        from routes.module_f.auto import run_network
 
         if _job_running(sess):
             return _fail("작업이 끝난 뒤에 실행할 수 있습니다.", 409)
@@ -204,7 +204,7 @@ def register(app):
         prune = bool(body.get("prune", True))
 
         def job():
-            print(f"[망검출] S270 담당 헤드 수 · S310 거리 측정 "
+            print("[망검출] S270 담당 헤드 수 · S310 거리 측정 "
                   + ("(물 안 가는 관로 잘라냄)" if prune else "(가지치기 끔)"))
             ents, cat = _pipe_ents(sess)
             got = run_network(ents, cat,

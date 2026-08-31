@@ -363,16 +363,7 @@ def combined_summary(got: dict) -> dict:
     }
 
 
-def build_riser_for(mode: str, ctx):
-    """S720 — 고른 급수방식으로 입상관을 만든다.
-
-    `ctx.zone_spec.zone_type` 이 라우터의 분기 키다. 여기서 그것만 갈아끼우고
-    나머지 판단은 전부 엔진에 맡긴다.
-    """
-    from remote30_full_network import build_riser
-    zt = zone_type_of(mode)
-    spec = getattr(ctx, "zone_spec", None)
-    if spec is None:
-        raise MergeError("project_context 에 zone_spec 이 없습니다.")
-    spec.zone_type = zt
-    return build_riser(ctx)
+# [정리 2026-08-31] `build_riser_for(mode, ctx)` 를 지웠다 — S720 입상관 생성의
+#   얇은 어댑터였는데 **저장소 어디에서도 안 불렸다**(비추적 파일까지 훑었다).
+#   짝인 `zone_type_of` 는 시험이 직접 쓰므로 그대로 둔다.
+#   되살릴 일이 생기면 커밋 이력에 있다 — 죽은 채로 두면 「쓰이는 코드」로 오해된다.

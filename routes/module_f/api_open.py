@@ -9,8 +9,7 @@ from flask import jsonify, render_template, request, send_file
 
 from routes.module_f.common import (
     DIAGRAMS, IMPORT_WORK_ROOT, _boot, _check_key, _fail)
-from routes.module_f.jobs import (_job_view, _new_session, _run_job, _sess,
-                                  route_session)
+from routes.module_f.jobs import (_job_view, _new_session, _run_job, route_session)
 from routes.module_f.remote30 import _sheet_frames
 from routes.module_f.views import _pick_state
 from routes.module_f.world import _saved_keys, _world_payload

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import time
 
-from flask import jsonify, request
+from flask import jsonify
 
 from routes.module_f.common import REMOTE_K_DEFAULT, _fail, _r1
 from routes.module_f.graph import _autojoin_apply, _autojoin_scan
@@ -311,8 +311,9 @@ def register(app):
         if zones:
             from routes.module_f.api_auto import MAX_ZONES
             if len(zones) > MAX_ZONES:
-                return None, _wfail(f"영역이 너무 많습니다: {len(zones)}곳 "
-                             f"(최대 {MAX_ZONES}). 넓은 사각형 하나로 묶으세요.")
+                return None, _wfail(
+                    f"영역이 너무 많습니다: {len(zones)}곳 "
+                    f"(최대 {MAX_ZONES}). 넓은 사각형 하나로 묶으세요.")
             try:
                 rects = []
                 for z in zones:
@@ -321,16 +322,18 @@ def register(app):
                     rects.append((min(x0, x1), min(y0, y1),
                                   max(x0, x1), max(y0, y1)))
             except (TypeError, ValueError, IndexError):
-                return None, _wfail("영역 좌표가 올바르지 않습니다 "
-                             "([[x0,y0,x1,y1], …] 형식).")
+                return None, _wfail(
+                    "영역 좌표가 올바르지 않습니다 "
+                    "([[x0,y0,x1,y1], …] 형식).")
             if not rects:
                 return None, _wfail("영역이 비었습니다.")
             in_zone = {hi for hi, d in enumerate(b.disks)
                        if any(x0 <= float(d[0]) <= x1 and y0 <= float(d[1]) <= y1
                               for x0, y0, x1, y1 in rects)}
             if not in_zone:
-                return None, _wfail(f"영역 {len(rects)}곳 안에 헤드가 없습니다. "
-                             "영역을 다시 그리세요.")
+                return None, _wfail(
+                    f"영역 {len(rects)}곳 안에 헤드가 없습니다. "
+                    "영역을 다시 그리세요.")
             only = in_zone if only is None else (only & in_zone)
             if not only:
                 return None, _wfail("고른 도면 장과 영역이 겹치는 헤드가 없습니다.")

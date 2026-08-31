@@ -1,0 +1,137 @@
+[
+  {
+    "file": "대명동201동 단위세대_layer정리.dxf",
+    "path": "C:\\Users\\admin\\PycharmProjects\\JupyterProject\\samples\\dxf\\대명동201동 단위세대_layer정리.dxf",
+    "mb": 13.3,
+    "decisions": 2,
+    "open_s": 3.3,
+    "bands": {
+      "낮음": 18,
+      "높음(≥0.9)": 87,
+      "중간(≥0.75)": 14
+    },
+    "cands": 119,
+    "rule": "high",
+    "conf_min": 0.9,
+    "adopt_n": 87,
+    "why": "후보 대부분이 높음 띠(블록 기반)라 높음만 채택했습니다 — 87개",
+    "head_applied": 3,
+    "ghost": 2,
+    "board": {
+      "pts": 2776,
+      "edges": 3148,
+      "heads": 111
+    },
+    "worst": {
+      "k": 30,
+      "far_m": 50.71
+    },
+    "anchor_clicks": 1,
+    "build1_s": 13.1,
+    "unresolved_kind": 4,
+    "unresolved_pairs": 0,
+    "n_pipes": 194,
+    "fill": "부속 P12·노드 N99 → 직선",
+    "fill_kind": "부속",
+    "build2_s": 13.0,
+    "meta_fit": "1",
+    "meta_bore": "0",
+    "missed": 0,
+    "survived": true,
+    "emit_ok": true,
+    "emit_s": 0.1,
+    "sdf": 78135,
+    "slf_name": "대명동201동 단위세대_layer정리_수리계산입력.slf",
+    "total_s": 31.5
+  },
+  {
+    "file": "LH306동_평면도.dxf",
+    "path": "C:\\Users\\admin\\PycharmProjects\\JupyterProject\\samples\\dxf\\LH306동_평면도.dxf",
+    "mb": 16.0,
+    "decisions": 2,
+    "open_s": 3.9,
+    "bands": {
+      "낮음": 2,
+      "높음(≥0.9)": 0,
+      "중간(≥0.75)": 40
+    },
+    "cands": 42,
+    "rule": "high_mid",
+    "conf_min": 0.75,
+    "adopt_n": 40,
+    "why": "이 도면은 후보 대부분이 중간 띠(블록 미사용)라 중간까지 채택했습니다 — 40개",
+    "head_applied": 3,
+    "ghost": 0,
+    "board": {
+      "pts": 839,
+      "edges": 1011,
+      "heads": 40
+    },
+    "worst": {
+      "k": 16,
+      "far_m": 14.95
+    },
+    "anchor_clicks": 1,
+    "build1_s": 0.3,
+    "unresolved_kind": 2,
+    "unresolved_pairs": 0,
+    "n_pipes": 68,
+    "fill": "부속 P48·노드 N50 → 직선",
+    "fill_kind": "부속",
+    "build2_s": 0.3,
+    "meta_fit": "1",
+    "meta_bore": "0",
+    "missed": 0,
+    "survived": true,
+    "emit_ok": true,
+    "emit_s": 0.0,
+    "sdf": 34145,
+    "slf_name": "LH306동_평면도_수리계산입력.slf",
+    "total_s": 6.5
+  },
+  {
+    "file": "B1F 현장조사 소화설비 평면도.dxf",
+    "path": "C:\\Users\\admin\\PycharmProjects\\JupyterProject\\data\\uploads\\B1F 현장조사 소화설비 평면도.dxf",
+    "mb": 110.6,
+    "decisions": 2,
+    "open_s": 11.3,
+    "bands": {
+      "낮음": 103,
+      "높음(≥0.9)": 72,
+      "중간(≥0.75)": 3163
+    },
+    "cands": 3338,
+    "rule": "high_mid",
+    "conf_min": 0.75,
+    "adopt_n": 3235,
+    "why": "이 도면은 후보 대부분이 중간 띠(블록 미사용)라 중간까지 채택했습니다 — 3,235개",
+    "head_applied": 11,
+    "ghost": 0,
+    "board": {
+      "pts": 21737,
+      "edges": 22170,
+      "heads": 3235
+    },
+    "worst": {
+      "k": 30,
+      "far_m": 434.88
+    },
+    "anchor_clicks": 1,
+    "build1_s": 1420.9,
+    "unresolved_kind": 9,
+    "unresolved_pairs": 0,
+    "n_pipes": 137,
+    "fill": "부속 P165·노드 N217 → 직선",
+    "fill_kind": "부속",
+    "build2_s": 1624.6,
+    "meta_fit": "1",
+    "meta_bore": "0",
+    "missed": 0,
+    "survived": true,
+    "emit_ok": true,
+    "emit_s": 0.0,
+    "sdf": 58264,
+    "slf_name": "B1F 현장조사 소화설비 평면도_수리계산입력.slf",
+    "total_s": 3083.3
+  }
+]

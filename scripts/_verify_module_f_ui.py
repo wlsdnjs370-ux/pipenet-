@@ -97,6 +97,35 @@ def check(label: str, cond: bool, detail: str = "") -> bool:
     return cond
 
 
+def _settled(page, *cands, idle=None, limit=900, hold=8):
+    """어느 화면에 «머물렀나» — 스쳐 지나간 화면을 도착으로 오인하지 않는다.
+
+    ★자동 흐름은 **찍기 → 조립 → 손질** 순으로 지난다. 잡과 잡 사이에 진행
+      표시가 잠깐 꺼지는 순간이 있어서, 「처음 보이는 화면」을 도착으로 단정하면
+      그 찰나를 «찍기 도착» 으로 읽는다. 실제로 그렇게 한 번 어긋나 검사 2건이
+      **거짓 실패**했고, 곧바로 다시 돌리니 통과했다(BLOCKED §28).
+
+    그래서 «연속으로 `hold` 번 같은 화면» 일 때만 도착으로 본다. 0.2초 × 8 =
+    1.6초 — 잡 사이의 틈보다 길고 사람이 기다릴 만한 시간보다는 짧다.
+
+    `idle` 을 주면 그 요소가 숨어 있을 때만 센다(진행 표시).
+    """
+    seen, streak = None, 0
+    for _ in range(limit):
+        page.wait_for_timeout(200)
+        if idle is not None and not page.is_hidden(idle):
+            seen, streak = None, 0
+            continue
+        now = next((tag for sel, tag in cands if page.is_visible(sel)), None)
+        if now is not None and now == seen:
+            streak += 1
+            if streak >= hold:
+                return now
+        else:
+            seen, streak = now, 1 if now else 0
+    return seen        # 상한까지 안 머물렀으면 마지막으로 본 것을 그대로 돌려준다
+
+
 def _free_port() -> int:
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -326,15 +355,11 @@ def main() -> int:
                           bool(chip) and chip != "—", chip)
                 # [F-10a · D-F10-1] 질문 없이 흐른다 — 정찰이 성하면 손질까지,
                 #   못 쓰겠으면 찍기까지. 둘 중 어디든 «사람 결정 0회» 다.
-                landed = None
-                for _ in range(900):          # 200ms × 900 = 180s
-                    page.wait_for_timeout(200)
-                    if page.is_visible("#panel-edit"):
-                        landed = "edit"
-                        break
-                    if page.is_visible("#panel-pick"):
-                        landed = "pick"
-                        break
+                # ★`idle` 을 반드시 준다. 안 주면 조립이 도는 «동안» 떠 있는
+                #   찍기 화면에 1.6초 머무는 것을 도착으로 읽어, 뒤의 같은
+                #   판정과 어긋난다(회차마다 pick / 손질 이 갈렸다).
+                landed = _settled(page, ("#panel-edit", "edit"),
+                                  ("#panel-pick", "pick"), idle="#busy")
                 check("불러오면 «묻지 않고» 흘러간다", landed is not None,
                       f"도착 = {landed}")
                 check("방식 카드가 뜨지 않는다",
@@ -706,16 +731,10 @@ def main() -> int:
                 # 채택·조립이 잇달아 도는 동안 기다린다. 도착지는 «도면이»
                 # 정한다 — 정찰이 성하면 손질, 못 쓰겠으면 찍기. 어느 쪽이든
                 # 사람 결정은 0회이고, 그 0회가 이 항목의 수용 기준이다.
-                got_edit = False
-                landed = None
-                for _ in range(1800):       # 200ms × 1800 = 360s
-                    page.wait_for_timeout(200)
-                    if page.is_visible("#panel-edit") and page.is_hidden("#busy"):
-                        got_edit, landed = True, "손질"
-                        break
-                    if page.is_visible("#panel-pick") and page.is_hidden("#busy"):
-                        landed = "찍기"
-                        break
+                landed = _settled(page, ("#panel-edit", "손질"),
+                                  ("#panel-pick", "찍기"),
+                                  idle="#busy", limit=1800)
+                got_edit = landed == "손질"
                 check("★올린 뒤 «사람 결정 0회» 로 도착한다",
                       landed is not None and clicks == 1,
                       f"클릭 {clicks}회(불러오기뿐) · 도착 {landed}")

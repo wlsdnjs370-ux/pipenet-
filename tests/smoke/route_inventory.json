@@ -375,6 +375,23 @@
     "rule": "/api/module-f/convert/run"
   },
   {
+    "endpoint": "module_f_design_bore_override",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/design/bore-override"
+  },
+  {
+    "endpoint": "module_f_design_bore_override_get",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/design/bore-override"
+  },
+  {
     "endpoint": "module_f_design_build",
     "methods": [
       "OPTIONS",

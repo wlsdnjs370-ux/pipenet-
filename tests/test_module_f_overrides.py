@@ -199,8 +199,17 @@ def test_배지를_세우는_곳과_내리는_곳이_다_있다():
     """
     js = open(os.path.join(_ROOT, "static", "module_f.js"),
               encoding="utf-8").read()
-    # 세운다 — 저장·지움 두 경로 모두 서버의 `needs_rebuild` 를 그대로 쓴다.
-    assert js.count("S.ovDirty = !!") == 2, "저장·지움 둘 다 배지를 세워야 한다"
+    # 세운다 — 값을 바꾸는 «모든» 저장 경로가 서버의 `needs_rebuild` 를 쓴다.
+    #   (F-11b 의 부속 저장·지움 둘 + F-11c 의 관경 저장/지움 하나.)
+    #   창은 그 «핸들러 하나» 만 덮어야 한다 — 넓게 잡으면 옆 함수의 코드를
+    #   제 것으로 세어 통과해 버린다(이 저장소에서 실제로 겪은 일이다).
+    for fn, end in (('$("dg-ov-save").onclick', "} catch (err) { say("),
+                    ("async function dropOverride(d)", "} catch (err) { busy("),
+                    ("async function postBoreOv(rows, msg)",
+                     "} catch (err) { busy(")):
+        i = js.index(fn)
+        seg = js[i:js.index(end, i)]
+        assert "S.ovDirty = !!" in seg, f"{fn} 이 배지를 안 세운다"
     # 내린다 — «재확정이 성공한» 자리에서만.
     i = js.index('$("dg-build").onclick')
     seg = js[i:i + 1400]
@@ -232,3 +241,149 @@ def test_표에서도_직접_입력이_다른_얼굴이다():
     css = open(os.path.join(_ROOT, "static", "module_f.css"),
                encoding="utf-8").read()
     assert ".ovcell" in css and ".ovdel" in css
+
+
+# ═══════════════════════════════════════════ F-11c. 관경 «직접 입력»
+def _boot_engine():
+    """엔진 모듈 경로 — 서버가 부팅 때 하는 그것."""
+    import sys
+    for rel in ("cad_project_editor_g", os.path.join("cad_project_editor_g",
+                                                     "services")):
+        p = os.path.join(_ROOT, rel)
+        if p not in sys.path:
+            sys.path.insert(0, p)
+
+
+def _tiny_net():
+    """배관 3개짜리 최소 망 — 규칙 세 갈래가 다 나오게 만든다."""
+    return {
+        "pipe_data": {"P1": {"length_m": 1.0}, "P2": {"length_m": 1.0},
+                      "P3": {"length_m": 1.0}},
+    }
+
+
+def test_관경_덮기가_규칙_값도_덮는다():
+    """[D-F11-3] 부속·등가길이와 «범위» 가 다르다.
+
+    저 둘은 「규칙이 못 가린 자리에만」 쓰지만 관경은 규칙이 낸 값도 덮는다 —
+    도면 치수가 틀렸거나 설계 협의로 바뀌는 일이 실제로 있기 때문이다.
+    대신 원값·원출처가 반드시 남아야 한다.
+    """
+    _boot_engine()
+    from services.cad_import.design.bore import SRC_USER, decide_bores
+
+    net = _tiny_net()
+    edge_ref = {"P1": (3, 1), "P2": (5, 9), "P3": (2, 4)}
+    pts = [(0.0, 0.0)] * 10
+    loads = {(1, 3): 40, (5, 9): 1, (2, 4): 1}
+    # 치수 텍스트 하나 — P1 이 «text» 근거가 되게.
+    base = decide_bores(net, edge_ref, loads, [], pts=pts)
+    assert base["P1"][1] == "nfpc_fallback"
+    assert base["P1"][0] == 80        # 담당 40 → 별표1 80A
+
+    # ★규칙이 «낸» 값을 덮는다.
+    out = decide_bores(net, edge_ref, loads, [], pts=pts,
+                       overrides={(1, 3): (100, "현장 실측")})
+    assert out["P1"] == (100, SRC_USER)
+    got = out.overridden["P1"]
+    assert got["orig_dia"] == 80 and got["orig_src"] == "nfpc_fallback"
+    assert got["note"] == "현장 실측"
+    # 안 덮은 자리는 그대로다 — «덮은 자리만» 바뀐다.
+    assert out["P2"] == base["P2"] and out["P3"] == base["P3"]
+
+
+def test_관경_덮기_키는_정렬된_노드쌍이다():
+    """[D-F11-4] 배관 라벨을 키로 쓰면 corridor 가 바뀔 때 자리가 옮겨간다.
+
+    라벨은 BFS 순서로 매겨지므로 P12 가 다음 계산에서는 다른 배관이다 —
+    사람이 100A 라고 적어 둔 자리가 조용히 옆 배관으로 간다. 노드쌍은
+    손질 결과가 그대로면 같은 자리를 가리킨다.
+    """
+    _boot_engine()
+    from services.cad_import.design.bore import _ov_key, decide_bores
+
+    assert _ov_key((9, 3)) == (3, 9), "정렬을 안 한다"
+    assert _ov_key("9|3") == (3, 9), "JSON 이 실어 오는 문자열 키를 못 읽는다"
+    assert _ov_key("P12") is None, "배관 라벨을 키로 받아들이면 안 된다"
+
+    net = _tiny_net()
+    edge_ref = {"P1": (3, 1), "P2": (5, 9), "P3": (2, 4)}
+    # 뒤집어 줘도 같은 자리를 가리켜야 한다.
+    for key in ((1, 3), (3, 1), "1|3", "3|1"):
+        out = decide_bores(net, edge_ref, {}, [], pts=[(0.0, 0.0)] * 10,
+                           overrides={key: (65, "")})
+        assert out["P1"][0] == 65, f"{key!r} 로는 못 찾는다"
+
+
+def test_관경_근거_집계에_사람_칸이_있다():
+    """한 줄로 「이 도면의 관경을 무엇이 정했나」가 읽혀야 한다."""
+    _boot_engine()
+    from services.cad_import.design.bore import SRC_USER, source_counts
+
+    c = source_counts({"P1": (80, "text"), "P2": (65, SRC_USER),
+                       "P3": (50, "nfpc_fallback")})
+    assert c == {"text": 1, "nfpc_min": 0, "nfpc_fallback": 1, SRC_USER: 1}
+
+
+def test_덮기가_없으면_모양이_안_변한다():
+    """[D-F11-1] 직접 입력 0건이면 비트 동일 — 그 성질의 엔진 쪽 뿌리다.
+
+    `decide_bores` 가 «항상» 감사 칸을 달아 반환 모양을 바꾸면, 그 dict 를
+    2-튜플로 푸는 곳(`source_counts`·`build_design_tables`·골든 비교)이 전부
+    조용히 깨진다. 그래서 모양은 그대로 두고 원값을 «곁에» 붙였다.
+    """
+    _boot_engine()
+    from services.cad_import.design.bore import decide_bores
+
+    net = _tiny_net()
+    edge_ref = {"P1": (3, 1), "P2": (5, 9), "P3": (2, 4)}
+    out = decide_bores(net, edge_ref, {}, [], pts=[(0.0, 0.0)] * 10)
+    assert dict(out) == {"P1": (25, "nfpc_fallback"),
+                         "P2": (25, "nfpc_fallback"),
+                         "P3": (25, "nfpc_fallback")}
+    assert out.overridden == {}
+    # 평범한 dict 로 다뤄도 안 깨진다.
+    for _dia, src in out.values():
+        assert isinstance(src, str)
+
+
+def test_규격표에_없는_호칭경은_그_자리에서_거절한다():
+    """「엘베」 교훈의 관경판 — 저장해 두면 문제를 뒤로 미룰 뿐이다.
+
+    SLF 에 그 호칭경이 없으면 PIPENET 이 그 배관을 못 푼다. 라우트가 쓰는
+    허용 목록이 엔진의 규격표 **한 곳**에서 나오는지 못 박는다.
+    """
+    _boot_engine()
+    from routes.module_f.api_design import schedule_bores_mm
+
+    ok = schedule_bores_mm("KSD 3507")
+    assert 65 in ok and 80 in ok
+    assert 77 not in ok, "규격표에 없는 값이 통과한다"
+    assert schedule_bores_mm("없는 규격") == set()
+
+
+def test_관경_표기는_전후를_같이_보여_준다():
+    """[F-11c-3] 「직접 입력 80A — 사유 (원래 별표1 폴백 65A)」."""
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    i = js.index("function overrideNoteOf(row, which)")
+    seg = js[i:i + 700]
+    assert 'which === "pipes"' in seg
+    assert "bore_overrides" in seg
+    assert "b.orig_dia" in seg and "b.orig_src" in seg, "원값이 안 보인다"
+    assert "직접 입력 ${b.dia}A" in seg
+
+
+def test_관경_덮을_자리는_노드쌍으로_가리킨다():
+    """화면도 같은 키를 쓴다 — 배관 라벨로 보내면 서버 규약과 갈린다."""
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    assert "function boreRefOf(label)" in js
+    i = js.index("$(\"dg-bore-save\").onclick")
+    seg = js[i:i + 900]
+    assert "boreRefOf(lab)" in seg
+    assert "a: ref[0], b: ref[1]" in seg, "노드쌍이 아닌 것을 보낸다"
+    # 역참조가 없는 배관은 조용히 빠지지 않고 «못 덮는 것 n개» 로 세어 보인다.
+    j = js.index("function renderBoreOv()")
+    seg2 = js[j:j + 2200]
+    assert "못 덮는 것" in seg2

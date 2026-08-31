@@ -225,6 +225,39 @@ def emit_design_files(sess: dict, UPLOAD_DIR, cfg: dict | None = None):
     return out, None
 
 
+def schedule_bores_mm(name: str) -> set:
+    """그 관종의 SLF 스케줄에 실제로 있는 호칭경(mm).
+
+    ★「엘베」 교훈의 관경판이다. 자유 숫자를 받으면 저장은 되지만 SLF 에 그
+      호칭경이 없어 PIPENET 이 그 배관을 못 푼다 — 문제를 뒤로 미룰 뿐이다.
+      그래서 **그 자리에서 거절**한다. 목록은 엔진의 `SCHEDULE_DEFS` 한 곳에서
+      읽는다(값은 m 단위로 적혀 있다 — 0.065 == 65A).
+    """
+    _boot()
+    from services.cad_import.design.sdf_post import SCHEDULE_DEFS
+    for nm, _c, sizes in SCHEDULE_DEFS:
+        if nm == str(name or "").strip():
+            return {int(round(float(d) * 1000)) for d, _sch in sizes}
+    return set()
+
+
+def _bore_ov_map(sess) -> dict:
+    """세션의 관경 덮기 → `decide_bores(overrides=)` 가 받는 모양.
+
+    저장은 «사람이 읽는 모양»(a·b·dia·note 목록)으로 하고, 엔진에는 그 엔진이
+    받는 모양으로 번역해 넘긴다. 세션에 엔진 모양을 그대로 담아 두면 나중에
+    엔진 시그니처가 바뀔 때 옛 세션이 조용히 깨진다.
+    """
+    out = {}
+    for r in (sess.get("bore_overrides") or ()):
+        try:
+            a, b = int(r["a"]), int(r["b"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        out[(min(a, b), max(a, b))] = (int(r["dia"]), str(r.get("note") or ""))
+    return out
+
+
 def register(app, *, UPLOAD_DIR):
     # ─────────────────────────────────────── 수리계산 입력 (설계)
     @app.post("/api/module-f/design/build")
@@ -282,7 +315,11 @@ def register(app, *, UPLOAD_DIR):
                     # [§18] 사람이 손으로 채운 값 — 규칙이 못 가린 자리에만
                     #   쓰인다(엔진이 그렇게 판단한다). 세션에 남아 있으므로
                     #   「다시 계산」·「표 확정」을 다시 눌러도 그대로 간다.
-                    fitting_overrides=sess.get("fitting_overrides"))
+                    fitting_overrides=sess.get("fitting_overrides"),
+                    # [F-11c] 관경 덮기 — 부속과 달리 «규칙 값도» 덮는다
+                    #   (D-F11-3). 키는 board 노드쌍이라 corridor 가 다시
+                    #   계산돼도 같은 자리를 가리킨다(D-F11-4).
+                    bore_overrides=_bore_ov_map(sess))
             except UnknownSchedule as exc:
                 return {"ok": False, "error": str(exc)}
             # 표는 메모리에만 — emit 을 눌러야 파일이 생긴다.
@@ -406,6 +443,85 @@ def register(app, *, UPLOAD_DIR):
         applied = (getattr(applied, "unresolved", None) or {}).get("applied") or []
         return jsonify({"ok": True, "overrides": cur, "applied": applied,
                         "kinds": kinds})
+
+    @app.post("/api/module-f/design/bore-override")
+    @route_session(post=True)
+    def module_f_design_bore_override(sess, body):
+        """[F-11c · D-F11-3] 관경 «직접 입력» — 규칙 값도 덮는다.
+
+        부속·등가길이(§18)와 문법은 같지만 **범위가 다르다**. 저 둘은 「규칙이
+        못 가린 자리에만」 쓰는데, 관경은 규칙이 낸 값도 덮는다 — 도면 치수가
+        틀렸거나 설계 협의로 바뀌는 일이 실제로 있기 때문이다. 대신 덮은 자리는
+        **원값·원출처를 반드시 남긴다**(`tables.bore_overrides`).
+
+        ★키는 «정렬된 board 노드쌍» 이다(D-F11-4). 배관 라벨(P12)은 BFS 순서로
+          매겨지므로 corridor 가 바뀌면 같은 이름이 다른 배관을 가리킨다 —
+          사람이 65A 라고 적어 둔 자리가 조용히 옆 배관으로 옮겨간다.
+
+        body: {sid, rows: [{a, b, dia, note}]}  · 빈 배열을 보내면 지운다.
+        """
+        rows = body.get("rows")
+        if rows is None:
+            rows = []
+        if not isinstance(rows, list) or len(rows) > 500:
+            return _fail("덮기 목록이 올바르지 않습니다 (최대 500).")
+        sched = (sess.get("design_settings") or _DEFAULT_SETTINGS).get(
+            "schedule") or (sess.get("design") or {}).get("schedule")
+        try:
+            allow = schedule_bores_mm(sched)
+        except Exception as exc:  # noqa: BLE001 — 부팅 실패도 사유로 말한다
+            return _fail(f"규격표를 못 읽었습니다: {exc}")
+        clean, seen = [], set()
+        for r in rows:
+            if not isinstance(r, dict):
+                return _fail("덮기 항목은 객체여야 합니다.")
+            try:
+                a, b, dia = int(r["a"]), int(r["b"]), int(r["dia"])
+            except (KeyError, TypeError, ValueError):
+                return _fail("덮기 항목에 a, b, dia 가 다 있어야 합니다 "
+                             "(a·b 는 노드 번호, dia 는 호칭경 mm).")
+            if allow and dia not in allow:
+                # ★여기서 거절해야 한다. 저장해 두면 SLF 에 그 호칭경이 없어
+                #   PIPENET 이 그 배관을 못 푼다 — 문제를 뒤로 미룰 뿐이다.
+                return _fail(
+                    f"{dia}A 는 «{sched}» 규격표에 없는 호칭경입니다. "
+                    f"쓸 수 있는 것: {' · '.join(str(v) for v in sorted(allow))}")
+            note = str(r.get("note") or "").strip()
+            if len(note) > 200:
+                return _fail("사유가 너무 깁니다 (200자).")
+            key = (min(a, b), max(a, b))
+            if key in seen:
+                return _fail(f"같은 배관({key[0]}–{key[1]})을 두 번 덮었습니다.")
+            seen.add(key)
+            clean.append({"a": key[0], "b": key[1], "dia": dia, "note": note})
+        sess["bore_overrides"] = clean
+        print(f"[설계] 관경 직접 입력 — {len(clean)}개 "
+              f"(표를 다시 확정해야 산출에 들어간다)")
+        return jsonify({
+            "ok": True, "rows": clean, "counts": {"bore": len(clean)},
+            "schedule": sched, "allowed": sorted(allow),
+            "needs_rebuild": bool(sess.get("design")),
+            "message": ("관경 직접 입력을 저장했습니다 — "
+                        "「표 확정」을 다시 눌러야 산출에 반영됩니다."),
+        })
+
+    @app.get("/api/module-f/design/bore-override")
+    @route_session()
+    def module_f_design_bore_override_get(sess, body):
+        """지금 저장된 관경 덮기 + **고를 수 있는 호칭경**.
+
+        고를 수 있는 값을 서버가 주는 이유는 §18 의 부속 종류와 같다 — 화면이
+        따로 목록을 들고 있으면 규격표가 바뀔 때 둘이 갈린다.
+        """
+        sched = (sess.get("design_settings") or _DEFAULT_SETTINGS).get(
+            "schedule") or (sess.get("design") or {}).get("schedule")
+        try:
+            allow = sorted(schedule_bores_mm(sched))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[설계] 규격표를 못 읽었습니다: {exc}")
+            allow = []
+        return jsonify({"ok": True, "rows": sess.get("bore_overrides") or [],
+                        "schedule": sched, "allowed": allow})
 
     @app.get("/api/module-f/design/preview")
     @route_session()
@@ -539,10 +655,22 @@ def register(app, *, UPLOAD_DIR):
             if anchor_lab and lab == anchor_lab:
                 rec["anchor"] = True      # 기준압을 잡는 지점
             nodes.append(rec)
+        # [F-11c · D-F11-4] 관경 덮기의 «키» — board 노드쌍. 표 라벨(P12·노드 3)은
+        #   BFS 순서로 매겨져 corridor 가 바뀌면 다른 자리를 가리키므로, 화면이
+        #   덮을 자리를 가리킬 때는 이 쌍을 쓴다. 역참조가 없는 배관(헤드
+        #   접속관·가지 상승)은 board 간선이 없어 null 이다 — 못 덮는다.
+        ref_of = {}
+        for pid, edge in ref.items():
+            try:
+                i, j = int(edge[0]), int(edge[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            ref_of[str(pid)] = [min(i, j), max(i, j)]
         pipes = [{"label": str(r.get("label")),
                   "a": str(r.get("in")), "b": str(r.get("out")),
                   "dia": r.get("dia"), "len_m": r.get("length"),
                   "src": r.get("dia_src"),
+                  "ref": ref_of.get(str(r.get("label"))),
                   "load": load_of.get(str(r.get("label")), 0)}
                  for r in view.pipes]
         return jsonify({

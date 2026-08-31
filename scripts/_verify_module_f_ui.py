@@ -1166,6 +1166,77 @@ def main() -> int:
                     check("채운 것이 없는 표는 안 건드린다",
                           not f11b.get("pipes_head"))
 
+                    # ── [F-11c] 관경 «직접 입력» — 고르고·덮고·되돌리는 자리.
+                    f11c = page.evaluate(
+                        """() => {
+                          const S = window.__mf;
+                          S.boreAllowed = [25, 32, 40, 50, 65, 80];
+                          S.boreSchedule = "KSD 3507";
+                          S.boreRows = [{a: 3, b: 9, dia: 80,
+                                         note: "현장 실측"}];
+                          S.design.view.pipes = [
+                            {label: "P1", a: "1", b: "2", dia: 65,
+                             src: "nfpc_fallback", ref: [3, 9], load: 4},
+                            {label: "P2", a: "2", b: "3", dia: 50,
+                             src: "text", ref: null, load: 1}];
+                          S.design.tables.bore_overrides = {
+                            P1: {dia: 80, note: "현장 실측", orig_dia: 65,
+                                 orig_src: "nfpc_fallback", a: 3, b: 9}};
+                          document.getElementById('dg-table').value = 'pipes';
+                          S.design.hilite = new Set(["P1", "P2"]);
+                          S.renderDesignTable();
+                          const g = document.getElementById('dg-grid');
+                          const out = {
+                            cell: (g.querySelector('.ovcell')
+                                   || {}).textContent || '',
+                            row: !document.getElementById('dg-bore-row')
+                                   .className.includes('hidden'),
+                            dias: [...document.getElementById('dg-bore-dia')
+                                    .options].map(o => o.value).join(','),
+                            n: document.getElementById('dg-bore-n').textContent,
+                            why: document.getElementById('dg-bore-why')
+                                   .textContent,
+                            del: document.getElementById('dg-bore-list')
+                                   .querySelectorAll('.ovdel').length,
+                            save: document.getElementById('dg-bore-save')
+                                    .disabled,
+                          };
+                          // 호칭경을 고르면 덮기가 열린다.
+                          const sel = document.getElementById('dg-bore-dia');
+                          sel.value = "80";
+                          sel.dispatchEvent(new Event('change'));
+                          out.save_after = document.getElementById(
+                            'dg-bore-save').disabled;
+                          // 배관 표가 아니면 관경 덮기 자리를 감춘다.
+                          document.getElementById('dg-table').value = 'nodes';
+                          S.renderDesignTable();
+                          out.hidden_elsewhere = document.getElementById(
+                            'dg-bore-row').className.includes('hidden');
+                          return out;
+                        }""")
+                    check("관경 덮기 자리가 배관 표에서 선다 (F-11c)",
+                          bool(f11c.get("row")))
+                    check("★표기가 전·후를 같이 보여 준다 (D-F11-3)",
+                          "직접 입력 80A" in str(f11c.get("cell"))
+                          and "원래" in str(f11c.get("cell"))
+                          and "65A" in str(f11c.get("cell")),
+                          str(f11c.get("cell"))[:60])
+                    check("호칭경은 규격표 값만 고를 수 있다",
+                          f11c.get("dias") == ",25,32,40,50,65,80",
+                          str(f11c.get("dias")))
+                    check("못 덮는 배관을 조용히 빼지 않는다",
+                          "고른 배관 1개" in str(f11c.get("n"))
+                          and "못 덮는 것 1개" in str(f11c.get("n")),
+                          str(f11c.get("n")))
+                    check("규칙 값도 덮는다고 밝힌다",
+                          "규칙이 낸 값도 덮습니다" in str(f11c.get("why")))
+                    check("덮어 둔 것을 지울 수 있다", f11c.get("del") == 1,
+                          f"{f11c.get('del')}개")
+                    check("호칭경을 안 고르면 덮기가 잠겨 있다",
+                          bool(f11c.get("save")) and not f11c.get("save_after"))
+                    check("배관 표가 아니면 관경 덮기가 감춰진다",
+                          bool(f11c.get("hidden_elsewhere")))
+
                     page.evaluate(
                         "() => document.getElementById('panel-design')"
                         ".classList.add('hidden')")

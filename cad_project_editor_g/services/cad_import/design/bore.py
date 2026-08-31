@@ -114,8 +114,49 @@ def match_diameter_for_segment(a, b, dia_text_pts,
     return best
 
 
+SRC_USER = "user"          # 사람이 직접 넣은 값 — 규칙이 아니라 사람이 정했다
+
+
+def _ov_key(k):
+    """덮기 키를 «정렬된 board 노드쌍» 으로 정규화. 못 읽으면 None.
+
+    ★키가 배관 라벨이면 안 된다(D-F11-4). 배관 라벨은 BFS 순서로 매겨지므로
+      corridor 가 바뀌면 같은 이름이 다른 배관을 가리킨다 — 사람이 65A 라고
+      적어 둔 자리가 조용히 옆 배관으로 옮겨간다. board 노드쌍은 손질 결과가
+      바뀌지 않는 한 같은 자리를 가리킨다.
+    JSON 은 튜플 키를 못 실으므로 "3|7" 문자열도 같이 받는다.
+    """
+    if isinstance(k, str):
+        parts = k.split("|")
+        if len(parts) != 2:
+            return None
+        k = parts
+    try:
+        i, j = int(k[0]), int(k[1])
+    except (TypeError, ValueError, IndexError, KeyError):
+        return None
+    return (min(i, j), max(i, j))
+
+
+class Bores(dict):
+    """{pipe_id: (dia_mm, source)} + 덮어쓴 자리의 «원값» 감사 기록.
+
+    ★모양을 안 바꾼 이유. 이 dict 를 읽는 곳이 여럿이고(`source_counts`,
+      `build_design_tables`, 골든 비교) 전부 «2-튜플» 로 푼다. 4-튜플로 넓히면
+      그 전부가 조용히 깨진다 — 사람이 넣은 값을 남기려다 자동 값을 잃는 셈이다.
+      그래서 원값을 «곁에» 붙인다. 평범한 dict 로 오해해도 안 깨진다.
+    """
+
+    __slots__ = ("overridden",)
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        # {pipe_id: {dia, note, orig_dia, orig_src, a, b}}
+        self.overridden: dict = {}
+
+
 def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None,
-                 tree_loads=None) -> dict:
+                 tree_loads=None, overrides=None) -> dict:
     """kfp 배관마다 (호칭경 mm, 근거). 지시서 §1 공개 시그니처.
 
     `net`  : 제한 전개 결과 kfp dict (`pipe_data` 를 쓴다)
@@ -129,14 +170,31 @@ def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None,
         스무 개를 받는 가지 상승관까지 25A 가 된다. 망에서 직접 센 값을 쓴다.
         **안 넘기면 여기서 직접 센다** — 부르는 쪽이 잊으면 조용히 25A 가 되고,
         그 잘못은 표를 한참 들여다봐야 보인다(실측: 검사 경로만 그랬다).
+    `overrides` : {(board_i, board_j): (dia_mm, note)} — 사람이 직접 넣은 관경.
 
-    반환: {pipe_id: (dia_mm, source)} · source ∈ {text, nfpc_min, nfpc_fallback}
+    ★부속·등가길이와 **범위가 다르다**(D-F11-3). 저 둘은 「규칙이 못 가린
+      자리에만」 쓰지만 관경은 규칙이 낸 값도 덮는다 — 도면 치수가 틀렸거나
+      설계 협의로 바뀌는 일이 실제로 있기 때문이다. 그래서 **덮은 자리는
+      원값·원출처를 반드시 남긴다**(`Bores.overridden`). 덮었다는 사실이
+      안 남으면, 나중에 그 수치를 누가 정했는지 알 길이 없다.
+
+    ★역참조가 없는 배관(헤드 접속관·가지 상승)은 board 노드쌍이 아예 없어
+      이 채널로 덮을 수 없다. 도면에 그려진 선이 아니라 전개가 만든 선이라
+      «사람이 가리킬 자리» 가 없다 — 조용히 무시하지 않고 여기 적어 둔다.
+
+    반환: {pipe_id: (dia_mm, source)}
+          source ∈ {text, nfpc_min, nfpc_fallback, user}
     """
     pipes = (net or {}).get("pipe_data") or {}
     if tree_loads is None and any(pid not in edge_ref for pid in pipes):
         from services.cad_import.design.restrict import tree_loads as _tl
         tree_loads = _tl(net)
-    out: dict = {}
+    ov_map = {}
+    for k, v in (overrides or {}).items():
+        key = _ov_key(k)
+        if key is not None:
+            ov_map[key] = v
+    out = Bores()
     for pid in pipes:
         ref = edge_ref.get(pid)
         n_head = 0
@@ -154,18 +212,37 @@ def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None,
                 text = match_diameter_for_segment(pts[i], pts[j], dia_text_pts)
 
         if text is None:
-            out[pid] = (nfpc_min, "nfpc_fallback")
+            dia, src = nfpc_min, "nfpc_fallback"
         elif text < nfpc_min:
             # 안전측 — 도면 치수가 별표1 최소보다 작으면 별표1 을 따른다.
-            out[pid] = (nfpc_min, "nfpc_min")
+            dia, src = nfpc_min, "nfpc_min"
         else:
-            out[pid] = (text, "text")
+            dia, src = text, "text"
+
+        key = (min(ref), max(ref)) if ref is not None else None
+        ov = ov_map.get(key) if key is not None else None
+        if ov is None:
+            out[pid] = (dia, src)
+            continue
+        try:
+            new_dia = int(ov[0])
+        except (TypeError, ValueError, IndexError):
+            out[pid] = (dia, src)       # 못 읽는 값은 «덮지 않는다»
+            continue
+        out[pid] = (new_dia, SRC_USER)
+        out.overridden[pid] = {
+            "dia": new_dia, "note": str(ov[1] if len(ov) > 1 else "") or "",
+            "orig_dia": dia, "orig_src": src, "a": key[0], "b": key[1]}
     return out
 
 
 def source_counts(bores: dict) -> dict:
-    """근거 집계 — 화면·meta 에 남긴다. text 가 0% 면 어댑터가 죽은 것이다."""
-    counts = {"text": 0, "nfpc_min": 0, "nfpc_fallback": 0}
+    """근거 집계 — 화면·meta 에 남긴다. text 가 0% 면 어댑터가 죽은 것이다.
+
+    `user` 칸은 «사람이 정한 것» 이다. 규칙 근거와 한 줄에 세워 두면, 표 하나로
+    「이 도면의 관경을 무엇이 정했나」가 다 읽힌다.
+    """
+    counts = {"text": 0, "nfpc_min": 0, "nfpc_fallback": 0, SRC_USER: 0}
     for _dia, src in (bores or {}).values():
         if src in counts:
             counts[src] += 1

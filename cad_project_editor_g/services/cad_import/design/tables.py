@@ -45,13 +45,19 @@ class PipeTablesG:
     # (`build_fittings`)가 이미 아는 것을 버리지 않고 여기까지 들고 온다.
     #   {"kind_items": [...], "length_items": [...], "pairs": [...]}
     unresolved: dict = field(default_factory=dict)
+    # 사람이 관경을 덮은 자리 — **원값·원출처와 함께**(D-F11-3). 관경은 부속과
+    # 달리 규칙 값도 덮으므로, 전·후가 같이 안 남으면 나중에 그 수치를 누가
+    # 왜 정했는지 알 길이 없다. SDF 형식에는 출처 칸이 없어 여기가 그 자리다.
+    #   {pipe_id: {dia, note, orig_dia, orig_src, a, b}}
+    bore_overrides: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return {"nodes": self.nodes, "pipes": self.pipes,
                 "nozzles": self.nozzles, "fittings": self.fittings,
                 "equipment": self.equipment,
                 "meta": [list(m) for m in self.meta],
-                "unresolved": self.unresolved}
+                "unresolved": self.unresolved,
+                "bore_overrides": self.bore_overrides}
 
 
 def _ends(pr):
@@ -104,11 +110,15 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
                         default_schedule=None,
                         schedule_by_pipe=None,
                         tree_loads=None,
-                        fitting_overrides=None) -> PipeTablesG:
+                        fitting_overrides=None,
+                        bore_overrides=None) -> PipeTablesG:
     """제한 전개 망 → 5개 테이블. 지시서 §1 공개 시그니처.
 
     `bores` / `fittings` 는 G3 · G4 결과를 받는다. 없으면 여기서 만들지 않고
     비워 둔다 — 이 모듈은 «조립» 이지 판정이 아니다.
+
+    `bore_overrides` 는 그 «없으면 만드는» 자리로만 흘러간다 — `bores` 를
+    이미 받았으면 그것이 권위다. 두 곳에서 덮으면 어느 것이 이겼는지 알 수 없다.
     """
     from services.cad_import.design.bore import decide_bores, source_counts
     from services.cad_import.design.fitting import build_fittings
@@ -142,7 +152,8 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
     if bores is None:
         bores = decide_bores(net, edge_ref, (worst or {}).get("loads") or {},
                              dia_text_pts, pts=board_pts,
-                             tree_loads=tree_loads)
+                             tree_loads=tree_loads,
+                             overrides=bore_overrides)
     node_xy = {n: xy(n) for n in meta_nodes}
     node_z = {n: z(n) for n in meta_nodes}
     if fittings is None:
@@ -253,6 +264,9 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         ("관경 근거 — 도면 텍스트", str(src.get("text", 0))),
         ("관경 근거 — 별표1 보강 (text<min)", str(src.get("nfpc_min", 0))),
         ("관경 근거 — 별표1 폴백 (text 없음)", str(src.get("nfpc_fallback", 0))),
+        # 관경은 규칙 값도 덮는다(D-F11-3) — 그래서 덮은 수를 규칙 근거와
+        # 나란히 세운다. 한 줄로 「이 도면의 관경을 무엇이 정했나」가 읽힌다.
+        ("직접 입력 — 관경", str(src.get("user", 0))),
         # 개수는 여전히 `build_fittings` 한 곳에서만 정해진다 — 아래 목록도
         # 같은 자리에서 나오므로 둘이 어긋날 수 없다.
         ("부속 판정 불가", str(fittings.get("unresolved_kind", 0))),
@@ -279,6 +293,9 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         # 사람이 넣은 값을 쓴 자리 — 화면이 「직접 입력」이라고 밝힐 재료다.
         "applied": list(fittings.get("applied_overrides") or ()),
     }
+    # 관경을 덮은 자리도 같은 규약으로 들고 온다. `decide_bores` 가 곁에 붙여
+    # 보낸 것을 그대로 옮길 뿐이다 — 여기서 다시 세지 않는다(두 벌 금지).
+    tbl.bore_overrides = dict(getattr(bores, "overridden", None) or {})
     return tbl
 
 

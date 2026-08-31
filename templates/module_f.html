@@ -516,6 +516,18 @@
         </select>
       </div>
       <div id="dg-grid" style="max-height:300px;overflow:auto"></div>
+      <!-- [F-11c · D-F11-3] 관경 «직접 입력». 부속·등가길이(§18)와 문법은 같지만
+           범위가 다르다 — 저 둘은 「규칙이 못 가린 자리에만」 쓰는데 관경은
+           규칙이 낸 값도 덮는다(도면 치수가 틀렸거나 설계 협의로 바뀐다).
+           그래서 덮은 자리는 «원래 값» 을 반드시 같이 보여 준다. -->
+      <div class="row hidden" id="dg-bore-row">
+        <select id="dg-bore-dia"></select>
+        <input id="dg-bore-note" maxlength="200" placeholder="사유 (왜 바꾸나)">
+        <button id="dg-bore-save" class="go">관경 덮기</button>
+        <span class="tag" id="dg-bore-n">—</span>
+      </div>
+      <p class="hint hidden" id="dg-bore-why"></p>
+      <div id="dg-bore-list"></div>
     </section>
 
     <!-- [H-4 · H-5 · H-6] 제5국면 S700 — 세 도면을 한 배관망으로 -->

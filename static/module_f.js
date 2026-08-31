@@ -3132,6 +3132,9 @@
     // [§18] 고를 수 있는 부속 종류를 서버에서 받아 둔다 — 목록을 그리기 전에
     //   있어야 «고르세요» 칸이 빈 채로 뜨지 않는다.
     if (!S.fitKinds) await loadFitKinds();
+    // [F-11c] 쓸 수 있는 호칭경도 서버에서 받아 둔다 — 화면이 따로 목록을 들면
+    //   규격표가 바뀔 때 둘이 갈린다.
+    if (!S.boreAllowed) await loadBoreOv();
     renderIssues();
     // ★«아직 확정 안 함» 은 오류가 아니라 상태다(서버가 200 · view:null 로
     //   답한다). 그릴 것이 없으면 여기서 조용히 멈춘다 — 화면은 「표 확정」
@@ -3324,8 +3327,16 @@
   //     좁힐 수 없다 — 한 배관에 같은 종류가 둘이면 둘 다 표시된다. 넓게
   //     보이는 쪽이 «채운 걸 안 보여 주는» 쪽보다 정직하다.
   function overrideNoteOf(row, which) {
-    if (which !== "fittings") return null;
     const t = S.design.tables || {};
+    // [F-11c] 관경은 «규칙 값도» 덮으므로 전·후가 함께 보여야 한다(D-F11-3).
+    //   「직접 입력 80A — 사유 (원래 별표1 폴백 65A)」.
+    if (which === "pipes") {
+      const b = (t.bore_overrides || {})[String(row.label)];
+      if (!b) return null;
+      return `직접 입력 ${b.dia}A` + (b.note ? ` — ${b.note}` : "")
+        + ` (원래 ${DG_SRC[b.orig_src] || b.orig_src} ${b.orig_dia}A)`;
+    }
+    if (which !== "fittings") return null;
     const app = (t.unresolved || {}).applied || [];
     if (!app.length) return null;
     const dia = ((t.pipes || []).find(
@@ -3380,8 +3391,118 @@
         else S.design.hilite.add(lab);
         tr.classList.toggle("hl");
         draw();
+        renderBoreOv();     // 고른 배관 수가 관경 덮기 자리에 바로 뜬다
       };
     }
+    renderBoreOv();
+  }
+
+  // ── [F-11c] 관경 «직접 입력» ────────────────────────────────────
+  //
+  // 부속·등가길이(§18)와 문법은 같고 **범위만 다르다**(D-F11-3): 저 둘은 규칙이
+  // 못 가린 자리에만 쓰지만 관경은 규칙이 낸 값도 덮는다 — 도면 치수가 틀렸거나
+  // 설계 협의로 바뀌는 일이 실제로 있다. 그래서 «원래 얼마였나» 를 표에 항상
+  // 같이 남긴다. 덮었다는 사실이 안 남으면 나중에 그 수치를 누가 정했는지
+  // 알 길이 없다.
+  //
+  // ★자리를 가리키는 키는 **board 노드쌍** 이다(D-F11-4). 배관 라벨(P12)은 BFS
+  //   순서로 매겨지므로 corridor 가 바뀌면 같은 이름이 다른 배관을 가리킨다 —
+  //   사람이 80A 라고 적어 둔 자리가 조용히 옆 배관으로 옮겨간다.
+  async function loadBoreOv() {
+    try {
+      const d = await api(`/api/module-f/design/bore-override?sid=${S.sid}`);
+      S.boreAllowed = d.allowed || [];
+      S.boreRows = d.rows || [];
+      S.boreSchedule = d.schedule || "";
+    } catch (err) { S.boreAllowed = S.boreAllowed || []; }
+  }
+
+  /** 배관 라벨 → board 노드쌍. 역참조가 없으면 null — 그 배관은 못 덮는다. */
+  function boreRefOf(label) {
+    const v = (S.design && S.design.view) || null;
+    const p = v && (v.pipes || []).find(
+      (x) => String(x.label) === String(label));
+    return (p && p.ref) || null;
+  }
+
+  function renderBoreOv() {
+    const row = $("dg-bore-row"), why = $("dg-bore-why");
+    if (!row) return;
+    const on = !!(S.design && S.design.view)
+      && $("dg-table").value === "pipes";
+    row.classList.toggle("hidden", !on);
+    why.classList.toggle("hidden", !on);
+    if (!on) { $("dg-bore-list").innerHTML = ""; return; }
+    // 호칭경은 «서버가» 준 규격표 값만. 자유 숫자를 두면 SLF 에 없는 값이 들어가
+    // PIPENET 이 그 배관을 못 푼다 — 「엘베」 교훈의 관경판이다.
+    const sel = $("dg-bore-dia"), allow = S.boreAllowed || [];
+    if (sel.options.length !== allow.length + 1) {
+      sel.innerHTML = '<option value="">— 호칭경 —</option>'
+        + allow.map((d) => `<option value="${d}">${d}A</option>`).join("");
+    }
+    // 대상은 표에서 누른 줄 그대로다 — 캔버스 강조와 같은 집합을 쓴다.
+    const all = [...((S.design && S.design.hilite) || [])];
+    const picked = all.filter((lab) => boreRefOf(lab));
+    const noRef = all.length - picked.length;
+    $("dg-bore-n").textContent = `고른 배관 ${picked.length}개`
+      + (noRef ? ` · 못 덮는 것 ${noRef}개` : "");
+    $("dg-bore-save").disabled = !picked.length || !sel.value;
+    why.innerHTML = "표에서 배관 줄을 눌러 고른 뒤 호칭경을 정합니다 — "
+      + `<b>${S.boreSchedule || "규격표"}</b> 에 있는 값만 쓸 수 있습니다. `
+      + "부속과 달리 <b>규칙이 낸 값도 덮습니다</b> — 원래 값은 표에 남습니다. "
+      + "덮은 뒤 <b>「표 확정」을 다시</b> 눌러야 산출에 들어갑니다."
+      + (noRef ? " (도면에 그려진 선이 아닌 배관 — 헤드 접속관·가지 상승 — 은"
+                 + " 가리킬 자리가 없어 못 덮습니다.)" : "");
+    // 지금 덮어 둔 것 + 지우는 길. 갇히지 않게 하는 것이 «완결성» 이다.
+    const rows = S.boreRows || [];
+    $("dg-bore-list").innerHTML = rows.map((r, i) =>
+      `<div class="ovrow"><span class="dim">노드 ${r.a}–${r.b} · `
+      + `<b>${r.dia}A</b>${r.note ? ` — ${r.note}` : ""}</span>`
+      + `<button class="ovdel" data-b="${i}">관경 덮기 지우기</button></div>`)
+      .join("");
+    for (const el of $("dg-bore-list").querySelectorAll(".ovdel")) {
+      el.onclick = () => dropBoreOv(Number(el.dataset.b));
+    }
+  }
+
+  /** 덮기 목록 «전체» 를 보낸다 — 서버가 그 목록을 그대로 세션에 둔다. */
+  async function postBoreOv(rows, msg) {
+    busy(true, "관경 직접 입력을 저장하는 중…");
+    try {
+      const d = await post("/api/module-f/design/bore-override",
+                           { sid: S.sid, rows });
+      S.boreRows = d.rows || [];
+      // 배지 규약은 부속과 같다 — 재확정 전까지 「아직 안 들어갔다」를 말한다.
+      S.ovDirty = !!d.needs_rebuild;
+      busy(false);
+      say(msg, "ok");
+      $("dg-build").click();     // 값이 바뀌는 일이라 재확정까지 이어 준다
+    } catch (err) { busy(false); say(err.message, "err"); }
+  }
+
+  $("dg-bore-dia").onchange = renderBoreOv;
+
+  $("dg-bore-save").onclick = () => {
+    const dia = Number($("dg-bore-dia").value || 0);
+    if (!dia) { say("호칭경을 고르세요.", "warn"); return; }
+    const note = String($("dg-bore-note").value || "").trim();
+    // 이미 덮어 둔 것과 «합친다» — 한 번에 다 덮지 않아도 되게(§18 저장과 같다).
+    const keep = new Map((S.boreRows || []).map((r) => [`${r.a}|${r.b}`, r]));
+    let n = 0;
+    for (const lab of ((S.design && S.design.hilite) || [])) {
+      const ref = boreRefOf(lab);
+      if (!ref) continue;
+      keep.set(`${ref[0]}|${ref[1]}`, { a: ref[0], b: ref[1], dia, note });
+      n += 1;
+    }
+    if (!n) { say("덮을 배관을 표에서 고르세요.", "warn"); return; }
+    postBoreOv([...keep.values()],
+               `관경 ${n}개를 ${dia}A 로 덮었습니다 — 표를 다시 확정합니다.`);
+  };
+
+  function dropBoreOv(i) {
+    postBoreOv((S.boreRows || []).filter((_r, k) => k !== i),
+               "관경 직접 입력을 지웠습니다 — 표를 다시 확정합니다.");
   }
 
   // ── [F-10f] 이상 표시 — 전수 검수 대신 ──────────────────────────

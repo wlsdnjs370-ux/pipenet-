@@ -355,6 +355,15 @@
   .busy .track i{display:block;height:2px;width:34%;background:var(--accent);
                  animation:slide 1.15s cubic-bezier(.65,0,.35,1) infinite;}
   @keyframes slide{0%{transform:translateX(-100%);}100%{transform:translateX(394%);}}
+  /* 셀 수 있는 구간(압축·업로드)은 «실제로 센 수» 로 채운다. 그때만 무한
+     막대를 끈다 — 모르는 값을 채워 그리지 않는다는 규칙은 그대로다. */
+  .busy .track i.det{animation:none;transition:width .12s linear;}
+
+  /* 도면이 이미 화면에 있는 동안의 가림막. 막은 그대로 남아 클릭을 삼키지만
+     (겹쳐 도는 작업을 막는 것이 이 막의 일이다) 바탕만 걷어 뒤가 보인다 —
+     정찰(덤)이 도는 33초를 검은 화면으로 기다릴 이유가 없다. */
+  .busy.peek{background:transparent;align-items:flex-end;padding-bottom:64px;}
+  .busy.peek .box{background:#0A0D11F2;box-shadow:0 8px 28px #000A;}
 
   /* ── 창(모달) ─────────────────────────────────────────────
      모듈 E 는 이 값들을 대화상자로 받는다. 옆판에 펼쳐 넣으면 그림 다섯 장이

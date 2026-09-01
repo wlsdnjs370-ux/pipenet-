@@ -630,10 +630,26 @@
     el.textContent = msg;
     el.className = cls || "";
   }
-  function busy(on, text) {
-    $("busy").classList.toggle("hidden", !on);
+  // 가림막. `opts.pct` 가 있으면 **실제로 센 수**로 막대를 채우고, 없으면
+  // 종전대로 무한 막대다 — 모르는 값을 채워 그리지 않는다.
+  // `opts.peek` 는 «도면은 이미 화면에 있다» 는 뜻이다. 막은 그대로 남아
+  // (클릭은 여전히 삼킨다 — 겹쳐 도는 작업을 막는 것이 이 막의 일이다)
+  // 바탕만 걷어 뒤의 캔버스가 보인다.
+  function busy(on, text, opts) {
+    const o = opts || {};
+    const box = $("busy");
+    box.classList.toggle("hidden", !on);
+    box.classList.toggle("peek", !!o.peek);
     if (text) $("busy-text").textContent = text;
+    const bar = $("busy-bar");
+    if (bar) {
+      const det = typeof o.pct === "number";
+      bar.classList.toggle("det", det);
+      bar.style.width = det
+        ? `${Math.max(0, Math.min(100, o.pct * 100)).toFixed(1)}%` : "";
+    }
   }
+  const MB = (n) => `${(n / 1048576).toFixed(1)} MB`;
 
   // 슬롯마다 «실제로 밟는 단계» 가 다르다. 계통도·기계실은 찍을 재료가 없어
   // 찍기·손질·변환이 통째로 없다 — 두 점을 찍어 경로를 뽑으면 끝이다.
@@ -773,7 +789,31 @@
       jobChip(`${j.phase} ${j.elapsed}s`);
       if (!jobWasRunning) logFold(true);
       jobWasRunning = true;
+      busy(true, `${j.phase} · ${j.elapsed}s`
+        + (jobPeek ? " — 도면은 이미 화면에 있습니다" : ""), { peek: jobPeek });
     }
+  }
+
+  // ★도면은 잡이 «끝나기 전에» 준비된다. 서버는 찍기판을 세우자마자
+  //   sess["world"] 를 앉히고 그 뒤에 정찰을 덤으로 돌린다 — 그런데 화면은
+  //   잡이 다 끝나야 그렸다. 실측(B1F 110.6MB · 처음 여는 도면):
+  //
+  //       찍기 6.8s + 도형 2.2s = 9.0s   ← 여기서 이미 그릴 수 있었다
+  //       정찰(덤)             +33.2s   ← 이 33초를 빈 캔버스로 기다렸다
+  //
+  //   `world_ready` 가 처음 서는 순간 한 번만 그린다. 두 감시 경로(스트림·
+  //   폴링)가 이 함수 하나를 나눠 쓴다 — 스트림에만 붙이면 프록시가 SSE 를
+  //   못 넘기는 환경에서 통째로 사라진다.
+  let earlyFired = false;
+  let jobPeek = false;
+  function jobEarly(j, onEarly) {
+    if (earlyFired || !onEarly) return;
+    if (!j.world_ready || j.state !== "run") return;
+    earlyFired = true;
+    Promise.resolve()
+      .then(() => onEarly(j))
+      .then(() => { jobPeek = true; jobStatus(j); })
+      .catch((err) => say(err.message || String(err), "err"));
   }
 
   // 폴링 전용 — 로그 «본문» 까지 서버 tail 로 채운다. 스트림은 줄이 생기는
@@ -787,6 +827,7 @@
     stopWatch();
     busy(false);
     jobWasRunning = false;
+    jobPeek = false;
     if (j.state === "error") {
       jobChip("실패");
       logFold(true);            // 실패는 열어 둔다 — 읽어야 고친다
@@ -801,15 +842,19 @@
       .catch((err) => say(err.message || String(err), "err"));
   }
 
-  function watch(onDone) {
+  // `onEarly` — 도면이 준비되는 «순간» 한 번. 안 주면 종전과 똑같이 잡이
+  // 끝난 뒤에만 그린다(채택·조립·이음 같은 잡은 중간에 그릴 것이 없다).
+  function watch(onDone, onEarly) {
     stopWatch();
+    earlyFired = false;
+    jobPeek = false;
     if (window.EventSource) {
-      try { return watchStream(onDone); } catch (e) { /* 폴백 */ }
+      try { return watchStream(onDone, onEarly); } catch (e) { /* 폴백 */ }
     }
-    return watchPoll(onDone);
+    return watchPoll(onDone, onEarly);
   }
 
-  function watchStream(onDone) {
+  function watchStream(onDone, onEarly) {
     // 진행 줄이 «생기는 순간» 흐른다 — 0.7초 폴링 박자를 기다리지 않는다.
     const es = new EventSource(`/api/module-f/job/stream?sid=${S.sid}`);
     S.es = es;
@@ -822,8 +867,8 @@
     });
     es.addEventListener("state", (ev) => {
       const j = JSON.parse(ev.data);
-      jobStatus(j);            // 진행 줄·표·자동열림 — 폴링과 같은 한 벌
-      if (j.state === "run") { busy(true, `${j.phase} · ${j.elapsed}s`); return; }
+      jobStatus(j);            // 진행 줄·표·가림막 — 폴링과 같은 한 벌
+      if (j.state === "run") { jobEarly(j, onEarly); return; }
       if (j.state === "idle") return;      // 잡이 아직 안 붙었다 — 서버가 기다린다
       jobFinish(j, onDone);
     });
@@ -837,13 +882,13 @@
     };
   }
 
-  function watchPoll(onDone) {
+  function watchPoll(onDone, onEarly) {
     S.poll = setInterval(async () => {
       let j;
       try { j = await api(`/api/module-f/job?sid=${S.sid}`); }
       catch (err) { stopWatch(); busy(false); say(err.message, "err"); return; }
       jobRender(j);
-      if (j.state === "run") { busy(true, `${j.phase} · ${j.elapsed}s`); return; }
+      if (j.state === "run") { jobEarly(j, onEarly); return; }
       jobFinish(j, onDone);
     }, 700);
   }
@@ -855,19 +900,61 @@
   }
 
   // ── 1. 열기 ────────────────────────────────────────────────────
+  //
+  // 올리는 값은 두 가지다 — **보내는 바이트**와 **말해 주지 않는 시간**.
+  //
+  // 바이트: DXF 는 ASCII 라 gzip 이 크게 줄인다(실측 B1F 110.6 → 14.2 MB ·
+  //   7.8배 · 압축값 1.9s). 서버 `_save_upload` 는 ".gz" 와 매직바이트를 보고
+  //   이미 알아서 푼다 — 모듈 A 가 쓰던 길을 그대로 탄다. 작은 도면은 압축
+  //   값이 이득보다 커 그냥 보낸다.
+  // 시간: fetch 로는 올라간 바이트를 셀 방법이 없다. 그래서 업로드만 XHR 로
+  //   보내 «실제로 센 %» 를 그린다(지어낸 값이 아니다).
+  const GZIP_MIN_BYTES = 8 * 1024 * 1024;
+
+  async function attachDxf(fd, field, file) {
+    const US = window.UploadStream;
+    if (!US || file.size < GZIP_MIN_BYTES) {
+      fd.append(field, file, file.name);
+      return file.size;
+    }
+    busy(true, `압축 중… 0% (${MB(file.size)})`, { pct: 0 });
+    const gz = await US.gzipBlob(file, (p) =>
+      busy(true, `압축 중… ${Math.round(p * 100)}% (${MB(file.size)})`,
+           { pct: p }));
+    // 이미 압축된 파일은 되레 커진다 — 그러면 원본을 보낸다.
+    if (gz && gz.size < file.size) {
+      fd.append(field, gz, file.name + ".gz");
+      return gz.size;
+    }
+    fd.append(field, file, file.name);
+    return file.size;
+  }
+
+  function sendOpen(url, fd, bytes) {
+    const US = window.UploadStream;
+    if (!US) return api(url, { method: "POST", body: fd });
+    return US.xhrUploadForToken(url, fd, (p) => {
+      // 100% 는 «다 보냈다» 지 «다 됐다» 가 아니다. 서버가 받아 적는 동안
+      // 100% 에 멈춘 막대를 보여 주면 그게 곧 거짓말이 된다.
+      if (p >= 1) { busy(true, "서버가 도면을 받는 중…", { pct: 1 }); return; }
+      busy(true, `업로드 중… ${Math.round(p * 100)}% `
+                 + `(${MB(bytes * p)} / ${MB(bytes)})`, { pct: p });
+    });
+  }
+
   $("btn-open").onclick = async () => {
     const f = $("dxf").files[0];
     if (!f) { say("DXF 파일을 고르세요.", "warn"); return; }
     const fd = new FormData();
-    fd.append("dxf_file", f);
     // [H-0] 활성 슬롯으로 넣는다. 세션이 이미 있으면 그 세션의 슬롯을 채운다
     // (S650 회귀 한 바퀴) — 없으면 새 세션이 이 종류로 시작한다.
     fd.append("kind", S.slot);
     if (S.sid) fd.append("sid", S.sid);
-    busy(true, "업로드 중…");
+    busy(true, `업로드 준비 중… (${MB(f.size)})`);
     try {
+      const sent = await attachDxf(fd, "dxf_file", f);
       // 올리기까지다 — 읽기는 방식이 정해진 뒤(`/slot/read`).
-      const d = await api("/api/module-f/slot/open", { method: "POST", body: fd });
+      const d = await sendOpen("/api/module-f/slot/open", fd, sent);
       S.sid = d.sid;
       S.method = null;
       S.zones = []; S.autoAlarm = null; S.autoHeads = []; S.autoDone = false;
@@ -886,9 +973,20 @@
       say(`${d.filename} 읽는 중…`);
       // 읽어서 화면에 띄우는 것까지는 방식과 무관하다 — 도면을 먼저 보여 준
       // 뒤에 어떻게 읽을지 묻는다.
-      watch(async () => {
+      //
+      // ★그 «먼저» 를 잡이 끝날 때까지 미루지 않는다. 서버는 찍기판을 세우자
+      //   마자 도면을 내려보낼 수 있고, 정찰은 그 뒤에 도는 덤이다. 한 번만
+      //   그리도록 잠가 두고 이른 신호와 끝 신호가 같은 함수를 부른다 —
+      //   두 벌로 적으면 한쪽만 고쳐지는 날이 온다.
+      let drawn = false;
+      const showDrawing = async () => {
+        if (drawn) return;
+        drawn = true;
         await loadWorldRaw();
         fit(S.world.bounds);
+      };
+      watch(async () => {
+        await showDrawing();
         if (!d.needs_method) { await loadSub(); loadSlots(); return; }
         // 한 줄로 자르고 전체 이름은 툴팁에 — 좁은 옆판에서 제목이 토막나면
         // 어느 도면을 여는지가 안 읽힌다.
@@ -900,7 +998,7 @@
         // [F-10a · D-F10-1] 여기서 묻지 않는다. 정찰이 성했으면 채택→조립까지
         //   흘려보내고, 못 쓰겠으면 «묻지 않고» 찍기 화면으로 내려간다.
         await autoStart();
-      });
+      }, showDrawing);
     } catch (err) { busy(false); say(err.message, "err"); }
   };
 

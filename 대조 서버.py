@@ -24,6 +24,7 @@ import sys
 import threading
 import time
 import warnings
+import zlib
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -133,6 +134,11 @@ app.jinja_env.auto_reload = True
 # (1) 업로드 크기 제한 — 수GB 파일 업로드 DoS 차단.
 #     일반 DXF/SDF/KFP 는 수십 MB 이내. 200 MB 면 큰 통합 도면도 충분.
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
+#     ★압축 전송(gzip)은 이 자를 그냥 지나간다 — 재는 것이 «올라온» 바이트라서다.
+#     DXF 는 ASCII 라 8배 가까이 줄고(실측 110.6 → 14.2 MB) 화면이 큰 도면을
+#     실제로 그렇게 보내므로, «푼 뒤» 크기에도 따로 자를 댄다. 실도면 최대가
+#     144 MB 라 그 네 배를 상한으로 둔다(`_save_upload` 가 흘려 쓰며 센다).
+MAX_UNGZIP_BYTES = 600 * 1024 * 1024
 
 # (2) 세션 쿠키 하드닝
 #     SECURE: HTTPS 만 전송 (cloudflared 가 TLS terminate → origin 까지는 HTTP
@@ -503,15 +509,21 @@ def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) ->
 
     original_name = Path(uploaded.filename).name
     # 클라이언트에서 gzip 압축 전송 시 파일명이 ".gz" 로 끝남 → 실제 확장자 복원
-    raw = uploaded.read()
-    is_gzip = original_name.lower().endswith(".gz") or raw[:2] == b"\x1f\x8b"
-    if is_gzip:
-        try:
-            raw = gzip.decompress(raw)
-        except OSError as exc:
-            raise ValueError("업로드 파일의 압축 해제에 실패했습니다.") from exc
-        if original_name.lower().endswith(".gz"):
-            original_name = original_name[:-3]
+    #
+    # ★몸통을 통째로 읽지 않는다. read() 하면 파일 크기가 그대로 RAM 에 앉고,
+    #   압축 전송이면 «압축본 + 푼 것» 이 함께 앉는다(실측 B1F: 14.2MB +
+    #   110.6MB = 125MB, 그것도 워커 스레드 하나당). 매직바이트 두 개만 엿보고
+    #   나머지는 흘려 쓴다 — 실측 상 속도는 같고(0.06s vs 0.09s) RAM 은 1MB 다.
+    stream = uploaded.stream
+    head = stream.read(2)
+    try:
+        stream.seek(0)
+    except (OSError, ValueError):
+        # 되감을 수 없는 스트림(이론상) — 이때만 종전처럼 통째로 든다.
+        stream = BytesIO(head + stream.read())
+    is_gzip = original_name.lower().endswith(".gz") or head[:2] == b"\x1f\x8b"
+    if is_gzip and original_name.lower().endswith(".gz"):
+        original_name = original_name[:-3]
 
     original_suffix = Path(original_name).suffix.lower()
     filename = sanitize_upload_name(original_name)
@@ -525,7 +537,48 @@ def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) ->
         raise ValueError(f"`{field_name}` 파일 형식이 올바르지 않습니다. 허용 형식: {allowed}")
 
     saved_path = UPLOAD_DIR / filename
-    saved_path.write_bytes(raw)
+    # 임시 이름으로 받아 다 쓴 뒤에야 제자리에 놓는다. 종전에는 압축을 먼저 풀고
+    # 썼기에 실패해도 반쪽 파일이 안 남았다 — 흘려 쓰면 그 성질을 잃으므로
+    # 여기서 되살린다(반쪽 DXF 가 남으면 다음 열기가 그것을 읽는다).
+    # 스레드 번호를 물린다 — 같은 이름을 동시에 올리는 두 요청이 서로의 반쪽을
+    # 이어 쓰지 않게(waitress 는 단일 프로세스 + 다중 스레드다).
+    part_path = saved_path.with_name(f"{saved_path.name}.{threading.get_ident():x}.part")
+    try:
+        with open(part_path, "wb") as out:
+            src = gzip.GzipFile(fileobj=stream, mode="rb") if is_gzip else stream
+            try:
+                if not is_gzip:
+                    shutil.copyfileobj(src, out, 1024 * 1024)
+                else:
+                    # ★푼 크기에도 상한을 둔다. MAX_CONTENT_LENGTH 는 «올라온»
+                    #   바이트만 재므로, 압축 전송에서는 문 앞의 자가 통째로
+                    #   무력해진다 — 20MB 를 올려 수십 GB 를 디스크에 쓸 수
+                    #   있다. 외부에 열려 있는 서버라 여기서 막는다.
+                    n = 0
+                    while True:
+                        chunk = src.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        n += len(chunk)
+                        if n > MAX_UNGZIP_BYTES:
+                            raise ValueError(
+                                "압축을 푼 파일이 너무 큽니다 "
+                                f"({MAX_UNGZIP_BYTES // (1024 * 1024)} MB 초과).")
+                        out.write(chunk)
+            finally:
+                if is_gzip:
+                    src.close()
+    # ★«압축이 깨졌다» 와 «디스크가 찼다» 를 한 그물로 잡지 않는다. 종전에는
+    #   압축을 먼저 풀고 나중에 썼으므로 둘이 저절로 갈렸는데, 흘려 쓰면 같은
+    #   블록에서 난다 — 디스크 오류를 「압축 해제 실패」라고 말하면 사람이
+    #   엉뚱한 데를 고치러 간다.
+    except (gzip.BadGzipFile, EOFError, zlib.error) as exc:
+        part_path.unlink(missing_ok=True)
+        raise ValueError("업로드 파일의 압축 해제에 실패했습니다.") from exc
+    except BaseException:
+        part_path.unlink(missing_ok=True)
+        raise
+    os.replace(part_path, saved_path)
     # DWG 업로드는 서버측에서 DXF 로 변환해 이후 파이프라인이 동일하게 처리
     if suffix == ".dwg":
         saved_path = _dwg_to_dxf(saved_path)

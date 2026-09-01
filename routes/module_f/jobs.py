@@ -223,7 +223,8 @@ def _run_job(sess: dict, phase: str, fn) -> dict:
 def _job_view(sess: dict) -> dict:
     job = sess.get("job")
     if job is None:
-        return {"state": "idle", "phase": "", "elapsed": 0.0, "lines": []}
+        return {"state": "idle", "phase": "", "elapsed": 0.0, "lines": [],
+                "world_ready": sess.get("world") is not None}
     end = job["ended"] or time.time()
     return {
         "state": job["state"], "phase": job["phase"],
@@ -231,6 +232,15 @@ def _job_view(sess: dict) -> dict:
         "error": job["error"],
         "lines": sess["log"][-LOG_TAIL:],
         "queued": _HEAVY_LOCK.locked() and job["state"] == "run",
+        # ★잡이 끝나기 «전에» 도면을 그릴 수 있는가. `_open_job` 은 찍기판을
+        #   세우자마자 sess["world"] 를 앉히고 그 뒤에 정찰을 덤으로 돌린다
+        #   — 도면은 그 사이 내내 준비되어 있다. 그 사실을 화면에 말해 주지
+        #   않으면 화면은 잡이 다 끝날 때까지 빈 캔버스를 보여 준다.
+        #   실측(B1F 110.6MB · 처음 여는 도면):
+        #       찍기 6.8s + 도형 2.2s = 9.0s   ← 여기서 이미 그릴 수 있다
+        #       정찰(덤)             +33.2s
+        #   즉 42초 중 33초가 «이미 있는 도면» 을 안 그린 채 흘렀다.
+        "world_ready": sess.get("world") is not None,
     }
 
 

@@ -596,7 +596,7 @@
       <div class="box">
         <div class="lbl">Working</div>
         <div id="busy-text">작업 중…</div>
-        <div class="track"><i></i></div>
+        <div class="track"><i id="busy-bar"></i></div>
       </div>
     </div>
   </div>
@@ -615,6 +615,9 @@
   </div>
 </div>
 
-<script src="/static/module_f.js?v=20260828-f9"></script>
+<!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
+     모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
+<script src="/static/upload_stream.js?v=20260901-f1"></script>
+<script src="/static/module_f.js?v=20260901-f1"></script>
 </body>
 </html>

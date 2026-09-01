@@ -837,14 +837,41 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         editor._rebind_managers()
     if hasattr(editor, "_mark_pipe_key_index_dirty"):
         editor._mark_pipe_key_index_dirty()
-    editor.update_all_pipe_lengths_in_pipe_data()
-    if hasattr(editor, "_sync_all_legacy_views_from_graph"):
-        editor._sync_all_legacy_views_from_graph()
 
-    # ---- 본체 노드정리 (SSOT: 편집 메뉴 «노드정리»와 같은 함수 하나)
-    #  일직선 중간 노드를 저장 전에 병합한다. 헤드(비기본 type_id)와
-    #  펌프(차단 타입)는 SSOT 게이트가 후보에서 빼므로 여기서 더 할 일 없다.
-    res_clean = editor.cleanup_collinear_intermediate_nodes()
+    # ★여기부터 «노드정리» 끝까지가 말 없이 가장 오래 걸리는 구간이다.
+    #   실측(B1F 현장조사 · 노드 10,211 · 배관 10,210): 급수원 스냅 뒤로
+    #   **14분 넘게** 한 줄도 안 찍혀, 화면은 같은 문장만 붙들고 있었다.
+    #   각 단계가 «무엇을» 하는지와 «얼마나» 걸렸는지 적는다 — 지어낸 퍼센트가
+    #   아니라 끝난 단계의 실측이다. 어느 단계가 값을 먹는지도 이 줄들이 답한다.
+    import time as _t
+    n_node = len(getattr(editor.graph, "nodes", None) or {})
+    n_pipe = len(getattr(editor.graph, "pipes", None) or {})
+
+    # ★번호는 «실제로 돌 단계» 로만 매긴다. 있는지 없는지 모르는 메서드에
+    #   번호를 미리 박았더니 화면이 「1/3 → 3/3」 으로 건너뛰었다(이 편집기에는
+    #   `_sync_all_legacy_views_from_graph` 가 없다). 셋 중 둘을 하고서 «셋 중
+    #   셋» 이라 말하지 않는다.
+    _steps = [("배관 길이 갱신", editor.update_all_pipe_lengths_in_pipe_data,
+               f"노드 {n_node:,} · 배관 {n_pipe:,}")]
+    if hasattr(editor, "_sync_all_legacy_views_from_graph"):
+        _steps.append(("표 동기화", editor._sync_all_legacy_views_from_graph, ""))
+    # 노드정리(SSOT)는 편집 메뉴 «노드정리»와 같은 함수 하나다. 일직선 중간
+    # 노드를 저장 전에 병합한다 — 헤드(비기본 type_id)와 펌프(차단 타입)는
+    # SSOT 게이트가 후보에서 빼므로 여기서 더 할 일 없다.
+    # 실측(B1F): 이 한 단계가 942.7초 중 **937.3초** 다.
+    _steps.append(("노드정리(SSOT) — 일직선 중간 노드 병합",
+                   editor.cleanup_collinear_intermediate_nodes,
+                   "이 단계가 가장 깁니다"))
+    _n = len(_steps)
+    res_clean = None
+    for _i, (_label, _fn, _note) in enumerate(_steps, 1):
+        _tag = f"마무리 {_i}/{_n} — {_label}"
+        print(f"{_tag} 중…" + (f" ({_note})" if _note else ""))
+        _t0 = _t.perf_counter()
+        _out = _fn()
+        print(f"{_tag} 완료 · {_t.perf_counter() - _t0:.1f}s")
+        if _i == _n:
+            res_clean = _out
     print(f"노드정리(SSOT): 삭제 {len(res_clean['removed'])}"
           f" · 실패 {len(res_clean['failed'])}")
 

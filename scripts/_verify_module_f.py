@@ -35,7 +35,21 @@ def check(label, cond, detail=""):
     return cond
 
 
-def wait(c, sid, what, limit=600):
+# 무거운 잡의 기본 한도. 실측(B1F 전체망 .kfp)이 **872초**라 600 으로는 늘
+# 모자랐다 — 그 초과가 「변환 잡 실패」로 적혀, 멀쩡한 산출물을 결함으로
+# 읽게 만들었다. 실측의 두 배쯤을 둔다.
+JOB_LIMIT_SECONDS = 1800
+
+
+def wait(c, sid, what, limit=JOB_LIMIT_SECONDS):
+    """잡 하나를 기다린다. **끝난 것 · 실패한 것 · 아직 도는 것**을 가른다.
+
+    ★셋을 뭉개지 않는다. 종전에는 한도를 넘기면 `{"state":"timeout"}` 만
+      돌려주고 부르는 쪽이 그것을 「… 잡 실패」로 적었다 — 「고장났다」와
+      「내가 짧게 기다렸다」가 같은 문장이 되어, 실제로 872초 걸리는 정상
+      변환을 결함으로 읽었다(실측으로 그렇게 한 번 헛짚었다).
+      timeout 은 **모른다는 뜻**이지 실패가 아니다. 그 사실을 화면에 적는다.
+    """
     t0 = time.time()
     last = ""
     while time.time() - t0 < limit:
@@ -50,10 +64,14 @@ def wait(c, sid, what, limit=600):
             return j
         cur = (j.get("lines") or [""])[-1][:78]
         if cur != last:
-            print(f"      … {cur}")
+            print(f"      … {int(time.time() - t0):5d}s | {cur}")
             last = cur
         time.sleep(0.6)
-    return {"state": "timeout"}
+    # 아직 도는 중이다 — 마지막 줄까지 적어 «어디서» 못 기다렸는지 남긴다.
+    print(f"      {what} 아직 도는 중 · {limit}s 기다렸다 (실패가 아니라 "
+          f"«모름» 이다 — 한도를 늘려 다시 보라)")
+    print(f"       | 마지막 줄: {last or '(없음)'}")
+    return {"state": "timeout", "waited": limit, "last": last}
 
 
 def main():
@@ -342,8 +360,14 @@ def main():
                          "outputs": {"full_kfp": True}})
         if not check("변환 요청 수락", r.get_json().get("ok"), str(r.get_json())[:160]):
             return
-        if wait(c, sid2, "수리계산 입력 변환")["state"] != "done":
-            FAILS.append("변환 잡 실패")
+        jb = wait(c, sid2, "수리계산 입력 변환")
+        if jb["state"] != "done":
+            # ★«실패» 와 «못 기다렸다» 를 갈라 적는다. 실측 872초짜리 정상
+            #   변환을 한도 600초로 재던 시절, 이 자리가 그것을 「변환 잡
+            #   실패」로 적어 멀쩡한 산출물을 결함으로 읽게 만들었다.
+            FAILS.append("변환 잡 실패" if jb["state"] == "error"
+                         else f"변환 잡 미확인 — {jb.get('waited')}초 안에 "
+                              f"안 끝났다(실패 아님)")
             return
         res = c.get(f"/api/module-f/convert/result?sid={sid2}").get_json()["result"]
         if not check("변환 성공", res.get("ok"),
@@ -377,7 +401,13 @@ def main():
                    json={"sid": sid2, "dto": {},
                          "outputs": {"worst_kfp": True}})
         if check("범위 제한 변환 수락", r.get_json().get("ok")):
-            if wait(c, sid2, "수리계산 입력 변환")["state"] == "done":
+            jb2 = wait(c, sid2, "수리계산 입력 변환")
+            if jb2["state"] != "done":
+                # 종전에는 조용히 지나갔다 — 아래 검사들이 통째로 «안 돈» 채
+                # 화면에는 실패도 성공도 안 남았다. 무엇을 못 봤는지 적는다.
+                FAILS.append("최불리 변환 잡 " + ("실패" if jb2["state"] == "error"
+                             else f"미확인({jb2.get('waited')}초)"))
+            if jb2["state"] == "done":
                 rr = c.get(f"/api/module-f/convert/result?sid={sid2}").get_json()["result"]
                 if check("범위 제한 변환 성공", rr.get("ok"),
                          json.dumps(rr.get("blockers"), ensure_ascii=False)[:200]):

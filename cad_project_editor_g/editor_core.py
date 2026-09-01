@@ -357,10 +357,10 @@ class PipeEditor:
         if not self.graph.has_node(name):
             return False
 
-        connected_pids = [
-            pid for pid, p in self.graph.pipes.items()
-            if p.start == name or p.end == name
-        ]
+        # 그래프 색인으로 O(연결수). 종전에는 전 배관을 훑었다 — CAD 노드정리가
+        # 병합 7,204건마다 이 스캔을 반복해 O(N·P) 로 걸었다. dict.fromkeys 는
+        # 자기고리(색인에 두 번 앉는 경우)를 종전 스캔과 같게 한 번으로 접는다.
+        connected_pids = list(dict.fromkeys(self.graph.get_connected_pipes(name)))
         if len(connected_pids) >= 2:
             return False
 
@@ -823,23 +823,28 @@ class PipeEditor:
         failed: list[dict] = []
         skip: set[str] = set()
         max_rounds = max(len(self.graph.nodes), 1) * 2
-        for _ in range(max_rounds):
-            candidates = [
-                n for n in self.collect_collinear_merge_candidates()
-                if n not in skip
-            ]
-            if not candidates:
-                break
-            for name in candidates:
-                ok, _reason = self.preview_merge_delete_node(name)
-                if not ok:
-                    continue
-                ok, reason = self.merge_delete_node(name)
-                if ok:
-                    removed.append(name)
-                else:
-                    failed.append({"id": name, "reason": reason})
-                    skip.add(name)
+        # 좌표가 안 움직이는 구간이다(삭제·생성뿐) — 겹침 검사를 색인으로.
+        # 판정·병합은 위 단건 SSOT 그대로다. 실측(B1F · 병합 7,204건):
+        # 937.3초 → ~6초. 산출은 정준 비교로 동일 확인(노드 5,070 · 배관
+        # 5,069 · 좌표·규격·부속 multiset 일치 — scripts/_compare_kfp_canonical.py).
+        with self._pipe_mgr.frozen_geometry():
+            for _ in range(max_rounds):
+                candidates = [
+                    n for n in self.collect_collinear_merge_candidates()
+                    if n not in skip
+                ]
+                if not candidates:
+                    break
+                for name in candidates:
+                    ok, _reason = self.preview_merge_delete_node(name)
+                    if not ok:
+                        continue
+                    ok, reason = self.merge_delete_node(name)
+                    if ok:
+                        removed.append(name)
+                    else:
+                        failed.append({"id": name, "reason": reason})
+                        skip.add(name)
         return {"removed": removed, "failed": failed}
 
     # ==================================================================

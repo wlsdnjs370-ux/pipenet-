@@ -55,6 +55,9 @@ class PipeManager:
         self._current_dn: str = "DN25"
         self._pipe_spec_getter = None
 
+        # 겹침 검사 색인 — frozen_geometry() 컨텍스트 안에서만 산다(아래).
+        self._geom_index: dict | None = None
+
     # ------------------------------------------------------------------
     # 인덱스 관리
     # ------------------------------------------------------------------
@@ -78,19 +81,143 @@ class PipeManager:
         self._pipe_key_index_dirty = True
 
     def get_pipe_id_by_nodes(self, n1: str, n2: str) -> str | None:
+        # ★그래프의 양방향 키 색인을 그대로 쓴다. 종전에는 여기 사본
+        #   (_pipe_key_to_pid)을 두고 변경 한 건마다 dirty → 다음 조회 때
+        #   전체 재구축했다 — CAD 노드정리(병합 7,204건)에서 병합마다 서너 번
+        #   불려 O(P) 재구축이 그만큼 반복됐다. 그래프 색인은 증분 유지되고
+        #   (network_graph.add_pipe/_unindex_pipe), 평행 배관의 승자 규칙
+        #   (나중 것이 이긴다)도 옛 재구축과 같다.
         if not n1 or not n2:
             return None
-        if not isinstance(self._pipe_key_to_pid, dict):
-            self._pipe_key_to_pid = {}
-            self._pipe_key_index_dirty = True
-        if self._pipe_key_index_dirty:
-            self._rebuild_pipe_key_index()
-        key = self._pipe_key(n1, n2)
-        return self._pipe_key_to_pid.get(key)
+        return self.graph.find_pipe_by_nodes(n1, n2)
 
     def _refresh_pipe_indices(self, pipe_id: str) -> None:
         # pipe SSOT는 graph.pipes. 인덱스만 dirty 처리한다.
         self._mark_pipe_key_index_dirty()
+
+    # ------------------------------------------------------------------
+    # 겹침 검사 색인 — «좌표가 안 움직이는 구간» 전용
+    # ------------------------------------------------------------------
+    #
+    # _check_collision / _check_diagonal_overlap 은 배관 «전수» 를 훑는다.
+    # 편집 화면의 클릭 한 번에는 그만해도 되지만, CAD 변환의 노드정리는
+    # 병합 7,204건 × 건마다 서너 번 이 검사를 부른다 — 전수 훑기가 실측
+    # 937초의 몸통이었다.
+    #
+    # 색인 원리: 검사 대상이 될 수 있는 배관은 «같은 축 + 고정좌표 두 개가
+    # is_close» (직교) 또는 «같은 대각 계열 + z·직선상수 is_close» (대각)
+    # 뿐이다. 고정좌표를 2×TOLERANCE 칸으로 양자화해 담아 두면, is_close 한
+    # 값은 반드시 이웃 ±1칸 안에 있다(|a−b|≤T, 칸=2T → 몫 차 ≤ 0.5+ε < 1).
+    # 조회는 3×3칸의 «후보» 만 꺼내 **종전과 똑같은 판정식** 을 돌린다 —
+    # 색인은 superset 필터일 뿐이라 결과가 전수 훑기와 정확히 같다.
+    #
+    # ★계약: 컨텍스트 동안 노드 «좌표» 가 움직이면 안 된다. 배관 추가·삭제는
+    #   그래프 이벤트(on_pipe_added/on_pipe_removed)로 따라가지만, 좌표 이동은
+    #   이벤트로 못 따라간다(직접 대입이 섞여 있다). 노드정리는 좌표를 안
+    #   움직인다(삭제·생성뿐) — 그래서 이 컨텍스트가 안전하다.
+
+    _GEOM_Q = 2.0 * TOLERANCE
+
+    def _geom_key(self, pipe) -> tuple | None:
+        """배관 하나의 색인 키. 검사식이 거르는 분류와 정확히 같은 기준."""
+        po1 = self._get_node_coord(pipe.start)
+        po2 = self._get_node_coord(pipe.end)
+        if po1 is None or po2 is None:
+            return None
+        q = self._GEOM_Q
+        axis = self._infer_pipe_axis(pipe.start, pipe.end)
+        if axis == "X":
+            return ("A", "X", math.floor(po1[1] / q), math.floor(po1[2] / q))
+        if axis == "Y":
+            return ("A", "Y", math.floor(po1[0] / q), math.floor(po1[2] / q))
+        if axis == "Z":
+            return ("A", "Z", math.floor(po1[0] / q), math.floor(po1[1] / q))
+        if self._is_xy_diagonal(pipe.start, pipe.end):
+            dx = po2[0] - po1[0]
+            dy = po2[1] - po1[1]
+            same_sign = (dx > 0) == (dy > 0)
+            c = (po1[0] - po1[1]) if same_sign else (po1[0] + po1[1])
+            return ("D", same_sign, math.floor(po1[2] / q),
+                    math.floor(c / q))
+        return None    # 축평행도 대각도 아님 — 어떤 검사식에도 안 걸린다
+
+    def _geom_on_added(self, data) -> None:
+        pipe_id = self._geom_event_pid(data)
+        pipe = self.graph.get_pipe(pipe_id) if pipe_id else None
+        if pipe is None or self._geom_index is None:
+            return
+        key = self._geom_key(pipe)
+        if key is not None:
+            self._geom_index["buckets"].setdefault(key, []).append(pipe.id)
+            self._geom_index["pid_key"][pipe.id] = key
+
+    def _geom_on_removed(self, data) -> None:
+        pipe_id = self._geom_event_pid(data)
+        if not pipe_id or self._geom_index is None:
+            return
+        key = self._geom_index["pid_key"].pop(pipe_id, None)
+        if key is not None:
+            bucket = self._geom_index["buckets"].get(key)
+            if bucket is not None:
+                try:
+                    bucket.remove(pipe_id)
+                except ValueError:
+                    pass
+
+    @staticmethod
+    def _geom_event_pid(data) -> str | None:
+        """이벤트 payload 에서 배관 id — emit 방식(단일/튜플)에 안 매인다."""
+        if isinstance(data, tuple):
+            for item in data:
+                if isinstance(item, dict) and "id" in item:
+                    return item["id"]
+                if isinstance(item, str):
+                    return item
+            return None
+        if isinstance(data, dict):
+            return data.get("id")
+        return data if isinstance(data, str) else None
+
+    def frozen_geometry(self):
+        """겹침 검사를 색인으로 돌리는 구간(계약은 위 블록 주석).
+
+        중첩 진입은 바깥 색인을 그대로 쓴다. contextmanager 반환."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _ctx():
+            if self._geom_index is not None:     # 중첩 — 바깥 것 재사용
+                yield
+                return
+            buckets: dict[tuple, list[str]] = {}
+            pid_key: dict[str, tuple] = {}
+            for pid, p in self.graph.pipes.items():
+                key = self._geom_key(p)
+                if key is not None:
+                    buckets.setdefault(key, []).append(pid)
+                    pid_key[pid] = key
+            self._geom_index = {"buckets": buckets, "pid_key": pid_key}
+            self.graph.on_pipe_added.subscribe(self._geom_on_added)
+            self.graph.on_pipe_removed.subscribe(self._geom_on_removed)
+            try:
+                yield
+            finally:
+                self.graph.on_pipe_added.unsubscribe(self._geom_on_added)
+                self.graph.on_pipe_removed.unsubscribe(self._geom_on_removed)
+                self._geom_index = None
+        return _ctx()
+
+    def _geom_candidates(self, kind, tag, f1, f2):
+        """(kind, tag) 분류에서 고정값 두 개의 3×3 이웃칸 후보 배관 id."""
+        q = self._GEOM_Q
+        b1 = math.floor(f1 / q)
+        b2 = math.floor(f2 / q)
+        buckets = self._geom_index["buckets"]
+        out: list[str] = []
+        for d1 in (-1, 0, 1):
+            for d2 in (-1, 0, 1):
+                out.extend(buckets.get((kind, tag, b1 + d1, b2 + d2), ()))
+        return out
 
     # ------------------------------------------------------------------
     # CRUD
@@ -394,7 +521,16 @@ class PipeManager:
         z_ref = p1[2]
         seg_min, seg_max = sorted((p1[0], p2[0]))
 
-        for p in self.graph.pipes.values():
+        # 색인이 있으면 후보만 — 판정식은 아래 그대로다(색인은 superset 필터).
+        if self._geom_index is not None:
+            pool = (self.graph.pipes[pid]
+                    for pid in self._geom_candidates("D", same_sign,
+                                                     z_ref, line_c)
+                    if pid in self.graph.pipes)
+        else:
+            pool = self.graph.pipes.values()
+
+        for p in pool:
             s_old, e_old = p.start, p.end
 
             if ignore_pipes:
@@ -453,7 +589,16 @@ class PipeManager:
             seg_min, seg_max = sorted((p1[2], p2[2]))
             fixed_1, fixed_2 = p1[0], p1[1]
 
-        for p in self.graph.pipes.values():
+        # 색인이 있으면 후보만 — 판정식은 아래 그대로다(색인은 superset 필터).
+        if self._geom_index is not None:
+            pool = (self.graph.pipes[pid]
+                    for pid in self._geom_candidates("A", axis,
+                                                     fixed_1, fixed_2)
+                    if pid in self.graph.pipes)
+        else:
+            pool = self.graph.pipes.values()
+
+        for p in pool:
             s_old, e_old = p.start, p.end
 
             if ignore_pipes:

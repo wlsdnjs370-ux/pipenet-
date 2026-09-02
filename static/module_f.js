@@ -978,12 +978,20 @@
       //   마자 도면을 내려보낼 수 있고, 정찰은 그 뒤에 도는 덤이다. 한 번만
       //   그리도록 잠가 두고 이른 신호와 끝 신호가 같은 함수를 부른다 —
       //   두 벌로 적으면 한쪽만 고쳐지는 날이 온다.
-      let drawn = false;
-      const showDrawing = async () => {
-        if (drawn) return;
-        drawn = true;
-        await loadWorldRaw();
-        fit(S.world.bounds);
+      //   ★잠금은 «성공» 에만 건다. `drawn = true` 를 await 앞에 두면, 이른
+      //     그리기의 `loadWorldRaw()` 가 한 번 미끄러졌을 때(네트워크 딸꾹질)
+      //     끝 신호가 와도 «이미 그렸다» 며 건너뛴다 — 도면이 영영 안 뜨고
+      //     이어지는 `S.world.counts` 가 죽는다. 진행 중인 약속을 잠금으로
+      //     쓰면 두 신호가 겹쳐도 한 번만 받아오고, 실패하면 잠금이 풀린다.
+      let drawing = null;
+      const showDrawing = () => {
+        if (drawing) return drawing;
+        drawing = (async () => {
+          await loadWorldRaw();
+          fit(S.world.bounds);
+        })();
+        drawing.catch(() => { drawing = null; });
+        return drawing;
       };
       watch(async () => {
         await showDrawing();

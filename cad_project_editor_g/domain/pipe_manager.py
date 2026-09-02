@@ -48,15 +48,15 @@ class PipeManager:
         self.intersection_tol = intersection_tol
 
         self.pipe_id_counter: int = 0
-        self._pipe_key_to_pid: dict[tuple[str, str], str] = {}
-        self._pipe_key_index_dirty: bool = True
 
         self._design_settings: dict = {}
         self._current_dn: str = "DN25"
         self._pipe_spec_getter = None
 
         # 겹침 검사 색인 — frozen_geometry() 컨텍스트 안에서만 산다(아래).
+        # `_geom_graph` 는 그 색인을 만든 그래프다(바꿔치기 감지용).
         self._geom_index: dict | None = None
+        self._geom_graph = None
 
     # ------------------------------------------------------------------
     # 인덱스 관리
@@ -67,18 +67,23 @@ class PipeManager:
         return tuple(sorted((start, end)))
 
     def _rebuild_pipe_key_index(self) -> None:
-        self._pipe_key_to_pid = {}
-        for pid, p in (self.graph.pipes or {}).items():
-            try:
-                key = self._pipe_key(p.start, p.end)
-                self._pipe_key_to_pid[key] = pid
-            except Exception as _e:
-                _log.warning("배관 키 인덱스 빌드 실패 [pid=%s, start=%r, end=%r]: %s", pid, getattr(p, 'start', '?'), getattr(p, 'end', '?'), _e)
-                continue
-        self._pipe_key_index_dirty = False
+        """[은퇴] 배관 키 색인의 **사본은 없앴다** — 그래프가 하나만 갖는다.
+
+        옛 이름을 부르는 곳이 남아 있어(직렬화 복원·planar) «다시 세우라» 는
+        뜻으로 옮겨 둔다. 그래프 색인은 게을러서, 무효화가 곧 재구축 예약이다.
+        """
+        self.graph.invalidate_indices()
 
     def _mark_pipe_key_index_dirty(self) -> None:
-        self._pipe_key_index_dirty = True
+        """배관 집합이 **바깥에서** 바뀌었다는 신호 — 그래프 색인을 무효화한다.
+
+        ★내부 CRUD 는 이것을 부르면 안 된다(`_refresh_pipe_indices` 참조).
+          예전에는 이 이름이 «아무도 안 읽는 플래그» 를 세우는 것뿐이라
+          내부 CRUD 가 불러도 값이 0이었다. 이제는 진짜로 무효화하므로,
+          배관 하나 만들 때마다 부르면 색인이 통째로 다시 서서 노드정리가
+          937초로 되돌아간다 — 그 구분을 이름으로 못박아 둔다.
+        """
+        self.graph.invalidate_indices()
 
     def get_pipe_id_by_nodes(self, n1: str, n2: str) -> str | None:
         # ★그래프의 양방향 키 색인을 그대로 쓴다. 종전에는 여기 사본
@@ -92,8 +97,16 @@ class PipeManager:
         return self.graph.find_pipe_by_nodes(n1, n2)
 
     def _refresh_pipe_indices(self, pipe_id: str) -> None:
-        # pipe SSOT는 graph.pipes. 인덱스만 dirty 처리한다.
-        self._mark_pipe_key_index_dirty()
+        """내부 CRUD 뒤처리 — **할 일이 없다.**
+
+        배관 SSOT 는 `graph.pipes` 이고 그 색인은 `add_pipe`/`remove_pipe` 가
+        그 자리에서 증분 유지한다. 여기서 무효화하면 그 유지가 통째로 헛일이
+        된다(배관 하나마다 O(N+P) 재구축 — 노드정리 937초의 정체가 그것이다).
+
+        호출부 다섯 곳을 지우지 않고 남긴다: «여기서 색인을 건드릴 일이 없다»
+        를 이름으로 남겨 두는 편이, 다음 사람이 새 CRUD 를 붙일 때 무효화를
+        다시 끼워 넣는 것보다 안전하다.
+        """
 
     # ------------------------------------------------------------------
     # 겹침 검사 색인 — «좌표가 안 움직이는 구간» 전용
@@ -141,20 +154,63 @@ class PipeManager:
                     math.floor(c / q))
         return None    # 축평행도 대각도 아님 — 어떤 검사식에도 안 걸린다
 
+    def _geom_disable(self, why: str) -> None:
+        """색인을 못 믿게 됐다 — 통째로 끄고 전수 훑기로 돌아간다.
+
+        ★구멍 난 색인은 «겹치는데 안 겹친다» 고 답한다. 그러면 노드정리가
+          기존 배관 위에 배관을 하나 더 놓고, 그 손상은 한참 뒤 전개 실패로만
+          드러난다. 조용히 틀리느니 느린 쪽이 낫다.
+        ★스스로 알아채야 하는 이유: `Event.emit` 은 구독자 예외를 삼킨다
+          (로그만 남기고 넘어간다). 여기서 물러나지 않으면 아무도 못 챈다.
+        """
+        if self._geom_index is not None:
+            _log.warning("겹침 검사 색인을 끕니다(전수 훑기로 대체) — %s", why)
+        self._geom_index = None
+        self._geom_graph = None
+
+    def _geom_ready(self) -> bool:
+        """지금 색인을 믿어도 되나.
+
+        ★그래프가 바꿔치기되면(`editor_core._rebind_managers` 가 실제로
+          `_pipe_mgr.graph` 를 갈아끼운다) 색인은 «옛 그래프의 배관» 을
+          가리키고 구독도 옛 이벤트에 걸려 있다 — 조용히 남의 답을 낸다.
+        """
+        if self._geom_index is None:
+            return False
+        if self._geom_graph is not self.graph:
+            self._geom_disable("그래프가 바뀌었습니다")
+            return False
+        return True
+
     def _geom_on_added(self, data) -> None:
-        pipe_id = self._geom_event_pid(data)
-        pipe = self.graph.get_pipe(pipe_id) if pipe_id else None
-        if pipe is None or self._geom_index is None:
+        if self._geom_index is None:
             return
-        key = self._geom_key(pipe)
+        try:
+            pipe_id = self._geom_event_pid(data)
+            pipe = self.graph.get_pipe(pipe_id) if pipe_id else None
+            if pipe is None:
+                self._geom_disable(f"새 배관을 못 찾았습니다: {pipe_id!r}")
+                return
+            key = self._geom_key(pipe)
+        except Exception as exc:  # noqa: BLE001 — 못 담으면 색인을 접는다
+            self._geom_disable(f"{type(exc).__name__}: {exc}")
+            return
         if key is not None:
             self._geom_index["buckets"].setdefault(key, []).append(pipe.id)
             self._geom_index["pid_key"][pipe.id] = key
 
     def _geom_on_removed(self, data) -> None:
-        pipe_id = self._geom_event_pid(data)
-        if not pipe_id or self._geom_index is None:
+        if self._geom_index is None:
             return
+        try:
+            pipe_id = self._geom_event_pid(data)
+        except Exception as exc:  # noqa: BLE001
+            self._geom_disable(f"{type(exc).__name__}: {exc}")
+            return
+        if not pipe_id:
+            self._geom_disable("지운 배관 id 를 못 읽었습니다")
+            return
+        # 담긴 적 없는 배관(키가 None 이던 것)은 «없음» 이 정상이다 — 오류가 아니다.
         key = self._geom_index["pid_key"].pop(pipe_id, None)
         if key is not None:
             bucket = self._geom_index["buckets"].get(key)
@@ -189,22 +245,30 @@ class PipeManager:
             if self._geom_index is not None:     # 중첩 — 바깥 것 재사용
                 yield
                 return
+            # ★구독을 건 그래프를 붙잡아 둔다. 나가는 길에는 «그때 그 그래프»
+            #   에서 떼야 한다 — 도중에 self.graph 가 바뀌면 새 그래프에서
+            #   떼려다 옛 구독을 남긴다.
+            graph = self.graph
             buckets: dict[tuple, list[str]] = {}
             pid_key: dict[str, tuple] = {}
-            for pid, p in self.graph.pipes.items():
+            for pid, p in graph.pipes.items():
                 key = self._geom_key(p)
                 if key is not None:
                     buckets.setdefault(key, []).append(pid)
                     pid_key[pid] = key
             self._geom_index = {"buckets": buckets, "pid_key": pid_key}
-            self.graph.on_pipe_added.subscribe(self._geom_on_added)
-            self.graph.on_pipe_removed.subscribe(self._geom_on_removed)
+            self._geom_graph = graph
+            # subscribe 도 try 안이다 — 첫 구독만 걸린 채 튀면 «색인은 켜져
+            # 있는데 삭제를 못 따라가는» 상태가 영영 남는다.
             try:
+                graph.on_pipe_added.subscribe(self._geom_on_added)
+                graph.on_pipe_removed.subscribe(self._geom_on_removed)
                 yield
             finally:
-                self.graph.on_pipe_added.unsubscribe(self._geom_on_added)
-                self.graph.on_pipe_removed.unsubscribe(self._geom_on_removed)
+                graph.on_pipe_added.unsubscribe(self._geom_on_added)
+                graph.on_pipe_removed.unsubscribe(self._geom_on_removed)
                 self._geom_index = None
+                self._geom_graph = None
         return _ctx()
 
     def _geom_candidates(self, kind, tag, f1, f2):
@@ -522,7 +586,7 @@ class PipeManager:
         seg_min, seg_max = sorted((p1[0], p2[0]))
 
         # 색인이 있으면 후보만 — 판정식은 아래 그대로다(색인은 superset 필터).
-        if self._geom_index is not None:
+        if self._geom_ready():
             pool = (self.graph.pipes[pid]
                     for pid in self._geom_candidates("D", same_sign,
                                                      z_ref, line_c)
@@ -590,7 +654,7 @@ class PipeManager:
             fixed_1, fixed_2 = p1[0], p1[1]
 
         # 색인이 있으면 후보만 — 판정식은 아래 그대로다(색인은 superset 필터).
-        if self._geom_index is not None:
+        if self._geom_ready():
             pool = (self.graph.pipes[pid]
                     for pid in self._geom_candidates("A", axis,
                                                      fixed_1, fixed_2)

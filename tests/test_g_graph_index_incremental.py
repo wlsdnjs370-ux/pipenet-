@@ -73,7 +73,14 @@ def test_무작위_연산_후에도_증분_색인은_재구축과_같다():
         elif op < 0.65:
             pipe_seq += 1
             pid = f"P{pipe_seq}"
-            a, b = rng.sample(live_nodes, 2)
+            # ★자기고리(start==end)도 섞는다. 재구축은 한 노드의 목록에 이
+            #   배관을 **두 칸** 넣으므로, 증분 삭제가 두 칸을 다 빼야 한다 —
+            #   `rng.sample` 만 쓰면 이 경로가 한 번도 안 돈다(손으로만 따져
+            #   본 코드가 시험을 통과한 것처럼 보였다).
+            if rng.random() < 0.08:
+                a = b = rng.choice(live_nodes)
+            else:
+                a, b = rng.sample(live_nodes, 2)
             g.add_pipe(Pipe(pid, a, b))
             live_pipes.append(pid)
         elif op < 0.80 and live_pipes:
@@ -215,6 +222,74 @@ def test_frozen_geometry_는_전수훑기와_같은_답을_낸다():
         e.delete_pipe("NA", "NB")   # 지우면 다시 허용되어야 한다(삭제 추종)
         ok, _msg = pm.validate_new_segment("NC", "ND")
         assert ok, "지운 배관이 색인에 남아 헛걸림"
+
+
+def test_색인이_못_따라가면_스스로_꺼진다():
+    """구멍 난 색인은 «겹치는데 안 겹친다» 고 답한다 — 그럴 바엔 꺼야 한다.
+
+    `Event.emit` 이 구독자 예외를 삼키므로(로그만) 아무도 안 알려 준다.
+    그래서 담기에 실패하는 순간 스스로 물러나는지, 물러난 뒤의 답이 전수
+    훑기와 같은지 본다.
+    """
+    e = _editor_with([(0, 0, 4, 0)])
+    pm = e._pipe_mgr
+    with pm.frozen_geometry():
+        assert pm._geom_ready()
+        # 키를 못 만드는 상황을 만든다 — 담다가 튀면 색인을 접어야 한다.
+        boom = lambda _p: (_ for _ in ()).throw(RuntimeError("키 실패"))  # noqa: E731
+        orig, pm._geom_key = pm._geom_key, boom
+        try:
+            e.add_node("Z1", 0.0, 9.0, 0.0)
+            e.add_node("Z2", 4.0, 9.0, 0.0)
+            e.create_pipe("Z1", "Z2")
+        finally:
+            pm._geom_key = orig
+        assert pm._geom_index is None, "색인이 구멍 난 채로 살아 있다"
+        assert not pm._geom_ready()
+        # 꺼진 뒤에도 답은 옳아야 한다(전수 훑기로 되돌아간다).
+        from domain.models import Node
+        e.graph.add_node(Node(id="Q1", coords=(1.0, 0.0, 0.0), elevation_m=0.0))
+        e.graph.add_node(Node(id="Q2", coords=(3.0, 0.0, 0.0), elevation_m=0.0))
+        ok, _m = pm.validate_new_segment("Q1", "Q2")
+        assert not ok, "색인을 끈 뒤 겹침을 놓쳤다"
+
+
+def test_그래프가_바뀌면_색인을_믿지_않는다():
+    """`_rebind_managers` 는 실제로 `_pipe_mgr.graph` 를 갈아끼운다.
+
+    그때 옛 색인을 계속 쓰면 «남의 그래프» 를 보고 답한다 — 조용히 틀린다.
+    """
+    from domain.network_graph import NetworkGraph
+
+    e = _editor_with([(0, 0, 4, 0)])
+    pm = e._pipe_mgr
+    with pm.frozen_geometry():
+        assert pm._geom_ready()
+        pm.graph = NetworkGraph()          # 바꿔치기
+        assert not pm._geom_ready(), "바뀐 그래프인데 옛 색인을 믿는다"
+        assert pm._geom_index is None
+
+
+def test_내부_CRUD_는_색인을_무효화하지_않는다():
+    """★이것이 937초의 정체였다 — 배관 하나마다 색인 전체 재구축.
+
+    `_refresh_pipe_indices` 가 다시 무효화를 부르기 시작하면 그 값이 통째로
+    돌아온다. 「색인이 깨끗한 채로 남는가」를 시험이 지킨다.
+    """
+    e = _editor_with([(0, 0, 4, 0)])
+    e.graph._ensure_indices()
+    assert not e.graph._index_dirty
+    e.add_node("K1", 0.0, 5.0, 0.0)
+    e.add_node("K2", 4.0, 5.0, 0.0)
+    e.create_pipe("K1", "K2")
+    assert not e.graph._index_dirty, \
+        "배관을 하나 만들었을 뿐인데 색인이 통째로 무효화됐다"
+    e.delete_pipe("K1", "K2")
+    assert not e.graph._index_dirty, \
+        "배관을 하나 지웠을 뿐인데 색인이 통째로 무효화됐다"
+    # 반대로 «바깥에서 바뀌었다» 신호는 진짜로 무효화해야 한다.
+    e._mark_pipe_key_index_dirty()
+    assert e.graph._index_dirty, "외부 신호가 색인을 무효화하지 않는다"
 
 
 def test_노드정리는_색인_구간_안에서도_같은_결과다():

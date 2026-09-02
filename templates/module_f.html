@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260828-f9">
+<link rel="stylesheet" href="/static/module_f.css?v=20260902-f12">
 </head>
 <body>
 <header>
@@ -592,6 +592,21 @@
       <span id="coord">—</span>
       <button id="btn-fit">화면 맞춤</button>
     </div>
+
+    <!-- [F-12] 속성 카드 — 수리계산 화면에서 배관·노드를 클릭하면 그 자리에
+         «정의된 값» 을 그대로 펼친다. 값은 이미 화면에 다 있다(5표 + view)
+         므로 서버에 더 물을 것이 없다. 표를 열어 라벨로 훑는 대신, 클릭한
+         자리에서 바로 읽히게 하는 것이 이 카드의 전부다. -->
+    <div class="inspect hidden" id="dg-ins">
+      <header>
+        <span class="tag" id="dg-ins-kind">—</span>
+        <span id="dg-ins-title" class="ins-title">—</span>
+        <span class="grow"></span>
+        <button id="dg-ins-close" title="닫기 (Esc)">✕</button>
+      </header>
+      <div class="ins-body" id="dg-ins-body"></div>
+    </div>
+
     <div class="busy hidden" id="busy">
       <div class="box">
         <div class="lbl">Working</div>
@@ -617,7 +632,7 @@
 
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
-<script src="/static/upload_stream.js?v=20260901-f1"></script>
-<script src="/static/module_f.js?v=20260901-f1"></script>
+<script src="/static/upload_stream.js?v=20260902-f12"></script>
+<script src="/static/module_f.js?v=20260902-f12"></script>
 </body>
 </html>

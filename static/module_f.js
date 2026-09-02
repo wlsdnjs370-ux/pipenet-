@@ -174,6 +174,11 @@
     else if (S.stage === "design" && planUnderlayOn() && S.edit) {
       editClick(x, y, maxD);
     }
+    // [F-12] 수리계산 화면에서는 «고치기» 가 아니라 «읽기» 다 — 클릭한
+    //   배관·노드의 정의된 값을 카드로 편다. 평면 밑그림으로 «그 자리에서
+    //   고치는» 중일 때는 위 가지가 가져가므로 여기 안 온다(그때는 클릭이
+    //   손질이라는 약속이 이미 서 있다).
+    else if (S.stage === "design") designInspect(x, y, maxD);
     else if (S.stage === "sub") subClick(x, y);
     else if (S.stage === "auto") autoClick(x, y);
   });
@@ -278,6 +283,11 @@
       }
       else if (designMarksOn() && S.edit) { drawEdit(); drawDesignMarks(); }
       else drawDesign();
+      // [F-12] 속성 카드로 고른 자리. 밑그림 모드에서는 좌표계가 board 라
+      //   설계 좌표를 덧그리면 엉뚱한 데 뜬다 — 설계 뷰를 그릴 때만 그린다.
+      if (!(planUnderlayOn() && S.edit) && !(designMarksOn() && S.edit)) {
+        drawInspectSel();
+      }
       drawFocus();      // [F-10f] 「확인할 것」에서 고른 자리를 마지막에 덧그린다
     }
     else if ((S.stage === "edit" || S.stage === "conv") && S.edit) {
@@ -3012,9 +3022,13 @@
     if (e.target === $("conv-modal")) closeConvModal(true);   // 바깥 클릭 = 취소
   });
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !$("conv-modal").classList.contains("hidden")) {
+    if (e.key !== "Escape") return;
+    // 창이 떠 있으면 창부터 — 겹쳐 있을 때 «가장 위» 를 닫는 것이 자연스럽다.
+    if (!$("conv-modal").classList.contains("hidden")) {
       closeConvModal(true);
+      return;
     }
+    if (!$("dg-ins").classList.contains("hidden")) insClose();   // [F-12]
   });
 
   $("btn-convert").onclick = async () => {
@@ -3265,9 +3279,16 @@
                  ovMissed: d.ov_missed || [],
                  // [F-10f] 이상 목록이 부속·등가길이 수치를 여기서 읽는다.
                  summary: (S.design && S.design.summary) || null,
-                 hilite: (S.design && S.design.hilite) || new Set() };
+                 hilite: (S.design && S.design.hilite) || new Set(),
+                 // [F-12] 고른 자리는 «이번 표» 의 라벨이다. 표를 다시
+                 //   확정하면 BFS 번호가 재배열되므로(§22) 들고 가면 안 된다
+                 //   — 같은 이름이 다른 배관을 가리키게 된다.
+                 sel: null };
     // [§18] 고를 수 있는 부속 종류를 서버에서 받아 둔다 — 목록을 그리기 전에
     //   있어야 «고르세요» 칸이 빈 채로 뜨지 않는다.
+    // [F-12] 새 표다 — 카드가 옛 내용을 든 채로 남으면 «지금 무엇을 보고
+    //   있나» 가 거짓이 된다. sel 을 비우는 것만으로는 DOM 이 안 바뀐다.
+    renderInspect();
     if (!S.fitKinds) await loadFitKinds();
     // [F-11c] 쓸 수 있는 호칭경도 서버에서 받아 둔다 — 화면이 따로 목록을 들면
     //   규격표가 바뀔 때 둘이 갈린다.
@@ -3398,6 +3419,287 @@
     }
   }
 
+  // ── [F-12] 속성 카드 — 클릭한 자리의 «정의된 값» ────────────────
+  //
+  // 「이 배관은 어떤 속성으로 정의돼 있나」를 표에서 라벨로 훑어 찾는 대신,
+  // 캔버스에서 그 배관을 눌러 그 자리에서 읽는다.
+  //
+  // ★값은 **표에서 그대로** 읽는다(`S.design.tables`). 카드가 제 손으로
+  //   다시 계산하면 표와 카드가 다른 말을 하는 날이 온다 — 이 저장소가
+  //   관경 근거·부속 판정에서 이미 겪은 함정이다. 이름표도 표와 같은
+  //   사전(DG_COLS)을 쓴다.
+  // ★서버에 더 물을 것이 없다. 미리보기가 5표와 view 를 통째로 내려주므로
+  //   카드는 순수하게 화면 일이다.
+
+  function esc(v) {
+    return String(v == null ? "" : v)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function grp(t) { return `<div class="grp">${esc(t)}</div>`; }
+  function insNone(t) { return `<div class="ins-none">${esc(t)}</div>`; }
+
+  /** 카드 안에서 다른 자리로 건너뛰는 라벨. */
+  function insLink(kind, label) {
+    return `<span class="ins-link" data-ins-kind="${esc(kind)}"`
+         + ` data-ins-label="${esc(label)}">${esc(label)}</span>`;
+  }
+  function dgRows(which) {
+    return ((S.design && S.design.tables && S.design.tables[which]) || []);
+  }
+  // 관경 덮기 기록(`Bores.overridden[pid]`)의 칸 이름. 표 4종이 아니라
+  // «사람이 덮은 자리» 의 기록이라 이름표를 따로 둔다.
+  const OV_COLS = { dia: "덮어쓴 호칭경(mm)", note: "사유",
+                    orig_dia: "원래 호칭경(mm)", orig_src: "원래 근거",
+                    a: "board 노드 a", b: "board 노드 b" };
+
+  /** 표 한 행을 그 «정의된 순서» 그대로 편다 — 무엇이 어떻게 정의됐는지가 요점. */
+  function insRowKv(row, skip, names) {
+    let h = "";
+    for (const k of Object.keys(row)) {
+      if (skip && skip.includes(k)) continue;
+      let v = row[k];
+      if (k === "dia_src" || k === "orig_src") v = DG_SRC[v] || v;
+      if (v === true) v = "예";
+      if (v === false) v = "아니오";
+      h += kv((names && names[k]) || DG_COLS[k] || k,
+              esc(v === null || v === "" ? "—" : v));
+    }
+    return h;
+  }
+  function insTab(cols, rows, cell) {
+    let h = `<table class="ins-tab"><thead><tr>`
+          + cols.map((c) => `<th>${esc(c)}</th>`).join("") + "</tr></thead><tbody>";
+    for (const r of rows) {
+      h += "<tr>" + cell(r).map((c) => `<td>${c}</td>`).join("") + "</tr>";
+    }
+    return h + "</tbody></table>";
+  }
+
+  /** 점 → 선분 거리(세계 좌표). 배관을 «선» 으로 집기 위한 것. */
+  function segDist(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay;
+    const dd = dx * dx + dy * dy;
+    let t = dd < 1e-12 ? 0 : ((px - ax) * dx + (py - ay) * dy) / dd;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+  }
+
+  function designInspect(x, y, maxD) {
+    const v = (S.design && S.design.view) || null;
+    if (!v || !v.nodes) return;
+    const at = {};
+    for (const n of v.nodes) at[String(n.label)] = n;
+
+    // ★노드가 배관보다 먼저다. 노드는 배관의 «끝» 이라 두 개가 같이 잡히는
+    //   자리가 늘 있는데, 거기서 배관을 고르면 접속점 속성(표고·입출력·
+    //   노즐)을 영영 못 누른다.
+    let hit = null, best = maxD;
+    for (const n of v.nodes) {
+      const d = Math.hypot(x - n.x, y - n.y);
+      if (d <= best) { best = d; hit = { kind: "node", label: String(n.label) }; }
+    }
+    if (!hit) {
+      best = maxD;
+      for (const p of (v.pipes || [])) {
+        const a = at[String(p.a)], b = at[String(p.b)];
+        if (!a || !b) continue;
+        const d = segDist(x, y, a.x, a.y, b.x, b.y);
+        if (d <= best) { best = d; hit = { kind: "pipe", label: String(p.label) }; }
+      }
+    }
+    // 빈 자리를 누르면 닫는다 — 카드가 남아 «지금 무엇을 보고 있나» 를
+    // 헷갈리게 두지 않는다.
+    S.design.sel = hit;
+    renderInspect();
+    draw();
+  }
+
+  function insSelect(kind, label) {
+    if (!S.design) return;
+    S.design.sel = { kind: String(kind), label: String(label) };
+    renderInspect();
+    draw();
+  }
+  function insClose() {
+    if (S.design) S.design.sel = null;
+    renderInspect();
+    draw();
+  }
+
+  function renderInspect() {
+    const box = $("dg-ins");
+    if (!box) return;
+    const sel = (S.design && S.design.sel) || null;
+    const v = (S.design && S.design.view) || null;
+    if (!sel || !v) { box.classList.add("hidden"); return; }
+    // ★본문을 만들다 튀어도 «옛 내용을 든 채» 열려 있으면 안 된다. 실측으로
+    //   그랬다: 제목은 새 배관인데 몸통은 앞서 고른 노드 그대로였다 — 카드가
+    //   조용히 거짓말을 한다. 무엇이 잘못됐는지 카드에 적는 편이 낫다.
+    let html;
+    try {
+      html = sel.kind === "pipe" ? insPipe(sel.label) : insNode(sel.label);
+    } catch (err) {
+      box.classList.remove("hidden");
+      $("dg-ins-body").innerHTML =
+        `<div class="ins-none">속성을 펴지 못했습니다 — `
+        + `${esc(err && err.message ? err.message : err)}</div>`;
+      return;
+    }
+    if (html === null) { box.classList.add("hidden"); S.design.sel = null; return; }
+    box.classList.remove("hidden");
+    $("dg-ins-body").innerHTML = html;
+    for (const el of $("dg-ins-body").querySelectorAll("[data-ins-label]")) {
+      el.onclick = () => insSelect(el.dataset.insKind, el.dataset.insLabel);
+    }
+  }
+
+  function insPipe(label) {
+    const v = S.design.view;
+    const p = (v.pipes || []).find((x) => String(x.label) === label);
+    const row = dgRows("pipes").find((r) => String(r.label) === label);
+    if (!p && !row) return null;
+    $("dg-ins-kind").textContent = "배관";
+    $("dg-ins-title").textContent =
+      `${label}  ${row ? `${row.in} → ${row.out}` : ""}`;
+
+    let h = "";
+    if (row) {
+      h += grp("표에 정의된 값") + insRowKv(row);
+    } else {
+      h += grp("표에 정의된 값") + insNone("이 배관은 표에 없습니다.");
+    }
+
+    // 관경을 «무엇이» 정했나 — 캔버스 색·점선의 근거와 같은 문장.
+    const st = p && BORE_STYLE[p.src];
+    if (st) {
+      h += grp("관경 근거") + kv(DG_SRC[p.src] || p.src, esc(st.tip));
+    }
+    // 담당 헤드 수 — 간선 굵기의 근거. 표에는 없고 view 만 안다.
+    if (p && p.load != null) {
+      h += grp("계산 맥락")
+         + kv("담당 헤드 수", esc(p.load) + " 개")
+         + kv("board 노드쌍", p.ref ? esc(`${p.ref[0]} – ${p.ref[1]}`)
+                                   : "없음 (헤드 접속관·가지 상승)");
+    }
+    // 사람이 덮은 값이 있으면 «원값과 함께» — 누가 정했는지가 남아야 한다.
+    // ★`bore_overrides` 는 **배관 id 를 키로 갖는 dict** 다(목록이 아니다 —
+    //   `Bores.overridden[pid]`). 목록으로 알고 filter 를 걸었더니 카드가
+    //   통째로 튀었고, 그런데도 **옛 내용을 든 채 열려 있었다**(아래 renderInspect
+    //   의 try/catch 가 그 두 번째 결함을 막는다).
+    const ov = ((S.design.tables && S.design.tables.bore_overrides) || {})[label];
+    if (ov) {
+      h += grp("관경 직접 입력 — 덮어쓴 값") + insRowKv(ov, null, OV_COLS);
+    }
+
+    const fits = dgRows("fittings").filter((r) => String(r.pipe) === label);
+    h += grp(`부속 (${fits.length})`);
+    h += fits.length
+      ? insTab(["종류", "개수", "시작", "끝"], fits,
+               (r) => [esc(r.type), esc(r.count),
+                       insLink("node", r.in), insLink("node", r.out)])
+      : insNone("이 배관에 달린 부속이 없습니다.");
+
+    const eq = dgRows("equipment").filter((r) => String(r.pipe) === label);
+    if (eq.length) {
+      h += grp(`기기 (${eq.length})`)
+         + insTab(["이름", "설명", "등가길이(m)", "위치"], eq,
+                  (r) => [esc(r.label), esc(r.desc), esc(r.eq_len),
+                          esc(r.rel_pos)]);
+    }
+
+    if (row) {
+      h += grp("양 끝 노드")
+         + kv("시작", insLink("node", row.in))
+         + kv("끝", insLink("node", row.out));
+    }
+    return h;
+  }
+
+  function insNode(label) {
+    const v = S.design.view;
+    const n = (v.nodes || []).find((x) => String(x.label) === label);
+    const row = dgRows("nodes").find((r) => String(r.label) === label);
+    if (!n && !row) return null;
+    $("dg-ins-kind").textContent = "노드";
+    const roles = [];
+    if (n) {
+      if (n.input) roles.push("급수원");
+      if (n.valve) roles.push("알람밸브");
+      if (n.head) roles.push(n.up ? "헤드(상향)" : "헤드(하향)");
+      if (n.anchor) roles.push("앵커");
+    }
+    $("dg-ins-title").textContent =
+      `${label}${roles.length ? "  " + roles.join(" · ") : ""}`;
+
+    let h = "";
+    h += grp("표에 정의된 값");
+    h += row ? insRowKv(row) : insNone("이 노드는 표에 없습니다.");
+    if (roles.length) {
+      h += grp("역할") + kv("이 자리가 무엇인가", esc(roles.join(" · ")));
+    }
+
+    const noz = dgRows("nozzles").filter(
+      (r) => String(r.in) === label || String(r.label) === label);
+    if (noz.length) {
+      h += grp("노즐");
+      for (const r of noz) h += insRowKv(r);
+    }
+
+    const pipes = dgRows("pipes").filter(
+      (r) => String(r.in) === label || String(r.out) === label);
+    h += grp(`연결 배관 (${pipes.length})`);
+    h += pipes.length
+      ? insTab(["배관", "상대", "호칭경", "길이(m)"], pipes,
+               (r) => [insLink("pipe", r.label),
+                       insLink("node", String(r.in) === label ? r.out : r.in),
+                       esc(r.dia), esc(r.length)])
+      : insNone("이 노드에 붙은 배관이 없습니다.");
+
+    const fits = dgRows("fittings").filter(
+      (r) => String(r.in) === label || String(r.out) === label);
+    if (fits.length) {
+      h += grp(`이 자리의 부속 (${fits.length})`)
+         + insTab(["종류", "개수", "배관"], fits,
+                  (r) => [esc(r.type), esc(r.count), insLink("pipe", r.pipe)]);
+    }
+    return h;
+  }
+
+  /** 고른 것을 캔버스에 표시 — 강조(hilite)와 «다른» 색이어야 한다. */
+  function drawInspectSel() {
+    const sel = (S.design && S.design.sel) || null;
+    const v = (S.design && S.design.view) || null;
+    if (!sel || !v || !v.nodes) return;
+    const at = {};
+    for (const n of v.nodes) at[String(n.label)] = n;
+    ctx.save();
+    ctx.strokeStyle = "#e879f9";        // 자홍 — 관경 근거색·강조색과 안 겹친다
+    ctx.setLineDash([]);
+    if (sel.kind === "pipe") {
+      const p = (v.pipes || []).find((x) => String(x.label) === sel.label);
+      const a = p && at[String(p.a)], b = p && at[String(p.b)];
+      if (a && b) {
+        ctx.lineWidth = 3.4;
+        ctx.beginPath();
+        ctx.moveTo(sx(a.x), sy(a.y));
+        ctx.lineTo(sx(b.x), sy(b.y));
+        ctx.stroke();
+      }
+    } else {
+      const n = at[sel.label];
+      if (n) {
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(sx(n.x), sy(n.y), 12, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  $("dg-ins-close").onclick = insClose;
+
   // 표 4종 — 저장될 값 그대로. 배관 표에는 관경 근거를 사람 말로 잇는다.
   const DG_COLS = { label: "이름", in: "시작", out: "끝", type: "관종",
     dia: "호칭경(mm)", length: "길이(m)", elev: "표고차(m)", c: "C",
@@ -3520,15 +3822,25 @@
     });
     $("dg-grid").innerHTML = html + "</tbody></table>";
     // 행 → 캔버스 강조 (배관 표에서만 뜻이 있다)
+    // [F-12] 그리고 어느 표에서든 그 행의 «주체» 를 속성 카드로 편다 —
+    //   캔버스에서 누르는 것과 표에서 누르는 것이 같은 것을 보여야 한다.
     for (const tr of $("dg-grid").querySelectorAll("tr[data-label]")) {
       tr.onclick = () => {
         const lab = tr.dataset.label;
-        if (which !== "pipes" || !lab) return;
-        if (S.design.hilite.has(lab)) S.design.hilite.delete(lab);
-        else S.design.hilite.add(lab);
-        tr.classList.toggle("hl");
-        draw();
-        renderBoreOv();     // 고른 배관 수가 관경 덮기 자리에 바로 뜬다
+        if (which === "pipes" && lab) {
+          if (S.design.hilite.has(lab)) S.design.hilite.delete(lab);
+          else S.design.hilite.add(lab);
+          tr.classList.toggle("hl");
+          renderBoreOv();   // 고른 배관 수가 관경 덮기 자리에 바로 뜬다
+        }
+        // 부속·기기 행은 제 이름이 아니라 «어느 배관의» 이야기다.
+        const idx = [...tr.parentNode.children].indexOf(tr);
+        const row = rows[idx] || {};
+        if (which === "pipes" && lab) insSelect("pipe", lab);
+        else if (which === "nodes" && lab) insSelect("node", lab);
+        else if (which === "nozzles") insSelect("node", row.in || lab);
+        else if (row.pipe) insSelect("pipe", row.pipe);
+        else draw();
       };
     }
     renderBoreOv();

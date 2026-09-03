@@ -234,9 +234,40 @@ def _sweep_old_run_dirs(*parents: Path) -> None:
             pass
 
 
+def _referenced_upload_files() -> set[str]:
+    """저장된 «찍은스펙» 이 아직 가리키는 원본 도면들 (normcase 절대경로).
+
+    ★이것을 세지 않으면 사람의 노동이 사라진다. 찍은스펙은 사람이 배관망을
+      한 줄씩 손으로 찍어 만든 것인데, 그 값어치는 원본 도면이 옆에 있을 때만
+      쓸 수 있다 — 다시 열 때 형상을 원본에서 되세우기 때문이다. 24시간 자를
+      원본에도 그대로 대면, 사람이 «저장했다» 고 믿은 것이 다음 날 안 열린다.
+
+    실측(2026-09-03): 저장본 11건 중 7건이 이미 못 여는 상태였고, 그중 4건은
+    원본이 바로 이 업로드칸을 가리키다 청소부에게 지워진 것이었다.
+
+    실패해도 «아무것도 보호하지 않는» 대신 빈 집합을 주지 않는다 — 목록을 못
+    읽었으면 그 판단 자체를 할 수 없으므로, 부르는 쪽이 이번 정리를 통째로
+    건너뛴다(None). 못 지운 파일은 다음 기회에 지우면 되지만, 잘못 지운 파일은
+    되돌릴 수 없다.
+    """
+    from routes.module_f.world import referenced_sources
+    return referenced_sources()
+
+
 def _sweep_old_upload_files(parent: Path, keep_dirs: set[str] | None = None) -> None:
-    """오래된 업로드 *파일* 정리 — 디렉토리(예: cad_workspace)는 보존."""
+    """오래된 업로드 *파일* 정리 — 디렉토리(예: cad_workspace)는 보존.
+
+    저장된 찍은스펙이 가리키는 원본은 나이와 상관없이 남긴다(`_referenced_upload_files`).
+    그 도면을 쓰는 저장본을 지우면 다음 정리 때 함께 사라진다 — 수명이 «사람이
+    지운 시점» 에 맞춰지는 것이 옳다.
+    """
     keep = keep_dirs or {"cad_workspace"}
+    try:
+        referenced = _referenced_upload_files()
+    except Exception:  # noqa: BLE001 — 목록을 못 읽었으면 «지우지 않는» 쪽으로 눕는다
+        app.logger.warning("업로드 정리 건너뜀 — 저장본 목록을 읽지 못했다",
+                           exc_info=True)
+        return
     now = time.time()
     try:
         if not parent.is_dir():
@@ -245,8 +276,11 @@ def _sweep_old_upload_files(parent: Path, keep_dirs: set[str] | None = None) -> 
             try:
                 if child.is_dir() or child.name in keep:
                     continue
-                if now - child.stat().st_mtime > _DIR_TTL_SECONDS:
-                    child.unlink(missing_ok=True)
+                if now - child.stat().st_mtime <= _DIR_TTL_SECONDS:
+                    continue
+                if os.path.normcase(str(child.resolve())) in referenced:
+                    continue          # ★사람이 찍어 둔 것이 이 도면을 쓴다
+                child.unlink(missing_ok=True)
             except OSError:
                 pass
     except OSError:

@@ -7,7 +7,7 @@ import os
 import time
 
 from routes.module_f.common import (
-    MAX_ARCS, MAX_CIRCLES, MAX_SEGS, _layer_category, _r1)
+    IMPORT_WORK_ROOT, MAX_ARCS, MAX_CIRCLES, MAX_SEGS, _layer_category, _r1)
 
 
 def _world_payload(world) -> dict:
@@ -177,11 +177,31 @@ def _pts_bounds(pts) -> dict:
             "maxx": max(xs), "maxy": max(ys)}
 
 
+def pick_store_dir() -> str:
+    """찍은스펙이 쌓이는 폴더 — «어디에 저장본이 있나» 의 유일한 답.
+
+    ★엔진(G)을 올리지 않고도 답할 수 있어야 한다. 업로드 청소부가 «이 도면을
+      쓰는 저장본이 있나» 를 물어야 하는데, 그 물음 하나 때문에 G 트리를 통째로
+      import 시킬 수는 없다(부팅 전이면 `services` 가 sys.path 에 없어 실패한다).
+      `_boot()` 가 `handoff.import_write_root` 를 여기로 갈아 끼우므로 값은 같다.
+    """
+    return str(IMPORT_WORK_ROOT / "0단계_새찍기")
+
+
+def referenced_sources() -> set[str]:
+    """저장본들이 가리키는 원본 도면 (normcase 절대경로).
+
+    업로드 청소부가 «지워도 되는 파일» 을 가리는 데 쓴다. 목록이 아니라 집합인
+    이유는 부르는 쪽이 «들었나» 만 묻기 때문이다.
+    """
+    return {os.path.normcase(os.path.abspath(it["source_dxf"]))
+            for it in _saved_keys() if it.get("source_dxf")}
+
+
 def _saved_keys() -> list[dict]:
     """이미 찍어 둔 도면들 — 데스크톱 E 로 찍은 것도 여기 그대로 보인다."""
-    from services.cad_import.pipeline import handoff
     out = []
-    d = handoff.pick_out_dir()
+    d = pick_store_dir()
     if not os.path.isdir(d):
         return out
     for name in sorted(os.listdir(d)):

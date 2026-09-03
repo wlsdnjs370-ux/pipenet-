@@ -75,6 +75,9 @@
       <label class="f"><span>이미 찍어 둔 도면 — 손질부터 시작</span>
         <select id="saved"></select>
       </label>
+      <!-- 원본이 정리된 저장본을 골랐을 때의 사유. 목록에서 감추지 않는 이유는
+           module_f.js 의 loadSaved 주석 참조 — «사라졌다» 로 읽히면 안 된다. -->
+      <p id="resume-why" class="hint hidden"></p>
       <div class="row"><button id="btn-reopen">배관망 열기</button></div>
     </section>
 

@@ -2337,15 +2337,42 @@
         $("btn-reopen").disabled = true;
         return;
       }
-      $("btn-reopen").disabled = false;
+      // ★못 여는 것을 «감추지» 않는다. 업로드 폴더는 24시간이 지나면 정리되고
+      //   (`_sweep_old_upload_files`) 원본 없이는 이어서 못 연다 — 그런데
+      //   목록에서 빼 버리면 «내가 찍어 둔 것이 사라졌다» 로 읽힌다. 찍은
+      //   기록은 남아 있다는 사실과, 되살리는 길(같은 DXF 재업로드)을 함께
+      //   보여 주는 편이 옳다. 실측: 저장본 11개 중 8개가 이 상태였다.
+      S.savedItems = d.items;
       for (const it of d.items) {
         const o = document.createElement("option");
         o.value = it.key;
-        o.textContent = `${it.key}  ·  ${it.picked_at}`;
+        const gone = it.source_dxf && !it.source_exists;
+        o.textContent = `${it.key}  ·  ${it.picked_at}`
+                      + (gone ? "  ·  원본 없음" : "");
+        if (gone) o.dataset.gone = "1";
         sel.appendChild(o);
       }
+      onSavedPick();
     } catch (err) { say(err.message, "err"); }
   }
+
+  /** 고른 저장본이 열 수 있는 것인가 — 단추와 사유를 함께 맞춘다. */
+  function onSavedPick() {
+    const sel = $("saved");
+    const it = (S.savedItems || []).find((x) => x.key === sel.value);
+    const gone = !!(it && it.source_dxf && !it.source_exists);
+    $("btn-reopen").disabled = !sel.value || gone;
+    const hint = $("resume-why");
+    if (!hint) return;
+    hint.classList.toggle("hidden", !gone);
+    if (gone) {
+      hint.textContent =
+        "원본 도면 파일이 정리되어(업로드 24시간) 이어서 열 수 없습니다. "
+        + "같은 DXF 를 «새 도면» 으로 다시 올리면 찍어 둔 것이 그대로 "
+        + "이어집니다 — 찍은 기록은 지워지지 않았습니다.";
+    }
+  }
+  $("saved").onchange = onSavedPick;
 
   $("btn-reopen").onclick = async () => {
     const key = $("saved").value;

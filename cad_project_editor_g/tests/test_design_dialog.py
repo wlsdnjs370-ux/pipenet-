@@ -33,12 +33,73 @@ def check(label, cond, detail=""):
     return cond
 
 
+def _isolate_workdir():
+    """작업폴더를 임시 사본으로 돌린다 — 이 검사가 사람의 저장본을 안 건드리게.
+
+    ★BLOCKED §20. 이 시험과 웹 모듈 F 가 **같은 «찍은 스펙» 파일**을 쓴다
+      (`docs/import/0단계_새찍기/…_찍은스펙.json`, git 비추적 작업 산물).
+      웹에서 채택·조립을 하면 이 시험의 입력이 바뀌고, 이 시험이 돌면 표시
+      캐시·손질 파일이 사람의 작업폴더에 덮인다. 실제로 F-11a·b·c 프로브가
+      B1F 스펙을 세 번 덮어썼다 — 「통과/실패」가 그날 무엇을 눌렀는지에 달렸다.
+
+    입력(스펙·DXF 준비물)은 **읽어서 복사**하고, 그 뒤의 쓰기는 전부 임시
+    폴더로 간다. 남은 데이터 의존(어느 B1F 스펙이 거기 있나)은 별개 항목이다
+    (BLOCKED 「F-0 · B1F 저장본 표류」) — 여기서 고칠 수 있는 것은 **쓰기** 다.
+
+    반환: 임시 루트(TemporaryDirectory 객체 — 살아 있는 동안만 유효).
+    """
+    import shutil
+    import tempfile
+
+    from services.cad_import.pipeline import disp_cache, handoff
+
+    src_pick = handoff.pick_out_dir()
+    src_edit = handoff.default_edits_dir()
+    src_cache = getattr(disp_cache, "_DISP_CACHE_DIR", None)
+
+    tmp = tempfile.TemporaryDirectory(prefix="g7_design_dialog_")
+    work = tmp.name
+    handoff.import_write_root = lambda: work
+    handoff.OUT_DIR = handoff.pick_out_dir()
+    disp_cache._DISP_CACHE_DIR = work
+    os.makedirs(handoff.pick_out_dir(), exist_ok=True)
+    os.makedirs(handoff.default_edits_dir(), exist_ok=True)
+
+    # 입력만 복사한다 — 쓰기는 여기서 끝난다.
+    n = 0
+    for src, dst in ((src_pick, handoff.pick_out_dir()),
+                     (src_edit, handoff.default_edits_dir())):
+        if not (src and os.path.isdir(src)):
+            continue
+        for name in os.listdir(src):
+            if KEY not in name:
+                continue
+            try:
+                shutil.copy2(os.path.join(src, name), os.path.join(dst, name))
+                n += 1
+            except OSError:
+                pass
+    if src_cache and os.path.isdir(src_cache):
+        for name in os.listdir(src_cache):
+            if name.startswith("_edit_disp_cache_") and KEY in name:
+                try:
+                    shutil.copy2(os.path.join(src_cache, name),
+                                 os.path.join(work, name))
+                    n += 1
+                except OSError:
+                    pass
+    print(f"  [작업폴더] 임시 사본으로 격리 · 입력 {n}건 복사 · {work}")
+    return tmp
+
+
 def main() -> int:
     from PySide6.QtWidgets import QApplication
     from services.cad_import.edit.session import EditSession
     from ui.dialogs.dialog_design_input import DesignInputDialog
 
     app = QApplication.instance() or QApplication([])
+    # ★세션을 열기 «전에» 격리한다 — 열고 나면 이미 실작업 폴더를 읽고 쓴다.
+    _tmp = _isolate_workdir()
     es = EditSession.open(KEY, out_dir=None, load_saved=True, use_cache=True)
     payload = es.convert_payload()
     srcs = payload.get("sources") or ()
@@ -86,9 +147,27 @@ def main() -> int:
     check("제외 헤드 수를 화면에 보여준다",
           (not excluded) or (dlg.lbl_warn.isVisible() and "제외" in warn),
           f"제외 {excluded:,}개 · 경고 «{warn[:52]}»")
-    if excluded:
+    # ★조언은 «제외가 있으면» 이 아니라 «많이 빠지면» 붙는다 — 창의 규약은
+    #   비율 `_WARN_EXCLUDED_RATIO`(0.5) 다. 시험이 「0 이 아니면」으로 단정해
+    #   두 전제가 처음부터 어긋나 있었고, B1F 의 비율이 늘 0.5 를 넘어서 안
+    #   드러났을 뿐이다. F-11a 가 채택을 72 → 3,235 로 늘리자 분모가 커져
+    #   비율이 0.5 아래로 내려가며 «개선이 잠재 결함을 노출» 시켰다(BLOCKED §20).
+    #   문턱을 창에서 가져온다 — 두 곳에 적으면 또 갈라진다.
+    #   ★분모는 «도면 전체 헤드» 다(창의 `total`). 후보 수로 나누면 다른 값이
+    #     나온다 — 실측 1,093/2,012=0.543 vs 1,093/3,105=0.352 로 판정이 갈린다.
+    #     같은 것을 두 곳에서 다르게 세면 시험이 창을 검사하는 것이 아니라
+    #     제 셈을 검사하게 된다.
+    #   `dlg.result["worst"]` 이 창의 `_render(got, …)` 로 가는 바로 그 dict 다
+    #   (이름만 다르다 — `result` 프로퍼티가 «worst» 로 싼다).
+    from ui.dialogs.dialog_design_input import _WARN_EXCLUDED_RATIO
+    total = int(got.get("total_heads") or 0)
+    ratio = (excluded / total) if total else 0.0
+    if ratio >= _WARN_EXCLUDED_RATIO:
         check("많이 빠지면 배관을 이으라고 알린다", "이어" in warn,
-              warn[-46:])
+              f"비율 {ratio:.3f} ≥ {_WARN_EXCLUDED_RATIO} · {warn[-46:]}")
+    elif excluded:
+        check("조금 빠지면 개수만 알리고 조언은 안 붙인다", "이어" not in warn,
+              f"비율 {ratio:.3f} < {_WARN_EXCLUDED_RATIO} · {warn[-46:]}")
 
     # ── 창을 닫았다 다시 열어도 K 가 유지되는가(§G7 수용 기준)
     dlg.spin_k.setValue(20)
@@ -230,6 +309,9 @@ def main() -> int:
     app.processEvents()
 
     print("\n" + "=" * 56)
+    # 임시 작업폴더는 여기까지 살아 있어야 한다 — 먼저 지우면 창이 아직 들고
+    # 있는 경로가 사라진다.
+    _tmp.cleanup()
     if FAILS:
         for f in FAILS:
             print("  !!", f)

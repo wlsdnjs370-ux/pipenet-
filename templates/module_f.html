@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260903-hl">
+<link rel="stylesheet" href="/static/module_f.css?v=20260903-sub">
 </head>
 <body>
 <header>
@@ -104,6 +104,13 @@
         <button id="sub-clean">깨끗한 배관망으로 통째 읽기</button>
       </div>
       <div id="sub-summary" class="hint">—</div>
+      <!-- [H-2 · H-3] «어느 선을 배관으로 볼까». 이름 사전 분류는 추천일 뿐이라
+           결정은 사람이 한다 — 고르면 미리보기와 추출이 같이 그 레이어만 쓴다. -->
+      <h2 class="fold" data-fold="sub-layers-body" style="margin-top:14px">
+        <span class="caret">▶</span>배관 레이어 고르기</h2>
+      <div class="foldbody hidden" id="sub-layers-body">
+        <div class="layers" id="sub-layers"></div>
+      </div>
     </section>
 
     <!-- [A 방식] 자동 추출 — 알람밸브 한 점 + 헤드 영역만 사람이 정한다.
@@ -635,7 +642,7 @@
 
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
-<script src="/static/upload_stream.js?v=20260903-hl"></script>
-<script src="/static/module_f.js?v=20260903-hl"></script>
+<script src="/static/upload_stream.js?v=20260903-sub"></script>
+<script src="/static/module_f.js?v=20260903-sub"></script>
 </body>
 </html>

@@ -19,7 +19,8 @@ from routes.module_f.common import _check_xy, _fail
 from routes.module_f.jobs import _job_running, _sess, route_session
 from routes.module_f.slots import _slot_active
 from routes.module_f.subdrawing import (
-    extract_machineroom, extract_system, extract_system_clean, riser_summary)
+    extract_machineroom, extract_system, extract_system_clean, graph_payload,
+    layer_options, riser_summary)
 
 # 클릭 ↔ 그래프 절점 허용 거리. A 의 기본값과 같다.
 SNAP_DEFAULT_MM = 2500.0
@@ -41,6 +42,24 @@ def _snap(body) -> float:
     except (TypeError, ValueError):
         return SNAP_DEFAULT_MM
     return min(max(v, 1.0), SNAP_MAX_MM)
+
+
+def _layers(sess, body):
+    """사람이 고른 «배관으로 볼 레이어». 안 고르면 None = 도면 전체.
+
+    ★고른 것은 세션에 남는다. 미리보기(그래프)와 추출이 **같은 레이어**를
+      써야 화면에 그려진 경로와 뽑히는 경로가 같다 — 다르면 미리보기가
+      거짓말을 한다.
+    """
+    if "layers" in body:
+        raw = body.get("layers")
+        if raw in (None, "", []):
+            sess["sub_layers"] = None
+        elif isinstance(raw, list):
+            sess["sub_layers"] = sorted({str(v) for v in raw})
+        # 목록이 아니면 조용히 무시하지 않고 그대로 둔다(옛 값 유지).
+    got = sess.get("sub_layers")
+    return set(got) if got else None
 
 
 def _need_slot(body, kind: str):
@@ -91,7 +110,8 @@ def register(app):
         try:
             riser = extract_system(sess["entities"], pump, av,
                                    snap_tolerance_mm=_snap(body),
-                                   waypoints=wps or None)
+                                   waypoints=wps or None,
+                                   layer_filter=_layers(sess, body))
         except ValueError as exc:
             # 사용자 입력 문제 — 미도달을 그대로 말한다(S340).
             return jsonify({"ok": False, "message": str(exc),
@@ -128,7 +148,8 @@ def register(app):
         try:
             mr = extract_machineroom(sess["entities"], src, conn,
                                      snap_tolerance_mm=_snap(body),
-                                     ceiling_m=ceiling)
+                                     ceiling_m=ceiling,
+                                     layer_filter=_layers(sess, body))
         except ValueError as exc:
             return jsonify({"ok": False, "message": str(exc)}), 400
         except Exception as exc:  # noqa: BLE001
@@ -146,6 +167,38 @@ def register(app):
         summary["ceiling_m"] = ceiling
         summary["elevation_unresolved"] = ceiling is None
         return jsonify({"ok": True, "summary": summary})
+
+    # ─────────────────────────────────── 경로 그래프 (실시간 미리보기용)
+    @app.post("/api/module-f/sub/graph")
+    @route_session(post=True)
+    def module_f_sub_graph(sess, body):
+        """두 점 사이의 선이 «따라오게» 하려면 화면이 그래프를 들어야 한다.
+
+        마우스가 움직일 때마다 서버를 왕복하면 LAN·터널에서 눈에 띄게 밀린다.
+        실측으로 이 그래프는 작다(노드 132~382 · 간선 131~411 · 3~8KB) —
+        통째로 내려보내고 브라우저가 직접 최단경로를 푼다.
+
+        ★추출이 쓰는 **바로 그 그래프** 다(`subdrawing.path_graph`). 미리보기와
+          결과가 다른 그래프를 쓰면 화면이 거짓말을 한다.
+
+        body: {sid, [layers: ["레이어명", …]]}  · layers 를 주면 그 값이 세션에
+              남아 추출까지 같이 쓴다. 빈 배열/None 이면 «도면 전체».
+        """
+        if not sess.get("entities"):
+            return _fail("도면이 아직 준비되지 않았습니다.", 409)
+        lf = _layers(sess, body)
+        try:
+            got = graph_payload(sess["entities"], layer_filter=lf)
+        except Exception as exc:  # noqa: BLE001 — 못 만들면 사유를 말한다
+            return _fail(f"경로 그래프를 만들지 못했습니다: {exc}", 400)
+        got.update({
+            "ok": True,
+            "kind": _slot_active(sess),
+            "layers": layer_options(sess["entities"]),
+            "chosen": sorted(lf) if lf else None,
+            "snap_default_mm": SNAP_DEFAULT_MM,
+        })
+        return jsonify(got)
 
     # ─────────────────────────────────── 추출 결과 되읽기
     @app.get("/api/module-f/sub/state")

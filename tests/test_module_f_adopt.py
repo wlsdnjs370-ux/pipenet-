@@ -688,12 +688,25 @@ def test_기록은_스냅샷이다():
 
 
 def test_도면이_바뀌면_기록을_버린다():
-    """남겨 두면 Ctrl+Z 가 앞 도면의 좌표를 이 도면에 씌운다."""
+    """남겨 두면 Ctrl+Z 가 앞 도면의 좌표를 이 도면에 씌운다.
+
+    ★자를 «그 줄 그대로» 로 잡지 않는다. 종전에는 슬롯 초기화 줄의 리터럴
+      (`S.sub = { picks: …, summary: null };`)을 통째로 찾았는데, 그 객체에
+      칸을 하나 더하는 것만으로 시험이 부러졌다 — 동작은 그대로인데.
+      함수의 «몸통» 안에 있는지로 본다.
+    """
     html = _script()
     i = html.index("S.recon = null; S.suggest = null;")
     assert "S.undo = [];" in html[i:i + 400]
-    j = html.index("S.sub = { picks: [null, null], arm: null, summary: null };")
-    assert "S.undo = [];" in html[j:j + 400], "슬롯을 바꿔도 기록이 남는다"
+
+    a = html.index("async function switchSlot(")
+    b = html.index("async function loadSub(", a)     # 다음 최상위 선언
+    body = html[a:b]
+    assert "S.undo = [];" in body, "슬롯을 바꿔도 되돌리기 기록이 남는다"
+    assert "S.sub = {" in body, "슬롯을 바꿔도 찍은 두 점이 남는다"
+    # 경로 그래프도 함께 버려야 한다 — 남기면 «남의 도면 그래프» 위에서
+    # 선이 따라오고, 그 길로 추출까지 간다.
+    assert "S.subGraph = null;" in body, "슬롯을 바꿔도 경로 그래프가 남는다"
 
 
 def test_되돌릴_것이_없으면_그렇게_말한다():

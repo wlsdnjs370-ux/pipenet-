@@ -106,8 +106,78 @@ def parse_subdrawing(dxf_path):
     return parsed.get("entities") or [], parsed
 
 
+def layer_options(entities) -> list[dict]:
+    """이 도면의 레이어 목록 + A 의 이름 사전 분류.
+
+    계통도·기계실도 «어느 선이 배관인가» 가 갈림길이다. 이름 사전은 추천일
+    뿐이라(평면도에서 절반이 OTHER 로 떨어진다) 결정은 사람이 한다 — 여기서는
+    고를 거리를 만들어 줄 뿐이다.
+    """
+    from routes.module_f.common import _layer_category
+    n_by: dict[str, int] = {}
+    for en in (entities or ()):
+        nm = str(en.get("l") or "0")
+        n_by[nm] = n_by.get(nm, 0) + 1
+    out = []
+    for nm, n in sorted(n_by.items(), key=lambda kv: (-kv[1], kv[0])):
+        out.append({"layer": nm, "n": n, "cat": _layer_category(nm)})
+    return out
+
+
+def path_graph(entities, *, layer_filter=None):
+    """경로 그래프 한 벌 — **추출이 쓰는 바로 그것** 을 그대로 만든다.
+
+    ★미리보기와 추출이 다른 그래프를 쓰면 화면이 거짓말을 한다. 그래서 여기서
+      A 의 `build_system_graph` 를 추출과 **같은 인자** 로 부른다
+      (`force_connect=True` — 계통도/기계실 전용, 평면도 경로에서는 금지).
+
+    반환: (graph, edge_len, stats) — A 의 것 그대로.
+    """
+    from remote30_prototype import build_system_graph
+    return build_system_graph(entities, layer_filter=layer_filter,
+                              force_connect=True)
+
+
+def graph_payload(entities, *, layer_filter=None) -> dict:
+    """경로 그래프를 화면이 읽을 모양으로.
+
+    실측(계통도·기계실 4장): 노드 132~382 · 간선 131~411 · JSON 3~8KB.
+    이 정도면 통째로 내려보내고 브라우저가 직접 최단경로를 풀 수 있다 —
+    마우스가 움직일 때마다 서버를 왕복하면 LAN·터널에서 눈에 띄게 밀린다.
+
+    ★추측 연결(force_connect 가 이은 직선)은 «따로» 실어 보낸다. 실측 배관과
+      한 모양으로 그리면 사람이 확인한 것과 기계가 고른 것을 구별할 수 없다.
+    """
+    graph, edge_len, stats = path_graph(entities, layer_filter=layer_filter)
+    idx = {n: i for i, n in enumerate(graph)}
+    forced = set()
+    for (ea, eb) in (stats.get("forced_bridge_edges") or []):
+        ka, kb = idx.get(tuple(ea)), idx.get(tuple(eb))
+        if ka is not None and kb is not None:
+            forced.add((min(ka, kb), max(ka, kb)))
+    seen, edges = set(), []
+    for a, nbrs in graph.items():
+        for bnode in nbrs:
+            ia, ib = idx[a], idx[bnode]
+            key = (min(ia, ib), max(ia, ib))
+            if key in seen:
+                continue
+            seen.add(key)
+            ln = edge_len.get((a, bnode)) or edge_len.get((bnode, a)) or 0.0
+            edges.append([key[0], key[1], round(float(ln), 1),
+                          1 if key in forced else 0])
+    return {
+        "nodes": [[int(round(n[0])), int(round(n[1]))] for n in graph],
+        "edges": edges,
+        "components": stats.get("components_after_bridge"),
+        "bridges": stats.get("bridges_applied"),
+        "forced": len(forced),
+    }
+
+
 def extract_system(entities, pump_xy, av_xy, *, snap_tolerance_mm=2500.0,
-                   waypoints=None, floor_profile_rows=None) -> dict:
+                   waypoints=None, floor_profile_rows=None,
+                   layer_filter=None) -> dict:
     """S720 — 계통도에서 펌프 → 알람밸브 경로(입상관)를 뽑는다.
 
     실패(클릭이 배관에서 너무 멀다 · 두 점이 안 이어진다)는 `ValueError` 로
@@ -118,6 +188,7 @@ def extract_system(entities, pump_xy, av_xy, *, snap_tolerance_mm=2500.0,
     return extract_system_path(
         entities, tuple(pump_xy), tuple(av_xy),
         snap_tolerance_mm=float(snap_tolerance_mm),
+        layer_filter=layer_filter or None,
         waypoints=waypoints or None,
         floor_profile_rows=floor_profile_rows or None)
 
@@ -135,7 +206,8 @@ def extract_system_clean(dxf_path, *, scale_mm_per_unit: float = 1.0) -> dict:
 
 
 def extract_machineroom(entities, source_xy, conn_xy, *,
-                        snap_tolerance_mm=2500.0, ceiling_m=None) -> dict:
+                        snap_tolerance_mm=2500.0, ceiling_m=None,
+                        layer_filter=None) -> dict:
     """S730 — 기계실에서 수원(탱크) → 입상관 연결점 경로를 뽑는다.
 
     좌표는 **평면 그대로 보존**된다(H-D6). 계통도처럼 세로 막대로 재배치하면
@@ -147,6 +219,7 @@ def extract_machineroom(entities, source_xy, conn_xy, *,
     return extract_machine_room_path(
         entities, tuple(source_xy), tuple(conn_xy),
         snap_tolerance_mm=float(snap_tolerance_mm),
+        layer_filter=layer_filter or None,
         ceiling_m=(float(ceiling_m) if ceiling_m is not None else None))
 
 

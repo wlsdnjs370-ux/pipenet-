@@ -578,7 +578,21 @@ def _save_upload(field_name: str, allowed_suffixes: set[str], required: bool) ->
     except BaseException:
         part_path.unlink(missing_ok=True)
         raise
-    os.replace(part_path, saved_path)
+    try:
+        os.replace(part_path, saved_path)
+    except OSError:
+        # ★Windows 는 «대상 파일을 다른 프로그램이 열어 두면» 이름 바꾸기를
+        #   거부한다([WinError 5]). CAD 뷰어로 그 도면을 열어 뒀거나, 앞선
+        #   세션이 아직 읽고 있거나, 브라우저가 같은 경로를 업로드 원본으로
+        #   물고 있으면 그렇다 — 실측으로 그 상황을 만들어 재현했다.
+        #   종전(제자리 write_bytes)에는 되던 일이라 이대로 두면 **내가 넣은
+        #   회귀** 다. 반쪽 파일 방지라는 `.part` 의 목적은 «다 쓴 뒤» 이므로
+        #   이미 이뤘다 — 여기서는 내용만 제자리에 옮긴다.
+        try:
+            with open(part_path, "rb") as _src, open(saved_path, "wb") as _dst:
+                shutil.copyfileobj(_src, _dst, 1024 * 1024)
+        finally:
+            part_path.unlink(missing_ok=True)
     # DWG 업로드는 서버측에서 DXF 로 변환해 이후 파이프라인이 동일하게 처리
     if suffix == ".dwg":
         saved_path = _dwg_to_dxf(saved_path)

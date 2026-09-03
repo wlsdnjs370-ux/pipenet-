@@ -96,6 +96,39 @@ def test_gzip_업로드가_원본과_같은_바이트를_남긴다():
     assert (srv.UPLOAD_DIR / gzd["filename"]).read_bytes() == raw
 
 
+def test_대상_파일이_열려_있어도_덮어쓴다():
+    """★Windows 회귀 — «흘려 쓰기» 로 바꾸며 들어온 것.
+
+    `.part` 로 받아 `os.replace` 로 제자리에 놓는데, Windows 는 대상 파일을
+    다른 프로그램이 열어 두면 이름 바꾸기를 거부한다([WinError 5]). CAD
+    뷰어로 그 도면을 열어 뒀거나 앞선 세션이 아직 읽고 있으면 그렇다 —
+    종전(제자리 write_bytes)에는 되던 일이므로 그대로 두면 회귀다.
+
+    실측으로 브라우저 검증 중에 바로 이 실패를 만났다
+    («도면을 저장하지 못했습니다: [WinError 5] 액세스가 거부되었습니다»).
+    """
+    srv = _app()
+    c = _client(srv.app)
+    name = "__시험_열린채덮기__.dxf"
+    dst = srv.UPLOAD_DIR / name
+    dst.write_bytes(b"OLD")
+    payload = b"NEW-CONTENT-" + os.urandom(64)
+    holder = open(dst, "rb")          # 다른 프로그램이 열어 둔 상태
+    try:
+        rv = c.post("/api/module-f/slot/open", data={
+            "kind": "plan", "dxf_file": (io.BytesIO(payload), name)},
+            content_type="multipart/form-data")
+        assert rv.status_code == 200, rv.get_data(as_text=True)[:300]
+        assert dst.read_bytes() == payload, "열려 있다고 덮어쓰기를 건너뛰었다"
+        assert not list(srv.UPLOAD_DIR.glob("*.part")), "반쪽 파일이 남았다"
+    finally:
+        holder.close()
+        try:
+            os.remove(dst)
+        except OSError:
+            pass
+
+
 def test_압축폭탄은_푼_크기로_막힌다(monkeypatch):
     """`MAX_CONTENT_LENGTH` 는 «올라온» 바이트만 잰다 — 압축이면 그 자를 지난다.
 

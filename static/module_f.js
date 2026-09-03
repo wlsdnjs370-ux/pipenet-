@@ -10,7 +10,7 @@
     refCounts: [],                          // NFTC 103 표 2.1.1.1 (서버가 준다)
     boreColor: true,                        // 관경 근거로 배관 색 나누기
     // [H-2 · H-3] 계통도·기계실이 찍는 두 점 · 무엇을 찍는 중인지
-    sub: { picks: [null, null], arm: null, summary: null },
+    sub: { picks: [null, null], arm: null, summary: null, preview: null },
     merge: null,                            // [H-5] 통합 상태 한 장
     // [A 방식] 자동 추출 — 방식·알람밸브·헤드 후보·완료 여부
     method: null, autoAlarm: null, autoArm: null,
@@ -126,6 +126,13 @@
       zoneDrag.x1 = wx(e.offsetX);
       zoneDrag.y1 = wy(e.offsetY);
       draw();
+      return;
+    }
+    // [H-2 · H-3] 계통도·기계실 — 두 점을 찍는 동안 그 사이 배관이 커서를
+    //   따라 그려진다. 뽑기 «전에» 이 길이 맞는지 눈으로 판단할 수 있어야
+    //   한다. 계산은 브라우저에서 끝나므로(절점 수백 개) 서버 왕복이 없다.
+    if (!drag && S.stage === "sub" && S.sub && S.sub.arm != null) {
+      if (subPreview(wx(e.offsetX), wy(e.offsetY))) draw();
       return;
     }
     if (!drag) return;
@@ -1519,7 +1526,10 @@
       renderSlots(d);
       const cur = d.slots.find((s) => s.active);
       // 슬롯마다 어디까지 갔는지가 다르다 — 그 단계로 되돌려 놓는다.
-      S.sub = { picks: [null, null], arm: null, summary: null };
+      S.sub = { picks: [null, null], arm: null, summary: null, preview: null };
+      // ★경로 그래프도 버린다. 슬롯이 바뀌면 도면이 바뀌는데 남겨 두면
+      //   «남의 도면 그래프» 위에서 선이 따라오고, 그 길로 추출까지 간다.
+      S.subGraph = null;
       S.zones = []; S.autoHeads = []; S.autoAlarm = null; S.autoDone = false;
       // 슬롯이 바뀌면 되돌릴 대상도 바뀐다 — 기록을 넘기면 남의 좌표가 온다.
       S.undo = []; S.autoView = null;
@@ -1599,11 +1609,104 @@
          : "");
   }
 
+  // ── [H-2 · H-3] 경로 그래프 — 선이 «따라오게» 하는 재료 ─────────
+  //
+  // 두 점을 찍는 동안 그 사이 배관이 실시간으로 따라 그려져야, 뽑기 전에
+  // «이 길이 맞나» 를 눈으로 판단할 수 있다. 마우스가 움직일 때마다 서버를
+  // 왕복하면 LAN·터널에서 밀리므로, 그래프를 한 번 받아 브라우저가 직접
+  // 최단경로를 푼다(실측: 노드 132~382 · 간선 131~411 · 3~8KB).
+  //
+  // ★서버가 주는 그래프는 **추출이 쓰는 바로 그것** 이다(`subdrawing.path_graph`).
+  //   미리보기와 결과가 다른 그래프를 쓰면 화면이 거짓말을 한다.
+
+  async function loadSubGraph(layers) {
+    const body = { sid: S.sid };
+    if (layers !== undefined) body.layers = layers;
+    try {
+      const d = await post("/api/module-f/sub/graph", body);
+      const adj = d.nodes.map(() => []);
+      for (const [a, b, len, forced] of d.edges) {
+        adj[a].push([b, len, forced]);
+        adj[b].push([a, len, forced]);
+      }
+      S.subGraph = { nodes: d.nodes, edges: d.edges, adj,
+                     forced: d.forced, components: d.components,
+                     layers: d.layers, chosen: d.chosen };
+    } catch (err) {
+      S.subGraph = null;
+      say(`경로 미리보기를 못 켰습니다 — ${err.message}`, "warn");
+    }
+    renderSubLayers();
+    draw();
+  }
+
+  /** 세계좌표에 가장 가까운 그래프 절점 번호. 없으면 -1. */
+  function subNearest(x, y) {
+    const g = S.subGraph;
+    if (!g) return -1;
+    let best = Infinity, bi = -1;
+    for (let i = 0; i < g.nodes.length; i++) {
+      const dx = g.nodes[i][0] - x, dy = g.nodes[i][1] - y;
+      const d = dx * dx + dy * dy;
+      if (d < best) { best = d; bi = i; }
+    }
+    return bi;
+  }
+
+  /** a → b 최단경로(절점 번호 열). 못 이으면 null. */
+  function subPath(a, b) {
+    const g = S.subGraph;
+    if (!g || a < 0 || b < 0) return null;
+    if (a === b) return [a];
+    const n = g.nodes.length;
+    const dist = new Float64Array(n).fill(Infinity);
+    const prev = new Int32Array(n).fill(-1);
+    const done = new Uint8Array(n);
+    dist[a] = 0;
+    // 절점이 수백 개라 단순 선형 탐색으로 충분하다 — 힙을 두면 코드만 는다.
+    for (;;) {
+      let u = -1, bd = Infinity;
+      for (let i = 0; i < n; i++) {
+        if (!done[i] && dist[i] < bd) { bd = dist[i]; u = i; }
+      }
+      if (u < 0 || u === b) break;
+      done[u] = 1;
+      for (const [v, len, forced] of g.adj[u]) {
+        // 추측 연결은 «비싸게» 둔다 — 안 그러면 도면을 가로지르는 직선이
+        // 늘 최단이 되어 엉뚱한 길이 뽑힌다(A 가 실측으로 배운 것).
+        const w = (len || 0) + (forced ? 1e6 : 0);
+        if (dist[u] + w < dist[v]) { dist[v] = dist[u] + w; prev[v] = u; }
+      }
+    }
+    if (!isFinite(dist[b])) return null;
+    const out = [];
+    for (let k = b; k >= 0; k = prev[k]) out.push(k);
+    return out.reverse();
+  }
+
+  /** 지금 찍힌 것 + 커서로 미리보기 경로를 다시 계산한다. */
+  function subPreview(x, y) {
+    const g = S.subGraph;
+    if (!g) { S.sub.preview = null; return false; }
+    const p0 = S.sub.picks[0], p1 = S.sub.picks[1];
+    let a = null, bxy = null;
+    if (S.sub.arm === 1 && p0) { a = p0; bxy = [x, y]; }
+    else if (S.sub.arm === 0 && p1) { a = [x, y]; bxy = p1; }
+    else if (p0 && p1) { a = p0; bxy = p1; }
+    else { S.sub.preview = null; return false; }
+    const path = subPath(subNearest(a[0], a[1]), subNearest(bxy[0], bxy[1]));
+    S.sub.preview = path && path.length > 1 ? path : null;
+    S.sub.previewBroken = !path;
+    return true;
+  }
+
   function subClick(x, y) {
     if (S.sub.arm == null) return;
     markUndo(`${S.sub.arm === 0 ? subSpec().a : subSpec().b} 찍기`);
     S.sub.picks[S.sub.arm] = [x, y];
-    S.sub.arm = null;
+    // 첫 점을 찍으면 곧바로 다음 점을 기다린다 — 그래야 선이 커서를 따라온다.
+    S.sub.arm = (S.sub.arm === 0 && !S.sub.picks[1]) ? 1 : null;
+    subPreview(x, y);
     renderSubPicks();
     draw();
   }
@@ -1668,7 +1771,38 @@
     $("sub-summary").innerHTML = html;
   }
 
+  /** 미리보기 경로 — 실측 구간과 «추측 연결» 을 갈라 그린다. */
+  function drawSubPreview() {
+    const g = S.subGraph;
+    const path = S.sub.preview;
+    if (!g || !path || path.length < 2) return;
+    const forcedOf = new Map();
+    for (const [a, b, _l, f] of g.edges) {
+      if (f) forcedOf.set(a < b ? `${a},${b}` : `${b},${a}`, 1);
+    }
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = g.nodes[path[i]], b = g.nodes[path[i + 1]];
+      const key = path[i] < path[i + 1]
+        ? `${path[i]},${path[i + 1]}` : `${path[i + 1]},${path[i]}`;
+      const forced = forcedOf.has(key);
+      // ★추측 연결은 점선 + 다른 색. 실측 배관과 한 모양으로 그리면 사람이
+      //   확인한 것과 기계가 이어 붙인 것을 구별할 수 없다.
+      ctx.strokeStyle = forced ? "#f59e0b" : "#ff2d2d";
+      ctx.setLineDash(forced ? [7, 5] : []);
+      ctx.lineWidth = forced ? 2.2 : CAD_LINE_W + 1.6;
+      ctx.beginPath();
+      ctx.moveTo(sx(a[0]), sy(a[1]));
+      ctx.lineTo(sx(b[0]), sy(b[1]));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawSubPicks() {
+    drawSubPreview();
     const sp = subSpec();
     const marks = [[S.sub.picks[0], "#3b82f6", sp.a],
                    [S.sub.picks[1], "#22c55e", sp.b]];
@@ -1689,12 +1823,47 @@
     ctx.lineWidth = 1;
   }
 
+  /** 레이어 고르기 — «어느 선을 배관으로 볼까». 결정은 사람이 한다. */
+  function renderSubLayers() {
+    const box = $("sub-layers");
+    if (!box) return;
+    const g = S.subGraph;
+    if (!g || !g.layers) { box.innerHTML = ""; return; }
+    const chosen = g.chosen ? new Set(g.chosen) : null;
+    let html = `<div class="hint">경로 그래프 — 절점 ${g.nodes.length} · `
+      + `배관 ${g.edges.length}`
+      + (g.forced ? ` · <span class="warn">추측 연결 ${g.forced}</span>` : "")
+      + (g.components > 1
+         ? ` · <span class="warn">조각 ${g.components}</span>` : "")
+      + "</div>";
+    for (const L of g.layers) {
+      const on = chosen === null || chosen.has(L.layer);
+      html += `<label class="chk"><input type="checkbox" data-lay="${esc(L.layer)}"`
+        + `${on ? " checked" : ""}><span class="cat ${esc(L.cat)}">${esc(L.cat)}`
+        + `</span> <span class="nm">${esc(L.layer)}</span>`
+        + `<span class="cnt">${L.n}</span></label>`;
+    }
+    box.innerHTML = html;
+    for (const cb of box.querySelectorAll("input[data-lay]")) {
+      cb.onchange = () => {
+        const picked = [...box.querySelectorAll("input[data-lay]")]
+          .filter((e) => e.checked).map((e) => e.dataset.lay);
+        // 전부 켜면 «도면 전체» 로 되돌린다 — 목록을 통째로 보내는 것과 뜻이
+        // 같지만, 서버가 그것을 «필터 없음» 으로 기억해야 나중에 레이어가
+        // 늘어도 자동으로 따라온다.
+        const all = picked.length === g.layers.length;
+        loadSubGraph(all ? [] : picked);
+      };
+    }
+  }
+
   async function loadSub() {
     const d = await api(`/api/module-f/sub/state?sid=${S.sid}`);
     setStage("sub");
     renderSubPanel();
     renderSubSummary(d);
     if (S.world) fit(S.world.bounds);
+    await loadSubGraph();          // 선이 따라오게 하는 재료
     draw();
   }
 

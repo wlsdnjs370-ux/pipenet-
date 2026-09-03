@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from flask import jsonify
 
-from routes.module_f.common import _fail
+from routes.module_f.common import _check_xy, _fail
 from routes.module_f.jobs import _job_running, _sess, route_session
 from routes.module_f.slots import _slot_active
 from routes.module_f.subdrawing import (
@@ -30,10 +30,9 @@ def _xy(body, kx, ky, what):
     x, y = body.get(kx), body.get(ky)
     if x is None or y is None:
         raise ValueError(f"{what} 위치를 도면에서 찍으세요.")
-    try:
-        return float(x), float(y)
-    except (TypeError, ValueError):
-        raise ValueError(f"{what} 좌표가 숫자가 아닙니다: {x!r}, {y!r}") from None
+    # 셀 수 있는 수인가까지 본다 — 제곱에서 터지는 자리가 엔진 안에 있다
+    # (common._check_xy 주석 참조). 네 입구가 같은 자를 쓴다.
+    return _check_xy(body, kx=kx, ky=ky, what=what)
 
 
 def _snap(body) -> float:

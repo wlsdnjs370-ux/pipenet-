@@ -6,7 +6,8 @@ import time
 
 from flask import jsonify
 
-from routes.module_f.common import _fail
+from routes.module_f.common import (
+    COORD_LIMIT_MM, _check_num, _check_xy, _fail)
 from routes.module_f.jobs import _job_running, _run_job, _sess, route_session
 from routes.module_f.remote30 import _sheet_frames
 from routes.module_f.views import _pick_state
@@ -89,12 +90,13 @@ def register(app):
     def module_f_pick_click(sess, body):
         ps = sess["pick"]
         try:
-            x = float(body.get("x"))
-            y = float(body.get("y"))
-        except (TypeError, ValueError):
-            return _fail("클릭 좌표가 올바르지 않습니다.")
-        max_d = body.get("max_d")
-        max_d = float(max_d) if max_d is not None else None
+            x, y = _check_xy(body, what="클릭")
+            # 안 주면 None — 엔진이 제 기본값을 쓴다(종전 규약).
+            max_d = (None if body.get("max_d") is None else
+                     _check_num(body.get("max_d"), "허용 거리",
+                                lo=0.0, hi=COORD_LIMIT_MM))
+        except ValueError as exc:
+            return _fail(str(exc))
         rep = ps.click(x, y, max_d=max_d)
         return jsonify({"ok": True, "report": rep,
                         "state": _pick_state(sess)})

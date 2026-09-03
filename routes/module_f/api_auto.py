@@ -20,7 +20,7 @@ import os
 from flask import jsonify
 
 from routes.module_f.auto import detect_head_candidates, preview_view, run_auto
-from routes.module_f.common import REMOTE_K_DEFAULT, _fail
+from routes.module_f.common import REMOTE_K_DEFAULT, _check_xy, _fail
 from routes.module_f.jobs import _job_running, _run_job, _sess, route_session
 from routes.module_f.slots import _slot_active
 
@@ -99,9 +99,9 @@ def register(app):
             sess["auto_alarm"] = None            # 지우기
             return jsonify({"ok": True, "alarm": None})
         try:
-            sess["auto_alarm"] = [float(x), float(y)]
-        except (TypeError, ValueError):
-            return _fail(f"좌표가 숫자가 아닙니다: {x!r}, {y!r}")
+            sess["auto_alarm"] = list(_check_xy(body, what="알람밸브"))
+        except ValueError as exc:
+            return _fail(str(exc))
         return jsonify({"ok": True, "alarm": sess["auto_alarm"]})
 
     @app.post("/api/module-f/auto/zones")

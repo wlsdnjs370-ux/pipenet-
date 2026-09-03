@@ -7,7 +7,8 @@ import time
 
 from flask import jsonify
 
-from routes.module_f.common import REMOTE_K_DEFAULT, _fail, _r1
+from routes.module_f.common import (
+    COORD_LIMIT_MM, REMOTE_K_DEFAULT, _check_num, _check_xy, _fail, _r1)
 from routes.module_f.graph import _autojoin_apply, _autojoin_scan
 from routes.module_f.jobs import (_job_running, _run_job, _sess,
                                   route_session)
@@ -126,11 +127,11 @@ def register(app):
     def module_f_edit_click(sess, body):
         es = sess["edit"]
         try:
-            x = float(body.get("x"))
-            y = float(body.get("y"))
-            max_d = float(body.get("max_d"))
-        except (TypeError, ValueError):
-            return _fail("클릭 좌표가 올바르지 않습니다.")
+            x, y = _check_xy(body, what="클릭")
+            max_d = _check_num(body.get("max_d"), "허용 거리",
+                               lo=0.0, hi=COORD_LIMIT_MM)
+        except ValueError as exc:
+            return _fail(str(exc))
         rep = es.click(x, y, max_d)
         if rep and rep.get("동작") not in ("헤드선택",):
             # 망이 바뀌면 앞서 잡아 둔 물길·최불리 선정은 더 이상 사실이 아니다.
@@ -429,14 +430,14 @@ def register(app):
         """
         es = sess["edit"]
         try:
-            x = float(body.get("x"))
-            y = float(body.get("y"))
-        except (TypeError, ValueError):
-            return _fail("알람밸브 좌표가 올바르지 않습니다.")
+            x, y = _check_xy(body, what="알람밸브")
+        except ValueError as exc:
+            return _fail(str(exc))
         try:
-            max_d = float(body.get("max_d") or ANCHOR_CLICK_MAX_D_MM)
-        except (TypeError, ValueError):
-            max_d = ANCHOR_CLICK_MAX_D_MM
+            max_d = _check_num(body.get("max_d"), "허용 거리", lo=0.0,
+                               hi=COORD_LIMIT_MM, default=ANCHOR_CLICK_MAX_D_MM)
+        except ValueError:
+            max_d = ANCHOR_CLICK_MAX_D_MM      # 종전대로 «기본값으로 넘어간다»
         # K 는 «저장된 값» 이 기본이다 — 원클릭은 K 를 묻지 않는다.
         want = dict(body)
         want.setdefault("k", sess.get("worst_k") or REMOTE_K_DEFAULT)

@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import math
 import os
 import sys
 import threading
@@ -168,6 +169,50 @@ def _check_key(key: str) -> str:
     if any(ord(c) < 32 for c in k):
         raise ValueError("도면 키에 제어문자가 있습니다.")
     return k
+
+
+# 도면 좌표로 받아들일 범위(mm). 1e9mm = 1,000km — 어떤 도면도 이 밖에 없다.
+# ★상한이 필요한 이유는 «큰 도면» 때문이 아니라 **제곱** 때문이다. 엔진은
+#   점–선분 거리를 제곱으로 잰다(`user_net._pt_seg_d2`). float 은 1.3e154 를
+#   넘겨 제곱하면 OverflowError 를 던지고, 그것이 그대로 HTTP 500 이 된다
+#   (실측: `edit/click` 에 x=1e308 → «서버 오류: OverflowError»).
+#   엔진은 안 고친다 — 데스크톱 G 는 그런 좌표를 만들 수 없고, 웹은 아무
+#   문자열이나 들어온다. 그래서 **들어오는 문 앞에서** 막는다(`_check_key`
+#   와 같은 이유·같은 자리).
+COORD_LIMIT_MM = 1e9
+
+
+def _check_num(v, what: str, *, lo: float, hi: float,
+               default=None) -> float:
+    """숫자 하나 — 셀 수 있고 범위 안인가. NaN·무한대는 «숫자가 아니다».
+
+    `default` 를 주면 값이 없을 때 그것을 쓴다(안 주면 «없음» 도 실패다).
+    """
+    if v is None or v == "":
+        if default is None:
+            raise ValueError(f"{what} 값이 필요합니다.")
+        return float(default)
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} 이(가) 숫자가 아닙니다: {v!r}") from None
+    # ★`math.isfinite` 로 NaN·±inf 를 함께 거른다. NaN 은 어떤 비교와도
+    #   거짓이라 «가장 가까운 것 고르기» 를 조용히 망가뜨린다 — 튀지도 않고
+    #   틀린 답을 낸다. 튀는 쪽(무한대)보다 이쪽이 더 나쁘다.
+    if not math.isfinite(f):
+        raise ValueError(f"{what} 이(가) 셀 수 있는 수가 아닙니다: {v!r}")
+    if not (lo <= f <= hi):
+        raise ValueError(f"{what} 이(가) 범위를 벗어났습니다: {f:g} "
+                         f"(허용 {lo:g} ~ {hi:g})")
+    return f
+
+
+def _check_xy(body, *, kx: str = "x", ky: str = "y", what: str = "좌표"):
+    """도면 좌표 한 쌍. 네 곳(찍기·손질·원클릭·자동·계통도)이 같은 자를 쓴다."""
+    return (_check_num(body.get(kx), f"{what} x",
+                       lo=-COORD_LIMIT_MM, hi=COORD_LIMIT_MM),
+            _check_num(body.get(ky), f"{what} y",
+                       lo=-COORD_LIMIT_MM, hi=COORD_LIMIT_MM))
 
 
 def _layer_category(name: str) -> str:

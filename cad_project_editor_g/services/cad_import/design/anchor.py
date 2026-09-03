@@ -64,3 +64,63 @@ def require_anchor(meta_nodes, *, what: str = "이 망") -> str:
         f"{what}에 접속점(알람밸브 자리)이 없습니다 — 물이 어디로 들어오는지 "
         f"모르는 상태라 표를 만들 수 없습니다. 손질 단계에서 알람밸브를 "
         f"찍으세요. (노드 {n}개 중 type_id='{ANCHOR_TYPE_ID}' 없음)")
+
+
+# 부착점 되짚기(tables.WORST_HEAD_SNAP_M)와 같은 근거의 허용치 — 실측(B1F)으로
+# 노드정리의 «직선 위치 복원» 이 좌표를 6~8mm 옮긴다. 100mm 는 그 열 배가 넘고
+# 이웃 배관 노드 간격에는 한참 못 미친다.
+VALVE_SNAP_M = 0.10
+
+
+def valve_kfp_nodes(meta_nodes, board_pts, valve_board_nodes,
+                    origin_mm) -> list:
+    """board 알람밸브 픽 → kfp 노드 id 들.
+
+    ★§29 실측 — 이 대응이 없어서 사람이 찍은 알람밸브가 산출물(기기표)에
+      한 번도 실리지 못했다. `build_design_tables(valve_nodes=…)` 자리는 처음부터
+      있었는데 **아무도 안 넘겼다**(웹도, 데스크톱 G 창의 명시적 None 도).
+
+    되짚기는 좌표다 — `node_ref` 류의 역참조 표는 노드정리 «전» 을 가리켜 절반
+    넘게 틀린다(§30 실측 30개 중 12개). 리팩터링 7 이후 알람밸브 픽은 접속점을
+    겸하므로 보통 pump 도장 노드에 정확히 떨어지지만, 옛 저장본(밸브만 따로
+    찍힌 것)도 같은 식으로 이어진다.
+
+    못 이은 픽은 조용히 버리지 않고 목록 밖으로 남긴다 — 부르는 쪽이 개수를
+    맞대 보고 사람에게 말할 수 있게, (이은 것, 못 이은 board 노드) 를 준다.
+    """
+    import math
+
+    hit: list = []
+    missed: list = []
+    if origin_mm is None or not board_pts:
+        return [], [n for n in (valve_board_nodes or ())]
+    for bn in (valve_board_nodes or ()):
+        if not isinstance(bn, int) or not (0 <= bn < len(board_pts)):
+            missed.append(bn)
+            continue
+        tx = (float(board_pts[bn][0]) - float(origin_mm[0])) / 1000.0 + 1.0
+        ty = (float(board_pts[bn][1]) - float(origin_mm[1])) / 1000.0 + 1.0
+        best = None
+        for nid, meta in (meta_nodes or {}).items():
+            tid = str((meta or {}).get("type_id", ""))
+            if tid == "head":
+                continue          # 알람밸브가 헤드일 수는 없다
+            c = (meta or {}).get("coords") or (0.0, 0.0, 0.0)
+            d = math.hypot(float(c[0]) - tx, float(c[1]) - ty)
+            if d > VALVE_SNAP_M:
+                continue
+            # ★허용 안에 접속점이 있으면 **그것이** 그 밸브다. 알람밸브 픽은
+            #   접속점을 겸하기 때문이다(리팩터링 7). 거리만으로 고르면 안 된다:
+            #   전개가 그 자리에 곁가지 노드를 만들어 두면 몇 mm 차이로 그쪽이
+            #   이기는데, 그 곁가지는 담당 헤드 0 인 막다른 관이라 기기가
+            #   «물이 안 지나는 관» 에 붙는다(실측 B1F: 접속점에서 17mm 떨어진
+            #   base 노드가 이겨 25A 곁가지에 붙었고, 라이브러리에 25A 알람밸브가
+            #   없어 등가길이가 미해결로 떨어졌다).
+            rank = (0 if tid == ANCHOR_TYPE_ID else 1, d)
+            if best is None or rank < best[0]:
+                best = (rank, nid)
+        if best is None:
+            missed.append(bn)
+        elif best[1] not in hit:
+            hit.append(best[1])
+    return hit, missed

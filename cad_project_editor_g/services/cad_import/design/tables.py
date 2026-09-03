@@ -248,11 +248,28 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         parse_eq_len_overrides, resolve_eq_len)
     _ov_eq = parse_eq_len_overrides(fitting_overrides)
     av_unresolved: list = []
+    #   ★어느 배관에 붙일지 — 「표에서 처음 만나는 것」이 아니라 **물이 지나는
+    #     관** 이다. 알람밸브 절점에는 본관과 곁가지가 함께 닿는데, 표 순서로
+    #     고르면 곁가지가 걸린다. 실측(B1F): 본관 65A(담당 30) 옆에 담당 0 인
+    #     25A 가 있어 그쪽이 잡혔고, 라이브러리에 25A 알람밸브가 없어(65~150A)
+    #     등가길이가 «미해결» 로 떨어졌다. 담당 헤드 수가 그 판단의 근거다.
+    _loads = {str(k): int(v) for k, v in (tree_loads or {}).items()}
+
+    def _host_pipe(lab):
+        touching = [r for r in tbl.pipes if lab in (r["in"], r["out"])]
+        if not touching:
+            return None
+        # 담당 헤드 수 → 호칭경 → 라벨. 뒤 둘은 같은 값일 때 결과를 고정하는
+        # 자리다(같은 입력에 같은 산출).
+        return max(touching, key=lambda r: (_loads.get(str(r.get("label")), 0),
+                                            int(r.get("dia") or 0),
+                                            str(r.get("label"))))
+
     for nid in (valve_nodes or ()):
         lab = label_of.get(nid)
         if lab is None:
             continue
-        host = next((r for r in tbl.pipes if lab in (r["in"], r["out"])), None)
+        host = _host_pipe(lab)
         if host is None:
             continue
         eq_m, eq_why = resolve_eq_len("alarm_valve", host.get("dia"),

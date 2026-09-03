@@ -301,6 +301,7 @@ class DesignInputDialog(QDialog):
         ckw = self._convert_kwargs
 
         def job():
+            from services.cad_import.design.anchor import valve_kfp_nodes
             from services.cad_import.design.bore import extract_dia_text_points
             from services.cad_import.design.restrict import select_and_expand
             from services.cad_import.design.tables import build_design_tables
@@ -310,13 +311,23 @@ class DesignInputDialog(QDialog):
             if not got.get("ok"):
                 return {"ok": False, "error": got.get("error")}
             texts = self._dia_texts()
+            # [§29] 종전에는 여기가 `valve_nodes=None` 이었다 — 사람이 찍은
+            #   알람밸브가 기기표에 한 번도 안 실린 두 자리 중 하나다.
+            av_nodes, av_missed = valve_kfp_nodes(
+                got["kfp"].get("nodes_meta_runtime") or {}, board.pts,
+                list(getattr(board, "valves", None) or ()),
+                got.get("origin_mm"))
+            if av_missed:
+                print(f"[설계] ★알람밸브 {len(av_missed)}곳을 전개 노드로 "
+                      f"되짚지 못했습니다 — 그만큼 기기표에서 빠집니다.")
             tbl = build_design_tables(
                 got["kfp"], got["worst"], got["edge_ref"], texts,
                 board_pts=board.pts,
                 excluded_heads=got.get("excluded_heads", 0),
-                valve_nodes=None,
+                valve_nodes=av_nodes,
                 default_schedule=sched,
-                tree_loads=got.get("tree_loads"))
+                tree_loads=got.get("tree_loads"),
+                origin_mm=got.get("origin_mm"))
             return {"ok": True, "got": got, "tables": tbl}
 
         self.btn_run.setEnabled(False)

@@ -479,6 +479,7 @@ def register(app, *, UPLOAD_DIR):
         source = body.get("source")
 
         def job():
+            from services.cad_import.design.anchor import valve_kfp_nodes
             from services.cad_import.design.restrict import select_and_expand
             from services.cad_import.design.tables import build_design_tables
             from services.cad_import.design.sdf_post import UnknownSchedule
@@ -497,11 +498,24 @@ def register(app, *, UPLOAD_DIR):
             #   corridor 가 바뀌어도 같은 자리를 가리키는 안정 키로 담겨 있다
             #   (BLOCKED §22). 못 옮긴 것은 버리지 않고 세어 화면에 올린다.
             fit_ov, fit_missed = fitting_ov_for_engine(sess, got)
+            # [§29] 사람이 찍은 알람밸브 → kfp 노드. 이 한 줄이 없어서 기기표가
+            #   **한 번도** 안 실렸다(자리는 처음부터 있었는데 아무도 안 넘겼다).
+            av_nodes, av_missed = valve_kfp_nodes(
+                got["kfp"].get("nodes_meta_runtime") or {}, es.board.pts,
+                list(getattr(es.board, "valves", None) or ()),
+                got.get("origin_mm"))
+            if av_missed:
+                # 조용히 버리지 않는다 — 찍었는데 안 실린 것이 있으면 말한다.
+                print(f"[설계] ★알람밸브 {len(av_missed)}곳을 전개 노드로 "
+                      f"되짚지 못했습니다 — 그만큼 기기표에서 빠집니다.")
             try:
                 tbl = build_design_tables(
                     got["kfp"], got["worst"], got["edge_ref"], texts,
                     board_pts=es.board.pts,
                     excluded_heads=got.get("excluded_heads", 0),
+                    # [§29] 알람밸브 기기 행 — 등가길이는 부속표와 같은 함수가
+                    #   정한다(라이브러리 → 사람이 채운 값 → 미해결).
+                    valve_nodes=av_nodes,
                     default_schedule=cfg["schedule"],
                     tree_loads=got.get("tree_loads"),
                     # [§18] 사람이 손으로 채운 값 — 규칙이 못 가린 자리에만

@@ -163,3 +163,88 @@ def test_앵커라는_낱말이_한_뜻만_갖는다():
         assert key in got, f"{key} 가 없다 — {sorted(got)}"
     for gone in ("anchor", "anchor_path", "anchor_path_m"):
         assert gone not in got, f"최불리 쪽이 아직 «{gone}» 를 쓴다"
+
+
+# ═════════════════════════════ [§29] 찍은 알람밸브가 산출물에 실린다
+def _net_with_spur():
+    """접속점 — 본관(헤드 쪽) + 담당 0 인 곁가지.
+
+    실도면(B1F)의 모양이다: 접속점 절점에 본관 65A(담당 30)와 막다른 25A 가
+    함께 닿는다. 기기를 어느 쪽에 붙이느냐가 등가길이를 가른다.
+    """
+    nodes = {
+        "N1": {"coords": [1.0, 1.0, 0.0], "type_id": "pump"},
+        "N2": {"coords": [9.0, 1.0, 0.0], "type_id": "base"},
+        "N3": {"coords": [1.0, 3.0, 0.0], "type_id": "base"},
+    }
+    pipes = {"P_main": {"start": "N1", "end": "N2", "length_m": 8.0},
+             "P_spur": {"start": "N1", "end": "N3", "length_m": 2.0}}
+    return {"pipe_data": pipes, "nodes_meta_runtime": nodes}
+
+
+def test_찍은_알람밸브가_기기표에_실린다():
+    """★§29 — 자리는 처음부터 있었는데 **아무도 안 넘겨** 한 번도 안 실렸다."""
+    net = _net_with_spur()
+    worst = {"heads": [], "loads": {}}
+    base = build_design_tables(net, worst, {"P_main": (0, 1)}, [],
+                               bores={"P_main": (65, "시험"),
+                                      "P_spur": (25, "시험")})
+    assert base.equipment == [], "안 찍었는데 기기가 생겼다"
+
+    got = build_design_tables(net, worst, {"P_main": (0, 1)}, [],
+                              bores={"P_main": (65, "시험"),
+                                     "P_spur": (25, "시험")},
+                              valve_nodes=["N1"],
+                              tree_loads={"P_main": 30, "P_spur": 0})
+    av = [e for e in got.equipment if e["desc"] == "A/V"]
+    assert len(av) == 1, got.equipment
+    assert av[0]["eq_len"] > 0 and av[0]["eq_len_src"] == "라이브러리"
+
+
+def test_기기는_물이_지나는_관에_붙는다():
+    """★표 순서로 고르면 «담당 0» 곁가지가 걸린다.
+
+    실측(B1F): 그렇게 25A 곁가지에 붙었고, 라이브러리에 25A 알람밸브가 없어
+    (65~150A) 등가길이가 미해결로 떨어졌다. 담당 헤드 수가 판단의 근거다.
+    """
+    net = _net_with_spur()
+    got = build_design_tables(net, {"heads": [], "loads": {}},
+                              {"P_main": (0, 1)}, [],
+                              bores={"P_main": (65, "시험"),
+                                     "P_spur": (25, "시험")},
+                              valve_nodes=["N1"],
+                              tree_loads={"P_main": 30, "P_spur": 0})
+    av = [e for e in got.equipment if e["desc"] == "A/V"][0]
+    assert av["pipe"] == "P_main", f"곁가지에 붙었다: {av['pipe']}"
+
+
+def test_밸브_되짚기는_접속점을_먼저_고른다():
+    """전개가 그 자리에 만든 곁가지 노드가 몇 mm 차로 이기면 안 된다.
+
+    실측(B1F): 접속점에서 17mm 떨어진 base 노드가 거리로는 이겼는데, 그 노드에
+    닿는 관은 전부 담당 0 이었다. 알람밸브 픽은 접속점을 겸하므로(리팩터링 7)
+    허용 안에 접속점이 있으면 그것이 그 밸브다.
+    """
+    from services.cad_import.design.anchor import valve_kfp_nodes
+
+    origin = (100_000.0, 200_000.0)
+    # board 점을 kfp 로 옮기면 (1,1) 이 되도록 잡는다.
+    board_pts = [(origin[0], origin[1])]
+    meta = {
+        "Nanchor": {"coords": [1.0, 1.0, 0.0], "type_id": "pump"},
+        "Nspur": {"coords": [1.017, 1.0, 0.0], "type_id": "base"},  # 17mm
+    }
+    hit, missed = valve_kfp_nodes(meta, board_pts, [0], origin)
+    assert hit == ["Nanchor"], hit
+    assert missed == []
+
+
+def test_되짚지_못한_밸브는_조용히_사라지지_않는다():
+    from services.cad_import.design.anchor import valve_kfp_nodes
+
+    origin = (100_000.0, 200_000.0)
+    meta = {"N1": {"coords": [50.0, 50.0, 0.0], "type_id": "base"}}
+    hit, missed = valve_kfp_nodes(meta, [(origin[0], origin[1])], [0], origin)
+    assert hit == [] and missed == [0], (hit, missed)
+    # 재료가 없어도 «못 이었다» 를 그대로 돌려준다.
+    assert valve_kfp_nodes(meta, [(0.0, 0.0)], [0], None) == ([], [0])

@@ -417,7 +417,12 @@ def summarize(sel, tables) -> dict:
         "source_bridge_mm": round(
             float(getattr(sel, "source_bridge_dist_mm", 0.0) or 0.0), 1),
         "source_fallback": bool(getattr(sel, "source_fallback", False)),
-        "anchor_label": meta.get("앵커 노드"),
+        # ★종전에 여기 「앵커 노드」를 실었는데 **늘 `null` 이었다.** 그 키는
+        #   모듈 G 의 표(`design/tables`)가 내는 것이고, 자동 차선은 모듈 A 의
+        #   표를 쓴다 — A 의 meta 에는 그 키가 아예 없다(역사적으로도 없었다).
+        #   시험은 meta 를 손으로 넣은 스텁 표를 써서 그 사실을 못 봤다.
+        #   A 가 실제로 아는 것은 «알람밸브를 어디에 스냅했나» 이므로 그것을 낸다.
+        "alarm_snap": meta.get("알람밸브 좌표 (snap)"),
     }
 
 

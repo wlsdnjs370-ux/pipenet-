@@ -9,6 +9,20 @@ from collections import defaultdict
 
 from services.cad_import.pipeline.stage1 import SNAP, _grid_put, _grid_near, _eb_key, ang_between
 
+
+def _default_knobs(*names) -> dict:
+    """이 단계가 쓰는 눈금 기본값 — **stage1 의 DEFAULT_KNOBS 에서 가져온다.**
+
+    ★여기 숫자를 다시 적지 않는다. 종전에는 `r1_cand=2000.0` 이 적혀 있었는데
+      본체는 2026-08-03 에 1,500 으로 내렸다(구 2,000 이 1,649·1,861mm 오이음을
+      냈다). 지금은 부르는 쪽이 늘 `knobs` 를 넘겨 덮으므로 잠복 상태였지만,
+      `knobs=None` 으로 부르는 자리가 하나 생기는 순간 그 사고가 되살아난다.
+    """
+    from services.cad_import.pipeline.stage1 import DEFAULT_KNOBS
+    want = names or ("r1_cand", "r1_meas_cap", "r1_lat_tol",
+                     "r1_head_slack", "r1_cover_slack")
+    return {k: DEFAULT_KNOBS[k] for k in want}
+
 _INDEX_CELL = 500.0
 
 
@@ -68,8 +82,7 @@ def join_by_head_cover(g, ebundle, heads, knobs=None):
     heads = [(cx, cy, r), ...]  또는 [(cx, cy, r, kind), ...]
     반환: 이음 목록.
     """
-    kn = dict(r1_cand=2000.0, r1_meas_cap=60.0, r1_lat_tol=10.0,
-              r1_head_slack=120.0, r1_cover_slack=150.0)
+    kn = _default_knobs()
     if knobs:
         kn.update(knobs)
     disks = []
@@ -195,8 +208,8 @@ def join_by_through_main(g, ebundle, symbols, knobs=None, texts=None,
     texts = [(x, y, h, ly), ...] 또는 World.texts 행 (ly,c,x,y,h,s)
     반환: (이음 목록, 부수정보 dict).
     """
-    kn = dict(r1_cand=2000.0, r1_meas_cap=60.0, r1_lat_tol=10.0,
-              r1_sym_lat=60.0, r1_sym_slack=100.0, r1_head_slack=120.0)
+    kn = _default_knobs("r1_cand", "r1_meas_cap", "r1_lat_tol",
+                        "r1_sym_lat", "r1_sym_slack", "r1_head_slack")
     if knobs:
         kn.update(knobs)
     mat_layers = set(mat_layers or ())

@@ -49,7 +49,11 @@ class _T:
         self.nozzles = [{"label": "1", "in": "11", "out": "@/1"}]
         self.fittings = []
         self.equipment = []
-        self.meta = [("앵커 노드", "11")]
+        # ★모듈 A 의 표가 실제로 내는 키를 쓴다. 종전에는 여기에
+        #   「앵커 노드」를 손으로 넣어 두어, `summarize` 가 그 키를 읽는 것이
+        #   **실제로는 늘 None** 이라는 사실을 이 시험이 못 봤다(A 의 meta 에는
+        #   그런 키가 아예 없다 — 그건 모듈 G 의 표가 내는 것이다).
+        self.meta = [("알람밸브 좌표 (snap)", "(100.0, 0.0)")]
 
 
 def test_자동_표는_그대로_통과한다():
@@ -181,7 +185,9 @@ def test_요약이_최원_최근을_m로_낸다():
     assert s["k"] == 3
     assert s["far_m"] == 4.0 and s["near_m"] == 1.0
     assert s["nodes"] == 2 and s["pipes"] == 1 and s["nozzles"] == 1
-    assert s["anchor_label"] == "11"
+    # 자동 차선이 «실제로 아는 것» — 알람밸브를 어디에 스냅했나.
+    assert s["alarm_snap"] == "(100.0, 0.0)"
+    assert "anchor_label" not in s, "늘 None 이던 칸이 되살아났다"
 
 
 def test_요약은_빈_선정도_받는다():

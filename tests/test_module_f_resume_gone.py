@@ -91,8 +91,16 @@ def test_원본이_없으면_잡을_띄우지_않고_사유를_말한다(spec):
     assert body.get("ok") is False
     msg = body.get("message") or ""
     # 왜 안 되는지 · 어떻게 되살리는지 — 둘 다 있어야 한다.
-    assert "24시간" in msg, msg
+    #
+    # ★사유를 «24시간 정리» 로 단정하지 않는다. 청소부가 저장본이 가리키는
+    #   원본을 이제 보호하므로(`_referenced_upload_files`), 그 문장은 대개
+    #   **틀린 원인**을 통보하는 것이 된다. 시험도 그 옛 문구를 강요하고
+    #   있었다 — 지켜야 할 것은 「무엇이 없는지」와 「어떻게 되살리는지」다.
+    assert "원본 도면 파일이 없어" in msg, msg
     assert "다시 올리" in msg, msg
+    assert "24시간" not in msg, f"틀린 원인을 단정한다: {msg}"
+    # 찾던 곳을 알려 줘야 사람이 파일을 되찾을 수 있다.
+    assert "찾던 곳" in msg, msg
     # ★잡이 서면 안 된다. 서면 진행바가 돌다 «SystemExit» 으로 끝난다.
     assert "sid" not in body, "거절인데 세션을 만들었다"
 

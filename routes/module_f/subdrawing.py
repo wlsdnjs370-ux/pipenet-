@@ -27,8 +27,13 @@ from __future__ import annotations
 # A 의 entity 는 색을 싣지 않는다(레이어만). 캔버스는 레이어×색으로 묶으므로
 # 색을 하나로 고정하면 «레이어 단위» 묶음이 된다 — 계통도에는 그게 맞다.
 _COLOR = 7
-# 텍스트 높이 — A 의 entity 에는 없다. 0 이면 `_world_payload` 가 아니라
-# 치수 텍스트 판독(`extract_dia_text_points`)에서 걸리므로 양수를 준다.
+# 텍스트 높이 — A 의 entity 에는 없어서 채워 넣는 자리다.
+# ★종전 주석은 「0 이면 `extract_dia_text_points` 에서 걸린다」고 적었는데
+#   **사실이 아니다** — 그 함수는 높이 칸을 받아서 버린다(`_lay,_col,x,y,_h,s`).
+#   높이 0 을 실제로 거르는 곳은 `pipeline/stage45` 인데 계통도·기계실 경로는
+#   그 단계를 타지 않는다. 즉 이 값이 «무엇을 막는가» 는 확인된 바 없다.
+#   그래도 0 보다는 양수가 안전하다(높이를 쓰는 소비자가 생겨도 나눗셈·비교가
+#   퇴화하지 않는다) — 근거를 실제 확인한 것으로만 줄여 적는다.
 _TEXT_H = 1.0
 
 
@@ -172,7 +177,34 @@ def graph_payload(entities, *, layer_filter=None) -> dict:
         "components": stats.get("components_after_bridge"),
         "bridges": stats.get("bridges_applied"),
         "forced": len(forced),
+        # ★추측연결 벌점을 **숫자로 실어 보낸다.** 화면이 제 값을 적으면
+        #   미리보기와 추출이 다른 길을 고를 수 있다 — 실제로 그랬다: 서버는
+        #   1e9, 화면은 1e6 으로 1000배 달랐다. 도면 단위가 mm 라 1e6 은 1km 이고,
+        #   큰 도면에서는 실배관 우회가 그 값에 닿을 수 있다. 그러면 화면은
+        #   추측 직선을, 서버는 실배관을 고른다 — 미리보기가 거짓말이 된다.
+        #   (이 그래프로 뽑는 `extract_system`·`extract_machineroom` 이
+        #    `_shortest_path` 를 그 기본값으로 부른다.)
+        "forced_penalty_mm": _forced_penalty_mm(),
     }
+
+
+def _forced_penalty_mm() -> float:
+    """추출이 실제로 쓰는 벌점 — 엔진 기본값을 그대로 읽는다.
+
+    여기서 숫자를 다시 적지 않는다. 엔진이 값을 바꾸면 화면도 따라가야 하고,
+    그러려면 «적힌 곳» 이 하나여야 한다.
+    """
+    import inspect
+
+    from remote30_graph import _shortest_path
+    p = inspect.signature(_shortest_path).parameters.get("penalty_mm")
+    if p is not None and p.default is not inspect.Parameter.empty:
+        return float(p.default)
+    # 서명이 바뀌면 조용히 다른 값을 쓰지 않는다 — 알 수 없으면 말한다.
+    raise RuntimeError(
+        "추측연결 벌점을 엔진에서 읽지 못했습니다 — `_shortest_path` 의 "
+        "`penalty_mm` 기본값이 사라졌습니다. 화면 미리보기가 추출과 다른 길을 "
+        "고를 수 있으므로 여기서 임의 값을 쓰지 않습니다.")
 
 
 def extract_system(entities, pump_xy, av_xy, *, snap_tolerance_mm=2500.0,

@@ -90,11 +90,12 @@ AUTOJOIN_PLATEAU = 0.99
 _boot_lock = threading.Lock()
 _booted = False
 
-_SESSIONS: dict[str, dict] = {}
-_SESSIONS_LOCK = threading.Lock()
-# 무거운 단계(도면 파싱·망 구성·평면 그래프)는 한 번에 하나만 돈다.
-# docs/import 캐시와 stdout 을 공유하므로 겹치면 로그가 섞이고 캐시가 깨진다.
-_HEAVY_LOCK = threading.Lock()
+# ★세션 저장소와 무거운 단계 자물쇠는 **여기 없다** — `routes.module_f.jobs`
+#   가 갖는다. 종전에는 이 파일에도 같은 이름으로 `_SESSIONS`·`_SESSIONS_LOCK`·
+#   `_HEAVY_LOCK` 이 있었는데 **아무도 안 썼다.** 이름이 같아서 더 나빴다:
+#   `from .common import _HEAVY_LOCK` 으로 잡으면 진짜 자물쇠(jobs 쪽)와 다른
+#   객체를 잡아, 직렬화한 줄 알고 겹쳐 돌게 된다. 죽은 코드가 아니라 «틀리게
+#   쓰기 쉬운 함정» 이라 지웠다. 쓸 곳은 `jobs` 에서 가져다 쓴다.
 
 
 def _fail(msg, code=400):

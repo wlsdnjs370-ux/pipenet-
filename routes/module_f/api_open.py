@@ -139,19 +139,24 @@ def register(app, *, _save_upload):
 
         # ★원본 DXF 가 없으면 여기서 멈춘다 — 잡을 띄워 봐야 엔진이
         #   `SystemExit: DXF를 못 찾음` 으로 죽고, 사람은 그 문장만 본다.
-        #   업로드 폴더는 24시간이 지나면 정리된다(`_sweep_old_upload_files`).
         #   찍은스펙·표시캐시는 남아 있어도 **원본 없이는 못 연다**(실측:
         #   표시캐시가 있는 키도 같은 자리에서 죽는다). 그러니 «왜 못 여는지»
         #   와 «어떻게 되살리는지» 를 그 자리에서 말해 준다.
+        #
+        #   ★사유를 «24시간 정리» 로 단정하지 않는다. 청소부는 이제 저장본이
+        #     가리키는 원본을 나이와 상관없이 남긴다(`_referenced_upload_files`).
+        #     그러니 지금 여기 걸리는 것은 대개 «그 보호가 생기기 전에 지워진
+        #     것» 이거나 «파일을 옮긴 것» 이다. 원인을 모르면서 하나로 못박으면
+        #     사람은 엉뚱한 데를 찾는다 — 사실만 말하고 되살리는 길을 준다.
         gone = next((it for it in _saved_keys()
                      if it["key"] == key and it["source_dxf"]
                      and not it["source_exists"]), None)
         if gone is not None:
             return _fail(
-                f"«{key}» 의 원본 도면 파일이 없어 이어서 열 수 없습니다 — "
-                f"올린 지 24시간이 지나 정리됐습니다. 같은 DXF 를 «새 도면» "
-                f"으로 다시 올리면 찍어 둔 것이 그대로 이어집니다. "
-                f"(찾던 곳: {os.path.basename(gone['source_dxf'])})", 409)
+                f"«{key}» 의 원본 도면 파일이 없어 이어서 열 수 없습니다. "
+                f"파일을 옮겼거나, 저장본 보호가 생기기 전에 정리된 것입니다. "
+                f"같은 DXF 를 «새 도면» 으로 다시 올리면 찍어 둔 것이 그대로 "
+                f"이어집니다. (찾던 곳: {gone['source_dxf']})", 409)
 
         sess = _new_session(key=key)
 

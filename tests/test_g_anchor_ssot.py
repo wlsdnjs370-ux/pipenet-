@@ -248,3 +248,43 @@ def test_되짚지_못한_밸브는_조용히_사라지지_않는다():
     assert hit == [] and missed == [0], (hit, missed)
     # 재료가 없어도 «못 이었다» 를 그대로 돌려준다.
     assert valve_kfp_nodes(meta, [(0.0, 0.0)], [0], None) == ([], [0])
+
+
+def test_알람밸브_미해결은_사람이_채울_수_있는_자리로_나온다():
+    """★개수만 알리면 사람은 채울 길이 없다.
+
+    화면은 «채울 자리» 를 `unresolved.pairs` 로 만들고 `length_items` 는 그
+    자리를 도면에서 가리키는 데만 쓴다(`static/module_f.js` 의 eqlen 항목).
+    한쪽에만 넣으면 「미해결 1건」이라는 숫자만 남는다.
+    """
+    net = _net_with_spur()
+    got = build_design_tables(net, {"heads": [], "loads": {}},
+                              {"P_main": (0, 1)}, [],
+                              bores={"P_main": (15, "시험"),   # 라이브러리 구멍
+                                     "P_spur": (15, "시험")},
+                              valve_nodes=["N1"],
+                              tree_loads={"P_main": 30, "P_spur": 0})
+    assert dict(got.meta)["등가길이 미해결"] == "1"
+    pairs = got.unresolved["pairs"]
+    assert any(p["kind"] == "alarm_valve" and p["dia"] == 15 for p in pairs), \
+        f"채울 쌍이 없다: {pairs}"
+    assert any(i.get("kind") == "alarm_valve"
+               for i in got.unresolved["length_items"])
+
+
+def test_사람이_채운_알람밸브는_감사에_남는다():
+    """§18 의 핵심 — 자동이 낸 값과 사람이 넣은 값을 같은 얼굴로 두지 않는다."""
+    net = _net_with_spur()
+    got = build_design_tables(
+        net, {"heads": [], "loads": {}}, {"P_main": (0, 1)}, [],
+        bores={"P_main": (15, "시험"), "P_spur": (15, "시험")},
+        valve_nodes=["N1"], tree_loads={"P_main": 30, "P_spur": 0},
+        fitting_overrides={"eq_len": [{"kind": "alarm_valve", "dia": 15,
+                                       "m": 6.5, "note": "KFI 자료"}]})
+    av = [e for e in got.equipment if e["desc"] == "A/V"][0]
+    assert av["eq_len"] == 6.5 and av["eq_len_src"] == "KFI 자료"
+    assert dict(got.meta)["등가길이 미해결"] == "0"
+    # ★부속표만 세면 여기가 0 이 되어 사람이 제 입력을 못 찾는다.
+    assert dict(got.meta)["직접 입력 — 등가길이"] == "1"
+    assert any(a.get("kind") == "alarm_valve"
+               for a in got.unresolved["applied"])

@@ -248,6 +248,7 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         parse_eq_len_overrides, resolve_eq_len)
     _ov_eq = parse_eq_len_overrides(fitting_overrides)
     av_unresolved: list = []
+    av_applied: list = []
     #   ★어느 배관에 붙일지 — 「표에서 처음 만나는 것」이 아니라 **물이 지나는
     #     관** 이다. 알람밸브 절점에는 본관과 곁가지가 함께 닿는데, 표 순서로
     #     고르면 곁가지가 걸린다. 실측(B1F): 본관 65A(담당 30) 옆에 담당 0 인
@@ -278,6 +279,14 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
             # 못 구한 것을 0 으로 채우지 않는다 — 대신 어디가 빈지 남긴다.
             av_unresolved.append({"pipe": host["label"],
                                   "dia": host.get("dia")})
+        elif eq_why != "라이브러리":
+            # ★사람이 채운 값이면 감사 기록에 남긴다. 자동이 낸 값과 같은
+            #   얼굴로 두지 않는 것이 §18 의 핵심이다 — 여기서 빠뜨리면
+            #   화면의 「직접 입력 — 등가길이 n」이 부속표만 세어 사람이
+            #   제 입력을 못 찾는다.
+            av_applied.append({"what": "eq_len", "kind": "alarm_valve",
+                               "dia": int(host.get("dia") or 0), "m": eq_m,
+                               "note": eq_why, "pipe": str(host["label"])})
         row = {
             "pipe": host["label"], "in": host["in"], "out": host["out"],
             "label": str(len(tbl.equipment) + 1), "desc": "A/V",
@@ -320,8 +329,9 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         ("직접 입력 — 부속 판정",
          str(sum(1 for a in (fittings.get("applied_overrides") or ())
                  if a.get("what") == "kind"))),
+        # 부속표와 기기표를 **함께** 센다 — 사람이 채운 자리는 한 종류다.
         ("직접 입력 — 등가길이",
-         str(sum(1 for a in (fittings.get("applied_overrides") or ())
+         str(len(av_applied) + sum(1 for a in (fittings.get("applied_overrides") or ())
                  if a.get("what") == "eq_len"))),
         ("루프 잔여 배관(표 꼬리)", str(len(off_tree))),
         # ★B4 1안 — 전개가 못 붙인 헤드는 후보에서 뺐다. 조용히 빼면 「더 불리한
@@ -337,9 +347,14 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         "length_items": list(fittings.get("unresolved_length_items") or ())
         + [{"pipe": r["pipe"], "kind": "alarm_valve", "dia": r["dia"]}
            for r in av_unresolved],
-        "pairs": list(fittings.get("unresolved_pairs") or ()),
+        # ★쌍 목록에도 넣는다 — 화면이 «채울 자리» 를 **여기서** 만들고
+        #   `length_items` 는 그 자리를 도면에서 가리키는 데만 쓴다
+        #   (`static/module_f.js` 의 eqlen 항목). 한쪽에만 넣으면 사람이
+        #   「미해결 1건」이라는 숫자만 보고 채울 길이 없다.
+        "pairs": list(fittings.get("unresolved_pairs") or ())
+        + _av_pairs(av_unresolved),
         # 사람이 넣은 값을 쓴 자리 — 화면이 「직접 입력」이라고 밝힐 재료다.
-        "applied": list(fittings.get("applied_overrides") or ()),
+        "applied": list(fittings.get("applied_overrides") or ()) + av_applied,
     }
     # 관경을 덮은 자리도 같은 규약으로 들고 온다. `decide_bores` 가 곁에 붙여
     # 보낸 것을 그대로 옮길 뿐이다 — 여기서 다시 세지 않는다(두 벌 금지).
@@ -358,6 +373,21 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
 #   100mm 는 실측 최대(19mm)의 다섯 배이면서, 이웃 헤드(실측 2,950mm)에는
 #   한참 못 미친다. 넘어가면 «못 찾았다» 로 둔다 — 틀린 헤드를 가리키느니.
 WORST_HEAD_SNAP_M = 0.10
+
+
+def _av_pairs(av_unresolved) -> list:
+    """알람밸브 미해결을 «(종류, 호칭경) 쌍» 으로 접는다 — 부속표와 같은 규약.
+
+    한 쌍을 사람이 채우면 그 쌍을 쓰는 배관이 한꺼번에 풀린다. 그래서 화면은
+    배관 목록이 아니라 이 쌍 목록으로 채울 자리를 만든다.
+    """
+    by: dict = {}
+    for r in (av_unresolved or ()):
+        dia = r.get("dia")
+        key = ("alarm_valve", int(dia) if dia is not None else -1)
+        by[key] = by.get(key, 0) + 1
+    return [{"kind": k, "dia": (d if d >= 0 else None), "n": n}
+            for (k, d), n in sorted(by.items())]
 
 
 def _worst_head_node(net, worst, meta_nodes, *, board_pts=None,

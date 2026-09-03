@@ -81,8 +81,15 @@ def _sweep(force: bool = False) -> None:
         return
     _last_sweep = now
     with _SESSIONS_LOCK:
+        # ★도는 작업은 만료로도 걷지 않는다. 아래 수 상한 분기는 이미 그렇게
+        #   하는데 여기만 안 봐줬다 — 같은 함수 안에서 규칙이 갈려 있었다.
+        #   걷어 버리면 워커는 계속 돌지만 그 결과를 받을 세션이 없어, 일이
+        #   «끝난 뒤에» 화면은 「작업이 만료되었습니다」만 본다.
+        #   (SSE 로 보는 동안 touched 가 안 갱신되던 것도 같이 고쳤다 —
+        #    api_open 의 진행 스트림 참조.)
         dead = [k for k, s in _SESSIONS.items()
-                if now - s.get("touched", 0) > SESSION_TTL_SECONDS]
+                if now - s.get("touched", 0) > SESSION_TTL_SECONDS
+                and not ((s.get("job") or {}).get("state") == "run")]
         for k in dead:
             _SESSIONS.pop(k, None)
         # 그래도 넘치면 오래 안 만진 것부터 — 단, 도는 작업은 건드리지 않는다.

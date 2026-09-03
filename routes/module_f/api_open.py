@@ -196,6 +196,12 @@ def register(app, *, _save_upload):
             sent = 0
             idle_beats = 0
             while True:
+                # ★보고 있는 동안은 «만졌다» 로 친다. 폴링(`/job`)은 요청마다
+                #   `_sess` 가 touched 를 갱신하는데 이 스트림은 세션을 한 번만
+                #   찾고 끝까지 루프를 돈다 — 그래서 SSE 로 지켜보는 세션만
+                #   가만히 늙었다. 이 스트림은 잡이 끝나면(또는 idle 10초)
+                #   스스로 끝나므로, 잊힌 탭이 세션을 영원히 붙드는 일은 없다.
+                sess["touched"] = time.time()
                 view = _job_view(sess)
                 lines = sess.get("log") or []
                 # 새 로그 줄 — 줄 단위 이벤트로.

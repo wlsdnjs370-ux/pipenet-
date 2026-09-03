@@ -236,7 +236,7 @@ def register(app):
         es = sess["edit"]
         state = es.flow()
         if state is None:
-            return _fail("급수 시작 위치를 먼저 찍어야 물흐름을 볼 수 있습니다.")
+            return _fail("알람밸브(접속점)를 먼저 찍어야 물흐름을 볼 수 있습니다.")
         # 브라우저에는 연출 프레임을 돌리지 않는다 — 끝까지 돌려 최종 상태로 둔다.
         while es.flow_tick():
             pass
@@ -276,7 +276,7 @@ def register(app):
         es = sess["edit"]
         b = es.board
         if not b.sources:
-            return None, _wfail("급수 시작 위치를 먼저 찍어야 최불리 헤드를 고를 수 있습니다.")
+            return None, _wfail("알람밸브(접속점)를 먼저 찍어야 최불리 헤드를 고를 수 있습니다.")
         try:
             k = int(body.get("k") or REMOTE_K_DEFAULT)
         except (TypeError, ValueError):

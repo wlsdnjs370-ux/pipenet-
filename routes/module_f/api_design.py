@@ -387,7 +387,7 @@ def register(app, *, UPLOAD_DIR):
                              "여기서 다시 확정하지 않습니다.", 409)
             return _fail("손질 세션이 없습니다.")
         if not getattr(es.board, "sources", None):
-            return _fail("급수 시작 위치를 먼저 찍어야 설계면적을 고를 수 있습니다.")
+            return _fail("알람밸브(접속점)를 먼저 찍어야 설계면적을 고를 수 있습니다.")
         undecided = sum(1 for kk in getattr(es.board, "disk_kinds", []) or []
                         if kk == "미지정")
         if undecided:
@@ -436,7 +436,11 @@ def register(app, *, UPLOAD_DIR):
                     # [F-11c] 관경 덮기 — 부속과 달리 «규칙 값도» 덮는다
                     #   (D-F11-3). 키는 board 노드쌍이라 corridor 가 다시
                     #   계산돼도 같은 자리를 가리킨다(D-F11-4).
-                    bore_overrides=_bore_ov_map(sess))
+                    bore_overrides=_bore_ov_map(sess),
+                    # 기준 헤드(최원단)를 kfp 노드로 되짚는 데 쓴다 — board mm
+                    # 를 kfp m 로 옮기려면 이 값이 있어야 한다. 없으면 표는
+                    # 종전처럼 「기준 헤드 노드 = ?」로 남는다(추측하지 않는다).
+                    origin_mm=got.get("origin_mm"))
             except UnknownSchedule as exc:
                 return {"ok": False, "error": str(exc)}
             # ★[F-11d-2] 넘긴 것 중 «엔진이 실제로 쓴 것» 을 맞대 본다.
@@ -767,16 +771,16 @@ def register(app, *, UPLOAD_DIR):
         # 되짚는다. `parent_of` 는 양방향 첫이웃이라 트리가 아니다 — 여기서
         # 급수원 기점 BFS 로 제대로 된 부모를 만든다(안 그러면 되짚다 맴돈다).
         #
-        # ★★지금 이 아래 블록은 **한 번도 안 돈다.** 엔진의 `_anchor_node()` 가
-        #   무조건 None 을 돌려주는 스텁이라 meta 의 「기준 헤드 노드」가 항상 '?' 다
-        #   (BLOCKED §30). 그래서 화면은 최원 유하거리가 «어느 줄인지» 를 못
-        #   그린다 — 숫자(far_m)만 있고 그 줄은 없다.
+        # ★[BLOCKED §30 해소 · 2026-09-03] 이 블록은 오랫동안 **한 번도 안
+        #   돌았다.** 엔진의 `_worst_head_node()` 가 무조건 None 을 돌려주는
+        #   스텁이라 meta 의 「기준 헤드 노드」가 항상 '?' 였기 때문이다. 화면은
+        #   최원 유하거리가 «어느 줄인지» 를 못 그렸다 — 숫자만 있고 줄이 없었다.
         #
-        #   코드를 지우지 않고 둔 이유: 못 잇는 원인이 «좌표계가 안 이어진다»
-        #   (BLOCKED §17)는 엔진 쪽 사정이고, 그것이 풀리면 이 계산은 그대로
-        #   맞다. 다만 **되는 것처럼 보이는 코드는 위험하므로** 여기 크게 적어
-        #   둔다. 시험도 「아직 안 선다」를 못 박아 뒀다 — 고쳐지면 그 시험이
-        #   실패하면서 알려 준다.
+        #   못 이은 이유는 「board 헤드 번호가 전개 노드와 1:1 이 아니다」였는데,
+        #   실측해 보니 되짚는 «표를 잘못 고른» 것이었다: `node_ref` 는 노드정리
+        #   전의 id 를 담아 30개 중 12개만 맞고, 좌표로 맞대면 30개 전부
+        #   6~19mm 안에서 유일하게 걸린다. 이제 좌표로 잇는다.
+        #   (당시 「고쳐지면 실패하도록」 걸어 둔 시험이 실제로 실패해 알려 줬다.)
         worst_head_lab = dict(tbl.meta).get("기준 헤드 노드")
         worst_head_lab = str(worst_head_lab) if worst_head_lab not in (None, "?") else None
         root = next((lab for lab, n in at.items()

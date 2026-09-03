@@ -20,6 +20,7 @@
 """
 from __future__ import annotations
 
+import math
 from collections import deque
 from dataclasses import dataclass, field
 
@@ -113,7 +114,8 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
                         schedule_by_pipe=None,
                         tree_loads=None,
                         fitting_overrides=None,
-                        bore_overrides=None) -> PipeTablesG:
+                        bore_overrides=None,
+                        origin_mm=None) -> PipeTablesG:
     """제한 전개 망 → 5개 테이블. 지시서 §1 공개 시그니처.
 
     `bores` / `fittings` 는 G3 · G4 결과를 받는다. 없으면 여기서 만들지 않고
@@ -271,7 +273,9 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
 
     # ── meta — 근거를 남긴다(§G5). 화면과 산출물이 같은 말을 하게 한다.
     src = source_counts(bores)
-    worst_head_label = label_of.get(_worst_head_node(net, worst, meta_nodes), "?")
+    worst_head_label = label_of.get(
+        _worst_head_node(net, worst, meta_nodes,
+                         board_pts=board_pts, origin_mm=origin_mm), "?")
     tbl.meta = [
         ("제목", project_title),
         ("기준개수 K", str(len((worst or {}).get("heads") or []))),
@@ -326,15 +330,70 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
     return tbl
 
 
-def _worst_head_node(net, worst, meta_nodes):
+# 부착점 x,y 에서 이만큼 안에 헤드 노드가 «하나만» 있으면 그것이 그 헤드다.
+#
+# ★숫자의 근거(2026-09-03 · B1F 실측 30개). 세 종류 모두 부착점 x,y 자리에
+#   헤드 노드가 하나 생긴다 — 세로 전개는 z 를 옮기지 x,y 를 옮기지 않는다.
+#   상하향식만 «하향» 쪽이 combo_2(기본 0.3m)만큼 밀리는데, 같은 헤드의
+#   «상향» 쪽은 제자리에 남으므로 여기 걸리는 것은 언제나 있다.
+#     최근접 거리   6 ~ 19 mm  (중앙 6)
+#     2등/1등 거리비 최소 141.7배 · 500mm 안에 둘 이상 = 0건
+#   100mm 는 실측 최대(19mm)의 다섯 배이면서, 이웃 헤드(실측 2,950mm)에는
+#   한참 못 미친다. 넘어가면 «못 찾았다» 로 둔다 — 틀린 헤드를 가리키느니.
+WORST_HEAD_SNAP_M = 0.10
+
+
+def _worst_head_node(net, worst, meta_nodes, *, board_pts=None,
+                     origin_mm=None):
     """기준 헤드(최원단)에 해당하는 kfp 노드. 못 찾으면 None.
 
     ★「앵커」라 부르지 않는다 — 이 저장소에서 앵커는 **접속점**(라이저가 붙는
       자리)이다. 여기는 정반대 끝, 급수에서 가장 먼 헤드다(design/anchor).
+
+    ■ 종전에 왜 못 이었나 (BLOCKED §30)
+
+      「board 헤드 번호는 전개 노드와 1:1 이 아니다」— 맞는 말이었지만, 그래서
+      **아무것도 안 했다.** 실측으로 원인을 갈라 보니 둘이었다.
+        · `node_ref`(kfp 노드 → board 노드)로 되짚기: 뽑힌 헤드 30개 중 12개만
+          맞는다. 그 표는 «노드정리 전» 의 id 를 담고 있어(323 → 80) 절반 넘게
+          이미 사라진 노드를 가리킨다.
+        · 좌표로 맞대기: 30개 전부 6~19mm 안에서 유일하게 걸린다.
+      즉 못 이을 이유는 없었고, **되짚는 표를 잘못 고른 것**이었다.
+
+    ■ 지금 잇는 방법
+
+      최불리가 돌려준 `worst_path` 의 마지막 절점이 곧 기준 헤드의 board
+      부착 노드다. 그 자리를 kfp 좌표로 옮겨(origin_mm) 가장 가까운 헤드 노드를
+      집되, `WORST_HEAD_SNAP_M` 안에 **하나뿐일 때만** 받는다.
+
+      재료(`origin_mm`)가 없으면 종전처럼 None 이다 — 좌표계를 모르는 채로
+      «가장 먼 헤드» 같은 추측을 하지 않는다.
     """
-    an = (worst or {}).get("worst_head")
-    if an is None:
+    hi = (worst or {}).get("worst_head")
+    if hi is None or origin_mm is None or not board_pts:
         return None
-    # 기준 헤드는 board 헤드 번호다. 전개 노드와 1:1 이 아니므로 «헤드 노드 중
-    # 가장 먼 것» 으로 되짚지 않고, 못 찾으면 솔직히 못 찾았다고 둔다.
-    return None
+    path = (worst or {}).get("worst_path") or ()
+    if not path:
+        return None
+    bn = path[-1]
+    if not isinstance(bn, int) or not (0 <= bn < len(board_pts)):
+        return None
+    bx, by = float(board_pts[bn][0]), float(board_pts[bn][1])
+    # board mm → kfp m. 규칙은 `convert/main_walk.xf_mm_to_m` 하나뿐이다
+    # (좌표계 계약은 tests/test_module_f_coord_contract.py 가 지킨다).
+    tx = (bx - float(origin_mm[0])) / 1000.0 + 1.0
+    ty = (by - float(origin_mm[1])) / 1000.0 + 1.0
+
+    near = []
+    for nid, meta in (meta_nodes or {}).items():
+        if str((meta or {}).get("type_id", "")) != "head":
+            continue
+        c = (meta or {}).get("coords") or (0.0, 0.0, 0.0)
+        d = math.hypot(float(c[0]) - tx, float(c[1]) - ty)
+        if d <= WORST_HEAD_SNAP_M:
+            near.append((d, nid))
+    if len(near) != 1:
+        # 0개면 전개가 그 헤드를 못 붙였다는 뜻이고, 2개 이상이면 어느 쪽인지
+        # 모른다. 둘 다 «찍어서 맞히는» 것보다 모른다고 두는 편이 옳다.
+        return None
+    return near[0][1]

@@ -361,30 +361,45 @@ def test_수리계산_미리보기_본문이_끝까지_돈다(confirmed):
     assert t.get("meta") and t.get("pipes"), "표가 비었다"
     # F-11c 가 실은 board 노드쌍 — 관경 덮기의 키다.
     assert any(p.get("ref") for p in v["pipes"]), "역참조가 하나도 없다"
-    # ★앵커는 **단정하지 않는다.** 엔진의 `_anchor_node()` 가 무조건 None 을
-    #   돌려주는 스텁이라 meta 의 「기준 헤드 노드」는 항상 '?' 다(BLOCKED §30).
-    #   ★이름 주의 — 여기서 «앵커» 라 부르던 것은 «기준 헤드»(최원단)다.
-    #     이 저장소에서 앵커는 그 반대쪽, 라이저가 붙는 접속점이다
-    #     (services/cad_import/design/anchor.py).
-    #   여기서 「앵커가 있어야 한다」고 단정하면 시험이 «있지도 않은 기능» 을
-    #   요구하게 된다 — 처음에 그렇게 적었다가 실패로 알았다.
+    # ★이름 주의 — 여기 «기준 헤드» 는 최원단 헤드다. 이 저장소에서 «앵커» 는
+    #   그 반대쪽, 라이저가 붙는 접속점이다(services/cad_import/design/anchor.py).
+    #   여기서는 형식만 본다 — 값이 서는지는
+    #   `test_최원_유하거리_경로가_선다` 가 따로 지킨다.
     assert isinstance(v.get("worst_path"), list), "형식은 지켜야 한다"
 
 
-def test_앵커_경로가_아직_안_선다는_사실을_못_박는다(confirmed):
-    """[BLOCKED §30] 지금은 «못 그리는» 것이 정상이다 — 그것을 기록으로 남긴다.
+def test_최원_유하거리_경로가_선다(confirmed):
+    """[BLOCKED §30 해소] 예고대로 «고쳐지면 실패하는» 시험이 실패했고, 뒤집었다.
 
-    엔진의 `_anchor_node()` 가 스텁이라 미리보기의 앵커 경로 계산이 통째로
-    안 돈다. 이 시험은 **고쳐지면 실패한다** — 그때 이 시험과 BLOCKED §30 을
-    함께 지우면 된다. 「안 되는 것을 안 된다고 아는 상태」를 지키는 장치다.
+    종전 이 자리에는 「기준 헤드 노드는 항상 '?' 다」를 못 박는 시험이 있었다.
+    엔진의 `_worst_head_node()` 가 스텁이라 미리보기의 경로 계산이 한 번도
+    안 돌았기 때문이다. 되짚는 표를 바꾸자(node_ref → 좌표) 돌기 시작했다.
+
+    이제 지키는 것은 반대다 — 라벨이 서고, 그 라벨이 **경로의 끝**이며,
+    경로 길이가 최원 유하거리와 어긋나지 않는다.
     """
     c, sid = confirmed
     d = c.get(f"/api/module-f/design/preview?sid={sid}").get_json() or {}
     meta = dict((k, v) for k, v in ((d.get("tables") or {}).get("meta") or []))
-    assert meta.get("기준 헤드 노드") == "?", \
-        f"기준 헤드 노드가 생겼다 — BLOCKED §30 과 이 시험을 지울 때다: " \
-        f"{meta.get('기준 헤드 노드')}"
-    assert (d.get("view") or {}).get("worst_head") is None
+    lab = meta.get("기준 헤드 노드")
+    assert lab and lab != "?", f"기준 헤드 노드가 아직 '?' 다: {meta}"
+
+    v = d.get("view") or {}
+    assert v.get("worst_head") == lab, (v.get("worst_head"), lab)
+    path = v.get("worst_path") or []
+    assert len(path) >= 2, path
+    assert str(path[-1]) == str(lab), "경로가 기준 헤드에서 끝나지 않는다"
+    # 접속점에서 시작해야 한다 — 뿌리는 Input 이다.
+    nodes = (d.get("tables") or {}).get("nodes") or []
+    root = next((str(n.get("label")) for n in nodes
+                 if str(n.get("io_node")) == "Input"), None)
+    assert str(path[0]) == str(root), (path[0], root)
+    # 길이는 «숫자만 있고 줄은 없던» 종전의 far_m 과 맞아야 한다.
+    far = float(((d.get("summary") or {}).get("far_m")
+                 or v.get("worst_path_m") or 0.0))
+    got = float(v.get("worst_path_m") or 0.0)
+    assert got > 0.0
+    assert abs(got - far) <= max(1.0, far * 0.02), (got, far)
 
 
 def test_확정된_표에서_조회_라우트가_다시_돈다(confirmed):

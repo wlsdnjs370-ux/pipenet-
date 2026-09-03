@@ -3415,7 +3415,7 @@
           + `헤드 ${(Number(r.head_applied) || 0)
                     + (Number(r.head_already) || 0)}개.`
           + (g ? ` 점선 ${g}개는 찍지 못했습니다.` : "")
-          + " 알람밸브·급수 시작은 제안으로 표시했습니다 — 단추로 반영하세요.",
+          + " 알람밸브(접속점)는 제안으로 표시했습니다 — 단추로 반영하세요.",
             g ? "warn" : "ok");
       });
     } catch (err) { busy(false); say(err.message, "err"); }

@@ -308,7 +308,7 @@ def register(app):
 
         자동이 알던 것(알람밸브)은 **제안** 으로만 넘긴다. 반영은 손질의 기존
         클릭 경로(`edit/mode` + `edit/click`)로만 한다 — D-F8-3 은 여기서도
-        같다. 알람밸브 자리와 급수 시작 자리를 하나로 합칠지는 미결이라
+        같다. 알람밸브 자리와 접속점은 이제 하나다(리팩터링 7/n) —
         (BLOCKED §5) 제안 두 개로 나눠 둔다.
         """
         from routes.module_f.adopt import adopt_bundles, adopt_heads, select_heads

@@ -298,6 +298,32 @@ def _collinear_xy(a, b, c, ang_tol=5.0):
     return (v1x * v2x + v1y * v2y) / (n1 * n2) >= math.cos(math.radians(ang_tol))
 
 
+def _takeoff_dir(line_id, h_pipes, pipes, nodes):
+    """상하향식 하향 팔이 뻗을 «수평» 방향 — 붙은 가지관을 따라간다.
+
+    실제 배관에서 그 팔은 같은 가지에서 딴 니플이므로 가지 축 위에 놓인다.
+    붙은 관이 수직이거나(수평 성분 0) 좌표를 못 읽으면 **종전 그대로 +X** 를
+    돌려준다 — 방향을 못 정할 때 그림이 갑자기 달라지지 않게.
+    """
+    cl = (nodes.get(line_id) or {}).get("coords")
+    if not cl:
+        return (1.0, 0.0)
+    for pid in (h_pipes or ()):
+        pipe = pipes.get(pid)
+        if pipe is None:
+            continue
+        other = pipe["end"] if pipe["start"] == line_id else pipe["start"]
+        co = (nodes.get(other) or {}).get("coords")
+        if not co:
+            continue
+        dx = float(co[0]) - float(cl[0])
+        dy = float(co[1]) - float(cl[1])
+        h = math.hypot(dx, dy)
+        if h > 1e-9:
+            return (dx / h, dy / h)
+    return (1.0, 0.0)
+
+
 def _pendant_arm_to_tee(line_id, first, pipes, adj, nodes):
     """헤드에서 꺾인 팔만 따라가 가지 접속점.
 
@@ -537,14 +563,26 @@ def _apply_vertical(kfp, kind_by_nid, branch_rise, upright_m, pendant_1_m,
         return True
 
     def build_combo(hid):
-        """가지면 접속 C. ①↑ ②위헤드(①에 붙음) ③+X ④↓헤드."""
+        """가지면 접속 C. ①↑ ②위헤드(①에 붙음) ③가지를 따라 ④↓헤드.
+
+        ★③ 은 **가지관을 따라** 뻗는다. 종전에는 언제나 +X 였다 — 가지가
+          어느 쪽으로 놓였든 하향 팔만 동쪽으로 삐져나와, 화면에서 그 헤드가
+          «엉뚱한 데 박힌» 것으로 보였다(실측: 찍은 자리에서 300mm 치우침).
+          하향식(`build_pendant`)은 이미 `_pendant_arm_to_tee` 로 실제 배관을
+          따라간다 — 상하향식만 이 규칙 밖에 있었다.
+
+        ★수리계산은 종전과 같다. 세로·팔 배관의 길이는 좌표로 재지 않고 입력값
+          (①②③④)을 그대로 쓴다(`make_vert_pipe`). 바뀌는 것은 **그림** 이다.
+        """
         line_id, hc, h_pipes = attach_head_to_line(hid)
         if line_id is None:
             return False
         x, y, z = float(hc[0]), float(hc[1]), float(hc[2])
+        ux, uy = _takeoff_dir(line_id, h_pipes, pipes, nodes)
+        kx, ky = x + combo_2 * ux, y + combo_2 * uy
         j_xyz = [x, y, z + combo_1]
-        k_xyz = [x + combo_2, y, z + combo_1]
-        down_xyz = [x + combo_2, y, z + combo_1 - combo_3]
+        k_xyz = [kx, ky, z + combo_1]
+        down_xyz = [kx, ky, z + combo_1 - combo_3]
         up_xyz = [x, y, z + combo_1 + combo_up]
         j_id = next_node_id()
         k_id = next_node_id()

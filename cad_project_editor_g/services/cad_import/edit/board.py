@@ -10,11 +10,12 @@ from collections import defaultdict
 from services.cad_import.colors import BODY_COLORS, KIND_COLORS, KIND_COLORS_DRY
 from services.cad_import.kinds import (
     CONFIRMED_KINDS, disk_key, disk_kind_list, normalize_head_kind,
+    resolve_head_kinds,
 )
 from services.cad_import.pipeline.expand import gnear, gput
 from services.cad_import.pipeline.flow import SRC_SNAP, attach_heads_center, head_nodes
 from services.cad_import.pipeline.user_net import (
-    apply_deletes, apply_head_bridge, apply_joins, apply_kind_overrides,
+    apply_deletes, apply_head_bridge, apply_joins,
     apply_tee_bridge, colinear_bridges, colinear_chain_segs, corner_bridges,
     head_bridge, head_cover_ok, insert_node_on_pipe, recompute_bodies,
     tee_bridges, wet_heads,
@@ -269,19 +270,19 @@ class EditBoard:
         kind = normalize_head_kind(kind)
         if kind not in CONFIRMED_KINDS:
             return None
-        di = self._disk_index(disk)
-        if di is None:
+        if self._disk_index(disk) is None:
             return None
         before = self._snapshot()
         hx, hy, hr = float(disk[0]), float(disk[1]), float(disk[2])
         self._upsert_kind_override(hx, hy, hr, kind)
-        self.head_kinds = apply_kind_overrides(
-            self.head_kinds, [{"c": [hx, hy], "r": hr, "kind": kind}])
+        # ★require 가 먼저다 — 분류가 레코드를 못 만든 헤드는 apply(갱신만)가
+        #   지나쳐 버려서, 종전에는 화면(disk_kinds)만 아래 덧댐으로 칠하고
+        #   엔진(head_kinds)은 미지정으로 읽었다. 화면과 엔진은 같은 것을
+        #   읽어야 하므로 덧댐은 지웠다 — disk_kinds 는 파생 캐시일 뿐이다.
+        self.head_kinds = resolve_head_kinds(
+            self.disks, self.head_kinds,
+            [{"c": [hx, hy], "r": hr, "kind": kind}])
         self._refresh_kind_views()
-        if di >= len(self.disk_kinds) or self.disk_kinds[di] != kind:
-            while len(self.disk_kinds) <= di:
-                self.disk_kinds.append("미지정")
-            self.disk_kinds[di] = kind
         self.history.append(before)
         return kind
 

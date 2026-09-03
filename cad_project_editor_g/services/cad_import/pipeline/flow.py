@@ -1518,12 +1518,13 @@ def pipeline(st, outside=False, stage4=True, stage5=True, key=None):
     # kind_overrides 는 이음5/ups 뒤 · 색·집계용 head_kinds 만 덮는다(이음 재계산 없음).
     user_sources = []
     if key is not None:
-        from services.cad_import.pipeline.user_net import (
-            apply_kind_overrides, apply_user_edits)
+        from services.cad_import.kinds import resolve_head_kinds
+        from services.cad_import.pipeline.user_net import apply_user_edits
         pts, edges, user_sources, kind_ovs = apply_user_edits(
             key, pts, edges, default_edits_dir())
         if kind_ovs:
-            head_kinds = apply_kind_overrides(head_kinds, kind_ovs)
+            # require→apply — 뒤집으면 레코드 없던 헤드에 찍은 결정이 사라진다.
+            head_kinds = resolve_head_kinds(hcov, head_kinds, kind_ovs)
             counts = Counter(normalize_head_kind(r.get("kind"))
                              for r in head_kinds)
             parts = " · ".join(f"{k} {v}" for k, v in counts.most_common())

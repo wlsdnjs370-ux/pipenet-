@@ -8,8 +8,8 @@
 종류 권위: 1-1 classify → kind_overrides. 찍기 heads[].kind 는 권위 아님.
 미지정(또는 kind 없음) → 변환 차단. 상향 가정 금지.
 """
-from services.cad_import.kinds import normalize_head_kind, require_head_kinds
-from services.cad_import.pipeline.user_net import apply_kind_overrides
+from services.cad_import.kinds import (
+    apply_kind_overrides, normalize_head_kind, resolve_head_kinds)
 
 # 확정된 종류만 변환 진행. 미지정·빈값·그 밖 = 미확정.
 _CONFIRMED_KINDS = ("상향식", "하향식", "상하향식")
@@ -61,13 +61,15 @@ def preflight_kfp_convert(payload):
     payload = payload or {}
     head_kinds = list(payload.get("head_kinds") or [])
     ovs = payload.get("kind_overrides") or []
-    if ovs:
-        head_kinds = apply_kind_overrides(head_kinds, ovs)
     hcov = payload.get("hcov")
     if hcov is None:
         hcov = payload.get("disks")
     if hcov is not None:
-        head_kinds = require_head_kinds(hcov, head_kinds)
+        # require→apply 순서는 resolve 가 못박는다 — 뒤집으면 레코드 없던
+        # 헤드에 찍은 결정이 사라져, 실제로는 확정한 헤드가 미확정으로 막혔다.
+        head_kinds = resolve_head_kinds(hcov, head_kinds, ovs)
+    elif ovs:
+        head_kinds = apply_kind_overrides(head_kinds, ovs)
 
     blockers = []
     bad = _unconfirmed_heads(head_kinds)

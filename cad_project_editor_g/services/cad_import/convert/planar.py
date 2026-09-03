@@ -28,12 +28,11 @@ from collections import defaultdict, deque
 from types import SimpleNamespace
 
 from services.cad_import.convert.normalize import normalize_tee_overlaps
-from services.cad_import.kinds import disk_kind_list
+from services.cad_import.kinds import disk_kind_list, resolve_head_kinds
 from services.cad_import.pipeline import flow as fw
 from services.cad_import.pipeline.disp_cache import _disp_cache_load
 from services.cad_import.pipeline.expand import _spec_path, stage1_body
-from services.cad_import.pipeline.user_net import (
-    apply_kind_overrides, apply_user_edits)
+from services.cad_import.pipeline.user_net import apply_user_edits
 from domain import models
 from domain.node_meta_factory import build_attribute_apply_meta
 from domain.pipe_sizing import pipe_specs_for_standard
@@ -558,8 +557,8 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         pts, edges, user_sources, kind_ovs = apply_user_edits(
             key, pts, edges, fw.default_edits_dir())
         edges = {tuple(sorted(e)) for e in edges}
-        head_kinds = fw.require_head_kinds(
-            hcov, apply_kind_overrides(head_kinds, kind_ovs))
+        # require→apply — 뒤집으면 레코드 없던 헤드에 찍은 결정이 사라진다.
+        head_kinds = resolve_head_kinds(hcov, head_kinds, kind_ovs)
     kind_n = {}
     for rec in head_kinds:
         k = fw.normalize_head_kind(rec.get("kind"))

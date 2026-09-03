@@ -556,43 +556,10 @@ def user_edits_path(key, dwg_dir):
     return os.path.join(dwg_dir, f"{key}{USER_EDITS_SUFFIX}")
 
 
-def apply_kind_overrides(head_kinds, overrides):
-    """classify 결과 head_kinds 에 유저 kind_overrides 를 덮어쓴다.
-
-    이음·ups·물길은 건드리지 않는다. 매칭: c(+r) 우선, 없으면 xy(소수1).
-    구 JSON·필드 없음 → 그대로.
-    """
-    from services.cad_import.pipeline.flow import _disk_key, normalize_head_kind
-
-    out = [dict(r) for r in (head_kinds or ())]
-    if not overrides:
-        return out
-    by_key, by_xy = {}, {}
-    for ov in overrides:
-        if not isinstance(ov, dict) or "c" not in ov:
-            continue
-        c = ov["c"]
-        if not isinstance(c, (list, tuple)) or len(c) < 2:
-            continue
-        kind = normalize_head_kind(ov.get("kind"))
-        if kind not in ("상향식", "하향식", "상하향식", "미지정"):
-            kind = "미지정"
-        r = ov.get("r", ov.get("head_r"))
-        if r is not None:
-            by_key[_disk_key(c[0], c[1], r)] = kind
-        by_xy[(round(float(c[0]), 1), round(float(c[1]), 1))] = kind
-    for rec in out:
-        if "c" not in rec:
-            continue
-        c = rec["c"]
-        kind = None
-        if "head_r" in rec:
-            kind = by_key.get(_disk_key(c[0], c[1], rec["head_r"]))
-        if kind is None:
-            kind = by_xy.get((round(float(c[0]), 1), round(float(c[1]), 1)))
-        if kind is not None:
-            rec["kind"] = kind
-    return out
+# 종류 정규화 로직은 전부 kinds.py 로 모았다 — 여기 있던 본문도 그리로.
+# import 경로 호환을 위한 재수출이다(engine·preflight·planar·board·io 가
+# 여기서 가져간다).
+from services.cad_import.kinds import apply_kind_overrides  # noqa: F401,E402
 
 
 def _xy_of_pick(rec):

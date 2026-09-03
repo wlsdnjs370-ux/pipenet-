@@ -7,7 +7,7 @@ import json
 import os
 
 from services.cad_import.edit.board import EditBoard
-from services.cad_import.kinds import require_head_kinds
+from services.cad_import.kinds import require_head_kinds, resolve_head_kinds
 from services.cad_import.pipeline.disp_cache import (
     _disp_cache_load, _disp_cache_save,
 )
@@ -15,7 +15,7 @@ from services.cad_import.pipeline.expand import stage1_body
 from services.cad_import.pipeline.flow import ho_from_spots, pipeline
 from services.cad_import.pipeline.handoff import default_edits_dir
 from services.cad_import.pipeline.user_net import (
-    SNAP, apply_deletes, apply_head_bridge, apply_joins, apply_kind_overrides,
+    SNAP, apply_deletes, apply_head_bridge, apply_joins,
     apply_tee_bridge, insert_node_on_pipe, user_edits_path,
 )
 
@@ -117,8 +117,10 @@ def load_edits(board, out_dir=None):
     ovs = list(raw.get("kind_overrides") or [])
     if ovs:
         board.kind_overrides = [dict(r) for r in ovs if isinstance(r, dict)]
-        board.head_kinds = apply_kind_overrides(
-            board.head_kinds, board.kind_overrides)
-    board.head_kinds = require_head_kinds(board.disks, board.head_kinds)
+    # ★require 가 apply 보다 먼저다(resolve_head_kinds 가 그 순서를 못박는다).
+    #   종전엔 apply(갱신만) → require(미지정 삽입) 순서라, 분류가 레코드를 못
+    #   만든 헤드에 찍어 둔 종류가 재열기마다 미지정으로 되돌아갔다.
+    board.head_kinds = resolve_head_kinds(
+        board.disks, board.head_kinds, board.kind_overrides)
     board._refresh_kind_views()
     return True

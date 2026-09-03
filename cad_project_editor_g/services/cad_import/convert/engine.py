@@ -42,7 +42,7 @@ from services.cad_import.dto import (
     VALVE_1_DEFAULT_M as VALVE_1_M,
     VALVE_2_DEFAULT_M as VALVE_2_M,
 )
-from services.cad_import.kinds import normalize_head_kind, require_head_kinds
+from services.cad_import.kinds import normalize_head_kind, resolve_head_kinds
 from services.cad_import.convert.main_walk import (
     ho_to_kfp_units, sit_arcs, snap_seed, walk_main, xf_mm_to_m)
 from services.cad_import.convert.preflight import preflight_kfp_convert
@@ -62,13 +62,15 @@ BLOCKER_SOURCE_SELECTION = "source_selection_required"
 def _resolved_kinds(payload):
     head_kinds = list(payload.get("head_kinds") or [])
     ovs = payload.get("kind_overrides") or []
-    if ovs:
-        head_kinds = apply_kind_overrides(head_kinds, ovs)
     hcov = payload.get("hcov")
     if hcov is None:
         hcov = payload.get("disks")
     if hcov is not None:
-        head_kinds = require_head_kinds(hcov, head_kinds)
+        # require→apply 순서는 resolve 가 못박는다 — 뒤집으면 레코드 없던
+        # 헤드에 찍은 결정이 사라진다.
+        return resolve_head_kinds(hcov, head_kinds, ovs)
+    if ovs:
+        head_kinds = apply_kind_overrides(head_kinds, ovs)
     return head_kinds
 
 

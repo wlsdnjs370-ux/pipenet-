@@ -326,8 +326,18 @@
   // [F-10c] `alpha` 로 농도를 바꿀 수 있다 — 손질 밑그림은 board 보다 더
   // 흐려야 위계가 «배경 → 비corridor → corridor» 순으로 읽힌다. dim 경로로
   // 부르면 묶음만 그리고 일찍 끝나므로 찍기 하이라이트가 딸려오지 않는다.
+  // 바탕 도면(CAD 원본)을 그리는 굵기. 찍기 강조가 이 값에 **묶여** 있다 —
+  // 한쪽만 바꾸면 「살짝 더 굵게」가 조용히 깨진다.
+  const CAD_LINE_W = 1;
+  // 사람이 찍은 배관 — 밝은 빨강. 바탕 도면 위에서 한눈에 읽혀야 한다.
+  // ★찍기 화면의 «유령 헤드»(채택 실패)가 이미 #ef4444 를 쓴다. 그보다
+  //   또렷한 빨강을 골라 둘이 안 섞이게 한다 — 하나는 선(배관), 하나는
+  //   점(헤드)이라 모양으로도 갈리지만 색까지 같으면 눈이 헷갈린다.
+  const PICK_PIPE_HL = "#ff2d2d";
+  const PICK_PIPE_W = CAD_LINE_W + 1.4;
+
   function drawWorld(dim, alpha) {
-    ctx.lineWidth = 1;
+    ctx.lineWidth = CAD_LINE_W;
     if (dim) {
       ctx.globalAlpha = (alpha === undefined ? 0.16 : alpha);
       ctx.setLineDash([2, 4]);
@@ -363,21 +373,29 @@
     if (dim) { ctx.globalAlpha = 1; ctx.setLineDash([]); return; }
     if (!S.pick) return;
     const hl = S.pick.highlight;
-    ctx.lineWidth = 2.2;
-    ctx.strokeStyle = "#b366ff";
+    // ── 사람이 찍은 배관 — 밝은 빨강 · 바탕 도면보다 살짝 굵게.
+    //
+    // ★배관과 헤드를 «한 붓» 으로 그리지 않는다. 종전에는 pipe_segs 와
+    //   tri_segs(헤드 삼각 기호)를 같은 보라색으로 함께 그려, 찍은 배관을
+    //   빨강으로 올리면 헤드 삼각형까지 빨개진다. 삼각형은 헤드지 배관이
+    //   아니므로 아래 헤드 원과 같은 색으로 옮겼다 — 모양이 아니라 «무엇인가»
+    //   로 색이 갈려야 도면에서 배관과 헤드가 구별된다.
+    ctx.lineWidth = PICK_PIPE_W;
+    ctx.strokeStyle = PICK_PIPE_HL;
     ctx.beginPath();
     for (const s of hl.pipe_segs) {
       ctx.moveTo(sx(s[0]), sy(s[1]));
       ctx.lineTo(sx(s[2]), sy(s[3]));
     }
+    ctx.stroke();
+    // 헤드 — 원과 삼각 기호가 같은 색이다(둘 다 «찍은 헤드» 다).
+    ctx.strokeStyle = "#ff5cf0";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
     for (const s of hl.tri_segs) {
       ctx.moveTo(sx(s[0]), sy(s[1]));
       ctx.lineTo(sx(s[2]), sy(s[3]));
     }
-    ctx.stroke();
-    ctx.strokeStyle = "#ff5cf0";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
     for (const c of hl.head_circles) {
       const r = Math.max(2.5, c[2] * S.view.scale);
       ctx.moveTo(sx(c[0]) + r, sy(c[1]));

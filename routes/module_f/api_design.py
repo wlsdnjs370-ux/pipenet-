@@ -98,6 +98,81 @@ def _valve_label(tables):
     return None
 
 
+def _underlay_xf(sess: dict, view, stood, cfg: dict):
+    """[F-10e] 밑그림 변환 — board mm 한 점을 «이 화면» 의 자리로 옮기는 식.
+
+    ■ 왜 좌표가 아니라 «식» 을 보내나
+
+      화면은 board 배관을 **이미 갖고 있다**(손질 단계의 `S.edit.body_groups`).
+      실측으로 그것은 수천 선분이라, 같은 것을 설계 좌표로 바꿔 다시 실어 보내면
+      응답이 그만큼 무거워진다. 식은 숫자 일곱 개다.
+
+    ■ 식 (지시서 F-10e: 「별도 수학을 쓰지 말 것」)
+
+      엔진이 **이미 쓰는 바로 그 수** 로 셈한다. 화면이 제 식을 따로 쓰면
+      1픽셀씩 어긋나고, 어긋난 밑그림은 없느니만 못하다.
+
+        ① board mm → kfp mm     kx = mx - minx + 1000       (convert/main_walk)
+        ② kfp mm → 정규화        nx = (kx - cx)·scale        (design/sdf_post)
+        ③ 정규화 → 아이소        X = (nx-ny)·cos30
+                                Y = (nx+ny)·sin30 + (e-e_ref)·lift
+
+      ★①②는 **합쳐서** 보낸다(`k`·`tx`·`ty`). 둘 다 평행이동+등배율이라 한 장으로
+        합쳐지고, 합쳐 두면 화면이 단위를 틀릴 자리가 없어진다. 실제로 여기서
+        한 번 틀렸다 — 표는 kfp 좌표를 **mm 로 올려** 싣는데(§T3 「노드 좌표만
+        mm」) m 로 셈해 1000배가 어긋났다. 두 단계를 화면에 맡기면 그 함정을
+        화면에도 물려주는 셈이다.
+
+    ■ 표고를 무엇으로 두나 — **접속점의 표고**
+
+      board 는 평면도다. 그 배관은 전개에서 **수평망**이 되고, 헤드 접속관·가지
+      상승만 위로 뻗는다. 즉 밑그림이 놓일 자리는 그 수평망의 높이이고, 그것은
+      곧 접속점(Input)의 표고다.
+
+      ★실측으로 이 선택이 갈린다(B1F). e_ref(0.300m)에 두면 접속점이
+        846.9 단위 = 한 변의 21.8% 어긋난다 — 표고차 0.300m × lift 2,821.9 가
+        그대로 나온 값이다. 접속점 표고(0.000m)에 두면 그 항이 0 이 된다.
+        「lift 의 영점이니 거기 두면 되겠지」가 틀린 이유는, 영점은 **보기** 의
+        기준일 뿐 board 평면이 실제로 놓인 높이가 아니기 때문이다.
+
+    ★못 만들면 None 이다 — 화면은 그때 밑그림을 그리지 않는다. 어림값으로 깔면
+      그럴듯하게 어긋난 그림이 되고, 그것이 가장 나쁘다(BLOCKED §17 정정 참고).
+    """
+    norm = getattr(view, "norm", None)
+    origin = ((sess.get("design") or {}).get("got") or {}).get("origin_mm")
+    if not norm or not origin:
+        return None
+    k = float(norm["scale"])
+    return {
+        # nx = k·mx + tx · ny = k·my + ty   (board mm → 정규화 좌표)
+        "k": k,
+        "tx": k * (1000.0 - float(origin[0]) - float(norm["cx"])),
+        "ty": k * (1000.0 - float(origin[1]) - float(norm["cy"])),
+        "cos30": norm["cos30"], "sin30": norm["sin30"],
+        # 평면 보기면 아이소를 안 굽는다 — 그때는 ③을 건너뛴다.
+        "iso": bool(cfg.get("iso")),
+        "lift": float((stood or {}).get("lift") or 0.0),
+        "e_ref": float((stood or {}).get("e_ref") or 0.0),
+        # board 평면이 실제로 놓인 높이 = 접속점 표고(위 「표고를 무엇으로 두나」).
+        "e": _plan_elev(view),
+    }
+
+
+def _plan_elev(view) -> float:
+    """board 평면이 놓인 표고 — 접속점(Input) 절점의 표고.
+
+    접속점을 못 찾으면 가장 낮은 표고로 둔다. 수평망이 맨 아래이므로 그쪽이
+    «평면» 에 가깝다 — 중앙값이나 평균으로 두면 헤드가 끌어올린 값이 섞인다.
+    """
+    nodes = getattr(view, "nodes", None) or []
+    root = next((n for n in nodes if str(n.get("io_node")) == "Input"), None)
+    if root is not None:
+        return float(root.get("elevation", 0.0) or 0.0)
+    if not nodes:
+        return 0.0
+    return min(float(n.get("elevation", 0.0) or 0.0) for n in nodes)
+
+
 def _view_opts(cfg: dict) -> dict:
     """설정 7종 → display_tables/emit_design_sdf 인자. 두 곳이 같은 값을 쓴다."""
     return {
@@ -864,7 +939,9 @@ def register(app, *, UPLOAD_DIR):
                      # 최원 유하거리 경로 — far_m 이 «어느 줄» 인지.
                      "worst_head": worst_head_lab,
                      "worst_path": worst_path,
-                     "worst_path_m": round(worst_path_m, 2)},
+                     "worst_path_m": round(worst_path_m, 2),
+                     # [F-10e] 밑그림 변환 — board mm 를 이 화면에 얹는 식.
+                     "underlay": _underlay_xf(sess, view, stood, cfg)},
             "tables": tbl.as_dict(),        # 저장될 값 그대로 (F-3 표 4종)
             # [F-5] 제외 사유 분류 — mm 세계좌표. 설계 캔버스(정규화 좌표)가
             # 아니라 손질 망 위에 그려야 «어디» 인지 보인다.

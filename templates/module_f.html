@@ -460,6 +460,13 @@
         <button id="dg-recalc" class="go">다시 계산 → 아이소 갱신</button>
         <span class="tag" id="dg-edits">수정 0건</span>
       </div>
+      <!-- [F-10e] 진짜 밑그림 — 화면을 갈아 끼우지 않고 **설계 좌표계 안에**
+           board 망을 깐다. 오래 「불가」로 적혀 있었으나(BLOCKED §17) 그 근거가
+           틀렸다: 잔차 9.3% 는 기하가 아니라 짝짓기(edge_ref)가 만든 값이었고,
+           믿을 수 있는 대응으로 재면 0.018% 다. 변환은 엔진이 쓰는 그 수를
+           그대로 받아 쓴다(view.underlay) — 별도 수학 없음. -->
+      <label class="chk"><input type="checkbox" id="dg-under">
+        <span>배관 밑그림 깔기 — 아이소 «아래» 에 평면을 겹쳐 본다</span></label>
       <label class="chk"><input type="checkbox" id="dg-iso" checked>
         <span>30° 아이소매트릭으로 보기</span></label>
       <label class="f"><span>고도 펼침 배율</span>

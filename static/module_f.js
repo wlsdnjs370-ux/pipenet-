@@ -3544,7 +3544,52 @@
     $("dg-summary").innerHTML = html;
   }
 
+  // [F-10e] 배관 밑그림 — board 망을 **설계 좌표계로 옮겨** 아래에 깐다.
+  //
+  // 화면을 board 좌표로 갈아 끼우던 「평면에서 보기」와 다르다. 여기서는 설계
+  // 뷰(아이소 포함) 그대로 두고 밑에 평면을 겹친다 — 상무가 요구한 그림이다.
+  //
+  // ★변환을 여기서 만들지 않는다. 서버가 엔진이 **이미 쓰는 수** 를 그대로
+  //   보낸다(`view.underlay`). 화면이 제 식을 세우면 1픽셀씩 어긋나고, 어긋난
+  //   밑그림은 없느니만 못하다(F-10e 지시서).
+  const underlayOn = () => {
+    const el = $("dg-under");
+    return !!(el && el.checked);
+  };
+
+  function drawUnderlay() {
+    const v = S.design && S.design.view;
+    const u = v && v.underlay;
+    if (!u || !S.edit || !S.edit.body_groups) return;
+    // board 평면이 놓인 높이만큼 들어올린다. 접속점 표고이므로 보통 0 이다.
+    const dz = (u.e - u.e_ref) * u.lift;
+    const px = (mx, my) => {
+      const nx = u.k * mx + u.tx, ny = u.k * my + u.ty;
+      return u.iso ? [(nx - ny) * u.cos30, (nx + ny) * u.sin30 + dz] : [nx, ny];
+    };
+    ctx.save();
+    // 밑그림은 «배경» 이다 — 실측 망보다 확실히 흐리게 두어 위계가 뒤집히지
+    // 않게 한다(손질 화면의 배경 도면과 같은 규약).
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = "#7aa2ff";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const g of S.edit.body_groups) {
+      const sg = g.segs;
+      for (let i = 0; i < sg.length; i += 4) {
+        const a = px(sg[i], sg[i + 1]);
+        const b = px(sg[i + 2], sg[i + 3]);
+        ctx.moveTo(sx(a[0]), sy(a[1]));
+        ctx.lineTo(sx(b[0]), sy(b[1]));
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawDesign() {
+    // 밑그림이 먼저다 — 나중에 그리면 망을 덮는다.
+    if (underlayOn()) drawUnderlay();
     // ★표 요약만 받고 미리보기는 아직인 상태가 있다(renderDesignSummary 가
     //   먼저 돈다). 그때 그리려 들면 「Cannot read properties of undefined」로
     //   화면이 멈춘다 — 그릴 것이 없으면 조용히 돌아간다.
@@ -4926,6 +4971,25 @@
       b.classList.toggle("on", b.dataset.mode === mode);
     }
   }
+
+  $("dg-under").onchange = async () => {
+    // 밑그림은 손질 망(board)이 있어야 그린다 — 없으면 한 번 받아 둔다.
+    if (underlayOn() && !S.edit) {
+      try {
+        const d = await api(`/api/module-f/edit/state?sid=${S.sid}`);
+        setEdit(d.state);
+      } catch (err) { say(err.message, "err"); return; }
+    }
+    const u = S.design && S.design.view && S.design.view.underlay;
+    if (underlayOn() && !u) {
+      // 재료가 없으면 «어림값으로» 깔지 않는다 — 그럴듯하게 어긋난 그림이
+      // 가장 나쁘다(BLOCKED §17 정정). 사유를 말하고 끈다.
+      $("dg-under").checked = false;
+      say("밑그림 변환을 받지 못했습니다 — 표를 다시 확정해 주세요.", "err");
+      return;
+    }
+    draw();
+  };
 
   $("dg-plan").onchange = async () => {
     // 손질 상태를 안 들고 있으면 평면을 그릴 수 없다 — 한 번 받아 둔다.

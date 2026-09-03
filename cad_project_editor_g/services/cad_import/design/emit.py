@@ -182,13 +182,19 @@ def display_tables(tables, *, iso: bool = False, iso_z_scale: float = 1.0,
     장비 행은 여기서 바뀌지 않는다.
     """
     from services.cad_import.design.sdf_post import (
-        bake_isometric, normalize_node_coords)
+        COS30, SIN30, bake_isometric, node_norm_params, normalize_node_coords)
 
     view = _copy.copy(tables)
     view.nodes = [dict(n) for n in (getattr(tables, "nodes", None) or ())]
 
+    # ★변환 파라미터를 «옮기기 전에» 붙잡아 둔다. 밑그림(board 배관)은 표에
+    #   없는 점이라, 같은 화면에 얹으려면 이 수들이 있어야 한다. 정규화가
+    #   지나간 뒤에 다시 재면 이미 옮겨진 좌표에서 재는 것이라 값이 달라진다.
+    cx, cy, scale = node_norm_params(view, canvas_units=canvas_units)
     # ★순서가 중요하다: 정규화 → 베이크. 바꾸면 lift 배율이 어긋난다(§G12).
     normalize_node_coords(view, canvas_units=canvas_units)
+    view.norm = {"cx": cx, "cy": cy, "scale": scale,
+                 "cos30": COS30, "sin30": SIN30}
     stood = None
     if iso:
         # 헤드는 같이 돌리지 않고 화면 수직으로 세운다(§G15). 평면 보기에서는

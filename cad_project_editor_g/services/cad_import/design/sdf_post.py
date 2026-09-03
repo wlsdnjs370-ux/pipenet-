@@ -74,6 +74,27 @@ def check_schedule(name: str) -> str:
 
 
 # ────────────────────────────────────────────────── [G11] 좌표 정규화
+def node_norm_params(tables, *, canvas_units: float = 3000.0):
+    """정규화 파라미터 `(cx, cy, scale)` — 좌표를 **옮기지 않고** 셈만 한다.
+
+    ★밑그림이 있어야 하는 값이다. 밑그림은 표에 없는 점(board 배관)을 같은
+      화면에 얹어야 하는데, 그러려면 `normalize_node_coords` 가 **속으로 쓰는
+      바로 그 수**를 알아야 한다. 여기서 한 번 셈하고 두 곳이 같이 쓴다 —
+      밑그림이 제 식을 따로 쓰면 1픽셀씩 어긋나고, 어긋난 밑그림은 없느니만
+      못하다.
+    """
+    nodes = getattr(tables, "nodes", None) or []
+    if not nodes:
+        return 0.0, 0.0, 1.0
+    xs = [float(n.get("x", 0) or 0) for n in nodes]
+    ys = [float(n.get("y", 0) or 0) for n in nodes]
+    cx = (min(xs) + max(xs)) / 2.0
+    cy = (min(ys) + max(ys)) / 2.0
+    longest = max(max(xs) - min(xs), max(ys) - min(ys))
+    scale = (canvas_units / longest) if longest > 1e-9 else 1.0
+    return cx, cy, scale
+
+
 def normalize_node_coords(tables, *, canvas_units: float = 3000.0) -> float:
     """bbox 중심 → (0,0), 가장 긴 축 → `canvas_units`. 적용한 배율을 돌려준다.
 
@@ -88,12 +109,7 @@ def normalize_node_coords(tables, *, canvas_units: float = 3000.0) -> float:
     nodes = getattr(tables, "nodes", None) or []
     if not nodes:
         return 1.0
-    xs = [float(n.get("x", 0) or 0) for n in nodes]
-    ys = [float(n.get("y", 0) or 0) for n in nodes]
-    cx = (min(xs) + max(xs)) / 2.0
-    cy = (min(ys) + max(ys)) / 2.0
-    longest = max(max(xs) - min(xs), max(ys) - min(ys))
-    scale = (canvas_units / longest) if longest > 1e-9 else 1.0
+    cx, cy, scale = node_norm_params(tables, canvas_units=canvas_units)
     for n in nodes:
         n["x"] = (float(n.get("x", 0) or 0) - cx) * scale
         n["y"] = (float(n.get("y", 0) or 0) - cy) * scale
@@ -193,7 +209,13 @@ def bake_isometric(tables, *, iso_z_scale: float = 1.0,
         vertical += 1
 
     return {"heads": len(heads), "vertical": vertical,
-            "not_terminal": len(heads) - len(standable), "stub": stub}
+            "not_terminal": len(heads) - len(standable), "stub": stub,
+            # ★밑그림이 같은 식을 쓰려면 필요한 세 값. 여기서 셈한 것을 그대로
+            #   내보낸다 — 「별도 수학을 쓰지 말 것」(F-10e 지시서).
+            #   화면은 board 점 (x,y,e) 를
+            #     x' = (x-y)·cos30 · y' = (x+y)·sin30 + (e-e_ref)·lift
+            #   로 얹으면 표의 절점과 **같은 자리**에 놓인다.
+            "e_ref": e_ref, "lift": lift, "e_range": e_range}
 
 
 # ─────────────────────────────────────────── [G9] Pipe-type 주입

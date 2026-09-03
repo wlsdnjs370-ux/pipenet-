@@ -613,26 +613,51 @@ def test_아이소_좌표에_손대지_않았다():
     seg = html[j:end]
     assert "post(" not in seg, "토글이 서버 상태를 바꾼다"
     assert "draw()" in seg
+    # [F-10e] 진짜 밑그림 토글도 같다 — 읽기(GET) 하나 말고는 서버를 안 건드린다.
+    j2 = html.index('$("dg-under").onchange')
+    seg2 = html[j2:html.index('$("dg-plan").onchange', j2)]
+    assert "post(" not in seg2, "밑그림 토글이 서버 상태를 바꾼다"
+    assert "draw()" in seg2
     # 설계 미리보기는 여전히 엔진의 display_tables 결과를 그대로 쓴다.
     import inspect
 
     from routes.module_f import api_design
 
-    src = inspect.getsource(api_design)
-    assert "display_tables" in src
-    assert "underlay" not in src, "설계 라우트에 밑그림 좌표가 섞였다"
+    assert "display_tables" in inspect.getsource(api_design)
 
 
 def test_밑그림은_산출물을_안_건드린다():
-    """표시 전용 증명 — 서버에 밑그림 상태를 저장하는 자리가 없다."""
-    import inspect
+    """표시 전용 증명 — **행위**로 본다.
 
-    from routes.module_f import api_design, views
+    ★종전에는 `api_design` 소스에 「underlay」라는 낱말이 없는지로 지켰다. 그
+      금지는 밑그림이 «화면을 board 좌표로 갈아 끼우는» 것이던 시절의 규약이다.
+      이제 서버가 밑그림 **변환**(읽기 전용 수 일곱 개)을 함께 보내므로 낱말은
+      당연히 있다 — 지켜야 할 성질은 「낱말이 없다」가 아니라 「산출물·세션이
+      안 바뀐다」이므로, 그것을 직접 검사한다.
+    """
+    from routes.module_f import api_design
 
-    for mod in (api_design, views):
-        src = inspect.getsource(mod)
-        for banned in ("dg_plan", "plan_underlay", "underlay"):
-            assert banned not in src, f"{mod.__name__} 에 {banned} 가 있다"
+    # ① 세션에 밑그림 상태를 저장하지 않는다 — 표시 전용이면 남길 것이 없다.
+    sess = {"design": {"got": {"origin_mm": (0.0, 0.0)}, "tables": None,
+                       "k": 30, "schedule": "KSD 3507", "marks": {}}}
+
+    class _V:
+        nodes = [{"label": "1", "x": 0, "y": 0, "elevation": 0.0,
+                  "io_node": "Input"}]
+        norm = {"cx": 1.0, "cy": 2.0, "scale": 0.5,
+                "cos30": 0.8660254037844387, "sin30": 0.5}
+
+    before = {k: v for k, v in sess["design"].items()}
+    u = api_design._underlay_xf(sess, _V(), {"lift": 1.0, "e_ref": 0.3},
+                                {"iso": True})
+    assert sess["design"] == before, "밑그림을 만들며 세션을 고쳤다"
+
+    # ② 산출물(표)에 밑그림이 섞이지 않는다 — 변환은 view 곁가지일 뿐이다.
+    assert set(u) == {"k", "tx", "ty", "cos30", "sin30", "iso",
+                      "lift", "e_ref", "e"}, sorted(u)
+
+    # ③ 재료가 없으면 «어림값» 대신 None — 그럴듯하게 어긋난 그림이 가장 나쁘다.
+    assert api_design._underlay_xf({}, _V(), None, {"iso": True}) is None
 
 
 # ═══════════════════════════════════════════ F-10f. 이상 표시

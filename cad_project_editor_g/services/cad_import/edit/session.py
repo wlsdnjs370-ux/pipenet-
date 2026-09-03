@@ -11,8 +11,10 @@ from services.cad_import.pipeline.user_net import _pt_seg_d2, pick_head, pick_se
 
 MODE_JOIN = "이음"
 MODE_DELETE = "삭제"
-MODE_SOURCE = "급수시작위치"
 MODE_VALVE = "알람밸브위치"
+# 은퇴한 모드 — 이제 알람밸브 픽이 접속점을 겸한다(아래 `click` 참고).
+# 옛 화면·저장본이 이 이름을 보낼 수 있으므로 «같은 동작» 으로 받는다.
+MODE_SOURCE = "급수시작위치"
 
 
 def _prefer_head(x, y, seg, head):
@@ -59,16 +61,18 @@ class EditSession:
     def click(self, x, y, max_d):
         """모드에 따라 보드를 두드린다. 좌표·반경만 받는다."""
         b = self.board
-        if self.mode == MODE_SOURCE:
-            node, added = b.toggle_source(x, y)
-            if node is None:
-                return None
-            return {"동작": "급수", "node": node, "added": added}
-        if self.mode == MODE_VALVE:
+        if self.mode in (MODE_VALVE, MODE_SOURCE):
+            # ★평면도에서 찍는 특수 점은 **하나** 다 — 알람밸브(라이저 접속점).
+            #   종전에는 «급수시작위치» 와 «알람밸브위치» 를 따로 찍었는데, 그 둘은
+            #   같은 장치다: 통합(S740)에서 평면도의 접속점 노드는 라이저의 AV
+            #   노드에 자리를 내주고 사라진다(remote30_full_network 의 「AV 는
+            #   라이저 쪽에서 이미 포함」). 따로 찍을 수 있으면 **어긋날 수 있고**,
+            #   어긋나면 Input 경계와 알람밸브가 다른 자리에 놓인다.
             node, added = b.toggle_valve(x, y, max_d)
             if node is None:
                 return None
-            return {"동작": "밸브", "node": node, "added": added}
+            b.set_source_nodes([node] if added else [])
+            return {"동작": "알람밸브", "node": node, "added": added}
         segs = b.segments()
         seg = pick_seg(segs, x, y, max_d)
         head = pick_head(b.disks, x, y, max_d)

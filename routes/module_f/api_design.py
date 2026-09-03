@@ -486,7 +486,7 @@ def register(app, *, UPLOAD_DIR):
                                (("dry", "물길 미도달"),
                                 ("unattached", "이음 끊김"),
                                 ("unpicked", "찍히지 않음")) if k2 in det))
-            print(f"[설계] 표 확정 · 헤드 {s['k']} · 앵커 {s['far_m']} m · "
+            print(f"[설계] 표 확정 · 헤드 {s['k']} · 최원 {s['far_m']} m · "
                   f"배관 {s['counts']['pipes']} · 제외 {s['excluded_heads']:,}")
             return {"ok": True, "summary": s}
 
@@ -760,15 +760,15 @@ def register(app, *, UPLOAD_DIR):
         heads = {str(r.get("in")) for r in view.nozzles}
         av = _valve_label(tbl)
 
-        # ── 최원 유하거리 «경로» — 급수원 → 앵커 (표 라벨 기준)
+        # ── 최원 유하거리 «경로» — 접속점 → 기준 헤드 (표 라벨 기준)
         #
         # 손질 단계에서는 board 절점으로 그렸지만 여기는 설계 표의 좌표계다.
-        # 표에 이미 «앵커 노드» 가 meta 로 적혀 있으니 그것에서 급수원까지
+        # 표에 이미 «기준 헤드 노드» 가 meta 로 적혀 있으니 그것에서 접속점까지
         # 되짚는다. `parent_of` 는 양방향 첫이웃이라 트리가 아니다 — 여기서
         # 급수원 기점 BFS 로 제대로 된 부모를 만든다(안 그러면 되짚다 맴돈다).
         #
         # ★★지금 이 아래 블록은 **한 번도 안 돈다.** 엔진의 `_anchor_node()` 가
-        #   무조건 None 을 돌려주는 스텁이라 meta 의 「앵커 노드」가 항상 '?' 다
+        #   무조건 None 을 돌려주는 스텁이라 meta 의 「기준 헤드 노드」가 항상 '?' 다
         #   (BLOCKED §30). 그래서 화면은 최원 유하거리가 «어느 줄인지» 를 못
         #   그린다 — 숫자(far_m)만 있고 그 줄은 없다.
         #
@@ -777,13 +777,13 @@ def register(app, *, UPLOAD_DIR):
         #   맞다. 다만 **되는 것처럼 보이는 코드는 위험하므로** 여기 크게 적어
         #   둔다. 시험도 「아직 안 선다」를 못 박아 뒀다 — 고쳐지면 그 시험이
         #   실패하면서 알려 준다.
-        anchor_lab = dict(tbl.meta).get("앵커 노드")
-        anchor_lab = str(anchor_lab) if anchor_lab not in (None, "?") else None
+        worst_head_lab = dict(tbl.meta).get("기준 헤드 노드")
+        worst_head_lab = str(worst_head_lab) if worst_head_lab not in (None, "?") else None
         root = next((lab for lab, n in at.items()
                      if str(n.get("io_node")) == "Input"), None)
-        anchor_path: list[str] = []
-        anchor_path_m = 0.0
-        if anchor_lab and root:
+        worst_path: list[str] = []
+        worst_path_m = 0.0
+        if worst_head_lab and root:
             adj: dict[str, list[tuple[str, str]]] = {}
             plen: dict[str, float] = {}
             for row in view.pipes:
@@ -806,15 +806,15 @@ def register(app, *, UPLOAD_DIR):
                     seen.add(nxt)
                     par[nxt] = (cur, pid)
                     queue.append(nxt)
-            if anchor_lab in seen:
-                cur = anchor_lab
+            if worst_head_lab in seen:
+                cur = worst_head_lab
                 while cur != root:
                     up, pid = par[cur]
-                    anchor_path.append(cur)
-                    anchor_path_m += plen.get(pid, 0.0)
+                    worst_path.append(cur)
+                    worst_path_m += plen.get(pid, 0.0)
                     cur = up
-                anchor_path.append(root)
-                anchor_path.reverse()
+                worst_path.append(root)
+                worst_path.reverse()
 
         nodes = []
         for lab, n in at.items():
@@ -832,8 +832,8 @@ def register(app, *, UPLOAD_DIR):
                 rec["input"] = True
             if av is not None and lab == str(av):
                 rec["valve"] = True
-            if anchor_lab and lab == anchor_lab:
-                rec["anchor"] = True      # 기준압을 잡는 지점
+            if worst_head_lab and lab == worst_head_lab:
+                rec["worst_head"] = True  # 기준압을 잡는 지점(최원단 헤드)
             nodes.append(rec)
         # [F-11c · D-F11-4] 관경 덮기의 «키» — board 노드쌍. 표 라벨(P12·노드 3)은
         #   BFS 순서로 매겨져 corridor 가 바뀌면 다른 자리를 가리키므로, 화면이
@@ -858,9 +858,9 @@ def register(app, *, UPLOAD_DIR):
             "stood": stood,
             "view": {"nodes": nodes, "pipes": pipes,
                      # 최원 유하거리 경로 — far_m 이 «어느 줄» 인지.
-                     "anchor": anchor_lab,
-                     "anchor_path": anchor_path,
-                     "anchor_path_m": round(anchor_path_m, 2)},
+                     "worst_head": worst_head_lab,
+                     "worst_path": worst_path,
+                     "worst_path_m": round(worst_path_m, 2)},
             "tables": tbl.as_dict(),        # 저장될 값 그대로 (F-3 표 4종)
             # [F-5] 제외 사유 분류 — mm 세계좌표. 설계 캔버스(정규화 좌표)가
             # 아니라 손질 망 위에 그려야 «어디» 인지 보인다.

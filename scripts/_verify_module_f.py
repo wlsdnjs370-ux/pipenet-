@@ -340,9 +340,11 @@ def main():
             check("설계면적으로 뭉침(퍼짐 < 총연장)",
                   diag_m < s["total_m"],
                   f"퍼짐 {diag_m:.1f} m · 배관연장 {s['total_m']} m · 폭 {s['span_m']} m")
-            check("앵커 = 최원 유하거리", w.get("anchor") is not None
+            # 「앵커」는 접속점(라이저가 붙는 자리)만 뜻한다 — 여기서 재는 것은
+            # 반대쪽 끝, 급수에서 가장 먼 «기준 헤드» 다.
+            check("기준 헤드 = 최원 유하거리", w.get("worst_head") is not None
                   and abs(s["far_m"] - w["far_m"]) < 0.01,
-                  f"앵커 {w.get('anchor')} · 최원 {s['far_m']} m")
+                  f"기준 헤드 {w.get('worst_head')} · 최원 {s['far_m']} m")
             # 담당 헤드 수 — 주배관은 여러 헤드를 먹이고, 말단 가지는 load=1.
             loads = [c_[4] for c_ in w["corridor"]]
             check("담당 헤드 수(load) 실림",

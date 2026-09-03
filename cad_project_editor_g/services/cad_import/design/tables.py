@@ -23,6 +23,8 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 
+from services.cad_import.design.anchor import require_anchor
+
 # 전개 좌표(m) → 표 좌표(mm)
 M_TO_MM = 1000.0
 # 관종의 권위는 `design/sdf_post.SCHEDULE_DEFS` 다(SLF 의 Item-name 과 정합).
@@ -141,11 +143,10 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         c = (meta_nodes.get(nid) or {}).get("coords") or (0.0, 0.0, 0.0)
         return float(c[2]) if len(c) > 2 else 0.0
 
-    # ── 뿌리 = 급수원(펌프). 없으면 표를 만들 수 없다.
-    root = next((n for n, m in meta_nodes.items()
-                 if str((m or {}).get("type_id", "")) == "pump"), None)
-    if root is None:
-        root = next(iter(meta_nodes), None)
+    # ── 뿌리 = 접속점(알람밸브 자리). 없으면 표를 만들 수 없다 — 그러니 던진다.
+    #   종전엔 `next(iter(meta_nodes))` 로 눕어, dict 에 먼저 들어온 노드가
+    #   Input 경계가 되고 물 흐르는 방향이 통째로 거기서 유도됐다(design/anchor).
+    root = require_anchor(meta_nodes, what="설계 표")
     order, parent, tree_pipes, off_tree = bfs_order(net, root)
 
     # ── 관경·부속 (없으면 지금 만든다)
@@ -236,6 +237,15 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
             })
 
     # ── ⑤ 기기표 — 알람밸브. 찍은 것이 없으면 행을 만들지 않는다.
+    #
+    # ★등가길이는 부속표와 **같은 함수**로 정한다(`resolve_eq_len`).
+    #   종전에는 여기가 `"eq_len": 0.0` 으로 박혀 있었다 — 라이브러리에 값이
+    #   버젓이 있는데도(실측: 알람밸브 100A = 9.5m) SDF 에는 0 이 실렸다.
+    #   0 은 「손실이 없다」는 주장이라, 그만큼 계산이 낙관적으로 틀어진다.
+    from services.cad_import.design.fitting import (
+        parse_eq_len_overrides, resolve_eq_len)
+    _ov_eq = parse_eq_len_overrides(fitting_overrides)
+    av_unresolved: list = []
     for nid in (valve_nodes or ()):
         lab = label_of.get(nid)
         if lab is None:
@@ -243,19 +253,29 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         host = next((r for r in tbl.pipes if lab in (r["in"], r["out"])), None)
         if host is None:
             continue
-        tbl.equipment.append({
+        eq_m, eq_why = resolve_eq_len("alarm_valve", host.get("dia"),
+                                      ov_eq=_ov_eq)
+        if eq_m is None:
+            # 못 구한 것을 0 으로 채우지 않는다 — 대신 어디가 빈지 남긴다.
+            av_unresolved.append({"pipe": host["label"],
+                                  "dia": host.get("dia")})
+        row = {
             "pipe": host["label"], "in": host["in"], "out": host["out"],
             "label": str(len(tbl.equipment) + 1), "desc": "A/V",
-            "eq_len": 0.0, "rel_pos": 0.5,
-        })
+            "eq_len": (0.0 if eq_m is None else round(eq_m, 3)),
+            "rel_pos": 0.5,
+        }
+        if eq_m is not None:
+            row["eq_len_src"] = eq_why
+        tbl.equipment.append(row)
 
     # ── meta — 근거를 남긴다(§G5). 화면과 산출물이 같은 말을 하게 한다.
     src = source_counts(bores)
-    anchor_label = label_of.get(_anchor_node(net, worst, meta_nodes), "?")
+    worst_head_label = label_of.get(_worst_head_node(net, worst, meta_nodes), "?")
     tbl.meta = [
         ("제목", project_title),
         ("기준개수 K", str(len((worst or {}).get("heads") or []))),
-        ("앵커 노드", anchor_label),
+        ("기준 헤드 노드", worst_head_label),
         ("최원 유하거리 (m)", str((worst or {}).get("far_m", ""))),
         ("설계면적 폭 (m)", str((worst or {}).get("span_m", ""))),
         ("corridor 총연장 (m)", str((worst or {}).get("total_m", ""))),
@@ -270,7 +290,10 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         # 개수는 여전히 `build_fittings` 한 곳에서만 정해진다 — 아래 목록도
         # 같은 자리에서 나오므로 둘이 어긋날 수 없다.
         ("부속 판정 불가", str(fittings.get("unresolved_kind", 0))),
-        ("등가길이 미해결", str(fittings.get("unresolved_length", 0))),
+        # 부속표(배관에 딸린 것)와 기기표(알람밸브)를 **함께** 센다 — 같은
+        # 「등가길이」라는 한 칸이므로 두 수를 따로 두면 사람이 하나를 놓친다.
+        ("등가길이 미해결",
+         str(int(fittings.get("unresolved_length", 0)) + len(av_unresolved))),
         # ★사람이 넣은 값을 쓴 자리는 **산출물에도** 남긴다. 자동이 낸 값과
         #   같은 얼굴로 두면, 나중에 그 수치를 누가 정했는지 알 수 없다.
         ("직접 입력 — 부속 판정",
@@ -283,12 +306,16 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         # ★B4 1안 — 전개가 못 붙인 헤드는 후보에서 뺐다. 조용히 빼면 「더 불리한
         #   헤드가 있는데 못 본 채」 수리계산이 나간다. 산출물에도 남긴다.
         ("전개가 못 붙여 제외한 헤드", str(excluded_heads)),
-        ("설계구역 선정", "모듈 G 앵커 방식 (SDF 전용 · .kfp 는 솔버가 따로 고른다)"),
+        ("설계구역 선정", "모듈 G 기준헤드 방식 (SDF 전용 · .kfp 는 솔버가 따로 고른다)"),
     ]
     # 미해결이 «어느 배관인지» — 개수와 같은 자리에서 나온 목록이다.
     tbl.unresolved = {
         "kind_items": list(fittings.get("unresolved_kind_items") or ()),
-        "length_items": list(fittings.get("unresolved_length_items") or ()),
+        # 알람밸브 행도 같은 목록에 넣는다 — 화면이 「어디를 채워야 하나」를
+        # 한 곳에서 읽는다. kind 를 붙여 두어야 채울 칸을 특정할 수 있다.
+        "length_items": list(fittings.get("unresolved_length_items") or ())
+        + [{"pipe": r["pipe"], "kind": "alarm_valve", "dia": r["dia"]}
+           for r in av_unresolved],
         "pairs": list(fittings.get("unresolved_pairs") or ()),
         # 사람이 넣은 값을 쓴 자리 — 화면이 「직접 입력」이라고 밝힐 재료다.
         "applied": list(fittings.get("applied_overrides") or ()),
@@ -299,11 +326,15 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
     return tbl
 
 
-def _anchor_node(net, worst, meta_nodes):
-    """앵커 헤드에 해당하는 kfp 노드. 못 찾으면 None."""
-    an = (worst or {}).get("anchor")
+def _worst_head_node(net, worst, meta_nodes):
+    """기준 헤드(최원단)에 해당하는 kfp 노드. 못 찾으면 None.
+
+    ★「앵커」라 부르지 않는다 — 이 저장소에서 앵커는 **접속점**(라이저가 붙는
+      자리)이다. 여기는 정반대 끝, 급수에서 가장 먼 헤드다(design/anchor).
+    """
+    an = (worst or {}).get("worst_head")
     if an is None:
         return None
-    # 앵커는 board 헤드 번호다. 전개 노드와 1:1 이 아니므로 «헤드 노드 중
+    # 기준 헤드는 board 헤드 번호다. 전개 노드와 1:1 이 아니므로 «헤드 노드 중
     # 가장 먼 것» 으로 되짚지 않고, 못 찾으면 솔직히 못 찾았다고 둔다.
     return None

@@ -115,6 +115,8 @@ def register(app):
         es = sess["edit"]
         from services.cad_import.edit.session import (
             MODE_DELETE, MODE_JOIN, MODE_SOURCE, MODE_VALVE)
+        # MODE_SOURCE 는 은퇴했지만 «모르는 모드» 로 막지는 않는다 — 옛 화면이
+        # 보내면 알람밸브 픽과 같은 동작을 한다(session.click).
         allowed = {MODE_JOIN, MODE_DELETE, MODE_SOURCE, MODE_VALVE}
         mode = str(body.get("mode") or "")
         if mode not in allowed:
@@ -303,7 +305,7 @@ def register(app):
         #
         # 도면 장 나누기는 «자동으로 잰 경계» 라 실무에서 늘 맞지는 않는다.
         # 한 층에 방화구획이 여럿이거나, 계산에서 빼야 할 구역(주차장·기계실)이
-        # 섞여 있으면 앵커가 그리로 튄다 — 그때는 사람이 직접 가두는 수밖에 없다.
+        # 섞여 있으면 기준 헤드가 그리로 튄다 — 그때는 사람이 직접 가두는 수밖에 없다.
         # A 가 같은 이유로 zones 를 갖는다.
         #
         # 여러 개면 합집합이다(∪). 장 선택과 함께 쓰면 교집합이 된다 —
@@ -342,7 +344,7 @@ def register(app):
 
         # [F-1 · D4] 급수원이 여럿이면 «어느 하나 기준» 인지 사람이 정한다 —
         # 전체망 .kfp 변환의 source_selection_required 와 같은 규약(태그 Z1…
-        # 또는 1부터 번호). 어느 급수원에서든 가장 먼 헤드는 앵커가 못 된다:
+        # 또는 1부터 번호). 어느 급수원에서든 가장 먼 헤드는 기준 헤드가 못 된다:
         # 급수원마다 최원 유하거리가 다르기 때문이다(G BLOCKED B2 — 이것으로 해소).
         src_index = None
         picked_tag = None
@@ -401,8 +403,8 @@ def register(app):
                 "zones": len(w["zones"]),
                 "candidates": w["candidates"],
                 # 최원 유하거리 «경로» — 그 거리가 어느 줄인지.
-                "anchor_path_m": w.get("anchor_path_m", 0.0),
-                "anchor_path_nodes": len(w.get("anchor_path") or ()),
+                "worst_path_m": w.get("worst_path_m", 0.0),
+                "worst_path_nodes": len(w.get("worst_path") or ()),
                 "path_edges": len(w["edges"])}, None
 
     @app.post("/api/module-f/edit/anchor-click")
@@ -419,9 +421,11 @@ def register(app):
           `es.click` 은 토글이므로 «갈아끼우기» 도 클릭이다: 있던 자리를 한 번
           눌러 끄고, 새 자리를 눌러 켠다.
 
-        ★B1 은 해소가 아니라 «공존 유지» 다(D-F10-4). 뿌리=급수시작위치,
-          밸브=기기 행이라는 현행 규약은 그대로다 — 원클릭이 둘을 같은 점에
-          놓을 뿐이다.
+        ★B1 을 이제 «해소» 했다(종전 D-F10-4 는 공존 유지였다). 평면도에서 찍는
+          특수 점은 알람밸브 하나뿐이고, 그것이 접속점(뿌리)을 겸한다 —
+          `session.click` 이 한 번의 픽으로 둘을 놓는다. 따로 찍을 수 있으면
+          어긋날 수 있고, 어긋나면 Input 경계와 알람밸브가 다른 자리에 놓인다.
+          그래서 여기서도 픽을 «한 번» 만 한다.
 
         최불리는 `_compute_worst` 로 «같은 잡 안에서» 이어 돌린다(실측 ~18초).
         K 는 저장된 값(`worst_k`), 없으면 기본 30.
@@ -442,7 +446,7 @@ def register(app):
         want = dict(body)
         want.setdefault("k", sess.get("worst_k") or REMOTE_K_DEFAULT)
 
-        from services.cad_import.edit.session import MODE_SOURCE, MODE_VALVE
+        from services.cad_import.edit.session import MODE_VALVE
         b = es.board
 
         def _pick(mode, existing):
@@ -462,28 +466,31 @@ def register(app):
             return rep, moved
 
         def job():
-            print(f"[원클릭] 알람밸브 ({x:.0f}, {y:.0f}) — 밸브·급수 두 픽을 "
-                  f"클릭 경로로 놓는 중…")
+            print(f"[원클릭] 알람밸브 ({x:.0f}, {y:.0f}) — 접속점을 겸하는 "
+                  f"픽 하나를 클릭 경로로 놓는 중…")
             v_rep, v_moved = _pick(MODE_VALVE, b.valves)
-            s_rep, s_moved = _pick(MODE_SOURCE, b.sources)
-            if v_rep is None or s_rep is None:
+            if v_rep is None:
                 raise RuntimeError(
                     "그 자리에서 배관을 찾지 못했습니다 — 배관 위를 클릭하세요 "
                     f"(허용 {max_d:.0f}mm).")
-            if v_moved or s_moved:
-                print(f"[원클릭] 기존 픽을 갈아끼움 — 밸브 {v_moved} · "
-                      f"급수 {s_moved} (되돌리기로 복구 가능)")
-            # ★급수원이 하나뿐이므로 «지정 급수원» 모호성이 없다(F-1 규약 유지).
-            print(f"[원클릭] 급수원 {len(b.sources)}곳 — "
-                  f"이 클릭이 유일 급수원이라 Z1 기준으로 계산합니다.")
+            if v_moved:
+                print(f"[원클릭] 기존 픽을 갈아끼움 — {v_moved}곳 "
+                      f"(되돌리기로 복구 가능)")
+            # ★알람밸브가 곧 접속점이라 둘이 어긋날 수 없다(B1 해소).
+            if list(b.sources) != list(b.valves):
+                raise RuntimeError(
+                    "알람밸브와 접속점이 어긋났습니다 — 한 픽이 둘을 놓는다는 "
+                    f"규약이 깨졌습니다 (밸브 {b.valves} · 접속점 {b.sources}).")
+            print(f"[원클릭] 알람밸브 {len(b.valves)}곳 = 접속점 — "
+                  f"이 클릭이 유일 접속점이라 Z1 기준으로 계산합니다.")
             summary, fail = _compute_worst(sess, want)
             if fail is not None:
                 raise RuntimeError(_wfail_text(fail))
             print(f"[원클릭] 최불리 {summary['k']}개 · 최원 {summary['far_m']} m "
                   f"· 담당 최대 {summary['max_load']} · 배관 {summary['path_edges']}")
             return {"ok": True, "summary": summary,
-                    "anchor": [_r1(x), _r1(y)],
-                    "replaced": {"valve": v_moved, "source": s_moved},
+                    "alarm_xy": [_r1(x), _r1(y)],
+                    "replaced": {"valve": v_moved, "source": v_moved},
                     "state": _edit_state(sess)}
 
         _run_job(sess, "알람밸브 원클릭", job)

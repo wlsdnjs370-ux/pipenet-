@@ -387,8 +387,27 @@ class EditBoard:
         self.history.append(before)
         return True
 
+    def set_source_nodes(self, nodes):
+        """접속점(= 급수 시작 노드) 집합을 통째로 갈아 끼운다.
+
+        알람밸브 픽이 접속점을 겸하므로, 그 픽이 이 함수로 «지금 알람밸브가 있는
+        자리» 를 그대로 접속점에 옮겨 적는다. 되돌리기는 알람밸브 픽 쪽이 이미
+        스냅샷을 쌓았으므로 여기서 또 쌓지 않는다 — 한 번의 클릭이 두 칸을
+        되돌려야지, 두 번 눌러야 돌아가면 안 된다.
+        """
+        want = [n for n in (nodes or ()) if isinstance(n, int)]
+        if list(self.sources) == want:
+            return False
+        self.sources = want
+        self._invalidate_source_cache()
+        return True
+
     def toggle_source(self, x, y):
-        """배관 노드를 급수원으로 토글. 같은 노드를 다시 찍으면 해제."""
+        """배관 노드를 급수원으로 토글. 같은 노드를 다시 찍으면 해제.
+
+        ★직접 부르지 않는다 — 접속점은 알람밸브 픽이 겸한다(session.click).
+          데스크톱 화면과 옛 저장본 호환으로만 남긴다.
+        """
         node = self.snap_source(x, y)
         if node is None:
             return None, False

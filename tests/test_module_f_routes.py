@@ -362,10 +362,13 @@ def test_수리계산_미리보기_본문이_끝까지_돈다(confirmed):
     # F-11c 가 실은 board 노드쌍 — 관경 덮기의 키다.
     assert any(p.get("ref") for p in v["pipes"]), "역참조가 하나도 없다"
     # ★앵커는 **단정하지 않는다.** 엔진의 `_anchor_node()` 가 무조건 None 을
-    #   돌려주는 스텁이라 meta 의 「앵커 노드」는 항상 '?' 다(BLOCKED §30).
+    #   돌려주는 스텁이라 meta 의 「기준 헤드 노드」는 항상 '?' 다(BLOCKED §30).
+    #   ★이름 주의 — 여기서 «앵커» 라 부르던 것은 «기준 헤드»(최원단)다.
+    #     이 저장소에서 앵커는 그 반대쪽, 라이저가 붙는 접속점이다
+    #     (services/cad_import/design/anchor.py).
     #   여기서 「앵커가 있어야 한다」고 단정하면 시험이 «있지도 않은 기능» 을
     #   요구하게 된다 — 처음에 그렇게 적었다가 실패로 알았다.
-    assert isinstance(v.get("anchor_path"), list), "형식은 지켜야 한다"
+    assert isinstance(v.get("worst_path"), list), "형식은 지켜야 한다"
 
 
 def test_앵커_경로가_아직_안_선다는_사실을_못_박는다(confirmed):
@@ -378,9 +381,10 @@ def test_앵커_경로가_아직_안_선다는_사실을_못_박는다(confirmed
     c, sid = confirmed
     d = c.get(f"/api/module-f/design/preview?sid={sid}").get_json() or {}
     meta = dict((k, v) for k, v in ((d.get("tables") or {}).get("meta") or []))
-    assert meta.get("앵커 노드") == "?", \
-        f"앵커가 생겼다 — BLOCKED §30 과 이 시험을 지울 때다: {meta.get('앵커 노드')}"
-    assert (d.get("view") or {}).get("anchor") is None
+    assert meta.get("기준 헤드 노드") == "?", \
+        f"기준 헤드 노드가 생겼다 — BLOCKED §30 과 이 시험을 지울 때다: " \
+        f"{meta.get('기준 헤드 노드')}"
+    assert (d.get("view") or {}).get("worst_head") is None
 
 
 def test_확정된_표에서_조회_라우트가_다시_돈다(confirmed):

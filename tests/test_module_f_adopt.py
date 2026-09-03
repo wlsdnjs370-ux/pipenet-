@@ -514,11 +514,19 @@ def test_단추가_무엇을_찍는지_말한다():
     assert "알람밸브 찍기" in html[i:i + 120], "«도면에서 찍기» 로는 무엇인지 모른다"
 
 
-def test_손질의_급수시작과_다름을_밝힌다():
-    """모듈 E 의 물흐름/급수 시작과 혼동한다는 지적을 화면에서 직접 푼다."""
+def test_손질의_알람밸브와_같은_자리임을_밝힌다():
+    """★뒤집힌 시험 — 종전에는 «손질의 급수 시작과 **다르다**» 고 말하게 했다.
+
+    그 문장이 사실이 아니었다. 평면도의 접속점 노드는 통합에서 라이저의 알람밸브
+    노드에 자리를 내주고 사라진다(remote30_full_network) — 애초에 같은 장치였고,
+    자동 차선은 진작 handoff 의 alarm 과 source 에 **같은 좌표**를 넣고 있었다.
+    이제 손질에도 픽이 하나뿐이므로 화면은 «같은 자리» 라고 말해야 한다.
+    """
     html = _script()
     i = html.index('id="au-s1"')
-    assert "급수 시작" in html[i:i + 500]
+    seg = html[i:i + 600]
+    assert "알람밸브 (접속점)" in seg, seg[:300]
+    assert "같은 자리" in seg, "다른 단계라는 옛 설명이 남았다"
 
 
 def test_끝낸_단계가_표시된다():
@@ -1204,9 +1212,17 @@ def test_제안은_점선으로_그린다():
 
 
 def test_손질_화면에_제안_반영_단추가_있다():
+    """★단추는 하나다 — 알람밸브가 곧 접속점이라 자리가 하나뿐이다.
+
+    종전엔 «알람밸브 제안» 과 «급수 시작 제안» 둘이었는데, 자동 차선이 그 둘에
+    **같은 좌표**를 넣고 있었다(`api_auto`: source = alarm). 같은 값을 두 단추로
+    내면 사람은 두 번 눌러야 하는 줄 알고, 한쪽만 누르면 어긋난 줄 안다.
+    """
     html = _script()
-    for bid in ("ed-handoff-box", "ed-hint-alarm", "ed-hint-source"):
+    for bid in ("ed-handoff-box", "ed-hint-alarm"):
         assert f'id="{bid}"' in html, f"#{bid} 가 없다"
+    assert 'id="ed-hint-source"' not in html, \
+        "급수 시작 제안 단추가 남았다 — 알람밸브 픽이 접속점을 겸한다"
 
 
 def test_새_도면을_올리면_이어받기_표시가_사라진다():

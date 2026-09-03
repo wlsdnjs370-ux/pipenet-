@@ -439,7 +439,7 @@ with sync_playwright() as pw:
     if w["k"] != 30 or not w["corridor"]:
         bad(f"최불리망 결과가 비었다: k={w['k']} corridor={len(w.get('corridor', []))}")
     # 앵커(가장 불리한 지점)가 실려 화면에 그려져야 한다.
-    if not w.get("anchor"):
+    if not w.get("worst_head"):
         bad("앵커 헤드가 실리지 않았다")
     # corridor 간선마다 담당 헤드 수(load)가 붙고, 주배관은 여러 개를 먹인다.
     loads = [c[4] for c in w["corridor"]]

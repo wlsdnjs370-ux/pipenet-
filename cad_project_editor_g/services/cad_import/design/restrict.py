@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import math
 
+from services.cad_import.design.anchor import require_anchor
+
 
 def restrict_to_worst(payload: dict, board, worst: dict) -> dict:
     """변환 대상을 최불리 K 헤드로 좁힌다 — 헤드만 지우고 배관은 안 자른다.
@@ -113,12 +115,9 @@ def tree_loads(kfp) -> dict:
             continue
         adj.setdefault(a, []).append((b, pid))
         adj.setdefault(b, []).append((a, pid))
-    root = next((n for n, m in nodes.items()
-                 if str((m or {}).get("type_id", "")) == "pump"), None)
-    if root is None:
-        root = next(iter(nodes), None)
-    if root is None:
-        return {}
+    # 접속점이 없으면 «아무 노드나» 뿌리로 삼지 않는다 — 그렇게 세운 트리는
+    # 담당 헤드 수를 엉뚱하게 세고, 그 수가 그대로 관경이 된다(design/anchor).
+    root = require_anchor(nodes, what="관경 산정")
     heads = {n for n, m in nodes.items()
              if str((m or {}).get("type_id", "")) == "head"}
 

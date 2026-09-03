@@ -71,6 +71,54 @@ def equivalent_length_m(lib: dict, kind: str, dia_mm: int):
     return table.get(int(dia_mm))
 
 
+def parse_eq_len_overrides(overrides) -> dict:
+    """`{"eq_len": [{kind,dia,m,note}, …]}` → `{(kind,dia): (m, note)}`.
+
+    음수·형식 불량은 조용히 버린다 — 사람이 채우는 칸이라 빈 줄이 섞인다.
+    """
+    out: dict = {}
+    for r in ((overrides or {}).get("eq_len") or ()):
+        try:
+            m = float((r or {}).get("m"))
+        except (TypeError, ValueError):
+            continue
+        if m < 0:
+            continue
+        try:
+            out[(str(r.get("kind")), int(r.get("dia")))] = (m, r.get("note"))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def resolve_eq_len(kind: str, dia_mm, *, lib=None, ov_eq=None):
+    """등가길이 한 칸을 정하는 **유일한 자리** — 라이브러리 → 사람이 채운 값.
+
+    반환 `(m, 근거)`. 못 정하면 `(None, None)` — ★0 으로 채우지 않는다.
+    0 은 「손실이 없다」는 **주장**이라, 못 구한 것과 같은 값으로 두면 계산이
+    조용히 낙관적으로 틀어진다.
+
+    ★부속표(`build_fittings`)와 기기표(알람밸브 A/V 행)가 이 함수를 같이 쓴다.
+      종전에는 A/V 행만 `"eq_len": 0.0` 으로 박혀 있어서, 라이브러리를 채워도
+      알람밸브 손실은 영영 0 이었다(라이브러리의 VALVE_ALARM 은 호칭경 전 칸이
+      null — 「사용자 직접 입력 필요」). 채울 자리가 둘이면 하나는 잊힌다.
+    """
+    if dia_mm is None:
+        return None, None
+    try:
+        dia = int(dia_mm)
+    except (TypeError, ValueError):
+        return None, None
+    lib = load_equivalent_lengths() if lib is None else lib
+    val = equivalent_length_m(lib, kind, dia)
+    if val is not None:
+        return float(val), "라이브러리"
+    hit = (ov_eq or {}).get((str(kind), dia))
+    if hit:
+        return float(hit[0]), (hit[1] or "사람이 채움")
+    return None, None
+
+
 def _pipe_ends(net, pid):
     p = ((net or {}).get("pipe_data") or {}).get(pid) or {}
     return p.get("start") or p.get("from"), p.get("end") or p.get("to")
@@ -152,15 +200,7 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
     #   단정할 수 없어 판정 불가로 셌다(fitting_rules 주석). 사람은 도면을 보고
     #   단정할 수 있으므로 그 답을 받는다 — 부속을 «안 다는» 것으로 해결된다.
     NO_FITTING = "none"
-    ov_eq: dict = {}
-    for r in (ov.get("eq_len") or ()):
-        try:
-            m = float((r or {}).get("m"))
-        except (TypeError, ValueError):
-            continue
-        if m < 0:
-            continue
-        ov_eq[(str(r.get("kind")), int(r.get("dia")))] = (m, r.get("note"))
+    ov_eq = parse_eq_len_overrides(ov)
     applied_overrides: list = []
 
     def at(nid):
@@ -298,16 +338,13 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
         dia = (bores.get(pid) or (None, None))[0]
         total = 0.0
         for kind in rec["fittings"]:
-            L = None if dia is None else equivalent_length_m(lib, kind, dia)
-            if L is None and dia is not None:
-                # 라이브러리 구멍을 사람이 채웠으면 그 값을 쓴다. 라이브러리에
-                # 값이 «있는» 자리는 건드리지 않는다 — 덮어쓰기가 아니라 채우기다.
-                hit = ov_eq.get((str(kind), int(dia)))
-                if hit:
-                    L = hit[0]
-                    applied_overrides.append(
-                        {"what": "eq_len", "kind": str(kind), "dia": int(dia),
-                         "m": hit[0], "note": hit[1], "pipe": str(pid)})
+            # 라이브러리 → 사람이 채운 값. 결정은 `resolve_eq_len` 한 곳에서만
+            # 한다(기기표의 알람밸브 행도 같은 함수를 쓴다).
+            L, why = resolve_eq_len(kind, dia, lib=lib, ov_eq=ov_eq)
+            if L is not None and why != "라이브러리":
+                applied_overrides.append(
+                    {"what": "eq_len", "kind": str(kind), "dia": int(dia),
+                     "m": L, "note": why, "pipe": str(pid)})
             if L is None:
                 unresolved_length += 1
                 unresolved_length_items.append(

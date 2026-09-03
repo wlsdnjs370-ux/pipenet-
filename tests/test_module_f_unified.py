@@ -274,9 +274,12 @@ def _a_pipe_point(state):
 def test_원클릭이_수동_두픽과_같은_답을_낸다(tmp_path):
     """★F-10b 의 핵심 — 클릭 «경로» 를 정말로 타는지의 증명.
 
-    같은 좌표에 밸브·급수원을 수동으로 두 번 찍고 `/edit/worst` 를 부른 결과와,
-    `/edit/anchor-click` 한 번의 결과가 완전히 같아야 한다. 다르면 원클릭이
-    어딘가에서 «다른 길» 로 값을 만들고 있다는 뜻이다(D-F10-6 위반).
+    같은 좌표를 수동으로 찍고 `/edit/worst` 를 부른 결과와, `/edit/anchor-click`
+    한 번의 결과가 완전히 같아야 한다. 다르면 원클릭이 어딘가에서 «다른 길» 로
+    값을 만들고 있다는 뜻이다(D-F10-6 위반).
+
+    ★수동 픽도 이제 **한 번** 이다. 알람밸브가 접속점을 겸하므로(B1 해소),
+      같은 자리를 두 모드로 두 번 찍으면 토글이 되어 «지운» 것이 된다.
     """
     import pytest
 
@@ -287,10 +290,13 @@ def test_원클릭이_수동_두픽과_같은_답을_낸다(tmp_path):
     # ── 수동 두 픽 + worst
     sid_a, st = _build_edit(c, _DXF, conf=0.9)
     x, y = _a_pipe_point(st)
-    for mode in (MODE_VALVE, MODE_SOURCE):
-        c.post("/api/module-f/edit/mode", json={"sid": sid_a, "mode": mode})
-        c.post("/api/module-f/edit/click",
-               json={"sid": sid_a, "x": x, "y": y, "max_d": ANCHOR_MAX_D})
+    c.post("/api/module-f/edit/mode", json={"sid": sid_a, "mode": MODE_VALVE})
+    c.post("/api/module-f/edit/click",
+           json={"sid": sid_a, "x": x, "y": y, "max_d": ANCHOR_MAX_D})
+    # ★픽 한 번이 접속점까지 놓는다 — 이것이 B1 해소의 알맹이다.
+    sa = c.get(f"/api/module-f/edit/state?sid={sid_a}").get_json()["state"]
+    assert len(sa.get("valves") or []) == 1, sa.get("valves")
+    assert (sa.get("sources") or []) == (sa.get("valves") or []),         f"알람밸브와 접속점이 어긋났다 — {sa.get('sources')} vs {sa.get('valves')}"
     ra = c.post("/api/module-f/edit/worst", json={"sid": sid_a, "k": 30})
     assert ra.status_code == 200, ra.get_json()
     manual = ra.get_json()["summary"]
@@ -309,8 +315,8 @@ def test_원클릭이_수동_두픽과_같은_답을_낸다(tmp_path):
     assert one is not None, res
 
     for key in ("k", "reachable", "far_m", "near_m", "span_m", "total_m",
-                "max_load", "source", "candidates", "anchor_path_m",
-                "anchor_path_nodes", "path_edges"):
+                "max_load", "source", "candidates", "worst_path_m",
+                "worst_path_nodes", "path_edges"):
         assert manual[key] == one[key], (
             f"«{key}» 가 다르다 — 수동 {manual[key]} vs 원클릭 {one[key]}")
 
@@ -349,8 +355,13 @@ def test_원클릭은_클릭_경로로만_넣는다():
         assert banned not in seg, f"board 에 직접 쓴다: {banned}"
 
 
-def test_원클릭_뒤_되돌리면_두_픽이_풀린다(tmp_path):
-    """수용 기준 — undo 두 번이면 두 픽이 순서대로 되돌아간다."""
+def test_원클릭_뒤_되돌리면_한_번에_풀린다(tmp_path):
+    """★한 번의 클릭은 한 번의 되돌리기로 풀려야 한다.
+
+    종전에는 밸브·급수를 따로 찍었으므로 undo 를 «두 번» 해야 했다. 사람이
+    보기엔 한 번 누른 것인데 두 번 눌러야 돌아가는 것은 그 자체로 어긋남이고,
+    한 번만 누르면 «접속점 없는 알람밸브» 라는 중간 상태가 남았다.
+    """
     import pytest
 
     if not os.path.isfile(_DXF):
@@ -367,9 +378,7 @@ def test_원클릭_뒤_되돌리면_두_픽이_풀린다(tmp_path):
 
     assert picks() == (1, 1), picks()
     c.post("/api/module-f/edit/undo", json={"sid": sid})
-    assert picks() == (0, 1), "급수가 먼저 풀려야 한다(나중에 찍었으므로)"
-    c.post("/api/module-f/edit/undo", json={"sid": sid})
-    assert picks() == (0, 0), "밸브도 풀려야 한다"
+    assert picks() == (0, 0),         "한 번 찍은 것이 한 번에 안 풀렸다 — 중간 상태가 남는다"
 
 
 def test_원클릭이_기존_픽을_갈아끼운다(tmp_path):
@@ -456,7 +465,7 @@ def test_선정_헤드는_동그라미다():
     i = html.index("for (const h of e.worst.heads)")
     seg = html[i:i + 400]
     assert "ctx.arc(" in seg and "ctx.stroke()" in seg
-    j = html.index("if (e.worst.anchor)")
+    j = html.index("if (e.worst.worst_head)")
     assert "#ff3b3b" in html[j:j + 400], "앵커가 따로 강조되지 않는다"
 
 
@@ -712,12 +721,43 @@ def test_직접_입력은_못_가린_자리에만_쓰인다():
     from services.cad_import.design import fitting
 
     src = inspect.getsource(fitting.build_fittings)
-    for probe in ("ov_kind.get(", "ov_eq.get("):
-        i = src.index(probe)
-        # 그 줄 앞쪽 400자 안에 «미해결일 때» 라는 조건이 있어야 한다.
-        before = src[max(0, i - 400):i]
-        assert _re.search(r"if bad:|if L is None and dia is not None:", before), \
-            f"{probe} 가 «판정 불가» 밖에서 불린다"
+    probe = "ov_kind.get("
+    i = src.index(probe)
+    # 그 줄 앞쪽 400자 안에 «미해결일 때» 라는 조건이 있어야 한다.
+    before = src[max(0, i - 400):i]
+    assert _re.search(r"if bad:", before), \
+        f"{probe} 가 «판정 불가» 밖에서 불린다"
+
+
+def test_등가길이_직접입력은_라이브러리를_못_덮는다():
+    """등가길이 쪽 같은 성질 — 소스가 아니라 **행위**로 본다.
+
+    종전에는 `build_fittings` 소스에서 `ov_eq.get(` 리터럴을 찾고 그 앞줄에
+    조건이 있는지 봤다. 결정 로직을 `resolve_eq_len` 한 곳으로 모으자 그
+    리터럴이 사라져 시험이 부러졌다 — 성질은 그대로인데 검사가 부러진 것이라,
+    잡던 것을 실제로 잡게 고쳐 쓴다.
+    """
+    from services.cad_import.design.fitting import (
+        load_equivalent_lengths, resolve_eq_len)
+    lib = load_equivalent_lengths()
+
+    # ① 라이브러리에 «있는» 자리는 사람이 무슨 값을 넣어도 안 바뀐다.
+    have, why = resolve_eq_len("elbow", 100, lib=lib)
+    assert have is not None and why == "라이브러리"
+    same, why2 = resolve_eq_len("elbow", 100, lib=lib,
+                                ov_eq={("elbow", 100): (99.0, "덮기 시도")})
+    assert (same, why2) == (have, why), "채우기가 덮어쓰기로 바뀌었다"
+
+    # ② 라이브러리에 «없는» 자리에만 사람이 채운 값이 들어간다.
+    assert resolve_eq_len("alarm_valve", 15, lib=lib) == (None, None)
+    got, note = resolve_eq_len("alarm_valve", 15, lib=lib,
+                               ov_eq={("alarm_valve", 15): (6.5, "KFI")})
+    assert (got, note) == (6.5, "KFI")
+
+    # ③ ★못 구하면 0 이 아니라 None 이다. 0 은 「손실이 없다」는 주장이라,
+    #    못 구한 것과 같은 값으로 두면 계산이 조용히 낙관적으로 틀어진다.
+    assert resolve_eq_len("elbow", 9999, lib=lib) == (None, None)
+    assert resolve_eq_len("elbow", None, lib=lib) == (None, None)
 
 
 def test_직접_입력은_아는_종류만_고르게_한다():

@@ -588,7 +588,7 @@
       // 굵기만으로는 그 거리가 어느 줄인지 읽을 수 없어 따로 덧그린다.
       // 기준압이 어느 관을 타고 오는지가 보여야 관경을 키울지 경로를 줄일지
       // 정할 수 있다.
-      const ap = e.worst.anchor_path || [];
+      const ap = e.worst.worst_path || [];
       if (ap.length > 1) {
         ctx.strokeStyle = "#ff3b3b";
         ctx.globalAlpha = 0.85;
@@ -615,8 +615,8 @@
         ctx.stroke();
       }
       // 앵커 = 가장 불리한 지점(기준압을 잡는 헤드). 빨간 겹원으로 못박는다.
-      if (e.worst.anchor) {
-        const a = e.worst.anchor;
+      if (e.worst.worst_head) {
+        const a = e.worst.worst_head;
         const r = Math.max(5, a[2] * S.view.scale) + 4;
         ctx.strokeStyle = "#ff3b3b";
         ctx.lineWidth = 2.6;
@@ -2787,7 +2787,7 @@
         + (e.worst.source ? ` · <b class="tag">${e.worst.source}</b> 기준` : ""))
       + kv('최원 유하거리 <span class="tag">경로</span>',
            `<span style="color:#ff3b3b">┈┈</span> ${e.worst.far_m} m`
-           + ` · 절점 ${(e.worst.anchor_path || []).length}개`)
+           + ` · 절점 ${(e.worst.worst_path || []).length}개`)
         + kv("배관 연장 / 주배관 부하",
           `${e.worst.total_m} m · <span class="ok">${e.worst.max_load}</span>개 담당`)
         : "") +
@@ -3068,7 +3068,7 @@
       $("dg-k").value = k;
       const s = d.summary;
       say(`최불리 ${s.k} 헤드 — 후보 ${s.candidates}개 중 · `
-        + `최원 유하거리 ${s.far_m} m (경로 ${s.anchor_path_m} m)`
+        + `최원 유하거리 ${s.far_m} m (경로 ${s.worst_path_m} m)`
         + ` · ${s.k}번째 ${s.near_m} m`
         + (s.source ? ` · 급수원 ${s.source} 기준` : "")
         + (s.zones ? ` · 영역 ${s.zones}곳 안` : "")
@@ -3432,17 +3432,17 @@
          + (Number(h.head_skipped)
             ? ` · <span class="warn">유령 ${h.head_skipped}</span>` : ""))
       + kv("제안", h.alarm
-           ? `알람밸브 · 급수 시작 (${h.alarm[0].toFixed(0)}, `
+           ? `알람밸브 (접속점) (${h.alarm[0].toFixed(0)}, `
              + `${h.alarm[1].toFixed(0)})`
            : "자동이 알람밸브를 안 찍어 제안이 없습니다");
     $("ed-hint-alarm").disabled = !h.alarm;
-    $("ed-hint-source").disabled = !h.source;
   }
 
   // 반영은 «기존 손질 클릭 경로» 로만 — 여기서도 주입은 없다(D-F8-3).
   async function applyHint(kind) {
     const h = S.handoff;
-    const xy = kind === "알람밸브위치" ? (h && h.alarm) : (h && h.source);
+    // 알람밸브가 곧 접속점이라 자리는 하나다(자동 차선도 source 에 같은 값을 넣는다).
+    const xy = (h && h.alarm) || (h && h.source);
     if (!xy) return;
     busy(true, "제안을 반영하는 중…");
     try {
@@ -3458,7 +3458,6 @@
   }
 
   $("ed-hint-alarm").onclick = () => applyHint("알람밸브위치");
-  $("ed-hint-source").onclick = () => applyHint("급수시작위치");
 
   function drawHandoffHints() {
     const h = S.handoff;
@@ -3466,7 +3465,9 @@
     // 제안은 점선 고리다 — 확정된 것(실선)과 한눈에 갈려야 한다.
     ctx.setLineDash([4, 4]);
     ctx.lineWidth = 1.8;
-    for (const [xy, color] of [[h.alarm, "#f97316"], [h.source, "#38bdf8"]]) {
+    // 고리는 하나 — 알람밸브 = 접속점이라 두 개를 겹쳐 그리면 같은 자리에
+    // 색만 다른 고리가 포개져 «둘이 다른 것» 처럼 보인다.
+    for (const [xy, color] of [[(h.alarm || h.source), "#f97316"]]) {
       if (!xy) continue;
       ctx.beginPath();
       ctx.arc(sx(xy[0]), sy(xy[1]), 11, 0, Math.PI * 2);
@@ -3570,7 +3571,7 @@
     ctx.setLineDash([]);      // ★되돌린다 — 안 하면 아래 노드 기호까지 점선이 된다
     // 최원 유하거리 경로 — 손질 단계와 같은 빨간 점선. 두 단계가 같은 줄을
     // 가리켜야 «이 관을 키우면 그 압이 오른다» 가 이어진다.
-    const dap = v.anchor_path || [];
+    const dap = v.worst_path || [];
     if (dap.length > 1) {
       ctx.strokeStyle = "#ff3b3b";
       ctx.lineWidth = 2.4;
@@ -3623,7 +3624,7 @@
         ctx.lineWidth = 1.2;
       }
       // 앵커 = 기준압을 잡는 지점. 손질 단계와 같은 빨간 겹원.
-      if (n.anchor) {
+      if (n.worst_head) {
         ctx.strokeStyle = "#ff3b3b";
         ctx.lineWidth = 2.6;
         ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.stroke();
@@ -3841,7 +3842,7 @@
       if (n.input) roles.push("급수원");
       if (n.valve) roles.push("알람밸브");
       if (n.head) roles.push(n.up ? "헤드(상향)" : "헤드(하향)");
-      if (n.anchor) roles.push("앵커");
+      if (n.worst_head) roles.push("기준 헤드");
     }
     $("dg-ins-title").textContent =
       `${label}${roles.length ? "  " + roles.join(" · ") : ""}`;
@@ -4687,10 +4688,10 @@
         + ` · 노즐 ${s.counts.nozzles} · 부속 ${s.counts.fittings}`)
       + kv("관경 근거", `텍스트 ${b.text} · 별표1 보강 ${b.nfpc_min}`
         + ` · 별표1 폴백 ${b.nfpc_fallback}`)
-      + (S.design && S.design.view && S.design.view.anchor
+      + (S.design && S.design.view && S.design.view.worst_head
          ? kv('최원 유하거리 <span class="tag">경로</span>',
               `<span style="color:#ff3b3b">┈┈</span> 앵커 절점`
-              + ` ${S.design.view.anchor} · ${S.design.view.anchor_path_m} m`)
+              + ` ${S.design.view.worst_head} · ${S.design.view.worst_path_m} m`)
          : "")
       + kv("부속 판정 불가",
            `${s.fitting_unresolved} · 등가길이 미해결 ${s.eq_len_unresolved}`)

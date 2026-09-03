@@ -84,7 +84,7 @@ def main() -> int:
             before_mtime = edits.stat().st_mtime
         c.post("/api/module-f/edit/mode",
                json={"sid": sid, "mode": "급수시작위치"})
-        anchor = (st.get("worst") or {}).get("anchor")
+        anchor = (st.get("worst") or {}).get("worst_head")
         # 화면에 있는 아무 헤드 하나를 급수원 후보 좌표로 쓴다 — 배관에 스냅된다.
         heads = st.get("heads") or []
         far_head = heads[len(heads) // 2]

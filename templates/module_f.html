@@ -124,7 +124,8 @@
         <div class="step-h"><b>1</b>알람밸브 (시작 노드)
           <i id="au-s1-mark"></i></div>
         <p class="step-p">여기서 출발해 가장 불리한 헤드군을 찾습니다.
-          손질의 «급수 시작» 과는 다른 단계입니다.</p>
+          손질의 «알람밸브 (접속점)» 와 같은 자리입니다 — 어느 쪽으로 찍든
+          라이저가 이 평면도에 붙는 그 한 점입니다.</p>
         <div class="row">
           <button id="au-anchor" class="go">알람밸브 찍기</button>
           <button id="au-anchor-clear">지우기</button>
@@ -262,8 +263,7 @@
         <h2>자동에서 이어받음 <span class="tag">A → E</span></h2>
         <div id="ed-handoff-info" class="hint">—</div>
         <div class="row">
-          <button id="ed-hint-alarm">알람밸브 제안 반영</button>
-          <button id="ed-hint-source">급수 시작 제안 반영</button>
+          <button id="ed-hint-alarm">알람밸브 (접속점) 제안 반영</button>
         </div>
       </div>
       <!-- [F-10b · D-F10-4] 원클릭 — 손질에 들어오면 이 모드가 기본이다.
@@ -283,8 +283,11 @@
         <button class="emode" data-mode="삭제">삭제</button>
       </div>
       <div class="row">
-        <button class="emode" data-mode="급수시작위치">급수 시작</button>
-        <button class="emode" data-mode="알람밸브위치">알람밸브</button>
+        <!-- 평면도에서 찍는 특수 점은 하나뿐이다 — 알람밸브가 곧 라이저
+             접속점(계산의 시작점)이다. 종전에는 «급수 시작» 을 따로 찍었는데,
+             통합하면 그 노드는 라이저의 알람밸브 노드에 자리를 내주고 사라져
+             둘이 애초에 같은 장치였다. 따로 찍으면 어긋날 수만 있었다. -->
+        <button class="emode" data-mode="알람밸브위치">알람밸브 (접속점)</button>
       </div>
       <h2 style="margin-top:16px">고른 헤드 종류</h2>
       <!-- 그림은 뺐다 — 여기서는 «어느 종류로 바꿀까» 만 고르면 되고, 전개

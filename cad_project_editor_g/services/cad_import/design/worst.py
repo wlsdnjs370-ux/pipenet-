@@ -95,8 +95,8 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
         head_far[hi] = src_dist[node]
 
     reachable = len(head_far)
-    empty = {"heads": [], "anchor": None, "anchor_path": [],
-             "anchor_path_m": 0.0, "edges": set(), "nodes": set(),
+    empty = {"heads": [], "worst_head": None, "worst_path": [],
+             "worst_path_m": 0.0, "edges": set(), "nodes": set(),
              "loads": {}, "reachable": reachable, "unreachable": 0,
              "far_m": 0.0, "near_m": 0.0, "span_m": 0.0, "total_m": 0.0,
              "max_load": 0}
@@ -104,10 +104,10 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
         return empty
 
     k = max(1, min(int(k), reachable))
-    anchor = max(head_far, key=head_far.get)   # 가장 불리한 헤드
+    worst_head = max(head_far, key=head_far.get)   # 가장 불리한 헤드 = 기준 헤드
 
     # ② 앵커 기점 — 배관 거리로 가까운 K개 = 설계면적
-    an_dist, _ = dijkstra([head_node[anchor]])
+    an_dist, _ = dijkstra([head_node[worst_head]])
     ranked = sorted(head_node,
                     key=lambda hi: an_dist.get(head_node[hi], float("inf")))
     picked = ranked[:k]
@@ -137,31 +137,31 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
     #
     # prev 는 ① 의 급수원 기점 Dijkstra 가 남긴 최단경로 트리다. 앵커의 부착
     # 노드에서 거슬러 올라가면 그 경로가 그대로 나온다(다시 풀지 않는다).
-    anchor_path: list[int] = []
-    cur = head_node.get(anchor)
+    worst_path: list[int] = []
+    cur = head_node.get(worst_head)
     seen: set[int] = set()
     while cur is not None and cur not in seen:
-        anchor_path.append(cur)
+        worst_path.append(cur)
         seen.add(cur)
         cur = prev.get(cur)
-    anchor_path.reverse()          # 급수원 → 앵커 방향
-    anchor_path_m = round(
-        sum(math.dist(pts[anchor_path[i]], pts[anchor_path[i + 1]])
-            for i in range(len(anchor_path) - 1)) / 1000.0, 2)
+    worst_path.reverse()          # 접속점 → 기준 헤드 방향
+    worst_path_m = round(
+        sum(math.dist(pts[worst_path[i]], pts[worst_path[i + 1]])
+            for i in range(len(worst_path) - 1)) / 1000.0, 2)
 
     return {
         "heads": picked,
-        "anchor": anchor,
+        "worst_head": worst_head,
         # 급수원에서 앵커까지의 절점 열. 화면이 이 줄을 따로 그린다.
-        "anchor_path": anchor_path,
-        "anchor_path_m": anchor_path_m,
+        "worst_path": worst_path,
+        "worst_path_m": worst_path_m,
         "dists": {hi: head_far[hi] for hi in picked},
         "edges": set(loads),
         "loads": loads,
         "nodes": keep_nodes,
         "reachable": reachable,
         "unreachable": 0,          # picked 는 전부 도달 헤드 중에서 골랐다
-        "far_m": round(head_far[anchor] / 1000.0, 2),   # 앵커 = 최원 유하거리
+        "far_m": round(head_far[worst_head] / 1000.0, 2),   # 기준 헤드까지 = 최원 유하거리
         "near_m": round(min(head_far[hi] for hi in picked) / 1000.0, 2),
         "span_m": round(span / 1000.0, 2),              # 설계면적 폭(배관거리)
         "total_m": round(total / 1000.0, 2),            # corridor 총연장

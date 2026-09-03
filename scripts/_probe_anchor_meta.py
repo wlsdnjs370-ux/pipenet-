@@ -97,8 +97,8 @@ def main() -> int:
             print(f"   {k:<22} {meta.get(k)!r}")
         print(f"\n■ 미리보기 view")
         print(f"   anchor         {v.get('anchor')!r}")
-        print(f"   anchor_path    {len(v.get('anchor_path') or [])}점 · "
-              f"{v.get('anchor_path_m')} m")
+        print(f"   worst_path     {len(v.get('worst_path') or [])}점 · "
+              f"{v.get('worst_path_m')} m")
         print(f"   nodes 중 anchor 표시 "
               f"{sum(1 for n in (v.get('nodes') or []) if n.get('anchor'))}개")
         if meta.get("앵커 노드") in (None, "?"):

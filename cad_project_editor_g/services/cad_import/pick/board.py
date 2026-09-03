@@ -355,9 +355,17 @@ class Board:
         return cl
 
     def spec(self):
-        """그릇 v2 spec — 찍은 그대로. 호 각은 world 실제값만."""
+        """그릇 v2 spec — 찍은 그대로. 호 각은 world 실제값만.
+
+        ★`heads` 칸은 **비어도 쓴다.** 종전에는 `if self.heads:` 라 하나도 안
+          찍으면 칸 자체가 없었고, 읽는 쪽(`flow.spots_body`)이 그 칸을 가정해
+          `KeyError: 'heads'` 로 죽었다 — 사람은 「자동 인식 0 개」인 도면에서
+          사유 대신 그 낱말만 봤다(BLOCKED §16).
+          «없음» 과 «비어 있음» 은 다르다. 안 찍은 것은 «비어 있음» 이다.
+        """
         sp = {"format": "v2",
-              "material_picks": [list(t) for t in self.mat]}
+              "material_picks": [list(t) for t in self.mat],
+              "heads": []}
         if self.heads:
             clean = []
             for h in self.heads:

@@ -123,7 +123,12 @@ def spots_body(st, cap=None, owner=True, outside=False):
     clusters0 = heads.collect_head_clusters(w, spec, knobs)
     head_cls, marks, _hinfo = heads.split_head_circles(clusters0, knobs)
     clusters = head_cls + marks
-    head_lays = {tuple(hs["bundle"])[0] for hs in spec["heads"] if "r" in hs}
+    # ★`spec.get` 이다 — 헤드를 하나도 안 찍으면 찍기가 이 칸을 **아예 안 쓴다**
+    #   (`pick/board.spec()` 의 `if self.heads:`). 종전에는 여기서
+    #   `KeyError: 'heads'` 로 죽었고, 사람은 「자동 인식이 0 개인 도면」에서
+    #   사유 대신 그 낱말만 봤다(BLOCKED §16). 250 행은 이미 이렇게 읽고 있었다.
+    head_lays = {tuple(hs["bundle"])[0]
+                 for hs in (spec.get("heads") or ()) if "r" in hs}
     mat_set = set(st["mat_bundles"])
     mat_layers = {ly for ly, _c in mat_set}
 

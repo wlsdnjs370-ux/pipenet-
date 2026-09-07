@@ -765,6 +765,23 @@
     "rule": "/api/module-f/sub/graph"
   },
   {
+    "endpoint": "module_f_sub_pipe_fix",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/sub/pipe-fix"
+  },
+  {
+    "endpoint": "module_f_sub_pipes",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/sub/pipes"
+  },
+  {
     "endpoint": "module_f_sub_state",
     "methods": [
       "GET",

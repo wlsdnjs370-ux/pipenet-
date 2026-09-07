@@ -1755,10 +1755,17 @@
     try {
       const d = await post(sp.path, body);
       S.sub.summary = d.summary;
+      S.sub.mode = d.mode;
       renderSubSummary(d);
       loadSlots();
+      // 뽑힌 배관표를 바로 채운다 — 볼 자리가 없으면 고칠 수도 없다.
+      await loadSubFix();
+      const f = d.fixed || {};
       say(`${sp.title} 추출 완료 — 절점 ${d.summary.nodes} · 배관 ${d.summary.pipes}`
-        + ` · 연장 ${d.summary.total_m} m`, "ok");
+        + ` · 연장 ${d.summary.total_m} m`
+        + (f.applied ? ` · 손질 ${f.applied}개 되붙임` : "")
+        + (f.unmatched ? ` · ★손질 ${f.unmatched}개는 이 경로에 없어 못 붙였습니다`
+                       : ""), f.unmatched ? "warn" : "ok");
     } catch (err) {
       // 미도달을 성공으로 위장하지 않는다 — 특허 S340 의 규범이다.
       S.sub.summary = null;
@@ -1783,6 +1790,104 @@
     if (s.elevation_unresolved) html += kv('<span class="warn">표고</span>',
                                            "천장고 미입력 — 첫 구간 미확정");
     $("sub-summary").innerHTML = html;
+  }
+
+  // ── [§27 후속] 뽑힌 배관 손보기 ────────────────────────────────
+  //
+  // 추출은 도면에서 못 읽은 관경을 150A 로 두고(대명동 계통도는 **53개 전부**
+  // 그렇다), 끊긴 자리는 가까운 끝끼리 이어 세운다. 그 값이 그대로 최종 SDF 의
+  // 입상관이 되는데 볼 자리도 고칠 자리도 없었다. 판정을 늘리는 대신 **고칠
+  // 자리**를 준다 — §27 에서 두 번 확인한 방향이다.
+  //
+  // ★자리는 라벨이 아니라 **좌표**로 가리킨다. 라벨(r1)은 경로 순서로 매겨져
+  //   다시 뽑으면 같은 이름이 다른 배관을 가리킨다(D-F11-4 가 겪은 사고).
+  const subFix = { rows: [], sel: new Set(), fixes: [] };
+
+  function subFixKey(r) {
+    return `${r.a}|${r.b}`;
+  }
+
+  async function loadSubFix() {
+    try {
+      const d = await api(`/api/module-f/sub/pipes?sid=${S.sid}`);
+      subFix.rows = d.rows || [];
+      subFix.fixes = d.fixes || [];
+    } catch (err) {
+      subFix.rows = []; subFix.fixes = [];
+      say(`뽑힌 배관을 못 읽었습니다 — ${err.message}`, "warn");
+    }
+    // 사라진 행의 선택은 지운다 — 안 지우면 «고른 것 3» 이 거짓말이 된다.
+    const live = new Set(subFix.rows.map(subFixKey));
+    for (const k of [...subFix.sel]) if (!live.has(k)) subFix.sel.delete(k);
+    renderSubFix();
+  }
+
+  function renderSubFix() {
+    const rows = subFix.rows;
+    const guessed = rows.filter((r) => r.dia_source !== "user_fix"
+                                    && r.dia_source !== "text_match").length;
+    const fixed = rows.filter((r) => r.fixed).length;
+    $("sub-fix-chip").textContent = rows.length
+      ? `${rows.length}개 · 추측 관경 ${guessed}` + (fixed ? ` · 고침 ${fixed}` : "")
+      : "—";
+    $("sub-fix-n").textContent = `고른 것 ${subFix.sel.size}`;
+    if (!rows.length) {
+      $("sub-fix-grid").innerHTML =
+        '<p class="hint">아직 뽑힌 배관이 없습니다 — 먼저 경로를 추출하세요.</p>';
+      return;
+    }
+    let html = "<table><thead><tr><th></th><th>배관</th><th>시작</th>"
+      + "<th>끝</th><th>관경(mm)</th><th>길이(m)</th><th>표고차(m)</th>"
+      + "<th>관경 근거</th></tr></thead><tbody>";
+    for (const r of rows) {
+      const k = subFixKey(r);
+      const on = subFix.sel.has(k);
+      // 고친 자리는 «원래 얼마였나» 를 늘 같이 보여 준다(D-F11-3 규약).
+      const dia = r.orig_dia != null
+        ? `${r.dia} <span class="ovcell">(원래 ${r.orig_dia})</span>` : r.dia;
+      const len = r.orig_length != null
+        ? `${r.length} <span class="ovcell">(원래 ${r.orig_length})</span>`
+        : r.length;
+      const src = r.dia_source === "user_fix"
+        ? `직접 입력${r.fix_note ? ` — ${esc(r.fix_note)}` : ""}`
+        : (r.dia_source === "text_match" ? "도면 치수" : "추측 (150A 기본)");
+      html += `<tr data-k="${esc(k)}"${on ? ' class="hl"' : ""}>`
+        + `<td>${on ? "●" : "○"}</td><td>${esc(r.label)}</td>`
+        + `<td>${esc(r["in"])}</td><td>${esc(r.out)}</td>`
+        + `<td>${dia}</td><td>${len}</td><td>${r.elev != null ? r.elev : ""}</td>`
+        + `<td>${src}</td></tr>`;
+    }
+    $("sub-fix-grid").innerHTML = html + "</tbody></table>";
+    for (const tr of $("sub-fix-grid").querySelectorAll("tr[data-k]")) {
+      tr.onclick = () => {
+        const k = tr.dataset.k;
+        if (subFix.sel.has(k)) subFix.sel.delete(k); else subFix.sel.add(k);
+        renderSubFix();
+      };
+    }
+  }
+
+  /** 고른 행 + 지금 값 → 서버가 받는 덮기 목록. */
+  function subFixPayload(dia, len, note) {
+    const byKey = new Map(subFix.rows.map((r) => [subFixKey(r), r]));
+    const out = [];
+    // ★이미 고쳐 둔 자리를 함께 보낸다. 안 보내면 이번에 안 고른 행의
+    //   손질이 «지우기» 로 읽혀 조용히 원래대로 돌아간다.
+    for (const f of subFix.fixes) {
+      if (!subFix.sel.has(`${f.a}|${f.b}`)) out.push(f);
+    }
+    for (const k of subFix.sel) {
+      const r = byKey.get(k);
+      if (!r) continue;
+      const item = { a: r.a, b: r.b, note };
+      if (dia !== null) item.dia = dia;
+      if (len !== null) item.length = len;
+      // 값을 하나도 안 적었으면 지금 값을 그대로 굳힌다 — 서버가
+      // 「관경이나 길이 중 하나」를 요구하므로 빈 항목은 못 보낸다.
+      if (dia === null && len === null) item.dia = r.dia;
+      out.push(item);
+    }
+    return out;
   }
 
   /** 미리보기 경로 — 실측 구간과 «추측 연결» 을 갈라 그린다. */
@@ -1876,8 +1981,12 @@
     setStage("sub");
     renderSubPanel();
     renderSubSummary(d);
+    S.sub.mode = d.mode;
     if (S.world) fit(S.world.bounds);
     await loadSubGraph();          // 선이 따라오게 하는 재료
+    // 이미 뽑아 둔 것이 있으면 손보기 표도 채운다 — 돌아왔을 때 빈 표가
+    // 뜨면 「손질이 날아갔나」로 읽힌다.
+    await loadSubFix();
     draw();
   }
 
@@ -2527,6 +2636,48 @@
   };
   $("sub-extract").onclick = () => subExtract(false);
   $("sub-clean").onclick = () => subExtract(true);
+
+  // [§27 후속] 뽑힌 배관 손보기 — 고르기·고치기·되돌리기
+  $("sub-fix-all").onclick = () => {
+    subFix.sel = new Set(subFix.rows.map(subFixKey));
+    renderSubFix();
+  };
+  $("sub-fix-none").onclick = () => { subFix.sel.clear(); renderSubFix(); };
+  $("sub-fix-guessed").onclick = () => {
+    // 도면에서 못 읽어 150A 로 둔 것만 — 대명동 계통도는 이것이 전부다.
+    subFix.sel = new Set(subFix.rows
+      .filter((r) => r.dia_source !== "user_fix" && r.dia_source !== "text_match")
+      .map(subFixKey));
+    renderSubFix();
+  };
+  $("sub-fix-save").onclick = async () => {
+    if (!subFix.sel.size) { say("고친 배관을 먼저 고르세요.", "warn"); return; }
+    const dv = $("sub-fix-dia").value.trim();
+    const lv = $("sub-fix-len").value.trim();
+    if (!dv && !lv) { say("관경이나 길이 중 하나는 적으세요.", "warn"); return; }
+    const rows = subFixPayload(dv ? Number(dv) : null, lv ? Number(lv) : null,
+                               $("sub-fix-note").value.trim());
+    try {
+      const d = await post("/api/module-f/sub/pipe-fix",
+                           { sid: S.sid, rows });
+      subFix.rows = d.rows || []; subFix.fixes = d.fixes || [];
+      S.sub.summary = d.summary;
+      renderSubSummary({ summary: d.summary, mode: S.sub.mode });
+      renderSubFix();
+      say(`배관 ${d.counts.applied}개를 고쳤습니다 — 연장 ${d.summary.total_m} m.`,
+          "ok");
+    } catch (err) { say(err.message, "err"); }
+  };
+  $("sub-fix-reset").onclick = async () => {
+    try {
+      const d = await post("/api/module-f/sub/pipe-fix", { sid: S.sid, rows: [] });
+      subFix.rows = d.rows || []; subFix.fixes = [];
+      S.sub.summary = d.summary;
+      renderSubSummary({ summary: d.summary, mode: S.sub.mode });
+      renderSubFix();
+      say("손질을 지우고 뽑힌 값으로 되돌렸습니다.", "ok");
+    } catch (err) { say(err.message, "err"); }
+  };
 
   async function loadSaved() {
     try {

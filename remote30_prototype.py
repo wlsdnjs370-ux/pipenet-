@@ -130,7 +130,7 @@ except ImportError:
 # 0) ezdxf modelspace 파싱 + 매트릭스 보정 + hidden 차단 → 캔버스용 entity
 # ────────────────────────────────────────────────────────────────────────────
 
-from remote30_constants import (PIPENET_CATEGORIES, NON_PIPE_GEOMETRY_CATS, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, SNAP_EPS_GUARD_MIN_EDGE_MM, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, HEAD_CONNECTOR_MAX_MM, HEAD_CONNECTOR_TOUCH_MM, HEAD_CONNECTOR_MAX_SEGS, CLOSED_PL_TOL_MM, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ZONE_MATERIAL_MAP, DEFAULT_ZONE_MATERIAL, ZONE_KIND_PARKING, ZONE_KIND_UNIT_DWELLING, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, LOCAL_RISE_RULES, ELEV_SOURCE_USER, ELEV_SOURCE_DRAWING, ELEV_SOURCE_DEFAULT, ELEV_SOURCE_UNRESOLVED, ELEV_SOURCE_ORDER, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
+from remote30_constants import (PIPENET_CATEGORIES, NON_PIPE_GEOMETRY_CATS, KEEP_BASE_LAYERS, _DIA_TEXT_PATTERNS, _DIA_TEXT_NOISE_KW, _VALID_DIA_MM, _FLOOR_LABEL_PATTERNS, _FLOOR_LABEL_SPECIAL, MACHINE_ROOM_SP_LAYERS, SNAP_TOL_MM, SNAP_EPS_CANDIDATES_MM, SNAP_EPS_MIN_LEN_RATIO, SNAP_EPS_GUARD_MIN_EDGE_MM, HEAD_BRIDGE_MAX_MM, HEAD_DROP_MAX_MM, SOURCE_BRIDGE_MAX_MM, ANCHOR_W_MARGIN_MM, MIN_PIPE_EDGE_MM, TEE_SPLIT_MAX_MM, HEAD_GAP_JOIN_MAX_MM, HEAD_GAP_JOIN_TOL_MM, CROSS_TEE_AXIS_TOL_MM, CROSS_TEE_SYMBOL_TOL_MM, CROSS_TEE_END_TOL_MM, HEADGAP_PIPE_PROMOTE_MIN, HEAD_CONNECTOR_MAX_MM, HEAD_CONNECTOR_TOUCH_MM, HEAD_CONNECTOR_MAX_SEGS, CLOSED_PL_TOL_MM, SYMBOL_LAYER_MIN_CLOSED, LADDER_MAX_RUNG_MM, LADDER_MIN_RAIL_RATIO, LADDER_PARALLEL_COS, LADDER_MAX_ITER, STEEL_PIPE_TYPE, STEEL_C_FACTOR, CPVC_PIPE_TYPE, CPVC_C_FACTOR, ZONE_MATERIAL_MAP, DEFAULT_ZONE_MATERIAL, ZONE_KIND_PARKING, ZONE_KIND_UNIT_DWELLING, ORTHO_SNAP_TOL_DEG, FX_SPEC_PROFILES, FX_DEFAULT_PROFILE, AV_EQ_LEN_M, FX_SCHEDULE_ROUGHNESS, FX_RISE_M, LOCAL_RISE_RULES, ELEV_SOURCE_USER, ELEV_SOURCE_DRAWING, ELEV_SOURCE_DEFAULT, ELEV_SOURCE_UNRESOLVED, ELEV_SOURCE_ORDER, fx_schedule_name, fx_geometry_key)  # noqa: E501  (Phase2b core)
 
 
 def _categorize_layer(name: str) -> str:
@@ -266,6 +266,7 @@ class ParsedDxfBundle:
     layer_counts: dict[str, int] = field(default_factory=dict)
     # 헤드 틈 지문으로 PIPE 승격된 레이어 — 이름 분류가 틀렸다는 근거 기록.
     promoted_layers: list[dict] = field(default_factory=list)
+    demoted_layers: list[dict] = field(default_factory=list)
     # robust bbox 진단 (outlier 가 있을 때 디버깅 + 라벨에 표시)
     bbox_diagnostics: dict = field(default_factory=dict)
     # 외부참조(XREF) 진단 — 도면 내용이 딴 파일에 있는 «시트» 인지 판정한다.
@@ -631,6 +632,9 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
     # 파생 지점(필터·그래프·레이어 패널)이 같은 분류를 본다.
     bundle.promoted_layers = (_promote_headgap_pipe_layers(bundle)
                               + _promote_head_connector_runs(bundle))
+    # 그리고 그 반대 — 이름은 배관인데 «닫힌 기호» 뿐인 레이어를 내린다.
+    #   회수와 같은 자리에서 해야 파생 지점이 전부 같은 분류를 본다(§27).
+    bundle.demoted_layers = _demote_symbol_pipe_layers(bundle)
     # 승격까지 끝난 분류로 «껍데기 시트» 를 가른다 — 승격 전에 재면 배관을
     # 놓친 도면이 시트로 오인된다.
     _mark_xref_sheet(bundle)
@@ -1293,7 +1297,14 @@ def _auto_pipe_layer_filter(entities: list[dict],
             if k in u:
                 matched.add(l)
                 break
-    return matched
+    # [BLOCKED §27] 이름이 맞아도 내용이 «닫힌 기호» 뿐이면 배관이 아니다.
+    #   대명동 계통도의 `SP` 가 그렇다 — 키워드는 맞는데 헤드 기호 918개다.
+    #   ★그래프는 안 바뀐다(닫힌 PL 은 이미 컷에서 잘린다 · 실측으로 확인:
+    #     빼기 전후 노드 255·간선 254·조각 67 동일). 바뀌는 것은 «무엇을
+    #     배관으로 골랐다» 고 사람에게 말하는 내용이다.
+    shapes = _closed_open_counts(entities)
+    return {lay for lay in matched
+            if not _is_symbol_only(shapes.get(lay, (0, 0)))}
 
 
 def _drawing_scale_ratio(line_ents: list[dict], ref_median_mm: float = 200.0) -> float:
@@ -2371,6 +2382,115 @@ def _promote_headgap_pipe_layers(bundle: ParsedDxfBundle) -> list[dict]:
     if promoted:
         bundle.layers.sort(key=lambda ly: ly["name"])
     return promoted
+
+
+def _closed_open_counts(entities) -> dict:
+    """레이어별 (닫힌 도형, 선형 도형) 개수.
+
+    닫힘 판정은 그래프가 이미 쓰는 자 그대로다 — 첫점≈끝점(``CLOSED_PL_TOL_MM``).
+    두 자리(레이어 강등 · 자동 배관 레이어 필터)가 같은 사실을 봐야 화면과
+    추출이 같은 말을 한다.
+    """
+    out: dict = {}
+    for en in (entities or ()):
+        lay = str(en.get("l") or "0")
+        c, o = out.get(lay, (0, 0))
+        t = en.get("t")
+        if t == "C":
+            c += 1
+        elif t == "L":
+            o += 1
+        elif t == "PL":
+            pts = en.get("p") or []
+            if len(pts) >= 3 and math.hypot(
+                    pts[0][0] - pts[-1][0],
+                    pts[0][1] - pts[-1][1]) <= CLOSED_PL_TOL_MM:
+                c += 1
+            else:
+                o += 1
+        else:
+            continue
+        out[lay] = (c, o)
+    return out
+
+
+def _is_symbol_only(counts) -> bool:
+    """닫힌 도형뿐이라 배관망을 세울 수 없는 레이어인가."""
+    closed, opened = counts
+    return closed >= SYMBOL_LAYER_MIN_CLOSED and opened == 0
+
+
+def categorize_layers(entities) -> dict:
+    """이름 사전 + **기하 교정** 을 적용한 레이어→카테고리 표.
+
+    `_categorize_layer` 는 이름만 받는다(그것이 그 함수의 계약이다). 부르는
+    쪽이 entity 를 갖고 있을 때는 이쪽을 쓴다 — 「이름은 배관인데 내용이 닫힌
+    기호뿐」인 레이어가 실제로 있기 때문이다(BLOCKED §27 · 대명동 계통도 `SP`).
+    """
+    shapes = _closed_open_counts(entities)
+    out = {}
+    for lay in {str(en.get("l") or "0") for en in (entities or ())}:
+        cat = _categorize_layer(lay)
+        if cat == "PIPE" and _is_symbol_only(shapes.get(lay, (0, 0))):
+            cat = "OTHER"
+        out[lay] = cat
+    return out
+
+
+def _demote_symbol_pipe_layers(bundle: ParsedDxfBundle) -> list[dict]:
+    """이름은 배관인데 내용이 **전부 닫힌 도형** 인 레이어를 PIPE 에서 내린다.
+
+    [BLOCKED §27] 이름 사전이 정반대로 읽는 자리가 실제로 있다. 대명동 계통도의
+    ``SP`` 는 사전이 「스프링클러 배관」으로 읽지만 내용은 **헤드 기호 918개**
+    이고, 진짜 입상관은 ``LSP``·``HSP`` 에 있다. 그 도면에서 사람은 「배관 레이어
+    고르기」 목록의 «PIPE» 추천을 그대로 믿을 수 없다.
+
+    §27 은 이 자리를 두 번 시도해 두 번 기각했다 — 선분 길이도 접점 수도
+    배관과 기호를 못 가른다(평면도의 진짜 배관은 짧은 선분이 대부분이라
+    「길면 배관」이 정확히 거꾸로 작동한다). 그때 같이 적어 둔 문장이 길을
+    남겼다: **「entity 단위(닫힘·도형 지름)로는 갈리지만 그 정보는 묶음에
+    없다」**. `_categorize_layer` 는 이름만 받지만 여기는 entity 를 갖고 있다.
+
+    지문은 그래프가 이미 쓰는 사실 그대로다 — 첫점≈끝점인 PL(과 CIRCLE)은
+    배관이 아니다(``_build_graph`` 의 closed-PL 컷 · ``CLOSED_PL_TOL_MM``).
+    한 레이어의 선형 도형이 **하나도 없이** 닫힌 도형뿐이면, 그 레이어로는
+    배관망을 세울 수 없다. 이름이 무엇이든 그것은 기호 레이어다.
+
+    ★교정 4장 실측 — 진짜 배관 레이어는 **닫힘 0%** 로 전부 안전하다
+      (``scripts/_probe_layer_geom_gate.py``):
+
+        계통도  SP              PIPE  918개  닫힘 100%  ← 유일한 대상
+        계통도  LSP             PIPE  117개  닫힘   0%
+        기계실  -소화(SP-고/저)   PIPE   68개  닫힘   0%
+        평면도  -소화(SP가지관)   PIPE 1162개  닫힘   0%
+        평면도  SP 후렉시블       PIPE   85개  닫힘   0%
+        LH306  PIPE·PIPE11     PIPE  355개  닫힘   0%
+
+    ★**그래프는 한 글자도 안 바뀐다.** SP 를 빼고 계통도 경로 그래프를 다시
+      세워 확인했다 — 노드 255·간선 254·조각 67 로 동일하다. 닫힌 PL 은
+      어차피 컷에서 잘리고 있었다. 바뀌는 것은 **사람에게 하는 말** 이다.
+
+    내리는 자리는 ``OTHER`` 다. 「헤드다」라고 말하지 않는다 — 이 지문이 아는
+    것은 «닫힌 기호» 까지이고, 그것이 헤드인지 밸브인지 범례인지는 모른다.
+    없는 확신을 새로 만들지 않고 **틀린 확신 하나를 거둔다**.
+
+    반환: ``[{"layer", "prev_category", "closed", "open", "entity_count"}]``
+    """
+    demoted: list[dict] = []
+    shapes = _closed_open_counts(bundle.entities)
+    for ly in bundle.layers:
+        if ly["auto_category"] != "PIPE":
+            continue
+        closed, opened = shapes.get(ly["name"], (0, 0))
+        # 선형 도형이 하나라도 있으면 안 내린다 — 배관과 기호가 섞인 레이어를
+        # 통째로 내리면 진짜 배관을 같이 버린다.
+        if not _is_symbol_only((closed, opened)):
+            continue
+        ly["auto_category"] = "OTHER"
+        demoted.append({"layer": ly["name"], "prev_category": "PIPE",
+                        "closed": closed, "open": opened,
+                        "entity_count": closed + opened})
+    return demoted
 
 
 def _promote_head_connector_runs(bundle: ParsedDxfBundle) -> list[dict]:

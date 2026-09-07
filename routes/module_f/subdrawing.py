@@ -123,9 +123,20 @@ def layer_options(entities) -> list[dict]:
     for en in (entities or ()):
         nm = str(en.get("l") or "0")
         n_by[nm] = n_by.get(nm, 0) + 1
+    # [BLOCKED §27] 이름만 보면 «정반대로» 읽는 자리가 있다 — 대명동 계통도의
+    #   `SP` 는 사전이 배관으로 읽지만 헤드 기호 918개다. 여기는 entity 를
+    #   갖고 있으므로 기하 교정을 적용한 표를 쓴다. 못 불러오면 이름만으로
+    #   떨어진다 — 사람이 고르는 화면이 죽는 것보다는 낫다.
+    cats = {}
+    try:
+        from remote30_prototype import categorize_layers
+        cats = categorize_layers(entities)
+    except Exception:  # noqa: BLE001
+        cats = {}
     out = []
     for nm, n in sorted(n_by.items(), key=lambda kv: (-kv[1], kv[0])):
-        out.append({"layer": nm, "n": n, "cat": _layer_category(nm)})
+        out.append({"layer": nm, "n": n,
+                    "cat": cats.get(nm) or _layer_category(nm)})
     return out
 
 

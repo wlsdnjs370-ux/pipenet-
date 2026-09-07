@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260907-subfix">
+<link rel="stylesheet" href="/static/module_f.css?v=20260907-subfix2">
 </head>
 <body>
 <header>
@@ -110,6 +110,40 @@
         <span class="caret">▶</span>배관 레이어 고르기</h2>
       <div class="foldbody hidden" id="sub-layers-body">
         <div class="layers" id="sub-layers"></div>
+      </div>
+
+      <!-- [§27 후속] 뽑힌 배관을 «사람이» 고친다.
+           ★실측이 이 자리를 만들게 했다: 대명동 계통도는 뽑힌 배관 53개의
+             관경이 전부 «추측 150A» 다(도면 치수 매치 0건). 그 값이 그대로
+             최종 SDF 입상관이 되는데 볼 자리도 고칠 자리도 없었다.
+             그래프도 조각나 다리 61~66개로 이어져 연장에 섞인다. 그것을
+             자동으로 판정하는 대신 고칠 자리를 준다. -->
+      <h2 class="fold" data-fold="sub-fix-body" style="margin-top:14px">
+        <span class="caret">▶</span>뽑힌 배관 손보기
+        <span class="tag" id="sub-fix-chip">—</span></h2>
+      <div class="foldbody hidden" id="sub-fix-body">
+        <p class="hint">추출은 도면에서 못 읽은 관경을 <b>150A</b> 로 두고,
+          끊긴 자리는 <b>가까운 끝끼리 이어</b> 세웁니다. 아래에서 행을 골라
+          고치면 그 값이 그대로 산출에 들어갑니다 — 원래 값은 지워지지
+          않습니다.</p>
+        <div class="row">
+          <button id="sub-fix-all">전부 고르기</button>
+          <button id="sub-fix-none">선택 해제</button>
+          <button id="sub-fix-guessed">추측 관경만 고르기</button>
+        </div>
+        <div class="row">
+          <input type="number" id="sub-fix-dia" min="6" max="3000" step="5"
+                 placeholder="관경 (mm · 비우면 그대로)">
+          <input type="number" id="sub-fix-len" min="0.001" step="0.1"
+                 placeholder="길이 (m · 비우면 그대로)">
+        </div>
+        <div class="row">
+          <input id="sub-fix-note" maxlength="200" placeholder="사유 (왜 바꾸나)">
+          <button id="sub-fix-save" class="go">고른 배관 고치기</button>
+          <button id="sub-fix-reset">되돌리기</button>
+          <span class="tag" id="sub-fix-n">고른 것 0</span>
+        </div>
+        <div id="sub-fix-grid" style="max-height:280px;overflow:auto"></div>
       </div>
     </section>
 
@@ -665,6 +699,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260907-subfix"></script>
+<script src="/static/module_f.js?v=20260907-subfix2"></script>
 </body>
 </html>

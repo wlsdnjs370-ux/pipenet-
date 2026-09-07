@@ -18,6 +18,8 @@ from flask import jsonify
 from routes.module_f.common import _check_xy, _fail
 from routes.module_f.jobs import _job_running, _sess, route_session
 from routes.module_f.slots import _slot_active
+from routes.module_f.sub_fix import (
+    SLOT_KEY, apply_overrides, parse_rows, rows_for_view)
 from routes.module_f.subdrawing import (
     extract_machineroom, extract_system, extract_system_clean, graph_payload,
     layer_options, riser_summary)
@@ -60,6 +62,24 @@ def _layers(sess, body):
         # 목록이 아니면 조용히 무시하지 않고 그대로 둔다(옛 값 유지).
     got = sess.get("sub_layers")
     return set(got) if got else None
+
+
+def _fixes(sess, kind: str) -> list:
+    return list((sess.get("sub_fixes") or {}).get(kind) or ())
+
+
+def _reapply(sess, kind: str) -> dict:
+    """다시 뽑은 결과에 사람이 고친 값을 **되붙인다**.
+
+    ★안 되붙이면 추출을 한 번 더 누른 순간 손질이 통째로 사라진다. 자리는
+      좌표로 가리키므로 같은 구간이면 다시 붙고, 사라진 구간은 «못 붙였다» 로
+      세어 화면에 말한다(조용히 버리지 않는다).
+    """
+    got = sess.get(SLOT_KEY[kind])
+    rows = _fixes(sess, kind)
+    if not got or not rows:
+        return {"applied": 0, "given": len(rows), "unmatched": 0}
+    return apply_overrides(got, rows)
 
 
 def _need_slot(body, kind: str):
@@ -121,8 +141,9 @@ def register(app):
 
         sess["riser"] = riser
         sess["riser_mode"] = "dxf_path_v1"
+        fixed = _reapply(sess, "system")
         return jsonify({"ok": True, "mode": "dxf_path_v1",
-                        "summary": riser_summary(riser)})
+                        "summary": riser_summary(riser), "fixed": fixed})
 
     # ─────────────────────────────────── 기계실 (S730)
     @app.post("/api/module-f/machineroom/extract")
@@ -159,6 +180,9 @@ def register(app):
         # 붙일지의 기준이다. 추출 결과 dict 에는 라벨만 있고 좌표는 없다.
         mr["conn_xy"] = [conn[0], conn[1]]
         sess["machineroom"] = mr
+        # ★요약을 만들기 **전에** 되붙인다 — 뒤에 하면 화면에 뜨는 연장이
+        #   손질 전 값이 되어, 표와 요약이 서로 다른 말을 한다.
+        fixed = _reapply(sess, "machineroom")
         summary = riser_summary(mr)
         # 실측 edge 와 추정 edge 를 갈라 보고한다 — 통합해 그리면 안 된다.
         summary["plan_edges"] = len(mr.get("plan_edges") or ())
@@ -166,7 +190,7 @@ def register(app):
         # 천장고가 없으면 첫 구간 표고가 미확정으로 남는다 — 숨기지 않는다.
         summary["ceiling_m"] = ceiling
         summary["elevation_unresolved"] = ceiling is None
-        return jsonify({"ok": True, "summary": summary})
+        return jsonify({"ok": True, "summary": summary, "fixed": fixed})
 
     # ─────────────────────────────────── 경로 그래프 (실시간 미리보기용)
     @app.post("/api/module-f/sub/graph")
@@ -199,6 +223,60 @@ def register(app):
             "snap_default_mm": SNAP_DEFAULT_MM,
         })
         return jsonify(got)
+
+    # ─────────────────────────────────── 뽑힌 배관 손보기 [§27 후속]
+    @app.get("/api/module-f/sub/pipes")
+    @route_session()
+    def module_f_sub_pipes(sess, body):
+        """뽑힌 배관표 — 볼 자리가 없으면 고칠 수도 없다.
+
+        ★실측이 이 자리를 만들게 했다: 대명동 계통도는 뽑힌 배관 53개의 관경이
+          **전부 «추측 150A»** 다(도면 치수 텍스트 매치 0건). 그 값이 그대로
+          최종 SDF 의 입상관이 되는데 사람이 볼 길이 없었다.
+        """
+        kind = _slot_active(sess)
+        if kind not in SLOT_KEY:
+            return _fail("계통도·기계실 슬롯에서만 볼 수 있습니다.")
+        got = sess.get(SLOT_KEY[kind])
+        return jsonify({
+            "ok": True, "kind": kind, "extracted": bool(got),
+            "rows": rows_for_view(got) if got else [],
+            "fixes": _fixes(sess, kind),
+        })
+
+    @app.post("/api/module-f/sub/pipe-fix")
+    @route_session(post=True)
+    def module_f_sub_pipe_fix(sess, body):
+        """뽑힌 배관의 관경·길이를 사람이 덮는다.
+
+        추출은 조각난 도면을 «다리» 로 이어 세우고 관경은 못 읽으면 150A 로
+        둔다. 그 판정을 늘리는 대신 **고칠 자리**를 준다 — §27 이 두 번
+        확인한 방향이다(추측 규칙을 얹으면 «틀린 확신» 만 는다).
+
+        body: {sid, rows: [{a:[x,y], b:[x,y], dia?, length?, note?}]}
+              빈 배열이면 전부 지우고 원래 값으로 돌아간다.
+        """
+        kind = _slot_active(sess)
+        if kind not in SLOT_KEY:
+            return _fail("계통도·기계실 슬롯에서만 고칠 수 있습니다.")
+        got = sess.get(SLOT_KEY[kind])
+        if not got:
+            return _fail("먼저 경로를 추출하세요.", 409)
+        try:
+            rows = parse_rows(body.get("rows"))
+        except ValueError as exc:
+            return _fail(str(exc))
+        stat = apply_overrides(got, rows)
+        if stat["unmatched"]:
+            # 조용히 버리지 않는다 — 어느 자리가 사라졌는지는 사람만 안다.
+            return _fail(
+                f"{stat['unmatched']}개는 지금 뽑힌 경로에 없는 구간입니다 — "
+                f"다시 뽑으면서 그 구간이 빠졌는지 확인하세요.")
+        sess.setdefault("sub_fixes", {})[kind] = rows
+        print(f"[{kind}] 배관 손질 {len(rows)}개 적용")
+        return jsonify({"ok": True, "rows": rows_for_view(got),
+                        "fixes": rows, "counts": stat,
+                        "summary": riser_summary(got)})
 
     # ─────────────────────────────────── 추출 결과 되읽기
     @app.get("/api/module-f/sub/state")

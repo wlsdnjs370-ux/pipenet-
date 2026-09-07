@@ -123,6 +123,12 @@ HEAD_CONNECTOR_TOUCH_MM = 50.0
 # 이어 붙여 없는 배관을 만든다.
 HEAD_CONNECTOR_MAX_SEGS = 3
 CLOSED_PL_TOL_MM = 5.0  # PL 의 첫점과 마지막점이 이 거리 안이면 closed polygon 으로 간주 → 그래프 제외
+# [BLOCKED §27] 이름은 배관인데 내용이 «닫힌 도형뿐» 인 레이어를 PIPE 에서 내릴
+# 최소 개수. 대명동 계통도의 `SP` 는 사전이 배관으로 읽지만 실제로는 헤드 기호
+# 918개다(닫힘 100%). 교정 4장에서 진짜 배관 레이어는 전부 닫힘 0% 라 오작동
+# 여지가 없고, 이 값은 «도형 몇 개짜리 레이어가 어쩌다 다 닫혀 있는» 경우만
+# 거른다(범례 한두 개 등). 선형 도형이 하나라도 있으면 아예 안 내린다.
+SYMBOL_LAYER_MIN_CLOSED = 20
 LADDER_MAX_RUNG_MM = 300.0     # rung (짧은 cross 변) 최대 길이. 단위세대 도면 기준.
 LADDER_MIN_RAIL_RATIO = 3.0    # rail / rung 평균 길이 비. 정사각형 (=1) 은 합성 안 됨.
 LADDER_PARALLEL_COS = 0.985    # 두 rail 의 방향 cos 유사도 임계값 (≈ 10도 안)

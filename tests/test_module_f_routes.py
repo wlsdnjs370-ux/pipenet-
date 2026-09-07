@@ -588,8 +588,19 @@ def test_슬롯_전환이_돈다(edited):
 # 두 라우트는 슬롯을 바꾸고 도면을 읽어야 도는데, 그 앞에 «입력 검사» 층이
 # 있다. 좌표가 없거나 숫자가 아닐 때 500 이 아니라 사유 있는 거절이어야 한다 —
 # 그 층은 슬롯 없이도 지날 수 있으므로 여기서 덮는다.
-_SUB_DXF = os.path.join(_ROOT, "data", "uploads",
-                        "1. 입력도면 대명동 단위세대 계통도.dxf")
+# ★추적본을 먼저 본다. 종전에는 `data/uploads/` 의 **임시본**만 봤는데, 그
+#   폴더는 24시간마다 정리되므로(`_sweep_old_upload_files`) 어제 돌던 검사가
+#   오늘 조용히 skip 됐다 — 실제로 그렇게 3건이 꺼져 있었다.
+#   같은 도면이 이제 저장소에 있다(2026-09-07 픽스처 절충).
+_SUB_DXF = next(
+    (p for p in (
+        os.path.join(_ROOT, "routes", "제출용[최종]",
+                     "1. 입력도면 대명동 단위세대 계통도.dxf"),
+        os.path.join(_ROOT, "data", "uploads",
+                     "1. 입력도면 대명동 단위세대 계통도.dxf"),
+    ) if os.path.isfile(p)),
+    os.path.join(_ROOT, "routes", "제출용[최종]",
+                 "1. 입력도면 대명동 단위세대 계통도.dxf"))
 
 
 @pytest.fixture(scope="module")

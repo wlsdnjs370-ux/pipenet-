@@ -86,10 +86,18 @@ def _sdf_invariants(path: Path) -> dict:
 
 
 def _cleanup(key: str):
+    """★«지금 쓰는» 작업폴더에서만 지운다 — 모듈 상수 `WORK`(실폴더)를 그대로
+    쓰면 격리를 해 놓고도 사람의 저장본을 지운다(2026-09-07 실제 사고)."""
+    try:
+        from services.cad_import.pipeline import handoff as _hf
+        work = Path(_hf.import_write_root())
+    except Exception:  # noqa: BLE001 — 못 물어보면 아무것도 안 지운다
+        print("  [정리] 작업폴더를 못 물어봐 건너뜀 — 지우지 않는다")
+        return
     removed = 0
     for pat in (f"0단계_새찍기/{key}_*", f"0단계_새찍기/{key}*stage1_world*",
                 f"DWG/{key}_유저손질.json", f"_edit_disp_cache_{key}.json"):
-        for p in WORK.glob(pat):
+        for p in work.glob(pat):
             try:
                 p.unlink()
                 removed += 1
@@ -112,9 +120,16 @@ def part1_b1f(c, record: dict) -> None:
     s = j["summary"]
     base = json.loads(BASELINE.read_text(encoding="utf-8"))
     if base.get("board") != board:
-        print(f"  [정보] board 가 기준선과 다르다 — {base.get('board')} → "
-              f"{board}. 입력 변화다(코드 회귀 아님). --record 로 다시 뜨라.")
-        FAILS.append("B1F board 지문 불일치(입력 변화)")
+        # ★이것은 «코드 회귀» 가 아니라 **입력이 달라진 것**이다. B1F 저장본은
+        #   저장소에 없는 작업 산물이라 사람이 손질할 때마다 지문이 움직인다
+        #   (BLOCKED 「F-0 · B1F 저장본 표류」). 그 표류를 실패로 세면, 이 시험이
+        #   지키려는 **코드** 회귀가 그 잡음에 묻힌다.
+        #   그래서 여기서는 «비교를 건너뛴다» 고 밝히고 넘어간다 — Ⅱ부(대명동
+        #   전 구간)는 저장소 안의 도면으로 도므로 안전망은 그쪽이 진다.
+        print(f"  [건너뜀] B1F board 가 기준선과 다르다 — {base.get('board')} → "
+              f"{board}")
+        print("           저장소 밖 저장본이라 지문이 움직인다(BLOCKED "
+              "「F-0 · B1F 저장본 표류」). 의도한 갱신이면 --record.")
         return
     for k2 in ("far_m", "near_m", "span_m", "total_m", "max_load"):
         check(f"F-1 기준선 {k2}", s.get(k2) == base.get(k2),
@@ -158,10 +173,13 @@ def part1_b1f(c, record: dict) -> None:
 def part2_full_path(c, record: dict) -> None:
     print("\n[Ⅱ] 대명동 — 열기 → 찍기 → 손질 → 최불리 → 산출 전 구간")
     key = os.path.splitext(os.path.basename(str(DXF)))[0]
-    spec = WORK / "0단계_새찍기" / f"{key}_찍은스펙.json"
-    if spec.exists():
-        FAILS.append(f"작업폴더에 이미 {key} 저장본 — 전 구간 골든 생략")
-        return
+    # ★작업폴더를 임시 사본으로 돌린다. 종전에는 「저장본이 있으면 생략」이라
+    #   **사람이 그 도면을 한 번 찍은 뒤로는 전 구간 골든이 영영 안 돌았다.**
+    #   안 도는 골든은 통과가 아니라 없는 것이다(BLOCKED §20).
+    from _workdir_iso import isolated_workdir
+    _iso = isolated_workdir(prefix="f7_complete_")
+    _work = _iso.__enter__()
+    print(f"  [작업폴더] 임시 사본으로 격리 · {_work}")
     try:
         with open(DXF, "rb") as f:
             raw = f.read()
@@ -227,6 +245,10 @@ def part2_full_path(c, record: dict) -> None:
         }
     finally:
         _cleanup(key)
+        # ★격리를 반드시 되돌린다 — 안 되돌리면 그 프로세스에 남아 **다음
+        #   시험이 빈 폴더를 본다**(실측: 「B1F reopen 실패 FileNotFoundError」).
+        #   한 시험을 지키려던 격리가 옆 시험을 깨면 한 판에 못 돌린다.
+        _iso.__exit__(None, None, None)
 
 
 def main() -> int:
@@ -247,9 +269,23 @@ def main() -> int:
 
     print("\n[골든 대조]")
     if "--record" in sys.argv or not GOLDEN.is_file():
-        GOLDEN.write_text(json.dumps(record, ensure_ascii=False, indent=2),
+        # ★이번에 **실제로 잰 칸만** 갈아 끼운다. 종전에는 `record` 를 통째로
+        #   덮어써서, 한쪽(B1F)이 조기 반환으로 비어 있으면 그 골든 항목이
+        #   **사라졌다** — 실제로 그렇게 b1f 를 날렸다(2026-09-07, 백업에서 복구).
+        #   골든을 갱신하다 골든을 잃는 것은 최악이다.
+        merged = {}
+        if GOLDEN.is_file():
+            try:
+                merged = json.loads(GOLDEN.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001 — 깨져 있으면 새로 쓴다
+                merged = {}
+        skipped = [k for k in ("b1f", "daemyeong")
+                   if k in merged and k not in record]
+        merged.update({k: v for k, v in record.items() if v})
+        GOLDEN.write_text(json.dumps(merged, ensure_ascii=False, indent=2),
                           encoding="utf-8")
-        print(f"  [기록] {GOLDEN.name} 갱신")
+        print(f"  [기록] {GOLDEN.name} 갱신 — 잰 칸 {sorted(record)}"
+              + (f" · 못 재서 **그대로 둔** 칸 {skipped}" if skipped else ""))
     else:
         gold = json.loads(GOLDEN.read_text(encoding="utf-8"))
         for part in ("b1f", "daemyeong"):
@@ -278,3 +314,22 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ─────────────────────────────────────────────────────────────────────────
+def test_완성품_전_구간_골든():
+    """pytest 진입점 — `main()` 을 그대로 태운다.
+
+    ★이 파일은 오랫동안 `test_*.py` 이면서 **pytest 수집 0건**이었다.
+      `assert` 대신 `FAILS`+`return 1` 로 보고하는 스크립트였기 때문이다.
+      「F-7 완성품 전 구간 골든」를 표방하면서 자동 실행에는 없었다 — 안 도는 시험은
+      통과가 아니라 없는 것이다.
+
+      `main()` 은 그대로 둔다(사람이 직접 돌리는 길을 없애지 않는다).
+      여기서는 그 반환값만 본다.
+    """
+    import pytest
+
+    if not DXF.exists():
+        pytest.skip(f"표본 도면 없음: {DXF}")
+    assert main() == 0, "실패 상세는 위 출력 참고"

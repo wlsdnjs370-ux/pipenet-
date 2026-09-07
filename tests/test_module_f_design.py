@@ -119,12 +119,26 @@ def main() -> int:
         em = r.get_json()
         if not check("emit 성공", em.get("ok"), str(em)[:90]):
             return 1
+        # ★**이번 세션** 것을 집는다. 종전에는 `glob("*_design")` 을 돌며 마지막
+        #   것을 남겼는데, 그 폴더에는 지난 실행의 산출물이 쌓여 있어 glob 순서에
+        #   따라 **옛 파일**을 집었다. 실측으로 그렇게 배관 6개짜리 옛 SDF 를
+        #   집어 「웹 6개 vs 데스크톱 110개」로 실패했다 — 제품이 아니라 이 시험이
+        #   틀린 것이었다(같은 시각 실제 산출물은 110개였다).
         web_sdf = None
-        for sess_dir in (ROOT / "data" / "uploads" / "module_f").glob(
-                "*_design"):
-            cand = sess_dir / f"{KEY}_수리계산입력.sdf"
-            if cand.is_file():
-                web_sdf = cand
+        cand = (ROOT / "data" / "uploads" / "module_f" / f"{sid}_design"
+                / f"{KEY}_수리계산입력.sdf")
+        if cand.is_file():
+            web_sdf = cand
+        else:
+            # 세션 폴더 이름 규약이 바뀌었으면 «가장 최근» 으로 물러서되,
+            # 조용히 아무거나 집지는 않는다.
+            pool = sorted((ROOT / "data" / "uploads" / "module_f").glob(
+                f"*_design/{KEY}_수리계산입력.sdf"),
+                key=lambda p: p.stat().st_mtime, reverse=True)
+            web_sdf = pool[0] if pool else None
+            if web_sdf is not None:
+                print(f"      (세션 폴더를 못 찾아 최신 산출물로 대체: "
+                      f"{web_sdf.parent.name})")
         check("SDF+SLF 가 실제로 있다", web_sdf is not None
               and web_sdf.with_suffix(".slf").is_file(),
               str(em.get("sdf")))
@@ -183,9 +197,15 @@ out = emit_design_sdf(dlg.result["tables"], out_dir / (KEY + "_수리계산입�
                       project_title=f"{KEY} 수리계산 입력", **dlg._view_opts())
 print("DESKTOP_SDF=", out)
 '''
+    # ★자식의 출력 인코딩을 **못박는다.** 부모는 UTF-8 로 읽는데 자식은
+    #   Windows 기본(cp949)으로 쓰므로, 그냥 두면 경로의 한글이 깨져
+    #   `DESKTOP_SDF=` 를 읽고도 «그런 파일 없음» 이 된다.
+    #   바깥 셸에 `PYTHONIOENCODING` 이 있으면 통과하고 없으면 실패했다 —
+    #   즉 «직접 돌리면 되는데 pytest 로는 안 되는» 시험이었다.
+    _env = dict(os.environ, PYTHONIOENCODING="utf-8")
     r = subprocess.run([sys.executable, "-c", code], cwd=str(g_root),
                        capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=1200)
+                       errors="replace", timeout=1200, env=_env)
     desk_sdf = None
     for ln in (r.stdout or "").splitlines():
         if ln.startswith("DESKTOP_SDF="):
@@ -194,7 +214,12 @@ print("DESKTOP_SDF=", out)
                 desk_sdf = g_root / desk_sdf     # 자식의 cwd 는 G 트리다
     if not check("G 데스크톱 창 저장 성공", desk_sdf is not None
                  and desk_sdf.is_file(),
-                 (r.stderr or r.stdout or "")[-120:]):
+                 f"rc={r.returncode} · DESKTOP_SDF={desk_sdf}"):
+        # ★사유를 120자로 자르면 원인을 가린다 — 자식이 왜 죽었는지가 전부다.
+        print("  ── 자식 stderr ──")
+        print((r.stderr or "").strip()[-1500:] or "(비어 있음)")
+        print("  ── 자식 stdout 끝 ──")
+        print((r.stdout or "").strip()[-600:] or "(비어 있음)")
         return 1
     web = web_sdf.read_text(encoding="utf-8")
     desk = desk_sdf.read_text(encoding="utf-8")
@@ -228,3 +253,15 @@ print("DESKTOP_SDF=", out)
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ─────────────────────────────────────────────────────────────────────────
+def test_design_라우트가_열려_있다():
+    """pytest 진입점 — `main()` 을 그대로 태운다.
+
+    ★이 파일은 오랫동안 `test_*.py` 이면서 **pytest 수집 0건**이었다.
+      `assert` 대신 `FAILS`+`return 1` 로 보고하는 스크립트였기 때문이다.
+      「F-2 design/ HTTP 노출」를 표방하면서 자동 실행에는 없었다 — 안 도는 시험은
+      통과가 아니라 없는 것이다.
+    """
+    assert main() == 0, "실패 상세는 위 출력 참고"

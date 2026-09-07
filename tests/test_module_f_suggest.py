@@ -46,11 +46,23 @@ def _wait(c, sid, limit=1200):
 
 
 def _cleanup(key: str):
-    """이 테스트가 작업폴더에 만든 것만 걷어낸다 — 키 단위로."""
+    """이 테스트가 작업폴더에 만든 것만 걷어낸다 — 키 단위로.
+
+    ★**지금 쓰는 작업폴더**를 물어본다. 모듈 상수 `WORK`(실폴더)를 그대로 쓰면
+      격리를 해 놓고도 사람의 저장본을 지운다 — 실제로 그렇게 대명동 평면도
+      저장본을 날렸다(2026-09-07). 격리는 «쓰기» 를 옮기는 것인데 지우기가
+      옛 경로를 보고 있었다.
+    """
+    try:
+        from services.cad_import.pipeline import handoff as _hf
+        work = Path(_hf.import_write_root())
+    except Exception:  # noqa: BLE001 — 못 물어보면 아무것도 안 지운다
+        print("  [정리] 작업폴더를 못 물어봐 건너뜀 — 지우지 않는다")
+        return
     removed = 0
     for pat in (f"0단계_새찍기/{key}_*", f"0단계_새찍기/{key}*stage1_world*",
                 f"DWG/{key}_유저손질.json", f"_edit_disp_cache_{key}.json"):
-        for p in WORK.glob(pat):
+        for p in work.glob(pat):
             try:
                 p.unlink()
                 removed += 1
@@ -106,17 +118,24 @@ def main() -> int:
         print(f"샘플 DXF 없음: {DXF}")
         return 1
     key = os.path.splitext(os.path.basename(str(DXF)))[0]
-    spec = WORK / "0단계_새찍기" / f"{key}_찍은스펙.json"
-    if spec.exists():
-        print(f"!! 작업폴더에 이미 {key} 저장본이 있다 — 덮어쓰지 않기 위해 중단")
-        return 1
-
+    # ★작업폴더를 임시 사본으로 돌린다 — 이 검사가 사람의 저장본을 안 건드리게.
+    #   종전에는 「저장본이 있으면 중단」이라 **사람이 그 도면을 한 번 찍은 뒤로는
+    #   영영 안 돌았다.** 안 도는 검사는 통과가 아니라 없는 것이다(BLOCKED §20).
     spec2 = importlib.util.spec_from_file_location(
         "daejo", os.path.join(str(ROOT), "대조 서버.py"))
     srv = importlib.util.module_from_spec(spec2)
     spec2.loader.exec_module(srv)
     app = srv.app
     app.config["TESTING"] = True
+
+    # ★서버를 올린 «뒤» 에 격리한다 — 그 전에는 `routes` 가 sys.path 에 없다.
+    from routes.module_f.common import _boot as _b
+    _b()
+    from _workdir_iso import isolated_workdir
+    _iso = isolated_workdir(prefix="f5_suggest_")
+    _work = _iso.__enter__()
+    print(f"  [작업폴더] 임시 사본으로 격리 · {_work}")
+
 
     try:
         with app.test_client() as c:
@@ -227,6 +246,10 @@ def main() -> int:
                       for k2 in det), str(list(marks.keys())))
     finally:
         _cleanup(key)
+        # ★격리를 반드시 되돌린다 — 안 되돌리면 그 프로세스에 남아 **다음
+        #   시험이 빈 폴더를 본다**(실측: 「B1F reopen 실패 FileNotFoundError」).
+        #   한 시험을 지키려던 격리가 옆 시험을 깨면 한 판에 못 돌린다.
+        _iso.__exit__(None, None, None)
 
     print("\n" + "=" * 56)
     if FAILS:
@@ -240,3 +263,22 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ─────────────────────────────────────────────────────────────────────────
+def test_찍기_제안과_제외_사유():
+    """pytest 진입점 — `main()` 을 그대로 태운다.
+
+    ★이 파일은 오랫동안 `test_*.py` 이면서 **pytest 수집 0건**이었다.
+      `assert` 대신 `FAILS`+`return 1` 로 보고하는 스크립트였기 때문이다.
+      「F-5 찍기 후보 제안」를 표방하면서 자동 실행에는 없었다 — 안 도는 시험은
+      통과가 아니라 없는 것이다.
+
+      `main()` 은 그대로 둔다(사람이 직접 돌리는 길을 없애지 않는다).
+      여기서는 그 반환값만 본다.
+    """
+    import pytest
+
+    if not DXF.exists():
+        pytest.skip(f"표본 도면 없음: {DXF}")
+    assert main() == 0, "실패 상세는 위 출력 참고"

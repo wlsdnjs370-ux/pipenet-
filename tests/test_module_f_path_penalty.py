@@ -81,3 +81,69 @@ def test_못_받으면_미리보기를_접는다():
     j = body.index("forced_penalty_mm")
     assert "return null" in body[j:j + 220], \
         "벌점을 못 받았는데 그리려 든다"
+
+
+def test_받은_벌점이_화면_상태까지_살아_남는다():
+    """★위 네 검사가 모두 통과하는 동안 미리보기는 **한 번도 안 그려졌다**.
+
+    서버는 값을 보냈고(검사 2), 화면 코드는 그 이름을 읽고(검사 3), 못 받으면
+    접는다(검사 4). 그런데 정작 응답을 **골라 담는** 자리에서 이 필드만
+    빠져 있었다 — `S.subGraph = {nodes, edges, adj, forced, …}`. 그래서 화면은
+    늘 «못 받은» 상태였고, 선은 어느 도면에서도 따라오지 않았다. 오류도
+    콘솔도 없다.
+
+    소스를 읽는 검사로는 이 틈을 못 본다. 응답을 넣고 **경로가 실제로 나오는지**
+    를 본다 — 값이 도중에 떨어지면 여기서 null 이 된다.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node 가 없다 — 화면 코드를 돌릴 수 없다")
+
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+
+    def fn(head):
+        i = js.index(head)
+        return js[i:js.index("\n  }\n", i) + 4]
+
+    # 서버 payload 그대로 — 절점 3개가 한 줄로 이어진 최소 그래프.
+    payload = {
+        "ok": True,
+        "nodes": [[0, 0], [1000, 0], [2000, 0]],
+        "edges": [[0, 1, 1000.0, 0], [1, 2, 1000.0, 0]],
+        "forced": 0, "components": 1, "layers": [], "chosen": None,
+        "forced_penalty_mm": 1e9,
+    }
+    prog = "\n".join([
+        "const S = {sid: 'x', subGraph: null};",
+        f"const PAYLOAD = {json.dumps(payload)};",
+        "const post = async () => PAYLOAD;",
+        "const renderSubLayers = () => {};",
+        "const draw = () => {};",
+        "const say = () => {};",
+        fn("async function loadSubGraph("),
+        fn("function subNearest("),
+        fn("function subPath("),
+        "loadSubGraph().then(() => {",
+        "  const a = subNearest(0, 0), b = subNearest(2000, 0);",
+        "  console.log(JSON.stringify({",
+        # undefined 는 JSON 에서 사라진다 — null 로 바꿔 «없다» 를 남긴다.
+        "    pen: S.subGraph.forced_penalty_mm === undefined",
+        "         ? null : S.subGraph.forced_penalty_mm,",
+        "    path: subPath(a, b),",
+        "  }));",
+        "});",
+    ])
+    out = subprocess.run([node, "-e", prog], capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
+    assert out.returncode == 0, out.stderr[-600:]
+    got = json.loads(out.stdout)
+    assert got["pen"] == 1e9, (
+        "서버가 보낸 벌점이 화면 상태까지 못 왔다 — 미리보기가 통째로 죽는다")
+    assert got["path"] == [0, 1, 2], got["path"]

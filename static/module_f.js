@@ -1629,8 +1629,14 @@
         adj[a].push([b, len, forced]);
         adj[b].push([a, len, forced]);
       }
+      // ★`forced_penalty_mm` 을 빠뜨리면 **미리보기가 통째로 죽는다** —
+      //   `subPath()` 가 그 값이 없으면 null 을 주고 조용히 접기 때문이다.
+      //   실제로 그렇게 빠져 있었다: 서버는 보냈고 시험도 «보냈나» 만 봤는데,
+      //   화면이 필드를 골라 담으면서 이것만 안 담아 선이 한 번도 안 따라왔다.
+      //   오류도 콘솔도 없다. 골라 담는 자리는 늘 이 사고를 낸다.
       S.subGraph = { nodes: d.nodes, edges: d.edges, adj,
                      forced: d.forced, components: d.components,
+                     forced_penalty_mm: d.forced_penalty_mm,
                      layers: d.layers, chosen: d.chosen };
     } catch (err) {
       S.subGraph = null;

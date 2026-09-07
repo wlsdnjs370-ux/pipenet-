@@ -1597,16 +1597,32 @@
       // 하고, 아직 안 연 슬롯이면 «안 고른» 상태 그대로여야 한다.
       const st = await api(`/api/module-f/auto/state?sid=${S.sid}`);
       S.method = st.method || null;
+      // ★슬롯이 바뀌면 **도면도 바뀐다.** 여기서 한 번에 갈아 끼운다.
+      //
+      //   종전에는 갈래마다 알아서 불렀는데, 손질(edit) 갈래가 안 불러서
+      //   `S.world` 에 **남의 슬롯 도면**이 그대로 남았다(실측: 평면도로
+      //   돌아왔는데 묶음이 계통도 24개 · 기계실 19개). 그 상태에서 무엇이든
+      //   `fit(S.world.bounds)` 를 부르면 시점이 남의 도면 좌표로 튄다 —
+      //   슬롯마다 좌표계가 아예 다르다(계통도 x≈-660,214 · 평면도 x≈248,153).
+      //   그러면 도면이 «화면에서 사라진» 것처럼 보인다.
+      S.world = null;
+      if (cur.opened) {
+        try { await loadWorldRaw(); }
+        catch (err) {
+          // 못 읽었으면 «남의 도면» 을 남기느니 비운다 — 그리고 말한다.
+          S.world = null;
+          say(`${cur.label} 도면을 못 읽었습니다 — ${err.message}`, "err");
+        }
+      }
       if (!cur.opened) {
-        S.world = null; S.edit = null; S.key = null;
+        S.edit = null; S.key = null;
         setStage("open");
         say(`${cur.label} — 아직 도면이 없습니다. DXF 를 여세요.`);
       } else if (kind === "plan" && !S.method) {
         // [F-10a] 읽어는 뒀는데 아직 길이 안 정해진 슬롯. 예전에는 여기서 방식을
         //   다시 물었다 — 이제 묻지 않고 열기 때와 같은 판단으로 흘려보낸다
         //   (새로고침 같은 이유로 흐름이 중간에 끊겼을 때 오는 자리다).
-        await loadWorldRaw();
-        fit(S.world.bounds);
+        if (S.world) fit(S.world.bounds);
         const nm = st.dxf_name || cur.key || "";
         $("adv-file").textContent = nm;
         $("adv-file").title = nm;
@@ -1614,13 +1630,12 @@
         await autoStart();
       } else if (kind !== "plan") {
         // 계통도·기계실은 찍기·손질을 거치지 않는다 — 두 점 찍기로 바로 간다.
-        await loadWorldRaw();
         await loadSub();
       } else if (S.method === "auto") {
-        await loadWorldRaw();
         await loadAuto();
       } else if (cur.stage === "edit") { await loadEdit(); }
-      else { await loadWorld(); }
+      // 도면은 위에서 이미 갈아 끼웠다 — 다시 받지 않는다(`reuse`).
+      else { await loadWorld(true); }
     } catch (err) { say(err.message, "err"); }
     finally { busy(false); }
   }

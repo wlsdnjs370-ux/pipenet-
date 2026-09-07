@@ -1465,19 +1465,29 @@
   //   쓰는 자리보다 앞에 둔다.
   const edK = () => Math.max(1, Math.min(200, Number($("ed-k").value || 30)));
 
-  // [D-F10-4 개정] 「③ 배관망 뽑기」가 지금 눌릴 수 있는가, 아니면 무엇이
-  //   모자란가. 알람밸브가 없으면 계산 자체가 성립하지 않는다 — 눌러 보고
-  //   나서 거절당하느니 미리 말한다. 영역이 바뀌어도 같이 갱신한다.
+  // [D-F10-4 개정] 「③ 배관망 뽑기」가 지금 무엇을 기준으로 도는가.
+  //
+  // ★**버튼을 잠그지 않는다.** 처음에는 알람밸브가 없을 때 `disabled` 로
+  //   뒀는데, 그러면 눌러도 아무 일이 없고 아무 말도 안 한다 — 사람에게는
+  //   그것이 곧 「버튼이 작동을 안 한다」로 읽힌다(실제로 그 지적을 받았다).
+  //   잠그는 대신 **누르면 무엇이 모자란지 말한다**. 죽은 컨트롤보다 낫다.
+  const WORST_NEED_ANCHOR =
+    "① 알람밸브(접속점)를 먼저 찍으세요 — 여기서 물이 들어옵니다.";
+
+  function worstReady() {
+    return ((S.edit || {}).sources || []).length;
+  }
+
   function renderWorstReady() {
-    const e = S.edit;
-    if (!e) return;
-    const n = (e.sources || []).length;
-    $("ed-worst").disabled = !n;
-    $("ed-worst-why").textContent = n
+    if (!S.edit) return;
+    const n = worstReady();
+    const why = $("ed-worst-why");
+    why.classList.toggle("warn", !n);
+    why.textContent = n
       ? `알람밸브 ${n}곳 기준 · `
         + (S.zones.length ? `영역 ${S.zones.length}곳 안에서` : "도면 전체에서")
         + ` 기준개수 ${edK()}개를 고릅니다.`
-      : "① 알람밸브(접속점)를 먼저 찍으세요 — 여기서 물이 들어옵니다.";
+      : WORST_NEED_ANCHOR;
   }
 
   function renderZones() {
@@ -3331,6 +3341,14 @@
   }
 
   async function runWorst(label) {
+    // ★잠그는 대신 여기서 말한다. 서버도 같은 것을 막지만(400), 눌렀을 때
+    //   곧바로 «무엇이 모자란지» 가 뜨는 편이 사람에게 훨씬 빠르다.
+    if (!worstReady()) {
+      say(WORST_NEED_ANCHOR, "warn");
+      $("ed-anchor-note").classList.remove("hidden");
+      $("ed-anchor-note").scrollIntoView({ block: "nearest" });
+      return;
+    }
     busy(true, label);
     try {
       const sheet = Number(($("ed-sheet") || {}).value || 0);

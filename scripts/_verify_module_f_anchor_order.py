@@ -78,9 +78,16 @@ def main() -> int:
 
         check("순서 안내가 뜬다", "① " in pg.inner_text("#ed-anchor-note"),
               pg.inner_text("#ed-anchor-note")[:60].replace("\n", " "))
-        check("알람밸브 전에는 «최불리 선정» 이 잠겨 있다",
-              pg.is_disabled("#ed-worst"),
-              pg.inner_text("#ed-worst-why")[:50])
+        # ★여기 「잠겨 있다」를 통과 조건으로 적었던 것이 결함을 낳았다 —
+        #   잠긴 버튼은 눌러도 아무 말이 없어 사람에게는 «고장» 이다.
+        #   지금은 그 반대를 본다: **누르면 사유가 뜬다.**
+        check("알람밸브 전에도 «최불리 선정» 은 잠기지 않는다",
+              not pg.is_disabled("#ed-worst"))
+        pg.click("#ed-worst")
+        pg.wait_for_timeout(600)
+        check("★누르면 무엇이 모자란지 말한다",
+              "알람밸브" in pg.inner_text("#status"),
+              pg.inner_text("#status")[:60])
 
         def worst():
             return pg.evaluate("() => (window.__mf.edit || {}).worst || null")

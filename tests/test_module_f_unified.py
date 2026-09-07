@@ -370,6 +370,65 @@ def test_영역_지정이_최불리_버튼보다_앞에_있다():
         "영역 지정이 버튼 뒤에 있어 순서를 거꾸로 안내한다"
 
 
+def test_최불리_버튼은_죽은_단추가_되지_않는다():
+    """★실제로 낸 결함 — 「버튼을 누르니 작동을 안 한다」.
+
+    알람밸브가 없을 때 버튼을 `disabled` 로 잠갔더니, 눌러도 아무 일이 없고
+    아무 말도 안 했다. 사람에게 그것은 «안내» 가 아니라 **고장** 이다. 안내
+    문구를 옆에 적어 뒀어도 소용없다 — 누른 자리에서 답이 와야 한다.
+
+    그래서 잠그지 않고 **누르면 무엇이 모자란지 말한다.** 이 시험은 화면
+    코드를 그대로 꺼내 node 로 돌려 그 동작을 본다.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node 가 없다 — 화면 코드를 돌릴 수 없다")
+
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    assert "$(\"ed-worst\").disabled" not in js, \
+        "버튼을 다시 잠갔다 — 죽은 단추는 «고장» 으로 읽힌다"
+
+    def fn(head):
+        i = js.index(head)
+        return js[i:js.index("\n  }\n", i) + 4]
+
+    i = js.index("const WORST_NEED_ANCHOR")
+    need = js[i:js.index(";", i) + 1]
+    prog = "\n".join([
+        "const CALLS = {say: [], post: 0};",
+        "const S = {sid: 'x', edit: {sources: []}, zones: []};",
+        "const EL = {classList: {remove(){}, toggle(){}},",
+        "            scrollIntoView(){}, textContent: '', value: '30'};",
+        "const $ = () => EL;",
+        "const busy = () => {};",
+        "const post = async () => { CALLS.post += 1; return {}; };",
+        "const setEdit = () => {}; const renderEdit = () => {};",
+        "const startPulse = () => {}; const draw = () => {};",
+        "const say = (m, k) => CALLS.say.push([m, k]);",
+        "const edK = () => 30;",
+        need,
+        fn("function worstReady()"),
+        fn("async function runWorst("),
+        "runWorst('x').then(() => console.log(JSON.stringify(CALLS)));",
+    ])
+    out = subprocess.run([node, "-e", prog], capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
+    assert out.returncode == 0, out.stderr[-600:]
+    got = json.loads(out.stdout)
+    assert got["post"] == 0, "알람밸브도 없이 서버를 불렀다"
+    assert got["say"], "★눌렀는데 아무 말도 안 한다 — 이것이 «작동을 안 함» 이다"
+    msg, kind = got["say"][0]
+    assert "알람밸브" in msg, msg
+    assert kind == "warn", kind
+
+
 def test_원클릭은_클릭_경로로만_넣는다():
     """D-F10-6 — board 에 직접 쓰는 코드가 없어야 한다."""
     import inspect

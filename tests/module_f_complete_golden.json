@@ -43,8 +43,8 @@
     },
     "worst": {
       "far_m": 52.69,
-      "span_m": 6.06,
-      "total_m": 72.93,
+      "span_m": 11.1,
+      "total_m": 72.77,
       "max_load": 10
     },
     "full": {
@@ -53,8 +53,8 @@
     },
     "worst_kfp": {
       "k": 10,
-      "nodes": 62,
-      "pipes": 61
+      "nodes": 58,
+      "pipes": 57
     },
     "design": {
       "sdf": "1. 입력도면 대명동 단위세대 평면도_수리계산입력.sdf"

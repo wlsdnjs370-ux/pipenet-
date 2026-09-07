@@ -8,8 +8,7 @@ from routes.module_f.common import REMOTE_K_DEFAULT, _r1
 
 
 def _worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
-                   only_heads=None, source_index=None, head_xy=None,
-                   rule=None) -> dict:
+                   only_heads=None, source_index=None, head_xy=None) -> dict:
     """[F-0·D1] 엔진(G design/worst.py)으로 위임 — 구현은 한 벌만 둔다.
 
     이 파일에 있던 원본 구현이 G1 때 엔진으로 옮겨 갔고, 여기 남아 있던
@@ -17,12 +16,10 @@ def _worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
     한쪽만 고쳐지는 날이 반드시 온다 — 껍데기만 남기고 엔진을 부른다.
     (import 는 지연 — _boot() 가 sys.path 에 엔진을 올린 뒤라야 열린다.)
     """
-    from services.cad_import.design.worst import (
-        DESIGN_AREA_DEFAULT, worst_k_heads)
+    from services.cad_import.design.worst import worst_k_heads
     return worst_k_heads(pts, edges, hnodes, sources, k=k,
                          only_heads=only_heads, source_index=source_index,
-                         head_xy=head_xy,
-                         rule=rule or DESIGN_AREA_DEFAULT)
+                         head_xy=head_xy)
 
 
 def _worst_view(sess: dict) -> dict | None:

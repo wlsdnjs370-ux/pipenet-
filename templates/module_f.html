@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260907-rule1">
+<link rel="stylesheet" href="/static/module_f.css?v=20260907-far1">
 </head>
 <body>
 <header>
@@ -389,15 +389,6 @@
         <button id="ed-zone-clear">전부 지우기</button>
       </div>
       <h2 style="margin-top:12px">③ 배관망 뽑기</h2>
-      <!-- [BLOCKED §31] 설계면적을 «어떻게 채우나». 어느 쪽이 맞는지는
-           현장·도면마다 다르므로 프로그램이 정하지 않는다 — 사람이 고른다.
-           둘 다 방호구역은 모른다. 그 판단은 ② 영역 지정으로 한다. -->
-      <label class="f"><span>설계면적 채우는 방식</span>
-        <select id="ed-rule">
-          <option value="rect">직사각형 — 앵커 둘레를 사각형으로 (기본)</option>
-          <option value="branch">가지관 — 앵커의 가지관부터 통째로</option>
-        </select></label>
-      <p class="hint" id="ed-rule-why"></p>
       <div class="row">
         <select id="ed-src" class="hidden" title="어느 급수원 기준의 최불리인지"></select>
         <button id="ed-worst" class="go">최불리 선정</button>
@@ -716,6 +707,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260907-rule1"></script>
+<script src="/static/module_f.js?v=20260907-far1"></script>
 </body>
 </html>

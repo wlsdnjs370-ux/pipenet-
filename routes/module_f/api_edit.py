@@ -374,10 +374,21 @@ def register(app):
                            "최불리인지 하나를 지정하세요.",
                 "sources": cands}}
 
+        # [BLOCKED §31] 설계면적을 «어떻게 채우나» — 사람이 고른다.
+        #   직사각형(rect)이냐 가지관 통째(branch)냐. 어느 쪽이 맞는지는
+        #   현장·도면마다 다르므로 프로그램이 정하지 않는다.
+        from services.cad_import.design.worst import (
+            DESIGN_AREA_DEFAULT, DESIGN_AREA_RULES)
+        rule = str(body.get("rule") or sess.get("worst_rule")
+                   or DESIGN_AREA_DEFAULT)
+        if rule not in DESIGN_AREA_RULES:
+            return None, _wfail(
+                f"모르는 설계면적 방식입니다: {rule} "
+                f"(쓸 수 있는 것: {' · '.join(DESIGN_AREA_RULES)})")
         w = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=k,
                            only_heads=only, source_index=src_index,
                            # 설계면적 직사각형은 헤드의 «제 좌표» 로 잰다.
-                           head_xy=b.disks)
+                           head_xy=b.disks, rule=rule)
         if not w["heads"]:
             sess["worst"] = None
             return None, _wfail("급수원에서 닿는 헤드가 없습니다. 이음·급수 위치를 확인하세요.")
@@ -403,15 +414,17 @@ def register(app):
         sess["worst"] = w
         sess["worst_zones"] = w["zones"]      # 다시 누를 때 같은 영역을 쓴다
         sess["worst_k"] = k                   # [F-10b] 원클릭이 이 값을 쓴다
+        sess["worst_rule"] = rule             # 다음 계산도 같은 방식으로
         sess["worst_edits"] = 0               # [F-10d] 배지를 0 으로 되돌린다
         # 다시 계산이 «같은 조건» 으로 돌 수 있게 기억한다 — 사람이 K·영역·
         # 급수원을 다시 고르게 하면 그것 자체가 새 결정이 된다.
         sess["worst_args"] = {"k": k, "sheet": sheet_no,
-                              "source": picked_tag,
+                              "source": picked_tag, "rule": rule,
                               "zones": w["zones"]}
         return {"k": len(w["heads"]), "reachable": w["reachable"],
                 "far_m": w["far_m"], "near_m": w["near_m"],
                 "span_m": w.get("span_m", 0.0),
+                "rule": rule,
                 # 설계면적은 규정이 ㎡ 로 말하는 값이다 — 직사각형이 됐으니
                 # 이제 그 수를 그대로 낼 수 있다.
                 "area_w_m": w.get("area_w_m", 0.0),

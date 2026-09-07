@@ -3376,7 +3376,10 @@
     try {
       const sheet = Number(($("ed-sheet") || {}).value || 0);
       const k = edK();
-      const body = { sid: S.sid, k, sheet };
+      // [BLOCKED §31] 설계면적을 채우는 방식도 함께 보낸다 — 두 화면이
+      //   같은 세션에서 서로 다른 방식으로 뽑으면 K 가 갈렸을 때와 같은 일이
+      //   난다(「어느 쪽이 설계면적인가」가 사라진다).
+      const body = { sid: S.sid, k, sheet, rule: $("ed-rule").value };
       const src = ($("ed-src") || {}).value;
       if (src) body.source = src;
       if (S.zones.length) body.zones = S.zones;
@@ -3393,12 +3396,26 @@
         + ` · ${s.k}번째 ${s.near_m} m`
         + (s.source ? ` · 급수원 ${s.source} 기준` : "")
         + (s.zones ? ` · 영역 ${s.zones}곳 안` : "")
-        + (s.sheet ? ` · 도면 ${s.sheet}장 안` : ""),
+        + (s.sheet ? ` · 도면 ${s.sheet}장 안` : "")
+        + (s.rule === "branch" ? " · 가지관 방식" : " · 직사각형 방식"),
           "ok");
       $("cv-worst-kfp").checked = true;
     } catch (err) { say(err.message, "err"); }
     finally { busy(false); }
   }
+
+  // [BLOCKED §31] 두 방식의 차이를 한 줄로 — 고르는 순간 읽을 수 있게.
+  const RULE_WHY = {
+    rect: "앵커를 품는 사각형을 K개가 담길 때까지 넓힙니다."
+        + " 모양이 가장 조밀하지만 가지관을 반만 담을 수 있습니다.",
+    branch: "앵커가 달린 가지관을 통째로 담고, 공간으로 가까운 다음"
+          + " 가지관으로 넘어갑니다. 반쪽 가지관이 안 생깁니다.",
+  };
+  function renderRuleWhy() {
+    $("ed-rule-why").textContent = RULE_WHY[$("ed-rule").value] || "";
+  }
+  $("ed-rule").onchange = renderRuleWhy;
+  renderRuleWhy();
 
   $("ed-worst").onclick = () => runWorst("최불리 헤드 선정 중…");
   // [F-10d] 결과 위에서 고친 뒤 — 픽은 그대로 두고 최불리만 다시 돌린다.
@@ -5353,7 +5370,10 @@
       //   K 와 최불리 K 가 갈려 「어느 쪽이 설계면적인가」가 사라진다.
       const sheet = Number(($("ed-sheet") || {}).value || 0);
       const k = Math.max(1, Math.min(200, Number($("dg-k").value || 30)));
-      const body = { sid: S.sid, k, sheet };
+      // [BLOCKED §31] 설계면적을 채우는 방식도 함께 보낸다 — 두 화면이
+      //   같은 세션에서 서로 다른 방식으로 뽑으면 K 가 갈렸을 때와 같은 일이
+      //   난다(「어느 쪽이 설계면적인가」가 사라진다).
+      const body = { sid: S.sid, k, sheet, rule: $("ed-rule").value };
       const src = ($("ed-src") || {}).value;
       if (src) body.source = src;
       if (S.zones.length) body.zones = S.zones;

@@ -17,10 +17,137 @@ from pathlib import Path
 # NFPC 103 이 요구하는 «가장 불리한 헤드 K개». 기본 30.
 REMOTE_K_DEFAULT = 30
 
+# 설계면적을 «어떻게 채우나» — 사람이 고른다(BLOCKED §31).
+#
+#   rect   앵커를 품는 직사각형을 K개가 담길 때까지 넓힌다. 낱개 단위라
+#          모양이 가장 조밀하지만, 한 가지관을 반만 담을 수 있다.
+#   branch 앵커가 달린 «가지관» 을 통째로 담고, 공간으로 가까운 다음
+#          가지관으로 넘어간다. 반쪽 가지관이 안 생긴다.
+#
+# 둘 다 방호구역은 모른다 — 그 판단은 사람이 «영역 지정» 으로 한다.
+DESIGN_AREA_RULES = ("rect", "branch")
+DESIGN_AREA_DEFAULT = "rect"
+
+
+def _pipe_runs(edges) -> dict:
+    """그래프를 «런» 으로 자른다 — 분기점 사이의 배관 한 줄이 곧 가지관이다.
+
+    가지관은 이름이 아니라 **위상**으로 안다: 티(분기·차수 3 이상)와 끝(차수 1)
+    사이를 잇는, 가운데가 전부 차수 2 인 길. 스프링클러 도면에서 그 한 줄이
+    곧 «가지관» 이다.
+
+    반환: 차수 2 인 노드 → 런 번호. 분기점·끝점은 여러 런에 걸치므로 뺀다.
+    """
+    adj: dict = {}
+    for a, b in edges:
+        adj.setdefault(a, set()).add(b)
+        adj.setdefault(b, set()).add(a)
+    run_of: dict = {}
+    rid = 0
+    for start in adj:
+        if len(adj[start]) == 2 or start in run_of:
+            continue
+        # 분기점·끝점에서 출발해 차수 2 만 밟고 다음 분기점까지 간다.
+        for nb in adj[start]:
+            cur, prev = nb, start
+            chain = []
+            while cur not in run_of:
+                deg = len(adj.get(cur, ()))
+                if deg == 2:
+                    chain.append(cur)
+                    nxt = next(iter(adj[cur] - {prev}), None)
+                    if nxt is None:
+                        break
+                    cur, prev = nxt, cur
+                    continue
+                # ★끝점(차수 1)은 **그 줄의 끝**이다 — 런에 넣는다.
+                #   빼면 가지관 맨 끝 헤드가 제 홀로 무리가 되는데, 앵커는
+                #   거의 언제나 그 자리다(급수원에서 가장 먼 헤드). 실제로
+                #   그래서 앵커의 가지관이 «헤드 1개» 로 잡혔다.
+                if deg == 1:
+                    chain.append(cur)
+                break                  # 다음 분기점 — 여기서 줄이 끊긴다
+            if chain:
+                for n in chain:
+                    run_of[n] = rid
+                rid += 1
+    return run_of
+
+
+def _fill_by_branch(head_node, anchor, xy, edges, k) -> list:
+    """[규칙 «가지관»] 앵커의 가지관을 통째로 담고, 가까운 가지관으로 넘어간다.
+
+    ★«반쪽 가지관» 을 안 만드는 것이 이 규칙의 뜻이다. 직사각형은 상자가 줄을
+      가로질러 자르지만, 실무의 설계면적은 가지관 단위로 잡는 일이 많다.
+
+    순서는 이렇다.
+      ① 앵커가 달린 가지관의 헤드를 전부 담는다.
+      ② 아직 안 담은 가지관 중, **이미 담은 헤드에 공간으로 가장 가까운**
+         것을 골라 통째로 담는다. (배관 거리로 고르면 옆 줄을 건너뛴다 —
+         그것이 §31 에서 고친 결함이다.)
+      ③ K 를 넘기면 그 가지관 안에서 가까운 것부터 잘라 K 를 맞춘다.
+
+    같은 입력에 같은 산출이라야 하므로 동점은 (거리, 번호)로 못 박는다.
+    """
+    run_of = _pipe_runs(edges)
+    # 헤드를 가지관별로 모은다. 분기점에 바로 달린 헤드는 제 무리를 이룬다
+    # (티 자리의 헤드 — 드물지만 남의 줄에 끼워 넣으면 그 줄이 늘어난다).
+    groups: dict = {}
+    for hi, n in head_node.items():
+        key = run_of.get(n)
+        groups.setdefault(("run", key) if key is not None else ("node", n),
+                          []).append(hi)
+    home = None
+    for gk, members in groups.items():
+        if anchor in members:
+            home = gk
+            break
+    picked: list = []
+    used: set = set()
+
+    def _near(hi):
+        return min((math.dist(xy(hi), xy(p)) for p in picked), default=0.0)
+
+    def _take(gk):
+        # ★동점이면 «앵커에 가까운 쪽» 을 먼저. 나란한 가지관에서는 이미 담은
+        #   줄과의 거리가 위아래 똑같이 나오는데, 그때 번호순으로 집으면
+        #   설계면적이 앵커 반대쪽 끝부터 자란다.
+        members = sorted(groups[gk],
+                         key=lambda hi: (_near(hi),
+                                         math.dist(xy(hi), xy(anchor)), hi))
+        for hi in members:
+            if len(picked) >= k:
+                return
+            picked.append(hi)
+
+    if home is not None:
+        used.add(home)
+        picked.append(anchor)
+        for hi in sorted(groups[home], key=lambda h: math.dist(xy(h),
+                                                               xy(anchor))):
+            if hi != anchor and len(picked) < k:
+                picked.append(hi)
+    while len(picked) < k:
+        best, bd = None, None
+        for gk, members in groups.items():
+            if gk in used:
+                continue
+            d = min(math.dist(xy(hi), xy(p)) for hi in members for p in picked)
+            # 동점이면 앵커에 가까운 가지관부터 — 설계면적은 앵커를 중심으로
+            # 자라야 한다.
+            a = min(math.dist(xy(hi), xy(anchor)) for hi in members)
+            if bd is None or (d, a, str(gk)) < (bd, best[1], str(best[0])):
+                best, bd = (gk, a), d
+        if best is None:
+            break                      # 더 담을 가지관이 없다
+        used.add(best[0])
+        _take(best[0])
+    return picked
+
 
 def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
                    only_heads=None, source_index: int | None = None,
-                   head_xy=None) -> dict:
+                   head_xy=None, rule: str = DESIGN_AREA_DEFAULT) -> dict:
     """앵커 기반 «최불리 배관망» 추출 — 수리계산의 설계면적 그 자체.
 
     ─ 세 단계 ────────────────────────────────────────────────────────
@@ -60,6 +187,9 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
     `head_xy` : 헤드의 **제 좌표**(board 의 disks). ②의 직사각형은 이 값으로
         잰다. 안 주면 «부착 노드» 좌표로 대신한다 — 드롭·후렉시블 길이만큼
         어긋나지만 상자 크기에 견주면 작다.
+    `rule` : ②를 채우는 방식(`DESIGN_AREA_RULES`). `"rect"` 는 직사각형,
+        `"branch"` 는 가지관 통째. **사람이 고른다** — 어느 쪽이 맞는지는
+        현장·도면마다 다르고, 프로그램이 정할 문제가 아니다.
     `source_index` : [F-1 · D4] 급수원이 여럿일 때 **어느 하나 기준**인지.
         지정하면 `sources[source_index]` 하나만 seed 로 Dijkstra 를 돈다 —
         전체망 `.kfp` 변환의 `source_selection_required` 와 같은 규약이다.
@@ -147,9 +277,13 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
         x, y = _xy(hi)
         return max(abs(x - ax), abs(y - ay))
 
-    ranked = sorted(head_node,
-                    key=lambda hi: (_box(hi), math.dist(_xy(hi), (ax, ay)), hi))
-    picked = ranked[:k]
+    if rule == "branch":
+        picked = _fill_by_branch(head_node, worst_head, _xy, edges, k)
+    else:
+        ranked = sorted(
+            head_node,
+            key=lambda hi: (_box(hi), math.dist(_xy(hi), (ax, ay)), hi))
+        picked = ranked[:k]
     # 설계면적의 «폭» — 상자의 긴 변. 종전에는 배관 거리였다.
     xs = [_xy(hi)[0] for hi in picked]
     ys = [_xy(hi)[1] for hi in picked]

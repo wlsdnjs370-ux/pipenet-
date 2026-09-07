@@ -19,26 +19,47 @@ REMOTE_K_DEFAULT = 30
 
 
 def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
-                   only_heads=None, source_index: int | None = None) -> dict:
+                   only_heads=None, source_index: int | None = None,
+                   head_xy=None) -> dict:
     """앵커 기반 «최불리 배관망» 추출 — 수리계산의 설계면적 그 자체.
-
-    ─ 왜 «먼 순서 K개» 가 아니라 앵커인가 ────────────────────────────
-    NFPC 103 의 기준개수(K)는 «하나의 설계구역 안에서 동시에 방수되는 인접
-    K개» 다. 급수원에서 먼 순서로 그냥 K개를 뽑으면 도면 곳곳의 막다른 헤드가
-    섞여 뽑힌다 — B1F 실측: 먼 순서 30개는 대각 95.9m 로 흩어졌고, 앵커 방식은
-    30.3m 로 한 구역에 뭉쳤다. 흩어진 30개로는 설계면적이 성립하지 않는다.
 
     ─ 세 단계 ────────────────────────────────────────────────────────
     ① 앵커 = 급수원에서 **배관 거리로** 가장 먼(가장 불리한) 헤드. 여기가
        기준압을 잡는 지점 — 급수원↔앵커 거리가 «최원 유하거리» 다.
-    ② 설계면적 = 앵커에서 **배관 거리로** 가까운 K개(유클리드 아님 — 실제 물이
-       같은 관을 타고 함께 흐르는 무리라야 한다).
+    ② 설계면적 = 앵커를 품는 **직사각형** 안의 K개 — 공간으로 가까운 순서.
     ③ corridor = 그 K개를 급수원까지 잇는 최단경로의 합집합. 각 간선의
        **담당 헤드 수(load)** 를 함께 낸다 — NFPC 별표1 이 최소 호칭경을 정할
        때 쓰는 바로 그 값이라, 이 최대값이 주배관 관경을 결정한다.
 
+    ─ ②가 «배관 거리» 에서 «직사각형» 으로 바뀐 이유 (2026-09-07) ────
+    종전 ②는 앵커에서 **배관 거리**로 가까운 K개였다. 사용자 지적으로 실측해
+    보니 그 자가 설계면적을 두 조각으로 갈라 놓고 있었다
+    (`scripts/_probe_design_area_map.py` · B1F · K=30):
+
+        · 앵커 줄에서 8개(0~19.9 m · 2.8 m 간격)를 집고,
+          **4.3 m 를 건너뛰어** 24.2~36.2 m 떨어진 곳의 22개를 집었다.
+        · 배관 거리는 공간 거리와 딴판이다 — 앵커 둘레 헤드의 배관/직선 비가
+          중앙값 **6.2배**, 가장 심한 것은 직선 3.0 m 인데 배관 100.4 m(34배).
+          옆 가지관은 공간으로 코앞인데 주관을 돌아가느라 «멀다» 고 읽힌다.
+        · 그래서 «가장 먼 30개» 중 7개(23%)만 뽑히고, 347.9 m 짜리를 두고
+          306.9 m 짜리를 뽑았다. 사용자가 본 그대로다.
+
+    설계면적은 이름 그대로 **면적**이다(NFPC/NFPA 는 ㎡ 로 규정한다). 불은
+    공간으로 번지지 관을 타고 번지지 않으므로, «어느 헤드가 함께 열리나» 는
+    공간이 정한다. 그래서 앵커를 품는 직사각형(체비셰프 상자)을 K개가 담길
+    때까지 넓힌다 — 사람이 화면에서 «영역 지정» 으로 그리는 그 사각형과 같은
+    개념이고, 실제로 사람이 좁게 그리면 그것이 그대로 설계면적이 된다.
+
+    ★한계는 적어 둔다: 이 상자는 **방호구역을 모른다.** 공간으로 붙어 있어도
+      다른 계통에서 물을 받는 헤드가 섞일 수 있다(실측: 상자 30개 중 25개가
+      앵커보다 80.5 m 앞에서 갈라진 계통). 그 판단은 사람이 «영역 지정» 으로
+      한다 — 프로그램이 대신 정하지 않는다(BLOCKED §31).
+
     `only_heads` : 도면이 여러 장일 때 한 장으로 범위를 좁힌다. 앵커도 그
         범위 안에서 고른다(장이 다르면 앵커가 남의 도면으로 튄다).
+    `head_xy` : 헤드의 **제 좌표**(board 의 disks). ②의 직사각형은 이 값으로
+        잰다. 안 주면 «부착 노드» 좌표로 대신한다 — 드롭·후렉시블 길이만큼
+        어긋나지만 상자 크기에 견주면 작다.
     `source_index` : [F-1 · D4] 급수원이 여럿일 때 **어느 하나 기준**인지.
         지정하면 `sources[source_index]` 하나만 seed 로 Dijkstra 를 돈다 —
         전체망 `.kfp` 변환의 `source_selection_required` 와 같은 규약이다.
@@ -99,6 +120,7 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
              "worst_path_m": 0.0, "edges": set(), "nodes": set(),
              "loads": {}, "reachable": reachable, "unreachable": 0,
              "far_m": 0.0, "near_m": 0.0, "span_m": 0.0, "total_m": 0.0,
+             "area_w_m": 0.0, "area_h_m": 0.0, "area_m2": 0.0,
              "max_load": 0}
     if not head_far:
         return empty
@@ -106,12 +128,34 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
     k = max(1, min(int(k), reachable))
     worst_head = max(head_far, key=head_far.get)   # 가장 불리한 헤드 = 기준 헤드
 
-    # ② 앵커 기점 — 배관 거리로 가까운 K개 = 설계면적
-    an_dist, _ = dijkstra([head_node[worst_head]])
+    # ② 앵커를 품는 직사각형 = 설계면적. 공간으로 가까운 K개.
+    #
+    # 상자는 «체비셰프 거리»(max(|dx|,|dy|))로 넓힌다 — 원이 아니라 사각형이라야
+    # 사람이 화면에서 그리는 «영역 지정» 과 같은 모양이 된다.
+    #
+    # ★같은 입력에 같은 산출이어야 한다. 상자 경계에서 여러 헤드가 같은 값이면
+    #   순서가 흔들리므로 (상자 → 직선 → 번호) 로 못 박는다.
+    def _xy(hi):
+        if head_xy is not None and hi < len(head_xy):
+            p = head_xy[hi]
+            return float(p[0]), float(p[1])
+        return pts[head_node[hi]]
+
+    ax, ay = _xy(worst_head)
+
+    def _box(hi):
+        x, y = _xy(hi)
+        return max(abs(x - ax), abs(y - ay))
+
     ranked = sorted(head_node,
-                    key=lambda hi: an_dist.get(head_node[hi], float("inf")))
+                    key=lambda hi: (_box(hi), math.dist(_xy(hi), (ax, ay)), hi))
     picked = ranked[:k]
-    span = an_dist.get(head_node[picked[-1]], 0.0) if picked else 0.0
+    # 설계면적의 «폭» — 상자의 긴 변. 종전에는 배관 거리였다.
+    xs = [_xy(hi)[0] for hi in picked]
+    ys = [_xy(hi)[1] for hi in picked]
+    box_w = max(xs) - min(xs)
+    box_h = max(ys) - min(ys)
+    span = max(box_w, box_h)
 
     # ③ corridor — K개 → 급수원 경로 합집합 + 담당 헤드 수
     loads: dict[tuple[int, int], int] = {}
@@ -163,7 +207,12 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
         "unreachable": 0,          # picked 는 전부 도달 헤드 중에서 골랐다
         "far_m": round(head_far[worst_head] / 1000.0, 2),   # 기준 헤드까지 = 최원 유하거리
         "near_m": round(min(head_far[hi] for hi in picked) / 1000.0, 2),
-        "span_m": round(span / 1000.0, 2),              # 설계면적 폭(배관거리)
+        "span_m": round(span / 1000.0, 2),              # 설계면적 직사각형의 긴 변
+        # 설계면적은 이름 그대로 «면적» 이다 — 규정이 ㎡ 로 말하는 그 값을
+        # 산출물이 직접 낸다. 종전에는 어디에도 없었다.
+        "area_w_m": round(box_w / 1000.0, 2),
+        "area_h_m": round(box_h / 1000.0, 2),
+        "area_m2": round(box_w * box_h / 1e6, 1),
         "total_m": round(total / 1000.0, 2),            # corridor 총연장
         "max_load": max(loads.values(), default=0),     # 주배관 관경 결정값
     }

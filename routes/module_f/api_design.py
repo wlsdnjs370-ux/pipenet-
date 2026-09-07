@@ -197,6 +197,9 @@ def _summary(got: dict, tbl) -> dict:
         "k": len(w.get("heads") or []),
         "far_m": w.get("far_m"), "near_m": w.get("near_m"),
         "span_m": w.get("span_m"), "total_m": w.get("total_m"),
+        # 설계면적의 실제 크기 — 규정이 ㎡ 로 말하는 값이다.
+        "area_w_m": w.get("area_w_m"), "area_h_m": w.get("area_h_m"),
+        "area_m2": w.get("area_m2"),
         "max_load": w.get("max_load"),
         "source": w.get("source_tag"),
         "counts": {"nodes": len(tbl.nodes), "pipes": len(tbl.pipes),

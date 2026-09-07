@@ -330,6 +330,39 @@ def test_알람밸브_클릭이_수동_픽과_같은_답을_낸다(tmp_path):
             f"«{key}» 가 다르다 — 수동 {manual[key]} vs 알람밸브클릭 {one[key]}")
 
 
+def test_기준개수가_조용히_줄지_않는다(tmp_path):
+    """★[BLOCKED §31] 영역을 조금 작게 그리면 K 가 말없이 깎이고 있었다.
+
+    엔진은 `k = min(k, reachable)` 로 클램프한다. 실측(B1F)에서 ±10 m 영역을
+    그리자 기준개수 30 이 **20 으로** 줄어 계산됐다 — 산출물만 보고는 그
+    사실을 알 수 없다. 기준개수 30 짜리 방호구역을 20개로 계산하는 것은
+    설계면적이 성립하지 않는다는 뜻이므로, **막고 무엇을 하면 되는지 말한다.**
+    """
+    import pytest
+
+    if not os.path.isfile(_DXF):
+        pytest.skip("표본 도면 없음")
+    c = _client(tmp_path)
+    sid, st = _build_edit(c, _DXF, conf=0.9)
+    x, y = _a_pipe_point(st)
+    c.post("/api/module-f/edit/mode", json={"sid": sid, "mode": MODE_VALVE})
+    c.post("/api/module-f/edit/click",
+           json={"sid": sid, "x": x, "y": y, "max_d": ANCHOR_MAX_D})
+
+    ok = c.post("/api/module-f/edit/worst", json={"sid": sid, "k": 30})
+    assert ok.status_code == 200, ok.get_json()
+    reach = ok.get_json()["summary"]["reachable"]
+
+    # 도달 헤드보다 많은 기준개수를 요구하면 — 종전에는 조용히 줄었다.
+    r = c.post("/api/module-f/edit/worst",
+               json={"sid": sid, "k": reach + 5})
+    assert r.status_code == 400, r.get_json()
+    msg = (r.get_json() or {}).get("message") or ""
+    assert str(reach) in msg and "기준개수" in msg, msg
+    # 무엇을 하면 되는지까지 말해야 한다 — 막기만 하면 사람이 갇힌다.
+    assert "낮추" in msg or "넓히" in msg, msg
+
+
 def test_손질_기본_모드가_알람밸브_찍기다():
     """수용 기준 — 손질에 들어오면 첫 동작이 알람밸브 찍기다.
 

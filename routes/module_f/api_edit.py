@@ -375,10 +375,26 @@ def register(app):
                 "sources": cands}}
 
         w = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=k,
-                           only_heads=only, source_index=src_index)
+                           only_heads=only, source_index=src_index,
+                           # 설계면적 직사각형은 헤드의 «제 좌표» 로 잰다.
+                           head_xy=b.disks)
         if not w["heads"]:
             sess["worst"] = None
             return None, _wfail("급수원에서 닿는 헤드가 없습니다. 이음·급수 위치를 확인하세요.")
+        # ★기준개수를 «조용히» 줄이지 않는다.
+        #
+        #   종전에는 `k = min(k, reachable)` 로 말없이 깎였다. 영역을 조금
+        #   작게 그리면 기준개수 30 짜리 방호구역이 20개로 계산되는데, 산출물만
+        #   보고는 그 사실을 알 수 없다 — 실측에서 ±10m 영역이 20개로 줄었다.
+        #   막고, 무엇을 어떻게 하면 되는지 말한다.
+        if w["reachable"] < k:
+            sess["worst"] = None
+            where = ("영역 안" if zones else
+                     ("고른 도면 장 안" if sheet_no else "이 도면에서"))
+            return None, _wfail(
+                f"기준개수 {k}개인데 {where} 급수원에 닿는 헤드가 "
+                f"{w['reachable']}개뿐입니다 — 설계면적이 성립하지 않습니다. "
+                f"영역을 넓히거나 기준개수를 {w['reachable']} 이하로 낮추세요.")
         w["sheet"] = sheet_no
         w["source_tag"] = picked_tag          # 화면이 «어느 급수원 기준» 인지 안다
         w["source_index"] = src_index
@@ -396,6 +412,11 @@ def register(app):
         return {"k": len(w["heads"]), "reachable": w["reachable"],
                 "far_m": w["far_m"], "near_m": w["near_m"],
                 "span_m": w.get("span_m", 0.0),
+                # 설계면적은 규정이 ㎡ 로 말하는 값이다 — 직사각형이 됐으니
+                # 이제 그 수를 그대로 낼 수 있다.
+                "area_w_m": w.get("area_w_m", 0.0),
+                "area_h_m": w.get("area_h_m", 0.0),
+                "area_m2": w.get("area_m2", 0.0),
                 "total_m": w.get("total_m", 0.0),
                 "max_load": w.get("max_load", 0),
                 "sheet": sheet_no,

@@ -3089,7 +3089,8 @@
         Object.entries(e.wet_counts).map(([k, n]) => `${k} ${n}`).join(" · ")) : "") +
       (e.worst ? kv("최불리망 <span class=\"tag\">설계면적</span>",
         `<span class="ok">${e.worst.k}개</span> · 앵커 ${e.worst.far_m} m`
-        + ` · 폭 ${e.worst.span_m} m`
+        + ` · ${e.worst.area_w_m}×${e.worst.area_h_m} m`
+        + (e.worst.area_m2 ? ` (${e.worst.area_m2} ㎡)` : "")
         + (e.worst.zones && e.worst.zones.length
            ? ` · 영역 ${e.worst.zones.length}곳` : "")
         + (e.worst.source ? ` · <b class="tag">${e.worst.source}</b> 기준` : ""))
@@ -5050,7 +5051,10 @@
     $("dg-summary").innerHTML =
       kv("설계면적", `<span class="ok">${s.k}개</span> · 앵커 ${s.far_m} m`
         + (s.source ? ` · <b class="tag">${s.source}</b> 기준` : ""))
-      + kv("폭 / corridor", `${s.span_m} m / ${s.total_m} m`)
+      + kv("설계면적 크기 / corridor",
+           `${s.area_w_m}×${s.area_h_m} m`
+           + (s.area_m2 ? ` (${s.area_m2} ㎡)` : "")
+           + ` / ${s.total_m} m`)
       + kv("주배관 담당", `${s.max_load}개`)
       + kv("표", `노드 ${s.counts.nodes} · 배관 ${s.counts.pipes}`
         + ` · 노즐 ${s.counts.nozzles} · 부속 ${s.counts.fittings}`)

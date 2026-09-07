@@ -8,7 +8,7 @@ from routes.module_f.common import REMOTE_K_DEFAULT, _r1
 
 
 def _worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
-                   only_heads=None, source_index=None) -> dict:
+                   only_heads=None, source_index=None, head_xy=None) -> dict:
     """[F-0·D1] 엔진(G design/worst.py)으로 위임 — 구현은 한 벌만 둔다.
 
     이 파일에 있던 원본 구현이 G1 때 엔진으로 옮겨 갔고, 여기 남아 있던
@@ -18,7 +18,8 @@ def _worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
     """
     from services.cad_import.design.worst import worst_k_heads
     return worst_k_heads(pts, edges, hnodes, sources, k=k,
-                         only_heads=only_heads, source_index=source_index)
+                         only_heads=only_heads, source_index=source_index,
+                         head_xy=head_xy)
 
 
 def _worst_view(sess: dict) -> dict | None:
@@ -46,6 +47,10 @@ def _worst_view(sess: dict) -> dict | None:
         "far_m": w["far_m"],
         "near_m": w["near_m"],
         "span_m": w.get("span_m", 0.0),
+        # 설계면적 직사각형의 실제 크기 — 화면이 «몇 ㎡ 인가» 를 말한다.
+        "area_w_m": w.get("area_w_m", 0.0),
+        "area_h_m": w.get("area_h_m", 0.0),
+        "area_m2": w.get("area_m2", 0.0),
         "total_m": w.get("total_m", 0.0),
         "max_load": w.get("max_load", 0),
         "sheet": w.get("sheet"),

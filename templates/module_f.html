@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260907-subfix2">
+<link rel="stylesheet" href="/static/module_f.css?v=20260907-anchor3">
 </head>
 <body>
 <header>
@@ -300,28 +300,29 @@
           <button id="ed-hint-alarm">알람밸브 (접속점) 제안 반영</button>
         </div>
       </div>
-      <!-- [F-10b · D-F10-4] 원클릭 — 손질에 들어오면 이 모드가 기본이다.
-           전사 06:48 · 17:15 · 22:54 「알람밸브를 클릭하는 순간 물길 따라
-           쭉 가면서 얘만 반짝반짝하고 나머지는 흐려진다」. -->
+      <!-- [D-F10-4 개정 · 2026-09-07] 종전에는 알람밸브를 클릭하는 순간
+           최불리까지 이어 돌았다. 사용자 지시로 **끊었다** — 최불리는 영역에
+           좌우되는데 클릭이 곧바로 돌면 영역을 정하기 전에 결과부터 보게 되고,
+           그 계산은 실측 ~18초라 자리를 옮겨 볼 때마다 18초를 기다리게 된다. -->
       <div class="banner" id="ed-anchor-note">
-        <b>알람밸브를 클릭하면 가장 불리한 배관망이 표시됩니다.</b>
-        <span>알람밸브(접속점)를 놓고 최불리까지 한 번에
-          계산합니다 — 되돌리기로 풀 수 있습니다.</span>
+        <b>순서 — ① 알람밸브 클릭 → ② 영역 지정 → ③ 「최불리 선정」</b>
+        <span>알람밸브(접속점)를 놓아도 배관망은 아직 안 뽑습니다.
+          아래 «영역으로 후보 가두기» 로 범위를 정한 뒤(안 정하면 도면 전체),
+          «최불리 선정» 을 누르세요.</span>
       </div>
       <h2>손질 모드</h2>
-      <div class="row">
-        <button class="emode on" data-mode="원클릭">알람밸브 원클릭</button>
-      </div>
-      <div class="row">
-        <button class="emode" data-mode="이음">이음</button>
-        <button class="emode" data-mode="삭제">삭제</button>
-      </div>
       <div class="row">
         <!-- 평면도에서 찍는 특수 점은 하나뿐이다 — 알람밸브가 곧 라이저
              접속점(계산의 시작점)이다. 종전에는 «급수 시작» 을 따로 찍었는데,
              통합하면 그 노드는 라이저의 알람밸브 노드에 자리를 내주고 사라져
-             둘이 애초에 같은 장치였다. 따로 찍으면 어긋날 수만 있었다. -->
-        <button class="emode" data-mode="알람밸브위치">알람밸브 (접속점)</button>
+             둘이 애초에 같은 장치였다. 따로 찍으면 어긋날 수만 있었다.
+             ★찍기 버튼은 하나만 둔다 — 최불리를 떼어 낸 뒤로 «원클릭» 과
+               «알람밸브 (접속점)» 이 사람 눈에 같은 일을 하게 됐다. -->
+        <button class="emode on" data-mode="원클릭">① 알람밸브 (접속점) 찍기</button>
+      </div>
+      <div class="row">
+        <button class="emode" data-mode="이음">이음</button>
+        <button class="emode" data-mode="삭제">삭제</button>
       </div>
       <h2 style="margin-top:16px">고른 헤드 종류</h2>
       <!-- 그림은 뺐다 — 여기서는 «어느 종류로 바꿀까» 만 고르면 되고, 전개
@@ -376,25 +377,32 @@
       <label class="f"><span>기준개수 K</span>
         <input type="number" id="ed-k" value="30" min="1" max="200"></label>
       <div class="hint" id="ed-k-why"></div>
-      <div class="row">
-        <select id="ed-src" class="hidden" title="어느 급수원 기준의 최불리인지"></select>
-        <button id="ed-worst">최불리 선정</button>
-        <button id="ed-worst-clear">해제</button>
-      </div>
-      <!-- [F-10d · D-F10-5] 결과 위에서 고친 뒤 «다시 계산» 은 사람이 한 번만.
-           수정마다 자동으로 다시 돌리지 않는다 — 검출이 실측 ~18초라 클릭
-           하나가 18초짜리가 되어 버린다. -->
-      <div class="row hidden" id="ed-recalc-row">
-        <button id="ed-recalc" class="go">최불리 다시 계산</button>
-        <span class="tag" id="ed-edits">수정 0건</span>
-      </div>
-      <!-- 영역 지정 — 모듈 A 의 zones -->
+      <!-- 영역 지정 — 모듈 A 의 zones. ★«최불리 선정» **앞** 에 둔다:
+           영역을 정한 뒤에 눌러야 그 범위로 뽑히므로, 화면 순서가 곧
+           작업 순서여야 한다. -->
+      <h2 style="margin-top:12px">② 영역 지정 <span class="tag">선택</span></h2>
       <label class="chk"><input type="checkbox" id="ed-zone-arm">
         <span>영역으로 후보 가두기</span></label>
       <div id="ed-zones" class="hint">영역 없음 · 도면 전체</div>
       <div class="row">
         <button id="ed-zone-undo">마지막 영역 지우기</button>
         <button id="ed-zone-clear">전부 지우기</button>
+      </div>
+      <h2 style="margin-top:12px">③ 배관망 뽑기</h2>
+      <div class="row">
+        <select id="ed-src" class="hidden" title="어느 급수원 기준의 최불리인지"></select>
+        <button id="ed-worst" class="go">최불리 선정</button>
+        <button id="ed-worst-clear">해제</button>
+      </div>
+      <!-- 알람밸브가 없으면 계산 자체가 성립하지 않는다 — 눌러 보고 나서
+           거절당하느니 무엇이 모자란지 미리 말한다. -->
+      <div class="hint" id="ed-worst-why"></div>
+      <!-- [F-10d · D-F10-5] 결과 위에서 고친 뒤 «다시 계산» 은 사람이 한 번만.
+           수정마다 자동으로 다시 돌리지 않는다 — 검출이 실측 ~18초라 클릭
+           하나가 18초짜리가 되어 버린다. -->
+      <div class="row hidden" id="ed-recalc-row">
+        <button id="ed-recalc" class="go">최불리 다시 계산</button>
+        <span class="tag" id="ed-edits">수정 0건</span>
       </div>
       <!-- 선정 뒤 «그것만» 보기 -->
       <label class="f" style="margin-top:9px"><span>선정 뒤 나머지 배관망</span>
@@ -699,6 +707,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260907-subfix2"></script>
+<script src="/static/module_f.js?v=20260907-anchor3"></script>
 </body>
 </html>

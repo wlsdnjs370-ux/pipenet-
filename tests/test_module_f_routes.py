@@ -334,6 +334,12 @@ def confirmed(edited):
         c.post("/api/module-f/edit/anchor-click",
                json={"sid": sid, "x": best[0], "y": best[1]})
         wait()
+        # ★[D-F10-4 개정] 클릭은 알람밸브를 **놓기만** 한다. 배관망은 버튼을
+        #   눌러야 나온다 — 종전처럼 클릭 뒤 곧바로 `worst` 를 보면 늘 비어
+        #   있어, 이 픽스처를 쓰는 시험 6건이 통째로 «건너뜀» 이 된다(실제로
+        #   그렇게 됐고, 건너뜀은 통과가 아니라 **안 돈 것**이다).
+        c.post("/api/module-f/edit/worst", json={"sid": sid, "k": 30})
+        wait()
         w = ((c.get(f"/api/module-f/edit/state?sid={sid}").get_json()
               or {}).get("state") or {}).get("worst") or {}
         if w.get("k"):

@@ -410,13 +410,18 @@ def register(app):
     @app.post("/api/module-f/edit/anchor-click")
     @route_session(_edit_session, post=True)
     def module_f_edit_anchor_click(sess, body):
-        """[F-10b · D-F10-4] 알람밸브 클릭 한 번 = 두 픽 + 최불리.
+        """알람밸브(=접속점)를 그 자리에 **놓기만** 한다.
 
-        2026-08-27 전사 06:48 · 17:15 · 22:54 — 「알람밸브를 클릭하는 순간 물길
-        따라 쭉 가면서 얘만 반짝반짝하고 나머지는 흐려진다」. 그 «한 번» 을
-        여기서 만든다.
+        ★[D-F10-4 개정 · 2026-09-07] 종전에는 이 클릭이 최불리까지 이어 돌았다
+          (「클릭 한 번 = 픽 + 최불리」). 사용자 지시로 **끊었다** — 「알람밸브
+          지정 후 영역 지정 후에 버튼을 누르면 배관망이 나오도록」.
 
-        ★두 픽은 **기존 클릭 경로** 로만 넣는다(D-F10-6). `board` 에 직접 쓰지
+          그 편이 맞다. 최불리는 **영역(zones)** 에 좌우되는데, 클릭이 곧바로
+          돌아 버리면 사람은 영역을 정하기도 전에 결과부터 본다. 그리고 그
+          계산은 실측 ~18초라, 알람밸브 자리를 옮겨 볼 때마다 18초를 기다리게
+          된다. 이제 순서는 셋이다: **알람밸브 → 영역 → 「최불리 선정」**.
+
+        ★픽은 **기존 클릭 경로** 로만 넣는다(D-F10-6). `board` 에 직접 쓰지
           않는다 — 그래야 되돌리기가 사람 클릭과 똑같이 먹고, 찍은 기록도 남는다.
           `es.click` 은 토글이므로 «갈아끼우기» 도 클릭이다: 있던 자리를 한 번
           눌러 끄고, 새 자리를 눌러 켠다.
@@ -427,10 +432,11 @@ def register(app):
           어긋날 수 있고, 어긋나면 Input 경계와 알람밸브가 다른 자리에 놓인다.
           그래서 여기서도 픽을 «한 번» 만 한다.
 
-        최불리는 `_compute_worst` 로 «같은 잡 안에서» 이어 돌린다(실측 ~18초).
-        K 는 저장된 값(`worst_k`), 없으면 기본 30.
+        ★자리를 옮기면 **먼저 뽑아 둔 최불리는 지운다.** 안 지우면 알람밸브는
+          새 자리에 있는데 화면의 배관망은 옛 자리에서 뽑힌 것이라, 둘이 다른
+          말을 하는 채로 남는다.
 
-        body: {sid, x, y, [max_d], [k], [zones], [sheet]}
+        body: {sid, x, y, [max_d]}
         """
         es = sess["edit"]
         try:
@@ -442,9 +448,6 @@ def register(app):
                                hi=COORD_LIMIT_MM, default=ANCHOR_CLICK_MAX_D_MM)
         except ValueError:
             max_d = ANCHOR_CLICK_MAX_D_MM      # 종전대로 «기본값으로 넘어간다»
-        # K 는 «저장된 값» 이 기본이다 — 원클릭은 K 를 묻지 않는다.
-        want = dict(body)
-        want.setdefault("k", sess.get("worst_k") or REMOTE_K_DEFAULT)
 
         from services.cad_import.edit.session import MODE_VALVE
         b = es.board
@@ -466,7 +469,7 @@ def register(app):
             return rep, moved
 
         def job():
-            print(f"[원클릭] 알람밸브 ({x:.0f}, {y:.0f}) — 접속점을 겸하는 "
+            print(f"[알람밸브] ({x:.0f}, {y:.0f}) — 접속점을 겸하는 "
                   f"픽 하나를 클릭 경로로 놓는 중…")
             v_rep, v_moved = _pick(MODE_VALVE, b.valves)
             if v_rep is None:
@@ -474,26 +477,29 @@ def register(app):
                     "그 자리에서 배관을 찾지 못했습니다 — 배관 위를 클릭하세요 "
                     f"(허용 {max_d:.0f}mm).")
             if v_moved:
-                print(f"[원클릭] 기존 픽을 갈아끼움 — {v_moved}곳 "
+                print(f"[알람밸브] 기존 픽을 갈아끼움 — {v_moved}곳 "
                       f"(되돌리기로 복구 가능)")
             # ★알람밸브가 곧 접속점이라 둘이 어긋날 수 없다(B1 해소).
             if list(b.sources) != list(b.valves):
                 raise RuntimeError(
                     "알람밸브와 접속점이 어긋났습니다 — 한 픽이 둘을 놓는다는 "
                     f"규약이 깨졌습니다 (밸브 {b.valves} · 접속점 {b.sources}).")
-            print(f"[원클릭] 알람밸브 {len(b.valves)}곳 = 접속점 — "
-                  f"이 클릭이 유일 접속점이라 Z1 기준으로 계산합니다.")
-            summary, fail = _compute_worst(sess, want)
-            if fail is not None:
-                raise RuntimeError(_wfail_text(fail))
-            print(f"[원클릭] 최불리 {summary['k']}개 · 최원 {summary['far_m']} m "
-                  f"· 담당 최대 {summary['max_load']} · 배관 {summary['path_edges']}")
-            return {"ok": True, "summary": summary,
+            # ★옛 자리에서 뽑힌 배관망을 남겨 두지 않는다 — 알람밸브는 새
+            #   자리인데 화면의 망은 옛 자리 것이면 둘이 다른 말을 한다.
+            had = bool(sess.get("worst"))
+            if had:
+                sess["worst"] = None
+                sess["worst_edits"] = 0
+            print(f"[알람밸브] {len(b.valves)}곳 = 접속점 — 이제 «영역» 을 "
+                  f"정하고 「최불리 선정」을 누르면 배관망을 뽑습니다."
+                  + (" (옛 배관망은 지웠습니다)" if had else ""))
+            return {"ok": True, "summary": None,
                     "alarm_xy": [_r1(x), _r1(y)],
+                    "cleared_worst": had,
                     "replaced": {"valve": v_moved, "source": v_moved},
                     "state": _edit_state(sess)}
 
-        _run_job(sess, "알람밸브 원클릭", job)
+        _run_job(sess, "알람밸브 찍기", job)
         return jsonify({"ok": True, "sid": sess["id"]})
 
     @app.post("/api/module-f/edit/worst-clear")

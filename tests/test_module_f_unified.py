@@ -271,15 +271,19 @@ def _a_pipe_point(state):
     return _anchor_points(state)[0]
 
 
-def test_원클릭이_수동_두픽과_같은_답을_낸다(tmp_path):
+def test_알람밸브_클릭이_수동_픽과_같은_답을_낸다(tmp_path):
     """★F-10b 의 핵심 — 클릭 «경로» 를 정말로 타는지의 증명.
 
-    같은 좌표를 수동으로 찍고 `/edit/worst` 를 부른 결과와, `/edit/anchor-click`
-    한 번의 결과가 완전히 같아야 한다. 다르면 원클릭이 어딘가에서 «다른 길» 로
-    값을 만들고 있다는 뜻이다(D-F10-6 위반).
+    같은 좌표를 손질 모드로 찍고 `/edit/worst` 를 부른 결과와, `/edit/anchor-click`
+    으로 놓고 같은 `/edit/worst` 를 부른 결과가 완전히 같아야 한다. 다르면
+    알람밸브 클릭이 어딘가에서 «다른 길» 로 픽을 놓고 있다는 뜻이다(D-F10-6).
 
-    ★수동 픽도 이제 **한 번** 이다. 알람밸브가 접속점을 겸하므로(B1 해소),
-      같은 자리를 두 모드로 두 번 찍으면 토글이 되어 «지운» 것이 된다.
+    ★수동 픽도 **한 번** 이다. 알람밸브가 접속점을 겸하므로(B1 해소), 같은
+      자리를 두 모드로 두 번 찍으면 토글이 되어 «지운» 것이 된다.
+
+    ★[D-F10-4 개정 · 2026-09-07] 종전에는 클릭이 최불리까지 이어 돌아, 이
+      시험이 「클릭 한 번의 결과」와 수동을 맞댔다. 지금은 클릭이 **놓기만**
+      하므로 최불리는 양쪽 다 버튼으로 부른다 — 비교의 뜻은 그대로다.
     """
     import pytest
 
@@ -301,42 +305,69 @@ def test_원클릭이_수동_두픽과_같은_답을_낸다(tmp_path):
     assert ra.status_code == 200, ra.get_json()
     manual = ra.get_json()["summary"]
 
-    # ── 원클릭 한 번 (같은 좌표)
+    # ── 알람밸브 클릭으로 같은 자리를 놓고, 같은 버튼을 누른다
     sid_b, _ = _build_edit(c, _DXF, conf=0.9)
     rb = c.post("/api/module-f/edit/anchor-click",
                 json={"sid": sid_b, "x": x, "y": y})
     assert rb.status_code == 200, rb.get_json()
     job = _wait(c, sid_b)
     assert job["state"] == "done", job.get("error")
-    # 잡 «보기»(/job)는 진행만 싣는다 — 결과는 따로 청한다(기존 규약).
+    # ★놓기만 한다 — 배관망은 아직 없어야 한다(D-F10-4 개정).
     res = (c.get(f"/api/module-f/convert/result?sid={sid_b}")
            .get_json() or {}).get("result") or {}
-    one = res.get("summary")
-    assert one is not None, res
+    assert res.get("summary") is None, (
+        "알람밸브를 놓기만 해야 하는데 배관망까지 뽑았다")
+    sb = c.get(f"/api/module-f/edit/state?sid={sid_b}").get_json()["state"]
+    assert sb.get("worst") in (None, {}), "옛 배관망이 남았다"
+    rb2 = c.post("/api/module-f/edit/worst", json={"sid": sid_b, "k": 30})
+    assert rb2.status_code == 200, rb2.get_json()
+    one = rb2.get_json()["summary"]
 
     for key in ("k", "reachable", "far_m", "near_m", "span_m", "total_m",
                 "max_load", "source", "candidates", "worst_path_m",
                 "worst_path_nodes", "path_edges"):
         assert manual[key] == one[key], (
-            f"«{key}» 가 다르다 — 수동 {manual[key]} vs 원클릭 {one[key]}")
+            f"«{key}» 가 다르다 — 수동 {manual[key]} vs 알람밸브클릭 {one[key]}")
 
 
-def test_손질_기본_모드가_원클릭이다():
-    """수용 기준 — 손질에 들어오면 첫 동작이 알람밸브 한 번이다.
+def test_손질_기본_모드가_알람밸브_찍기다():
+    """수용 기준 — 손질에 들어오면 첫 동작이 알람밸브 찍기다.
 
-    ★원클릭은 «서버 모드» 가 아니라 화면 모드다. 서버의 손질 모드는 이음·삭제·
-      급수시작위치·알람밸브위치 넷 그대로이고, 원클릭은 그중 둘을 한 번에 놓는
-      행동이다 — 엔진 계약을 늘리지 않는다.
+    ★이 모드는 «서버 모드» 가 아니라 화면 모드다. 서버의 손질 모드는 이음·
+      삭제·알람밸브위치 셋 그대로이고, 화면은 그 알람밸브 픽을 «갈아끼우기»
+      로 감싼 것이다 — 엔진 계약을 늘리지 않는다.
     """
     html = _screen()
     assert 'data-mode="원클릭"' in html
     assert 'id="ed-anchor-note"' in html
-    assert "알람밸브를 클릭하면 가장 불리한 배관망이 표시됩니다" in html
     i = html.index("async function loadEdit()")
     assert "setUiMode(ONECLICK)" in html[i:i + 700], "기본 모드가 아니다"
     # 화면 모드를 서버로 보내면 「모르는 손질 모드입니다」로 튕긴다.
     j = html.index('if (mode === ONECLICK)')
     assert "return" in html[j:j + 160]
+
+
+def test_클릭이_배관망까지_뽑는다고_말하지_않는다():
+    """★[D-F10-4 개정] 화면이 하지 않는 일을 한다고 적어 두면 안 된다.
+
+    사용자 지시로 클릭과 최불리를 끊었다. 그런데 배너에 「클릭하면 배관망이
+    표시됩니다」가 남아 있으면, 사람은 클릭하고 나서 아무 일도 안 일어난 것을
+    **고장으로** 읽는다. 화면 문구가 실제 순서(①②③)를 말해야 한다.
+    """
+    html = _screen()
+    assert "알람밸브를 클릭하면 가장 불리한 배관망이 표시됩니다" not in html, \
+        "끊어 놓고 «표시됩니다» 라고 말하고 있다"
+    i = html.index('id="ed-anchor-note"')
+    banner = html[i:i + 600]
+    for word in ("① ", "② ", "③ ", "영역", "최불리 선정"):
+        assert word in banner, f"순서 안내에 «{word}» 가 없다"
+
+
+def test_영역_지정이_최불리_버튼보다_앞에_있다():
+    """화면 순서가 곧 작업 순서다 — 영역을 정한 뒤에 눌러야 그 범위로 뽑힌다."""
+    html = _screen()
+    assert html.index('id="ed-zone-arm"') < html.index('id="ed-worst"'), \
+        "영역 지정이 버튼 뒤에 있어 순서를 거꾸로 안내한다"
 
 
 def test_원클릭은_클릭_경로로만_넣는다():
@@ -440,8 +471,17 @@ def test_펄스는_몇_번_하고_멈춘다():
     assert m and int(m.group(1)) <= 3000, "너무 오래 반짝인다"
     m2 = re.search(r"const PULSE_CYCLES\s*=\s*([0-9.]+)", html)
     assert m2 and float(m2.group(1)) <= 3.0, "2~3회를 넘는다"
-    # 새 corridor 가 나왔을 때만 시작한다 — 두 길(원클릭·최불리 선정) 모두에서.
-    assert html.count("startPulse()") >= 3
+    # ★새 corridor 가 나왔을 때만 시작한다.
+    #
+    #   종전에는 «호출이 3곳 이상» 인지를 셌다. 길이 둘이었기 때문이다(원클릭이
+    #   최불리까지 이어 돌았다). [D-F10-4 개정] 으로 그 길이 사라져 이제
+    #   corridor 를 내는 곳은 `runWorst` 하나뿐이다 — 개수를 세는 대신
+    #   **corridor 를 내는 그 함수 안에 있는가** 를 본다. 이쪽이 원래 뜻이다.
+    w = html.index("async function runWorst(")
+    assert "startPulse()" in html[w:w + 1200], "새 망이 떠도 안 반짝인다"
+    # 두 버튼이 모두 그 한 곳으로 모여야 «길만 다르고 연출은 같다» 가 성립한다.
+    for btn in ("ed-worst", "ed-recalc"):
+        assert f'$("{btn}").onclick = () => runWorst(' in html, btn
 
 
 def test_위계_토글은_표시_전용이다():
@@ -485,6 +525,9 @@ def test_수정을_세고_다시_계산하면_0으로_돌아온다(tmp_path):
     x, y = _a_pipe_point(st)
     c.post("/api/module-f/edit/anchor-click", json={"sid": sid, "x": x, "y": y})
     assert _wait(c, sid)["state"] == "done"
+    # [D-F10-4 개정] 클릭은 놓기만 한다 — 배관망은 버튼으로 뽑는다.
+    assert c.post("/api/module-f/edit/worst",
+                  json={"sid": sid, "k": 30}).status_code == 200
 
     def state():
         return c.get(f"/api/module-f/edit/state?sid={sid}").get_json()["state"]

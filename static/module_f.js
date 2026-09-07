@@ -1456,7 +1456,32 @@
     ctx.setLineDash([]);
   }
 
+  // 최불리 기준개수 — 「최불리 선정」과 안내 문구가 같은 값을 써야 한다. 두
+  // 곳이 갈리면 손질에서 본 개수와 표에 실린 K 가 달라진다.
+  //
+  // ★`const` 는 호이스팅돼도 초기화 전에는 못 쓴다(TDZ). 이것을 쓰는 함수보다
+  //   **뒤** 에 두면, 그 함수가 최초 실행 중에 한 번이라도 불리는 날
+  //   ReferenceError 로 화면이 조용히 죽는다 — 이 저장소가 겪은 그 함정이라
+  //   쓰는 자리보다 앞에 둔다.
+  const edK = () => Math.max(1, Math.min(200, Number($("ed-k").value || 30)));
+
+  // [D-F10-4 개정] 「③ 배관망 뽑기」가 지금 눌릴 수 있는가, 아니면 무엇이
+  //   모자란가. 알람밸브가 없으면 계산 자체가 성립하지 않는다 — 눌러 보고
+  //   나서 거절당하느니 미리 말한다. 영역이 바뀌어도 같이 갱신한다.
+  function renderWorstReady() {
+    const e = S.edit;
+    if (!e) return;
+    const n = (e.sources || []).length;
+    $("ed-worst").disabled = !n;
+    $("ed-worst-why").textContent = n
+      ? `알람밸브 ${n}곳 기준 · `
+        + (S.zones.length ? `영역 ${S.zones.length}곳 안에서` : "도면 전체에서")
+        + ` 기준개수 ${edK()}개를 고릅니다.`
+      : "① 알람밸브(접속점)를 먼저 찍으세요 — 여기서 물이 들어옵니다.";
+  }
+
   function renderZones() {
+    renderWorstReady();
     const box = $("ed-zones");
     if (!S.zones.length) { box.textContent = "영역 없음 · 도면 전체"; return; }
     let html = "";
@@ -3049,6 +3074,7 @@
     const nEdits = e.edits_since_worst || 0;
     $("ed-recalc-row").classList.toggle("hidden", !nEdits);
     $("ed-edits").textContent = `마지막 계산 후 수정 ${nEdits}건`;
+    renderWorstReady();
     // [F-10e] 평면에서 보는 동안 고치면 그 배지도 같이 따라와야 한다 — 두
     //   화면이 같은 수를 보지 않으면 어느 쪽이 사실인지 알 수 없다.
     renderPlanUnderlay();
@@ -3186,10 +3212,6 @@
   //    은퇴한 «급수시작위치» 모드는 옛 화면 호환으로만 받는다.)
   const ONECLICK = "원클릭";
 
-  // 최불리 기준개수 — 원클릭과 「최불리 선정」이 같은 값을 써야 한다. 두 곳이
-  // 갈리면 손질에서 본 개수와 표에 실린 K 가 달라진다.
-  const edK = () => Math.max(1, Math.min(200, Number($("ed-k").value || 30)));
-
   function setUiMode(mode) {
     S.emode = mode;
     for (const b of document.querySelectorAll(".emode")) {
@@ -3213,12 +3235,18 @@
     };
   }
 
-  // 알람밸브 한 번 = 두 픽 + 최불리. 서버가 한 잡으로 한다(D-F10-4).
+  // 알람밸브(=접속점)를 그 자리에 **놓기만** 한다.
+  //
+  // ★[D-F10-4 개정 · 2026-09-07] 종전에는 이 클릭이 최불리까지 이어 돌았다.
+  //   사용자 지시로 끊었다 — 「알람밸브 지정 후 영역 지정 후에 버튼을 누르면
+  //   배관망이 나오도록」. 최불리는 영역에 좌우되는데 클릭이 곧바로 돌면
+  //   영역을 정하기 전에 결과부터 보게 되고, 그 계산은 실측 ~18초라 자리를
+  //   옮겨 볼 때마다 18초를 기다리게 된다.
   async function anchorClick(x, y, maxD) {
-    busy(true, "알람밸브 원클릭 — 두 자리를 놓고 최불리를 계산하는 중…");
+    busy(true, "알람밸브(접속점)를 놓는 중…");
     try {
       await post("/api/module-f/edit/anchor-click",
-                 { sid: S.sid, x, y, max_d: maxD, k: edK() });
+                 { sid: S.sid, x, y, max_d: maxD });
       watch(async () => {
         const j = await api(`/api/module-f/convert/result?sid=${S.sid}`);
         const r = j.result || {};
@@ -3226,12 +3254,10 @@
         else { await loadEdit(); }
         renderEdit();
         draw();
-        const s = r.summary;
-        if (s) {
-          startPulse();          // [F-10c] 방금 뜬 corridor 를 몇 번 도드라지게
-          say(`최불리 ${s.k}개 · 최원 ${s.far_m} m · 담당 최대 ${s.max_load}개`
-              + ` · 배관 ${s.path_edges}`, "ok");
-        }
+        say("알람밸브(접속점)를 놓았습니다 — 영역을 정한 뒤"
+            + " «최불리 선정» 을 누르세요."
+            + (r.cleared_worst ? " (자리가 바뀌어 먼저 뽑은 배관망은"
+                               + " 지웠습니다)" : ""), "ok");
       });
     } catch (err) { busy(false); say(err.message, "err"); }
   }

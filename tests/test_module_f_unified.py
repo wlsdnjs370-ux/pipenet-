@@ -370,6 +370,32 @@ def test_영역_지정이_최불리_버튼보다_앞에_있다():
         "영역 지정이 버튼 뒤에 있어 순서를 거꾸로 안내한다"
 
 
+def test_영역_그리기_중에는_캔버스_클릭이_손질로_새지_않는다():
+    """★실제로 낸 결함 — 「해제 → 영역 지정 → 최불리 선정」이 또 안 됐다.
+
+    원인은 «클릭이 두 번 먹은» 것이다. 영역을 드래그해 놓는 순간 `mouseup`
+    뒤에 `click` 이 뒤따라 뜨고, 그 클릭이 손질 경로로 흘러 **알람밸브를
+    드래그 끝점(도면 구석)으로 옮겼다.** 실측: 밸브가 (299004, -255450) 으로
+    가고, 뒤이은 「최불리 선정」이 「급수원에서 닿는 헤드가 없습니다」로 막혔다.
+    사람에게는 그것이 「버튼이 또 작동을 안 한다」로 보인다.
+
+    영역 도구가 켜져 있는 동안 캔버스는 **그 도구의 것**이어야 한다.
+    """
+    html = _screen()
+    i = html.index('cv.addEventListener("click"')
+    seg = html[i:i + 900]
+    assert "zoneArmed()" in seg, "영역 도구가 켜져 있어도 클릭이 손질로 샌다"
+    j = seg.index("zoneArmed()")
+    assert "return" in seg[j:j + 60], "막지 않고 지나간다"
+    # 판정은 한 곳에서만 — mousedown 과 click 이 서로 다른 조건을 쓰면
+    # 「끌 때는 막고 놓을 때는 안 막는」 어긋남이 다시 생긴다.
+    assert html.count("function zoneArmed()") == 1
+    k = html.index("function zoneArmed()")
+    body = html[k:k + 260]
+    for cid in ("ed-zone-arm", "au-zone-arm"):
+        assert cid in body, f"{cid} 를 안 본다"
+
+
 def test_최불리_버튼은_죽은_단추가_되지_않는다():
     """★실제로 낸 결함 — 「버튼을 누르니 작동을 안 한다」.
 

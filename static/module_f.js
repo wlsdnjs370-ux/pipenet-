@@ -105,9 +105,15 @@
   let drag = null;
   // 영역 지정 드래그 — 켜져 있을 때만 왼쪽 버튼을 가로챈다(패닝은 그대로).
   let zoneDrag = null;
+
+  /** 지금 캔버스가 «영역 도구» 것인가. 한 곳에서만 판정한다. */
+  function zoneArmed() {
+    return (S.stage === "edit" && $("ed-zone-arm").checked)
+        || (S.stage === "auto" && $("au-zone-arm").checked);
+  }
+
   cv.addEventListener("mousedown", (e) => {
-    const armed = (S.stage === "edit" && $("ed-zone-arm").checked)
-               || (S.stage === "auto" && $("au-zone-arm").checked);
+    const armed = zoneArmed();
     if (e.button === 0 && !e.shiftKey && armed) {
       zoneDrag = { x0: wx(e.offsetX), y0: wy(e.offsetY),
                    x1: wx(e.offsetX), y1: wy(e.offsetY) };
@@ -148,7 +154,15 @@
       // 손이 떨려 생긴 점은 영역이 아니다 — 화면에서 8px 넘게 끈 것만 받는다.
       const px = Math.abs(z.x1 - z.x0) * S.view.scale;
       const py = Math.abs(z.y1 - z.y0) * S.view.scale;
-      if (px < 8 || py < 8) { draw(); return; }
+      if (px < 8 || py < 8) {
+        // 그냥 «톡» 누른 것이다. 영역 도구가 켜져 있으면 그 클릭은 손질로
+        // 안 간다(위 click 가지) — 아무 일도 안 일어난 것처럼 보이므로
+        // 무엇이 켜져 있는지 한 줄 말해 준다.
+        say("영역 그리기가 켜져 있습니다 — 캔버스를 «끌어» 사각형을 그리세요."
+            + " (손질 클릭을 하려면 체크를 끄세요)", "warn");
+        draw();
+        return;
+      }
       markUndo("영역 그리기");
       S.zones.push([Math.min(z.x0, z.x1), Math.min(z.y0, z.y1),
                     Math.max(z.x0, z.x1), Math.max(z.y0, z.y1)]);
@@ -172,6 +186,14 @@
 
   cv.addEventListener("click", (e) => {
     if (e.shiftKey) return;
+    // ★영역 그리기가 켜져 있으면 캔버스는 **영역 도구의 것**이다.
+    //
+    //   막지 않으면 드래그를 놓는 순간 `click` 이 뒤이어 떠서 그 자리에
+    //   손질 클릭까지 들어간다 — 실제로 그랬다: 영역을 그렸더니 알람밸브가
+    //   드래그 끝점(도면 구석)으로 옮겨 가고, 뒤이은 「최불리 선정」이
+    //   「급수원에서 닿는 헤드가 없습니다」로 막혔다. 사람에게는 그것이
+    //   「버튼이 또 작동을 안 한다」로 보인다.
+    if (zoneArmed()) return;
     const x = wx(e.offsetX), y = wy(e.offsetY);
     const maxD = PICK_PX / S.view.scale;
     if (S.stage === "pick") pickClick(x, y, maxD);

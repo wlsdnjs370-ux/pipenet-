@@ -646,14 +646,22 @@ def test_검출망도_새_도면에서_지워진다():
 
 
 def test_영역_무장은_체크박스_상태를_그대로_쓴다():
-    """캔버스 드래그 판정이 그 값을 읽는다 — 단추만 만들고 끊으면 안 그려진다."""
+    """캔버스 드래그 판정이 그 값을 읽는다 — 단추만 만들고 끊으면 안 그려진다.
+
+    ★판정이 `zoneArmed()` 한 곳으로 모였다(2026-09-07). 종전에는 드래그
+      시작(`const armed = …`)에만 있었는데, 그러면 드래그를 놓을 때 뒤따르는
+      클릭이 손질로 새어 알람밸브가 딸려 옮겨졌다. 그래서 **클릭 가지도 같은
+      판정**을 쓴다 — 여기서는 그 한 곳이 체크박스를 읽는지까지 따라간다.
+    """
     html = _script()
     assert 'id="au-zone-arm"' in html
     i = html.index('$("au-zone-draw").onclick')
     seg = html[i:i + 500]
     assert '$("au-zone-arm").checked = on;' in seg
-    assert '$("au-zone-arm").checked' in html[html.index("const armed ="):
-                                              html.index("const armed =") + 300]
+    j = html.index("const armed =")
+    assert "zoneArmed()" in html[j:j + 120], html[j:j + 120]
+    k = html.index("function zoneArmed()")
+    assert '$("au-zone-arm").checked' in html[k:k + 260]
 
 
 # ═══════════════════════════════════════════ 되돌리기 — 모든 단계에서

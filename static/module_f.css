@@ -211,6 +211,15 @@
   .layers .cat.PIPE{color:var(--accent);border-color:var(--accent-dim);}
   .layers .cat.HEAD{color:var(--warn);border-color:#6b5320;}
   .layers .cat.ALARM{color:#c86bff;border-color:#4a2868;}
+  /* [§27] «이 묶음만 크게» — 판정이 아니라 «보기» 단추다. 이름 사전이 정반대로
+     읽는 도면이 있어(계통도 SP = 헤드 918개) 사람이 눈으로 가를 길이 필요하다. */
+  .layers .solo{flex:none;margin-left:auto;background:none;cursor:pointer;
+                border:1px solid var(--line-2);color:var(--faint);
+                font:400 10px/1 var(--mono);padding:3px 5px;}
+  .layers .solo:hover{color:var(--accent);border-color:var(--accent-dim);}
+  /* 지금 무엇만 보고 있는지 — 안 보이면 되돌리기 단추를 못 찾는다. */
+  .layers .solo.on{color:var(--accent);border-color:var(--accent);
+                   background:rgba(91,141,239,.14);}
 
   label.chk{display:flex;align-items:center;gap:9px;padding:8px 10px;
             border:1px solid var(--line);margin-bottom:1px;cursor:pointer;

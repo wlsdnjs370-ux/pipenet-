@@ -2590,9 +2590,16 @@
     for (const b of S.world.bundles) {
       const lb = document.createElement("label");
       const cb = document.createElement("input");
-      cb.type = "checkbox"; cb.checked = true; cb.dataset.id = b.id;
+      cb.type = "checkbox"; cb.dataset.id = b.id;
+      // ★`true` 고정이 아니라 **지금 상태**를 읽는다. 고정이면 「이 묶음만」
+      //   뒤 목록이 다시 그려질 때 전부 켜진 얼굴이 되어, 화면(한 묶음)과
+      //   목록(전부)이 서로 다른 말을 한다.
+      cb.checked = !S.hidden.has(b.id);
       cb.onchange = () => {
         if (cb.checked) S.hidden.delete(b.id); else S.hidden.add(b.id);
+        // 사람이 직접 켜고 끄면 「이 묶음만」 상태는 끝난다 — 안 풀면 같은
+        // 단추가 「되돌리기」로 남아 눌러도 아무 일이 없는 것처럼 보인다.
+        if (_soloId !== null) { _soloId = null; markSolo(); }
         draw();
       };
       const sw = document.createElement("span");
@@ -2626,15 +2633,94 @@
         + (b.n_arc_all ? ` · 호 ${b.n_arc_all.toLocaleString()}개` : "")
         + (b.n_seg < n ? `\n(화면에는 ${b.n_seg.toLocaleString()}개만 그립니다`
                          + " — 세는 것과 그리는 것은 다릅니다)" : "");
-      lb.append(cb, sw, ct, tx, cn);
+      // [§27] «이 묶음만 크게» — 판정을 안 하므로 틀릴 수가 없다.
+      //
+      // ★이름 사전은 도면에 따라 정반대로 읽는다. 실측(대명동 계통도):
+      //   `SP` 는 사전이 「스프링클러 배관」으로 읽지만 실제로는 **헤드 기호
+      //   918개** 이고, 배관은 사전이 OTHER 로 떨어뜨린 `0` 레이어에 있다.
+      //   그 자리에 추측 규칙을 하나 더 얹으면 «틀린 확신» 만 늘어난다
+      //   (선분 길이·접점 두 지표를 실제로 재 보고 둘 다 기각했다).
+      //   그래서 판정 대신 **사람이 보게** 한다 — 눌러서 그 묶음만 남긴다.
+      const solo = document.createElement("button");
+      solo.className = _soloId === b.id ? "solo on" : "solo";
+      solo.type = "button";
+      solo.dataset.id = b.id;
+      solo.textContent = "◉";
+      solo.title = "이 묶음만 크게 보기 (다시 누르면 되돌립니다)";
+      solo.onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        soloBundle(b.id);
+      };
+      lb.append(cb, sw, ct, tx, cn, solo);
       box.appendChild(lb);
     }
   }
+  // [§27] 묶음 하나만 남기고 그 범위로 확대한다 — 되돌리기는 같은 단추.
+  //
+  // 판정을 안 한다: 무엇이 배관인지 «말하지» 않고, 사람이 볼 수 있게만 한다.
+  // 이름 사전이 틀린 도면(계통도 `SP` = 헤드 918개)에서 사람이 눈으로 가르는
+  // 유일한 길이 이것이다.
+  let _soloId = null;
+
+  // 지금 어느 묶음만 보고 있는지 단추에 표시한다(목록을 다시 그리지 않는다).
+  function markSolo() {
+    for (const el of $("layers").querySelectorAll(".solo")) {
+      el.classList.toggle("on", el.dataset.id === String(_soloId));
+    }
+  }
+
+  function bundleBounds(id) {
+    const b = (S.world.bundles || []).find((x) => x.id === id);
+    if (!b) return null;
+    let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+    const put = (x, y) => {
+      if (x < minx) minx = x;
+      if (y < miny) miny = y;
+      if (x > maxx) maxx = x;
+      if (y > maxy) maxy = y;
+    };
+    const sg = b.segs || [];
+    for (let i = 0; i < sg.length; i += 4) {
+      put(sg[i], sg[i + 1]); put(sg[i + 2], sg[i + 3]);
+    }
+    for (const c of (b.circles || [])) put(c[0], c[1]);
+    for (const a of (b.arcs || [])) put(a[0], a[1]);
+    return isFinite(minx) ? { minx, miny, maxx, maxy } : null;
+  }
+
+  function soloBundle(id) {
+    if (_soloId === id) {          // 같은 단추 = 되돌리기
+      _soloId = null;
+      S.hidden.clear();
+      buildLayers();
+      fit(S.world.bounds);
+      draw();
+      say("모든 묶음을 다시 켰습니다.", "ok");
+      return;
+    }
+    _soloId = id;
+    S.hidden = new Set((S.world.bundles || [])
+      .map((x) => x.id).filter((x) => x !== id));
+    buildLayers();
+    const bb = bundleBounds(id);
+    // ★범위를 못 재면 «화면을 안 옮긴다» — 엉뚱한 데로 튀느니 그대로 둔다.
+    if (bb) fit(bb);
+    draw();
+    const b = (S.world.bundles || []).find((x) => x.id === id);
+    say(b ? `«${b.layer} × ${b.name}» 만 봅니다 — 다시 누르면 되돌립니다.`
+          : "이 묶음만 봅니다.", "ok");
+  }
+
+  // 모두 켜기·끄기도 「이 묶음만」 상태를 끝낸다 — 안 풀면 아무 것도 안 보이는
+  // 화면에서 단추 하나만 «보는 중» 표시로 남는다.
   $("ly-all").onclick = () => {
+    _soloId = null; markSolo();
     S.hidden.clear();
     box_all(true); draw();
   };
   $("ly-none").onclick = () => {
+    _soloId = null; markSolo();
     S.hidden = new Set(S.world.bundles.map((b) => b.id));
     box_all(false); draw();
   };
@@ -3389,6 +3475,8 @@
       canvas_units: Number($("dg-canvas").value || 3000),
       lift_ref: $("dg-ref").value,
       head_stub_pct: Number($("dg-stub").value || 2.5),
+      // [§29] 신축배관 — 빈 값이면 «안 함». 켜면 산출값이 달라지므로 사람이 고른다.
+      fx_profile: $("dg-fx").value,
     };
   }
 
@@ -3978,7 +4066,8 @@
     io_node: "입출력", x: "x", y: "y", flow_lmin: "유량(L/min)",
     count: "개수", pipe: "배관", pressure_pa: "압력(Pa)",
     flow_m3s: "유량(m³/s)", lib: "라이브러리", eq_len: "등가길이(m)",
-    rel_pos: "위치", desc: "설명", off_tree: "루프 잔여" };
+    rel_pos: "위치", desc: "설명", off_tree: "루프 잔여",
+    eq_len_src: "등가길이 근거", spec_ref: "규격" };
   const DG_SRC = { text: "도면 텍스트", nfpc_min: "별표1 보강",
                    nfpc_fallback: "별표1 폴백" };
   // 관경 근거별 캔버스 표시. 규약으로만 정한 것(별표1 폴백)은 점선 — 도면에서

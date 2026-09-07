@@ -25,6 +25,7 @@ from collections import deque
 from dataclasses import dataclass, field
 
 from services.cad_import.design.anchor import require_anchor
+from services.cad_import.kinds import normalize_head_kind
 
 # 전개 좌표(m) → 표 좌표(mm)
 M_TO_MM = 1000.0
@@ -61,6 +62,33 @@ class PipeTablesG:
                 "meta": [list(m) for m in self.meta],
                 "unresolved": self.unresolved,
                 "bore_overrides": self.bore_overrides}
+
+
+def _fx_spec(profile) -> dict:
+    """신축배관 규격 — **모듈 A 와 같은 표**에서 가져온다.
+
+    ★여기서 수치를 다시 적지 않는다. `FX_SPEC_PROFILES` 는 A 안에 박힌 것이
+      아니라 이미 공용 `remote30_constants` 에 있다(기본 「평균」 · 등가길이
+      15.6m · 호칭 20A). 두 벌이 되면 한쪽만 고쳐지는 날이 온다 — 이 저장소가
+      되풀이해 겪은 결함 유형이다.
+    """
+    import os
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+    for p in (root, os.path.join(root, "core")):
+        if p not in sys.path:
+            sys.path.append(p)
+    from remote30_constants import FX_DEFAULT_PROFILE, FX_SPEC_PROFILES
+
+    key = str(profile)
+    if key not in FX_SPEC_PROFILES:
+        raise ValueError(
+            f"모르는 신축배관 규격입니다: {profile!r} — "
+            f"고를 수 있는 것: {sorted(FX_SPEC_PROFILES)} "
+            f"(기본 {FX_DEFAULT_PROFILE})")
+    return FX_SPEC_PROFILES[key]
 
 
 def _ends(pr):
@@ -115,7 +143,9 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
                         tree_loads=None,
                         fitting_overrides=None,
                         bore_overrides=None,
-                        origin_mm=None) -> PipeTablesG:
+                        origin_mm=None,
+                        fx_profile=None,
+                        node_head_kinds=None) -> PipeTablesG:
     """제한 전개 망 → 5개 테이블. 지시서 §1 공개 시그니처.
 
     `bores` / `fittings` 는 G3 · G4 결과를 받는다. 없으면 여기서 만들지 않고
@@ -214,10 +244,23 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
     for pid, a, b in off_tree:
         tbl.pipes.append(pipe_row(pid, a, b, off=True))
 
+    # 기기(FX·A/V)가 붙을 «물이 지나는 관» 을 고르는 자리 — 두 곳이 같이 쓴다.
+    _loads = {str(k): int(v) for k, v in (tree_loads or {}).items()}
+
+    def _host_pipe(lab):
+        touching = [r for r in tbl.pipes if lab in (r["in"], r["out"])]
+        if not touching:
+            return None
+        # 담당 헤드 수 → 호칭경 → 라벨. 뒤 둘은 같은 값일 때 결과를 고정하는
+        # 자리다(같은 입력에 같은 산출).
+        return max(touching, key=lambda r: (_loads.get(str(r.get("label")), 0),
+                                            int(r.get("dia") or 0),
+                                            str(r.get("label"))))
+
     # ── ③ 노즐표 — 헤드 노드마다 1행
-    for i, nid in enumerate(
-            [n for n in order if str((meta_nodes.get(n) or {}).get("type_id")) == "head"],
-            start=1):
+    _head_nids = [n for n in order
+                  if str((meta_nodes.get(n) or {}).get("type_id")) == "head"]
+    for i, nid in enumerate(_head_nids, start=1):
         tbl.nozzles.append({
             "label": str(i), "in": label_of.get(nid, "?"), "out": f"@/{i}",
             "status": "1", "lib": "SP-HEAD",
@@ -225,6 +268,52 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
             # m³/s 는 L/min 에서 유도한다 — 손으로 자른 상수를 쓰면 어긋난다.
             "flow_m3s": nozzle_flow_lmin / 60000.0,
         })
+
+    # ── ③-b 기기표(FX) — 신축배관. **사람이 켰을 때만** 단다.
+    #
+    # ★[BLOCKED §29] 이 자리가 오래 비어 있었다. 권위 레퍼런스는 헤드 접속관마다
+    #   FX 등가길이 15.6m 를 싣는데(헤드 32개면 499.2m · 우리 배관 총연장의 372%)
+    #   모듈 F 산출물에는 0개였다. 등가길이는 마찰손실에 배관 길이와 같은 자격으로
+    #   들어가므로 그만큼 계산이 낙관적이 된다.
+    #
+    # ★규칙을 여기서 다시 짜지 않는다. 모듈 A 와 **같은 상수**(`FX_SPEC_PROFILES`
+    #   ·`FX_DEFAULT_PROFILE`)를 쓴다 — A 안에 박힌 것이 아니라 이미 공용
+    #   `remote30_constants` 에 나와 있다. 두 벌이 되면 한쪽만 고쳐지는 날이 온다.
+    #
+    # ★기본은 «안 단다» 다(`fx_profile=None`). 신축배관을 쓰는 현장인지는 설계
+    #   결정이고(D-F11-1: 사람의 명시적 수정 외에는 산출을 바꾸지 않는다),
+    #   켜지 않으면 기존 산출물·골든이 한 바이트도 안 바뀐다.
+    #
+    # ★어느 헤드에 다나 — A 의 규칙 그대로 **하향식 계열만**. 신축배관은 세대 안
+    #   하향식 헤드에 붙는 물건이고, 상향식은 촛대로 직결되므로 안 단다.
+    if fx_profile:
+        _fx = _fx_spec(fx_profile)
+        # ★종류표는 `net`(kfp) 안이 아니라 **전개 결과(`got`)** 에 있다.
+        #   처음에 `net.get("node_head_kinds")` 로 읽어 늘 비었고, 그래서 FX 가
+        #   한 개도 안 붙었다 — 규칙은 맞는데 재료를 엉뚱한 데서 찾은 것이다.
+        _kind_of = {str(k): normalize_head_kind(v)
+                    for k, v in (node_head_kinds or {}).items()}
+        n_fx = 0
+        for nid in _head_nids:
+            kind = _kind_of.get(str(nid), "")
+            if kind not in ("하향식", "상하향식"):
+                continue          # 상향식·미지정은 안 단다(A 와 같은 판단)
+            lab = label_of.get(nid)
+            host = _host_pipe(lab) if lab else None
+            if host is None:
+                continue
+            n_fx += 1
+            tbl.equipment.append({
+                "pipe": host["label"], "in": host["in"], "out": host["out"],
+                "label": str(len(tbl.equipment) + 1), "desc": "FX",
+                "eq_len": float(_fx["eq_len_m"]), "rel_pos": 0.5,
+                "eq_len_src": f"신축배관 {fx_profile}",
+                "spec_ref": str(fx_profile),
+            })
+        _fx_note = (f"{fx_profile} · {_fx['eq_len_m']}m × {n_fx}개"
+                    if n_fx else f"{fx_profile} · 붙일 하향식 헤드 없음")
+    else:
+        _fx_note = "안 함"
 
     # ── ④ 부속표 — 배관표에 있는 라벨만(고아 참조 0)
     pipe_by_label = {r["label"]: r for r in tbl.pipes}
@@ -254,18 +343,6 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
     #     고르면 곁가지가 걸린다. 실측(B1F): 본관 65A(담당 30) 옆에 담당 0 인
     #     25A 가 있어 그쪽이 잡혔고, 라이브러리에 25A 알람밸브가 없어(65~150A)
     #     등가길이가 «미해결» 로 떨어졌다. 담당 헤드 수가 그 판단의 근거다.
-    _loads = {str(k): int(v) for k, v in (tree_loads or {}).items()}
-
-    def _host_pipe(lab):
-        touching = [r for r in tbl.pipes if lab in (r["in"], r["out"])]
-        if not touching:
-            return None
-        # 담당 헤드 수 → 호칭경 → 라벨. 뒤 둘은 같은 값일 때 결과를 고정하는
-        # 자리다(같은 입력에 같은 산출).
-        return max(touching, key=lambda r: (_loads.get(str(r.get("label")), 0),
-                                            int(r.get("dia") or 0),
-                                            str(r.get("label"))))
-
     for nid in (valve_nodes or ()):
         lab = label_of.get(nid)
         if lab is None:
@@ -331,12 +408,15 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
                  if a.get("what") == "kind"))),
         # 부속표와 기기표를 **함께** 센다 — 사람이 채운 자리는 한 종류다.
         ("직접 입력 — 등가길이",
-         str(len(av_applied) + sum(1 for a in (fittings.get("applied_overrides") or ())
-                 if a.get("what") == "eq_len"))),
+         str(len(av_applied)
+             + sum(1 for a in (fittings.get("applied_overrides") or ())
+                   if a.get("what") == "eq_len"))),
         ("루프 잔여 배관(표 꼬리)", str(len(off_tree))),
         # ★B4 1안 — 전개가 못 붙인 헤드는 후보에서 뺐다. 조용히 빼면 「더 불리한
         #   헤드가 있는데 못 본 채」 수리계산이 나간다. 산출물에도 남긴다.
         ("전개가 못 붙여 제외한 헤드", str(excluded_heads)),
+        # 신축배관을 달았는지·무슨 규격으로 달았는지를 산출물이 스스로 말한다.
+        ("신축배관(FX)", _fx_note),
         ("설계구역 선정", "모듈 G 기준헤드 방식 (SDF 전용 · .kfp 는 솔버가 따로 고른다)"),
     ]
     # 미해결이 «어느 배관인지» — 개수와 같은 자리에서 나온 목록이다.

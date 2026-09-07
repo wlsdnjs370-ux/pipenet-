@@ -32,6 +32,11 @@ _DEFAULT_SETTINGS = {
     "canvas_units": 3000.0,          # 캔버스 크기
     "lift_ref": "valve",             # lift 영점 (valve | mid)
     "head_stub_pct": 2.5,            # 헤드 스텁 길이 (%)
+    # [§29] 신축배관(FX) — **기본은 «안 함»** 이다. 신축배관을 쓰는 현장인지는
+    #   설계 결정이고(D-F11-1: 사람의 명시적 수정 외에는 산출을 바꾸지 않는다),
+    #   켜지 않으면 기존 산출물이 한 바이트도 안 바뀐다.
+    #   고를 수 있는 값은 모듈 A 의 규격표에서 온다(`FX_SPEC_PROFILES`).
+    "fx_profile": "",                # "" = 안 함 · "평균" · "한백표준"
 }
 
 
@@ -40,7 +45,8 @@ def _settings(sess: dict, body: dict) -> dict:
     cur = dict(sess.get("design_settings") or _DEFAULT_SETTINGS)
     for key, cast in (("k", int), ("schedule", str), ("iso", bool),
                       ("iso_z_scale", float), ("canvas_units", float),
-                      ("lift_ref", str), ("head_stub_pct", float)):
+                      ("lift_ref", str), ("head_stub_pct", float),
+                      ("fx_profile", str)):
         if key in body and body[key] is not None:
             try:
                 cur[key] = cast(body[key])
@@ -529,7 +535,10 @@ def register(app, *, UPLOAD_DIR):
                     # 기준 헤드(최원단)를 kfp 노드로 되짚는 데 쓴다 — board mm
                     # 를 kfp m 로 옮기려면 이 값이 있어야 한다. 없으면 표는
                     # 종전처럼 「기준 헤드 노드 = ?」로 남는다(추측하지 않는다).
-                    origin_mm=got.get("origin_mm"))
+                    origin_mm=got.get("origin_mm"),
+                    # [§29] 신축배관 — 빈 값이면 안 단다(기본).
+                    fx_profile=(cfg.get("fx_profile") or None),
+                    node_head_kinds=got.get("node_head_kinds"))
             except UnknownSchedule as exc:
                 return {"ok": False, "error": str(exc)}
             # ★[F-11d-2] 넘긴 것 중 «엔진이 실제로 쓴 것» 을 맞대 본다.

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260903-sub">
+<link rel="stylesheet" href="/static/module_f.css?v=20260907-solo">
 </head>
 <body>
 <header>
@@ -473,6 +473,15 @@
         <input type="number" id="dg-zscale" value="1.0" min="0.5" max="3" step="0.1"></label>
       <label class="f"><span>캔버스 크기</span>
         <input type="number" id="dg-canvas" value="3000" min="500" max="20000" step="500"></label>
+      <!-- [§29] 신축배관(FX) — 기본은 «안 함». 이 현장이 신축배관을 쓰는지는
+           설계 결정이라 프로그램이 정하지 않는다. 켜면 하향식 계열 헤드마다
+           등가길이가 붙어 **산출값이 달라진다** — 그래서 사람이 고른다. -->
+      <label class="f"><span>신축배관 (FX)</span>
+        <select id="dg-fx">
+          <option value="">안 함 (기본)</option>
+          <option value="평균">평균 — 20A · 등가길이 15.6 m</option>
+          <option value="한백표준">한백표준 — 25A · 등가길이 22.4 m</option>
+        </select></label>
       <label class="f"><span>lift 영점</span>
         <select id="dg-ref"><option value="valve">알람밸브 (없으면 표고 중앙)</option>
           <option value="mid">표고 중앙</option></select></label>
@@ -543,6 +552,9 @@
         <select id="dg-table">
           <option value="pipes">배관</option><option value="nodes">노드</option>
           <option value="nozzles">노즐</option><option value="fittings">부속</option>
+          <!-- [§29] 알람밸브·신축배관이 실제로 어느 배관에 몇 m 로 붙었는지.
+               볼 자리가 없으면 켠 사람이 «켜졌나» 를 meta 한 줄로만 믿게 된다. -->
+          <option value="equipment">기기</option>
         </select>
       </div>
       <div id="dg-grid" style="max-height:300px;overflow:auto"></div>

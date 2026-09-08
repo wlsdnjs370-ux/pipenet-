@@ -43,11 +43,23 @@ def main() -> int:
         pg.goto(f"{BASE}/module-f", wait_until="domcontentloaded")
         pg.wait_for_timeout(1000)
 
-        pg.set_input_files("#dxf", plan)
-        pg.click("#btn-open")
+        # ★저장본을 «이어서 열기» — 사용자가 매일 쓰는 길이다.
+        pg.wait_for_function(
+            "() => { const s = document.querySelector('#saved');"
+            " return s && s.options.length > 0; }", timeout=120_000)
+        keys = pg.evaluate(
+            "() => [...document.querySelector('#saved').options]"
+            ".map((o) => o.value)")
+        want = os.environ.get("MF_KEY") or keys[0]
+        pg.evaluate("(k) => { const s = document.querySelector('#saved');"
+                    " s.value = k; s.dispatchEvent(new Event('change')); }",
+                    want)
+        print(f"[0] 저장본 «{want}»")
+        pg.click("#btn-reopen")
         for _ in range(3000):
             pg.wait_for_timeout(200)
-            if pg.is_visible("#panel-edit") and pg.is_hidden("#busy"):
+            if pg.is_hidden("#busy") and pg.evaluate(
+                    "() => window.__mf.stage") in ("edit", "pick"):
                 break
         pg.wait_for_timeout(1500)
         # [D-F10-3 개정] 이제 업로드는 «찍기» 에서 멈춘다 — 사람이 하듯

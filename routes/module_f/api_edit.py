@@ -389,12 +389,21 @@ def register(app):
         #   막고, 무엇을 어떻게 하면 되는지 말한다.
         if w["reachable"] < k:
             sess["worst"] = None
-            where = ("영역 안" if zones else
-                     ("고른 도면 장 안" if sheet_no else "이 도면에서"))
+            if zones:
+                where, how = "영역 안", "영역을 넓히거나"
+            elif sheet_no:
+                where, how = "고른 도면 장 안", "다른 장을 고르거나"
+            else:
+                # ★영역도 장도 안 걸었는데 모자라면 «찍기» 에서 빠진 것이다.
+                #   찍기의 클릭 한 번이 헤드 부류를 통째로 끄기 때문이다 —
+                #   실측으로 111개가 5개로 떨어진 채 여기까지 온 적이 있다.
+                #   여기서 «영역을 넓히라» 고만 하면 사람을 엉뚱한 데로 보낸다.
+                where = "이 도면에서"
+                how = ("단계바의 「찍기」로 내려가 헤드 칸을 다시 켜거나,")
             return None, _wfail(
                 f"기준개수 {k}개인데 {where} 급수원에 닿는 헤드가 "
                 f"{w['reachable']}개뿐입니다 — 설계면적이 성립하지 않습니다. "
-                f"영역을 넓히거나 기준개수를 {w['reachable']} 이하로 낮추세요.")
+                f"{how} 기준개수를 {w['reachable']} 이하로 낮추세요.")
         w["sheet"] = sheet_no
         w["source_tag"] = picked_tag          # 화면이 «어느 급수원 기준» 인지 안다
         w["source_index"] = src_index

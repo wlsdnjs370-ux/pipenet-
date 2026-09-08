@@ -2968,7 +2968,36 @@
     $("pk-pipe").classList.toggle("on", p.mode === "재료" && p.armed);
     $("pk-done").disabled = p.materials.length === 0;
     $("pk-next").disabled = !p.mat_done;
+    renderPickCount(p);
     draw();
+  }
+
+  // ★지금 몇 개가 찍혀 있나 — 이 줄이 없어서 사고가 났다.
+  //
+  //   찍기의 클릭 한 번은 헤드 «부류» 를 통째로 켜고 끈다(레이어×색×반지름).
+  //   무심코 한 번 누르면 헤드가 111개에서 5개로 떨어지는데, 그 사실이
+  //   **배관망을 구성한 뒤에야** 보였다. 그 다음 「최불리 선정」이 「헤드가
+  //   5개뿐」으로 막히니 사람에게는 «단추가 또 고장» 으로 읽힌다.
+  //
+  //   그래서 여기서 센다. 기준개수보다 적으면 경고색으로 — 최불리가 성립하지
+  //   않을 것을 **지금** 알려 준다.
+  function renderPickCount(p) {
+    // ★«칸» 이 아니라 «헤드» 를 센다. `n_heads` 는 칸(부류) 수다 — 실측
+    //   대명동 평면도는 칸 3개에 헤드 111개다. 칸 수를 기준개수와 견주면
+    //   늘 「모자란다」고 말하는 엉터리 경고가 된다(실제로 그렇게 냈다).
+    const n = Number(p.n_head_circles || 0);
+    const tri = !!p.has_tri_heads;
+    const k = edK();
+    const low = n < k && !tri;   // 삼각형 헤드는 이 수에 없다 — 단정 안 한다
+    const box = $("pk-count");
+    box.classList.toggle("warn", low);
+    box.innerHTML =
+      kv("찍힌 헤드", `<b>${n.toLocaleString()}</b>개`
+         + (tri ? " <span class=\"tag\">+ 삼각형 헤드 별도</span>" : "")
+         + (low ? ` — 기준개수 <b>${k}</b>개보다 적습니다.`
+                + " 헤드 칸을 다시 눌러 켜세요." : ""))
+      + kv("헤드 칸 / 재료",
+           `${Number(p.n_heads || 0)}칸 · ${(p.materials || []).length}묶음`);
   }
   function kv(k, v) {
     return `<div class="kv"><b>${k}</b><span>${v}</span></div>`;
@@ -3024,7 +3053,15 @@
         return;
       }
       const r = d.report;
-      say(`${r["모드"]} ${r["동작"]} — ${r["픽"]}`, "ok");
+      // ★클릭 하나가 헤드 «부류» 를 통째로 켜고 끈다. «무엇을» 껐는지만
+      //   말하면 그 대가(전체 몇 개가 남았나)를 모른 채 넘어간다 — 실제로
+      //   111개가 5개로 떨어진 채 배관망 구성까지 갔다.
+      const n = Number(S.pick.n_head_circles || 0);
+      const k = edK();
+      const low = n < k && !S.pick.has_tri_heads;
+      say(`${r["모드"]} ${r["동작"]} — ${r["픽"]}`
+          + ` · 지금 헤드 ${n.toLocaleString()}개`,
+          low ? "warn" : "ok");
     } catch (err) { say(err.message, "err"); }
   }
 

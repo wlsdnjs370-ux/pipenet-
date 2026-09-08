@@ -157,3 +157,75 @@ switchSlot("plan").then(() => console.log(JSON.stringify(
                frm="system", method="manual")
     assert got["graph"] is None
     assert got["zones"] == 0 and got["undo"] == 0
+
+
+# ── 찍기의 «찍힌 헤드» 수 (2026-09-08) ─────────────────────────────
+#
+# 사용자 지적: 「평면도에서 최불리 선정 누르니까 또 작동 안 한다」.
+#
+# 재 보니 단추는 멀쩡했다 — 찍기에서 클릭 한 번이 헤드 «칸(부류)» 을 통째로
+# 끄는 바람에 헤드가 111개에서 5개로 떨어져 있었고, 최불리는 「5개뿐」이라고
+# 정당하게 거절한 것이었다. 문제는 **그 사실이 찍기 화면에 안 보였다는 것**
+# 이다. 착지가 찍기로 바뀌면서 사람이 그 화면에서 손을 대게 됐으니 더 그렇다.
+
+
+def _pick_state(**kw):
+    base = {"n_heads": 3, "n_head_circles": 111, "has_tri_heads": False,
+            "materials": [1, 2, 3], "mode": "헤드", "armed": True,
+            "mat_done": True, "head_label": "상향하향"}
+    base.update(kw)
+    return base
+
+
+def _run_pick(state, k=30):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node 가 없다 — 화면 코드를 돌릴 수 없다")
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    i = js.index("  function renderPickCount(p)")
+    src = js[i:js.index("\n  }\n", i) + 4]
+    prog = "\n".join([
+        f"const P = {json.dumps(state)}; const K = {k};",
+        "let CLS = new Set(); let HTML = '';",
+        "const EL = {classList: {toggle: (c, v) => { if (v) CLS.add(c);"
+        "                        else CLS.delete(c); }}};",
+        "Object.defineProperty(EL, 'innerHTML', {set: (v) => { HTML = v; }});",
+        "const $ = () => EL;",
+        "const edK = () => K;",
+        "const kv = (a, b) => `${a}=${b};`;",
+        src,
+        "renderPickCount(P);",
+        "console.log(JSON.stringify({html: HTML, warn: CLS.has('warn')}));",
+    ])
+    out = subprocess.run([node, "-e", prog], capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
+    assert out.returncode == 0, out.stderr[-600:]
+    return json.loads(out.stdout)
+
+
+def test_찍기가_헤드_개수를_센다():
+    """★칸 수를 세면 안 된다 — 실측 대명동은 칸 3개에 헤드 111개다."""
+    got = _run_pick(_pick_state())
+    assert "111" in got["html"], got["html"]
+    assert not got["warn"], "111개인데 경고를 띄웠다"
+
+
+def test_기준개수보다_적으면_찍기에서_경고한다():
+    """★이것이 없어서 111 → 5 가 조립 뒤에야 보였다."""
+    got = _run_pick(_pick_state(n_head_circles=5, n_heads=1))
+    assert "5" in got["html"] and "30" in got["html"], got["html"]
+    assert got["warn"], "모자란데 경고가 없다"
+
+
+def test_칸_수를_기준개수와_견주지_않는다():
+    """칸(3)을 K(30)와 견주면 늘 «모자란다» 는 엉터리 경고가 된다."""
+    got = _run_pick(_pick_state(n_heads=3, n_head_circles=111))
+    assert not got["warn"], got["html"]
+
+
+def test_삼각형_헤드가_있으면_단정하지_않는다():
+    """삼각형 헤드는 이 수에 안 들어간다 — 없는 수로 겁주지 않는다."""
+    got = _run_pick(_pick_state(n_head_circles=5, has_tri_heads=True))
+    assert not got["warn"], "셀 수 없는 것을 두고 모자란다고 했다"
+    assert "삼각형" in got["html"], got["html"]

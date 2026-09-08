@@ -179,6 +179,44 @@ def _plan_elev(view) -> float:
     return min(float(n.get("elevation", 0.0) or 0.0) for n in nodes)
 
 
+def _load_map(got: dict) -> dict:
+    """배관 id → **담당 헤드 수**. 간선 굵기의 근거다.
+
+    두 곳이 안다: 도면 간선에서 온 배관은 `worst.loads`(board 간선 키), 세로
+    구간처럼 역참조가 없는 배관은 `tree_loads`(배관 id 키).
+
+    ★못 찾았을 때 **0 을 적지 않는다.** 종전에는 `loads.get(key, 0)` 으로 0 을
+      박아 넣었고, 뒤따르는 `tree_loads` 폴백이 `setdefault` 라 영영 못 들어왔다.
+      그래서 담당 헤드 수를 잃은 배관이 굵기 0 으로 그려졌다 — 주배관이 가지
+      끝처럼 가늘게 보여, 아이소가 평면과 «위상이 달라 보이는» 원인이 됐다.
+
+      실측(대명동 K30 · `scripts/_probe_design_topology.py`):
+        edge_ref 216개 중 49개(22%)가 빗나갔고 tree_loads 가 그 49개를 전부
+        알고 있었다. 고친 뒤 굵기 0 인 배관은 51 → 2 로 떨어졌다.
+        빗나가는 이유는 «다른 길» 이 아니다 — 그 간선들은 corridor 선 위에
+        거리 0mm 로 얹혀 있다. 평면 그래프를 세우며 티 겹침 정규화·직선 위치
+        복원·노드정리가 절점을 다시 매겨 (i,j) 키만 어긋난 것이다.
+    """
+    loads = ((got.get("worst") or {}).get("loads")) or {}
+    ref = got.get("edge_ref") or {}
+    tree = got.get("tree_loads") or {}
+    out: dict = {}
+    for pid, edge in ref.items():
+        try:
+            i, j = int(edge[0]), int(edge[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        v = loads.get((min(i, j), max(i, j)))
+        if v is not None:
+            out[str(pid)] = int(v)
+    for pid, n in tree.items():
+        try:
+            out.setdefault(str(pid), int(n))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def _view_opts(cfg: dict) -> dict:
     """설정 7종 → display_tables/emit_design_sdf 인자. 두 곳이 같은 값을 쓴다."""
     return {
@@ -842,18 +880,7 @@ def register(app, *, UPLOAD_DIR):
         # 담당 헤드 수 — 간선 굵기의 근거. 도면 간선은 worst.loads, 세로
         # 구간(역참조 없음)은 tree_loads 가 안다.
         got = d["got"]
-        loads = ((got.get("worst") or {}).get("loads")) or {}
-        ref = got.get("edge_ref") or {}
-        tree = got.get("tree_loads") or {}
-        load_of = {}
-        for pid, edge in ref.items():
-            try:
-                i, j = int(edge[0]), int(edge[1])
-                load_of[str(pid)] = int(loads.get((min(i, j), max(i, j)), 0))
-            except (TypeError, ValueError, IndexError):
-                continue
-        for pid, n in tree.items():
-            load_of.setdefault(str(pid), int(n))
+        load_of = _load_map(got)
 
         at = {str(n.get("label")): n for n in view.nodes}
         elev = {lab: float(n.get("elevation", 0) or 0) for lab, n in at.items()}
@@ -945,7 +972,7 @@ def register(app, *, UPLOAD_DIR):
         #   덮을 자리를 가리킬 때는 이 쌍을 쓴다. 역참조가 없는 배관(헤드
         #   접속관·가지 상승)은 board 간선이 없어 null 이다 — 못 덮는다.
         ref_of = {}
-        for pid, edge in ref.items():
+        for pid, edge in (got.get("edge_ref") or {}).items():
             try:
                 i, j = int(edge[0]), int(edge[1])
             except (TypeError, ValueError, IndexError):

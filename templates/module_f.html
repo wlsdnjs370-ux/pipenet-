@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260908-planfirst">
+<link rel="stylesheet" href="/static/module_f.css?v=20260908-loadfix">
 </head>
 <body>
 <header>
@@ -526,6 +526,20 @@
         <button id="dg-recalc" class="go">다시 계산 → 아이소 갱신</button>
         <span class="tag" id="dg-edits">수정 0건</span>
       </div>
+      <!-- 평면과 아이소가 «같은 망» 을 보이게 하는 자리. 값은 손질의
+           `ed-worst-view` 하나뿐이고 여기는 그 얼굴이다 — 두 곳이 각자 값을
+           들면 화면끼리 다른 말을 한다. -->
+      <label class="f hidden" id="dg-plan-view-row">
+        <span>평면에서 나머지 배관망</span>
+        <select id="dg-plan-view">
+          <option value="all">그대로 보기</option>
+          <option value="dim" selected>아주 얇은 점선으로 (기본)</option>
+          <option value="only">감추기 — 설계망만 (아이소와 같은 망)</option>
+        </select></label>
+      <p class="hint">아이소는 <b>같은 망</b>을 설계 좌표로 옮겨
+        그립니다. 다르게 보이는 것은 둘뿐입니다 — 헤드를 <b>세워</b> 그리므로
+        평면에 없는 짧은 토막이 헤드마다 생기고, 일직선 중간 절점은 병합되어
+        절점 수가 줍니다(갈림·끝·고리 수는 그대로).</p>
       <!-- [F-10e] 진짜 밑그림 — 화면을 갈아 끼우지 않고 **설계 좌표계 안에**
            board 망을 깐다. 오래 「불가」로 적혀 있었으나(BLOCKED §17) 그 근거가
            틀렸다: 잔차 9.3% 는 기하가 아니라 짝짓기(edge_ref)가 만든 값이었고,
@@ -739,6 +753,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260908-planfirst"></script>
+<script src="/static/module_f.js?v=20260908-loadfix"></script>
 </body>
 </html>

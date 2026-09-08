@@ -5589,6 +5589,9 @@
     const on = planUnderlayOn();
     $("dg-plan-row").classList.toggle("hidden", !on);
     $("dg-plan-row2").classList.toggle("hidden", !on);
+    $("dg-plan-view-row").classList.toggle("hidden", !on);
+    // 값은 손질의 select 하나뿐이다 — 여기는 그 얼굴이라 열 때마다 맞춘다.
+    $("dg-plan-view").value = $("ed-worst-view").value;
     const n = (S.edit && S.edit.edits_since_worst) || 0;
     $("dg-edits").textContent = `마지막 계산 후 수정 ${n}건`;
     const mode = (S.edit && S.edit.mode) || "";
@@ -5613,6 +5616,13 @@
       say("밑그림 변환을 받지 못했습니다 — 표를 다시 확정해 주세요.", "err");
       return;
     }
+    draw();
+  };
+
+  // 평면·아이소가 «같은 망» 을 보이게 하는 자리. 값은 한 곳(손질의 select)에만
+  // 두고 여기서는 그것을 바꾼다 — 두 곳이 각자 값을 들면 화면끼리 다른 말을 한다.
+  $("dg-plan-view").onchange = () => {
+    $("ed-worst-view").value = $("dg-plan-view").value;
     draw();
   };
 

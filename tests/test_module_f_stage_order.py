@@ -168,12 +168,51 @@ def test_옛_이름의_단추는_남아_있지_않다():
 
 
 # ─────────────────────────────── ⑸ 파일은 한 자리에서
-def test_수동_경로의_저장은_변환_한_곳에서만():
-    """같은 파일(emit_design_files)을 두 자리에서 내지 않는다."""
-    js = _js()
+def test_파일이_나는_자리는_하나다():
+    """같은 파일(emit_design_files)을 두 자리에서 내지 않는다.
+
+    수리계산에 있던 「.sdf+.slf 저장 · 내려받기」는 걷어냈다 — 자동 경로에도
+    남기지 않는다(그 표는 방출기가 받지 못한다 · `_probe_auto_emit.py`).
+    """
+    html, js = _html(), _js()
+    for gone in ('id="dg-emit"', 'id="dg-download"'):
+        assert gone not in html, f"{gone} 가 화면에 남아 있다"
+    assert 'dg-emit' not in js and 'dg-download' not in js
     src = _fn(js, "  function syncDesignForMethod()")
-    assert '"dg-emit-row"' in src and "!auto" in src, src
-    assert '"dg-to-conv"' in src, src
+    assert '"dg-to-conv"' in src and '"dg-draft"' in src, src
+
+
+def test_자동도_같은_회로를_탄다():
+    """★사용자: 「병렬 방식은 내 지향점이 아니다」.
+
+    자동은 별개 차선이 아니라 같은 회로의 앞머리다 — 자동 추출 다음 걸음이
+    손질이고, 꼬리(수리계산 → 변환)는 수동과 같다.
+    """
+    js = _js()
+    i = js.index("const STAGE_FLOW = {")
+    src = js[i:js.index("};", i)]
+    auto = re.search(r'plan_auto:\s*\[([^\]]+)\]', src).group(1)
+    got = [v.strip().strip('"') for v in auto.split(",")]
+    assert got == ["open", "auto", "edit", "design", "conv"], got
+    # 꼬리가 수동과 같아야 «갈라진 차선» 이 아니다.
+    plan = re.search(r'plan:\s*\[([^\]]+)\]', src).group(1)
+    manual = [v.strip().strip('"') for v in plan.split(",")]
+    assert got[-3:] == manual[-3:], (got, manual)
+
+
+def test_이어받을_때_기준개수를_들고_간다():
+    """자동에서 20 을 골라 뽑고 이어받았는데 30 으로 되돌아가면 안 된다."""
+    js = _js()
+    i = js.index('$("au-handoff").onclick')
+    src = js[i:js.index("\n  };\n", i)]
+    assert '"au-k"' in src and '"ed-k"' in src, src
+
+
+def test_자동_초안임을_수리계산_화면이_말한다():
+    html = _html()
+    assert 'id="dg-draft"' in html
+    seg = html[html.index('id="dg-draft"'):html.index('id="dg-draft"') + 260]
+    assert "초안" in seg and "이어받기" in seg, seg
 
 
 def test_변환은_없는_재료를_이름으로_말한다():

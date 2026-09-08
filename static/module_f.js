@@ -720,7 +720,12 @@
   //   회로였다. 이제 재료가 먼저 나고, 변환은 그것을 파일로 낸다.
   const STAGE_FLOW = {
     plan: ["open", "pick", "edit", "design", "conv"],
-    plan_auto: ["open", "auto", "design"],
+    // ★자동(A)도 **같은 회로**를 탄다 — 갈라진 차선이 아니다(D-F10-6).
+    //   A 가 낸 것은 «초안» 이고, 사람이 손질에서 확정한 뒤에야 표·파일이
+    //   난다. 실측이 이 순서를 강제한다: A 의 표를 그대로 방출기에 넣으면
+    //   터진다(`scripts/_probe_auto_emit.py` — PipeTables 에 norm 이 없다).
+    //   그래서 자동 흐름의 다음 걸음은 «손질로 이어받기» 다.
+    plan_auto: ["open", "auto", "edit", "design", "conv"],
     system: ["open", "sub"],
     machineroom: ["open", "sub"],
   };
@@ -2623,10 +2628,14 @@
     } catch (err) { busy(false); say(err.message, "err"); }
   };
 
+  // 자동이 낸 표를 «초안» 으로 미리 본다 — 확정도 저장도 아니다. 파일은
+  // 손질로 이어받아 확정한 뒤 «수리계산 입력 변환» 에서 난다.
   $("au-to-design").onclick = async () => {
     setStage("design");
+    renderDesignK();
     try { await designPreview(); }
     catch (err) { say(err.message, "err"); }
+    say("자동이 낸 초안입니다 — 「손질로 이어받기」로 확정해야 파일이 납니다.");
   };
 
   // 뽑아낸 배관망 — 도면을 내린 위에 이것만 밝게 얹는다.
@@ -3968,12 +3977,13 @@
     $("dg-build-inputs").classList.toggle("hidden", auto);
     $("dg-build-row").classList.toggle("hidden", auto);
     $("dg-back-auto-row").classList.toggle("hidden", !auto);
-    // ★파일 저장은 한 자리에서만 한다. 수동은 다음 단계(변환)가 그 일을 하고,
-    //   자동은 그 단계를 거치지 않으므로(변환은 손질 세션을 요구한다) 여기에
-    //   남긴다. 종전에는 두 자리가 **같은 함수**를 불러 같은 파일을 냈다.
-    $("dg-emit-row").classList.toggle("hidden", !auto);
+    // ★파일은 «수리계산 입력 변환» 한 곳에서만 난다. 자동도 예외가 아니다 —
+    //   A 의 표는 방출기가 받지 못하므로(실측: PipeTables 에 norm 없음) 그
+    //   길에는 애초에 저장이 없다. 대신 무엇을 해야 파일이 나는지 말한다.
     renderDesignK();
-    $("dg-to-conv").classList.toggle("hidden", auto);
+    const draft = auto && !S.edit;
+    $("dg-draft").classList.toggle("hidden", !draft);
+    $("dg-to-conv").classList.toggle("hidden", draft);
   }
 
   $("dg-back-auto").onclick = () => loadAuto();
@@ -3988,7 +3998,13 @@
       watch(async () => {
         const j = await api(`/api/module-f/convert/result?sid=${S.sid}`);
         const r = j.result || {};
-        S.method = "manual";          // 자동 흐름을 떠난다 — 단계바가 갈린다
+        // 여기서부터 수동과 같은 길이다. 단계바는 갈리지 않는다(꼬리가 같다).
+        S.method = "manual";
+        // ★자동에서 정한 기준개수를 손질 칸으로 옮긴다. 안 옮기면 사람이 20 을
+        //   골라 뽑아 놓고 이어받는 순간 30 으로 조용히 되돌아간다 — 칸을
+        //   하나로 줄인 뜻이 여기서 무너진다.
+        const auk = Number(($("au-k") || {}).value || 0);
+        if (auk) $("ed-k").value = String(Math.max(1, Math.min(200, auk)));
         S.handoff = r.alarm || r.source ? r : null;
         renderSteps();
         await loadEdit();             // 손질 화면 진입 (기존 경로)
@@ -4107,10 +4123,6 @@
     renderDesignTable();
     renderBoreLegend();
     if (S.method === "auto") renderAutoDesignSummary();
-    // ★미리보기가 떴다는 것은 표가 있다는 뜻이다 — 저장할 수 있다.
-    //   예전에는 수동 「표 확정」 안에서만 풀어, 자동 경로에서는 산출 단추가
-    //   영영 잠겨 있었다(계통도 없이 자동으로 뽑으면 저장할 길이 없었다).
-    $("dg-emit").disabled = false;
     draw();
   }
 
@@ -5663,8 +5675,8 @@
           S.ovDirty = false;
           renderDesignSummary(sum);
           await designPreview();
-          $("dg-emit").disabled = false;
-          say("표 확정 — 미리보기와 표는 저장될 값 그대로입니다.", "ok");
+          say("표 확정 — 미리보기와 표는 저장될 값 그대로입니다."
+            + " 파일은 다음 단계 «수리계산 입력 변환» 에서 냅니다.", "ok");
         } catch (err) { say(err.message, "err"); }
       });
     } catch (err) { busy(false); say(err.message, "err"); }
@@ -5678,22 +5690,10 @@
   }
   $("dg-table").onchange = renderDesignTable;
 
-  $("dg-emit").onclick = async () => {
-    busy(true, ".sdf + .slf 저장 중…");
-    try {
-      const d = await post("/api/module-f/design/emit",
-                           { sid: S.sid, ...designSettings() });
-      if (!d.ok) throw new Error(d.message || "저장 실패");
-      S.designDownload = d.download;
-      $("dg-download").disabled = false;
-      say(`저장 — ${d.sdf.name} (${d.sdf.bytes.toLocaleString()}B)`
-        + ` + ${d.slf.name}. SDF 는 옆의 .slf 와 한 쌍입니다.`, "ok");
-    } catch (err) { say(err.message, "err"); }
-    finally { busy(false); }
-  };
-  $("dg-download").onclick = () => {
-    if (S.designDownload) window.location.href = S.designDownload;
-  };
+  // [2026-09-08 · 사용자 «병렬은 내 지향점이 아니다»] 수리계산에 있던
+  // 「.sdf+.slf 저장 · 내려받기」는 걷어냈다. 파일이 나는 자리는 다음 단계
+  // «수리계산 입력 변환» 하나다 — 같은 함수를 두 자리에서 부르던 것을 하나로
+  // 모은다(서버 라우트 `/design/emit` 은 그 함수의 다른 입구로 남는다).
 
   setStage("open");
   loadSaved();

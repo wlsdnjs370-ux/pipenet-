@@ -625,6 +625,15 @@
     "rule": "/api/module-f/merge/modes"
   },
   {
+    "endpoint": "module_f_merge_preview",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/merge/preview"
+  },
+  {
     "endpoint": "module_f_merge_state",
     "methods": [
       "GET",

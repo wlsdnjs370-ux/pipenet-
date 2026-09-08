@@ -269,6 +269,25 @@ def main() -> int:
             merged = pg.evaluate("() => (window.__mf.merge || {}).merged")
             check("★결합이 돈다", bool(merged),
                   pg.inner_text("#status")[:100])
+            # ★합친 것을 «보여» 주는가 — 숫자만으로는 세 도면이 제대로
+            #   이어졌는지 사람이 판단할 수 없다.
+            pg.wait_for_timeout(1200)
+            mv = pg.evaluate("""() => { const v = window.__mf.mergeView;
+                return v ? {n: v.nodes.length, p: v.pipes.length,
+                            seam: v.pipes.filter(q => q.part === 'seam').length,
+                            parts: [...new Set(v.nodes.map(q => q.part))]}
+                         : null; }""")
+            check("★결합망이 화면에 그려진다",
+                  bool(mv and mv["n"] and painted() > 500), str(mv))
+            print(f"      결합망: {mv} · 칠해진 픽셀 {painted()}")
+            print(f"      범례: {' '.join(pg.inner_text('#mg-legend').split())}")
+            pg.check("#mg-iso")
+            pg.wait_for_timeout(1200)
+            check("아이소로도 볼 수 있다",
+                  pg.evaluate("() => !!window.__mf.mergeView")
+                  and painted() > 500, f"칠해진 픽셀 {painted()}")
+            pg.uncheck("#mg-iso")
+            pg.wait_for_timeout(800)
             print(f"      요약: {pg.inner_text('#mg-summary')[:140]}")
 
         print("[콘솔]")

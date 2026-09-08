@@ -22,8 +22,8 @@ from flask import jsonify, request, send_file
 from routes.module_f.common import _fail
 from routes.module_f.jobs import _job_running, _run_job, route_session
 from routes.module_f.merge import (
-    SUPPLY_MODES, MergeError, check_supply_mode, combined_summary,
-    merge_network)
+    ANCHOR_LABEL, SUPPLY_MODES, MergeError, check_supply_mode,
+    combined_summary, merge_network)
 from routes.module_f.slots import SLOT_KINDS, _slot_active, _slot_capture
 
 # 결합에 쓸 재료가 어느 슬롯에 있는가 — 활성 슬롯이 아니어도 꺼내 온다.
@@ -157,6 +157,111 @@ def register(app, *, UPLOAD_DIR):
 
         _run_job(sess, "배관망 결합", job)
         return jsonify({"ok": True, "sid": sess["id"]})
+
+    # ─────────────────────────────────── 결합망 미리보기
+    @app.get("/api/module-f/merge/preview")
+    @route_session()
+    def module_f_merge_preview(sess, body):
+        """결합된 배관망을 **화면에 그릴 모양**으로.
+
+        ★결합해 놓고 보여 주지 않으면 사람은 무엇이 합쳐졌는지 알 수 없다 —
+          숫자(절점 308 · 배관 307)만으로는 세 도면이 제대로 이어졌는지 판단할
+          길이 없다. 여기서 세 도면을 **색으로 갈라** 한 그림으로 준다.
+
+        좌표는 결합망 그대로(평면)다 — `emit_merged` 가 내는 파일도 이 좌표라
+        「보이는 것 = 저장되는 것」이 성립한다. `iso=1` 이면 30° 등각으로
+        굽되, 그것은 **보기 전용**이라는 것을 화면이 말한다.
+
+        Query: sid · [iso=0|1] · [iso_z_scale]
+        """
+        got = sess.get("merged")
+        if not got:
+            return jsonify({"ok": True, "view": None,
+                            "message": "먼저 결합하세요 (S740)."})
+        c = got.get("combined")
+        if c is None:
+            return jsonify({"ok": True, "view": None,
+                            "message": "계통도가 없어 결합망이 없습니다 — "
+                                       "평면도 단독 산출입니다."})
+        parts = got.get("parts") or {}
+        of = {}
+        for kind in ("system", "machineroom", "plan"):
+            for lab in (parts.get(kind) or ()):
+                of[str(lab)] = kind
+        # ★기준점(라벨 10)은 **두 망 모두에** 있다 — 특허 S740 이 평면도 라벨을
+        #   +9 해서 그 한 점에서 만나게 하기 때문이다. 색으로는 한쪽에 넣되,
+        #   «여기가 이음매» 라는 것을 따로 표시한다. 결합이 제대로 됐는지는
+        #   결국 그 한 점을 보고 판단한다.
+        shared = ({str(x) for x in (parts.get("plan") or ())}
+                  & ({str(x) for x in (parts.get("system") or ())}
+                     | {str(x) for x in (parts.get("machineroom") or ())}))
+
+        nodes = [dict(n) for n in (c.nodes or ())]
+        iso = (request.args.get("iso") or "0") in ("1", "true", "True", "on")
+        if iso:
+            try:
+                zs = float(request.args.get("iso_z_scale") or 1.0)
+            except (TypeError, ValueError):
+                zs = 1.0
+            from routes.r30_combined import _bake_isometric_node_coords
+            # 라이저·기계실은 schematic y 가 이미 수직을 담고 있다 — lift 를
+            # 또 더하면 이중부호로 구부러진다(모듈 A 와 같은 규칙).
+            no_lift = {lab for lab, k in of.items()
+                       if k in ("system", "machineroom")}
+            _bake_isometric_node_coords(nodes, zs, no_lift_labels=no_lift,
+                                        ref_label=ANCHOR_LABEL)
+
+        heads = {str(r.get("in")) for r in (c.nozzles or ())}
+        pumps = {str(r.get("in")) for r in (c.pumps or ())}
+        pumps |= {str(r.get("out")) for r in (c.pumps or ())}
+        valves = {str(r.get("in")) for r in (c.valves or ())}
+
+        out_nodes = []
+        for n in nodes:
+            lab = str(n.get("label"))
+            rec = {"label": lab, "x": float(n.get("x", 0) or 0),
+                   "y": float(n.get("y", 0) or 0),
+                   "e": round(float(n.get("elevation", 0) or 0), 3),
+                   "part": of.get(lab, "plan")}
+            if lab in heads:
+                rec["head"] = True
+            if lab in pumps:
+                rec["pump"] = True
+            if lab in valves:
+                rec["valve"] = True
+            if str(n.get("io_node")) == "Input":
+                rec["input"] = True
+            if lab in shared:
+                rec["anchor"] = True
+            out_nodes.append(rec)
+
+        out_pipes = []
+        for r in (c.pipes or ()):
+            a, b = str(r.get("in")), str(r.get("out"))
+            # 두 도면을 잇는 배관은 «이음매» 다 — 그 자리가 결합의 핵심이라
+            # 화면이 따로 그릴 수 있게 표시해 둔다.
+            ka, kb = of.get(a, "plan"), of.get(b, "plan")
+            out_pipes.append({"label": str(r.get("label")), "a": a, "b": b,
+                              "dia": r.get("dia"), "len_m": r.get("length"),
+                              "part": ka if ka == kb else "seam"})
+
+        return jsonify({
+            "ok": True, "iso": iso,
+            "view": {"nodes": out_nodes, "pipes": out_pipes,
+                     # 기계실 평면 배관망 — SDF 에는 없고 «보기» 로만 쓴다.
+                     "mr_plan_edges": [list(map(float, e)) for e in
+                                       (getattr(c, "machine_room_plan_edges",
+                                                None) or ())]},
+            "counts": {"plan": sum(1 for n in out_nodes
+                                   if n["part"] == "plan"),
+                       "system": sum(1 for n in out_nodes
+                                     if n["part"] == "system"),
+                       "machineroom": sum(1 for n in out_nodes
+                                          if n["part"] == "machineroom"),
+                       "seam": sum(1 for p in out_pipes
+                                   if p["part"] == "seam"),
+                       "anchor": sorted(shared)},
+        })
 
     # ─────────────────────────────────── S750 · S760 · S770
     @app.post("/api/module-f/merge/emit")

@@ -323,6 +323,7 @@
       }
       drawFocus();      // [F-10f] 「확인할 것」에서 고른 자리를 마지막에 덧그린다
     }
+    else if (S.stage === "merge") { drawMerged(); }
     else if ((S.stage === "edit" || S.stage === "conv") && S.edit) {
       // [F-10c] 배경 도면을 «밑에» 깐다 — 전사 17:53 · 23:06. corridor 만 뜨면
       //   어디서 뽑힌 망인지 안 보여 결과가 옳은지 판단할 수가 없다.
@@ -2798,7 +2799,9 @@
       watch(async () => {
         const d = await loadMergeState();
         if (d.summary && d.summary.merged) {
-          say(`결합 완료 — 절점 ${d.summary.nodes} · 배관 ${d.summary.pipes}`, "ok");
+          await loadMergeView();          // 합친 것을 곧바로 보여 준다
+          say(`결합 완료 — 절점 ${d.summary.nodes} · 배관 ${d.summary.pipes}`
+            + " · 화면에 결합망을 그렸습니다.", "ok");
         } else {
           say("평면도 단독으로 지나갔습니다 (계통도 없음).", "warn");
         }
@@ -2821,15 +2824,66 @@
     window.location = `/api/module-f/merge/download?sid=${S.sid}&what=zip`;
   };
 
+  // 보기 전환 — 저장 좌표는 안 바뀐다(평면). 아이소는 눈으로 보는 용도다.
+  $("mg-iso").onchange = () => { loadMergeView(); };
+
   $("mg-drop").onchange = () => {
     if (S.merge && S.merge.mode === "hsp_pump") setMergeMode("hsp_pump");
   };
+
+  /** 결합된 배관망을 받아 화면에 세운다.
+
+      ★결합해 놓고 안 보여 주면 사람은 무엇이 합쳐졌는지 알 수 없다 — 숫자
+        (절점 308 · 배관 307)만으로는 세 도면이 제대로 이어졌는지 판단할 길이
+        없다. 세 도면을 색으로 갈라 한 그림으로 보인다. */
+  async function loadMergeView() {
+    if (!S.sid) return;
+    const iso = mergeIsoOn() ? 1 : 0;
+    try {
+      const d = await api(`/api/module-f/merge/preview?sid=${S.sid}&iso=${iso}`);
+      S.mergeView = d.view || null;
+      renderMergeLegend(d);
+      if (S.mergeView && S.mergeView.nodes.length) {
+        const xs = S.mergeView.nodes.map((n) => n.x);
+        const ys = S.mergeView.nodes.map((n) => n.y);
+        fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
+              miny: Math.min(...ys), maxy: Math.max(...ys) });
+      } else if (d.message) {
+        say(d.message);
+      }
+    } catch (err) {
+      S.mergeView = null;
+      say(`결합망을 못 그렸습니다 — ${err.message}`, "warn");
+    }
+    draw();
+  }
+
+  const mergeIsoOn = () => !!($("mg-iso") || {}).checked;
+
+  function renderMergeLegend(d) {
+    const box = $("mg-legend");
+    if (!box) return;
+    const c = (d && d.counts) || null;
+    if (!c) { box.innerHTML = ""; return; }
+    box.innerHTML =
+      `<span style="color:${MERGE_COLOR.plan}">■</span> 평면도 ${c.plan}`
+      + ` · <span style="color:${MERGE_COLOR.system}">■</span> 계통도 ${c.system}`
+      + ` · <span style="color:${MERGE_COLOR.machineroom}">■</span> 기계실`
+      + ` ${c.machineroom}`
+      + ` · <span style="color:${MERGE_COLOR.seam}">■</span> 이음매 배관`
+      + ` ${c.seam}`
+      + (c.anchor && c.anchor.length
+         ? ` · <span style="color:${MERGE_COLOR.seam}">✛</span> 기준점`
+           + ` ${c.anchor.join("·")}` : "")
+      + (d.iso ? " · <b>30° 아이소(보기 전용)</b>" : " · 평면 좌표(저장되는 그 좌표)");
+  }
 
   async function loadMerge() {
     setStage("merge");
     try {
       await loadMergeModes();
       await loadMergeState();
+      await loadMergeView();
     } catch (err) { say(err.message, "err"); }
   }
 
@@ -4241,6 +4295,80 @@
       ctx.lineTo(bx, by);
     }
     ctx.stroke();
+  }
+
+  // 결합망 색 — 세 도면을 갈라 보이려면 색이 규약이어야 한다(범례와 같은 값).
+  const MERGE_COLOR = {
+    plan: "#5b8def", system: "#22c55e",
+    machineroom: "#eab308", seam: "#f97316",
+  };
+
+  /** 결합된 배관망 — 평면도·계통도·기계실을 한 그림에. */
+  function drawMerged() {
+    const v = S.mergeView;
+    if (!v || !v.nodes || !v.nodes.length) return;
+    const at = {};
+    for (const n of v.nodes) at[n.label] = n;
+    // 기계실 평면 배관망은 SDF 에 없는 «보기» 자료다 — 아주 흐리게 깔아
+    // 실측 배관과 구별한다(통합해 그리지 않는다).
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = MERGE_COLOR.machineroom;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const e of (v.mr_plan_edges || [])) {
+      ctx.moveTo(sx(e[0]), sy(e[1]));
+      ctx.lineTo(sx(e[2]), sy(e[3]));
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    for (const p of v.pipes) {
+      const a = at[p.a], b = at[p.b];
+      if (!a || !b) continue;
+      const seam = p.part === "seam";
+      ctx.strokeStyle = MERGE_COLOR[p.part] || MERGE_COLOR.plan;
+      ctx.lineWidth = seam ? 3.2 : 1.6;
+      ctx.beginPath();
+      ctx.moveTo(sx(a.x), sy(a.y));
+      ctx.lineTo(sx(b.x), sy(b.y));
+      ctx.stroke();
+    }
+    // 기호 — 노즐(헤드) · 펌프 · 밸브 · 접속점. 어디가 무엇인지 보여야
+    // «세 도면이 제대로 이어졌나» 를 사람이 판단할 수 있다.
+    for (const n of v.nodes) {
+      const px = sx(n.x), py = sy(n.y);
+      if (n.head) {
+        ctx.fillStyle = "rgba(248,113,113,.5)";
+        ctx.strokeStyle = "#ef4444";
+        ctx.beginPath(); ctx.arc(px, py, 3.2, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+      }
+      if (n.anchor) {
+        // ★기준점 — 세 도면이 만나는 그 한 점(특허 S740). 결합이 제대로
+        //   됐는지는 결국 여기를 보고 판단한다.
+        ctx.strokeStyle = MERGE_COLOR.seam;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(px - 15, py); ctx.lineTo(px + 15, py);
+        ctx.moveTo(px, py - 15); ctx.lineTo(px, py + 15);
+        ctx.stroke();
+        ctx.fillStyle = MERGE_COLOR.seam;
+        ctx.font = "11px sans-serif";
+        ctx.fillText(`기준점 ${n.label}`, px + 16, py + 14);
+      }
+      if (n.valve || n.pump || n.input) {
+        ctx.strokeStyle = n.pump ? "#a855f7" : (n.input ? "#22d3ee" : "#c86bff");
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.font = "10px sans-serif";
+        ctx.fillText(n.pump ? "펌프" : (n.input ? "접속점" : "밸브"),
+                     px + 9, py - 6);
+      }
+    }
+    ctx.lineWidth = 1;
   }
 
   function drawDesign() {

@@ -336,8 +336,17 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
     except Exception as exc:  # noqa: BLE001 — 정규화 실패로 결합을 버리지 않는다
         steps.append(f"관경 정규화 건너뜀 ({type(exc).__name__}: {exc})")
 
+    # ★어느 절점이 «어느 도면에서 왔는지» 를 남긴다. 결합망을 화면에 그릴 때
+    #   세 도면을 색으로 갈라 보여야 «통합된 형태» 가 눈에 들어온다. 라벨은
+    #   결합 뒤에도 안 바뀌므로(평면도만 +offset) 여기서 한 번 세워 두면 된다.
+    mr = set(mr_labels or ())
+    riser_labels = [str(n.get("label")) for n in rt.nodes
+                    if str(n.get("label")) not in mr]
     return {"combined": combined, "head_tables": ht, "attached": attached,
-            "mode": mode, "steps": steps}
+            "mode": mode, "steps": steps,
+            "parts": {"plan": [str(n.get("label")) for n in ht.nodes],
+                      "system": riser_labels,
+                      "machineroom": sorted(mr)}}
 
 
 def combined_summary(got: dict) -> dict:

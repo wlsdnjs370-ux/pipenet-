@@ -49,7 +49,7 @@ F 는 사람이 손질한 board 위에서 G 의 `select_and_expand` → `build_d
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # 특허 S550 · S740 — 기준점(급수원 = 알람밸브 접속점)의 번호.
 ANCHOR_LABEL = "10"
@@ -96,6 +96,13 @@ class HeadTables:
     fittings: list
     equipment: list
     meta: list
+    # [D2] 끝점이 «?»·«None» 인 행 — 예외로 막지 않고 **세어서** 올린다.
+    #   표를 만들 때 라벨을 못 찾은 배관 끝점이 `label_of.get(a, "?")` 로
+    #   그렇게 남는데(design/tables.py `pipe_row`), 고아 검사가 그 표식을
+    #   명시적으로 면제해 왔다 — 끝점 없는 배관이 검사 셋을 다 지나 SDF 까지
+    #   갔다. 지금 예외로 승격하면 돌던 실행이 통째로 실패하므로, 건수만
+    #   보고하고 승격 여부는 사람이 정한다(지시서 D2).
+    dangling: list = field(default_factory=list)
 
 
 def _shift(label, offset: int = LABEL_OFFSET):
@@ -163,12 +170,17 @@ def to_head_tables(tbl, *, offset: int = LABEL_OFFSET) -> HeadTables:
     out = HeadTables(nodes=nodes, pipes=pipes, nozzles=nozzles,
                      fittings=fittings, equipment=equipment,
                      meta=list(getattr(tbl, "meta", None) or ()))
-    _check_anchor(out)
+    out.dangling = _check_anchor(out)["dangling"]
     return out
 
 
-def _check_anchor(ht: HeadTables) -> None:
-    """기준점이 10 이고 급수원인가 — S740 이 성립하는지 여기서 본다."""
+def _check_anchor(ht: HeadTables) -> dict:
+    """기준점이 10 이고 급수원인가 — S740 이 성립하는지 여기서 본다.
+
+    [D2] 끝점이 «?»·«None» 인 행은 **모아서 돌려준다**(예외 아님). 모르는
+    절점을 가리키는 것은 종전대로 즉시 올린다 — 그쪽은 «옮기다 빠뜨린» 자리라
+    성격이 다르다.
+    """
     labels = {str(n.get("label")) for n in ht.nodes}
     if ANCHOR_LABEL not in labels:
         raise MergeError(
@@ -180,6 +192,7 @@ def _check_anchor(ht: HeadTables) -> None:
             f"기준점 «{ANCHOR_LABEL}» 이 급수원(Input)이 아닙니다 — "
             f"G 의 BFS 뿌리와 어긋났습니다 (io_node={anchor.get('io_node')!r}).")
     # 고아 참조 — 옮기다 한 자리를 빠뜨리면 여기서 잡힌다.
+    dangling: list = []
     for name, rows, keys in (("배관", ht.pipes, ("in", "out")),
                              ("노즐", ht.nozzles, ("in",)),
                              ("부속", ht.fittings, ("in", "out")),
@@ -187,10 +200,14 @@ def _check_anchor(ht: HeadTables) -> None:
         for r in rows:
             for k in keys:
                 v = str(r.get(k))
-                if v not in labels and v not in ("?", "None"):
+                if v in ("?", "None"):
+                    dangling.append((name, str(r.get("label")
+                                               or r.get("pipe") or ""), k, v))
+                elif v not in labels:
                     raise MergeError(
                         f"{name}표가 없는 절점을 가리킵니다: {r.get('label') or r.get('pipe')}"
                         f".{k}={v!r}")
+    return {"dangling": dangling}
 
 
 def check_supply_mode(mode) -> str:
@@ -274,6 +291,11 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
     steps: list[str] = [
         "S740 기준점 10 정합"
         + (" (자동 경로 — 이미 10)" if off == 0 else f" (+{off})")]
+    # [D2] 끝점 없는 배관 — 0 건이면 줄을 넣지 않는다(없는 것을 말하지 않는다).
+    if ht.dangling:
+        _kinds = sorted({d[0] for d in ht.dangling})
+        steps.append(f"★끝점 없는 배관 {len(ht.dangling)}건 "
+                     f"({' · '.join(_kinds)}) — 표에서 라벨을 못 찾은 자리입니다")
 
     if not riser:
         # 계통도가 없다 — 평면도 단독. 결합할 입상관이 없으므로 여기서 끝난다.
@@ -282,6 +304,28 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
 
     rt = riser_tables_from(riser)
     steps.append(f"S720 입상관 ({SUPPLY_MODES[mode]}) · 절점 {len(rt.nodes)}")
+
+    # ★[D1] 기계실 평면이 «붙는 자리» = 라이저의 Input 노드. **prepend 전에**
+    #   잡아 둔다.
+    #
+    #   `prepend_machine_room_to_riser` 는 기계실을 앞에 붙여 돌려주므로 그
+    #   뒤의 `rt.nodes[0]` 은 기계실 수원(m1)이다. 종전에는 그것을
+    #   `pump_junction_label` 로 넘겼는데, `stitch` 는 그 라벨을
+    #   `translated_riser_nodes`(= 기계실 라벨을 이미 **제외한** 목록)에서
+    #   찾는다 → `pump_node` 가 **항상 None** → 기계실 노드가 원 DXF 좌표에
+    #   방치되고 평면 형상(plan_edges)도 통째로 빈다.
+    #   실측(대명동 3장): bbox span 36,150 → 986,199 mm · emit 배율 0.083 →
+    #   0.003 · 기계실 12노드 중 11개가 원좌표 그대로 · plan_edges 0.
+    #
+    #   고르는 규칙을 `prepend_machine_room_to_riser` 와 **같게** 둔다 —
+    #   두 곳이 다른 노드를 고르면 평면이 엉뚱한 데 붙는다.
+    _riser_input_label = next(
+        (str(n.get("label")) for n in rt.nodes
+         if str(n.get("io_node", "")).lower() == "input"), None)
+    if _riser_input_label is None:
+        _riser_input_label = next(
+            (str(n.get("label")) for n in rt.nodes
+             if str(n.get("label")) == "1"), None)
 
     mr_labels: list[str] = []
     mr_plan_edges = None
@@ -309,8 +353,7 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
     combined = stitch_riser_and_heads(
         rt, ht,
         machine_room_labels=mr_labels or None,
-        pump_junction_label=(str(rt.nodes[0].get("label"))
-                             if (attached and rt.nodes) else None),
+        pump_junction_label=(_riser_input_label if attached else None),
         machine_room_plan_edges=mr_plan_edges,
         machine_room_at_bottom=is_pump,
         machine_room_conn_xy=mr_conn_xy,
@@ -342,15 +385,100 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
     mr = set(mr_labels or ())
     riser_labels = [str(n.get("label")) for n in rt.nodes
                     if str(n.get("label")) not in mr]
-    return {"combined": combined, "head_tables": ht, "attached": attached,
-            "mode": mode, "steps": steps,
-            # 기계실 평면이 라이저에 붙는 그 노드 — 아이소로 굽을 때 기계실
-            # 군집을 어디에 다시 맞출지의 기준이다.
-            "pump_junction": (str(rt.nodes[0].get("label"))
-                              if (attached and rt.nodes) else None),
-            "parts": {"plan": [str(n.get("label")) for n in ht.nodes],
-                      "system": riser_labels,
-                      "machineroom": sorted(mr)}}
+    out = {"combined": combined, "head_tables": ht, "attached": attached,
+           "mode": mode, "steps": steps,
+           # 기계실 평면이 라이저에 붙는 그 노드 — 아이소로 굽을 때 기계실
+           # 군집을 어디에 다시 맞출지의 기준이다.
+           "pump_junction": (_riser_input_label if attached else None),
+           "parts": {"plan": [str(n.get("label")) for n in ht.nodes],
+                     "system": riser_labels,
+                     "machineroom": sorted(mr)}}
+    # [D5] 결합 뒤 검사 — 보고만 한다(예외 아님). 이상이 있으면 그 사실을
+    #   단계 기록에 남겨 화면이 그대로 읽게 한다.
+    out["checks"] = check_combined(out)
+    ck = out["checks"]
+    if ck.get("components", 1) != 1:
+        steps.append(f"★연결성분 {ck['components']}개 {ck['component_sizes']}"
+                     f" — 한 망으로 안 붙었습니다")
+    if ck.get("dangling_pipes_n"):
+        steps.append(f"★노드표에 없는 끝점을 가리키는 배관 "
+                     f"{ck['dangling_pipes_n']}건")
+    if ck.get("orphan_fittings") or ck.get("orphan_equipment"):
+        steps.append(f"★고아 부속 {len(ck['orphan_fittings'])} · 고아 기기 "
+                     f"{len(ck['orphan_equipment'])}")
+    if len(ck.get("inputs") or ()) != 1:
+        steps.append(f"★급수원(Input) 절점이 {len(ck.get('inputs') or ())}개"
+                     f" — 정확히 1 이어야 합니다")
+    if ck.get("anchor_gap"):
+        steps.append(f"S740 두 기준점 {ck['anchor_gap']}")
+    return out
+
+
+def check_combined(got: dict) -> dict:
+    """[D5] 결합 **뒤** 검사 — 전부 «보고» 다. 예외로 올리지 않는다.
+
+    종전에는 결합 뒤를 보는 코드가 하나도 없었다(`api_merge` 는 급수방식만
+    검사했다). 결합이 성립했는지 판단할 근거를 여기서 만든다 — 판정은 사람이
+    한다. 값은 화면 응답에도 그대로 실린다.
+    """
+    c = (got or {}).get("combined")
+    if c is None:
+        return {"combined": False}
+    nodes = list(getattr(c, "nodes", None) or ())
+    pipes = list(getattr(c, "pipes", None) or ())
+    labels = {str(n.get("label")) for n in nodes}
+    plabels = {str(p.get("label")) for p in pipes}
+
+    adj = {lab: set() for lab in labels}
+    dangling = []
+    for p in pipes:
+        a, b = str(p.get("in")), str(p.get("out"))
+        if a in adj and b in adj:
+            adj[a].add(b)
+            adj[b].add(a)
+        else:
+            dangling.append({"pipe": str(p.get("label")), "in": a, "out": b})
+    seen, sizes = set(), []
+    for n in adj:
+        if n in seen:
+            continue
+        stack, size = [n], 0
+        seen.add(n)
+        while stack:
+            u = stack.pop()
+            size += 1
+            for v in adj[u]:
+                if v not in seen:
+                    seen.add(v)
+                    stack.append(v)
+        sizes.append(size)
+    sizes.sort(reverse=True)
+
+    xs = [float(n.get("x", 0) or 0) for n in nodes]
+    ys = [float(n.get("y", 0) or 0) for n in nodes]
+    meta = dict(getattr(c, "meta", None) or ())
+    return {
+        "combined": True,
+        "components": len(sizes),
+        "component_sizes": sizes[:6],
+        "dangling_pipes": dangling[:20],
+        "dangling_pipes_n": len(dangling),
+        "orphan_fittings": [str(f.get("pipe"))
+                            for f in (getattr(c, "fittings", None) or ())
+                            if str(f.get("pipe")) not in plabels][:20],
+        "orphan_equipment": [str(e.get("pipe"))
+                             for e in (getattr(c, "equipment", None) or ())
+                             if e.get("pipe")
+                             and str(e.get("pipe")) not in plabels][:20],
+        "inputs": [str(n.get("label")) for n in nodes
+                   if str(n.get("io_node", "")).lower() == "input"],
+        "anchor_gap": meta.get("S740 두 기준점 거리"),
+        "renamed": meta.get("배관 라벨 개명"),
+        "bbox": ({"minx": min(xs), "maxx": max(xs),
+                  "miny": min(ys), "maxy": max(ys),
+                  "span_x": max(xs) - min(xs), "span_y": max(ys) - min(ys)}
+                 if xs and ys else None),
+    }
 
 
 def combined_summary(got: dict) -> dict:
@@ -367,6 +495,8 @@ def combined_summary(got: dict) -> dict:
         "mode": got.get("mode"),
         "attached": bool(got.get("attached")),
         "steps": got.get("steps") or [],
+        # [D5] 결합 뒤 검사 — 화면이 볼 수 있게 그대로 통과시킨다.
+        "checks": got.get("checks"),
         "nodes": len(getattr(c, "nodes", ()) or ()),
         "pipes": len(getattr(c, "pipes", ()) or ()),
         "nozzles": len(getattr(c, "nozzles", ()) or ()),

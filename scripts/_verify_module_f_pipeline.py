@@ -305,6 +305,15 @@ def main() -> int:
                                    .map(n => Math.round(n.x)));
                 return xs.size; }""")
             check("아이소에서도 라이저가 수직이다", rz2 == 1, f"x 종류 {rz2}")
+            # [D5] 결합 뒤 검사 — 화면 응답에 실려 오는가.
+            ck = pg.evaluate("() => ((window.__mf.merge || {}).summary || {})"
+                             ".checks || null")
+            print(f"      결합 검사: {ck}")
+            check("★결합 뒤 검사가 붙는다",
+                  bool(ck and ck.get("components") == 1
+                       and not ck.get("dangling_pipes_n")
+                       and not ck.get("orphan_fittings")
+                       and len(ck.get("inputs") or ()) == 1), str(ck))
             pg.uncheck("#mg-iso")
             pg.wait_for_timeout(800)
             print(f"      결합망: {mv} · 칠해진 픽셀 {painted()}")

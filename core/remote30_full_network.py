@@ -1457,6 +1457,13 @@ def stitch_riser_and_heads(
     # → 충돌하는 두 번째 이후 항목만 개명(원본 dict 불변, 사본 생성).
     combined_pipes: list[dict] = []
     seen_pipe_labels: set[str] = set()
+    # ★[D4] 개명한 자리를 기록한다. 부속·기기는 배관을 **라벨로** 가리키므로
+    #   (emit_sdf 가 `fittings_by_pipe[str(f["pipe"])]` 로 색인) 같이 옮기지
+    #   않으면 개명된 배관의 부속·기기가 어느 배관에도 안 붙고 사라진다.
+    #   고아 검사는 결합 «전» 에만 돌아 이 소실을 못 잡는다.
+    #   라이저 배관(r*)이 먼저 들어가므로 개명되는 쪽은 평면도 배관이고,
+    #   그래서 `renamed` 의 키는 평면도 pid 다.
+    renamed: dict[str, str] = {}
     for p in (list(riser.pipes) + list(head_tables.pipes)):
         lbl = str(p.get("label", ""))
         if lbl and lbl not in seen_pipe_labels:
@@ -1470,7 +1477,20 @@ def stitch_riser_and_heads(
             k += 1
             new_lbl = f"{base}_{k}"
         seen_pipe_labels.add(new_lbl)
+        if lbl:
+            renamed[lbl] = new_lbl
         combined_pipes.append({**p, "label": new_lbl})
+
+    def _follow_rename(rows):
+        """부속·기기의 `pipe` 를 개명된 새 라벨로 옮긴다(원본 dict 불변)."""
+        out = []
+        for r in rows:
+            key = str(r.get("pipe"))
+            out.append({**r, "pipe": renamed[key]} if key in renamed else r)
+        return out
+
+    head_fittings = _follow_rename(head_tables.fittings)
+    head_equipment = _follow_rename(head_tables.equipment)
 
     # ── 표준 소화배관 밸브(Fitting) 주입.
     # 라이저 빌더는 fitting 을 생성하지 않아(통합 fitting 은 head_tables.fittings 만),
@@ -1479,7 +1499,7 @@ def stitch_riser_and_heads(
     #   · 수원/펌프 토출 배관(Input 경계 노드 직결): gate + check
     #   · 알람밸브 배관(A/V Equipment 보유): butterfly
     # (정답 2. Pipenet_hand.sdf 의 pipe"1"=gate+check, pipe"9"[A/V]=butterfly 와 정합.)
-    combined_fittings = list(head_tables.fittings)
+    combined_fittings = list(head_fittings)
 
     def _pipe_by_label(lbl: str) -> dict | None:
         return next((p for p in combined_pipes if str(p["label"]) == str(lbl)), None)
@@ -1490,7 +1510,7 @@ def stitch_riser_and_heads(
             "type": vtype, "count": "1",
         })
 
-    av_eq = next((e for e in head_tables.equipment
+    av_eq = next((e for e in head_equipment
                   if str(e.get("desc", "")).upper() == "A/V" and e.get("pipe")), None)
     if av_eq is not None:
         av_pipe = _pipe_by_label(av_eq["pipe"]) or next(
@@ -1514,13 +1534,30 @@ def stitch_riser_and_heads(
     snapped = count_reducers_snapped_to_tee(combined_nodes, combined_pipes)
     meta.append(("레듀서 T분기 귀속",
                  f"{snapped} 곳 (기준 {REDUCER_SNAP_TO_TEE_MM:.0f}mm)"))
+    # ★[D5] 두 «10» 이 정말 한 점인가 — 이 값은 **여기서만** 알 수 있다.
+    #   라이저 AV 는 위에서 헤드망 AV 자리로 snap 되므로 0 이어야 정상이고,
+    #   0 이 아니면 두 망을 잇는 배관이 긴 사선으로 그려진다. 값만 싣는다
+    #   (판정하지 않는다 — 기존 동작은 그대로).
+    _r_av = next((n for n in translated_riser_nodes
+                  if str(n.get("label")) == str(av_lbl)), None)
+    if _r_av is not None and head_av_node is not None:
+        # 이 모듈은 math 를 안 들여온다 — 한 줄에 필요한 것만 여기서 쓴다.
+        _dx = float(_r_av.get("x", 0.0)) - float(head_av_node["x"])
+        _dy = float(_r_av.get("y", 0.0)) - float(head_av_node["y"])
+        _d = (_dx * _dx + _dy * _dy) ** 0.5
+        _dz = (float(_r_av.get("elevation", 0.0))
+               - float(head_av_node.get("elevation", 0.0)))
+        meta.append(("S740 두 기준점 거리", f"{_d:.1f} mm · 표고차 {_dz:.3f} m"))
+    # 개명 건수도 남긴다 — 부속·기기를 따라 옮긴 근거다(D4).
+    if renamed:
+        meta.append(("배관 라벨 개명", f"{len(renamed)}건 (부속·기기 동반 이동)"))
 
     return CombinedTables(
         nodes=combined_nodes,
         pipes=combined_pipes,
         nozzles=list(head_tables.nozzles),
         fittings=combined_fittings,
-        equipment=list(head_tables.equipment),
+        equipment=list(head_equipment),
         pumps=list(riser.pumps),
         valves=list(riser.valves),
         meta=meta,

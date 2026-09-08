@@ -167,12 +167,26 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
     meta_nodes = (net or {}).get("nodes_meta_runtime") or {}
     pipes_raw = (net or {}).get("pipe_data") or {}
 
+    # [D3] 배관표에는 있는데 메타에 좌표가 없는 절점 — 종전에는 조용히
+    #   (0,0,0) 으로 떨어져 **원점에 절점이 하나 생기고** 실제 배관에 이어졌다.
+    #   첫 건에서 죽이면 전체 규모를 못 보므로 모아서 한 번에 보고한다.
+    #   예외로 승격할지는 사람이 정한다(지시서 D3).
+    _missing_meta: set = set()
+
     def xy(nid):
-        c = (meta_nodes.get(nid) or {}).get("coords") or (0.0, 0.0, 0.0)
+        m = meta_nodes.get(nid)
+        c = (m or {}).get("coords")
+        if not c:
+            _missing_meta.add(str(nid))
+            return 0.0, 0.0
         return float(c[0]), float(c[1])
 
     def z(nid):
-        c = (meta_nodes.get(nid) or {}).get("coords") or (0.0, 0.0, 0.0)
+        m = meta_nodes.get(nid)
+        c = (m or {}).get("coords")
+        if not c:
+            _missing_meta.add(str(nid))
+            return 0.0
         return float(c[2]) if len(c) > 2 else 0.0
 
     # ── 뿌리 = 접속점(알람밸브 자리). 없으면 표를 만들 수 없다 — 그러니 던진다.
@@ -439,6 +453,16 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
     # 관경을 덮은 자리도 같은 규약으로 들고 온다. `decide_bores` 가 곁에 붙여
     # 보낸 것을 그대로 옮길 뿐이다 — 여기서 다시 세지 않는다(두 벌 금지).
     tbl.bore_overrides = dict(getattr(bores, "overridden", None) or {})
+    # [D3] 좌표 메타가 없어 원점으로 떨어진 절점 — 조용히 넘기지 않는다.
+    #   0 건이면 아무것도 싣지 않는다(없는 것을 말하지 않는다).
+    if _missing_meta:
+        _mm = sorted(_missing_meta)
+        tbl.meta.append(("★좌표 메타 없는 절점",
+                         f"{len(_mm)}개 — {', '.join(_mm[:20])}"
+                         + (" …" if len(_mm) > 20 else "")))
+        print(f"[설계] ★좌표 메타 없는 절점 {len(_mm)}개 — 원점(0,0)으로 "
+              f"떨어졌습니다: {', '.join(_mm[:20])}"
+              + (" …" if len(_mm) > 20 else ""))
     return tbl
 
 

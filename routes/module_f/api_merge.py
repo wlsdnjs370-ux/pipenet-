@@ -113,6 +113,9 @@ def register(app, *, UPLOAD_DIR):
             "can_build": bool(mats["plan"]) and bool(sess.get("supply_mode")),
             "merged": bool(sess.get("merged")),
             "summary": sess.get("merge_summary"),
+            # [D5] 결합 뒤 검사 — 화면이 «성립했는가» 를 볼 수 있게 그대로.
+            "checks": ((sess.get("merged") or {}).get("checks")
+                       if isinstance(sess.get("merged"), dict) else None),
         })
 
     # ─────────────────────────────────── S720~S740

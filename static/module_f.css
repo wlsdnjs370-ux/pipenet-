@@ -211,6 +211,10 @@
   .layers .cat.PIPE{color:var(--accent);border-color:var(--accent-dim);}
   .layers .cat.HEAD{color:var(--warn);border-color:#6b5320;}
   .layers .cat.ALARM{color:#c86bff;border-color:#4a2868;}
+  /* 도면에 그려진 «그 색» 을 목록에도 찍는다 — 색이 같아야 사람이 목록과
+     화면을 맞대 보고 «어느 선인지» 를 안다. */
+  .layers .sw{flex:none;width:10px;height:10px;display:inline-block;
+              border:1px solid var(--line-2);}
   /* [§27] «이 묶음만 크게» — 판정이 아니라 «보기» 단추다. 이름 사전이 정반대로
      읽는 도면이 있어(계통도 SP = 헤드 918개) 사람이 눈으로 가를 길이 필요하다. */
   .layers .solo{flex:none;margin-left:auto;background:none;cursor:pointer;

@@ -1693,6 +1693,11 @@
   async function loadSubGraph(layers) {
     const body = { sid: S.sid };
     if (layers !== undefined) body.layers = layers;
+    // ★두 점을 함께 보낸다 — 서버가 «그 두 점이 있는 계통» 하나로 좁힌다.
+    //   안 보내면 이름 사전이 고층·저층 배관을 한 그래프에 섞어, 최단경로가
+    //   그 사이를 넘나든다(대명동 계통도 실측: LSP→HSP→LSP · 4회).
+    const pk = (S.sub && S.sub.picks) || [];
+    if (pk[0] && pk[1]) { body.a = pk[0]; body.b = pk[1]; }
     try {
       const d = await post("/api/module-f/sub/graph", body);
       const adj = d.nodes.map(() => []);
@@ -1708,10 +1713,20 @@
       S.subGraph = { nodes: d.nodes, edges: d.edges, adj,
                      forced: d.forced, components: d.components,
                      forced_penalty_mm: d.forced_penalty_mm,
+                     auto_layers: d.auto_layers || [],
+                     chosen_auto: !!d.chosen_auto, narrowed: d.narrowed || null,
                      layers: d.layers, chosen: d.chosen };
     } catch (err) {
       S.subGraph = null;
       say(`경로 미리보기를 못 켰습니다 — ${err.message}`, "warn");
+    }
+    // ★그래프를 갈아 끼웠으면 **미리보기 경로도 버린다.** 그 경로는 옛 그래프의
+    //   «절점 번호» 열이라, 절점이 줄면(섞음 255 → HSP 76) 없는 번호를 가리켜
+    //   그리다가 터진다 — 실측으로 콘솔 오류 2건이 그렇게 났다. 두 점이 남아
+    //   있으면 새 그래프로 곧바로 다시 푼다.
+    if (S.sub) S.sub.preview = null;
+    if (S.sub && S.sub.picks && S.sub.picks[0] && S.sub.picks[1]) {
+      subPreview(S.sub.picks[1][0], S.sub.picks[1][1]);
     }
     renderSubLayers();
     draw();
@@ -1794,6 +1809,33 @@
     subPreview(x, y);
     renderSubPicks();
     draw();
+    // 두 점이 다 찍혔으면 그래프를 «그 계통» 으로 다시 받는다. 미리보기와
+    // 추출이 같은 그래프를 쓰는 규칙은 그대로다 — 서버가 좁힌 것을 세션에
+    // 남기므로 추출도 같은 레이어를 쓴다.
+    if (S.sub.picks[0] && S.sub.picks[1]) narrowSubLayer();
+  }
+
+  /** 찍은 두 점이 있는 계통 하나로 좁히기 — 결과를 사람에게 말한다. */
+  async function narrowSubLayer() {
+    const before = (S.subGraph && S.subGraph.chosen) || null;
+    await loadSubGraph();
+    const g = S.subGraph;
+    if (!g) return;
+    if (!g.chosen_auto) {
+      // 못 좁혔으면 **그것도 말한다.** 섞인 채로 뽑으면 경로가 계통 사이를
+      // 오갈 수 있는데, 조용히 넘어가면 사람은 그 사실을 모른다.
+      const why = (g.narrowed || {}).reason;
+      if (why && (g.auto_layers || []).length > 1) {
+        say(`계통을 하나로 좁히지 못했습니다 — ${why}.`
+            + ` 배관 레이어 고르기에서 직접 고를 수 있습니다.`, "warn");
+      }
+      return;
+    }
+    const now = (g.chosen || []).join(" · ");
+    if (!before || before.join(" · ") !== now) {
+      say(`찍은 두 점이 있는 «${now}» 계통 안에서만 뽑습니다`
+          + ` — 배관 레이어 고르기에서 바꿀 수 있습니다.`);
+    }
   }
 
   function armSub(i) {
@@ -1975,6 +2017,9 @@
     ctx.lineCap = "round";
     for (let i = 0; i < path.length - 1; i++) {
       const a = g.nodes[path[i]], b = g.nodes[path[i + 1]];
+      // 없는 절점 번호면 그리지 않는다 — 한 줄 때문에 그리기 전체가 죽으면
+      // 도면이 통째로 사라진다(그래프를 갈아 끼울 때 실제로 그랬다).
+      if (!a || !b) continue;
       const key = path[i] < path[i + 1]
         ? `${path[i]},${path[i + 1]}` : `${path[i + 1]},${path[i]}`;
       const forced = forcedOf.has(key);
@@ -2020,20 +2065,56 @@
     const g = S.subGraph;
     if (!g || !g.layers) { box.innerHTML = ""; return; }
     const chosen = g.chosen ? new Set(g.chosen) : null;
+    const auto = g.auto_layers || [];
     let html = `<div class="hint">경로 그래프 — 절점 ${g.nodes.length} · `
       + `배관 ${g.edges.length}`
       + (g.forced ? ` · <span class="warn">추측 연결 ${g.forced}</span>` : "")
       + (g.components > 1
          ? ` · <span class="warn">조각 ${g.components}</span>` : "")
       + "</div>";
+    // ★«꼬인 경로» 의 정체를 여기서 말한다. 아무것도 안 고르면 서버가 이름
+    //   사전으로 배관 레이어를 **여러 장 한꺼번에** 고른다. 계통도는 고층
+    //   (HSP)·저층(LSP)·감압밸브가 서로 다른 계통인데 한 그래프에 섞이면
+    //   최단경로가 계통 사이를 오갈 수 있다 — 사람 눈에는 길이 꼬인 것이다.
+    //   실측(대명동 계통도): HSP 76 · LSP 162 · 감압밸브 17 → 섞으면 255절점.
+    if (g.chosen_auto && chosen) {
+      const nr = g.narrowed || {};
+      html += `<div class="hint">찍은 두 점이 있는 <b>${[...chosen]
+        .map(esc).join(" · ")}</b> 계통 안에서만 뽑습니다`
+        + (nr.reason ? ` — ${esc(nr.reason)}` : "")
+        + `. 아래에서 <b>직접 고르면</b> 그 결정이 우선합니다.</div>`;
+    }
+    if (chosen === null && auto.length > 1) {
+      const why = (g.narrowed || {}).reason;
+      html += `<div class="hint warn">자동으로 <b>${auto.map(esc).join(" · ")}`
+        + `</b> 를 <b>한 그래프에 섞어</b> 뽑고 있습니다 — 서로 다른 계통이면`
+        + ` 경로가 그 사이를 오갈 수 있습니다. 아래에서 <b>한 계통만</b>`
+        + ` 고르면 그 안에서만 최단으로 뽑습니다.`
+        // 좁히려다 못 좁혔으면 그 사유까지 여기서 말한다 — 사람이 두 점을
+        // 다시 찍을지, 레이어를 직접 고를지 정할 수 있어야 한다.
+        + (why ? `<br>스스로 좁히지 못했습니다: ${esc(why)}` : "")
+        + `</div>`;
+      html += `<div class="row">`
+        + auto.map((nm) => `<button data-only="${esc(nm)}">${esc(nm)}</button>`)
+              .join("")
+        + `</div>`;
+    }
     for (const L of g.layers) {
       const on = chosen === null || chosen.has(L.layer);
+      // 색은 캔버스가 그 레이어를 그린 바로 그 색이다 — 목록과 도면을 맞대
+      // 볼 수 있어야 «어느 선» 인지 사람이 안다.
+      const sw = L.css
+        ? `<i class="sw" style="background:${esc(L.css)}"></i>` : "";
       html += `<label class="chk"><input type="checkbox" data-lay="${esc(L.layer)}"`
-        + `${on ? " checked" : ""}><span class="cat ${esc(L.cat)}">${esc(L.cat)}`
-        + `</span> <span class="nm">${esc(L.layer)}</span>`
+        + `${on ? " checked" : ""}>${sw}<span class="cat ${esc(L.cat)}">`
+        + `${esc(L.cat)}</span> <span class="nm">${esc(L.layer)}</span>`
+        + (auto.includes(L.layer) ? ` <span class="tag">자동</span>` : "")
         + `<span class="cnt">${L.n}</span></label>`;
     }
     box.innerHTML = html;
+    for (const b of box.querySelectorAll("button[data-only]")) {
+      b.onclick = () => loadSubGraph([b.dataset.only]);
+    }
     for (const cb of box.querySelectorAll("input[data-lay]")) {
       cb.onchange = () => {
         const picked = [...box.querySelectorAll("input[data-lay]")]
@@ -2622,7 +2703,10 @@
     }
     if (d.mode_label) html += kv("급수방식", d.mode_label);
     $("mg-ready").innerHTML = html;
-    $("mg-build").disabled = !d.can_build;
+    // ★잠그지 않는다 — 무엇이 모자란지 «글로» 말한다. 조건이 안 갖춰졌을 때
+    //   단추를 disabled 로 두면 눌러도 아무 일이 없고 아무 말도 없어, 사람에게는
+    //   «고장» 으로 읽힌다(「최불리 선정」에서 같은 실수를 이미 했다).
+    renderMergeWhy(d);
     if (d.mode) {
       const rb = document.querySelector(`input[name=mg-mode][value=${d.mode}]`);
       if (rb) rb.checked = true;
@@ -2653,7 +2737,33 @@
     $("mg-summary").innerHTML = html;
   }
 
+  /** 결합에 무엇이 모자란가 — 한 줄로. 갖춰졌으면 무엇으로 도는지 말한다. */
+  function mergeMissing(d) {
+    const out = [];
+    if (!d || !(d.ready || {}).plan) {
+      out.push("평면도의 «수리계산 → 표 확정»");
+    }
+    if (!d || !d.mode) out.push("급수방식 고르기");
+    return out;
+  }
+
+  function renderMergeWhy(d) {
+    const miss = mergeMissing(d);
+    const box = $("mg-why");
+    box.classList.toggle("warn", miss.length > 0);
+    box.innerHTML = miss.length
+      ? `아직 <b>${miss.join("</b>, <b>")}</b> 가 남았습니다.`
+      : "결합할 준비가 됐습니다.";
+  }
+
   $("mg-build").onclick = async () => {
+    // 누른 자리에서 답한다 — 잠가 두고 침묵하지 않는다.
+    const miss = mergeMissing(S.merge);
+    if (miss.length) {
+      say(`결합하려면 ${miss.join(" · ")} 가 먼저 필요합니다.`, "warn");
+      renderMergeWhy(S.merge);
+      return;
+    }
     busy(true, "배관망 결합 중…");
     try {
       await post("/api/module-f/merge/build", { sid: S.sid });

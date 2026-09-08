@@ -139,7 +139,7 @@ def parse_subdrawing(dxf_path):
     return parsed.get("entities") or [], parsed
 
 
-def layer_options(entities) -> list[dict]:
+def layer_options(entities, colors=None) -> list[dict]:
     """이 도면의 레이어 목록 + A 의 이름 사전 분류.
 
     계통도·기계실도 «어느 선이 배관인가» 가 갈림길이다. 이름 사전은 추천일
@@ -161,10 +161,22 @@ def layer_options(entities) -> list[dict]:
         cats = categorize_layers(entities)
     except Exception:  # noqa: BLE001
         cats = {}
+    # 색도 함께 — 「색깔별로 보이게」 한 화면과 같은 색이라야 사람이 목록과
+    # 도면을 맞대 볼 수 있다. 색표는 캔버스가 쓰는 그것 하나뿐이다.
+    lc = colors or {}
+    try:
+        from services.cad_import.colors import rgb_dark
+    except Exception:  # noqa: BLE001
+        def rgb_dark(_c):
+            return "#c8a064"
     out = []
     for nm, n in sorted(n_by.items(), key=lambda kv: (-kv[1], kv[0])):
-        out.append({"layer": nm, "n": n,
-                    "cat": cats.get(nm) or _layer_category(nm)})
+        row = {"layer": nm, "n": n,
+               "cat": cats.get(nm) or _layer_category(nm)}
+        if nm in lc:
+            row["color"] = lc[nm]
+            row["css"] = rgb_dark(lc[nm])
+        out.append(row)
     return out
 
 
@@ -182,6 +194,125 @@ def path_graph(entities, *, layer_filter=None):
                               force_connect=True)
 
 
+def pick_system_layer(entities, a_xy, b_xy, *, snap_tolerance_mm=2500.0):
+    """찍은 두 점이 **어느 계통(레이어)** 에 있는지 골라 준다.
+
+    ★이것이 「경로가 꼬인다」의 알맹이다. 필터를 안 걸면 엔진의 이름 사전이
+      배관 레이어를 **여러 장 한꺼번에** 고른다. 대명동 계통도는 HSP(고층)·
+      LSP(저층)·감압밸브가 그렇게 한 그래프에 섞이는데, 둘은 서로 다른
+      배관이라 최단경로가 그 사이를 넘나든다. 실측한 경로가 그랬다:
+
+        자동(섞음) — LSP → HSP → LSP · 넘나듦 4회 · 연장 126.3 m
+        HSP 만     — HSP            · 넘나듦 0회 · 연장 118.0 m
+
+      (기계실도 같다: -소화(SP-저) → -소화(SP-고) 로 2회 넘나든다.)
+
+      추정 이음(허용오차 다리)은 범인이 아니었다 — 경로 126.3 m 중 3곳 1.0 m
+      (1%)뿐이고, 그것을 뒤로 미뤄도 경로가 그대로였다. 그래서 다리를 손대는
+      대신 **계통을 하나로 좁힌다.**
+
+    고르는 규칙: **두 점이 각각 가장 붙어 있는** 레이어가 같고, 그것이
+    2등보다 뚜렷하게 가까울 때만 그 레이어로 좁힌다. 아니면 고르지 않는다
+    (None) — 억지로 좁히면 엉뚱한 계통 안에서 먼 길을 돌게 된다.
+
+    ★«허용거리 안이면 된다» 로 걸면 안 된다. 추출(`extract_system`)은 클릭을
+      거리 제한 없이 가장 가까운 절점에 붙인다(사용자 요구로 그렇게 만들었다).
+      그래서 화면에서 사람이 찍는 자리는 배관에서 수십 m 떨어져 있는 것이
+      보통이다 — 실측: 계통도에서 632 m. 절대 허용거리로 후보를 자르면 좁히기가
+      **한 번도 안 걸린다.** 자는 «어느 계통에 더 붙었나» 라는 **견줌**이다.
+
+    ★«경로가 짧은 쪽» 만 보면 또 틀린다. 두 계통이 나란히 붙어 있으면 찍은 점
+      위의 계통(HSP·13.0 m)을 두고 옆 계통(LSP·9.0 m)을 고른다 — 시험에서
+      실제로 그랬다. 사람이 찍은 자리가 먼저고, 길이는 동점일 때만 본다.
+
+    판단 근거는 함께 돌려주어 화면이 말할 수 있게 한다(조용히 바꾸지 않는다).
+    """
+    import math
+
+    from remote30_prototype import (_nearest_graph_node, _shortest_path,
+                                    build_system_graph)
+    _g, _el, stats = build_system_graph(entities, layer_filter=None,
+                                        force_connect=False)
+    cands = sorted(stats.get("layer_filter_used") or ())
+    if len(cands) < 2:
+        return None, {"candidates": [], "reason": "섞인 레이어가 없습니다"}
+    rows = []
+    for nm in cands:
+        try:
+            g, el, st = build_system_graph(entities, layer_filter={nm},
+                                           force_connect=True)
+        except Exception:  # noqa: BLE001
+            continue
+        if not g:
+            continue
+        row = {"layer": nm, "nodes": len(g)}
+        ds, ns = [], []
+        for xy in (a_xy, b_xy):
+            n = _nearest_graph_node(g, (float(xy[0]), float(xy[1])))
+            if n is None:
+                ds.append(float("inf"))
+                ns.append(None)
+            else:
+                ds.append(math.hypot(n[0] - float(xy[0]), n[1] - float(xy[1])))
+                ns.append(n)
+        row["snap_a_mm"], row["snap_b_mm"] = (round(d, 1) for d in ds)
+        row["snap_mm"] = round(max(ds), 1)
+        row["ok"] = bool(ns[0] and ns[1])
+        if row["ok"]:
+            fk = set()
+            for (ea, eb) in (st.get("forced_bridge_edges") or ()):
+                ka, kb = (int(ea[0]), int(ea[1])), (int(eb[0]), int(eb[1]))
+                fk.add((min(ka, kb), max(ka, kb)))
+            p = _shortest_path(g, el, ns[0], ns[1], penalty_keys=fk)
+            if p and len(p) >= 2:
+                tot = 0.0
+                for u, v in zip(p, p[1:]):
+                    ln = el.get((min(u, v), max(u, v)))
+                    tot += ln if ln is not None else math.hypot(
+                        u[0] - v[0], u[1] - v[1])
+                row["path_m"] = round(tot / 1000.0, 1)
+                row["_len"] = tot
+            else:
+                row["ok"] = False
+                row["why"] = "그 레이어 안에서는 두 점이 안 이어집니다"
+        rows.append(row)
+
+    live = [r for r in rows if r["ok"]]
+    diag = {"candidates": rows, "snap_tolerance_mm": float(snap_tolerance_mm)}
+    if not live:
+        diag["reason"] = "두 점이 이어지는 레이어가 없습니다 — 섞은 채로 뽑습니다"
+        return None, diag
+    # 동점의 자는 **도면의 축척을 따른다.** 엔진이 «같은 점» 으로 보는 거리
+    # (`snap_eps_mm` = SNAP_TOL_MM × 축척)가 그 자다. 고정 mm 로 걸면 축척이
+    # 다른 도면에서 무너진다 — 용지축척 계통도는 0.259mm, 실좌표 평면도는
+    # 17.4mm 로 60배 넘게 벌어진다. 고정 250mm 를 쓰면 스키매틱 도면에서는
+    # 모든 레이어가 «동점» 이 되어 좁히기가 한 번도 안 걸린다(실측으로 그랬다).
+    tie = float(stats.get("snap_eps_mm") or 0.0) or 1.0
+    diag["tie_mm"] = round(tie, 3)
+
+    def _near(key):
+        ranked = sorted(live, key=lambda r: (r[key], r["_len"]))
+        top = ranked[0]
+        rest = [r for r in ranked[1:] if r[key] > top[key] + tie]
+        return top, (len(rest) == len(ranked) - 1)
+
+    ta, clear_a = _near("snap_a_mm")
+    tb, clear_b = _near("snap_b_mm")
+    if ta["layer"] != tb["layer"]:
+        diag["reason"] = (f"찍은 두 점이 서로 다른 계통에 붙습니다"
+                          f"(«{ta['layer']}» · «{tb['layer']}») — "
+                          f"섞은 채로 뽑습니다")
+        return None, diag
+    if not (clear_a and clear_b):
+        diag["reason"] = ("어느 계통에 붙은 것인지 가릴 만큼 차이가 없습니다 — "
+                          "섞은 채로 뽑습니다")
+        return None, diag
+    diag["reason"] = f"찍은 두 점이 «{ta['layer']}» 배관에 가장 붙어 있습니다"
+    for r in rows:
+        r.pop("_len", None)
+    return ta["layer"], diag
+
+
 def graph_payload(entities, *, layer_filter=None) -> dict:
     """경로 그래프를 화면이 읽을 모양으로.
 
@@ -193,6 +324,11 @@ def graph_payload(entities, *, layer_filter=None) -> dict:
       한 모양으로 그리면 사람이 확인한 것과 기계가 고른 것을 구별할 수 없다.
     """
     graph, edge_len, stats = path_graph(entities, layer_filter=layer_filter)
+    # ★자동으로 «배관» 이라고 고른 레이어들. 계통도는 고층·저층 입상관이
+    #   서로 다른 레이어에 있어서(HSP·LSP·감압밸브), 그 셋을 한 그래프에
+    #   섞으면 경로가 계통 사이를 오갈 수 있다 — 사람 눈에는 «꼬인» 길이다.
+    #   화면이 그 사실을 말할 수 있게 실어 보낸다.
+    auto_layers = sorted(stats.get("layer_filter_used") or ())
     idx = {n: i for i, n in enumerate(graph)}
     forced = set()
     for (ea, eb) in (stats.get("forced_bridge_edges") or []):
@@ -213,6 +349,7 @@ def graph_payload(entities, *, layer_filter=None) -> dict:
     return {
         "nodes": [[int(round(n[0])), int(round(n[1]))] for n in graph],
         "edges": edges,
+        "auto_layers": auto_layers,
         "components": stats.get("components_after_bridge"),
         "bridges": stats.get("bridges_applied"),
         "forced": len(forced),

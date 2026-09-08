@@ -88,8 +88,11 @@ def _sub_open_job(sess: dict, dxf, kind: str):
         sess["key"] = os.path.splitext(os.path.basename(str(dxf)))[0]
         # 도면 색 그대로 그린다 — 계통도·기계실도 평면도와 같은 규칙이다.
         # 종전에는 한 색으로 눌러 그려서 배관·기호·건축선이 구별되지 않았다.
-        payload = _world_payload(
-            entities_to_world(entities, layer_colors(parsed)))
+        colors = layer_colors(parsed)
+        # 레이어 색은 «배관 레이어 고르기» 목록도 쓴다 — 목록과 도면이 같은
+        # 색이라야 사람이 둘을 맞대 볼 수 있다.
+        sess["layer_colors"] = colors
+        payload = _world_payload(entities_to_world(entities, colors))
         sess["world"] = payload
         skipped = parsed.get("skipped") or {}
         print(f"[{label}] 완료 {time.perf_counter() - t0:.1f}s · "

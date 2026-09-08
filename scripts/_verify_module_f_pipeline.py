@@ -1,0 +1,232 @@
+# -*- coding: utf-8 -*-
+"""[전체 공정] 모듈 F 를 처음부터 끝까지 한 번에 태운다.
+
+사용자 지적: 「평면도·계통도·기계실을 전부 통합하고 가압송수방식을 고르고
+결합을 하면 아이소메트릭이 나와야 하는데, 애초에 결합 버튼이 활성화되지
+않는다. 대대적으로 모듈 F 의 전체 공정이 돌아가야지.」
+
+그래서 사람이 하는 순서 그대로 밟고, **어느 걸음에서 끊기는지** 를 찍는다.
+
+  ① 평면도  올리기 → 찍기 → 배관망 구성 → 손질 → 알람밸브 → 최불리 → 표 확정
+  ② 계통도  올리기 → 두 점 → 경로 추출
+  ③ 기계실  올리기 → 두 점 → 경로 추출
+  ④ 통합    급수방식 → **결합** → 아이소메트릭
+"""
+from __future__ import annotations
+
+import io
+import os
+import sys
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+BASE = os.environ.get("MF_BASE", "http://127.0.0.1:5051")
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_D = os.path.join(_ROOT, "routes", "제출용[최종]")
+fails: list[str] = []
+
+
+def check(name, ok, detail=""):
+    print(f"  [{'OK  ' if ok else '실패'}] {name}"
+          + (f" · {detail}" if detail else ""))
+    if not ok:
+        fails.append(f"{name} — {detail}")
+    return ok
+
+
+def _password():
+    p = os.path.join(_ROOT, ".env")
+    if os.path.isfile(p):
+        for ln in io.open(p, encoding="utf-8"):
+            if ln.startswith("LOGIN_PASSWORD="):
+                return ln.split("=", 1)[1].strip()
+    return os.environ.get("LOGIN_PASSWORD", "")
+
+
+def main() -> int:
+    from playwright.sync_api import sync_playwright
+
+    plan = os.path.join(_D, "1. 입력도면 대명동 단위세대 평면도.dxf")
+    sysd = os.path.join(_D, "1. 입력도면 대명동 단위세대 계통도.dxf")
+    mrd = os.path.join(_D, "1. 입력도면 대명동 단위세대 기계실.dxf")
+    for p in (plan, sysd, mrd):
+        if not os.path.isfile(p):
+            print(f"표본 없음: {p}")
+            return 0
+
+    with sync_playwright() as p:
+        br = p.chromium.launch()
+        pg = br.new_page(viewport={"width": 1500, "height": 950})
+        errs: list[str] = []
+        pg.on("console", lambda m: errs.append(m.text)
+              if m.type == "error" else None)
+        pg.on("pageerror", lambda e: errs.append(f"pageerror: {e}"))
+        pg.goto(f"{BASE}/login", wait_until="domcontentloaded")
+        pg.fill("input[type=password]", _password())
+        pg.click("button[type=submit]")
+        pg.wait_for_load_state("domcontentloaded")
+        pg.goto(f"{BASE}/module-f", wait_until="domcontentloaded")
+        pg.wait_for_timeout(1000)
+
+        def idle(n=6000):
+            for _ in range(n):
+                pg.wait_for_timeout(200)
+                if pg.is_hidden("#busy"):
+                    return
+
+        def stage():
+            return pg.evaluate("() => window.__mf.stage")
+
+        def wait_stage(want, n=6000):
+            for _ in range(n):
+                pg.wait_for_timeout(200)
+                if pg.is_hidden("#busy") and stage() == want:
+                    return True
+            return False
+
+        def canvas_click_world(x, y):
+            scr = pg.evaluate("""(q) => {
+                const v = window.__mf.view;
+                const r = document.querySelector('#cv').getBoundingClientRect();
+                return [r.x + (q[0] - v.ox) * v.scale,
+                        r.y + r.height - (q[1] - v.oy) * v.scale];
+            }""", [x, y])
+            pg.mouse.click(scr[0], scr[1])
+
+        # ── ① 평면도 ────────────────────────────────────────────────
+        print("[①] 평면도")
+        pg.set_input_files("#dxf", plan)
+        pg.click("#btn-open")
+        check("찍기까지 흘러온다", wait_stage("pick"), stage())
+        pg.wait_for_timeout(1200)
+        print(f"      {pg.inner_text('#pk-count')[:60]}")
+        pg.click("#pk-next")
+        check("배관망 구성 → 손질", wait_stage("edit"), stage())
+        pg.wait_for_timeout(1200)
+
+        pt = pg.evaluate("""() => {
+            for (const g of (window.__mf.edit.body_groups || [])) {
+                const s = g.segs || [];
+                if (s.length >= 4) return [s[0], s[1]];
+            }
+            return null;
+        }""")
+        canvas_click_world(pt[0], pt[1])
+        idle()
+        pg.wait_for_timeout(900)
+        n_src = pg.evaluate("() => (window.__mf.edit.sources || []).length")
+        check("알람밸브가 놓인다", n_src == 1, f"{n_src}곳")
+
+        pg.click("#ed-worst")
+        idle()
+        pg.wait_for_timeout(1500)
+        w = pg.evaluate("() => (window.__mf.edit || {}).worst || null")
+        if not check("최불리가 나온다", bool(w),
+                     pg.inner_text("#status")[:90]):
+            br.close()
+            return 1
+        print(f"      최불리 {w['k']}개 · 최원 {w['far_m']} m")
+
+        # 수리계산 표 확정 — 결합의 «평면도 재료» 가 여기서 난다.
+        pg.evaluate("() => { for (const d of "
+                    "document.querySelectorAll('#steps div'))"
+                    " { if (d.textContent.indexOf('수리계산') >= 0)"
+                    " { d.click(); return; } } }")
+        pg.wait_for_timeout(1500)
+        check("수리계산 화면이 열린다", pg.is_visible("#dg-build"))
+        pg.click("#dg-build")
+        idle()
+        pg.wait_for_timeout(2500)
+        got = pg.evaluate("() => !!(window.__mf.design "
+                          "&& window.__mf.design.tables)")
+        check("★표가 확정된다 (결합의 평면도 재료)", got,
+              pg.inner_text("#status")[:90])
+
+        # ── ②③ 계통도 · 기계실 ──────────────────────────────────────
+        for label, path in (("계통도", sysd), ("기계실", mrd)):
+            print(f"[②③] {label}")
+            pg.wait_for_selector("#slots button", timeout=120_000)
+            pg.click(f'#slots button:has-text("{label}")')
+            pg.wait_for_timeout(1200)
+            pg.set_input_files("#dxf", path)
+            pg.click("#btn-open")
+            check(f"{label} 가 열린다", wait_stage("sub"), stage())
+            pg.wait_for_timeout(1500)
+            box = pg.eval_on_selector("#cv", """e => {
+                const r = e.getBoundingClientRect();
+                return {x: r.x, y: r.y, w: r.width, h: r.height};
+            }""")
+            pg.click("#sub-pick-a")
+            pg.mouse.click(box["x"] + box["w"] * 0.5,
+                           box["y"] + box["h"] * 0.82)
+            pg.wait_for_timeout(400)
+            pg.click("#sub-pick-b")
+            pg.mouse.click(box["x"] + box["w"] * 0.5,
+                           box["y"] + box["h"] * 0.18)
+            pg.wait_for_timeout(400)
+            # 두 점을 찍으면 «그 두 점이 있는 계통» 으로 좁혔는지 본다.
+            g = pg.evaluate("() => { const g = window.__mf.subGraph || {};"
+                            " return {chosen: g.chosen, auto: g.chosen_auto,"
+                            " why: (g.narrowed || {}).reason,"
+                            " autoLayers: g.auto_layers}; }")
+            print(f"      계통 좁히기: {g}")
+            pg.click("#sub-extract")
+            idle()
+            pg.wait_for_timeout(1500)
+            s = pg.evaluate("() => (window.__mf.sub || {}).summary || null")
+            check(f"{label} 경로가 뽑힌다", bool(s and s.get("pipes")),
+                  pg.inner_text("#status")[:80])
+            if s:
+                print(f"      절점 {s['nodes']} · 배관 {s['pipes']}"
+                      f" · 연장 {s['total_m']} m")
+
+        # ── ④ 통합 ──────────────────────────────────────────────────
+        print("[④] 통합")
+        pg.evaluate("() => { for (const d of "
+                    "document.querySelectorAll('#steps div'))"
+                    " { if (d.textContent.indexOf('통합') >= 0)"
+                    " { d.click(); return; } } }")
+        idle()
+        pg.wait_for_timeout(1800)
+        check("통합 화면이 열린다", pg.is_visible("#mg-build"))
+        print(f"      재료: {pg.inner_text('#mg-ready')[:120]}")
+        st = pg.evaluate("() => window.__mf.merge || null")
+        print(f"      merge state: {st}")
+
+        n_mode = pg.eval_on_selector_all("input[name=mg-mode]", "e => e.length")
+        check("급수방식 목록이 있다", n_mode > 0, f"{n_mode}가지")
+        if n_mode:
+            pg.evaluate("() => document.querySelectorAll("
+                        "'input[name=mg-mode]')[0].click()")
+            idle()
+            pg.wait_for_timeout(1500)
+        dis = pg.is_disabled("#mg-build")
+        check("★결합 단추가 켜진다", not dis,
+              f"can_build={(pg.evaluate('() => (window.__mf.merge||{}).can_build'))}"
+              f" · 재료 {pg.evaluate('() => (window.__mf.merge||{}).ready')}")
+        if not dis:
+            pg.click("#mg-build")
+            idle()
+            pg.wait_for_timeout(2500)
+            merged = pg.evaluate("() => (window.__mf.merge || {}).merged")
+            check("★결합이 돈다", bool(merged),
+                  pg.inner_text("#status")[:100])
+            print(f"      요약: {pg.inner_text('#mg-summary')[:140]}")
+
+        print("[콘솔]")
+        real = [e for e in errs if "favicon" not in e]
+        check("콘솔 오류 0", not real, str(real[:3]))
+        pg.screenshot(path=os.path.join(_ROOT, "data", "_pipeline.png"))
+        br.close()
+
+    print("\n" + "=" * 56)
+    if fails:
+        print(f"실패 {len(fails)}건")
+        for f in fails:
+            print("  -", f)
+        return 1
+    print("모듈 F 전 공정 — 화면에서 확인")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

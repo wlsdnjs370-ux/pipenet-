@@ -15,7 +15,8 @@
     "min_edge_mm": 50.0,
     "node_count": 80,
     "scale_ratio": 1.0,
-    "snap_eps_mm": 50.0
+    "snap_eps_mm": 50.0,
+    "tolerance_bridges": 13
   },
   "total_len": 134777.3
 }

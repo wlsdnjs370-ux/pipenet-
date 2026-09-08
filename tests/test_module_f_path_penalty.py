@@ -121,7 +121,10 @@ def test_받은_벌점이_화면_상태까지_살아_남는다():
         "forced_penalty_mm": 1e9,
     }
     prog = "\n".join([
-        "const S = {sid: 'x', subGraph: null};",
+        # 화면의 실제 모양 그대로 — `S.sub` 는 늘 있다(미리보기 경로가
+        # 여기 산다). 껍데기만 주면 새 코드가 없는 자리를 짚는다.
+        "const S = {sid: 'x', subGraph: null,"
+        " sub: {picks: [null, null], preview: null}};",
         f"const PAYLOAD = {json.dumps(payload)};",
         "const post = async () => PAYLOAD;",
         "const renderSubLayers = () => {};",

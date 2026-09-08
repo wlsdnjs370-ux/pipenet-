@@ -22,7 +22,7 @@ from routes.module_f.sub_fix import (
     SLOT_KEY, apply_overrides, parse_rows, rows_for_view)
 from routes.module_f.subdrawing import (
     extract_machineroom, extract_system, extract_system_clean, graph_payload,
-    layer_options, riser_summary)
+    layer_options, pick_system_layer, riser_summary)
 
 # 클릭 ↔ 그래프 절점 허용 거리. A 의 기본값과 같다.
 SNAP_DEFAULT_MM = 2500.0
@@ -59,6 +59,9 @@ def _layers(sess, body):
             sess["sub_layers"] = None
         elif isinstance(raw, list):
             sess["sub_layers"] = sorted({str(v) for v in raw})
+        # ★사람이 직접 고른 순간부터 «자동 좁히기» 는 손을 뗀다. 사람 결정을
+        #   기계가 다음 클릭에 덮으면 고를 수 있다는 말이 거짓이 된다.
+        sess["sub_layers_auto"] = False
         # 목록이 아니면 조용히 무시하지 않고 그대로 둔다(옛 값 유지).
     got = sess.get("sub_layers")
     return set(got) if got else None
@@ -211,6 +214,34 @@ def register(app):
         if not sess.get("entities"):
             return _fail("도면이 아직 준비되지 않았습니다.", 409)
         lf = _layers(sess, body)
+        # ★두 점을 다 찍었으면 «그 두 점이 있는 계통» 하나로 좁힌다.
+        #   섞은 채로 두면 최단경로가 고층↔저층을 넘나든다(실측 4회). 좁히기는
+        #   미리보기 그래프 자체를 바꾸므로 추출과 어긋나지 않는다 — 세션에
+        #   남겨 두 곳이 같은 레이어를 쓴다.
+        narrowed = None
+        pa, pb = body.get("a"), body.get("b")
+        # ★«아직 안 골랐을 때만» 으로 걸면 한 번 좁힌 뒤로는 다시 못 좁힌다 —
+        #   점을 다른 계통에 다시 찍어도 첫 계통에 갇힌다. 기준은 «사람이
+        #   골랐는가» 하나뿐이다(`sub_layers_auto`).
+        auto_ok = sess.get("sub_layers_auto", True)
+        if auto_ok and pa and pb:
+            try:
+                nm, diag = pick_system_layer(
+                    sess["entities"], (float(pa[0]), float(pa[1])),
+                    (float(pb[0]), float(pb[1])),
+                    snap_tolerance_mm=_snap(body))
+            except Exception as exc:  # noqa: BLE001 — 좁히기 실패는 치명이 아니다
+                nm, diag = None, {"reason": f"계통을 못 골랐습니다: {exc}"}
+            if nm:
+                sess["sub_layers"] = [nm]
+                lf = {nm}
+            else:
+                # 못 좁혔으면 **지난번 자동 선택도 푼다** — 점을 옮겼는데 옛
+                # 계통에 갇힌 채로 뽑으면 그게 더 나쁜 거짓말이다.
+                sess["sub_layers"] = None
+                lf = None
+            sess["sub_layers_auto"] = True
+            narrowed = {"layer": nm, **diag}
         try:
             got = graph_payload(sess["entities"], layer_filter=lf)
         except Exception as exc:  # noqa: BLE001 — 못 만들면 사유를 말한다
@@ -218,8 +249,11 @@ def register(app):
         got.update({
             "ok": True,
             "kind": _slot_active(sess),
-            "layers": layer_options(sess["entities"]),
+            "layers": layer_options(sess["entities"],
+                                    sess.get("layer_colors")),
             "chosen": sorted(lf) if lf else None,
+            "chosen_auto": bool(narrowed and narrowed.get("layer")),
+            "narrowed": narrowed,
             "snap_default_mm": SNAP_DEFAULT_MM,
         })
         return jsonify(got)

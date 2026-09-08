@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260908-pkcount2">
+<link rel="stylesheet" href="/static/module_f.css?v=20260908-subnarrow">
 </head>
 <body>
 <header>
@@ -633,6 +633,11 @@
       <div class="row" style="margin-top:12px">
         <button id="mg-build" class="go">결합</button>
       </div>
+      <!-- ★잠그지 않는다 — 누르면 무엇이 모자란지 말한다.
+           「최불리 선정」에서 같은 실수를 한 적이 있다: 조건이 안 갖춰졌을 때
+           단추를 disabled 로 두었더니, 눌러도 아무 일이 없고 아무 말도 없어
+           사람에게는 «고장» 으로 읽혔다. 죽은 컨트롤보다 말하는 컨트롤이 낫다. -->
+      <div class="hint" id="mg-why"></div>
       <div class="row">
         <button id="mg-emit" disabled>산출</button>
         <button id="mg-download" disabled>내려받기 (zip)</button>
@@ -713,6 +718,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260908-pkcount2"></script>
+<script src="/static/module_f.js?v=20260908-subnarrow"></script>
 </body>
 </html>

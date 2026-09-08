@@ -1380,8 +1380,17 @@ def build_system_graph(
     graph, edge_len = _build_graph(line_ents, node_index=node_index, min_edge_mm=min_edge)
     comps_before = len(_connected_components(graph))
     total_bridges = 0
+    # 허용오차 다리도 «알고리즘이 이었다» 는 점에서 force_connect 와 같다.
+    # 종전에는 세지도 내보내지도 않아 화면에 한 줄도 안 떴다 — 실측으로
+    # 대명동 계통도는 조각 67개를 다리 66개로 이어 세운다. 그 다리가 실배관과
+    # 똑같이 그려지면 사람 눈에는 «경로가 꼬였다» 로 보인다. 라우팅 비용은
+    # 그대로 두고(엔진 판단을 바꾸지 않는다) **보이게** 만 한다.
+    tol_edges: set = set()
     for tol in bridge_tolerances_mm:
-        total_bridges += _bridge_components(graph, edge_len, max_bridge_mm=tol * scale_ratio)
+        total_bridges += _bridge_components(
+            graph, edge_len, max_bridge_mm=tol * scale_ratio,
+            bridge_edges_out=tol_edges,
+        )
     # force_connect — 거리 무제한으로 남은 모든 component 를 가장 가까운 endpoint 쌍으로
     #   강제 연결 (single-linkage MST). 깨끗한 배관망 파일이 없어 풀 도면(geometry 파편화)
     #   하나로 추출해야 할 때 사용. 강제 연결된 edge 는 추정(estimated)이므로 별도 추적해
@@ -1404,6 +1413,14 @@ def build_system_graph(
         "forced_bridge_edges": [
             [[int(round(a[0])), int(round(a[1]))], [int(round(b[0])), int(round(b[1]))]]
             for (a, b) in forced_edges
+        ],
+        # 허용오차 다리(200mm~10m) — 추정 연결이지만 라우팅에서는 실배관과
+        # 같은 값으로 쓴다. 호출자가 «점선·다른 색» 으로 구분해 그릴 수 있게
+        # 좌표를 그대로 내보낸다.
+        "tolerance_bridges": len(tol_edges),
+        "tolerance_bridge_edges": [
+            [[int(round(a[0])), int(round(a[1]))], [int(round(b[0])), int(round(b[1]))]]
+            for (a, b) in tol_edges
         ],
         "layer_filter_used": sorted(filter_used) if filter_used else None,
         "layer_filter_fallback_no_match": fallback,

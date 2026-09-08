@@ -28,8 +28,6 @@ def _password():
 def main() -> int:
     from playwright.sync_api import sync_playwright
 
-    plan = os.path.join(_ROOT, "routes", "제출용[최종]",
-                        "1. 입력도면 대명동 단위세대 평면도.dxf")
     with sync_playwright() as p:
         br = p.chromium.launch()
         pg = br.new_page(viewport={"width": 1500, "height": 950})

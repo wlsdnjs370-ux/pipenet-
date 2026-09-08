@@ -93,13 +93,26 @@ def test_기준을_프로그램이_정하되_반드시_말한다():
     assert re.search(r'\$\("adv-conf"\)\.value\s*=', html[k:k + 1200]) is None
 
 
-def test_확정_지점은_손질이고_되돌릴_수_있다():
-    """D-F10-3 — «확정은 사람» 은 유지, 자리만 손질로 옮겼다."""
+def test_자동_채택은_찍기에서_멈춘다():
+    """★[D-F10-3 개정 · 2026-09-08] 확정 지점이 «찍기» 로 돌아왔다.
+
+    사용자 지시: 「업로드 후 자동까지는 좋은데, 3.손질로 넘어가지 말고 2.찍기로
+    넘어가서 수동 지정하기 더 쉽게」. 자동이 찍은 것을 사람이 손보는 자리는
+    찍기다 — 손질에서 시작하면 무엇이 채택되고 무엇이 유령인지 보려고 다시
+    내려와야 했다.
+
+    «확정은 사람» 이라는 D-F8-5 의 원칙은 그대로다. 자리만 되돌아왔다.
+    """
     html = _screen()
     i = html.index("async function adoptRun(")
     seg = html[i:i + 2200]
-    assert "/api/module-f/pick/commit" in seg
-    assert "「찍기」로 내려가 고칠 수 있습니다" in seg
+    assert "/api/module-f/pick/adopt" in seg
+    # ★조립까지 이어 가지 않는다 — 그것이 이 개정의 알맹이다.
+    assert "/api/module-f/pick/commit" not in seg, "조립까지 이어 간다"
+    assert "「배관망 구성 →」" in seg, "다음에 무엇을 누를지 안 알려 준다"
+    # 조립은 찍기 화면의 그 단추가 맡는다.
+    j = html.index('$("pk-next").onclick')
+    assert "/api/module-f/pick/commit" in html[j:j + 400]
 
 
 # ═══════════════════════════════════════════ 보존 — 합치지 않는다

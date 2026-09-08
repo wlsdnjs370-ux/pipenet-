@@ -1247,8 +1247,14 @@
   //   실시예는 그대로다. 화면에서만 «질문» 이 아니라 «선택» 이 되었다.
   $("adv-auto").onclick = (ev) => { ev.preventDefault(); readSlot("auto"); };
 
-  // 인식 결과를 찍는다 — 채택까지. `to` 가 "edit" 이면 조립까지 이어서 간다.
-  async function adoptRun(lo, to) {
+  // 인식 결과를 찍는다 — **채택까지만.** 조립(배관망 구성)은 사람이 누른다.
+  //
+  // ★[2026-09-08 · 사용자 · D-F10-3 개정] 종전에는 조립까지 이어 돌려 곧바로
+  //   손질로 올라갔다. 그런데 자동이 찍은 것을 사람이 손보는 자리는 «찍기» 다 —
+  //   손질에서 시작하면 무엇이 채택되고 무엇이 유령인지 보려고 다시 내려와야
+  //   했다. 이제 여기서 멈추고, 찍기 화면의 「배관망 구성 →」이 손질로 보낸다.
+  //   («확정은 사람» 이라는 D-F8-5 의 원칙은 그대로고, 그 자리가 되돌아왔다.)
+  async function adoptRun(lo) {
     await post("/api/module-f/pick/adopt", {
       sid: S.sid, materials: true, heads: { conf_min: lo },
     });
@@ -1267,36 +1273,23 @@
         await applyAdopt(r, lo);
         renderPick();
         draw();
-        if (to !== "edit") { resolve(true); return; }
-        // ★조립도 잡이다. 세션 잡은 한 번에 하나이므로 «끝난 뒤» 에 건다.
-        busy(true, "배관망 구성 중…");
-        try {
-          await post("/api/module-f/pick/commit", { sid: S.sid });
-          watch(async () => {
-            await loadEdit();
-            const g = (S.ghosts && S.ghosts.size) || 0;
-            // [F-11a] 어느 규칙으로 채택했는지 배너에도 한 줄 — 사람이 고른
-            //   기억이 없는 길이라 «왜 이만큼인가» 를 화면이 말해야 한다.
-            const a = (S.recon && S.recon.adopt) || null;
-            startNote(`자동 인식 결과로 시작했습니다 — 채택 `
-              + `<b>${num(r.head_applied).toLocaleString()}</b>개`
-              + (g ? ` · 유령 <b>${g.toLocaleString()}</b>개` : "")
-              + ` · 단계바의 「찍기」로 내려가 고칠 수 있습니다.`
-              + (a && !S.confManual ? `<br>${a.why}` : ""));
-            resolve(true);
-          });
-        } catch (err) {
-          busy(false);
-          startNote(`배관망 구성에 실패했습니다 — 찍기에서 고쳐 주세요. `
-            + `(${err.message})`, true);
-          resolve(false);
-        }
+        // 사람이 고른 기억이 없는 길이라, 무엇이 채택됐고 다음에 무엇을
+        // 누르면 되는지를 화면이 말해 준다.
+        const g = (S.ghosts && S.ghosts.size) || 0;
+        // [F-11a] 어느 규칙으로 채택했는지도 한 줄 — «왜 이만큼인가».
+        const a = (S.recon && S.recon.adopt) || null;
+        startNote(`자동 인식 결과를 찍어 뒀습니다 — 채택 `
+          + `<b>${num(r.head_applied).toLocaleString()}</b>개`
+          + (g ? ` · 유령 <b>${g.toLocaleString()}</b>개` : "")
+          + ` · 여기서 확인·수정하고 <b>「배관망 구성 →」</b>을 누르세요.`
+          + (a && !S.confManual ? `<br>${a.why}` : ""));
+        resolve(true);
       });
     });
   }
 
-  // [F-10a · D-F10-1] 업로드 뒤 «질문 0» 으로 손질까지. 못 가면 찍기에서 멈추되
-  //   그것도 묻지 않는다 — 왜 멈췄는지 배너에 적을 뿐이다.
+  // [F-10a · D-F10-1] 업로드 뒤 «질문 0» 으로 찍기까지. 못 가면 그 자리에서
+  //   멈추되 그것도 묻지 않는다 — 왜 멈췄는지 배너에 적을 뿐이다.
   async function autoStart() {
     const gate = reconReady();
     await post("/api/module-f/slot/read", { sid: S.sid, method: "manual" });
@@ -1311,7 +1304,13 @@
     }
     busy(true, "인식 결과를 찍는 중…");
     try {
-      await adoptRun(confMin(), "edit");
+      // ★[2026-09-08 · 사용자] 자동 채택까지만 하고 **찍기에서 멈춘다.**
+      //
+      //   종전에는 조립까지 이어 돌려 곧바로 손질로 올라갔다(D-F10-1). 그런데
+      //   자동이 찍은 것을 사람이 손보는 자리는 «찍기» 다 — 손질에서 시작하면
+      //   무엇이 채택되고 무엇이 유령인지 보려고 다시 내려와야 했다.
+      //   이제 찍기에서 멈추고, 「배관망 구성 →」을 누르면 손질로 간다.
+      await adoptRun(confMin());
     } catch (err) { busy(false); say(err.message, "err"); }
   }
 
@@ -1319,7 +1318,7 @@
   $("adv-readopt").onclick = async () => {
     busy(true, "인식 결과를 다시 찍는 중…");
     try {
-      await adoptRun(confMin(), "pick");
+      await adoptRun(confMin());
     } catch (err) { busy(false); say(err.message, "err"); }
   };
 

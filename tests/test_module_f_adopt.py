@@ -1065,20 +1065,24 @@ def test_라벨은_안_쪼개진다():
     assert "text-overflow:ellipsis" in seg
 
 
-def test_확정_지점이_손질_화면으로_내려갔다():
-    """[D-F10-3] D-F8-5 개정 — «확정은 사람» 은 유지, 그 «자리» 가 옮겨졌다.
+def test_확정_지점이_찍기_화면으로_돌아왔다():
+    """[D-F10-3 개정 · 2026-09-08] «확정은 사람» 은 유지, 그 «자리» 가 돌아왔다.
 
-    예전에는 찍기 화면에서 멈춰 사람이 「배관망 구성」을 눌렀다. 이제 조립까지
-    흘러가고, 확정은 결과(손질) 화면에서 한다. 검토가 필요하면 되돌리기로
-    찍기까지 내려간다 — 그래서 배너가 그 길을 알려야 한다.
+    한때 조립까지 흘려보내 손질에서 확정하게 했었다(D-F8-5 개정). 사용자
+    지시로 되돌린다 — 「업로드 후 자동까지는 좋은데, 3.손질로 넘어가지 말고
+    2.찍기로 넘어가서 수동 지정하기 더 쉽게」.
+
+    자동이 찍은 것을 사람이 손보는 자리는 찍기다. 손질에서 시작하면 무엇이
+    채택되고 무엇이 유령인지 보려고 다시 내려와야 했다.
     """
     html = _script()
     i = html.index("async function adoptRun(")
     seg = html[i:i + 2000]
     assert "/api/module-f/pick/adopt" in seg
-    assert "/api/module-f/pick/commit" in seg, "조립까지 안 간다"
-    assert 'if (to !== "edit")' in seg, "언제 멈출지 고를 수 없다"
-    assert "「찍기」로 내려가 고칠 수 있습니다" in seg, "되돌릴 길을 안 알린다"
+    assert "/api/module-f/pick/commit" not in seg, "조립까지 이어 간다"
+    assert "「배관망 구성 →」" in seg, "다음에 무엇을 누를지 안 알린다"
+    # 멈출 자리가 하나뿐이니 «어디서 멈출까» 를 고르는 매개변수도 없어야 한다.
+    assert "async function adoptRun(lo)" in html, "안 쓰는 갈래가 남았다"
 
 
 def test_기본_흐름은_수동_경로를_쓴다():

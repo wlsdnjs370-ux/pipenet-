@@ -2894,11 +2894,14 @@
     if (!box) return;
     const c = (d && d.counts) || null;
     if (!c) { box.innerHTML = ""; return; }
+    // 색이 «어느 도면» 이 아니라 «물길의 상하류» 라는 것을 범례가 말한다
+    // (모듈 A 와 같은 규약) — 짙은 물색이 상류, 옅어질수록 하류다.
     box.innerHTML =
-      `<span style="color:${MERGE_COLOR.plan}">■</span> 평면도 ${c.plan}`
-      + ` · <span style="color:${MERGE_COLOR.system}">■</span> 계통도 ${c.system}`
-      + ` · <span style="color:${MERGE_COLOR.machineroom}">■</span> 기계실`
+      `<span style="color:${MERGE_COLOR.machineroom}">■</span> 기계실(상류)`
       + ` ${c.machineroom}`
+      + ` · <span style="color:${MERGE_COLOR.system}">■</span> 계통도 ${c.system}`
+      + ` · <span style="color:${MERGE_COLOR.plan}">■</span> 평면도(하류)`
+      + ` ${c.plan}`
       + ` · <span style="color:${MERGE_COLOR.seam}">■</span> 이음매 배관`
       + ` ${c.seam}`
       + (c.anchor && c.anchor.length
@@ -4326,22 +4329,67 @@
     ctx.stroke();
   }
 
-  // 결합망 색 — 세 도면을 갈라 보이려면 색이 규약이어야 한다(범례와 같은 값).
+  // ★결합망 색 — 모듈 A 통합과 **같은 물 팔레트**를 쓴다.
+  //
+  //   [2026-09-08 · 사용자] 「통합쪽 배관망 디자인은 이전 버전으로. 이전
+  //   디자인이 더 좋아.」 — «이전 버전» 은 예전부터 쓰던 모듈 A 통합 화면이다.
+  //   거기서는 색이 «어느 도면» 이 아니라 **물길의 상하류**를 말한다:
+  //   상류(기계실)가 짙고 하류(헤드)로 갈수록 옅어져 흐름이 색으로 읽히고,
+  //   AV(빨강)만 유일한 유채 경고색이다. 값은 모듈 A 의 WATER/GRAPH_STYLE
+  //   그대로다 — 두 화면이 다른 색을 쓰면 같은 망이 다른 그림이 된다.
+  const WATER = {
+    deep: "#0369a1",      // 상류 관수로 — 짙은 물색 (기계실)
+    shallow: "#7dd3fc",   // 말단 가지 — 옅은 물색 (라이저·계통도)
+    crest: "#f0f9ff",     // 물마루 (수원·시작 노드)
+    spray: "#22d3ee",     // 방수 중인 헤드 (평면 가지배관)
+    halo: "#a5f3fc",      // 살수 링 (밸브·연결점)
+  };
   const MERGE_COLOR = {
-    plan: "#5b8def", system: "#22c55e",
-    machineroom: "#eab308", seam: "#f97316",
+    plan: WATER.spray, system: WATER.shallow,
+    machineroom: WATER.deep, seam: "#ef4444",
+  };
+  const MERGE_STYLE = {
+    pipe_width: 2.2, endpoint_radius: 8, endpoint_stroke: 2.5,
+    mid_radius: 4, mid_stroke: 1.5,
+    label_font: "bold 12px ui-monospace, monospace",
+    label_color: "#e0f2fe", label_offset: 12,
   };
 
-  /** 결합된 배관망 — 평면도·계통도·기계실을 한 그림에. */
+  /** 절점 하나 — 흰 외곽 + 채움 + (끝점이면) 라벨. 모듈 A 와 같은 손. */
+  function drawMergeNode(sx, sy, role, fill, tag) {
+    const r = role === "endpoint"
+      ? MERGE_STYLE.endpoint_radius : MERGE_STYLE.mid_radius;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = role === "endpoint"
+      ? MERGE_STYLE.endpoint_stroke : MERGE_STYLE.mid_stroke;
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = fill;
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+    if (role === "endpoint" && tag) {
+      ctx.fillStyle = MERGE_STYLE.label_color;
+      ctx.font = MERGE_STYLE.label_font;
+      ctx.fillText(tag, sx + MERGE_STYLE.label_offset, sy + 5);
+    }
+  }
+
+  /** 결합된 배관망 — 모듈 A 통합과 같은 손으로 그린다.
+
+      ★색은 «어느 도면» 이 아니라 **물길의 상하류**를 말한다(모듈 A 규약):
+        기계실(짙은 물색) → 라이저(옅은 물색) → 평면 가지(청록). 흐름이 색으로
+        읽히고, 이음매·AV 만 빨강이라 눈이 거기로 간다.
+
+      그리는 차례도 같다 — 기계실 평면(가는 선) → 배관(상류→하류) → 절점 →
+      기기. 뒤에 그린 것이 위에 남으므로 «사람이 확인할 것» 이 맨 위다. */
   function drawMerged() {
     const v = S.mergeView;
     if (!v || !v.nodes || !v.nodes.length) return;
     const at = {};
     for (const n of v.nodes) at[n.label] = n;
-    // 기계실 평면 배관망은 SDF 에 없는 «보기» 자료다 — 아주 흐리게 깔아
-    // 실측 배관과 구별한다(통합해 그리지 않는다).
+
+    // ① 기계실 평면 배관망 — SDF 에 없는 «보기» 자료다. 가는 선으로 먼저 깔고
+    //    그 위에 수리경로(spine)를 굵게 덮어 «어느 길이 계산에 들어갔나» 를 낸다.
     ctx.save();
-    ctx.globalAlpha = 0.25;
+    ctx.globalAlpha = 0.5;
     ctx.strokeStyle = MERGE_COLOR.machineroom;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -4352,50 +4400,55 @@
     ctx.stroke();
     ctx.restore();
 
+    // ② 배관 — 상류부터 그려 하류가 위에 남게 한다(겹칠 때 헤드 쪽이 보인다).
+    const group = { machineroom: [], system: [], plan: [], seam: [] };
     for (const p of v.pipes) {
       const a = at[p.a], b = at[p.b];
-      if (!a || !b) continue;
-      const seam = p.part === "seam";
-      ctx.strokeStyle = MERGE_COLOR[p.part] || MERGE_COLOR.plan;
-      ctx.lineWidth = seam ? 3.2 : 1.6;
+      if (a && b) (group[p.part] || group.plan).push([a, b]);
+    }
+    for (const kind of ["machineroom", "system", "plan", "seam"]) {
+      const rows = group[kind];
+      if (!rows.length) continue;
+      ctx.strokeStyle = MERGE_COLOR[kind];
+      ctx.lineWidth = kind === "seam" ? 3.5 : MERGE_STYLE.pipe_width;
       ctx.beginPath();
-      ctx.moveTo(sx(a.x), sy(a.y));
-      ctx.lineTo(sx(b.x), sy(b.y));
+      for (const [a, b] of rows) {
+        ctx.moveTo(sx(a.x), sy(a.y));
+        ctx.lineTo(sx(b.x), sy(b.y));
+      }
       ctx.stroke();
     }
-    // 기호 — 노즐(헤드) · 펌프 · 밸브 · 접속점. 어디가 무엇인지 보여야
-    // «세 도면이 제대로 이어졌나» 를 사람이 판단할 수 있다.
+
+    // ③ 절점 — 끝점(수원·기준점·라이저 시작)만 크게, 나머지는 작게.
+    //    색은 그 절점이 선 자리의 물색이다(배관과 같은 규약).
     for (const n of v.nodes) {
       const px = sx(n.x), py = sy(n.y);
-      if (n.head) {
-        ctx.fillStyle = "rgba(248,113,113,.5)";
-        ctx.strokeStyle = "#ef4444";
-        ctx.beginPath(); ctx.arc(px, py, 3.2, 0, Math.PI * 2);
-        ctx.fill(); ctx.stroke();
+      const isEnd = !!(n.input || n.anchor || n.pump);
+      const fill = n.input ? WATER.crest
+        : n.anchor ? MERGE_COLOR.seam
+        : n.valve ? WATER.halo
+        : MERGE_COLOR[n.part] || MERGE_COLOR.plan;
+      const tag = n.input ? "수원" : n.anchor ? `기준점 ${n.label}`
+        : n.pump ? "펌프" : null;
+      // 헤드는 수가 많아 점만 찍는다 — 원을 다 그리면 가지가 안 보인다.
+      if (n.head && !isEnd) {
+        ctx.fillStyle = MERGE_COLOR.plan;
+        ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2); ctx.fill();
+        continue;
       }
-      if (n.anchor) {
-        // ★기준점 — 세 도면이 만나는 그 한 점(특허 S740). 결합이 제대로
-        //   됐는지는 결국 여기를 보고 판단한다.
-        ctx.strokeStyle = MERGE_COLOR.seam;
-        ctx.lineWidth = 2.4;
-        ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(px - 15, py); ctx.lineTo(px + 15, py);
-        ctx.moveTo(px, py - 15); ctx.lineTo(px, py + 15);
-        ctx.stroke();
-        ctx.fillStyle = MERGE_COLOR.seam;
-        ctx.font = "11px sans-serif";
-        ctx.fillText(`기준점 ${n.label}`, px + 16, py + 14);
-      }
-      if (n.valve || n.pump || n.input) {
-        ctx.strokeStyle = n.pump ? "#a855f7" : (n.input ? "#22d3ee" : "#c86bff");
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = ctx.strokeStyle;
-        ctx.font = "10px sans-serif";
-        ctx.fillText(n.pump ? "펌프" : (n.input ? "접속점" : "밸브"),
-                     px + 9, py - 6);
-      }
+      drawMergeNode(px, py, isEnd ? "endpoint" : "mid", fill, tag);
+    }
+
+    // ④ 펌프 — 있으면 P 로. 실제 펌프는 기계실에 삽입되는 요소다.
+    for (const n of v.nodes) {
+      if (!n.pump) continue;
+      const px = sx(n.x), py = sy(n.y);
+      ctx.strokeStyle = WATER.crest;
+      ctx.fillStyle = WATER.crest;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.font = "bold 9px ui-monospace";
+      ctx.fillText("P", px - 3, py + 3);
     }
     ctx.lineWidth = 1;
   }

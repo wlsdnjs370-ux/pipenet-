@@ -344,3 +344,45 @@ def test_결합망이_없으면_굽지_않는다():
     from routes.module_f.merge import bake_combined_iso, merge_network
     got = merge_network(_sample(), mode="lsp_gravity")   # 계통도 없음
     assert bake_combined_iso(got) == ([], [])
+
+
+# ─────────────────────────────── 그리는 손 [2026-09-08 · 사용자]
+def test_결합망은_모듈A_물_팔레트를_쓴다():
+    """★사용자: 「통합쪽 배관망 디자인은 이전 버전으로. 이전 디자인이 더 좋아.」
+
+    «이전 버전» 은 예전부터 쓰던 모듈 A 통합 화면이다. 거기서 색은 «어느
+    도면» 이 아니라 **물길의 상하류**를 말한다 — 상류(기계실)가 짙고
+    하류(헤드)로 갈수록 옅어진다. 값이 갈리면 같은 망이 두 화면에서 다른
+    그림이 되므로 모듈 A 의 WATER 를 그대로 쓴다.
+    """
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    a = open(os.path.join(_ROOT, "templates", "remote30_prototype.html"),
+             encoding="utf-8").read()
+    for key in ("#0369a1", "#7dd3fc", "#22d3ee", "#f0f9ff", "#a5f3fc"):
+        assert key in js, f"모듈 F 에 물 팔레트 {key} 가 없다"
+        assert key in a, f"모듈 A 에 {key} 가 없다 — 전제가 깨졌다"
+    i = js.index("const MERGE_COLOR = {")
+    seg = js[i:i + 220]
+    assert "WATER.deep" in seg and "WATER.spray" in seg, seg
+    assert "machineroom: WATER.deep" in seg, "기계실이 최상류(짙은 물색)가 아니다"
+
+
+def test_상류부터_그려_하류가_위에_남는다():
+    """겹칠 때 헤드 쪽이 보여야 한다 — 모듈 A 와 같은 차례."""
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    i = js.index("  function drawMerged()")
+    src = js[i:js.index("\n  }\n", i) + 4]
+    order = '["machineroom", "system", "plan", "seam"]'
+    assert order in src, src[:200]
+
+
+def test_절점은_흰_외곽에_채움이다():
+    """모듈 A 의 `_drawGraphNode` 와 같은 손 — 끝점만 크게·라벨."""
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    i = js.index("  function drawMergeNode(")
+    src = js[i:js.index("\n  }\n", i) + 4]
+    assert '"#ffffff"' in src and "endpoint_radius" in src
+    assert "MERGE_STYLE.label_offset" in src

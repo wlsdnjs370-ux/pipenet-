@@ -9,15 +9,15 @@
   "formats": {
     "has": {
       "nozzles": 2,
-      "total_m": 155.858
+      "total_m": 183.463
     },
     "kfp": {
       "nozzles": 2,
-      "total_m": 155.858
+      "total_m": 183.463
     },
     "sdf": {
       "nozzles": 2,
-      "total_m": 155.858
+      "total_m": 183.463
     }
   },
   "riser": {

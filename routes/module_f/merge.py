@@ -344,6 +344,10 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
                     if str(n.get("label")) not in mr]
     return {"combined": combined, "head_tables": ht, "attached": attached,
             "mode": mode, "steps": steps,
+            # 기계실 평면이 라이저에 붙는 그 노드 — 아이소로 굽을 때 기계실
+            # 군집을 어디에 다시 맞출지의 기준이다.
+            "pump_junction": (str(rt.nodes[0].get("label"))
+                              if (attached and rt.nodes) else None),
             "parts": {"plan": [str(n.get("label")) for n in ht.nodes],
                       "system": riser_labels,
                       "machineroom": sorted(mr)}}

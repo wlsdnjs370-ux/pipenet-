@@ -279,6 +279,34 @@ def main() -> int:
                          : null; }""")
             check("★결합망이 화면에 그려진다",
                   bool(mv and mv["n"] and painted() > 500), str(mv))
+            # ★라이저 그림이 표를 따르는가 — 수직 · 길이 비례 (2026-09 교정).
+            rz = pg.evaluate("""() => { const v = window.__mf.mergeView;
+                if (!v) return null;
+                const at = {}; for (const n of v.nodes) at[n.label] = n;
+                const part = {}; for (const n of v.nodes) part[n.label] = n.part;
+                const xs = new Set(v.nodes.filter(n => n.part === 'system')
+                                   .map(n => Math.round(n.x)));
+                const rows = v.pipes
+                  .filter(p => part[p.a] === 'system' && part[p.b] === 'system')
+                  .map(p => [p.len_m || 0, Math.hypot(at[p.a].x - at[p.b].x,
+                                                      at[p.a].y - at[p.b].y)]);
+                const t1 = rows.reduce((s, r) => s + r[0], 0) || 1;
+                const t2 = rows.reduce((s, r) => s + r[1], 0) || 1;
+                const bad = rows.filter(
+                  r => Math.abs(r[0] / t1 - r[1] / t2) > 0.021).length;
+                return {xkinds: xs.size, bad, n: rows.length}; }""")
+            check("라이저가 수직 · 길이가 표에 비례한다",
+                  bool(rz and rz["xkinds"] == 1 and rz["bad"] == 0), str(rz))
+            pg.check("#mg-iso")
+            pg.wait_for_timeout(1200)
+            rz2 = pg.evaluate("""() => { const v = window.__mf.mergeView;
+                if (!v) return null;
+                const xs = new Set(v.nodes.filter(n => n.part === 'system')
+                                   .map(n => Math.round(n.x)));
+                return xs.size; }""")
+            check("아이소에서도 라이저가 수직이다", rz2 == 1, f"x 종류 {rz2}")
+            pg.uncheck("#mg-iso")
+            pg.wait_for_timeout(800)
             print(f"      결합망: {mv} · 칠해진 픽셀 {painted()}")
             print(f"      범례: {' '.join(pg.inner_text('#mg-legend').split())}")
             pg.check("#mg-iso")

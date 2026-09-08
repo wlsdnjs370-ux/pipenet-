@@ -197,19 +197,73 @@ def register(app, *, UPLOAD_DIR):
                      | {str(x) for x in (parts.get("machineroom") or ())}))
 
         nodes = [dict(n) for n in (c.nodes or ())]
+        mr_edges = [list(map(float, e)) for e in
+                    (getattr(c, "machine_room_plan_edges", None) or ())]
         iso = (request.args.get("iso") or "0") in ("1", "true", "True", "on")
         if iso:
             try:
                 zs = float(request.args.get("iso_z_scale") or 1.0)
             except (TypeError, ValueError):
                 zs = 1.0
-            from routes.r30_combined import _bake_isometric_node_coords
-            # 라이저·기계실은 schematic y 가 이미 수직을 담고 있다 — lift 를
-            # 또 더하면 이중부호로 구부러진다(모듈 A 와 같은 규칙).
-            no_lift = {lab for lab, k in of.items()
-                       if k in ("system", "machineroom")}
-            _bake_isometric_node_coords(nodes, zs, no_lift_labels=no_lift,
-                                        ref_label=ANCHOR_LABEL)
+            # ★부위마다 «맞는» 투영이 다르다 — 한 식으로 다 굽으면 깨진다.
+            #
+            #   · 평면도: 평면이니 30° 회전 + 표고 lift. lift 는 평면과 같은 자
+            #     (1 m = 1000, §T3 좌표가 mm) — 설계 화면과 같은 규칙이다.
+            #   · 계통도(라이저): schematic y 가 이미 **수직**이다. 회전을
+            #     먹이면 수직 막대가 사선이 된다(실측: x 퍼짐 1,732 — 사용자
+            #     지적 「계통도가 기울어져 있다」). 기준점의 아이소 위치에
+            #     평면 오프셋을 그대로 얹어 수직으로 세운다.
+            #   · 기계실: 평면 군집이니 회전하되, 접속점(펌프 junction)이
+            #     라이저의 «새» 자리에 그대로 붙도록 평행이동한다 — 안 하면
+            #     이음매가 찢어진다.
+            COS30, SIN30 = 0.8660254037844387, 0.5
+
+            def _rot(x, y):
+                return ((x - y) * COS30, (x + y) * SIN30)
+
+            at0 = {str(n.get("label")): (float(n.get("x", 0) or 0),
+                                         float(n.get("y", 0) or 0))
+                   for n in nodes}
+            ax, ay = at0.get(ANCHOR_LABEL, (0.0, 0.0))
+            a_iso = _rot(ax, ay)
+            e_ref = next((float(n.get("elevation", 0) or 0) for n in nodes
+                          if str(n.get("label")) == ANCHOR_LABEL), 0.0)
+            lift = 1000.0 * zs
+
+            pj = got.get("pump_junction")
+            pj_xy = at0.get(str(pj)) if pj else None
+            shift = (0.0, 0.0)
+            if pj_xy is not None:
+                # 펌프 junction 은 라이저 규칙으로 옮겨진다 — 그 새 자리와
+                # 평면 회전 자리의 차가 기계실 군집의 평행이동이다.
+                new_pj = (a_iso[0] + (pj_xy[0] - ax),
+                          a_iso[1] + (pj_xy[1] - ay))
+                rot_pj = _rot(*pj_xy)
+                shift = (new_pj[0] - rot_pj[0], new_pj[1] - rot_pj[1])
+
+            for n in nodes:
+                lab = str(n.get("label"))
+                x = float(n.get("x", 0) or 0)
+                y = float(n.get("y", 0) or 0)
+                kind = of.get(lab, "plan")
+                if kind == "system":
+                    n["x"] = a_iso[0] + (x - ax)
+                    n["y"] = a_iso[1] + (y - ay)
+                elif kind == "machineroom":
+                    rx, ry = _rot(x, y)
+                    n["x"] = rx + shift[0]
+                    n["y"] = ry + shift[1]
+                else:
+                    rx, ry = _rot(x, y)
+                    e = float(n.get("elevation", 0) or 0)
+                    n["x"] = rx
+                    n["y"] = ry + (e - e_ref) * lift
+            mr_edges = []
+            for e in (getattr(c, "machine_room_plan_edges", None) or ()):
+                r1 = _rot(float(e[0]), float(e[1]))
+                r2 = _rot(float(e[2]), float(e[3]))
+                mr_edges.append([r1[0] + shift[0], r1[1] + shift[1],
+                                 r2[0] + shift[0], r2[1] + shift[1]])
 
         heads = {str(r.get("in")) for r in (c.nozzles or ())}
         pumps = {str(r.get("in")) for r in (c.pumps or ())}
@@ -249,9 +303,7 @@ def register(app, *, UPLOAD_DIR):
             "ok": True, "iso": iso,
             "view": {"nodes": out_nodes, "pipes": out_pipes,
                      # 기계실 평면 배관망 — SDF 에는 없고 «보기» 로만 쓴다.
-                     "mr_plan_edges": [list(map(float, e)) for e in
-                                       (getattr(c, "machine_room_plan_edges",
-                                                None) or ())]},
+                     "mr_plan_edges": mr_edges},
             "counts": {"plan": sum(1 for n in out_nodes
                                    if n["part"] == "plan"),
                        "system": sum(1 for n in out_nodes

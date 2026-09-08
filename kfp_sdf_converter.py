@@ -1380,7 +1380,21 @@ def sdf_root_to_network(root: ET.Element) -> CommonNetwork:
     if _ratios:
         _ratios.sort()
         _med = _ratios[len(_ratios) // 2]
-        if 0.7 <= _med <= 1.5:
+        # ★중앙값 하나로 정하면 안 된다 — 실측 사고가 있었다(2026-09).
+        #   모듈 F 결합 SDF 는 스키매틱 좌표인데(비가 0.02~200 으로 제각각)
+        #   중앙값만 우연히 1 근처에 떨어져, 이 분기가 **선언 길이 58개를
+        #   전부 좌표거리로 갈아치웠다**(9.735 m → 0.047 m · 총연장
+        #   183.5 → 155.9 m). 그 길이가 KFP·HAS 수리계산 입력으로 그대로
+        #   나갔다 — 화면에서 「계통도 길이가 쪼개져 깨졌다」로 보인 그것이다.
+        #
+        #   진짜 실미터 SDF(KFP→SDF 왕복)는 «좌표거리 == length_m» 이 구성으로
+        #   성립해 비가 **사실상 전부 1.000** 에 몰린다. 그러니 좌표를 믿는
+        #   조건은 «거의 모든(95%) 배관에서 좌표가 선언과 이미 일치» 다 —
+        #   그때 덮어쓰기는 미세 보정이지 교체가 아니다. 80% 로 느슨히 걸어
+        #   봤더니 결합 SDF 가 여전히 뚫렸다(비례 배치 탓에 다수가 우연히
+        #   1 근처): 그 «맞는 다수» 뒤에서 틀린 11개가 27.6 m 를 지웠다.
+        _in_win = sum(1 for _r in _ratios if 0.9 <= _r <= 1.1)
+        if 0.9 <= _med <= 1.1 and _in_win >= 0.95 * len(_ratios):
             for _cp in net.pipes.values():
                 _sn = net.nodes.get(_cp.start); _en = net.nodes.get(_cp.end)
                 if _sn is None or _en is None:

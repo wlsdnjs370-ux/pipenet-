@@ -187,3 +187,98 @@ def test_범례가_세_도면을_말한다():
     for word in ("평면도", "계통도", "기계실", "이음매"):
         assert word in src, word
     assert "보기 전용" in src, "아이소가 보기 전용이라는 말이 없다"
+
+
+# ─────────────────────────────── 그림의 정확성 [2026-09-08 후속]
+def _riser_uneven(n: int = 8):
+    """길이가 서로 다른 입상관 — 균등 배치면 비례가 깨지는 것이 보이게."""
+    labels = ["1"] + [f"n{i}" for i in range(2, n)] + ["10"]
+    lens = [4.0, 0.3, 3.5, 0.5, 4.0, 0.2, 2.5][: n - 1]
+    nodes = [{"label": lab, "x": 0, "y": i * 1000, "elevation": float(i)}
+             for i, lab in enumerate(labels)]
+    nodes[0]["io_node"] = "Input"
+    pipes = [{"label": f"r{i}", "in": labels[i], "out": labels[i + 1],
+              "dia": 100, "length": lens[i]} for i in range(n - 1)]
+    return {"nodes": nodes, "pipes": pipes, "av_node_label": "10"}
+
+
+def _merge_uneven():
+    from routes.module_f.merge import merge_network
+    return merge_network(_sample(), riser=_riser_uneven(),
+                         mode="lsp_gravity")
+
+
+def test_라이저_구간이_표_길이에_비례한다():
+    """★사용자 지적: 「계통도 쪽 길이가 많이 쪼개져서 깨져 있어」.
+
+    `_layout_riser_as_schematic` 이 균등 간격이라 4 m 층과 0.3 m 밸브 구간이
+    같은 길이로 그려졌다(실측: 전 구간 13.6%). 막대 전체 길이(화면 맞춤
+    압축)는 그대로 두고 안의 비례만 표를 따르게 했다.
+    """
+    import math
+    got = _merge_uneven()
+    c = got["combined"]
+    at = {str(n["label"]): (float(n["x"]), float(n["y"])) for n in c.nodes}
+    sysset = set(got["parts"]["system"])
+    rows = []
+    for p in c.pipes:
+        a, b = str(p.get("in")), str(p.get("out"))
+        if (a in sysset or b in sysset) and a in at and b in at:
+            rows.append((float(p.get("length") or 0), math.dist(at[a], at[b])))
+    t1 = sum(r[0] for r in rows)
+    t2 = sum(r[1] for r in rows)
+    for ln, dr in rows:
+        assert abs(ln / t1 - dr / t2) <= 0.021, (ln, dr)
+
+
+def test_라이저는_평면에서_수직_막대다():
+    got = _merge_uneven()
+    at = {str(n["label"]): float(n["x"]) for n in got["combined"].nodes}
+    xs = {at[lab] for lab in got["parts"]["system"] if lab in at}
+    assert len(xs) == 1, xs
+
+
+def test_아이소에서도_라이저가_수직으로_남는다():
+    """★사용자 지적: 「계통도도 수직으로 표현되어야 하는데 기울어져 있고」.
+
+    schematic y 가 이미 수직인데 평면 회전을 그대로 먹이면 막대가 사선이
+    된다(실측: x 퍼짐 1,732). 부위마다 맞는 투영을 쓴다 — 평면도는 회전+lift,
+    라이저는 기준점의 아이소 위치에 평면 오프셋을 그대로 얹는다.
+    """
+    import math
+    c = _client()
+    sid, sess = _sid(c)
+    sess["merged"] = _merge_uneven()
+    v = c.get(f"/api/module-f/merge/preview?sid={sid}&iso=1").get_json()["view"]
+    at = {n["label"]: (n["x"], n["y"]) for n in v["nodes"]}
+    part = {n["label"]: n["part"] for n in v["nodes"]}
+    xs = {round(at[lab][0], 6) for lab in at if part[lab] == "system"}
+    assert len(xs) == 1, f"아이소에서 라이저가 기울었다: {sorted(xs)[:4]}"
+    # 비례도 아이소에서 그대로다(수직 평행이동은 길이를 안 바꾼다).
+    rows = [(float(p.get("len_m") or 0), math.dist(at[p["a"]], at[p["b"]]))
+            for p in v["pipes"]
+            if part.get(p["a"]) == "system" and part.get(p["b"]) == "system"]
+    t1 = sum(r[0] for r in rows)
+    t2 = sum(r[1] for r in rows)
+    for ln, dr in rows:
+        assert abs(ln / t1 - dr / t2) <= 0.021, (ln, dr)
+
+
+def test_아이소에서_평면_헤드는_표고만큼_선다():
+    """평면도 절점은 회전 + 표고 lift — 자는 평면과 같은 1 m = 1000."""
+    c = _client()
+    sid, sess = _sid(c)
+    sess["merged"] = _merge_uneven()
+    v = c.get(f"/api/module-f/merge/preview?sid={sid}&iso=1").get_json()["view"]
+    at = {n["label"]: n for n in v["nodes"]}
+    # 표본 fixture 의 평면 절점은 전부 표고 0 — lift 항이 0 이어야 한다.
+    C30, S30 = 0.8660254037844387, 0.5
+    plain = _merge_uneven()["combined"]
+    at0 = {str(n["label"]): (float(n["x"]), float(n["y"]))
+           for n in plain.nodes}
+    for lab, n in at.items():
+        if n["part"] != "plan" or lab not in at0:
+            continue
+        x, y = at0[lab]
+        assert abs(n["x"] - (x - y) * C30) < 1e-6
+        assert abs(n["y"] - (x + y) * S30) < 1e-6

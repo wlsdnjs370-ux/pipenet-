@@ -412,6 +412,14 @@ def register(app):
         sess["worst"] = w
         sess["worst_zones"] = w["zones"]      # 다시 누를 때 같은 영역을 쓴다
         sess["worst_k"] = k                   # [F-10b] 원클릭이 이 값을 쓴다
+        # ★수리계산 설정의 K 도 **여기서 같이 맞춘다.** 기준개수는 손질에서
+        #   정하는 값 하나뿐이고(화면의 입력칸도 하나다), 표는 그 선정으로
+        #   만든다. 세션에 옛 K 가 남아 있으면 화면이 K=30 을 보여 주는데 표는
+        #   K=20 으로 도는 일이 생긴다 — 두 곳이 다른 말을 하는 그 자리다.
+        ds = dict(sess.get("design_settings") or {})
+        if ds:
+            ds["k"] = k
+            sess["design_settings"] = ds
         sess["worst_edits"] = 0               # [F-10d] 배지를 0 으로 되돌린다
         # 다시 계산이 «같은 조건» 으로 돌 수 있게 기억한다 — 사람이 K·영역·
         # 급수원을 다시 고르게 하면 그것 자체가 새 결정이 된다.

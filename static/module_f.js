@@ -714,8 +714,12 @@
   // 슬롯에서 보든 맨 끝에 붙는다.
   // 평면도는 방식에 따라 밟는 단계가 통째로 다르다. 자동은 찍기·손질·변환이
   // 없다 — 알람밸브와 영역만 정하면 검출이 표까지 낸다.
+  // ★4↔5 를 맞바꿨다. 변환은 «수리계산 표» 를 재료로 쓴다 — 최불리 .kfp 는
+  //   선정을, 최불리 .sdf 는 확정된 표를 요구하고, 서버도 그렇게 답한다
+  //   (`convert/run` → "표 확정을 먼저"). 앞 단계가 뒤 단계의 산출을 부르는
+  //   회로였다. 이제 재료가 먼저 나고, 변환은 그것을 파일로 낸다.
   const STAGE_FLOW = {
-    plan: ["open", "pick", "edit", "conv", "design"],
+    plan: ["open", "pick", "edit", "design", "conv"],
     plan_auto: ["open", "auto", "design"],
     system: ["open", "sub"],
     machineroom: ["open", "sub"],
@@ -749,7 +753,9 @@
     //   곳이 그것뿐이라서다. (자동 차선을 고급에서 고르면 그때 갈린다.)
     if (S.slot === "plan" && !S.method) return ["open"];
     const key = (S.slot === "plan" && S.method === "auto") ? "plan_auto" : S.slot;
-    return (STAGE_FLOW[key] || STAGE_FLOW.plan).concat(["merge"]);
+    // 통합은 붙이지 않는다 — 세 슬롯이 모두 같은 곳으로 가므로 «단계» 가
+    // 아니라 목적지다. 머리말의 「통합 · 결합」 단추 하나가 그 자리다.
+    return (STAGE_FLOW[key] || STAGE_FLOW.plan).slice();
   }
 
   // 지금 갈 수 있는 단계인가 — 재료가 없는 곳으로 보내면 빈 화면만 나온다.
@@ -781,6 +787,14 @@
       if (ok) el.onclick = () => gotoStage(k);
       box.appendChild(el);
     });
+    renderMergeTab();
+  }
+
+  /** 머리말의 «통합 · 결합» — 단계바 밖에 있어도 지금 여기임을 보여야 한다. */
+  function renderMergeTab() {
+    const b = $("btn-merge");
+    if (!b) return;
+    b.classList.toggle("on", S.stage === "merge");
   }
 
   // 단계바를 눌러 오갈 수 있게 한다 — 「어디로 가려면 어느 단추를 눌러야
@@ -791,11 +805,23 @@
       if (name === "merge") { await loadMerge(); return; }
       if (name === "sub") { await loadSub(); return; }
       if (name === "auto") { await loadAuto(); return; }
-      if (name === "design") { setStage("design"); await designPreview(); return; }
+      if (name === "design") {
+        setStage("design");
+        renderDesignK();          // «무엇으로 도는가» 를 들어올 때마다 새로
+        await designPreview();
+        return;
+      }
       if (name === "conv") {
         setStage("conv");
         await loadFields();
+        fillConvSources();
         renderConvSummary();
+        renderConvWhy();
+        // 모듈 E 는 이 자리에서 값 입력 대화상자를 띄운다 — 같은 것을 묻되
+        // **한 번만** 묻는다. 단계바를 눌러 오갈 때마다 창이 뜨면 되돌아오는
+        // 길이 성가셔진다(순서를 바꾼 뒤로 이 단계를 다시 밟는 일이 잦다).
+        if (!S.convAsked) { S.convAsked = true; openConvModal(); }
+        say("변환 값을 확인하고 실행하세요. 빈 칸은 기본값으로 갑니다.");
         return;
       }
       setStage(name);
@@ -2575,7 +2601,7 @@
         const d = await api(`/api/module-f/auto/state?sid=${S.sid}`);
         S.autoDone = !!d.done;
         renderAuto(d);
-        $("dg-k").value = k;
+        renderDesignK();
         renderSteps();
         // 뽑힌 망을 받아 와야 나머지를 내리고 이것만 살릴 수 있다.
         await loadAutoView();
@@ -2805,7 +2831,12 @@
     } catch (err) { say(err.message, "err"); }
   }
 
-  $("dg-to-merge").onclick = () => loadMerge();
+  $("btn-merge").onclick = async () => {
+    // 잠그지 않는다 — 잠긴 채 침묵하면 «고장» 으로 읽힌다(결합 단추에서 이미
+    // 한 번 겪었다). 못 갈 때는 왜 못 가는지 말한다.
+    if (!S.sid) { say("먼저 도면을 여세요 — 통합은 그 뒤에 엽니다.", "warn"); return; }
+    try { await loadMerge(); } catch (err) { say(err.message, "err"); }
+  };
 
   $("sub-pick-a").onclick = () => armSub(0);
   $("sub-pick-b").onclick = () => armSub(1);
@@ -3545,9 +3576,9 @@
       setEdit(d.state);
       renderEdit();
       startPulse();              // [F-10c] 원클릭과 같은 연출 — 길만 다르다
-      // 수리계산 단계도 같은 K 로 돈다 — 두 곳이 갈리면 손질에서 본 30개와
-      // 표에 실린 K 가 달라져 「어느 쪽이 설계면적인가」 가 사라진다.
-      $("dg-k").value = k;
+      // 수리계산 단계도 같은 K 로 돈다 — 이제 «맞춰 주는» 것이 아니라 칸이
+      // 하나뿐이라 갈릴 수가 없다. 화면 표시만 새로 적는다.
+      renderDesignK();
       const s = d.summary;
       say(`최불리 ${s.k} 헤드 — 후보 ${s.candidates}개 중 · `
         + `최원 유하거리 ${s.far_m} m (경로 ${s.worst_path_m} m)`
@@ -3583,10 +3614,10 @@
     } catch (err) { say(err.message, "err"); }
   };
 
-  $("ed-next").onclick = async () => {
-    setStage("conv");
-    await loadFields();
-    const srcs = S.edit.sources;
+  /** 급수원이 여럿이면 변환에서 하나를 고르게 한다 — 변환 화면에 들어갈
+      때마다 채운다(손질에서 급수원을 더 찍고 와도 목록이 따라온다). */
+  function fillConvSources() {
+    const srcs = (S.edit && S.edit.sources) || [];
     const wrap = $("src-wrap");
     const sel = $("conv-src");
     sel.innerHTML = "";
@@ -3601,13 +3632,13 @@
     } else {
       wrap.classList.add("hidden");
     }
-    // 모듈 E 는 이 단계에서 대화상자를 띄운다 — 같은 자리에서 같은 것을 묻는다.
-    renderConvSummary();
-    openConvModal();
-    say("변환 값을 확인하고 실행하세요. 빈 칸은 기본값으로 갑니다.");
-  };
+  }
 
-  $("btn-back-edit").onclick = () => { setStage("edit"); renderEdit(); };
+  // ★손질 다음은 «수리계산» 이다(변환이 아니다). 변환은 그 표를 파일로 내는
+  //   마지막 단계라, 여기서 곧장 변환으로 보내면 재료가 없는 화면에 떨어진다.
+  $("ed-next").onclick = () => gotoStage("design");
+
+  $("btn-back-design").onclick = () => gotoStage("design");
 
   // ── 4. 변환 ────────────────────────────────────────────────────
   let FIELDS = null;
@@ -3707,6 +3738,39 @@
     box.innerHTML = html;
   }
 
+  /** 지금 무엇을 낼 수 있나 — «없는 재료» 를 이름으로 말한다.
+
+      변환은 앞 단계의 산출을 재료로 쓴다: 최불리 .kfp 는 «최불리 선정»,
+      최불리 .sdf 는 «표 확정». 없으면 서버가 거절하는데, 화면이 아무 말도
+      안 하면 그 거절이 «고장» 으로 읽힌다. 순서를 바로잡은 김에 무엇이
+      남았는지도 이 자리에서 말한다. */
+  function convMissing() {
+    const out = [];
+    const worst = !!(S.edit && S.edit.worst);
+    if (($("cv-worst-kfp") || {}).checked && !worst) {
+      out.push("손질의 «최불리 선정»");
+    }
+    if (($("cv-worst-sdf") || {}).checked && !(S.design && S.design.tables)) {
+      out.push("수리계산의 «표 확정»");
+    }
+    return out;
+  }
+
+  function renderConvWhy() {
+    const box = $("cv-why");
+    if (!box) return;
+    const miss = convMissing();
+    box.classList.toggle("warn", miss.length > 0);
+    box.innerHTML = miss.length
+      ? `아직 <b>${miss.join("</b>, <b>")}</b> 가 없습니다 — 그 산출물은`
+        + ` 건너뜁니다. 앞 단계에서 먼저 만드세요.`
+      : "고른 산출물을 낼 재료가 모두 있습니다.";
+  }
+
+  for (const id of ["cv-full-kfp", "cv-worst-kfp", "cv-worst-sdf"]) {
+    $(id).onchange = renderConvWhy;
+  }
+
   $("btn-conv-fields").onclick = () => openConvModal();
   $("conv-ok").onclick = () => {
     try { readDto(); }        // 숫자가 아니면 닫지 않는다 — 창 안에서 고치게
@@ -3749,15 +3813,23 @@
       say("산출물을 하나도 고르지 않았습니다.", "err");
       return;
     }
+    const miss = convMissing();
+    if (miss.length) {
+      busy(false);
+      renderConvWhy();
+      say(`${miss.join(" · ")} 가 먼저 필요합니다 — 앞 단계에서 만드세요.`,
+          "warn");
+      return;
+    }
     try {
       const d = await post("/api/module-f/convert/run", {
         sid: S.sid, dto, selected_source: selected, outputs,
       });
       if (d && d.ok === false && d.code === "worst_required") {
-        // 막지 않는다 — 최불리 선정이 아직이면 수리계산 패널로 안내한다(D3).
+        // 막지 않는다 — 재료가 없으면 **그것을 만드는 앞 단계** 로 데려간다.
         busy(false);
         say(d.message, "warn");
-        setStage("design");
+        await gotoStage(d.message.indexOf("손질") >= 0 ? "edit" : "design");
         return;
       }
       watch(showConvert);
@@ -3851,9 +3923,29 @@
   // 캔버스는 위의 기존 인프라(S.view·fit·sx/sy)를 그대로 쓴다. 좌표는
   // /design/preview 가 주는 «저장에 쓰는 그 값» 이다 — 여기서 다시 계산하는
   // 순간 미리보기가 거짓말이 된다.
+  /** 지금 도는 기준개수 K — **입력 칸은 앞 단계에 하나뿐이다.**
+
+      종전에는 손질(ed-k)과 수리계산(dg-k)에 칸이 둘이었고, 코드가 최불리를
+      뽑을 때마다 값을 몰래 맞춰 주고 있었다. 맞춰 줘야 한다는 것 자체가
+      «키가 잘못된 자리에 있다» 는 증거다 — 한쪽만 손대면 손질에서 본 30개와
+      표에 실린 K 가 갈린다. */
+  function designK() {
+    const el = S.method === "auto" ? $("au-k") : $("ed-k");
+    return Math.max(1, Math.min(200, Number((el || {}).value || 30)));
+  }
+
+  /** 수리계산 화면에 «무엇으로 도는가» 를 적는다(고치는 자리는 앞 단계다). */
+  function renderDesignK() {
+    const box = $("dg-k-note");
+    if (!box) return;
+    const where = S.method === "auto" ? "자동 추출" : "손질";
+    box.innerHTML = `설계면적 기준개수 <b>K = ${designK()}</b>`
+      + ` · <span class="dim">${where} 단계에서 정합니다</span>`;
+  }
+
   function designSettings() {
     return {
-      k: Number($("dg-k").value || 30),
+      k: designK(),
       schedule: $("dg-sched").value,
       iso: $("dg-iso").checked,
       iso_z_scale: Number($("dg-zscale").value || 1),
@@ -3872,8 +3964,12 @@
     $("dg-build-inputs").classList.toggle("hidden", auto);
     $("dg-build-row").classList.toggle("hidden", auto);
     $("dg-back-auto-row").classList.toggle("hidden", !auto);
-    // 자동은 「변환」 단계를 거치지 않으므로 그 산출물 단추도 뜻이 없다.
-    $("dg-to-merge").classList.toggle("hidden", false);
+    // ★파일 저장은 한 자리에서만 한다. 수동은 다음 단계(변환)가 그 일을 하고,
+    //   자동은 그 단계를 거치지 않으므로(변환은 손질 세션을 요구한다) 여기에
+    //   남긴다. 종전에는 두 자리가 **같은 함수**를 불러 같은 파일을 냈다.
+    $("dg-emit-row").classList.toggle("hidden", !auto);
+    renderDesignK();
+    $("dg-to-conv").classList.toggle("hidden", auto);
   }
 
   $("dg-back-auto").onclick = () => loadAuto();
@@ -3988,6 +4084,9 @@
     // [F-12] 새 표다 — 카드가 옛 내용을 든 채로 남으면 «지금 무엇을 보고
     //   있나» 가 거짓이 된다. sel 을 비우는 것만으로는 DOM 이 안 바뀐다.
     renderInspect();
+    // 표가 아직 없어도 차선(수동/자동)에 따라 보일 단추는 정해져 있다 —
+    // 아래 «미리보기 없으면 조용히 멈춘다» 보다 **먼저** 맞춰 둔다.
+    syncDesignForMethod();
     if (!S.fitKinds) await loadFitKinds();
     // [F-11c] 쓸 수 있는 호칭경도 서버에서 받아 둔다 — 화면이 따로 목록을 들면
     //   규격표가 바뀔 때 둘이 갈린다.
@@ -5510,10 +5609,10 @@
   $("dg-recalc").onclick = async () => {
     busy(true, "고친 망으로 최불리를 다시 계산 중…");
     try {
-      // ★K 는 «이 화면의» 값(dg-k)을 쓴다. 손질의 ed-k 를 쓰면 표가 확정되는
-      //   K 와 최불리 K 가 갈려 「어느 쪽이 설계면적인가」가 사라진다.
+      // K 는 한 곳에서만 온다(designK) — 칸이 둘이던 시절의 «어느 쪽이
+      // 설계면적인가» 문제가 여기서 나던 자리다.
       const sheet = Number(($("ed-sheet") || {}).value || 0);
-      const k = Math.max(1, Math.min(200, Number($("dg-k").value || 30)));
+      const k = designK();
       const body = { sid: S.sid, k, sheet };
       const src = ($("ed-src") || {}).value;
       if (src) body.source = src;
@@ -5539,8 +5638,10 @@
     };
   }
 
-  $("btn-to-design").onclick = () => setStage("design");
-  $("dg-back").onclick = () => setStage("conv");
+  // 손질 ↔ 수리계산 ↔ 변환. 뒤로 가는 단추는 «바로 앞 단계» 를 가리킨다 —
+  // 순서를 바꿨는데 단추가 옛 이웃을 가리키면 회로가 다시 꼬인다.
+  $("dg-back").onclick = () => { setStage("edit"); renderEdit(); };
+  $("dg-to-conv").onclick = () => gotoStage("conv");
 
   $("dg-build").onclick = async () => {
     busy(true, "최불리 선정과 표 확정 중…");

@@ -73,19 +73,22 @@ def register(app, *, UPLOAD_DIR):
             return _fail("산출물을 하나도 고르지 않았습니다.")
         sess["convert_outputs"] = outputs      # 다음에도 같은 선택으로 뜬다
 
-        # 최불리 계열은 선정이 있어야 한다 — 막지 말고 수리계산 패널로 안내.
+        # 최불리 계열은 «앞 단계» 의 산출을 재료로 쓴다 — 막지 말고 그리로
+        # 안내한다. (2026-09: 단계 순서를 손질 → 수리계산 → 변환 으로 바로
+        # 잡았다. 종전에는 변환이 4, 수리계산이 5 여서 앞 단계가 뒤 단계의
+        # 산출을 요구하는 회로였다 — 이 메시지가 그 증거였다.)
         worst = sess.get("worst") or (
             (sess.get("design") or {}).get("got") or {}).get("worst")
         if (outputs["worst_kfp"] or outputs["worst_sdf"]) and not worst:
             return jsonify({
                 "ok": False, "code": "worst_required",
-                "message": "최불리 선정이 아직입니다 — 수리계산 패널에서 "
-                           "「표 확정」을 먼저 눌러 주세요."})
+                "message": "최불리 선정이 아직입니다 — 앞 단계 «손질» 에서 "
+                           "「최불리 선정」을 먼저 누르세요."})
         if outputs["worst_sdf"] and not sess.get("design"):
             return jsonify({
                 "ok": False, "code": "worst_required",
-                "message": "수리계산 입력 표가 아직입니다 — 수리계산 패널에서 "
-                           "「표 확정」을 먼저 눌러 주세요."})
+                "message": "수리계산 입력 표가 아직입니다 — 앞 단계 «수리계산» "
+                           "에서 「표 확정」을 먼저 누르세요."})
         if _job_running(sess):
             return _fail("이미 작업이 돌고 있습니다. 끝난 뒤에 다시 눌러 주세요.", 409)
 

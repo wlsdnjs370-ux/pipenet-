@@ -5,18 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260908-subnarrow">
+<link rel="stylesheet" href="/static/module_f.css?v=20260908-order">
 </head>
 <body>
 <header>
   <span class="chip">MODULE F</span>
   <h1>CAD 임포트 워크벤치</h1>
   <span class="spacer"></span>
+  <!-- 통합은 «단계» 가 아니라 **목적지** 다. 평면도·계통도·기계실 세 슬롯이
+       모두 여기로 모이므로, 단계바 끝에 세 번 되풀이해 붙이면 「슬롯마다 다른
+       통합이 있다」로 읽힌다. 하나로 모아 늘 같은 자리에 둔다. -->
+  <button id="btn-merge" class="topgo">통합 · 결합</button>
   <a class="back" href="/">초기화면</a>
 </header>
 
 <!-- 단계바는 활성 슬롯의 «실제 흐름» 으로 그린다 — 계통도에 찍기·손질·변환은
-     없다. 평면도 기준 6칸을 늘 띄우면 다른 슬롯에서 어긋난다. -->
+     없다. 평면도 기준 6칸을 늘 띄우면 다른 슬롯에서 어긋난다.
+     통합은 여기에 없다 — 위 «통합 · 결합» 단추가 그 자리다. -->
 <div class="steps" id="steps"></div>
 
 <!-- [H-0] 도면 슬롯 — 특허 S650(평면도·계통도·기계실에 같은 절차 반복) -->
@@ -426,10 +431,9 @@
       <h2 style="margin-top:16px">상태</h2>
       <div id="ed-info"></div>
       <div class="row" style="margin-top:14px">
-        <!-- 이 단계가 내는 것은 .kfp 하나가 아니다 — .sdf(+.slf) 도 같이
-             낸다(통합 단계는 .has 까지). 한 형식 이름을 단계 이름으로 쓰면
-             나머지 산출이 없는 것처럼 읽힌다. -->
-        <button id="ed-next" class="go">수리계산 입력 변환 →</button>
+        <!-- 손질 다음은 «수리계산» 이다. 표(최불리 → 5표)가 나야 변환이 낼
+             것이 생긴다 — .kfp 도 .sdf(+.slf) 도 그 표를 재료로 쓴다. -->
+        <button id="ed-next" class="go">수리계산 →</button>
       </div>
     </section>
 
@@ -448,7 +452,7 @@
       <!-- 무엇을 낼 수 있는지 먼저 밝힌다 — 단계 이름이 한 형식이던 시절엔
            나머지가 없는 것처럼 읽혔다. -->
       <p class="hint">이 단계는 수리계산 입력 파일을 만듭니다 —
-        <b>.kfp</b>(K-solver)와 <b>.sdf+.slf</b>(PIPENET). 통합 단계에서는
+        <b>.kfp</b>(K-solver)와 <b>.sdf+.slf</b>(PIPENET). 통합에서는
         <b>.has</b>(하스)까지 나옵니다.</p>
       <label class="chk"><input type="checkbox" id="cv-full-kfp" checked>
         <span>전체망 <b>.kfp</b></span></label>
@@ -456,10 +460,13 @@
         <span>최불리 <b>.kfp</b></span></label>
       <label class="chk"><input type="checkbox" id="cv-worst-sdf" checked>
         <span>최불리 <b>.sdf(+.slf)</b></span></label>
+      <!-- 최불리 계열은 앞 단계(수리계산)의 «표 확정» 을 재료로 쓴다. 잠그지
+           말고 무엇이 없는지 말한다 — 잠긴 채 침묵하면 고장으로 읽힌다. -->
+      <div class="hint" id="cv-why"></div>
 
       <div class="row" style="margin-top:14px">
         <button id="btn-convert" class="go">변환 실행</button>
-        <button id="btn-back-edit">← 손질</button>
+        <button id="btn-back-design">← 수리계산</button>
       </div>
       <div class="row">
         <button id="btn-download" disabled>전체망 .kfp</button>
@@ -468,9 +475,6 @@
         <button id="btn-download-set" disabled>한 벌 (zip)</button>
       </div>
       <div id="conv-info"></div>
-      <div class="row" style="margin-top:10px">
-        <button id="btn-to-design">수리계산 입력 →</button>
-      </div>
     </section>
 
     <!-- 5. 수리계산 입력 (설계) — G16 의 웹판 -->
@@ -479,8 +483,12 @@
       <!-- 표를 «여기서 만드는» 입력들. 자동 경로에서는 표가 이미 나와 있으므로
            통째로 숨긴다 — 누르면 「손질 세션이 없습니다」로 막히기만 한다. -->
       <div id="dg-build-inputs">
-        <label class="f"><span>기준개수 K (NFPC 103)</span>
-          <input type="number" id="dg-k" value="30" min="1" max="200"></label>
+        <!-- ★기준개수 K 는 **앞 단계(손질)에서 정한다.** 여기에 또 하나 두면
+             손질에서 고른 최불리 K 와 표에 실린 K 가 갈려 「어느 쪽이
+             설계면적인가」가 사라진다. 종전에는 칸이 둘이었고 코드가 값을
+             몰래 맞춰 주고 있었다 — 맞춰 줘야 한다는 것 자체가 잘못된 자리의
+             증거다. 여기서는 «지금 무엇으로 도는가» 만 보인다. -->
+        <div class="hint" id="dg-k-note">—</div>
         <label class="f"><span>배관 규격 (전체 기본값)</span>
           <select id="dg-sched">
             <!-- 이름은 SLF 의 Item-name 과 철자·공백까지 같아야 한다(엔진 SCHEDULE_DEFS 가 권위) -->
@@ -538,17 +546,21 @@
 
       <div class="row" style="margin-top:12px" id="dg-build-row">
         <button id="dg-build" class="go">표 확정 (최불리 → 5표)</button>
-        <button id="dg-back">← 변환</button>
+        <button id="dg-back">← 손질</button>
       </div>
       <div class="row hidden" style="margin-top:12px" id="dg-back-auto-row">
         <button id="dg-back-auto">← 자동 추출</button>
       </div>
-      <div class="row">
+      <!-- 파일 저장은 **다음 단계(변환)** 한 곳에서 한다. 종전에는 여기의
+           「.sdf+.slf 저장」과 변환의 「최불리 .sdf」가 **같은 함수**를 불렀다
+           (`emit_design_files`) — 같은 파일을 두 자리에서 내니 어느 것이
+           산출인지 흐려졌다. 자동 경로만 예외다: 그 길에는 변환 단계가 없다. -->
+      <div class="row" id="dg-emit-row">
         <button id="dg-emit" disabled>.sdf + .slf 저장</button>
         <button id="dg-download" disabled>내려받기 (zip)</button>
       </div>
       <div class="row">
-        <button id="dg-to-merge">통합으로 →</button>
+        <button id="dg-to-conv">변환 →</button>
       </div>
       <div id="dg-summary" class="hint">—</div>
 
@@ -718,6 +730,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260908-subnarrow"></script>
+<script src="/static/module_f.js?v=20260908-order"></script>
 </body>
 </html>

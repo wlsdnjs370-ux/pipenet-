@@ -27,6 +27,13 @@
   header .back{font:500 11px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;
                border:1px solid var(--line-2);padding:7px 12px;color:var(--dim);}
   header .back:hover{border-color:var(--line-3);color:var(--ink);}
+  /* 통합 — 세 슬롯이 모이는 «목적지». 단계바 끝에 세 번 되풀이하지 않고
+     늘 같은 자리에 하나로 둔다. 지금 거기 있으면 켜진 색으로 말한다. */
+  header .topgo{font:600 11px/1 var(--sans);letter-spacing:.04em;cursor:pointer;
+                border:1px solid var(--accent-dim);background:none;
+                padding:7px 13px;color:var(--accent);}
+  header .topgo:hover{border-color:var(--accent);background:rgba(91,141,239,.12);}
+  header .topgo.on{background:var(--accent);color:#0B0E13;border-color:var(--accent);}
 
   /* ── 단계 레일 ────────────────────────────────────────── */
   .steps{height:var(--h-steps);display:flex;align-items:stretch;

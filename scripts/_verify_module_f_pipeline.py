@@ -97,6 +97,9 @@ def main() -> int:
         pg.set_input_files("#dxf", plan)
         pg.click("#btn-open")
         check("찍기까지 흘러온다", wait_stage("pick"), stage())
+        steps = pg.eval_on_selector_all("#steps div", "es => es.map(e => e.textContent)")
+        check("단계 차례가 «손질 → 수리계산 → 변환»",
+              steps == ["도면 열기", "찍기", "손질", "수리계산", "변환"], str(steps))
         pg.wait_for_timeout(1200)
         print(f"      {pg.inner_text('#pk-count')[:60]}")
         pg.click("#pk-next")
@@ -127,6 +130,7 @@ def main() -> int:
         print(f"      최불리 {w['k']}개 · 최원 {w['far_m']} m")
 
         # 수리계산 표 확정 — 결합의 «평면도 재료» 가 여기서 난다.
+        # (2026-09 순서 교정: 손질 다음이 수리계산이고, 변환은 그 뒤다.)
         pg.evaluate("() => { for (const d of "
                     "document.querySelectorAll('#steps div'))"
                     " { if (d.textContent.indexOf('수리계산') >= 0)"
@@ -140,6 +144,27 @@ def main() -> int:
                           "&& window.__mf.design.tables)")
         check("★표가 확정된다 (결합의 평면도 재료)", got,
               pg.inner_text("#status")[:90])
+
+        # ── ①-b 변환 — 이제 «표 다음» 이다. 재료가 갖춰졌으니 돌아야 한다.
+        pg.evaluate("() => { for (const d of "
+                    "document.querySelectorAll('#steps div'))"
+                    " { if (d.textContent.indexOf('변환') >= 0)"
+                    " { d.click(); return; } } }")
+        idle()
+        pg.wait_for_timeout(1500)
+        # 값 입력 창이 떠 있으면 기본값으로 닫는다(모듈 E 와 같은 자리).
+        if pg.is_visible("#conv-cancel"):
+            pg.click("#conv-cancel")
+        why = pg.inner_text("#cv-why")
+        check("변환이 «재료가 다 있다» 고 말한다", "모두 있습니다" in why, why[:70])
+        pg.click("#btn-convert")
+        idle()
+        pg.wait_for_timeout(3000)
+        info = " ".join(pg.inner_text("#conv-info")[:120].split())
+        check("★변환이 돈다 (표 → 파일)",
+              not pg.is_disabled("#btn-download")
+              or not pg.is_disabled("#btn-download-design"), info)
+        print(f"      변환: {info}")
 
         # ── ②③ 계통도 · 기계실 ──────────────────────────────────────
         for label, path in (("계통도", sysd), ("기계실", mrd)):
@@ -180,11 +205,13 @@ def main() -> int:
                       f" · 연장 {s['total_m']} m")
 
         # ── ④ 통합 ──────────────────────────────────────────────────
+        # 통합은 단계바가 아니라 **머리말 단추** 다 — 세 슬롯이 같은 곳으로
+        # 가므로 단계 끝에 되풀이하지 않는다.
         print("[④] 통합")
-        pg.evaluate("() => { for (const d of "
-                    "document.querySelectorAll('#steps div'))"
-                    " { if (d.textContent.indexOf('통합') >= 0)"
-                    " { d.click(); return; } } }")
+        check("단계바에 통합이 없다",
+              pg.evaluate("() => [...document.querySelectorAll('#steps div')]"
+                          ".every((d) => d.textContent.indexOf('통합') < 0)"))
+        pg.click("#btn-merge")
         idle()
         pg.wait_for_timeout(1800)
         check("통합 화면이 열린다", pg.is_visible("#mg-build"))

@@ -204,7 +204,10 @@ def display_tables(tables, *, iso: bool = False, iso_z_scale: float = 1.0,
                                ref_label=iso_ref_label,
                                no_lift_labels=iso_no_lift_labels,
                                head_nodes=head_nodes, head_parent=head_parent,
-                               head_stub_ratio=head_stub_ratio)
+                               head_stub_ratio=head_stub_ratio,
+                               # 표고를 평면과 같은 자로 그리기 위한 배율.
+                               # 절점 좌표는 mm(§T3)이고 표고는 m 다.
+                               units_per_m=scale * 1000.0)
         stood["loose"] = loose
     return view, stood
 

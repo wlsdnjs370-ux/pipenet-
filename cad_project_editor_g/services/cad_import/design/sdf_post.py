@@ -123,7 +123,8 @@ def normalize_node_coords(tables, *, canvas_units: float = 3000.0) -> float:
 def bake_isometric(tables, *, iso_z_scale: float = 1.0,
                    ref_label=None, no_lift_labels=None,
                    head_nodes=None, head_parent=None,
-                   head_stub_ratio: float = 0.025) -> dict:
+                   head_stub_ratio: float = 0.025,
+                   units_per_m: float | None = None) -> dict:
     """30° 등각투영을 x,y 에 in-place 로 굽는다. 헤드만은 화면 수직으로 세운다.
 
     공식은 `routes/r30_combined.py:_bake_isometric_node_coords` 와 **같아야 한다** —
@@ -169,7 +170,20 @@ def bake_isometric(tables, *, iso_z_scale: float = 1.0,
             e_ref = float(ref.get("elevation", 0) or 0)
     e_range = e_max - e_min
     diag = math.hypot(max(xs) - min(xs), max(ys) - min(ys)) if xs else 0.0
-    lift = (diag * 0.5 * iso_z_scale / e_range) if e_range > 0 else 0.0
+    # ★표고를 **평면과 같은 자**로 그린다(`units_per_m` 이 주어질 때).
+    #
+    #   종전 식은 `diag·0.5/e_range` 였다 — 표고 폭이 얼마든 **화면 절반**으로
+    #   늘린다. 단위세대처럼 표고 폭이 3.3 m 인 도면에서는 1 m 가 508 단위가
+    #   되는데, 같은 화면에서 평면 1 m 는 83 단위다. 즉 세로만 **6배** 부풀어
+    #   0.3 m 짜리 헤드 접속관이 옆 가지를 가로지른다 — 사람 눈에는 위상이
+    #   깨진 그림이다(실측: 교차 18건 → 평면과 같은 자로 두면 6건, 0 이면 0).
+    #
+    #   더 펼쳐 보고 싶으면 «고도 펼침 배율»(iso_z_scale)이 그 자리다. 자를
+    #   기본으로 부풀려 두면 «얼마나 부풀었는지» 를 아무도 모른다.
+    if units_per_m and float(units_per_m) > 0:
+        lift = float(units_per_m) * float(iso_z_scale)
+    else:
+        lift = (diag * 0.5 * iso_z_scale / e_range) if e_range > 0 else 0.0
     # 스텁 길이는 캔버스에 비례한다. 정규화가 이미 가장 긴 축을 캔버스 단위로
     # 맞춰 놓았으므로 지금 폭이 곧 그 값이다 — 인자를 하나 더 받지 않아도 된다.
     stub = max(max(xs) - min(xs), max(ys) - min(ys)) * float(head_stub_ratio)
@@ -204,8 +218,15 @@ def bake_isometric(tables, *, iso_z_scale: float = 1.0,
             n["y"] = (x + y) * SIN30
             continue
         de = elev_of.get(lab, 0.0) - elev_of.get(parent_of[lab], 0.0)
+        # ★길이도 **표가 말하는 그 길이**로 세운다. 표고 차를 알면서 고정
+        #   비율(캔버스의 2.5%)로 세우면, 표는 0.3 m 라는데 그림은 그보다 세
+        #   배 긴 토막을 그린다 — 그림이 표를 배신한다.
+        #   표고 차가 없을 때만(정보가 없다) 옛 고정 길이로 세운다.
+        d = (abs(de) * float(units_per_m) * float(iso_z_scale)
+             if units_per_m and float(units_per_m) > 0 and abs(de) > 1e-9
+             else stub)
         n["x"] = pxy[0]
-        n["y"] = pxy[1] + (stub if de >= 0 else -stub)
+        n["y"] = pxy[1] + (d if de >= 0 else -d)
         vertical += 1
 
     return {"heads": len(heads), "vertical": vertical,

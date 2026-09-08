@@ -4087,6 +4087,11 @@
     //   있어야 «고르세요» 칸이 빈 채로 뜨지 않는다.
     // [F-12] 새 표다 — 카드가 옛 내용을 든 채로 남으면 «지금 무엇을 보고
     //   있나» 가 거짓이 된다. sel 을 비우는 것만으로는 DOM 이 안 바뀐다.
+    // ★아이소는 3차원 망을 한 평면에 눕힌 그림이라, 서로 다른 높이의 배관이
+    //   화면에서 겹쳐 지나간다. 그대로 그리면 «교차» 가 «이음» 으로 읽혀
+    //   위상이 깨져 보인다 — 제도 규약대로 **아래로 지나가는 쪽을 끊는다.**
+    //   자리는 미리보기를 받을 때 한 번만 셈한다(그리기마다 하면 낭비다).
+    S.design.gaps = crossGaps(S.design.view);
     renderInspect();
     // 표가 아직 없어도 차선(수동/자동)에 따라 보일 단추는 정해져 있다 —
     // 아래 «미리보기 없으면 조용히 멈춘다» 보다 **먼저** 맞춰 둔다.
@@ -4170,6 +4175,74 @@
     ctx.restore();
   }
 
+  /** 교차 자리에서 «아래로 지나가는» 배관을 끊을 곳 — 배관별 t 목록.
+
+      두 선분이 실제로 교차하고, 그 교차점에서 **표고가 다르면** 하나는 다른
+      하나 위를 지난다. 낮은 쪽을 끊어 그리면 사람은 그것을 «교차» 로 읽는다.
+      표고가 같으면 끊지 않는다 — 같은 높이에서 겹치는 것은 그림이 만든 것이
+      아니라 실제로 그 자리에서 만나는 것일 수 있어, 끊으면 거짓말이 된다. */
+  function crossGaps(v) {
+    const gaps = new Map();
+    if (!v || !v.nodes || !v.pipes) return gaps;
+    const at = {};
+    for (const n of v.nodes) at[n.label] = n;
+    const seg = [];
+    v.pipes.forEach((p, i) => {
+      const a = at[p.a], b = at[p.b];
+      if (a && b) seg.push({ i, a, b });
+    });
+    for (let i = 0; i < seg.length; i++) {
+      for (let j = i + 1; j < seg.length; j++) {
+        const s1 = seg[i], s2 = seg[j];
+        if (s1.a === s2.a || s1.a === s2.b
+            || s1.b === s2.a || s1.b === s2.b) continue;
+        const x1 = s1.a.x, y1 = s1.a.y, x2 = s1.b.x, y2 = s1.b.y;
+        const x3 = s2.a.x, y3 = s2.a.y, x4 = s2.b.x, y4 = s2.b.y;
+        const d = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3);
+        if (Math.abs(d) < 1e-9) continue;
+        const t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / d;
+        const u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / d;
+        if (t <= 0 || t >= 1 || u <= 0 || u >= 1) continue;
+        const e1 = (s1.a.e || 0) + ((s1.b.e || 0) - (s1.a.e || 0)) * t;
+        const e2 = (s2.a.e || 0) + ((s2.b.e || 0) - (s2.a.e || 0)) * u;
+        if (Math.abs(e1 - e2) < 1e-6) continue;   // 같은 높이 — 끊지 않는다
+        const lo = e1 < e2 ? s1 : s2;             // 낮은 쪽을 끊는다
+        const tt = e1 < e2 ? t : u;
+        if (!gaps.has(lo.i)) gaps.set(lo.i, []);
+        gaps.get(lo.i).push(tt);
+      }
+    }
+    return gaps;
+  }
+
+  /** 끊을 자리를 비우고 한 배관을 그린다. */
+  function strokeWithGaps(ax, ay, bx, by, ts) {
+    const L = Math.hypot(bx - ax, by - ay);
+    if (!ts || !ts.length || L < 8) {
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      return;
+    }
+    const half = Math.min(5, L * 0.2) / L;      // 화면 5px 만큼 비운다
+    const cuts = ts.map((t) => [t - half, t + half])
+      .sort((p, q) => p[0] - q[0]);
+    let at = 0;
+    ctx.beginPath();
+    for (const [s0, s1] of cuts) {
+      if (s1 <= 0 || s0 >= 1) continue;
+      const a = Math.max(at, 0), b = Math.min(s0, 1);
+      if (b > a) {
+        ctx.moveTo(ax + (bx - ax) * a, ay + (by - ay) * a);
+        ctx.lineTo(ax + (bx - ax) * b, ay + (by - ay) * b);
+      }
+      at = Math.max(at, s1);
+    }
+    if (at < 1) {
+      ctx.moveTo(ax + (bx - ax) * at, ay + (by - ay) * at);
+      ctx.lineTo(bx, by);
+    }
+    ctx.stroke();
+  }
+
   function drawDesign() {
     // 밑그림이 먼저다 — 나중에 그리면 망을 덮는다.
     if (underlayOn()) drawUnderlay();
@@ -4181,7 +4254,10 @@
     const at = {};
     for (const n of v.nodes) at[n.label] = n;
     const maxLoad = Math.max(1, ...v.pipes.map(p => p.load || 0));
+    const gaps = (S.design && S.design.gaps) || new Map();
+    let pi = -1;
     for (const p of v.pipes) {
+      pi += 1;
       const a = at[p.a], b = at[p.b];
       if (!a || !b) continue;
       const hot = S.design.hilite.has(p.label);
@@ -4191,10 +4267,7 @@
       ctx.strokeStyle = hot ? "#f97316" : (st ? st.color : "#94a3b8");
       ctx.setLineDash(hot || !st ? [] : st.dash);
       ctx.lineWidth = (1 + 4 * (p.load || 0) / maxLoad) + (hot ? 2 : 0);
-      ctx.beginPath();
-      ctx.moveTo(sx(a.x), sy(a.y));
-      ctx.lineTo(sx(b.x), sy(b.y));
-      ctx.stroke();
+      strokeWithGaps(sx(a.x), sy(a.y), sx(b.x), sy(b.y), gaps.get(pi));
     }
     ctx.setLineDash([]);      // ★되돌린다 — 안 하면 아래 노드 기호까지 점선이 된다
     // 최원 유하거리 경로 — 손질 단계와 같은 빨간 점선. 두 단계가 같은 줄을

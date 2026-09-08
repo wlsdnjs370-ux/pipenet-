@@ -954,8 +954,13 @@ def register(app, *, UPLOAD_DIR):
             #   소수 3자리 반올림은 그보다 거칠어(실측: -75.9731 → -75.973)
             #   「preview == 저장 Position」 이 깨진다. 같은 double 을 그대로
             #   보내면 양쪽을 `.6g` 로 찍었을 때 정확히 같은 문자열이 된다.
+            # ★표고를 함께 싣는다. 종전에는 label·x·y 만 보내서, 화면은
+            #   «어느 배관이 위로 지나가는지» 를 알 수가 없었다(교차 자리에
+            #   끊어 그리는 제도 규약을 쓸 수 없었다). 조사 스크립트도 이걸
+            #   0 으로 읽어 「표고가 전부 0」이라는 잘못된 결론을 냈다.
             rec = {"label": lab, "x": float(n.get("x", 0)),
-                   "y": float(n.get("y", 0))}
+                   "y": float(n.get("y", 0)),
+                   "e": round(float(n.get("elevation", 0) or 0), 3)}
             if lab in heads:
                 rec["head"] = True
                 rec["up"] = (elev.get(lab, 0.0)

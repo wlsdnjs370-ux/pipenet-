@@ -295,8 +295,10 @@ def main() -> int:
                 const bad = rows.filter(
                   r => Math.abs(r[0] / t1 - r[1] / t2) > 0.021).length;
                 return {xkinds: xs.size, bad, n: rows.length}; }""")
-            check("라이저가 수직 · 길이가 표에 비례한다",
-                  bool(rz and rz["xkinds"] == 1 and rz["bad"] == 0), str(rz))
+            # [2026-09-08 · 사용자] 라이저 배치는 «균등 간격»(이전 디자인)으로
+            # 되돌렸다 — 수직만 본다(비례는 규범이 아니다).
+            check("라이저가 수직이다 (균등 간격)",
+                  bool(rz and rz["xkinds"] == 1), str(rz))
             pg.check("#mg-iso")
             pg.wait_for_timeout(1200)
             rz2 = pg.evaluate("""() => { const v = window.__mf.mergeView;
@@ -326,6 +328,16 @@ def main() -> int:
             pg.uncheck("#mg-iso")
             pg.wait_for_timeout(800)
             print(f"      요약: {pg.inner_text('#mg-summary')[:140]}")
+
+        # ── 산출 — 결합 SDF 가 아이소 한 벌을 함께 내는가.
+        if not pg.is_disabled("#mg-emit"):
+            pg.click("#mg-emit")
+            idle()
+            pg.wait_for_timeout(2500)
+            names = pg.evaluate("() => (window.__mf.mergeFiles || null)")
+            print(f"      산출: {names}")
+            check("★결합 산출에 아이소 한 벌이 있다",
+                  bool(names and names.get("sdf_iso")), str(names))
 
         print("[콘솔]")
         real = [e for e in errs if "favicon" not in e]

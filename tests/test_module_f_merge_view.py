@@ -208,27 +208,28 @@ def _merge_uneven():
                          mode="lsp_gravity")
 
 
-def test_라이저_구간이_표_길이에_비례한다():
-    """★사용자 지적: 「계통도 쪽 길이가 많이 쪼개져서 깨져 있어」.
+def test_라이저_막대는_균등_간격이다():
+    """★[2026-09-08 · 사용자 반려] 「통합쪽 배관망 디자인은 이전 버전으로.
 
-    `_layout_riser_as_schematic` 이 균등 간격이라 4 m 층과 0.3 m 밸브 구간이
-    같은 길이로 그려졌다(실측: 전 구간 13.6%). 막대 전체 길이(화면 맞춤
-    압축)는 그대로 두고 안의 비례만 표를 따르게 했다.
+    이전 디자인이 더 좋아.」 — 한때 막대 안 간격을 표 길이에 비례시켰다.
+    실도면(라이저 49구간)에서는 0.017 m 구간이 사실상 사라지고 긴 구간만 남아
+    막대가 한쪽으로 뭉쳤다. 균등 간격으로 되돌렸고, 되살아나면 여기서 잡힌다.
+
+    ★길이의 권위는 표(선언 length)다 — 그림이 아니다. 좌표가 선언을 덮지
+      못하게 하는 잠금은 `kfp_sdf_converter.parse_sdf` 에 따로 서 있다.
     """
     import math
     got = _merge_uneven()
     c = got["combined"]
     at = {str(n["label"]): (float(n["x"]), float(n["y"])) for n in c.nodes}
     sysset = set(got["parts"]["system"])
-    rows = []
+    seg = []
     for p in c.pipes:
         a, b = str(p.get("in")), str(p.get("out"))
-        if (a in sysset or b in sysset) and a in at and b in at:
-            rows.append((float(p.get("length") or 0), math.dist(at[a], at[b])))
-    t1 = sum(r[0] for r in rows)
-    t2 = sum(r[1] for r in rows)
-    for ln, dr in rows:
-        assert abs(ln / t1 - dr / t2) <= 0.021, (ln, dr)
+        if a in sysset and b in sysset and a in at and b in at:
+            seg.append(math.dist(at[a], at[b]))
+    assert len(seg) >= 3, seg
+    assert max(seg) - min(seg) <= 1.0, f"간격이 균등하지 않다: {sorted(seg)}"
 
 
 def test_라이저는_평면에서_수직_막대다():
@@ -254,14 +255,10 @@ def test_아이소에서도_라이저가_수직으로_남는다():
     part = {n["label"]: n["part"] for n in v["nodes"]}
     xs = {round(at[lab][0], 6) for lab in at if part[lab] == "system"}
     assert len(xs) == 1, f"아이소에서 라이저가 기울었다: {sorted(xs)[:4]}"
-    # 비례도 아이소에서 그대로다(수직 평행이동은 길이를 안 바꾼다).
-    rows = [(float(p.get("len_m") or 0), math.dist(at[p["a"]], at[p["b"]]))
-            for p in v["pipes"]
-            if part.get(p["a"]) == "system" and part.get(p["b"]) == "system"]
-    t1 = sum(r[0] for r in rows)
-    t2 = sum(r[1] for r in rows)
-    for ln, dr in rows:
-        assert abs(ln / t1 - dr / t2) <= 0.021, (ln, dr)
+    # 균등 간격도 아이소에서 그대로다(수직 평행이동은 길이를 안 바꾼다).
+    seg = [math.dist(at[p["a"]], at[p["b"]]) for p in v["pipes"]
+           if part.get(p["a"]) == "system" and part.get(p["b"]) == "system"]
+    assert max(seg) - min(seg) <= 1.0, f"아이소에서 간격이 갈렸다: {sorted(seg)}"
 
 
 def test_아이소에서_평면_헤드는_표고만큼_선다():
@@ -282,3 +279,68 @@ def test_아이소에서_평면_헤드는_표고만큼_선다():
         x, y = at0[lab]
         assert abs(n["x"] - (x - y) * C30) < 1e-6
         assert abs(n["y"] - (x + y) * S30) < 1e-6
+
+
+# ─────────────────────────────── 아이소 산출 [2026-09-08 · 사용자]
+def test_아이소_굽기는_한_함수뿐이다():
+    """★화면과 파일이 각자 셈하면 «보이는 것 ≠ 저장되는 것» 이 된다.
+
+    사용자 요청: 「저번처럼 나오던 아이소매트릭 형태 위상으로 .sdf 파일이
+    출력되었으면 좋겠는데, 그거 되게 잘 그려졌어서.」 — 그래서 미리보기와
+    산출이 `merge.bake_combined_iso` 하나를 같이 쓴다.
+    """
+    api = open(os.path.join(_ROOT, "routes", "module_f", "api_merge.py"),
+               encoding="utf-8").read()
+    assert api.count("bake_combined_iso(") >= 2, "두 자리가 같은 함수를 안 쓴다"
+    assert "iso_nodes=iso_nodes" in api, "산출에 아이소 절점을 안 넘긴다"
+    # 굽는 식이 라우트 안에 다시 있으면 안 된다.
+    i = api.index("def module_f_merge_preview")
+    seg = api[i:api.index("\n    @app.", i)]
+    assert "0.8660254" not in seg, "라우트가 제 식으로 다시 굽는다"
+
+
+def test_아이소_절점은_평면과_다른_자리다():
+    """★«평면도» 절점으로 본다.
+
+    라이저는 기준점의 아이소 자리에 평면 오프셋을 얹는 규칙이라, 기준점이
+    원점에 있는 표본에서는 좌표가 그대로다(수학이 그렇다 — 결함이 아니다).
+    굽혔는지 확인할 자리는 회전을 먹는 평면도 쪽이다.
+    """
+    got = _merge_uneven()
+    from routes.module_f.merge import bake_combined_iso
+    iso, _edges = bake_combined_iso(got)
+    at0 = {str(n["label"]): (float(n["x"]), float(n["y"]))
+           for n in got["combined"].nodes}
+    plan = set(got["parts"]["plan"])
+    moved = [n["label"] for n in iso
+             if str(n["label"]) in plan
+             and at0.get(str(n["label"])) != (float(n["x"]), float(n["y"]))]
+    assert moved, "평면도 절점이 하나도 안 굽었다"
+
+
+def test_아이소에서도_라이저는_수직이다():
+    got = _merge_uneven()
+    from routes.module_f.merge import bake_combined_iso
+    iso, _edges = bake_combined_iso(got)
+    sysset = set(got["parts"]["system"])
+    xs = {round(float(n["x"]), 6) for n in iso if str(n["label"]) in sysset}
+    assert len(xs) == 1, f"아이소에서 라이저가 기울었다: {sorted(xs)[:4]}"
+
+
+def test_산출이_아이소_한_벌을_더_낸다():
+    """모듈 A 의 `combined_<id>_iso.sdf` 와 같은 규약 — 좌표만 다른 사본."""
+    src = open(os.path.join(_ROOT, "routes", "module_f", "emit.py"),
+               encoding="utf-8").read()
+    assert "iso_nodes" in src and "_iso" in src
+    i = src.index("def emit_merged(")
+    body = src[i:src.index("\ndef ", i + 10)]
+    for key in ("sdf_iso", "kfp_iso", "has_iso"):
+        assert key in body, key
+    # ★아이소가 실패해도 본 산출(평면)은 버리지 않는다.
+    assert "아이소 SDF 생성 실패" in body
+
+
+def test_결합망이_없으면_굽지_않는다():
+    from routes.module_f.merge import bake_combined_iso, merge_network
+    got = merge_network(_sample(), mode="lsp_gravity")   # 계통도 없음
+    assert bake_combined_iso(got) == ([], [])

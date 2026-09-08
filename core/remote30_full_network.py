@@ -1130,53 +1130,37 @@ def _layout_riser_as_schematic(
             물리 배치). 기본 False = 옥상수조(자연낙차) — 수원이 위.
         min_span: 막대 길이 하한. 기계실이 붙을 때 그 평면이 헤드 군집 밖에
             놓이도록 stitch 가 계산해 넘긴다.
-        seg_lengths: 이웃 노드 사이 배관의 **표 길이**(m) — [0↔1, 1↔2, …].
-            주어지면 막대 안의 간격을 이 길이에 **비례**시킨다.
+        seg_lengths: (은퇴) 이웃 노드 사이 배관의 표 길이(m).
 
-            ★균등 간격은 그림이 표를 배신하는 자리였다(2026-09 사용자 지적:
-              「계통도 쪽 길이가 많이 쪼개져서 깨져 있어」). 4 m 층 구간과
-              0.3 m 밸브 구간이 같은 길이로 그려지면, 사람 눈에는 층이
-              조각조각 «쪼개진» 라이저다. 막대 전체 길이(화면 맞춤 압축)는
-              그대로 두고 **안의 비례만** 표를 따른다.
+            ★한때 이 값으로 막대 안 간격을 **표 길이에 비례**시켰다. 그러나
+              실도면(라이저 49구간)에서는 0.017 m 짜리 구간이 사실상 사라지고
+              긴 구간만 남아 막대가 한쪽으로 뭉쳤다 —
+              **사용자 판단으로 균등 간격(이전 디자인)으로 되돌렸다**
+              (2026-09-08: 「통합쪽 배관망 디자인은 이전 버전으로. 이전
+              디자인이 더 좋아」). 인자는 부르는 쪽 호환을 위해 남기되
+              **쓰지 않는다** — 되살릴 일이 생기면 커밋 이력에 있다.
 
-            0·음수·결측 구간은 전체의 0.5% 로 바닥을 깐다 — 길이 0 인 구간이
-            그림에서 완전히 사라지면 그 노드를 클릭할 수도, 볼 수도 없다
-            (비례가 그만큼 흐려지는 것은 값을 치르는 선택이고, 여기 적는다).
-            ★2% 로 깔았다가 실도면에서 걸렸다: 구간 49개면 균등 몫이 2%라
-              극소 구간(0.017 m)이 평균 크기로 부풀어 4곳이 비례를 넘었다.
+            길이의 권위는 표(선언 length)이지 그림이 아니다. 좌표가 선언을
+            덮지 못하게 하는 잠금은 `kfp_sdf_converter.parse_sdf` 에 있다.
     """
     n = len(riser_nodes)
     if n < 2:
         return list(riser_nodes)
     riser_yspan = max(2000.0, head_yspan * 0.8, float(min_span))
+    step_y = riser_yspan / (n - 1)
     target_x = float(anchor_xy[0])
     target_y_av = float(anchor_xy[1])
     # 자연낙차: 수원 위(+). 펌프 가압: 수원 아래(-).
     y_dir = -1.0 if descend else 1.0
 
-    # 간격 가중치 — 표 길이 비례(있으면) · 균등(없으면).
-    segs = list(seg_lengths or ())
-    if len(segs) == n - 1 and any(float(v or 0) > 0 for v in segs):
-        w = [max(float(v or 0), 0.0) for v in segs]
-        floor = sum(w) * 0.005
-        w = [max(v, floor) for v in w]
-    else:
-        w = [1.0] * (n - 1)
-    total_w = sum(w) or 1.0
-    # AV(마지막)에서 위로 누적 — AV 가 막대 하단 anchor 다.
-    cum_from_av = [0.0]
-    for v in reversed(w):
-        cum_from_av.append(cum_from_av[-1] + v)
-
     out: list[dict] = []
     for i, node in enumerate(riser_nodes):
         # i=0: 펌프/수원, i=n-1: AV (head_av 위치, 막대 끝점)
         rank_from_av = (n - 1) - i
-        dy = riser_yspan * cum_from_av[rank_from_av] / total_w
         out.append({
             **node,
             "x": int(round(target_x)),
-            "y": int(round(target_y_av + y_dir * dy)),
+            "y": int(round(target_y_av + y_dir * rank_from_av * step_y)),
         })
     return out
 
@@ -1393,21 +1377,9 @@ def stitch_riser_and_heads(
     if head_av_node is not None and head_xs and head_ys:
         try:
             anchor_xy = (float(head_av_node["x"]), float(head_av_node["y"]))
-            # 이웃 노드쌍 → 그 사이 배관의 «표 길이». 막대 안 간격을 표에
-            # 비례시키기 위한 재료다 — 라이저 배관은 노드 순서대로 이어지지만,
-            # 순서를 믿는 대신 (in,out) 쌍으로 찾는다(빠진 구간은 0 → 바닥값).
-            _len_of = {}
-            for _pr in riser.pipes:
-                _k = frozenset((str(_pr.get("in")), str(_pr.get("out"))))
-                _len_of[_k] = float(_pr.get("length") or 0.0)
-            _labels = [str(n["label"]) for n in true_riser_nodes]
-            seg_lengths = [
-                _len_of.get(frozenset((_labels[i], _labels[i + 1])), 0.0)
-                for i in range(len(_labels) - 1)]
             translated_riser_nodes = _layout_riser_as_schematic(
                 true_riser_nodes, anchor_xy, head_yspan=head_yspan,
                 descend=machine_room_at_bottom, min_span=min_span,
-                seg_lengths=seg_lengths,
             )
         except (KeyError, TypeError, ValueError):
             translated_riser_nodes = list(true_riser_nodes)

@@ -29,10 +29,22 @@ from pathlib import Path
 
 def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
                 stem: str = "module_f_merged",
-                coord_scale: float = 1.0) -> dict:
+                coord_scale: float = 1.0,
+                iso_nodes: list | None = None) -> dict:
     """결합망 하나 → {sdf, slf, kfp, has, zip, warnings}. 값은 절대경로.
 
     `combined` 는 `stitch_riser_and_heads` 산출(`CombinedTables`)이다.
+
+    `iso_nodes` 를 주면 **아이소매트릭 좌표 한 벌**을 더 낸다(`<stem>_iso.*`).
+    사용자 요청(2026-09-08: 「저번처럼 나오던 아이소매트릭 형태 위상으로
+    .sdf 파일이 출력되었으면 좋겠는데, 그거 되게 잘 그려졌어서」) — 모듈 A 의
+    통합이 `combined_<id>_iso.sdf` 를 함께 내는 것과 같은 규약이다.
+
+    ★두 벌은 «좌표만» 다르다. 길이·관경·표고·노즐은 같은 표에서 나오므로
+      수리계산 값은 한 글자도 안 바뀐다(좌표는 PIPENET 캔버스 표시용이고,
+      좌표가 선언 길이를 덮지 못하게 하는 잠금은 `parse_sdf` 에 서 있다).
+      절점 좌표는 화면 미리보기가 쓰는 그 함수(`merge.bake_combined_iso`)가
+      만든 것을 그대로 받는다 — 여기서 다시 셈하면 화면과 파일이 갈린다.
     """
     from remote30_full_network import ProjectContext, emit_full_sdf
 
@@ -73,7 +85,7 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
             if p.is_file():
                 zf.write(p, arcname=p.name)
 
-    return {
+    out_files = {
         "sdf": str(sdf),
         "slf": str(slf) if slf.is_file() else None,
         "kfp": str(kfp) if kfp.is_file() else None,
@@ -81,6 +93,44 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
         "zip": str(zip_path),
         "warnings": warnings,
     }
+
+    # ⑤ 아이소매트릭 한 벌 — 좌표만 갈아 끼운 사본으로 같은 길을 한 번 더 탄다.
+    if iso_nodes:
+        import copy as _copy
+        iso_tbl = _copy.copy(combined)
+        iso_tbl.nodes = list(iso_nodes)
+        iso_stem = f"{stem}_iso"
+        iso_sdf = out / f"{iso_stem}.sdf"
+        try:
+            emit_full_sdf(iso_tbl, iso_sdf,
+                          ctx=ProjectContext.titled(f"{title} (아이소)"))
+            out_files["sdf_iso"] = str(iso_sdf)
+            iso_slf = out / f"{iso_stem}.slf"
+            if iso_slf.is_file():
+                out_files["slf_iso"] = str(iso_slf)
+            iso_kfp = out / f"{iso_stem}.kfp"
+            try:
+                from remote30_prototype import emit_kfp as _ek
+                _ek(iso_sdf, iso_kfp, coord_scale=float(coord_scale))
+                out_files["kfp_iso"] = str(iso_kfp)
+            except Exception as exc:  # noqa: BLE001 — 아이소 실패가 본산출을 막지 않는다
+                warnings.append(f"아이소 KFP 변환 실패: {type(exc).__name__}: {exc}")
+            iso_has = out / f"{iso_stem}.has"
+            try:
+                from remote30_prototype import emit_has as _eh
+                _eh(iso_sdf, iso_has)
+                out_files["has_iso"] = str(iso_has)
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"아이소 HAS 변환 실패: {type(exc).__name__}: {exc}")
+            with zipfile.ZipFile(zip_path, "a", zipfile.ZIP_DEFLATED) as zf:
+                for p in (iso_sdf, iso_slf, iso_kfp, iso_has):
+                    if p.is_file():
+                        zf.write(p, arcname=p.name)
+        except Exception as exc:  # noqa: BLE001
+            # ★본 산출(평면 좌표)은 이미 나와 있다 — 아이소가 실패해도 그것을
+            #   버리지 않는다. 못 냈다는 사실만 올린다(S340: 조용히 메우지 않는다).
+            warnings.append(f"아이소 SDF 생성 실패: {type(exc).__name__}: {exc}")
+    return out_files
 
 
 # 연장 비교 허용 오차 (m). 형식마다 소수 자릿수가 달라 완전 동일을 요구하지 않는다.

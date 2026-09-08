@@ -414,6 +414,81 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
     return out
 
 
+def bake_combined_iso(got: dict, *, iso_z_scale: float = 1.0):
+    """결합망을 30° 아이소매트릭 좌표로 굽는다 — **화면과 파일이 쓰는 그 한 식**.
+
+    ★부위마다 «맞는» 투영이 다르다. 한 식으로 다 굽으면 깨진다:
+
+      · 평면도 — 평면이니 30° 회전 + 표고 lift. lift 는 평면과 같은 자
+        (1 m = 1000 · §T3 로 절점 좌표가 mm)라 설계 화면과 규칙이 같다.
+      · 계통도(라이저) — schematic y 가 **이미 수직**이다. 회전을 먹이면
+        수직 막대가 사선이 된다(실측 x 퍼짐 1,732 · 사용자 지적 「계통도가
+        기울어져 있다」). 기준점의 아이소 자리에 평면 오프셋을 그대로 얹는다.
+      · 기계실 — 평면 군집이라 회전하되, 접속점(펌프 junction)이 라이저의
+        «새» 자리에 그대로 붙도록 평행이동한다. 안 하면 이음매가 찢어진다.
+
+    돌려주는 것: (절점 사본, 기계실 평면 edge 사본) — 원본은 건드리지 않는다.
+    산출(.sdf)과 미리보기가 **같은 함수**를 써야 「보이는 것 = 저장되는 것」이
+    성립한다(이 저장소가 설계 화면에서 이미 값을 치른 규칙이다).
+    """
+    c = (got or {}).get("combined")
+    if c is None:
+        return [], []
+    parts = (got.get("parts") or {})
+    of = {}
+    for kind in ("system", "machineroom", "plan"):
+        for lab in (parts.get(kind) or ()):
+            of[str(lab)] = kind
+
+    nodes = [dict(n) for n in (getattr(c, "nodes", None) or ())]
+    zs = float(iso_z_scale or 1.0)
+    cos30, sin30 = 0.8660254037844387, 0.5
+
+    def _rot(x, y):
+        return ((x - y) * cos30, (x + y) * sin30)
+
+    at0 = {str(n.get("label")): (float(n.get("x", 0) or 0),
+                                 float(n.get("y", 0) or 0)) for n in nodes}
+    ax, ay = at0.get(ANCHOR_LABEL, (0.0, 0.0))
+    a_iso = _rot(ax, ay)
+    e_ref = next((float(n.get("elevation", 0) or 0) for n in nodes
+                  if str(n.get("label")) == ANCHOR_LABEL), 0.0)
+    lift = 1000.0 * zs
+
+    pj = got.get("pump_junction")
+    pj_xy = at0.get(str(pj)) if pj else None
+    shift = (0.0, 0.0)
+    if pj_xy is not None:
+        new_pj = (a_iso[0] + (pj_xy[0] - ax), a_iso[1] + (pj_xy[1] - ay))
+        rot_pj = _rot(*pj_xy)
+        shift = (new_pj[0] - rot_pj[0], new_pj[1] - rot_pj[1])
+
+    for n in nodes:
+        lab = str(n.get("label"))
+        x = float(n.get("x", 0) or 0)
+        y = float(n.get("y", 0) or 0)
+        kind = of.get(lab, "plan")
+        if kind == "system":
+            n["x"] = a_iso[0] + (x - ax)
+            n["y"] = a_iso[1] + (y - ay)
+        elif kind == "machineroom":
+            rx, ry = _rot(x, y)
+            n["x"] = rx + shift[0]
+            n["y"] = ry + shift[1]
+        else:
+            rx, ry = _rot(x, y)
+            n["x"] = rx
+            n["y"] = ry + (float(n.get("elevation", 0) or 0) - e_ref) * lift
+
+    edges = []
+    for e in (getattr(c, "machine_room_plan_edges", None) or ()):
+        r1 = _rot(float(e[0]), float(e[1]))
+        r2 = _rot(float(e[2]), float(e[3]))
+        edges.append([r1[0] + shift[0], r1[1] + shift[1],
+                      r2[0] + shift[0], r2[1] + shift[1]])
+    return nodes, edges
+
+
 def check_combined(got: dict) -> dict:
     """[D5] 결합 **뒤** 검사 — 전부 «보고» 다. 예외로 올리지 않는다.
 

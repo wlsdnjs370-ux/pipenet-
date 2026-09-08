@@ -2815,7 +2815,15 @@
       await post("/api/module-f/merge/emit", { sid: S.sid });
       watch(async () => {
         $("mg-download").disabled = false;
-        say("산출 완료 — zip 으로 내려받으세요.", "ok");
+        // 무엇이 났는지 이름으로 말한다 — 아이소 한 벌이 함께 나므로
+        // 「.sdf 하나」로 알고 넘어가면 그것을 못 찾는다.
+        let names = null;
+        try {
+          const j = await api(`/api/module-f/convert/result?sid=${S.sid}`);
+          names = (j.result && typeof j.result === "object") ? j.result : null;
+        } catch (err) { names = null; }
+        S.mergeFiles = names;
+        renderMergeFiles();
       });
     } catch (err) { busy(false); say(err.message, "err"); }
   };
@@ -2826,6 +2834,27 @@
 
   // 보기 전환 — 저장 좌표는 안 바뀐다(평면). 아이소는 눈으로 보는 용도다.
   $("mg-iso").onchange = () => { loadMergeView(); };
+
+  /** 무엇이 났는지 이름으로 — 아이소 한 벌이 함께 나므로 「.sdf 하나」로
+      알고 넘어가면 그것을 못 찾는다. */
+  function renderMergeFiles() {
+    const box = $("mg-files");
+    const f = S.mergeFiles;
+    if (!box) return;
+    if (!f) { box.innerHTML = ""; return; }
+    const LABEL = { sdf: "평면 .sdf", slf: ".slf", kfp: "평면 .kfp",
+                    has: "평면 .has", sdf_iso: "아이소 .sdf",
+                    slf_iso: "아이소 .slf", kfp_iso: "아이소 .kfp",
+                    has_iso: "아이소 .has", zip: "한 벌 (zip)" };
+    let html = "";
+    for (const k of Object.keys(LABEL)) {
+      if (f[k]) html += kv(LABEL[k], esc(f[k]));
+    }
+    box.innerHTML = html || "";
+    say(f.sdf_iso
+        ? `산출 완료 — 아이소 좌표본(${f.sdf_iso})도 함께 났습니다.`
+        : "산출 완료 — zip 으로 내려받으세요.", "ok");
+  }
 
   $("mg-drop").onchange = () => {
     if (S.merge && S.merge.mode === "hsp_pump") setMergeMode("hsp_pump");

@@ -24,9 +24,9 @@
 """
 from __future__ import annotations
 
-# A 의 entity 는 색을 싣지 않는다(레이어만). 캔버스는 레이어×색으로 묶으므로
-# 색을 하나로 고정하면 «레이어 단위» 묶음이 된다 — 계통도에는 그게 맞다.
-_COLOR = 7
+# A 의 entity 는 색을 싣지 않는다(레이어만). 그래서 색은 **레이어 색**을 쓴다
+# (`layer_colors`) — 파서가 DXF 에서 이미 읽어 둔 값이다. 캔버스가 레이어×색으로
+# 묶으므로 결과는 여전히 «레이어 단위» 묶음이고, 화면에서는 도면 색 그대로 보인다.
 # 텍스트 높이 — A 의 entity 에는 없어서 채워 넣는 자리다.
 # ★종전 주석은 「0 이면 `extract_dia_text_points` 에서 걸린다」고 적었는데
 #   **사실이 아니다** — 그 함수는 높이 칸을 받아서 버린다(`_lay,_col,x,y,_h,s`).
@@ -55,37 +55,65 @@ class _EntWorld:
         self.texts = []      # (layer, color, x, y, h, s)
 
 
-def entities_to_world(entities) -> _EntWorld:
+def layer_colors(parsed) -> dict:
+    """레이어 이름 → DXF 색 번호(ACI). 파서가 이미 읽어 둔 것을 그대로 쓴다.
+
+    ★꺼진 레이어는 색이 **음수**로 온다(CAD 의 관례). 계통도는 꺼둔 레이어에
+      배관이 있는 일이 흔해서 우리는 그것도 읽는데(`include_hidden_layers`),
+      음수를 그대로 넘기면 색표에서 못 찾아 전부 같은 색이 된다. 절댓값으로
+      편다 — «안 보이게 해 둔 것» 과 «무슨 색인가» 는 다른 이야기다.
+    """
+    out: dict = {}
+    for ly in ((parsed or {}).get("layers") or ()):
+        try:
+            c = int(ly.get("color", 7))
+        except (TypeError, ValueError):
+            c = 7
+        out[str(ly.get("name"))] = abs(c) or 7
+    return out
+
+
+def entities_to_world(entities, colors=None) -> _EntWorld:
     """A 의 entity 목록 → 캔버스가 그릴 수 있는 World.
 
     폴리선은 마디마다 선분으로 편다 — 캔버스가 선분만 그리기 때문이고,
     계통도의 배관은 어차피 마디 단위로 잰다.
+
+    `colors` : 레이어 → ACI 색 번호(`layer_colors`). 주면 **도면 색 그대로**
+        그린다. 안 주면 종전처럼 한 색이다.
+
+        ★종전에는 모든 도형에 색 7 을 박았다. 그래서 계통도·기계실이 통째로
+          한 색으로 보였고, 배관·기호·건축선을 눈으로 가를 수가 없었다.
+          평면도는 처음부터 도면 색으로 그려 왔다 — 두 화면이 다른 규칙을
+          쓰고 있었던 셈이다.
     """
     w = _EntWorld()
+    cmap = colors or {}
     for en in (entities or ()):
         t = en.get("t")
         lay = str(en.get("l") or "0")
+        col = cmap.get(lay, 7)
         if t == "L":
             p = en.get("p") or []
             if len(p) >= 4:
-                w.segs.append((lay, _COLOR, (float(p[0]), float(p[1])),
+                w.segs.append((lay, col, (float(p[0]), float(p[1])),
                                (float(p[2]), float(p[3]))))
         elif t == "PL":
             pts = en.get("p") or []
             for i in range(len(pts) - 1):
                 a, b = pts[i], pts[i + 1]
                 if len(a) >= 2 and len(b) >= 2:
-                    w.segs.append((lay, _COLOR, (float(a[0]), float(a[1])),
+                    w.segs.append((lay, col, (float(a[0]), float(a[1])),
                                    (float(b[0]), float(b[1]))))
         elif t == "C":
             c = en.get("c") or []
             if len(c) >= 2:
-                w.circles.append((lay, _COLOR, float(c[0]), float(c[1]),
+                w.circles.append((lay, col, float(c[0]), float(c[1]),
                                   float(en.get("r") or 0.0)))
         elif t == "A":
             c = en.get("c") or []
             if len(c) >= 2:
-                w.arcs.append((lay, _COLOR, float(c[0]), float(c[1]),
+                w.arcs.append((lay, col, float(c[0]), float(c[1]),
                                float(en.get("r") or 0.0)))
                 a = en.get("a") or [0.0, 360.0]
                 sa = float(a[0])
@@ -95,7 +123,7 @@ def entities_to_world(entities) -> _EntWorld:
         elif t == "T":
             p = en.get("p") or []
             if len(p) >= 2:
-                w.texts.append((lay, _COLOR, float(p[0]), float(p[1]),
+                w.texts.append((lay, col, float(p[0]), float(p[1]),
                                 _TEXT_H, str(en.get("v") or "")))
     return w
 

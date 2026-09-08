@@ -159,3 +159,78 @@ def test_요약이_숫자아닌_길이를_건너뛴다():
     got = riser_summary({"nodes": [], "pipes": [{"length": "없음"},
                                                 {"length": 2.0}]})
     assert got["total_m"] == 2.0
+
+
+# ── 도면 색 (2026-09-08 · 사용자) ──────────────────────────────────
+#
+# 「캐드 도면의 색깔별로 보이게 해서(기계실도 같은 논리로) 구분이 쉽게」.
+# 종전에는 모든 도형에 색 7 을 박아 계통도·기계실이 통째로 한 색이었다 —
+# 배관·기호·건축선이 눈으로 안 갈렸다. 평면도는 처음부터 도면 색으로
+# 그려 왔으니, 두 화면이 서로 다른 규칙을 쓰고 있었던 셈이다.
+
+
+def test_레이어_색을_읽는다():
+    from routes.module_f.subdrawing import layer_colors
+
+    got = layer_colors({"layers": [
+        {"name": "PIPE", "color": 1},
+        {"name": "SYM", "color": 3},
+    ]})
+    assert got == {"PIPE": 1, "SYM": 3}
+
+
+def test_꺼진_레이어의_음수_색을_편다():
+    """★CAD 는 꺼진 레이어 색을 음수로 준다.
+
+    계통도는 꺼둔 레이어에 배관이 있는 일이 흔해 우리는 그것도 읽는다
+    (`include_hidden_layers`). 음수를 그대로 넘기면 색표에서 못 찾아
+    **전부 같은 색**이 된다 — 고치려던 바로 그 증상으로 되돌아간다.
+    """
+    from routes.module_f.subdrawing import layer_colors
+
+    got = layer_colors({"layers": [{"name": "OFF", "color": -5}]})
+    assert got == {"OFF": 5}
+
+
+def test_색을_주면_도면_색으로_그린다():
+    from routes.module_f.subdrawing import entities_to_world
+
+    ents = [{"t": "L", "l": "PIPE", "p": [0, 0, 1, 1]},
+            {"t": "C", "l": "SYM", "c": [0, 0], "r": 1},
+            {"t": "T", "l": "TEX", "p": [0, 0], "v": "x"}]
+    w = entities_to_world(ents, {"PIPE": 1, "SYM": 3})
+    assert w.segs[0][1] == 1
+    assert w.circles[0][1] == 3
+    assert w.texts[0][1] == 7, "모르는 레이어는 종전 색으로"
+
+
+def test_색을_안_주면_종전_그대로():
+    """옛 호출부(진단 스크립트·통합 시험)가 그대로 돌아야 한다."""
+    from routes.module_f.subdrawing import entities_to_world
+
+    w = entities_to_world([{"t": "L", "l": "PIPE", "p": [0, 0, 1, 1]}])
+    assert w.segs[0][1] == 7
+
+
+def test_모르는_ACI_번호도_제_색으로_풀린다():
+    """★손으로 적은 색표는 흔한 번호 열댓 개뿐이었다.
+
+    실도면에는 51·105·255 같은 번호가 흔하고, 그것들이 전부 같은 대체색으로
+    떨어지면 «색으로 구분» 이 성립하지 않는다(실측: 계통도 11색 중 3개,
+    기계실 13색 중 6개가 한 색으로 뭉쳤다).
+
+    근사식을 새로 쓰지 않고 ezdxf 의 256색 표준표를 부른다 — 이 저장소가
+    DXF 를 읽는 데 쓰는 바로 그 라이브러리다.
+    """
+    import sys as _sys
+    from pathlib import Path as _P
+    _g = str(_P(__file__).resolve().parent.parent / "cad_project_editor_g")
+    if _g not in _sys.path:
+        _sys.path.insert(0, _g)
+    from services.cad_import.colors import rgb_dark
+
+    got = {c: rgb_dark(c) for c in (51, 105, 11, 55, 115, 135)}
+    assert len(set(got.values())) == len(got), got
+    assert all(v.startswith("#") and len(v) == 7 for v in got.values()), got
+    # 손으로 고른 다크용 색이 우선이다 — 검정(7)은 어두운 캔버스에서 흰색.
+    assert rgb_dark(7) == "#ffffff"

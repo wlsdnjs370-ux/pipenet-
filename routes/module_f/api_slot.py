@@ -76,7 +76,8 @@ def _sub_open_job(sess: dict, dxf, kind: str):
     import os
     import time
 
-    from routes.module_f.subdrawing import entities_to_world, parse_subdrawing
+    from routes.module_f.subdrawing import (
+        entities_to_world, layer_colors, parse_subdrawing)
 
     def job():
         t0 = time.perf_counter()
@@ -85,7 +86,10 @@ def _sub_open_job(sess: dict, dxf, kind: str):
         entities, parsed = parse_subdrawing(dxf)
         sess["entities"] = entities
         sess["key"] = os.path.splitext(os.path.basename(str(dxf)))[0]
-        payload = _world_payload(entities_to_world(entities))
+        # 도면 색 그대로 그린다 — 계통도·기계실도 평면도와 같은 규칙이다.
+        # 종전에는 한 색으로 눌러 그려서 배관·기호·건축선이 구별되지 않았다.
+        payload = _world_payload(
+            entities_to_world(entities, layer_colors(parsed)))
         sess["world"] = payload
         skipped = parsed.get("skipped") or {}
         print(f"[{label}] 완료 {time.perf_counter() - t0:.1f}s · "

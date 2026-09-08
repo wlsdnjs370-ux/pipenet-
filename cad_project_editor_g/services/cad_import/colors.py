@@ -85,11 +85,35 @@ def rgb(c):
     return ACI_RGB.get(c, "#996633")
 
 
+def _aci_full(c):
+    """표에 없는 ACI 번호 → **AutoCAD 표준색**. 지어내지 않는다.
+
+    ★손으로 적은 표(`ACI_RGB`)는 흔한 번호 열댓 개뿐이라, 실도면의 51·105·
+      255 같은 번호가 전부 같은 대체색으로 떨어졌다. 레이어가 달라도 화면에서
+      같은 색이 되니 «색으로 구분» 이 성립하지 않는다(실측: 계통도 11색 중
+      3개, 기계실 13색 중 6개가 한 색으로 뭉쳤다).
+
+      ezdxf 가 256색 표준표를 이미 갖고 있다(`DXF_DEFAULT_COLORS`) — 이 저장소가
+      DXF 를 읽는 데 쓰는 바로 그 라이브러리다. 근사식을 새로 쓰지 않고 그것을
+      부른다. 없으면(라이브러리 부재) 종전 대체색으로 조용히 돌아간다.
+    """
+    try:
+        from ezdxf.colors import aci2rgb
+        r, g, b = aci2rgb(int(c))
+    except Exception:  # noqa: BLE001 — 색 하나 때문에 화면이 죽으면 안 된다
+        return None
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def rgb_dark(c):
     """다크 캔버스용 색 — ACI 번호(int) 또는 '#rrggbb'(str)."""
     if isinstance(c, str):
         return c
-    return ACI_RGB_DARK.get(c, "#c8a064")
+    # 손으로 고른 다크용 색이 먼저다 — 검정(7)을 흰색으로 바꾸는 등, 어두운
+    # 캔버스에서 읽히게 손본 값이라 표준색보다 이쪽이 맞다.
+    if c in ACI_RGB_DARK:
+        return ACI_RGB_DARK[c]
+    return _aci_full(c) or "#c8a064"
 
 
 def blob_color(pts):

@@ -347,42 +347,53 @@ def test_결합망이_없으면_굽지_않는다():
 
 
 # ─────────────────────────────── 그리는 손 [2026-09-08 · 사용자]
-def test_결합망은_모듈A_물_팔레트를_쓴다():
-    """★사용자: 「통합쪽 배관망 디자인은 이전 버전으로. 이전 디자인이 더 좋아.」
+def test_결합망은_모듈F_자기_화면의_규약을_쓴다():
+    """★사용자 [2026-09-08]: 「모듈 A 는 너무 옛날 거고, 모듈 F 때 새로 짠 그
+    디자인. 지금 평면도·계통도·기계실 디자인을 그대로 가져와서 반영해줘.」
 
-    «이전 버전» 은 예전부터 쓰던 모듈 A 통합 화면이다. 거기서 색은 «어느
-    도면» 이 아니라 **물길의 상하류**를 말한다 — 상류(기계실)가 짙고
-    하류(헤드)로 갈수록 옅어진다. 값이 갈리면 같은 망이 두 화면에서 다른
-    그림이 되므로 모듈 A 의 WATER 를 그대로 쓴다.
+    색을 새로 짓지 않는다 — 세 화면이 이미 쓰는 값을 옮겨 온다:
+      평면도 최불리망 흰색 · 계통도·기계실 추출 경로 #ff2d2d ·
+      기준압/이음매 #ff3b3b · 급수원 흰 사각 · 밸브 #9b59b6.
     """
     js = open(os.path.join(_ROOT, "static", "module_f.js"),
               encoding="utf-8").read()
-    a = open(os.path.join(_ROOT, "templates", "remote30_prototype.html"),
-             encoding="utf-8").read()
-    for key in ("#0369a1", "#7dd3fc", "#22d3ee", "#f0f9ff", "#a5f3fc"):
-        assert key in js, f"모듈 F 에 물 팔레트 {key} 가 없다"
-        assert key in a, f"모듈 A 에 {key} 가 없다 — 전제가 깨졌다"
     i = js.index("const MERGE_COLOR = {")
-    seg = js[i:i + 220]
-    assert "WATER.deep" in seg and "WATER.spray" in seg, seg
-    assert "machineroom: WATER.deep" in seg, "기계실이 최상류(짙은 물색)가 아니다"
+    seg = js[i:i + 400]
+    assert 'plan: "#ffffff"' in seg, seg
+    assert 'system: "#ff2d2d"' in seg and 'machineroom: "#ff2d2d"' in seg, seg
+    assert 'seam: "#ff3b3b"' in seg, seg
+    # 그 값들이 정말 «세 화면이 쓰는 것» 인가 — 같은 파일 안에서 확인한다.
+    assert '"#ff2d2d"' in js.split("const MERGE_COLOR")[0],         "추출 화면이 그 빨강을 안 쓴다 — 전제가 깨졌다"
+    assert '"#ff3b3b"' in js.split("const MERGE_COLOR")[0],         "손질 화면이 그 빨강을 안 쓴다 — 전제가 깨졌다"
+    # 모듈 A 물 팔레트는 걷어냈다.
+    assert "WATER" not in js, "모듈 A 팔레트가 남아 있다"
 
 
-def test_상류부터_그려_하류가_위에_남는다():
-    """겹칠 때 헤드 쪽이 보여야 한다 — 모듈 A 와 같은 차례."""
+def test_평면도_부분은_담당_헤드_수로_굵어진다():
+    """손질 화면의 corridor 와 같은 규약 — 굵기가 물의 양을 말한다."""
     js = open(os.path.join(_ROOT, "static", "module_f.js"),
               encoding="utf-8").read()
     i = js.index("  function drawMerged()")
-    src = js[i:js.index("\n  }\n", i) + 4]
-    order = '["machineroom", "system", "plan", "seam"]'
-    assert order in src, src[:200]
+    src = js[i:js.index(chr(10) + "  }" + chr(10), i) + 4]
+    assert "1.4 + 3.0 * t" in src, src[:200]
+    assert "Math.sqrt(load(p) / wm)" in src
 
 
-def test_절점은_흰_외곽에_채움이다():
-    """모듈 A 의 `_drawGraphNode` 와 같은 손 — 끝점만 크게·라벨."""
+def test_기계실_평면은_배경처럼_흐리다():
+    """SDF 에 없는 «보기» 자료다 — 실측 배관과 한 모양으로 그리지 않는다."""
     js = open(os.path.join(_ROOT, "static", "module_f.js"),
               encoding="utf-8").read()
-    i = js.index("  function drawMergeNode(")
-    src = js[i:js.index("\n  }\n", i) + 4]
-    assert '"#ffffff"' in src and "endpoint_radius" in src
-    assert "MERGE_STYLE.label_offset" in src
+    i = js.index("  function drawMerged()")
+    src = js[i:js.index(chr(10) + "  }" + chr(10), i) + 4]
+    j = src.index("mr_plan_edges")
+    assert "globalAlpha = 0.22" in src[:j], "기계실 평면이 안 흐리다"
+
+
+def test_마커는_손질_화면의_사각형이다():
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    i = js.index("  function drawMergeMarker(")
+    src = js[i:js.index(chr(10) + "  }" + chr(10), i) + 4]
+    assert "ctx.rect(" in src and '"#000"' in src, src
+
+

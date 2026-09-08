@@ -2894,14 +2894,13 @@
     if (!box) return;
     const c = (d && d.counts) || null;
     if (!c) { box.innerHTML = ""; return; }
-    // 색이 «어느 도면» 이 아니라 «물길의 상하류» 라는 것을 범례가 말한다
-    // (모듈 A 와 같은 규약) — 짙은 물색이 상류, 옅어질수록 하류다.
+    // 세 화면의 규약을 그대로 쓰므로 범례도 그 말로 적는다 — 평면도는 흰
+    // 최불리망, 계통도·기계실은 추출 화면의 빨간 경로다.
     box.innerHTML =
-      `<span style="color:${MERGE_COLOR.machineroom}">■</span> 기계실(상류)`
-      + ` ${c.machineroom}`
-      + ` · <span style="color:${MERGE_COLOR.system}">■</span> 계통도 ${c.system}`
-      + ` · <span style="color:${MERGE_COLOR.plan}">■</span> 평면도(하류)`
+      `<span style="color:${MERGE_COLOR.plan}">■</span> 평면도 최불리망`
       + ` ${c.plan}`
+      + ` · <span style="color:${MERGE_COLOR.system}">■</span> 계통도 ${c.system}`
+      + ` · 기계실 ${c.machineroom}`
       + ` · <span style="color:${MERGE_COLOR.seam}">■</span> 이음매 배관`
       + ` ${c.seam}`
       + (c.anchor && c.anchor.length
@@ -4329,69 +4328,56 @@
     ctx.stroke();
   }
 
-  // ★결합망 색 — 모듈 A 통합과 **같은 물 팔레트**를 쓴다.
+  // ★결합망은 **모듈 F 자기 화면들의 규약**을 그대로 쓴다.
   //
-  //   [2026-09-08 · 사용자] 「통합쪽 배관망 디자인은 이전 버전으로. 이전
-  //   디자인이 더 좋아.」 — «이전 버전» 은 예전부터 쓰던 모듈 A 통합 화면이다.
-  //   거기서는 색이 «어느 도면» 이 아니라 **물길의 상하류**를 말한다:
-  //   상류(기계실)가 짙고 하류(헤드)로 갈수록 옅어져 흐름이 색으로 읽히고,
-  //   AV(빨강)만 유일한 유채 경고색이다. 값은 모듈 A 의 WATER/GRAPH_STYLE
-  //   그대로다 — 두 화면이 다른 색을 쓰면 같은 망이 다른 그림이 된다.
-  const WATER = {
-    deep: "#0369a1",      // 상류 관수로 — 짙은 물색 (기계실)
-    shallow: "#7dd3fc",   // 말단 가지 — 옅은 물색 (라이저·계통도)
-    crest: "#f0f9ff",     // 물마루 (수원·시작 노드)
-    spray: "#22d3ee",     // 방수 중인 헤드 (평면 가지배관)
-    halo: "#a5f3fc",      // 살수 링 (밸브·연결점)
-  };
+  //   [2026-09-08 · 사용자] 「모듈 A 는 너무 옛날 거고, 모듈 F 때 새로 짠 그
+  //   디자인. 지금 평면도·계통도·기계실 디자인을 그대로 가져와서 반영해줘.」
+  //
+  //   그래서 색을 새로 짓지 않는다 — 세 화면이 이미 쓰는 값을 옮겨 온다:
+  //
+  //     평면도(손질) 최불리망   흰색 · 굵기는 담당 헤드 수에 비례
+  //     계통도·기계실 추출 경로  빨간 실선 #ff2d2d (sub 화면의 그 선)
+  //     최원 유하거리·앵커      #ff3b3b (기준압을 잡는 자리의 빨강)
+  //     급수원 마커             흰 사각 (EDIT_SOURCE) · 밸브 보라 (EDIT_VALVE)
+  //     배경으로 까는 것        아주 흐리게 (EDIT_BG_ALPHA 계열)
+  //
+  //   계통도와 기계실이 같은 빨강인 것은 두 화면에서 원래 그렇기 때문이다 —
+  //   가르는 것은 색이 아니라 «어디에 붙어 있나» 와 마커다.
   const MERGE_COLOR = {
-    plan: WATER.spray, system: WATER.shallow,
-    machineroom: WATER.deep, seam: "#ef4444",
-  };
-  const MERGE_STYLE = {
-    pipe_width: 2.2, endpoint_radius: 8, endpoint_stroke: 2.5,
-    mid_radius: 4, mid_stroke: 1.5,
-    label_font: "bold 12px ui-monospace, monospace",
-    label_color: "#e0f2fe", label_offset: 12,
+    plan: "#ffffff",        // 평면도 최불리망 — 손질 화면의 corridor
+    system: "#ff2d2d",      // 계통도 추출 경로 — sub 화면의 실선
+    machineroom: "#ff2d2d", // 기계실 추출 경로 — 같은 규약
+    seam: "#ff3b3b",        // 이음매 — 기준압을 잡는 자리의 빨강
   };
 
-  /** 절점 하나 — 흰 외곽 + 채움 + (끝점이면) 라벨. 모듈 A 와 같은 손. */
-  function drawMergeNode(sx, sy, role, fill, tag) {
-    const r = role === "endpoint"
-      ? MERGE_STYLE.endpoint_radius : MERGE_STYLE.mid_radius;
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = role === "endpoint"
-      ? MERGE_STYLE.endpoint_stroke : MERGE_STYLE.mid_stroke;
-    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = fill;
-    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
-    if (role === "endpoint" && tag) {
-      ctx.fillStyle = MERGE_STYLE.label_color;
-      ctx.font = MERGE_STYLE.label_font;
-      ctx.fillText(tag, sx + MERGE_STYLE.label_offset, sy + 5);
-    }
+  /** 급수원·밸브 마커 — 손질 화면의 `markers()` 와 같은 사각형이다. */
+  function drawMergeMarker(px, py, color, size) {
+    ctx.fillStyle = color;
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.rect(px - size, py - size, size * 2, size * 2);
+    ctx.fill();
+    ctx.stroke();
   }
 
-  /** 결합된 배관망 — 모듈 A 통합과 같은 손으로 그린다.
+  /** 결합된 배관망 — **세 화면의 손을 그대로** 옮겨 그린다.
 
-      ★색은 «어느 도면» 이 아니라 **물길의 상하류**를 말한다(모듈 A 규약):
-        기계실(짙은 물색) → 라이저(옅은 물색) → 평면 가지(청록). 흐름이 색으로
-        읽히고, 이음매·AV 만 빨강이라 눈이 거기로 간다.
-
-      그리는 차례도 같다 — 기계실 평면(가는 선) → 배관(상류→하류) → 절점 →
-      기기. 뒤에 그린 것이 위에 남으므로 «사람이 확인할 것» 이 맨 위다. */
+      평면도에서 뽑힌 부분은 손질 화면의 corridor 처럼 흰 선(굵기는 담당 헤드
+      수), 계통도·기계실에서 뽑힌 부분은 추출 화면의 빨간 실선이다. 기계실
+      평면 배관망은 SDF 에 없는 «보기» 자료라 배경 도면처럼 아주 흐리게 깐다
+      — 실측 배관과 한 모양으로 그리면 사람이 둘을 구별할 수 없다. */
   function drawMerged() {
     const v = S.mergeView;
     if (!v || !v.nodes || !v.nodes.length) return;
     const at = {};
     for (const n of v.nodes) at[n.label] = n;
 
-    // ① 기계실 평면 배관망 — SDF 에 없는 «보기» 자료다. 가는 선으로 먼저 깔고
-    //    그 위에 수리경로(spine)를 굵게 덮어 «어느 길이 계산에 들어갔나» 를 낸다.
+    // ① 기계실 평면 배관망 — 배경 규약(아주 흐리게).
     ctx.save();
-    ctx.globalAlpha = 0.5;
-    ctx.strokeStyle = MERGE_COLOR.machineroom;
-    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.22;
+    ctx.strokeStyle = "#94a3b8";
+    ctx.lineWidth = CAD_LINE_W;
     ctx.beginPath();
     for (const e of (v.mr_plan_edges || [])) {
       ctx.moveTo(sx(e[0]), sy(e[1]));
@@ -4400,55 +4386,92 @@
     ctx.stroke();
     ctx.restore();
 
-    // ② 배관 — 상류부터 그려 하류가 위에 남게 한다(겹칠 때 헤드 쪽이 보인다).
-    const group = { machineroom: [], system: [], plan: [], seam: [] };
+    // ② 계통도·기계실 경로 — 추출 화면과 같은 빨간 실선.
+    ctx.strokeStyle = MERGE_COLOR.system;
+    ctx.lineWidth = CAD_LINE_W + 1.6;
+    ctx.lineCap = "round";
+    ctx.beginPath();
     for (const p of v.pipes) {
+      if (p.part !== "system" && p.part !== "machineroom") continue;
       const a = at[p.a], b = at[p.b];
-      if (a && b) (group[p.part] || group.plan).push([a, b]);
+      if (!a || !b) continue;
+      ctx.moveTo(sx(a.x), sy(a.y));
+      ctx.lineTo(sx(b.x), sy(b.y));
     }
-    for (const kind of ["machineroom", "system", "plan", "seam"]) {
-      const rows = group[kind];
-      if (!rows.length) continue;
-      ctx.strokeStyle = MERGE_COLOR[kind];
-      ctx.lineWidth = kind === "seam" ? 3.5 : MERGE_STYLE.pipe_width;
+    ctx.stroke();
+
+    // ③ 평면도 최불리망 — 손질 화면처럼 흰 선. 굵기는 담당 헤드 수에 비례하고,
+    //    없으면(결합표에는 그 수가 없다) 관경으로 대신한다. 둘 다 없으면 균일.
+    const load = (p) => Number(p.load || p.dia || 0);
+    let wm = 0;
+    for (const p of v.pipes) if (p.part === "plan") wm = Math.max(wm, load(p));
+    ctx.strokeStyle = MERGE_COLOR.plan;
+    for (const p of v.pipes) {
+      if (p.part !== "plan") continue;
+      const a = at[p.a], b = at[p.b];
+      if (!a || !b) continue;
+      const t = wm > 0 ? Math.sqrt(load(p) / wm) : 0.5;
+      ctx.globalAlpha = Math.min(1, 0.55 + 0.45 * t);
+      ctx.lineWidth = 1.4 + 3.0 * t;
       ctx.beginPath();
-      for (const [a, b] of rows) {
-        ctx.moveTo(sx(a.x), sy(a.y));
-        ctx.lineTo(sx(b.x), sy(b.y));
-      }
+      ctx.moveTo(sx(a.x), sy(a.y));
+      ctx.lineTo(sx(b.x), sy(b.y));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // ④ 이음매 — 두 망이 실제로 붙는 자리. 기준압 규약의 빨강으로 굵게.
+    ctx.strokeStyle = MERGE_COLOR.seam;
+    ctx.lineWidth = 3.6;
+    ctx.beginPath();
+    for (const p of v.pipes) {
+      if (p.part !== "seam") continue;
+      const a = at[p.a], b = at[p.b];
+      if (!a || !b) continue;
+      ctx.moveTo(sx(a.x), sy(a.y));
+      ctx.lineTo(sx(b.x), sy(b.y));
+    }
+    ctx.stroke();
+    ctx.lineCap = "butt";
+
+    // ⑤ 헤드 — 손질 화면과 같은 흰 원(속을 옅게 채운다).
+    ctx.strokeStyle = "#ffffff";
+    ctx.fillStyle = "rgba(255,255,255,.30)";
+    ctx.lineWidth = 2;
+    for (const n of v.nodes) {
+      if (!n.head) continue;
+      ctx.beginPath();
+      ctx.arc(sx(n.x), sy(n.y), 4.5, 0, Math.PI * 2);
+      ctx.fill();
       ctx.stroke();
     }
 
-    // ③ 절점 — 끝점(수원·기준점·라이저 시작)만 크게, 나머지는 작게.
-    //    색은 그 절점이 선 자리의 물색이다(배관과 같은 규약).
+    // ⑥ 기준점 — 앵커 규약(빨간 겹원). 세 도면이 만나는 그 한 점이다.
     for (const n of v.nodes) {
+      if (!n.anchor) continue;
       const px = sx(n.x), py = sy(n.y);
-      const isEnd = !!(n.input || n.anchor || n.pump);
-      const fill = n.input ? WATER.crest
-        : n.anchor ? MERGE_COLOR.seam
-        : n.valve ? WATER.halo
-        : MERGE_COLOR[n.part] || MERGE_COLOR.plan;
-      const tag = n.input ? "수원" : n.anchor ? `기준점 ${n.label}`
-        : n.pump ? "펌프" : null;
-      // 헤드는 수가 많아 점만 찍는다 — 원을 다 그리면 가지가 안 보인다.
-      if (n.head && !isEnd) {
-        ctx.fillStyle = MERGE_COLOR.plan;
-        ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2); ctx.fill();
-        continue;
-      }
-      drawMergeNode(px, py, isEnd ? "endpoint" : "mid", fill, tag);
+      ctx.strokeStyle = MERGE_COLOR.seam;
+      ctx.lineWidth = 2.6;
+      ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = MERGE_COLOR.seam;
+      ctx.font = "11px sans-serif";
+      ctx.fillText(`기준점 ${n.label}`, px + 14, py + 4);
     }
 
-    // ④ 펌프 — 있으면 P 로. 실제 펌프는 기계실에 삽입되는 요소다.
+    // ⑦ 급수원·밸브·펌프 — 손질 화면의 사각 마커 규약 그대로.
     for (const n of v.nodes) {
-      if (!n.pump) continue;
       const px = sx(n.x), py = sy(n.y);
-      ctx.strokeStyle = WATER.crest;
-      ctx.fillStyle = WATER.crest;
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.stroke();
-      ctx.font = "bold 9px ui-monospace";
-      ctx.fillText("P", px - 3, py + 3);
+      if (n.input) drawMergeMarker(px, py, "#ffffff", 7);
+      else if (n.valve) drawMergeMarker(px, py, "#9b59b6", 6);
+      if (n.pump) {
+        ctx.strokeStyle = "#9b59b6";
+        ctx.fillStyle = "#9b59b6";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.stroke();
+        ctx.font = "bold 9px ui-monospace";
+        ctx.fillText("P", px - 3, py + 3);
+      }
     }
     ctx.lineWidth = 1;
   }

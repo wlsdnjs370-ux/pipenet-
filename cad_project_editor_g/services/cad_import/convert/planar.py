@@ -292,6 +292,65 @@ COLLINEAR_TOL_MM = 10.0
 DIAGONAL_GATE_DEG = 5.0
 
 
+def _find_x_crossings(pos: dict, edges) -> list[dict]:
+    """노드를 공유하지 않는 두 간선의 **진교차** 목록.
+
+    끝점이 닿는 것(T·꺾임)은 교차가 아니다 — 그것은 이미 노드로 만나 있다.
+    여기서 찾는 것은 «둘 다 속을 가로지르는» 자리뿐이다.
+
+    반환: [{"a": (i,j), "b": (k,l), "at": (x,y)}, …]  — 좌표는 스냅 평면 mm.
+
+    ★격자 인덱스로 후보를 좁힌다. 배관 수백~수천 개를 통째로 짝지으면
+      O(n²) 가 그대로 나온다(B1F 3,148 간선 = 500만 쌍).
+    """
+    seg = [(a, b, pos[a], pos[b]) for (a, b) in edges if a in pos and b in pos]
+    if len(seg) < 2:
+        return []
+    cell = 2000.0                     # mm — 가지 간격(~3 m)보다 작게
+    grid: dict = {}
+    for idx, (_a, _b, p, q) in enumerate(seg):
+        x0, x1 = sorted((p[0], q[0]))
+        y0, y1 = sorted((p[1], q[1]))
+        for gx in range(int(x0 // cell), int(x1 // cell) + 1):
+            for gy in range(int(y0 // cell), int(y1 // cell) + 1):
+                grid.setdefault((gx, gy), []).append(idx)
+
+    def _side(o, a, b):
+        return ((a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]))
+
+    seen: set = set()
+    out: list[dict] = []
+    for cellidx in grid.values():
+        for ii in range(len(cellidx)):
+            for jj in range(ii + 1, len(cellidx)):
+                i, j = cellidx[ii], cellidx[jj]
+                key = (min(i, j), max(i, j))
+                if key in seen:
+                    continue
+                seen.add(key)
+                a1, b1, p1, p2 = seg[i]
+                a2, b2, p3, p4 = seg[j]
+                if {a1, b1} & {a2, b2}:
+                    continue          # 노드를 공유한다 — 이미 만나 있다
+                d1, d2 = _side(p3, p4, p1), _side(p3, p4, p2)
+                d3, d4 = _side(p1, p2, p3), _side(p1, p2, p4)
+                if not (((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0))):
+                    continue
+                den = ((p2[0] - p1[0]) * (p4[1] - p3[1])
+                       - (p2[1] - p1[1]) * (p4[0] - p3[0]))
+                if abs(den) < 1e-9:
+                    continue
+                t = (((p3[0] - p1[0]) * (p4[1] - p3[1])
+                      - (p3[1] - p1[1]) * (p4[0] - p3[0])) / den)
+                out.append({
+                    "a": (a1, b1), "b": (a2, b2),
+                    "at": (p1[0] + t * (p2[0] - p1[0]),
+                           p1[1] + t * (p2[1] - p1[1])),
+                })
+    out.sort(key=lambda c: (c["a"], c["b"]))
+    return out
+
+
 def _straight_restore_map(pts, remap, snap_edges, head_vid, user_sources,
                           used, xform):
     """«원래 일직선이던» 차수2 중간 점의 복원 좌표표 {정본 vid: (x, y)}.
@@ -678,6 +737,23 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
     snap_edges, n_tee_split = normalize_tee_overlaps(snap_pos, snap_edges)
     print(f"티 겹침 정규화: 관통 쪼갬 {n_tee_split}곳 · 간선 {len(snap_edges)}")
 
+    # ---- X자 교차 **검출** (세기만 · 지시서 A-1단계)
+    #
+    #  티 겹침 정규화는 «노드 위를 지나는 관통(T)» 만 쪼갠다. 노드를 공유하지
+    #  않고 X 자로 만나는 두 배관은 보지 않는다 — 모듈 A 의
+    #  `orthogonalize_edges`·`planarize_edges` 는 F 경로가 타지 않는다.
+    #
+    #  ★자동으로 쪼개지 않는다. 실제 티 분기일 수도 있고, **다른 계통·다른
+    #    높이의 배관이 도면에서 겹쳐 보이는 것**일 수도 있다. 코드가 구분할 수
+    #    없으므로 임의로 노드를 만들면 없던 분기가 생겨 유량이 갈린다(S340).
+    #    세어서 올리고, 쪼갤지는 사람이 정한다.
+    x_crossings = _find_x_crossings(snap_pos, snap_edges)
+    if x_crossings:
+        print(f"★X자 교차 {len(x_crossings)}건 — 노드 없이 만나는 배관"
+              f" (자동으로 쪼개지 않는다): "
+              + " · ".join(f"{c['a'][0]}-{c['a'][1]}×{c['b'][0]}-{c['b'][1]}"
+                           for c in x_crossings[:4]))
+
     # ---- 직선 위치 복원 [2026-08-18 오너]
     #  격자 스냅으로 톱니가 된 «원래 일직선» 런의 중간 점만 스냅된 양끝을
     #  잇는 직선 위로 되돌린다. 점 개수·연결·양끝 위치는 불변.
@@ -951,6 +1027,8 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         "edge_ref": edge_ref,
         "node_ref": node_ref,
         "wet_head_idx": wet_head_idx,
+        # [A-1] 노드 없이 X 자로 만나는 배관 — 보고만 한다(쪼개지 않는다).
+        "x_crossings": x_crossings,
     }
 
 

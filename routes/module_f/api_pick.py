@@ -138,6 +138,99 @@ def register(app):
         _run_job(sess, "찍기 후보 제안", job)
         return jsonify({"ok": True})
 
+    # ── 신축배관 등 «배관 형상이 아닌» 레이어를 재료에서 뺀다 [지시서 C-1]
+    #
+    #   ★조용히 빼지 않는다. 자동 사전은 도면마다 다른 관례를 **반드시**
+    #     놓치고(사내 도면 8장에서 5종), 조용히 빼면 배관이 끊긴 것을 아무도
+    #     모른다(S340). 그래서 추천만 하고 확정은 사람이 한다.
+    #
+    #   ★그리고 빼면 무엇을 잃는지 **먼저 잰다.** 대명동 실측: 신축배관을 빼면
+    #     물닿음 헤드가 111 → 5 로 떨어진다. 신축배관이 헤드를 가지관에 잇는
+    #     유일한 경로이기 때문이다. 그 사실을 모른 채 빼면 망이 무너진다.
+    FLEX_WORDS = ("후렉시블", "후렉", "플렉", "flex", "fx")
+
+    def _is_flex(layer) -> bool:
+        low = str(layer or "").lower()
+        return any(w.lower() in low for w in FLEX_WORDS)
+
+    @app.get("/api/module-f/pick/materials")
+    @route_session(_need_pick)
+    def module_f_pick_materials(sess, body):
+        """찍힌 재료 묶음 — 레이어별로 묶어 «신축배관 추천» 을 붙인다.
+
+        ★뺀 레이어도 목록에 **남긴다**(`on: false`). 재료 목록만 보이면 한 번
+          뺀 순간 그 줄이 사라져 되돌릴 길이 없다 — 실측으로 그렇게 막혔다.
+        """
+        ps = sess["pick"]
+        pool = getattr(ps.board, "by_bundle", {}) or {}
+        by: dict = {}
+
+        def _row(ly):
+            return by.setdefault(str(ly), {"layer": str(ly), "colors": [],
+                                           "segs": 0, "flex": _is_flex(ly),
+                                           "on": False})
+
+        for ly, col in ps.board.mat:
+            row = _row(ly)
+            row["on"] = True
+            row["colors"].append(col)
+            row["segs"] += len(pool.get((ly, col), ()))
+        for h in (sess.get("pick_layer_excluded") or ()):
+            if h.get("on"):
+                continue
+            row = _row(h.get("layer"))
+            if row["on"]:
+                continue          # 되돌려 다시 재료가 된 것
+            row["segs"] = int(h.get("segs") or 0)
+            row["colors"] = sorted({c for (ly, c) in pool
+                                    if str(ly) == str(h.get("layer"))})
+        rows = sorted(by.values(), key=lambda r: (-r["segs"], r["layer"]))
+        return jsonify({"ok": True, "materials": rows,
+                        "flex_hint": [r["layer"] for r in rows if r["flex"]]})
+
+    @app.post("/api/module-f/pick/exclude-layer")
+    @route_session(_need_pick, post=True)
+    def module_f_pick_exclude_layer(sess, body):
+        """레이어 하나를 재료에서 빼거나 되돌린다(`on`: true 면 되돌리기).
+
+        Body: sid · layer · [on]
+        """
+        ps = sess["pick"]
+        layer = str(body.get("layer") or "")
+        if not layer:
+            return _fail("어느 레이어인지 주세요.")
+        want_on = bool(body.get("on"))
+        pool = getattr(ps.board, "by_bundle", {}) or {}
+        keys = [k for k in pool if str(k[0]) == layer]
+        if not keys:
+            return _fail(f"그런 레이어가 없습니다: {layer}")
+        have = {k for k in ps.board.mat if str(k[0]) == layer}
+        if want_on:
+            for k in keys:
+                if k not in ps.board.mat:
+                    ps.board.mat.append(k)
+            n = len(keys) - len(have)
+        else:
+            ps.board.mat = [k for k in ps.board.mat if str(k[0]) != layer]
+            n = len(have)
+        segs = sum(len(pool.get(k, ())) for k in keys)
+        # 조용히 넘기지 않는다 — 무엇을 뺐는지 **세션에** 남긴다.
+        #
+        #   ★찍기 기록(`board.clicks`)에는 넣지 않는다. 그 목록의 각 항목은
+        #     좌표를 가진 «클릭» 이고, `highlight_geom()` 이 마지막 항목에서
+        #     `cl["x"]` 를 읽는다 — 좌표 없는 항목을 끼우면 거기서 터진다
+        #     (실측: 화면이 500 · KeyError 'x'). 레이어 제외는 클릭이 아니므로
+        #     제 자리에 남긴다.
+        hist = sess.setdefault("pick_layer_excluded", [])
+        rec = {"layer": layer, "on": want_on,
+               "bundles": len(keys), "segs": segs}
+        hist[:] = [h for h in hist if h.get("layer") != layer] + [rec]
+        print(f"[찍기] 레이어 {'되돌림' if want_on else '제외'} — {layer}"
+              f" · 묶음 {n} · 선분 {segs}")
+        return jsonify({"ok": True, "layer": layer, "on": want_on,
+                        "bundles": n, "segs": segs,
+                        "state": _pick_state(sess)})
+
     @app.post("/api/module-f/pick/adopt")
     @route_session(_need_pick, post=True, why_code=400)
     def module_f_pick_adopt(sess, body):

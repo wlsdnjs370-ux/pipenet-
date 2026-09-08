@@ -120,6 +120,39 @@ def normalize_node_coords(tables, *, canvas_units: float = 3000.0) -> float:
 
 
 # ────────────────────────────────────────────── [G12] 아이소매트릭 베이크
+def _count_screen_crossings(nodes, stub_nodes, parent_of) -> dict:
+    """등각 화면에서 겹쳐 지나가는 배관 쌍 — «스텁이 낀 것» 과 «배관끼리».
+
+    표시 전용 셈이다 — 좌표를 바꾸지 않는다. 배관 목록이 없으므로(이 함수는
+    노드만 본다) 스텁은 부모-헤드 쌍으로 세우고, 그 스텁이 다른 스텁의 세로
+    구간과 화면에서 겹치는지 본다. 배관끼리의 교차는 여기서 알 수 없어 0 으로
+    두고, 그 판정은 평면 쪽(`planar._find_x_crossings`)이 한다.
+    """
+    at = {str(n.get("label")): (float(n.get("x", 0) or 0),
+                                float(n.get("y", 0) or 0)) for n in nodes}
+    stubs = []
+    for h in stub_nodes:
+        par = parent_of.get(str(h))
+        if par is None or str(h) not in at or str(par) not in at:
+            continue
+        (hx, hy), (px, py) = at[str(h)], at[str(par)]
+        if abs(hx - px) > 1e-6:      # 세로로 안 선 것은 스텁이 아니다
+            continue
+        stubs.append((str(h), hx, min(hy, py), max(hy, py)))
+
+    items = []
+    for i in range(len(stubs)):
+        for j in range(i + 1, len(stubs)):
+            h1, x1, lo1, hi1 = stubs[i]
+            h2, x2, lo2, hi2 = stubs[j]
+            if abs(x1 - x2) > 1e-6:
+                continue             # 같은 수직선 위가 아니다
+            if lo1 < hi2 and lo2 < hi1:
+                items.append({"a": h1, "b": h2, "x": x1})
+    return {"total": len(items), "stub_vs_pipe": len(items),
+            "pipe_vs_pipe": 0, "items": items[:20]}
+
+
 def bake_isometric(tables, *, iso_z_scale: float = 1.0,
                    ref_label=None, no_lift_labels=None,
                    head_nodes=None, head_parent=None,
@@ -229,8 +262,20 @@ def bake_isometric(tables, *, iso_z_scale: float = 1.0,
         n["y"] = pxy[1] + (d if de >= 0 else -d)
         vertical += 1
 
+    # ── [B] 화면 교차 세기 — 지시서 §4-⑴. **좌표는 손대지 않는다.**
+    #
+    #   등각은 3차원을 한 평면에 눕히는 그림이라 서로 다른 자리의 배관이
+    #   화면에서 겹쳐 지나간다. 그것을 «위상이 깨졌다» 로 읽는 일이 실제로
+    #   있었으므로, 세어서 올리고 화면이 그 사실을 말하게 한다.
+    #
+    #   스텁이 낀 것 — 등각의 원리적 성질이다(평면에서 헤드와 부모는 같은 점).
+    #   배관끼리    — 평면에 원래 있던 교차다. 등각 탓이 아니므로 그렇게
+    #                 말해야 한다(그것은 A 항목이다).
+    crossings = _count_screen_crossings(nodes, standable, parent_of)
+
     return {"heads": len(heads), "vertical": vertical,
             "not_terminal": len(heads) - len(standable), "stub": stub,
+            "crossings": crossings,
             # ★밑그림이 같은 식을 쓰려면 필요한 세 값. 여기서 셈한 것을 그대로
             #   내보낸다 — 「별도 수학을 쓰지 말 것」(F-10e 지시서).
             #   화면은 board 점 (x,y,e) 를

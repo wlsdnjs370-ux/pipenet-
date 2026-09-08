@@ -38,7 +38,11 @@ def check(label, cond, detail=""):
     return cond
 
 
-def _wait(c, sid, limit=600):
+# ★대기 상한 — B1F(간선 23,273)의 «표 확정» 은 실측 200초대다. 종전 600회
+#   ×0.3s = 180초로는 머신이 조금만 바빠도 넘어가, 결함이 아닌데 붉게 뜬다
+#   (실측: 200.3s 에서 preview 가 「아직 계산 중」 → KeyError 'view').
+#   재는 것은 «라우트가 다 있는가» 이지 속도가 아니므로 넉넉히 둔다.
+def _wait(c, sid, limit=1400):
     for _ in range(limit):
         jb = c.get(f"/api/module-f/job?sid={sid}").get_json()
         if jb.get("state") in ("done", "error", "idle"):

@@ -3197,7 +3197,54 @@
     $("pk-done").disabled = p.materials.length === 0;
     $("pk-next").disabled = !p.mat_done;
     renderPickCount(p);
+    loadPickMaterials();
     draw();
+  }
+
+  /** 찍힌 재료 묶음 — 레이어별로 보이고, 신축배관은 추천 표를 단다.
+   *
+   *  ★조용히 빼지 않는다(S340). 자동 사전은 도면마다 다른 관례를 반드시
+   *    놓치므로 «추천» 일 뿐이고, 빼면 무엇을 잃는지도 먼저 말한다 —
+   *    대명동 실측으로 신축배관을 빼면 물닿음 헤드가 111 → 5 로 떨어진다. */
+  async function loadPickMaterials() {
+    const box = $("pk-mats");
+    if (!box || !S.sid) return;
+    let d;
+    try { d = await api(`/api/module-f/pick/materials?sid=${S.sid}`); }
+    catch (err) { box.innerHTML = ""; return; }
+    const rows = d.materials || [];
+    $("pk-mats-chip").textContent = `${rows.length}종`;
+    let html = "";
+    for (const r of rows) {
+      // ★뺀 것도 목록에 남는다 — 안 남기면 되돌릴 길이 없다(실측으로 막혔다).
+      html += `<label class="chk"><input type="checkbox" data-mat-layer=`
+        + `"${esc(r.layer)}"${r.on === false ? "" : " checked"}>`
+        + (r.flex ? `<span class="cat HEAD">신축배관?</span> ` : "")
+        + `<span class="nm">${esc(r.layer)}</span>`
+        + (r.on === false ? ` <span class="tag">뺌</span>` : "")
+        + `<span class="cnt">${r.segs}</span></label>`;
+    }
+    box.innerHTML = html;
+    for (const cb of box.querySelectorAll("input[data-mat-layer]")) {
+      cb.onchange = () => excludeMatLayer(cb.dataset.matLayer, cb.checked);
+    }
+  }
+
+  /** 레이어를 빼거나 되돌린다 — 뺄 때는 «무엇을 잃는지» 를 함께 말한다. */
+  async function excludeMatLayer(layer, on) {
+    busy(true, on ? "레이어를 되돌리는 중…" : "레이어를 빼는 중…");
+    try {
+      const d = await post("/api/module-f/pick/exclude-layer",
+                           { sid: S.sid, layer, on });
+      S.pick = d.state;
+      renderPick();
+      say(on
+          ? `«${layer}» 를 재료로 되돌렸습니다 — 선분 ${d.segs}개.`
+          : `«${layer}» 를 재료에서 뺐습니다 — 선분 ${d.segs}개.`
+            + " 배관망을 구성해 보면 헤드가 떨어졌는지 바로 보입니다.",
+          on ? "ok" : "warn");
+    } catch (err) { say(err.message, "err"); }
+    finally { busy(false); }
   }
 
   // ★지금 몇 개가 찍혀 있나 — 이 줄이 없어서 사고가 났다.
@@ -4158,6 +4205,9 @@
     const d = await api(`/api/module-f/design/preview?${q}`);
     S.design = { view: d.view, tables: d.tables, settings: d.settings,
                  marks: d.marks || {},
+                 // [B] 등각에서 «겹쳐 보이는» 접속관 셈 — 위상 문제가 아니라는
+                 //   것을 화면이 스스로 말해야 사람이 버그로 읽지 않는다.
+                 stood: d.stood || null,
                  // [F-11d-2] 이번 계산에 «못 들어간» 직접 입력. 조용한 소실
                  //   금지 — 목록으로 올라가 사유까지 보인다.
                  ovMissed: d.ov_missed || [],
@@ -4186,6 +4236,7 @@
     //   규격표가 바뀔 때 둘이 갈린다.
     if (!S.boreAllowed) await loadBoreOv();
     renderIssues();
+    renderIsoNote();
     // ★«아직 확정 안 함» 은 오류가 아니라 상태다(서버가 200 · view:null 로
     //   답한다). 그릴 것이 없으면 여기서 조용히 멈춘다 — 화면은 「표 확정」
     //   단추가 선 채로 남는다.
@@ -5889,6 +5940,21 @@
     renderPlanUnderlay();
     fitDesignView();
     draw();
+  }
+
+  /** 등각에서 겹쳐 보이는 접속관 — 「위상 문제 아님」을 화면이 말한다. */
+  function renderIsoNote() {
+    const box = $("dg-iso-note");
+    if (!box) return;
+    const cx = ((S.design || {}).stood || {}).crossings || null;
+    if (!cx || !cx.total) { box.innerHTML = ""; return; }
+    box.innerHTML =
+      `아이소에서 <b>겹쳐 보이는 헤드 접속관 ${cx.total}쌍</b> — 3차원을 한`
+      + ` 평면에 눕히기 때문입니다. <b>위상 문제가 아닙니다</b>`
+      + ` (층고를 입력하면 줄어듭니다).`
+      + (cx.pipe_vs_pipe
+         ? ` · 배관끼리 겹친 ${cx.pipe_vs_pipe}건은 평면에 원래 있던 교차입니다.`
+         : "");
   }
 
   function renderPlanUnderlay() {

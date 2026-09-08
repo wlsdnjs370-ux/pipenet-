@@ -683,6 +683,23 @@
     "rule": "/api/module-f/pick/commit"
   },
   {
+    "endpoint": "module_f_pick_exclude_layer",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/pick/exclude-layer"
+  },
+  {
+    "endpoint": "module_f_pick_materials",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/pick/materials"
+  },
+  {
     "endpoint": "module_f_pick_mode",
     "methods": [
       "OPTIONS",

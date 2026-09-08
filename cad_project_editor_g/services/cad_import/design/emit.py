@@ -274,6 +274,12 @@ def emit_design_sdf(tables, out_path, *,
         if stood["not_terminal"]:
             msg += (f" · 배관이 둘 이상 붙어 못 세운 헤드 {stood['not_terminal']}개"
                     f" — 관말이 아니라 위상이 의심스럽습니다")
+        # [B] 등각에서 겹쳐 보이는 것은 «위상 문제가 아니다» — 그렇게 말한다.
+        _cx = (stood or {}).get("crossings") or {}
+        if _cx.get("total"):
+            msg += (f" · 화면에서 겹쳐 보이는 접속관 {_cx['total']}쌍"
+                    f" — 등각이 3차원을 한 평면에 눕히기 때문입니다"
+                    f"(위상 문제 아님 · 층고를 입력하면 줄어듭니다)")
         print(msg)
     print(f"[G14] 템플릿 잔재 정리 · 남의 라이브러리 경로 {cleaned['user_lib']}건 → "
           f"'{slf_dst.name}' · 주기 {cleaned['text_element']}건 · "

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260908-fstyle">
+<link rel="stylesheet" href="/static/module_f.css?v=20260908-flexiso2">
 </head>
 <body>
 <header>
@@ -299,6 +299,19 @@
            종전에는 그 사실이 **배관망을 구성한 뒤에야** 보였다. 그 다음에
            「최불리 선정」이 「헤드가 5개뿐」으로 막히니 «단추가 고장» 으로 읽힌다. -->
       <div id="pk-count" class="hint" style="margin-top:12px">—</div>
+      <!-- [C-1] 재료 안에서 «배관 형상이 아닌» 레이어를 뺀다.
+           신축배관(후렉시블)은 도면에 141mm 45° 챔퍼로 그려져 있어, 재료로
+           들어오면 그 챔퍼가 배관 형상이 된다 — 등각에서 혼자 다른 방향으로
+           도드라지는 그 선이다. 자동 사전은 추천만 하고 확정은 사람이 한다. -->
+      <h2 class="fold" data-fold="pk-mats-body" style="margin-top:14px">
+        <span class="caret">▶</span>찍힌 재료 묶음
+        <span class="tag" id="pk-mats-chip">—</span></h2>
+      <div class="foldbody hidden" id="pk-mats-body">
+        <p class="hint">신축배관처럼 <b>배관 형상이 아닌</b> 레이어는 여기서
+          뺍니다. 빼면 그 선분이 배관망에서 사라지므로, <b>헤드가 떨어지는지</b>
+          먼저 재서 알려 드립니다.</p>
+        <div id="pk-mats"></div>
+      </div>
       <div class="row">
         <button id="pk-next" class="go">배관망 구성 →</button>
       </div>
@@ -551,6 +564,8 @@
            좌표에도 그대로 쓰인다(`_view_opts` → `emit_design_sdf`). 보기 편하자고
            끄면 산출이 조용히 바뀐다. 화면을 가르는 스위치는 위의 «평면에서
            보기» 하나다. -->
+      <!-- [B] 등각의 원리적 성질 — 겹쳐 보이는 것을 버그로 읽지 않게. -->
+      <div class="hint" id="dg-iso-note"></div>
       <label class="chk"><input type="checkbox" id="dg-iso" checked>
         <span>30° 아이소매트릭 투영 — 화면과 <b>저장되는 좌표</b>에 함께 적용</span></label>
       <label class="f"><span>고도 펼침 배율</span>
@@ -763,6 +778,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260908-fstyle"></script>
+<script src="/static/module_f.js?v=20260908-flexiso2"></script>
 </body>
 </html>

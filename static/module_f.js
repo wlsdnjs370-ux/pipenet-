@@ -200,7 +200,11 @@
     else if (S.stage === "edit") editClick(x, y, maxD);
     // [F-10e] 평면에서 보는 동안은 «그 자리에서» 고칠 수 있어야 한다. 손질과
     //   같은 클릭 경로를 그대로 태운다 — 새 길을 만들지 않는다(D-F10-6).
-    else if (S.stage === "design" && planUnderlayOn() && S.edit) {
+    else if (S.stage === "design" && planUnderlayOn() && S.edit
+             && (S.edit.mode === "이음" || S.edit.mode === "삭제")) {
+      // ★«이음·삭제» 를 고른 동안에만 고친다. 평면 보기가 기본이 된 뒤로는
+      //   손질에서 쓰던 모드(알람밸브 등)가 그대로 남아 있을 수 있는데, 그때
+      //   무심코 찍으면 밸브가 놓인다 — 보기 화면에서 일어나면 안 되는 일이다.
       editClick(x, y, maxD);
     }
     // [F-12] 수리계산 화면에서는 «고치기» 가 아니라 «읽기» 다 — 클릭한
@@ -815,12 +819,7 @@
       if (name === "merge") { await loadMerge(); return; }
       if (name === "sub") { await loadSub(); return; }
       if (name === "auto") { await loadAuto(); return; }
-      if (name === "design") {
-        setStage("design");
-        renderDesignK();          // «무엇으로 도는가» 를 들어올 때마다 새로
-        await designPreview();
-        return;
-      }
+      if (name === "design") { await enterDesign(); return; }
       if (name === "conv") {
         setStage("conv");
         await loadFields();
@@ -4101,9 +4100,9 @@
     //   답한다). 그릴 것이 없으면 여기서 조용히 멈춘다 — 화면은 「표 확정」
     //   단추가 선 채로 남는다.
     if (!d.view) { if (d.message) say(d.message); return; }
-    const xs = d.view.nodes.map(n => n.x), ys = d.view.nodes.map(n => n.y);
-    fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
-          miny: Math.min(...ys), maxy: Math.max(...ys) });
+    // ★시점은 «지금 무엇을 보고 있나» 에 맞춘다. 평면으로 보는 중에 설계
+    //   좌표로 맞추면 화면이 엉뚱한 데로 튀어 도면이 사라진 것처럼 보인다.
+    fitDesignView();
     syncDesignForMethod();
     renderDesignTable();
     renderBoreLegend();
@@ -5548,6 +5547,44 @@
           miny: Math.min(...ys), maxy: Math.max(...ys) });
   }
 
+  /** 수리계산 화면으로 들어간다 — **평면부터** 보이게.
+
+      ★사용자 지적: 「손질까지 끝내고 수리계산 → 을 누르니 화면에 아무것도 안
+        나온다.」 그럴 수밖에 없었다. 이 화면이 그리는 것은 «설계 좌표» 인데
+        그 좌표는 「표 확정」이 만든다 — 확정 전에는 그릴 것이 없어 캔버스가
+        검게 빈다. 빈 화면은 «고장» 으로 읽힌다.
+
+      그래서 들어올 때는 손질한 **평면**을 그대로 보여 주고(도면 밑그림 + 뽑은
+      망), 30° 아이소매트릭은 «필요할 때 바꾸는» 보기로 둔다. */
+  async function enterDesign() {
+    setStage("design");
+    renderDesignK();
+    // 평면을 그리려면 손질 상태가 있어야 한다 — 없으면 한 번 받아 둔다.
+    if (!S.edit) {
+      try {
+        const d = await api(`/api/module-f/edit/state?sid=${S.sid}`);
+        setEdit(d.state);
+      } catch (err) { say(err.message, "warn"); }
+    }
+    try { await designPreview(); }
+    catch (err) { say(err.message, "err"); }
+    const ready = !!(S.design && S.design.tables);
+    if (!ready && S.edit) {
+      // 아직 표가 없다 — 평면으로 보여 주고 다음 걸음을 말한다(막지 않는다).
+      //
+      // ★`dg-iso` 는 건드리지 않는다. 그것은 «화면 전환» 이 아니라 **산출에도
+      //   쓰이는 투영 설정** 이다(`_view_opts` → `emit_design_sdf`). 보기 편하자고
+      //   끄면 저장되는 .sdf 좌표가 조용히 바뀐다. 화면을 가르는 스위치는
+      //   «평면에서 보기» 하나다.
+      $("dg-plan").checked = true;
+      say("손질한 평면을 보고 있습니다 — 「표 확정」을 누르면 아이소매트릭을 "
+        + "볼 수 있습니다(«평면에서 보기» 를 끄면 그쪽으로 바뀝니다).");
+    }
+    renderPlanUnderlay();
+    fitDesignView();
+    draw();
+  }
+
   function renderPlanUnderlay() {
     const on = planUnderlayOn();
     $("dg-plan-row").classList.toggle("hidden", !on);
@@ -5661,6 +5698,7 @@
           renderDesignSummary(sum);
           await designPreview();
           say("표 확정 — 미리보기와 표는 저장될 값 그대로입니다."
+            + " «평면에서 보기» 를 끄면 30° 아이소매트릭으로 바뀝니다."
             + " 파일은 다음 단계 «수리계산 입력 변환» 에서 냅니다.", "ok");
         } catch (err) { say(err.message, "err"); }
       });
@@ -5670,7 +5708,17 @@
   // 보기 설정이 바뀌면 preview 만 다시 — 최불리 재계산 없음(0.5초 규약).
   for (const id of ["dg-iso", "dg-zscale", "dg-canvas", "dg-ref", "dg-stub"]) {
     $(id).onchange = () => {
-      if (S.design) designPreview().catch(err => say(err.message, "err"));
+      // ★「아이소로 보기」를 켰는데 화면이 평면 그대로면 그 체크는 거짓말이다.
+      //   둘은 같은 캔버스를 다투므로 배타로 둔다 — 아이소를 켜면 평면을 내린다.
+      if (id === "dg-iso" && $("dg-iso").checked && planUnderlayOn()) {
+        $("dg-plan").checked = false;
+        renderPlanUnderlay();
+      }
+      if (S.design) {
+        designPreview()
+          .then(() => { fitDesignView(); draw(); })
+          .catch(err => say(err.message, "err"));
+      }
     };
   }
   $("dg-table").onchange = renderDesignTable;

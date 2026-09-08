@@ -83,6 +83,20 @@ def main() -> int:
                     return True
             return False
 
+        def painted():
+            """캔버스에 실제로 그려진 픽셀 수 — 빈 화면인지 세어 본다."""
+            return pg.evaluate("""() => {
+                const c = document.querySelector('#cv');
+                const g = c.getContext('2d');
+                const d = g.getImageData(0, 0, c.width, c.height).data;
+                let n = 0;
+                // 배경(거의 검정)과 다른 픽셀만 센다. 8픽셀 간격 표본.
+                for (let i = 0; i < d.length; i += 4 * 8) {
+                    if (d[i] > 40 || d[i + 1] > 40 || d[i + 2] > 40) n++;
+                }
+                return n;
+            }""")
+
         def canvas_click_world(x, y):
             scr = pg.evaluate("""(q) => {
                 const v = window.__mf.view;
@@ -138,6 +152,13 @@ def main() -> int:
                     " { d.click(); return; } } }")
         pg.wait_for_timeout(1500)
         check("수리계산 화면이 열린다", pg.is_visible("#dg-build"))
+        # ★사용자 지적: 「손질까지 끝내고 수리계산 → 을 누르니 화면에 아무것도
+        #   안 나온다」. 표를 확정하기 전에는 설계 좌표가 없어 캔버스가 검게
+        #   비었다. 이제는 손질한 «평면» 을 먼저 보여 준다 — 실제로 무언가
+        #   그려졌는지 픽셀로 센다(빈 화면은 «고장» 으로 읽힌다).
+        check("표 확정 전에도 화면이 비지 않는다 (평면부터)",
+              painted() > 500 and pg.is_checked("#dg-plan"),
+              f"칠해진 픽셀 {painted()}")
         pg.click("#dg-build")
         idle()
         pg.wait_for_timeout(2500)
@@ -145,6 +166,16 @@ def main() -> int:
                           "&& window.__mf.design.tables)")
         check("★표가 확정된다 (결합의 평면도 재료)", got,
               pg.inner_text("#status")[:90])
+
+        # 확정 뒤 «평면에서 보기» 를 끄면 30° 아이소매트릭으로 바뀐다.
+        pg.uncheck("#dg-plan")
+        pg.wait_for_timeout(1200)
+        iso = pg.evaluate("() => !!(window.__mf.design "
+                          "&& window.__mf.design.view)")
+        check("평면을 끄면 아이소매트릭이 나온다", iso and painted() > 500,
+              f"view={iso} · 칠해진 픽셀 {painted()}")
+        pg.check("#dg-plan")
+        pg.wait_for_timeout(800)
 
         # ── ①-b 변환 — 이제 «표 다음» 이다. 재료가 갖춰졌으니 돌아야 한다.
         pg.evaluate("() => { for (const d of "

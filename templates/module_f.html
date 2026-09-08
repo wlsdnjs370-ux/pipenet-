@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260908-branch">
+<link rel="stylesheet" href="/static/module_f.css?v=20260908-planfirst">
 </head>
 <body>
 <header>
@@ -509,8 +509,15 @@
              그리면 어긋난 그림 위에서 엉뚱한 배관을 고치게 된다(실측 근거는
              BLOCKED §17). 대신 «평면» 으로 돌려 본다 — 거기서는 밑그림과
              최불리망이 같은 세계 좌표라 어긋날 수가 없다. -->
-      <label class="chk"><input type="checkbox" id="dg-plan">
-        <span>평면에서 보기 — 배관 밑그림 위에서 그 자리 수정</span></label>
+      <!-- ★기본은 «평면» 이다 [2026-09-08 · 사용자].
+           표를 확정하기 전에는 설계 좌표가 아예 없어 아이소로 두면 화면이
+           검게 빈다 — 「수리계산 → 을 눌렀는데 아무것도 안 나온다」가 그것이다.
+           평면부터 보여 주고, 아이소는 필요할 때 바꿔 켠다(아래). -->
+      <label class="chk"><input type="checkbox" id="dg-plan" checked>
+        <span>평면에서 보기 — 도면 위에 뽑은 망을 겹쳐 본다 <b>(기본)</b></span></label>
+      <p class="hint"><b>끄면 30° 아이소매트릭</b>으로 바뀝니다(표를 확정한
+        뒤에 나옵니다). 켠 동안에는 「이음·삭제」를 고른 때만 그 자리에서
+        고치고, 고르지 않았으면 클릭은 <b>읽기</b>입니다.</p>
       <div class="row hidden" id="dg-plan-row">
         <button class="dgmode" data-mode="이음">이음 (살리기)</button>
         <button class="dgmode" data-mode="삭제">삭제</button>
@@ -526,8 +533,12 @@
            그대로 받아 쓴다(view.underlay) — 별도 수학 없음. -->
       <label class="chk"><input type="checkbox" id="dg-under">
         <span>배관 밑그림 깔기 — 아이소 «아래» 에 평면을 겹쳐 본다</span></label>
+      <!-- ★이것은 «화면 전환» 이 아니라 **투영 설정** 이다 — 저장되는 .sdf
+           좌표에도 그대로 쓰인다(`_view_opts` → `emit_design_sdf`). 보기 편하자고
+           끄면 산출이 조용히 바뀐다. 화면을 가르는 스위치는 위의 «평면에서
+           보기» 하나다. -->
       <label class="chk"><input type="checkbox" id="dg-iso" checked>
-        <span>30° 아이소매트릭으로 보기</span></label>
+        <span>30° 아이소매트릭 투영 — 화면과 <b>저장되는 좌표</b>에 함께 적용</span></label>
       <label class="f"><span>고도 펼침 배율</span>
         <input type="number" id="dg-zscale" value="1.0" min="0.5" max="3" step="0.1"></label>
       <label class="f"><span>캔버스 크기</span>
@@ -728,6 +739,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260908-branch"></script>
+<script src="/static/module_f.js?v=20260908-planfirst"></script>
 </body>
 </html>

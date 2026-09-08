@@ -285,3 +285,56 @@ def test_변환_실행_전에도_같은_말을_한다():
     src = js[i:js.index("\n  };\n", i)]
     assert "convMissing()" in src, "재료를 안 보고 서버로 보낸다"
     assert src.index("convMissing()") < src.index("convert/run"), src[:200]
+
+
+# ─────────────────────────────── ⑹ 수리계산 화면은 «평면부터»
+def test_수리계산에_들어오면_평면부터_보인다():
+    """★사용자 지적: 「손질까지 끝내고 수리계산 → 을 누르니 화면에 아무것도
+    안 나온다. 원래면 아이소매트릭 망이 나와야 되는 거 아니야?」
+
+    그럴 수밖에 없었다 — 이 화면이 그리는 것은 «설계 좌표» 이고 그 좌표는
+    「표 확정」이 만든다. 확정 전에는 그릴 것이 없어 캔버스가 검게 빈다.
+    빈 화면은 «고장» 으로 읽히므로, 들어올 때는 손질한 평면을 보여 준다.
+    """
+    html, js = _html(), _js()
+    i = html.index('id="dg-plan"')
+    assert "checked" in html[i:i + 60], "평면 보기가 기본이 아니다"
+    src = _fn(js, "  async function enterDesign()")
+    assert 'edit/state' in src, "손질 상태 없이 평면을 그릴 수 없다"
+    assert '$("dg-plan").checked = true' in src, src
+
+
+def test_보기_때문에_저장되는_좌표를_바꾸지_않는다():
+    """★`dg-iso` 는 화면 전환이 아니라 **투영 설정** 이다.
+
+    `_view_opts` 를 거쳐 `emit_design_sdf` 로 간다 — 보기 편하자고 끄면
+    저장되는 .sdf 좌표가 조용히 바뀐다. 화면을 가르는 스위치는 «평면에서
+    보기» 하나여야 한다.
+    """
+    js = _js()
+    src = _fn(js, "  async function enterDesign()")
+    assert '$("dg-iso").checked =' not in src, "보기 때문에 투영 설정을 건드린다"
+    py = open(os.path.join(_ROOT, "routes", "module_f", "api_design.py"),
+              encoding="utf-8").read()
+    i = py.index("def _view_opts(")
+    assert '"iso"' in py[i:i + 400], "투영 설정이 산출로 간다는 전제가 깨졌다"
+
+
+def test_들어올_때_시점을_평면에_맞춘다():
+    """미리보기가 설계 좌표로 시점을 끌고 가면 도면이 사라진 것처럼 보인다."""
+    js = _js()
+    src = _fn(js, "  async function designPreview()")
+    assert "fitDesignView()" in src, src
+    assert "const xs = d.view.nodes.map" not in src, "설계 좌표로 시점을 끈다"
+
+
+def test_평면_보기_중_클릭은_고르지_않으면_읽기다():
+    """★평면 보기가 기본이 된 뒤로는 손질에서 쓰던 모드가 남아 있을 수 있다.
+
+    그때 무심코 찍으면 알람밸브가 놓인다 — 보기 화면에서 일어나면 안 된다.
+    «이음·삭제» 를 고른 동안에만 고친다.
+    """
+    js = _js()
+    i = js.index('S.stage === "design" && planUnderlayOn()')
+    seg = js[i:i + 300]
+    assert '"이음"' in seg and '"삭제"' in seg, seg

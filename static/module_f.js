@@ -720,12 +720,13 @@
   //   회로였다. 이제 재료가 먼저 나고, 변환은 그것을 파일로 낸다.
   const STAGE_FLOW = {
     plan: ["open", "pick", "edit", "design", "conv"],
-    // ★자동(A)도 **같은 회로**를 탄다 — 갈라진 차선이 아니다(D-F10-6).
-    //   A 가 낸 것은 «초안» 이고, 사람이 손질에서 확정한 뒤에야 표·파일이
-    //   난다. 실측이 이 순서를 강제한다: A 의 표를 그대로 방출기에 넣으면
-    //   터진다(`scripts/_probe_auto_emit.py` — PipeTables 에 norm 이 없다).
-    //   그래서 자동 흐름의 다음 걸음은 «손질로 이어받기» 다.
-    plan_auto: ["open", "auto", "edit", "design", "conv"],
+    // ★[2026-09-08 · 사용자 · D-F10-2 재확인] 자동(A)은 **지선**이다. 본선과
+    //   같은 차례로 세우면 두 길이 대등해 보이는데, 그것은 지선을 접힌
+    //   «고급» 안에 둔 방향과도 «직렬» 지향과도 어긋난다. 지선은 짧게 두고,
+    //   끝내려면 «손질로 이어받기» 로 **본선에 합류**한다.
+    //   (실측이 그 합류를 강제하기도 한다: A 의 표를 그대로 방출기에 넣으면
+    //    터진다 — `scripts/_probe_auto_emit.py` · PipeTables 에 norm 없음.)
+    plan_auto: ["open", "auto"],
     system: ["open", "sub"],
     machineroom: ["open", "sub"],
   };
@@ -2219,7 +2220,6 @@
     // 영역은 «좁히는» 선택이다 — 알람밸브만 있으면 돌릴 수 있다.
     $("au-run").disabled = !a;
     $("au-heads").disabled = !a;
-    $("au-to-design").disabled = !S.autoDone;
     // [F-8d] 이어받기는 «자동 결과를 본 뒤» 의 길이다 — 돌리기 전에는 뜻이 없다.
     $("au-handoff").disabled = !S.autoDone;
     if (d && d.summary) {
@@ -2626,16 +2626,6 @@
         }
       });
     } catch (err) { busy(false); say(err.message, "err"); }
-  };
-
-  // 자동이 낸 표를 «초안» 으로 미리 본다 — 확정도 저장도 아니다. 파일은
-  // 손질로 이어받아 확정한 뒤 «수리계산 입력 변환» 에서 난다.
-  $("au-to-design").onclick = async () => {
-    setStage("design");
-    renderDesignK();
-    try { await designPreview(); }
-    catch (err) { say(err.message, "err"); }
-    say("자동이 낸 초안입니다 — 「손질로 이어받기」로 확정해야 파일이 납니다.");
   };
 
   // 뽑아낸 배관망 — 도면을 내린 위에 이것만 밝게 얹는다.
@@ -3977,13 +3967,8 @@
     $("dg-build-inputs").classList.toggle("hidden", auto);
     $("dg-build-row").classList.toggle("hidden", auto);
     $("dg-back-auto-row").classList.toggle("hidden", !auto);
-    // ★파일은 «수리계산 입력 변환» 한 곳에서만 난다. 자동도 예외가 아니다 —
-    //   A 의 표는 방출기가 받지 못하므로(실측: PipeTables 에 norm 없음) 그
-    //   길에는 애초에 저장이 없다. 대신 무엇을 해야 파일이 나는지 말한다.
+    // 파일은 «수리계산 입력 변환» 한 곳에서만 난다 — 이 화면에는 저장이 없다.
     renderDesignK();
-    const draft = auto && !S.edit;
-    $("dg-draft").classList.toggle("hidden", !draft);
-    $("dg-to-conv").classList.toggle("hidden", draft);
   }
 
   $("dg-back-auto").onclick = () => loadAuto();

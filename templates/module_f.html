@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260908-serial">
+<link rel="stylesheet" href="/static/module_f.css?v=20260908-branch">
 </head>
 <body>
 <header>
@@ -241,19 +241,19 @@
       <label class="chk"><input type="checkbox" id="au-junc" checked>
         <span>이음자리 표시 (티 · 교차)</span></label>
       <div id="au-junc-info" class="hint"></div>
-      <!-- [F-8d → D-F10-6] «탈출로» 였던 것이 이제 **본길** 이다.
-           자동이 낸 것은 초안이고, 사람이 손질에서 확정한 뒤에야 표와 파일이
-           난다(A 의 표는 방출기가 받지 못한다 — `_probe_auto_emit.py`).
-           그래서 자동 다음 걸음은 손질이다. -->
+      <!-- [F-8d · D-F10-2] 이 화면은 **A 엔진 결과를 보는 자리**다(지선).
+           끝내려면 본선으로 합류해야 한다 — 그래서 나가는 문은 하나다.
+           파일 저장 단추는 여기 두지 않는다: 파일은 «수리계산 입력 변환» 한
+           곳에서만 나고, A 의 표는 방출기가 받지도 못한다
+           (`scripts/_probe_auto_emit.py` — PipeTables 에 norm 없음).
+           막는 대신 **다음 걸음을 알려 주는** 한 줄을 둔다. -->
       <div class="row" style="margin-top:10px">
         <button id="au-handoff" class="go" disabled>손질로 이어받기 →</button>
       </div>
-      <div class="hint">자동이 찾은 재료·헤드를 그대로 찍어 손질로 넘깁니다.
-        여기서부터는 수동과 같은 길입니다 — 손질 → 수리계산 → 수리계산 입력 변환.
+      <div class="hint">여기서 뽑은 결과로 <b>파일을 내려면</b>
+        「손질로 이어받기」를 누르세요 — 자동이 찾은 재료·헤드를 그대로 찍어
+        본선(손질 → 수리계산 → 수리계산 입력 변환)으로 넘깁니다.
         <span class="tag">A → E</span></div>
-      <div class="row" style="margin-top:10px">
-        <button id="au-to-design">수리계산 초안 보기</button>
-      </div>
     </section>
 
     <!-- 2. 찍기 — 자동 추천 두 갈래(레이어 사전 · 헤드 인식)를 한 카드에 둔다.
@@ -557,9 +557,6 @@
       <!-- 파일이 나는 자리는 **다음 단계 하나** 다. 종전에는 여기의
            「.sdf+.slf 저장」과 변환의 「최불리 .sdf」가 **같은 함수**를 불렀다
            (`emit_design_files`) — 같은 파일이 두 자리에서 났다. -->
-      <div class="hint hidden" id="dg-draft">지금 보는 표는 <b>자동이 낸 초안</b>
-        입니다 — 「손질로 이어받기」로 사람이 확정해야 파일이 납니다.
-        <span class="tag">A → E</span></div>
       <div class="row">
         <button id="dg-to-conv">수리계산 입력 변환 →</button>
       </div>
@@ -731,6 +728,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260908-serial"></script>
+<script src="/static/module_f.js?v=20260908-branch"></script>
 </body>
 </html>

@@ -1209,10 +1209,15 @@ def test_이어받기_제안_반영은_기존_클릭_경로다():
 
 
 def test_이어받기_단추가_자동_화면에_있다():
+    """★[2026-09-08] 이제 이것이 자동 화면에서 **나가는 유일한 문**이다.
+
+    종전에는 옆에 「수리계산 입력 →」이 있어 그 단추를 기준으로 찾았는데,
+    지선에서 본선 화면으로 건너뛰는 그 길을 없앴다(사용자: 지선을 본선과
+    대등하게 세우지 말 것). 그러니 이제는 이 단추 자체를 본다.
+    """
     html = _script()
     assert 'id="au-handoff"' in html
-    i = html.index('$("au-to-design").disabled = !S.autoDone;')
-    assert '$("au-handoff").disabled = !S.autoDone;' in html[i:i + 300]
+    assert '$("au-handoff").disabled = !S.autoDone;' in html
 
 
 def test_제안은_점선으로_그린다():

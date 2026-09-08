@@ -178,26 +178,48 @@ def test_파일이_나는_자리는_하나다():
     for gone in ('id="dg-emit"', 'id="dg-download"'):
         assert gone not in html, f"{gone} 가 화면에 남아 있다"
     assert 'dg-emit' not in js and 'dg-download' not in js
-    src = _fn(js, "  function syncDesignForMethod()")
-    assert '"dg-to-conv"' in src and '"dg-draft"' in src, src
+    # 파일을 내는 자리로 가는 문은 수리계산의 «수리계산 입력 변환 →» 하나다.
+    assert html.count('id="dg-to-conv"') == 1
+    # 주석에 이름이 남는 것은 괜찮다 — 막을 것은 «부르는» 자리다.
+    assert 'post("/api/module-f/design/emit"' not in js, \
+        "화면이 방출 라우트를 직접 부르는 곳이 남았다"
 
 
-def test_자동도_같은_회로를_탄다():
-    """★사용자: 「병렬 방식은 내 지향점이 아니다」.
+def test_자동은_짧은_지선이다():
+    """★사용자 반려 [2026-09-08]: 「두 길의 화면 차례를 같게 만들면 지선이
+    본선과 대등해 보인다. D-F10-2 가 지선을 접힌 «고급» 으로 밀어넣은 방향과
+    반대이고, 직렬 지향과도 어긋난다.」
 
-    자동은 별개 차선이 아니라 같은 회로의 앞머리다 — 자동 추출 다음 걸음이
-    손질이고, 꼬리(수리계산 → 변환)는 수동과 같다.
+    한 번 그렇게 폈다가 되돌린 자리다 — 자동 단계바를 본선과 같은 다섯 칸으로
+    세웠었다. 지선은 짧게 두고, 끝내려면 «손질로 이어받기» 로 합류한다.
     """
     js = _js()
     i = js.index("const STAGE_FLOW = {")
     src = js[i:js.index("};", i)]
     auto = re.search(r'plan_auto:\s*\[([^\]]+)\]', src).group(1)
     got = [v.strip().strip('"') for v in auto.split(",")]
-    assert got == ["open", "auto", "edit", "design", "conv"], got
-    # 꼬리가 수동과 같아야 «갈라진 차선» 이 아니다.
+    assert got == ["open", "auto"], got
     plan = re.search(r'plan:\s*\[([^\]]+)\]', src).group(1)
     manual = [v.strip().strip('"') for v in plan.split(",")]
-    assert got[-3:] == manual[-3:], (got, manual)
+    assert len(got) < len(manual), (got, manual)
+    assert got[-1:] != manual[-1:], "지선 끝이 본선 끝과 같으면 대등해 보인다"
+
+
+def test_자동_화면에서_나가는_문은_이어받기_하나다():
+    """그 화면은 A 결과를 보는 자리다 — 본선 화면으로 건너뛰지 않는다."""
+    html, js = _html(), _js()
+    assert "au-to-design" not in html and "au-to-design" not in js, \
+        "지선에서 본선 화면으로 건너뛰는 단추가 남아 있다"
+    assert 'id="au-handoff"' in html
+    assert 'id="dg-emit"' not in html and 'id="dg-download"' not in html
+
+
+def test_자동_화면이_다음_걸음을_알려준다():
+    """막는 것이 아니라 «파일을 내려면 이어받기» 라고 알려 주는 문구다."""
+    html = _html()
+    i = html.index('id="au-handoff"')
+    seg = html[i:i + 600]
+    assert "파일을 내려면" in seg and "이어받기" in seg, seg[:300]
 
 
 def test_이어받을_때_기준개수를_들고_간다():
@@ -206,13 +228,6 @@ def test_이어받을_때_기준개수를_들고_간다():
     i = js.index('$("au-handoff").onclick')
     src = js[i:js.index("\n  };\n", i)]
     assert '"au-k"' in src and '"ed-k"' in src, src
-
-
-def test_자동_초안임을_수리계산_화면이_말한다():
-    html = _html()
-    assert 'id="dg-draft"' in html
-    seg = html[html.index('id="dg-draft"'):html.index('id="dg-draft"') + 260]
-    assert "초안" in seg and "이어받기" in seg, seg
 
 
 def test_변환은_없는_재료를_이름으로_말한다():

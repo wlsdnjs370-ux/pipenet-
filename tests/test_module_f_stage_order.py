@@ -148,7 +148,15 @@ def test_뒤로_가는_단추는_바로_앞_단계를_가리킨다():
     html = _html()
     assert 'id="btn-back-design">← 수리계산' in html
     assert 'id="dg-back">← 손질' in html
-    assert 'id="dg-to-conv">변환 →' in html
+    assert 'id="dg-to-conv">수리계산 입력 변환 →' in html
+
+
+def test_5단계_이름은_무엇을_무엇으로_옮기는지_말한다():
+    """「변환」만으로는 무엇을 무엇으로 옮기는지가 빠진다(사용자 지적)."""
+    js = _js()
+    i = js.index("const STAGE_LABEL = {")
+    src = js[i:js.index("};", i)]
+    assert 'conv: "수리계산 입력 변환"' in src, src
 
 
 def test_옛_이름의_단추는_남아_있지_않다():

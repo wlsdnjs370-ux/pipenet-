@@ -724,8 +724,12 @@
     system: ["open", "sub"],
     machineroom: ["open", "sub"],
   };
+  // 이름은 «그 단계가 하는 일» 이다. 5단계가 하는 일은 확정된 표를 수리계산
+  // 프로그램이 읽는 형식(.kfp · .sdf+.slf)으로 옮기는 것이다 — 「변환」만으로는
+  // 무엇을 무엇으로 옮기는지가 빠진다.
   const STAGE_LABEL = {
-    open: "도면 열기", pick: "찍기", edit: "손질", conv: "변환",
+    open: "도면 열기", pick: "찍기", edit: "손질",
+    conv: "수리계산 입력 변환",
     design: "수리계산", sub: "경로 추출", auto: "자동 추출", merge: "통합",
   };
   // 각 단계가 켜는 패널. 한 곳에 모아 둔다 — 예전에는 toggle 이 아홉 줄로

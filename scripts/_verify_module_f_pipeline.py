@@ -99,7 +99,8 @@ def main() -> int:
         check("찍기까지 흘러온다", wait_stage("pick"), stage())
         steps = pg.eval_on_selector_all("#steps div", "es => es.map(e => e.textContent)")
         check("단계 차례가 «손질 → 수리계산 → 변환»",
-              steps == ["도면 열기", "찍기", "손질", "수리계산", "변환"], str(steps))
+              steps == ["도면 열기", "찍기", "손질", "수리계산",
+                        "수리계산 입력 변환"], str(steps))
         pg.wait_for_timeout(1200)
         print(f"      {pg.inner_text('#pk-count')[:60]}")
         pg.click("#pk-next")
@@ -148,7 +149,7 @@ def main() -> int:
         # ── ①-b 변환 — 이제 «표 다음» 이다. 재료가 갖춰졌으니 돌아야 한다.
         pg.evaluate("() => { for (const d of "
                     "document.querySelectorAll('#steps div'))"
-                    " { if (d.textContent.indexOf('변환') >= 0)"
+                    " { if (d.textContent.indexOf('입력 변환') >= 0)"
                     " { d.click(); return; } } }")
         idle()
         pg.wait_for_timeout(1500)

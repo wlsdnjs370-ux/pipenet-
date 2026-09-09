@@ -59,6 +59,7 @@ from services.cad_import.pipeline import stage45 as s45
 from services.cad_import.pipeline.expand import gput, gnear, seg_dist
 from services.cad_import.pipeline.handoff import default_edits_dir
 from services.cad_import.kinds import (
+    CONFIRMED_KINDS,
     disk_key as _disk_key,
     normalize_head_kind,
     normalize_head_slot,
@@ -1164,12 +1165,41 @@ def classify_head_kind(st, head, fp_spatial=None, arm_index=None,
     return "하향식" if owned else "상향식"
 
 
+def kind_with_layer_name(kind, layer):
+    """기하 판정과 도면 «이름» 을 견준다 — **이름이 확정적으로 말하면 이름이다.**
+
+    ★2026-09-09 오너 확정: 「도면 이름이 맞다」.
+
+    왜 이름이 이기는가. `classify_head_kind` 의 마지막 줄은
+
+        return "하향식" if owned else "상향식"
+
+    이고, `owned`(헤드 기호의 소유 반호)가 없으면 **근거 없이** 상향식으로
+    떨어진다. 반면 레이어 `-소화(SP헤드하향)` 은 도면 작성자가 명시한 것이다.
+    대명동 실측: 111개 전부가 「판정 상향식 ← 이름 하향식」이었다.
+
+    ★이것은 그림 문제가 아니다. 상하향은 헤드가 가지관 «위» 냐 «아래» 냐라
+    `HEAD_DZ_M` 이 표고 **부호**를 가른다(상향 +0.3 · 하향 −0.3). 평면에서는
+    헤드와 부모가 같은 점이라 안 보이고, 등각을 켜야 스텁 방향으로 드러난다.
+
+    이름이 아무 말도 안 하면(`미지정`) 종전 그대로 기하 판정을 쓴다 — 그런
+    도면의 산출은 한 바이트도 안 바뀐다.
+
+    돌려주는 것: (고른 종류, 뒤집혔는가)
+    """
+    by_name = head_kind(layer, None)
+    if by_name in CONFIRMED_KINDS and by_name != kind:
+        return by_name, True
+    if kind and kind != "미지정":
+        return kind, False
+    return by_name, False
+
+
 def kind_of_head(st, head):
-    """classify + 레이어 이름 폴백 — upright/물길용."""
+    """classify + 레이어 이름 — 이름이 확정적으로 말하면 그것이 권위다."""
     k = classify_head_kind(st, head)
-    if k != "미지정":
-        return k
-    return head_kind((head.get("bundle") or ("", None))[0], None)
+    layer = (head.get("bundle") or ("", None))[0]
+    return kind_with_layer_name(k, layer)[0]
 
 
 def stage11_classify_heads(st, arm_index=None, owned_half_arc_keys=None):
@@ -1201,11 +1231,19 @@ def stage11_classify_heads(st, arm_index=None, owned_half_arc_keys=None):
         kind = classify_head_kind(
             st, h, fp_spatial=fp_spatial, arm_index=arm_index,
             owned_half_arc=owned_arg)
+        # ★도면 이름이 확정적으로 말하면 그것이 권위다(2026-09-09 오너 확정).
+        #   여기가 «1-1 분류» 이고 이 저장소의 권위 자리다 — 뒤집을 거면 여기서
+        #   뒤집어야 표·산출·화면이 한 값을 본다.
+        _geo = kind
+        kind, _flipped = kind_with_layer_name(
+            kind, (h.get("bundle") or ("",))[0])
         rec = {
             "c": (float(h["c"][0]), float(h["c"][1])),
             "bundle": tuple(h.get("bundle") or ()),
             "kind": kind,
         }
+        if _flipped:
+            rec["kind_by_geometry"] = _geo      # 무엇을 덮었는지 남긴다
         if "head_r" in h:
             rec["head_r"] = float(h["head_r"])
         if "tri_side" in h:
@@ -1233,6 +1271,45 @@ def stage11_classify_heads(st, arm_index=None, owned_half_arc_keys=None):
             print(f"      … 외 {len(unknown) - 40}개")
     else:
         print("    미지정 0개")
+
+    # ★★도면 «이름» 이 말하는 것과 기하 판정이 어긋나면 **세어서 말한다.**
+    #
+    #   `classify_head_kind` 는 소유 반호가 없으면 확신 없이도 «상향식» 으로
+    #   떨어진다(`return "하향식" if owned else "상향식"`). 그리고 `kind_of_head`
+    #   는 판정이 «미지정» 일 때만 레이어 이름 폴백을 쓰므로, 그 폴백은 사실상
+    #   영영 안 불린다. 그래서 레이어가 `-소화(SP헤드하향)` 이라고 적힌 도면도
+    #   전부 상향식이 된다(대명동 실측: 111개 전부).
+    #
+    #   ★이것은 그림 문제가 아니다. 상하향은 헤드가 가지관 «위» 냐 «아래» 냐라
+    #   `HEAD_DZ_M` 이 표고 부호를 가른다(상향 +0.3 · 하향 −0.3). 평면에서는
+    #   헤드와 부모가 같은 점이라 안 보이고, **등각을 켜야** 스텁이 어느 쪽으로
+    #   서는지 눈에 들어온다.
+    #
+    #   판정을 여기서 뒤집지는 않는다 — 조용히 바꾸면 돌던 산출이 통째로
+    #   달라진다(D-F11-1). 세어서 올리고, 확정은 사람이 한다(S340).
+    flipped = [r for r in out if r.get("kind_by_geometry")]
+    if flipped:
+        by = Counter(f"{r['kind_by_geometry']} → {r['kind']}" for r in flipped)
+        print(f"    ★도면 이름을 따라 종류를 바꾼 헤드 {len(flipped)}개 —"
+              f" {dict(by)}")
+        print("      기하 판정은 «반호가 없으면 상향식» 이라는 근거 없는"
+              " 기본값으로 떨어집니다. 레이어 이름이 상향/하향을 명시하면"
+              " 그것이 권위입니다(2026-09-09 오너 확정).")
+        print("      ★상하향은 헤드 표고의 **부호**를 가릅니다"
+              " (상향 +0.3 m · 하향 −0.3 m) — 등각에서 스텁이 서는 방향이"
+              " 뒤집힙니다. 자리마다 다르면 손질에서 종류를 고치세요.")
+        for r in flipped[:8]:
+            x, y = r["c"]
+            b = r.get("bundle") or ()
+            print(f"      ({x:.1f}, {y:.1f}) · {b[0] if b else '?'}"
+                  f" · 기하 {r['kind_by_geometry']} → 이름 {r['kind']}")
+        if len(flipped) > 8:
+            print(f"      … 외 {len(flipped) - 8}개")
+    st["_head_kind_name_flipped"] = [
+        {"c": list(r["c"]), "kind": r["kind"],
+         "by_geometry": r["kind_by_geometry"],
+         "layer": (r.get("bundle") or ("",))[0]}
+        for r in flipped]
     return out
 
 

@@ -120,6 +120,60 @@ def test_뒤집은_것을_세어서_말한다():
     assert '_head_kind_name_flipped' in seg, "센 것을 안 실어 보낸다"
 
 
+# ─────────────────────────────── ★이름 판정이 «접속» 까지 막으면 안 된다
+def test_5단계_접속은_기하_판정을_쓴다():
+    """★상하향은 두 가지를 가르는데, 이름이 권위인 것은 **하나뿐** 이다.
+
+        ⑴ 헤드가 가지관 «위» 냐 «아래» 냐  → 표고의 부호 (이름이 권위)
+        ⑵ 원 밑 통과관에 **붙일 수 있나**   → 5단계 접속 (기하 문제)
+
+    `upright_disks` 는 「상향식 INCLUDE · 하향식 EXCLUDE」다. 이름 판정을 여기
+    까지 끌고 오면 `-소화(SP헤드하향)` 같은 도면에서 5단계 접속이 **통째로**
+    사라져 헤드가 배관에서 떨어진다 — 사용자가 「찍기에서 헤드 범주가 좁아진
+    것 같다」고 한 그 자리다.
+
+    (대명동은 중심접속 111/111 이라 안 드러났다. 원 밑 통과에 기대는 도면에서
+     비로소 손실이 된다 — 안 드러난다고 없는 것이 아니다.)
+    """
+    from services.cad_import.pipeline.flow import upright_disks
+    st = {"w": None, "spec": {"material_picks": []}}
+    hcov = [(100.0, 100.0, 40.0)]
+    #  이름은 하향식인데 기하는 상향식 — 5단계는 **기하** 를 봐야 한다.
+    kinds = [{"c": (100.0, 100.0), "head_r": 40.0,
+              "kind": "하향식", "kind_by_geometry": "상향식"}]
+    assert upright_disks(st, hcov, kinds, arm_index={}) == hcov
+
+
+def test_기하도_하향식이면_5단계에서_뺀다():
+    """종전 규칙은 그대로다 — 기하가 하향이라 판정한 것은 계속 뺀다."""
+    from services.cad_import.pipeline.flow import upright_disks
+    st = {"w": None, "spec": {"material_picks": []}}
+    hcov = [(100.0, 100.0, 40.0)]
+    kinds = [{"c": (100.0, 100.0), "head_r": 40.0,
+              "kind": "하향식", "kind_by_geometry": "하향식"}]
+    assert upright_disks(st, hcov, kinds, arm_index={}) == []
+
+
+def test_기하값이_없으면_kind_를_쓴다():
+    """이름이 안 덮은 헤드는 `kind_by_geometry` 가 없다 — 그때는 종전 그대로."""
+    from services.cad_import.pipeline.flow import upright_disks
+    st = {"w": None, "spec": {"material_picks": []}}
+    hcov = [(100.0, 100.0, 40.0)]
+    assert upright_disks(st, hcov,
+                         [{"c": (100.0, 100.0), "head_r": 40.0,
+                           "kind": "상향식"}], arm_index={}) == hcov
+    assert upright_disks(st, hcov,
+                         [{"c": (100.0, 100.0), "head_r": 40.0,
+                           "kind": "하향식"}], arm_index={}) == []
+
+
+def test_판정을_끌_수_있다():
+    """어느 조치가 무엇을 바꿨는지 가르려면 꺼 볼 수 있어야 한다."""
+    src = (_ROOT / "cad_project_editor_g" / "services" / "cad_import"
+           / "pipeline" / "flow.py").read_text(encoding="utf-8")
+    assert "MF_NO_LAYER_KIND" in src
+
+
 # ─────────────────────────────── 상하향이 표고 부호를 가른다
 def test_상하향이_표고_부호다():
     """★이 표가 «그림» 이 아니라 «수리계산» 을 가르는 근거다."""

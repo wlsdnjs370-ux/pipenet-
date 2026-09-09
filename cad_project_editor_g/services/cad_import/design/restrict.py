@@ -266,6 +266,9 @@ def expand_worst(payload: dict, board, worst: dict, *,
         # [신축배관 접기] 길이를 «선언» 에서 받은 배관. 좌표 거리와 표 length 가
         # 다른 것이 **정상인 부류** 라, 검사가 그것을 알아봐야 한다(§5 기준 8).
         "declared_pipes": list(built.get("declared_pipes") or ()),
+        # ★같은 중심 노드를 나눠 문 헤드 — 표에는 하나만 남는다. 「평면에서
+        #   지정한 헤드가 표에서 빈다」의 **진짜 이유**라 화면까지 들고 간다.
+        "shared_head_idx": list(built.get("shared_head_idx") or ()),
     }
 
 

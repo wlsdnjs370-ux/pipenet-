@@ -1187,6 +1187,12 @@ def kind_with_layer_name(kind, layer):
 
     돌려주는 것: (고른 종류, 뒤집혔는가)
     """
+    # ★계측 스위치 — 이 판정이 무엇을 바꾸는지 가르려면 꺼 볼 수 있어야 한다
+    #   (MF_NO_LAYER_KIND=1). 기본은 켜짐.
+    import os as _os
+    if _os.environ.get("MF_NO_LAYER_KIND") == "1":
+        return (kind if kind and kind != "미지정"
+                else head_kind(layer, None)), False
     by_name = head_kind(layer, None)
     if by_name in CONFIRMED_KINDS and by_name != kind:
         return by_name, True
@@ -1355,7 +1361,22 @@ def upright_disks(st, hcov, head_kinds, arm_index=None):
             # 확정 kind 없는 디스크를 조용히 후보에 넣지 않음
             n_miss += 1
             continue
-        kind = normalize_head_kind(rec.get("kind"))
+        # ★여기서 보는 것은 **기하 판정** 이다 — 도면 이름이 아니다.
+        #
+        #   상하향은 두 가지를 가른다:
+        #     ⑴ 헤드가 가지관 «위» 냐 «아래» 냐 → 표고의 부호(`HEAD_DZ_M`)
+        #     ⑵ 원 밑을 통과하는 배관에 헤드를 **붙일 수 있나** → 여기(5단계)
+        #
+        #   ⑴ 은 도면이 이름으로 말한 것이 권위다(2026-09-09 오너 확정).
+        #   그러나 ⑵ 는 **기하 문제**다 — 원 밑에 관이 지나가는지는 이름과
+        #   무관하다. 이름 판정을 여기까지 끌고 오면, `-소화(SP헤드하향)` 처럼
+        #   이름이 하향인 도면에서 5단계 접속이 **통째로** 사라져 헤드가
+        #   배관에서 떨어진다(대명동은 중심접속 111/111 이라 안 드러났지만,
+        #   원 밑 통과에 기대는 도면에서는 그대로 손실이 된다).
+        #
+        #   `stage11_classify_heads` 가 이름으로 덮을 때 기하 값을
+        #   `kind_by_geometry` 로 남겨 둔다 — 그것을 쓴다.
+        kind = normalize_head_kind(rec.get("kind_by_geometry") or rec.get("kind"))
         if kind == "하향식":
             continue
         if kind == "상하향식":

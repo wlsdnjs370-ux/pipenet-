@@ -666,6 +666,8 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
     n_dry_head = 0
     n_center = 0
     wet_head_idx: list = []      # [G2] 물닿음으로 인정된 hcov 인덱스
+    # ★다른 헤드와 «같은 중심 노드» 를 문 hcov 인덱스 — 표에는 하나만 남는다.
+    shared_head_idx: list = []
     for _h_i, ((hx, hy, _hr), ctr, ns, kind) in enumerate(zip(
             hcov, head_centers, hnodes, kinds_aligned)):
         vid = None
@@ -682,6 +684,20 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         if vid is None:
             n_dry_head += 1
             continue
+        # ★★같은 노드를 두 헤드가 물면 **하나가 조용히 덮인다.**
+        #
+        #   `head_vid` 는 dict 다. 도면이 헤드 기호를 겹쳐 그리면(대명동 실측:
+        #   노랑 r42 위에 색12 r42 가 그대로 포개져 있다) 두 헤드가 같은 중심
+        #   노드를 물고, 뒤엣것이 앞엣것을 덮어 **노즐이 하나만** 생긴다.
+        #
+        #   로그가 그 사실을 이미 말하고 있었다 — 「중심접속 111 · 마른 0 ·
+        #   물닿음 90」. 아무도 물길 밖으로 안 떨어졌는데 21개가 사라진 것이다.
+        #   사용자에게는 「평면에서 지정한 헤드가 표에서 한두 개 빈다」로 보인다.
+        #
+        #   여기서 판정을 바꾸지 않는다 — 같은 자리에 노즐 둘을 만들면 실제로
+        #   헤드가 하나인 도면에서 유량이 두 배가 된다. **세어서 말한다**(S340).
+        if vid in head_vid:
+            shared_head_idx.append(_h_i)
         head_vid[vid] = (hx, hy)
         head_kind_by_vid[vid] = kind
         # [G2] 이 전개가 «물닿음» 으로 인정한 hcov 번호. 최불리 선정이 board 의
@@ -691,6 +707,13 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         wet_head_idx.append(_h_i)
     print(f"헤드: 물닿음 {len(head_vid)} · 마른/미부착 {n_dry_head}"
           f" · 중심접속 {n_center}")
+    if shared_head_idx:
+        _sxy = [(round(hcov[i][0], 1), round(hcov[i][1], 1))
+                for i in shared_head_idx[:6]]
+        print(f"  ★헤드 {len(shared_head_idx)}개가 다른 헤드와 **같은 자리**라"
+              f" 표에는 하나만 남습니다 — 도면에 기호가 겹쳐 그려진 자리입니다"
+              f" (찍기에서 한쪽 묶음을 빼면 됩니다). 자리: {_sxy}"
+              + (" …" if len(shared_head_idx) > 6 else ""))
 
     before_m = fw.mlen(pts, edges)
     edges, dead, terminal, kept_sole, n_path, kept_stub = prune_dead_pipes(
@@ -1085,6 +1108,9 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         "wet_head_idx": wet_head_idx,
         # [A-1] 노드 없이 X 자로 만나는 배관 — 보고만 한다(쪼개지 않는다).
         "x_crossings": x_crossings,
+        # ★같은 중심 노드를 나눠 문 헤드 — 표에는 하나만 남는다. 화면이
+        #   「평면에서 지정한 헤드가 빈다」의 이유를 말할 수 있게 내보낸다.
+        "shared_head_idx": shared_head_idx,
         # [신축배관 접기] 길이를 «좌표가 아니라 선언» 에서 받은 배관. 좌표 거리와
         # 표 length 가 다른 것이 **정상인 부류** 라, 검사가 그것을 알아봐야 한다.
         "declared_pipes": declared_pipes,

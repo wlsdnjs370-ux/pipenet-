@@ -311,9 +311,22 @@ def _handoff_after_table(got: dict, tbl, board) -> None:
             else:
                 used.add(best)
     note["missing_heads"] = miss[:40]
-    msg = (f"손질에서 고른 {picked_n}개 중 {lost}개가 표에 오지 못했습니다 — "
-           f"그 헤드의 배관이 전개에서 끊긴 자리입니다. 손질에서 이어 주세요. "
-           f"(다른 헤드로 채우지 않았습니다)")
+    # ★이유를 **가른다.** 종전에는 전부 「배관이 끊겼다」로 적었는데, 실측에서
+    #   그 헤드는 끊긴 것이 아니라 **다른 헤드와 같은 자리에 겹쳐** 있었다
+    #   (대명동 (260307.6,−228066.2) · 전체망에서는 21개). 틀린 이유를 적으면
+    #   사람을 엉뚱한 데로 보낸다 — 배관을 이으러 가도 고칠 것이 없다.
+    n_share = len(got.get("shared_head_idx") or ())
+    note["shared"] = n_share
+    if n_share:
+        msg = (f"손질에서 고른 {picked_n}개 중 {lost}개가 표에 오지 못했습니다 — "
+               f"다른 헤드와 **같은 자리**라 하나로 합쳐졌습니다"
+               f" (도면에 헤드 기호가 겹쳐 그려진 자리입니다)."
+               f" 찍기에서 한쪽 묶음을 빼면 갈라집니다."
+               f" (다른 헤드로 채우지 않았습니다)")
+    else:
+        msg = (f"손질에서 고른 {picked_n}개 중 {lost}개가 표에 오지 못했습니다 — "
+               f"그 헤드의 배관이 전개에서 끊긴 자리입니다. 손질에서 이어 주세요. "
+               f"(다른 헤드로 채우지 않았습니다)")
     note.setdefault("messages", []).append(msg)
     print(f"[최불리 인계] ★{msg}"
           + (f" · 자리 {[m['xy'] for m in miss[:6]]}" if miss else ""))

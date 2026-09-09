@@ -50,10 +50,16 @@ def _password():
 
 
 def _sweep():
-    """검증이 만든 것만 지운다 — 키가 이름에 박혀 있어 골라낼 수 있다."""
+    """검증이 만든 것만 지운다 — 키가 이름에 박혀 있어 골라낼 수 있다.
+
+    ★앞의 밑줄을 빼고 찾는다. `handoff_path()` 가 파일명을 `.strip("._")` 로
+      다듬어 `_경로검증…` 이 `경로검증…` 으로 저장된다 — 밑줄째로 찾으면
+      handoff sqlite3 하나가 남아 실작업 폴더를 어지른다(실측으로 남았다).
+    """
     n = 0
+    stem = TAG.lstrip("._")
     for d in (PICK, WORK):
-        for p in d.glob(f"*{TAG}*"):
+        for p in d.glob(f"*{stem}*"):
             try:
                 p.unlink()
                 n += 1

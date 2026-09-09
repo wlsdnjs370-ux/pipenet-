@@ -3425,9 +3425,16 @@
       const n = Number(S.pick.n_head_circles || 0);
       const k = edK();
       const low = n < k && !S.pick.has_tri_heads;
+      // ★배관을 하나 더 찍으면 헤드 픽은 새 재료로 **다시 태워진다.**
+      //   되살리지 못한 칸이 있으면 그것을 말한다 — 종전에는 헤드가 통째로
+      //   날아가도(`헤드해제`) 화면이 그 이름을 읽지 않아, 사람은 손질판
+      //   헤드가 0 이 된 것을 수리계산에 가서야 만났다.
+      const lost = Number(r["헤드잃음"] || 0);
       say(`${r["모드"]} ${r["동작"]} — ${r["픽"]}`
-          + ` · 지금 헤드 ${n.toLocaleString()}개`,
-          low ? "warn" : "ok");
+          + ` · 지금 헤드 ${n.toLocaleString()}개`
+          + (lost ? ` · ★헤드 ${lost}칸은 새 재료로 다시 잡히지 않았습니다`
+                    + " — 헤드 칸을 다시 찍어 주세요." : ""),
+          (low || lost) ? "warn" : "ok");
     } catch (err) { say(err.message, "err"); }
   }
 

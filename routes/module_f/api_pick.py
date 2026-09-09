@@ -457,12 +457,38 @@ def register(app):
             #   손질판에만 있다. 그래서 접기는 반드시 이 자리에서 끝난다.
             _apply_fold(sess, ps, es)
             _apply_chamfer(sess, es)
+            # ★★찍기를 다시 하면 손질판이 **통째로 새로 만들어진다** — 절점도
+            #   헤드 disk 도 번호가 다시 매겨진다. 그런데 세션의 최불리 선정은
+            #   «옛 disk 번호» 로 남아 있다.
+            #
+            #   수리계산이 그 선정을 `only_heads` 로 받게 된 뒤로(최불리 인계),
+            #   이것이 **조용한 오답**이 됐다 — 새로 찍은 헤드가 반영되지 않고,
+            #   번호가 어긋나면 엉뚱한 헤드 K개가 선정된다. 인계 지시서 §2-2 가
+            #   「인덱스가 어긋난 채 넘기면 지금보다 나쁘다」고 경고한 자리다.
+            #
+            #   그러니 여기서 **버린다.** 손질에서 「최불리 선정」을 다시 누르면
+            #   새 판 위에서 다시 선다. 조용히 버리지 않고 말한다.
+            if sess.get("worst"):
+                sess["worst"] = None
+                sess["worst_zones"] = []
+                sess["water_path"] = None
+                print("[찍기] ★찍기를 다시 했으므로 옛 최불리 선정을 버립니다"
+                      " — 손질에서 「최불리 선정」을 다시 눌러 주세요"
+                      " (절점 번호가 새로 매겨져 옛 선정은 다른 헤드를"
+                      " 가리킵니다).")
             sess["edit"] = es
             sess["sheets"] = _sheet_frames(es.board)
             print(f"[손질] 완료 {time.perf_counter() - t0:.1f}s · "
                   f"노드 {len(es.board.pts)} · 간선 {len(es.board.edges)} · "
                   f"헤드 {len(es.board.disks)}")
-            return {"spec_path": spec_path}
+            # ★헤드 0 이면 수리계산에 노즐이 하나도 안 온다. 여기서 말하지
+            #   않으면 사람은 두 화면 뒤에서 「표가 비었다」로 만난다.
+            if not es.board.disks:
+                print("[손질] ★헤드가 **0개** 입니다 — 이대로 가면 수리계산에"
+                      " 노즐이 하나도 오지 않습니다. 찍기로 돌아가 헤드 칸을"
+                      " 다시 찍어 주세요.")
+            return {"spec_path": spec_path,
+                    "n_heads": len(es.board.disks)}
 
         _run_job(sess, "배관망 구성", job)
         return jsonify({"ok": True})

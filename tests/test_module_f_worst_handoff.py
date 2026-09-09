@@ -187,3 +187,30 @@ def test_선정_규칙은_안_바꿨다():
     src = (_ROOT / "cad_project_editor_g" / "services" / "cad_import"
            / "design" / "restrict.py").read_text(encoding="utf-8")
     assert "cand = wet if only_heads is None else (set(only_heads) & wet)" in src
+
+
+# ─────────────────────────────── ⑤ ★옛 선정이 새 판을 가리키면 안 된다
+#
+#   최불리 인계(위 ①~④) 이전에는 `only_heads` 를 안 넘겼으므로 세션에 남은
+#   옛 선정이 **무해했다.** 넘기게 된 뒤로는 그것이 «조용한 오답» 이 된다 —
+#   찍기를 다시 하면 손질판이 통째로 새로 서고 disk 번호가 다시 매겨지는데,
+#   옛 번호를 그대로 쓰면 새로 찍은 헤드는 무시되고 엉뚱한 헤드 K개가 뽑힌다.
+#   인계 지시서 §2-2 가 「지금보다 나쁘다」고 경고한 바로 그 자리다.
+def test_찍기를_다시_하면_옛_선정을_버린다():
+    src = (_ROOT / "routes" / "module_f" / "api_pick.py").read_text(
+        encoding="utf-8")
+    i = src.index("def module_f_pick_commit(")
+    seg = src[i:i + 3000]
+    assert 'sess["worst"] = None' in seg, "찍기를 다시 해도 옛 선정이 남는다"
+    assert "다시 눌러" in seg, "무엇을 하면 되는지 안 말한다"
+
+
+def test_안_맞는_선정은_설계에서도_막는다():
+    """지우는 자리를 하나 놓치면 그 오답이 그대로 산출로 간다 — 두 겹으로."""
+    src = (_ROOT / "routes" / "module_f" / "api_design.py").read_text(
+        encoding="utf-8")
+    i = src.index("n_disk = len(getattr(es.board")
+    seg = src[i:i + 900]
+    assert "max(picked) >= n_disk" in seg, "번호 범위를 안 본다"
+    assert "picked = []" in seg, "안 맞는데 그대로 쓴다"
+    assert "맞지 않습니다" in seg, "조용히 버린다"

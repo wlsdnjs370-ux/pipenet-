@@ -1193,6 +1193,21 @@ def kind_with_layer_name(kind, layer):
     if _os.environ.get("MF_NO_LAYER_KIND") == "1":
         return (kind if kind and kind != "미지정"
                 else head_kind(layer, None)), False
+    # ★★사람이 찍은 것은 이름이 못 덮는다 — 권위의 차례는
+    #
+    #       사람의 픽  >  도면 이름  >  기하 기본값
+    #
+    #   `classify_head_kind` 가 «상하향식» 을 돌려주는 갈래는 1)2)3) 뿐이고
+    #   **셋 다 근거가 스펙의 상하향 x칸**이다. 즉 이 값은 기하가 추측한 것이
+    #   아니라 **사람이 찍기에서 그렇게 정한 것**이다. 오너가 「도면 이름이
+    #   맞다」고 한 것은 근거 없이 상향식으로 떨어지는 «기하 기본값» 을 두고
+    #   한 말이지, 사람의 명시적 픽을 두고 한 말이 아니다.
+    #
+    #   여기를 빼먹어 `-소화(SP헤드하향)` 같은 도면에서 x칸으로 찍은 상하향식
+    #   헤드가 전부 하향식이 됐다 — 사람이 02.찍기에서 정한 것이 04.수리계산에
+    #   반영되지 않는 그 자리다.
+    if kind == "상하향식":
+        return kind, False
     by_name = head_kind(layer, None)
     if by_name in CONFIRMED_KINDS and by_name != kind:
         return by_name, True

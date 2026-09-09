@@ -667,6 +667,22 @@ def register(app, *, UPLOAD_DIR):
             #   **K 는 맞췄는데 선정 결과를 빠뜨린 것**이다.
             w_sel = sess.get("worst") or {}
             picked = [int(i) for i in (w_sel.get("heads") or ())]
+            # ★★그 선정이 **지금 손질판** 의 것인가.
+            #
+            #   `w["heads"]` 는 `board.disks` **인덱스** 다. 찍기를 다시 하거나
+            #   손질이 헤드를 지우면 번호가 새로 매겨져, 옛 선정은 다른 헤드를
+            #   가리킨다. 그대로 `only_heads` 로 넘기면 **엉뚱한 헤드 K개가
+            #   조용히 선정된다** — 인계 지시서 §2-2 가 「지금보다 나쁘다」고
+            #   경고한 자리다. `pick/commit` 이 버리지만, 여기서도 막는다:
+            #   지우는 자리를 하나 놓치면 그 조용한 오답이 그대로 산출로 간다.
+            n_disk = len(getattr(es.board, "disks", None) or ())
+            if picked and (max(picked) >= n_disk or min(picked) < 0):
+                print(f"[최불리 인계] ★세션의 선정이 지금 손질판과 맞지 않습니다"
+                      f" (헤드 번호 최대 {max(picked)} · 지금 헤드 {n_disk})"
+                      f" — 버리고 도면 전체에서 뽑습니다."
+                      f" 손질에서 「최불리 선정」을 다시 눌러 주세요.")
+                picked = []
+                sess["worst"] = None
             only = set(picked) or None
             # [§2-5] K 가 어긋나면 손질 것을 믿는다 — 기준개수의 입력칸은
             #   손질에 하나뿐이라는 것이 이 저장소의 결정이다.

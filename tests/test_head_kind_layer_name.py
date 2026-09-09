@@ -197,3 +197,47 @@ def test_등각_스텁은_표고_부호를_따른다():
     _ = got
     # 하향식 — 헤드(0.0)가 부모(0.3)보다 낮으니 화면에서 **아래** 다.
     assert at["H"][1] < at["2"][1], at
+
+
+# ─────────────────────────────── ★사람이 찍은 것은 이름이 못 덮는다
+def test_사람이_찍은_상하향식은_이름이_못_덮는다():
+    """★권위의 차례 — 사람의 픽 > 도면 이름 > 기하 기본값.
+
+    `classify_head_kind` 가 «상하향식» 을 돌려주는 갈래는 1)2)3) 뿐이고
+    **셋 다 근거가 스펙의 상하향 x칸**이다. 기하가 추측한 값이 아니라
+    사람이 02.찍기에서 그렇게 정한 값이다.
+
+    오너가 「도면 이름이 맞다」고 한 것은 근거 없이 상향식으로 떨어지는
+    «기하 기본값» 을 두고 한 말이다. 여기를 빼먹으면 `-소화(SP헤드하향)`
+    도면에서 x칸으로 찍은 상하향식 헤드가 **전부 하향식**이 된다 — 사람이
+    찍기에서 정한 것이 수리계산에 반영되지 않는 그 자리다.
+    """
+    fw = _fw()
+    for layer in ("-소화(SP헤드하향)", "-소화(SP헤드상향)", "SP헤드하향"):
+        got, flipped = fw.kind_with_layer_name("상하향식", layer)
+        assert (got, flipped) == ("상하향식", False), layer
+
+
+def test_상하향식은_오직_사람의_픽에서만_나온다():
+    """★위 규칙의 전제 — 기하가 «상하향식» 을 지어내면 규칙이 무너진다."""
+    src = (_ROOT / "cad_project_editor_g" / "services" / "cad_import"
+           / "pipeline" / "flow.py").read_text(encoding="utf-8")
+    i = src.index("def classify_head_kind(")
+    j = src.index("def kind_with_layer_name(")
+    body = src[i:j]
+    # «상하향식» 은 스펙(사람의 픽) 갈래에서만 나온다 — 기하 꼬리(5~6)에는
+    #   단 한 번도 없어야 한다. 있으면 기하가 상하향식을 «지어내는» 것이라
+    #   위 규칙(이름이 못 덮는다)이 기하 기본값까지 보호하게 된다.
+    head, _, tail = body.partition("    # 5~6)")
+    assert tail, "갈래 표시가 사라졌다 — 구조가 바뀌었으니 규칙을 다시 봐야 한다"
+    assert 'return "상하향식"' not in tail, tail[:400]
+    assert head.count('return "상하향식"') >= 3
+    assert 'spec.get("heads")' in head and "dual_marks_of(spec)" in head
+    assert 'normalize_head_slot(slot_src) == "상하향"' in head
+
+
+def test_기하_기본값은_여전히_이름에_진다():
+    """조치가 종전 결정을 되돌리지 않았는지 — 대명동 111/111 이 그대로다."""
+    fw = _fw()
+    assert fw.kind_with_layer_name("상향식", "-소화(SP헤드하향)") \
+        == ("하향식", True)

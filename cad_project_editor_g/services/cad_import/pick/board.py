@@ -233,6 +233,46 @@ class Board:
                                     label=label or self.head_label)
         return self._click_line(x, y, max_d)
 
+    def _replay_head_clicks(self, recs):
+        """헤드 클릭을 «새 재료 집합» 으로 다시 태운다. 반환: (되살림, 잃음).
+
+        ★왜 다시 태우는가 — 지우면 사람이 모른다.
+
+          종전에는 배관을 한 묶음 더 찍는 순간 `clear_heads()` 로 찍은 헤드가
+          **통째로** 날아갔다. 엔진은 그 수를 `헤드해제` 로 돌려줬지만 화면이
+          그 이름을 한 번도 안 읽었다. 그래서 사람은 「배관 하나 보탰을 뿐」
+          인데 손질판 헤드가 **0개**가 되고, 수리계산에 노즐이 하나도 안 왔다
+          (실측: 대명동 · 헤드 111 → 0 · 간선 2361 → 35744).
+
+          지운 이유 자체는 옳다 — 헤드 판정은 «문양 지문»(`pick_mark_fp`)을
+          쓰고 그 지문은 **재료 집합에 딸려 있다.** 재료가 바뀌면 옛 지문은
+          더 이상 그 도면의 답이 아니다. 그러니 버리는 대신 **같은 자리를 새
+          재료로 다시 찍는다** — 저장소가 이미 쓰는 관용구다(`pick/auto` 는
+          「묶음의 실제 선분 중점으로 정상 클릭 경로를 태운다」).
+
+          되살리지 못한 것은 조용히 넘기지 않고 세어서 돌려준다.
+        """
+        # ★«칸» 으로 센다 — 클릭 기록의 픽 개수를 그냥 더하면 안 된다.
+        #   같은 헤드 키가 여러 기록에 들어 있어(한 자리를 두 번 찍거나, 추가
+        #   뒤 취소하거나) 실측에서 195 로 부풀었고, 실제로 잃은 것이 없는데
+        #   화면이 「192칸을 잃었다」고 말할 뻔했다. `self.heads` 는 키로
+        #   중복을 걷어 내므로, 견주는 쪽도 키여야 한다.
+        want = set()
+        for cl in recs:
+            if cl.get("동작") == "취소" or cl.get("동작") == "문양대기":
+                continue
+            for p in (cl.get("헤드픽들") or ()):
+                want.add(head_key({**p, "bundle": tuple(p["bundle"])}))
+        for cl in recs:
+            # 자리를 모르면 다시 찍을 수 없다 — 지어내지 않고 «잃음» 으로 센다.
+            if cl.get("동작") == "문양대기" or cl.get("x") is None \
+                    or cl.get("y") is None:
+                continue
+            self._click_head(float(cl["x"]), float(cl["y"]),
+                             cl.get("cluster_gap"), None, label=cl.get("칸"))
+        now = {head_key(h) for h in self.heads}
+        return len(now), len(want - now)
+
     def _click_line(self, x, y, max_d):
         got = self.nearest_seg(x, y)
         if got is None:
@@ -240,6 +280,9 @@ class Board:
         d, (ly, c), _seg = got
         if max_d is not None and d > max_d:
             return None
+        # ★찍은 헤드를 «버리지» 않는다 — 새 재료로 다시 태운다(위 머리말).
+        had = [cl for cl in self.clicks
+               if (cl.get("모드") or cl.get("mode")) == "헤드"]
         cleared = self.clear_heads() if self.heads else 0
         self.mat_done = False
         what = f"{ly}×{cname(c)}({c})"
@@ -253,8 +296,9 @@ class Board:
                "y": round(float(y), 1),
                "픽": [ly, c], "동작": action, "찍힘": what}
         self.clicks.append(rec)
+        back, lost = self._replay_head_clicks(had) if had else (0, 0)
         return {"모드": "재료", "픽": what, "d": d, "동작": action,
-                "헤드해제": cleared}
+                "헤드해제": cleared, "헤드되살림": back, "헤드잃음": lost}
 
     def _commit_heads(self, x, y, picks, what, d, cluster_gap,
                       action_force=None):

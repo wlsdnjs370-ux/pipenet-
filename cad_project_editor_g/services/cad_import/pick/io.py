@@ -10,8 +10,27 @@ from services.cad_import.pipeline import handoff
 from services.cad_import.pipeline.handoff import MIN_PREP_SECONDS, save_world
 from services.cad_import.pipeline import stage1 as s1
 
-NEW_DIR = handoff.OUT_DIR
-STD_DIR = os.path.join("docs", "import", "0단계_표준샘플")
+def new_dir():
+    """찍은스펙·자동백업 폴더 — **부를 때** 정한다.
+
+    종전에는 `NEW_DIR = handoff.OUT_DIR` 로 import 시점에 값을 복사했다.
+    서버가 부팅 때 쓰기 루트를 바꿔도 이 복사본은 안 따라오므로, 한 프로세스
+    안에서 모듈마다 다른 폴더를 붙들었다 — 오류 없이 파일만 엉뚱한 데 생긴다.
+    """
+    return handoff.pick_out_dir()
+
+
+def std_dir():
+    """0단계 표준샘플 폴더.
+
+    ★종전 값은 cwd 상대경로 "docs/import/0단계_표준샘플" 이었고, 부팅 때
+      절대경로로 고정하는 목록에서 **아예 빠져 있었다**. 데스크톱 G 는 cwd 가
+      편집기 폴더라 맞지만, 웹서버는 cwd 가 프로젝트 루트라 같은 상대경로가
+      엉뚱한 곳을 가리킨다. 소스 실행에서는 `import_write_root()` 가
+      "docs/import" 라 **값이 예전과 같다** — 서버에서만 달라지고, 그게
+      원래 의도한 동작이다.
+    """
+    return os.path.join(handoff.import_write_root(), "0단계_표준샘플")
 
 
 def display_key_for(source_path):

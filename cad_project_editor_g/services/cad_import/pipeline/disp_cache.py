@@ -12,11 +12,12 @@ from services.cad_import.pipeline import expand, flow, heads, stage1, stage45
 from services.cad_import.pipeline.handoff import import_write_root
 
 _DISP_CACHE_VER = 5
-_DISP_CACHE_DIR = import_write_root()
 
 
 def _disp_cache_dir():
-    return _DISP_CACHE_DIR
+    """★상수로 굳히지 않는다 — 서버가 부팅 때 정하는 쓰기 루트를 따라와야
+    표시캐시가 찍은스펙과 **같은 폴더**에 남는다."""
+    return import_write_root()
 
 
 def _disp_cache_path(key):
@@ -44,7 +45,7 @@ def _file_stamp(path, content_hash=False):
 
 def _disp_cache_inputs(key):
     spec = expand._spec_path(key)
-    dxf = expand.dxf_path_for(key) or os.path.join(expand.DWG, f"{key}.dxf")
+    dxf = expand.dxf_path_for(key) or os.path.join(stage1.DWG_DIR, f"{key}.dxf")
     pipeline_modules = (expand, flow, stage1, heads, stage45, kinds)
     return {
         "ver": _DISP_CACHE_VER,

@@ -12,7 +12,6 @@ from collections import defaultdict
 from services.cad_import.pipeline import handoff
 from services.cad_import.pipeline import stage1 as s1
 
-DWG = s1.DWG_DIR
 
 CASES = {
     "MF2": "MF2 sample_libredwg.dxf",
@@ -59,7 +58,7 @@ def seg_dist(a, b, px, py):
 def _spec_path(key):
     """새찍기 우선 · 없으면 DWG 옛 경로 [2026-08-08 오너 — 저장물 분리]."""
     new = os.path.join(handoff.pick_out_dir(), f"{key}_찍은스펙.json")
-    old = os.path.join(DWG, f"{key}_찍은스펙.json")
+    old = os.path.join(s1.DWG_DIR, f"{key}_찍은스펙.json")
     return new if os.path.exists(new) else old
 
 
@@ -80,14 +79,14 @@ def dxf_path_for(key, spec=None):
         if os.path.isfile(src):
             return src
     if key in CASES:
-        return os.path.abspath(os.path.join(DWG, CASES[key]))
+        return os.path.abspath(os.path.join(s1.DWG_DIR, CASES[key]))
     names = []
     if str(key).lower().endswith(".dxf"):
         names.append(key)
     names.append(f"{key}.dxf")
     for name in names:
         p = name if os.path.isfile(name) else os.path.join(
-            DWG, os.path.basename(name))
+            s1.DWG_DIR, os.path.basename(name))
         if os.path.isfile(p):
             return os.path.abspath(p)
     return None

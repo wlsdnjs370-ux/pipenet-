@@ -34,17 +34,17 @@ class isolated_workdir:
         import shutil
         import tempfile
 
-        from services.cad_import.pipeline import disp_cache as dc, handoff as hf
+        from services.cad_import.pipeline import handoff as hf
 
         src_pick, src_edit = hf.pick_out_dir(), hf.default_edits_dir()
-        src_cache = getattr(dc, "_DISP_CACHE_DIR", None)
-        self._saved = (hf.import_write_root, hf.OUT_DIR, src_cache)
+        src_cache = hf.import_write_root()
+        # ★주입점 하나로 못박는다(그리고 나갈 때 그 하나만 되돌린다) — 종전에는
+        #   함수를 갈아끼우고 그것으로 안 따라오는 두 상수를 따로 덮었다.
+        self._saved = hf._WRITE_ROOT_OVERRIDE
 
         self._tmp = tempfile.TemporaryDirectory(prefix=self.prefix)
         work = self._tmp.name
-        hf.import_write_root = lambda: work
-        hf.OUT_DIR = hf.pick_out_dir()
-        dc._DISP_CACHE_DIR = work
+        hf.set_write_root(work)
         os.makedirs(hf.pick_out_dir(), exist_ok=True)
         os.makedirs(hf.default_edits_dir(), exist_ok=True)
 
@@ -71,12 +71,9 @@ class isolated_workdir:
         return work
 
     def __exit__(self, *exc):
-        from services.cad_import.pipeline import disp_cache as dc, handoff as hf
+        from services.cad_import.pipeline import handoff as hf
 
-        root, out_dir, cache = self._saved
-        hf.import_write_root = root
-        hf.OUT_DIR = out_dir
-        dc._DISP_CACHE_DIR = cache
+        hf.set_write_root(self._saved)
         if self._tmp is not None:
             self._tmp.cleanup()
         return False

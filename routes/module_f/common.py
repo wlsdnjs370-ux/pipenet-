@@ -132,13 +132,13 @@ def _boot() -> None:
         if not _svc_file.startswith(str(EDITOR_ROOT.resolve())):
             raise RuntimeError(
                 f"services 가 G 엔진이 아닌 곳에서 import 되었습니다: {_svc_file}")
-        from services.cad_import.pipeline import disp_cache, handoff
-        work = str(IMPORT_WORK_ROOT)
-        handoff.import_write_root = lambda: work
-        # OUT_DIR·_DISP_CACHE_DIR 은 import 때 이미 상대경로로 굳었다.
-        # 함수만 갈아끼우면 이 둘은 안 따라오므로 직접 덮는다.
-        handoff.OUT_DIR = handoff.pick_out_dir()
-        disp_cache._DISP_CACHE_DIR = work
+        from services.cad_import.pipeline import handoff
+        # ★주입점은 하나다. 종전에는 함수를 람다로 갈아끼우고, 그것으로 안
+        #   따라오는 두 상수(`handoff.OUT_DIR` · `disp_cache._DISP_CACHE_DIR`)를
+        #   따로 덮었다 — 세 줄 중 하나만 빠뜨려도 한 프로세스 안에서 모듈마다
+        #   다른 폴더를 붙들고, **오류 없이** 파일이 엉뚱한 데 생긴다.
+        #   지금은 엔진 쪽이 전부 «부를 때» 읽으므로 이 한 줄이면 된다.
+        handoff.set_write_root(str(IMPORT_WORK_ROOT))
         os.makedirs(handoff.pick_out_dir(), exist_ok=True)
         os.makedirs(handoff.default_edits_dir(), exist_ok=True)
         _booted = True

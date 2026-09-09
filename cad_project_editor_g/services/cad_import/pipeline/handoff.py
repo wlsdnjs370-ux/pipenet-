@@ -17,12 +17,33 @@ import time
 FORMAT = "stage1-world-sqlite-v2"
 
 
+# 바깥에서 못박은 쓰기 루트. ★None 이면 아래 기본 규칙이 그대로 산다 —
+# 데스크톱 실행은 아무도 안 부르므로 값이 예전과 똑같다.
+_WRITE_ROOT_OVERRIDE = None
+
+
+def set_write_root(path):
+    """쓰기 루트를 바깥에서 못박는다. 서버가 부팅 때 **한 번** 부른다.
+
+    종전에는 부팅 코드가 `import_write_root` 함수 자체를 람다로 갈아끼웠다.
+    영리하지만 누가 언제 바꿨는지 추적이 안 되고, 무엇보다 **이미 값을
+    복사해 간 모듈은 못 잡는다**(`pick/io.NEW_DIR = handoff.OUT_DIR`).
+    주입점을 여기 하나로 두고, 읽는 자리는 전부 «부를 때» 읽게 한다.
+
+    데스크톱 실행은 부르지 않는다 — 그때는 아래 기본 규칙이 맞다.
+    """
+    global _WRITE_ROOT_OVERRIDE
+    _WRITE_ROOT_OVERRIDE = str(path) if path else None
+
+
 def import_write_root():
     """찍기·캐시·손질 JSON 쓰기 루트.
 
     소스 실행은 저장소의 docs/import. 빌드본은 Program Files 에 못 쓰므로
     로그·라이브러리와 같은 %LOCALAPPDATA%\\K-Fire 아래.
     """
+    if _WRITE_ROOT_OVERRIDE:
+        return _WRITE_ROOT_OVERRIDE
     if getattr(sys, "frozen", False):
         base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
         return os.path.join(base, "K-Fire", "cad_import")
@@ -39,7 +60,6 @@ def pick_out_dir():
     return os.path.join(import_write_root(), "0단계_새찍기")
 
 
-OUT_DIR = pick_out_dir()
 _PREP_NAMES = ("_pairs", "read_dxf", "World", "explode")
 # 이보다 빠른 DXF 준비는 SQLite 저장·검증 비용과 비슷해 총 대기가 줄지 않았다.
 # 도면 내용/이름이 아닌, 찍기에서 이미 잰 실제 중복 비용만으로 산출 여부를 정한다.
@@ -99,12 +119,13 @@ def handoff_path(key):
     if not safe:
         safe = "drawing"
     suffix = hashlib.sha256(str(key).encode("utf-8")).hexdigest()[:10]
-    return os.path.join(OUT_DIR, f"{safe}_{suffix}_stage1_world.sqlite3")
+    return os.path.join(pick_out_dir(),
+                        f"{safe}_{suffix}_stage1_world.sqlite3")
 
 
 def save_world(key, source_path, world):
     """기존 World를 원자적으로 저장한다. 실패해도 원본/찍은 스펙은 그대로다."""
-    os.makedirs(OUT_DIR, exist_ok=True)
+    os.makedirs(pick_out_dir(), exist_ok=True)
     path = handoff_path(key)
     tmp = f"{path}.tmp-{os.getpid()}-{time.time_ns()}"
     meta = {

@@ -895,7 +895,7 @@ def test_실측은_사용자_저장본을_안_건드린다():
         src = open(os.path.join(_ROOT, "scripts", name),
                    encoding="utf-8").read()
         assert "TemporaryDirectory" in src, name
-        assert "handoff.import_write_root = lambda: work" in src, name
+        assert "handoff.set_write_root(work)" in src, name
 
 
 def test_실측이_사람조작과_클릭을_가른다():

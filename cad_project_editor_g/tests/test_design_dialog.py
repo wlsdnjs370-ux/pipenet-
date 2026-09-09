@@ -51,17 +51,17 @@ def _isolate_workdir():
     import shutil
     import tempfile
 
-    from services.cad_import.pipeline import disp_cache, handoff
+    from services.cad_import.pipeline import handoff
 
     src_pick = handoff.pick_out_dir()
     src_edit = handoff.default_edits_dir()
-    src_cache = getattr(disp_cache, "_DISP_CACHE_DIR", None)
+    src_cache = handoff.import_write_root()
 
     tmp = tempfile.TemporaryDirectory(prefix="g7_design_dialog_")
     work = tmp.name
-    handoff.import_write_root = lambda: work
-    handoff.OUT_DIR = handoff.pick_out_dir()
-    disp_cache._DISP_CACHE_DIR = work
+    # ★주입점 하나로 못박는다 — 종전에는 함수를 갈아끼우고 그것으로 안
+    #   따라오는 두 상수를 따로 덮었다(`OUT_DIR` · `_DISP_CACHE_DIR`).
+    handoff.set_write_root(work)
     os.makedirs(handoff.pick_out_dir(), exist_ok=True)
     os.makedirs(handoff.default_edits_dir(), exist_ok=True)
 

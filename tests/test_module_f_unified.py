@@ -194,11 +194,10 @@ def _client(tmp_path=None):
     if tmp_path is not None:
         from routes.module_f.common import _boot
         _boot()
-        from services.cad_import.pipeline import disp_cache, handoff
-        work = str(tmp_path)
-        handoff.import_write_root = lambda: work
-        handoff.OUT_DIR = handoff.pick_out_dir()
-        disp_cache._DISP_CACHE_DIR = work
+        from services.cad_import.pipeline import handoff
+        # ★주입점 하나 — 종전에는 함수를 갈아끼우고 그것으로 안 따라오는 두
+        #   상수를 따로 덮었다(`OUT_DIR` · `_DISP_CACHE_DIR`).
+        handoff.set_write_root(str(tmp_path))
         os.makedirs(handoff.pick_out_dir(), exist_ok=True)
         os.makedirs(handoff.default_edits_dir(), exist_ok=True)
     c = srv.app.test_client()

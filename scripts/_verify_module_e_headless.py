@@ -19,10 +19,10 @@ WORK = os.path.join(_ROOT, "docs", "import")
 
 def patch_paths():
     """상대경로(docs/import)를 절대경로로 고정 — 서버 cwd 와 무관하게."""
-    from services.cad_import.pipeline import disp_cache, handoff
-    handoff.import_write_root = lambda: WORK
-    handoff.OUT_DIR = handoff.pick_out_dir()
-    disp_cache._DISP_CACHE_DIR = WORK
+    from services.cad_import.pipeline import handoff
+    # ★주입점 하나 — 종전에는 함수를 갈아끼우고 그것으로 안 따라오는 두
+    #   상수를 따로 덮었다(`OUT_DIR` · `_DISP_CACHE_DIR`).
+    handoff.set_write_root(WORK)
     return handoff
 
 

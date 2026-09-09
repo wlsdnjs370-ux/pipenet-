@@ -25,10 +25,10 @@ KEY = "B1F 현장조사 소화설비 평면도"
 
 
 def boot():
-    from services.cad_import.pipeline import disp_cache, handoff
-    handoff.import_write_root = lambda: WORK
-    handoff.OUT_DIR = handoff.pick_out_dir()
-    disp_cache._DISP_CACHE_DIR = WORK
+    from services.cad_import.pipeline import handoff
+    # ★주입점 하나 — 종전에는 함수를 갈아끼우고 그것으로 안 따라오는
+    #   두 상수를 따로 덮었다(`OUT_DIR` · `_DISP_CACHE_DIR`).
+    handoff.set_write_root(WORK)
 
 
 # ── (2) 최불리 K 헤드 — 급수원 Dijkstra, E 그래프 자료구조 위에서 ──────

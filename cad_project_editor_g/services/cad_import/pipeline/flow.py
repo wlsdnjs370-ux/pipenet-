@@ -65,7 +65,6 @@ from services.cad_import.kinds import (
     require_head_kinds,
 )
 
-DWG = s1.DWG_DIR
 
 ARM_CTR = 5.0       # 팔이 «표시 중심»에 앉았다고 볼 거리
 ARM_RIM = 12.0      # 팔이 «표시 테두리»에 앉았다고 볼 오차

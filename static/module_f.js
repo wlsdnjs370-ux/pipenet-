@@ -368,6 +368,8 @@
   //   또렷한 빨강을 골라 둘이 안 섞이게 한다 — 하나는 선(배관), 하나는
   //   점(헤드)이라 모양으로도 갈리지만 색까지 같으면 눈이 헷갈린다.
   const PICK_PIPE_HL = "#ff2d2d";
+  // 찍은 헤드도 «빨강» 이다 — 종전 핑크는 어두운 도면에서 안 보였다.
+  const PICK_HEAD_HL = "#ff2d2d";
   const PICK_PIPE_W = CAD_LINE_W + 1.4;
 
   function drawWorld(dim, alpha) {
@@ -423,8 +425,13 @@
     }
     ctx.stroke();
     // 헤드 — 원과 삼각 기호가 같은 색이다(둘 다 «찍은 헤드» 다).
-    ctx.strokeStyle = "#ff5cf0";
-    ctx.lineWidth = 2;
+    //
+    // ★핑크(#ff5cf0)를 쓰다 빨강으로 바꿨다 — 어두운 도면 위에서 핑크가
+    //   묻혀 「무엇이 찍혔는지」가 안 보였다(2026-09-09 사용자 지적).
+    //   찍은 배관과 같은 빨강이지만 굵기로 갈린다: 배관은 굵은 선, 헤드는
+    //   원·삼각 기호라 모양이 이미 다르다.
+    ctx.strokeStyle = PICK_HEAD_HL;
+    ctx.lineWidth = 2.4;
     ctx.beginPath();
     for (const s of hl.tri_segs) {
       ctx.moveTo(sx(s[0]), sy(s[1]));
@@ -565,6 +572,27 @@
         ctx.arc(sx(hd[0]), sy(hd[1]), r, 0, Math.PI * 2);
         ctx.fill();
       }
+      // ★헤드에 «빨간 점선 고리» 를 얹는다 (2026-09-09 사용자 지적).
+      //
+      //   헤드 속색은 «종류» 다(상향 주황·하향 파랑·상하향 보라). 그런데
+      //   하향식 색 `#3ba7ff` 가 배관 본문 첫 색 `#3ba7ff` 와 **같은
+      //   파랑**이다 — 대명동은 111개가 전부 하향식이라 헤드가 배관에
+      //   그대로 묻혀 「무슨 헤드를 인식했는지」가 안 보였다.
+      //
+      //   배관 색은 그대로 두고(파랑 유지) 헤드만 빨간 점선으로 두른다.
+      //   속색을 빨강으로 덮지 않는 이유는 그러면 «종류» 를 못 읽기
+      //   때문이다 — 고리는 «여기가 헤드다», 속색은 «어떤 헤드다».
+      ctx.strokeStyle = "#ff2d2d";
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      for (const hd of e.heads) {
+        const r = Math.max(3.5, hd[2] * S.view.scale) + 2;
+        ctx.moveTo(sx(hd[0]) + r, sy(hd[1]));
+        ctx.arc(sx(hd[0]), sy(hd[1]), r, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
       ctx.restore();
     }
     ctx.lineWidth = 2;

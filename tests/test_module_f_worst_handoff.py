@@ -53,7 +53,10 @@ def test_손질_선정을_only_heads_로_넘긴다():
     """★이 한 줄이 없어서 수리계산이 도면 전체에서 다시 뽑았다."""
     src = _src()
     i = src.index("got = select_and_expand(")
-    seg = src[max(0, i - 1400):i + 300]
+    # ★창을 넓혔다 — 그 사이에 «다음 순위 채우기» 주석이 들어와 1,400자로는
+    #   선정을 읽는 줄이 창 밖으로 밀렸다. 창 크기가 시험의 참·거짓을
+    #   가르면 안 된다.
+    seg = src[max(0, i - 3600):i + 300]
     assert "only_heads=only" in seg, seg[-400:]
     assert 'sess.get("worst")' in seg, "손질 선정을 안 읽는다"
     assert 'w_sel.get("heads")' in seg

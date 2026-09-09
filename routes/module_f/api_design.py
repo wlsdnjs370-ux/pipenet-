@@ -689,8 +689,38 @@ def register(app, *, UPLOAD_DIR):
             k_use = int(cfg["k"])
             if picked and len(picked) != k_use:
                 k_use = int(sess.get("worst_k") or len(picked))
+            # ★★손질이 고른 K개 중 «전개가 못 붙이는» 것이 있으면 **다음
+            #   순위로 채운다** (2026-09-09 사용자 지적: 「기준개수 30을
+            #   넣어도 30개 밑으로 나온다」).
+            #
+            #   종전에는 `cand = 고른 K개 ∩ 붙는 헤드` 라 못 붙는 만큼 그냥
+            #   줄었다 — 실측(대명동 골든 K=10): 10개 중 2개를 못 붙여 표에
+            #   **8개**. 손질이 함께 넘긴 «후보 범위»(영역·장으로 가둔 것)로
+            #   바꿔 넘기면 `worst_k_heads` 가 같은 규칙(유하거리 긴 순서)으로
+            #   K개를 채운다. 채운 헤드는 지어낸 것이 아니라 **그다음으로
+            #   불리한 헤드**다.
+            #
+            #   ★탐침은 판마다 한 번만 잰다(`attach.wet_heads`). 실측(B1F ·
+            #   절점 22,575): 이 전체망 전개 한 번이 **117초**다 — 수리계산을
+            #   다시 눌러도 판이 그대로면 다시 재지 않는다.
+            from routes.module_f.attach import wet_heads
+            probe = wet_heads(sess, es, selected_source=sel)
+            filled = 0
+            if only and probe.get("ok"):
+                wet = set(probe.get("wet") or ())
+                short = len(only & wet) if wet else 0
+                if wet and short < k_use:
+                    pool = sess.get("worst_cand")
+                    only = (set(pool) & wet) if pool else None
+                    filled = k_use - short
+                    print(f"[최불리 인계] 손질이 고른 {k_use}개 중 {filled}개는"
+                          f" 전개가 배관에 붙이지 못합니다 — 같은 규칙으로"
+                          f" **다음 순위**를 채웁니다"
+                          f" (후보 {len(only) if only else '도면 전체'}).")
             got = select_and_expand(payload, es.board, k=k_use,
-                                    selected_source=sel, only_heads=only)
+                                    selected_source=sel, only_heads=only,
+                                    probe=probe)
+            got["_filled"] = filled
             if not got.get("ok"):
                 return {"ok": False, "error": got.get("error")}
             got["handoff"] = _worst_handoff_note(

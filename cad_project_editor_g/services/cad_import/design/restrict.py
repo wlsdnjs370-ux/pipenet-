@@ -274,7 +274,8 @@ def expand_worst(payload: dict, board, worst: dict, *,
 
 def select_and_expand(payload: dict, board, *, k=None, only_heads=None,
                       selected_source=None, key: str | None = None,
-                      convert_kwargs=None, vertical: bool = True) -> dict:
+                      convert_kwargs=None, vertical: bool = True,
+                      probe=None) -> dict:
     """최불리 선정 → corridor 제한 전개를 한 번에. G7 창이 부르는 진입점.
 
     ★선정 후보를 **전개가 붙일 수 있는 헤드**로 먼저 좁힌다(BLOCKED B4 · 1안).
@@ -291,7 +292,13 @@ def select_and_expand(payload: dict, board, *, k=None, only_heads=None,
     from services.cad_import.design.worst import REMOTE_K_DEFAULT, worst_k_heads
 
     k = REMOTE_K_DEFAULT if k is None else k
-    probe = attachable_heads(payload, selected_source=selected_source, key=key)
+    # ★`probe` 를 받으면 다시 재지 않는다 — 이것은 **전체망 전개 한 번**이라
+    #   이 함수에서 가장 비싼 줄이다. 손질이 최불리를 고를 때 이미 같은 것을
+    #   쟀으므로(`routes.module_f.attach.wet_heads`) 그대로 받아 쓴다. 판이
+    #   안 바뀌었으면 답도 안 바뀐다. 안 주면 종전 그대로 여기서 잰다.
+    if probe is None:
+        probe = attachable_heads(payload, selected_source=selected_source,
+                                 key=key)
     if not probe["ok"]:
         return {"ok": False, "error": probe.get("error")}
 
@@ -303,8 +310,13 @@ def select_and_expand(payload: dict, board, *, k=None, only_heads=None,
                           "손질 단계에서 배관을 먼저 이어 주세요.")}
 
     b = board
+    # ★`head_xy` 를 반드시 넘긴다 — 손질이 넘기는 것과 **같은 자**여야 한다.
+    #   이것이 없으면 «같은 자리» 판정이 좌표가 아니라 부착 절점으로 떨어져,
+    #   손질과 수리계산이 서로 다른 K개를 고른다(실측: corridor 총연장
+    #   75.78 대 74.02 m). 두 화면이 다른 말을 하는 그 자리다.
     worst = worst_k_heads(b.pts, b.edges, b.hnodes, b.sources,
-                          k=k, only_heads=cand)
+                          k=k, only_heads=cand,
+                          head_xy=getattr(b, "disks", None))
     if not worst.get("heads"):
         return {"ok": False, "error": "급수원에서 닿는 헤드가 없습니다."}
 

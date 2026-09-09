@@ -374,6 +374,21 @@ def register(app):
                            "최불리인지 하나를 지정하세요.",
                 "sources": cands}}
 
+        # ★★«고른 K개» 만이 아니라 «고른 범위» 도 함께 넘긴다 (2026-09-09).
+        #
+        #   수리계산은 `cand = 고른 것 ∩ 전개가 붙일 수 있는 헤드` 로 거른다.
+        #   그래서 손질이 K개를 골라도 표에는 그보다 적게 왔다 — 실측(대명동
+        #   골든 K=10): 고른 10개 중 2개를 전개가 못 붙여 표에 **8개**.
+        #
+        #   여기서(손질에서) 먼저 걸러 볼 수도 있지만 그 판정이 곧 **전체망
+        #   전개 한 번**이다. 실측(B1F · 절점 22,575): 그 한 번이 **117초**다.
+        #   `/edit/worst` 는 진행표시 없는 동기 요청이라, 여기서 재면 손질
+        #   화면이 2분 얼어붙는다. 총합은 어차피 같고 **자리만 옮긴다.**
+        #
+        #   그래서 손질은 빠르게 두고, 이미 그 값을 재는 수리계산이 «다음
+        #   순위로 채우게» 한다. 채우려면 «고른 K개» 가 아니라 그 K개를 뽑은
+        #   **후보 범위**(영역·도면 장으로 가둔 것)가 필요하다 — 그것을
+        #   여기서 실어 보낸다.
         w = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=k,
                            only_heads=only, source_index=src_index,
                            # 설계면적 직사각형은 헤드의 «제 좌표» 로 잰다.
@@ -410,6 +425,9 @@ def register(app):
         w["zones"] = [list(r) for r in rects] if zones else []
         w["candidates"] = len(only) if only is not None else w["reachable"]
         sess["worst"] = w
+        # ★후보 범위 — 수리계산이 «못 붙는 헤드» 를 만나면 여기서 다음 순위를
+        #   채운다. `None` 은 「도면 전체가 후보」다(영역도 장도 안 걸었다).
+        sess["worst_cand"] = (None if only is None else sorted(only))
         sess["worst_zones"] = w["zones"]      # 다시 누를 때 같은 영역을 쓴다
         sess["worst_k"] = k                   # [F-10b] 원클릭이 이 값을 쓴다
         # ★수리계산 설정의 K 도 **여기서 같이 맞춘다.** 기준개수는 손질에서

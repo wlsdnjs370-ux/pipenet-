@@ -68,6 +68,52 @@ def _apply_fold(sess, ps, es) -> dict:
     return rec
 
 
+def _apply_chamfer(sess, es) -> dict:
+    """[챔퍼] 45° 모서리 조각을 지우고 두 직선을 모서리까지 잇는다.
+
+    목적은 **평면도와 아이소의 위상이 1:1 · 누락·휨 없이** 다(2026-09-09 오너).
+    등각에서 나올 수 있는 각도는 셋뿐이라(가로 +30° · 세로 +150° · 스텁 수직)
+    평면의 45° 조각은 그 격자를 벗어나 휜다.
+
+    ★건드리는 것은 「직선 – 짧은 45° – 직선」이 **직교로 만나는** 자리뿐이다.
+      실제 대각 주행에 붙은 챔퍼(양옆이 직교가 아닌 것)는 그대로 둔다.
+
+    조용히 하지 않는다 — 몇 곳을 폈고 무엇을 왜 걸렀는지 로그와 세션에 남긴다.
+    """
+    from routes.module_f import chamfer as ch
+    # ★먼저 «같은 자리의 두 점» 을 합친다. 길이 0 간선이 차수를 부풀려 챔퍼를
+    #   못 펴게 만들고 있었다(실측 218곳). 형상은 안 바뀐다.
+    # ★계측용 스위치 — 어느 조작이 무엇을 바꿨는지 가르려면 하나씩 꺼 봐야
+    #   한다(MF_NO_ZERO_COLLAPSE=1 로 끈다). 기본은 켜짐.
+    import os as _os
+    zero = ({"zero_edges": 0, "merged": 0, "skipped": 0, "why": {},
+             "before": 0, "after": 0}
+            if _os.environ.get("MF_NO_ZERO_COLLAPSE") == "1"
+            else ch.collapse_zero_edges(es.board))
+    if zero.get("zero_edges"):
+        print(f"[모서리] 같은 자리의 점을 합쳤습니다 · 길이 0 간선"
+              f" {zero['zero_edges']} · 합친 점 {zero['merged']}"
+              f" · 간선 {zero['before']} → {zero['after']}"
+              f" — 겹쳐 그린 두 줄이 하나가 됩니다")
+        if zero.get("skipped"):
+            print(f"[모서리] 합치지 않은 것 {zero['skipped']} — {zero['why']}"
+                  f" (합치면 Y 자로 갈라져 없던 분기가 생깁니다)")
+    got = ({"corners": 0, "why": {}, "grew_mm": 0.0,
+            "before": 0, "after": 0, "found": 0}
+           if _os.environ.get("MF_NO_CHAMFER") == "1"
+           else ch.restore_corners(es.board))
+    got["zero"] = zero
+    sess["chamfer"] = got
+    if got["corners"]:
+        print(f"[모서리] 45° 챔퍼 {got['corners']}곳을 모서리로 폈습니다 ·"
+              f" 간선 {got['before']} → {got['after']}"
+              f" · 연장 {got['grew_mm']:+,.1f} mm"
+              f" (모서리를 도는 만큼 — 줄지 않습니다)")
+    if got["why"]:
+        print(f"[모서리] 손대지 않은 것 — {got['why']}")
+    return got
+
+
 def register(app):
     # ─────────────────────────────────────────── 1. 찍기
     @app.post("/api/module-f/pick/mode")
@@ -410,6 +456,7 @@ def register(app):
             #   레이어는 찍기 판에만 살고(손질판은 pts/edges 뿐), 접을 간선은
             #   손질판에만 있다. 그래서 접기는 반드시 이 자리에서 끝난다.
             _apply_fold(sess, ps, es)
+            _apply_chamfer(sess, es)
             sess["edit"] = es
             sess["sheets"] = _sheet_frames(es.board)
             print(f"[손질] 완료 {time.perf_counter() - t0:.1f}s · "

@@ -13,16 +13,21 @@
 
 ■ 여기서 지키는 것
 
-  ⑴ 재료에서 레이어를 뺄 수 있다 — 자동 사전은 **추천만**, 확정은 사람이.
-  ⑵ 뺀 것을 조용히 넘기지 않는다(찍기 기록·로그에 남는다 · S340).
+  ⑴ 레이어를 «접기» 로 지정할 수 있다 — 자동 사전은 **추천만**, 확정은 사람이.
+  ⑵ 접은 것을 조용히 넘기지 않는다(세션·로그에 남는다 · S340).
   ⑶ X자 교차는 **세기만** 한다 — 자동으로 쪼개면 없던 분기가 생겨 유량이 갈린다.
   ⑷ 등각에서 겹쳐 보이는 접속관은 «위상 문제가 아니다» 라고 화면이 말한다.
 
-■ ★C-0 계측 결과 (이 시험이 지키는 사실)
+■ ★C-0 계측 결과 → 그리고 그 다음에 일어난 일
 
   신축배관을 빼면 대명동에서 물닿음 헤드가 **111 → 5** 로 떨어진다.
-  신축배관이 헤드를 가지관에 잇는 유일한 경로이기 때문이다. 그래서 «그냥 빼기»
-  는 이 도면에서 성립하지 않는다 — 화면이 그 사실을 말해야 한다.
+  신축배관이 헤드를 가지관에 잇는 유일한 경로이기 때문이다.
+
+  그래서 「빼기」는 **철회됐다**(`ModuleF_신축배관_접기_지시서.md`). 대신
+  **접기** 다 — 한 가닥을 직선 하나로 펴되 길이와 연결은 그대로 둔다.
+  `exclude-layer` 는 아예 없앴다: 남겨 두면 언젠가 누가 누른다.
+
+  이 파일의 ⑴⑵ 는 그 «접기» 를 지킨다. ⑶⑷(X교차·등각 겹침)는 그대로다.
 """
 from __future__ import annotations
 
@@ -174,33 +179,45 @@ def test_자동_사전은_추천만_한다():
     i = src.index("FLEX_WORDS = (")
     seg = src[max(0, i - 900):i + 400]
     assert "추천만" in seg and "확정은 사람" in seg, seg[-400:]
-    # 자동으로 빼는 코드가 없어야 한다 — 라우트는 사람이 부를 때만 돈다.
-    assert "def module_f_pick_exclude_layer" in src
+    # 자동으로 접는 코드가 없어야 한다 — 라우트는 사람이 부를 때만 돈다.
+    assert "def module_f_pick_fold_layer" in src
     j = src.index("def module_f_pick_adopt")
-    assert "_is_flex" not in src[j:j + 2000], "채택이 몰래 빼고 있다"
+    assert "_is_flex" not in src[j:j + 2000], "채택이 몰래 접고 있다"
 
 
-def test_뺀_것을_기록에_남긴다():
-    """조용히 빼면 배관이 끊긴 것을 아무도 모른다(S340)."""
+def test_빼는_길은_없앴다():
+    """★빼면 물닿음 헤드가 111 → 5 다(실측). 남겨 두면 언젠가 누가 누른다."""
     src = (_ROOT / "routes" / "module_f" / "api_pick.py").read_text(
         encoding="utf-8")
-    i = src.index("def module_f_pick_exclude_layer")
-    seg = src[i:i + 2200]
-    assert "pick_layer_excluded" in seg, "제외 이력이 세션에 안 남는다"
+    assert "def module_f_pick_exclude_layer" not in src
+    assert '"/api/module-f/pick/exclude-layer"' not in src
+    js = (_ROOT / "static" / "module_f.js").read_text(encoding="utf-8")
+    assert "excludeMatLayer" not in js
+    assert "pick/exclude-layer" not in js
+
+
+def test_접은_것을_기록에_남긴다():
+    """조용히 접으면 형상이 바뀐 것을 아무도 모른다(S340)."""
+    src = (_ROOT / "routes" / "module_f" / "api_pick.py").read_text(
+        encoding="utf-8")
+    i = src.index("def module_f_pick_fold_layer")
+    seg = src[i:i + 2600]
+    assert "pick_layer_folded" in seg, "접기 이력이 세션에 안 남는다"
     assert "print(" in seg, "로그에도 안 남는다"
     # ★찍기 기록에는 넣지 않는다 — 그 목록 항목은 좌표를 가진 «클릭» 이고,
     #   `highlight_geom()` 이 마지막 항목의 x 를 읽는다(실측: 화면 500).
     assert "clicks.append" not in seg, "좌표 없는 항목을 클릭 기록에 끼운다"
 
 
-def test_화면이_잃을_것을_말한다():
-    """★대명동 실측: 신축배관을 빼면 물닿음 헤드가 111 → 5 로 떨어진다."""
+def test_화면이_무엇이_일어나는지_말한다():
+    """★막는 게 아니라 «무엇이 되는지» 를 알려 준다 — 길이와 연결은 그대로다."""
     js = (_ROOT / "static" / "module_f.js").read_text(encoding="utf-8")
-    i = js.index("async function excludeMatLayer(")
-    seg = js[i:i + 900]
-    assert "헤드가 떨어졌는지" in seg, seg[:400]
+    i = js.index("async function foldMatLayer(")
+    seg = js[i:i + 1200]
+    assert "직선으로 접습니다" in seg, seg[:500]
+    assert "길이" in seg and "연결은 그대로" in seg, seg[:500]
     html = (_ROOT / "templates" / "module_f.html").read_text(encoding="utf-8")
-    assert "헤드가 떨어지는지" in html, "찍기 화면이 대가를 안 말한다"
+    assert "길이와 연결은 그대로" in html, "찍기 화면이 무엇이 되는지 안 말한다"
 
 
 def test_재료_목록이_레이어별로_묶여_나온다():
@@ -212,15 +229,15 @@ def test_재료_목록이_레이어별로_묶여_나온다():
         assert key in seg, key
 
 
-def test_뺀_레이어도_목록에_남는다():
-    """★한 번 빼면 그 줄이 사라져 되돌릴 길이 없었다 — 실측으로 막혔다."""
+def test_접은_레이어도_목록에_남는다():
+    """★한 번 지정하면 그 줄이 사라져 되돌릴 길이 없었다 — 실측으로 막혔다."""
     src = (_ROOT / "routes" / "module_f" / "api_pick.py").read_text(
         encoding="utf-8")
     i = src.index("def module_f_pick_materials")
-    seg = src[i:i + 2000]
-    assert "pick_layer_excluded" in seg, "뺀 이력을 안 본다"
-    assert '"on"' in seg, "재료인지 아닌지를 안 말한다"
+    seg = src[i:i + 2200]
+    assert "pick_layer_folded" in seg, "접기 이력을 안 본다"
+    assert '"fold"' in seg or 'row["fold"]' in seg, "접는지 아닌지를 안 말한다"
     js = (_ROOT / "static" / "module_f.js").read_text(encoding="utf-8")
     j = js.index("async function loadPickMaterials()")
-    body = js[j:j + 1600]
-    assert 'r.on === false' in body, "화면이 «뺌» 상태를 안 그린다"
+    body = js[j:j + 1800]
+    assert "r.fold" in body, "화면이 «접기» 상태를 안 그린다"

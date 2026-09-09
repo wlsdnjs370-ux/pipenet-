@@ -82,6 +82,7 @@ def attachable_heads(payload: dict, *, selected_source=None,
         head_kinds=payload.get("head_kinds"),
         user_sources=payload.get("sources"),
         ho=payload.get("ho"),
+        edge_len_mm=payload.get("edge_len_mm"),
     )
     if not built.get("ok"):
         return {"ok": False,
@@ -206,6 +207,9 @@ def expand_worst(payload: dict, board, worst: dict, *,
         head_kinds=limited.get("head_kinds"),
         user_sources=limited.get("sources"),
         ho=limited.get("ho"),
+        # [신축배관 접기] 선언 길이 — `restrict_to_worst` 는 헤드만 지우고
+        #   노드 번호를 그대로 두므로 이 표의 키가 계속 유효하다.
+        edge_len_mm=limited.get("edge_len_mm"),
     )
     if not built.get("ok") or built.get("kfp") is None:
         return {"ok": False,
@@ -259,6 +263,9 @@ def expand_worst(payload: dict, board, worst: dict, *,
         "node_head_kinds": built.get("node_head_kinds"),
         "origin_mm": built.get("origin_mm"),
         "sources": built.get("sources") or [],
+        # [신축배관 접기] 길이를 «선언» 에서 받은 배관. 좌표 거리와 표 length 가
+        # 다른 것이 **정상인 부류** 라, 검사가 그것을 알아봐야 한다(§5 기준 8).
+        "declared_pipes": list(built.get("declared_pipes") or ()),
     }
 
 

@@ -220,6 +220,10 @@ class EditSession:
         data["hcov"] = [list(d) for d in b.disks]
         data["ups"] = [list(u) for u in b.ups]
         data["disk_kinds"] = list(b.disk_kinds)
+        # [신축배관 접기] 「이 간선의 길이는 이만큼(mm)」이라는 선언. 접은 쪽만
+        #   채운다 — 비어 있으면 종전 그대로 좌표에서 잰다. 좌표로 다시 재는
+        #   자리가 하나라도 남으면 접기가 길이를 잃는다.
+        data["edge_len_mm"] = dict(getattr(b, "edge_len_mm", None) or {})
         return data
 
     def display_geom(self, net=True):

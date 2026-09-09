@@ -683,12 +683,12 @@
     "rule": "/api/module-f/pick/commit"
   },
   {
-    "endpoint": "module_f_pick_exclude_layer",
+    "endpoint": "module_f_pick_fold_layer",
     "methods": [
       "OPTIONS",
       "POST"
     ],
-    "rule": "/api/module-f/pick/exclude-layer"
+    "rule": "/api/module-f/pick/fold-layer"
   },
   {
     "endpoint": "module_f_pick_materials",

@@ -553,11 +553,19 @@ def _arm_shape_map(pts, remap, snap_edges, head_vid, used, xform,
 
 def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
          ups=None, head_kinds=None, user_sources=None, selected_source=None,
-         ho=None):
+         ho=None, edge_len_mm=None):
     if write and out is None:
         out = default_out(key)
     if not write:
         out = None
+    # [신축배관 접기] 「이 board 간선의 길이는 이만큼(mm)」이라는 선언.
+    #   접은 쪽만 채운다. 비어 있으면 종전 그대로 좌표에서 잰다.
+    declared = {}
+    for k, v in (edge_len_mm or {}).items():
+        try:
+            declared[tuple(sorted((int(k[0]), int(k[1]))))] = float(v)
+        except (TypeError, ValueError, IndexError):
+            continue
     kind_ovs = []
     given_ho = list(ho or ())
     ho = []
@@ -989,6 +997,54 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         g2 = editor.graph
         leftover = editor.collect_collinear_merge_candidates()
         tag = "평면 그래프 메모리"
+    # ★[신축배관 접기] 길이의 권위 — 「선언」이 있으면 그것이고, 없으면 좌표다.
+    #
+    #   ★적용은 **여기여야** 한다 — `to_dict()` 바로 앞. 좌표에서 길이를 다시
+    #   계산하는 자리가 이 앞에 **셋**이나 있었고, 하나라도 뒤에 남으면 선언이
+    #   조용히 덮인다(지시서 §2 가 경고한 그 자리다). 실측으로 두 번 걸렸다:
+    #
+    #     ① 배관을 만들 때 얹기        → «마무리 1/2 — 배관 길이 갱신» 이 덮음
+    #     ② 마무리 뒤에 얹기           → `validate_and_fix_integrity(strict=True)`
+    #                                    가 내부에서 그 갱신을 **또** 부름
+    #                                    (`editor_core.py:233`)
+    #     ③ 속성에 직접 대입           → 색인·사본이 안 따라와 `to_dict()` 가
+    #                                    옛 값을 냄 → `graph.update_pipe()` 로
+    #
+    #   노드정리가 배관 id 를 다시 매기므로 **복구된 `edge_ref`** 뒤이기도 하다.
+    #
+    #   왜 선언이 필요한가: 접은 간선의 좌표는 «현» 이라 실제 배관보다 짧다
+    #   (대명동 85가닥 실측 — 총연장 57,271 mm · 현 44,527 mm · −22 %).
+    #   길이가 줄면 마찰손실이 과소 산정되고 그것은 **비보수측**이다.
+    #
+    #   나르는 길은 새로 파지 않았다 — `_snap_origin`/`edge_ref` 가 이미 「배관 →
+    #   board 간선」을 나른다. 그 키에 값 하나를 더 얹었을 뿐이다.
+    declared_pipes: list = []
+    if declared:
+        _merged = 0
+        for _pid, _pipe in list(getattr(editor.graph, "pipes", {}).items()):
+            _org = edge_ref.get(_pid)
+            if _org is None:
+                continue
+            _dec = declared.get(tuple(sorted(_org)))
+            if _dec is None or float(_dec) <= 0:
+                continue
+            # 노드정리가 접힌 배관을 옆 배관과 병합했으면 선언만 얹는 순간 그
+            # 옆 몫을 잃는다. 지금 길이가 선언보다 크게 길면 «병합된 것» 으로
+            # 보고 **건드리지 않는다** — 지어내지 않고 센다.
+            _now = float(getattr(_pipe, "length_m", 0.0) or 0.0)
+            if _now > float(_dec) / 1000.0 * 1.5 + 0.05:
+                _merged += 1
+                continue
+            # ★그래프의 정식 갱신 경로로 넣는다. 속성에 직접 대입하면 색인과
+            #   사본이 안 따라와 `to_dict()` 가 옛 값을 낸다 — 실측으로 선언이
+            #   표에 한 건도 안 실렸다.
+            editor.graph.update_pipe(_pid, length_m=round(
+                float(_dec) / 1000.0, 3))
+            declared_pipes.append(str(_pid))
+        print(f"[접기] 선언 길이 적용 · 배관 {len(declared_pipes)}"
+              f" / 선언 {len(declared)}"
+              + (f" · 병합돼 건너뜀 {_merged}" if _merged else ""))
+
     kfp = editor.to_dict()
     n_head = sum(1 for n in g2.nodes.values()
                  if str(getattr(n, "type_id", "")) == "head")
@@ -1029,6 +1085,9 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         "wet_head_idx": wet_head_idx,
         # [A-1] 노드 없이 X 자로 만나는 배관 — 보고만 한다(쪼개지 않는다).
         "x_crossings": x_crossings,
+        # [신축배관 접기] 길이를 «좌표가 아니라 선언» 에서 받은 배관. 좌표 거리와
+        # 표 length 가 다른 것이 **정상인 부류** 라, 검사가 그것을 알아봐야 한다.
+        "declared_pipes": declared_pipes,
     }
 
 

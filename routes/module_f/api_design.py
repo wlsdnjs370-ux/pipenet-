@@ -573,6 +573,9 @@ def register(app, *, UPLOAD_DIR):
                     #   (D-F11-3). 키는 board 노드쌍이라 corridor 가 다시
                     #   계산돼도 같은 자리를 가리킨다(D-F11-4).
                     bore_overrides=_bore_ov_map(sess),
+                    # [신축배관 접기] 길이를 선언에서 받은 배관 — 표에 표시만
+                    #   한다(§5 기준 8: 검사가 그 부류를 갈라 세도록).
+                    declared_pipes=got.get("declared_pipes"),
                     # 기준 헤드(최원단)를 kfp 노드로 되짚는 데 쓴다 — board mm
                     # 를 kfp m 로 옮기려면 이 값이 있어야 한다. 없으면 표는
                     # 종전처럼 「기준 헤드 노드 = ?」로 남는다(추측하지 않는다).

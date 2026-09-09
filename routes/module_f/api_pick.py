@@ -25,6 +25,49 @@ def _need_pick(body):
     return sess, None
 
 
+def _apply_fold(sess, ps, es) -> dict:
+    """[신축배관 접기] 지정된 레이어의 가닥을 손질판에서 직선으로 편다.
+
+    지정이 없으면 **아무것도 안 한다** — 그러면 산출이 한 바이트도 안 바뀐다
+    (D-F11-1: 사람의 명시적 수정 외에는 산출을 바꾸지 않는다).
+
+    접은 결과는 세션에 남겨 화면·산출 기록이 그대로 읽는다. 못 접은 가닥이
+    있으면 **개수와 이유**가 함께 남는다 — 조용히 넘기지 않는다(S340).
+    """
+    want = [str(h.get("layer")) for h in (sess.get("pick_layer_folded") or ())
+            if h.get("on")]
+    if not want:
+        sess.pop("fold", None)
+        return {}
+    from routes.module_f import flexfold as ff
+    pieces = ff.flex_pieces(ps.board.w, want)
+    chains, tangled, loose = ff.strands(pieces)
+    got = ff.fold_board(es.board, chains)
+    # 선언 길이는 손질판이 들고 간다 — `convert_payload()` 가 그대로 실어 보낸다.
+    es.board.edge_len_mm = dict(got["edge_len_mm"])
+    rec = {
+        "layers": want, "pieces": len(pieces), "strands": len(chains),
+        "tangled": len(tangled), "loose": len(loose),
+        "folded_runs": got["folded"], "cuts": got.get("cuts", 0),
+        "skipped": got["skipped"], "why": dict(got["why"]),
+        "total_mm": round(sum(ff.run_length(p) for p in chains), 1),
+        "declared_mm": round(sum(got["edge_len_mm"].values()), 1),
+        "edges_before": got["before"], "edges_after": got["after"],
+    }
+    sess["fold"] = rec
+    print(f"[접기] {want} · 가닥 {rec['strands']}"
+          f" → 접힌 구간 {rec['folded_runs']}"
+          f" (분기에서 자른 곳 {rec['cuts']})"
+          f" · 간선 {rec['edges_before']} → {rec['edges_after']}"
+          f" · 총연장 {rec['total_mm']:,.0f} mm 중 {rec['declared_mm']:,.0f} 선언")
+    if rec["skipped"]:
+        print(f"[접기] ★못 접은 가닥 {rec['skipped']} — {rec['why']}")
+    if tangled or loose:
+        print(f"[접기] ★사슬이 아닌 것 {len(tangled)} · 어디에도 안 든 조각"
+              f" {len(loose)} — 그대로 둡니다")
+    return rec
+
+
 def register(app):
     # ─────────────────────────────────────────── 1. 찍기
     @app.post("/api/module-f/pick/mode")
@@ -158,8 +201,9 @@ def register(app):
     def module_f_pick_materials(sess, body):
         """찍힌 재료 묶음 — 레이어별로 묶어 «신축배관 추천» 을 붙인다.
 
-        ★뺀 레이어도 목록에 **남긴다**(`on: false`). 재료 목록만 보이면 한 번
-          뺀 순간 그 줄이 사라져 되돌릴 길이 없다 — 실측으로 그렇게 막혔다.
+        ★재료에서 «빼는» 길은 없앴다(어제의 `exclude-layer`). 빼면 물닿음 헤드가
+          111 → 5 가 된다 — 신축배관이 헤드를 가지관에 잇는 유일한 경로다.
+          대신 «접기» 를 지정한다: 길이와 연결은 그대로 두고 굴곡만 편다.
         """
         ps = sess["pick"]
         pool = getattr(ps.board, "by_bundle", {}) or {}
@@ -168,30 +212,39 @@ def register(app):
         def _row(ly):
             return by.setdefault(str(ly), {"layer": str(ly), "colors": [],
                                            "segs": 0, "flex": _is_flex(ly),
-                                           "on": False})
+                                           "on": False, "fold": False,
+                                           "strands": 0, "fold_mm": 0.0})
 
         for ly, col in ps.board.mat:
             row = _row(ly)
             row["on"] = True
             row["colors"].append(col)
             row["segs"] += len(pool.get((ly, col), ()))
-        for h in (sess.get("pick_layer_excluded") or ()):
-            if h.get("on"):
-                continue
-            row = _row(h.get("layer"))
-            if row["on"]:
-                continue          # 되돌려 다시 재료가 된 것
-            row["segs"] = int(h.get("segs") or 0)
-            row["colors"] = sorted({c for (ly, c) in pool
-                                    if str(ly) == str(h.get("layer"))})
+        # 접기로 지정된 레이어를 표시한다 — 재료에서 «빠지는» 것이 아니라
+        # 그대로 있고, 굴곡만 펴진다. 그래서 `on` 은 그대로 두고 칸을 따로 둔다.
+        fold = {str(h.get("layer")): h
+                for h in (sess.get("pick_layer_folded") or ())
+                if h.get("on")}
+        for ly, h in fold.items():
+            row = _row(ly)
+            row["fold"] = True
+            row["strands"] = int(h.get("strands") or 0)
+            row["fold_mm"] = float(h.get("total_mm") or 0.0)
         rows = sorted(by.values(), key=lambda r: (-r["segs"], r["layer"]))
         return jsonify({"ok": True, "materials": rows,
                         "flex_hint": [r["layer"] for r in rows if r["flex"]]})
 
-    @app.post("/api/module-f/pick/exclude-layer")
+    @app.post("/api/module-f/pick/fold-layer")
     @route_session(_need_pick, post=True)
-    def module_f_pick_exclude_layer(sess, body):
-        """레이어 하나를 재료에서 빼거나 되돌린다(`on`: true 면 되돌리기).
+    def module_f_pick_fold_layer(sess, body):
+        """레이어 하나를 «접기» 로 지정하거나 되돌린다(`on`: false 면 되돌리기).
+
+        ★어제의 `exclude-layer`(재료에서 **빼기**)는 없앴다. 빼면 대명동에서
+          물닿음 헤드가 111 → 5 가 된다(실측) — 신축배관이 헤드를 가지관에 잇는
+          유일한 경로이기 때문이다. 남겨 두면 언젠가 누가 누른다.
+
+        여기서는 «지정» 만 한다. 실제로 접는 것은 찍기를 확정한 뒤 손질판에서다
+        (`pick/commit`) — 그때라야 접을 간선이 존재한다.
 
         Body: sid · layer · [on]
         """
@@ -199,37 +252,36 @@ def register(app):
         layer = str(body.get("layer") or "")
         if not layer:
             return _fail("어느 레이어인지 주세요.")
-        want_on = bool(body.get("on"))
+        want_on = body.get("on")
+        want_on = True if want_on is None else bool(want_on)
         pool = getattr(ps.board, "by_bundle", {}) or {}
         keys = [k for k in pool if str(k[0]) == layer]
         if not keys:
             return _fail(f"그런 레이어가 없습니다: {layer}")
-        have = {k for k in ps.board.mat if str(k[0]) == layer}
-        if want_on:
-            for k in keys:
-                if k not in ps.board.mat:
-                    ps.board.mat.append(k)
-            n = len(keys) - len(have)
-        else:
-            ps.board.mat = [k for k in ps.board.mat if str(k[0]) != layer]
-            n = len(have)
-        segs = sum(len(pool.get(k, ())) for k in keys)
-        # 조용히 넘기지 않는다 — 무엇을 뺐는지 **세션에** 남긴다.
+
+        # 접을 가닥이 실제로 몇 개인지 **미리 세어** 돌려준다 — 누르기 전에
+        # 무엇이 일어나는지 알아야 사람이 정할 수 있다.
+        from routes.module_f import flexfold as ff
+        pieces = ff.flex_pieces(ps.board.w, [layer])
+        chains, tangled, rest = ff.strands(pieces)
+        total = sum(ff.run_length(p) for p in chains)
+
+        hist = sess.setdefault("pick_layer_folded", [])
+        rec = {"layer": layer, "on": want_on, "bundles": len(keys),
+               "pieces": len(pieces), "strands": len(chains),
+               "tangled": len(tangled), "loose": len(rest),
+               "total_mm": round(total, 1)}
+        hist[:] = [h for h in hist if h.get("layer") != layer] + [rec]
+        # 조용히 넘기지 않는다 — 무엇을 접기로 했는지 세션과 로그에 남는다.
         #
         #   ★찍기 기록(`board.clicks`)에는 넣지 않는다. 그 목록의 각 항목은
-        #     좌표를 가진 «클릭» 이고, `highlight_geom()` 이 마지막 항목에서
-        #     `cl["x"]` 를 읽는다 — 좌표 없는 항목을 끼우면 거기서 터진다
-        #     (실측: 화면이 500 · KeyError 'x'). 레이어 제외는 클릭이 아니므로
-        #     제 자리에 남긴다.
-        hist = sess.setdefault("pick_layer_excluded", [])
-        rec = {"layer": layer, "on": want_on,
-               "bundles": len(keys), "segs": segs}
-        hist[:] = [h for h in hist if h.get("layer") != layer] + [rec]
-        print(f"[찍기] 레이어 {'되돌림' if want_on else '제외'} — {layer}"
-              f" · 묶음 {n} · 선분 {segs}")
-        return jsonify({"ok": True, "layer": layer, "on": want_on,
-                        "bundles": n, "segs": segs,
-                        "state": _pick_state(sess)})
+        #     좌표를 가진 «클릭» 이고 `highlight_geom()` 이 마지막 항목에서
+        #     `cl["x"]` 를 읽는다 — 좌표 없는 항목을 끼우면 500 이다(실측).
+        print(f"[찍기] 레이어 {'접기 지정' if want_on else '접기 해제'} — {layer}"
+              f" · 조각 {len(pieces)} → 가닥 {len(chains)}"
+              f" · 총연장 {total:,.0f} mm"
+              + (f" · 사슬 아님 {len(tangled)}" if tangled else ""))
+        return jsonify({"ok": True, **rec, "state": _pick_state(sess)})
 
     @app.post("/api/module-f/pick/adopt")
     @route_session(_need_pick, post=True, why_code=400)
@@ -354,6 +406,10 @@ def register(app):
             print("[손질] 찍은 스펙으로 배관망을 다시 구성하는 중…")
             es = EditSession.open(ps.key, out_dir=None, load_saved=False,
                                   use_cache=False)
+            # ★[신축배관 접기] 여기가 두 판이 **동시에** 있는 유일한 자리다.
+            #   레이어는 찍기 판에만 살고(손질판은 pts/edges 뿐), 접을 간선은
+            #   손질판에만 있다. 그래서 접기는 반드시 이 자리에서 끝난다.
+            _apply_fold(sess, ps, es)
             sess["edit"] = es
             sess["sheets"] = _sheet_frames(es.board)
             print(f"[손질] 완료 {time.perf_counter() - t0:.1f}s · "

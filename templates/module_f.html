@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260908-seamcoord">
+<link rel="stylesheet" href="/static/module_f.css?v=20260909-flexfold">
 </head>
 <body>
 <header>
@@ -307,9 +307,10 @@
         <span class="caret">▶</span>찍힌 재료 묶음
         <span class="tag" id="pk-mats-chip">—</span></h2>
       <div class="foldbody hidden" id="pk-mats-body">
-        <p class="hint">신축배관처럼 <b>배관 형상이 아닌</b> 레이어는 여기서
-          뺍니다. 빼면 그 선분이 배관망에서 사라지므로, <b>헤드가 떨어지는지</b>
-          먼저 재서 알려 드립니다.</p>
+        <p class="hint">신축배관(후렉시블)처럼 <b>굴곡이 심한</b> 레이어는
+          여기서 <b>접습니다</b> — 한 가닥을 직선 하나로 폅니다.
+          <b>길이와 연결은 그대로</b>이고 굴곡만 펴집니다. 접은 가닥 수와
+          총연장은 산출 기록에 남습니다.</p>
         <div id="pk-mats"></div>
       </div>
       <div class="row">
@@ -778,6 +779,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260908-seamcoord"></script>
+<script src="/static/module_f.js?v=20260909-flexfold"></script>
 </body>
 </html>

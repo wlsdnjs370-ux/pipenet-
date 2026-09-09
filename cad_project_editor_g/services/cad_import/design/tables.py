@@ -145,7 +145,8 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
                         bore_overrides=None,
                         origin_mm=None,
                         fx_profile=None,
-                        node_head_kinds=None) -> PipeTablesG:
+                        node_head_kinds=None,
+                        declared_pipes=None) -> PipeTablesG:
     """제한 전개 망 → 5개 테이블. 지시서 §1 공개 시그니처.
 
     `bores` / `fittings` 는 G3 · G4 결과를 받는다. 없으면 여기서 만들지 않고
@@ -166,6 +167,7 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
 
     meta_nodes = (net or {}).get("nodes_meta_runtime") or {}
     pipes_raw = (net or {}).get("pipe_data") or {}
+    declared_pipes = set(declared_pipes or ())
 
     # [D3] 배관표에는 있는데 메타에 좌표가 없는 절점 — 종전에는 조용히
     #   (0,0,0) 으로 떨어져 **원점에 절점이 하나 생기고** 실제 배관에 이어졌다.
@@ -249,6 +251,12 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
             # SDF 방출은 이름 붙인 칸만 읽으므로 이 칸이 파일을 바꾸지 않는다.
             "dia_src": src,
         }
+        # [신축배관 접기] 길이가 «좌표» 에서 왔는지 «선언» 에서 왔는지. 접은
+        #   배관은 좌표 거리와 표 length 가 다른 것이 정상이라, 검사가 그
+        #   부류를 알아보려면 행에 남아 있어야 한다. `dia_src` 와 같은 성격이라
+        #   SDF 방출은 이 칸을 안 읽는다(이름 붙인 칸만 읽는다).
+        if pid in declared_pipes:
+            row["len_src"] = "신축배관 접기"
         if off:
             row["off_tree"] = True     # 「길이 잘못 트인」 후보 — 꼬리에 몰린다
         return row

@@ -106,26 +106,65 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
         head_node[hi] = node
         head_far[hi] = src_dist[node]
 
-    reachable = len(head_far)
+    # ★★«같은 자리» 는 하나로 센다 (2026-09-09 사용자 지적)
+    #
+    #   도면이 헤드 기호를 겹쳐 그리면(대명동 실측: 노랑 r42 위에 색12 r42 가
+    #   그대로 포개져 있다) 헤드가 둘인데 **자리는 하나**다. 종전에는 선정이
+    #   그것을 둘로 셌고, 표는 하나로 만들었다(`planar.head_vid[vid]` 가 같은
+    #   노드를 덮는다). 그래서 기준개수 30 을 넣어도 노즐이 **26개**만 왔다::
+    #
+    #       선정이 고른 헤드 30 · 서로 다른 자리 26 · 표에 온 노즐 26
+    #
+    #   여기서 자리로 묶어 세고 그만큼 **다음 순위를 더 채운다** — K=30 이
+    #   진짜 노즐 30개가 된다. 없는 헤드를 지어내는 것이 아니라, 이미 하나인
+    #   것을 하나로 세는 것이다. 최원 유하거리(앵커)는 안 바뀐다: 1등은
+    #   겹침과 무관하고, 대표는 «같은 자리» 안에서 고르므로 좌표가 같다.
+    #
+    #   자는 «헤드 중심 좌표»다 — 표가 합치는 자(중심 → 그래프 절점)와 같은
+    #   것을 봐야 두 수가 안 갈린다. 중심을 모르면(head_xy 없음) 부착 절점을
+    #   쓴다. 겹침이 없는 도면에서는 무리가 전부 한 개짜리라 **산출이 한
+    #   바이트도 안 바뀐다** (골든이 그것을 지킨다).
+    def _place(hi):
+        if head_xy is not None and hi < len(head_xy):
+            p = head_xy[hi]
+            return (round(float(p[0]), 1), round(float(p[1]), 1))
+        return ("node", head_node[hi])
+
+    place_of: dict[int, object] = {hi: _place(hi) for hi in head_node}
+    rep_of: dict[object, int] = {}
+    for hi in sorted(head_node):
+        rep_of.setdefault(place_of[hi], hi)
+    same_place = {rep: [hi for hi in sorted(head_node)
+                        if place_of[hi] == pl and hi != rep]
+                  for pl, rep in rep_of.items()}
+    merged = sum(len(v) for v in same_place.values())
+
+    reachable = len(rep_of)
     empty = {"heads": [], "worst_head": None, "worst_path": [],
              "worst_path_m": 0.0, "edges": set(), "nodes": set(),
              "loads": {}, "reachable": reachable, "unreachable": 0,
              "far_m": 0.0, "near_m": 0.0, "span_m": 0.0, "total_m": 0.0,
              "area_w_m": 0.0, "area_h_m": 0.0, "area_m2": 0.0,
-             "max_load": 0}
+             "max_load": 0, "merged": 0, "merged_xy": []}
     if not head_far:
         return empty
 
     k = max(1, min(int(k), reachable))
     # 기준 헤드 = 가장 불리한 헤드. 2순위 규칙에서 그것은 곧 «1등» 이다.
-    worst_head = min(head_far, key=lambda hi: (-head_far[hi], hi))
+    worst_head = rep_of[place_of[
+        min(head_far, key=lambda hi: (-head_far[hi], hi))]]
 
     # ② 2순위 — 유하거리가 **긴 순서 그대로** K 개. 가장 긴 것부터.
     #
     # ★같은 입력에 같은 산출이어야 한다. 유하거리가 똑같은 헤드가 여럿일 때
     #   (나란한 가지관에서 흔하다) 순서가 흔들리므로 번호로 못 박는다.
-    ranked = sorted(head_node, key=lambda hi: (-head_far[hi], hi))
+    ranked = sorted(rep_of.values(), key=lambda hi: (-head_far[hi], hi))
     picked = ranked[:k]
+    merged_xy = [[float(head_xy[r][0]), float(head_xy[r][1]),
+                  len(same_place[r]) + 1]
+                 for r in picked
+                 if same_place.get(r) and head_xy is not None
+                 and r < len(head_xy)]
 
     # 뽑힌 무리가 얼마나 넓게 퍼졌나 — **선정에는 안 쓰고 보고만 한다.**
     #   흩어지면 그 사실이 수치로 보여야 사람이 «영역» 을 지정할지 판단한다.
@@ -199,6 +238,11 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
         "area_m2": round(box_w * box_h / 1e6, 1),
         "total_m": round(total / 1000.0, 2),            # corridor 총연장
         "max_load": max(loads.values(), default=0),     # 주배관 관경 결정값
+        # ★겹쳐 그려 «같은 자리» 라 하나로 센 헤드 — 조용히 넘기지 않는다.
+        #   `merged` 는 도면 전체에서 접힌 수, `merged_xy` 는 **뽑힌 K개 중**
+        #   접힌 자리다([x, y, 그 자리의 헤드 수]).
+        "merged": merged,
+        "merged_xy": merged_xy,
     }
 
 

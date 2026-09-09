@@ -171,15 +171,26 @@ def test_화면이_인계를_말한다():
     assert "handoffLines(s.handoff)" in js, "요약이 그것을 안 부른다"
 
 
-def test_손질_화면은_안_건드린다():
-    """§5 — 손질은 이미 옳게 동작한다. 넘기는 인자 하나만 더한다."""
-    import subprocess
-    r = subprocess.run(
-        ["git", "diff", "--stat", "HEAD", "--",
-         "routes/module_f/api_edit.py", "routes/module_f/remote30.py"],
-        cwd=str(_ROOT), capture_output=True, encoding="utf-8",
-        errors="replace")
-    assert not (r.stdout or "").strip(), r.stdout
+def test_손질의_선정_규칙은_그대로다():
+    """★이 시험은 한 번 «전제가 바뀌어» 다시 썼다 — 그 이력을 남긴다.
+
+    인계 커밋에서는 §5(「손질은 이미 옳게 동작한다」)를 지키려고 `api_edit.py`
+    ·`remote30.py` 의 **무변경**을 git diff 로 감시했다. 그런데 그 뒤 사용자가
+    「기준개수 30을 넣어도 표에 30개가 안 온다」를 지적했고, 원인이 **선정이
+    겹친 헤드를 둘로 세는 것**이라 손질 쪽 요약에 손을 대야 했다.
+
+    무변경을 계속 감시하면 지금은 «옳은 변경» 을 막는 시험이 된다. 그래서
+    감시 대상을 **정말 안 바뀌어야 하는 것**으로 옮긴다 — 선정 규칙 두 줄:
+    ⑴ 영역이 1순위 ⑵ 유하거리가 긴 순서 그대로 K개.
+    """
+    src = (_ROOT / "cad_project_editor_g" / "services" / "cad_import"
+           / "design" / "worst.py").read_text(encoding="utf-8")
+    # ⑵ 긴 순서 그대로 — 채우는 자(직사각형·가지관)를 되살리지 않는다.
+    assert "ranked = sorted(rep_of.values()," in src
+    assert "key=lambda hi: (-head_far[hi], hi))" in src
+    assert "picked = ranked[:k]" in src
+    # ⑴ 영역이 1순위 — `only_heads` 가 후보를 가둔다.
+    assert "if only_heads is not None and hi not in only_heads:" in src
 
 
 def test_선정_규칙은_안_바꿨다():

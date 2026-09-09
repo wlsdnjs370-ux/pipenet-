@@ -440,6 +440,14 @@ def register(app):
                 "source": picked_tag,
                 "zones": len(w["zones"]),
                 "candidates": w["candidates"],
+                # ★겹쳐 그려 «같은 자리» 라 하나로 센 헤드 (2026-09-09).
+                #   기준개수 K 를 넣었는데 표에 K개가 안 오던 원인이다 —
+                #   선정은 둘로 세고 표는 하나로 만들었다. 이제 자리로 세고
+                #   그만큼 다음 순위를 채우는데, 사람이 «왜 닿는 헤드가
+                #   111에서 90으로 줄었나» 를 물을 수 있으므로 말해 둔다.
+                "merged": w.get("merged", 0),
+                "merged_xy": [[_r1(v) for v in p]
+                              for p in (w.get("merged_xy") or ())],
                 # 최원 유하거리 «경로» — 그 거리가 어느 줄인지.
                 "worst_path_m": w.get("worst_path_m", 0.0),
                 "worst_path_nodes": len(w.get("worst_path") or ()),

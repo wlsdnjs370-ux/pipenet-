@@ -2806,6 +2806,39 @@
     $("mg-summary").innerHTML = html;
   }
 
+  /** [최불리 인계] 손질이 고른 K개를 수리계산이 어떻게 받았는가.
+   *
+   *  ★종전에는 이 인계가 아예 없어, 손질에서 영역을 그려 고른 헤드와 표의
+   *    헤드가 달랐다(실측: 겹치는 헤드 0/12 · 최원 42.79 m 대 57.58 m).
+   *    이제는 그대로 받고, **못 받은 것이 있으면 말한다.**
+   */
+  function handoffLines(h) {
+    if (!h || !Object.keys(h).length) return "";
+    let out = "";
+    if (!h.from_edit) {
+      out += kv('<span class="warn">최불리 선정</span>',
+                `손질에서 정하지 않아 도면 전체에서 ${h.k}개를 뽑았습니다`);
+    } else {
+      out += kv("최불리 선정",
+                `손질에서 고른 ${h.picked}개를 그대로 받았습니다`
+                + (h.in_table != null ? ` (표에 ${h.in_table}개)` : ""));
+    }
+    if (h.missing) {
+      out += kv('<span class="err">표에 못 온 헤드</span>',
+                `${h.missing}개 — 그 헤드의 배관이 전개에서 끊겼습니다.`
+                + " 손질에서 이어 주세요."
+                + " <b>다른 헤드로 채우지 않았습니다.</b>");
+      const xy = (h.missing_heads || []).map(
+        (m) => `(${Math.round(m.xy[0])}, ${Math.round(m.xy[1])})`);
+      if (xy.length) out += kv("그 자리", esc(xy.slice(0, 6).join(" · ")));
+    }
+    for (const m of (h.messages || [])) {
+      if (h.missing && m.indexOf("표에 오지 못했습니다") >= 0) continue;
+      out += kv("·", esc(m));
+    }
+    return out;
+  }
+
   /** 결합에 무엇이 모자란가 — 한 줄로. 갖춰졌으면 무엇으로 도는지 말한다. */
   function mergeMissing(d) {
     const out = [];
@@ -5749,7 +5782,11 @@
                 .map(([k, lab]) =>
                   `${lab} ${s.excluded_detail[k].toLocaleString()}`)
                 .join(" · "))
-         : "");
+         : "")
+      // ★[최불리 인계] 손질 선정을 어떻게 받았는지 — 조용히 다르게 동작하는
+      //   갈래를 두지 않는다. 손질에서 안 골랐으면 그 사실을, 고른 것 중
+      //   표에 못 온 헤드가 있으면 그 개수와 자리를 말한다.
+      + handoffLines(s.handoff);
   }
 
   // ── [F-5] 찍기 후보 제안 — 표시는 여기, 반영은 기존 찍기 경로로만 ──

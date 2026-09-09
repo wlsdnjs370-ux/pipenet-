@@ -217,6 +217,109 @@ def _load_map(got: dict) -> dict:
     return out
 
 
+def _worst_handoff_note(got: dict, picked: list, k_use: int, k_cfg: int) -> dict:
+    """[최불리 인계] 손질 선정을 **어떻게 받았는지** 한 자리에 적는다.
+
+    조용히 다르게 동작하는 갈래를 두지 않는다(지시서 §2-3·§2-4·§2-5). 세 가지를
+    말한다:
+
+      · 손질에서 최불리를 안 눌렀다 → 도면 전체에서 뽑았다는 사실
+      · 손질이 고른 것 중 전개가 **못 붙인** 헤드가 있다 → 개수와 목록
+        ★다른 헤드로 채우지 않는다. 채우면 사람이 고른 것이 아닌 것이 산출에
+          들어간다(S340 · D-F10-3).
+      · K 가 세션과 어긋나 손질 값을 썼다
+    """
+    note: dict = {"picked": len(picked), "k": k_use,
+                  "candidates": got.get("candidate_heads"),
+                  "from_edit": bool(picked)}
+    msgs: list = []
+    if not picked:
+        msgs.append("손질에서 최불리를 정하지 않아 도면 전체에서 "
+                    f"{k_use}개를 뽑았습니다.")
+    else:
+        cand = int(got.get("candidate_heads") or 0)
+        lost = len(picked) - cand
+        note["not_attachable"] = max(0, lost)
+        if lost > 0:
+            msgs.append(
+                f"손질에서 고른 {len(picked)}개 중 {lost}개는 전개가 배관에 "
+                f"붙이지 못했습니다 — 손질에서 그 헤드의 배관을 이어 주세요. "
+                f"(다른 헤드로 채우지 않았습니다)")
+        if k_use != k_cfg:
+            msgs.append(f"기준개수를 손질 값 {k_use}로 맞췄습니다 "
+                        f"(설정에는 {k_cfg}이 남아 있었습니다).")
+    note["messages"] = msgs
+    for m in msgs:
+        print(f"[최불리 인계] {m}")
+    return note
+
+
+def _handoff_after_table(got: dict, tbl, board) -> None:
+    """[최불리 인계 §2-3] 손질이 고른 K개가 표에 다 왔는지 **표를 보고** 센다.
+
+    물닿음 판정을 통과하고도 제한 전개에서 떨어질 수 있다. 그 자리를 좌표로
+    되짚어 «어느 헤드가 빠졌는지» 까지 남긴다 — 개수만 세면 사람은 어디를
+    고쳐야 할지 모른다.
+
+    ★다른 헤드로 채우지 않는다. 채우면 사람이 고른 것이 아닌 것이 산출에
+      들어간다(S340 · D-F10-3).
+    """
+    note = got.get("handoff") or {}
+    if not note.get("from_edit"):
+        return
+    picked = [int(i) for i in ((got.get("_picked") or ()))]
+    if not picked:
+        picked_n = int(note.get("picked") or 0)
+    else:
+        picked_n = len(picked)
+    n_noz = len(getattr(tbl, "nozzles", None) or ())
+    note["in_table"] = n_noz
+    lost = picked_n - n_noz
+    note["missing"] = max(0, lost)
+    if lost <= 0:
+        got["handoff"] = note
+        return
+
+    # 어느 헤드가 빠졌나 — 손질 disk 좌표를 표 좌표로 옮겨 맞대 본다.
+    origin = got.get("origin_mm")
+    disks = list(getattr(board, "disks", None) or ())
+    miss: list = []
+    if origin and disks and picked:
+        import math as _m
+        noz = {str(z.get("in")) for z in tbl.nozzles}
+        at = [(float(n.get("x", 0) or 0), float(n.get("y", 0) or 0))
+              for n in tbl.nodes if str(n.get("label")) in noz]
+        # ★**1:1 로** 짝짓는다. 「각자 가장 가까운 것」만 보면 두 헤드가 같은
+        #   노즐을 짚어도 둘 다 «찾음» 이 되어, 빠진 헤드를 놓친다.
+        used: set = set()
+        for i in picked:
+            if i >= len(disks):
+                continue
+            q = (float(disks[i][0]) - float(origin[0]) + 1000.0,
+                 float(disks[i][1]) - float(origin[1]) + 1000.0)
+            best, bd = None, 1e18
+            for t, p in enumerate(at):
+                if t in used:
+                    continue
+                dd = _m.dist(p, q)
+                if dd < bd:
+                    best, bd = t, dd
+            if best is None or bd > 100.0:
+                miss.append({"disk": i,
+                             "xy": [round(float(disks[i][0]), 1),
+                                    round(float(disks[i][1]), 1)]})
+            else:
+                used.add(best)
+    note["missing_heads"] = miss[:40]
+    msg = (f"손질에서 고른 {picked_n}개 중 {lost}개가 표에 오지 못했습니다 — "
+           f"그 헤드의 배관이 전개에서 끊긴 자리입니다. 손질에서 이어 주세요. "
+           f"(다른 헤드로 채우지 않았습니다)")
+    note.setdefault("messages", []).append(msg)
+    print(f"[최불리 인계] ★{msg}"
+          + (f" · 자리 {[m['xy'] for m in miss[:6]]}" if miss else ""))
+    got["handoff"] = note
+
+
 def _view_opts(cfg: dict) -> dict:
     """설정 7종 → display_tables/emit_design_sdf 인자. 두 곳이 같은 값을 쓴다."""
     return {
@@ -254,6 +357,9 @@ def _summary(got: dict, tbl) -> dict:
         "excluded_heads": got.get("excluded_heads", 0),
         "candidate_heads": got.get("candidate_heads", 0),
         "total_heads": got.get("total_heads", 0),
+        # [최불리 인계] 손질 선정을 어떻게 받았는지 — 조용히 다르게 동작하는
+        #   갈래를 두지 않는다(§2-3·§2-4·§2-5).
+        "handoff": got.get("handoff") or {},
     }
 
 
@@ -536,10 +642,31 @@ def register(app, *, UPLOAD_DIR):
             sel = source if source is not None else (
                 srcs[0].get("tag") if len(srcs) > 1 and isinstance(srcs[0], dict)
                 else None)
-            got = select_and_expand(payload, es.board, k=cfg["k"],
-                                    selected_source=sel)
+            # ★[최불리 인계] 손질이 고른 K개를 **그대로 받는다.**
+            #
+            #   종전에는 `only_heads` 를 안 넘겨 `select_and_expand` 가
+            #   `cand = wet`(도면 전체의 물닿는 헤드)에서 K 개를 **다시 뽑았다.**
+            #   그래서 손질에서 영역을 그려 고른 헤드와 수리계산 표의 헤드가
+            #   달랐다 — 실측(대명동 · 영역 안 16개 중 K=12): 겹치는 헤드
+            #   **0/12** · 최원 42.79 m 대 57.58 m · 「후보 111 / 도면 111」.
+            #
+            #   손질 코드는 K 를 이미 여기로 맞춰 주고 있었다(`sess["worst_k"]`).
+            #   **K 는 맞췄는데 선정 결과를 빠뜨린 것**이다.
+            w_sel = sess.get("worst") or {}
+            picked = [int(i) for i in (w_sel.get("heads") or ())]
+            only = set(picked) or None
+            # [§2-5] K 가 어긋나면 손질 것을 믿는다 — 기준개수의 입력칸은
+            #   손질에 하나뿐이라는 것이 이 저장소의 결정이다.
+            k_use = int(cfg["k"])
+            if picked and len(picked) != k_use:
+                k_use = int(sess.get("worst_k") or len(picked))
+            got = select_and_expand(payload, es.board, k=k_use,
+                                    selected_source=sel, only_heads=only)
             if not got.get("ok"):
                 return {"ok": False, "error": got.get("error")}
+            got["handoff"] = _worst_handoff_note(
+                got, picked, k_use, int(cfg["k"]))
+            got["_picked"] = picked      # 표를 보고 다시 셀 때 쓴다(§2-3)
             texts = _dia_texts(sess)
             # [F-11d] 직접 입력을 **이번 계산의 이름으로 번역**한다. 세션에는
             #   corridor 가 바뀌어도 같은 자리를 가리키는 안정 키로 담겨 있다
@@ -585,6 +712,13 @@ def register(app, *, UPLOAD_DIR):
                     node_head_kinds=got.get("node_head_kinds"))
             except UnknownSchedule as exc:
                 return {"ok": False, "error": str(exc)}
+            # ★[최불리 인계 §2-3] 손질이 고른 K개가 **표에 다 왔는가.**
+            #
+            #   물닿음 판정(`candidate_heads`)을 통과하고도 제한 전개에서 떨어질
+            #   수 있다 — 실측(대명동 · 영역 안 K=12): 후보 12인데 노즐 11.
+            #   그 하나를 조용히 넘기면 사람은 12개로 계산된 줄 안다. 그리고
+            #   **다른 헤드로 채우지 않는다**(S340 · D-F10-3).
+            _handoff_after_table(got, tbl, es.board)
             # ★[F-11d-2] 넘긴 것 중 «엔진이 실제로 쓴 것» 을 맞대 본다.
             #   자리가 corridor 에 남아 있어도 그 사이에 미해결이 아니게 됐으면
             #   값은 안 들어간다 — 그것도 «적용 못 한 수정» 이다. 개수만 세면

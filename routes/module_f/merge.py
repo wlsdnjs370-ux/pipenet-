@@ -265,6 +265,62 @@ def label_offset_for(method) -> int:
     return 0 if str(method or "").lower() == "auto" else LABEL_OFFSET
 
 
+# 부위를 고를 때의 우선순위 — 이웃이 갈리면 «아래쪽(수원 가까운 쪽)» 을 따른다.
+# 결합 뒤에 생기는 절점은 전부 급수측(펌프 토출·수원)이라 기계실 편이 맞다.
+_PART_PRIORITY = ("machineroom", "system", "plan")
+
+
+def adopt_late_nodes(combined, parts: dict, known: set) -> list:
+    """[E1] 결합 **뒤**에 생긴 절점을 이웃에게 물어 parts 에 넣는다.
+
+    `insert_source_pump` 는 수원 뒤에 `{수원}_pd` 를 만든다. parts 는 그 전의
+    표에서 세우므로 새 절점은 어느 목록에도 없고, 굽는 자리의 기본값(평면)이
+    받아 버린다 — 평면 식은 표고에 1,000 배 lift 를 얹으므로 지하 −103 m 짜리
+    수원 절점이 화면 밖으로 튕겨 나간다(실측 1,480 → 97,929).
+
+    부위는 **이름 규칙이 아니라 연결**로 정한다 (`m1_pd` 처럼 접미사를 파싱하면
+    엔진이 이름을 바꾸는 날 조용히 틀린다). 붙어 있는 배관의 반대쪽 절점 중
+    이미 분류된 것들을 모아 `_PART_PRIORITY` 순으로 고른다.
+
+    돌려주는 것: `[(라벨, 고른 부위), …]` — 단계 기록에 그대로 적는다.
+    """
+    labels = {str(n.get("label")) for n in (getattr(combined, "nodes", None) or ())}
+    fresh = labels - set(known or ())
+    if not fresh:
+        return []
+    of = {}
+    for kind in _PART_PRIORITY:
+        for lab in (parts.get(kind) or ()):
+            of[str(lab)] = kind
+
+    nbr: dict = {}
+    for p in (getattr(combined, "pipes", None) or ()):
+        a, b = str(p.get("in")), str(p.get("out"))
+        nbr.setdefault(a, set()).add(b)
+        nbr.setdefault(b, set()).add(a)
+
+    # ★새 절점끼리 사슬로 이어질 수 있다(펌프 여러 대). 한 바퀴로는 안 닿는
+    #   것이 남으므로 더 안 붙을 때까지 돈다. 끝내 못 정한 것은 **남긴다** —
+    #   `check_combined` 가 미분류로 보고한다(조용히 평면으로 덮지 않는다).
+    out = []
+    rest = sorted(fresh)
+    while rest:
+        stuck = []
+        for lab in rest:
+            kinds = {of[o] for o in nbr.get(lab, ()) if o in of}
+            kind = next((k for k in _PART_PRIORITY if k in kinds), None)
+            if kind is None:
+                stuck.append(lab)
+                continue
+            parts.setdefault(kind, []).append(lab)
+            of[lab] = kind
+            out.append((lab, kind))
+        if len(stuck) == len(rest):
+            break
+        rest = stuck
+    return out
+
+
 def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
                   source_drop_m: float = 0.0, pump=None,
                   method: str = "manual",
@@ -359,6 +415,12 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
         machine_room_conn_xy=mr_conn_xy,
     )
 
+    # ★[E1] 펌프 삽입은 절점을 **더 만든다**(`{수원}_pd`). parts 는 삽입 «전»
+    #   표에서 세우므로 그 새 절점은 어느 목록에도 안 들어가고, 굽을 때
+    #   기본값으로 평면 식을 타 표고 × 1,000 만큼 튕겨 나간다. 실측(대명동 ·
+    #   펌프 가압): m1_pd 표고 −103.6 m → 이음매 배관 m1 이 1,480 → 97,929.
+    #   그래서 삽입 전후의 라벨 차이를 여기서 잡아 둔다.
+    _pre_pump_labels = {str(n.get("label")) for n in (combined.nodes or ())}
     if is_pump and pump:
         from remote30_full_network import insert_source_pump
         try:
@@ -385,14 +447,27 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
     mr = set(mr_labels or ())
     riser_labels = [str(n.get("label")) for n in rt.nodes
                     if str(n.get("label")) not in mr]
+    parts = {"plan": [str(n.get("label")) for n in ht.nodes],
+             "system": riser_labels,
+             "machineroom": sorted(mr)}
+    # [E1] 결합 뒤에 생긴 절점을 **이웃에게 물어** 제자리에 넣는다.
+    late = adopt_late_nodes(combined, parts, _pre_pump_labels)
+    if late:
+        steps.append("결합 뒤 생긴 절점 "
+                     + " · ".join(f"{lab}→{kind}" for lab, kind in late))
+
     out = {"combined": combined, "head_tables": ht, "attached": attached,
            "mode": mode, "steps": steps,
            # 기계실 평면이 라이저에 붙는 그 노드 — 아이소로 굽을 때 기계실
            # 군집을 어디에 다시 맞출지의 기준이다.
            "pump_junction": (_riser_input_label if attached else None),
-           "parts": {"plan": [str(n.get("label")) for n in ht.nodes],
-                     "system": riser_labels,
-                     "machineroom": sorted(mr)}}
+           "parts": parts,
+           # [E2] 좌표 배치가 제 길로 갔는가 — 폴백이면 그 부위가 DXF 원좌표에
+           #      남아 이음매가 찢어진다. 화면까지 그대로 들고 간다.
+           "layout_status": dict(getattr(combined, "layout_status", None) or {})}
+    for _k, _v in (out["layout_status"] or {}).items():
+        if str(_v).startswith(("폴백", "건너뜀")):
+            steps.append(f"★좌표 배치 {_k} — {_v}")
     # [D5] 결합 뒤 검사 — 보고만 한다(예외 아님). 이상이 있으면 그 사실을
     #   단계 기록에 남겨 화면이 그대로 읽게 한다.
     out["checks"] = check_combined(out)
@@ -400,6 +475,10 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
     if ck.get("components", 1) != 1:
         steps.append(f"★연결성분 {ck['components']}개 {ck['component_sizes']}"
                      f" — 한 망으로 안 붙었습니다")
+    if ck.get("unclassified_n"):
+        # [E1] 이웃도 못 물어본 절점 — 굽을 때 회전만 해 제자리에 남는다.
+        steps.append(f"★어느 도면에서 왔는지 모르는 절점 "
+                     f"{ck['unclassified_n']}개 {ck['unclassified'][:6]}")
     if ck.get("dangling_pipes_n"):
         steps.append(f"★노드표에 없는 끝점을 가리키는 배관 "
                      f"{ck['dangling_pipes_n']}건")
@@ -414,7 +493,8 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
     return out
 
 
-def bake_combined_iso(got: dict, *, iso_z_scale: float = 1.0):
+def bake_combined_iso(got: dict, *, iso_z_scale: float = 1.0,
+                      report: dict | None = None):
     """결합망을 30° 아이소매트릭 좌표로 굽는다 — **화면과 파일이 쓰는 그 한 식**.
 
     ★부위마다 «맞는» 투영이 다르다. 한 식으로 다 굽으면 깨진다:
@@ -428,6 +508,8 @@ def bake_combined_iso(got: dict, *, iso_z_scale: float = 1.0):
         «새» 자리에 그대로 붙도록 평행이동한다. 안 하면 이음매가 찢어진다.
 
     돌려주는 것: (절점 사본, 기계실 평면 edge 사본) — 원본은 건드리지 않는다.
+    `report` 에 사전을 주면 `seam_check`(굽은 뒤 이음매 두 식의 거리)를 담아
+    준다 — 돌려주는 값의 모양은 그대로 둔다(부르는 자리가 여럿이다).
     산출(.sdf)과 미리보기가 **같은 함수**를 써야 「보이는 것 = 저장되는 것」이
     성립한다(이 저장소가 설계 화면에서 이미 값을 치른 규칙이다).
     """
@@ -463,11 +545,33 @@ def bake_combined_iso(got: dict, *, iso_z_scale: float = 1.0):
         rot_pj = _rot(*pj_xy)
         shift = (new_pj[0] - rot_pj[0], new_pj[1] - rot_pj[1])
 
+    # ★[E1] 미분류를 «평면» 으로 조용히 덮지 않는다. 평면 식만 표고 lift 를
+    #   얹으므로, 어디서 왔는지 모르는 절점을 평면 취급하면 지하 절점이 화면
+    #   밖으로 날아간다. 못 정한 것은 **이웃을 따라가고**, 그래도 못 정하면
+    #   회전만 해 제자리에 둔 뒤 그 사실을 남긴다.
+    unclassified = [str(n.get("label")) for n in nodes
+                    if str(n.get("label")) not in of]
+    if unclassified:
+        nbr: dict = {}
+        for p in (getattr(c, "pipes", None) or ()):
+            a, b = str(p.get("in")), str(p.get("out"))
+            nbr.setdefault(a, set()).add(b)
+            nbr.setdefault(b, set()).add(a)
+        for lab in unclassified:
+            kinds = {of[o] for o in nbr.get(lab, ()) if o in of}
+            kind = next((k for k in _PART_PRIORITY if k in kinds), None)
+            if kind:
+                of[lab] = kind
+
     for n in nodes:
         lab = str(n.get("label"))
         x = float(n.get("x", 0) or 0)
         y = float(n.get("y", 0) or 0)
-        kind = of.get(lab, "plan")
+        kind = of.get(lab)
+        if kind is None:
+            rx, ry = _rot(x, y)
+            n["x"], n["y"] = rx, ry
+            continue
         if kind == "system":
             n["x"] = a_iso[0] + (x - ax)
             n["y"] = a_iso[1] + (y - ay)
@@ -479,6 +583,41 @@ def bake_combined_iso(got: dict, *, iso_z_scale: float = 1.0):
             rx, ry = _rot(x, y)
             n["x"] = rx
             n["y"] = ry + (float(n.get("elevation", 0) or 0) - e_ref) * lift
+
+    # ★[E3] 굽은 뒤 회귀 감지기 — 이음매 절점을 **양쪽 식으로 각각** 굽어
+    #   같은 점인지 본다. 두 이음매는 항등적으로 연속이다(지시서 §0):
+    #     · 기준점 10 — 평면식은 (x,y)=(ax,ay)·e=e_ref 에서 rot(a) 로,
+    #       계통식은 정의상 a_iso 로 간다. rot(a)=a_iso 이므로 0.
+    #     · pump_junction — shift 가 바로 «계통식(pj) − 회전(pj)» 이라 0.
+    #   그러니 0 이 아니면 **식이 바뀐 것**이다. 값만 남긴다(예외 아님).
+    def _plan_at(x, y, e):
+        rx, ry = _rot(x, y)
+        return (rx, ry + (e - e_ref) * lift)
+
+    def _sys_at(x, y):
+        return (a_iso[0] + (x - ax), a_iso[1] + (y - ay))
+
+    def _mr_at(x, y):
+        rx, ry = _rot(x, y)
+        return (rx + shift[0], ry + shift[1])
+
+    seam_check = {}
+    if ANCHOR_LABEL in at0:
+        p1 = _plan_at(ax, ay, e_ref)
+        p2 = _sys_at(ax, ay)
+        seam_check["anchor"] = ((p1[0] - p2[0]) ** 2
+                                + (p1[1] - p2[1]) ** 2) ** 0.5
+    if pj_xy is not None:
+        p1 = _sys_at(*pj_xy)
+        p2 = _mr_at(*pj_xy)
+        seam_check["pump"] = ((p1[0] - p2[0]) ** 2
+                              + (p1[1] - p2[1]) ** 2) ** 0.5
+    if report is not None:
+        report["seam_check"] = seam_check
+    bad = {k: v for k, v in seam_check.items() if v > 1e-6}
+    if bad:
+        print(f"[모듈 F · 이음매] ★굽은 뒤 두 식이 갈립니다 {bad}"
+              f" — 투영식이 바뀌었습니다(기대 <1e-6)")
 
     edges = []
     for e in (getattr(c, "machine_room_plan_edges", None) or ()):
@@ -532,6 +671,58 @@ def check_combined(got: dict) -> dict:
     xs = [float(n.get("x", 0) or 0) for n in nodes]
     ys = [float(n.get("y", 0) or 0) for n in nodes]
     meta = dict(getattr(c, "meta", None) or ())
+
+    # ── [E3] 좌표 검사. 종전에는 결합 뒤 좌표를 **하나도** 안 봤다 — 어느
+    #    부위가 DXF 원좌표로 남아도 연결성분·고아 검사는 전부 통과한다(연결은
+    #    라벨로 서므로 좌표와 무관하다). 굽기 «전» 좌표에서 잰다.
+    #    ★판정하지 않는다. 값만 낸다.
+    at = {str(n.get("label")): (float(n.get("x", 0) or 0),
+                                float(n.get("y", 0) or 0)) for n in nodes}
+    parts = (got.get("parts") or {})
+    of = {}
+    for kind in _PART_PRIORITY:
+        for lab in (parts.get(kind) or ()):
+            of[str(lab)] = kind
+    unclassified = sorted(labels - set(of))
+
+    part_bbox = {}
+    for kind in ("plan", "system", "machineroom"):
+        pxs = [at[lab][0] for lab in of if of[lab] == kind and lab in at]
+        pys = [at[lab][1] for lab in of if of[lab] == kind and lab in at]
+        if not pxs:
+            continue
+        part_bbox[kind] = {"n": len(pxs),
+                           "span_x": max(pxs) - min(pxs),
+                           "span_y": max(pys) - min(pys),
+                           "span": max(max(pxs) - min(pxs),
+                                       max(pys) - min(pys))}
+    base = (part_bbox.get("plan") or {}).get("span") or 0.0
+    if base > 0:
+        for kind, bb in part_bbox.items():
+            bb["ratio_to_plan"] = round(bb["span"] / base, 3)
+
+    # 이음매 — 펌프 junction 과 거기 붙은 기계실 배관의 반대쪽. 좌표 거리를
+    # 표 length 와 나란히 낸다(둘이 다르면 한쪽이 다른 좌표계에 있다).
+    pump_seam = None
+    pj = str(got.get("pump_junction") or "")
+    if pj and pj in at:
+        mrset = {lab for lab in of if of[lab] == "machineroom"}
+        for p in pipes:
+            a, b = str(p.get("in")), str(p.get("out"))
+            if pj not in (a, b):
+                continue
+            other = b if a == pj else a
+            if other not in mrset or other not in at:
+                continue
+            dx = at[pj][0] - at[other][0]
+            dy = at[pj][1] - at[other][1]
+            d = (dx * dx + dy * dy) ** 0.5
+            ln = float(p.get("length") or 0.0)
+            pump_seam = {"pipe": str(p.get("label")), "from": pj, "to": other,
+                         "coord_mm": round(d, 1), "table_m": ln,
+                         "ratio": (round(d / 1000.0 / ln, 3) if ln > 0
+                                   else None)}
+            break
     return {
         "combined": True,
         "components": len(sizes),
@@ -553,6 +744,17 @@ def check_combined(got: dict) -> dict:
                   "miny": min(ys), "maxy": max(ys),
                   "span_x": max(xs) - min(xs), "span_y": max(ys) - min(ys)}
                  if xs and ys else None),
+        # [E3] 좌표 — 아래 다섯이 이음매가 벌어졌는지를 말한다.
+        "bbox_span_mm": (round(max(max(xs) - min(xs), max(ys) - min(ys)), 1)
+                         if xs and ys else None),
+        "bbox_ratio_to_plan": (round(max(max(xs) - min(xs),
+                                         max(ys) - min(ys)) / base, 3)
+                               if xs and ys and base > 0 else None),
+        "part_bbox": part_bbox,
+        "pump_seam": pump_seam,
+        "unclassified": unclassified[:20],
+        "unclassified_n": len(unclassified),
+        "layout_status": dict(getattr(c, "layout_status", None) or {}),
     }
 
 

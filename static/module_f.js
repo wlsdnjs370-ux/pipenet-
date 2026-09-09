@@ -2742,12 +2742,51 @@
       const isPump = d.mode === "hsp_pump";
       $("mg-drop-row").classList.toggle("hidden", !isPump);
     }
-    if (d.summary) renderMergeSummary(d.summary);
+    if (d.summary) renderMergeSummary(d.summary, d.checks);
     $("mg-emit").disabled = !(d.summary && d.summary.merged);
     return d;
   }
 
-  function renderMergeSummary(s) {
+  /**
+   * [이음매 좌표] 세 도면이 한 점에서 만났는가 — 숫자를 그대로 보인다.
+   *
+   * ★결합은 «라벨» 로 선다. 그래서 한 부위가 통째로 다른 좌표계에 남아도
+   *   연결 검사는 전부 통과한다 — 좌표를 보여 주지 않으면 사람도 못 본다.
+   *   판정하지 않는다(서버도 안 한다). 값만 놓고 사람이 읽는다.
+   */
+  function mergeSeamLines(ck) {
+    if (!ck || !ck.combined) return "";
+    let html = "";
+    if (ck.anchor_gap) html += kv("기준점 10 벌어짐", ck.anchor_gap);
+    const ps = ck.pump_seam;
+    if (ps) {
+      html += kv("기계실 이음매",
+        `${ps.pipe} · 좌표 ${(ps.coord_mm / 1000).toFixed(3)} m`
+        + ` / 표 ${ps.table_m} m`
+        + (ps.ratio == null ? ""
+           : ` <span class="${Math.abs(ps.ratio - 1) > 0.2 ? "warn" : "dim"}">`
+             + `(비 ${ps.ratio})</span>`));
+    }
+    const pb = ck.part_bbox || {};
+    const r = (k) => (pb[k] ? (pb[k].ratio_to_plan ?? "—") : "—");
+    if (pb.plan) {
+      html += kv("부위 크기 (평면 = 1)",
+                 `계통 ${r("system")} · 기계실 ${r("machineroom")}`
+                 + ` · 전체 ${ck.bbox_ratio_to_plan ?? "—"}`);
+    }
+    if (ck.unclassified_n) {
+      html += kv('<span class="warn">어느 도면인지 모르는 절점</span>',
+                 `${ck.unclassified_n}개 — ${(ck.unclassified || []).join(", ")}`);
+    }
+    for (const [k, v] of Object.entries(ck.layout_status || {})) {
+      if (String(v).startsWith("폴백") || String(v).startsWith("건너뜀")) {
+        html += kv('<span class="warn">좌표 배치</span>', `${k} — ${v}`);
+      }
+    }
+    return html;
+  }
+
+  function renderMergeSummary(s, ck) {
     if (!s) { $("mg-summary").textContent = "—"; return; }
     let html = "";
     if (!s.merged) {
@@ -2761,6 +2800,7 @@
                  ? '<span class="ok">접속됨</span>'
                  : '<span class="warn">미접속</span>');
     }
+    if (s.merged) html += mergeSeamLines(ck);
     // 어느 단계가 실제로 돌았는지 — 「붙였다」고 말하려면 근거가 있어야 한다.
     for (const line of (s.steps || [])) html += kv("·", line);
     $("mg-summary").innerHTML = html;

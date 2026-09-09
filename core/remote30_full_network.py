@@ -1097,6 +1097,11 @@ class CombinedTables:
     meta: list[tuple[str, str]] = field(default_factory=list)
     # 기계실 전체 평면 배관망 edge (시각화 전용, SDF 미포함). [[x1,y1,x2,y2], ...]
     machine_room_plan_edges: list[list[float]] = field(default_factory=list)
+    # ★[E2] 좌표 배치가 제 길로 갔는가 / 폴백으로 떨어졌는가. 두 자리 모두
+    #   예외를 삼키고 «원좌표 그대로» 를 돌려준다 — 그러면 계통도·기계실이
+    #   DXF 원좌표에 남아 이음매가 찢어지는데, 종전에는 그 사실이 아무 데도
+    #   안 남았다. 값: "ok" · "폴백:<이유>" · "건너뜀:<이유>".
+    layout_status: dict = field(default_factory=dict)
 
 
 def _layout_riser_as_schematic(
@@ -1348,14 +1353,23 @@ def stitch_riser_and_heads(
     # 헤드 배관과 통째로 겹쳐 그려졌다(대명동 실측: 기계실 78 edge 전부 헤드망 위).
     mr_rel: list[dict] = []
     plan_rel: list[list[float]] = []
+    # [E2] 배치가 어느 길로 갔는지를 남긴다 — 폴백이면 좌표가 원래 도면 자리에
+    #      남아 이음매가 찢어진다. 조용히 넘기지 않는다.
+    #      («해당없음» 은 탈이 아니다 — 그 도면이 애초에 없는 것이다.)
+    layout_status: dict = {"machineroom": "해당없음:기계실 없음", "riser": "ok"}
     if mr_nodes and pump_junction_label is not None:
         try:
             mr_rel, plan_rel = _layout_machine_room_plan(
                 mr_nodes, machine_room_plan_edges, (0.0, 0.0),
                 head_yspan=head_yspan, conn_raw_xy=machine_room_conn_xy,
             )
-        except (KeyError, TypeError, ValueError):
+            layout_status["machineroom"] = "ok"
+        except (KeyError, TypeError, ValueError) as exc:
             mr_rel, plan_rel = [], []
+            layout_status["machineroom"] = (
+                f"폴백:{type(exc).__name__} {exc} — 기계실이 DXF 원좌표에 남는다")
+    elif mr_nodes:
+        layout_status["machineroom"] = "건너뜀:접속 절점(pump_junction) 없음"
 
     min_span = 0.0
     if mr_rel and head_ys and head_av_node is not None:
@@ -1381,10 +1395,15 @@ def stitch_riser_and_heads(
                 true_riser_nodes, anchor_xy, head_yspan=head_yspan,
                 descend=machine_room_at_bottom, min_span=min_span,
             )
-        except (KeyError, TypeError, ValueError):
+            layout_status["riser"] = "ok"
+        except (KeyError, TypeError, ValueError) as exc:
             translated_riser_nodes = list(true_riser_nodes)
+            layout_status["riser"] = (
+                f"폴백:{type(exc).__name__} {exc} — 계통도가 DXF 원좌표에 남는다")
     else:
         translated_riser_nodes = list(true_riser_nodes)
+        layout_status["riser"] = (
+            "건너뜀:헤드망 기준 절점(AV) 없음 — 계통도가 DXF 원좌표에 남는다")
 
     # 기계실 평면 배치 — 원점 배치본을 펌프 junction("1")의 schematic 좌표로 평행이동.
     #   수리경로 노드(mr_nodes) + 전체 SP 배관망 edge(plan_edges)가 **동일 변환**이라
@@ -1523,6 +1542,10 @@ def stitch_riser_and_heads(
     # 개명 건수도 남긴다 — 부속·기기를 따라 옮긴 근거다(D4).
     if renamed:
         meta.append(("배관 라벨 개명", f"{len(renamed)}건 (부속·기기 동반 이동)"))
+    # [E2] 배치가 폴백으로 떨어졌으면 표에도 적는다 — 산출물만 봐도 알게.
+    for _k, _v in layout_status.items():
+        if str(_v).startswith(("폴백", "건너뜀")):
+            meta.append((f"★좌표 배치 {_k}", str(_v)))
 
     return CombinedTables(
         nodes=combined_nodes,
@@ -1534,6 +1557,7 @@ def stitch_riser_and_heads(
         valves=list(riser.valves),
         meta=meta,
         machine_room_plan_edges=plan_laid,
+        layout_status=layout_status,
     )
 
 

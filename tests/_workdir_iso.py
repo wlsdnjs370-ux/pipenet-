@@ -40,7 +40,13 @@ class isolated_workdir:
         src_cache = hf.import_write_root()
         # ★주입점 하나로 못박는다(그리고 나갈 때 그 하나만 되돌린다) — 종전에는
         #   함수를 갈아끼우고 그것으로 안 따라오는 두 상수를 따로 덮었다.
-        self._saved = hf._WRITE_ROOT_OVERRIDE
+        #
+        # ★★되돌릴 값은 «그때 실제로 가리키던 폴더» 다. `_WRITE_ROOT_OVERRIDE`
+        #   를 그대로 담아 두면, 아직 부팅 전이라 None 이던 경우에 None 으로
+        #   되돌아가고 — `_boot()` 는 한 번만 도므로(`_booted`) 다시는 안 채워진다.
+        #   그러면 그 뒤의 모든 시험이 cwd 상대경로 "docs/import" 를 보게 된다.
+        #   (이 지시서가 없애려던 바로 그 사고다.)
+        self._saved = src_cache
 
         self._tmp = tempfile.TemporaryDirectory(prefix=self.prefix)
         work = self._tmp.name

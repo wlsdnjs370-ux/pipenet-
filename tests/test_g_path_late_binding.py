@@ -30,6 +30,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parent.parent
 for _p in (str(_ROOT), str(_ROOT / "cad_project_editor_g")):
     if _p not in sys.path:
@@ -44,7 +46,27 @@ def _mods():
     return io, dc, handoff
 
 
+@pytest.fixture(autouse=True)
+def _keep_write_root():
+    """★쓰기 루트를 건드렸으면 **그때 가리키던 폴더로** 되돌린다.
+
+    처음에 `set_write_root(None)` 으로 되돌렸다가 옆 시험 넷을 깼다. `_boot()`
+    는 `_booted` 로 **한 번만** 도므로 None 으로 비워 두면 다시는 안 채워지고,
+    그 뒤의 모든 모듈 F 시험이 cwd 상대경로 "docs/import" 를 본다 — 이 지시서가
+    없애려던 바로 그 사고를, 그것을 지키는 시험이 저지른 셈이었다.
+
+    실측(전체 스위트): 4 failed — 「만든 저장본이 목록에 없다」(찍은스펙은
+    상대경로 폴더에 쓰고 `pick_store_dir()` 는 실작업 폴더에서 읽는다) 외.
+    두 파일만 따로 돌리면 전부 통과해 «순서 의존» 으로만 보였다.
+    """
+    _io, _dc, handoff = _mods()
+    saved = handoff.import_write_root()
+    yield
+    handoff.set_write_root(saved)
+
+
 def _restore(handoff):
+    """이 시험 안에서 «주입 없음» 상태를 보고 싶을 때만 — 뒷정리는 픽스처가 한다."""
     handoff.set_write_root(None)
 
 

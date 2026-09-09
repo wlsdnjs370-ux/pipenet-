@@ -17,6 +17,8 @@ from __future__ import annotations
 import os
 import re
 
+import pytest
+
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -177,6 +179,45 @@ _DXF = os.path.join(_ROOT, "routes", "제출용[최종]",
 MODE_VALVE = "알람밸브위치"
 MODE_SOURCE = "급수시작위치"
 ANCHOR_MAX_D = 2000.0
+
+
+@pytest.fixture(autouse=True)
+def _keep_write_root():
+    """★쓰기 루트를 갈아 끼웠으면 **반드시 되돌린다.**
+
+    `_client(tmp_path)` 는 엔진의 쓰기 루트를 임시 폴더로 돌린다. 되돌리지
+    않으면 그 프로세스에 남아 **다음 시험이 임시 폴더를 본다.**
+
+    실측으로 그렇게 깨졌다: 「이어서 열기」 시험이 저장본을 임시 폴더에 쓰고,
+    라우트는 `pick_store_dir()`(실작업 폴더에 고정 — 엔진 없이도 답해야 하는
+    자리다)에서 읽어 「만든 저장본이 목록에 없다」로 죽었다. 한 시험을 지키려던
+    격리가 옆 시험을 깬 것이라, 한 판에 못 돌리는 묶음이 되어 버린다
+    (`tests/_workdir_iso.py` 가 같은 이유로 존재한다).
+    """
+    saved = _write_root_override()
+    yield
+    _restore_write_root(saved)
+
+
+def _write_root_override():
+    """엔진이 아직 안 올라왔으면 «건드릴 것이 없다» — 부팅 전에도 안전해야 한다.
+
+    ★담아 두는 것은 «그때 실제로 가리키던 폴더» 다. override 자체(None 일 수
+      있다)를 담으면 `_boot()` 가 한 번만 도는 탓에 다시는 안 채워진다.
+    """
+    try:
+        from services.cad_import.pipeline import handoff
+    except ImportError:
+        return None
+    return handoff.import_write_root()
+
+
+def _restore_write_root(saved):
+    try:
+        from services.cad_import.pipeline import handoff
+    except ImportError:
+        return
+    handoff.set_write_root(saved)
 
 
 def _client(tmp_path=None):

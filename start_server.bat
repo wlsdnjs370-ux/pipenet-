@@ -71,10 +71,17 @@ for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%PORT% " ^| findstr "LISTEN
 echo [%date% %time%] starting serve.py ...
 "%PY%" -u serve.py
 echo [%date% %time%] serve.py exited with code %errorlevel%, restarting in 5s ...
-REM  Use the full path: a PATH that has a unix-like "timeout" (git bash) would
-REM  otherwise win and fail with "invalid time interval", making the loop spin
-REM  with no delay. Measured 2026-09-11.
-"%SystemRoot%\System32\timeout.exe" /t 5 /nobreak >nul
+REM  Sleep 5s WITHOUT timeout.exe.
+REM   - a unix-like "timeout" on PATH (git bash) wins and fails with
+REM     "invalid time interval"
+REM   - Windows timeout.exe itself dies with "input redirection is not
+REM     supported" whenever stdin is redirected (running under a pipe or
+REM     "> log 2>&1")
+REM  Both make the delay vanish, so the loop spins and the launcher ends up
+REM  killing the server it just started. Measured 2026-09-11 - the log read
+REM  "port 5051 is held by PID 40196 - killing it" about its own child.
+REM  ping always works, console or not.
+ping -n 6 127.0.0.1 >nul
 goto run
 
 :freeport

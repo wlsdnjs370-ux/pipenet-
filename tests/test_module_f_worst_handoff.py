@@ -53,10 +53,11 @@ def test_손질_선정을_only_heads_로_넘긴다():
     """★이 한 줄이 없어서 수리계산이 도면 전체에서 다시 뽑았다."""
     src = _src()
     i = src.index("got = select_and_expand(")
-    # ★창을 넓혔다 — 그 사이에 «다음 순위 채우기» 주석이 들어와 1,400자로는
-    #   선정을 읽는 줄이 창 밖으로 밀렸다. 창 크기가 시험의 참·거짓을
-    #   가르면 안 된다.
-    seg = src[max(0, i - 3600):i + 300]
+    # ★**닻과 닻 사이**로 자른다(2026-09-11). 종전에는 «앞에서 N자» 였는데
+    #   그 구간에 갈래가 들어올 때마다(채우기 · §2-5 · 영역 가두기) 확인할
+    #   줄이 창 밖으로 밀려 두 번 깨졌다. 잡으려는 것은 「job() 이 세션 선정을
+    #   읽어 only_heads 로 넘긴다」이지 «몇 자 안에 있다» 가 아니다.
+    seg = src[src.index("        def job():"):i + 300]
     assert "only_heads=only" in seg, seg[-400:]
     assert 'sess.get("worst")' in seg, "손질 선정을 안 읽는다"
     assert 'w_sel.get("heads")' in seg

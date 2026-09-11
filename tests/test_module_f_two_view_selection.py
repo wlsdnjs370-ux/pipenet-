@@ -403,6 +403,96 @@ def test_끄면_막고_말한다():
     assert "fill_short: $(\"dg-fill\").checked" in _src("static/module_f.js")
 
 
+# ═══════════════════════════ 영역 넘어감 — 채움은 한 구역 안에서
+#
+#   2026-09-11 사용자 지적: 「대명동 기준, 영역1 내에 있는 2개 헤드가 영역2 및
+#   배관망을 강제로 넘어간다.」 실측으로 재현했다(`data/_probe_zone_cross.py`
+#   · 영역1 을 K=10 에 딱 맞게 좁힌 판):
+#
+#       손질 선정 10개 전부 영역1 → 2개가 안 붙음(pass_under)
+#       채움  헤드 47 → 영역1 · 헤드 82 → **영역2**(x 284,092 · 반대편)
+#       표 최종 영역1 9 · 영역2 1 · corridor 두 영역에 걸침 · 배관 78 → 120
+#
+#   설계면적은 «하나의 방호구역 안에서 인접한 K개» 다. 사람이 사각형을 둘로
+#   나눠 그린 것은 「이 둘은 다른 구역」이라는 뜻이지 합쳐 달라는 뜻이 아니다.
+_Z1 = [0.0, 0.0, 100.0, 100.0]
+_Z2 = [900.0, 0.0, 1000.0, 100.0]
+_DISKS = [(10.0, 10.0, 4.0),     # 0 영역1
+          (20.0, 20.0, 4.0),     # 1 영역1
+          (30.0, 30.0, 4.0),     # 2 영역1
+          (950.0, 50.0, 4.0),    # 3 영역2
+          (960.0, 60.0, 4.0),    # 4 영역2
+          (500.0, 500.0, 4.0)]   # 5 어느 영역도 아님
+
+
+def test_영역을_안_그렸으면_종전_그대로():
+    """★영역 없는 세션은 한 줄도 안 달라져야 한다(골든이 그 경로다)."""
+    from routes.module_f.api_design import zone_confined_pool
+    pool = [0, 1, 3, 4]
+    assert zone_confined_pool(pool, [0], None, _DISKS) is pool
+    assert zone_confined_pool(pool, [0], [], _DISKS) is pool
+
+
+def test_선정이_든_영역_밖은_버린다():
+    """★이것이 사용자가 본 그 버그다 — 영역1 자리를 영역2 가 채웠다."""
+    from routes.module_f.api_design import zone_confined_pool
+    got = zone_confined_pool([0, 1, 2, 3, 4], [0, 1], [_Z1, _Z2], _DISKS)
+    assert got == [0, 1, 2], got          # 영역2(3·4)는 후보에서 빠진다
+
+
+def test_두_영역에_걸쳐_뽑았으면_둘_다_남긴다():
+    """사람이 그렇게 고른 것이다 — 그때는 합집합이 맞다."""
+    from routes.module_f.api_design import zone_confined_pool
+    got = zone_confined_pool([0, 1, 3, 4], [0, 3], [_Z1, _Z2], _DISKS)
+    assert got == [0, 1, 3, 4]
+
+
+def test_가둘_근거가_없으면_손대지_않는다():
+    """선정이 어느 사각형에도 안 들어가면(있을 수 없지만) 조용히 바꾸지 않는다."""
+    from routes.module_f.api_design import zone_confined_pool
+    pool = [0, 1, 3]
+    assert zone_confined_pool(pool, [5], [_Z1, _Z2], _DISKS) is pool
+
+
+def test_채울_때_영역을_가두고_모자라면_말한다():
+    s = _src("routes/module_f/api_design.py")
+    i = s.index("if wet and short < k_use:")
+    seg = s[i:i + 1600]
+    assert "zone_confined_pool(" in seg, "채움이 영역을 안 가둔다"
+    assert "avail < k_use" in seg and "다른 영역에서 끌어오지 않습니다" in seg
+
+
+def test_채웠는데_모자라면_채우지_않았다고_안_한다():
+    """★채워 놓고 「채우지 않았습니다」라고 적으면 거짓이다."""
+    from routes.module_f.api_design import _handoff_after_table
+
+    class _T:
+        nodes = [{"label": "1", "x": 1000.0, "y": 1000.0}]
+        nozzles = [{"in": "1"}]
+
+    got = {"handoff": {"from_edit": True, "picked": 2, "filled": 1,
+                       "messages": []},
+           "_picked": [0, 1], "origin_mm": (1000.0, 1000.0)}
+    _handoff_after_table(got, _T(), _B([(1000.0, 1000.0, 40.0),
+                                        (9000.0, 9000.0, 40.0)]))
+    msgs = got["handoff"]["messages"]
+    assert msgs and "채웠지만" in msgs[0], msgs
+    assert not any("채우지 않았습니다" in m for m in msgs), msgs
+    js = _src("static/module_f.js")
+    assert "그 영역 안에 더는 없습니다" in js, "화면이 그 갈래를 안 가른다"
+
+
+def test_표가_서기_전에_기준개수를_단정하지_않는다():
+    """★제한 전개에서 또 떨어질 수 있다(실측 선정 10 → 표 9) — 단정해 두면
+    뒤이어 붙는 «9개 왔습니다» 와 서로 어긋난다."""
+    from routes.module_f.api_design import _worst_handoff_note
+    note = _worst_handoff_note(_got([1, 2, 9], candidate_heads=40),
+                               [1, 2, 3], 3, 3, filled=1,
+                               board=_B([(0, 0, 4)] * 10))
+    assert not any("지켰습니다" in m for m in note["messages"]), note["messages"]
+    assert any("선정은 3개를 채웠습니다" in m for m in note["messages"])
+
+
 # ═══════════════════════════ §5 금지 사항 — 되돌아가지 않는다
 def test_백필을_안_없앴다():
     """★없애면 기준개수 K 가 다시 무너진다(`a44ec64` 가 고친 그 증상)."""

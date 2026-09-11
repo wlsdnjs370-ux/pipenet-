@@ -250,6 +250,70 @@ def _head_row(i, board, reasons=None) -> dict:
     return row
 
 
+def _in_rect(p, r) -> bool:
+    return (float(r[0]) <= float(p[0]) <= float(r[2])
+            and float(r[1]) <= float(p[1]) <= float(r[3]))
+
+
+def zone_confined_pool(pool, picked, zones, disks):
+    """[영역 넘어감] 채울 후보를 «선정이 이미 든 영역» 안으로 가둔다.
+
+    ■ 증상 (2026-09-11 사용자 지적 · 대명동)
+
+      「영역1 내에 있는 2개 헤드가 영역2 및 배관망을 강제로 넘어간다.」
+
+      실측으로 재현했다(`data/_probe_zone_cross.py` · 영역1 을 K=10 에 딱 맞게
+      좁힌 판)::
+
+          손질 선정 10개        전부 영역1
+          못 붙는 헤드 2개      123·122 (pass_under)
+          채움                  헤드 47 → 영역1 · 헤드 82 → **영역2**
+          표 최종               영역1 9 · **영역2 1**
+          corridor              두 영역에 걸침 · 배관 78 → **120**
+
+    ■ 왜 넘어갔나
+
+      채움 후보(`worst_cand`)가 **영역 합집합**이다. 영역1 에서 못 붙은
+      자리를 «그다음으로 불리한 헤드» 로 채우는데, 그 헤드가 영역2 에 있다.
+      먼 순서 하나로만 고르니 영역 경계를 모른다.
+
+    ■ 왜 그것이 틀렸나
+
+      설계면적은 «하나의 방호구역 안에서 **인접한** K개» 다(NFPC). 두 영역에
+      걸친 K개는 동시에 방수되는 무리가 아니고, corridor 도 건물을 가로질러
+      관경·유하거리가 실제와 달라진다. 사람이 사각형을 **둘로 나눠** 그린 것은
+      「이 둘은 다른 구역」이라는 뜻이다 — 합쳐 달라는 뜻이 아니다.
+
+    ■ 규칙
+
+      선정이 실제로 든 영역만 남긴다. 영역1 에서 뽑았으면 영역1 안에서만
+      채운다. 두 영역에 걸쳐 뽑혔으면(사람이 그렇게 고른 것이다) 둘 다 남긴다.
+      영역을 안 그렸으면(`zones` 없음) 도면 전체가 후보다 — **종전 그대로**다.
+
+    반환: 가둔 후보 목록. 가둘 근거가 없으면 받은 것을 그대로 돌려준다.
+    """
+    rects = [r for r in (zones or ()) if r and len(r) >= 4]
+    if not rects or not pool:
+        return pool
+    disks = list(disks or ())
+
+    def at(i):
+        return disks[int(i)] if 0 <= int(i) < len(disks) else None
+
+    used = [ri for ri, r in enumerate(rects)
+            if any(at(i) is not None and _in_rect(at(i), r) for i in picked)]
+    if not used:
+        # 선정이 어느 사각형에도 안 들어간다 — 가둘 근거가 없으니 손대지 않는다.
+        return pool
+    keep = [i for i in pool
+            if at(i) is not None and any(_in_rect(at(i), rects[ri])
+                                         for ri in used)]
+    if len(keep) != len(pool):
+        print(f"[영역] 채움 후보를 선정이 든 영역 {len(used)}곳 안으로 가둡니다"
+              f" — {len(pool)} → {len(keep)}개 (설계면적은 한 구역 안이다).")
+    return keep
+
+
 # ★[두 화면 선정일치 §2-1] 손질이 덧붙였고 선정 계산은 모르는 칸.
 #
 #   `worst_k_heads` 가 내는 것은 «어느 헤드·어느 경로» 까지다. 어느 영역에서
@@ -364,10 +428,14 @@ def _worst_handoff_note(got: dict, picked: list, k_use: int, k_cfg: int,
             # 못 붙는 헤드가 있었으므로 «후보 범위» 로 바꿔 채웠다. 그 수는
             # `cand`(후보 범위 ∩ 붙는 헤드)가 아니라 채운 수 그대로다.
             note["not_attachable"] = int(filled)
+            # ★「기준개수를 지켰습니다」라고 **여기서 단정하지 않는다.** 이
+            #   함수는 표가 서기 전에 돈다 — 제한 전개에서 또 떨어질 수 있어
+            #   실제로 표가 K 미만으로 서는 일이 있다(실측 10 선정 → 표 9).
+            #   단정해 놓으면 뒤이어 붙는 «9개 왔습니다» 와 서로 어긋난다.
             msgs.append(
                 f"손질에서 고른 {len(picked)}개 중 {filled}개는 전개가 배관에 "
                 f"붙이지 못해 같은 규칙(유하거리 긴 순서)으로 다음 순위 "
-                f"{filled}개를 채웠습니다 — 기준개수 {k_use}는 지켰습니다. "
+                f"{filled}개를 채웠습니다 — 선정은 {k_use}개를 채웠습니다. "
                 f"빠진 자리는 도면에 표시했습니다.")
         if k_use != k_cfg:
             msgs.append(f"기준개수를 손질 값 {k_use}로 맞췄습니다 "
@@ -457,7 +525,16 @@ def _handoff_after_table(got: dict, tbl, board) -> None:
     #   사람을 엉뚱한 데로 보낸다 — 배관을 이으러 가도 고칠 것이 없다.
     n_share = len(got.get("shared_head_idx") or ())
     note["shared"] = n_share
-    if n_share:
+    if swapped:
+        # ★채워 놓고 「채우지 않았습니다」라고 적으면 안 된다. 채웠는데도
+        #   모자란 경우다 — 영역 안에 채울 것이 더 없었다는 뜻이다(영역을
+        #   넘지 않기 때문). 무엇이 모자란지를 그대로 말한다.
+        msg = (f"손질에서 고른 {picked_n}개 중 {swapped}개가 배관에 안 붙어 "
+               f"다음 순위로 채웠지만, 표에는 {n_noz}개만 왔습니다 — "
+               f"기준개수 {picked_n}에 {lost}개 모자랍니다. "
+               f"설계면적은 한 구역 안이라 다른 영역에서 끌어오지 않습니다 — "
+               f"영역을 넓히거나 그 헤드의 배관을 이어 주세요.")
+    elif n_share:
         msg = (f"손질에서 고른 {picked_n}개 중 {lost}개가 표에 오지 못했습니다 — "
                f"다른 헤드와 **같은 자리**라 하나로 합쳐졌습니다"
                f" (도면에 헤드 기호가 겹쳐 그려진 자리입니다)."
@@ -877,6 +954,7 @@ def register(app, *, UPLOAD_DIR):
             from routes.module_f.attach import wet_heads
             probe = wet_heads(sess, es, selected_source=sel)
             filled = 0
+            zone_short = None       # 영역 안에서 K 를 못 채웠으면 그 문장
             if only and probe.get("ok"):
                 wet = set(probe.get("wet") or ())
                 short = len(only & wet) if wet else 0
@@ -889,9 +967,26 @@ def register(app, *, UPLOAD_DIR):
                             f" 붙이지 못합니다. 「모자라면 다음 순위로 채우기」를"
                             f" 꺼 두셨으므로 멈춥니다 — 손질에서 그 헤드의 배관을"
                             f" 잇거나, 그 설정을 켜세요.")}
-                    pool = sess.get("worst_cand")
+                    # ★영역을 넘지 않는다 — 채움은 «선정이 이미 든 영역» 안에서
+                    #   만 한다(2026-09-11 사용자 지적 · 실측 재현). 영역을 안
+                    #   그렸으면 이 줄은 아무것도 안 바꾼다.
+                    pool = zone_confined_pool(
+                        sess.get("worst_cand"), picked,
+                        w_sel.get("zones"), getattr(es.board, "disks", None))
                     only = (set(pool) & wet) if pool else None
                     filled = k_use - short
+                    # 가둔 영역 안에 채울 것이 모자라면 **조용히 줄이지 않는다.**
+                    #   여기서 넘어가면 표가 K 미만으로 서고, 사람은 K 로 계산된
+                    #   줄 안다. 영역을 넓히든 배관을 잇든 사람이 정할 일이다.
+                    avail = len(only) if only else 0
+                    if avail < k_use:
+                        zone_short = (
+                            f"고른 {k_use}개 중 {k_use - short}개가 배관에 안"
+                            f" 붙는데, 「그 영역 안에서」 채울 수 있는 헤드가"
+                            f" {avail}개뿐입니다 — 설계면적은 한 구역 안이라"
+                            f" 다른 영역에서 끌어오지 않습니다."
+                            f" 영역을 넓히거나 그 헤드의 배관을 이어 주세요.")
+                        print(f"[영역] ★{zone_short}")
                     print(f"[최불리 인계] 손질이 고른 {k_use}개 중 {filled}개는"
                           f" 전개가 배관에 붙이지 못합니다 — 같은 규칙으로"
                           f" **다음 순위**를 채웁니다"
@@ -910,6 +1005,10 @@ def register(app, *, UPLOAD_DIR):
             got["handoff"] = _worst_handoff_note(
                 got, picked, k_use, int(cfg["k"]), filled=filled,
                 board=es.board, reasons=probe.get("reason"))
+            if zone_short:
+                # 영역 안에서 K 를 못 채웠다 — 화면이 그 사실을 읽게 한다.
+                got["handoff"]["zone_short"] = True
+                got["handoff"].setdefault("messages", []).append(zone_short)
             got["_picked"] = picked      # 표를 보고 다시 셀 때 쓴다(§2-3)
             texts = _dia_texts(sess)
             # [F-11d] 직접 입력을 **이번 계산의 이름으로 번역**한다. 세션에는

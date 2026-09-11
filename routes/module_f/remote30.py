@@ -56,7 +56,10 @@ def _design_corridor(sess: dict) -> dict | None:
     tbl, got = d.get("tables"), d.get("got")
     if not tbl or not got:
         return None
-    from routes.module_f.api_design import _design_stale, _load_map
+    # [리팩터링 2026-09-11] 판단은 selection.py 에 산다 — 라우트 파일
+    #   (api_design)을 import 하던 것을 끊었다. 순수 판단이 라우트에 살면
+    #   이런 의존이 늘고, 언젠가 순환 import 로 돌아온다.
+    from routes.module_f.selection import _design_stale, _load_map
     if _design_stale(sess):
         # 옛 표를 «지금 망» 으로 그리면 안 된다 — 그것이 바로 고치려던 증상이다.
         return None
@@ -196,80 +199,27 @@ def _worst_view(sess: dict) -> dict | None:
 
 
 def _sheet_frames(board) -> list[dict]:
-    """한 파일에 도면이 여러 장 들어 있는지 — 모듈 A 의 규칙을 그대로 부른다.
+    """[D1] 엔진(G design/worst.py)으로 위임 — 구현은 한 벌만 둔다.
 
-    국내 도서는 도면 한 장이 곧 파일 하나가 아니다(A 실측 — 죽전 6장·청라
-    포레스트 3장·대구오페라 단위세대 5장). 여러 장을 한 망으로 보면 최불리 30 이
-    서로 다른 도면의 헤드를 섞어 뽑아 계산이 성립하지 않는다.
-
-    A 의 `detect_sheet_frames` 는 헤드 좌표(`.pos`)만 본다 — 문턱도 상수가 아니라
-    그 도면의 헤드 간격에서 잰다. 그래서 규칙을 베끼지 않고 그대로 호출한다.
+    같은 몸통이 여기와 엔진에 두 벌 있었다(2026-09-11 diff 로 확인 — 차이는
+    로그 접두어와 엔진 쪽 sys.path 보강뿐). 두 벌이면 한쪽만 고쳐지는 날이
+    반드시 온다 — `_worst_k_heads` 와 같은 결정이다. 로그 접두어는 엔진 것
+    ([손질]→[G])을 따른다. (import 는 지연 — _boot 뒤라야 엔진이 열린다.)
     """
-    disks = getattr(board, "disks", None) or ()
-    if len(disks) < 24:
-        return []
-
-    class _Head:  # A 가 보는 것은 .pos 하나뿐이다
-        __slots__ = ("pos",)
-
-        def __init__(self, p):
-            self.pos = p
-
-    try:
-        from remote30_prototype import detect_sheet_frames
-    except Exception as exc:  # noqa: BLE001 — A 가 없어도 손질은 돌아야 한다
-        print(f"[손질] 도면 장 나누기 건너뜀 — 모듈 A 미탑재: {exc}")
-        return []
-    try:
-        return detect_sheet_frames(
-            [_Head((float(d[0]), float(d[1]))) for d in disks])
-    except Exception as exc:  # noqa: BLE001
-        print(f"[손질] 도면 장 나누기 실패: {exc}")
-        return []
+    from services.cad_import.design.worst import sheet_frames
+    return sheet_frames(board)
 
 
 def _restrict_to_worst(payload: dict, board, worst: dict) -> dict:
-    """변환 대상을 최불리 K 헤드로 좁힌다 — 헤드만 지우고 배관은 안 자른다.
+    """[D1] 엔진(G design/restrict.py)으로 위임 — 구현은 한 벌만 둔다.
 
-    간선을 직접 잘라내고 싶은 유혹이 있지만 그러면 안 된다. 모듈 E 의
-    `build_planar_graph` 는 이미 «급수원에서 물 닿는 간선만 남기고, 헤드로
-    가지 않는 막다른관을 쳐내는» 단계를 갖고 있다(실측 로그: 물길 필터 →
-    막다른관 삭제). 그러니 남길 헤드만 남겨 두면 그 배관은 E 가 제 규칙으로
-    정리한다. 손으로 자르면 E 가 지키는 불변식(티 겹침·노드정리)을 깬다.
-
-    hcov / disk_kinds / head_kinds 는 같은 디스크 집합을 가리키므로 함께 건다.
-    ups 는 좌표 집합으로만 쓰여 남아 있어도 해가 없다.
+    같은 몸통이 여기와 엔진에 두 벌 있었다(2026-09-11 diff 로 확인 — 차이는
+    로그 접두어 [변환]/[G2] 뿐). 설계 경로는 이미 엔진 판을 쓰고 있었으니,
+    변환 경로(api_convert)만 이 사본을 물고 있었다 — 한쪽만 고쳐지는 날이
+    오기 전에 합친다. 로그 접두어는 엔진 것([G2])을 따른다.
     """
-    from services.cad_import.kinds import disk_key
-
-    keep_idx = {int(i) for i in (worst or {}).get("heads") or ()}
-    disks = list(board.disks)
-    kept = [disks[i] for i in sorted(keep_idx) if 0 <= i < len(disks)]
-    if not kept:
-        return payload
-
-    keys = {disk_key(d[0], d[1], d[2]) for d in kept}
-    out = dict(payload)
-    out["hcov"] = [list(d) for d in kept]
-    dk = payload.get("disk_kinds") or []
-    out["disk_kinds"] = [dk[i] for i in sorted(keep_idx) if 0 <= i < len(dk)]
-
-    fresh = []
-    for rec in payload.get("head_kinds") or ():
-        if not isinstance(rec, dict) or "c" not in rec:
-            continue
-        c = rec["c"]
-        r = rec.get("head_r")
-        if r is None and rec.get("tri_side"):
-            r = float(rec["tri_side"]) / math.sqrt(3.0)
-        if r is None:
-            continue
-        if disk_key(c[0], c[1], r) in keys:
-            fresh.append(dict(rec))
-    out["head_kinds"] = fresh
-    print(f"[변환] 최불리 {len(kept)} 헤드로 범위를 좁힘 "
-          f"(도면 헤드 {len(disks)} · 종류표 {len(fresh)}행)")
-    return out
+    from services.cad_import.design.restrict import restrict_to_worst
+    return restrict_to_worst(payload, board, worst)
 
 
 # [정리 2026-08-31] `_emit_pipenet(sess, kfp, out_dir)` 를 지웠다.

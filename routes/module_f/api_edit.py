@@ -36,6 +36,9 @@ def _note_edit(sess: dict) -> None:
     """
     sess["water_path"] = None
     sess["worst"] = None
+    # [두 화면 선정일치 §2-1] 손질 원본도 함께 버린다 — 선정이 사라졌는데
+    #   그 «원본» 만 남으면 다음 표가 옛 영역·급수원 이름을 물려받는다.
+    sess["worst_edit"] = None
     sess["worst_edits"] = int(sess.get("worst_edits") or 0) + 1
 
 
@@ -395,6 +398,7 @@ def register(app):
                            head_xy=b.disks)
         if not w["heads"]:
             sess["worst"] = None
+            sess["worst_edit"] = None
             return None, _wfail("급수원에서 닿는 헤드가 없습니다. 이음·급수 위치를 확인하세요.")
         # ★기준개수를 «조용히» 줄이지 않는다.
         #
@@ -404,6 +408,7 @@ def register(app):
         #   막고, 무엇을 어떻게 하면 되는지 말한다.
         if w["reachable"] < k:
             sess["worst"] = None
+            sess["worst_edit"] = None
             if zones:
                 where, how = "영역 안", "영역을 넓히거나"
             elif sheet_no:
@@ -425,6 +430,10 @@ def register(app):
         w["zones"] = [list(r) for r in rects] if zones else []
         w["candidates"] = len(only) if only is not None else w["reachable"]
         sess["worst"] = w
+        # ★[두 화면 선정일치 §2-1] 사람이 다시 고른 것이 **언제나 최신**이다.
+        #   수리계산이 접어 둔 «손질 원본» 은 여기서 버린다 — 안 버리면 다음
+        #   표가 옛 영역을 물려받아, 화면의 사각형과 계산 범위가 갈린다.
+        sess["worst_edit"] = None
         # ★후보 범위 — 수리계산이 «못 붙는 헤드» 를 만나면 여기서 다음 순위를
         #   채운다. `None` 은 「도면 전체가 후보」다(영역도 장도 안 걸었다).
         sess["worst_cand"] = (None if only is None else sorted(only))
@@ -553,6 +562,7 @@ def register(app):
             had = bool(sess.get("worst"))
             if had:
                 sess["worst"] = None
+                sess["worst_edit"] = None
                 sess["worst_edits"] = 0
             print(f"[알람밸브] {len(b.valves)}곳 = 접속점 — 이제 «영역» 을 "
                   f"정하고 「최불리 선정」을 누르면 배관망을 뽑습니다."
@@ -572,6 +582,7 @@ def register(app):
         # 사람이 «해제» 를 누른 것이라 수정 배지도 함께 지운다 — 셀 기준(마지막
         # 계산)이 사라졌는데 「수정 3건」만 남으면 무엇에 대한 3건인지 모른다.
         sess["worst"] = None
+        sess["worst_edit"] = None
         sess["worst_edits"] = 0
         return jsonify({"ok": True, "state": _edit_state(sess)})
 

@@ -37,16 +37,25 @@ _DEFAULT_SETTINGS = {
     #   켜지 않으면 기존 산출물이 한 바이트도 안 바뀐다.
     #   고를 수 있는 값은 모듈 A 의 규격표에서 온다(`FX_SPEC_PROFILES`).
     "fx_profile": "",                # "" = 안 함 · "평균" · "한백표준"
+    # [두 화면 선정일치 §2-5] 손질이 고른 K개 중 «전개가 못 붙이는» 것이
+    #   있을 때 다음 순위로 **채울지**. 기준개수 K 유지(법정 기준개수)와
+    #   「사람이 고른 것만 쓴다」가 부딪히는 자리다 — 종전에는 코드가 말없이
+    #   전자를 골랐다. 스위치를 두되 **기본은 지금 동작(채움)** 이다:
+    #   기본을 바꾸면 옛 세션의 산출이 조용히 달라진다.
+    "fill_short": True,
 }
 
 
 def _settings(sess: dict, body: dict) -> dict:
-    """설정 7종 — 준 것만 덮고 세션에 기억한다."""
+    """설정 — 준 것만 덮고 세션에 기억한다."""
     cur = dict(sess.get("design_settings") or _DEFAULT_SETTINGS)
+    # 옛 세션에는 새 칸이 없다 — 기본값으로 채운다(없으면 KeyError 로 죽는다).
+    for key, val in _DEFAULT_SETTINGS.items():
+        cur.setdefault(key, val)
     for key, cast in (("k", int), ("schedule", str), ("iso", bool),
                       ("iso_z_scale", float), ("canvas_units", float),
                       ("lift_ref", str), ("head_stub_pct", float),
-                      ("fx_profile", str)):
+                      ("fx_profile", str), ("fill_short", bool)):
         if key in body and body[key] is not None:
             try:
                 cur[key] = cast(body[key])
@@ -217,7 +226,90 @@ def _load_map(got: dict) -> dict:
     return out
 
 
-def _worst_handoff_note(got: dict, picked: list, k_use: int, k_cfg: int) -> dict:
+def _head_row(i, board, reasons=None) -> dict:
+    """헤드 한 개를 «사람이 찾아갈 수 있는 한 줄» 로 — 번호·자리·사유.
+
+    번호만 주면 아무도 그 헤드를 도면에서 못 찾는다. 사유는 전개가 이미 가른
+    것을 옮겨 적을 뿐이다(§2-4) — 여기서 판정하지 않는다.
+    """
+    row: dict = {"disk": int(i)}
+    disks = list(getattr(board, "disks", None) or ())
+    if 0 <= int(i) < len(disks):
+        d = disks[int(i)]
+        row["xy"] = [round(float(d[0]), 1), round(float(d[1]), 1)]
+    why = (reasons or {}).get(int(i))
+    if why is None:
+        why = (reasons or {}).get(str(i))
+    if why:
+        row["why"] = str(why)
+        try:
+            from services.cad_import.convert.planar import HEAD_REASON_TEXT
+            row["why_text"] = HEAD_REASON_TEXT.get(str(why), str(why))
+        except Exception:  # noqa: BLE001 — 문구가 없어도 갈래는 말한다
+            row["why_text"] = str(why)
+    return row
+
+
+# ★[두 화면 선정일치 §2-1] 손질이 덧붙였고 선정 계산은 모르는 칸.
+#
+#   `worst_k_heads` 가 내는 것은 «어느 헤드·어느 경로» 까지다. 어느 영역에서
+#   어느 급수원 기준으로 뽑았는지는 손질 화면이 알고 덧붙인 값이라, 최종
+#   선정으로 갈아 끼울 때 **함께 물려주지 않으면 화면이 조용히 다르게 그린다**
+#   (영역 사각형이 사라지고 급수원 이름이 빈다).
+_EDIT_ONLY_WORST_KEYS = ("zones", "sheet", "source_tag", "source_index",
+                         "candidates")
+
+
+def _adopt_final_worst(sess: dict, got: dict) -> dict | None:
+    """[§2-1] 표에 **실제로 들어간 선정**을 세션의 선정으로 삼는다.
+
+    두 화면이 다른 헤드를 그리던 원인은 선정이 두 벌이었기 때문이다:
+
+        평면에서 보기   sess["worst"]        ← 손질이 고른 K개
+        수리계산 표     got["worst"]         ← 못 붙는 것을 다음 순위로 채운 K개
+
+    채우는 동작 자체는 옳다(기준개수 K를 지킨다 · `a44ec64`). 잘못은 그
+    결과를 **아무도 화면에 돌려주지 않은 것**이다. 그래서 여기서 한 곳으로
+    모은다 — 세울 계약은 한 줄이다:
+
+        「평면에서 보기」가 그리는 corridor·선정 헤드는 표에 실제로 들어간
+        선정과 언제나 같은 집합이다. 표가 아직 없으면 손질 선정을 그린다.
+
+    ★손질 원본은 `sess["worst_edit"]` 에 **한 번만** 접어 둔다. 두 번째
+      build 는 이미 최종 선정을 받으므로(멱등) 원본을 덮어쓰면 안 된다 —
+      덮으면 「사람이 고른 것」이 영영 사라진다.
+    ★`worst_rev` 를 지운다. `_edit_state` 는 지문이 같으면 corridor 를 안
+      싣는데(1KB 규약), 안 지우면 화면이 옛 망을 그대로 들고 있는다.
+    """
+    fin = got.get("worst")
+    if not isinstance(fin, dict) or not fin.get("heads"):
+        return None
+    prev = dict(sess.get("worst") or {})
+    # 접어 두는 것은 «사람이 고른 것» 뿐이다. 두 번째 확정의 `prev` 는 이미
+    # 표에서 온 선정이므로(from_design) 그것을 원본이라 부르면 안 된다.
+    if prev and not prev.get("from_design") and not sess.get("worst_edit"):
+        sess["worst_edit"] = prev
+    base = sess.get("worst_edit") or prev
+    out = dict(fin)
+    for k in _EDIT_ONLY_WORST_KEYS:
+        if k in base:
+            out[k] = base[k]
+    # ★«표에서 온 선정» 이라는 표시는 **선정 자신이** 든다. `worst_edit` 의
+    #   유무로 미루면, 손질에서 최불리를 안 누른 세션(원본이 없다)에서 화면이
+    #   「표와 같은 선정」을 그리면서 아니라고 말하게 된다.
+    out["from_design"] = True
+    sess["worst"] = out
+    sess.pop("worst_rev", None)
+    n_sw = len(set(prev.get("heads") or ()) - set(out.get("heads") or ()))
+    if n_sw:
+        print(f"[두 화면] 평면 보기의 선정을 표와 맞췄습니다 — 바뀐 헤드 {n_sw}개"
+              f" (손질 원본은 그대로 두고 있습니다).")
+    return out
+
+
+def _worst_handoff_note(got: dict, picked: list, k_use: int, k_cfg: int,
+                        filled: int = 0, board=None,
+                        reasons: dict | None = None) -> dict:
     """[최불리 인계] 손질 선정을 **어떻게 받았는지** 한 자리에 적는다.
 
     조용히 다르게 동작하는 갈래를 두지 않는다(지시서 §2-3·§2-4·§2-5). 세 가지를
@@ -225,9 +317,15 @@ def _worst_handoff_note(got: dict, picked: list, k_use: int, k_cfg: int) -> dict
 
       · 손질에서 최불리를 안 눌렀다 → 도면 전체에서 뽑았다는 사실
       · 손질이 고른 것 중 전개가 **못 붙인** 헤드가 있다 → 개수와 목록
-        ★다른 헤드로 채우지 않는다. 채우면 사람이 고른 것이 아닌 것이 산출에
-          들어간다(S340 · D-F10-3).
       · K 가 세션과 어긋나 손질 값을 썼다
+
+    ★[두 화면 선정일치 §2-2] «채웠다» 를 말한다. 종전에는 `got["_filled"]`
+      에 담기만 하고 **읽는 곳이 0곳**이었고, 이 함수의 문구는 그때에도
+      「다른 헤드로 채우지 않았습니다」였다 — 채워 놓고 그렇게 적었다.
+      프로그램이 옳은 일(K 유지)을 하면서 그 사실을 숨긴 것이 사용자가
+      「위상이 깨졌다」로 읽은 이유다.
+
+      `filled == 0` 이면 문구는 종전 그대로다(채우지 않았으므로 참이다).
     """
     note: dict = {"picked": len(picked), "k": k_use,
                   "candidates": got.get("candidate_heads"),
@@ -245,6 +343,32 @@ def _worst_handoff_note(got: dict, picked: list, k_use: int, k_cfg: int) -> dict
                 f"손질에서 고른 {len(picked)}개 중 {lost}개는 전개가 배관에 "
                 f"붙이지 못했습니다 — 손질에서 그 헤드의 배관을 이어 주세요. "
                 f"(다른 헤드로 채우지 않았습니다)")
+        # ★[§2-2] 실제 교체를 **두 집합의 차**로 낸다 — 새로 세지 않는다.
+        #   개수가 같은 채로 알맹이만 바뀔 수 있어(실측 30개 중 4개) 수만
+        #   보고는 아무도 눈치채지 못한다.
+        #   ★교체가 **없으면 칸 자체를 안 만든다.** 없는 일을 0 으로 적으면
+        #     응답이 달라지고, 「교체 없는 세션은 종전과 한 바이트도 안
+        #     다르다」는 기준(§4 기준 4)이 깨진다.
+        fin = [int(i) for i in ((got.get("worst") or {}).get("heads") or ())]
+        if fin:
+            keep, want = set(fin), {int(i) for i in picked}
+            out_rows = [_head_row(i, board, reasons)
+                        for i in picked if int(i) not in keep]
+            in_rows = [_head_row(i, board, None)
+                       for i in fin if i not in want]
+            if out_rows or in_rows:
+                note["swapped_out"] = out_rows
+                note["swapped_in"] = in_rows
+        if filled > 0:
+            note["filled"] = int(filled)
+            # 못 붙는 헤드가 있었으므로 «후보 범위» 로 바꿔 채웠다. 그 수는
+            # `cand`(후보 범위 ∩ 붙는 헤드)가 아니라 채운 수 그대로다.
+            note["not_attachable"] = int(filled)
+            msgs.append(
+                f"손질에서 고른 {len(picked)}개 중 {filled}개는 전개가 배관에 "
+                f"붙이지 못해 같은 규칙(유하거리 긴 순서)으로 다음 순위 "
+                f"{filled}개를 채웠습니다 — 기준개수 {k_use}는 지켰습니다. "
+                f"빠진 자리는 도면에 표시했습니다.")
         if k_use != k_cfg:
             msgs.append(f"기준개수를 손질 값 {k_use}로 맞췄습니다 "
                         f"(설정에는 {k_cfg}이 남아 있었습니다).")
@@ -261,8 +385,10 @@ def _handoff_after_table(got: dict, tbl, board) -> None:
     되짚어 «어느 헤드가 빠졌는지» 까지 남긴다 — 개수만 세면 사람은 어디를
     고쳐야 할지 모른다.
 
-    ★다른 헤드로 채우지 않는다. 채우면 사람이 고른 것이 아닌 것이 산출에
-      들어간다(S340 · D-F10-3).
+    ★여기서 «채운다» 를 하지 않는다. 채우는 자리는 한 곳(`/design/build` 의
+      백필)이고, 그때는 §2-2 가 무엇이 바뀌었는지 목록으로 말한다. 여기까지
+      와서 수가 모자란 것은 **채우지 않은** 결손이므로 그렇게 적는다
+      (S340 · D-F10-3).
     """
     note = got.get("handoff") or {}
     if not note.get("from_edit"):
@@ -276,7 +402,13 @@ def _handoff_after_table(got: dict, tbl, board) -> None:
     note["in_table"] = n_noz
     lost = picked_n - n_noz
     note["missing"] = max(0, lost)
-    if lost <= 0:
+    # ★[§2-2] **개수가 같아도** 알맹이가 바뀌었으면 지나가지 않는다.
+    #
+    #   종전에는 `lost <= 0` 하나로 막혔다. 그런데 다음 순위로 채우면 표의
+    #   노즐 수는 K 그대로라 lost 가 0 이 되고, 「손질이 고른 30개 중 4개가
+    #   빠지고 다른 4개가 들어온」 사실이 여기서 통째로 조용해졌다.
+    swapped = int(note.get("filled") or 0)
+    if lost <= 0 and not swapped:
         got["handoff"] = note
         return
 
@@ -311,6 +443,14 @@ def _handoff_after_table(got: dict, tbl, board) -> None:
             else:
                 used.add(best)
     note["missing_heads"] = miss[:40]
+    if lost <= 0:
+        # 개수는 K 그대로다 — 교체가 있었을 뿐이고, 그 사실은 §2-2 가 이미
+        # `swapped_out`/`swapped_in` 으로 말한다. 여기서는 **표를 보고 다시
+        # 센 결과**만 적어 둔다. 두 수가 어긋나면 원인이 하나 더 있다는 뜻이라
+        # 그때 이 값이 그것을 가리킨다(빠진 자리를 좌표로 되짚은 수).
+        note["missing_by_table"] = len(miss)
+        got["handoff"] = note
+        return
     # ★이유를 **가른다.** 종전에는 전부 「배관이 끊겼다」로 적었는데, 실측에서
     #   그 헤드는 끊긴 것이 아니라 **다른 헤드와 같은 자리에 겹쳐** 있었다
     #   (대명동 (260307.6,−228066.2) · 전체망에서는 21개). 틀린 이유를 적으면
@@ -376,15 +516,22 @@ def _summary(got: dict, tbl) -> dict:
     }
 
 
-def _classify_excluded(sess: dict, got: dict, board) -> dict:
-    """[F-5] 빠진 헤드를 세 갈래로 가른다 — «제외 2,864» 를 숫자로 쪼갠다.
+def _classify_excluded(sess: dict, got: dict, board, probe=None) -> dict:
+    """[F-5] 빠진 헤드를 네 갈래로 가른다 — «제외 2,864» 를 숫자로 쪼갠다.
 
         찍히지 않음     A 후보인데 board 에 없는 것 (suggest 를 돌린 세션만)
         이음 끊김       board 물길은 닿는데 전개가 못 붙인 것 (B4 부착 실패)
         물길 미도달     board 물길 자체가 안 닿는 것 (이음 끊김의 상류)
+        고른 것 중 빠짐 손질이 골랐는데 이번 표에 못 들어간 것 (§2-3)
 
     좌표를 함께 돌려준다 — 화면이 분류별로 켜고 끌 수 있어야 어디를 이어야
     하는지 보인다. 숫자만 주면 «크다» 만 알고 «어디» 를 모른다.
+
+    ★`probe` 를 받으면 **다시 재지 않는다.** 이 함수는 종전에 제 손으로
+      `attachable_heads` 를 불렀는데 그것이 곧 **전체망 전개 한 번**이다
+      (B1F 실측 117초). 같은 잡이 몇 줄 위에서 이미 쟀고(`attach.wet_heads`),
+      게다가 여기 호출은 `selected_source` 를 안 넘겨 **다른 급수원 기준**의
+      답이 나올 수 있었다 — 화면의 사유가 표와 다른 말을 하는 자리였다.
     """
     disks = getattr(board, "disks", []) or []
     total = len(disks)
@@ -396,12 +543,15 @@ def _classify_excluded(sess: dict, got: dict, board) -> dict:
         wet_board = None
     # 전개가 붙일 수 있는 헤드 — 엔진의 공개 probe 를 그대로 쓴다.
     attach = None
+    reasons: dict = {}
     try:
-        from services.cad_import.design.restrict import attachable_heads
-        es = sess.get("edit")
-        probe = attachable_heads(es.convert_payload())
+        if probe is None:
+            from services.cad_import.design.restrict import attachable_heads
+            es = sess.get("edit")
+            probe = attachable_heads(es.convert_payload())
         if probe.get("ok"):
             attach = set(probe.get("wet") or ())
+            reasons = dict(probe.get("reason") or {})
     except Exception as exc:  # noqa: BLE001
         print(f"[설계] 부착 probe 실패 — 이음 끊김을 못 가른다: {exc}")
 
@@ -416,6 +566,27 @@ def _classify_excluded(sess: dict, got: dict, board) -> dict:
         if attach is not None:
             unatt = [i for i in wet_board if i not in attach and i < total]
             out["unattached"] = {"n": len(unatt), "xy": [xy(i) for i in unatt]}
+            if reasons:
+                # [§2-4] 「이음 끊김」 안에서도 갈래가 다르다 — 이을 것이 있는
+                #   자리와 없는 자리(문양·스침)를 한 덩이로 세면 사람을 헛걸음
+                #   시킨다. 수만 낸다(자리는 아래 «고른 것 중 빠짐» 이 짚는다).
+                by: dict = {}
+                for i in unatt:
+                    w = reasons.get(i) or reasons.get(str(i))
+                    if w:
+                        by[str(w)] = by.get(str(w), 0) + 1
+                if by:
+                    out["unattached"]["why"] = by
+    # ★[§2-3] «손질이 골랐는데 이번 표에 못 들어간 헤드» 를 따로 켠다.
+    #
+    #   `unattached` 는 도면 전체가 대상이라 수백 개가 될 수 있다(B1F 실측).
+    #   사람이 볼 것은 «내가 고른 30개 중 빠진 4개» 다 — 그 넷이 수백 개
+    #   사이에 묻히면 켜도 못 찾는다. 세는 자는 이미 `handoff` 가 갖고 있다.
+    sw = [r for r in ((got.get("handoff") or {}).get("swapped_out") or ())
+          if r.get("xy")]
+    if sw:
+        out["swapped_out"] = {"n": len(sw), "xy": [r["xy"] for r in sw],
+                              "rows": sw}
     # 찍히지 않음 — suggest 후보 중 어느 board 헤드와도 250mm 안에 없는 것.
     cands = sess.get("suggest")
     if cands:
@@ -710,6 +881,14 @@ def register(app, *, UPLOAD_DIR):
                 wet = set(probe.get("wet") or ())
                 short = len(only & wet) if wet else 0
                 if wet and short < k_use:
+                    if not cfg.get("fill_short", True):
+                        # [§2-5] 사람이 «채우지 마라» 를 골랐다 — 조용히 줄이지
+                        #   않고 **막고 말한다**(K 미달은 설계면적이 아니다).
+                        return {"ok": False, "error": (
+                            f"고른 {k_use}개 중 {k_use - short}개를 전개가 배관에"
+                            f" 붙이지 못합니다. 「모자라면 다음 순위로 채우기」를"
+                            f" 꺼 두셨으므로 멈춥니다 — 손질에서 그 헤드의 배관을"
+                            f" 잇거나, 그 설정을 켜세요.")}
                     pool = sess.get("worst_cand")
                     only = (set(pool) & wet) if pool else None
                     filled = k_use - short
@@ -720,11 +899,17 @@ def register(app, *, UPLOAD_DIR):
             got = select_and_expand(payload, es.board, k=k_use,
                                     selected_source=sel, only_heads=only,
                                     probe=probe)
-            got["_filled"] = filled
+            # [§2-2] 종전의 `got["_filled"]` 는 **읽는 곳이 0곳**인 죽은 값이었다
+            #   — 채워 놓고 아무도 말하지 않은 그 침묵의 증거다. 이제 이 값은
+            #   `handoff["filled"]` 한 곳에만 담는다(두 벌이면 언젠가 갈린다).
             if not got.get("ok"):
                 return {"ok": False, "error": got.get("error")}
+            # [§2-2] «채웠다» 와 «무엇이 바뀌었나» 를 여기서 함께 적는다 —
+            #   `filled` 은 종전에 `got["_filled"]` 로만 담겨 읽는 곳이 0곳
+            #   이었다. 사유(`probe["reason"]`)는 전개가 이미 가른 것이다.
             got["handoff"] = _worst_handoff_note(
-                got, picked, k_use, int(cfg["k"]))
+                got, picked, k_use, int(cfg["k"]), filled=filled,
+                board=es.board, reasons=probe.get("reason"))
             got["_picked"] = picked      # 표를 보고 다시 셀 때 쓴다(§2-3)
             texts = _dia_texts(sess)
             # [F-11d] 직접 입력을 **이번 계산의 이름으로 번역**한다. 세션에는
@@ -778,6 +963,10 @@ def register(app, *, UPLOAD_DIR):
             #   그 하나를 조용히 넘기면 사람은 12개로 계산된 줄 안다. 그리고
             #   **다른 헤드로 채우지 않는다**(S340 · D-F10-3).
             _handoff_after_table(got, tbl, es.board)
+            # ★[§2-1] 표가 섰다 — 이제 «표에 실제로 들어간 선정» 이 확정이다.
+            #   평면 보기가 그것을 그리게 세션의 선정을 여기서 한 곳으로 모은다.
+            #   표가 못 서면(위 예외) 여기 못 오므로 옛 선정이 그대로 남는다.
+            _adopt_final_worst(sess, got)
             # ★[F-11d-2] 넘긴 것 중 «엔진이 실제로 쓴 것» 을 맞대 본다.
             #   자리가 corridor 에 남아 있어도 그 사이에 미해결이 아니게 됐으면
             #   값은 안 들어간다 — 그것도 «적용 못 한 수정» 이다. 개수만 세면
@@ -812,7 +1001,8 @@ def register(app, *, UPLOAD_DIR):
                       "조용히 버리지 않고 화면에 올린다")
             sess["ov_missed"] = fit_missed
             # 표는 메모리에만 — emit 을 눌러야 파일이 생긴다.
-            marks = _classify_excluded(sess, got, es.board)
+            # 탐침을 다시 돌리지 않는다 — 같은 잡이 위에서 이미 쟀다(117초).
+            marks = _classify_excluded(sess, got, es.board, probe=probe)
             sess["design"] = {"got": got, "tables": tbl, "k": cfg["k"],
                               "schedule": cfg["schedule"], "marks": marks}
             s = _summary(got, tbl)
@@ -824,7 +1014,13 @@ def register(app, *, UPLOAD_DIR):
                   + " · ".join(f"{lab} {det[k2]:,}" for k2, lab in
                                (("dry", "물길 미도달"),
                                 ("unattached", "이음 끊김"),
-                                ("unpicked", "찍히지 않음")) if k2 in det))
+                                ("unpicked", "찍히지 않음"),
+                                ("swapped_out", "고른 것 중 빠짐")) if k2 in det))
+            # [§2-4] 빠진 헤드마다 **한 줄**. 개수만 적으면 사람은 어디를 어떻게
+            #   고쳐야 할지 모른다 — 갈래마다 고칠 자리가 다르다.
+            for r in ((got.get("handoff") or {}).get("swapped_out") or ())[:8]:
+                print(f"   · 빠진 헤드 {r.get('disk')} {r.get('xy')} — "
+                      f"{r.get('why_text') or r.get('why') or '사유 미상'}")
             print(f"[설계] 표 확정 · 헤드 {s['k']} · 최원 {s['far_m']} m · "
                   f"배관 {s['counts']['pipes']} · 제외 {s['excluded_heads']:,}")
             return {"ok": True, "summary": s}

@@ -587,6 +587,12 @@
           <option value="mid">표고 중앙</option></select></label>
       <label class="f"><span>헤드 스텁 길이 (%)</span>
         <input type="number" id="dg-stub" value="2.5" min="0.5" max="10" step="0.5"></label>
+      <!-- [두 화면 선정일치 §2-5] 기준개수 K 유지와 「사람이 고른 것만 쓴다」가
+           부딪히는 자리다. 종전에는 코드가 말없이 전자를 골랐다 — 이제 사람이
+           고른다. 기본은 지금 동작(채움)이라 켠 채로 두면 산출이 안 바뀐다. -->
+      <label class="chk"><input type="checkbox" id="dg-fill" checked>
+        <span>모자라면 <b>다음 순위로 채우기</b> — 고른 헤드 중 배관에 못 붙는
+          것이 있어도 기준개수 K를 지킨다 (끄면 그 자리에서 멈추고 알린다)</span></label>
 
       <div class="row" style="margin-top:12px" id="dg-build-row">
         <button id="dg-build" class="go">표 확정 (최불리 → 5표)</button>
@@ -645,6 +651,12 @@
         <span><span style="color:#eab308">●</span> 이음 끊김(부착 실패)</span></label>
       <label class="chk"><input type="checkbox" id="dg-mk-unpicked">
         <span><span style="color:#a855f7">●</span> 찍히지 않음(후보 제안 대비)</span></label>
+      <!-- [두 화면 선정일치 §2-3] «이음 끊김» 은 도면 전체가 대상이라 수백
+           개가 될 수 있다. 사람이 볼 것은 «내가 고른 K개 중 빠진 것» 이라
+           그것만 따로 켠다 — 수백 개 사이에 묻히면 켜도 못 찾는다. -->
+      <label class="chk"><input type="checkbox" id="dg-mk-swap">
+        <span><span style="color:#f43f5e">●</span> 고른 것 중 빠짐(다음 순위로 채운 자리)</span></label>
+      <div id="dg-swap-why" class="hint"></div>
 
       <h2 style="margin-top:12px">표</h2>
       <div class="row">

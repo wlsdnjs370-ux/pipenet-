@@ -53,8 +53,8 @@
     },
     "worst_kfp": {
       "k": 10,
-      "nodes": 67,
-      "pipes": 66
+      "nodes": 79,
+      "pipes": 78
     },
     "design": {
       "sdf": "1. 입력도면 대명동 단위세대 평면도_수리계산입력.sdf"

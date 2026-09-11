@@ -91,8 +91,14 @@ def test_모자라지_않으면_손질_선정을_그대로_쓴다():
     i = s.index("filled = 0")
     seg = s[i:i + 1200]
     # 채우는 갈래는 `short < k_use` 안에서만 `only` 를 바꾼다.
+    #
+    # ★창을 400 → 900 으로 넓혔다(2026-09-10). 그 사이에 §2-5 의 「채우지
+    #   않기」 갈래가 들어와 확인할 줄이 창 밖으로 밀렸다. 지키려는 것은
+    #   «조건 안에서만 바꾼다» 이지 «몇 자 안에 있다» 가 아니다 —
+    #   창 크기가 시험의 참·거짓을 가르면 안 된다(같은 이유로 인계 시험도
+    #   한 번 넓혔다).
     j = seg.index("if wet and short < k_use:")
-    assert "only = (set(pool) & wet) if pool else None" in seg[j:j + 400]
+    assert "only = (set(pool) & wet) if pool else None" in seg[j:j + 900]
     assert seg[:j].count("only =") == 0, "조건 밖에서 후보를 갈아치운다"
 
 

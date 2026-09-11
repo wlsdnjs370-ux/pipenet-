@@ -42,6 +42,23 @@ from services.pipenet_import import _ensure_default_libraries
 
 SOURCE_SELECTION_REQUIRED = "source_selection_required"
 
+# [두 화면 선정일치 §2-4] 헤드가 «표에 제 노즐로» 못 오는 사유 — 한 벌만 둔다.
+#
+#   사람이 고친다면 고칠 자리가 갈래마다 **다르다**. 「배관을 이어 주세요」로
+#   뭉뚱그리면 이을 것이 없는 자리(겹침·문양)에 사람을 보내게 된다 — 실측으로
+#   한 번 그랬다(`_handoff_after_table` 의 겹침 갈래가 그 흔적이다).
+#
+#   문구를 여기(판정이 사는 곳)에 두는 이유는 화면과 서버가 같은 말을 하게
+#   하기 위해서다. 화면은 이 표를 응답으로 받아 그대로 읽는다.
+HEAD_REASON_TEXT = {
+    "dry": "급수원 물길이 안 닿습니다 — 그 가지가 급수원까지 안 이어져 있습니다",
+    "no_center": "헤드에 닿는 배관 노드가 없습니다 — 중심에도 테두리에도",
+    "center_dry": "중심 노드는 있는데 물길 밖입니다 — 그 가지가 안 젖었습니다",
+    "chord_only": "테두리 양끝이 다 원 위입니다 — 헤드 기호의 가로막대라 팔이 아닙니다",
+    "pass_under": "관이 헤드를 스쳐 지나가기만 합니다 — 상향식이 아니라 안 붙였습니다",
+    "shared": "다른 헤드와 같은 자리라 표에서 하나로 합쳐졌습니다",
+}
+
 KEY = "MF101_흰색점선범위"
 OUT = os.path.join(os.path.expanduser("~"), "Desktop", f"{KEY}_유저정리5.kfp")
 
@@ -642,8 +659,11 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
     # ★헤드 접속 완성 [2026-08-13 오너] — 편집 최종망은 헤드가 «중심 노드»로
     #   연결된 상태다(보드와 같은 SSOT·idempotent). 변환은 그 확정을 읽기만
     #   하고, 아래에서 «중심 최단» 재선정을 하지 않는다.
+    # [§2-4] `attach_why` 는 «못 이은 사유» 를 받아 오는 빈 그릇이다. 판정은
+    #   그대로고, 이미 갈린 자리에서 이름표만 딴다(flow.attach_heads_center).
+    attach_why: dict = {}
     pts, edges, head_centers, n_wire, multi_arm = fw.attach_heads_center(
-        pts, edges, hcov)
+        pts, edges, hcov, why=attach_why)
     if n_wire or multi_arm:
         print(f"헤드 중심접속 완성: 새 연결 {n_wire}"
               f" · 팔 박빙 {len(multi_arm)}곳")
@@ -668,6 +688,10 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
     wet_head_idx: list = []      # [G2] 물닿음으로 인정된 hcov 인덱스
     # ★다른 헤드와 «같은 중심 노드» 를 문 hcov 인덱스 — 표에는 하나만 남는다.
     shared_head_idx: list = []
+    # [§2-4] 헤드마다 «표에 제 노즐로 못 오는 사유» 한 줄. 여섯 갈래는
+    #   HEAD_REASON_TEXT 에 적혀 있고, 여기서는 **이미 갈린 자리에서 이름표만**
+    #   딴다 — 새 판정을 만들면 규칙이 두 벌이 되고 언젠가 갈린다.
+    head_reason: dict = {}
     for _h_i, ((hx, hy, _hr), ctr, ns, kind) in enumerate(zip(
             hcov, head_centers, hnodes, kinds_aligned)):
         vid = None
@@ -683,6 +707,16 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
                           + (pts[n][1] - hy) ** 2)
         if vid is None:
             n_dry_head += 1
+            # [§2-4] **왜** 못 붙었나. 위 세 갈래가 이미 답을 갖고 있다:
+            #   중심 노드가 있는데 여기 왔다면 그 노드가 물길 밖이고(center_dry),
+            #   중심이 없는데 테두리 노드가 다 마른 것이면 물이 안 온 것이며(dry),
+            #   그 밖은 접속 자체가 없던 것이라 attach 단계가 이미 갈라 놨다.
+            if ctr is not None:
+                head_reason[_h_i] = "center_dry"
+            elif ns and not any(n in reach for n in ns):
+                head_reason[_h_i] = "dry"
+            else:
+                head_reason[_h_i] = attach_why.get(_h_i) or "no_center"
             continue
         # ★★같은 노드를 두 헤드가 물면 **하나가 조용히 덮인다.**
         #
@@ -698,6 +732,9 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         #   헤드가 하나인 도면에서 유량이 두 배가 된다. **세어서 말한다**(S340).
         if vid in head_vid:
             shared_head_idx.append(_h_i)
+            # 붙기는 붙었다 — 다만 표에는 하나만 남는다. «못 온 사유» 를 묻는
+            # 쪽에서는 이것도 한 갈래다(§2-4 의 여섯 번째).
+            head_reason[_h_i] = "shared"
         head_vid[vid] = (hx, hy)
         head_kind_by_vid[vid] = kind
         # [G2] 이 전개가 «물닿음» 으로 인정한 hcov 번호. 최불리 선정이 board 의
@@ -707,6 +744,14 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         wet_head_idx.append(_h_i)
     print(f"헤드: 물닿음 {len(head_vid)} · 마른/미부착 {n_dry_head}"
           f" · 중심접속 {n_center}")
+    if head_reason:
+        # [§2-4] 「배관이 끊겼다」 한 문장으로 뭉뚱그리지 않는다 — 갈래마다
+        #   고치는 자리가 다르다(물길·찍기·도면 기호).
+        _cnt: dict = {}
+        for _v in head_reason.values():
+            _cnt[_v] = _cnt.get(_v, 0) + 1
+        print("  헤드가 표에 못 오는 사유 — "
+              + " · ".join(f"{k} {v}" for k, v in sorted(_cnt.items())))
     if shared_head_idx:
         _sxy = [(round(hcov[i][0], 1), round(hcov[i][1], 1))
                 for i in shared_head_idx[:6]]
@@ -1111,6 +1156,9 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         # ★같은 중심 노드를 나눠 문 헤드 — 표에는 하나만 남는다. 화면이
         #   「평면에서 지정한 헤드가 빈다」의 이유를 말할 수 있게 내보낸다.
         "shared_head_idx": shared_head_idx,
+        # [§2-4] 헤드가 표에 못 오는 사유 {hcov 번호: 갈래}. 문구는
+        #   HEAD_REASON_TEXT 에 한 벌만 있다. 계산에는 쓰지 않는다 — .kfp 불변.
+        "head_reason": head_reason,
         # [신축배관 접기] 길이를 «좌표가 아니라 선언» 에서 받은 배관. 좌표 거리와
         # 표 length 가 다른 것이 **정상인 부류** 라, 검사가 그것을 알아봐야 한다.
         "declared_pipes": declared_pipes,

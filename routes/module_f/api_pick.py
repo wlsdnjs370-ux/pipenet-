@@ -470,6 +470,9 @@ def register(app):
             #   새 판 위에서 다시 선다. 조용히 버리지 않고 말한다.
             if sess.get("worst"):
                 sess["worst"] = None
+                # 수리계산이 접어 둔 «손질 원본» 도 같은 이유로 무효다 —
+                # 그 안의 헤드 번호 역시 옛 판을 가리킨다(§2-1).
+                sess["worst_edit"] = None
                 sess["worst_zones"] = []
                 sess["water_path"] = None
                 print("[찍기] ★찍기를 다시 했으므로 옛 최불리 선정을 버립니다"

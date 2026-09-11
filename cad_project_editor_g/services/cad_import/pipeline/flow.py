@@ -542,7 +542,7 @@ def head_nodes(pts, hcov, tol=None, edges=None, upright=()):
     return out
 
 
-def attach_heads_center(pts, edges, hcov, tol=None):
+def attach_heads_center(pts, edges, hcov, tol=None, why=None):
     """헤드 접속 «완성» — 편집 최종망의 헤드를 중심 노드로 확정한다.
 
     [2026-08-13 오너] 유저편집이 끝난 망은 kfp 와 같이 «헤드 = 중심 노드,
@@ -568,6 +568,18 @@ def attach_heads_center(pts, edges, hcov, tol=None):
       centers[i] = i번째 헤드의 중심 노드 or None
       n_wire     = 이번에 새로 이은 끝→중심 수
       multi      = 끝이 박빙(당선·차선 차 < ARM_TIE)이던 헤드 인덱스 목록 (보고용)
+
+    ★`why` 에 dict 를 주면 **못 이은 헤드마다 사유**를 적어 준다(두 화면
+      선정일치 지시서 §2-4). 판정은 한 글자도 바꾸지 않는다 — 위 ①②③ 이
+      이미 가르고 있는 자리에서 **이름표만** 딴다:
+
+          no_center   중심에도 테두리에도 «간선 달린» 노드가 없다
+          chord_only  테두리 끝이 있었지만 양끝이 다 원 위였다(문양·가로막대)
+          pass_under  테두리에 노드는 있는데 «선이 끝나는» 자리가 아니다
+                      — 관이 헤드를 스쳐 지나간다(상향식만 이 문을 연다)
+
+      안 주면(기본) 종전과 완전히 같다. 사유를 여기서 내는 이유는 이 판정이
+      여기에만 있기 때문이다 — 밖에서 다시 세면 규칙이 두 벌이 된다.
     """
     tol = HEAD_TOUCH if tol is None else float(tol)
     pts2 = list(pts)
@@ -585,6 +597,7 @@ def attach_heads_center(pts, edges, hcov, tol=None):
         lim = hr + tol
         near = set(gnear(ng, 500.0, hx, hy, rings=1 + int(lim // 500)))
         ctr, ends = [], []
+        n_chord = n_pass = 0          # [§2-4] 사유용 셈 — 판정에는 안 쓴다
         for n in near:
             if not nbr.get(n):
                 continue
@@ -595,13 +608,22 @@ def attach_heads_center(pts, edges, hcov, tol=None):
                 o = next(iter(nbr[n]))
                 do = math.hypot(pts2[o][0] - hx, pts2[o][1] - hy)
                 if abs(do - hr) <= 2.0:
+                    n_chord += 1
                     continue    # 현(양끝이 테두리) = 문양 — 팔이 아니다
                 ends.append((d, n))
+            elif abs(d - hr) <= tol:
+                # 테두리에 노드는 있는데 «선이 끝나는» 자리가 아니다 — 관이
+                # 헤드를 스쳐 지나간다. 종전에도 여기는 그냥 흘려보냈다(위
+                # elif 의 `len(nbr[n]) == 1` 이 거짓인 자리). 세기만 한다.
+                n_pass += 1
         if ctr:
             centers.append(min(ctr)[1])
             continue
         if not ends:
             centers.append(None)
+            if why is not None:
+                why[di] = ("chord_only" if n_chord and not n_pass else
+                           "pass_under" if n_pass else "no_center")
             continue
         if len(ends) > 1:
             ds = sorted(d for d, _n in ends)

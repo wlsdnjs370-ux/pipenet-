@@ -2847,8 +2847,13 @@
       out += kv('<span class="warn">최불리 선정</span>',
                 `손질에서 정하지 않아 도면 전체에서 ${h.k}개를 뽑았습니다`);
     } else {
-      out += kv("최불리 선정",
-                `손질에서 고른 ${h.picked}개를 그대로 받았습니다`
+      // ★[§2-2] 채웠으면 채웠다고 적는다. 종전 문구는 «그대로 받았습니다» 로
+      //   고정이라, 4개가 바꿔치기된 세션에서도 그렇게 말했다.
+      out += kv(h.filled ? '<span class="warn">최불리 선정</span>' : "최불리 선정",
+                (h.filled
+                  ? `손질에서 고른 ${h.picked}개 중 ${h.filled}개를 다음 순위로`
+                    + ` 채웠습니다 (기준개수 ${h.k} 유지)`
+                  : `손질에서 고른 ${h.picked}개를 그대로 받았습니다`)
                 + (h.in_table != null ? ` (표에 ${h.in_table}개)` : ""));
     }
     if (h.missing) {
@@ -2866,8 +2871,27 @@
         (m) => `(${Math.round(m.xy[0])}, ${Math.round(m.xy[1])})`);
       if (xy.length) out += kv("그 자리", esc(xy.slice(0, 6).join(" · ")));
     }
+    // ★[§2-2] 개수가 같은 채로 «알맹이» 가 바뀐 자리 — 실측 30개 중 4개.
+    //   수만 보면 아무도 눈치채지 못하므로 빠진 헤드를 자리와 사유까지 적는다.
+    const so = h.swapped_out || [], si = h.swapped_in || [];
+    if (so.length || si.length) {
+      out += kv('<span class="warn">바뀐 헤드</span>',
+                `손질이 골랐는데 빠진 것 <b>${so.length}</b>`
+                + ` · 대신 채운 것 <b>${si.length}</b>`
+                + " — 아래 «제외 사유 보기»의 «고른 것 중 빠짐» 을 켜면"
+                + " 도면에서 그 자리가 보입니다");
+      for (const r of so.slice(0, 6)) {
+        const at = r.xy ? `(${Math.round(r.xy[0])}, ${Math.round(r.xy[1])})`
+                        : `헤드 ${r.disk}`;
+        out += kv("· 빠진 헤드",
+                  esc(at) + " — " + esc(r.why_text || r.why || "사유 미상"));
+      }
+      if (so.length > 6) out += kv("·", `그 밖 ${so.length - 6}곳`);
+    }
     for (const m of (h.messages || [])) {
       if (h.missing && m.indexOf("표에 오지 못했습니다") >= 0) continue;
+      // 채움은 바로 위에서 «자리와 사유» 까지 적었다 — 같은 말을 두 번 안 한다.
+      if (h.filled && m.indexOf("다음 순위") >= 0) continue;
       out += kv("·", esc(m));
     }
     return out;
@@ -4221,6 +4245,8 @@
       head_stub_pct: Number($("dg-stub").value || 2.5),
       // [§29] 신축배관 — 빈 값이면 «안 함». 켜면 산출값이 달라지므로 사람이 고른다.
       fx_profile: $("dg-fx").value,
+      // [§2-5] 못 붙는 헤드를 다음 순위로 채울지. 기본은 켬(= 지금 동작).
+      fill_short: $("dg-fill").checked,
     };
   }
 
@@ -4370,6 +4396,7 @@
     if (!S.boreAllowed) await loadBoreOv();
     renderIssues();
     renderIsoNote();
+    renderSwapWhy();      // [§2-4] 빠진 헤드 사유 — 체크박스 바로 밑에
     // ★«아직 확정 안 함» 은 오류가 아니라 상태다(서버가 200 · view:null 로
     //   답한다). 그릴 것이 없으면 여기서 조용히 멈춘다 — 화면은 「표 확정」
     //   단추가 선 채로 남는다.
@@ -5989,7 +6016,7 @@
   // ── [F-5] 설계 제외 사유 토글 ──
   function designMarksOn() {
     return $("dg-mk-dry").checked || $("dg-mk-unatt").checked
-      || $("dg-mk-unpicked").checked;
+      || $("dg-mk-unpicked").checked || $("dg-mk-swap").checked;
   }
 
   function drawDesignMarks() {
@@ -5998,19 +6025,38 @@
       ["dry", "dg-mk-dry", "#64748b"],
       ["unattached", "dg-mk-unatt", "#eab308"],
       ["unpicked", "dg-mk-unpicked", "#a855f7"],
+      // [§2-3] 손질이 골랐는데 이번 표에 못 들어간 헤드. 같은 규약(원)이되
+      //   색으로 가른다 — 이 넷이 사용자가 빨간 펜으로 짚은 그 자리다.
+      ["swapped_out", "dg-mk-swap", "#f43f5e"],
     ];
     for (const [key, id, color] of draws) {
       if (!$(id).checked || !m[key]) continue;
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = key === "swapped_out" ? 2.2 : 1.4;
       for (const [x, y] of m[key].xy) {
         const px = sx(x), py = sy(y);
         ctx.beginPath();
-        ctx.arc(px, py, 5, 0, Math.PI * 2);
+        ctx.arc(px, py, key === "swapped_out" ? 8 : 5, 0, Math.PI * 2);
         ctx.stroke();
       }
     }
     ctx.lineWidth = 1;
+  }
+
+  /** [§2-4] 빠진 헤드마다 «왜» 를 한 줄로 — 갈래마다 고칠 자리가 다르다. */
+  function renderSwapWhy() {
+    const box = $("dg-swap-why");
+    if (!box) return;
+    const rows = ((S.design && S.design.marks
+                   && S.design.marks.swapped_out) || {}).rows || [];
+    if (!rows.length) { box.innerHTML = ""; return; }
+    const by = {};
+    for (const r of rows) {
+      const t = r.why_text || r.why || "사유 미상";
+      by[t] = (by[t] || 0) + 1;
+    }
+    box.innerHTML = Object.entries(by)
+      .map(([t, n]) => `<div>· ${esc(t)} — <b>${n}</b>곳</div>`).join("");
   }
 
   // ── [F-10e] 평면에서 보기 — 밑그림 + 그 자리 수정 ────────────────
@@ -6102,7 +6148,11 @@
     // 값은 손질의 select 하나뿐이다 — 여기는 그 얼굴이라 열 때마다 맞춘다.
     $("dg-plan-view").value = $("ed-worst-view").value;
     const n = (S.edit && S.edit.edits_since_worst) || 0;
-    $("dg-edits").textContent = `마지막 계산 후 수정 ${n}건`;
+    // [§2-1] 지금 그리는 망이 «표에 들어간 선정» 인지 말한다 — 같은 그림에
+    //   두 뜻이 있으면(손질이 고른 것 / 표가 쓴 것) 사람이 판단을 못 한다.
+    const w = (S.edit && S.edit.worst) || null;
+    $("dg-edits").textContent = `마지막 계산 후 수정 ${n}건`
+      + (w && w.from_design ? " · 지금 그리는 망 = 표와 같은 선정" : "");
     const mode = (S.edit && S.edit.mode) || "";
     for (const b of document.querySelectorAll(".dgmode")) {
       b.classList.toggle("on", b.dataset.mode === mode);
@@ -6187,7 +6237,8 @@
     draw();
   };
 
-  for (const id of ["dg-mk-dry", "dg-mk-unatt", "dg-mk-unpicked"]) {
+  for (const id of ["dg-mk-dry", "dg-mk-unatt", "dg-mk-unpicked",
+                    "dg-mk-swap"]) {
     $(id).onchange = () => {
       // 제외 사유는 손질 망(mm) 좌표다 — 켜면 그 좌표계로 화면을 맞춘다.
       fitDesignView();      // 같은 판단이 두 곳에 있으면 한쪽만 고쳐진다
@@ -6215,6 +6266,17 @@
           //   빠지면 배지가 남아 「저장했지만 아직 안 들어갔다」를 말한다.
           S.ovDirty = false;
           renderDesignSummary(sum);
+          // ★[두 화면 선정일치 §2-1] 표가 섰으면 «평면에서 보기» 도 **표에
+          //   들어간 선정**을 그린다. 서버가 세션 선정을 그것으로 맞추고
+          //   corridor 지문을 지웠으므로, 손질 상태를 한 번 다시 받아야 새
+          //   망이 화면에 온다. 안 받으면 서버는 맞췄는데 화면만 옛 그림을
+          //   들고 있어, 고친 것이 하나도 안 보인다.
+          //   (지문 규약 덕에 안 바뀐 블록은 안 실려 온다 — 실측 1KB 규약)
+          try {
+            const e = await api(`/api/module-f/edit/state?sid=${S.sid}`);
+            setEdit(e.state);
+            renderPlanUnderlay();
+          } catch (err) { say(err.message, "warn"); }
           await designPreview();
           say("표 확정 — 미리보기와 표는 저장될 값 그대로입니다."
             + " «평면에서 보기» 를 끄면 30° 아이소매트릭으로 바뀝니다."

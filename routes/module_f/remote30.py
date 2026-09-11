@@ -56,6 +56,11 @@ def _worst_view(sess: dict) -> dict | None:
         "sheet": w.get("sheet"),
         # [F-1] 어느 급수원 기준의 최불리인지 — 화면이 이것을 그대로 보여 준다.
         "source": w.get("source_tag"),
+        # ★[두 화면 선정일치 §2-1] 지금 그리는 것이 «표에 들어간 선정» 인가,
+        #   아직 «손질이 고른 것» 인가. 표를 확정하면 선정이 교체될 수 있으므로
+        #   (못 붙는 헤드를 다음 순위로 채운다) 화면이 어느 쪽을 보고 있는지
+        #   말해야 한다 — 같은 그림에 두 뜻이 있으면 사람이 판단을 못 한다.
+        "from_design": bool(w.get("from_design")),
         # 사람이 가둔 영역 — 다시 그릴 수 있게 그대로 돌려준다.
         "zones": [[_r1(v) for v in z] for z in (w.get("zones") or ())],
         "candidates": w.get("candidates", w["reachable"]),

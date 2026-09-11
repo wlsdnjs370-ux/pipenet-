@@ -371,6 +371,67 @@ def _adopt_final_worst(sess: dict, got: dict) -> dict | None:
     return out
 
 
+def _selection_sig(sess: dict) -> tuple:
+    """[표가 옛 것인가] «수리계산이 재료로 삼는 것» 의 지문.
+
+    표(그리고 아이소)는 «표 확정» 을 누른 그 순간의 선정·손질판으로 만들어진
+    사진이다. 그 뒤에 사람이 최불리를 다시 고르거나 손질을 고치면, 화면은
+    평면 보기만 새 것으로 바뀌고 **아이소는 옛 표를 계속 그린다.**
+
+    실측 2026-09-11: 최불리를 왼쪽 영역(K=8)으로 확정한 뒤 오른쪽 영역으로
+    다시 고르면, 평면 corridor 는 새 8개인데 표 노즐은 옛 8개 그대로였다 —
+    **겹치는 헤드 0개**. 화면은 아무 말도 안 했다. 사용자가 「최불리에서
+    등록한 배관망이 아이소에 반영이 안 된다」고 한 그 자리다.
+
+    지문에는 «표를 바꾸는 손잡이» 를 다 넣는다 — 하나라도 빠뜨리면 바뀐 판을
+    안 바뀌었다고 말하게 되고, 그것은 조용한 오답이다.
+    """
+    w = sess.get("worst") or {}
+    b = getattr(sess.get("edit"), "board", None)
+    board_rev = (
+        len(getattr(b, "pts", None) or ()),
+        len(getattr(b, "edges", None) or ()),
+        len(getattr(b, "disks", None) or ()),
+        len(getattr(b, "joins", None) or ()),
+        len(getattr(b, "deletes", None) or ()),
+        tuple(getattr(b, "sources", None) or ()),
+        tuple(getattr(b, "valves", None) or ()),
+        tuple(getattr(b, "disk_kinds", None) or ()),
+    )
+    return (
+        tuple(sorted(int(i) for i in (w.get("heads") or ()))),
+        str(w.get("source_tag") or ""),
+        w.get("sheet"),
+        tuple(tuple(round(float(v), 1) for v in r) for r in (w.get("zones") or ())),
+        board_rev,
+    )
+
+
+def _design_stale(sess: dict) -> dict | None:
+    """지금 화면의 표·아이소가 옛 것이면 «무엇이 달라졌는지» 를 돌려준다.
+
+    None 이면 최신이다. 조용히 두지 않는다 — 사람이 보는 그림이 제 결정과
+    다른데 화면이 말하지 않으면, 그 그림을 믿고 다음 결정을 한다.
+    """
+    d = sess.get("design")
+    if not d or d.get("sig") is None:
+        return None
+    old, now = d["sig"], _selection_sig(sess)
+    if old == now:
+        return None
+    why = []
+    if old[0] != now[0]:
+        gone = len(set(old[0]) - set(now[0]))
+        why.append(f"최불리 선정이 바뀌었습니다 (헤드 {len(old[0])} → "
+                   f"{len(now[0])}개 · 그중 {gone}개가 다른 헤드로)")
+    if old[1:4] != now[1:4]:
+        why.append("영역·급수원·도면 장 중 하나가 바뀌었습니다")
+    if old[4] != now[4]:
+        why.append("손질에서 배관망을 고쳤습니다")
+    return {"why": why or ["설정이 바뀌었습니다"],
+            "heads_now": len(now[0]), "heads_in_table": len(old[0])}
+
+
 def _worst_handoff_note(got: dict, picked: list, k_use: int, k_cfg: int,
                         filled: int = 0, board=None,
                         reasons: dict | None = None) -> dict:
@@ -1102,8 +1163,12 @@ def register(app, *, UPLOAD_DIR):
             # 표는 메모리에만 — emit 을 눌러야 파일이 생긴다.
             # 탐침을 다시 돌리지 않는다 — 같은 잡이 위에서 이미 쟀다(117초).
             marks = _classify_excluded(sess, got, es.board, probe=probe)
+            # ★표는 «이 순간의 선정·손질판» 으로 만든 사진이다. 그 순간의
+            #   지문을 함께 박아 둔다 — 뒤에 최불리를 다시 고르거나 손질을
+            #   고치면 화면이 「이 표는 옛 것」이라고 말할 수 있어야 한다.
             sess["design"] = {"got": got, "tables": tbl, "k": cfg["k"],
-                              "schedule": cfg["schedule"], "marks": marks}
+                              "schedule": cfg["schedule"], "marks": marks,
+                              "sig": _selection_sig(sess)}
             s = _summary(got, tbl)
             s["excluded_detail"] = {
                 k2: v2["n"] for k2, v2 in marks.items()
@@ -1495,6 +1560,10 @@ def register(app, *, UPLOAD_DIR):
             # [F-5] 제외 사유 분류 — mm 세계좌표. 설계 캔버스(정규화 좌표)가
             # 아니라 손질 망 위에 그려야 «어디» 인지 보인다.
             "marks": d.get("marks") or {},
+            # ★[표가 옛 것인가] 최불리를 다시 고르거나 손질을 고친 뒤 「표 확정」
+            #   을 안 누르면, 평면 보기는 새 망인데 아이소는 옛 표를 그린다.
+            #   실측으로 «겹치는 헤드 0개» 까지 나온다 — 조용히 두지 않는다.
+            "stale": _design_stale(sess),
             # [F-11d-2] 직접 입력 중 «이번 계산에 못 들어간 것». 조용한 소실
             #   금지 — 개수만 세면 사람은 들어간 줄 안다. 사유를 함께 싣는다.
             "ov_missed": sess.get("ov_missed") or [],

@@ -493,6 +493,91 @@ def test_표가_서기_전에_기준개수를_단정하지_않는다():
     assert any("선정은 3개를 채웠습니다" in m for m in note["messages"])
 
 
+# ═══════════════════════════ 표가 «옛 것» 이면 말한다
+#
+#   2026-09-11 사용자 지적: 「최불리 배관망에서 등록했던 배관망을 그대로
+#   아이소매트릭에 가져오는 것조차 안 된다.」 실측으로 재현했다
+#   (`data/_probe_stale_iso.py`):
+#
+#       최불리 A(왼쪽 영역 K=8) → 표 확정 → 노즐 8
+#       최불리 B(오른쪽 영역 K=8) → **표를 안 누름**
+#       평면 보기 = 새 선정 B · 아이소 = 옛 표 A · 겹치는 헤드 **0개**
+#       화면은 아무 말도 안 했다.
+#
+#   표는 «표 확정을 누른 그 순간» 의 사진이다. 그 뒤에 선정이나 손질판이
+#   바뀌면 사진은 옛 것이 된다 — 그 사실을 화면이 말해야 한다.
+class _ES:
+    def __init__(self, board):
+        self.board = board
+
+
+def _sess_with(heads, zones=None, disks=None, joins=0):
+    b = _B(disks if disks is not None else [(0, 0, 4)] * 5)
+    b.joins = [0] * joins
+    b.deletes = []
+    b.edges = [(0, 1)]
+    b.pts = [(0.0, 0.0), (1.0, 1.0)]
+    b.sources = [0]
+    b.valves = [0]
+    b.disk_kinds = ["하향식"] * len(b.disks)
+    return {"worst": {"heads": list(heads), "zones": zones or [],
+                      "source_tag": "Z1", "sheet": None},
+            "edit": _ES(b)}
+
+
+def test_선정이_바뀌면_지문이_바뀐다():
+    from routes.module_f.api_design import _selection_sig
+    a = _selection_sig(_sess_with([1, 2, 3]))
+    assert _selection_sig(_sess_with([1, 2, 3])) == a      # 같으면 같다
+    assert _selection_sig(_sess_with([1, 2, 9])) != a      # 헤드
+    assert _selection_sig(_sess_with([1, 2, 3], zones=[[0, 0, 9, 9]])) != a
+    assert _selection_sig(_sess_with([1, 2, 3], joins=1)) != a   # 손질판
+
+
+def test_표가_옛것이면_무엇이_달라졌는지_말한다():
+    from routes.module_f.api_design import _selection_sig, _design_stale
+    sess = _sess_with([1, 2, 3])
+    sess["design"] = {"sig": _selection_sig(sess)}
+    assert _design_stale(sess) is None                     # 갓 만든 표
+    sess["worst"]["heads"] = [4, 5, 6]                     # 다시 골랐다
+    st = _design_stale(sess)
+    assert st and st["heads_in_table"] == 3 and st["heads_now"] == 3
+    assert any("최불리 선정이 바뀌었습니다" in w for w in st["why"]), st
+
+
+def test_손질을_고쳐도_옛것이_된다():
+    from routes.module_f.api_design import _selection_sig, _design_stale
+    sess = _sess_with([1, 2, 3])
+    sess["design"] = {"sig": _selection_sig(sess)}
+    sess["edit"].board.joins = [0]                         # 이음 하나 추가
+    st = _design_stale(sess)
+    assert st and any("손질에서 배관망을 고쳤습니다" in w for w in st["why"]), st
+
+
+def test_표가_없으면_옛것도_아니다():
+    from routes.module_f.api_design import _design_stale
+    assert _design_stale(_sess_with([1])) is None          # 아직 표가 없다
+    sess = _sess_with([1])
+    sess["design"] = {"tables": None}                      # 옛 세션(지문 없음)
+    assert _design_stale(sess) is None
+
+
+def test_표를_만들_때_지문을_박는다():
+    s = _src("routes/module_f/api_design.py")
+    i = s.index('sess["design"] = {')
+    assert '"sig": _selection_sig(sess)' in s[i:i + 400], "지문을 안 박는다"
+    assert '"stale": _design_stale(sess)' in s, "preview 가 안 알린다"
+
+
+def test_화면이_옛것이라고_말한다():
+    js = _src("static/module_f.js")
+    assert "function renderStale(" in js
+    assert "renderStale(d.stale)" in js, "preview 응답을 안 읽는다"
+    assert "지금 보이는 표·아이소는 옛 것입니다" in js
+    assert "「표 확정」을 다시 눌러야" in js, "무엇을 하면 되는지 안 말한다"
+    assert 'id="dg-stale"' in _src("templates/module_f.html")
+
+
 # ═══════════════════════════ §5 금지 사항 — 되돌아가지 않는다
 def test_백필을_안_없앴다():
     """★없애면 기준개수 K 가 다시 무너진다(`a44ec64` 가 고친 그 증상)."""

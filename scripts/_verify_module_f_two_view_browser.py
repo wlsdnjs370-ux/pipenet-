@@ -132,8 +132,11 @@ def main() -> int:
         check("★평면 헤드 수 == 표 노즐 수",
               got["shown"] and got["shown"] == got["noz"],
               f"평면 {got['shown']} · 노즐 {got['noz']}")
-        check("화면이 어느 선정인지 말한다",
-              "표와 같은 선정" in got["badge"], got["badge"].strip())
+        # 문구는 «무엇이 같은가» 를 말한다 — 표가 있으면 배관망까지 같고
+        # (net_from=design), 선정만 맞춘 상태면 「같은 선정」이다. 둘 다 인정한다.
+        check("화면이 어느 망을 보는지 말한다",
+              ("표와 같은 배관망" in got["badge"]
+               or "표와 같은 선정" in got["badge"]), got["badge"].strip())
         if got["filled"]:
             check("교체가 있으면 목록도 온다",
                   got["swapped"] and got["marks"] == got["swapped"],

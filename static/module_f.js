@@ -6185,7 +6185,9 @@
     //   두 뜻이 있으면(손질이 고른 것 / 표가 쓴 것) 사람이 판단을 못 한다.
     const w = (S.edit && S.edit.worst) || null;
     $("dg-edits").textContent = `마지막 계산 후 수정 ${n}건`
-      + (w && w.from_design ? " · 지금 그리는 망 = 표와 같은 선정" : "");
+      + (w && w.net_from === "design"
+         ? " · 지금 그리는 망 = 표와 같은 배관망"
+         : (w && w.from_design ? " · 지금 그리는 망 = 표와 같은 선정" : ""));
     const mode = (S.edit && S.edit.mode) || "";
     for (const b of document.querySelectorAll(".dgmode")) {
       b.classList.toggle("on", b.dataset.mode === mode);

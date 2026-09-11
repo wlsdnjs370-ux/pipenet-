@@ -217,6 +217,61 @@ def main() -> int:
             print(f"      덤   ({a[0]:.0f},{a[1]:.0f})-({z[0]:.0f},{z[1]:.0f})"
                   f" · {math.dist(a, z) / 1000:.2f} m")
 
+        # ── ★「헤드가 있는 배관만 남긴다」가 지켜졌나 — 표에서 막다른 끝을 센다.
+        #    사용자 지적(2026-09-11): 「배관망 추출 알고리즘(헤드가 있는 배관만
+        #    가고 그 외는 배제)이 일부 작동 안 하는 것 같다.」
+        #    표 자체로 판정한다 — 차수 1 인 절점이 노즐도 급수원도 아니면
+        #    그 끝은 **아무 데도 안 가는 관**이다.
+        noz_nodes = {str(z.get("in")) for z in tbl.nozzles}
+        # io_node 는 뿌리만 "Input", 나머지는 "No" 다(tables.py:231).
+        #   «비어 있지 않으면 io» 로 읽어 265개 전부를 급수원으로 세고
+        #   막다른 끝 0 을 냈다 — 값을 확인하지 않고 짐작한 탓이다.
+        io_nodes = {str(n.get("label")) for n in tbl.nodes
+                    if str(n.get("io_node") or "").strip().lower()
+                    not in ("", "no", "none")}
+        deg: dict = {}
+        inc: dict = {}
+        for pr in tbl.pipes:
+            a, z2 = str(pr.get("in")), str(pr.get("out"))
+            for n in (a, z2):
+                deg[n] = deg.get(n, 0) + 1
+                inc.setdefault(n, []).append(pr)
+        dead = [n for n, d in deg.items()
+                if d == 1 and n not in noz_nodes and n not in io_nodes]
+        print(f"\n  ── 막다른 끝 (헤드·급수원이 아닌 차수 1 절점) ──")
+        print(f"  표 절점 {len(tbl.nodes)} · 노즐 {len(noz_nodes)}"
+              f" · io(급수원·펌프) {len(io_nodes)} · ★막다른 끝 {len(dead)}")
+        dl = 0.0
+        for n in dead[:10]:
+            pr = inc[n][0]
+            try:
+                L = float(pr.get("length") or 0)
+            except (TypeError, ValueError):
+                L = 0.0
+            dl += L
+            p = at.get(n)
+            print(f"      절점 {n} · 배관 {pr.get('label')} · {L:.2f} m"
+                  + (f" · ({p[0]:.0f},{p[1]:.0f})" if p else ""))
+        if len(dead) > 10:
+            print(f"      … 외 {len(dead) - 10}곳")
+        print("  " + ("★막다른 관이 남아 있다 — 헤드로 안 가는 배관이다"
+                      if dead else "막다른 끝 없음 — 전부 헤드/급수원으로 간다"))
+
+        # ── ★표가 선 뒤 «평면 보기» 가 실제로 무엇을 그리는가.
+        #    화면이 받는 그대로(/edit/state)를 읽어 표 선분과 맞댄다.
+        st2 = c.get(f"/api/module-f/edit/state?sid={sid}").get_json()["state"]
+        wv = st2.get("worst") or {}
+        shown = [((s[0], s[1]), (s[2], s[3])) for s in (wv.get("corridor") or ())]
+        print(f"\n  ── 표 확정 뒤 «평면 보기» 가 그리는 망 ──")
+        print(f"  net_from: {wv.get('net_from')} · 선분 {len(shown)}"
+              f" · 총연장 {tot(shown):.1f} m")
+        s_lost = uncovered(shown, dsegs)
+        s_extra = uncovered(dsegs, shown)
+        print(f"  ★표가 안 덮는 평면 선분 : {len(s_lost)} · {tot(s_lost):.1f} m")
+        print(f"  ★평면이 안 덮는 표 선분 : {len(s_extra)} · {tot(s_extra):.1f} m")
+        print("  " + ("★평면 보기 == 표 배관망" if not (s_lost or s_extra)
+                      else "★★아직 다르다"))
+
         lost = corridor - in_table
         extra = in_table - corridor
         print(f"\n  ★corridor 에 있는데 표에 없는 간선 : {len(lost)}"

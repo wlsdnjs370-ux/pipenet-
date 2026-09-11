@@ -578,6 +578,46 @@ def test_화면이_옛것이라고_말한다():
     assert 'id="dg-stale"' in _src("templates/module_f.html")
 
 
+# ═══════════════════════════ 배관망도 한 벌로 — 평면이 «표의 망» 을 그린다
+#
+#   2026-09-11 사용자 지적(대명동 · K=30 · 영역 2곳): 선정은 맞췄는데
+#   **배관망이 달랐다.** 실측(`scripts/_probe_corridor_vs_iso.py --k 30 --zones`):
+#
+#       corridor 461선분 156.1 m  /  표 202선분 160.6 m
+#       표에만 있는 긴 배관 3.35·3.00·2.96·2.34·2.03 m … (합 11.1 m)
+#
+#   ★막다른 관이 남아서가 아니다 — 표의 막다른 끝은 5곳(0.03~0.50 m)뿐이고
+#     2곳은 급수원 스텁, 3곳은 「끝배관 1단 보호」다(전개 로그와 일치).
+#     원인은 **두 그림이 서로 다른 그래프에서 최단경로를 뽑는 것**이었다.
+#   조치 뒤: 평면 202선분 160.6 m · 양쪽 차이 0.
+def test_표가_있으면_평면이_표의_망을_그린다():
+    s = _src("routes/module_f/remote30.py")
+    assert "def _design_corridor(" in s
+    i = s.index('"corridor": (dc["corridor"] if dc else')
+    assert i > 0, "평면 corridor 가 표를 안 본다"
+    assert '"net_from": ("design" if dc else "edit")' in s
+
+
+def test_옛_표로는_안_그린다():
+    """★옛 표를 «지금 망» 으로 그리면 그것이 바로 고치려던 증상이다."""
+    s = _src("routes/module_f/remote30.py")
+    i = s.index("def _design_corridor(")
+    seg = s[i:i + 2600]
+    assert "if _design_stale(sess):" in seg and "return None" in seg
+
+
+def test_최원_경로도_표_위에서_잇는다():
+    """그린 망과 다른 줄을 덧그리면 더 헷갈린다."""
+    s = _src("routes/module_f/remote30.py")
+    assert '"worst_path": (dc["path"] if dc and dc["path"] else' in s
+
+
+def test_화면이_어느_망인지_말한다():
+    js = _src("static/module_f.js")
+    assert 'w.net_from === "design"' in js
+    assert "표와 같은 배관망" in js
+
+
 # ═══════════════════════════ §5 금지 사항 — 되돌아가지 않는다
 def test_백필을_안_없앴다():
     """★없애면 기준개수 K 가 다시 무너진다(`a44ec64` 가 고친 그 증상)."""

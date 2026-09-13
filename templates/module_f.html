@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260911-netone">
+<link rel="stylesheet" href="/static/module_f.css?v=20260913-headsel">
 </head>
 <body>
 <header>
@@ -351,8 +351,17 @@
       <div class="row">
         <button class="emode" data-mode="이음">이음</button>
         <button class="emode" data-mode="삭제">삭제</button>
+        <!-- ★[2026-09-13] 헤드를 «고르기만» 하는 모드. 종전에는 헤드를 고르는
+             길이 이음·삭제의 부수 효과뿐이었고, **삭제 모드에서는 배관이 대신
+             지워졌다** — 실측(대명동 · 헤드 10개 중심 클릭): 동작 10/10 «삭제»
+             · 간선 2,356 → 2,346. 아래 「고른 헤드 종류」 단추는 세 개인데
+             정작 고를 안전한 길이 없었다. -->
+        <button class="emode" data-mode="헤드">헤드 고르기</button>
       </div>
       <h2 style="margin-top:16px">고른 헤드 종류</h2>
+      <p class="hint">먼저 <b>「헤드 고르기」</b> 를 누르고 도면의 헤드를
+        클릭하세요 — 그 모드에서는 <b>망을 건드리지 않습니다</b>.
+        («삭제» 모드로 헤드를 누르면 헤드가 아니라 <b>배관이 지워집니다</b>.)</p>
       <!-- 그림은 뺐다 — 여기서는 «어느 종류로 바꿀까» 만 고르면 되고, 전개
            모양은 변환 창에서 같은 그림으로 다시 본다(거기서는 칸 이름표라
            없으면 못 읽는다). -->
@@ -541,6 +550,9 @@
       <div class="row hidden" id="dg-plan-row">
         <button class="dgmode" data-mode="이음">이음 (살리기)</button>
         <button class="dgmode" data-mode="삭제">삭제</button>
+        <!-- ★손질 화면과 같은 이유로 여기에도 둔다 — 헤드 종류를 이 화면에서
+             고치려다 «삭제» 로 배관을 지우는 일이 실제로 일어난다. -->
+        <button class="dgmode" data-mode="헤드">헤드 고르기</button>
       </div>
       <div class="row hidden" id="dg-plan-row2">
         <button id="dg-recalc" class="go">다시 계산 → 아이소 갱신</button>
@@ -797,6 +809,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260911-netone"></script>
+<script src="/static/module_f.js?v=20260913-headsel"></script>
 </body>
 </html>

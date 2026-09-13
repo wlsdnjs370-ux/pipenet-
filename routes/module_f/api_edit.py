@@ -117,10 +117,13 @@ def register(app):
     def module_f_edit_mode(sess, body):
         es = sess["edit"]
         from services.cad_import.edit.session import (
-            MODE_DELETE, MODE_JOIN, MODE_SOURCE, MODE_VALVE)
+            MODE_DELETE, MODE_HEAD, MODE_JOIN, MODE_SOURCE, MODE_VALVE)
         # MODE_SOURCE 는 은퇴했지만 «모르는 모드» 로 막지는 않는다 — 옛 화면이
         # 보내면 알람밸브 픽과 같은 동작을 한다(session.click).
-        allowed = {MODE_JOIN, MODE_DELETE, MODE_SOURCE, MODE_VALVE}
+        # MODE_HEAD 는 «고르기만» 하는 모드다 — 헤드 종류를 바꾸려면 먼저
+        # 골라야 하는데, 종전에는 그 길이 이음·삭제의 부수 효과뿐이었고
+        # 삭제 모드에서는 배관이 대신 지워졌다(실측 10/10).
+        allowed = {MODE_JOIN, MODE_DELETE, MODE_HEAD, MODE_SOURCE, MODE_VALVE}
         mode = str(body.get("mode") or "")
         if mode not in allowed:
             return _fail(f"모르는 손질 모드입니다: {mode}")

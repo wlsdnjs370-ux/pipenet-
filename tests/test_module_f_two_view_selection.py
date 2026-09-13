@@ -635,3 +635,50 @@ def test_접속_판정_규칙은_그대로다():
     assert "elif abs(d - hr) <= tol and len(nbr[n]) == 1:" in s
     assert "if abs(do - hr) <= 2.0:" in s
     assert "if d <= ARM_CTR or abs(d - hr) <= tol:" in s      # head_nodes
+
+
+# ═══════════════════════════ 헤드를 고르는 «안전한 길»
+#
+#   2026-09-13 사용자 지적: 「수동 지정한 배관 및 헤드를 아이소에 제대로
+#   반영을 못한다.」 위상은 멀쩡했다(갈림 29=29 · 끝 31=31 · 고리 0=0 ·
+#   성분 1=1). 끊긴 고리는 **헤드를 고르는 길** 이었다.
+#
+#   실측(대명동 · 헤드 10개 중심을 정확히 클릭 · data/_probe_head_select.py):
+#       이음 모드 : 동작 10/10 «헤드선택» · 간선 2,356 → 2,356
+#       삭제 모드 : 동작 10/10 «삭제»    · 간선 2,356 → **2,346**
+#
+#   화면에는 「고른 헤드 종류」 단추가 셋인데 고를 안전한 길이 없었다. 그래서
+#   종류를 바꾸려 할수록 배관이 조용히 지워지고, 그 헤드는 물길에서 떨어져
+#   등각에서 사라졌다 — 두 증상이 한 원인이다.
+def test_헤드_고르기_모드가_있다():
+    from services.cad_import.edit.session import MODE_HEAD
+    assert MODE_HEAD == "헤드"
+    s = _src("cad_project_editor_g/services/cad_import/edit/session.py")
+    i = s.index("if self.mode == MODE_HEAD:")
+    seg = s[i:i + 500]
+    # 고르기만 한다 — 망을 건드리는 말이 이 갈래에 없어야 한다.
+    for bad in ("b.delete(", "b.join_head(", "b.toggle_valve("):
+        assert bad not in seg, f"헤드 모드가 망을 건드린다: {bad}"
+    assert '"동작": "헤드선택"' in seg
+
+
+def test_헤드_모드가_라우트를_통과한다():
+    s = _src("routes/module_f/api_edit.py")
+    assert "MODE_HEAD" in s
+    i = s.index("allowed = {")
+    assert "MODE_HEAD" in s[i:i + 120], "화이트리스트에 없다"
+
+
+def test_헤드선택은_수정으로_안_센다():
+    """★고르기는 망을 안 바꾼다 — 「마지막 계산 후 수정」에 세면 멀쩡한
+    최불리가 지워진다(_note_edit 가 worst 를 버린다)."""
+    s = _src("routes/module_f/api_edit.py")
+    i = s.index('rep.get("동작") not in ("헤드선택",)')
+    assert i > 0, "헤드선택을 수정으로 센다"
+
+
+def test_화면에_헤드_고르기_단추가_있다():
+    html = _src("templates/module_f.html")
+    assert html.count('data-mode="헤드"') >= 2, "손질·수리계산 양쪽에 있어야 한다"
+    # 왜 필요한지가 화면에 적혀 있어야 사람이 «삭제» 로 헤드를 안 누른다.
+    assert "배관이 지워집니다" in html

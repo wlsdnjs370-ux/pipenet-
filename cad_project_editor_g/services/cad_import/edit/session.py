@@ -11,6 +11,17 @@ from services.cad_import.pipeline.user_net import _pt_seg_d2, pick_head, pick_se
 
 MODE_JOIN = "이음"
 MODE_DELETE = "삭제"
+# ★[2026-09-13] 헤드를 «고르기만» 하는 모드. 종전에는 헤드를 고르는 길이
+#   이음·삭제의 부수 효과뿐이었다:
+#     이음 — 첫 클릭이 헤드면 고르지만, 그 상태는 «이음 대기» 를 겸한다
+#     삭제 — **배관 삭제가 먼저다.** 헤드 한가운데를 눌러도 근처 배관이 지워진다
+#   실측(대명동 · 헤드 10개 중심 클릭): 삭제 모드에서 동작이 10/10 «삭제» 였고
+#   간선이 2,356 → 2,346 으로 **조용히 열 개 지워졌다**. 화면에는 「고른 헤드
+#   종류」 단추가 세 개 있는데 정작 고를 안전한 길이 없었던 것이다. 그래서
+#   사람이 헤드 종류를 바꾸려 할수록 배관망이 망가지고, 그 헤드는 물길에서
+#   떨어져 등각에서 사라졌다 — 「수동 지정한 배관과 헤드가 아이소에 반영이
+#   안 된다」의 정체다.
+MODE_HEAD = "헤드"
 MODE_VALVE = "알람밸브위치"
 # 은퇴한 모드 — 이제 알람밸브 픽이 접속점을 겸한다(아래 `click` 참고).
 # 옛 화면·저장본이 이 이름을 보낼 수 있으므로 «같은 동작» 으로 받는다.
@@ -76,6 +87,13 @@ class EditSession:
         segs = b.segments()
         seg = pick_seg(segs, x, y, max_d)
         head = pick_head(b.disks, x, y, max_d)
+        if self.mode == MODE_HEAD:
+            # ★고르기만 한다 — 망을 한 글자도 안 건드린다. 배관이 아무리
+            #   가까워도 여기서는 헤드가 이긴다(그러라고 고른 모드다).
+            if head is None:
+                return None
+            self.selected_head = head
+            return {"동작": "헤드선택", "head": head}
         if self.mode == MODE_JOIN:
             return self._click_join(x, y, seg, head)
         if self.mode == MODE_DELETE:

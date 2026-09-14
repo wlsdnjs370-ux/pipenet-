@@ -146,63 +146,6 @@ def zone_confined_pool(pool, picked, zones, disks):
     return keep
 
 
-# ★[두 화면 선정일치 §2-1] 손질이 덧붙였고 선정 계산은 모르는 칸.
-#
-#   `worst_k_heads` 가 내는 것은 «어느 헤드·어느 경로» 까지다. 어느 영역에서
-#   어느 급수원 기준으로 뽑았는지는 손질 화면이 알고 덧붙인 값이라, 최종
-#   선정으로 갈아 끼울 때 **함께 물려주지 않으면 화면이 조용히 다르게 그린다**
-#   (영역 사각형이 사라지고 급수원 이름이 빈다).
-_EDIT_ONLY_WORST_KEYS = ("zones", "sheet", "source_tag", "source_index",
-                         "candidates")
-
-
-def _adopt_final_worst(sess: dict, got: dict) -> dict | None:
-    """[§2-1] 표에 **실제로 들어간 선정**을 세션의 선정으로 삼는다.
-
-    두 화면이 다른 헤드를 그리던 원인은 선정이 두 벌이었기 때문이다:
-
-        평면에서 보기   sess["worst"]        ← 손질이 고른 K개
-        수리계산 표     got["worst"]         ← 못 붙는 것을 다음 순위로 채운 K개
-
-    채우는 동작 자체는 옳다(기준개수 K를 지킨다 · `a44ec64`). 잘못은 그
-    결과를 **아무도 화면에 돌려주지 않은 것**이다. 그래서 여기서 한 곳으로
-    모은다 — 세울 계약은 한 줄이다:
-
-        「평면에서 보기」가 그리는 corridor·선정 헤드는 표에 실제로 들어간
-        선정과 언제나 같은 집합이다. 표가 아직 없으면 손질 선정을 그린다.
-
-    ★손질 원본은 `sess["worst_edit"]` 에 **한 번만** 접어 둔다. 두 번째
-      build 는 이미 최종 선정을 받으므로(멱등) 원본을 덮어쓰면 안 된다 —
-      덮으면 「사람이 고른 것」이 영영 사라진다.
-    ★`worst_rev` 를 지운다. `_edit_state` 는 지문이 같으면 corridor 를 안
-      싣는데(1KB 규약), 안 지우면 화면이 옛 망을 그대로 들고 있는다.
-    """
-    fin = got.get("worst")
-    if not isinstance(fin, dict) or not fin.get("heads"):
-        return None
-    prev = dict(sess.get("worst") or {})
-    # 접어 두는 것은 «사람이 고른 것» 뿐이다. 두 번째 확정의 `prev` 는 이미
-    # 표에서 온 선정이므로(from_design) 그것을 원본이라 부르면 안 된다.
-    if prev and not prev.get("from_design") and not sess.get("worst_edit"):
-        sess["worst_edit"] = prev
-    base = sess.get("worst_edit") or prev
-    out = dict(fin)
-    for k in _EDIT_ONLY_WORST_KEYS:
-        if k in base:
-            out[k] = base[k]
-    # ★«표에서 온 선정» 이라는 표시는 **선정 자신이** 든다. `worst_edit` 의
-    #   유무로 미루면, 손질에서 최불리를 안 누른 세션(원본이 없다)에서 화면이
-    #   「표와 같은 선정」을 그리면서 아니라고 말하게 된다.
-    out["from_design"] = True
-    sess["worst"] = out
-    sess.pop("worst_rev", None)
-    n_sw = len(set(prev.get("heads") or ()) - set(out.get("heads") or ()))
-    if n_sw:
-        print(f"[두 화면] 평면 보기의 선정을 표와 맞췄습니다 — 바뀐 헤드 {n_sw}개"
-              f" (손질 원본은 그대로 두고 있습니다).")
-    return out
-
-
 def _selection_sig(sess: dict) -> tuple:
     """[표가 옛 것인가] «수리계산이 재료로 삼는 것» 의 지문.
 

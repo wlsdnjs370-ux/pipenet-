@@ -22,6 +22,45 @@ from routes.module_f.views import _edit_state
 ANCHOR_CLICK_MAX_D_MM = 2000.0
 
 
+
+def _rank_invariant(b, k, only, src_index, w) -> dict:
+    """[복원 §3] 선정이 «먼 순서 그대로 K 개» 인가 — ①②③ 을 그 자리에서 검사.
+
+    ★판정에는 **아무 영향도 주지 않는다.** 이미 나온 선정을 재기만 한다.
+      `worst_k_heads` 는 한 글자도 안 바꾼다(§6) — 같은 후보로 K+1 개를
+      한 번 더 뽑아, 늘어난 그 하나를 «C−S 의 1등» 으로 쓴다.
+      Dijkstra 한 번이 더 드는데 실측 0.3s 짜리라 값이 싸다.
+    """
+    from routes.module_f.remote30 import _worst_k_heads
+    S = [int(h) for h in (w.get("heads") or ())]
+    dists = {int(h): float(v) for h, v in (w.get("dists") or {}).items()}
+    out: dict = {"ok": True, "k": int(k), "n": len(S), "violations": []}
+
+    if len(S) != int(k):                                        # ①
+        out["violations"].append(f"① |S|={len(S)} ≠ K={k}")
+
+    if only is not None and not set(S) <= set(only):             # ③
+        bad = sorted(set(S) - set(only))[:8]
+        out["violations"].append(f"③ 후보 밖에서 뽑힘 {bad}")
+
+    nxt = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=int(k) + 1,
+                         only_heads=only, source_index=src_index,
+                         head_xy=b.disks)                        # ②
+    extra = [int(h) for h in (nxt.get("heads") or ()) if int(h) not in set(S)]
+    if extra and dists:
+        nd = {int(h): float(v) for h, v in (nxt.get("dists") or {}).items()}
+        h_out = extra[0]
+        out["min_in"] = round(min(dists.values()) / 1000.0, 3)
+        out["max_out"] = round(nd.get(h_out, 0.0) / 1000.0, 3)
+        h_in = min(dists, key=lambda x: dists[x])
+        # 같은 값이면 번호로 못 박은 순서라 어긋난 것이 아니다 — 0.1mm 여유.
+        if nd.get(h_out, 0.0) > min(dists.values()) + 0.1:
+            out["violations"].append(
+                f"② 뽑힌 꼴찌 disk {h_in} {out['min_in']}m"
+                f" < 안 뽑힌 1등 disk {h_out} {out['max_out']}m")
+    out["ok"] = not out["violations"]
+    return out
+
 def _note_edit(sess: dict) -> None:
     """[F-10d · D-F10-5] 「마지막 계산 후 수정 n건」을 센다.
 
@@ -42,7 +81,15 @@ def _note_edit(sess: dict) -> None:
     sess["worst_edits"] = int(sess.get("worst_edits") or 0) + 1
 
 
-def _wfail(msg: str, code: int = 400) -> dict:
+def _count_by(values) -> dict:
+    """값별 개수 — 사유 분포를 한 줄로 세는 데만 쓴다."""
+    out: dict = {}
+    for v in values:
+        out[str(v)] = out.get(str(v), 0) + 1
+    return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+
+
+def _wfail(msg: str, code: int = 400, extra: dict | None = None) -> dict:
     """최불리 계산의 실패를 «자료» 로 만든다 — 응답이 아니라.
 
     ★`jsonify` 를 여기서 부르면 안 된다. 원클릭(F-10b)은 이 계산을 **워커
@@ -50,7 +97,25 @@ def _wfail(msg: str, code: int = 400) -> dict:
       「Working outside of application context」로 죽는다(실측). 자료로 돌려
       두면 라우트는 응답으로 바꾸고 잡은 예외 문장으로 바꾼다.
     """
-    return {"code": code, "payload": {"ok": False, "message": msg}}
+    out = {"ok": False, "message": msg}
+    if extra:
+        out.update(extra)
+    return {"code": code, "payload": out}
+
+
+# [복원 §2-3] 사유별 «사람이 할 일» — 한 덩어리로 「배관을 이어라」 하면 틀린
+#   곳을 고치러 간다. 문구는 여기 한 벌만 둔다(화면은 받아서 그리기만 한다).
+ATTACH_TODO = {
+    "dry": "급수원 쪽 상류 배관을 잇습니다 — 물이 여기까지 안 옵니다.",
+    "center_dry": "급수원 쪽 상류 배관을 잇습니다 — 헤드엔 붙었는데"
+                  " 물이 여기까지 안 옵니다.",
+    "no_center": "그 헤드로 가는 가지관을 잇습니다.",
+    "chord_only": "찍기에서 그 «문양 묶음» 을 헤드에서 뺍니다"
+                  " (헤드 기호의 가로막대를 관으로 읽었습니다).",
+    "pass_under": "그 헤드 자리의 배관을 잇습니다.",
+    "shared": "찍기에서 겹쳐 그린 묶음 하나를 뺍니다"
+              " (두 헤드가 한 중심 노드를 나눠 물고 있습니다).",
+}
 
 
 def _wfail_text(fail: dict) -> str:
@@ -380,21 +445,26 @@ def register(app):
                            "최불리인지 하나를 지정하세요.",
                 "sources": cands}}
 
-        # ★★«고른 K개» 만이 아니라 «고른 범위» 도 함께 넘긴다 (2026-09-09).
+        # ★★[속도 · 2026-09-14 사용자 지적] 여기서 **전체망을 전개하지 않는다.**
         #
-        #   수리계산은 `cand = 고른 것 ∩ 전개가 붙일 수 있는 헤드` 로 거른다.
-        #   그래서 손질이 K개를 골라도 표에는 그보다 적게 왔다 — 실측(대명동
-        #   골든 K=10): 고른 10개 중 2개를 전개가 못 붙여 표에 **8개**.
+        #   종전에는 고르기 전에 `attach.wet_heads`(전체망 전개)를 돌렸다.
+        #   시계를 대 보니 B1F K=30 에서 그 한 줄이 **154.10초 · 98.2%** 였다::
         #
-        #   여기서(손질에서) 먼저 걸러 볼 수도 있지만 그 판정이 곧 **전체망
-        #   전개 한 번**이다. 실측(B1F · 절점 22,575): 그 한 번이 **117초**다.
-        #   `/edit/worst` 는 진행표시 없는 동기 요청이라, 여기서 재면 손질
-        #   화면이 2분 얼어붙는다. 총합은 어차피 같고 **자리만 옮긴다.**
+        #       판 열기 0.80s · ★전체망 전개 154.10s · 선정 0.44s
+        #       먼 순서 검사 0.51s · ★제한 전개(K개만) 1.13s
         #
-        #   그래서 손질은 빠르게 두고, 이미 그 값을 재는 수리계산이 «다음
-        #   순위로 채우게» 한다. 채우려면 «고른 K개» 가 아니라 그 K개를 뽑은
-        #   **후보 범위**(영역·도면 장으로 가둔 것)가 필요하다 — 그것을
-        #   여기서 실어 보낸다.
+        #   전개를 재는 이유는 §2-3 하나 — **뽑힌 K 개**가 배관에 붙는가.
+        #   그 판정에 도면 전체 3,235개를 전개할 이유가 없다. 고른 **뒤에**
+        #   그 K 개만 전개하면 1.13초고 답은 같다(`attach.picked_heads_wet`).
+        #
+        #   ★후보를 깎는 것이 아니다 — 고르기는 여전히 도면 전체(영역·장 제한
+        #     만)에서 한다(`ModuleF_최불리규칙_복원_지시서.md` §0 ①).
+        #     달라진 것은 «언제·무엇을» 재느냐뿐이다.
+        #   ★잃는 것: 「이 도면에 안 붙는 헤드가 N개」라는 전체 통계.
+        #     그것은 수리계산이 «제외 사유» 로 여전히 낸다 — 그쪽은 진행표시가
+        #     있는 잡이라 오래 걸려도 화면이 얼지 않는다.
+        drop_reason: dict = {}
+        # 후보 범위는 계속 실어 보낸다 — 수리계산의 안전망이 쓰는 값이다(§2-4).
         w = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=k,
                            only_heads=only, source_index=src_index,
                            # 설계면적 직사각형은 헤드의 «제 좌표» 로 잰다.
@@ -427,6 +497,70 @@ def register(app):
                 f"기준개수 {k}개인데 {where} 급수원에 닿는 헤드가 "
                 f"{w['reachable']}개뿐입니다 — 설계면적이 성립하지 않습니다. "
                 f"{how} 기준개수를 {w['reachable']} 이하로 낮추세요.")
+
+        # ★★[복원 §3] 규칙을 **매 요청마다** 검사한다.
+        #
+        #   말로 적힌 규칙은 또 깨진다 — 실제로 한 번 깨졌다(후보 좁히기).
+        #   식으로 적고, 깨지면 조용히 넘기지 말고 응답에 실어 올린다.
+        #
+        #       C = 후보(영역·장 제한을 통과하고 급수원에서 도달하는 대표)
+        #       S = 선정 결과
+        #       ① |S| = K   ② min far(S) ≥ max far(C−S)   ③ S ⊆ C
+        #
+        #   ②가 「먼 순서 그대로」의 정확한 뜻이다. 재는 법: 같은 후보로 K+1
+        #   개를 뽑으면 늘어난 하나가 곧 «C−S 의 1등» 이다. 그 값을 S 의 꼴찌와
+        #   견준다 — 반올림된 m 이 아니라 `dists` 의 원값(mm)으로 잰다.
+        rank_inv = _rank_invariant(b, k, only, src_index, w)
+        if not rank_inv["ok"]:
+            print("[최불리] ★★먼 순서 규칙이 깨졌습니다 — "
+                  + " · ".join(rank_inv["violations"]))
+
+        # ★★[복원 §2-3] 뽑힌 K 개 중 «못 붙는» 것이 있으면 **막는다.**
+        #
+        #   채우지도(다른 헤드로 바꿔 넣지) 빼지도(후보에서 없애지) 않는다.
+        #   둘 다 「못 붙는 헤드」를 **감추는** 짓이고, 감추면 사람은 남의
+        #   헤드가 섞인 계산서를 받는다. 멈추고 **고칠 자리를 가리킨다** —
+        #   기존 K 미달 게이트(`w["reachable"] < k`)와 같은 성격이다.
+        #
+        #   §2-2 가 «관이 스쳐 지나가는» 것은 이미 붙였다. 여기까지 남는 것은
+        #   물이 안 닿거나(dry·center_dry), 가지관이 없거나(no_center),
+        #   문양을 관으로 읽은(chord_only) 자리다 — 전부 **사람이 고칠 것**이다.
+        #   `shared` 는 §2-4 가 «한 자리» 로 세므로 여기서 막지 않는다.
+        # ★고른 **뒤에** 그 K 개만 전개해 「붙는가」를 잰다 (B1F 154s → 1.1s).
+        from routes.module_f.attach import picked_heads_wet
+        probe = picked_heads_wet(
+            es, w["heads"],
+            selected_source=(picked_tag if len(b.sources) > 1 else None))
+        if probe.get("ok"):
+            wet_ok = {int(i) for i in probe["wet"]}
+            reason = probe.get("reason") or {}
+            blocked = [int(h) for h in w["heads"] if int(h) not in wet_ok]
+            if blocked:
+                sess["worst"] = None
+                sess["worst_edit"] = None
+                items = []
+                for h in blocked[:60]:
+                    wy = str(reason.get(h) or reason.get(str(h)) or "unknown")
+                    items.append({
+                        "disk": h, "why": wy,
+                        "todo": ATTACH_TODO.get(wy, "손질에서 그 헤드의 배관을"
+                                                    " 확인합니다."),
+                        "xy": [_r1(float(b.disks[h][0])),
+                               _r1(float(b.disks[h][1]))]})
+                head = (f"기준개수 {k}개로 뽑은 헤드 중 {len(blocked)}개가"
+                        f" 배관에 붙지 않습니다 — 계산을 멈춥니다.")
+                where = " · ".join(
+                    f"({it['xy'][0]:.0f}, {it['xy'][1]:.0f}) {it['why']}"
+                    for it in items[:6])
+                print(f"[최불리] ★막음 — {head} {where}")
+                return None, _wfail(
+                    head + " 다른 헤드로 채우지 않습니다(그러면 남의 헤드가"
+                           " 섞인 계산서가 됩니다). 아래 자리를 손질에서"
+                           " 고친 뒤 다시 누르세요.",
+                    extra={"not_attached": {
+                        "n": len(blocked), "items": items,
+                        "by_why": _count_by(
+                            it["why"] for it in items)}})
         w["sheet"] = sheet_no
         w["source_tag"] = picked_tag          # 화면이 «어느 급수원 기준» 인지 안다
         w["source_index"] = src_index
@@ -481,7 +615,25 @@ def register(app):
                 # 최원 유하거리 «경로» — 그 거리가 어느 줄인지.
                 "worst_path_m": w.get("worst_path_m", 0.0),
                 "worst_path_nodes": len(w.get("worst_path") or ()),
-                "path_edges": len(w["edges"])}, None
+                "path_edges": len(w["edges"]),
+                # ★[손질정본 §2-2] 후보에서 뺀 헤드 — **사람이 고칠 대상**이다.
+                #   사유별로 할 일이 다르다: pass_under 는 「이음」으로 잇고,
+                #   chord_only·shared 는 찍기에서 묶음을 빼고, dry 는 상류를
+                #   잇는다. 한 덩어리로 「배관을 이어라」라고 하면 틀린 곳을
+                #   고치러 간다. 개수만 주면 도면에서 못 찾으므로 자리도 싣는다.
+                "not_attachable": {
+                    "n": len(drop_reason),
+                    "items": [
+                        {"disk": i, "why": why,
+                         "xy": [_r1(float(b.disks[i][0])),
+                                _r1(float(b.disks[i][1]))]}
+                        for i, why in list(drop_reason.items())[:200]
+                        if 0 <= i < len(b.disks)],
+                    "by_why": _count_by(drop_reason.values()),
+                },
+                # ★[복원 §3] 「먼 순서 그대로 K 개」가 이번 선정에서 성립했나.
+                #   조용히 넘기지 않는다 — 깨지면 화면이 그 사실을 든다.
+                "rank_invariant": rank_inv}, None
 
     @app.post("/api/module-f/edit/anchor-click")
     @route_session(_edit_session, post=True)

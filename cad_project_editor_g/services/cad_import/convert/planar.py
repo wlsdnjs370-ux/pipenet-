@@ -570,7 +570,7 @@ def _arm_shape_map(pts, remap, snap_edges, head_vid, used, xform,
 
 def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
          ups=None, head_kinds=None, user_sources=None, selected_source=None,
-         ho=None, edge_len_mm=None):
+         ho=None, edge_len_mm=None, grid_snap=True):
     if write and out is None:
         out = default_out(key)
     if not write:
@@ -780,20 +780,76 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
     minx = min(pts[v][0] for v in used)
     miny = min(pts[v][1] for v in used)
 
-    def xform(x_mm, y_mm):
+    # ★★[회랑 사슬좌표 · 2026-09-14 오너] 격자 스냅이 하는 일은 **둘**이다.
+    #
+    #     ⑴ 묶기 — 한 칸(50mm) 안의 절점을 한 절점으로 본다. 조사 도면은
+    #        이음이 몇십 mm 씩 벌어져 있어서, 이것이 없으면 **망이 쪼개진다**
+    #        (실측 B1F: 스냅을 통째로 끄니 회랑이 3조각 · 노즐 0개가 됐다).
+    #     ⑵ 반올림 — 남은 절점의 좌표를 격자 위로 옮긴다. 이쪽이 그림 6 ①의
+    #        「최대 35mm 이동」이고, 회랑에서는 뒤에서 사슬이 좌표를 다시
+    #        만들므로 **할 이유가 없다**.
+    #
+    #   그래서 `grid_snap=False` 는 ⑵만 끈다 — 묶는 키는 그대로 스냅이고,
+    #   살아남은 절점의 좌표만 제자리(반올림 전)를 쓴다.
+    def fold_key(x_mm, y_mm):
+        """묶는 키 — **언제나** 스냅이다(연결성이 여기 달려 있다)."""
         mx = (x_mm - minx) / 1000.0 + 1.0
         my = (y_mm - miny) / 1000.0 + 1.0
         return (round(round(mx / GRID_M) * GRID_M, 3),
                 round(round(my / GRID_M) * GRID_M, 3))
 
+    def xform(x_mm, y_mm):
+        """좌표 — `grid_snap=False` 면 반올림하지 않는다."""
+        if not grid_snap:
+            return (round((x_mm - minx) / 1000.0 + 1.0, 6),
+                    round((y_mm - miny) / 1000.0 + 1.0, 6))
+        return fold_key(x_mm, y_mm)
+
     pos_vid, remap = {}, {}
+    folded: list = []            # [손질정본 §3] 한 칸으로 접힌 절점
     for vid in sorted(used, key=lambda v: (v not in head_vid, v)):
-        p = xform(*pts[vid])
+        p = fold_key(*pts[vid])        # ★묶기는 언제나 스냅 키로
         if p in pos_vid:
             remap[vid] = pos_vid[p]
+            folded.append((vid, pos_vid[p]))
         else:
             pos_vid[p] = vid
             remap[vid] = vid
+
+    # ★[손질정본 §3] 격자 스냅(50mm)은 **서로 다른 board 절점을 한 칸으로 접을
+    #   수 있다.** 접힌 것이 헤드이거나 분기점이면 위상이 달라진다 — 티 둘이
+    #   한 칸에 들면 크로스 하나가 되고, 그만큼 손질 corridor 와 표의
+    #   「티·크로스·말단」 수가 갈린다. 실측(B1F K=30): 티 10 → 4 · 크로스
+    #   0 → 4 · 말단 12 → 14 로 어긋났다.
+    #   ★판정은 바꾸지 않는다(§6). 지금까지 **조용했던** 것을 세어서 말할 뿐이다
+    #     — 조용한 위상 변경은 사람이 「아이소가 다르다」로만 만나게 된다.
+    if folded:
+        _deg: dict = {}
+        for _i, _j in edges:
+            _deg[_i] = _deg.get(_i, 0) + 1
+            _deg[_j] = _deg.get(_j, 0) + 1
+        # ★같은 자리(거리 0)에 있던 절점이 합쳐지는 것은 **접힘이 아니다** —
+        #   그건 중복 제거고, 그렇게 해야 맞다. 격자가 «떨어져 있던» 것을
+        #   끌어다 붙인 경우만 위상이 바뀐다. 둘을 갈라 세지 않으면 숫자가
+        #   뜻을 잃는다(실측 319 중 떨어진 것은 훨씬 적었다).
+        _same = [f for f in folded if math.dist(pts[f[0]][:2],
+                                                pts[f[1]][:2]) <= 1.0]
+        _apart = [f for f in folded if f not in _same]
+        _n_head = sum(1 for v, _t in _apart if v in head_vid)
+        _n_br = sum(1 for v, _t in _apart if _deg.get(v, 0) >= 3)
+        print(f"격자 스냅({GRID_M * 1000:.0f}mm) 합침 {len(folded)}개"
+              f" — 같은 자리 {len(_same)}(정상 중복제거)"
+              f" · ★떨어진 것 {len(_apart)}"
+              + (f" (헤드 {_n_head} · 분기점 차수≥3 {_n_br})" if _apart else ""))
+        if _n_br or _n_head:
+            print("    ★분기점·헤드가 끌려와 합쳐지면 손질 corridor 와 표의"
+                  " 티·크로스·말단 수가 갈립니다(판정은 그대로 둡니다).")
+        for _v, _t in _apart[:12]:
+            _p, _q = pts[_v], pts[_t]
+            print(f"    ({_p[0]:.1f}, {_p[1]:.1f}) → ({_q[0]:.1f}, {_q[1]:.1f})"
+                  f" · 거리 {math.dist(_p[:2], _q[:2]):.1f}mm"
+                  f" · 차수 {_deg.get(_v, 0)}→{_deg.get(_t, 0)}"
+                  + ("  ★헤드" if _v in head_vid or _t in head_vid else ""))
 
     # ---- 티 허브 겹침 정규화 (변환 시점 전용 · 2단계 이음 불변)
     #  스냅 좌표에서 «관통 배관이 티 허브 위를 지나며 스텁과 겹치는»

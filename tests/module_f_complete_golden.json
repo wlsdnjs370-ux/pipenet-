@@ -37,24 +37,24 @@
   },
   "daemyeong": {
     "board": {
-      "pts": 2770,
-      "edges": 2357,
+      "pts": 2782,
+      "edges": 2369,
       "heads": 133
     },
     "worst": {
       "far_m": 52.69,
       "span_m": 11.1,
-      "total_m": 74.02,
+      "total_m": 74.39,
       "max_load": 10
     },
     "full": {
-      "nodes": 746,
-      "pipes": 745
+      "nodes": 878,
+      "pipes": 877
     },
     "worst_kfp": {
       "k": 10,
-      "nodes": 79,
-      "pipes": 78
+      "nodes": 89,
+      "pipes": 88
     },
     "design": {
       "sdf": "1. 입력도면 대명동 단위세대 평면도_수리계산입력.sdf"

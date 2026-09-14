@@ -1,7 +1,16 @@
 # -*- coding: utf-8 -*-
-"""[두 화면 선정일치] 평면 보기와 수리계산 표가 같은 헤드를 그린다.
+"""[두 화면 선정일치] ★지시서는 폐기 — 남은 것만 지킨다.
 
-지시서 `ModuleF_두화면_선정일치_지시서.md`.
+지시서 `ModuleF_두화면_선정일치_지시서.md` 는 **2026-09-13 폐기**됐다.
+「평면이 수리계산을 따라간다」는 방향이 거꾸로였기 때문이다 — 그러면 사람이
+손질에서 정의한 것이 표를 세울 때마다 지워진다. 그 방향을 지키던 시험 11개는
+여기서 걷어냈고(자리마다 왜 없앴는지 적어 뒀다), 이제는 **되먹임이 없음**을
+`tests/test_module_f_edit_canonical.py` 기준 6·7 이 지킨다.
+
+이 파일에 남은 것은 그 지시서와 **무관하게 유효한** 것들이다 — 사유 가르기,
+영역 가두기, 옛 표 알리기, 헤드 고르기 모드, 백필 보존.
+
+아래는 당시 기록이다(증상이 어떻게 보였는지의 사료로만 읽는다).
 
 ■ 증상 — 개수는 같은데 알맹이가 달랐다
 
@@ -59,64 +68,6 @@ def _got(heads, **kw):
     return g
 
 
-def test_표가_서면_세션_선정이_표와_같아진다():
-    """★이 한 줄이 없어서 평면 화면이 계속 손질 선정을 그렸다."""
-    from routes.module_f.api_design import _adopt_final_worst
-    sess = {"worst": {"heads": [1, 2, 3], "zones": [[0, 0, 9, 9]],
-                      "source_tag": "Z1", "sheet": 2, "candidates": 20},
-            "worst_rev": ("옛 지문",)}
-    out = _adopt_final_worst(sess, _got([1, 2, 9]))
-    assert sess["worst"]["heads"] == [1, 2, 9], "표 선정을 안 받았다"
-    assert out is sess["worst"]
-    # 손질 원본은 사라지지 않는다 — «사람이 고른 것» 이 무엇이었는지 남는다.
-    assert sess["worst_edit"]["heads"] == [1, 2, 3]
-
-
-def test_손질만_아는_칸은_물려받는다():
-    """★영역·급수원·장은 선정 계산이 모르는 값이다 — 안 물려주면 화면에서
-    사각형이 사라지고 급수원 이름이 빈다(조용히 다르게 그린다)."""
-    from routes.module_f.api_design import _adopt_final_worst
-    sess = {"worst": {"heads": [1], "zones": [[0, 0, 9, 9]], "sheet": 2,
-                      "source_tag": "Z2", "source_index": 1,
-                      "candidates": 44}}
-    _adopt_final_worst(sess, _got([7]))
-    w = sess["worst"]
-    assert w["zones"] == [[0, 0, 9, 9]] and w["sheet"] == 2
-    assert w["source_tag"] == "Z2" and w["source_index"] == 1
-    assert w["candidates"] == 44
-
-
-def test_두_번째_확정이_손질_원본을_안_덮는다():
-    """★멱등 — 두 번째 build 는 이미 «최종 선정» 을 받는다. 그때 원본을
-    덮으면 「사람이 고른 것」이 영영 사라진다."""
-    from routes.module_f.api_design import _adopt_final_worst
-    sess = {"worst": {"heads": [1, 2, 3]}}
-    _adopt_final_worst(sess, _got([1, 2, 9]))
-    _adopt_final_worst(sess, _got([1, 2, 9]))
-    assert sess["worst_edit"]["heads"] == [1, 2, 3]
-    assert sess["worst"]["heads"] == [1, 2, 9]
-
-
-def test_corridor_지문을_지운다():
-    """★안 지우면 `_edit_state` 가 «안 바뀜» 으로 보고 옛 망을 그대로 둔다.
-
-    1KB 규약(안 바뀐 블록은 안 싣는다)이 여기서는 «고친 것이 화면에 안
-    보인다» 로 나타난다 — 서버는 맞췄는데 화면만 옛 그림을 든다.
-    """
-    from routes.module_f.api_design import _adopt_final_worst
-    sess = {"worst": {"heads": [1]}, "worst_rev": ("옛 지문",)}
-    _adopt_final_worst(sess, _got([2]))
-    assert sess.get("worst_rev") is None
-
-
-def test_표가_못_서면_선정을_안_바꾼다():
-    from routes.module_f.api_design import _adopt_final_worst
-    sess = {"worst": {"heads": [1, 2]}}
-    assert _adopt_final_worst(sess, {"worst": {"heads": []}}) is None
-    assert _adopt_final_worst(sess, {}) is None
-    assert sess["worst"]["heads"] == [1, 2] and "worst_edit" not in sess
-
-
 def test_손질에서_다시_고르면_그것이_최신이다():
     """사람이 다시 고른 것이 언제나 최신 — 접어 둔 원본은 버린다."""
     s = _src("routes/module_f/api_edit.py")
@@ -131,36 +82,6 @@ def test_선정이_지워지는_자리마다_원본도_지운다():
         n_clear = s.count('sess["worst"] = None')
         n_edit = s.count('sess["worst_edit"] = None')
         assert n_edit >= n_clear, f"{rel}: 선정만 지우고 원본을 남긴 자리가 있다"
-
-
-def test_화면이_어느_선정을_보는지_말한다():
-    """같은 그림에 두 뜻(손질이 고른 것 / 표가 쓴 것)이 있으면 판단을 못 한다.
-
-    ★표시는 **선정 자신이** 든다 — 손질 원본의 유무로 미루면, 최불리를 안
-      누르고 바로 확정한 세션에서 화면이 표 선정을 그리면서 아니라고 말한다.
-    """
-    from routes.module_f.api_design import _adopt_final_worst
-    s = _src("routes/module_f/remote30.py")
-    assert '"from_design": bool(w.get("from_design"))' in s
-    js = _src("static/module_f.js")
-    assert "w.from_design" in js, "화면이 그 값을 안 읽는다"
-    # 손질을 안 거친 세션에서도 참이어야 한다(원본이 없다).
-    sess: dict = {}
-    _adopt_final_worst(sess, _got([3, 4]))
-    assert sess["worst"]["from_design"] is True
-    assert "worst_edit" not in sess
-    # 두 번째 확정이 «표에서 온 선정» 을 원본이라 부르지 않는다.
-    _adopt_final_worst(sess, _got([3, 5]))
-    assert "worst_edit" not in sess
-
-
-def test_표를_확정하면_손질_상태를_다시_받는다():
-    """서버만 맞추고 화면이 안 받으면 고친 것이 하나도 안 보인다."""
-    js = _src("static/module_f.js")
-    i = js.index('const d = await post("/api/module-f/design/build"')
-    seg = js[i:i + 1800]
-    assert "/api/module-f/edit/state" in seg, "표 확정 뒤 손질 상태를 안 받는다"
-    assert "setEdit(" in seg
 
 
 # ═══════════════════════════ §2-2 바뀌었으면 말한다
@@ -324,8 +245,18 @@ def test_접속_판정이_사유를_적는다():
     기하로 직접 확인한다(원 반지름 100 · 붙었다 자 50mm):
       ① 아무것도 없는 헤드                → no_center
       ② 양끝이 다 원 위인 «현»(문양)       → chord_only
-      ③ 테두리를 «지나가는» 관(끝이 아님)  → pass_under
+      ③ 테두리를 «지나가는» 관(끝이 아님)  → ★이제 **붙는다**(복원 §2-2)
       ④ 중심에 노드가 있으면 사유가 없다   → 붙었다
+
+    ★2026-09-13 ③ 이 뒤집혔다. 종전에는 `pass_under` 로 «못 붙음» 이었고,
+      그 헤드들을 최불리 후보에서 빼는 조치가 들어가 「먼 순서 그대로 K 개」가
+      깨졌다(실측 대명동: 상위 30 중 5개가 그렇게 빠졌다). 이제 감추지 않고
+      **붙인다** — 이미 상향식에 쓰이던 `stage5_split_through_uprights` 를
+      그대로 다시 부른다(`ModuleF_최불리규칙_복원_지시서.md` §2-2).
+
+    ★②(현)는 **여전히 안 붙는다.** 원에 걸친 그 선은 배관이 아니라 하향식
+      기호의 가로막대다 — 거기 붙이면 도면에 없는 배관을 지어내는 셈이다.
+      자를 대 보면 가로막대도 «원 안을 지나는 관» 이라, 빼지 않으면 붙는다.
     """
     from services.cad_import.pipeline.flow import attach_heads_center
 
@@ -345,13 +276,16 @@ def test_접속_판정이_사유를_적는다():
                                               why=why)
     assert ctr == [None] and why == {0: "chord_only"}
 
-    # ③ 관이 테두리를 지나간다 — 끝나는 자리가 아니다
+    # ③ 관이 테두리를 지나간다 — 종전엔 «못 붙음», 이제 **붙인다**(§2-2)
     pts = [(-300.0, 0.0), (100.0, 0.0), (300.0, 0.0)]
     edges = {(0, 1), (1, 2)}
     why = {}
-    _p, _e, ctr, _n, _m = attach_heads_center(pts, edges, [(0.0, 0.0, 100.0)],
+    p3, e3, ctr, _n, _m = attach_heads_center(pts, edges, [(0.0, 0.0, 100.0)],
                                               why=why)
-    assert ctr == [None] and why == {0: "pass_under"}
+    assert ctr != [None] and why == {}, (ctr, why)
+    # 헤드 중심에 노드가 생겼고 그 노드가 망에 물려 있다.
+    assert abs(p3[ctr[0]][0]) < 1e-6 and abs(p3[ctr[0]][1]) < 1e-6
+    assert any(ctr[0] in e for e in e3)
 
     # ④ 중심에 간선 달린 노드가 있으면 그것이 접속점이다
     pts = [(0.0, 0.0), (0.0, 400.0)]
@@ -395,7 +329,7 @@ def test_끄면_막고_말한다():
     """§2-5 — 「사람이 고른 것만 쓴다」를 고르면 K 미달을 그대로 보고한다."""
     s = _src("routes/module_f/api_design.py")
     i = s.index("if wet and short < k_use:")
-    seg = s[i:i + 700]
+    seg = s[i:s.index("pool = zone_confined_pool(", i)]
     assert 'if not cfg.get("fill_short", True):' in seg
     assert '"ok": False' in seg and "멈춥니다" in seg
     html = _src("templates/module_f.html")
@@ -457,7 +391,7 @@ def test_가둘_근거가_없으면_손대지_않는다():
 def test_채울_때_영역을_가두고_모자라면_말한다():
     s = _src("routes/module_f/api_design.py")
     i = s.index("if wet and short < k_use:")
-    seg = s[i:i + 1600]
+    seg = s[i:s.index("got = select_and_expand(", i)]
     assert "zone_confined_pool(" in seg, "채움이 영역을 안 가둔다"
     assert "avail < k_use" in seg and "다른 영역에서 끌어오지 않습니다" in seg
 
@@ -578,52 +512,24 @@ def test_화면이_옛것이라고_말한다():
     assert 'id="dg-stale"' in _src("templates/module_f.html")
 
 
-# ═══════════════════════════ 배관망도 한 벌로 — 평면이 «표의 망» 을 그린다
+# ═══════════════════════════ ★여기 있던 「평면이 표의 망을 그린다」 는 걷어냈다
 #
-#   2026-09-11 사용자 지적(대명동 · K=30 · 영역 2곳): 선정은 맞췄는데
-#   **배관망이 달랐다.** 실측(`scripts/_probe_corridor_vs_iso.py --k 30 --zones`):
+#   2026-09-13 사용자 지시로 **폐기**했다. 방향이 거꾸로였다 — 평면(손질)이
+#   수리계산을 따라가게 만드는 변경이었고, 그러면 사람이 손질에서 정의한
+#   것이 표를 한 번 세울 때마다 지워진다. 되돌렸다(`682206b`).
 #
-#       corridor 461선분 156.1 m  /  표 202선분 160.6 m
-#       표에만 있는 긴 배관 3.35·3.00·2.96·2.34·2.03 m … (합 11.1 m)
+#   그 시험들이 지키던 코드(`_design_corridor` · `net_from` · 표 확정 뒤
+#   `/edit/state` 다시 받기)는 이제 **있으면 안 되는 것**이다. 없음을 지키는
+#   자리는 `tests/test_module_f_edit_canonical.py` 기준 6·7 로 옮겼다.
 #
-#   ★막다른 관이 남아서가 아니다 — 표의 막다른 끝은 5곳(0.03~0.50 m)뿐이고
-#     2곳은 급수원 스텁, 3곳은 「끝배관 1단 보호」다(전개 로그와 일치).
-#     원인은 **두 그림이 서로 다른 그래프에서 최단경로를 뽑는 것**이었다.
-#   조치 뒤: 평면 202선분 160.6 m · 양쪽 차이 0.
-def test_표가_있으면_평면이_표의_망을_그린다():
-    s = _src("routes/module_f/remote30.py")
-    assert "def _design_corridor(" in s
-    i = s.index('"corridor": (dc["corridor"] if dc else')
-    assert i > 0, "평면 corridor 가 표를 안 본다"
-    assert '"net_from": ("design" if dc else "edit")' in s
-
-
-def test_옛_표로는_안_그린다():
-    """★옛 표를 «지금 망» 으로 그리면 그것이 바로 고치려던 증상이다."""
-    s = _src("routes/module_f/remote30.py")
-    i = s.index("def _design_corridor(")
-    seg = s[i:i + 2600]
-    assert "if _design_stale(sess):" in seg and "return None" in seg
-
-
-def test_최원_경로도_표_위에서_잇는다():
-    """그린 망과 다른 줄을 덧그리면 더 헷갈린다."""
-    s = _src("routes/module_f/remote30.py")
-    assert '"worst_path": (dc["path"] if dc and dc["path"] else' in s
-
-
-def test_화면이_어느_망인지_말한다():
-    js = _src("static/module_f.js")
-    assert 'w.net_from === "design"' in js
-    assert "표와 같은 배관망" in js
-
-
+#   대신 갈라진 것은 `ModuleF_손질정본_지시서.md` §2-1 이 고친다 — 손질이
+#   고르기 **전에** 후보를 「표에 노즐로 오는 헤드」로 좁힌다.
 # ═══════════════════════════ §5 금지 사항 — 되돌아가지 않는다
 def test_백필을_안_없앴다():
     """★없애면 기준개수 K 가 다시 무너진다(`a44ec64` 가 고친 그 증상)."""
     s = _src("routes/module_f/api_design.py")
     i = s.index("filled = 0")
-    seg = s[i:i + 1200]
+    seg = s[i:s.index("got = select_and_expand(", i)]
     assert "if wet and short < k_use:" in seg
     assert "only = (set(pool) & wet) if pool else None" in seg
 

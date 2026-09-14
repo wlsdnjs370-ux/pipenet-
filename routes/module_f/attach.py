@@ -83,3 +83,69 @@ def wet_heads(sess, es, *, selected_source=None):
                              selected_source=selected_source)
     sess["_wet_probe"] = {"stamp": stamp, "probe": probe}
     return probe
+
+def picked_heads_wet(es, picked, *, selected_source=None):
+    """**뽑힌 K 개만** 전개해 「배관에 붙는가」를 잰다 — 전체망을 안 돈다.
+
+    ■ 왜 (2026-09-14 사용자 지적: B1F 최불리가 너무 오래 걸린다)
+
+      시계를 대 보니 답이 한 줄이었다 — B1F K=30 실측::
+
+          판 열기                    0.80s
+          ★전체망 전개(wet_heads)  154.10s   98.2%
+          최불리 선정(Dijkstra)      0.44s
+          먼 순서 검사(K+1)          0.51s
+          ★제한 전개(K개만)          1.13s   ← 같은 답을 여기서 얻는다
+
+      `/edit/worst` 가 «붙는 헤드» 를 재는 이유는 §2-3 하나다 — **뽑힌 K 개**
+      중 못 붙는 것이 있으면 막는다. 그 판정에 도면 전체 3,235개를 전개할
+      이유가 없다. 30개만 전개하면 **1.13초**고 답은 같다.
+
+      잃는 것: 「이 도면에 안 붙는 헤드가 N개 있다」는 전체 통계. 그것은
+      수리계산(`/design/build`)이 «제외 사유» 로 여전히 낸다 — 그쪽은 진행
+      표시가 있는 잡이라 오래 걸려도 화면이 얼지 않는다.
+
+    반환은 `wet_heads` 와 같은 모양이되 번호는 **board 헤드 번호**다
+    (`restrict_to_worst` 가 만든 지역 번호를 되돌려 준다).
+    """
+    from services.cad_import.convert.planar import build_planar_graph
+    from services.cad_import.design.restrict import restrict_to_worst
+
+    order = sorted({int(i) for i in (picked or ())})
+    if not order:
+        return {"ok": False, "error": "뽑힌 헤드가 없습니다.",
+                "wet": set(), "total": 0, "dropped": 0,
+                "reason": {}, "shared": set()}
+    payload = es.convert_payload()
+    lim = restrict_to_worst(payload, es.board, {"heads": order})
+    built = build_planar_graph(
+        lim.get("key") or "picked", write=False,
+        selected_source=selected_source or lim.get("selected_source"),
+        pts=lim.get("pts"), edges=lim.get("edges"), hcov=lim.get("hcov"),
+        ups=lim.get("ups"), head_kinds=lim.get("head_kinds"),
+        user_sources=lim.get("sources"), ho=lim.get("ho"),
+        edge_len_mm=lim.get("edge_len_mm"))
+    if not built.get("ok"):
+        return {"ok": False,
+                "error": built.get("error") or "제한 전개가 실패했습니다.",
+                "wet": set(), "total": len(order), "dropped": 0,
+                "reason": {}, "shared": set()}
+
+    def back(i):
+        i = int(i)
+        return order[i] if 0 <= i < len(order) else None
+
+    wet = {b for b in (back(i) for i in (built.get("wet_head_idx") or ()))
+           if b is not None}
+    reason = {}
+    for i, why in (built.get("head_reason") or {}).items():
+        b = back(i)
+        if b is not None:
+            reason[b] = why
+    shared = {b for b in (back(i) for i in (built.get("shared_head_idx") or ()))
+              if b is not None}
+    print(f"[붙는 헤드] 뽑힌 {len(order)}개만 전개했습니다 — 붙는 것 {len(wet)}개"
+          f" (전체망을 돌지 않습니다)")
+    return {"ok": True, "wet": wet, "total": len(order),
+            "dropped": len(order) - len(wet),
+            "reason": reason, "shared": shared}

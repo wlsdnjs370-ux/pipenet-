@@ -27,7 +27,7 @@ from routes.module_f.jobs import _job_running, _run_job, route_session
 #   여기서 다시 내보내는 이유는 시험·탐침이 이 모듈에서 그 이름들을 import
 #   하기 때문이다 — 가른 것 때문에 도구가 깨지면 안 된다(§패키지 분리 규약).
 from routes.module_f.selection import (  # noqa: F401 — 재수출 포함
-    _EDIT_ONLY_WORST_KEYS, _adopt_final_worst, _classify_excluded,
+    _classify_excluded,
     _design_stale, _handoff_after_table, _head_row, _in_rect, _load_map,
     _selection_sig, _worst_handoff_note, zone_confined_pool)
 
@@ -52,6 +52,11 @@ _DEFAULT_SETTINGS = {
     #   기본을 바꾸면 옛 세션의 산출이 조용히 달라진다.
     "fill_short": True,
 }
+
+
+# ★[복원 §6] 백필(모자라면 다음 순위로 채우기)은 **끈다.** 코드는 남겨 둔다 —
+#   왜 껐는지 모르면 다음 사람이 다시 켠다. 켜려면 규칙(§0)부터 다시 읽을 것.
+BACKFILL_DISABLED = True
 
 
 def _settings(sess: dict, body: dict) -> dict:
@@ -489,8 +494,12 @@ def register(app, *, UPLOAD_DIR):
                       f" (헤드 번호 최대 {max(picked)} · 지금 헤드 {n_disk})"
                       f" — 버리고 도면 전체에서 뽑습니다."
                       f" 손질에서 「최불리 선정」을 다시 눌러 주세요.")
+                # ★[손질정본 §0] 여기서 `sess["worst"]` 를 **비우지도 않는다.**
+                #   되먹임 금지는 「쓰지 않는다」이지 「나쁜 것만 안 쓴다」가
+                #   아니다 — 수리계산이 손질 상태를 건드리는 길을 아예 두지
+                #   않는다. 낡은 선정을 버리는 일은 그것을 낡게 만든 쪽
+                #   (`pick/commit`)이 이미 한다.
                 picked = []
-                sess["worst"] = None
             only = set(picked) or None
             # [§2-5] K 가 어긋나면 손질 것을 믿는다 — 기준개수의 입력칸은
             #   손질에 하나뿐이라는 것이 이 저장소의 결정이다.
@@ -519,6 +528,28 @@ def register(app, *, UPLOAD_DIR):
                 wet = set(probe.get("wet") or ())
                 short = len(only & wet) if wet else 0
                 if wet and short < k_use:
+                    # ★★[복원 §6] **백필 금지.** 못 붙는 헤드를 다른 헤드로
+                    #   바꿔 넣지 않는다 — 그러면 두 화면이 다른 헤드를 그리고,
+                    #   사람은 «남의 헤드가 섞인» 계산서를 받는다.
+                    #
+                    #   여기 들어온 것 자체가 **정상 흐름이 아니다.** 손질이
+                    #   §2-3 에서 이미 막았어야 한다. 다르다는 것은 손질 이후
+                    #   판이 바뀌었다는 뜻이고, 그건 메울 구멍이 아니라 고칠
+                    #   결함이다 — 메우지 말고 **그 사실 자체를 오류로 낸다.**
+                    #
+                    #   ★아래 종전 백필 블록은 **지우지 않는다**(§6). 왜 껐는지
+                    #     모르면 다음 사람이 다시 켠다 — 자리를 남겨 둔다.
+                    print(f"[★비정상] 손질이 고른 {k_use}개 중 {k_use - short}개가"
+                          f" 표에 안 온다 — 손질이 §2-3 에서 막았어야 하는"
+                          f" 것이다. 손질 이후 판이 바뀌었는지 확인하세요.")
+                    if BACKFILL_DISABLED:
+                        return {"ok": False, "error": (
+                            f"손질이 고른 {k_use}개 중 {k_use - short}개가"
+                            f" 배관에 붙지 않습니다 — 다른 헤드로 채우지"
+                            f" 않습니다(그러면 평면과 표가 다른 헤드를"
+                            f" 그립니다). 「최불리 선정」을 다시 눌러"
+                            f" 어느 헤드가 안 붙는지 확인한 뒤,"
+                            f" 손질에서 그 배관을 이어 주세요.")}
                     if not cfg.get("fill_short", True):
                         # [§2-5] 사람이 «채우지 마라» 를 골랐다 — 조용히 줄이지
                         #   않고 **막고 말한다**(K 미달은 설계면적이 아니다).
@@ -622,10 +653,6 @@ def register(app, *, UPLOAD_DIR):
             #   그 하나를 조용히 넘기면 사람은 12개로 계산된 줄 안다. 그리고
             #   **다른 헤드로 채우지 않는다**(S340 · D-F10-3).
             _handoff_after_table(got, tbl, es.board)
-            # ★[§2-1] 표가 섰다 — 이제 «표에 실제로 들어간 선정» 이 확정이다.
-            #   평면 보기가 그것을 그리게 세션의 선정을 여기서 한 곳으로 모은다.
-            #   표가 못 서면(위 예외) 여기 못 오므로 옛 선정이 그대로 남는다.
-            _adopt_final_worst(sess, got)
             # ★[F-11d-2] 넘긴 것 중 «엔진이 실제로 쓴 것» 을 맞대 본다.
             #   자리가 corridor 에 남아 있어도 그 사이에 미해결이 아니게 됐으면
             #   값은 안 들어간다 — 그것도 «적용 못 한 수정» 이다. 개수만 세면

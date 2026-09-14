@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260913-headsel">
+<link rel="stylesheet" href="/static/module_f.css?v=20260914-zonek">
 </head>
 <body>
 <header>
@@ -434,6 +434,24 @@
       <!-- 알람밸브가 없으면 계산 자체가 성립하지 않는다 — 눌러 보고 나서
            거절당하느니 무엇이 모자란지 미리 말한다. -->
       <div class="hint" id="ed-worst-why"></div>
+      <!-- ★[2026-09-14] 최불리가 «거절» 한 이유는 맨 아래 상태줄에만 떴다.
+           그러면 사람은 「버튼이 동작을 안 한다」로 만난다 — 실제로 그렇게
+           보고받았다(B1F: 영역 안 헤드 28개 < 기준개수 30개로 막힌 것을
+           «아무 일도 안 일어남» 으로 읽었다). 거절은 누른 자리 옆에서
+           크게 말한다. -->
+      <div class="banner hidden" id="ed-worst-err"></div>
+      <!-- ★[손질정본 §2-2] 후보에서 «뺀» 헤드 — 표에 노즐로 못 오는 것들이다.
+           사람이 고칠 대상이라 개수만으로는 부족하고 **사유별로** 말해야 한다:
+           pass_under 는 「이음」으로 잇고, chord_only·shared 는 찍기에서 묶음을
+           빼고, dry 는 상류를 잇는다. 한 덩어리로 「배관을 이어라」 하면 틀린
+           곳을 고치러 간다. 새 화면을 만들지 않고 이 자리에 적는다. -->
+      <div class="banner hidden" id="ed-notatt"></div>
+      <!-- ★[복원 §2-3] 뽑힌 K 개 중 못 붙는 헤드가 있으면 **막고** 여기에
+           자리·사유·할 일을 적는다. 채우지도 빼지도 않는다 — 둘 다 감추는
+           짓이고, 감추면 남의 헤드가 섞인 계산서가 나간다. -->
+      <div class="banner hidden" id="ed-blocked"></div>
+      <!-- ★[복원 §3] 「먼 순서 그대로 K 개」가 깨지면 조용히 넘기지 않는다. -->
+      <div class="banner hidden" id="ed-rankbad"></div>
       <!-- [F-10d · D-F10-5] 결과 위에서 고친 뒤 «다시 계산» 은 사람이 한 번만.
            수정마다 자동으로 다시 돌리지 않는다 — 검출이 실측 ~18초라 클릭
            하나가 18초짜리가 되어 버린다. -->
@@ -809,6 +827,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260913-headsel"></script>
+<script src="/static/module_f.js?v=20260914-zonek"></script>
 </body>
 </html>

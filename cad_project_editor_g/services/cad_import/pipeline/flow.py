@@ -592,6 +592,7 @@ def attach_heads_center(pts, edges, hcov, tol=None, why=None):
     for i, (x, y) in enumerate(pts2):
         gput(ng, 500.0, x, y, i)
     centers, multi = [], []
+    reason_of: dict = {}          # [복원 §2-2] 못 붙은 사유 — `why` 와 무관하게
     n_wire = 0
     for di, (hx, hy, hr) in enumerate(hcov):
         lim = hr + tol
@@ -621,9 +622,11 @@ def attach_heads_center(pts, edges, hcov, tol=None, why=None):
             continue
         if not ends:
             centers.append(None)
+            rs = ("chord_only" if n_chord and not n_pass else
+                  "pass_under" if n_pass else "no_center")
+            reason_of[di] = rs        # §2-2 가 «누구를 붙일지» 고르는 데 쓴다
             if why is not None:
-                why[di] = ("chord_only" if n_chord and not n_pass else
-                           "pass_under" if n_pass else "no_center")
+                why[di] = rs
             continue
         if len(ends) > 1:
             ds = sorted(d for d, _n in ends)
@@ -638,6 +641,73 @@ def attach_heads_center(pts, edges, hcov, tol=None, why=None):
         nbr[c].add(e)
         centers.append(c)
         n_wire += 1
+
+    # ★★[복원 §2-2] ①·②로도 못 붙은 헤드는 **붙인다** — 감추지 않는다.
+    #
+    #   `pass_under` 는 「관이 헤드 원 안을 지나가는데 그 자리에 접속 노드가
+    #   없다」는 뜻이다. 실제 배관은 가지관에 티로 물려 있고, 도면이 그것을
+    #   «관이 원을 지나가게» 그린 것뿐이다. 상향식은 이미 5단계에서 그 관을
+    #   헤드 중심에서 쪼개 주는데(`stage5_split_through_uprights` · 2026-08-12
+    #   오너 승인), 하향식·상하향식에만 그 문이 닫혀 있었다 — 비대칭이다.
+    #
+    #   ★새 판정을 만들지 않는다. **그 함수를 그대로 다시 부른다**(§6). 같은
+    #     규칙이 두 벌이 되면 한쪽만 고쳐지는 날이 온다.
+    #   ★감추면 규칙이 깨진다. 종전에는 이 헤드들을 «후보에서 빼서» 없는 척
+    #     했고, 하필 가장 먼 헤드가 말단 가지관 끝이라 이 모양이 되기 쉬워서
+    #     「먼 순서 그대로 K 개」가 뒤집혔다(실측 대명동: 2등·5등이 빠졌다).
+    #
+    #   여기는 `attach_heads_center` 안이라 **두 자를 쓰는 곳 모두**에 함께
+    #   걸린다(`edit/board.py:_complete_heads` · `convert/planar.py`). 그것이
+    #   목적이다 — 손질이 「붙었다」고 본 것을 전개도 붙인다.
+    #   ★`chord_only` 는 **빼고** 넘긴다. 원에 걸친 그 선은 배관이 아니라
+    #     하향식 기호의 **가로막대**다(찍기가 문양을 관으로 읽은 것). 거기에
+    #     헤드를 붙이면 도면에 없는 배관을 지어내는 셈이고, 그 헤드는 «제
+    #     가로막대에 매달린» 채 물길 밖에 남는다. 사람이 찍기에서 그 묶음을
+    #     빼야 할 자리다 — §2-3 이 그렇게 안내한다.
+    #     (자를 대 보면 가로막대도 «원 안을 지나는 관» 이라 안 빼면 붙는다.)
+    miss = [i for i, c in enumerate(centers)
+            if c is None and reason_of.get(i) != "chord_only"]
+    if miss:
+        pts3, edges3, n_split = stage5_split_through_uprights(
+            pts2, edges2,
+            [(float(hcov[i][0]), float(hcov[i][1]), float(hcov[i][2]))
+             for i in miss],
+            assume_unattached=True)      # 이미 «못 붙었다»고 가른 것들이다
+        if n_split:
+            pts2 = list(pts3)
+            edges2 = {tuple(sorted(e)) for e in edges3}
+            nbr = defaultdict(set)
+            for i, j in edges2:
+                nbr[i].add(j)
+                nbr[j].add(i)
+            ng = defaultdict(list)
+            for i, (x, y) in enumerate(pts2):
+                gput(ng, 500.0, x, y, i)
+            # ★①을 **다시 시도**한다 — 같은 조건이다(중심 ≤ARM_CTR · 간선 달림).
+            fixed = []
+            for di in miss:
+                hx, hy = float(hcov[di][0]), float(hcov[di][1])
+                ctr = []
+                for n in set(gnear(ng, 500.0, hx, hy, rings=1)):
+                    if not nbr.get(n):
+                        continue
+                    d = math.hypot(pts2[n][0] - hx, pts2[n][1] - hy)
+                    if d <= ARM_CTR:
+                        ctr.append((d, n))
+                if ctr:
+                    centers[di] = min(ctr)[1]
+                    fixed.append(di)
+                    if why is not None:
+                        why.pop(di, None)
+            if fixed:
+                print(f"헤드 통과관 쪼갬(§2-2): 관 {n_split}개를 헤드 중심에서"
+                      f" 쪼개 {len(fixed)}개를 붙였습니다"
+                      f" (못 붙었던 {len(miss)}개 중)")
+                for di in fixed[:8]:
+                    print(f"    ({float(hcov[di][0]):.1f},"
+                          f" {float(hcov[di][1]):.1f})")
+                if len(fixed) > 8:
+                    print(f"    … 외 {len(fixed) - 8}개")
     return pts2, frozenset(edges2), centers, n_wire, multi
 
 
@@ -1453,7 +1523,7 @@ def stage5_body(st, ups):
     return out
 
 
-def stage5_split_through_uprights(pts, edges, ups):
+def stage5_split_through_uprights(pts, edges, ups, assume_unattached=False):
     """5단계 ② — 상향식 · 원 밑으로만 지나가는 관을 중심에서 쪼갠다.
 
     [2026-08-12 오너] MF101처럼 원 양쪽에 관 끝이 있으면 ① 틈이음으로
@@ -1466,6 +1536,18 @@ def stage5_split_through_uprights(pts, edges, ups):
     · 동작: 통과 선분을 헤드 중심에서 분할 → 새 노드 (좌·우 관이 경유)
     · 하향식·이미 테두리 붙은 상향식은 손대지 않음
     반환: (pts2, edges2, n_split)
+
+    ★`assume_unattached=True` — 부르는 쪽이 **이미 «못 붙었다»고 판정한** 헤드만
+      넘길 때 쓴다. 그때는 `has_near_node` 문을 열지 않는다.
+
+      그 문은 「이미 붙은 헤드는 건드리지 마라」는 뜻인데, 자를 «중심 ≤ARM_CTR
+      또는 테두리 ±HEAD_TOUCH 에 노드가 있나» 로 댄다. `pass_under` 는 **정의상
+      테두리에 노드가 있는** 경우라(관이 스쳐 지나가며 그 자리에 폴리선 꼭짓점을
+      남긴다) 이 문에 걸려 통째로 건너뛰어진다 — 실측(대명동): 못 붙은 12개가
+      near=True · thru=True 로 **12개 전부 건너뜀 · 쪼갠 관 0개**.
+
+      기본값 False 는 종전 그대로다 — 5단계 상향식 경로는 한 바이트도 안 바뀐다.
+      쪼개는 규칙 자체(원 안 통과 · 횡이탈 최소 · 중앙 근접)는 손대지 않는다.
     """
     if not ups:
         return list(pts), set(tuple(sorted(e)) for e in edges), 0
@@ -1492,7 +1574,7 @@ def stage5_split_through_uprights(pts, edges, ups):
             gput(eg, cell, a[0] + (b[0] - a[0]) * t,
                     a[1] + (b[1] - a[1]) * t, (i, j))
     for (hx, hy, hr) in ups:
-        if hr <= 0 or has_near_node(hx, hy, hr):
+        if hr <= 0 or (not assume_unattached and has_near_node(hx, hy, hr)):
             continue
         best = None
         rings = 1 + int(hr // cell)

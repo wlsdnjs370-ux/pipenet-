@@ -168,9 +168,8 @@
                     Math.max(z.x0, z.x1), Math.max(z.y0, z.y1)]);
       // 자동 경로는 영역이 서버의 필수 입력이라 곧바로 올린다(anchored 의
       // head_region). 수동은 최불리 선정을 누를 때 함께 보낸다.
-      if (S.stage === "auto") pushAutoZones();
-      else renderZones();
-      draw();
+      if (S.stage === "auto") { pushAutoZones(); draw(); }
+      else zonesTouched(`영역 ${S.zones.length}곳이 되었습니다`);
     }
   });
   cv.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -707,7 +706,13 @@
     let d;
     try { d = await r.json(); }
     catch (err) { throw new Error(`서버 응답을 읽지 못했습니다 (HTTP ${r.status}).`); }
-    if (!r.ok || d.ok === false) throw new Error(d.message || `HTTP ${r.status}`);
+    if (!r.ok || d.ok === false) {
+      // ★[복원 §2-3] 문장만 던지면 «어느 헤드가 · 왜 · 뭘 하면 되는지» 가
+      //   버려진다. 막은 이유는 자료로 오므로 그대로 붙여 보낸다.
+      const e = new Error(d.message || `HTTP ${r.status}`);
+      e.data = d;
+      throw e;
+    }
     return d;
   }
   const post = (path, body) => api(path, {
@@ -1500,8 +1505,13 @@
       $(p.num).value = row.count;
       $(p.why).innerHTML =
         `<b>${row.count}개</b> — ${row.label} <span class="tag">${row.rule_id}</span>`;
+      // 기준개수가 바뀌면 «영역 안 헤드로 충분한가» 도 바뀐다 — 바로 다시 적는다.
+      if (p.num === "ed-k" && S.edit) renderWorstReady();
     };
-    $(p.num).oninput = () => { sel.value = ""; };
+    $(p.num).oninput = () => {
+      sel.value = "";
+      if (p.num === "ed-k" && S.edit) renderWorstReady();
+    };
   }
 
   // 표시 전용 토글 둘 — 서버에 아무것도 안 보낸다(세션 상태 불변).
@@ -1563,16 +1573,58 @@
     return ((S.edit || {}).sources || []).length;
   }
 
+  /** 영역 안에 그려진 헤드가 몇 개인가 — **누르기 전에** 알 수 있게.
+   *
+   *  ★이 수는 «그려진 헤드» 다. 서버가 세는 것은 «급수원에 닿는 헤드» 라
+   *    이보다 **적을 수 있다** — 그러니 상한으로만 말한다. 지어내지 않는다.
+   */
+  function zoneHeadCount() {
+    const hs = (S.edit || {}).heads || [];
+    if (!S.zones.length) return hs.length;
+    let n = 0;
+    for (const h of hs) {
+      for (const z of S.zones) {
+        if (h[0] >= z[0] && h[0] <= z[2] && h[1] >= z[1] && h[1] <= z[3]) {
+          n++;
+          break;
+        }
+      }
+    }
+    return n;
+  }
+
   function renderWorstReady() {
     if (!S.edit) return;
     const n = worstReady();
     const why = $("ed-worst-why");
-    why.classList.toggle("warn", !n);
-    why.textContent = n
-      ? `알람밸브 ${n}곳 기준 · `
-        + (S.zones.length ? `영역 ${S.zones.length}곳 안에서` : "도면 전체에서")
-        + ` 기준개수 ${edK()}개를 고릅니다.`
-      : WORST_NEED_ANCHOR;
+    if (!n) {
+      why.classList.add("warn");
+      why.textContent = WORST_NEED_ANCHOR;
+      return;
+    }
+    // ★모자라면 **누르기 전에** 말한다. 종전에는 눌러야 400 이 왔고 그
+    //   문장이 맨 아래 상태줄에만 떠서 「동작을 안 한다」로 읽혔다.
+    const k = edK();
+    const inZone = zoneHeadCount();
+    const short = inZone < k;
+    why.classList.toggle("warn", short);
+    why.textContent = `알람밸브 ${n}곳 기준 · `
+      + (S.zones.length ? `영역 ${S.zones.length}곳 안` : "도면 전체")
+      + ` 헤드 ${inZone.toLocaleString()}개 · 기준개수 ${k}개`
+      + (short
+         ? ` → ★모자랍니다. 영역을 넓히거나 기준개수를 ${inZone} 이하로`
+           + " 낮추세요. (그려진 헤드 기준 — 급수원에 닿는 수는 더 적을 수"
+           + " 있습니다)"
+         : "를 고릅니다.");
+  }
+
+  /** 최불리가 «거절» 한 이유 — 누른 자리 옆에서 크게 말한다. */
+  function renderWorstError(msg) {
+    const box = $("ed-worst-err");
+    if (!box) return;
+    if (!msg) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+    box.classList.remove("hidden");
+    box.innerHTML = `<b>최불리를 뽑지 못했습니다</b><br>${esc(msg)}`;
   }
 
   function renderZones() {
@@ -1588,8 +1640,46 @@
     box.innerHTML = html;
   }
 
-  $("ed-zone-undo").onclick = () => { S.zones.pop(); renderZones(); draw(); };
-  $("ed-zone-clear").onclick = () => { S.zones = []; renderZones(); draw(); };
+  /** ★영역이 바뀌면 이전 최불리 선정은 **낡은 것**이다 (2026-09-14).
+   *
+   *  사용자: 「최초 최불리 선정 후에 해제하고 영역 다시 지정 후에 최불리
+   *  선정을 누르니까 작동을 안 한다」. 라우트를 순서대로 밟아 보면 서버는
+   *  멀쩡하다(영역A → 해제 → 영역B → 영역없음 → 영역A 전부 ok).
+   *  갈리는 자리는 화면이었다 — **해제해도 `S.zones` 가 그대로 남는다.**
+   *  그래서 새 사각형을 그리면 «교체» 가 아니라 **합쳐지고**, 영역을 바꿨는데
+   *  결과가 안 따라오는 것처럼 보인다.
+   *
+   *  이제 영역을 건드리면 선정을 지운다 — 화면에 남은 corridor 가 지금 영역과
+   *  다른 말을 하는 일이 없다. 「자유롭게 영역을 수정하면서 영역에 따라
+   *  최불리를 선정」이 그대로 된다.
+   */
+  async function zonesTouched(what) {
+    renderZones();
+    draw();
+    if (!(S.edit && S.edit.worst)) return;
+    try {
+      const d = await post("/api/module-f/edit/worst-clear", { sid: S.sid });
+      setEdit(d.state);
+      renderEdit();
+      renderBlocked(null);
+      renderRankBroken(null);
+      renderWorstError(null);
+      $("cv-worst-kfp").checked = false;
+      draw();
+      say(`${what} — 이전 최불리 선정을 지웠습니다.`
+        + ` 지금 영역 ${S.zones.length}곳 · 「최불리 선정」을 다시 누르세요.`,
+          "warn");
+    } catch (err) { say(err.message, "err"); }
+  }
+
+  $("ed-zone-undo").onclick = () => {
+    S.zones.pop();
+    zonesTouched("영역을 하나 되돌렸습니다");
+  };
+  $("ed-zone-clear").onclick = () => {
+    S.zones = [];
+    zonesTouched("영역을 모두 지웠습니다");
+  };
   $("ed-zone-arm").onchange = () => {
     say($("ed-zone-arm").checked
       ? "캔버스를 드래그해 영역을 그리세요. (화면 이동은 Shift+드래그)"
@@ -3888,9 +3978,98 @@
              + " 셌습니다(그만큼 다음 순위를 채웠습니다)"
            : ""),
           "ok");
+      renderNotAttachable(s.not_attachable);
+      renderBlocked(null);                    // 지난번 막음 자국을 지운다
+      renderWorstError(null);
+      renderRankBroken(s.rank_invariant);
       $("cv-worst-kfp").checked = true;
-    } catch (err) { say(err.message, "err"); }
+    } catch (err) {
+      say(err.message, "err");
+      // ★[복원 §2-3] 막았으면 «어느 헤드가 · 왜 · 뭘 하면 되는지» 를 낸다.
+      renderBlocked(err.data && err.data.not_attached);
+      // ★거절 문장이 상태줄에만 있으면 「버튼이 안 먹는다」로 읽힌다.
+      renderWorstError(err.message);
+    }
     finally { busy(false); }
+  }
+
+  /** ★[복원 §2-3] 뽑힌 K 개 중 못 붙는 헤드 — **막은** 이유를 자리와 함께.
+   *
+   *  채우지도 빼지도 않았다. 둘 다 감추는 짓이고, 감추면 사람은 남의 헤드가
+   *  섞인 계산서를 받는다. 고칠 자리를 가리키는 편이 낫다.
+   *  문구는 서버가 준 것을 그대로 쓴다 — 두 벌이면 언젠가 갈린다.
+   */
+  function renderBlocked(nb) {
+    const box = $("ed-blocked");
+    if (!box) return;
+    if (!nb || !nb.n) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+    const rows = (nb.items || []).slice(0, 12).map((r) =>
+      `<div>· (${Math.round(r.xy[0])}, ${Math.round(r.xy[1])})`
+      + ` — ${esc(r.why)}<br>&nbsp;&nbsp;&nbsp;→ ${esc(r.todo || "")}</div>`
+    ).join("");
+    box.classList.remove("hidden");
+    box.innerHTML = `<b>계산을 멈췄습니다 — 뽑힌 헤드 ${nb.n}개가 배관에`
+      + " 붙지 않습니다.</b><br>다른 헤드로 채우지 않습니다"
+      + "(그러면 평면과 표가 다른 헤드를 그립니다)."
+      + " 아래 자리를 손질에서 고친 뒤 다시 누르세요.<br>"
+      + rows
+      + (nb.n > 12 ? `<div>… 외 ${nb.n - 12}곳</div>` : "");
+  }
+
+  /** ★[복원 §3] 「먼 순서 그대로 K 개」가 깨지면 **조용히 넘기지 않는다.** */
+  function renderRankBroken(inv) {
+    const box = $("ed-rankbad");
+    if (!box) return;
+    if (!inv || inv.ok !== false) {
+      box.classList.add("hidden"); box.innerHTML = ""; return;
+    }
+    box.classList.remove("hidden");
+    box.innerHTML = "<b>★먼 순서 규칙이 깨졌습니다</b> — "
+      + esc((inv.violations || []).join(" · "))
+      + "<br>이 선정은 「유하거리가 긴 순서 그대로 K 개」가 아닙니다."
+      + " 그대로 수리계산에 넣지 마시고 알려 주세요.";
+  }
+
+  /** ★[복원 §2-1·§2-3] 후보 중 «배관에 안 붙는» 헤드를 사유별로 적는다.
+   *
+   *  ★이 헤드들은 **후보에서 빼지 않는다.** 빼면 「먼 순서 그대로 K 개」가
+   *  깨진다 — 가장 먼 헤드일수록 말단 가지관 끝이라 안 붙는 모양이 되기 쉽고,
+   *  하필 그것이 빠지면 2등이 1등 자리에 온다(실측 대명동: 상위 30 중 5개).
+   *  여기 적는 것은 **알림**이다. 그중 하나가 K 안에 들면 그때 막는다(§2-3).
+   *
+   *  사유마다 고칠 자리가 다르다 — 한 덩어리로 「배관을 이어라」 하면 틀린
+   *  곳을 고치러 간다.
+   */
+  const NOTATT_WHY = {
+    pass_under: ["관이 헤드를 스쳐 지나갑니다(끝점이 아닙니다)",
+                 "손질 「이음」 으로 그 관과 헤드를 잇습니다"],
+    chord_only: ["원에 걸친 것이 문양(가로막대)이라 팔이 아닙니다",
+                 "찍기에서 그 묶음을 헤드에서 뺍니다"],
+    no_center: ["헤드 둘레에 배관이 아예 없습니다", "가지관을 잇습니다"],
+    center_dry: ["중심 노드는 있는데 물길 밖입니다", "상류 이음을 잇습니다"],
+    dry: ["급수원에서 물이 안 닿습니다", "상류 이음을 잇습니다"],
+    shared: ["다른 헤드와 같은 자리라 표에서 하나로 합쳐집니다",
+             "찍기에서 겹친 묶음 하나를 뺍니다"],
+  };
+
+  function renderNotAttachable(na) {
+    const box = $("ed-notatt");
+    if (!box) return;
+    if (!na || !na.n) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+    const rows = Object.entries(na.by_why || {}).map(([why, n]) => {
+      const t = NOTATT_WHY[why] || [why, "손질에서 확인하세요"];
+      return `<div>· <b>${n}개</b> — ${esc(t[0])}<br>`
+        + `&nbsp;&nbsp;&nbsp;→ ${esc(t[1])}</div>`;
+    }).join("");
+    const xy = (na.items || []).slice(0, 6)
+      .map((r) => `(${Math.round(r.xy[0])}, ${Math.round(r.xy[1])})`);
+    box.classList.remove("hidden");
+    box.innerHTML = `<b>후보 중 배관에 안 붙는 헤드 ${na.n}개</b>`
+      + " — <b>후보에서 빼지 않았습니다</b>(빼면 먼 순서 규칙이 깨집니다)."
+      + " 이 중 하나가 기준개수 안에 들면 계산을 멈추고 알려 드립니다.<br>"
+      + rows
+      + (xy.length ? `<div>자리: ${esc(xy.join(" · "))}`
+          + (na.n > xy.length ? ` … 외 ${na.n - xy.length}곳` : "") + "</div>" : "");
   }
 
   $("ed-worst").onclick = () => runWorst("최불리 헤드 선정 중…");
@@ -3903,8 +4082,23 @@
       const d = await post("/api/module-f/edit/worst-clear", { sid: S.sid });
       setEdit(d.state);
       renderEdit();
+      // ★«이전으로» 제대로 돌아간다 — 화면에 남은 흔적을 함께 치우고,
+      //   영역 그리기를 켜 둔다. 종전에는 corridor 만 사라지고 영역 수·
+      //   다음 할 일을 아무도 말하지 않아, 사람이 「또 눌러도 그대로」로 만났다.
+      renderBlocked(null);
+      renderRankBroken(null);
+      renderNotAttachable(null);
+      renderWorstError(null);
       $("cv-worst-kfp").checked = false;
-      say("최불리 선정을 해제했습니다.");
+      $("ed-zone-arm").checked = true;      // 바로 영역을 고칠 수 있게
+      renderZones();
+      draw();
+      say("최불리 선정을 해제했습니다 — 영역 그리기를 켰습니다."
+        + ` 지금 영역 ${S.zones.length}곳`
+        + (S.zones.length
+           ? " · 「영역 지우기」로 비우거나, 더 그린 뒤 「최불리 선정」"
+           : " · 캔버스를 끌어 영역을 그리거나, 그대로 「최불리 선정」")
+        + "을 누르세요.", "ok");
     } catch (err) { say(err.message, "err"); }
   };
 
@@ -6181,13 +6375,7 @@
     // 값은 손질의 select 하나뿐이다 — 여기는 그 얼굴이라 열 때마다 맞춘다.
     $("dg-plan-view").value = $("ed-worst-view").value;
     const n = (S.edit && S.edit.edits_since_worst) || 0;
-    // [§2-1] 지금 그리는 망이 «표에 들어간 선정» 인지 말한다 — 같은 그림에
-    //   두 뜻이 있으면(손질이 고른 것 / 표가 쓴 것) 사람이 판단을 못 한다.
-    const w = (S.edit && S.edit.worst) || null;
-    $("dg-edits").textContent = `마지막 계산 후 수정 ${n}건`
-      + (w && w.net_from === "design"
-         ? " · 지금 그리는 망 = 표와 같은 배관망"
-         : (w && w.from_design ? " · 지금 그리는 망 = 표와 같은 선정" : ""));
+    $("dg-edits").textContent = `마지막 계산 후 수정 ${n}건`;
     const mode = (S.edit && S.edit.mode) || "";
     for (const b of document.querySelectorAll(".dgmode")) {
       b.classList.toggle("on", b.dataset.mode === mode);
@@ -6264,7 +6452,14 @@
       renderPlanUnderlay();
       busy(false);
       $("dg-build").click();          // 표 확정 → designPreview → 아이소 갱신
-    } catch (err) { busy(false); say(err.message, "err"); }
+    } catch (err) {
+      busy(false);
+      say(err.message, "err");
+      // ★[복원 §2-3] 이 길로 와도 «막은 이유» 는 똑같이 보여야 한다 —
+      //   한쪽 단추에서만 보이면 사람은 다른 단추가 고장 났다고 읽는다.
+      renderBlocked(err.data && err.data.not_attached);
+      setStage("edit");
+    }
   };
 
   $("dg-bore-color").onchange = () => {
@@ -6301,17 +6496,6 @@
           //   빠지면 배지가 남아 「저장했지만 아직 안 들어갔다」를 말한다.
           S.ovDirty = false;
           renderDesignSummary(sum);
-          // ★[두 화면 선정일치 §2-1] 표가 섰으면 «평면에서 보기» 도 **표에
-          //   들어간 선정**을 그린다. 서버가 세션 선정을 그것으로 맞추고
-          //   corridor 지문을 지웠으므로, 손질 상태를 한 번 다시 받아야 새
-          //   망이 화면에 온다. 안 받으면 서버는 맞췄는데 화면만 옛 그림을
-          //   들고 있어, 고친 것이 하나도 안 보인다.
-          //   (지문 규약 덕에 안 바뀐 블록은 안 실려 온다 — 실측 1KB 규약)
-          try {
-            const e = await api(`/api/module-f/edit/state?sid=${S.sid}`);
-            setEdit(e.state);
-            renderPlanUnderlay();
-          } catch (err) { say(err.message, "warn"); }
           await designPreview();
           say("표 확정 — 미리보기와 표는 저장될 값 그대로입니다."
             + " «평면에서 보기» 를 끄면 30° 아이소매트릭으로 바뀝니다."

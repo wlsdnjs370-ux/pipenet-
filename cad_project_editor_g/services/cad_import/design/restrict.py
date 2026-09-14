@@ -93,13 +93,22 @@ def attachable_heads(payload: dict, *, selected_source=None,
     if not built.get("ok"):
         return {"ok": False,
                 "error": built.get("error") or "전개가 실패했습니다.",
-                "wet": set(), "total": 0, "dropped": 0, "reason": {}}
+                "wet": set(), "total": 0, "dropped": 0, "reason": {},
+                "shared": set()}
     wet = set(built.get("wet_head_idx") or [])
     total = len(payload.get("hcov") or [])
     return {"ok": True, "wet": wet, "total": total,
             "dropped": max(0, total - len(wet)),
             # [§2-4] 전개가 이미 가른 사유를 그대로 들고 나온다.
-            "reason": dict(built.get("head_reason") or {})}
+            "reason": dict(built.get("head_reason") or {}),
+            # [손질정본 §2-1] «표에 노즐로 오는 헤드» 는 wet 만으로는 안 된다.
+            #   같은 중심 노드를 나눠 문 헤드는 붙기는 붙지만 표에는 **하나만**
+            #   남는다(`head_vid` 가 dict 라 뒤엣것이 앞엣것을 덮는다). 그래서
+            #   손질이 K개를 골라도 노즐이 K 보다 적어진다 — 실측 대명동 21개.
+            #   ★판정을 새로 만들지 않는다. `build_planar_graph` 가 이미
+            #     `shared_head_idx` 로 갖고 있는 것을 그대로 들고 나올 뿐이다
+            #     (`reason` 을 더할 때와 같은 방식).
+            "shared": set(built.get("shared_head_idx") or ())}
 
 
 def _ends(pr):
@@ -204,21 +213,71 @@ def expand_worst(payload: dict, board, worst: dict, *,
     from services.cad_import.convert.planar import build_planar_graph
 
     limited = restrict_to_worst(payload, board, worst)
-    built = build_planar_graph(
-        key or limited.get("key") or "worst",
-        write=False,
-        selected_source=selected_source or limited.get("selected_source"),
-        pts=limited.get("pts"),
-        edges=limited.get("edges"),
-        hcov=limited.get("hcov"),
-        ups=limited.get("ups"),
-        head_kinds=limited.get("head_kinds"),
-        user_sources=limited.get("sources"),
-        ho=limited.get("ho"),
-        # [신축배관 접기] 선언 길이 — `restrict_to_worst` 는 헤드만 지우고
-        #   노드 번호를 그대로 두므로 이 표의 키가 계속 유효하다.
-        edge_len_mm=limited.get("edge_len_mm"),
-    )
+
+    def _plan(snap):
+        return build_planar_graph(
+            key or limited.get("key") or "worst",
+            write=False,
+            selected_source=(selected_source
+                             or limited.get("selected_source")),
+            pts=limited.get("pts"),
+            edges=limited.get("edges"),
+            hcov=limited.get("hcov"),
+            ups=limited.get("ups"),
+            head_kinds=limited.get("head_kinds"),
+            user_sources=limited.get("sources"),
+            ho=limited.get("ho"),
+            # [신축배관 접기] 선언 길이 — `restrict_to_worst` 는 헤드만 지우고
+            #   노드 번호를 그대로 두므로 이 표의 키가 계속 유효하다.
+            edge_len_mm=limited.get("edge_len_mm"),
+            grid_snap=snap,
+        )
+
+    def _corridor_ok(b, want_heads):
+        """회랑이 **한 덩이** 이고 헤드가 다 붙었나 — 되돌릴지 가르는 자."""
+        kf = (b or {}).get("kfp")
+        if not (b or {}).get("ok") or kf is None:
+            return False
+        nd = kf.get("nodes_meta_runtime") or {}
+        pp = kf.get("pipe_data") or {}
+        heads = sum(1 for m in nd.values()
+                    if str((m or {}).get("type_id") or "") == "head")
+        if heads < want_heads:
+            return False
+        adj: dict = {}
+        for pr in pp.values():
+            a, z = _ends(pr)
+            if a is None or z is None:
+                continue
+            adj.setdefault(a, []).append(z)
+            adj.setdefault(z, []).append(a)
+        if not adj:
+            return False
+        seen = {next(iter(adj))}
+        stack = [next(iter(adj))]
+        while stack:
+            cur = stack.pop()
+            for nx in adj.get(cur, ()):
+                if nx not in seen:
+                    seen.add(nx)
+                    stack.append(nx)
+        return len(seen) >= len(nd)
+
+    # ★[회랑 사슬좌표 · 오너 2026-09-14] 회랑은 격자 스냅의 **반올림**을 끈다 —
+    #   좌표는 뒤에서 사슬이 다시 만들고, 반올림은 서로 다른 board 절점을 한
+    #   칸으로 눌러 C3(1:1)를 깨뜨렸다(실측 대명동 10곳).
+    #
+    #   ★단, 스냅은 **연결성도 떠받치고 있다.** 조사 도면은 이음이 몇십 mm 씩
+    #     벌어져 있어서, 반올림이 없으면 일직선 정리가 못 붙이고 회랑이
+    #     쪼개진다 — 실측 B1F: 노드 90 → 229 · 회랑 3조각 · 노즐 0개.
+    #     그래서 «끄고 재 본 뒤, 쪼개졌으면 되돌린다». 조용히 넘기지 않는다.
+    n_heads = len({int(i) for i in (worst or {}).get("heads") or ()})
+    built = _plan(False)
+    if not _corridor_ok(built, n_heads):
+        print("[G20] ★격자 스냅을 끄니 회랑이 쪼개집니다"
+              " (조사 도면처럼 이음이 벌어진 판) — 스냅을 켠 채로 갑니다."
+              " 좌표는 사슬이 다시 만들고, 한 칸에 눌린 절점이 남을 수 있습니다.")
+        built = _plan(True)
     if not built.get("ok") or built.get("kfp") is None:
         return {"ok": False,
                 "error": built.get("error") or "제한 전개가 .kfp 를 내지 못했습니다.",
@@ -237,6 +296,55 @@ def expand_worst(payload: dict, board, worst: dict, *,
         n0 = len(flat.get("nodes_meta_runtime") or {})
         p0 = len(flat.get("pipe_data") or {})
         built["kfp"] = raised
+        # ★★[회랑 사슬좌표 §3-1] 세로 처리 **다음**, 표 만들기 **전**에 회랑
+        #   좌표를 사슬로 다시 만든다. 자리가 여기인 이유: `convert_to_kfp` 는
+        #   접속표시(호)를 좌표로 노드에 앉히므로(`sit_arcs`) 그 앞에서 좌표를
+        #   바꾸면 호가 엉뚱한 노드에 앉는다. 세로가 끝난 kfp 는 나무다.
+        #
+        #   종전은 «좌표» 를 지키고 길이를 스냅된 좌표에서 다시 쟀다. 그래서
+        #   손질이 고른 최원 유하거리와 표가 쓰는 길이가 갈렸다 — 실측 대명동
+        #   70mm · B1F 745mm. 이제 «위상 + 길이» 를 지키고 좌표를 만든다.
+        #   전체망 `.kfp` 는 이 함수를 안 타므로 종전 그대로다(§1-2).
+        from services.cad_import.design.chain import chain_coords
+        chain = chain_coords(
+            raised,
+            edge_ref=built.get("edge_ref") or {},
+            node_ref=built.get("node_ref") or {},
+            board_pts=board.pts,
+            origin_mm=built.get("origin_mm"),
+            declared_pipes=built.get("declared_pipes") or (),
+            corridor_edges=(worst or {}).get("edges") or ())
+        if chain.get("ok"):
+            kk = chain["kinds"]
+            print(f"[G20] 사슬 좌표 · 노드 {chain['nodes']}"
+                  f" · 평면 {kk.get('plane', 0)} · 세로 {kk.get('vert', 0)}"
+                  f" · 엔진가로 {kk.get('engine', 0)}"
+                  f" · 길이 덮음 {chain['len_overwritten']}"
+                  f" · 8방향 편차 최대 {chain['dev_max']:.2f}°"
+                  f" · 헤드 이탈 최대 {chain['slip_max_mm']:.0f}mm"
+                  f" (오너가 허용한 어긋남 — 경고 아님)")
+            if chain.get("unreached"):
+                print(f"[G20] ★사슬이 닿지 못한 노드 {len(chain['unreached'])}개"
+                      f" — 회랑이 나무가 아닐 수 있습니다"
+                      f" {chain['unreached'][:5]}")
+        else:
+            print(f"[G20] ★사슬 좌표를 만들지 못했습니다 — {chain.get('error')}")
+        built["chain_report"] = chain
+        # ★★[오너 2026-09-14] 한 수직·수평 직선은 **배관 하나**로 — 시작점과
+        #   끝점만 남긴다(.kfp 배관망처럼). 사슬이 방향을 8 방향으로 맞춰
+        #   놓았으므로 한 줄 위 토막들은 **정확히** 같은 방향이라 합쳐도
+        #   길이·좌표가 그대로다(L = L1+L2 · 일직선이라 좌표 거리도 같다).
+        from services.cad_import.design.chain import merge_straight_runs
+        mrg = merge_straight_runs(
+            raised, edge_ref=built.get("edge_ref") or {},
+            node_ref=built.get("node_ref") or {},
+            declared_pipes=built.get("declared_pipes") or ())
+        if mrg.get("merged"):
+            built["edge_ref"] = mrg["edge_ref"]
+            print(f"[G21] 직선 합치기 · 가운데 절점 {mrg['merged']}개를 지워"
+                  f" 노드 {mrg['nodes']} · 배관 {mrg['pipes']}"
+                  f" (헤드·급수원·티·꺾임은 남긴다)")
+        built["merge_report"] = mrg
         loads_by_pipe = tree_loads(raised)
         print(f"[G19] 세로 처리 · 노드 {n0} → "
               f"{len(raised.get('nodes_meta_runtime') or {})} · 배관 {p0} → "
@@ -274,6 +382,8 @@ def expand_worst(payload: dict, board, worst: dict, *,
         # [신축배관 접기] 길이를 «선언» 에서 받은 배관. 좌표 거리와 표 length 가
         # 다른 것이 **정상인 부류** 라, 검사가 그것을 알아봐야 한다(§5 기준 8).
         "declared_pipes": list(built.get("declared_pipes") or ()),
+        # [회랑 사슬좌표 §3-2 5] 회전각·이탈 — 화면이 «참고» 로 보인다.
+        "chain_report": built.get("chain_report") or {},
         # ★같은 중심 노드를 나눠 문 헤드 — 표에는 하나만 남는다. 「평면에서
         #   지정한 헤드가 표에서 빈다」의 **진짜 이유**라 화면까지 들고 간다.
         "shared_head_idx": list(built.get("shared_head_idx") or ()),

@@ -119,27 +119,17 @@ def test_판정_규칙은_한_글자도_안_바꿨다():
     assert "if abs(do - hr) <= 2.0:" in s                         # 현 걸름
 
 
-# ═══════════════════════ §2-2 · 기준 4 — 뺀 헤드를 자리·사유와 함께
-def test_뺀_헤드를_응답에_싣는다():
-    s = _src("routes/module_f/api_edit.py")
-    i = s.index('"not_attachable": {')
-    seg = s[i:i + 700]
-    for k in ('"n":', '"items":', '"by_why":', '"why"', '"xy"', '"disk"'):
-        assert k in seg, k
-
-
-def test_화면이_사유별로_할_일을_말한다():
-    """★한 덩어리로 「배관을 이어라」 하면 틀린 곳을 고치러 간다."""
-    js = _src("static/module_f.js")
-    assert "function renderNotAttachable(" in js
-    assert "renderNotAttachable(s.not_attachable)" in js, "부르는 곳이 없다"
-    i = js.index("const NOTATT_WHY = {")
-    seg = js[i:i + 1200]
-    for why in ("pass_under", "chord_only", "no_center", "dry", "shared"):
-        assert why in seg, why
-    assert 'id="ed-notatt"' in _src("templates/module_f.html")
-
-
+# ═══════════════════════ ★§2-2(뺀 헤드 배너)는 퇴역 — 2026-09-14 리팩터링
+#
+#   여기 있던 `test_뺀_헤드를_응답에_싣는다` · `test_화면이_사유별로_할_일을_말한다`
+#   는 걷어냈다. 속도 조치(고른 뒤 K개만 전개)로 서버의 `not_attachable` 이
+#   **영구히 빈 dict** 가 되어, 그 응답 필드·배너(renderNotAttachable)는 한 번도
+#   뜰 수 없는 코드였다 — 항상 0 인 통계는 없는 것보다 나쁘다(있다고 믿게 한다).
+#   같은 의무는 산 경로가 진다:
+#     · 뽑힌 K 안에 못 붙는 헤드 → §2-3 이 400 의 `not_attached` 로 자리·사유·
+#       할 일을 싣고 화면(renderBlocked)이 그린다
+#       — tests/test_worst_no_hiding.py 가 지킨다.
+#     · 도면 전체의 «안 붙는 헤드» 통계 → 수리계산의 «제외 사유».
 # ═══════════════════════ §2-3 · 기준 3 — K 미달은 손질에서 막는다
 def test_K_미달_게이트는_그대로다():
     """후보가 좁아지면 `reachable` 이 저절로 «표에 오는 헤드 수» 가 된다."""

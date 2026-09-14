@@ -118,11 +118,6 @@ ATTACH_TODO = {
 }
 
 
-def _wfail_text(fail: dict) -> str:
-    """실패 자료에서 사람이 읽을 문장만."""
-    return str((fail or {}).get("payload", {}).get("message")
-               or "최불리 계산에 실패했습니다.")
-
 
 def _edit_session(body, *, need_board: bool = True):
     """손질 세션을 꺼낸다 — **작업이 도는 중이면 거절한다.**
@@ -463,7 +458,6 @@ def register(app):
         #   ★잃는 것: 「이 도면에 안 붙는 헤드가 N개」라는 전체 통계.
         #     그것은 수리계산이 «제외 사유» 로 여전히 낸다 — 그쪽은 진행표시가
         #     있는 잡이라 오래 걸려도 화면이 얼지 않는다.
-        drop_reason: dict = {}
         # 후보 범위는 계속 실어 보낸다 — 수리계산의 안전망이 쓰는 값이다(§2-4).
         w = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=k,
                            only_heads=only, source_index=src_index,
@@ -616,21 +610,13 @@ def register(app):
                 "worst_path_m": w.get("worst_path_m", 0.0),
                 "worst_path_nodes": len(w.get("worst_path") or ()),
                 "path_edges": len(w["edges"]),
-                # ★[손질정본 §2-2] 후보에서 뺀 헤드 — **사람이 고칠 대상**이다.
-                #   사유별로 할 일이 다르다: pass_under 는 「이음」으로 잇고,
-                #   chord_only·shared 는 찍기에서 묶음을 빼고, dry 는 상류를
-                #   잇는다. 한 덩어리로 「배관을 이어라」라고 하면 틀린 곳을
-                #   고치러 간다. 개수만 주면 도면에서 못 찾으므로 자리도 싣는다.
-                "not_attachable": {
-                    "n": len(drop_reason),
-                    "items": [
-                        {"disk": i, "why": why,
-                         "xy": [_r1(float(b.disks[i][0])),
-                                _r1(float(b.disks[i][1]))]}
-                        for i, why in list(drop_reason.items())[:200]
-                        if 0 <= i < len(b.disks)],
-                    "by_why": _count_by(drop_reason.values()),
-                },
+                # ★종전의 `not_attachable`(후보 중 안 붙는 헤드 통계)은
+                #   지웠다(리팩터링 2026-09-14). 속도 조치로 전체망 전개를
+                #   안 돌게 되면서 이 값은 **영구히 빈 dict** 였다 — 항상 0 인
+                #   통계는 없는 것보다 나쁘다(있다고 믿게 한다). 그 통계는
+                #   수리계산의 «제외 사유» 가 내고, 뽑힌 K 안에 못 붙는 헤드가
+                #   있으면 §2-3 이 400 의 `not_attached` 로 자리·사유·할 일을
+                #   싣는다 — 그쪽이 산 경로다(tests/test_worst_no_hiding.py).
                 # ★[복원 §3] 「먼 순서 그대로 K 개」가 이번 선정에서 성립했나.
                 #   조용히 넘기지 않는다 — 깨지면 화면이 그 사실을 든다.
                 "rank_invariant": rank_inv}, None

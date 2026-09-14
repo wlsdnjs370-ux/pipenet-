@@ -411,9 +411,10 @@ def select_and_expand(payload: dict, board, *, k=None, only_heads=None,
 
     k = REMOTE_K_DEFAULT if k is None else k
     # ★`probe` 를 받으면 다시 재지 않는다 — 이것은 **전체망 전개 한 번**이라
-    #   이 함수에서 가장 비싼 줄이다. 손질이 최불리를 고를 때 이미 같은 것을
-    #   쟀으므로(`routes.module_f.attach.wet_heads`) 그대로 받아 쓴다. 판이
-    #   안 바뀌었으면 답도 안 바뀐다. 안 주면 종전 그대로 여기서 잰다.
+    #   이 함수에서 가장 비싼 줄이다. /design/build 가 판 지문 캐시
+    #   (`routes.module_f.attach.wet_heads`)로 재서 넘긴다 — 같은 판이면
+    #   두 번 확정해도 한 번만 잰다. 안 주면 종전 그대로 여기서 잰다.
+    #   (2026-09-14 뒤로 손질은 이 탐침을 안 쓴다 — attach.py 머리글 참조.)
     if probe is None:
         probe = attachable_heads(payload, selected_source=selected_source,
                                  key=key)

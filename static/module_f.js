@@ -3978,7 +3978,6 @@
              + " 셌습니다(그만큼 다음 순위를 채웠습니다)"
            : ""),
           "ok");
-      renderNotAttachable(s.not_attachable);
       renderBlocked(null);                    // 지난번 막음 자국을 지운다
       renderWorstError(null);
       renderRankBroken(s.rank_invariant);
@@ -4030,47 +4029,11 @@
       + " 그대로 수리계산에 넣지 마시고 알려 주세요.";
   }
 
-  /** ★[복원 §2-1·§2-3] 후보 중 «배관에 안 붙는» 헤드를 사유별로 적는다.
-   *
-   *  ★이 헤드들은 **후보에서 빼지 않는다.** 빼면 「먼 순서 그대로 K 개」가
-   *  깨진다 — 가장 먼 헤드일수록 말단 가지관 끝이라 안 붙는 모양이 되기 쉽고,
-   *  하필 그것이 빠지면 2등이 1등 자리에 온다(실측 대명동: 상위 30 중 5개).
-   *  여기 적는 것은 **알림**이다. 그중 하나가 K 안에 들면 그때 막는다(§2-3).
-   *
-   *  사유마다 고칠 자리가 다르다 — 한 덩어리로 「배관을 이어라」 하면 틀린
-   *  곳을 고치러 간다.
-   */
-  const NOTATT_WHY = {
-    pass_under: ["관이 헤드를 스쳐 지나갑니다(끝점이 아닙니다)",
-                 "손질 「이음」 으로 그 관과 헤드를 잇습니다"],
-    chord_only: ["원에 걸친 것이 문양(가로막대)이라 팔이 아닙니다",
-                 "찍기에서 그 묶음을 헤드에서 뺍니다"],
-    no_center: ["헤드 둘레에 배관이 아예 없습니다", "가지관을 잇습니다"],
-    center_dry: ["중심 노드는 있는데 물길 밖입니다", "상류 이음을 잇습니다"],
-    dry: ["급수원에서 물이 안 닿습니다", "상류 이음을 잇습니다"],
-    shared: ["다른 헤드와 같은 자리라 표에서 하나로 합쳐집니다",
-             "찍기에서 겹친 묶음 하나를 뺍니다"],
-  };
-
-  function renderNotAttachable(na) {
-    const box = $("ed-notatt");
-    if (!box) return;
-    if (!na || !na.n) { box.classList.add("hidden"); box.innerHTML = ""; return; }
-    const rows = Object.entries(na.by_why || {}).map(([why, n]) => {
-      const t = NOTATT_WHY[why] || [why, "손질에서 확인하세요"];
-      return `<div>· <b>${n}개</b> — ${esc(t[0])}<br>`
-        + `&nbsp;&nbsp;&nbsp;→ ${esc(t[1])}</div>`;
-    }).join("");
-    const xy = (na.items || []).slice(0, 6)
-      .map((r) => `(${Math.round(r.xy[0])}, ${Math.round(r.xy[1])})`);
-    box.classList.remove("hidden");
-    box.innerHTML = `<b>후보 중 배관에 안 붙는 헤드 ${na.n}개</b>`
-      + " — <b>후보에서 빼지 않았습니다</b>(빼면 먼 순서 규칙이 깨집니다)."
-      + " 이 중 하나가 기준개수 안에 들면 계산을 멈추고 알려 드립니다.<br>"
-      + rows
-      + (xy.length ? `<div>자리: ${esc(xy.join(" · "))}`
-          + (na.n > xy.length ? ` … 외 ${na.n - xy.length}곳` : "") + "</div>" : "");
-  }
+  // ★종전의 «후보 중 안 붙는 헤드» 배너(renderNotAttachable·NOTATT_WHY)는
+  //   지웠다(리팩터링 2026-09-14). 속도 조치로 서버의 `not_attachable` 이
+  //   영구히 빈 값이 되어 이 배너는 **한 번도 뜰 수 없는** 코드였다.
+  //   뽑힌 K 안에 못 붙는 헤드가 있으면 §2-3 의 400 응답을 renderBlocked 가
+  //   자리·사유·할 일과 함께 그린다 — 그쪽이 산 경로다.
 
   $("ed-worst").onclick = () => runWorst("최불리 헤드 선정 중…");
   // [F-10d] 결과 위에서 고친 뒤 — 픽은 그대로 두고 최불리만 다시 돌린다.
@@ -4087,7 +4050,6 @@
       //   다음 할 일을 아무도 말하지 않아, 사람이 「또 눌러도 그대로」로 만났다.
       renderBlocked(null);
       renderRankBroken(null);
-      renderNotAttachable(null);
       renderWorstError(null);
       $("cv-worst-kfp").checked = false;
       $("ed-zone-arm").checked = true;      // 바로 영역을 고칠 수 있게

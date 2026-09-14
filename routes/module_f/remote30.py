@@ -2,8 +2,6 @@
 """모듈 A 에서 빌려온 것 — 최불리 K · 도면 장 나누기 · 범위 제한 · PIPENET."""
 from __future__ import annotations
 
-import math
-
 from routes.module_f.common import REMOTE_K_DEFAULT, _r1
 
 

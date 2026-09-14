@@ -161,9 +161,14 @@ def _tiny():
         "N3": {"coords": [2.0, 0.0, 0.0], "type_id": "head",
                "k_factor_si": 80.0},
     }
+    # ★`C`·거칠기·관종을 실제로 들려 둔다 — 진짜 망에는 있다(`emit_sdf` 가
+    #   `p["c"]` 를 반드시 읽으므로 없으면 산출이 KeyError 로 죽는다).
+    #   빈 표본으로 재면 「원값 None」이 정상처럼 보여 결함을 놓친다.
     pipes = {
-        "P1": {"start": "N1", "end": "N2", "length_m": 1.0},
-        "P2": {"start": "N2", "end": "N3", "length_m": 1.0},
+        "P1": {"start": "N1", "end": "N2", "length_m": 1.0, "C": 120,
+               "roughness_mm": 0.1, "equivalent_length": 0.0, "type": "Sch40"},
+        "P2": {"start": "N2", "end": "N3", "length_m": 1.0, "C": 120,
+               "roughness_mm": 0.1, "equivalent_length": 0.0, "type": "Sch40"},
     }
     got = _fake_got(pipes=pipes, nodes=nodes,
                     edge_ref={"P1": [10, 11], "P2": [11, 12]},
@@ -382,17 +387,107 @@ def test_관경은_표_칸과_근거를_함께_바꾼다():
     assert tbl.pipes[1]["dia"] == 25
 
 
+def test_관경_원값은_규칙이_낸_값이지_덮인_값이_아니다():
+    """★실측(대명동): 도면 글씨로 50A 이던 배관을 100A 로 덮었더니 카드가
+    「원값 100 → 100」 을 보였다.
+
+    §6 으로 관경의 두 문을 한 벌로 모은 뒤, `decide_bores` 가 **이미 사람 값을
+    넣은** 표가 여기로 들어온다. 그 행을 원값이라 읽으면 규칙이 낸 값이 영영
+    사라진다(규칙 5 위반). 권위는 `bore_overrides[pid]["orig_dia"]` 에 있다.
+    """
+    got, board = _tiny()
+    tbl = _tiny_tbl()
+    tbl.pipes[0]["dia"] = 100           # decide_bores 가 이미 덮어 놓은 상태
+    tbl.pipes[0]["dia_src"] = "사람"
+    tbl.bore_overrides = {"P1": {"dia": 100, "orig_dia": 50,
+                                 "orig_src": "text", "a": 10, "b": 11}}
+    rows = ov.put([], ov.key_pipe(10, 11), "pipe", "dia", 100)
+    n, missed = ov.apply_to_tables(tbl, got, board, rows)
+    assert not missed and n == 1
+    assert rows[0]["old"] == 50, f"원값이 {rows[0]['old']} 로 남았다 (50 이어야)"
+
+
+def test_원값은_덮인_값으로_덮이지_않는다():
+    """표를 두 번 확정해도 「원값 → 새값」이 그대로여야 한다.
+
+    빌드마다 엔진이 새 망을 내므로 보통은 원값을 다시 적는 편이 낫지만
+    (도면을 고치면 원값도 따라 고쳐진다), 같은 망에 두 번 적용하면 지금 값이
+    **이미 사람 값**이다 — 그때만 건너뛴다.
+    """
+    for kind, field, new in (("pipe", "c", 100.0),
+                             ("pipe", "roughness_mm", 0.05),
+                             ("pipe", "type", "Sch10"),
+                             ("head", "k_factor_si", 115.2),
+                             ("node", "elevation", 4.321)):
+        got, board = _tiny()
+        tbl = _tiny_tbl()
+        key = {"pipe": ov.key_pipe(10, 11), "head": ov.key_head(0),
+               "node": ov.key_node(11)}[kind]
+        rows = ov.put([], key, kind, field, new)
+        _n, _m, rep = ov.apply_to_kfp(got, board, rows)
+        ov.apply_to_tables(tbl, got, board, rows, rep)
+        first = rows[0]["old"]
+        _n, _m, rep2 = ov.apply_to_kfp(got, board, rows)
+        ov.apply_to_tables(tbl, got, board, rows, rep2)
+        assert rows[0]["old"] == first,             f"{kind}.{field} 원값이 {first} → {rows[0]['old']} 로 덮였다"
+        assert rows[0]["old"] != new, f"{kind}.{field} 원값이 새값과 같다"
+
+
+def test_고칠_수_있다고_말한_칸은_전부_어딘가에_닿는다():
+    """카드는 `FIELDS` 를 전부 「고칠 수 있습니다」로 보인다. 적용 자리는 넷으로
+    갈려 있어, 어느 자리도 안 맡는 (갈래, 속성)이 있으면 사람이 값을 넣었는데
+    아무 일도 안 일어난다 — 못 옮김 목록에도 안 뜨면 규칙 4 위반이다.
+
+    ★여기서는 **수리계산 갈래만** 전수로 본다(통합 갈래는 결합망이 필요하다 —
+      `scripts/_probe_override_coverage.py` 가 그쪽까지 돈다).
+    """
+    val = {"length": 4.0, "dia": 65, "type": "Sch10", "c": 100.0,
+           "roughness_mm": 0.05, "equivalent_length": 2.5,
+           "elevation": -1.25, "k_factor_si": 115.2,
+           "required_pressure_bar": 1.75}
+    key_of = {"pipe": ov.key_pipe(10, 11), "node": ov.key_node(11),
+              "head": ov.key_head(0), "vert": ov.key_vert("head", 0, 1)}
+    quiet = []
+    for (kind, field) in sorted(ov.FIELDS):
+        if kind in ("sys", "mr"):
+            continue
+        got, board = _tiny_vert()
+        tbl = _tiny_tbl()
+        before = json.dumps([got["kfp"], tbl.nodes, tbl.pipes],
+                            sort_keys=True, default=str)
+        rows = ov.put([], key_of[kind], kind, field, val[field],
+                      reason="전수", at="t")
+        _n1, m1, rep = ov.apply_to_kfp(got, board, rows)
+        _n2, m2 = ov.apply_to_tables(tbl, got, board, rows, rep)
+        after = json.dumps([got["kfp"], tbl.nodes, tbl.pipes],
+                           sort_keys=True, default=str)
+        if after == before and not (list(m1) + list(m2)):
+            quiet.append((kind, field))
+    assert not quiet, f"조용히 사라지는 칸: {quiet}"
+
+
 # ═══════════════════════════════════════════ ⑦ 통합 — 계통도 · 기계실
-def _merged():
+def _load_fx(fname, name):
     """옆 시험의 표본을 그대로 쓴다 — 표본이 갈리면 두 시험이 다른 것을 잰다."""
     import importlib.util
-    path = os.path.join(_ROOT, "tests", "test_module_f_merge.py")
-    spec = importlib.util.spec_from_file_location("_mf_merge_fx", path)
+    path = os.path.join(_ROOT, "tests", fname)
+    spec = importlib.util.spec_from_file_location(f"_fx_{fname}", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    return getattr(mod, name)
+
+
+def _merged(machineroom=None):
     from routes.module_f.merge import merge_network
-    return merge_network(mod._sample(), riser=mod._riser(),
-                         mode="lsp_gravity")
+    got = merge_network(_load_fx("test_module_f_merge.py", "_sample")(),
+                        riser=_load_fx("test_module_f_merge.py", "_riser")(),
+                        machineroom=machineroom, mode="lsp_gravity")
+    # ★진짜 망의 배관 행에는 `c` 가 있다 — `emit_sdf` 가 `p["c"]` 를 반드시
+    #   읽으므로 없으면 결합 산출이 KeyError 로 죽는다. 표본에는 없어서,
+    #   `c` 를 고치는 시험이 「원값 없음」으로 통과해 버린다.
+    for r in (got.get("combined").pipes if got.get("combined") else ()):
+        r.setdefault("c", 120)
+    return got
 
 
 def test_통합에서_계통도_배관을_고친다():
@@ -431,6 +526,44 @@ def test_통합은_회랑_요소를_두_번_덮지_않는다():
     n, missed = ov.apply_to_merge(got, rows)
     assert (n, missed) == (0, [])
     assert [dict(r) for r in got["combined"].pipes] == before
+
+
+def test_기계실_요소도_같은_저장소로_고친다():
+    """★`mr` 갈래는 여태 «못 옮김» 쪽으로만 지나갔다 — 기계실이 붙은 판이
+    표본에 없었기 때문이다. 그 빈 자리로 「mr 은 아예 안 먹힌다」가 지나갈 수
+    있으므로, 기계실을 실제로 붙여 놓고 잰다.
+    """
+    mr = _load_fx("test_module_f_seam_coords.py", "_machineroom")()
+    got = _merged(machineroom=mr)
+    where = ov.merge_parts(got)
+    labs = [p for p, k in where["pipe"].items() if k == "machineroom"]
+    assert labs, "기계실이 안 붙었다 — 표본을 다시 본다"
+    lab = labs[0]
+    row0 = next(r for r in got["combined"].pipes if str(r["label"]) == lab)
+    was = float(row0["length"])
+    rows = ov.put([], ov.key_merge("mr", lab), "mr", "length", 9.75,
+                  reason="현장 실측", at="t")
+    n, missed = ov.apply_to_merge(got, rows)
+    assert not missed and n == 1, missed
+    assert float(row0["length"]) == pytest.approx(9.75)
+    assert rows[0]["old"] == pytest.approx(was)
+    # 계통도 키로는 기계실 배관을 못 건드린다 — 갈래를 섞으면 안 된다
+    got2 = _merged(machineroom=mr)
+    bad = ov.put([], ov.key_merge("sys", lab), "sys", "length", 1.0,
+                 reason="시험", at="t")
+    n2, m2 = ov.apply_to_merge(got2, bad)
+    assert n2 == 0 and m2 and "machineroom" in m2[0]["why"]
+
+
+def test_통합_원값도_덮인_값으로_덮이지_않는다():
+    got = _merged()
+    where = ov.merge_parts(got)
+    lab = next(p for p, k in where["pipe"].items() if k == "system")
+    rows = ov.put([], ov.key_merge("sys", lab), "sys", "c", 100.0)
+    ov.apply_to_merge(got, rows)
+    first = rows[0]["old"]
+    ov.apply_to_merge(got, rows)          # 같은 망에 두 번
+    assert rows[0]["old"] == first != 100.0,         f"원값이 {first} → {rows[0]['old']} 로 덮였다"
 
 
 def test_없는_라벨은_못_옮겼다고_말한다():

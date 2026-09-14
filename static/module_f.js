@@ -5524,10 +5524,20 @@
     }
     box.classList.remove("hidden");
     $("dg-ins-body").innerHTML = html;
-    for (const el of $("dg-ins-body").querySelectorAll("[data-ins-label]")) {
-      el.onclick = () => insSelect(el.dataset.insKind, el.dataset.insLabel);
+    // ★단추를 잇다 튀면 **카드는 떠 있는데 아무것도 안 눌리는** 상태가 된다.
+    //   위 try/catch 는 본문 만들기까지만 덮으므로 여기까진 안 온다 — 예외가
+    //   캔버스 클릭 처리기까지 타고 올라가 그 클릭 전체가 죽는다.
+    //   본문은 그대로 두고, 못 이었다는 사실만 카드 안에 적는다.
+    try {
+      for (const el of $("dg-ins-body").querySelectorAll("[data-ins-label]")) {
+        el.onclick = () => insSelect(el.dataset.insKind, el.dataset.insLabel);
+      }
+      ovBind($("dg-ins-body"));    // [요소속성 수정카드] 저장·되돌리기
+    } catch (err) {
+      $("dg-ins-body").insertAdjacentHTML("afterbegin",
+        `<div class="ov-miss">단추를 잇지 못했습니다 — `
+        + `${esc(err && err.message ? err.message : err)}</div>`);
     }
-    ovBind($("dg-ins-body"));      // [요소속성 수정카드] 저장·되돌리기
   }
 
   function insPipe(label) {

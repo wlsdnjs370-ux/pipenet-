@@ -536,6 +536,22 @@ _META_HEAD = {"k_factor_si": ("k_factor_si", "k_factor"),
               "required_pressure_bar": ("required_pressure_bar",)}
 
 
+def _keep_old(r, cur, new):
+    """원값을 적되 **덮인 값으로 덮어쓰지 않는다** (규칙 5).
+
+    빌드마다 엔진이 새 망을 내므로 `cur` 은 보통 규칙이 낸 원값이고, 그것을
+    다시 적는 편이 낫다(도면을 고치면 원값도 따라 고쳐진다). 그러나 같은 망에
+    두 번 적용하면 `cur` 은 **이미 사람 값**이다 — 그때 적으면 카드가
+    「원값 100 → 100」 을 보인다. 그 한 경우만 건너뛴다.
+    """
+    if cur == new:
+        # 지금 값이 이미 사람 값이다 — 이것을 원값이라 적으면 「원값 100 → 100」
+        # 이 된다. 처음 본 값이 None 이어서 아직 원값이 안 찬 경우에도 마찬가지다
+        # (그 구멍으로 실제로 새 값이 원값 자리에 들어갔다).
+        return
+    r["old"] = cur
+
+
 def apply_to_kfp(got, board, rows):
     """표를 만들기 **전에** kfp 메타를 덮고, 길이가 바뀌면 좌표를 다시 놓는다.
 
@@ -565,14 +581,14 @@ def apply_to_kfp(got, board, rows):
         if kind in ("pipe", "vert") and field in _META_PIPE:
             row = pr.get(str(name))
             if row is not None:
-                r["old"] = row.get(_META_PIPE[field])
+                _keep_old(r, row.get(_META_PIPE[field]), new)
                 row[_META_PIPE[field]] = new
                 n_meta += 1
         elif kind == "head" and field in _META_HEAD:
             m = nd.get(str(name))
             if m is not None:
                 keys = _META_HEAD[field]
-                r["old"] = m.get(keys[0])
+                _keep_old(r, m.get(keys[0]), new)
                 for kk in keys:
                     m[kk] = new
                 n_meta += 1
@@ -586,7 +602,14 @@ def apply_to_kfp(got, board, rows):
         print(f"[수정] kfp 메타 {n_meta}건을 덮었습니다"
               f" (거칠기·등가길이·K·필요압력·C·관종)")
     return n_meta + int(relay.get("applied") or 0), missed, {
-        "index": idx, "relay": relay, "applied": applied}
+        "index": idx, "relay": relay, "applied": applied,
+        # ★이번 판에서 **원값을 이미 적어 둔** (키, 속성). 적용 ③ 이 같은 칸의
+        #   원값을 다시 쓰면, 그때 표는 이미 덮인 값을 들고 있을 수 있어
+        #   「원값 100 → 100」 같은 거짓이 남는다(규칙 5). 먼저 적은 쪽이 이긴다.
+        "old_filled": {(json.dumps(r.get("key")), str(r.get("field")))
+                       for _k, r, _n in applied
+                       if r.get("old") is not None},
+    }
 
 
 # ─────────────────────────────────────────────── 적용 ② 표 칸
@@ -602,8 +625,13 @@ def apply_to_tables(tbl, got, board, rows, report=None):
     """
     idx = (report or {}).get("index") or build_index(got, board)
     applied, missed = resolve(rows, idx)
+    done = (report or {}).get("old_filled") or set()
     kfp = (got or {}).get("kfp") or {}
     nd = kfp.get("nodes_meta_runtime") or {}
+    # 관경의 «원값» 은 표 행에서 못 읽는다 — §6 으로 두 문을 한 벌로 모은 뒤로
+    # `decide_bores` 가 **이미** 사람 값으로 덮어서 들어오기 때문이다. 규칙이
+    # 낸 값은 그 함수가 따로 적어 둔다(`orig_dia`) — 그것이 원값이다.
+    bore_ov = dict(getattr(tbl, "bore_overrides", None) or {})
     lab_of = {}
     for n in (getattr(tbl, "nodes", None) or ()):
         lab_of[str(n.get("label"))] = n
@@ -634,12 +662,25 @@ def apply_to_tables(tbl, got, board, rows, report=None):
                     #   값을 두 번 덮게 되고, `old` 가 «이미 덮인 값» 으로
                     #   채워져 원값을 잃는다.
                     break
-                r["old"] = row.get(field)
-                row[field] = new
                 if field == "dia":
+                    # ★실측(대명동): 도면 글씨로 50A 이던 배관을 100A 로 덮었더니
+                    #   카드가 「원값 100 → 100」 을 보였다. `decide_bores` 가
+                    #   이미 100 을 넣은 표를 여기서 원값이라 읽은 탓이다.
+                    #   규칙이 낸 값은 `orig_dia` 에만 남아 있다.
+                    o = bore_ov.get(str(name)) or {}
+                    if "orig_dia" in o:
+                        r["old"] = o["orig_dia"]     # 규칙이 낸 값 — 권위 있다
+                    else:
+                        _keep_old(r, row.get("dia"), new)
+                    row["dia"] = new
                     # 관경은 «무엇이 정했나» 가 행에 남는다 — 집계만으로는
                     # 도면 텍스트에서 온 것인지 사람이 넣은 것인지 모른다.
                     row["dia_src"] = "사람"
+                    n_tbl += 1
+                    break
+                if (json.dumps(r.get("key")), field) not in done:
+                    r["old"] = row.get(field)
+                row[field] = new
                 n_tbl += 1
                 break
         elif kind in ("node", "head") and field == "elevation":
@@ -655,7 +696,8 @@ def apply_to_tables(tbl, got, board, rows, report=None):
                 # 조용히 버리지 않는다 — 못 찾았으면 못 찾았다고 말한다(규칙 4).
                 missed.append({**r, "why": "표에서 그 절점 행을 못 찾았습니다"})
                 continue
-            r["old"] = row.get("elevation")
+            if (json.dumps(r.get("key")), field) not in done:
+                r["old"] = row.get("elevation")
             row["elevation"] = new
             n_tbl += 1
     if n_tbl:
@@ -744,7 +786,7 @@ def apply_to_merge(got, rows):
         if col is None:
             missed.append({**r, "why": f"통합에서 고칠 수 없는 속성입니다: {field}"})
             continue
-        r["old"] = row.get(col)
+        _keep_old(r, row.get(col), r.get("new"))
         row[col] = r.get("new")
         n_ok += 1
     if n_ok or missed:

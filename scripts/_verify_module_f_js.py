@@ -55,7 +55,16 @@ TARGETS = ("renderSlots", "loadSlots", "switchSlot", "renderBoreLegend",
            # 이음자리 — 티 · 교차
            "renderJunctions", "drawJunctions",
            # 「이 레이어를 배관으로 취급」
-           "segDist2", "bundleAt", "renderPipeLayers", "pushPipeLayers")
+           "segDist2", "bundleAt", "renderPipeLayers", "pushPipeLayers",
+           # [요소속성 수정카드] 읽기 카드를 키운 자리 — 여기가 함수-지역
+           #   헬퍼를 부르면 «클릭하는 순간» ReferenceError 다. 서버 시험으로는
+           #   절대 안 잡히므로 목록에 넣어 둔다.
+           "renderInspect", "insPipe", "insNode", "designInspect",
+           "ovRows", "ovKeyOf", "ovFind", "ovMissedAt", "ovNow",
+           "ovEdit", "ovWhere", "ovLabelOf", "ovBind", "ovSend",
+           "markDesignDirty",
+           # [요소속성 수정카드 §4] 통합 화면의 카드
+           "mergeInspect", "mgPipe", "mgNode", "mgRerunNote")
 CALLEES = ("api", "post", "busy", "say", "setStage", "loadEdit", "loadWorld",
            "draw", "$", "kv", "sx", "sy", "fit", "buildLayers", "renderCats")
 
@@ -126,6 +135,34 @@ def _body_of(body: str, name: str) -> str:
     return "\n".join(lines[start:]) if start is not None else ""
 
 
+def _decomment(src: str) -> str:
+    """주석 줄을 지운 본문.
+
+    ★이것이 없으면 **설명 글이 호출로 읽힌다.** 실측: drawWorld 의 주석에
+      「tri_segs(헤드 삼각 기호)를 …」 이라고 적혀 있어서, `이름(` 을 찾는
+      정규식이 그것을 «미해석 호출» 로 잡았다 — 코드에는 `hl.tri_segs` 라는
+      속성 읽기밖에 없는데도 검증기가 영구히 FAIL 을 냈다. 거짓 경보가 하나
+      박혀 있으면 그 검증기는 문(gate)으로 쓸 수 없다.
+
+    온전한 줄 주석과 블록 주석만 지운다 — 코드 뒤에 붙은 꼬리 주석까지
+    지우려면 문자열 안의 `//`(URL 등)과 싸워야 하고, 설명 글은 거의 전부
+    온전한 줄에 산다.
+    """
+    out, in_block = [], False
+    for line in src.splitlines():
+        t = line.strip()
+        if in_block:
+            if "*/" in t:
+                in_block = False
+            continue
+        if t.startswith("/*"):
+            if "*/" not in t:
+                in_block = True
+            continue
+        out.append("" if t.startswith("//") else line)
+    return "\n".join(out)
+
+
 def main() -> int:
     sys.stdout.reconfigure(errors="replace")
     html = TPL.read_text(encoding="utf-8")
@@ -171,7 +208,7 @@ def main() -> int:
     }
     call = re.compile(r"\b([A-Za-z_$][\w$]*)\s*\(")
     for name in TARGETS:
-        src = _body_of(body, name)
+        src = _decomment(_body_of(body, name))
         if not src:
             check(f"{name} 본문 추출", False, "함수를 찾지 못함")
             continue

@@ -416,6 +416,31 @@
               font-variant-numeric:tabular-nums;}
   .ins-tab tr:last-child td{border-bottom:0;}
 
+  /* ── [요소속성 수정카드] 그 자리에서 값을 고치는 칸 ───────────────
+     읽기 카드를 키운 것이라 «읽는 줄» 과 «고치는 줄» 이 한눈에 갈려야 한다.
+     고치는 줄만 테두리를 준다 — 색으로만 가르면 밝기 낮은 화면에서 뭉갠다. */
+  .ov-note{color:var(--faint);font-size:10.5px;line-height:1.5;padding:2px 0 6px;}
+  .ov-row{display:flex;align-items:center;gap:5px;padding:3px 0;}
+  .ov-lab{flex:0 0 96px;color:var(--faint);font:11px/1.4 var(--mono);}
+  .ov-in{flex:1 1 62px;min-width:0;background:var(--sunk);color:var(--ink);
+         border:1px solid var(--line-2);padding:3px 5px;
+         font:11px/1.4 var(--mono);font-variant-numeric:tabular-nums;}
+  .ov-why{flex:1 1 86px;min-width:0;background:var(--sunk);color:var(--ink);
+          border:1px solid var(--line-2);padding:3px 5px;
+          font:11px/1.4 var(--mono);}
+  .ov-in:focus,.ov-why:focus{outline:0;border-color:var(--accent);}
+  .ov-row button{background:var(--sunk);color:var(--faint);cursor:pointer;
+                 border:1px solid var(--line-2);
+                 padding:3px 6px;font:11px/1.4 var(--mono);white-space:nowrap;}
+  .ov-row button:hover{color:var(--ink);border-color:var(--accent-dim);}
+  .ov-row .ov-save:hover{color:var(--accent);}
+  /* 규칙 5 — 원값은 지우지 않는다. 덮은 자리는 흔적이 남는다. */
+  .ov-was{color:var(--accent);font:10.5px/1.5 var(--mono);
+          padding:1px 0 5px 101px;}
+  .ov-was b{color:var(--ink);font-weight:600;}
+  /* 규칙 4 — 못 옮긴 수정은 조용히 버리지 않는다. */
+  .ov-miss{color:#f87171;font:10.5px/1.5 var(--mono);padding:4px 0 2px;}
+
   /* ── 창(모달) ─────────────────────────────────────────────
      모듈 E 는 이 값들을 대화상자로 받는다. 옆판에 펼쳐 넣으면 그림 다섯 장이
      세로로 쌓여 다른 단추가 화면 밖으로 밀린다 — 원본처럼 창으로 띄운다. */

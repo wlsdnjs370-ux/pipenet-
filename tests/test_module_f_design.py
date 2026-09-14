@@ -146,9 +146,22 @@ def main() -> int:
         check("SDF+SLF 가 실제로 있다", web_sdf is not None
               and web_sdf.with_suffix(".slf").is_file(),
               str(em.get("sdf")))
+        # ★[오너 2026-09-14] zip 한 벌을 없애고 **형태별로 낱개**로 받는다.
+        #   SDF 는 `.slf` 와 한 쌍이라 화면이 두 번 부른다 — 여기서도 둘 다 본다.
         r = c.get(f"/api/module-f/download?sid={sid}&what=design")
-        check("내려받기 — zip 한 벌", r.status_code == 200
-              and r.data[:2] == b"PK", f"HTTP {r.status_code} · {len(r.data):,}B")
+        check("내려받기 — .sdf 낱개", r.status_code == 200
+              and r.data[:2] != b"PK" and b"<" in r.data[:200],
+              f"HTTP {r.status_code} · {len(r.data):,}B")
+        r2 = c.get(f"/api/module-f/download?sid={sid}&what=design-slf")
+        check("내려받기 — .slf (호칭경 대조 자료)", r2.status_code == 200
+              and len(r2.data) > 0,
+              f"HTTP {r2.status_code} · {len(r2.data):,}B")
+        r3 = c.get(f"/api/module-f/download?sid={sid}&what=design-has")
+        check("내려받기 — .has", r3.status_code == 200 and len(r3.data) > 0,
+              f"HTTP {r3.status_code} · {len(r3.data):,}B")
+        r4 = c.get(f"/api/module-f/download?sid={sid}&what=set")
+        check("zip 한 벌은 없어졌다", r4.status_code != 200,
+              f"HTTP {r4.status_code}")
 
         print("\n[preview 좌표 == 저장된 Position]")
         rr = ET.parse(str(web_sdf)).getroot()

@@ -34,6 +34,22 @@ class isolated_workdir:
         import shutil
         import tempfile
 
+        # ★★**격리보다 부팅이 먼저다.** `_boot()` 는 쓰기 루트를 절대경로로
+        #   못박는데, 아직 안 돌았다면 그것이 **격리 뒤에** 돌면서 여기서 건
+        #   `set_write_root(work)` 를 통째로 덮어쓴다 — 그러면 격리는 걸린 척만
+        #   하고 시험이 **진짜 작업폴더에 쓴다.**
+        #
+        #   실측(2026-09-14): 요소속성 수정 탐침을 `python scripts/…` 로 곧장
+        #   돌렸더니, 격리 안에서 만든 수정이 진짜 폴더의
+        #   `…_수리계산수정.json` 에 쌓였다(5건). 돌릴 때마다 앞 판의 값을
+        #   물고 가서 「생존 0 · 미적용 2」 같은 엉뚱한 수치까지 나왔다.
+        #   `_boot()` 는 `_booted` 로 한 번만 도니 여기서 먼저 돌려 둔다.
+        try:
+            from routes.module_f.common import _boot
+            _boot()
+        except Exception:       # 모듈 F 밖에서 쓰는 시험도 있다 — 막지 않는다
+            pass
+
         from services.cad_import.pipeline import handoff as hf
 
         src_pick, src_edit = hf.pick_out_dir(), hf.default_edits_dir()

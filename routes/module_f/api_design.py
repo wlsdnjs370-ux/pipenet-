@@ -26,6 +26,42 @@ from routes.module_f.jobs import _job_running, _run_job, route_session
 # [리팩터링 2026-09-11] 선정 인계·표 신선도는 selection.py 로 갈라냈다.
 #   여기서 다시 내보내는 이유는 시험·탐침이 이 모듈에서 그 이름들을 import
 #   하기 때문이다 — 가른 것 때문에 도구가 깨지면 안 된다(§패키지 분리 규약).
+from routes.module_f import overrides as ov
+
+
+def _now_stamp() -> str:
+    """수정이 «언제» 인지 — 카드가 원값 옆에 보인다(규칙 5)."""
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def _rerun_word(kind: str) -> str:
+    """고친 값이 «어디부터» 다시 돌아야 하나 — 갈래마다 다르다.
+
+    회랑 요소는 설계 표를 거쳐 결합으로 흘러들므로 「표 확정」부터다. 계통도·
+    기계실은 결합에서만 사니 「결합」만 다시 누르면 된다. 한 문장으로 뭉뚱그리면
+    사람이 엉뚱한 단추를 누르고 「안 먹힌다」고 읽는다.
+    """
+    return "「결합」" if kind in ("sys", "mr") else "「표 확정」"
+
+
+def _label_keys(sess, got, tbl):
+    """이번 표의 라벨 → 안정 키. 표를 확정할 때 한 번 셈하고 들고 있는다.
+
+    ★통합 화면도 **같은 것**을 읽는다(회랑 요소는 라벨이 +9 옮겨질 뿐 같은
+      자리다). 화면마다 다시 셈하면 두 화면이 다른 자리를 가리키는 날이 온다.
+    """
+    from routes.module_f import overrides as _ov
+    d = sess.get("design") or {}
+    cached = d.get("keys")
+    if cached:
+        return cached
+    es = sess.get("edit")
+    lk = _ov.label_keys(got, getattr(es, "board", None), tbl)
+    if d:
+        d["keys"] = lk
+    return lk
+
 from routes.module_f.selection import (  # noqa: F401 — 재수출 포함
     _classify_excluded,
     _design_stale, _handoff_after_table, _head_row, _in_rect, _load_map,
@@ -276,6 +312,26 @@ def emit_design_files(sess: dict, UPLOAD_DIR, cfg: dict | None = None):
         return None, f"{type(exc).__name__}: {exc}"
     sess["design_sdf_path"] = str(out)
     sess["design_slf_path"] = str(out.with_suffix(".slf"))
+
+    # ★[산출물 세 형태 · 오너 2026-09-14] HASS(.has) 도 함께 낸다.
+    #
+    #   종전에는 설계 산출이 SDF(+SLF) 뿐이고 `.has` 는 **통합 화면에서만**
+    #   났다. 그래서 「sdf · kfp · has 세 가지를 따로 받고 싶다」가 설계
+    #   단계에서는 성립하지 않았다. `.kfp` 는 최불리 변환이 이미 내므로
+    #   여기서 `.has` 하나만 더하면 셋이 갖춰진다.
+    #
+    #   ★지어내지 않는다 — 이미 쓴 SDF **파일**을 원본으로 변환한다
+    #     (통합의 `emit.py` 가 쓰는 그 함수). 실패해도 SDF 산출은 안 막는다.
+    has_path = out.with_suffix(".has")
+    try:
+        from remote30_prototype import emit_has
+        emit_has(out, has_path)
+        sess["design_has_path"] = str(has_path)
+        print(f"[G6] HAS {has_path.name} · {has_path.stat().st_size:,} bytes")
+    except Exception as exc:  # noqa: BLE001 — SDF 를 막지 않는다
+        sess["design_has_path"] = None
+        print(f"[G6] ★HAS 변환 실패 — {type(exc).__name__}: {exc}"
+              f" (SDF·SLF 는 그대로 났습니다)")
     return out, None
 
 
@@ -309,6 +365,25 @@ def _bore_ov_map(sess) -> dict:
         except (KeyError, TypeError, ValueError):
             continue
         out[(min(a, b), max(a, b))] = (int(r["dia"]), str(r.get("note") or ""))
+    # ★[요소속성 수정카드 §6] **저장소를 둘 두지 않는다.** 관경은 F-11c 의
+    #   옛 목록(`sess["bore_overrides"]`)과 새 카드 양쪽에서 들어올 수 있다.
+    #   키는 둘 다 «정렬된 board 노드쌍» 이라 같은 자리를 가리킨다 — 여기서
+    #   한 줄로 합친다. 합치지 않으면 카드로 고친 관경이 `decide_bores` 에
+    #   안 닿아 **부속 판정이 옛 관경으로** 돌아간다(표 칸만 뒤늦게 덮이므로
+    #   숫자는 맞는데 부속이 틀리는, 가장 알아채기 어려운 갈래가 된다).
+    #   새 카드가 이긴다 — 사람이 마지막에 만진 문이 그쪽이다.
+    from routes.module_f import overrides as _ov
+    for r in _ov.ensure_loaded(sess):
+        if str(r.get("kind")) != "pipe" or str(r.get("field")) != "dia":
+            continue
+        k = _ov.key_from_json(r.get("key"))
+        if not k or len(k) < 3:
+            continue
+        try:
+            out[(int(k[1]), int(k[2]))] = (int(r.get("new")),
+                                           str(r.get("reason") or ""))
+        except (TypeError, ValueError):
+            continue
     return out
 
 
@@ -616,6 +691,22 @@ def register(app, *, UPLOAD_DIR):
                 # 조용히 버리지 않는다 — 찍었는데 안 실린 것이 있으면 말한다.
                 print(f"[설계] ★알람밸브 {len(av_missed)}곳을 전개 노드로 "
                       f"되짚지 못했습니다 — 그만큼 기기표에서 빠집니다.")
+            # ★★[요소속성 수정카드] 적용 ①② — 표를 만들기 **전에**.
+            #
+            #   ① 길이  → `relay_from_lengths` 가 사슬을 다시 걸어 좌표를
+            #             옮긴다. 오너(2026-09-14): 「20m 배관을 2m로 바꾸었는데,
+            #             아이소가 그대로인건 말이안되니까」 — 표·`.sdf`·그림이
+            #             한꺼번에 맞는다.
+            #   ② 메타  → 거칠기·등가길이·K 값·필요압력·C·관종. 이 넷은 표에
+            #             칸이 없어(§2 계측) 표 직후에는 못 덮는다.
+            #
+            #   되먹임 없음 — 손질·선정·planar·engine 은 이 값을 모른다.
+            el_rows = ov.ensure_loaded(sess)
+            el_missed = []
+            el_rep = None
+            if el_rows:
+                _n1, _m1, el_rep = ov.apply_to_kfp(got, es.board, el_rows)
+                el_missed.extend(_m1)
             try:
                 tbl = build_design_tables(
                     got["kfp"], got["worst"], got["edge_ref"], texts,
@@ -682,10 +773,46 @@ def register(app, *, UPLOAD_DIR):
                     fit_missed.append(
                         {**r, "what": "eq_len",
                          "why": "그 (종류, 호칭경) 쌍이 이번 계산에 없습니다"})
+            # ★[요소속성 수정카드] 라벨 → 안정 키는 **표고를 덮기 전에** 잰다.
+            #
+            #   절점 키는 (x, y, 표고)로 잇는다 — x·y 만 보면 세로로 쌓인
+            #   절점이 서로 덮어쓰기 때문이다. 그런데 바로 아래 적용 ③ 이
+            #   표고 칸을 덮으므로, 그 뒤에 재면 **덮은 절점만 키를 잃는다**
+            #   (실측: 표고를 4.321 로 바꾼 절점이 카드에서 사라졌다).
+            #   순서를 여기로 둔다 — kfp 와 표가 아직 같은 말을 하는 순간이다.
+            el_keys = ov.label_keys(got, es.board, tbl)
+            if el_rows:
+                _n2, _m2 = ov.apply_to_tables(tbl, got, es.board, el_rows,
+                                              el_rep)
+                # ①②③ 이 같은 `resolve` 를 쓰므로 못 옮긴 것이 두 번 온다 —
+                # 키+속성으로 한 번만 센다(같은 것을 두 번 세면 수가 부풀어
+                # 「n건」이 거짓말이 된다).
+                _seen = {(str(r.get("key")), str(r.get("field")))
+                         for r in el_missed}
+                for r in _m2:
+                    kk2 = (str(r.get("key")), str(r.get("field")))
+                    if kk2 not in _seen:
+                        _seen.add(kk2)
+                        el_missed.append(r)
+                # 적용된 항목의 «원값» 이 채워졌다 — 카드가 그것을 보인다(규칙 5).
+                #   ★파일에도 다시 쓴다. 저장할 때는 원값을 모른다(표가 아직
+                #     안 섰다) — 적용하면서 알게 되므로, 그때 파일을 맞춘다.
+                #     안 그러면 서버를 다시 켠 뒤 원값이 비어 「무엇에서 무엇으로
+                #     바꿨는지」를 잃는다.
+                ov.save(sess, el_rows)
+                try:
+                    ov.write_file(sess.get("key") or "design", el_rows)
+                except OSError as exc:
+                    print(f"[수정] ★원값을 파일에 못 썼습니다 — {exc}")
+            if el_missed:
+                print(f"[설계] ★적용 못 한 요소 수정 {len(el_missed)}건 — "
+                      "조용히 버리지 않고 화면에 올린다")
             if fit_missed:
                 print(f"[설계] ★적용 못 한 직접 입력 {len(fit_missed)}건 — "
                       "조용히 버리지 않고 화면에 올린다")
-            sess["ov_missed"] = fit_missed
+            # 두 갈래를 한 자리에 합쳐 올린다 — 화면은 「적용 못 한 수정 n건」
+            # 하나만 보면 된다(§3-4 · 저장소를 둘 두지 않는다는 규칙의 화면판).
+            sess["ov_missed"] = list(fit_missed) + list(el_missed)
             # 표는 메모리에만 — emit 을 눌러야 파일이 생긴다.
             # 탐침을 다시 돌리지 않는다 — 같은 잡이 위에서 이미 쟀다(117초).
             marks = _classify_excluded(sess, got, es.board, probe=probe)
@@ -694,6 +821,10 @@ def register(app, *, UPLOAD_DIR):
             #   고치면 화면이 「이 표는 옛 것」이라고 말할 수 있어야 한다.
             sess["design"] = {"got": got, "tables": tbl, "k": cfg["k"],
                               "schedule": cfg["schedule"], "marks": marks,
+                              # [요소속성 수정카드] 수리계산 화면과 통합 화면이
+                              #   **같은** 주소록을 읽는다(§4 — 회랑 요소는
+                              #   라벨이 +9 옮겨질 뿐 같은 자리다).
+                              "keys": el_keys,
                               "sig": _selection_sig(sess)}
             s = _summary(got, tbl)
             s["excluded_detail"] = {
@@ -917,6 +1048,113 @@ def register(app, *, UPLOAD_DIR):
         return jsonify({"ok": True, "rows": sess.get("bore_overrides") or [],
                         "schedule": sched, "allowed": allow})
 
+    @app.post("/api/module-f/design/override")
+    @route_session(post=True)
+    def module_f_design_override(sess, body):
+        """[요소속성 수정카드] 값 하나를 덮거나 지운다 — 저장소 하나·파일 하나.
+
+        body: {sid, kind, key, field, new, reason}      덮기
+              {sid, kind, key, field, remove: true}     지우기
+
+        ★키는 **안정 키** 다(board 노드쌍 · disk 번호 · 뿌리+역할). kfp 이름
+          (N12·P7)은 재계산마다 바뀐다 — 실측(대명동 K 30→20): 살아남은 배관
+          111개가 **전부** 이름이 바뀌었다. 이름을 키로 삼으면 사람이 적어 둔
+          값이 조용히 옆 배관으로 옮겨간다.
+
+        ★값 검증은 여기서 한다(기준 8). 목록 밖 속성·범위 밖 값은 **저장하지
+          않고** 이유를 돌려준다 — 저장해 두면 산출에서 터진다.
+
+        ★저장하면 그 자리에서 파일에 쓴다(D2 · write-through). 서버를 껐다
+          켜도, 도면을 다시 열어도 그대로 올라온다.
+        """
+        kind = str(body.get("kind") or "").strip()
+        field = str(body.get("field") or "").strip()
+        key = ov.key_from_json(body.get("key"))
+        if kind not in ov.KINDS:
+            return _fail(f"모르는 요소 갈래입니다: {kind}")
+        if key is None:
+            return _fail("요소를 가리키는 키를 읽지 못했습니다.")
+        rows = ov.ensure_loaded(sess)
+
+        if body.get("remove"):
+            before = len(rows)
+            rows = ov.drop(rows, key, field)
+            if len(rows) == before:
+                return _fail("지울 수정이 없습니다.", 404)
+            msg = (f"수정을 지웠습니다 — {_rerun_word(kind)} 을 다시 누르면 "
+                   f"원값으로 돌아옵니다.")
+        else:
+            val, why = ov.validate(kind, field, body.get("new"))
+            if why:
+                return _fail(why)
+            # ★[§6] 관경은 문이 둘이다 — F-11c 의 옛 목록과 이 카드. **자물쇠는
+            #   같아야 한다.** 규격표에 없는 호칭경을 여기로 들이면 SLF 에 그
+            #   호칭경이 없어 PIPENET 이 그 배관을 못 푼다 — 옛 문은 이미
+            #   거절하고 있었다. 한쪽만 열려 있으면 그쪽으로 들어온 값이
+            #   산출에서 터진다.
+            if field == "dia":
+                sched = ((sess.get("design_settings") or _DEFAULT_SETTINGS)
+                         .get("schedule")
+                         or (sess.get("design") or {}).get("schedule"))
+                try:
+                    allow = schedule_bores_mm(sched)
+                except Exception as exc:  # noqa: BLE001
+                    return _fail(f"규격표를 못 읽었습니다: {exc}")
+                if allow and int(val) not in allow:
+                    return _fail(
+                        f"{val}A 는 «{sched}» 규격표에 없는 호칭경입니다. "
+                        f"쓸 수 있는 것: "
+                        f"{' · '.join(str(v) for v in sorted(allow))}")
+            reason = str(body.get("reason") or "").strip()
+            if len(reason) > 200:
+                return _fail("사유가 너무 깁니다 (200자).")
+            if (kind, field) in ov.REASON_REQUIRED and not reason:
+                # ★길이만 사유 필수다(오너 2026-09-14). 길이는 마찰손실을
+                #   직접 정하는 값이라, 왜 도면과 다르게 두었는지가 남아야
+                #   다음 사람이 그 계산서를 믿을 수 있다.
+                return _fail(f"{ov.field_label(kind, field)} 은 사유가"
+                             f" 필요합니다 — 왜 도면 값과 다르게 두는지"
+                             f" 적어 주세요.")
+            if len(rows) >= 2000:
+                return _fail("수정이 너무 많습니다 (최대 2000).")
+            rows = ov.put(rows, key, kind, field, val,
+                          reason=reason, at=_now_stamp())
+            msg = (f"{ov.field_label(kind, field)} 을 덮었습니다 — "
+                   f"{_rerun_word(kind)} 을 다시 눌러야 산출에 반영됩니다.")
+
+        ov.save(sess, rows)
+        saved = None
+        try:
+            saved = ov.write_file(sess.get("key") or "design", rows)
+        except OSError as exc:
+            # ★파일에 못 써도 세션에는 남는다 — 다만 그 사실을 말한다.
+            #   조용히 넘기면 서버를 껐다 켠 뒤 값이 사라진 것을 그때 안다.
+            print(f"[수정] ★파일에 쓰지 못했습니다 — {exc}")
+            msg += " (다만 파일에 쓰지 못했습니다 — 서버를 다시 켜면 사라집니다)"
+        return jsonify({
+            "ok": True, "rows": rows, "count": len(rows),
+            "file": os.path.basename(saved) if saved else None,
+            "needs_rebuild": bool(sess.get("design")),
+            "message": msg,
+        })
+
+    @app.get("/api/module-f/design/override")
+    @route_session()
+    def module_f_design_override_get(sess, body):
+        """지금 저장된 요소 수정 + 고칠 수 있는 속성 목록.
+
+        고를 수 있는 것을 서버가 주는 이유는 §18 의 부속 종류와 같다 —
+        화면이 따로 목록을 들고 있으면 둘이 갈린다.
+        """
+        fields = {}
+        for (kd, fl), (_p, _ok, label) in ov.FIELDS.items():
+            fields.setdefault(kd, []).append(
+                {"field": fl, "label": label,
+                 "reason_required": (kd, fl) in ov.REASON_REQUIRED})
+        return jsonify({"ok": True, "rows": ov.ensure_loaded(sess),
+                        "fields": fields,
+                        "missed": sess.get("ov_missed") or []})
+
     @app.get("/api/module-f/design/preview")
     @route_session()
     def module_f_design_preview(sess, body):
@@ -1065,11 +1303,36 @@ def register(app, *, UPLOAD_DIR):
             except (TypeError, ValueError, IndexError):
                 continue
             ref_of[str(pid)] = [min(i, j), max(i, j)]
+        # ★[요소속성 수정카드] **안정 키**를 함께 싣는다 — 카드가 값을 고칠 때
+        #   이 키로 가리킨다. 표 라벨(P12·노드 3)은 재계산마다 옮겨 다니므로
+        #   (실측: 살아남은 배관 111개가 전부 이름이 바뀜) 키가 없으면 사람이
+        #   적어 둔 값이 조용히 옆 배관으로 간다. 키가 없는 요소(엔진이 만든
+        #   절점 등)는 `null` 이고, 화면은 그 칸을 «읽기만» 으로 보인다.
+        lk = _label_keys(sess, got, tbl)
+        key_of_pipe = lk["pipe"]
+        kmeta = (got.get("kfp") or {}).get("nodes_meta_runtime") or {}
+        for rec in nodes:
+            lab4 = str(rec.get("label"))
+            rec["key"] = lk["node"].get(lab4)
+            # 표 칸에 **없는** 지금 값도 함께 싣는다 — 카드가 K 값·필요압력을
+            #   빈 칸으로 보이면 사람이 그 자리에 0 을 써 넣는다.
+            m4 = kmeta.get(lk["nid"].get(lab4) or "") or {}
+            for fld in ("k_factor_si", "required_pressure_bar"):
+                if m4.get(fld) is not None:
+                    rec[fld] = m4.get(fld)
+
+        _pdata = (got.get("kfp") or {}).get("pipe_data") or {}
         pipes = [{"label": str(r.get("label")),
                   "a": str(r.get("in")), "b": str(r.get("out")),
                   "dia": r.get("dia"), "len_m": r.get("length"),
                   "src": r.get("dia_src"),
                   "ref": ref_of.get(str(r.get("label"))),
+                  "key": key_of_pipe.get(str(r.get("label"))),
+                  # 표에 칸이 없는 kfp 메타 — 카드가 지금 값으로 보인다.
+                  "roughness_mm": (_pdata.get(str(r.get("label"))) or {})
+                                  .get("roughness_mm"),
+                  "equivalent_length": (_pdata.get(str(r.get("label"))) or {})
+                                       .get("equivalent_length"),
                   "load": load_of.get(str(r.get("label")), 0)}
                  for r in view.pipes]
         return jsonify({
@@ -1083,6 +1346,13 @@ def register(app, *, UPLOAD_DIR):
                      # [F-10e] 밑그림 변환 — board mm 를 이 화면에 얹는 식.
                      "underlay": _underlay_xf(sess, view, stood, cfg)},
             "tables": tbl.as_dict(),        # 저장될 값 그대로 (F-3 표 4종)
+            # [요소속성 수정카드] 사람이 덮은 값 — 카드가 원값·사유·시각을
+            #   나란히 보인다(규칙 5). 못 옮긴 것은 「적용 못 한 수정」으로.
+            "overrides": ov.ensure_loaded(sess),
+            # ★어느 차선으로 만든 표인가. 자동(A) 차선은 board 역참조가 아예
+            #   없어 **어느 요소도** 안정 키를 못 만든다 — 그때 요소마다
+            #   「엔진이 만든 자리라…」라고 말하면 거짓이다. 차선을 말한다.
+            "ov_lane": str((d.get("method") or "manual")),
             # [F-5] 제외 사유 분류 — mm 세계좌표. 설계 캔버스(정규화 좌표)가
             # 아니라 손질 망 위에 그려야 «어디» 인지 보인다.
             "marks": d.get("marks") or {},

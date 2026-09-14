@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import zipfile
 from pathlib import Path
 
 from flask import jsonify, request, send_file
@@ -234,75 +233,51 @@ def register(app, *, UPLOAD_DIR):
     @app.get("/api/module-f/download")
     @route_session()
     def module_f_download(sess, body):
-        """`what=kfp|sdf|set` — 낱개 또는 한 벌(zip)."""
+        """`what` 하나에 파일 하나 — **묶지 않는다**.
+
+        ★[오너 2026-09-14] 「zip 으로 한꺼번에」 단추를 없애고 형태별로 따로
+          받게 한다. SDF 만은 `.slf`(호칭경 대조 자료) 가 **같은 폴더에**
+          있어야 PIPENET 이 관경을 찾는다 — 그래서 화면이 두 번 내려받고,
+          여기서는 낱개로만 준다. 묶어 주면 사람이 압축을 풀어야 한다.
+
+            what = kfp        전체망 .kfp
+                   worst-kfp  최불리(설계) .kfp
+                   design     설계 .sdf
+                   design-slf 설계 .slf   ← .sdf 와 한 쌍
+                   design-has 설계 .has
+        """
         what = (request.args.get("what") or "kfp").lower()
         stem = sess.get("key") or "cad"
         kfp = sess.get("kfp_path")
-        sdf = sess.get("sdf_path")
-        slf = sess.get("slf_path")
+
+        def _send(path, name, mime, missing):
+            if not path or not os.path.isfile(path):
+                return _fail(missing, 404)
+            return send_file(path, as_attachment=True,
+                             download_name=name, mimetype=mime)
 
         if what == "worst-kfp":
             wk = sess.get("worst_kfp_path")
-            if not wk or not os.path.isfile(wk):
-                return _fail("아직 변환된 최불리 .kfp 가 없습니다.", 404)
-            return send_file(wk, as_attachment=True,
-                             download_name=f"{stem}_"
-                             + os.path.basename(wk).split("_", 1)[-1],
-                             mimetype="application/json")
+            return _send(wk, (f"{stem}_" + os.path.basename(wk).split("_", 1)[-1]
+                              if wk else ""), "application/json",
+                         "아직 변환된 최불리 .kfp 가 없습니다.")
         if what == "kfp":
-            if not kfp or not os.path.isfile(kfp):
-                return _fail("아직 변환된 .kfp 가 없습니다.", 404)
-            return send_file(kfp, as_attachment=True,
-                             download_name=f"{stem}_변환.kfp",
-                             mimetype="application/json")
-        if what == "sdf":
-            if not sdf or not os.path.isfile(sdf):
-                return _fail("아직 생성된 .sdf 가 없습니다.", 404)
-            return send_file(sdf, as_attachment=True,
-                             download_name=f"{stem}.sdf",
-                             mimetype="application/xml")
+            return _send(kfp, f"{stem}_변환.kfp", "application/json",
+                         "아직 변환된 .kfp 가 없습니다.")
         if what == "design":
-            # [F-2] 수리계산 입력 한 벌 — SDF 는 옆의 SLF 와 한 쌍이다(파일명
-            # 참조라 따로 열면 관경이 Unset). 그래서 낱개가 아니라 zip 으로만 준다.
             dsdf = sess.get("design_sdf_path")
+            return _send(dsdf, (os.path.basename(dsdf) if dsdf else ""),
+                         "application/xml",
+                         "아직 만든 수리계산 입력이 없습니다.")
+        if what == "design-slf":
             dslf = sess.get("design_slf_path")
-            if not dsdf or not os.path.isfile(dsdf):
-                return _fail("아직 만든 수리계산 입력이 없습니다.", 404)
-            out_dir = Path(UPLOAD_DIR) / "module_f"
-            zip_path = out_dir / f"{sess['id']}_design.zip"
-            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-                z.write(dsdf, os.path.basename(dsdf))
-                if dslf and os.path.isfile(dslf):
-                    z.write(dslf, os.path.basename(dslf))
-            return send_file(str(zip_path), as_attachment=True,
-                             download_name=f"{stem}_수리계산입력_설계.zip",
-                             mimetype="application/zip")
-        if what != "set":
-            return _fail(f"내려받을 대상이 아닙니다: {what}")
-
-        wk = sess.get("worst_kfp_path")
-        dsdf = sess.get("design_sdf_path")
-        dslf = sess.get("design_slf_path")
-        have = [q for q in (kfp, wk, dsdf) if q and os.path.isfile(q)]
-        if not have:
-            return _fail("아직 변환 결과가 없습니다.", 404)
-        out_dir = Path(UPLOAD_DIR) / "module_f"
-        zip_path = out_dir / f"{sess['id']}_set.zip"
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-            if kfp and os.path.isfile(kfp):
-                z.write(kfp, f"{stem}_변환.kfp")
-            if wk and os.path.isfile(wk):
-                z.write(wk, f"{stem}_" + os.path.basename(wk).split("_", 1)[-1])
-            if dsdf and os.path.isfile(dsdf):
-                z.write(dsdf, os.path.basename(dsdf))
-                # SDF 는 .slf 없이는 PIPENET 이 못 연다 — 같이 담는다.
-                if dslf and os.path.isfile(dslf):
-                    z.write(dslf, os.path.basename(dslf))
-            # 은퇴한 전체망 문법 재직렬화 SDF — 남아 있으면 그대로 담아 준다.
-            if sdf and os.path.isfile(sdf):
-                z.write(sdf, f"{stem}.sdf")
-                if slf and os.path.isfile(slf):
-                    z.write(slf, f"{stem}.slf")
-        return send_file(str(zip_path), as_attachment=True,
-                         download_name=f"{stem}_수리계산입력.zip",
-                         mimetype="application/zip")
+            return _send(dslf, (os.path.basename(dslf) if dslf else ""),
+                         "application/xml",
+                         "아직 만든 .slf(호칭경 대조 자료)가 없습니다 — "
+                         "이것이 없으면 PIPENET 에서 관경이 Unset 이 됩니다.")
+        if what == "design-has":
+            dhas = sess.get("design_has_path")
+            return _send(dhas, (os.path.basename(dhas) if dhas else ""),
+                         "application/json",
+                         "아직 만든 .has 가 없습니다.")
+        return _fail(f"내려받을 대상이 아닙니다: {what}")

@@ -211,6 +211,8 @@
     //   고치는» 중일 때는 위 가지가 가져가므로 여기 안 온다(그때는 클릭이
     //   손질이라는 약속이 이미 서 있다).
     else if (S.stage === "design") designInspect(x, y, maxD);
+    // [요소속성 수정카드 §4] 통합 화면도 «그 자리에서» 읽고 고친다.
+    else if (S.stage === "merge") mergeInspect(x, y, maxD);
     else if (S.stage === "sub") subClick(x, y);
     else if (S.stage === "auto") autoClick(x, y);
   });
@@ -3045,7 +3047,6 @@
     try {
       await post("/api/module-f/merge/emit", { sid: S.sid });
       watch(async () => {
-        $("mg-download").disabled = false;
         // 무엇이 났는지 이름으로 말한다 — 아이소 한 벌이 함께 나므로
         // 「.sdf 하나」로 알고 넘어가면 그것을 못 찾는다.
         let names = null;
@@ -3059,12 +3060,29 @@
     } catch (err) { busy(false); say(err.message, "err"); }
   };
 
-  $("mg-download").onclick = () => {
-    window.location = `/api/module-f/merge/download?sid=${S.sid}&what=zip`;
+  /** 통합 산출물 — 형태별로 따로. `mg-dl-coord` 가 평면/아이소를 가른다.
+   *  두 벌은 **좌표만** 다르다(수리계산 값은 같은 표에서 난다).
+   */
+  const mgUrl = (what) =>
+    `/api/module-f/merge/download?sid=${S.sid}&what=${what}`;
+  const mgSuffix = () => ($("mg-dl-coord") || {}).value || "";
+
+  $("mg-dl-sdf").onclick = () => {
+    const q = mgSuffix();
+    dlFile(mgUrl("sdf" + q));
+    setTimeout(() => dlFile(mgUrl("slf" + q)), 400);
+    say(`통합 SDF${q ? " (아이소)" : ""} — .sdf 와 .slf 두 파일을`
+      + " 내려받습니다. 브라우저가 «여러 파일» 을 물으면 허용하세요."
+      + " 둘을 **같은 폴더**에 두어야 PIPENET 이 관경을 찾습니다.", "ok");
   };
+  $("mg-dl-kfp").onclick = () => dlFile(mgUrl("kfp" + mgSuffix()));
+  $("mg-dl-has").onclick = () => dlFile(mgUrl("has" + mgSuffix()));
+  $("mg-dl-slf").onclick = () => dlFile(mgUrl("slf" + mgSuffix()));
 
   // 보기 전환 — 저장 좌표는 안 바뀐다(평면). 아이소는 눈으로 보는 용도다.
   $("mg-iso").onchange = () => { loadMergeView(); };
+  // 좌표를 바꾸면 그 벌이 났는지에 따라 단추가 갈린다.
+  $("mg-dl-coord").onchange = () => renderMergeFiles();
 
   /** 무엇이 났는지 이름으로 — 아이소 한 벌이 함께 나므로 「.sdf 하나」로
       알고 넘어가면 그것을 못 찾는다. */
@@ -3076,15 +3094,22 @@
     const LABEL = { sdf: "평면 .sdf", slf: ".slf", kfp: "평면 .kfp",
                     has: "평면 .has", sdf_iso: "아이소 .sdf",
                     slf_iso: "아이소 .slf", kfp_iso: "아이소 .kfp",
-                    has_iso: "아이소 .has", zip: "한 벌 (zip)" };
+                    has_iso: "아이소 .has" };
     let html = "";
     for (const k of Object.keys(LABEL)) {
       if (f[k]) html += kv(LABEL[k], esc(f[k]));
     }
     box.innerHTML = html || "";
+    // 단추는 **난 것만** 켠다 — 없는 것을 눌러 404 를 만나지 않게.
+    const q = mgSuffix();
+    $("mg-dl-sdf").disabled = !f["sdf" + q];
+    $("mg-dl-slf").disabled = !f["slf" + q];
+    $("mg-dl-kfp").disabled = !f["kfp" + q];
+    $("mg-dl-has").disabled = !f["has" + q];
     say(f.sdf_iso
-        ? `산출 완료 — 아이소 좌표본(${f.sdf_iso})도 함께 났습니다.`
-        : "산출 완료 — zip 으로 내려받으세요.", "ok");
+        ? "산출 완료 — 아이소 좌표본도 함께 났습니다"
+          + " (좌표 칸에서 고르세요). 형태별로 따로 내려받습니다."
+        : "산출 완료 — SDF · .kfp · .has 를 형태별로 내려받으세요.", "ok");
   }
 
   $("mg-drop").onchange = () => {
@@ -3102,6 +3127,20 @@
     try {
       const d = await api(`/api/module-f/merge/preview?sid=${S.sid}&iso=${iso}`);
       S.mergeView = d.view || null;
+      // [요소속성 수정카드 §4] 통합 화면의 카드가 읽을 것 — 덮은 값과
+      //   「적용 못 한 수정」. 저장소는 하나지만 **못 옮긴 사유는 화면마다**
+      //   다르다(회랑은 표에서, 계통도·기계실은 결합에서 옮겨진다).
+      S.mergeOv = d.overrides || [];
+      S.mergeMissed = d.ov_missed || [];
+      S.mergeSel = null;               // 새 결합망이다 — 옛 카드를 들고 있지 않는다
+      if (!S.ovFields) {
+        try {
+          S.ovFields = (await api(
+            `/api/module-f/design/override?sid=${encodeURIComponent(S.sid)}`)
+          ).fields || {};
+        } catch (e2) { S.ovFields = {}; }
+      }
+      renderInspect();
       renderMergeLegend(d);
       if (S.mergeView && S.mergeView.nodes.length) {
         const xs = S.mergeView.nodes.map((n) => n.x);
@@ -4255,7 +4294,8 @@
     const wrap = $("src-wrap");
     const selected = wrap.classList.contains("hidden") ? null : $("conv-src").value;
     for (const id of ["btn-download", "btn-download-worst",
-                      "btn-download-design", "btn-download-set"]) {
+                      "btn-download-design", "btn-download-has",
+                      "btn-download-slf"]) {
       $(id).disabled = true;
     }
     $("conv-info").innerHTML = "";
@@ -4337,19 +4377,49 @@
     $("btn-download").disabled = !s.full;
     $("btn-download-worst").disabled = !s.worst;
     $("btn-download-design").disabled = !s.design;
-    $("btn-download-set").disabled = !(s.full || s.worst || s.design);
+    $("btn-download-slf").disabled = !s.design;
+    // .has 는 설계 SDF 에서 변환해 낸다 — SDF 가 있으면 있다.
+    $("btn-download-has").disabled = !s.design;
     const made = [s.full && "전체망 .kfp", s.worst && "최불리 .kfp",
                   s.design && "최불리 .sdf"].filter(Boolean).join(" · ");
     say(`변환 완료 — ${made}`, "ok");
   }
 
-  const dl = (what) => {
-    window.location.href = `/api/module-f/download?sid=${S.sid}&what=${what}`;
-  };
-  $("btn-download").onclick = () => dl("kfp");
-  $("btn-download-worst").onclick = () => dl("worst-kfp");
-  $("btn-download-design").onclick = () => dl("design");
-  $("btn-download-set").onclick = () => dl("set");
+  /** 파일 하나를 내려받는다 — `location` 을 갈아 끼우면 **한 번에 하나**뿐이라
+   *  둘을 잇달아 받을 수 없다(뒤엣것이 앞엣것을 덮는다). 앵커를 만들어 누른다.
+   */
+  function dlFile(url) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  const dlUrl = (what) =>
+    `/api/module-f/download?sid=${S.sid}&what=${what}`;
+
+  /** ★SDF 는 `.slf` 와 **한 쌍**이다 — 파일명 참조라 따로 열면 관경이 Unset.
+   *  그래서 이 단추 하나가 두 파일을 잇달아 내려받는다. 묶어 주지 않는 이유는
+   *  오너 지시(2026-09-14) — 압축을 푸는 손이 한 번 더 든다.
+   *  브라우저가 「여러 파일 내려받기」를 물으면 허용해야 한다고 말해 준다.
+   */
+  function dlSdfPair(sdfWhat, slfWhat, label) {
+    dlFile(dlUrl(sdfWhat));
+    setTimeout(() => dlFile(dlUrl(slfWhat)), 400);
+    say(`${label} — .sdf 와 .slf 두 파일을 내려받습니다.`
+      + " 브라우저가 «여러 파일» 을 물으면 허용하세요."
+      + " 둘을 **같은 폴더**에 두어야 PIPENET 이 관경을 찾습니다"
+      + "(없으면 Unset).", "ok");
+  }
+
+  $("btn-download").onclick = () => dlFile(dlUrl("kfp"));
+  $("btn-download-worst").onclick = () => dlFile(dlUrl("worst-kfp"));
+  $("btn-download-has").onclick = () => dlFile(dlUrl("design-has"));
+  $("btn-download-slf").onclick = () => dlFile(dlUrl("design-slf"));
+  $("btn-download-design").onclick =
+    () => dlSdfPair("design", "design-slf", "수리계산 SDF");
 
   // ── 시작 ───────────────────────────────────────────────────────
   //
@@ -4528,8 +4598,23 @@
       lift_ref: cfg.lift_ref, head_stub_pct: cfg.head_stub_pct,
     });
     const d = await api(`/api/module-f/design/preview?${q}`);
+    // [요소속성 수정카드] 고칠 수 있는 속성 목록은 **서버가 주인**이다(§18 의
+    //   부속 종류와 같은 규약). 화면이 따로 들고 있으면 둘이 갈린다. 한 번만
+    //   받아 둔다 — 카드를 열 때마다 되물으면 클릭이 느려진다.
+    if (!S.ovFields) {
+      try {
+        S.ovFields = (await api(
+          `/api/module-f/design/override?sid=${encodeURIComponent(S.sid)}`)
+        ).fields || {};
+      } catch (err) { S.ovFields = {}; }
+    }
     S.design = { view: d.view, tables: d.tables, settings: d.settings,
                  marks: d.marks || {},
+                 // [요소속성 수정카드] 사람이 덮은 값 — 카드가 원값·사유·
+                 //   시각을 나란히 보인다(규칙 5). 미리보기가 함께 내려주므로
+                 //   카드를 열 때마다 서버에 되묻지 않는다.
+                 ov: d.overrides || [],
+                 ovLane: d.ov_lane || "manual",
                  // [B] 등각에서 «겹쳐 보이는» 접속관 셈 — 위상 문제가 아니라는
                  //   것을 화면이 스스로 말해야 사람이 버그로 읽지 않는다.
                  stood: d.stood || null,
@@ -4980,6 +5065,220 @@
                     orig_dia: "원래 호칭경(mm)", orig_src: "원래 근거",
                     a: "board 노드 a", b: "board 노드 b" };
 
+  // ── [요소속성 수정카드] 그 자리에서 값을 고친다 ────────────────────
+  //
+  // 읽기 카드(F-12)를 그대로 키운다 — K-Solver·PIPENET 의 속성창처럼.
+  // 규칙은 여섯(`routes/module_f/overrides.py` 머리말):
+  //
+  //   1 값만 고친다 — 노드·간선을 만들거나 지우지 않는다(위상은 손질이 주인)
+  //   2 **안정 키**로 보낸다 — 표 라벨(P12·노드 3)은 재계산마다 옮겨 다닌다
+  //     (실측 대명동 K 30→20: 살아남은 배관 111개가 전부 이름이 바뀌었다)
+  //   4 못 옮긴 수정은 말한다  5 원값·사유·시각을 지우지 않는다
+  //
+  // ★고칠 수 있는 속성 목록은 **서버가 주인**이다(`S.ovFields`). 화면이 따로
+  //   들고 있으면 둘이 갈린다 — §18 부속 종류에서 이미 겪었다.
+  // ★키가 없는 요소(엔진이 만든 세로 토막 끝·티)는 고칠 수 없다. 그 칸을 그냥
+  //   빼면 «고장» 으로 읽힌다 — 왜 못 고치는지 한 줄 적는다.
+
+  function ovRows() {
+    // 저장소는 **하나**다. 화면마다 자기가 받은 사본을 읽을 뿐이다.
+    return (S.stage === "merge"
+      ? (S.mergeOv || [])
+      : ((S.design && S.design.ov) || []));
+  }
+
+  function ovKeyOf(k) { return JSON.stringify(k || null); }
+
+  /** 이 (안정 키, 속성)에 사람이 덮은 값이 있나. */
+  function ovFind(key, field) {
+    const kj = ovKeyOf(key);
+    return ovRows().find((r) => ovKeyOf(r.key) === kj
+                              && String(r.field) === String(field)) || null;
+  }
+
+  /** 이번 산출에 «못 들어간» 수정 중 이 자리의 것. */
+  function ovMissedAt(key) {
+    const kj = ovKeyOf(key);
+    const src = S.stage === "merge"
+      ? (S.mergeMissed || [])
+      : ((S.design && S.design.ovMissed) || []);
+    return src.filter((m) => m && m.key && ovKeyOf(m.key) === kj);
+  }
+
+  /** 지금 값 — 표 행이 먼저, 없으면 미리보기가 실어 준 kfp 메타.
+   *
+   *  ★K 값·필요압력·거칠기·등가길이는 **표에 칸이 없다**(kfp 메타에만 산다).
+   *  빈 칸으로 보이면 사람이 그 자리에 0 을 써 넣는다 — 지금 값을 보인다.
+   */
+  function ovNow(row, extra, field) {
+    for (const src of [row, extra]) {
+      if (!src) continue;
+      const v = src[field];
+      if (v !== undefined && v !== null) return v;
+    }
+    return null;
+  }
+
+  /**
+   * 고치는 칸 한 덩이.
+   *
+   * @param key  안정 키(미리보기가 실어 준 것). 없으면 읽기만.
+   * @param row  표의 그 행 — 지금 값을 여기서 읽는다(카드가 다시 셈하지 않는다).
+   * @param why  키가 없을 때 **왜** 못 고치는지.
+   */
+  function ovEdit(key, row, why, extra, only) {
+    if (!key) {
+      // ★자동(A) 차선의 표는 도면 요소와 잇는 주소가 **아예** 없다. 그때
+      //   요소마다 「엔진이 만든 자리라…」라고 말하면 거짓이다 — 그 표는
+      //   전부 그렇다. 무엇을 하면 고칠 수 있는지를 말한다.
+      if (S.stage !== "merge" && S.design && S.design.ovLane === "auto") {
+        return grp("값 고치기")
+          + insNone("자동 추출로 만든 표는 도면 요소와 잇는 주소가 없어 "
+                  + "여기서 고칠 수 없습니다 — 손질(수동) 차선으로 열면 "
+                  + "그 자리에서 고칠 수 있습니다.");
+      }
+      return grp("값 고치기")
+        + insNone(why || "이 요소는 안정 키가 없어 고칠 수 없습니다 — "
+                       + "엔진이 만든 자리라 다음 계산에서 같은 자리를 "
+                       + "가리킬 수 없습니다.");
+    }
+    const kind = String(key[0]);
+    let spec = ((S.ovFields || {})[kind]) || [];
+    // ★통합의 `sys`·`mr` 은 배관과 절점이 **한 갈래**를 나눠 쓴다(라벨이 곧
+    //   주소라 갈래를 더 쪼갤 수 없다). 그대로 펴면 절점에 「길이(m)」가,
+    //   배관에 「표고(m)」가 뜬다 — 부르는 쪽이 쓸 칸만 고른다.
+    if (only) spec = spec.filter((f) => only.includes(f.field));
+    if (!spec.length) {
+      return grp("값 고치기")
+        + insNone(`«${kind}» 는 고칠 수 있는 속성이 없습니다.`);
+    }
+    const kj = esc(JSON.stringify(key));
+    // 다시 눌러야 할 단추는 갈래마다 다르다 — 회랑은 설계 표를 거쳐 결합으로
+    // 흘러들고, 계통도·기계실은 결합에서만 산다. 한 문장으로 뭉뚱그리면 사람이
+    // 엉뚱한 단추를 누르고 「안 먹힌다」고 읽는다.
+    const btn = (kind === "sys" || kind === "mr") ? "결합" : "표 확정";
+    let h = grp("값 고치기")
+      + `<div class="ov-note">고친 값은 「${btn}」을 다시 눌러야 산출에 `
+      + `들어갑니다. 배관을 잇거나 끊는 일은 <b>손질</b> 단계에서 합니다.</div>`;
+    for (const f of spec) {
+      const cur = ovFind(key, f.field);
+      const base = ovNow(row, extra, f.field);
+      const val = cur ? cur.new : (base === null ? "" : base);
+      h += `<div class="ov-row" data-ov-key="${kj}"`
+         + ` data-ov-kind="${esc(kind)}" data-ov-field="${esc(f.field)}">`
+         + `<div class="ov-lab">${esc(f.label)}</div>`
+         + `<input class="ov-in" value="${esc(val)}"`
+         + ` placeholder="${base === null ? "표에 없는 값" : ""}">`
+         + (f.reason_required
+             ? `<input class="ov-why" value="${esc(cur ? cur.reason : "")}"`
+               + ` placeholder="사유 (필수)">`
+             : "")
+         + `<button class="ov-save" type="button">저장</button>`
+         + (cur ? `<button class="ov-undo" type="button">되돌리기</button>` : "")
+         + "</div>";
+      if (cur) {
+        // 규칙 5 — 원값을 지우지 않는다. 무엇이 무엇으로 · 왜 · 언제.
+        h += `<div class="ov-was">원값 `
+           + `<b>${esc(cur.old === null || cur.old === undefined
+                       ? "(알 수 없음)" : cur.old)}</b> → `
+           + `<b>${esc(cur.new)}</b>`
+           + (cur.reason ? ` · 사유 「${esc(cur.reason)}」` : "")
+           + (cur.at ? ` · ${esc(cur.at)}` : "")
+           + "</div>";
+      }
+    }
+    const miss = ovMissedAt(key);
+    if (miss.length) {
+      h += `<div class="ov-miss">적용 못 한 수정 ${miss.length}건 — `
+         + miss.map((m) => `${esc(ovLabelOf(m.kind, m.field))}: `
+                         + `${esc(m.why || "사유 없음")}`).join(" · ")
+         + "</div>";
+    }
+    return h;
+  }
+
+  /** 안정 키를 사람 말로 — 「board 1243–2472」 같은 날 것을 그대로 보이면
+   *  어디인지 알 수 없다. 갈래마다 무엇을 가리키는지 적는다. */
+  function ovWhere(key) {
+    if (!key || !key.length) return "자리 미상";
+    const k = String(key[0]);
+    if (k === "pipe") return `배관 · 도면 노드 ${key[1]}–${key[2]}`;
+    if (k === "node") return `절점 · 도면 노드 ${key[1]}`;
+    if (k === "head") return `헤드 · 도면 원 ${key[1]}`;
+    if (k === "vert") return `세로 토막 · 뿌리 ${key[1]} ${key[2]} · ${key[3]}번`;
+    if (k === "merge") return `통합 ${key[1]} · ${key[2]}`;
+    return key.join(" · ");
+  }
+
+  /** (kind, field) 의 사람이 읽는 이름 — 서버 목록에서 찾는다. */
+  function ovLabelOf(kind, field) {
+    const spec = ((S.ovFields || {})[String(kind)]) || [];
+    const f = spec.find((x) => String(x.field) === String(field));
+    return f ? f.label : String(field);
+  }
+
+  /** 카드 안의 저장·되돌리기를 잇는다. */
+  function ovBind(box) {
+    for (const el of box.querySelectorAll(".ov-row")) {
+      const key = JSON.parse(el.dataset.ovKey);
+      const kind = el.dataset.ovKind, field = el.dataset.ovField;
+      const inp = el.querySelector(".ov-in");
+      const why = el.querySelector(".ov-why");
+      const save = el.querySelector(".ov-save");
+      const undo = el.querySelector(".ov-undo");
+      if (save) {
+        save.onclick = () => ovSend({
+          kind, key, field, new: inp.value,
+          reason: why ? why.value : "",
+        });
+      }
+      if (undo) {
+        undo.onclick = () => ovSend({ kind, key, field, remove: true });
+      }
+      if (inp) {
+        inp.onkeydown = (ev) => {
+          if (ev.key === "Enter" && save) { ev.preventDefault(); save.click(); }
+        };
+      }
+    }
+  }
+
+  /**
+   * 값을 서버로. 검증은 **서버가** 한다 — 화면이 따로 자를 대면 두 자가 갈린다.
+   *
+   * ★보낸 뒤 미리보기를 다시 받는다. 표는 아직 옛 것이므로(「표 확정」을 눌러야
+   *   산출이 바뀐다) 카드의 «원값 → 새값» 만 갱신된다 — 그 사실을 말해 준다.
+   */
+  async function ovSend(payload) {
+    try {
+      const d = await post("/api/module-f/design/override",
+                           Object.assign({ sid: S.sid }, payload));
+      if (S.design) S.design.ov = d.rows || [];
+      S.mergeOv = d.rows || [];
+      renderInspect();
+      say(d.message || "저장했습니다.", "ok");
+      // 배너는 수리계산 화면의 것이다. 통합 화면에서는 카드가 「어디부터 다시
+      // 돌려야 하나」를 이미 적고 있으므로(mgRerunNote) 배너를 띄우지 않는다.
+      if (S.stage !== "merge") markDesignDirty();
+    } catch (err) {
+      say(err.message || String(err), "err");
+    }
+  }
+
+  /** 표가 옛 것이 됐다고 화면에 알린다 — 조용히 두면 «반영된 줄» 안다.
+   *
+   *  ★`renderStale` 의 그 배너를 쓰되 **문구를 쓴다.** 감추기만 풀면 빈 상자가
+   *  떠서 «화면이 깨졌다» 로 읽힌다.
+   */
+  function markDesignDirty() {
+    const box = $("dg-stale");
+    if (!box) return;
+    box.classList.remove("hidden");
+    box.innerHTML =
+      "<b>값을 고쳤습니다 — 지금 보이는 표·아이소는 아직 옛 것입니다.</b>"
+      + "<br>「표 확정」을 다시 눌러야 표·좌표·산출물에 들어갑니다.";
+  }
+
   /** 표 한 행을 그 «정의된 순서» 그대로 편다 — 무엇이 어떻게 정의됐는지가 요점. */
   function insRowKv(row, skip, names) {
     let h = "";
@@ -5042,14 +5341,150 @@
     draw();
   }
 
+  // ── [요소속성 수정카드 §4] 통합 화면의 카드 ─────────────────────
+  //
+  // 수리계산 화면과 **같은 상자**(`dg-ins`)를 쓴다 — 캔버스 위에 떠 있는
+  // 오버레이라 단계와 무관하게 보인다. 값을 고치는 길도 같다(한 저장소).
+  //
+  // ★두 화면이 «같은 자리» 를 같은 주소로 가리켜야 한다. 회랑 요소는 라벨만
+  //   S740 이 +9 옮겼을 뿐 같은 자리라, 서버가 되밀어 설계 주소록의 키를
+  //   실어 준다. 계통도·기계실은 board 가 없어 라벨이 곧 주소다.
+  // ★회랑을 통합 화면에서 고치면 **「표 확정」부터** 다시 눌러야 한다 —
+  //   그 값은 설계 표를 거쳐 결합으로 흘러들기 때문이다. 카드가 그 말을 한다.
+
+  const MG_PART = { plan: "평면도(회랑)", system: "계통도",
+                    machineroom: "기계실", seam: "이음매" };
+
+  function mergeInspect(x, y, maxD) {
+    const v = S.mergeView;
+    if (!v || !v.nodes) return;
+    const at = {};
+    for (const n of v.nodes) at[String(n.label)] = n;
+    // 노드가 배관보다 먼저다 — 수리계산 카드와 같은 규약(그래야 접속점
+    // 속성을 영영 못 누르는 일이 없다).
+    let hit = null, best = maxD;
+    for (const n of v.nodes) {
+      const d = Math.hypot(x - n.x, y - n.y);
+      if (d <= best) { best = d; hit = { kind: "node", label: String(n.label) }; }
+    }
+    if (!hit) {
+      best = maxD;
+      for (const p of (v.pipes || [])) {
+        const a = at[String(p.a)], b = at[String(p.b)];
+        if (!a || !b) continue;
+        const d = segDist(x, y, a.x, a.y, b.x, b.y);
+        if (d <= best) { best = d; hit = { kind: "pipe", label: String(p.label) }; }
+      }
+    }
+    S.mergeSel = hit;
+    renderInspect();
+    draw();
+  }
+
+  /**
+   * 길이를 바꿨을 때 «그림이 따라 변하나» — 회랑과 입상관이 **반대**다.
+   *
+   * ★회랑은 사슬이 길이로 좌표를 만든다(`p(자식)=p(부모)+L·u`) — 길이를 바꾸면
+   *   아이소가 따라 변한다. 입상관 막대는 표 길이에 비례하지 않고 **균등
+   *   간격**으로 눕는다(2026-09-08 오너 「이전 디자인이 더 좋아」 — 0.017 m
+   *   짜리 구간이 사라져 막대가 한쪽으로 뭉쳤다). 이 차이를 말하지 않으면
+   *   사람이 「계통도 길이가 안 먹혔다」고 읽는다.
+   *
+   * 다시 눌러야 할 단추는 `ovEdit` 이 적는다 — 여기서 또 적으면 두 줄이
+   * 서로 다른 말을 하는 날이 온다.
+   */
+  function mgRerunNote(key) {
+    if (!key) return "";
+    const k = String(key[0]);
+    if (k === "sys" || k === "mr") {
+      return `<div class="ov-note">입상관 막대는 표 길이에 비례하지 않고 `
+           + `<b>균등 간격</b>으로 눕습니다(2026-09-08 오너 확정) — 길이를 `
+           + `바꿔도 그림 간격은 그대로이고, 산출(.sdf)의 길이가 바뀝니다.`
+           + `</div>`;
+    }
+    return `<div class="ov-note">이 요소는 <b>평면도(회랑)</b> 것입니다 — `
+         + `길이가 좌표를 만들어 고치면 <b>아이소도 함께</b> 변합니다.</div>`;
+  }
+
+  function mgPipe(label) {
+    const v = S.mergeView;
+    const p = (v.pipes || []).find((x) => String(x.label) === label);
+    if (!p) return null;
+    $("dg-ins-kind").textContent = "통합 배관";
+    $("dg-ins-title").textContent =
+      `${label}  ${p.a} → ${p.b}  · ${MG_PART[p.part] || p.part}`;
+    let h = grp("결합망의 값")
+      + kv("어느 도면", esc(MG_PART[p.part] || p.part))
+      + kv("호칭경(mm)", esc(p.dia == null ? "—" : p.dia))
+      + kv("길이(m)", esc(p.len_m == null ? "—" : p.len_m))
+      + kv("C 값", esc(p.c == null ? "—" : p.c))
+      + kv("양 끝", `${insLink("mgnode", p.a)} → ${insLink("mgnode", p.b)}`);
+    h += mgRerunNote(p.key);
+    h += ovEdit(p.key, { length: p.len_m, dia: p.dia, c: p.c },
+                p.part === "seam"
+                  ? "이 배관은 두 도면을 잇는 «이음매» 라 어느 도면 것도 "
+                    + "아닙니다 — 어느 쪽을 고친 것인지 말할 수 없는 값은 "
+                    + "두지 않습니다."
+                  : "이 배관은 안정 키가 없습니다 — 다음 결합에서 같은 "
+                    + "자리를 가리킬 수 없습니다.",
+                null, ["length", "dia", "c"]);
+    return h;
+  }
+
+  function mgNode(label) {
+    const v = S.mergeView;
+    const n = (v.nodes || []).find((x) => String(x.label) === label);
+    if (!n) return null;
+    const roles = [];
+    if (n.input) roles.push("급수원");
+    if (n.pump) roles.push("펌프");
+    if (n.valve) roles.push("알람밸브");
+    if (n.head) roles.push("헤드");
+    if (n.anchor) roles.push("기준점(세 도면이 만나는 자리)");
+    $("dg-ins-kind").textContent = "통합 절점";
+    $("dg-ins-title").textContent =
+      `${label}  ${MG_PART[n.part] || n.part}`
+      + (roles.length ? `  · ${roles.join(" · ")}` : "");
+    let h = grp("결합망의 값")
+      + kv("어느 도면", esc(MG_PART[n.part] || n.part))
+      + kv("표고(m)", esc(n.e))
+      + kv("좌표", esc(`${Math.round(n.x)} , ${Math.round(n.y)}`));
+    if (roles.length) h += grp("역할") + kv("이 자리가 무엇인가", esc(roles.join(" · ")));
+
+    const pipes = (v.pipes || []).filter(
+      (r) => String(r.a) === label || String(r.b) === label);
+    h += grp(`연결 배관 (${pipes.length})`);
+    h += pipes.length
+      ? insTab(["배관", "상대", "호칭경", "길이(m)", "도면"], pipes,
+               (r) => [insLink("mgpipe", r.label),
+                       insLink("mgnode", String(r.a) === label ? r.b : r.a),
+                       esc(r.dia), esc(r.len_m),
+                       esc(MG_PART[r.part] || r.part)])
+      : insNone("이 절점에 붙은 배관이 없습니다.");
+
+    h += mgRerunNote(n.key);
+    h += ovEdit(n.key, { elevation: n.e },
+                "이 절점은 안정 키가 없습니다 — 다음 결합에서 같은 자리를 "
+                + "가리킬 수 없습니다.",
+                null, ["elevation"]);
+    return h;
+  }
+
   function insSelect(kind, label) {
-    if (!S.design) return;
-    S.design.sel = { kind: String(kind), label: String(label) };
+    // 통합 화면의 링크는 `mgnode`·`mgpipe` 로 온다 — 같은 단추 배선을 쓰되
+    // 어느 화면의 자리인지 갈린다.
+    if (String(kind).startsWith("mg")) {
+      S.mergeSel = { kind: String(kind).slice(2), label: String(label) };
+    } else {
+      if (!S.design) return;
+      S.design.sel = { kind: String(kind), label: String(label) };
+    }
     renderInspect();
     draw();
   }
   function insClose() {
     if (S.design) S.design.sel = null;
+    S.mergeSel = null;
     renderInspect();
     draw();
   }
@@ -5057,15 +5492,23 @@
   function renderInspect() {
     const box = $("dg-ins");
     if (!box) return;
-    const sel = (S.design && S.design.sel) || null;
-    const v = (S.design && S.design.view) || null;
+    // ★한 상자를 두 화면이 나눠 쓴다 — «지금 어느 화면인가» 로 가른다.
+    //   단계가 바뀌었는데 앞 화면의 카드가 그대로 떠 있으면, 제목은 통합인데
+    //   몸통은 수리계산이 되어 카드가 조용히 거짓말을 한다.
+    const onMerge = S.stage === "merge";
+    const sel = onMerge ? (S.mergeSel || null)
+                        : ((S.design && S.design.sel) || null);
+    const v = onMerge ? (S.mergeView || null)
+                      : ((S.design && S.design.view) || null);
     if (!sel || !v) { box.classList.add("hidden"); return; }
     // ★본문을 만들다 튀어도 «옛 내용을 든 채» 열려 있으면 안 된다. 실측으로
     //   그랬다: 제목은 새 배관인데 몸통은 앞서 고른 노드 그대로였다 — 카드가
     //   조용히 거짓말을 한다. 무엇이 잘못됐는지 카드에 적는 편이 낫다.
     let html;
     try {
-      html = sel.kind === "pipe" ? insPipe(sel.label) : insNode(sel.label);
+      html = onMerge
+        ? (sel.kind === "pipe" ? mgPipe(sel.label) : mgNode(sel.label))
+        : (sel.kind === "pipe" ? insPipe(sel.label) : insNode(sel.label));
     } catch (err) {
       box.classList.remove("hidden");
       $("dg-ins-body").innerHTML =
@@ -5073,12 +5516,18 @@
         + `${esc(err && err.message ? err.message : err)}</div>`;
       return;
     }
-    if (html === null) { box.classList.add("hidden"); S.design.sel = null; return; }
+    if (html === null) {
+      box.classList.add("hidden");
+      if (onMerge) S.mergeSel = null;
+      else if (S.design) S.design.sel = null;
+      return;
+    }
     box.classList.remove("hidden");
     $("dg-ins-body").innerHTML = html;
     for (const el of $("dg-ins-body").querySelectorAll("[data-ins-label]")) {
       el.onclick = () => insSelect(el.dataset.insKind, el.dataset.insLabel);
     }
+    ovBind($("dg-ins-body"));      // [요소속성 수정카드] 저장·되돌리기
   }
 
   function insPipe(label) {
@@ -5096,6 +5545,13 @@
     } else {
       h += grp("표에 정의된 값") + insNone("이 배관은 표에 없습니다.");
     }
+
+    // [요소속성 수정카드] 그 자리에서 고친다. 키는 미리보기가 실어 준다 —
+    //   키가 없는 배관(엔진이 만든 세로 토막·티)은 읽기만.
+    h += ovEdit(p && p.key, row,
+                "이 배관은 도면 선에 대응하는 자리가 없습니다 (헤드 접속관·"
+                + "가지 상승 같은 엔진 생성분) — 다음 계산에서 같은 자리를 "
+                + "가리킬 안정 키가 없어 고칠 수 없습니다.", p);
 
     // 관경을 «무엇이» 정했나 — 캔버스 색·점선의 근거와 같은 문장.
     const st = p && BORE_STYLE[p.src];
@@ -5165,6 +5621,12 @@
     if (roles.length) {
       h += grp("역할") + kv("이 자리가 무엇인가", esc(roles.join(" · ")));
     }
+
+    // [요소속성 수정카드] 노드 표고 · 노즐 K 값·필요압력. 헤드면 키가
+    //   («head», 원 번호) 라 노즐 속성이 열리고, 아니면 («node», board 번호).
+    h += ovEdit(n && n.key, row,
+                "이 절점은 도면에 대응하는 자리가 없습니다 (세로 토막 끝 같은 "
+                + "엔진 생성분) — 안정 키가 없어 고칠 수 없습니다.", n);
 
     const noz = dgRows("nozzles").filter(
       (r) => String(r.in) === label || String(r.label) === label);
@@ -5642,11 +6104,18 @@
         note: "값은 지워지지 않았습니다. 자리가 돌아오면 다시 적용됩니다.",
         items: miss.slice(0, ISSUE_CAP).map((m) => {
           const [mx, my] = mid(m.pipe);
-          const what = m.what === "eq_len"
-            ? `${m.kind} ${m.dia}A · ${m.m} m`
-            : `${m.pipe || "?"} · ${kindLabel(m.kind)}`;
+          // ★한 목록에 **두 갈래**가 온다. 부속·등가길이(F-11d-2)는 `pipe·kind`
+          //   로 오고, 요소속성 수정카드는 안정 키 `key·field` 로 온다. 갈래를
+          //   안 가르면 요소 쪽이 「? · undefined」로 떠 사람이 고장으로 읽는다.
+          const what = m.key
+            ? `${ovWhere(m.key)} · ${ovLabelOf(m.kind, m.field)}`
+            : (m.what === "eq_len"
+                ? `${m.kind} ${m.dia}A · ${m.m} m`
+                : `${m.pipe || "?"} · ${kindLabel(m.kind)}`);
           return {
             text: `${what} — ${m.why || "사유 없음"}`
+              + (m.key && m.new != null ? ` (넣으려던 값 ${m.new})` : "")
+              + (m.reason ? ` (사유 「${m.reason}」)` : "")
               + (m.note ? ` (사유 「${m.note}」)` : ""),
             x: mx, y: my, frame: "iso",
           };
@@ -5843,6 +6312,15 @@
       });
     }
     for (const m of ((S.design && S.design.ovMissed) || [])) {
+      if (m.key) {                       // [요소속성 수정카드] 갈래
+        rows.push({
+          ok: false, what: ovLabelOf(m.kind, m.field),
+          where: ovWhere(m.key),
+          val: String(m.new),
+          note: m.reason || "", why: m.why || "",
+        });
+        continue;
+      }
       rows.push({
         ok: false,
         what: m.what === "eq_len" ? "등가길이" : "부속",

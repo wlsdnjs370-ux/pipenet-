@@ -415,3 +415,94 @@ def merge_straight_runs(kfp, *, edge_ref=None, node_ref=None,
             break
     return {"ok": True, "merged": merged, "edge_ref": eref,
             "nodes": len(nodes), "pipes": len(pipes)}
+
+
+def relay_from_lengths(kfp, *, root=None, length_overrides=None) -> dict:
+    """길이가 바뀌면 좌표를 **다시 놓는다** — 방향은 그대로, 길이만.
+
+    ■ 왜 (오너 2026-09-14)
+
+        「20m 배관을 2m로 바꾸었는데, 아이소가 그대로인건 말이안되니까」
+
+      회랑 좌표는 사슬로 만든다 — `p(자식) = p(부모) + L·u`(사슬좌표 §1-1).
+      길이가 좌표를 정하므로, 덮은 길이를 넣고 사슬을 다시 걸으면 좌표가
+      따라 움직이고 **아이소가 따라 변한다.** 표·`.sdf`·그림이 한꺼번에 맞는다.
+
+    ■ 왜 `chain_coords` 를 다시 부르지 않는가
+
+      `chain_coords` 는 **합치기 전** 배관을 board 노드쌍으로 잰다. 그런데
+      카드가 주는 안정 키는 **합친 뒤**의 배관을 가리킨다(직선 합치기가 가운데
+      절점을 지우므로 `edge_ref` 가 바깥 두 끝으로 바뀐다). 거기서 다시 board
+      직선거리로 재면 합쳐진 구간이 짧아진다 — 길이가 조용히 바뀐다.
+      그래서 여기서는 **지금 길이를 그대로 쓰고**(덮인 것만 갈아 끼우고)
+      방향만 지금 좌표에서 읽어 다시 놓는다. 길이를 재지 않으므로 잃는 것이
+      없고, `|p(끝)−p(시작)| = length_m`(C2)도 그대로 성립한다.
+
+    반환: {"ok", "moved": 다시 놓은 절점 수, "applied": 갈아 끼운 배관 수,
+           "unreached": 뿌리에서 못 닿은 절점}
+    """
+    nodes = (kfp or {}).get("nodes_meta_runtime") or {}
+    pipes = (kfp or {}).get("pipe_data") or {}
+    lov = {str(k): float(v) for k, v in (length_overrides or {}).items()
+           if v is not None and float(v) > 0}
+    if not nodes or not pipes or not lov:
+        return {"ok": True, "moved": 0, "applied": 0, "unreached": []}
+
+    if root is None:
+        from services.cad_import.design.anchor import require_anchor
+        root = require_anchor(nodes, what="길이 덮기")
+    root = str(root)
+
+    def xyz(nid):
+        c = (nodes.get(str(nid)) or {}).get("coords") or (0.0, 0.0, 0.0)
+        return (float(c[0]), float(c[1]),
+                float(c[2]) if len(c) > 2 else 0.0)
+
+    adj = defaultdict(list)
+    for pid, p in pipes.items():
+        a, b = _ends(p)
+        if a is None or b is None or a == b:
+            continue
+        adj[str(a)].append((str(b), str(pid)))
+        adj[str(b)].append((str(a), str(pid)))
+
+    old = {nid: xyz(nid) for nid in nodes}
+    new = {root: old[root]}
+    seen = {root}
+    q = deque([root])
+    applied = 0
+    while q:
+        cur = q.popleft()
+        for nxt, pid in adj.get(cur, ()):
+            if nxt in seen:
+                continue
+            seen.add(nxt)
+            pa, pb = old[cur], old[nxt]
+            d = math.dist(pa, pb)
+            pr = pipes.get(pid) or {}
+            L = lov.get(pid)
+            if L is None:
+                L = float(pr.get("length_m") or d)
+            else:
+                pr["length_m"] = round(float(L), 6)
+                applied += 1
+            if d < 1e-12:
+                u = (0.0, 0.0, 0.0)
+            else:
+                u = ((pb[0] - pa[0]) / d, (pb[1] - pa[1]) / d,
+                     (pb[2] - pa[2]) / d)
+            p0 = new[cur]
+            new[nxt] = (p0[0] + u[0] * L, p0[1] + u[1] * L, p0[2] + u[2] * L)
+            q.append(nxt)
+
+    moved = 0
+    for nid, p in new.items():
+        m = nodes.get(nid)
+        if m is None:
+            continue
+        if math.dist(p, old[nid]) > 1e-9:
+            moved += 1
+        m["coords"] = [p[0], p[1], p[2]]
+        m["elevation_m"] = p[2]
+    return {"ok": True, "moved": moved, "applied": applied,
+            "unreached": [n for n in nodes if n not in seen]}

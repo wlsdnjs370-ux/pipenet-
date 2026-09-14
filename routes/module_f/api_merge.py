@@ -19,6 +19,7 @@ import os
 
 from flask import jsonify, request, send_file
 
+from routes.module_f import overrides as ov
 from routes.module_f.common import _fail
 from routes.module_f.jobs import _job_running, _run_job, route_session
 from routes.module_f.merge import (
@@ -150,6 +151,26 @@ def register(app, *, UPLOAD_DIR):
                 pump=sess.get("pump_spec"),
                 method=mats["plan_method"])
             sess["merged"] = got
+            # ★[요소속성 수정카드] 적용 ④ — 계통도·기계실 요소(§4).
+            #
+            #   회랑 요소는 여기 없다. 그것은 설계 표에서 이미 덮여 결합으로
+            #   흘러든다 — 두 자리가 같은 값을 덮으면 한쪽만 고치는 날 두
+            #   화면이 갈린다. 여기서는 **통합에서만 사는 것**만 덮는다.
+            #   여러 번 눌러도 같은 결과다(결합망을 매번 새로 만든다).
+            el_rows = ov.ensure_loaded(sess)
+            mg_missed = []
+            if el_rows:
+                _n, mg_missed = ov.apply_to_merge(got, el_rows)
+                if _n:
+                    ov.save(sess, el_rows)     # 원값이 채워졌다 — 카드가 본다
+                    try:
+                        ov.write_file(sess.get("key") or "design", el_rows)
+                    except OSError as exc:
+                        print(f"[수정] ★원값을 파일에 못 썼습니다 — {exc}")
+            sess["merge_missed"] = mg_missed
+            if mg_missed:
+                print(f"[결합] ★적용 못 한 요소 수정 {len(mg_missed)}건 — "
+                      "조용히 버리지 않고 화면에 올린다")
             summary = combined_summary(got)
             sess["merge_summary"] = summary
             for line in summary.get("steps") or ():
@@ -217,6 +238,41 @@ def register(app, *, UPLOAD_DIR):
         pumps |= {str(r.get("out")) for r in (c.pumps or ())}
         valves = {str(r.get("in")) for r in (c.valves or ())}
 
+        # ★[요소속성 수정카드 §4] **안정 키**를 함께 싣는다 — 통합 화면에서도
+        #   그 자리에서 값을 고칠 수 있어야 한다(오너 2026-09-14 「계통도,
+        #   기계실도 별도로 수정 만들면 좋지」).
+        #
+        #   회랑(평면도) 요소는 수리계산 화면과 **같은 주소**를 쓴다. 라벨만
+        #   S740 이 +9 옮겼을 뿐 같은 자리다(배관 이름은 안 옮긴다 —
+        #   `to_head_tables` 가 노드 라벨만 민다). 그러니 라벨을 되밀어 설계
+        #   주소록에서 찾는다. 계통도·기계실은 board 가 없어 라벨이 곧 주소다.
+        from routes.module_f.merge import label_offset_for
+        _dk = (sess.get("design") or {}).get("keys") or {}
+        _off = label_offset_for(_materials(sess)["plan_method"])
+
+        def _plan_node_key(lab):
+            try:
+                back = str(int(lab) - _off)
+            except (TypeError, ValueError):
+                return None
+            return (_dk.get("node") or {}).get(back)
+
+        def _key_of_node(lab, part):
+            if part == "system":
+                return ["sys", lab]
+            if part == "machineroom":
+                return ["mr", lab]
+            return _plan_node_key(lab)
+
+        def _key_of_pipe(lab, part):
+            if part == "system":
+                return ["sys", lab]
+            if part == "machineroom":
+                return ["mr", lab]
+            if part == "plan":
+                return (_dk.get("pipe") or {}).get(str(lab))
+            return None                 # 이음매 — 어느 도면 것도 아니다
+
         out_nodes = []
         for n in nodes:
             lab = str(n.get("label"))
@@ -224,6 +280,7 @@ def register(app, *, UPLOAD_DIR):
                    "y": float(n.get("y", 0) or 0),
                    "e": round(float(n.get("elevation", 0) or 0), 3),
                    "part": of.get(lab, "plan")}
+            rec["key"] = _key_of_node(lab, rec["part"])
             if lab in heads:
                 rec["head"] = True
             if lab in pumps:
@@ -242,15 +299,22 @@ def register(app, *, UPLOAD_DIR):
             # 두 도면을 잇는 배관은 «이음매» 다 — 그 자리가 결합의 핵심이라
             # 화면이 따로 그릴 수 있게 표시해 둔다.
             ka, kb = of.get(a, "plan"), of.get(b, "plan")
+            part = ka if ka == kb else "seam"
             out_pipes.append({"label": str(r.get("label")), "a": a, "b": b,
                               "dia": r.get("dia"), "len_m": r.get("length"),
-                              "part": ka if ka == kb else "seam"})
+                              "c": r.get("c"), "elev": r.get("elev"),
+                              "part": part,
+                              "key": _key_of_pipe(str(r.get("label")), part)})
 
         return jsonify({
             "ok": True, "iso": iso,
             "view": {"nodes": out_nodes, "pipes": out_pipes,
                      # 기계실 평면 배관망 — SDF 에는 없고 «보기» 로만 쓴다.
                      "mr_plan_edges": mr_edges},
+            # [요소속성 수정카드] 카드가 원값·사유·시각을 나란히 보인다(규칙 5)
+            #   와 「적용 못 한 수정」(규칙 4).
+            "overrides": ov.ensure_loaded(sess),
+            "ov_missed": sess.get("merge_missed") or [],
             "counts": {"plan": sum(1 for n in out_nodes
                                    if n["part"] == "plan"),
                        "system": sum(1 for n in out_nodes
@@ -307,8 +371,15 @@ def register(app, *, UPLOAD_DIR):
     @app.get("/api/module-f/merge/download")
     @route_session()
     def module_f_merge_download(sess, body):
-        """산출물 내려받기 — 세션이 만든 것만."""
-        what = str(request.args.get("what") or "zip")
+        """산출물 내려받기 — 세션이 만든 것만, **형태별로 하나씩**.
+
+        ★[오너 2026-09-14] 「zip 한 벌」 단추를 없앴다. `what` 은 `emit_merged`
+          가 낸 이름 그대로다 — `sdf · slf · kfp · has` 와 아이소본
+          `sdf_iso · slf_iso · kfp_iso · has_iso`. SDF 는 `.slf` 와 한 쌍이라
+          화면이 두 번 부른다(묶어 주면 압축을 푸는 손이 한 번 더 든다).
+          `zip` 도 여전히 받긴 하지만 화면에 단추는 없다.
+        """
+        what = str(request.args.get("what") or "sdf")
         files = sess.get("merge_files") or {}
         path = files.get(what)
         if not path or not os.path.isfile(path):

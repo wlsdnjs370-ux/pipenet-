@@ -497,9 +497,16 @@ def test_표가_없으면_옛것도_아니다():
 
 
 def test_표를_만들_때_지문을_박는다():
+    """★자는 **닻과 닻 사이**로 댄다 — 고정폭 창(`s[i:i+400]`)이 아니라.
+
+    그 창은 사이에 주석 한 줄만 들어와도 끝을 잘라 먹는다. 실제로 그랬다:
+    요소속성 수정카드가 `"keys": el_keys` 와 설명 세 줄을 얹자 400자 창이
+    `"sig": _se` 에서 끊겨, 코드는 멀쩡한데 시험만 빨개졌다.
+    """
     s = _src("routes/module_f/api_design.py")
     i = s.index('sess["design"] = {')
-    assert '"sig": _selection_sig(sess)' in s[i:i + 400], "지문을 안 박는다"
+    j = s.index("}", s.index("_selection_sig(sess)", i))
+    assert '"sig": _selection_sig(sess)' in s[i:j], "지문을 안 박는다"
     assert '"stale": _design_stale(sess)' in s, "preview 가 안 알린다"
 
 

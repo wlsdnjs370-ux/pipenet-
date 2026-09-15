@@ -368,6 +368,54 @@ def inject_pipe_types(sdf_path, sched_by_pipe: dict) -> None:
     _write_sdf_tree(tree, path)
 
 
+# ────────────────────────────────────────── [G14] 라이브러리 이름 표기
+#
+# ★PIPENET 은 `<User-lib file="…">` 을 **UTF-8 문자열로 안 읽는다.** 자기가 쓴
+#   파일을 보면 답이 나온다 — 한글 경로가 「CP949 바이트를 한 글자씩 latin-1 로
+#   넓힌 뒤 UTF-8 로 직렬화한」 형태다. 즉 읽을 때는 그 반대로 latin-1 로 **좁혀**
+#   CP949 바이트를 얻어 파일을 연다.
+#
+#   실측(PIPENET 이 직접 쓴 파일 4종):
+#     assets/3-1형_….sdf      b'…3-1ÃÃ¼_…'  → latin-1 로 좁히면
+#                             b'3-1Çü_…' = CP949 「3-1형_자연낙차_…」
+#     다이소 세종 SDF 2종      같은 꼴 (Y:3 Work9.세종다이소\…)
+#     2. Pipenet_hand.sdf     ASCII 라 두 표기가 같다
+#
+#   우리는 **진짜 UTF-8** 로 썼다. 그러면 PIPENET 이 latin-1 로 좁히는 데 실패해
+#   (한글 코드포인트는 255 를 넘는다) 라이브러리를 아예 못 연다 → 모든 관경이
+#   'Unset'. 사용자 신고가 정확히 그것이었다(2026-09-14: 「.sdf 파일에
+#   라이브러리(.slf)가 반영이 안된 것 같은데」).
+#
+#   ★이 결함이 오래 안 보인 이유: 저장소의 시험과 실측이 **전부 ASCII 이름**
+#     이었다. ASCII 는 두 표기가 같아서 아무 차이도 안 난다. 한글 도면 이름으로
+#     PIPENET 을 돌려 본 적이 없었다.
+def pipenet_lib_name(name: str) -> str:
+    """파일명 → PIPENET 이 `User-lib` 에 쓰는 표기.
+
+    돌려주는 문자열을 UTF-8 로 직렬화하면 PIPENET 이 쓰는 그 바이트가 된다.
+    ASCII 이름은 그대로다(바뀌는 것이 없다).
+
+    CP949 로 옮길 수 없는 글자가 있으면(중국어·이모지 등) **원래 이름을 그대로**
+    돌려준다 — 깨진 표기를 지어내느니 지금까지 하던 대로 두는 편이 낫다.
+    """
+    try:
+        return str(name).encode("cp949").decode("latin-1")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return str(name)
+
+
+def read_pipenet_lib_name(raw: str) -> str:
+    """`pipenet_lib_name` 의 반대 — 읽은 값을 사람이 읽는 이름으로.
+
+    우리 것이든 PIPENET 이 쓴 것이든 같은 함수로 푼다. 이미 사람이 읽는 이름
+    (ASCII 이거나 진짜 UTF-8)이면 그대로 돌려준다.
+    """
+    try:
+        return str(raw).encode("latin-1").decode("cp949")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return str(raw)
+
+
 # ────────────────────────────────────────── [G14] 템플릿 잔재 정리
 def sanitize_template(sdf_path, slf_filename: str) -> dict:
     """템플릿에서 묻어온 것을 지우고 라이브러리를 **옆의 SLF** 로 다시 가리킨다.
@@ -380,6 +428,10 @@ def sanitize_template(sdf_path, slf_filename: str) -> dict:
 
     **파일명만** 쓴다(경로 없이). 같은 폴더면 PIPENET 이 알아서 읽고, 절대경로를
     쓰면 폴더를 옮기는 순간 다시 "Unset" 이 된다.
+
+    ★이름은 `pipenet_lib_name` 이 정하는 표기로 쓴다 — PIPENET 은 이 속성을
+      latin-1 로 좁혀 CP949 바이트로 읽는다(위 주석). 한글 도면 이름을 진짜
+      UTF-8 로 쓰면 그 좁히기가 실패해 라이브러리를 통째로 못 연다.
 
     덤으로 남의 프로젝트 정보(제목·설명·주기)를 지운다. 우리 산출물에 템플릿
     원본의 `WATER TANK_PH2F` · `3-1 type_LSP_4F` · `PH1F 4.5M …` 이 남아 있었다.
@@ -401,7 +453,8 @@ def sanitize_template(sdf_path, slf_filename: str) -> dict:
         for ul in list(libs.findall("User-lib")):
             libs.remove(ul)
             got["user_lib"] += 1
-        libs.append(ET.Element("User-lib", {"file": str(slf_filename)}))
+        libs.append(ET.Element(
+            "User-lib", {"file": pipenet_lib_name(slf_filename)}))
 
     for ns in root.iter("Network-spray"):
         for t in list(ns.findall("Title"))[1:]:

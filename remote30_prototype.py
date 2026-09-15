@@ -7295,8 +7295,26 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
         for _ul in list(_libs.findall("User-lib")):
             _libs.remove(_ul)
         if slf_dst.is_file():
-            # 파일명만 — SDF 와 같은 폴더에 SLF 가 있으면 PIPENET 이 자동 로드
-            _ul_new = _ET.Element("User-lib", {"file": slf_name})
+            # 파일명만 — SDF 와 같은 폴더에 SLF 가 있으면 PIPENET 이 자동 로드.
+            #
+            # ★이름 표기는 PIPENET 규약을 따른다. PIPENET 은 이 속성을 UTF-8
+            #   문자열로 안 읽고 latin-1 로 **좁혀** CP949 바이트로 읽는다 —
+            #   자기가 쓴 파일이 전부 그 꼴이다(실측: PIPENET 산 SDF 의 비ASCII
+            #   User-lib 730건 전부, 진짜 UTF-8 0건). 한글이 든 이름을 진짜
+            #   UTF-8 로 쓰면 그 좁히기가 터져 라이브러리를 통째로 못 연다.
+            #   여기 이름(`prototype_<id>.slf` · `combined_<hex>.slf`)은 지금은
+            #   ASCII 라 바뀌는 것이 없지만, 규약은 **한 자리**에 둔다 — 언젠가
+            #   한글 이름이 이 길로 흘러들 때 조용히 깨지지 않게.
+            try:
+                from services.cad_import.design.sdf_post import pipenet_lib_name
+            except ImportError:      # 편집기 트리 없이 단독으로 쓰일 때
+                def pipenet_lib_name(n):
+                    try:
+                        return str(n).encode("cp949").decode("latin-1")
+                    except (UnicodeEncodeError, UnicodeDecodeError):
+                        return str(n)
+            _ul_new = _ET.Element("User-lib",
+                                  {"file": pipenet_lib_name(slf_name)})
             _libs.append(_ul_new)
     for _ns in _root.iter("Network-spray"):
         _titles = list(_ns.findall("Title"))

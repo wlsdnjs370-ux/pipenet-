@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260914-libname">
+<link rel="stylesheet" href="/static/module_f.css?v=20260915-ops">
 </head>
 <body>
 <header>
@@ -466,6 +466,12 @@
       <label class="chk" style="margin-top:9px">
         <input type="checkbox" id="ed-bg" checked>
         <span>배경 도면 깔기 (아주 흐리게)</span></label>
+      <!-- [§3-1 D5] 여기도 격자를 둘 수 있게 하되 **기본 끔** — 이 화면은
+           DXF 도면이 통째로 깔려 있어 격자가 도면선과 섞인다. -->
+      <label class="chk">
+        <input type="checkbox" id="ed-gridline">
+        <span>격자 (한 칸 1 m)</span></label>
+      <div id="ed-gridline-note" class="hint"></div>
       <h2 style="margin-top:16px">상태</h2>
       <div id="ed-info"></div>
       <div class="row" style="margin-top:14px">
@@ -598,6 +604,12 @@
            그대로 받아 쓴다(view.underlay) — 별도 수학 없음. -->
       <label class="chk"><input type="checkbox" id="dg-under">
         <span>배관 밑그림 깔기 — 아이소 «아래» 에 평면을 겹쳐 본다</span></label>
+      <!-- [통합 격자 §3-1] 한 칸 = 실제 1 m. 검은 바탕에 망만 뜨면 «잴 자» 가
+           없다(그림 18 ①). 배율을 못 받은 판(자동 차선 등)은 표에서 유추한다
+           — 그 사실과 어긋남을 눈금 안내가 말한다. -->
+      <label class="chk"><input type="checkbox" id="dg-gridline">
+        <span>격자 — 한 칸 1 m</span></label>
+      <div id="dg-gridline-note" class="hint"></div>
       <!-- ★이것은 «화면 전환» 이 아니라 **투영 설정** 이다 — 저장되는 .sdf
            좌표에도 그대로 쓰인다(`_view_opts` → `emit_design_sdf`). 보기 편하자고
            끄면 산출이 조용히 바뀐다. 화면을 가르는 스위치는 위의 «평면에서
@@ -752,8 +764,19 @@
       <h2 style="margin-top:12px">결합망 보기</h2>
       <label class="chk"><input type="checkbox" id="mg-iso">
         <span>30° 아이소매트릭으로 보기 <b>(보기 전용)</b></span></label>
+      <!-- [통합 격자·밑그림 §3-1·3-4] 04 가 가진 둘을 통합에도.
+           결합망 좌표는 mm 이고 1 m = 1000 이다(1-B ①) — 배율을 유추할 필요가
+           없다. 밑그림은 04 가 서버에서 받아 쓰는 그 변환을 그대로 쓴다. -->
+      <label class="chk"><input type="checkbox" id="mg-grid">
+        <span>격자 — 한 칸 1 m</span></label>
+      <label class="chk"><input type="checkbox" id="mg-under">
+        <span>배관 밑그림 깔기 — 평면도를 «아래» 에 겹쳐 본다</span></label>
+      <div id="mg-grid-note" class="hint"></div>
       <p class="hint">끄면 <b>저장되는 그 좌표</b>(평면)입니다 —
         산출 파일은 이 좌표로 나갑니다.</p>
+      <!-- [§3-3-1] 어느 산출이 옛 것인지 화면이 늘 말해야 한다 — 04 의
+           `dg-stale` 과 같은 규약. -->
+      <div id="mg-stale" class="banner hidden"></div>
       <div id="mg-legend" class="hint"></div>
       <!-- 무엇이 났는지 — 아이소 좌표본이 함께 나므로 이름을 밝힌다. -->
       <!-- ★형태별로 따로 받는다(zip 한 벌 폐지 · 오너 2026-09-14). -->
@@ -812,6 +835,25 @@
         <button id="dg-ins-close" title="닫기 (Esc)">✕</button>
       </header>
       <div class="ins-body" id="dg-ins-body"></div>
+      <!-- [§3-5] 위상 수정 — 두 화면 모두에 둔다. 회랑 요소는 어느 화면에서
+           고쳐도 같은 목록에 쌓이고 같은 자리에서 적용된다(§3-3-1).
+
+           ★단추를 **여기에** 둔다(화면에서 innerHTML 로 짓지 않는다). 이
+           저장소의 규약이 「JS 가 찾는 id 는 템플릿에 있다」이고, 그 검사가
+           오타를 잡아 준다. 지어 넣으면 그 그물을 스스로 빠져나간다. -->
+      <div class="ins-ops hidden" id="dg-ins-ops">
+        <input id="op-why" class="why" maxlength="200"
+               placeholder="사유 (필수) — 왜 망을 고치는지">
+        <button id="op-node" class="hidden">＋ 노드</button>
+        <button id="op-equip" class="hidden">＋ 기기(밸브)</button>
+        <select id="op-lib" class="hidden"></select>
+        <button id="op-del" class="danger">삭제</button>
+        <div class="hint" id="op-hint"></div>
+      </div>
+      <div class="ins-ops hidden" id="dg-ins-noops">
+        <div class="hint">이 요소는 위상을 고칠 수 없습니다 — 이음매이거나
+          주소를 못 만든 자리입니다.</div>
+      </div>
     </div>
 
     <div class="busy hidden" id="busy">
@@ -840,6 +882,6 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f.js?v=20260914-libname"></script>
+<script src="/static/module_f.js?v=20260915-ops"></script>
 </body>
 </html>

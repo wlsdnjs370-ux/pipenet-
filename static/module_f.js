@@ -32,6 +32,9 @@
     // 되돌리기 — 자동·계통도는 기록이 화면 쪽에만 있어 여기에 쌓는다.
     // (찍기·손질은 엔진이 제 기록을 들고 있다)
     undo: [],
+    // [위상 수정 §3-3·§3-5] 목록은 **서버가 주인**이다 — 여기 있는 것은
+    // 화면이 들고 있는 사본과, 지금 무장한 것과, Ctrl+Z 가 되돌릴 자취다.
+    ops: [], opArm: null, opWhy: "", opLib: "", opUndo: [], equipCat: null,
     hidden: new Set(),                      // 숨긴 레이어 묶음 id
     view: { scale: 1, ox: 0, oy: 0 },
     poll: null, es: null,
@@ -210,6 +213,10 @@
     //   배관·노드의 정의된 값을 카드로 편다. 평면 밑그림으로 «그 자리에서
     //   고치는» 중일 때는 위 가지가 가져가므로 여기 안 온다(그때는 클릭이
     //   손질이라는 약속이 이미 서 있다).
+    // [§3-5] ＋ 를 눌러 «무장» 한 동안은 이 클릭이 자리를 정한다 — 선택을
+    //   바꾸지 않는다(바꾸면 방금 고른 배관을 잃는다).
+    else if ((S.stage === "design" || S.stage === "merge")
+             && S.opArm && opArmedClick(x, y)) { /* 자리 정함 */ }
     else if (S.stage === "design") designInspect(x, y, maxD);
     // [요소속성 수정카드 §4] 통합 화면도 «그 자리에서» 읽고 고친다.
     else if (S.stage === "merge") mergeInspect(x, y, maxD);
@@ -267,6 +274,12 @@
   }
 
   async function undoStep() {
+    // [§3-5] 위상 수정이 쌓여 있으면 **그것부터** 되돌린다. 방금 지운 배관이
+    //   Ctrl+Z 로 안 돌아오면 사람은 지우기를 무서워하게 된다 — 확인 창을
+    //   안 띄우는 대신 이 길이 반드시 있어야 한다.
+    if ((S.stage === "design" || S.stage === "merge") && S.opUndo.length) {
+      if (await opUndoStep()) return;
+    }
     // 엔진이 기록을 들고 있는 단계는 그 단추를 그대로 누른다 — 여기서 API 를
     // 따로 부르면 단추와 단축키의 동작이 갈라진다.
     if (S.stage === "pick") { $("pk-undo").click(); return; }
@@ -298,6 +311,171 @@
     say(`되돌렸습니다 — ${item.label}`, "ok");
   }
 
+  // ── [통합 격자·활성 §3-1] 격자 — 한 벌을 만들고 세 화면이 부른다 ──
+  //
+  // 검은 바탕에 망만 떠 있으면 «어디가 어디인지 잴 자» 가 없다(그림 18 ①).
+  // 한 칸 = 실제 1 m 로 두고, 아이소면 격자도 같이 눕힌다.
+  //
+  // ★1 m 이 몇 «좌표 단위» 인지는 화면마다 다르다(§3-1-2):
+  //     통합(결합 mm) 1000 · 04(정규화) 1000·underlay.k · 손질(board mm) 1000
+  //   못 받은 판은 표에서 유추한다(§3-1-3 · `inferMeterScale`).
+  // ★아이소로 눕혀도 **한 변은 여전히 1 m** 다 — (1,0)→(cos30,sin30) 도
+  //   (0,1)→(−cos30,sin30) 도 길이가 정확히 1 이다(1-B ⑤). 정사각형이
+  //   마름모가 될 뿐이라 눕혀도 격자로 길이를 읽을 수 있다.
+  const GRID_COLOR = "#9fb3d1";
+  const GRID_STEPS = [1, 5, 25];          // m — D1
+  const GRID_MIN_PX = 8;                  // 이보다 촘촘하면 그 단계는 숨긴다
+
+  /** 화면에 실제로 그릴 칸 크기(m). 다 촘촘하면 null — 안 그린다. */
+  function gridStepM(scalePerMeter) {
+    if (!(scalePerMeter > 0)) return null;
+    for (const m of GRID_STEPS) {
+      if (m * scalePerMeter * S.view.scale >= GRID_MIN_PX) return m;
+    }
+    return null;
+  }
+
+  /**
+   * @param s     1 m 이 몇 좌표 단위인가
+   * @param org   격자가 지나갈 한 점 [x, y] (세계 좌표)
+   * @param iso   아이소로 눕힐 것인가 · cos30/sin30 을 함께 받는다
+   */
+  function drawGrid(s, org, iso) {
+    const step = gridStepM(s);
+    if (!step) return null;
+    const { w, h } = cssSize();
+    const d = step * s;                       // 한 칸의 좌표 단위
+    const ox = (org && org.length === 2) ? org[0] : 0;
+    const oy = (org && org.length === 2) ? org[1] : 0;
+    // 화면에 보이는 세계 범위 — 아이소면 눕히기 전 범위를 넉넉히 잡는다.
+    const pad = iso ? 2.0 : 1.2;
+    const cx = wx(w / 2), cy = wy(h / 2);
+    const rad = Math.hypot(w, h) / S.view.scale * pad / 2;
+    const n0 = Math.floor((cx - rad - ox) / d), n1 = Math.ceil((cx + rad - ox) / d);
+    const m0 = Math.floor((cy - rad - oy) / d), m1 = Math.ceil((cy + rad - oy) / d);
+    if ((n1 - n0) > 4000 || (m1 - m0) > 4000) return null;   // 안전판
+
+    const P = iso
+      ? (x, y) => [sx((x - y) * iso.cos30), sy((x + y) * iso.sin30)]
+      : (x, y) => [sx(x), sy(y)];
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = GRID_COLOR;
+    for (const [every, alpha] of [[1, 0.10], [5, 0.20]]) {
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      for (let n = n0; n <= n1; n++) {
+        if (every === 5 ? (n % 5 !== 0) : (n % 5 === 0)) continue;
+        const x = ox + n * d;
+        const a = P(x, oy + m0 * d), b = P(x, oy + m1 * d);
+        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+      }
+      for (let m = m0; m <= m1; m++) {
+        if (every === 5 ? (m % 5 !== 0) : (m % 5 === 0)) continue;
+        const y = oy + m * d;
+        const a = P(ox + n0 * d, y), b = P(ox + n1 * d, y);
+        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+    return step;
+  }
+
+  /**
+   * [§3-1-3] 배율을 못 받은 판 — **표가 답을 갖고 있다**.
+   *
+   * `kfp_sdf_converter.py:774~790` 과 **같은 방법**이다(1-B ⑥): 수평에 가까운
+   * 배관만 골라 `좌표거리 ÷ 표 길이` 의 **중앙값**을 쓴다. 새로 짜지 않는다.
+   *
+   * ★이 유추는 **격자에만** 쓴다. 좌표·길이·산출 어디에도 되먹이지 않는다 —
+   *   되먹이는 순간 「잰 값」이 「그린 값」에 밀린다(§5 금지).
+   */
+  function inferMeterScale(pipes, at) {
+    const rs = [];
+    for (const r of (pipes || [])) {
+      const L = Number(r.length || 0);
+      if (!(L > 0)) continue;
+      if (Math.abs(Number(r.elev || 0)) > 0.25 * L) continue;   // 수평만
+      const a = at[String(r.in)], b = at[String(r.out)];
+      if (!a || !b) continue;
+      const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      if (d > 0) rs.push(d / L);
+    }
+    if (rs.length < 3) return null;      // 지어내지 않는다
+    rs.sort((x, y) => x - y);
+    const med = rs[rs.length >> 1];
+    if (!(med > 0)) return null;
+    const off = rs.filter((x) => Math.abs(x - med) > 0.05 * med).length;
+    return { s: med, n: rs.length, off: off / rs.length };
+  }
+
+  /** 이 화면의 «1 m = 몇 단위 · 원점 · 눕힘» — §3-1-2 의 표 그대로. */
+  function gridSpecFor(stage) {
+    if (stage === "merge") {
+      const v = S.mergeView;
+      if (!v || !v.nodes || !v.nodes.length) return null;
+      // 결합망 좌표는 mm 이고 1 m = 1000 이다(1-B ①) — 유추할 것이 없다.
+      const a = v.nodes.find((n) => n.anchor) || v.nodes[0];
+      return { s: 1000, org: [a.x, a.y], iso: null, why: "결합 좌표(mm)" };
+    }
+    if (stage === "design") {
+      const v = S.design && S.design.view;
+      if (!v || !v.nodes || !v.nodes.length) return null;
+      const inp = v.nodes.find((n) => n.input) || v.nodes[0];
+      const u = v.underlay;
+      if (u && u.k > 0) {
+        return { s: 1000 * u.k, org: [inp.x, inp.y], iso: null,
+                 why: "설계 좌표에서 받음" };
+      }
+      // 배율을 못 받은 판 — 표에서 유추한다(§3-1-3).
+      const at = {};
+      for (const n of v.nodes) at[String(n.label)] = [n.x, n.y];
+      const g = inferMeterScale(((S.design.tables || {}).pipes) || [], at);
+      if (!g) return { s: 0, org: [inp.x, inp.y], iso: null,
+                       why: "못 구함 — 쓸 수 있는 수평 배관이 3개 미만입니다" };
+      return { s: g.s, org: [inp.x, inp.y], iso: null,
+               why: `표에서 유추 · 어긋남 ${(g.off * 100).toFixed(0)}%` };
+    }
+    if (stage === "edit") {
+      // [D5] 손질 좌표는 board mm 라 1 m = 1000 이다 — 유추할 것이 없다.
+      //   원점은 급수 시작점(찍은 것)에 둔다. 안 찍었으면 원점 그대로 —
+      //   그때는 어디에 걸든 «한 칸 1 m» 라는 뜻은 같다.
+      const src = ((S.edit || {}).sources || [])[0];
+      return { s: 1000, org: src ? [src[0], src[1]] : [0, 0], iso: null,
+               why: src ? "손질 좌표(board mm) · 원점은 급수 시작점"
+                        : "손질 좌표(board mm)" };
+    }
+    return null;
+  }
+
+  /** 격자를 그리고 눈금 안내를 적는다. 못 그리면 이유를 적는다. */
+  function paintGrid(stage, noteId, onFlag) {
+    const note = $(noteId);
+    if (!onFlag) { if (note) note.textContent = ""; return; }
+    const g = gridSpecFor(stage);
+    if (!g || !(g.s > 0)) {
+      if (note) {
+        note.textContent = g ? `격자를 못 깝니다 — ${g.why}`
+                             : "격자를 못 깝니다 — 아직 망이 없습니다.";
+      }
+      return;
+    }
+    const step = drawGrid(g.s, g.org, g.iso);
+    if (!note) return;
+    if (!step) {
+      note.textContent = "격자가 너무 촘촘해 숨겼습니다 — 확대하세요.";
+      return;
+    }
+    let t = `한 칸 = ${step} m · ${g.why}`;
+    if (stage === "merge") {
+      // 1-B ⑦ — 라이저 막대는 표 길이에 비례하지 않는다(오너 2026-09-08).
+      t += " · 계통도 막대는 균등 간격이라 거리가 아닙니다";
+    }
+    note.textContent = t;
+  }
+
   // ── 그리기 ─────────────────────────────────────────────────────
   function draw() {
     const { w, h } = cssSize();
@@ -306,6 +484,13 @@
     ctx.fillRect(0, 0, w, h);
     // 변환 단계에서도 손질한 망을 계속 보여준다 — 값만 채우는 동안 화면이
     // 검게 비면 무엇을 변환하는지 알 수 없다.
+    // [§3-1] 격자는 망보다 **먼저** 그린다 — 뒤에 그리면 배관을 덮는다.
+    if (S.stage === "design" && S.design) {
+      paintGrid("design", "dg-gridline-note",
+                ($("dg-gridline") || {}).checked);
+    } else if (S.stage === "merge" && S.mergeView) {
+      paintGrid("merge", "mg-grid-note", ($("mg-grid") || {}).checked);
+    }
     if (S.stage === "design" && S.design) {
       // [F-10e] «평면에서 보기» — 밑그림(배경 도면)까지 깔아 손질 화면과 같은
       //   그림을 만든다. 여기서는 밑그림과 최불리망이 같은 세계 좌표라
@@ -316,7 +501,7 @@
         drawDesignMarks();
       }
       else if (designMarksOn() && S.edit) { drawEdit(); drawDesignMarks(); }
-      else drawDesign();
+      else withDim(drawDesign);      // [§3-2] 고른 것이 있으면 망을 흐리게
       // [F-12] 속성 카드로 고른 자리. 밑그림 모드에서는 좌표계가 board 라
       //   설계 좌표를 덧그리면 엉뚱한 데 뜬다 — 설계 뷰를 그릴 때만 그린다.
       if (!(planUnderlayOn() && S.edit) && !(designMarksOn() && S.edit)) {
@@ -324,8 +509,15 @@
       }
       drawFocus();      // [F-10f] 「확인할 것」에서 고른 자리를 마지막에 덧그린다
     }
-    else if (S.stage === "merge") { drawMerged(); }
+    else if (S.stage === "merge") {
+      // [§3-4] 밑그림을 **먼저** — 배경이라 망보다 아래에 깔린다.
+      if (($("mg-under") || {}).checked) drawMergeUnderlay();
+      withDim(drawMerged);           // [§3-2] 고른 것이 있으면 망을 흐리게
+      drawMergeSel();                // 그 위에 빨강 — 종전에는 그리는 줄이 없었다
+    }
     else if ((S.stage === "edit" || S.stage === "conv") && S.edit) {
+      // [§3-1 D5] 격자가 먼저다 — 배경 도면보다도 아래에 깐다.
+      paintGrid("edit", "ed-gridline-note", ($("ed-gridline") || {}).checked);
       // [F-10c] 배경 도면을 «밑에» 깐다 — 전사 17:53 · 23:06. corridor 만 뜨면
       //   어디서 뽑힌 망인지 안 보여 결과가 옳은지 판단할 수가 없다.
       //   board 보다 더 흐리게(0.07) 둬서 위계가 배경 → 비corridor → corridor
@@ -3081,6 +3273,28 @@
 
   // 보기 전환 — 저장 좌표는 안 바뀐다(평면). 아이소는 눈으로 보는 용도다.
   $("mg-iso").onchange = () => { loadMergeView(); };
+  // [§3-1] 격자는 **그리기만** 바뀐다 — 서버에 다시 묻지 않는다.
+  for (const id of ("mg-grid dg-gridline ed-gridline").split(" ")) {
+    const el = $(id);
+    if (el) el.onchange = () => draw();
+  }
+  // [§3-4] 통합 밑그림 — 04 의 `dg-under` 와 **같은 규약**이다. 재료(손질 망·
+  // 변환) 가 없으면 어림값으로 깔지 않고 사유를 말하며 끈다.
+  if ($("mg-under")) $("mg-under").onchange = async () => {
+    const on = () => $("mg-under").checked;
+    if (on() && !S.edit) {
+      try {
+        const d = await api(`/api/module-f/edit/state?sid=${S.sid}`);
+        setEdit(d.state);
+      } catch (err) { say(err.message, "err"); $("mg-under").checked = false; return; }
+    }
+    if (on() && !((S.mergeView || {}).underlay)) {
+      $("mg-under").checked = false;
+      say("밑그림 변환을 받지 못했습니다 — 결합을 다시 해 주세요.", "err");
+      return;
+    }
+    draw();
+  };
   // 좌표를 바꾸면 그 벌이 났는지에 따라 단추가 갈린다.
   $("mg-dl-coord").onchange = () => renderMergeFiles();
 
@@ -3131,6 +3345,7 @@
       //   「적용 못 한 수정」. 저장소는 하나지만 **못 옮긴 사유는 화면마다**
       //   다르다(회랑은 표에서, 계통도·기계실은 결합에서 옮겨진다).
       S.mergeOv = d.overrides || [];
+      S.ops = d.ops || [];             // [§3-3] 목록은 두 화면이 한 벌을 본다
       S.mergeMissed = d.ov_missed || [];
       S.mergeSel = null;               // 새 결합망이다 — 옛 카드를 들고 있지 않는다
       if (!S.ovFields) {
@@ -4277,6 +4492,21 @@
   $("conv-modal").addEventListener("click", (e) => {
     if (e.target === $("conv-modal")) closeConvModal(true);   // 바깥 클릭 = 취소
   });
+  // [§3-5] Delete 키 — 고른 것을 지운다. 확인 창은 띄우지 않는다(Ctrl+Z 가
+  //   되돌린다). **입력칸 안에서는 손대지 않는다** — 사유를 치다 Backspace
+  //   대신 Delete 를 누르는 일이 흔하다.
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Delete") return;
+    if (S.stage !== "design" && S.stage !== "merge") return;
+    const el = document.activeElement;
+    const tag = el ? el.tagName : "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT"
+        || (el && el.isContentEditable)) return;
+    if (!insSelLabel()) return;
+    e.preventDefault();
+    opDelete();
+  });
+
   window.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     // 창이 떠 있으면 창부터 — 겹쳐 있을 때 «가장 위» 를 닫는 것이 자연스럽다.
@@ -4284,6 +4514,7 @@
       closeConvModal(true);
       return;
     }
+    if (S.opArm) { S.opArm = null; renderInsOps(); return; }     // [§3-5]
     if (!$("dg-ins").classList.contains("hidden")) insClose();   // [F-12]
   });
 
@@ -4608,6 +4839,7 @@
         ).fields || {};
       } catch (err) { S.ovFields = {}; }
     }
+    S.ops = d.ops || [];               // [§3-3] 값과 나란히 — 한 벌뿐이다
     S.design = { view: d.view, tables: d.tables, settings: d.settings,
                  marks: d.marks || {},
                  // [요소속성 수정카드] 사람이 덮은 값 — 카드가 원값·사유·
@@ -4693,9 +4925,10 @@
     return !!(el && el.checked);
   };
 
-  function drawUnderlay() {
-    const v = S.design && S.design.view;
-    const u = v && v.underlay;
+  function drawUnderlay(u) {
+    // [§3-4] 변환을 **받는다**. 종전에는 04 의 것을 함수 안에서 집어 왔는데,
+    // 통합도 같은 그림을 깔아야 해서 그 자리를 인자로 뺐다. 04 와 통합이 한
+    // 함수를 쓰면 두 화면의 밑그림이 갈릴 자리가 없다.
     if (!u || !S.edit || !S.edit.body_groups) return;
     // board 평면이 놓인 높이만큼 들어올린다. 접속점 표고이므로 보통 0 이다.
     const dz = (u.e - u.e_ref) * u.lift;
@@ -4874,14 +5107,14 @@
       const a = at[p.a], b = at[p.b];
       if (!a || !b) continue;
       const t = wm > 0 ? Math.sqrt(load(p) / wm) : 0.5;
-      ctx.globalAlpha = Math.min(1, 0.55 + 0.45 * t);
+      dimA(Math.min(1, 0.55 + 0.45 * t));
       ctx.lineWidth = 1.4 + 3.0 * t;
       ctx.beginPath();
       ctx.moveTo(sx(a.x), sy(a.y));
       ctx.lineTo(sx(b.x), sy(b.y));
       ctx.stroke();
     }
-    ctx.globalAlpha = 1;
+    dimA(1);
 
     // ④ 이음매 — 두 망이 실제로 붙는 자리. 기준압 규약의 빨강으로 굵게.
     ctx.strokeStyle = MERGE_COLOR.seam;
@@ -4939,9 +5172,24 @@
     ctx.lineWidth = 1;
   }
 
+  /** [§3-2] 통합에서 고른 것을 빨갛게 — 종전에는 기억만 하고 안 그렸다. */
+  function drawMergeSel() {
+    const sel = S.mergeSel;
+    const v = S.mergeView;
+    if (!sel || !v || !v.nodes) return;
+    const at = {};
+    for (const n of v.nodes) at[String(n.label)] = n;
+    paintSel(at, v.pipes, sel);
+  }
+
+  /** [§3-4] 통합의 밑그림 — 04 와 **같은 함수**에 통합의 변환을 준다. */
+  function drawMergeUnderlay() {
+    drawUnderlay((S.mergeView || {}).underlay);
+  }
+
   function drawDesign() {
     // 밑그림이 먼저다 — 나중에 그리면 망을 덮는다.
-    if (underlayOn()) drawUnderlay();
+    if (underlayOn()) drawUnderlay(((S.design || {}).view || {}).underlay);
     // ★표 요약만 받고 미리보기는 아직인 상태가 있다(renderDesignSummary 가
     //   먼저 돈다). 그때 그리려 들면 「Cannot read properties of undefined」로
     //   화면이 멈춘다 — 그릴 것이 없으면 조용히 돌아간다.
@@ -4960,6 +5208,8 @@
       // 관경을 무엇이 정했는지로 가른다. 규약으로만 정한 구간은 점선이다 —
       // 도면에서 읽은 실측과 규약 추정을 한 모양으로 그리면 구분이 안 된다.
       const st = S.boreColor ? BORE_STYLE[p.src] : null;
+      // [D4] 표에서 켠 강조는 흐리기에서 뺀다 — 그것도 «지금 보는 것» 이다.
+      ctx.globalAlpha = hot ? 1 : dimK;
       ctx.strokeStyle = hot ? "#f97316" : (st ? st.color : "#94a3b8");
       ctx.setLineDash(hot || !st ? [] : st.dash);
       ctx.lineWidth = (1 + 4 * (p.load || 0) / maxLoad) + (hot ? 2 : 0);
@@ -5207,6 +5457,11 @@
     if (k === "head") return `헤드 · 도면 원 ${key[1]}`;
     if (k === "vert") return `세로 토막 · 뿌리 ${key[1]} ${key[2]} · ${key[3]}번`;
     if (k === "merge") return `통합 ${key[1]} · ${key[2]}`;
+    // 계통도·기계실은 board 가 없어 라벨이 곧 주소다(§4). 그리고 사람이
+    // 만든 요소는 그것을 만든 수정의 id 가 주소다(§3-3).
+    if (k === "sys") return `계통도 · 라벨 ${key[1]}`;
+    if (k === "mr") return `기계실 · 라벨 ${key[1]}`;
+    if (k === "add") return `사람이 만든 요소 ${key[1]}`;
     return key.join(" · ");
   }
 
@@ -5485,6 +5740,7 @@
   function insClose() {
     if (S.design) S.design.sel = null;
     S.mergeSel = null;
+    S.opArm = null;                // [§3-5] 카드를 닫으면 무장도 풀린다
     renderInspect();
     draw();
   }
@@ -5533,6 +5789,7 @@
         el.onclick = () => insSelect(el.dataset.insKind, el.dataset.insLabel);
       }
       ovBind($("dg-ins-body"));    // [요소속성 수정카드] 저장·되돌리기
+      renderInsOps();              // [§3-5] 위상 수정 단추 셋
     } catch (err) {
       $("dg-ins-body").insertAdjacentHTML("afterbegin",
         `<div class="ov-miss">단추를 잇지 못했습니다 — `
@@ -5665,36 +5922,328 @@
     return h;
   }
 
-  /** 고른 것을 캔버스에 표시 — 강조(hilite)와 «다른» 색이어야 한다. */
-  function drawInspectSel() {
-    const sel = (S.design && S.design.sel) || null;
-    const v = (S.design && S.design.view) || null;
-    if (!sel || !v || !v.nodes) return;
-    const at = {};
-    for (const n of v.nodes) at[String(n.label)] = n;
+  // ── [통합 활성 §3-2] 고른 것은 빨강, 나머지는 흐리게 — 두 화면 같은 규약
+  //
+  // 오너 2026-09-15 ⑤: 04 의 자홍(`#e879f9`)을 «빨강 + 나머지 흐리게» 로 바꾼다.
+  //
+  // ★통합에서 빨강은 이미 계통도·기계실 색이다. 그래서 «빨강으로 세우는 것»
+  //   만으로는 구별이 안 된다 — **나머지를 흐리게** 해야 갈린다(그림 19 ①).
+  //   04 의 최원 경로도 이미 빨간 점선이라 같은 처리를 받는다: 그것도 0.35 로
+  //   흐려지므로 100% 빨강인 선택과 구별된다. **최원 경로의 색을 바꾸지 않는다.**
+  const SEL_RED = "#ff3b3b";
+  const SEL_DIM = 0.35;
+
+  /** 지금 화면에 «고른 것» 이 있나 — 흐리게 그릴지 가른다. */
+  function hasSelection() {
+    if (S.stage === "merge") return !!S.mergeSel;
+    return !!(S.design && S.design.sel);
+  }
+
+  // 지금 걸려 있는 흐리기 **배수**. 캔버스의 `globalAlpha` 는 덮어쓰기라,
+  // 망 그리는 쪽이 제 알파를 따로 세우면(결합의 평면 배관이 그렇다 —
+  // 담당 헤드 수로 0.55~1.0) 겉의 0.35 가 그대로 지워진다. 그래서 «곱해»
+  // 먹이는 자를 하나 둔다. 고른 것이 없으면 1 이라 종전과 같은 그림이다.
+  let dimK = 1;
+
+  /** 알파를 흐리기 배수와 **곱해서** 세운다. */
+  function dimA(a) { ctx.globalAlpha = a * dimK; }
+
+  /** 고른 것이 있으면 망을 흐리게 그리도록 감싼다(D4 의 예외는 밖에서 그린다). */
+  function withDim(fn) {
+    if (!hasSelection()) { fn(); return; }
     ctx.save();
-    ctx.strokeStyle = "#e879f9";        // 자홍 — 관경 근거색·강조색과 안 겹친다
+    dimK = SEL_DIM;
+    ctx.globalAlpha = SEL_DIM;
+    try { fn(); } finally { ctx.restore(); dimK = 1; }
+  }
+
+  /** 고른 배관/절점 위에 빨강을 덧그린다 — 좌표를 주는 쪽은 화면마다 다르다. */
+  function paintSel(at, pipes, sel) {
+    if (!sel) return;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = SEL_RED;
     ctx.setLineDash([]);
     if (sel.kind === "pipe") {
-      const p = (v.pipes || []).find((x) => String(x.label) === sel.label);
-      const a = p && at[String(p.a)], b = p && at[String(p.b)];
+      const p = (pipes || []).find((x) => String(x.label) === String(sel.label));
+      const a = p && at[String(p.a !== undefined ? p.a : p.in)];
+      const b = p && at[String(p.b !== undefined ? p.b : p.out)];
       if (a && b) {
-        ctx.lineWidth = 3.4;
+        ctx.lineWidth = 6.4;            // 그 부위 색 위에 굵기 +3 으로 덧그린다
         ctx.beginPath();
         ctx.moveTo(sx(a.x), sy(a.y));
         ctx.lineTo(sx(b.x), sy(b.y));
         ctx.stroke();
       }
     } else {
-      const n = at[sel.label];
+      const n = at[String(sel.label)];
       if (n) {
-        ctx.lineWidth = 2.4;
+        ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.arc(sx(n.x), sy(n.y), 12, 0, Math.PI * 2);
         ctx.stroke();
       }
     }
     ctx.restore();
+  }
+
+  /** 고른 것을 캔버스에 표시 — 04 쪽 진입점. */
+  function drawInspectSel() {
+    const sel = (S.design && S.design.sel) || null;
+    const v = (S.design && S.design.view) || null;
+    if (!sel || !v || !v.nodes) return;
+    const at = {};
+    for (const n of v.nodes) at[String(n.label)] = n;
+    paintSel(at, v.pipes, sel);
+  }
+
+
+  // ── [위상 수정 §3-5] 카드 아래 단추 셋 — 지우기 · 노드 · 기기 ──────────
+  //
+  // ★어느 화면에서 눌렀든 **같은 목록**에 쌓인다(⑨). 회랑 요소는 04 의
+  //   「표 확정」에서, 계통도·기계실 요소는 통합의 「결합」에서 적용된다.
+  //   그래서 두 산출이 같은 망을 말한다 — 카드가 어느 단추인지 말해 준다.
+  //
+  // ★＋ 는 **무장(arm)** 이다(손질 화면의 모드 단추와 같은 규약). 누르면
+  //   빨갛게 켜지고, 다음 캔버스 클릭이 그 자리를 정한다. 한 번 더 누르거나
+  //   Esc 를 누르면 풀린다.
+
+  /** 지금 고른 것의 «주소» — 두 화면이 같은 모양으로 낸다. */
+  function selKey() {
+    const onMerge = S.stage === "merge";
+    const sel = onMerge ? S.mergeSel : (S.design && S.design.sel);
+    if (!sel) return null;
+    const v = onMerge ? S.mergeView : (S.design && S.design.view);
+    if (!v) return null;
+    const list = sel.kind === "pipe" ? (v.pipes || []) : (v.nodes || []);
+    const hit = list.find((x) => String(x.label) === String(sel.label));
+    return (hit && hit.key) ? hit.key : null;
+  }
+
+  /** 이 주소는 어느 단추를 다시 눌러야 반영되나 — 회랑이면 표 확정. */
+  function opRerunWord(key) {
+    const k = key ? String(key[0]) : "";
+    return (k === "sys" || k === "mr") ? "결합" : "표 확정";
+  }
+
+  async function equipCatalog() {
+    if (S.equipCat) return S.equipCat;
+    try {
+      const d = await api(`/api/module-f/element/op?sid=${S.sid}`);
+      S.equipCat = d.equip || [];
+      S.ops = d.ops || [];
+    } catch (err) {
+      say(err.message, "err");
+      S.equipCat = [];
+    }
+    return S.equipCat;
+  }
+
+  function renderInsOps() {
+    const box = $("dg-ins-ops");
+    const no = $("dg-ins-noops");
+    if (!box || !no) return;
+    const key = selKey();
+    // 이음매처럼 «어느 도면 것도 아닌» 요소는 고칠 주소가 없다.
+    box.classList.toggle("hidden", !key);
+    no.classList.toggle("hidden", !!key);
+    if (!key) return;
+
+    const arm = (S.opArm && S.opArm.label === insSelLabel()) ? S.opArm : null;
+    const isPipe = insSelKind() === "pipe";
+    for (const [id, on] of [["op-node", isPipe], ["op-equip", isPipe],
+                            ["op-lib", isPipe]]) {
+      const el = $(id);
+      if (el) el.classList.toggle("hidden", !on);
+    }
+    $("op-node").classList.toggle("on", !!arm && arm.kind === "add_node");
+    $("op-equip").classList.toggle("on", !!arm && arm.kind === "add_equip");
+    $("op-why").value = String(S.opWhy || "");
+    // [D6] 헤드를 지우면 **기준개수가 준다.** 지운 뒤에 알면 늦다 — 단추를
+    //   누르기 전에 카드가 먼저 말한다.
+    const kNow = designK();
+    const head = isHeadSel();
+    $("op-hint").innerHTML =
+      (head && kNow !== null
+       ? `<b style="color:#ff3b3b">이 헤드를 지우면 기준개수 K 가 `
+         + `${kNow} → ${kNow - 1} 로 줍니다.</b><br>` : "")
+      + `고친 뒤 <b>「${esc(opRerunWord(key))}」</b>을 다시 눌러야 그림과 `
+      + `파일에 반영됩니다. Delete 키로도 지울 수 있고, Ctrl+Z 로 돌아옵니다.`;
+    if (isPipe) fillEquipSelect();
+  }
+
+  /** 기기 목록은 **서버가** 라이브러리에서 뽑아 준다(§3-3-3) — 한 번만 받는다. */
+  function fillEquipSelect() {
+    const sel = $("op-lib");
+    if (!sel) return;
+    equipCatalog().then((cat) => {
+      if (!$("op-lib")) return;
+      if ($("op-lib").dataset.filled !== "1") {
+        $("op-lib").innerHTML = `<option value="">— 기기 고르기 —</option>`
+          + cat.map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`)
+               .join("");
+        $("op-lib").dataset.filled = "1";
+      }
+      $("op-lib").value = String(S.opLib || "");
+    });
+  }
+
+  // 단추는 템플릿에 한 벌 있으므로 **한 번만** 잇는다 — 카드를 그릴 때마다
+  // 다시 이으면 같은 처리기가 쌓인다(그리고 그것이 이중 전송이 된다).
+  if ($("op-why")) $("op-why").oninput = () => { S.opWhy = $("op-why").value; };
+  if ($("op-del")) $("op-del").onclick = () => opDelete();
+  if ($("op-node")) $("op-node").onclick = () => opArm("add_node");
+  if ($("op-equip")) $("op-equip").onclick = () => opArm("add_equip");
+  if ($("op-lib")) $("op-lib").onchange = () => { S.opLib = $("op-lib").value; };
+
+
+  /** 지금 고른 것이 헤드인가 — 두 화면이 같은 표시를 쓴다(`head: true`). */
+  function isHeadSel() {
+    const onMerge = S.stage === "merge";
+    const sel = onMerge ? S.mergeSel : (S.design && S.design.sel);
+    if (!sel || sel.kind !== "node") return false;
+    const v = onMerge ? S.mergeView : (S.design && S.design.view);
+    const n = ((v || {}).nodes || []).find(
+      (x) => String(x.label) === String(sel.label));
+    return !!(n && n.head);
+  }
+
+  /** 지금 기준개수 K — 표 meta 가 권위다(세는 자를 새로 만들지 않는다). */
+  function designK() {
+    const meta = ((S.design || {}).tables || {}).meta || [];
+    for (const m of meta) {
+      if (String(m[0]) === "기준개수 K") {
+        const n = Number(m[1]);
+        if (Number.isFinite(n)) return n;
+      }
+    }
+    return null;
+  }
+
+  function insSelKind() {
+    const sel = S.stage === "merge" ? S.mergeSel : (S.design && S.design.sel);
+    return sel ? String(sel.kind) : "";
+  }
+  function insSelLabel() {
+    const sel = S.stage === "merge" ? S.mergeSel : (S.design && S.design.sel);
+    return sel ? String(sel.label) : "";
+  }
+
+  function opArm(kind) {
+    const cur = S.opArm;
+    if (cur && cur.kind === kind && cur.label === insSelLabel()) {
+      S.opArm = null;                     // 같은 단추를 또 누르면 푼다
+    } else {
+      if (kind === "add_equip" && !S.opLib) {
+        say("어떤 기기인지 먼저 고르세요.", "warn");
+        return;
+      }
+      S.opArm = { kind, label: insSelLabel(), key: selKey() };
+      say(kind === "add_node"
+          ? "배관 위 한 점을 찍으세요 — 그 자리에 노드가 생깁니다."
+          : "배관 위 한 점을 찍으세요 — 그 자리에 기기가 붙습니다.");
+    }
+    renderInsOps();
+  }
+
+  /** 무장 중인 클릭 — 고른 배관 위 한 점의 비율 `t` 를 만든다.
+   *
+   *  ★t 는 **그려진 선분** 위에서 잰다. 아이소 변환은 (평면 회전 + 표고
+   *  들어올림)이라 한 배관 안에서는 선형이다 — 그려진 선분 위의 비율이 곧
+   *  평면 위의 비율이다. 좌표를 여기서 새로 만들지 않는다(§5 금지).
+   */
+  function opArmedClick(x, y) {
+    const arm = S.opArm;
+    if (!arm) return false;
+    const onMerge = S.stage === "merge";
+    const v = onMerge ? S.mergeView : (S.design && S.design.view);
+    if (!v) return false;
+    const p = (v.pipes || []).find((q) => String(q.label) === String(arm.label));
+    const at = {};
+    for (const n of (v.nodes || [])) at[String(n.label)] = n;
+    const a = p && at[String(p.a)], b = p && at[String(p.b)];
+    if (!a || !b) { say("그 배관의 양 끝을 못 찾았습니다.", "err"); return true; }
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const dd = dx * dx + dy * dy;
+    let t = dd > 0 ? ((x - a.x) * dx + (y - a.y) * dy) / dd : 0.5;
+    t = Math.min(0.98, Math.max(0.02, t));
+    const payload = arm.kind === "add_node"
+      ? { t: Number(t.toFixed(4)) }
+      : { t: Number(t.toFixed(4)), lib_id: S.opLib };
+    S.opArm = null;
+    opPost(arm.kind, arm.key, payload);
+    return true;
+  }
+
+  function opDelete() {
+    const key = selKey();
+    if (!key) { say("이 요소는 지울 주소가 없습니다.", "warn"); return; }
+    opPost("delete", key, {});
+  }
+
+  async function opPost(op, target, payload) {
+    const why = String(S.opWhy || "").trim();
+    if (!why) {
+      say("사유를 적어 주세요 — 왜 망을 고치는지 남아야 합니다.", "warn");
+      const el = $("op-why");
+      if (el) el.focus();
+      return;
+    }
+    let d;
+    try {
+      d = await post("/api/module-f/element/op",
+                     { sid: S.sid, op, target, payload, reason: why });
+    } catch (err) { say(err.message, "err"); return; }
+    S.ops = d.ops || [];
+    // Ctrl+Z 가 되돌릴 «마지막 한 박자» — 되돌리기는 그 op 를 지운다.
+    const last = S.ops.length ? S.ops[S.ops.length - 1] : null;
+    if (last) S.opUndo.push(String(last.id));
+    say(d.message || "고쳤습니다.");
+    if (op === "delete") insClose();
+    else renderInsOps();
+    markOpsDirty(target);
+  }
+
+  /**
+   * 「지금 보이는 것은 아직 옛 것」 — 두 화면 모두에 같은 규약으로 말한다.
+   *
+   * ★두 배너를 **함께** 세우는 경우가 있다(§3-3-1). 회랑 요소를 통합 화면에서
+   *   고치면 그 수정은 04 의 「표 확정」에서 망에 먹고, 그 표가 다시 결합으로
+   *   흘러야 통합 산출에 실린다 — 즉 단추를 **둘 다** 눌러야 한다. 한쪽만
+   *   말하면 사람은 나머지 하나가 옛것인 줄 모른 채 파일을 받는다.
+   */
+  function markOpsDirty(key) {
+    const word = opRerunWord(key);
+    const corridor = word === "표 확정";
+    const put = (id, html) => {
+      const box = $(id);
+      if (!box) return;
+      box.classList.remove("hidden");
+      box.innerHTML = html;
+    };
+    put(corridor ? "dg-stale" : "mg-stale",
+        `<b>망을 고쳤습니다 — 지금 보이는 그림·표는 아직 옛 것입니다.</b>`
+        + `<br>「${word}」을 다시 눌러야 들어갑니다.`);
+    if (corridor) {
+      put("mg-stale",
+          "<b>표가 바뀌었습니다 — 다시 결합하세요.</b><br>"
+          + "회랑 요소를 고쳤습니다. 「표 확정」 → 「결합」 순으로 다시 "
+          + "눌러야 두 산출이 같은 망을 말합니다.");
+    }
+  }
+
+
+  /** Ctrl+Z — 마지막 위상 수정을 지운다(§3-5). */
+  async function opUndoStep() {
+    const id = S.opUndo.pop();
+    if (!id) return false;
+    try {
+      const d = await post("/api/module-f/element/op",
+                           { sid: S.sid, remove: id });
+      S.ops = d.ops || [];
+      say("마지막 위상 수정을 되돌렸습니다 — 다시 계산하면 원래 망입니다.");
+    } catch (err) { say(err.message, "err"); return true; }
+    return true;
   }
 
   $("dg-ins-close").onclick = insClose;
@@ -5783,7 +6332,7 @@
     for (const a of app) {
       // 등가길이는 «(종류, 호칭경) 쌍» 이 단위라 배관이 아니라 그 쌍으로 맞춘다.
       const hit = a.what === "kind"
-        ? (String(a.pipe) === String(row.pipe)
+        ? (String(a.pipe_label || a.pipe) === String(row.pipe)
            && String(a.kind) === String(row.type))
         : (String(a.kind) === String(row.type)
            && Number(a.dia) === Number(dia));
@@ -6063,12 +6612,13 @@
         n: ki.reduce((a, x) => a + (Number(x.n) || 0), 0),
         label: "부속 판정 불가 — 지어내지 않고 비워 둔 자리",
         items: ki.slice(0, ISSUE_CAP).map((x) => {
-          const [mx, my] = mid(x.pipe);
+          // 점은 «표의 그 배관» 에 찍는다 — 화면은 새 이름을 안다(§3-6).
+          const [mx, my] = mid(x.pipe_label || x.pipe);
           return {
-            text: `${x.pipe} · ${x.where}`
+            text: `${x.pipe_label || x.pipe} · ${x.where}`
               + (x.angle_deg !== undefined && x.angle_deg !== null
                  ? ` · 편향 ${x.angle_deg}°` : "")
-              + ` (노드 ${x.node})`,
+              + ` (노드 ${x.node_label || x.node})`,
             x: mx, y: my, frame: "iso",
             // [§18] 이 자리를 채울 재료 — 자리(노드·배관)가 단위다.
             ov: { type: "kind", node: String(x.node), pipe: String(x.pipe) },
@@ -6084,7 +6634,7 @@
       const firstPipe = (kind, dia) => {
         const hit = li.find((x) => String(x.kind) === String(kind)
                                 && String(x.dia) === String(dia));
-        return hit ? hit.pipe : null;
+        return hit ? (hit.pipe_label || hit.pipe) : null;
       };
       out.push({
         key: "eqlen", color: "#f59e0b",
@@ -6140,10 +6690,10 @@
         label: "직접 입력 — 사람이 채운 자리",
         note: "표 확정에 이미 반영된 값입니다.",
         items: app.slice(0, ISSUE_CAP).map((a) => {
-          const [mx, my] = mid(a.pipe);
+          const [mx, my] = mid(a.pipe_label || a.pipe);
           return {
             text: (a.what === "kind"
-                   ? `${a.pipe} · ${kindLabel(a.kind)}`
+                   ? `${a.pipe_label || a.pipe} · ${kindLabel(a.kind)}`
                    : `${a.kind} ${a.dia}A · ${a.m} m`)
               + (a.note ? ` — ${a.note}` : ""),
             x: mx, y: my, frame: "iso",
@@ -6307,7 +6857,7 @@
         ok: true,
         what: a.what === "kind" ? "부속" : "등가길이",
         where: a.what === "kind"
-          ? `${a.pipe} · 노드 ${a.node}`
+          ? `${a.pipe_label || a.pipe} · 노드 ${a.node_label || a.node}`
           : `${a.kind} ${a.dia}A (그 쌍을 쓰는 배관 전부)`,
         val: a.what === "kind" ? kindLabel(a.kind) : `${a.m} m`,
         note: a.note || "",
@@ -6338,6 +6888,21 @@
           ? `${m.kind} ${m.dia}A` : `${m.pipe || "?"} · 노드 ${m.node || "?"}`,
         val: m.what === "eq_len" ? `${m.m} m` : kindLabel(m.kind),
         note: m.note || "", why: m.why || "",
+      });
+    }
+    // [§3-3] 값 옆에 «위상» 을 나란히 둔다 — 「이 수치를 누가·왜 정했나」를
+    // 되짚는 자리이므로, 망을 고친 것도 같은 목록에 있어야 한다. 값만 모아
+    // 두면 「배관이 왜 없지」를 여기서 못 찾는다.
+    for (const o of (S.ops || [])) {
+      rows.push({
+        ok: true,
+        what: { delete: "삭제", add_node: "노드 추가",
+                add_equip: "기기 추가" }[String(o.op)] || String(o.op),
+        where: ovWhere(o.target),
+        val: o.op === "add_equip"
+          ? `${(o.payload || {}).lib_id || "?"} · 위치 ${(o.payload || {}).t}`
+          : (o.op === "add_node" ? `위치 ${(o.payload || {}).t}` : "—"),
+        note: o.reason || "",
       });
     }
     chip.textContent = rows.length ? `${rows.length}건` : "없음";

@@ -116,12 +116,28 @@ def tables_to_network(tables, *, project_title: str):
             m.Fitting(fitting_type=str(lab), count=int(f.get("count", 1))))
 
     eq_by_pipe: dict = {}
+    eq_unresolved: list = []
     for e in tables.equipment:
+        # ★등가길이를 못 구한 기기는 **안 싣는다.** `<Equipment>` 에는 그 칸이
+        #   필수라 0 으로 채울 수밖에 없는데, 0 은 「손실이 없다」는 주장이라
+        #   모르는 것과 같은 값으로 두면 계산이 조용히 낙관적이 된다
+        #   (`resolve_eq_len` 이 0 이 아니라 None 을 돌려주는 이유와 같다).
+        #   버리지 않고 세어 화면·로그에 올린다.
+        v = e.get("eq_len")
+        if v is None:
+            eq_unresolved.append(e)
+            continue
         eq_by_pipe.setdefault(str(e["pipe"]), []).append(
             m.Equipment(equipment_id=str(e.get("label", "")),
                         description=str(e.get("desc", "")),
-                        equivalent_length_m=float(e.get("eq_len", 0.0)),
-                        rel_position=float(e.get("rel_pos", 0.5))))
+                        equivalent_length_m=float(v),
+                        rel_position=float(e.get("rel_pos", 0.5) or 0.0)))
+    if eq_unresolved:
+        print(f"[G6] ★등가길이 미해결 기기 {len(eq_unresolved)}개는 .sdf 에 "
+              f"안 실었습니다 — 0 으로 채우지 않습니다: "
+              + ", ".join(f"{r.get('desc')}@{r.get('pipe')}"
+                          for r in eq_unresolved[:8])
+              + (" …" if len(eq_unresolved) > 8 else ""))
 
     for row in tables.pipes:
         pid = str(row["label"])
@@ -261,14 +277,23 @@ def emit_design_kfp(tables, got, out_path):
         print(f"[G6] 내경표를 못 읽었습니다 — {type(exc).__name__}: {exc} "
               f"(호칭경만 싣습니다)")
 
+    # ★[§3-6] 표의 이름과 kfp 의 이름은 **다르다.** 표는 물 흐르는 순서로
+    #   다시 매기고(P1·P2…), kfp 는 전체망 시절의 이름을 그대로 들고 있다
+    #   (P36·P85…). 더 나쁜 것은 두 이름이 같은 글자꼴이라는 점이다 — 그냥
+    #   이름으로 찾으면 **엉뚱한 배관에 부속이 실린다.** 조용히, 틀리게.
+    #   표가 곁들여 준 다리(`pipe_labels`)로 되짚는다. 안 주는 옛 호출자는
+    #   종전대로 이름이 곧 pid 다.
+    pid_of_label = {str(lab): str(pid) for pid, lab
+                    in (getattr(tables, "pipe_labels", None) or {}).items()}
     n_fit = 0
     for row in (getattr(tables, "pipes", None) or ()):
-        pid = str(row.get("label"))
+        lab = str(row.get("label"))
+        pid = pid_of_label.get(lab, lab)
         rec = pipes.get(pid)
         if rec is None:
             continue
         labs = []
-        for kind in by_pipe.get(pid, ()):
+        for kind in by_pipe.get(lab, ()):
             lab = fitting_label(kind, "kfp")
             if lab is not None:
                 labs.append(lab)
@@ -276,6 +301,17 @@ def emit_design_kfp(tables, got, out_path):
         n_fit += len(labs)
         if row.get("eq_len") is not None:
             rec["equivalent_length"] = round(float(row["eq_len"]), 3)
+        # ★[§3-3-3] 사람이 더한 기기는 `.sdf` 에 `<Equipment>` 로 실리지만
+        #   `.kfp` 에는 그 항목이 없다 — 그 배관의 등가길이에 **더해** 나간다.
+        #   더하지 않으면 같은 망인데 두 파일의 손실이 달라진다.
+        #   자동이 단 기기(FX·A/V)는 건드리지 않는다 — 이 판에서 정한 규칙은
+        #   사람이 더한 것에 대한 것이고, 나머지는 종전 동작 그대로 둔다.
+        add_eq = sum(float(e.get("eq_len") or 0.0)
+                     for e in (getattr(tables, "equipment", None) or ())
+                     if str(e.get("pipe")) == lab and e.get("op_id"))
+        if add_eq:
+            rec["equivalent_length"] = round(
+                float(rec.get("equivalent_length") or 0.0) + add_eq, 3)
         dn = int(row.get("dia") or 0)
         if dn:
             rec["nominal_mm"] = dn

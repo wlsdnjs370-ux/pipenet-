@@ -23,8 +23,8 @@ from routes.module_f import overrides as ov
 from routes.module_f.common import _fail
 from routes.module_f.jobs import _job_running, _run_job, route_session
 from routes.module_f.merge import (
-    SUPPLY_MODES, MergeError, bake_combined_iso, check_supply_mode,
-    combined_summary, merge_network)
+    ANCHOR_LABEL, SUPPLY_MODES, MergeError, bake_combined_iso,
+    check_supply_mode, combined_summary, merge_network)
 from routes.module_f.slots import SLOT_KINDS, _slot_active, _slot_capture
 
 # 결합에 쓸 재료가 어느 슬롯에 있는가 — 활성 슬롯이 아니어도 꺼내 온다.
@@ -40,6 +40,51 @@ def _slot_value(sess: dict, kind: str, key: str):
     if _slot_active(sess) == kind:
         return _slot_capture(sess).get(key)
     return ((sess.get("slots") or {}).get(kind) or {}).get(key)
+
+
+def _merge_underlay(sess: dict, got: dict, nodes, iso: bool, zs: float):
+    """[§3-4] 통합 밑그림 변환 — board mm 한 점을 **이 화면** 의 자리로.
+
+    04 의 `_underlay_xf` 와 **같은 이름·같은 모양**의 숫자 일곱 개다. 화면이
+    한 함수(`drawUnderlay`)로 두 화면을 그리므로 모양이 갈리면 안 된다.
+
+    ■ 두 화면의 다른 점은 «배율» 하나다
+
+      04 는 표 좌표를 `norm.scale` 로 정규화해 그리지만, 통합은 **표 mm 를
+      그대로** 쓴다(`merge_network` 가 좌표를 안 건드린다 — §2 실측으로
+      기준점 차 0.000 mm). 그러니 여기서 k 는 1 이고, 남는 것은 board 원점을
+      표 원점으로 옮기는 평행이동뿐이다:
+
+        표 mm = board mm − origin + 1000        (`main_walk.xf_mm_to_m` 의 mm 판)
+
+    ■ 표고
+
+      통합의 평면 식은 `bake_combined_iso` 에서 `(e − e_ref)·lift` 이고
+      e_ref 는 **기준점(라벨 10)** 의 표고다. board 평면이 놓인 높이는 그
+      기준점 자리, 즉 평면도가 라이저와 만나는 접속점이므로 두 값이 같다 —
+      dz 는 0 이 된다. 그래도 0 을 박아 두지 않고 **재서** 보낸다. 기준점이
+      옮겨지면 그 사실이 여기 그대로 드러나야 한다.
+
+    ★못 만들면 None 이다 — 화면은 그때 밑그림을 그리지 않는다(F-10e 규약).
+    """
+    origin = ((sess.get("design") or {}).get("got") or {}).get("origin_mm")
+    if not origin:
+        return None
+    elev = {str(n.get("label")): float(n.get("elevation", 0) or 0)
+            for n in (nodes or ())}
+    e_ref = elev.get(ANCHOR_LABEL)
+    if e_ref is None:
+        return None
+    return {
+        "k": 1.0,
+        "tx": 1000.0 - float(origin[0]),
+        "ty": 1000.0 - float(origin[1]),
+        "cos30": 0.8660254037844387, "sin30": 0.5,
+        "iso": bool(iso),
+        "lift": 1000.0 * float(zs or 1.0),
+        "e_ref": e_ref,
+        "e": e_ref,
+    }
 
 
 def _materials(sess: dict) -> dict:
@@ -167,6 +212,15 @@ def register(app, *, UPLOAD_DIR):
                         ov.write_file(sess.get("key") or "design", el_rows)
                     except OSError as exc:
                         print(f"[수정] ★원값을 파일에 못 썼습니다 — {exc}")
+            # ★[§3-3-1] 적용 ★ — 계통도·기계실 대상 **위상** 수정.
+            #
+            #   회랑 요소의 위상 수정은 여기 없다. 그것은 04 의 「표 확정」
+            #   에서 이미 망에 먹었고, 그 표가 결합으로 흘러들었다(D8) —
+            #   그래서 04 의 `.sdf` 와 통합 `.sdf` 가 같은 망을 말한다(⑨).
+            mg_ops = ov.ensure_ops_loaded(sess)
+            if mg_ops:
+                _no, _mo, _rep = ov.apply_ops_to_merge(got, mg_ops)
+                mg_missed = list(mg_missed) + list(_mo)
             sess["merge_missed"] = mg_missed
             if mg_missed:
                 print(f"[결합] ★적용 못 한 요소 수정 {len(mg_missed)}건 — "
@@ -224,11 +278,15 @@ def register(app, *, UPLOAD_DIR):
         mr_edges = [list(map(float, e)) for e in
                     (getattr(c, "machine_room_plan_edges", None) or ())]
         iso = (request.args.get("iso") or "0") in ("1", "true", "True", "on")
+        try:
+            zs = float(request.args.get("iso_z_scale") or 1.0)
+        except (TypeError, ValueError):
+            zs = 1.0
+        # ★표고 기준은 **굽기 전** 좌표에서 읽는다 — 구운 뒤 nodes 의 x·y 는
+        #   화면 자리로 바뀌지만 elevation 은 그대로라 어느 쪽이든 같다. 그래도
+        #   굽기 전에 잡아 두면 「무엇으로 쟀나」가 한 줄로 읽힌다(§3-4).
+        under = _merge_underlay(sess, got, nodes, iso, zs)
         if iso:
-            try:
-                zs = float(request.args.get("iso_z_scale") or 1.0)
-            except (TypeError, ValueError):
-                zs = 1.0
             # 굽는 식은 `merge.bake_combined_iso` 하나뿐이다 — 산출(.sdf)도
             # 같은 함수를 쓴다. 두 자리가 각자 셈하면 화면과 파일이 갈린다.
             nodes, mr_edges = bake_combined_iso(got, iso_z_scale=zs)
@@ -310,10 +368,14 @@ def register(app, *, UPLOAD_DIR):
             "ok": True, "iso": iso,
             "view": {"nodes": out_nodes, "pipes": out_pipes,
                      # 기계실 평면 배관망 — SDF 에는 없고 «보기» 로만 쓴다.
-                     "mr_plan_edges": mr_edges},
+                     "mr_plan_edges": mr_edges,
+                     # [§3-4] 평면도 밑그림 변환 — 04 와 같은 이름·같은 모양.
+                     "underlay": under},
             # [요소속성 수정카드] 카드가 원값·사유·시각을 나란히 보인다(규칙 5)
             #   와 「적용 못 한 수정」(규칙 4).
             "overrides": ov.ensure_loaded(sess),
+            # [§3-3] 위상 수정 — 두 화면이 **같은 목록**을 본다(⑨).
+            "ops": ov.ensure_ops_loaded(sess),
             "ov_missed": sess.get("merge_missed") or [],
             "counts": {"plan": sum(1 for n in out_nodes
                                    if n["part"] == "plan"),

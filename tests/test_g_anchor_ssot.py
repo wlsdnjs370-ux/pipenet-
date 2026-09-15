@@ -215,7 +215,9 @@ def test_기기는_물이_지나는_관에_붙는다():
                               valve_nodes=["N1"],
                               tree_loads={"P_main": 30, "P_spur": 0})
     av = [e for e in got.equipment if e["desc"] == "A/V"][0]
-    assert av["pipe"] == "P_main", f"곁가지에 붙었다: {av['pipe']}"
+    # [§3-6] 표 이름은 다시 매겨진다 — kfp 이름을 표 이름으로 옮겨 맞댄다.
+    want = got.pipe_labels["P_main"]
+    assert av["pipe"] == want, f"곁가지에 붙었다: {av['pipe']} (본관 {want})"
 
 
 def test_밸브_되짚기는_접속점을_먼저_고른다():

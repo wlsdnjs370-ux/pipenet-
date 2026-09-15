@@ -168,7 +168,8 @@ def test_화면_식이_서버_식과_한_글자도_다르지_않다():
 
     js = open(os.path.join(_ROOT, "static", "module_f.js"),
               encoding="utf-8").read()
-    i = js.index("function drawUnderlay()")
+    # [§3-4] 두 화면이 한 함수를 쓰게 되면서 변환을 **인자로** 받는다.
+    i = js.index("function drawUnderlay(u)")
     body = js[i:js.index("\n  }\n", i)]
     m = re.search(r"const px = \(mx, my\) => \{(.+?)\};", body, re.S)
     assert m, "drawUnderlay 의 좌표식을 못 찾았다 — 이름이 바뀌었나"

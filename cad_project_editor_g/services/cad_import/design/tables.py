@@ -54,6 +54,10 @@ class PipeTablesG:
     # 왜 정했는지 알 길이 없다. SDF 형식에는 출처 칸이 없어 여기가 그 자리다.
     #   {pipe_id: {dia, note, orig_dia, orig_src, a, b}}
     bore_overrides: dict = field(default_factory=dict)
+    # [§3-6] 내부 식별자(kfp pipe id) → **이번 표의 배관 이름**. 라벨은 보이는
+    # 이름일 뿐이고 주인은 여전히 pid 다 — 사람이 더한 기기·삭제 수정이 이
+    # 다리를 건너 제 배관을 찾는다. `as_dict` 에는 안 넣는다(산출물이 아니다).
+    pipe_labels: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return {"nodes": self.nodes, "pipes": self.pipes,
@@ -242,11 +246,28 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         tbl.nodes.append(row)
 
     # ── ② 배관표 — 트리 순서(물 흐르는 방향) → 꼬리에 루프 잔여
+    #
+    # ★[§3-6 · D7] 배관 이름도 노드처럼 **물 흐르는 순서**로 다시 매긴다.
+    #   P1·P2… 그러면 가운데에 배관을 하나 넣었을 때 뒤 번호가 저절로 한
+    #   칸씩 밀린다(⑧) — 손으로 미는 코드를 따로 두지 않아도 된다.
+    #
+    # ★바뀌는 것은 **표시·산출 이름뿐**이다. 내부 식별자(kfp pipe id)와 안정
+    #   키(board 노드쌍)는 그대로다 — 저장된 수정이 옆 배관으로 옮겨가면
+    #   안 된다(§5 금지 · BLOCKED §22 가 값을 치른 규칙).
+    #
+    # ★한 표를 만들어 «그 이름을 쓰는 자리 전부» 에 한 번에 먹인다: 배관표 ·
+    #   부속표 · 기기표 · 미해결 목록. 자리마다 각자 매기면 서로 어긋난다.
+    pipe_label_of = {}
+    for _i, (_pid, _a, _b) in enumerate(list(tree_pipes) + list(off_tree),
+                                        start=1):
+        pipe_label_of[_pid] = f"P{_i}"
+    tbl.pipe_labels = dict(pipe_label_of)
+
     def pipe_row(pid, a, b, *, off):
         pr = pipes_raw.get(pid) or {}
         dia, src = (bores.get(pid) or (0, "?"))
         row = {
-            "label": pid,
+            "label": pipe_label_of.get(pid, pid),
             "in": label_of.get(a, "?"), "out": label_of.get(b, "?"),
             "type": schedule_by_pipe.get(pid, default_schedule),
             "dia": int(dia),                       # 호칭경 mm
@@ -268,10 +289,15 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
             row["off_tree"] = True     # 「길이 잘못 트인」 후보 — 꼬리에 몰린다
         return row
 
+    # pid → 그 배관의 표 행. 이름이 pid 와 갈렸으므로(§3-6) **행을 만들면서**
+    # 적어 둔다 — 나중에 순서로 맞추면 한 줄만 어긋나도 조용히 틀린다.
+    pipe_row_of = {}
     for pid, a, b in tree_pipes:
-        tbl.pipes.append(pipe_row(pid, a, b, off=False))
+        pipe_row_of[pid] = pipe_row(pid, a, b, off=False)
+        tbl.pipes.append(pipe_row_of[pid])
     for pid, a, b in off_tree:
-        tbl.pipes.append(pipe_row(pid, a, b, off=True))
+        pipe_row_of[pid] = pipe_row(pid, a, b, off=True)
+        tbl.pipes.append(pipe_row_of[pid])
 
     # 기기(FX·A/V)가 붙을 «물이 지나는 관» 을 고르는 자리 — 두 곳이 같이 쓴다.
     _loads = {str(k): int(v) for k, v in (tree_loads or {}).items()}
@@ -345,7 +371,9 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         _fx_note = "안 함"
 
     # ── ④ 부속표 — 배관표에 있는 라벨만(고아 참조 0)
-    pipe_by_label = {r["label"]: r for r in tbl.pipes}
+    # ★pid 로 찾는다 — 표의 `label` 은 이제 다시 매긴 이름이라 pid 와
+    #   다르다. 라벨로 찾으면 조용히 **아무것도 못 찾아** 부속표가 빈다.
+    pipe_by_label = pipe_row_of
     # ★[가지치기·부속판정 §3-5] 배관별 부속 등가길이를 **행에 싣는다**.
     #   「표 → .kfp」가 이 값을 그대로 쓴다 — 없으면 그쪽이 제 손으로 다시
     #   더해야 하고, 그 순간 등가길이를 정하는 자리가 둘이 된다(§5 금지).
@@ -359,7 +387,7 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
             continue
         for kind in rec.get("fittings") or ():
             tbl.fittings.append({
-                "pipe": pid, "in": prow["in"], "out": prow["out"],
+                "pipe": prow["label"], "in": prow["in"], "out": prow["out"],
                 "type": kind, "count": "1",
             })
 
@@ -456,12 +484,33 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         ("설계구역 선정", "모듈 G 기준헤드 방식 (SDF 전용 · .kfp 는 솔버가 따로 고른다)"),
     ]
     # 미해결이 «어느 배관인지» — 개수와 같은 자리에서 나온 목록이다.
+    #
+    # ★[§3-6] 이 목록은 **엔진 이름**(kfp 의 P36·N12)으로 자리를 가리킨다.
+    #   그것이 주소다 — 사람이 채운 값은 그 이름으로 안정 키를 얻는다
+    #   (`spot_key`). 그러니 이름을 바꾸지 **않는다**. 대신 «보일 이름» 을
+    #   곁에 붙인다: 화면이 그것으로 표의 그 배관을 찾아 표시하고 점을 찍는다.
+    #   한쪽만 두면 둘 중 하나가 깨진다 — 주소를 바꾸면 값이 안 들어가고,
+    #   보일 이름이 없으면 「P36」이라는 없는 배관을 가리킨다.
+
+    def _mark(row):
+        out = dict(row)
+        pid = row.get("pipe")
+        if pid is not None:
+            out["pipe_label"] = pipe_label_of.get(str(pid), str(pid))
+        nid = row.get("node")
+        if nid is not None:
+            out["node_label"] = label_of.get(str(nid), str(nid))
+        return out
+
     tbl.unresolved = {
-        "kind_items": list(fittings.get("unresolved_kind_items") or ()),
+        "kind_items": [_mark(x) for x in
+                       (fittings.get("unresolved_kind_items") or ())],
         # 알람밸브 행도 같은 목록에 넣는다 — 화면이 「어디를 채워야 하나」를
         # 한 곳에서 읽는다. kind 를 붙여 두어야 채울 칸을 특정할 수 있다.
-        "length_items": list(fittings.get("unresolved_length_items") or ())
-        + [{"pipe": r["pipe"], "kind": "alarm_valve", "dia": r["dia"]}
+        "length_items": [_mark(x) for x in
+                         (fittings.get("unresolved_length_items") or ())]
+        + [{"pipe": r["pipe"], "pipe_label": r["pipe"],
+            "kind": "alarm_valve", "dia": r["dia"]}
            for r in av_unresolved],
         # ★쌍 목록에도 넣는다 — 화면이 «채울 자리» 를 **여기서** 만들고
         #   `length_items` 는 그 자리를 도면에서 가리키는 데만 쓴다
@@ -470,7 +519,8 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         "pairs": list(fittings.get("unresolved_pairs") or ())
         + _av_pairs(av_unresolved),
         # 사람이 넣은 값을 쓴 자리 — 화면이 「직접 입력」이라고 밝힐 재료다.
-        "applied": list(fittings.get("applied_overrides") or ()) + av_applied,
+        "applied": [_mark(x) for x in
+                    (fittings.get("applied_overrides") or ())] + av_applied,
     }
     # 관경을 덮은 자리도 같은 규약으로 들고 온다. `decide_bores` 가 곁에 붙여
     # 보낸 것을 그대로 옮길 뿐이다 — 여기서 다시 세지 않는다(두 벌 금지).

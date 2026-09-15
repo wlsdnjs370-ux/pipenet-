@@ -163,8 +163,13 @@ def test_아이소는_보기_전용이고_기본이_아니다():
 def test_결합_단계가_캔버스에_그린다():
     js = open(os.path.join(_ROOT, "static", "module_f.js"),
               encoding="utf-8").read()
-    assert 'S.stage === "merge") { drawMerged(); }' in js, \
-        "결합 단계에 그리는 갈래가 없다"
+    # [§3-1·3-2·3-4] 갈래가 셋으로 늘었다 — 밑그림(배경) → 망(흐리게) →
+    # 고른 것(빨강). 순서가 곧 규약이라 **순서까지** 본다: 밑그림을 나중에
+    # 그리면 망을 덮고, 빨강을 먼저 그리면 흐린 망이 그 위를 덮는다.
+    i_u = js.index('if (($("mg-under") || {}).checked) drawMergeUnderlay();')
+    i_n = js.index("withDim(drawMerged);")
+    i_s = js.index("drawMergeSel();")
+    assert i_u < i_n < i_s, (i_u, i_n, i_s)
     i = js.index("  function drawMerged()")
     src = js[i:js.index("\n  }\n", i) + 4]
     for key in ("seam", "MERGE_COLOR", "mr_plan_edges"):
@@ -395,5 +400,3 @@ def test_마커는_손질_화면의_사각형이다():
     i = js.index("  function drawMergeMarker(")
     src = js[i:js.index(chr(10) + "  }" + chr(10), i) + 4]
     assert "ctx.rect(" in src and '"#000"' in src, src
-
-

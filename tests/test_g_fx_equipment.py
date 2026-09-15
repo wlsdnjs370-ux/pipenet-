@@ -74,7 +74,12 @@ def test_켜면_하향식_계열에만_붙는다():
     t = _build(["하향식", "상향식", "상하향식", "미지정"], fx="평균")
     fx = [e for e in t.equipment if e["desc"] == "FX"]
     assert len(fx) == 2, [e["pipe"] for e in fx]
-    assert {e["pipe"] for e in fx} == {"PH1", "PH3"}
+    # ★[§3-6] 표의 배관 이름은 물 흐르는 순서로 **다시 매겨진다**(P1·P2…).
+    #   kfp 이름(PH1·PH3)으로 맞대면 이제 안 맞는다 — 표가 곁들여 주는
+    #   다리(`pipe_labels`)로 되짚어, 재는 것이 「어느 배관에 붙었나」로
+    #   남게 한다. 이름이 아니라 **자리**가 이 시험의 관심사다.
+    lab = t.pipe_labels
+    assert {e["pipe"] for e in fx} == {lab["PH1"], lab["PH3"]}
 
 
 def test_수치는_모듈_A_와_같은_표에서_온다():
@@ -151,4 +156,5 @@ def test_기기는_물이_지나는_관에_붙는다():
     t = _build(["하향식"], fx="평균")
     fx = [e for e in t.equipment if e["desc"] == "FX"][0]
     # 헤드 접속관(PH1)에 붙어야 한다 — 본관(P1)이 아니다.
-    assert fx["pipe"] == "PH1", fx["pipe"]
+    # (이름은 §3-6 이 다시 매기므로 kfp 이름을 표 이름으로 옮겨 맞댄다)
+    assert fx["pipe"] == t.pipe_labels["PH1"], (fx["pipe"], t.pipe_labels)

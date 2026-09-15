@@ -402,6 +402,21 @@
                          cursor:pointer;font-size:13px;padding:2px 4px;}
   .inspect header button:hover{color:var(--ink);}
   .ins-body{padding:12px;overflow:auto;}
+  /* [§3-5] 위상 수정 단추 — 카드 **아래**에 붙인다. 값 고치기(본문)와 섞으면
+     「고치기」와 「지우기」가 한 줄에 서서 손이 미끄러진다. */
+  .ins-ops{border-top:1px solid var(--line);padding:9px 12px;
+           display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+  .ins-ops button{background:var(--sunk);border:1px solid var(--line);
+                  color:var(--ink);border-radius:4px;cursor:pointer;
+                  font:11px/1.4 var(--mono);padding:4px 8px;}
+  .ins-ops button:hover{border-color:var(--accent-dim);}
+  .ins-ops button.on{border-color:#ff3b3b;color:#ff3b3b;}
+  .ins-ops button.danger:hover{border-color:#ff3b3b;color:#ff3b3b;}
+  .ins-ops input,.ins-ops select{background:var(--panel);
+                  border:1px solid var(--line);color:var(--ink);
+                  border-radius:4px;font:11px/1.4 var(--mono);padding:3px 6px;}
+  .ins-ops .why{flex:1 1 100%;}
+  .ins-ops .hint{flex:1 1 100%;color:var(--faint);font-size:10.5px;}
   /* 카드 안의 라벨은 «누르면 그리로 간다» — 배관에서 끝 노드로, 노드에서
      연결 배관으로. 표를 되짚지 않고 망을 따라 읽을 수 있어야 한다. */
   .ins-link{color:var(--accent);cursor:pointer;border-bottom:1px dotted var(--accent-dim);}

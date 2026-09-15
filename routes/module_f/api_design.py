@@ -450,7 +450,13 @@ def spot_index(got) -> dict:
     """
     net = (got or {}).get("kfp") or {}
     out = {}
+    # [§3-3] 사람이 쪼개 만든 조각은 원 조각의 board 쌍을 함께 쓴다 — 주소록
+    #   에서는 **뺀다**(`ov.build_index` 와 같은 이유: 저장된 값이 옆 조각으로
+    #   옮겨간다).
+    born = {str(x) for x in ((got or {}).get("ops_added") or {}).get("pipes") or ()}
     for pid, ref in ((got or {}).get("edge_ref") or {}).items():
+        if str(pid) in born:
+            continue
         try:
             a, b = int(ref[0]), int(ref[1])
         except (TypeError, ValueError, IndexError):
@@ -498,6 +504,63 @@ def _row_key(r):
     except (KeyError, TypeError, ValueError):
         return None
     return (min(a, b), max(a, b)), xyz
+
+
+# 화면에 보일 «무엇을 했나» 한 마디 — 메시지를 만드는 자리를 하나로 둔다.
+_OP_WORD = {"delete": "지웠습니다", "add_node": "노드를 더했습니다",
+            "add_equip": "기기를 더했습니다"}
+
+
+def _op_dry_run(sess, row):
+    """[§3-3-2] 저장하기 **전에** 지금 망에 한 번 돌려 본다 — (ok, 사유).
+
+    ★거절을 나중으로 미루지 않는다. 목록에 넣어 두고 「표 확정」에서 터뜨리면
+      사람은 단추를 누른 뒤에야 안 된다는 것을 알게 되고, 그때는 무엇 때문에
+      막혔는지 화면에 남아 있지 않다.
+
+    ★재는 것은 «지금 세션의 망» 이다. 앞선 위상 수정을 아직 «표 확정» 으로
+      반영하지 않았다면 그 망은 한 발 뒤에 있다 — 그 경우의 판정은 어림이고,
+      진짜 판정은 적용할 때 다시 난다(그때 못 한 것은 화면에 올라온다).
+    """
+    import copy
+
+    part = str((row.get("target") or [None])[0])
+    if part in ("sys", "mr"):
+        got = sess.get("merged")
+        if not got or got.get("combined") is None:
+            return True, None            # 아직 결합 전 — 적용할 때 판정한다
+        n, missed, _rep = ov.apply_ops_to_merge(copy.deepcopy(got), [row])
+        if missed:
+            return False, str(missed[0].get("why") or "적용할 수 없습니다.")
+        return bool(n), (None if n else "적용할 수 없습니다.")
+
+    d = sess.get("design") or {}
+    got = d.get("got")
+    es = sess.get("edit")
+    if not got or es is None:
+        return True, None                # 아직 표 확정 전 — 적용할 때 판정한다
+    n, missed, _rep = ov.apply_ops_to_kfp(
+        copy.deepcopy(got), es.board, [row])
+    if missed:
+        return False, str(missed[0].get("why") or "적용할 수 없습니다.")
+    return bool(n), (None if n else "적용할 수 없습니다.")
+
+
+def _tables_for_screen(tbl) -> dict:
+    """표 → 화면. **이름을 화면이 아는 것으로** 맞춘 사본 하나(§3-6).
+
+    바꾸는 것은 `bore_overrides` 의 키뿐이다 — 나머지 표는 이미 표 이름을
+    쓴다. 사본을 만드는 이유는, 세션에 든 표는 서버 쪽 주소(pid)를 그대로
+    들고 있어야 하기 때문이다(`apply_to_tables` 가 그것으로 원값을 찾는다).
+    """
+    d = tbl.as_dict()
+    lab = {str(k): str(v) for k, v
+           in (getattr(tbl, "pipe_labels", None) or {}).items()}
+    if lab and d.get("bore_overrides"):
+        d = dict(d)
+        d["bore_overrides"] = {lab.get(str(pid), str(pid)): rec
+                               for pid, rec in d["bore_overrides"].items()}
+    return d
 
 
 def register(app, *, UPLOAD_DIR):
@@ -707,6 +770,20 @@ def register(app, *, UPLOAD_DIR):
             if el_rows:
                 _n1, _m1, el_rep = ov.apply_to_kfp(got, es.board, el_rows)
                 el_missed.extend(_m1)
+            # ★★[§3-3-1] 적용 ★ — **값을 덮은 뒤, 표를 만들기 전에** 망의
+            #   모양을 고친다(삭제 → 노드 추가 → 기기 추가).
+            #
+            #   이 자리여야 ⑨ 가 선다: 여기서 고치면 04 의 표·`.sdf` 와 그
+            #   표가 흘러든 통합 `.sdf` 가 **함께** 바뀐다. 표가 선 뒤에
+            #   고치면 통합은 옛 망을 들고 가고, 두 파일이 다른 말을 한다.
+            #
+            #   ★목록을 비우면 원래 망으로 정확히 돌아온다 — 여기서 고치는
+            #     것은 이번 판의 `got` 이지 손질 정본이 아니다(§5 금지).
+            el_ops = ov.ensure_ops_loaded(sess)
+            ops_rep = {}
+            if el_ops:
+                _n3, _m3, ops_rep = ov.apply_ops_to_kfp(got, es.board, el_ops)
+                el_missed.extend(_m3)
             try:
                 tbl = build_design_tables(
                     got["kfp"], got["worst"], got["edge_ref"], texts,
@@ -786,6 +863,20 @@ def register(app, *, UPLOAD_DIR):
             #   표고 칸을 덮으므로, 그 뒤에 재면 **덮은 절점만 키를 잃는다**
             #   (실측: 표고를 4.321 로 바꾼 절점이 카드에서 사라졌다).
             #   순서를 여기로 둔다 — kfp 와 표가 아직 같은 말을 하는 순간이다.
+            # [§3-3-3] 사람이 더한 기기 — 배관 이름과 호칭경이 **여기서**
+            #   정해지므로 표가 선 뒤에 단다(등가길이도 그때 다시 푼다).
+            if ops_rep:
+                _ne = ov.apply_ops_to_tables(tbl, ops_rep, missed=el_missed)
+                if _ne:
+                    print(f"[수정] 기기 {_ne}행을 표에 달았습니다")
+                if ops_rep.get("heads_removed"):
+                    # D6 — 지운 헤드는 기준개수를 줄인다. 산출물이 스스로
+                    # 그 사실을 말해야 나중에 K 가 왜 그 수인지 읽힌다.
+                    tbl.meta.append(("사용자가 지운 헤드",
+                                     str(ops_rep["heads_removed"])))
+                if ops_rep.get("loop_pass"):
+                    tbl.meta.append(("고리 덕분에 통과한 삭제",
+                                     str(ops_rep["loop_pass"])))
             el_keys = ov.label_keys(got, es.board, tbl)
             if el_rows:
                 _n2, _m2 = ov.apply_to_tables(tbl, got, es.board, el_rows,
@@ -819,6 +910,12 @@ def register(app, *, UPLOAD_DIR):
             # 두 갈래를 한 자리에 합쳐 올린다 — 화면은 「적용 못 한 수정 n건」
             # 하나만 보면 된다(§3-4 · 저장소를 둘 두지 않는다는 규칙의 화면판).
             sess["ov_missed"] = list(fit_missed) + list(el_missed)
+            # 위상 수정을 파일에 맞춘다 — 값 수정과 **한 파일**이라, 값만
+            # 쓰면 위상이 지워진다(그 구멍을 `write_file(ops=…)` 이 막는다).
+            try:
+                ov.write_file(sess.get("key") or "design", el_rows, el_ops)
+            except OSError as exc:
+                print(f"[수정] ★위상 수정을 파일에 못 썼습니다 — {exc}")
             # 표는 메모리에만 — emit 을 눌러야 파일이 생긴다.
             # 탐침을 다시 돌리지 않는다 — 같은 잡이 위에서 이미 쟀다(117초).
             marks = _classify_excluded(sess, got, es.board, probe=probe)
@@ -1161,6 +1258,92 @@ def register(app, *, UPLOAD_DIR):
                         "fields": fields,
                         "missed": sess.get("ov_missed") or []})
 
+    # ─────────────────────────────── 위상 수정 (§3-3) — 라우트는 **하나**
+    @app.post("/api/module-f/element/op")
+    @route_session(post=True)
+    def module_f_element_op(sess, body):
+        """망의 «모양» 을 고친다 — 삭제 · 노드 추가 · 기기 추가.
+
+        body: {sid, op, target, payload, reason}   더하기
+              {sid, remove: <id>}                  지우기
+
+        ★어느 화면에서 눌렀든 **같은 목록**에 쌓인다(⑨). 회랑 요소는 04 의
+          「표 확정」에서, 계통도·기계실 요소는 통합의 「결합」에서 적용된다
+          (§3-3-1 · D8) — 그래서 두 산출이 같은 망을 말한다.
+
+        ★거절 조건(§3-3-2)은 **여기서** 본다. 저장해 두고 나중에 터뜨리면
+          사람은 무엇이 잘못됐는지 그때 알게 된다. 지금 망에 대고 한 번
+          돌려 보고, 안 되면 이유를 그대로 돌려준다.
+        """
+        ops = ov.ensure_ops_loaded(sess)
+
+        if body.get("remove"):
+            rid = str(body.get("remove"))
+            before = len(ops)
+            ops = ov.drop_op(ops, rid)
+            if len(ops) == before:
+                return _fail("지울 수정이 없습니다.", 404)
+            msg = "위상 수정을 지웠습니다 — 다시 계산하면 원래 망으로 돌아옵니다."
+        else:
+            op = str(body.get("op") or "").strip()
+            if op not in ov.OP_KINDS:
+                return _fail(f"모르는 위상 수정입니다: {op}")
+            target = ov.key_from_json(body.get("target"))
+            if target is None:
+                return _fail("요소를 가리키는 키를 읽지 못했습니다.")
+            reason = str(body.get("reason") or "").strip()
+            if not reason:
+                return _fail("사유가 필요합니다 — 왜 망을 고치는지 적어 주세요.")
+            if len(reason) > 200:
+                return _fail("사유가 너무 깁니다 (200자).")
+            if len(ops) >= 500:
+                return _fail("위상 수정이 너무 많습니다 (최대 500).")
+            payload = body.get("payload") or {}
+            if not isinstance(payload, dict):
+                return _fail("payload 를 읽지 못했습니다.")
+            op_id = ov.new_op_id(ops)
+            row = {"id": op_id, "op": op, "target": ov.key_to_json(target),
+                   "payload": payload, "reason": reason, "at": _now_stamp()}
+            ok, why = _op_dry_run(sess, row)
+            if not ok:
+                return _fail(why)
+            ops = ov.put_op(ops, op_id, op, target, payload,
+                            reason=reason, at=row["at"])
+            msg = (f"{_OP_WORD.get(op, op)} — "
+                   f"{_rerun_word(str(target[0]))} 을 다시 눌러야 "
+                   f"그림과 파일에 반영됩니다.")
+
+        ov.save_ops(sess, ops)
+        saved = None
+        try:
+            saved = ov.write_file(sess.get("key") or "design",
+                                  ov.ensure_loaded(sess), ops)
+        except OSError as exc:
+            print(f"[수정] ★파일에 쓰지 못했습니다 — {exc}")
+            msg += " (다만 파일에 쓰지 못했습니다 — 서버를 다시 켜면 사라집니다)"
+        return jsonify({
+            "ok": True, "ops": ops, "count": len(ops),
+            "file": os.path.basename(saved) if saved else None,
+            "needs_rebuild": bool(sess.get("design")),
+            "message": msg,
+        })
+
+    @app.get("/api/module-f/element/op")
+    @route_session()
+    def module_f_element_op_get(sess, body):
+        """지금 쌓인 위상 수정 + **고를 수 있는 기기 목록**(§3-3-3).
+
+        목록을 화면에 박지 않는 이유는 §18 의 부속 종류와 같다 — 두 벌이면
+        한쪽만 고쳐지는 날이 오고, 그날 등가길이가 조용히 0 이 된다.
+        """
+        # ★못 한 것은 **이미 있는 두 자리**에서 읽는다. 위상 전용 목록을 새로
+        #   두면 화면이 「적용 못 한 수정」을 두 곳에서 읽어야 하고, 그러면
+        #   한쪽을 잊는 날이 온다(값 수정에서 이미 한 번 합쳤다).
+        return jsonify({"ok": True, "ops": ov.ensure_ops_loaded(sess),
+                        "equip": ov.equip_catalog(),
+                        "missed": (sess.get("ov_missed") or [])
+                        + (sess.get("merge_missed") or [])})
+
     @app.get("/api/module-f/design/preview")
     @route_session()
     def module_f_design_preview(sess, body):
@@ -1328,18 +1511,28 @@ def register(app, *, UPLOAD_DIR):
                     rec[fld] = m4.get(fld)
 
         _pdata = (got.get("kfp") or {}).get("pipe_data") or {}
+        # ★[§3-6] 표의 이름(P1·P2…)과 kfp 의 이름(P36·P85…)은 **다르다.**
+        #   `ref_of`·`_pdata`·`load_of` 는 셋 다 kfp 이름이 주소다 — 표
+        #   이름을 그대로 넣으면 조용히 **다른 배관의** 거칠기·등가길이·담당
+        #   헤드 수가 카드에 뜬다. 두 이름이 같은 글자꼴이라 빈 칸도 안 난다.
+        _pid_of = {str(lab): str(pid) for pid, lab
+                   in (getattr(tbl, "pipe_labels", None) or {}).items()}
+
+        def _kp(lab):
+            return _pid_of.get(str(lab), str(lab))
+
         pipes = [{"label": str(r.get("label")),
                   "a": str(r.get("in")), "b": str(r.get("out")),
                   "dia": r.get("dia"), "len_m": r.get("length"),
                   "src": r.get("dia_src"),
-                  "ref": ref_of.get(str(r.get("label"))),
+                  "ref": ref_of.get(_kp(r.get("label"))),
                   "key": key_of_pipe.get(str(r.get("label"))),
                   # 표에 칸이 없는 kfp 메타 — 카드가 지금 값으로 보인다.
-                  "roughness_mm": (_pdata.get(str(r.get("label"))) or {})
+                  "roughness_mm": (_pdata.get(_kp(r.get("label"))) or {})
                                   .get("roughness_mm"),
-                  "equivalent_length": (_pdata.get(str(r.get("label"))) or {})
+                  "equivalent_length": (_pdata.get(_kp(r.get("label"))) or {})
                                        .get("equivalent_length"),
-                  "load": load_of.get(str(r.get("label")), 0)}
+                  "load": load_of.get(_kp(r.get("label")), 0)}
                  for r in view.pipes]
         return jsonify({
             "ok": True, "settings": cfg,
@@ -1351,10 +1544,19 @@ def register(app, *, UPLOAD_DIR):
                      "worst_path_m": round(worst_path_m, 2),
                      # [F-10e] 밑그림 변환 — board mm 를 이 화면에 얹는 식.
                      "underlay": _underlay_xf(sess, view, stood, cfg)},
-            "tables": tbl.as_dict(),        # 저장될 값 그대로 (F-3 표 4종)
+            # ★[§3-6] 화면이 쓰는 이름으로 **한 번** 바꿔서 보낸다.
+            #   `bore_overrides` 의 키는 kfp 배관 이름(P36)이고 화면이 아는
+            #   것은 표 이름(P7)이다 — 그대로 보내면 「직접 입력 80A」가
+            #   엉뚱한 줄에 붙거나 아무 데도 안 붙는다. 서버 쪽 주소는
+            #   pid 그대로 둔다(`apply_to_tables` 가 그것으로 원값을 찾는다).
+            "tables": _tables_for_screen(tbl),
             # [요소속성 수정카드] 사람이 덮은 값 — 카드가 원값·사유·시각을
             #   나란히 보인다(규칙 5). 못 옮긴 것은 「적용 못 한 수정」으로.
             "overrides": ov.ensure_loaded(sess),
+            # [§3-3] 위상 수정도 **같은 걸음에** 싣는다 — 값과 나란히 보여야
+            #   「이 배관이 왜 없지」를 한 자리에서 찾는다. 따로 부르게 두면
+            #   화면이 그 호출을 잊는 날 목록이 반만 뜬다.
+            "ops": ov.ensure_ops_loaded(sess),
             # ★어느 차선으로 만든 표인가. 자동(A) 차선은 board 역참조가 아예
             #   없어 **어느 요소도** 안정 키를 못 만든다 — 그때 요소마다
             #   「엔진이 만든 자리라…」라고 말하면 거짓이다. 차선을 말한다.

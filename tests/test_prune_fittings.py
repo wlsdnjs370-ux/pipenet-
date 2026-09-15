@@ -352,13 +352,21 @@ def test_실도면에서_F3_F4_F6_가_선다():
                              "Tee(Run)"}, kfp_types
 
         # F6 · F4 — 관경과 등가길이가 표와 같다 (D5)
+        #
+        # ★[§3-6] 표의 배관 이름은 물 흐르는 순서로 다시 매겨진다(P1·P2…).
+        #   kfp 는 전체망 시절의 이름을 그대로 들고 있고(P36·P85…), 두 이름은
+        #   **같은 글자꼴**이다 — 그냥 맞대면 「다른 배관망」처럼 보이고, 더
+        #   나쁘게는 우연히 겹친 이름끼리 맞아 **틀린 값을 통과**시킨다.
+        #   표가 곁들여 주는 다리(`pipe_labels`)로 옮겨 맞댄다.
+        lab = {str(k): str(v) for k, v in (tbl.pipe_labels or {}).items()}
         dia = {str(r["label"]): int(r["dia"] or 0) for r in tbl.pipes}
         eq = {str(r["label"]): float(r.get("eq_len") or 0) for r in tbl.pipes}
-        assert set(map(str, pd)) == set(dia), "표와 .kfp 가 다른 배관망이다"
+        assert {lab.get(str(p), str(p)) for p in pd} == set(dia),             "표와 .kfp 가 다른 배관망이다"
         for pid, rec in pd.items():
-            assert int(rec.get("nominal_mm") or 0) == dia[str(pid)], pid
+            k2 = lab.get(str(pid), str(pid))
+            assert int(rec.get("nominal_mm") or 0) == dia[k2], pid
             assert abs(float(rec.get("equivalent_length") or 0)
-                       - eq[str(pid)]) <= 0.001, pid
+                       - eq[k2]) <= 0.001, pid
 
         # 새 어휘가 실제로 나왔다 — 「아무것도 안 바뀐 통과」를 막는다
         kinds = {str(r["type"]) for r in tbl.fittings}

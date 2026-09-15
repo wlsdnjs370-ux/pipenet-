@@ -574,6 +574,23 @@
     "rule": "/api/module-f/edit/worst-clear"
   },
   {
+    "endpoint": "module_f_element_op",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/element/op"
+  },
+  {
+    "endpoint": "module_f_element_op_get",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/element/op"
+  },
+  {
     "endpoint": "module_f_job",
     "methods": [
       "GET",

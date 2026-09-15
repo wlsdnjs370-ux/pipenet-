@@ -185,7 +185,7 @@ def wet_from_sources(pts, edges, user_sources):
     return reach, wet, list(dict.fromkeys(seed))
 
 
-def prune_dead_pipes(pts, edges, head_vids, seed):
+def prune_dead_pipes(pts, edges, head_vids, seed, *, keep_head_stub=True):
     """헤드로 물을 안 나르는 간선 삭제. 헤드 끝배관 1단은 보호.
 
     옛 water_cleanup 부하 셈과 같다: 급수원→헤드 최단경로 간선만 부하>0.
@@ -245,8 +245,12 @@ def prune_dead_pipes(pts, edges, head_vids, seed):
                 kept_sole += 1
 
     # 인라인 헤드: 막다른 쪽(load=0) 간선이 있으면 헤드에 붙은 것 1개만 보호
+    #
+    # ★[가지치기·부속판정 §3-1 · D3] 회랑에서는 이 보호를 **끈다**. 보호가
+    #   남긴 가로 스텁이 표와 아이소에 «굳이 없어도 되는 잔류» 로 달라붙는다
+    #   (그림 16 ② 의 빨간 선). 전체망은 기본값이라 종전 그대로다.
     kept_stub = 0
-    for h in head_vids:
+    for h in (head_vids if keep_head_stub else ()):
         if h in terminal:
             continue
         dead_inc = []
@@ -570,7 +574,7 @@ def _arm_shape_map(pts, remap, snap_edges, head_vid, used, xform,
 
 def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
          ups=None, head_kinds=None, user_sources=None, selected_source=None,
-         ho=None, edge_len_mm=None, grid_snap=True):
+         ho=None, edge_len_mm=None, grid_snap=True, keep_head_stub=True):
     if write and out is None:
         out = default_out(key)
     if not write:
@@ -762,7 +766,7 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
 
     before_m = fw.mlen(pts, edges)
     edges, dead, terminal, kept_sole, n_path, kept_stub = prune_dead_pipes(
-        pts, edges, set(head_vid), seed)
+        pts, edges, set(head_vid), seed, keep_head_stub=keep_head_stub)
     print(f"막다른관 삭제: {len(dead)}개 · {fw.mlen(pts, dead):.1f}m"
           f" (남김 {len(edges)} · {fw.mlen(pts, edges):.1f}m"
           f" / 직전 {before_m:.1f}m)"

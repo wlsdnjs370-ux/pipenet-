@@ -728,6 +728,12 @@ def register(app, *, UPLOAD_DIR):
                     # [신축배관 접기] 길이를 선언에서 받은 배관 — 표에 표시만
                     #   한다(§5 기준 8: 검사가 그 부류를 갈라 세도록).
                     declared_pipes=got.get("declared_pipes"),
+                    # [가지치기·부속판정 §3-2] 부속 «종류» 를 정하는 차수는
+                    #   가지치기 **전** 배관망 G 의 것이다. 가지가 지워져
+                    #   차수가 떨어진 자리에 엘보를 달면 분류티 3.0 m 자리에
+                    #   1.5 m 가 실린다(50A 기준).
+                    phys=got.get("phys"),
+                    interior_junctions=got.get("interior_junctions"),
                     # 기준 헤드(최원단)를 kfp 노드로 되짚는 데 쓴다 — board mm
                     # 를 kfp m 로 옮기려면 이 값이 있어야 한다. 없으면 표는
                     # 종전처럼 「기준 헤드 노드 = ?」로 남는다(추측하지 않는다).

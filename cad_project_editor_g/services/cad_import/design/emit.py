@@ -103,10 +103,17 @@ def tables_to_network(tables, *, project_title: str):
             pass
         net.nodes[lab] = node
 
+    # [가지치기·부속판정 §3-5] 표기는 **사전** 이 정한다. PIPENET 에 없는
+    #   종류(직류티·직류 크로스)는 `null` 이라 그 행을 아예 안 싣는다 —
+    #   `tee` 로 바꿔 내면 직류티가 분류티 손실(≈10배)로 계산된다.
+    from services.cad_import.design.fitting import fitting_label
     fit_by_pipe: dict = {}
     for f in tables.fittings:
+        lab = fitting_label(str(f["type"]), "sdf")
+        if lab is None:
+            continue
         fit_by_pipe.setdefault(str(f["pipe"]), []).append(
-            m.Fitting(fitting_type=str(f["type"]), count=int(f.get("count", 1))))
+            m.Fitting(fitting_type=str(lab), count=int(f.get("count", 1))))
 
     eq_by_pipe: dict = {}
     for e in tables.equipment:
@@ -210,6 +217,81 @@ def display_tables(tables, *, iso: bool = False, iso_z_scale: float = 1.0,
                                units_per_m=scale * 1000.0)
         stood["loose"] = loose
     return view, stood
+
+
+def emit_design_kfp(tables, got, out_path):
+    """[가지치기·부속판정 §3-5 · D5] 「표 → .kfp」 — `emit_design_sdf` 와 나란히.
+
+    지금까지 최불리 `.kfp` 는 제한 전개를 **한 번 더** 돌려 따로 만들었다.
+    같은 K 인데 `.sdf`(표에서 남)와 다른 망이 나왔다 — 실측(대명동 K=30):
+    배관 347 vs 242 · 관경 전부 기본값 25A · 부속 0건 · 등가길이 0.
+    이제 둘 다 **같은 표**에서 난다.
+
+    ★손대는 것은 배관의 다섯 칸뿐이다 — `fittings`(사전 라벨) ·
+      `equivalent_length` · `nominal_mm` · `diameter`(그 DN 의 내경) · `C`.
+      노드·좌표·길이·`type_id`·`fitting_id`(알람밸브)는 **그대로 둔다**.
+
+    등가길이는 배관표 ② 의 `eq_len` 칸에서 읽는다 — `build_fittings` 가 정한
+    그 값이다. 여기서 다시 더하지 않는다(정하는 자리가 둘이 되면 안 된다).
+    """
+    import json
+
+    from services.cad_import.design.fitting import fitting_label
+
+    kfp = _copy.deepcopy((got or {}).get("kfp") or {})
+    pipes = kfp.get("pipe_data") or {}
+
+    # 배관별 부속 목록 — 판정은 이미 났다. 여기서는 «표기» 만 한다.
+    by_pipe: dict = {}
+    for f in (getattr(tables, "fittings", None) or ()):
+        by_pipe.setdefault(str(f["pipe"]), []).extend(
+            [str(f["type"])] * int(f.get("count", 1) or 1))
+    # 호칭경 → 내경. planar 가 쓰는 **같은 표** 다(두 벌 금지).
+    inner: dict = {}
+    try:
+        from domain.pipe_sizing import pipe_specs_for_standard
+        from services.cad_import.convert.planar import OPT_PIPE_STD
+        from services.pipenet_import import _ensure_default_libraries
+        from editor_core import PipeEditor
+        ed = PipeEditor()
+        _ensure_default_libraries(ed)
+        for sp in pipe_specs_for_standard(ed.pipe_library, OPT_PIPE_STD):
+            inner[int(sp.nominal_mm)] = float(sp.inner_d_mm)
+    except Exception as exc:      # noqa: BLE001 — 내경을 못 얻어도 나머지는 싣는다
+        print(f"[G6] 내경표를 못 읽었습니다 — {type(exc).__name__}: {exc} "
+              f"(호칭경만 싣습니다)")
+
+    n_fit = 0
+    for row in (getattr(tables, "pipes", None) or ()):
+        pid = str(row.get("label"))
+        rec = pipes.get(pid)
+        if rec is None:
+            continue
+        labs = []
+        for kind in by_pipe.get(pid, ()):
+            lab = fitting_label(kind, "kfp")
+            if lab is not None:
+                labs.append(lab)
+        rec["fittings"] = labs
+        n_fit += len(labs)
+        if row.get("eq_len") is not None:
+            rec["equivalent_length"] = round(float(row["eq_len"]), 3)
+        dn = int(row.get("dia") or 0)
+        if dn:
+            rec["nominal_mm"] = dn
+            if dn in inner:
+                rec["diameter"] = inner[dn]
+        if row.get("c") is not None:
+            rec["C"] = float(row.get("c"))
+
+    if out_path:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(kfp, f, ensure_ascii=False, indent=2)
+    print(f"[G6] KFP(표에서) {os.path.basename(str(out_path))} · "
+          f"노드 {len(kfp.get('nodes_meta_runtime') or {})} · "
+          f"배관 {len(pipes)} · 부속 {n_fit}건")
+    return {"ok": True, "path": str(out_path) if out_path else None,
+            "kfp": kfp, "fittings": n_fit}
 
 
 def emit_design_sdf(tables, out_path, *,

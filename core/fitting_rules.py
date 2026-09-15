@@ -43,6 +43,87 @@ ELBOW_45 = "elbow-45"
 ELBOW_90 = "elbow"
 TEE = "tee"
 
+# ── 직류티 · 십자 ────────────────────────────────────────────────────────
+# [가지치기·부속판정 §3-4 · 그림 16 규칙표] 판정 어휘에 «직류티» 가 없어서
+# 지금은 **부속 없음과 구별이 안 된다.** PIPENET 에는 그 항목이 없으니 `.sdf`
+# 에는 어차피 안 실리지만, K-Solver(.kfp)와 사람이 보는 부속표는 그 자리를
+# 「직류티」로 적을 수 있어야 한다 — 「부속이 없다」와 「직류티가 있다」는
+# 물리적으로 다른 말이다(그림 17 「빠진 것 하나」).
+#
+# 십자는 «판정 결과의 이름» 만 다르고 표기·등가길이는 티와 같다(D1).
+TEE_RUN = "tee-run"
+CROSS = "cross"
+CROSS_RUN = "cross-run"
+
+
+def snap_turn_deg(angle_deg: float) -> float:
+    """편향각 → 0° / 45° / 90° 중 **가장 가까운 것** (오너 2026-09-15).
+
+    분기의 직진/꺾임을 45° 한 자리에서 자르면 46° 와 89° 가 한 통에 들어간다 —
+    46° 는 45° 쪽에 훨씬 가까운데도 「꺾임」이 된다. 고를 수 있는 형상이 사실상
+    직선·45°·90° 셋뿐이므로(엘보와 같다), 경계도 그 셋의 **중점**에 둔다:
+
+        0 ─┬─ 22.5 ─┬─ 67.5 ─┬─ …
+           0°       45°      90°
+
+    ★엘보 규칙(`classify_elbow`)이 쓰는 그 경계다 — 22.5 · 67.5. 두 판정이
+      다른 자를 쓰면 「가지로는 분류됐는데 티는 안 달린」 조합이 생긴다.
+    """
+    a = abs(float(angle_deg))
+    if a <= ELBOW_STRAIGHT_MAX_DEG:
+        return 0.0
+    if a <= ELBOW_45_MAX_DEG:
+        return 45.0
+    return 90.0
+
+
+def tee_split(
+    node: tuple[float, float],
+    upstream: tuple[float, float] | None,
+    downstream: list[tuple[str, tuple[float, float]]],
+    *,
+    turn_tol_deg: float = TRUNK_TURN_TOL_DEG,
+) -> tuple[list[str], list[str], int]:
+    """분기 노드의 하류를 «꺾임» 과 «직진» 으로 **둘 다** 돌려준다.
+
+    `tee_fittings` 와 같은 자·같은 규칙이되 직진 갈래를 버리지 않는다.
+    단 하나 다른 점: 하류가 **1개여도 판정한다.**
+
+    ★왜 1개도 판정하나 — 갈래가 지워진 분기점이 바로 하류 1개짜리 분기점이다.
+      `tee_fittings` 는 그것을 「분기가 아니다」로 보고 빈 값을 돌려주는데,
+      그 자리에 티가 있었는지 없었는지는 **차수** 가 정한다(그림 16). 차수는
+      부르는 쪽이 `phys` 로 이미 가렸으므로, 여기서 다시 가리면 안 된다.
+
+    Returns:
+        (꺾인 갈래 라벨, 직진 갈래 라벨, 판정 불가 건수)
+
+        상류를 모르면 어느 갈래가 직진인지 가릴 수 없다 — `tee_fittings` 와
+        같이 전부 꺾임으로 두고(부속을 없애는 쪽이 비보수측이라) 판정 불가로
+        세어 리포트에 드러낸다. 직진이 둘 이상이면 spine 이 갈라진 것이라
+        역시 가릴 수 없다 — 전부 꺾임 + 판정 불가.
+    """
+    labels = [lab for lab, _pos in downstream]
+    if not downstream:
+        return [], [], 0
+    if upstream is None:
+        return labels, [], len(labels)
+
+    inflow = bearing_deg(upstream, node)
+    turning: list[str] = []
+    straight: list[str] = []
+    for lab, pos in downstream:
+        # ★잰 각을 0/45/90 으로 **먼저 스냅**하고 그 값으로 가른다(오너
+        #   2026-09-15). 46° 를 90° 와 한 통에 넣지 않는다 — 실측(대명동
+        #   K=30)으로 22.5~67.5° 구간에 20곳이 있었다.
+        d = snap_turn_deg(deflection_deg(bearing_deg(node, pos), inflow))
+        if d <= turn_tol_deg:
+            straight.append(lab)
+        else:
+            turning.append(lab)
+    if len(straight) > 1:
+        return labels, [], len(straight)
+    return turning, straight, 0
+
 
 def bearing_deg(origin: tuple[float, float], target: tuple[float, float]) -> float:
     """origin 에서 target 을 볼 때의 방위각(도, -180~180)."""

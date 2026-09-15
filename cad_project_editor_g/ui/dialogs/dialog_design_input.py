@@ -327,6 +327,11 @@ class DesignInputDialog(QDialog):
                 valve_nodes=av_nodes,
                 default_schedule=sched,
                 tree_loads=got.get("tree_loads"),
+                # [가지치기·부속판정 §3-2] 웹과 **같은 차수**를 넘긴다. 한쪽만
+                #   넘기면 같은 회랑인데 두 화면이 다른 부속표를 낸다 —
+                #   실측으로 그랬다(웹 58,494B vs 데스크톱 52,375B).
+                phys=got.get("phys"),
+                interior_junctions=got.get("interior_junctions"),
                 origin_mm=got.get("origin_mm"))
             return {"ok": True, "got": got, "tables": tbl}
 

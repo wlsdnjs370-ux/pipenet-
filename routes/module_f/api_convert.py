@@ -83,7 +83,8 @@ def register(app, *, UPLOAD_DIR):
                 "ok": False, "code": "worst_required",
                 "message": "최불리 선정이 아직입니다 — 앞 단계 «손질» 에서 "
                            "「최불리 선정」을 먼저 누르세요."})
-        if outputs["worst_sdf"] and not sess.get("design"):
+        if (outputs["worst_sdf"] or outputs["worst_kfp"]) and \
+                not sess.get("design"):
             return jsonify({
                 "ok": False, "code": "worst_required",
                 "message": "수리계산 입력 표가 아직입니다 — 앞 단계 «수리계산» "
@@ -171,24 +172,20 @@ def register(app, *, UPLOAD_DIR):
                       f"{summary['full']['bytes']:,} bytes")
 
             if outputs["worst_kfp"]:
-                payload, err = convert_one(worst)
-                if err:
-                    return err
+                # ★[가지치기·부속판정 §3-5 · D5] **표의 망**에서 낸다.
+                #
+                #   종전에는 여기서 제한 전개를 한 번 더 돌렸다 —— 같은 K 인데
+                #   `.sdf`(표에서 남)와 다른 망이 나왔다. 실측(대명동 K=30):
+                #   배관 347 vs 242 · 관경 전부 기본값 25A · 부속 0건 ·
+                #   등가길이 0. 이제 둘이 한 표에서 난다.
+                from services.cad_import.design.emit import emit_design_kfp
+                d_ = sess.get("design") or {}
                 n_k = len((worst or {}).get("heads") or [])
-                print(f"[변환] 최불리 K{n_k} — 수직 전개 후 .kfp 를 씁니다…")
-                # 파일명으로 전체망본과 구분한다 — 같은 이름이면 어느 쪽인지
-                # 열어 보기 전엔 모른다.
+                print(f"[변환] 최불리 K{n_k} — 표의 망으로 .kfp 를 씁니다…")
                 out_path = out_dir / f"{sess['id']}_최불리K{n_k}.kfp"
-                res = convert_to_kfp(payload, str(out_path),
-                                     **dto_to_convert_kwargs(merged))
-                if not res["ok"]:
-                    return {"ok": False, "blockers": list(res["blockers"]),
-                            "diagnostics":
-                            list(res.get("diagnostics") or [])}
+                res = emit_design_kfp(d_["tables"], d_["got"], str(out_path))
                 kfp_w = res["kfp"]
                 sess["worst_kfp_path"] = str(out_path)
-                if not stats:
-                    stats = dict(res.get("stats") or {})
                 summary["worst"] = {
                     "k": n_k,
                     "nodes": len(kfp_w.get("nodes_meta_runtime") or {}),

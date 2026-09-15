@@ -194,6 +194,159 @@ def apply_vertical(payload, built, *, convert_kwargs=None):
     return r["kfp"], None
 
 
+def board_cover(pts, adj_G, bi, bj, *, tol_deg=25.0, limit=64):
+    """board 절점 bi → bj 를 **가장 곧게** 잇는 조각의 노드열 (§3-3).
+
+    회랑의 평면 배관 하나는 board 간선 여러 개를 덮는다(일직선 중간 노드가
+    병합됐기 때문이다). 그 «덮은 조각» 을 되짚어야 ⑴ 그 안에 갈래가 있었는지
+    (D6) ⑵ 사슬 C2 의 길이 합을 알 수 있다.
+
+    bi 에서 출발해, 현재 노드의 이웃 중 **지금 가던 방향에서 가장 덜 꺾이는**
+    이웃을 따라 bj 까지 걷는다. 곧은 이웃이 없거나 bj 에 못 닿으면 `None` —
+    **지어내지 않는다**(부르는 쪽이 「cover 실패」로 센다).
+
+    ★두 벌을 두지 않는다 — 사슬 지시서 C2 의 「그 배관이 덮는 board 조각들의
+      길이 합」도 이 함수를 쓴다.
+    """
+    if bi == bj:
+        return [bi]
+    prev, cur, path = None, int(bi), [int(bi)]
+    for _ in range(limit):
+        nbrs = [n for n in adj_G.get(cur, ()) if n != prev]
+        if not nbrs:
+            return None
+        if prev is None:
+            # 첫 걸음 — bj 쪽을 보는 이웃을 고른다.
+            aim = math.degrees(math.atan2(pts[bj][1] - pts[cur][1],
+                                          pts[bj][0] - pts[cur][0]))
+        else:
+            aim = math.degrees(math.atan2(pts[cur][1] - pts[prev][1],
+                                          pts[cur][0] - pts[prev][0]))
+        best, bang = None, None
+        for n in nbrs:
+            a = math.degrees(math.atan2(pts[n][1] - pts[cur][1],
+                                        pts[n][0] - pts[cur][0]))
+            d = abs((a - aim + 180.0) % 360.0 - 180.0)
+            if bang is None or d < bang:
+                best, bang = n, d
+        if best is None or bang > tol_deg:
+            return None
+        prev, cur = cur, int(best)
+        path.append(cur)
+        if cur == int(bj):
+            return path
+    return None
+
+
+def corridor_topology(limited, built, kfp):
+    """[§3-2] 부속 판정이 쓸 **물리 차수**와 **덮인 갈래 수**를 세어 넘긴다.
+
+    ★여기서 종류를 정하지 않는다(§5 금지) — 세어서 넘길 뿐이고, 어느 부속인지는
+      `build_fittings` 한 곳이 정한다.
+
+    `phys[nid]` = 지우기 **전** 배관망 G 에서 그 자리에 배관이 몇 개 붙어
+    있었나 + 전개가 만든 세로 토막 수. 지시서 §1-3 의 식이되 `deg_G` 를
+    **격자 칸 전체**로 센다:
+
+    ★`node_ref` 는 한 칸(격자 50mm)당 board 절점 **하나**만 적어 둔다
+      (`node_ref.setdefault(...)` · `used` 가 set 이라 어느 vid 가 적힐지도
+      임의다). 그 한 점의 차수는 «칸 전체» 의 차수가 아니다 — 티 둘이 한 칸에
+      들면 크로스 하나가 되는 그 자리다. 한 점으로만 세면 차수가 과소평가된다
+      (실측 대명동 K=30: 33개 노드에서 차수가 늘고 phys ≥ 4 가 14 → 20).
+
+    `interior_junctions[pid]` = 그 배관이 덮는 board 조각의 **내부** 노드 중
+    갈래가 있었던 것(deg_G ≥ 3)의 수 — 노드정리가 지운 분기점(D6).
+
+    반환 `{"phys", "interior_junctions", "cover_fail"}`.
+    """
+    from services.cad_import.convert.planar import GRID_M
+
+    pts = limited.get("pts") or []
+    edges_G = [(int(e[0]), int(e[1])) for e in (limited.get("edges") or ())]
+    adj_G: dict = {}
+    deg_G: dict = {}
+    for a, b in edges_G:
+        adj_G.setdefault(a, set()).add(b)
+        adj_G.setdefault(b, set()).add(a)
+        deg_G[a] = deg_G.get(a, 0) + 1
+        deg_G[b] = deg_G.get(b, 0) + 1
+
+    o = built.get("origin_mm") or (0.0, 0.0)
+    minx, miny = float(o[0]), float(o[1])
+
+    def cell(vid):
+        try:
+            x, y = float(pts[vid][0]), float(pts[vid][1])
+        except (IndexError, TypeError, ValueError):
+            return None
+        mx = (x - minx) / 1000.0 + 1.0
+        my = (y - miny) / 1000.0 + 1.0
+        return (round(round(mx / GRID_M) * GRID_M, 3),
+                round(round(my / GRID_M) * GRID_M, 3))
+
+    of_cell: dict = {}
+    cell_of: dict = {}
+    for vid in set(deg_G):
+        c = cell(vid)
+        if c is None:
+            continue
+        cell_of[vid] = c
+        of_cell.setdefault(c, set()).add(vid)
+    deg_cell = {}
+    for c, vids in of_cell.items():
+        n = 0
+        for a, b in edges_G:
+            if (a in vids) != (b in vids):
+                n += 1
+        deg_cell[c] = n
+
+    node_ref = {str(k): int(v) for k, v in (built.get("node_ref") or {}).items()}
+    eref = {str(k): v for k, v in (built.get("edge_ref") or {}).items()
+            if v is not None}
+    pipes = (kfp or {}).get("pipe_data") or {}
+
+    deg_kfp: dict = {}
+    n_vert: dict = {}
+    for pid, p in pipes.items():
+        s = p.get("start") or p.get("from")
+        e = p.get("end") or p.get("to")
+        if s is None or e is None:
+            continue
+        for x in (str(s), str(e)):
+            deg_kfp[x] = deg_kfp.get(x, 0) + 1
+            if str(pid) not in eref:
+                n_vert[x] = n_vert.get(x, 0) + 1
+
+    phys: dict = {}
+    for nid in ((kfp or {}).get("nodes_meta_runtime") or {}):
+        nid = str(nid)
+        vid = node_ref.get(nid)
+        if vid is None:
+            continue          # 전개가 만든 노드 — 종전 규칙(len(links))에 맡긴다
+        c = cell_of.get(vid)
+        dg = deg_cell.get(c, deg_G.get(vid, 0)) if c is not None \
+            else deg_G.get(vid, 0)
+        phys[nid] = max(dg + n_vert.get(nid, 0), deg_kfp.get(nid, 0))
+
+    interior: dict = {}
+    cover_fail = 0
+    for pid, ref in eref.items():
+        try:
+            bi, bj = int(ref[0]), int(ref[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        path = board_cover(pts, adj_G, bi, bj)
+        if path is None:
+            cover_fail += 1
+            continue
+        n = sum(1 for v in path[1:-1]
+                if deg_cell.get(cell_of.get(v), deg_G.get(v, 0)) >= 3)
+        if n:
+            interior[str(pid)] = n
+    return {"phys": phys, "interior_junctions": interior,
+            "cover_fail": cover_fail}
+
+
 def expand_worst(payload: dict, board, worst: dict, *,
                  selected_source=None, key: str | None = None,
                  convert_kwargs=None, vertical: bool = True) -> dict:
@@ -231,6 +384,17 @@ def expand_worst(payload: dict, board, worst: dict, *,
             #   노드 번호를 그대로 두므로 이 표의 키가 계속 유효하다.
             edge_len_mm=limited.get("edge_len_mm"),
             grid_snap=snap,
+            # ★[가지치기·부속판정 §3-1 · D3] 회랑에서만 끝배관 1단 보호를 끈다.
+            #   그 보호가 남긴 가로 스텁이 표와 아이소에 잔류로 달라붙는다.
+            #
+            #   실측으로 **팔은 안 생긴다** — 「스텁을 끄면 팔 없는 하향식이
+            #   팔 있는 하향식이 된다」는 §6-1 의 우려가 두 도면 모두에서
+            #   나타나지 않았다(대명동 세로토막 62→62 · B1F 33→33 · 노즐 30→30).
+            #   줄어든 것은 잔류뿐이다(대명동 6→1 · B1F 16→3).
+            #
+            #   `attachable_heads`·`ensure_planar`·`convert_to_kfp` 는 기본값
+            #   그대로라 전체망은 종전과 같다(§3-1).
+            keep_head_stub=False,
         )
 
     def _corridor_ok(b, want_heads):
@@ -367,10 +531,32 @@ def expand_worst(payload: dict, board, worst: dict, *,
               f"없습니다 — 관경은 담당 헤드 수로 정합니다.")
     print(f"[G2] 제한 전개 · 노드 {len(kfp.get('nodes_meta_runtime') or {})} · "
           f"배관 {len(pipes)} · 역참조 {len(edge_ref)}/{len(pipes)}")
+    # [가지치기·부속판정 §3-2] 부속 «종류» 의 주인은 손질 정본 G 다 — 여기서는
+    #   차수를 **세어 넘길 뿐** 이고, 종류를 정하는 곳은 `build_fittings` 하나다.
+    topo = corridor_topology(
+        {"pts": limited.get("pts"), "edges": limited.get("edges")},
+        {"node_ref": built.get("node_ref") or {}, "edge_ref": edge_ref,
+         "origin_mm": built.get("origin_mm")}, kfp)
+    if topo["cover_fail"]:
+        print(f"[G2] 덮음 경로를 못 되짚은 배관 {topo['cover_fail']}개 — "
+              f"그 자리의 «지워진 갈래» 라벨(D6)만 빠집니다(판정은 그대로).")
+    _deg = {}
+    for _pr in pipes.values():
+        for _x in (_pr.get("start") or _pr.get("from"),
+                   _pr.get("end") or _pr.get("to")):
+            if _x is not None:
+                _deg[str(_x)] = _deg.get(str(_x), 0) + 1
+    _n_lost = sum(1 for nid, p in topo["phys"].items()
+                  if p >= 3 and _deg.get(nid, 0) == 2)
+    print(f"[G2] 물리 차수 · phys {len(topo['phys'])}개 · 갈래가 지워진 분기점 "
+          f"{_n_lost}개 · 덮인 분기점 {sum(topo['interior_junctions'].values())}건")
     return {
         "ok": True,
         "kfp": kfp,
         "edge_ref": edge_ref,
+        # [가지치기·부속판정 §3-2] 순수 추가 — 기존 키는 그대로다.
+        "phys": topo["phys"],
+        "interior_junctions": topo["interior_junctions"],
         "node_ref": built.get("node_ref") or {},
         "uncovered_pipes": uncovered,
         "tree_loads": loads_by_pipe,

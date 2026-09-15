@@ -1,0 +1,14 @@
+{
+  "format": "kfp",
+  "schema": "4.0-NFPA13-EQL",
+  "map": {
+    "elbow": "Elbow",
+    "elbow-45": "Elbow 45",
+    "tee": "Tee(Branch)",
+    "cross": "Tee(Branch)",
+    "tee-run": "Tee(Run)",
+    "cross-run": "Tee(Run)",
+    "none": null
+  },
+  "note": "라벨은 K-Solver 레퍼런스 .kfp(1-1.업무시설_201동_28F) 의 표기 — kfp_sdf_converter.py 의 FITTING_DISPLAY_MAP 이 그 파일에서 확인한 값이다. equivalent_length 는 배관별 숫자(m) = 표의 부속 등가길이 합이고, resolve_eq_len 이 정한 값을 그대로 싣는다(여기에 숫자를 적지 말 것). 직류티는 «있다» 고 적되 값은 0 이다 — 규칙이 정한 0 이지 미해결이 아니다."
+}

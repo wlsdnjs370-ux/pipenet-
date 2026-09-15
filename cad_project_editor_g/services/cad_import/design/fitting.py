@@ -34,6 +34,16 @@ FITTING_LIB_ID = {
     "elbow": "ELBOW_90_STD",
     "tee": "TEE_BRANCH",
     "alarm_valve": "VALVE_ALARM",
+    # [가지치기·부속판정 §3-4] 십자는 판정 결과의 **이름만** 다르고 등가길이는
+    # 티와 같다(D1 · 그림 16 표 셋째 줄).
+    "cross": "TEE_BRANCH",
+    # ★직류티·직류 크로스는 id 가 **없다** — 「라이브러리에 없다」가 아니라
+    #   「값이 0 이라고 규칙이 정했다」다. 둘을 같은 얼굴로 두면 미해결 목록이
+    #   영원히 안 비워진다(현업: 직류티는 수리계산에 입력하지 않는다 —
+    #   `fitting_rules` 머리말). `resolve_eq_len` 이 이 None 을 보고 (0.0, "규칙")
+    #   을 돌려준다.
+    "tee-run": None,
+    "cross-run": None,
 }
 
 
@@ -63,6 +73,48 @@ def load_equivalent_lengths(path: Path | None = None) -> dict:
                 continue
         out[item.get("id")] = table
     return out
+
+
+# ── [가지치기·부속판정 §3-5] 두 사전 — 표기는 **파일** 이 정한다 ──────────
+#
+# 판정은 한 벌(`build_fittings`), 표기는 두 벌(.sdf · .kfp). PIPENET 은 직류티를
+# «말할 수 없고»(어휘가 없다) K-Solver 는 «말할 수 있다»(숫자니까) — 같은 물리
+# 부속이 한쪽에선 사라지고 한쪽에선 0 이 된다. 그래서 각자의 규칙이 필요하다
+# (그림 17).
+#
+# ★사전은 **라벨만** 갖는다. 등가길이 숫자와 라이브러리 id 는 `FITTING_LIB_ID`·
+#   `resolve_eq_len` 한 곳이다 — 주인을 둘 두지 않는다.
+_DICT_CACHE: dict = {}
+
+
+def load_fitting_dict(fmt: str) -> dict:
+    """`fittings_dict_{fmt}.json` — 한 번 읽고 캐시한다.
+
+    `fmt` 는 `"sdf"` 또는 `"kfp"`.
+    """
+    fmt = str(fmt).lower()
+    hit = _DICT_CACHE.get(fmt)
+    if hit is not None:
+        return hit
+    p = _G_ROOT / f"fittings_dict_{fmt}.json"
+    data = json.loads(p.read_text(encoding="utf-8"))
+    _DICT_CACHE[fmt] = data
+    return data
+
+
+def fitting_label(kind: str, fmt: str):
+    """판정 어휘 → 그 형식의 표기. `None` 이면 «그 형식엔 안 싣는다».
+
+    ★사전에 **없는** 종류가 오면 던진다 — 조용히 빠뜨리지 않는다. 새 어휘를
+      만들고 사전에 안 적으면 그 부속이 산출에서 소리 없이 사라진다.
+    """
+    m = load_fitting_dict(fmt).get("map") or {}
+    k = str(kind)
+    if k not in m:
+        raise KeyError(
+            f"부속 사전({fmt})에 «{k}» 가 없습니다 — "
+            f"cad_project_editor_g/fittings_dict_{fmt}.json 에 적어 주세요.")
+    return m[k]
 
 
 def equivalent_length_m(lib: dict, kind: str, dia_mm: int):
@@ -103,6 +155,11 @@ def resolve_eq_len(kind: str, dia_mm, *, lib=None, ov_eq=None):
       알람밸브 손실은 영영 0 이었다(라이브러리의 VALVE_ALARM 은 호칭경 전 칸이
       null — 「사용자 직접 입력 필요」). 채울 자리가 둘이면 하나는 잊힌다.
     """
+    # ★[§3-4 6] 어휘에 **있되 id 가 None** 인 종류 — 직류티·직류 크로스.
+    #   라이브러리를 보지 않고 0 을 돌려준다. 이것은 «값을 모른다»(미해결)가
+    #   아니라 «값이 0 이라고 규칙이 정했다» 다. 호칭경을 몰라도 0 이다.
+    if str(kind) in FITTING_LIB_ID and FITTING_LIB_ID[str(kind)] is None:
+        return 0.0, "규칙"
     if dia_mm is None:
         return None, None
     try:
@@ -146,7 +203,8 @@ def _is_vertical(a, b) -> bool:
 
 
 def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
-                   node_z=None, overrides=None) -> dict:
+                   node_z=None, overrides=None,
+                   phys=None, interior_junctions=None) -> dict:
     """배관마다 부속 목록과 등가길이 합.
 
     `net`     : 제한 전개 kfp dict
@@ -186,6 +244,15 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
     pipes = (net or {}).get("pipe_data") or {}
     parents = parents or {}
     node_z = node_z or {}
+    # [§3-4 1] `phys` 가 없으면 **종전과 동일하게** 동작한다 — 그때는 지금
+    #   차수(`len(links)`)가 그대로 자다(전체망·다른 호출자 보호).
+    _phys = {str(kk): int(vv) for kk, vv in (phys or {}).items()}
+    _interior = {str(kk): int(vv) for kk, vv in (interior_junctions or {}).items()}
+    # ★새 규칙은 **`phys` 를 받았을 때만** 켜진다. 「지금 차수」로도 돌아가게
+    #   두면 전체망·다른 호출자가 조용히 새 어휘를 받는다 — 실측으로 그랬다:
+    #   `phys` 없이 불렀는데 `tee-run` 32건이 생기고 `tee` 가 34 → 36 이 됐다.
+    #   문이 하나여야 한다.
+    _new_rule = bool(_phys)
 
     # 사람이 채운 값 — 찾기 쉬운 표로 바꿔 둔다. 값이 숫자가 아니거나 칸이
     # 비면 «없는 것» 으로 본다: 잘못 넣은 값을 조용히 계산에 넣지 않는다.
@@ -238,7 +305,14 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
         here3 = at(nid)
         up3 = at(up) if up else None
 
-        if len(links) == 2 and up3 is not None and here3 is not None:
+        # ★[가지치기·부속판정 §3-4] 관통이냐 분기냐를 **지금 차수** 가 아니라
+        #   «지우기 전 차수»(phys)로 가른다. 가지치기는 계산 범위를 좁히는
+        #   일이지 배관을 뜯어내는 일이 아니다 — 지워진 갈래의 티는 건물에
+        #   그대로 있다(그림 16). `phys` 가 없으면 종전과 **한 글자도 같게**
+        #   동작한다(전체망·다른 호출자 보호 · §3-4 1).
+        p_here = int(_phys.get(nid, len(links))) if _phys else len(links)
+
+        if p_here == 2 and len(links) == 2 and up3 is not None                 and here3 is not None:
             # 관통 — 꺾였으면 엘보 1개. 어느 배관에 달아도 손실은 같으므로
             # 하류 쪽(부모가 아닌 쪽)에 단다.
             downs = [(pid, o) for pid, o in links if o != up]
@@ -282,8 +356,8 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
                         counts[k] = counts.get(k, 0) + 1
             continue
 
-        if len(links) >= 3:
-            # 분기 — 직류티는 계상하지 않는다(fitting_rules 가 가린다).
+        if p_here >= 3:
+            # 분기 — 꺾인 갈래는 분류티, 직진 갈래는 **직류티**(종전에는 버렸다).
             downs = [(pid, o) for pid, o in links if o != up]
             # ★위아래로 갈라지는 갈래는 평면에서 «같은 점» 이라 방위를 잴 수
             #   없다. 그러나 가로 본관에서 세로로 빠지는 것은 언제나 분류티다 —
@@ -295,12 +369,21 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
                     vert.append(pid)
                 elif node_xy.get(o) is not None:
                     flat_downs.append((pid, node_xy.get(o)))
+            # 십자(phys ≥ 4)는 이름만 다르고 규칙은 티와 같다(D1).
+            _TEE = fr.CROSS if (_new_rule and p_here >= 4) else fr.TEE
+            _RUN = fr.CROSS_RUN if (_new_rule and p_here >= 4) else fr.TEE_RUN
             for pid in vert:
-                per_pipe[pid]["fittings"].append(fr.TEE)
-                counts[fr.TEE] = counts.get(fr.TEE, 0) + 1
-            if len(flat_downs) < 2:
+                per_pipe[pid]["fittings"].append(_TEE)
+                counts[_TEE] = counts.get(_TEE, 0) + 1
+            # ★`flat_downs` 가 **1개뿐이어도** 이 블록을 탄다 — 갈래가 지워진
+            #   분기점이 바로 하류 1개짜리 분기점이다. 종전에는 여기서
+            #   `len(flat_downs) < 2` 로 건너뛰어, 그 자리가 관통으로 떨어져
+            #   «없음» 이나 «엘보» 가 됐다(그림 10 의 다섯 번째 ✕).
+            if not flat_downs or (not _new_rule and len(flat_downs) < 2):
                 continue
-            labels, bad = fr.tee_fittings(here, up_xy, flat_downs)
+            labels, runs, bad = fr.tee_split(here, up_xy, flat_downs)
+            if not _new_rule:
+                runs = []          # 종전에는 직진 갈래를 버렸다
             if bad:
                 # 분기는 «자리» 가 단위다 — 대표 배관으로 찾는다. 사람이 고른
                 # 종류를 그대로 단다(티로 굳히지 않는다 — 직류/분류가 갈린다).
@@ -324,8 +407,23 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
                      "where": "분기", "n": int(bad),
                      "branches": [str(p) for p, _ in flat_downs]})
             for pid in labels:
-                per_pipe[pid]["fittings"].append(fr.TEE)
-                counts[fr.TEE] = counts.get(fr.TEE, 0) + 1
+                per_pipe[pid]["fittings"].append(_TEE)
+                counts[_TEE] = counts.get(_TEE, 0) + 1
+            for pid in runs:
+                per_pipe[pid]["fittings"].append(_RUN)
+                counts[_RUN] = counts.get(_RUN, 0) + 1
+
+    # ★[§3-4 5 · D6] 노드정리가 지운 분기점 — 갈래가 지워져 직선이 된 board
+    #   절점은 병합되어 kfp 에 아예 없다. 그 티도 건물에는 그대로 있으므로,
+    #   그 자리를 덮는 회랑 배관에 직류티를 1건씩 단다. 등가길이는 0(규칙)이라
+    #   수치는 안 움직이고 부속표·`.kfp` 라벨에만 나타난다 — `.sdf` 에는
+    #   직류티 항목이 없어 아무것도 안 실린다.
+    for pid, n in _interior.items():
+        if pid not in per_pipe or n <= 0:
+            continue
+        for _ in range(int(n)):
+            per_pipe[pid]["fittings"].append(fr.TEE_RUN)
+            counts[fr.TEE_RUN] = counts.get(fr.TEE_RUN, 0) + 1
 
     # 등가길이 — 라이브러리에 없으면 0 으로 메우지 않고 센다.
     unresolved_length = 0
@@ -341,7 +439,9 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
             # 라이브러리 → 사람이 채운 값. 결정은 `resolve_eq_len` 한 곳에서만
             # 한다(기기표의 알람밸브 행도 같은 함수를 쓴다).
             L, why = resolve_eq_len(kind, dia, lib=lib, ov_eq=ov_eq)
-            if L is not None and why != "라이브러리":
+            # ★"규칙" 도 제외한다 — 규칙이 정한 0 을 «사람이 채운 값» 으로
+            #   세면 「직접 입력 n건」이 거짓이 된다(§3-4 6).
+            if L is not None and why not in ("라이브러리", "규칙"):
                 applied_overrides.append(
                     {"what": "eq_len", "kind": str(kind), "dia": int(dia),
                      "m": L, "note": why, "pipe": str(pid)})

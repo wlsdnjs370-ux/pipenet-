@@ -146,7 +146,12 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
                         origin_mm=None,
                         fx_profile=None,
                         node_head_kinds=None,
-                        declared_pipes=None) -> PipeTablesG:
+                        declared_pipes=None,
+                        # [가지치기·부속판정 §3-2] 부속 «종류» 의 주인은 손질
+                        #   정본 G 다 — 그 차수를 그대로 흘려보낸다. 안 주면
+                        #   종전과 동일하게 동작한다(다른 호출자 보호).
+                        phys=None,
+                        interior_junctions=None) -> PipeTablesG:
     """제한 전개 망 → 5개 테이블. 지시서 §1 공개 시그니처.
 
     `bores` / `fittings` 는 G3 · G4 결과를 받는다. 없으면 여기서 만들지 않고
@@ -209,7 +214,9 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         # 표고를 함께 넘긴다 — 세로 구간은 평면 좌표만으로 판정할 수 없다(§G19).
         fittings = build_fittings(net, node_xy, bores, parents=parent,
                                   node_z=node_z,
-                                  overrides=fitting_overrides)
+                                  overrides=fitting_overrides,
+                                  phys=phys,
+                                  interior_junctions=interior_junctions)
 
     # ── ① 노드표 — BFS 순서대로 번호. 뿌리가 Input.
     label_of: dict = {}
@@ -339,6 +346,13 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
 
     # ── ④ 부속표 — 배관표에 있는 라벨만(고아 참조 0)
     pipe_by_label = {r["label"]: r for r in tbl.pipes}
+    # ★[가지치기·부속판정 §3-5] 배관별 부속 등가길이를 **행에 싣는다**.
+    #   「표 → .kfp」가 이 값을 그대로 쓴다 — 없으면 그쪽이 제 손으로 다시
+    #   더해야 하고, 그 순간 등가길이를 정하는 자리가 둘이 된다(§5 금지).
+    for _pid, _rec in (fittings.get("per_pipe") or {}).items():
+        _row = pipe_by_label.get(_pid)
+        if _row is not None:
+            _row["eq_len"] = round(float(_rec.get("equivalent_length") or 0.0), 3)
     for pid, rec in (fittings.get("per_pipe") or {}).items():
         prow = pipe_by_label.get(pid)
         if prow is None:

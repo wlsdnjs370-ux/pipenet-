@@ -1,0 +1,15 @@
+{
+  "format": "sdf",
+  "target": "PIPENET SDF <Fitting type count/>",
+  "vocabulary": ["tee", "elbow", "elbow-45", "gate", "butterfly", "check"],
+  "map": {
+    "elbow": "elbow",
+    "elbow-45": "elbow-45",
+    "tee": "tee",
+    "cross": "tee",
+    "tee-run": null,
+    "cross-run": null,
+    "none": null
+  },
+  "note": "null = 표기 없음. PIPENET 은 직류 흐름 티 항목이 없다(설계팀 수작업 .sdf 도 tee·elbow·elbow-45 뿐). 손실값은 PIPENET 이 제 표로 정한다 — 우리는 «이름» 만 준다. 여기에 등가길이 숫자나 라이브러리 id 를 적지 말 것: 그 주인은 FITTING_LIB_ID·resolve_eq_len 한 곳이다."
+}

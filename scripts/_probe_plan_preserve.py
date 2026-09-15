@@ -46,6 +46,10 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 DM_KEY = "1. 입력도면 대명동 단위세대 평면도"
 
+# [가지치기·부속판정 §2] planar 가 로그로만 내는 값(`끝배관1단보호`)을 읽으려고
+# 화면 출력을 그대로 흘리면서 사본을 모은다. `main()` 이 채운다.
+_LOG = None
+
 
 # ─────────────────────────────────────────────── 자·거리
 def _d(a, b):
@@ -212,7 +216,11 @@ def run(key, k, zones=None, source=None, top=8):
         head_kinds=limited.get("head_kinds"),
         user_sources=limited.get("sources"), ho=limited.get("ho"),
         edge_len_mm=limited.get("edge_len_mm"),
-        grid_snap=snap_off)
+        grid_snap=snap_off,
+        # ★[가지치기 §3-1] `expand_worst` 가 회랑에 거는 그 값. 프로브가 이걸
+        #   빠뜨리면 **제품과 다른 회랑**을 재게 된다 — 잔류 스텁이 남은 판을
+        #   재고 「제품이 내는 망」이라 부르는 셈이다.
+        keep_head_stub=False)
     # ★`expand_worst` 와 같은 되돌림 — 스냅을 끄니 회랑이 쪼개지면 켠 채로.
     def _ok(b):
         kf = (b or {}).get("kfp")
@@ -250,7 +258,8 @@ def run(key, k, zones=None, source=None, top=8):
             hcov=limited.get("hcov"), ups=limited.get("ups"),
             head_kinds=limited.get("head_kinds"),
             user_sources=limited.get("sources"), ho=limited.get("ho"),
-            edge_len_mm=limited.get("edge_len_mm"), grid_snap=False)
+            edge_len_mm=limited.get("edge_len_mm"), grid_snap=False,
+            keep_head_stub=False)
     if not built.get("ok"):
         print(f"★평면 전개 실패 — {built.get('error')}")
         return 1
@@ -614,10 +623,20 @@ def run(key, k, zones=None, source=None, top=8):
           f" · 뿌리 스냅 {chain.get('root_snap_mm') or 0:.1f}mm) — 참고")
 
     # ── 표 · I1
+    # ★[가지치기·부속판정 §3-2] 제품이 넘기는 그 차수를 프로브도 넘긴다.
+    #   안 넘기면 표가 종전 규칙으로 서서, 프로브가 «제품이 내는 부속» 이
+    #   아니라 «옛 부속» 을 재게 된다.
+    from services.cad_import.design.restrict import corridor_topology
+    _topo = corridor_topology(
+        {"pts": limited.get("pts"), "edges": limited.get("edges")},
+        {"node_ref": built.get("node_ref") or {}, "edge_ref": edge_ref,
+         "origin_mm": built.get("origin_mm")}, raised)
     tbl = build_design_tables(raised, worst, edge_ref, [],
                               board_pts=board.pts,
                               origin_mm=built.get("origin_mm"),
                               tree_loads=None,
+                              phys=_topo["phys"],
+                              interior_junctions=_topo["interior_junctions"],
                               node_head_kinds=nhk)
     noz = [str(z.get("in")) for z in tbl.nozzles]
     at = {str(n.get("label")): (float(n.get("x") or 0), float(n.get("y") or 0))
@@ -667,6 +686,23 @@ def run(key, k, zones=None, source=None, top=8):
           f" (최대 오차 {mx_i:.6f}) · 세운 헤드 {info.get('heads')}"
           f" · 관말 아님 {info.get('not_terminal')}")
 
+    # ── [가지치기·부속판정 §2] 바꾸기 전에 재는 여섯 줄
+    #
+    #   ★**아무것도 안 고친 판**에서 잰다. 새 규칙은 옆 모듈이 «판정만» 돌려
+    #     보고 파일을 쓰지 않는다 — 지금 값과 새 값을 같은 판에서 맞대야
+    #     「몇 개가 바뀌나」가 뜻을 갖는다.
+    import _pp_prune as pp
+    try:
+        prune_m = pp.report(key=key, k=k, limited=limited, built=built,
+                            raised=raised, tbl=tbl, plan=plan, flat=flat,
+                            stub_log=pp.stub_count_from_log(_LOG.text()),
+                            payload=payload, board=board, worst=worst)
+    except Exception as exc:                        # noqa: BLE001
+        # 계측이 못 서도 앞의 판정식은 그대로 보고한다 — 자 하나가 고장 났다고
+        # 나머지 수치를 잃으면 안 된다.
+        print(f"\n  [§2 계측] ★못 쟀습니다 — {type(exc).__name__}: {exc}")
+        prune_m = None
+
     # ── 훼손 분류
     p1r, p2r = stage["세로 직후"]
     # ★[사슬 §1-4] 앞 지시서의 P1·H2(좌표 = 평면)는 C1·C3 으로 **대체**됐다.
@@ -707,7 +743,17 @@ def main() -> int:
     ap.add_argument("--top", type=int, default=8)
     a = ap.parse_args()
     os.environ.setdefault("LOGIN_PASSWORD", "probe")
-    return run(a.key, a.k, zones=a.zone, source=a.source, top=a.top)
+    # ★[§2 잔류] `끝배관1단보호` 는 planar 가 **로그로만** 낸다. 반환에 키를
+    #   더하면 지시서 §5 의 「planar.py diff = 키워드 통과뿐」이 깨지므로,
+    #   화면에 그대로 흘리면서 사본을 모아 그 줄을 읽는다.
+    global _LOG
+    import _pp_prune as pp
+    _LOG = pp.Tee(sys.stdout)
+    real, sys.stdout = sys.stdout, _LOG
+    try:
+        return run(a.key, a.k, zones=a.zone, source=a.source, top=a.top)
+    finally:
+        sys.stdout = real
 
 
 if __name__ == "__main__":

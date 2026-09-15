@@ -2,14 +2,14 @@
   "key": "B1F 현장조사 소화설비 평면도",
   "source": "Z1",
   "board": {
-    "pts": 19791,
-    "edges": 19797,
-    "heads": 3163
+    "pts": 25696,
+    "edges": 26339,
+    "heads": 3235
   },
   "k": 30,
-  "far_m": 171.87,
-  "near_m": 119.35,
-  "span_m": 54.25,
-  "total_m": 207.31,
+  "far_m": 354.42,
+  "near_m": 335.66,
+  "span_m": 40.2,
+  "total_m": 575.9,
   "max_load": 30
 }

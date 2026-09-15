@@ -1,24 +1,24 @@
 {
   "b1f": {
     "board": {
-      "pts": 19040,
-      "edges": 18918,
-      "heads": 3105
+      "pts": 25696,
+      "edges": 26339,
+      "heads": 3235
     },
     "worst": {
-      "far_m": 154.25,
-      "span_m": 40.21,
-      "total_m": 207.95,
+      "far_m": 354.42,
+      "span_m": 40.2,
+      "total_m": 575.9,
       "max_load": 30
     },
     "full": {
-      "nodes": 604,
-      "pipes": 603
+      "nodes": 5101,
+      "pipes": 5100
     },
     "worst_kfp": {
       "k": 30,
-      "nodes": 99,
-      "pipes": 98
+      "nodes": 109,
+      "pipes": 108
     },
     "sdf": {
       "pipe_set_names": [
@@ -30,8 +30,8 @@
         "FX"
       ],
       "placeholder_first": true,
-      "nodes": 99,
-      "pipes": 98,
+      "nodes": 109,
+      "pipes": 108,
       "nozzles": 30
     }
   },

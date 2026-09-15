@@ -164,13 +164,27 @@ def part1_b1f(c, record: dict) -> None:
         #   저장소에 없는 작업 산물이라 사람이 손질할 때마다 지문이 움직인다
         #   (BLOCKED 「F-0 · B1F 저장본 표류」). 그 표류를 실패로 세면, 이 시험이
         #   지키려는 **코드** 회귀가 그 잡음에 묻힌다.
-        #   그래서 여기서는 «비교를 건너뛴다» 고 밝히고 넘어간다 — Ⅱ부(대명동
-        #   전 구간)는 저장소 안의 도면으로 도므로 안전망은 그쪽이 진다.
-        print(f"  [건너뜀] B1F board 가 기준선과 다르다 — {base.get('board')} → "
-              f"{board}")
-        print("           저장소 밖 저장본이라 지문이 움직인다(BLOCKED "
-              "「F-0 · B1F 저장본 표류」). 의도한 갱신이면 --record.")
-        return
+        #   그래서 «비교를 건너뛴다» 고 밝히고 넘어간다 — Ⅱ부(대명동 전 구간)는
+        #   저장소 안의 도면으로 도므로 안전망은 그쪽이 진다.
+        if "--record" not in sys.argv:
+            print(f"  [건너뜀] B1F board 가 기준선과 다르다 — "
+                  f"{base.get('board')} → {board}")
+            print("           저장소 밖 저장본이라 지문이 움직인다(BLOCKED "
+                  "「F-0 · B1F 저장본 표류」). 의도한 갱신이면 --record.")
+            return
+        # ★★`--record` 는 「지금 저장본을 기준으로 삼겠다」는 **선언**이다.
+        #   종전에는 여기서도 그냥 돌아가 버려, `--record` 를 줘도 b1f 골든이
+        #   영영 안 갱신됐다 — 그 칸이 낡은 채로 굳었다(오너 2026-09-15 지시로
+        #   이 자리를 열었다). 기준선을 다시 못박고 계속 간다.
+        old_board = base.get("board")
+        base = dict(base, board=board,
+                    **{k2: s.get(k2) for k2 in
+                       ("far_m", "near_m", "span_m", "total_m", "max_load")},
+                    source=s.get("source"))
+        BASELINE.write_text(json.dumps(base, ensure_ascii=False, indent=2),
+                            encoding="utf-8")
+        print(f"  [기록] B1F 기준선을 지금 저장본으로 다시 못박았습니다 — "
+              f"{old_board} → {board}")
     for k2 in ("far_m", "near_m", "span_m", "total_m", "max_load"):
         check(f"F-1 기준선 {k2}", s.get(k2) == base.get(k2),
               f"기준 {base.get(k2)} / 지금 {s.get(k2)}")

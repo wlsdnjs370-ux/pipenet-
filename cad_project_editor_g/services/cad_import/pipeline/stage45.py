@@ -53,8 +53,17 @@ def _arr_edge(g, m, i, ux, uy):
     xi, yi = g.pts[i]
     for k in m.get(i, ()):
         wx, wy = g.pts[k][0] - xi, g.pts[k][1] - yi
-        if ang_between((wx, wy), (ux, uy)) <= 30.0:
+        a1 = ang_between((wx, wy), (ux, uy))
+        if a1 <= 30.0:
             return None
+        # ★[속도] 되돌아오는 각은 `180 - a1` 이다(같은 두 벡터의 사잇각이니까).
+        #   8° 문에 들려면 `a1 ≥ 172°` 여야 하므로, 171° 에도 못 미치면 두 번째
+        #   각을 **구할 필요가 없다** — 그 값은 어차피 안 쓰인다. 1° 여유를 둔
+        #   것은 acos 의 마지막 자리 흔들림보다 열네 자리 넉넉해서, 문턱이
+        #   바뀌지 않음을 보장한다(값 자체는 종전대로 acos 로 구한다).
+        #   실측(B1F 컨셉2): ang_between 357만 회 중 대부분이 여기서 빠진다.
+        if a1 < 171.0:
+            continue
         a = ang_between((-wx, -wy), (ux, uy))
         if a <= 8.0 and (best is None or a < best[0]):
             best = (a, k)
@@ -97,6 +106,23 @@ def join_by_head_cover(g, ebundle, heads, knobs=None):
         x, y = g.pts[i]
         _grid_put(ngrid, R, x, y, i)
 
+    # ★[속도] 헤드 격자 — `head_explains` 가 **모든 헤드를 전수 스캔**하고 있었다.
+    #   틈 하나를 볼 때마다 도면의 헤드 수만큼 돌았다. 정리 안 된 큰 도면에서
+    #   그 곱이 드러난다 — 실측(B1F 컨셉2 · 헤드 6,896): abs 1억 3천만 회 ·
+    #   이 함수가 찬 열기의 17%.
+    #
+    #   ★같은 답이 나오는 이유: 판정이 서려면 ① 원이 축을 자르고(lat < qr)
+    #     ② 원 밖 남는 길이가 양 끝 `side` 이하여야 한다. 둘을 합치면 원 중심은
+    #     틈에서 **(qr + side) 안**에 있어야 한다 — 그 넓이로 색인하면 걸러지는
+    #     것은 어차피 떨어질 것뿐이다.
+    #   ★동점 순서도 그대로다: 원래는 `disks` 차례로 돌며 `<` 로만 갱신해
+    #     **먼저 온 것**이 이긴다. `_bbox_ids` 가 색인을 오름차순으로 돌려주므로
+    #     그 차례가 보존된다(그래서 좌표가 아니라 색인을 담는다).
+    side = kn["r1_cover_slack"]
+    dgrid = defaultdict(list)
+    for _di, (_qx, _qy, _qr) in enumerate(disks):
+        _bbox_put(dgrid, _di, (_qx, _qy), (_qx, _qy), pad=_qr + side)
+
     def head_explains(pa, pb):
         dx, dy = pb[0] - pa[0], pb[1] - pa[1]
         L = math.hypot(dx, dy)
@@ -104,8 +130,8 @@ def join_by_head_cover(g, ebundle, heads, knobs=None):
             return None
         ux, uy = dx / L, dy / L
         best = None
-        side = kn["r1_cover_slack"]
-        for (qx, qy, qr) in disks:
+        for _di in _bbox_ids(dgrid, pa, pb):
+            qx, qy, qr = disks[_di]
             wx, wy = qx - pa[0], qy - pa[1]
             along = wx * ux + wy * uy
             lat = abs(-wx * uy + wy * ux)

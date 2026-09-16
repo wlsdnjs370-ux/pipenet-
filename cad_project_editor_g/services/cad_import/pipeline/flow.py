@@ -1555,17 +1555,35 @@ def stage5_split_through_uprights(pts, edges, ups, assume_unattached=False):
     edges2 = {tuple(sorted(e)) for e in edges}
     used = {n for e in edges2 for n in e}
 
+    # 통과 후보: 헤드 → (횡이탈, |t-0.5|, i, j, t)
+    want = []
+    cell = 1000.0
+    eg = defaultdict(list)
+
+    # ★[속도] 노드 격자 — `has_near_node` 가 **모든 노드를 전수 스캔**하고 있었다.
+    #   자가 닿는 거리는 `max(ARM_CTR=5, hr + HEAD_TOUCH=50)` 라 보통 300mm 아래인데,
+    #   한 헤드를 볼 때마다 도면의 노드 수만 번 hypot 을 돌렸다. 정리 안 된 큰
+    #   도면에서 그 곱이 그대로 드러난다 — 실측(B1F 컨셉2 · 노드 55,974 · 헤드
+    #   6,896): hypot 9,600만 회 · 이 함수 하나가 찬 열기의 44%.
+    #   바로 아래 간선 후보를 격자로 찾는 그 방식을 노드에도 쓴다.
+    #
+    #   ★한 번만 색인해도 되는 이유: `used`·`pts2` 는 이 반복 **동안** 안 바뀐다.
+    #     쪼개기(=노드 추가)는 아래 `by_edge` 반복에서 일어나고, 그때는
+    #     `has_near_node` 를 더 부르지 않는다. 그 순서가 뒤집히면 이 색인도
+    #     같이 옮겨야 한다.
+    ng = defaultdict(list)
+    for n in used:
+        gput(ng, cell, pts2[n][0], pts2[n][1], n)
+
     def has_near_node(hx, hy, hr):
-        for n in used:
+        # 자가 닿는 가장 먼 거리. 격자는 이만큼만 덮으면 «같은 답» 이다.
+        reach = ARM_CTR if hr <= 0 else max(ARM_CTR, hr + HEAD_TOUCH)
+        for n in set(gnear(ng, cell, hx, hy, rings=1 + int(reach // cell))):
             d = math.hypot(pts2[n][0] - hx, pts2[n][1] - hy)
             if d <= ARM_CTR or abs(d - hr) <= HEAD_TOUCH:
                 return True
         return False
 
-    # 통과 후보: 헤드 → (횡이탈, |t-0.5|, i, j, t)
-    want = []
-    cell = 1000.0
-    eg = defaultdict(list)
     for (i, j) in edges2:
         a, b = pts2[i], pts2[j]
         n = max(1, int(math.hypot(b[0] - a[0], b[1] - a[1]) / cell))

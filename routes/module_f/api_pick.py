@@ -412,6 +412,7 @@ def register(app):
                     print(f"[채택] {n}/{total} — 찍힘 {ok} · 이미 {dup} · "
                           f"유령 {bad}")
 
+                started = time.perf_counter()
                 got = adopt_heads(ps, picks, max_d=max_d, progress=say)
                 out["head_applied"] = got["applied"]
                 out["head_already"] = got["already"]
@@ -419,7 +420,8 @@ def register(app):
                 out["skipped_heads"] = got["skipped"]
                 out["clicked"] = got["clicked"]
                 print(f"[채택] 완료 — 찍힘 {got['applied']} · "
-                      f"이미 반영 {got['already']} · 유령 {len(got['skipped'])}")
+                      f"이미 반영 {got['already']} · 유령 {len(got['skipped'])} · "
+                      f"소요 {time.perf_counter() - started:.1f}s")
             out["state"] = _pick_state(sess)
             return out
 

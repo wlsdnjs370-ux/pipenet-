@@ -142,16 +142,18 @@ def closed_tris(segs, vert_tol=1.0):
     if n < 3:
         return []
     adj = defaultdict(set)
-    for i in range(n):
-        ai, bi = segs[i]
-        for j in range(i + 1, n):
-            aj, bj = segs[j]
-            if min(math.hypot(ai[0] - aj[0], ai[1] - aj[1]),
-                   math.hypot(ai[0] - bj[0], ai[1] - bj[1]),
-                   math.hypot(bi[0] - aj[0], bi[1] - aj[1]),
-                   math.hypot(bi[0] - bj[0], bi[1] - bj[1])) <= vert_tol:
-                adj[i].add(j)
-                adj[j].add(i)
+    # Endpoint lookup only narrows candidates; the original distance test and
+    # sorted triangle traversal below retain tolerance and tie order.
+    endpoints = defaultdict(list)
+    cell = max(float(vert_tol), 1.0)
+    for i, (ai, bi) in enumerate(segs):
+        for p in (ai, bi):
+            for j, q in _grid_near(endpoints, cell, p[0], p[1]):
+                if math.hypot(p[0] - q[0], p[1] - q[1]) <= vert_tol:
+                    adj[i].add(j)
+                    adj[j].add(i)
+        for p in (ai, bi):
+            _grid_put(endpoints, cell, p[0], p[1], (i, p))
     out = []
     for i in sorted(adj):
         for j in sorted(adj[i]):
@@ -190,7 +192,7 @@ def closed_tris(segs, vert_tol=1.0):
     return out
 
 
-def tri_head_of(cl, knobs=None):
+def tri_head_of(cl, knobs=None, *, triangles=None):
     """군집이 「찍은 변 길이」 자를 통과한 닫힌 등변 삼각형이면 헤드로.
 
     규칙서 §3-4 [2026-08-05 오너 지시 · D8 고침]. 발동 조건 = 그 묶음에
@@ -207,8 +209,12 @@ def tri_head_of(cl, knobs=None):
         kn.update(knobs)
     eps = float(kn["head_size_eps"])
     rel = float(kn["head_size_rel"])
-    segs = [d for _p, k2, d in cl["ents"] if k2 == "seg"]
-    for tri in closed_tris(segs, vert_tol=float(kn["a1_lat"])):
+    # A pick board can reuse geometry for several size rulers. Selection still
+    # runs here on every ruler; supplied triangles must use the same a1_lat.
+    if triangles is None:
+        segs = [d for _p, k2, d in cl["ents"] if k2 == "seg"]
+        triangles = closed_tris(segs, vert_tol=float(kn["a1_lat"]))
+    for tri in triangles:
         s_lo, _s_mid, s_hi = tri["sides"]
         if s_hi - s_lo > max(eps, s_hi * rel):
             continue                       # 부등변 — 헤드 아님

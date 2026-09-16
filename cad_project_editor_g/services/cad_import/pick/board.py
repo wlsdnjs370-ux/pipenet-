@@ -86,6 +86,7 @@ class Board:
         self.fp_index = flow_heads.build_fp_index(w, kn["small_len"])
         self._head_match_cache = {}
         self._tri_seg_cache = {}
+        self._tri_geometry_cache = {}
 
     def complete_materials(self):
         """재료 찍기 완료 → 헤드 모드 해금. 재료 0개면 거부."""
@@ -174,13 +175,41 @@ class Board:
 
     def tri_head_segs(self, pick):
         """이 삼각형 픽이 잡는 삼각형들의 획."""
-        key = head_full_key(pick)
+        geometry_key = (tuple(pick["bundle"]), pick.get("cluster_gap"),
+                        self.kn["small_len"], self.kn["small_r"],
+                        self.kn["cluster_gap"], self.kn.get("a1_lat", 1.0))
+        key = (head_full_key(pick), geometry_key,
+               self.kn.get("head_size_eps", 5.0),
+               self.kn.get("head_size_rel", 0.10))
         cached = self._tri_seg_cache.get(key)
         if cached is not None:
             return list(cached)
         spec1 = {"heads": [dict(pick, bundle=list(pick["bundle"]))]}
-        cls = flow_heads.collect_head_clusters(self.w, spec1, self.kn)
-        found, _marks, _info = flow_heads.split_head_circles(cls, self.kn)
+        if "r" in pick or "tri_side" not in pick:
+            cls = flow_heads.collect_head_clusters(self.w, spec1, self.kn)
+            found, _marks, _info = flow_heads.split_head_circles(cls, self.kn)
+        else:
+            # World geometry is immutable for the life of this board. Cluster
+            # and close triangles once per bundle, then apply each size ruler
+            # through the engine's existing tri_head_of decision.
+            geometry = self._tri_geometry_cache.get(geometry_key)
+            if geometry is None:
+                geometry = []
+                cls = flow_heads.collect_head_clusters(self.w, spec1, self.kn)
+                for cl in cls:
+                    strokes = [d for _p, kind, d in cl["ents"] if kind == "seg"]
+                    triangles = flow_heads.closed_tris(
+                        strokes, vert_tol=float(self.kn.get("a1_lat", 1.0)))
+                    if triangles:
+                        geometry.append((cl, triangles))
+                self._tri_geometry_cache[geometry_key] = geometry
+            found = []
+            for cl, triangles in geometry:
+                current = dict(cl, label=pick.get("label"),
+                               tri_rulers=[(float(pick["tri_side"]), pick.get("label"))])
+                head = flow_heads.tri_head_of(current, self.kn, triangles=triangles)
+                if head is not None:
+                    found.append(head)
         segs = tuple(s for h in found if "tri_side" in h
                      for s in h["tri_segs"])
         self._tri_seg_cache[key] = segs

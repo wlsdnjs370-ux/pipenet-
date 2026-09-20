@@ -13,6 +13,8 @@ from flask import request
 
 from routes.module_f.common import LOG_TAIL, SESSION_TTL_SECONDS, _fail
 from routes.module_f.slots import _slot_blank, _slot_init
+from routes.module_f.cancellation import (
+    OperationCancelled, checkpoint, current_operation, operation)
 
 _SESSIONS: dict[str, dict] = {}
 _SESSIONS_LOCK = threading.Lock()
@@ -187,8 +189,11 @@ def route_session(resolve=None, *, post: bool = False, why_code: int = 409):
 
 def _run_job(sess: dict, phase: str, fn) -> dict:
     """무거운 단계 하나를 백그라운드로 돌린다. 진행은 실제 출력 줄로만 보고."""
-    job = {"state": "run", "phase": phase, "started": time.time(),
-           "ended": None, "error": None, "result": None}
+    token = current_operation() or operation()
+    token.reserve()  # Include queued workers before the HTTP request completes.
+    job = {"id": uuid.uuid4().hex, "operation": token.id,
+           "state": "run", "phase": phase, "started": time.time(),
+           "ended": None, "error": None, "result": None, "queued": True}
     sess["job"] = job
     sess["log"] = []
 
@@ -200,28 +205,45 @@ def _run_job(sess: dict, phase: str, fn) -> dict:
 
     def worker() -> None:
         me = threading.current_thread()
-        with _HEAVY_LOCK:
-            old_out, old_err = sys.stdout, sys.stderr
-            sys.stdout = _Tee(old_out, sink, me)
-            sys.stderr = _Tee(old_err, sink, me)
-            try:
-                job["result"] = fn()
-                job["state"] = "done"
+        try:
+            with token.scope(reserved=True):
+                # A queued job must stop without waiting for somebody else's job.
+                while not _HEAVY_LOCK.acquire(timeout=0.1):
+                    checkpoint()
+                try:
+                    checkpoint()
+                    job["queued"] = False
+                    token.snapshot(sess)
+                    old_out, old_err = sys.stdout, sys.stderr
+                    sys.stdout = _Tee(old_out, sink, me)
+                    sys.stderr = _Tee(old_err, sink, me)
+                    try:
+                        result = fn()
+                        checkpoint()
+                    finally:
+                        sys.stdout, sys.stderr = old_out, old_err
+                finally:
+                    _HEAVY_LOCK.release()
+            job["result"] = result
+            job["state"] = "done"
+        except OperationCancelled:
+            job.update(state="cancelled", result={"ok": False, "cancelled": True},
+                       error=None)
+            sink("[중지] 사용자 요청으로 작업을 중지했습니다.")
             # ★BaseException 까지다. 엔진은 CLI 태생이라 실패를 SystemExit 로
             #   던지는 곳이 있다(실측: 원본 DXF 없는 키 reopen →
             #   `raise SystemExit("DXF를 못 찾음: apt")`). Exception 만 잡으면
             #   워커가 소리 없이 죽고 잡이 영원히 «run» 으로 남아, 사용자는
             #   멈춘 진행바만 보게 된다 — 실패가 있으면 실패라고 말해야 한다.
-            except BaseException as exc:  # noqa: BLE001 — 무엇이 나든 화면에 알린다
-                job["state"] = "error"
-                job["error"] = f"{type(exc).__name__}: {exc}"
-                sink("!! " + job["error"])
-                for ln in traceback.format_exc().splitlines()[-6:]:
-                    sink("   " + ln)
-            finally:
-                sys.stdout, sys.stderr = old_out, old_err
-                job["ended"] = time.time()
-                sess["touched"] = time.time()
+        except BaseException as exc:  # noqa: BLE001 — 무엇이 나든 화면에 알린다
+            job["state"] = "error"
+            job["error"] = f"{type(exc).__name__}: {exc}"
+            sink("!! " + job["error"])
+            for ln in traceback.format_exc().splitlines()[-6:]:
+                sink("   " + ln)
+        finally:
+            job["ended"] = time.time()
+            sess["touched"] = time.time()
 
     threading.Thread(target=worker, daemon=True).start()
     return job
@@ -238,7 +260,10 @@ def _job_view(sess: dict) -> dict:
         "elapsed": round(end - job["started"], 1),
         "error": job["error"],
         "lines": sess["log"][-LOG_TAIL:],
-        "queued": _HEAVY_LOCK.locked() and job["state"] == "run",
+        "id": job.get("id"), "operation": job.get("operation"),
+        "cancel_requested": (operation(job["operation"]).cancelled
+                             if job.get("operation") else False),
+        "queued": job.get("queued", False) and job["state"] == "run",
         # ★잡이 끝나기 «전에» 도면을 그릴 수 있는가. `_open_job` 은 찍기판을
         #   세우자마자 sess["world"] 를 앉히고 그 뒤에 정찰을 덤으로 돌린다
         #   — 도면은 그 사이 내내 준비되어 있다. 그 사실을 화면에 말해 주지

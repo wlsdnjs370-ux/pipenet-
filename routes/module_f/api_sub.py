@@ -107,10 +107,15 @@ def register(app):
         Body: sid · pump_x · pump_y · av_x · av_y · [snap_tolerance_mm]
               [waypoints:[[x,y],…]] · [clean:true]
         """
+        elevation_mode = body.get("elevation_mode", "drawing")
+        if elevation_mode not in {"drawing", "same_level"}:
+            return _fail("계통도 표고 기준이 올바르지 않습니다.")
         # 조각난 풀 계통도용 폴백 — 두 점 없이 파일의 단일망을 통째로 읽는다.
         if bool(body.get("clean")):
             try:
                 riser = extract_system_clean(sess.get("dxf"))
+                from routes.module_f.system_layout import set_elevation_mode
+                riser = set_elevation_mode(riser, elevation_mode)
             except Exception as exc:  # noqa: BLE001
                 return _fail(f"깨끗한 배관망으로도 읽지 못했습니다: {exc}", 400)
             sess["riser"] = riser
@@ -134,7 +139,8 @@ def register(app):
             riser = extract_system(sess["entities"], pump, av,
                                    snap_tolerance_mm=_snap(body),
                                    waypoints=wps or None,
-                                   layer_filter=_layers(sess, body))
+                                   layer_filter=_layers(sess, body),
+                                   elevation_mode=elevation_mode)
         except ValueError as exc:
             # 사용자 입력 문제 — 미도달을 그대로 말한다(S340).
             return jsonify({"ok": False, "message": str(exc),

@@ -274,6 +274,8 @@ def _summary(got: dict, tbl) -> dict:
         "excluded_heads": got.get("excluded_heads", 0),
         "candidate_heads": got.get("candidate_heads", 0),
         "total_heads": got.get("total_heads", 0),
+        "diagnostics_state": ("pending" if got.get("diagnostics_scope") == "selected"
+                              else "done"),
         # [최불리 인계] 손질 선정을 어떻게 받았는지 — 조용히 다르게 동작하는
         #   갈래를 두지 않는다(§2-3·§2-4·§2-5).
         "handoff": got.get("handoff") or {},
@@ -306,6 +308,9 @@ def emit_design_files(sess: dict, UPLOAD_DIR, cfg: dict | None = None):
             **_view_opts(cfg),
             iso_ref_label=(_valve_label(tbl)
                            if cfg["lift_ref"] == "valve" else None))
+        from routes.module_f.export_compat import prepare_sdf_export
+        for message in prepare_sdf_export(out):
+            print(f"[F SDF] {message}")
     except AssetMissing as exc:
         return None, str(exc)
     except Exception as exc:  # noqa: BLE001
@@ -596,6 +601,8 @@ def register(app, *, UPLOAD_DIR):
         source = body.get("source")
 
         def job():
+            import time
+            started = time.perf_counter()
             from services.cad_import.design.anchor import valve_kfp_nodes
             from services.cad_import.design.restrict import select_and_expand
             from services.cad_import.design.tables import build_design_tables
@@ -655,17 +662,19 @@ def register(app, *, UPLOAD_DIR):
             #   K개를 채운다. 채운 헤드는 지어낸 것이 아니라 **그다음으로
             #   불리한 헤드**다.
             #
-            #   ★탐침은 판마다 한 번만 잰다(`attach.wet_heads`). 실측(B1F ·
-            #   절점 22,575): 이 전체망 전개 한 번이 **117초**다 — 수리계산을
-            #   다시 눌러도 판이 그대로면 다시 재지 않는다.
-            from routes.module_f.attach import wet_heads
-            probe = wet_heads(sess, es, selected_source=sel)
+            # 선택된 K개만 다시 검증한다. 도면 전체의 제외 사유는 별도
+            # /design/diagnose 에서 검사하며, 미진단을 0개로 표시하지 않는다.
+            from routes.module_f.attach import design_probe
+            probe = design_probe(sess, es, only, selected_source=sel)
+            if not probe.get("ok"):
+                return {"ok": False, "error": probe.get("error") or "선정 헤드 연결 검사 실패"}
+            print(f"[설계 시간] 연결 검사 {time.perf_counter() - started:.2f}s")
             filled = 0
             zone_short = None       # 영역 안에서 K 를 못 채웠으면 그 문장
             if only and probe.get("ok"):
-                wet = set(probe.get("wet") or ())
+                wet = set(probe.get("wet") or ()) - set(probe.get("shared") or ())
                 short = len(only & wet) if wet else 0
-                if wet and short < k_use:
+                if short < k_use:
                     # ★★[복원 §6] **백필 금지.** 못 붙는 헤드를 다른 헤드로
                     #   바꿔 넣지 않는다 — 그러면 두 화면이 다른 헤드를 그리고,
                     #   사람은 «남의 헤드가 섞인» 계산서를 받는다.
@@ -720,6 +729,7 @@ def register(app, *, UPLOAD_DIR):
                           f" 전개가 배관에 붙이지 못합니다 — 같은 규칙으로"
                           f" **다음 순위**를 채웁니다"
                           f" (후보 {len(only) if only else '도면 전체'}).")
+            expanded_at = time.perf_counter()
             got = select_and_expand(payload, es.board, k=k_use,
                                     selected_source=sel, only_heads=only,
                                     probe=probe)
@@ -728,6 +738,11 @@ def register(app, *, UPLOAD_DIR):
             #   `handoff["filled"]` 한 곳에만 담는다(두 벌이면 언젠가 갈린다).
             if not got.get("ok"):
                 return {"ok": False, "error": got.get("error")}
+            print(f"[설계 시간] 선정망 전개 {time.perf_counter() - expanded_at:.2f}s")
+            got["diagnostics_scope"] = probe.get("scope", "all")
+            got["total_heads"] = n_disk
+            if probe.get("scope") == "selected":
+                got["excluded_heads"] = None
             # [§2-2] «채웠다» 와 «무엇이 바뀌었나» 를 여기서 함께 적는다 —
             #   `filled` 은 종전에 `got["_filled"]` 로만 담겨 읽는 곳이 0곳
             #   이었다. 사유(`probe["reason"]`)는 전개가 이미 가른 것이다.
@@ -767,8 +782,18 @@ def register(app, *, UPLOAD_DIR):
             el_rows = ov.ensure_loaded(sess)
             el_missed = []
             el_rep = None
-            if el_rows:
-                _n1, _m1, el_rep = ov.apply_to_kfp(got, es.board, el_rows)
+            # ★[§3-3-1 ⑤] 「사람이 **만든** 요소의 값 수정」은 여기서 못 돈다 —
+            #   그 요소가 아직 없기 때문이다(③④ 가 아래에서 만든다). 그래서
+            #   값 수정을 두 벌로 가른다: 도면에 원래 있던 자리(①②)는 지금,
+            #   사람이 만든 자리(⑤)는 위상 뒤에. 안 가르면 방금 만든 절점의
+            #   표고를 고쳐 놓아도 「그 자리가 이번 계산 범위에 없습니다」로
+            #   조용히 떨어진다(실측으로 그랬다).
+            base_rows = [r for r in el_rows
+                         if str((r.get("key") or [None])[0]) != "add"]
+            add_rows = [r for r in el_rows
+                        if str((r.get("key") or [None])[0]) == "add"]
+            if base_rows:
+                _n1, _m1, el_rep = ov.apply_to_kfp(got, es.board, base_rows)
                 el_missed.extend(_m1)
             # ★★[§3-3-1] 적용 ★ — **값을 덮은 뒤, 표를 만들기 전에** 망의
             #   모양을 고친다(삭제 → 노드 추가 → 기기 추가).
@@ -784,11 +809,18 @@ def register(app, *, UPLOAD_DIR):
             if el_ops:
                 _n3, _m3, ops_rep = ov.apply_ops_to_kfp(got, es.board, el_ops)
                 el_missed.extend(_m3)
+            # ⑤ — 이제야 «사람이 만든 요소» 가 주소록에 있다(`("add", id)`).
+            add_rep = None
+            if add_rows:
+                _n5, _m5, add_rep = ov.apply_to_kfp(got, es.board, add_rows)
+                el_missed.extend(_m5)
             try:
                 tbl = build_design_tables(
                     got["kfp"], got["worst"], got["edge_ref"], texts,
                     board_pts=es.board.pts,
-                    excluded_heads=got.get("excluded_heads", 0),
+                    excluded_heads=("미진단 — 전체 도면 진단에서 확인"
+                                    if got.get("excluded_heads") is None
+                                    else got["excluded_heads"]),
                     # [§29] 알람밸브 기기 행 — 등가길이는 부속표와 같은 함수가
                     #   정한다(라이브러리 → 사람이 채운 값 → 미해결).
                     valve_nodes=av_nodes,
@@ -878,9 +910,10 @@ def register(app, *, UPLOAD_DIR):
                     tbl.meta.append(("고리 덕분에 통과한 삭제",
                                      str(ops_rep["loop_pass"])))
             el_keys = ov.label_keys(got, es.board, tbl)
-            if el_rows:
-                _n2, _m2 = ov.apply_to_tables(tbl, got, es.board, el_rows,
-                                              el_rep)
+            for _rows, _rep in ((base_rows, el_rep), (add_rows, add_rep)):
+                if not _rows:
+                    continue
+                _n2, _m2 = ov.apply_to_tables(tbl, got, es.board, _rows, _rep)
                 # ①②③ 이 같은 `resolve` 를 쓰므로 못 옮긴 것이 두 번 온다 —
                 # 키+속성으로 한 번만 센다(같은 것을 두 번 세면 수가 부풀어
                 # 「n건」이 거짓말이 된다).
@@ -891,16 +924,15 @@ def register(app, *, UPLOAD_DIR):
                     if kk2 not in _seen:
                         _seen.add(kk2)
                         el_missed.append(r)
-                # 적용된 항목의 «원값» 이 채워졌다 — 카드가 그것을 보인다(규칙 5).
-                #   ★파일에도 다시 쓴다. 저장할 때는 원값을 모른다(표가 아직
-                #     안 섰다) — 적용하면서 알게 되므로, 그때 파일을 맞춘다.
-                #     안 그러면 서버를 다시 켠 뒤 원값이 비어 「무엇에서 무엇으로
-                #     바꿨는지」를 잃는다.
+            # 적용된 항목의 «원값» 이 채워졌다 — 카드가 그것을 보인다(규칙 5).
+            #   ★파일에도 다시 쓴다. 저장할 때는 원값을 모른다(표가 아직 안
+            #     섰다) — 적용하면서 알게 되므로, 그때 파일을 맞춘다. 안 그러면
+            #     서버를 다시 켠 뒤 원값이 비어 「무엇에서 무엇으로 바꿨는지」를
+            #     잃는다. ★두 벌(①②·⑤)을 다 돌린 **뒤에** 한 번만 쓴다 —
+            #     고리 안에서 쓰면 같은 파일을 두 번 쓰고, 그 사이 상태가
+            #     반쯤 찬 채로 한 번 남는다.
+            if el_rows:
                 ov.save(sess, el_rows)
-                try:
-                    ov.write_file(sess.get("key") or "design", el_rows)
-                except OSError as exc:
-                    print(f"[수정] ★원값을 파일에 못 썼습니다 — {exc}")
             if el_missed:
                 print(f"[설계] ★적용 못 한 요소 수정 {len(el_missed)}건 — "
                       "조용히 버리지 않고 화면에 올린다")
@@ -917,19 +949,23 @@ def register(app, *, UPLOAD_DIR):
             except OSError as exc:
                 print(f"[수정] ★위상 수정을 파일에 못 썼습니다 — {exc}")
             # 표는 메모리에만 — emit 을 눌러야 파일이 생긴다.
-            # 탐침을 다시 돌리지 않는다 — 같은 잡이 위에서 이미 쟀다(117초).
+            # 선택 범위 probe 는 미선정 헤드를 이음 끊김으로 판정하지 않는다.
             marks = _classify_excluded(sess, got, es.board, probe=probe)
             # ★표는 «이 순간의 선정·손질판» 으로 만든 사진이다. 그 순간의
             #   지문을 함께 박아 둔다 — 뒤에 최불리를 다시 고르거나 손질을
             #   고치면 화면이 「이 표는 옛 것」이라고 말할 수 있어야 한다.
             sess["design"] = {"got": got, "tables": tbl, "k": cfg["k"],
+                              "source": sel,
                               "schedule": cfg["schedule"], "marks": marks,
                               # [요소속성 수정카드] 수리계산 화면과 통합 화면이
                               #   **같은** 주소록을 읽는다(§4 — 회랑 요소는
                               #   라벨이 +9 옮겨질 뿐 같은 자리다).
                               "keys": el_keys,
                               "sig": _selection_sig(sess)}
-            s = _summary(got, tbl)
+            from routes.module_f.network_edit import accept_rebuilt
+            editor = accept_rebuilt(sess)
+            s = _summary(sess['design']['got'], sess['design']['tables'])
+            s['editor_notice'] = editor.get('notice')
             s["excluded_detail"] = {
                 k2: v2["n"] for k2, v2 in marks.items()
                 if isinstance(v2, dict)}
@@ -946,10 +982,56 @@ def register(app, *, UPLOAD_DIR):
                 print(f"   · 빠진 헤드 {r.get('disk')} {r.get('xy')} — "
                       f"{r.get('why_text') or r.get('why') or '사유 미상'}")
             print(f"[설계] 표 확정 · 헤드 {s['k']} · 최원 {s['far_m']} m · "
-                  f"배관 {s['counts']['pipes']} · 제외 {s['excluded_heads']:,}")
+                  f"배관 {s['counts']['pipes']} · "
+                  f"전체 진단 {'미진단' if s['diagnostics_state'] == 'pending' else '완료'}")
+            print(f"[설계 시간] 표 확정 완료 {time.perf_counter() - started:.2f}s")
             return {"ok": True, "summary": s}
 
         _run_job(sess, "수리계산 입력", job)
+        return jsonify({"ok": True})
+
+    @app.post("/api/module-f/design/diagnose")
+    @route_session(post=True)
+    def module_f_design_diagnose(sess, body):
+        """Run whole-drawing diagnostics on request, without rebuilding tables."""
+        design = sess.get("design")
+        es = sess.get("edit")
+        if not design or es is None or design.get("method") == "auto":
+            return _fail("먼저 수리계산 입력표를 확정하세요.", 409)
+        if _job_running(sess):
+            return _fail("이미 작업이 돌고 있습니다. 끝난 뒤에 다시 눌러 주세요.", 409)
+        if _design_stale(sess):
+            return _fail("손질이나 선정이 바뀌었습니다. 표를 먼저 다시 확정하세요.", 409)
+        signature = _selection_sig(sess)
+        from routes.module_f.attach import board_stamp
+        geometry = board_stamp(es)
+
+        def job():
+            import time
+            from routes.module_f.attach import wet_heads
+            started = time.perf_counter()
+            probe = wet_heads(sess, es, selected_source=design.get("source"))
+            if not probe.get("ok"):
+                return {"ok": False, "error": probe.get("error") or "전체 도면 진단 실패"}
+            marks = _classify_excluded(sess, design["got"], es.board, probe=probe)
+            if (sess.get("design") is not design or _selection_sig(sess) != signature
+                    or board_stamp(es) != geometry):
+                return {"ok": False, "error": "진단 중 도면이 바뀌었습니다. 다시 진단하세요."}
+            # Diagnostic metadata only; hydraulic rows and selection stay fixed.
+            design["marks"] = marks
+            design["diagnostics"] = {"state": "done", "excluded_heads": probe["dropped"]}
+            design["got"].update(diagnostics_scope="all", excluded_heads=probe["dropped"])
+            design["tables"].meta = [
+                (name, str(probe["dropped"]) if name == "전개가 못 붙여 제외한 헤드" else value)
+                for name, value in design["tables"].meta]
+            summary = _summary(design["got"], design["tables"])
+            summary.update(diagnostics_state="done", excluded_heads=probe["dropped"])
+            summary["excluded_detail"] = {key: value["n"] for key, value in marks.items()
+                                          if isinstance(value, dict) and "n" in value}
+            print(f"[전체 도면 진단] 완료 {time.perf_counter() - started:.2f}s")
+            return {"ok": True, "summary": summary}
+
+        _run_job(sess, "전체 도면 진단", job)
         return jsonify({"ok": True})
 
     @app.post("/api/module-f/design/fitting-override")
@@ -1564,6 +1646,8 @@ def register(app, *, UPLOAD_DIR):
             # [F-5] 제외 사유 분류 — mm 세계좌표. 설계 캔버스(정규화 좌표)가
             # 아니라 손질 망 위에 그려야 «어디» 인지 보인다.
             "marks": d.get("marks") or {},
+            "diagnostics": d.get("diagnostics") or {
+                "state": "pending" if got.get("diagnostics_scope") == "selected" else "done"},
             # ★[표가 옛 것인가] 최불리를 다시 고르거나 손질을 고친 뒤 「표 확정」
             #   을 안 누르면, 평면 보기는 새 망인데 아이소는 옛 표를 그린다.
             #   실측으로 «겹치는 헤드 0개» 까지 나온다 — 조용히 두지 않는다.

@@ -419,7 +419,7 @@ def _classify_excluded(sess: dict, got: dict, board, probe=None) -> dict:
             from services.cad_import.design.restrict import attachable_heads
             es = sess.get("edit")
             probe = attachable_heads(es.convert_payload())
-        if probe.get("ok"):
+        if probe.get("ok") and probe.get("scope") != "selected":
             attach = set(probe.get("wet") or ())
             reasons = dict(probe.get("reason") or {})
     except Exception as exc:  # noqa: BLE001

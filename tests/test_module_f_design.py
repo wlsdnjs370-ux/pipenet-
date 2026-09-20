@@ -3,10 +3,11 @@
 
 수용 기준 세 가지:
   ① 같은 손질 저장본·같은 설정으로 **G 데스크톱(4번째 창)** 과 F 웹이 만든
-     `.sdf` 가 완전히 동일하다(diff 0) — 같은 엔진이라는 증명.
+     `.sdf`가 F 전용 호환성 처리를 동일하게 적용하면 같다 — 같은 엔진이라는 증명.
   ② K 를 바꾸면 build 만 다시 돌고, iso 설정만 바꾸면 최불리 재계산 없이
      preview 만 갱신된다(캐시).
-  ③ preview 좌표 == 저장된 SDF 의 Position (writer 자리수 `.6g` 로 비교).
+  ③ 실제 망의 preview 좌표 == 저장된 SDF Position (`.6g` 비교).
+     노즐 기호 전용 대기 출구는 별도로 존재·수직 방향을 검사한다.
 
 ①은 엔진 함수를 직접 부르는 반쪽 증명이 아니라 **Qt 대화상자를 offscreen 으로
 실제로 띄워** 그 저장 경로와 견준다 — 대화상자가 엔진과 같다는 것은
@@ -174,15 +175,26 @@ def main() -> int:
         r = c.get(f"/api/module-f/design/preview?sid={sid}&iso=1")
         pts = {n["label"]: (n["x"], n["y"])
                for n in r.get_json()["view"]["nodes"]}
+        outlets = {n.get("output") for n in rr.iter("Nozzle")
+                   if n.get("output", "").startswith("@/")}
+        real_saved = {k: v for k, v in saved.items() if k not in outlets}
+        check("실제 절점 집합 일치", set(real_saved) == set(pts),
+              f"저장 {len(real_saved)} · 미리보기 {len(pts)}")
         fmt = lambda v: format(float(v), ".6g")
-        mism = [k for k in saved
+        mism = [k for k in real_saved
                 if k not in pts
                 or (fmt(pts[k][0]), fmt(pts[k][1]))
                 != (fmt(saved[k][0]), fmt(saved[k][1]))]
-        check("좌표 일치(writer 자리수)", not mism and len(saved) > 0,
-              f"노드 {len(saved)} · 어긋남 {len(mism)}")
+        check("좌표 일치(writer 자리수)", not mism and len(real_saved) > 0,
+              f"실제 노드 {len(real_saved)} · 어긋남 {len(mism)}")
+        nozzles = list(rr.iter("Nozzle"))
+        check("노즐 대기 출구의 수직 표시", bool(nozzles) and all(
+            n.get("input") in saved and n.get("output") in saved
+            and saved[n.get("input")][0] == saved[n.get("output")][0]
+            and saved[n.get("input")][1] != saved[n.get("output")][1]
+            for n in nozzles), f"노즐 {len(nozzles)}개")
 
-    print("\n[G 데스크톱 4번째 창과 diff 0]")
+    print("\n[G 데스크톱 4번째 창과 비교 — 동일한 F 호환성 처리 후 diff 0]")
     g_root = ROOT / "cad_project_editor_g"
     for p in (str(g_root),):
         if p in sys.path:
@@ -239,7 +251,16 @@ print("DESKTOP_SDF=", out)
         print((r.stdout or "").strip()[-600:] or "(비어 있음)")
         return 1
     web = web_sdf.read_text(encoding="utf-8")
-    desk = desk_sdf.read_text(encoding="utf-8")
+    # F만 기호용 대기 절점과 수요 없는 말단 조건을 보정한다. G 원본은
+    # 보존하고 비교용 사본에만 같은 처리를 적용해 엔진 차이를 검사한다.
+    import shutil
+    import tempfile
+    from routes.module_f.export_compat import prepare_sdf_export
+    with tempfile.TemporaryDirectory() as tmp:
+        comparable = Path(tmp) / desk_sdf.name
+        shutil.copyfile(desk_sdf, comparable)
+        prepare_sdf_export(comparable)
+        desk = comparable.read_text(encoding="utf-8")
     # ★배관 label 만은 실행마다 다르다 — 엔진의 id 부여가 set 순회 순서를 타는
     #   알려진 비결정성(G BLOCKED B7 — .kfp 도 같은 이유로 구조 지문 비교다).
     #   그래서 «Pipe label 정규화 후 바이트 동일» + «label 집합은 순열» 로 세운다.

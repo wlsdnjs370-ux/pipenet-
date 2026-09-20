@@ -300,7 +300,12 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         tbl.pipes.append(pipe_row_of[pid])
 
     # 기기(FX·A/V)가 붙을 «물이 지나는 관» 을 고르는 자리 — 두 곳이 같이 쓴다.
-    _loads = {str(k): int(v) for k, v in (tree_loads or {}).items()}
+    # ★[§3-6] `tree_loads` 의 키는 **kfp 배관 이름**(P36)이고 표 행의 이름은
+    #   다시 매긴 것(P7)이다. 그대로 찾으면 담당 헤드 수가 전부 0 이 되어,
+    #   FX·알람밸브가 「물이 지나는 관」이 아니라 **호칭경·이름 순**으로 붙는다.
+    #   두 이름이 같은 글자꼴이라 예외도 빈 값도 안 난다 — 조용히 딴 데 붙는다.
+    _loads = {str(pipe_label_of.get(str(k), k)): int(v)
+              for k, v in (tree_loads or {}).items()}
 
     def _host_pipe(lab):
         touching = [r for r in tbl.pipes if lab in (r["in"], r["out"])]

@@ -328,7 +328,7 @@ def test_옛_세션에도_새_칸이_채워진다():
 def test_끄면_막고_말한다():
     """§2-5 — 「사람이 고른 것만 쓴다」를 고르면 K 미달을 그대로 보고한다."""
     s = _src("routes/module_f/api_design.py")
-    i = s.index("if wet and short < k_use:")
+    i = s.index("if short < k_use:")
     seg = s[i:s.index("pool = zone_confined_pool(", i)]
     assert 'if not cfg.get("fill_short", True):' in seg
     assert '"ok": False' in seg and "멈춥니다" in seg
@@ -390,7 +390,7 @@ def test_가둘_근거가_없으면_손대지_않는다():
 
 def test_채울_때_영역을_가두고_모자라면_말한다():
     s = _src("routes/module_f/api_design.py")
-    i = s.index("if wet and short < k_use:")
+    i = s.index("if short < k_use:")
     seg = s[i:s.index("got = select_and_expand(", i)]
     assert "zone_confined_pool(" in seg, "채움이 영역을 안 가둔다"
     assert "avail < k_use" in seg and "다른 영역에서 끌어오지 않습니다" in seg
@@ -537,7 +537,7 @@ def test_백필을_안_없앴다():
     s = _src("routes/module_f/api_design.py")
     i = s.index("filled = 0")
     seg = s[i:s.index("got = select_and_expand(", i)]
-    assert "if wet and short < k_use:" in seg
+    assert "if short < k_use:" in seg
     assert "only = (set(pool) & wet) if pool else None" in seg
 
 

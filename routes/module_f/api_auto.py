@@ -271,6 +271,8 @@ def register(app):
             #   미리보기의 담당 헤드 수가 0 으로 떨어질 뿐 나머지는 그대로 돈다.
             sess["design"] = {"got": {}, "tables": got["tables"], "k": k,
                               "schedule": None, "marks": {}, "method": "auto"}
+            from routes.module_f.network_edit import accept_rebuilt
+            accept_rebuilt(sess)
             s = got["summary"]
             print(f"[자동] 완료 — 헤드 {s['k']} · 절점 {s['nodes']} · "
                   f"배관 {s['pipes']} · 최원 {s['far_m']} m")

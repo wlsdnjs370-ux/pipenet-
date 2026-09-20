@@ -81,3 +81,8 @@ def register(app, *, _save_upload, UPLOAD_DIR):
     api_design.register(app, UPLOAD_DIR=UPLOAD_DIR)
     api_convert.register(app, UPLOAD_DIR=UPLOAD_DIR)
     api_merge.register(app, UPLOAD_DIR=UPLOAD_DIR)
+    from routes.module_f import api_network_edit
+    api_network_edit.register(app)
+    api_network_edit.install_guards(app)
+    from routes.module_f.cancellation import install
+    install(app)

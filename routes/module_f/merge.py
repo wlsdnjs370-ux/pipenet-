@@ -138,6 +138,11 @@ def to_head_tables(tbl, *, offset: int = LABEL_OFFSET) -> HeadTables:
     for r in (getattr(tbl, "nodes", None) or ()):
         row = dict(r)
         row["label"] = sh(row.get("label"))
+        if row.get('editor_parent') is not None:
+            row['editor_parent'] = sh(row['editor_parent'])
+        if row.get('editor_between'):
+            a,b,t = row['editor_between']
+            row['editor_between'] = [sh(a),sh(b),t]
         nodes.append(row)
 
     pipes = []
@@ -165,6 +170,8 @@ def to_head_tables(tbl, *, offset: int = LABEL_OFFSET) -> HeadTables:
         row = dict(r)
         row["in"] = sh(row.get("in"))
         row["out"] = sh(row.get("out"))
+        if row.get('editor_node') is not None:
+            row['editor_node'] = sh(row['editor_node'])
         equipment.append(row)
 
     out = HeadTables(nodes=nodes, pipes=pipes, nozzles=nozzles,
@@ -234,10 +241,9 @@ def riser_tables_from(riser: dict):
     """계통도 추출 결과(dict) → 엔진의 `RiserTables`.
 
     `extract_system_path` 는 dict 를 돌려주고 S730·S740 은 `RiserTables` 를
-    받는다. 좌표는 **손대지 않는다** — 계통도의 실좌표를 수직 막대로 재배치하는
-    일은 `stitch_riser_and_heads` 안의 `_layout_riser_as_schematic` 이 이미
-    한다(그 함수의 주석이 v1 실좌표 경로를 명시적으로 다룬다). 여기서 미리
-    옮기면 그 배치와 이중으로 어긋난다.
+    받는다. 여기서는 원도면 좌표를 보존한다. 결합 후 F의 DXF 경로 배치가
+    이 좌표의 방향·선언 길이·표고를 사용하며, 공용 엔진의 세로 막대 배치는
+    템플릿 라이저에만 남긴다. 밑그림 좌표는 별도 표시 변환을 쓴다.
     """
     from remote30_full_network import RiserTables
     r = riser or {}
@@ -415,6 +421,17 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
         machine_room_conn_xy=mr_conn_xy,
     )
 
+    # F's selected DXF path has bearings; the shared template layout must not
+    # replace those with one vertical bar. Underlays have their own transforms.
+    from routes.module_f.system_layout import layout_selected_system
+    try:
+        physical_system = layout_selected_system(
+            combined, riser, mr_labels, _riser_input_label if attached else None)
+    except ValueError as exc:
+        raise MergeError(f"계통도 배치: {exc}") from exc
+    if physical_system:
+        steps.append("계통도 선택 경로 유지 · 실제 길이/표고로 배치")
+
     # ★[E1] 펌프 삽입은 절점을 **더 만든다**(`{수원}_pd`). parts 는 삽입 «전»
     #   표에서 세우므로 그 새 절점은 어느 목록에도 안 들어가고, 굽을 때
     #   기본값으로 평면 식을 타 표고 × 1,000 만큼 튕겨 나간다. 실측(대명동 ·
@@ -457,6 +474,7 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
                      + " · ".join(f"{lab}→{kind}" for lab, kind in late))
 
     out = {"combined": combined, "head_tables": ht, "attached": attached,
+           "system_layout": "physical_xy" if physical_system else "template",
            "mode": mode, "steps": steps,
            # 기계실 평면이 라이저에 붙는 그 노드 — 아이소로 굽을 때 기계실
            # 군집을 어디에 다시 맞출지의 기준이다.
@@ -497,7 +515,8 @@ def bake_combined_iso(got: dict, *, iso_z_scale: float = 1.0,
                       report: dict | None = None):
     """결합망을 30° 아이소매트릭 좌표로 굽는다 — **화면과 파일이 쓰는 그 한 식**.
 
-    ★부위마다 «맞는» 투영이 다르다. 한 식으로 다 굽으면 깨진다:
+    DXF 추출 경로는 XY와 표고가 분리되어 있으므로 모든 부위에 같은 실제
+    좌표 투영을 쓴다. 아래 부위별 분기는 종전 템플릿 라이저용이다:
 
       · 평면도 — 평면이니 30° 회전 + 표고 lift. lift 는 평면과 같은 자
         (1 m = 1000 · §T3 로 절점 좌표가 mm)라 설계 화면과 규칙이 같다.
@@ -525,6 +544,24 @@ def bake_combined_iso(got: dict, *, iso_z_scale: float = 1.0,
     nodes = [dict(n) for n in (getattr(c, "nodes", None) or ())]
     zs = float(iso_z_scale or 1.0)
     cos30, sin30 = 0.8660254037844387, 0.5
+
+    if got.get("system_layout") == "physical_xy":
+        # XY is horizontal and elevation alone supplies Z. Direct edits already
+        # update these real coordinates, so no second editor lift is needed.
+        at = {str(n["label"]): n for n in nodes}
+        ref = float(at.get(ANCHOR_LABEL, {}).get("elevation", 0))
+        for n in nodes:
+            x, y = float(n["x"]), float(n["y"])
+            n["x"] = (x-y)*cos30
+            n["y"] = (x+y)*sin30 + (float(n.get("elevation", 0))-ref)*1000*zs
+        pj = at.get(str(got.get("pump_junction")), {})
+        height = (float(pj.get("elevation", ref))-ref)*1000*zs
+        edges = [[(e[0]-e[1])*cos30, (e[0]+e[1])*sin30+height,
+                  (e[2]-e[3])*cos30, (e[2]+e[3])*sin30+height]
+                 for e in c.machine_room_plan_edges or []]
+        if report is not None:
+            report["seam_check"] = {"anchor": 0.0, **({"pump": 0.0} if pj else {})}
+        return nodes, edges
 
     def _rot(x, y):
         return ((x - y) * cos30, (x + y) * sin30)
@@ -583,6 +620,38 @@ def bake_combined_iso(got: dict, *, iso_z_scale: float = 1.0,
             rx, ry = _rot(x, y)
             n["x"] = rx
             n["y"] = ry + (float(n.get("elevation", 0) or 0) - e_ref) * lift
+
+    # Explicit edits in schematic parts use real local offsets. In particular,
+    # +Z extensions must not disappear just because legacy system XY encodes Z.
+    real = {str(n['label']): n for n in c.nodes}
+    shown = {str(n['label']): n for n in nodes}
+    visiting, done = set(), set()
+
+    def edited_position(label):
+        if label in done or label in visiting or label not in shown:
+            return
+        visiting.add(label)
+        row, out = real[label], shown[label]
+        parent = str(row.get('editor_parent', ''))
+        between = row.get('editor_between')
+        if of.get(label) != 'plan':
+            if between and all(str(k) in shown for k in between[:2]):
+                a,b,t = between
+                edited_position(str(a)); edited_position(str(b))
+                for key in ('x','y'):
+                    out[key] = shown[str(a)][key]*(1-t)+shown[str(b)][key]*t
+            elif parent in shown:
+                edited_position(parent)
+                dx,dy = _rot(float(row['x'])-float(real[parent]['x']),
+                              float(row['y'])-float(real[parent]['y']))
+                out['x'] = shown[parent]['x']+dx
+                out['y'] = shown[parent]['y']+dy+(float(row.get('elevation',0))-float(real[parent].get('elevation',0)))*lift
+            else:
+                out['y'] += float(row.get('editor_z_delta',0))*lift
+        visiting.remove(label);done.add(label)
+
+    for label in shown:
+        edited_position(label)
 
     # ★[E3] 굽은 뒤 회귀 감지기 — 이음매 절점을 **양쪽 식으로 각각** 굽어
     #   같은 점인지 본다. 두 이음매는 항등적으로 연속이다(지시서 §0):

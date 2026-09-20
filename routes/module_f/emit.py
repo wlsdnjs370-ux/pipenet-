@@ -26,6 +26,9 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+from routes.module_f.kfp_export import finish_kfp
+from routes.module_f.export_compat import prepare_sdf_export, emit_physical_kfp
+
 
 def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
                 stem: str = "module_f_merged",
@@ -55,6 +58,7 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
     # ① S750 — 권위 있는 원본.
     sdf = out / f"{stem}.sdf"
     emit_full_sdf(combined, sdf, ctx=ProjectContext.titled(title))
+    warnings.extend(prepare_sdf_export(sdf))
 
     # ② 호칭경 대조 자료 — emit_full_sdf 가 같은 폴더에 함께 낸다.
     #    PIPENET 은 .sdf 와 .slf 가 같은 폴더에 있어야 내경을 찾는다.
@@ -65,9 +69,12 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
 
     # ③ S760 — 별도 산출이 아니라 위 SDF **파일** 을 원본으로 변환한다.
     kfp = out / f"{stem}.kfp"
+    kfp_ok = False
     try:
-        from remote30_prototype import emit_kfp
-        emit_kfp(sdf, kfp, coord_scale=float(coord_scale))
+        emit_physical_kfp(sdf, kfp)
+        _, compatibility = finish_kfp(kfp)
+        warnings.extend(compatibility["warnings"])
+        kfp_ok = True
     except Exception as exc:  # noqa: BLE001 — SDF 출력을 막지 않는다
         warnings.append(f"KFP 변환 실패: {type(exc).__name__}: {exc}")
 
@@ -81,14 +88,14 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
     # ④ S770 — 형식별 파일 + 대조 자료를 하나로.
     zip_path = out / f"{stem}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for p in (sdf, slf, kfp, has):
+        for p in (sdf, slf, *([kfp] if kfp_ok else []), has):
             if p.is_file():
                 zf.write(p, arcname=p.name)
 
     out_files = {
         "sdf": str(sdf),
         "slf": str(slf) if slf.is_file() else None,
-        "kfp": str(kfp) if kfp.is_file() else None,
+        "kfp": str(kfp) if kfp_ok else None,
         "has": str(has) if has.is_file() else None,
         "zip": str(zip_path),
         "warnings": warnings,
@@ -104,14 +111,19 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
         try:
             emit_full_sdf(iso_tbl, iso_sdf,
                           ctx=ProjectContext.titled(f"{title} (아이소)"))
+            warnings.extend(prepare_sdf_export(iso_sdf))
             out_files["sdf_iso"] = str(iso_sdf)
             iso_slf = out / f"{iso_stem}.slf"
             if iso_slf.is_file():
                 out_files["slf_iso"] = str(iso_slf)
             iso_kfp = out / f"{iso_stem}.kfp"
             try:
-                from remote30_prototype import emit_kfp as _ek
-                _ek(iso_sdf, iso_kfp, coord_scale=float(coord_scale))
+                # KFP contains real XYZ. Baking the 2D iso view into XY would
+                # make the solver project it a second time and twist the riser.
+                import shutil
+                if not kfp_ok:
+                    raise ValueError("실제 3D 좌표 검사를 통과한 KFP가 없습니다.")
+                shutil.copyfile(kfp, iso_kfp)
                 out_files["kfp_iso"] = str(iso_kfp)
             except Exception as exc:  # noqa: BLE001 — 아이소 실패가 본산출을 막지 않는다
                 warnings.append(f"아이소 KFP 변환 실패: {type(exc).__name__}: {exc}")
@@ -123,7 +135,7 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"아이소 HAS 변환 실패: {type(exc).__name__}: {exc}")
             with zipfile.ZipFile(zip_path, "a", zipfile.ZIP_DEFLATED) as zf:
-                for p in (iso_sdf, iso_slf, iso_kfp, iso_has):
+                for p in (iso_sdf, iso_slf, *([iso_kfp] if out_files.get("kfp_iso") else []), iso_has):
                     if p.is_file():
                         zf.write(p, arcname=p.name)
         except Exception as exc:  # noqa: BLE001

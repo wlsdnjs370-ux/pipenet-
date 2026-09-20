@@ -104,7 +104,7 @@ def test_수리계산이_다음_순위로_채운다():
     s = _src("routes/module_f/api_design.py")
     i = s.index("filled = 0")
     seg = s[i:s.index("got = select_and_expand(", i)]
-    assert "wet_heads(" in s[max(0, i - 900):i], "붙는 헤드를 안 잰다"
+    assert "design_probe(" in s[max(0, i - 900):i], "붙는 헤드를 안 잰다"
     assert 'sess.get("worst_cand")' in seg, "후보 범위를 안 쓴다"
     assert "short < k_use" in seg, "모자랄 때만 채우는 조건이 없다"
     assert "다음 순위" in seg, "무엇을 했는지 안 말한다"
@@ -123,7 +123,7 @@ def test_모자라지_않으면_손질_선정을_그대로_쓴다():
     i = s.index("filled = 0")
     end = s.index("got = select_and_expand(", i)
     seg = s[i:end]
-    j = seg.index("if wet and short < k_use:")
+    j = seg.index("if short < k_use:")
     assert "only = (set(pool) & wet) if pool else None" in seg[j:]
     assert seg[:j].count("only =") == 0, "조건 밖에서 후보를 갈아치운다"
 

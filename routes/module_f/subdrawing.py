@@ -385,7 +385,7 @@ def _forced_penalty_mm() -> float:
 
 def extract_system(entities, pump_xy, av_xy, *, snap_tolerance_mm=2500.0,
                    waypoints=None, floor_profile_rows=None,
-                   layer_filter=None) -> dict:
+                   layer_filter=None, elevation_mode="drawing") -> dict:
     """S720 — 계통도에서 펌프 → 알람밸브 경로(입상관)를 뽑는다.
 
     실패(클릭이 배관에서 너무 멀다 · 두 점이 안 이어진다)는 `ValueError` 로
@@ -393,12 +393,23 @@ def extract_system(entities, pump_xy, av_xy, *, snap_tolerance_mm=2500.0,
     아니하는 자리는 임의로 메우지 아니하고 미도달로 보고한다» 를 따른다.
     """
     from remote30_prototype import extract_system_path
-    return extract_system_path(
+    if elevation_mode not in {"drawing", "same_level"}:
+        raise ValueError("계통도 표고 기준이 올바르지 않습니다.")
+    result = extract_system_path(
         entities, tuple(pump_xy), tuple(av_xy),
         snap_tolerance_mm=float(snap_tolerance_mm),
         layer_filter=layer_filter or None,
         waypoints=waypoints or None,
         floor_profile_rows=floor_profile_rows or None)
+    from routes.module_f.system_layout import set_elevation_mode
+    measured = None
+    if elevation_mode == "same_level":
+        _, edge_len, _ = path_graph(entities, layer_filter=layer_filter or None)
+        measured = {}
+        for (a, b), length in edge_len.items():
+            pa, pb = tuple(round(v) for v in a), tuple(round(v) for v in b)
+            measured[(min(pa, pb), max(pa, pb))] = length
+    return set_elevation_mode(result, elevation_mode, measured)
 
 
 def extract_system_clean(dxf_path, *, scale_mm_per_unit: float = 1.0) -> dict:
@@ -447,6 +458,7 @@ def riser_summary(riser: dict) -> dict:
         "pipes": len(pipes),
         "total_m": round(total_m, 2),
         "av_node_label": r.get("av_node_label"),
+        "elevation_mode": r.get("elevation_mode", "drawing"),
         "source_node_label": r.get("source_node_label"),
         "conn_node_label": r.get("conn_node_label"),
         # 추측으로 이은 자리 — 화면이 점선으로 갈라 그려야 한다.

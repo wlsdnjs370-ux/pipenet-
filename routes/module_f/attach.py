@@ -1,35 +1,10 @@
 # -*- coding: utf-8 -*-
-"""[전개가 붙일 수 있는 헤드] 두 자 — 전체망 한 번(수리계산) · 뽑힌 K개만(손질).
+"""헤드 연결 검사 — 선택한 K개는 표 확정, 전체망은 별도 진단.
 
-■ 왜 필요한가 (2026-09-09 사용자 지적)
-
-  「애초에 고른다는 선택지 없이, 사전에 체크한 30개의 헤드와 거기 연결된
-   배관만 가져오면 되는 것 아닌가」
-
-  옳은 지적이고, 코드는 절반쯤 그렇게 되어 있었는데 **순서가 거꾸로**였다::
-
-      손질     최불리 K개를 고른다            ← board 도달로만 센다
-      수리계산 cand = 고른 것 ∩ 붙는 헤드     ← 여기서 처음 걸러진다
-               worst_k_heads(k=K, only=cand)  ← 그래서 K 보다 적게 나온다
-
-  실측(대명동 골든 K=10): 손질이 10개를 골랐는데 그중 2개를 전개가 배관에
-  붙이지 못해 표에는 **8개**만 왔다. 손질이 고를 때 이미 「붙는 헤드」만
-  후보로 삼았다면 10개를 골랐을 것이고 그대로 표에 왔을 것이다.
-
-■ 왜 «한 번만» 인가
-
-  `attachable_heads` 는 **전체망 전개를 통째로 한 번** 돈다. 종전에는
-  수리계산을 누를 때마다 돌았다(캐시 없음) — 사용자가 지적한 「지하주차장
-  도면에서 수리계산이 너무 오래 걸린다」의 큰 몫이 여기다.
-
-  판(board)이 안 바뀌었으면 답도 안 바뀐다. 그래서 판의 «지문» 으로 캐시한다.
-  ★2026-09-14 뒤로 이 전체망 탐침은 **수리계산(/design/build)만** 쓴다 —
-    손질(/edit/worst)은 `picked_heads_wet`(뽑힌 K개만 · B1F 0.9s)로 갈아탔다.
-    그래서 표 확정 첫 회가 이 비용을 문다(진행표시 있는 잡이라 화면은 안 언다).
-
-★지문은 «판이 달라지면 반드시 달라져야» 한다. 하나라도 빠뜨리면 옛 답을
-  새 판에 쓰게 되고, 그것은 조용한 오답이다 — 이 저장소가 옛 최불리 선정에서
-  이미 겪은 함정이다(`4a13d21`).
+손질의 최불리 선정과 수리계산 표 확정은 선택한 헤드만 전개하여 연결을
+확인한다. 연결되지 않은 선정 헤드를 다른 후보로 교체하지 않는다.
+전체 도면의 제외 사유는 /design/diagnose 요청 때 검사하고 판 지문으로
+캐시한다. 선정 없이 직접 호출하는 옛 경로만 전체망 검사를 유지한다.
 """
 from __future__ import annotations
 
@@ -38,7 +13,7 @@ def board_stamp(es) -> tuple:
     """판의 지문 — 이것이 같으면 «붙는 헤드» 도 같다.
 
     ★값이 아니라 **판을 바꾸는 모든 손잡이**를 넣는다. 절점·간선·헤드는
-      개수와 함께 마지막 좌표까지 본다(개수가 같은데 자리만 옮기는 편집이
+      개수와 함께 모든 좌표·간선을 본다(개수가 같은데 자리만 옮기는 편집이
       있다). 급수원·밸브는 자리 자체가 답을 바꾸므로 통째로 넣는다.
     """
     b = es.board
@@ -54,17 +29,23 @@ def board_stamp(es) -> tuple:
         len(getattr(b, "joins", None) or ()),
         len(getattr(b, "deletes", None) or ()),
         len(getattr(b, "edge_len_mm", None) or {}),
-        # 개수가 같아도 자리가 바뀌었으면 다른 판이다.
-        tuple(tuple(round(float(v), 1) for v in p) for p in pts[-3:]),
-        tuple(tuple(round(float(v), 1) for v in d) for d in disks[-3:]),
+        # Counts and the last three points miss edits in the middle of a
+        # drawing. Diagnostic cache identity must cover the entire geometry.
+        tuple(tuple(p) for p in pts),
+        tuple(sorted(tuple(e) for e in edges)),
+        tuple(tuple(d) for d in disks),
+        tuple(sorted((getattr(b, "edge_len_mm", None) or {}).items())),
+        repr(getattr(b, "head_kinds", None)),
+        repr(getattr(b, "ups", None)),
+        repr(getattr(b, "ho", None)),
     )
 
 
 def wet_heads(sess, es, *, selected_source=None):
     """전개가 배관에 붙일 수 있는 헤드(도면 전체) — 판마다 한 번만 잰다.
 
-    ★비싸다(B1F 실측 154s). 부르는 곳은 /design/build 하나다 — 손질에서
-      부르면 진행표시 없는 화면이 언다(그 사고를 두 번 겪고 자리를 옮겼다).
+    별도 전체 진단 또는 선정 없는 옛 호출에서 사용한다. 표 확정의 정상
+    경로는 design_probe 로 선택된 헤드만 검사한다.
 
     반환은 `design.restrict.attachable_heads` 의 것 그대로:
     `{"ok", "wet": set(hcov 번호), "total", "dropped"}`.
@@ -88,6 +69,18 @@ def wet_heads(sess, es, *, selected_source=None):
     sess["_wet_probe"] = {"stamp": stamp, "probe": probe}
     return probe
 
+def design_probe(sess: dict, es, picked, *, selected_source=None) -> dict:
+    """Check selected heads without expanding the rest of the drawing.
+
+    Legacy callers without a selection retain the whole-network path. A
+    selected probe cannot classify unselected heads as detached.
+    """
+    if not picked:
+        return wet_heads(sess, es, selected_source=selected_source)
+    probe = picked_heads_wet(es, picked, selected_source=selected_source)
+    return dict(probe, scope="selected")
+
+
 def picked_heads_wet(es, picked, *, selected_source=None):
     """**뽑힌 K 개만** 전개해 「배관에 붙는가」를 잰다 — 전체망을 안 돈다.
 
@@ -106,8 +99,7 @@ def picked_heads_wet(es, picked, *, selected_source=None):
       이유가 없다. 30개만 전개하면 **1.13초**고 답은 같다.
 
       잃는 것: 「이 도면에 안 붙는 헤드가 N개 있다」는 전체 통계. 그것은
-      수리계산(`/design/build`)이 «제외 사유» 로 여전히 낸다 — 그쪽은 진행
-      표시가 있는 잡이라 오래 걸려도 화면이 얼지 않는다.
+      별도 전체 도면 진단(`/design/diagnose`)에서 여전히 확인할 수 있다.
 
     반환은 `wet_heads` 와 같은 모양이되 번호는 **board 헤드 번호**다
     (`restrict_to_worst` 가 만든 지역 번호를 되돌려 준다).

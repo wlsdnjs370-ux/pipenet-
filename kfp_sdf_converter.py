@@ -497,7 +497,8 @@ def _display_xy_scale(nodes: list["CommonNode"]) -> float:
 
 
 def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
-             *, coord_scale: float = 1.0, display_geometry: bool = False) -> dict:
+             *, coord_scale: float = 1.0, display_geometry: bool = False,
+             physical_coordinates: bool = False) -> dict:
     """CommonNetwork → KFP dict (JSON 직렬화 가능). path 주어지면 파일에도 쓰기.
 
     ``coord_scale`` — (API 호환용, 무시됨) 과거 표시좌표 확대 배율. K-Fire_Solver 가
@@ -514,6 +515,8 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
     된다 → 정밀 수리는 단독 도면 KFP 를 쓸 것.
 
     K-Fire_Solver 호환성:
+    - physical_coordinates=True: 호출자가 실제 XYZ(m)를 배관 길이와 검증했으므로
+      종전의 화면 좌표 배율 추정을 건너뛴다. display_geometry와 함께 쓸 수 없다.
     - type 필드는 라이브러리 표준 영문명 사용 ("Water Spray", "WT", "Pump" 등).
       한글 generic 라벨 ("노즐", "수원") 은 K-Fire_Solver 가 못 알아봄.
     - has_check_valve / is_check_valve 기본 True (전체 샘플 KFP 일관).
@@ -522,6 +525,10 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
       Error 223 "not enough nodes" 발생 가능성 차단.
     - license_tag "TRIAL" (전체 샘플 일관, "CONVERTED" 는 비표준).
     """
+    if physical_coordinates and display_geometry:
+        raise ValueError("실제 좌표와 표시 좌표 옵션은 함께 사용할 수 없습니다.")
+    # physical_coordinates: caller has checked XYZ metres against every pipe.
+    # Do not apply the legacy median display scaling to these coordinates.
     # type 라벨 매핑 — K-solver 가 type 필드로 노드 종류 식별. 17 샘플 분석:
     #   base   → "기본"            (Korean OK, 모든 샘플)
     #   nozzle → "Water Spray"     (분무 노즐 표준 라벨)
@@ -764,7 +771,7 @@ def emit_kfp(net: CommonNetwork, path: str | Path | None = None,
                     _c[1] *= s_disp
                     if len(_c) > 2:
                         _c[2] *= s_disp
-    else:
+    elif not physical_coordinates:
         # ★ 단독 도면 좌표 자가보정 — K-Fire_Solver 는 노드 3D 좌표거리에서 배관장을
         # 역산한다(레퍼런스 .kfp: 좌표거리 == length_m). schematic x,y 는 임의 단위
         # (emit_sdf 가 최장변 3000 으로 정규화)라 그대로 두면 length_m 과 어긋나 비현실

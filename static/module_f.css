@@ -79,6 +79,9 @@
   .side::-webkit-scrollbar-thumb{background:var(--line-2);border:3px solid var(--panel);}
   .stage{position:relative;background:#000;overflow:hidden;}
   canvas{display:block;width:100%;height:100%;cursor:crosshair;}
+  canvas.zoom-window-armed{cursor:crosshair;}
+  #zoom-window{position:absolute;pointer-events:none;border:1.5px dashed var(--accent);
+               background:rgba(91,141,239,.12);z-index:2;}
 
   .card{border-bottom:1px solid var(--line);padding:16px 18px 18px;}
   .card h2{margin:0 0 12px;font:600 10px/1 var(--mono);letter-spacing:.16em;
@@ -365,8 +368,13 @@
      (실측: 자동 이음이 겹쳐 붙고 되돌리기 한 번으로 복구 불가). 화면을 덮는다. */
   .busy{position:fixed;inset:0;background:#050607E6;display:flex;
         align-items:center;justify-content:center;z-index:50;}
-  .busy .box{width:320px;border:1px solid var(--line-2);background:var(--panel);
+  .busy .box{position:relative;width:320px;border:1px solid var(--line-2);background:var(--panel);
              padding:20px 22px;}
+  #busy-cancel{position:absolute;right:7px;top:5px;width:28px;height:28px;
+               padding:0;border:0;background:transparent;color:var(--faint);
+               font-size:22px;line-height:1;cursor:pointer;}
+  #busy-cancel:hover,#busy-cancel:focus-visible{color:var(--ink);background:#FFFFFF12;}
+  #busy-cancel:disabled{opacity:.4;cursor:wait;}
   .busy .lbl{font:600 10px/1 var(--mono);letter-spacing:.16em;color:var(--faint);
              text-transform:uppercase;margin-bottom:12px;}
   #busy-text{font-size:12px;color:var(--ink);margin-bottom:14px;
@@ -389,7 +397,7 @@
      캔버스 «위» 에 띄운다. 옆 패널로 보내지 않는 이유: 눈이 도면과 값 사이를
      오가야 하는데 그 거리가 멀수록 «어느 배관 이야기인지» 를 놓친다.
      가림막(z 50)보다 아래다 — 작업 중에는 가려지는 것이 맞다. */
-  .inspect{position:absolute;top:12px;right:12px;width:330px;z-index:40;
+  .inspect{position:absolute;top:12px;right:12px;width:350px;z-index:40;
            max-height:calc(100% - 74px);display:flex;flex-direction:column;
            border:1px solid var(--line-2);background:#0A0D11F2;
            box-shadow:0 10px 30px #000A;}
@@ -483,3 +491,45 @@
   table.rs tr:last-child td{border-bottom:0;}
 
   .hidden{display:none !important;}
+
+/* Confirmed-network editor shared by calculation and merged views. */
+.inspect:has(.ne-panel:not(.hidden)){overflow:auto;}
+.inspect:has(.ne-panel:not(.hidden)) .ins-body{max-height:180px;flex-shrink:0;}
+.ne-panel{padding:12px;border-top:1px solid var(--line);flex-shrink:0;font-size:12px;}
+.ne-panel h3{margin:0 0 10px;color:#8be1ce;font-size:13px;}
+.ne-panel label{display:grid;grid-template-columns:105px 1fr;gap:7px;align-items:center;margin:7px 0;}
+.ne-panel select,.ne-panel input{min-width:0;width:100%;box-sizing:border-box;padding:5px;background:#121a24;color:var(--ink);border:1px solid var(--line-2);}
+.ne-panel .hint{line-height:1.6;margin:7px 0;}
+.ne-actions{display:flex;gap:6px;margin-top:12px;}
+.ne-panel button,.ne-toolbar button{padding:6px 10px;background:#172833;color:var(--ink);border:1px solid var(--line-2);cursor:pointer;}
+.ne-panel button:disabled,.ne-toolbar button:disabled{opacity:.4;cursor:default;}
+#ne-apply:not(:disabled){background:#226f60;}
+#ne-message{white-space:pre-wrap;line-height:1.6;color:#8be1ce;}
+#ne-message.ne-error{color:#ffad98;}
+#ne-preview-canvas{width:100%;height:160px;border:1px solid var(--line);}
+.ne-toolbar{position:absolute;bottom:35px;left:12px;z-index:41;display:flex;align-items:center;gap:6px;background:#0a0d11ee;padding:7px;border:1px solid var(--line-2);font-size:11px;}
+#ne-history-dialog{max-width:680px;background:#101923;color:#dbe9ec;border:1px solid #527278;}
+#ne-history-text{white-space:pre-wrap;max-height:60vh;overflow:auto;}
+.ne-direct .inspect{display:none!important;}
+.quiet-hidden{display:none!important;}
+.ne-direct.ne-merge .inspect:not(.hidden){display:flex!important;top:auto;bottom:35px;
+  width:min(350px,calc(100% - 24px));max-height:55%;border-radius:8px;}
+.mg-under-options{display:flex;flex-wrap:wrap;gap:8px 14px;padding:4px 0 4px 20px;}
+.mg-under-options label{margin:0;}
+.ne-popover{position:absolute;z-index:46;width:350px;max-width:calc(100% - 16px);max-height:calc(100% - 100px);overflow:auto;background:#101923;border:1px solid #527278;box-shadow:0 10px 30px #0009;}
+.ne-pop-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.ne-pop-head h3{margin:0;}
+.ne-pop-head button{flex:0 0 28px;width:28px;padding:4px;}
+.ne-popover>label:has(#ne-op){display:none;}
+#ne-gizmo{position:absolute;pointer-events:none;z-index:43;width:1px;height:1px;}
+#ne-gizmo-lines{position:absolute;left:-110px;top:-110px;width:220px;height:220px;overflow:visible;}
+.ne-arrow{position:absolute;pointer-events:auto;transform:translate(-50%,-50%);width:40px;height:32px;padding:3px;border:1px solid currentColor;border-radius:5px;background:#14212e;font:600 12px var(--mono);cursor:pointer;}
+.ne-arrow:hover{background:#314657;}
+.ne-arrow:disabled{opacity:.5;cursor:wait;}
+.ne-context{position:absolute;z-index:47;width:245px;max-width:calc(100% - 16px);background:#111b27;border:1px solid #527278;box-shadow:0 10px 30px #0009;padding:6px;border-radius:5px;}
+.ne-context button{display:block;width:100%;text-align:left;color:var(--ink);background:transparent;border:0;padding:9px;font-size:12px;cursor:pointer;}
+.ne-context button:hover:not(:disabled){background:#274552;}
+.ne-context button:disabled{opacity:.35;cursor:default;}
+.ne-context .ne-menu-heading{padding:5px 9px;color:#92b4c5;font-size:11px;border-bottom:1px solid #344757;}
+.ne-context hr{border:0;border-top:1px solid #344757;margin:5px;}
+#ne-pick-note{position:absolute;top:10px;left:12px;z-index:44;max-width:calc(100% - 24px);padding:9px 12px;background:#123b46;color:#d8ffff;border:1px solid #44878c;font-size:12px;pointer-events:none;}

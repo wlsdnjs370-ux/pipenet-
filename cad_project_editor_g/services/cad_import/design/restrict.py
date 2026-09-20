@@ -292,13 +292,18 @@ def corridor_topology(limited, built, kfp):
             continue
         cell_of[vid] = c
         of_cell.setdefault(c, set()).add(vid)
-    deg_cell = {}
-    for c, vids in of_cell.items():
-        n = 0
-        for a, b in edges_G:
-            if (a in vids) != (b in vids):
-                n += 1
-        deg_cell[c] = n
+    # Each edge contributes once to each distinct endpoint cell. Edges inside
+    # one cell contribute zero, exactly matching the former XOR membership
+    # test without rescanning all edges for every cell.
+    deg_cell = dict.fromkeys(of_cell, 0)
+    for a, b in edges_G:
+        ca, cb = cell_of.get(a), cell_of.get(b)
+        if ca == cb:
+            continue
+        if ca is not None:
+            deg_cell[ca] += 1
+        if cb is not None:
+            deg_cell[cb] += 1
 
     node_ref = {str(k): int(v) for k, v in (built.get("node_ref") or {}).items()}
     eref = {str(k): v for k, v in (built.get("edge_ref") or {}).items()

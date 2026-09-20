@@ -8,7 +8,9 @@
   // DXF 는 ASCII 라 gzip 이 8배 가까이 줄인다(실측: 110.6MB → 14.4MB). 서버
   // `_save_upload` 가 ".gz" 확장자와 매직바이트를 보고 알아서 해제한다.
   // CompressionStream 미지원 브라우저는 null → 호출측이 원본을 그대로 보낸다.
-  async function gzipBlob(file, onProgress) {
+  async function gzipBlob(file, onProgress, options) {
+    const signal = options && options.signal;
+    if (signal && signal.aborted) throw new DOMException("작업을 중지했습니다.", "AbortError");
     if (typeof CompressionStream === "undefined") return null;
     try {
       let source = file.stream();
@@ -21,12 +23,15 @@
             onProgress(Math.min(1, read / total));
             ctrl.enqueue(chunk);
           },
-        }));
+        }), { signal });
       }
-      const stream = source.pipeThrough(new CompressionStream("gzip"));
+      const stream = source.pipeThrough(new CompressionStream("gzip"), { signal });
       const buf = await new Response(stream).arrayBuffer();
       return new Blob([buf], { type: "application/gzip" });
-    } catch (e) { return null; }
+    } catch (e) {
+      if (signal && signal.aborted) throw new DOMException("작업을 중지했습니다.", "AbortError");
+      return null;
+    }
   }
 
   // 압축이 되레 커지는 파일(이미 압축된 DWG 등)은 원본을 보낸다.
@@ -42,10 +47,17 @@
 
   // 업로드 진행률은 XHR 로만 얻을 수 있다. 작은 JSON 응답 하나만 받는 업로드 전용
   // 요청으로 분리해, 진행률은 유지하면서 큰 응답을 XHR 에 태우지 않는다.
-  function xhrUploadForToken(url, body, onUploadProgress) {
+  function xhrUploadForToken(url, body, onUploadProgress, options) {
     return new Promise((resolve, reject) => {
+      const opts = options || {};
+      const signal = opts.signal;
+      if (signal && signal.aborted) { reject(new DOMException("작업을 중지했습니다.", "AbortError")); return; }
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url, true);
+      for (const [key, value] of Object.entries(opts.headers || {})) xhr.setRequestHeader(key, value);
+      const abort = () => xhr.abort();
+      if (signal) signal.addEventListener("abort", abort, { once: true });
+      xhr.onloadend = () => { if (signal) signal.removeEventListener("abort", abort); };
       if (onUploadProgress) {
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) onUploadProgress(e.loaded / e.total);

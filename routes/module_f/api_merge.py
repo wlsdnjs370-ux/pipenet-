@@ -67,7 +67,7 @@ def _merge_underlay(sess: dict, got: dict, nodes, iso: bool, zs: float):
 
     ★못 만들면 None 이다 — 화면은 그때 밑그림을 그리지 않는다(F-10e 규약).
     """
-    origin = ((sess.get("design") or {}).get("got") or {}).get("origin_mm")
+    origin = ((_slot_value(sess,"plan","design") or {}).get("got") or {}).get("origin_mm")
     if not origin:
         return None
     elev = {str(n.get("label")): float(n.get("elevation", 0) or 0)
@@ -105,6 +105,81 @@ def _materials(sess: dict) -> dict:
     out.setdefault("plan_method", "manual")
     return out
 
+
+
+def rebuild_merged(sess: dict, *, persist_overrides: bool = True) -> dict:
+    """Rebuild from current tables, sharing all existing override handling."""
+    mode = sess.get("supply_mode")
+    mats = _materials(sess)
+    print(f"[결합] S700 시작 — 급수방식 {SUPPLY_MODES[mode]}")
+    print("[결합]   평면도 경로: "
+          + ("자동(A 위상 검출)" if mats["plan_method"] == "auto"
+             else "수동(E 색 찍기)"))
+    for kind in SLOT_KINDS:
+        print(f"[결합]   {_SLOT_PICK[kind][1]}: "
+              + ("있음" if mats[kind] else "없음"))
+    got = merge_network(
+        mats["plan"], riser=mats["system"],
+        machineroom=mats["machineroom"], mode=mode,
+        source_drop_m=sess.get("source_drop_m", 0.0),
+        pump=sess.get("pump_spec"),
+        method=mats["plan_method"])
+    # Library choices made in the live editor must survive the merge's default
+    # bore normalization. Otherwise the displayed DN and saved inner bore split.
+    chosen = {str(p['label']):p for p in mats['plan'].pipes if p.get('inner_mm') is not None}
+    if got.get('combined') is not None:
+        for row in got['combined'].pipes:
+            spec = chosen.get(str(row.get('label')))
+            if spec:
+                for field in ('type','dia','inner_mm','c','roughness_mm'):
+                    row[field] = spec[field]
+    sess["merged"] = got
+    # ★[요소속성 수정카드] 적용 ④ — 계통도·기계실 요소(§4).
+    #
+    #   회랑 요소는 여기 없다. 그것은 설계 표에서 이미 덮여 결합으로
+    #   흘러든다 — 두 자리가 같은 값을 덮으면 한쪽만 고치는 날 두
+    #   화면이 갈린다. 여기서는 **통합에서만 사는 것**만 덮는다.
+    #   여러 번 눌러도 같은 결과다(결합망을 매번 새로 만든다).
+    el_rows = ov.ensure_loaded(sess)
+    mg_missed = []
+    if el_rows:
+        _n, mg_missed = ov.apply_to_merge(got, el_rows)
+        if _n and persist_overrides:
+            ov.save(sess, el_rows)     # 원값이 채워졌다 — 카드가 본다
+            try:
+                ov.write_file(sess.get("key") or "design", el_rows)
+            except OSError as exc:
+                print(f"[수정] ★원값을 파일에 못 썼습니다 — {exc}")
+    # ★[§3-3-1] 적용 ★ — 계통도·기계실 대상 **위상** 수정.
+    #
+    #   회랑 요소의 위상 수정은 여기 없다. 그것은 04 의 「표 확정」
+    #   에서 이미 망에 먹었고, 그 표가 결합으로 흘러들었다(D8) —
+    #   그래서 04 의 `.sdf` 와 통합 `.sdf` 가 같은 망을 말한다(⑨).
+    mg_ops = ov.ensure_ops_loaded(sess)
+    if mg_ops:
+        _no, _mo, _rep = ov.apply_ops_to_merge(got, mg_ops)
+        mg_missed = list(mg_missed) + list(_mo)
+        # ★[§3-3-1 ⑤] 「사람이 **만든** 요소의 값 수정」은 여기서야
+        #   돌 수 있다 — 위 ④ 에서 막 만들어졌기 때문이다. 위의 값
+        #   수정(④ 전)은 그 요소를 아직 못 가리킨다.
+        _add = [r for r in el_rows
+                if str((r.get("key") or [None])[0]) == "add"]
+        if _add:
+            _n5, _m5 = ov.apply_to_merge(got, _add)
+            mg_missed = list(mg_missed) + list(_m5)
+            if _n5 and persist_overrides:
+                ov.save(sess, el_rows)
+    sess["merge_missed"] = mg_missed
+    if mg_missed:
+        print(f"[결합] ★적용 못 한 요소 수정 {len(mg_missed)}건 — "
+              "조용히 버리지 않고 화면에 올린다")
+    summary = combined_summary(got)
+    sess["merge_summary"] = summary
+    for line in summary.get("steps") or ():
+        print(f"[결합]   · {line}")
+    print(f"[결합] 완료 — 절점 {summary['nodes']} · 배관 {summary['pipes']}"
+          f" · 노즐 {summary['nozzles']}")
+    return summary
 
 def register(app, *, UPLOAD_DIR):
     # ─────────────────────────────────── S710
@@ -182,55 +257,13 @@ def register(app, *, UPLOAD_DIR):
                          "(수리계산 단계의 «표 확정»).", 400)
 
         def job():
-            print(f"[결합] S700 시작 — 급수방식 {SUPPLY_MODES[mode]}")
-            print("[결합]   평면도 경로: "
-                  + ("자동(A 위상 검출)" if mats["plan_method"] == "auto"
-                     else "수동(E 색 찍기)"))
-            for kind in SLOT_KINDS:
-                print(f"[결합]   {_SLOT_PICK[kind][1]}: "
-                      + ("있음" if mats[kind] else "없음"))
-            got = merge_network(
-                mats["plan"], riser=mats["system"],
-                machineroom=mats["machineroom"], mode=mode,
-                source_drop_m=sess.get("source_drop_m", 0.0),
-                pump=sess.get("pump_spec"),
-                method=mats["plan_method"])
-            sess["merged"] = got
-            # ★[요소속성 수정카드] 적용 ④ — 계통도·기계실 요소(§4).
-            #
-            #   회랑 요소는 여기 없다. 그것은 설계 표에서 이미 덮여 결합으로
-            #   흘러든다 — 두 자리가 같은 값을 덮으면 한쪽만 고치는 날 두
-            #   화면이 갈린다. 여기서는 **통합에서만 사는 것**만 덮는다.
-            #   여러 번 눌러도 같은 결과다(결합망을 매번 새로 만든다).
-            el_rows = ov.ensure_loaded(sess)
-            mg_missed = []
-            if el_rows:
-                _n, mg_missed = ov.apply_to_merge(got, el_rows)
-                if _n:
-                    ov.save(sess, el_rows)     # 원값이 채워졌다 — 카드가 본다
-                    try:
-                        ov.write_file(sess.get("key") or "design", el_rows)
-                    except OSError as exc:
-                        print(f"[수정] ★원값을 파일에 못 썼습니다 — {exc}")
-            # ★[§3-3-1] 적용 ★ — 계통도·기계실 대상 **위상** 수정.
-            #
-            #   회랑 요소의 위상 수정은 여기 없다. 그것은 04 의 「표 확정」
-            #   에서 이미 망에 먹었고, 그 표가 결합으로 흘러들었다(D8) —
-            #   그래서 04 의 `.sdf` 와 통합 `.sdf` 가 같은 망을 말한다(⑨).
-            mg_ops = ov.ensure_ops_loaded(sess)
-            if mg_ops:
-                _no, _mo, _rep = ov.apply_ops_to_merge(got, mg_ops)
-                mg_missed = list(mg_missed) + list(_mo)
-            sess["merge_missed"] = mg_missed
-            if mg_missed:
-                print(f"[결합] ★적용 못 한 요소 수정 {len(mg_missed)}건 — "
-                      "조용히 버리지 않고 화면에 올린다")
-            summary = combined_summary(got)
-            sess["merge_summary"] = summary
-            for line in summary.get("steps") or ():
-                print(f"[결합]   · {line}")
-            print(f"[결합] 완료 — 절점 {summary['nodes']} · 배관 {summary['pipes']}"
-                  f" · 노즐 {summary['nozzles']}")
+            summary = rebuild_merged(sess)
+            if (sess.get('merged') or {}).get('combined'):
+                from routes.module_f.network_edit import accept_rebuilt
+                editor = accept_rebuilt(sess,'merge')
+                summary = combined_summary(sess['merged'])
+                summary['editor_notice'] = editor.get('notice')
+                sess['merge_summary'] = summary
             return summary
 
         _run_job(sess, "배관망 결합", job)
@@ -305,7 +338,7 @@ def register(app, *, UPLOAD_DIR):
         #   `to_head_tables` 가 노드 라벨만 민다). 그러니 라벨을 되밀어 설계
         #   주소록에서 찾는다. 계통도·기계실은 board 가 없어 라벨이 곧 주소다.
         from routes.module_f.merge import label_offset_for
-        _dk = (sess.get("design") or {}).get("keys") or {}
+        _dk = (_slot_value(sess,"plan","design") or {}).get("keys") or {}
         _off = label_offset_for(_materials(sess)["plan_method"])
 
         def _plan_node_key(lab):
@@ -361,16 +394,20 @@ def register(app, *, UPLOAD_DIR):
             out_pipes.append({"label": str(r.get("label")), "a": a, "b": b,
                               "dia": r.get("dia"), "len_m": r.get("length"),
                               "c": r.get("c"), "elev": r.get("elev"),
+                              "type": r.get("type"), "inner_mm": r.get("inner_mm"),
+                              "eq_len": r.get("eq_len"),
                               "part": part,
                               "key": _key_of_pipe(str(r.get("label")), part)})
 
+        from routes.module_f.underlays import reference_layers
+        layers = reference_layers(sess,got,iso=iso,geometry=request.args.get('underlays')=='1')
         return jsonify({
             "ok": True, "iso": iso,
             "view": {"nodes": out_nodes, "pipes": out_pipes,
                      # 기계실 평면 배관망 — SDF 에는 없고 «보기» 로만 쓴다.
                      "mr_plan_edges": mr_edges,
                      # [§3-4] 평면도 밑그림 변환 — 04 와 같은 이름·같은 모양.
-                     "underlay": under},
+                     "underlay": under, "underlays": layers},
             # [요소속성 수정카드] 카드가 원값·사유·시각을 나란히 보인다(규칙 5)
             #   와 「적용 못 한 수정」(규칙 4).
             "overrides": ov.ensure_loaded(sess),
@@ -423,9 +460,12 @@ def register(app, *, UPLOAD_DIR):
                 iso_nodes=iso_nodes)
             sess["merge_files"] = files
             for k, v in files.items():
-                if v:
+                if isinstance(v, str) and v:
                     print(f"[결합]   {k}: {os.path.basename(v)}")
-            return {k: os.path.basename(v) for k, v in files.items() if v}
+            for warning in files.get("warnings", []):
+                print(f"[결합] {warning}")
+            return {**{k: os.path.basename(v) for k, v in files.items()
+                       if isinstance(v, str) and v}, "warnings": files.get("warnings", [])}
 
         _run_job(sess, "산출물 생성", job)
         return jsonify({"ok": True, "sid": sess["id"]})
@@ -444,7 +484,10 @@ def register(app, *, UPLOAD_DIR):
         what = str(request.args.get("what") or "sdf")
         files = sess.get("merge_files") or {}
         path = files.get(what)
-        if not path or not os.path.isfile(path):
+        if not isinstance(path, str) or not path or not os.path.isfile(path):
             return _fail(f"그런 산출물이 없습니다: {what}", 404)
+        if what in ("kfp", "kfp_iso"):
+            from routes.module_f.kfp_export import send_kfp
+            return send_kfp(path, os.path.basename(path))
         return send_file(path, as_attachment=True,
                          download_name=os.path.basename(path))

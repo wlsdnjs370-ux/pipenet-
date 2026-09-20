@@ -142,7 +142,7 @@ def test_K_미달_게이트는_그대로다():
 # ═══════════════════════ §2-4 — 백필은 안전망으로만 남는다
 def test_백필은_남기되_조용하지_않다():
     s = _src("routes/module_f/api_design.py")
-    i = s.index("if wet and short < k_use:")
+    i = s.index("if short < k_use:")
     seg = s[i:i + 900]
     assert "[★비정상]" in seg, "정상 흐름이 아님을 안 말한다"
     assert "zone_confined_pool(" in s, "안전망을 지웠다"

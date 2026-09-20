@@ -161,12 +161,15 @@ def test_카드를_닫으면_원상으로_돌아온다():
 
 
 # ─────────────────────────────────────────────── §3-4 밑그림
-def test_밑그림은_한_함수를_두_화면이_쓴다():
-    """지시서 §3-4 — 「변환을 인자로 받도록 한 줄만 바꾼다」."""
+def test_밑그림은_각_화면의_서버_변환을_쓴다():
+    """04 uses its plan transform; merge uses independent three-slot transforms."""
     js = _src()
     assert "function drawUnderlay(u) {" in js
     assert "drawUnderlay(((S.design || {}).view || {}).underlay)" in js
-    assert "drawUnderlay((S.mergeView || {}).underlay)" in js
+    assert "drawMergeUnderlay()" in js
+    body = _fn("  function drawMergeUnderlay(")
+    assert "S.mergeView?.underlays" in body
+    assert "new DOMMatrix(r.matrix)" in body
 
 
 def test_통합_밑그림_변환은_서버가_만든다():
@@ -187,8 +190,9 @@ def test_재료가_없으면_밑그림을_안_깐다():
     """어림값으로 깔면 「그럴듯하게 어긋난 그림」이 된다(F-10e)."""
     body = _fn("  function drawUnderlay(")
     assert "if (!u || !S.edit || !S.edit.body_groups) return;" in body
-    js = _src()
-    assert "밑그림 변환을 받지 못했습니다 — 결합을 다시 해 주세요." in js
+    body = _fn("  function drawMergeUnderlay(")
+    assert "if (!r.available" in body
+    assert "if (!cached) continue;" in body
 
 
 # ─────────────────────────────────────────────── §3-5 카드 단추

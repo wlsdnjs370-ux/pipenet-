@@ -372,6 +372,55 @@ def test_쪼갠_조각은_주소록에서_뺀다():
     assert idx["pipe"][ov.key_pipe(0, 1)] == "P1"      # 새 조각이 아니다
 
 
+# ─────────────────────────────────────────────── §3-3-1 ⑤ 새 요소의 값 수정
+def test_방금_만든_절점의_값을_고칠_수_있다():
+    """§3-3-1 ⑤ — 순서가 ①값 → ②삭제 → ③노드 → ④기기 → ⑤**새 요소의 값** 인
+    이유가 이것이다. 만들기 전에는 가리킬 자리가 없다.
+
+    ★이 자리가 비어 있었다: 새 절점은 board 에 대응이 없어 어떤 안정 키로도
+      안 잡혔고, 값을 고쳐 두면 「그 자리가 이번 계산 범위에 없습니다」로
+      **조용히** 떨어졌다.
+    """
+    got = _got()
+    _n, _m, rep = ov.apply_ops_to_kfp(
+        got, _Board(), [_op("zz", "add_node", ("pipe", 0, 1), {"t": 0.5})])
+    idx = ov.build_index(got, _Board())
+    # 절점도 배관도 그 id 로 가리켜진다 — 갈래(kind)가 둘을 가른다.
+    assert idx["node"][ov.key_added("zz")] == rep["added"]["nodes"]["zz"]
+    assert idx["pipe"][ov.key_added("zz")] == rep["added"]["pipes"]["zz"]
+
+    rows = ov.put([], ov.key_added("zz"), "node", "elevation", 1.234,
+                  reason="시험")
+    applied, missed = ov.resolve(rows, idx)
+    assert not missed and len(applied) == 1, missed
+
+
+def test_통합에서_만든_절점도_그_id_로_가리켜진다():
+    """라벨은 결합할 때마다 새로 매겨진다 — id 만이 안정된 주소다."""
+    got = _merged_fixture()
+    n, missed, rep = ov.apply_ops_to_merge(
+        got, [_op("qq", "add_node", ("sys", "r1"), {"t": 0.4})])
+    assert n == 1, missed
+    born = got["ops_added"]
+    assert born["merge_by_id"]["qq"] == rep["added"]["nodes"]["qq"]
+
+    rows = ov.put([], ov.key_added("qq"), "sys", "elevation", 2.5,
+                  reason="시험")
+    n2, m2 = ov.apply_to_merge(got, rows)
+    assert (n2, m2) == (1, []), m2
+    lab = born["merge_by_id"]["qq"]
+    row = next(r for r in got["combined"].nodes if str(r["label"]) == lab)
+    assert row["elevation"] == 2.5
+
+
+def test_통합이_안_만든_요소는_통합이_손대지_않는다():
+    """회랑에서 만든 요소는 설계 표에서 이미 고쳐져 흘러든다 — 두 번 덮지 않는다."""
+    got = _merged_fixture()
+    rows = ov.put([], ov.key_added("없는id"), "sys", "length", 9.9,
+                  reason="시험")
+    assert ov.apply_to_merge(got, rows) == (0, [])
+
+
 # ─────────────────────────────────────────────── §3-6 이름 다시 매기기
 def test_가운데에_넣으면_뒤_번호가_한_칸씩_민다():
     from services.cad_import.design.tables import build_design_tables
@@ -718,3 +767,79 @@ def test_등가길이를_못_구한_기기는_sdf_에_0_으로_안_실린다():
     net = tables_to_network(t, project_title="시험")
     eq = getattr(net.pipes["P1"], "equipment", None) or []
     assert eq == [], eq
+
+
+# ─────────────────────────────────────────────── 검토가 잡아낸 셋
+def test_부속이_달린_배관에도_기기_등가길이가_kfp_에_더해진다():
+    """★부속 라벨이 **배관 이름을 덮어쓰고** 있었다.
+
+    `for kind in by_pipe.get(lab, ()): lab = fitting_label(...)` — 그 뒤 기기
+    합산이 `lab` 으로 배관을 찾으므로, 부속이 하나라도 달린 배관에서는 사람이
+    더한 기기의 등가길이가 **통째로 빠졌다**. 부속이 없는 배관에서만 우연히
+    맞아서 첫 시험은 통과했다 — 그래서 여기서는 **부속을 달아** 둔다.
+    """
+    from services.cad_import.design.emit import emit_design_kfp
+    from services.cad_import.design.tables import build_design_tables
+
+    got = _got()
+    _n, _m, rep = ov.apply_ops_to_kfp(
+        got, _Board(),
+        [_op("a1", "add_equip", ("pipe", 0, 1),
+             {"lib_id": "VALVE_GATE", "t": 0.5})])
+    tbl = build_design_tables(
+        got["kfp"], {"heads": [], "loads": {}}, got["edge_ref"], [],
+        bores={p: (50, "시험") for p in got["kfp"]["pipe_data"]},
+        default_schedule="KSD 3507")
+    ov.apply_ops_to_tables(tbl, rep)
+    lab = tbl.pipe_labels["P1"]
+    # 그 배관에 부속을 하나 달아 둔다 — 덮어쓰기가 살아 있으면 여기서 걸린다.
+    tbl.fittings.append({"pipe": lab, "in": "1", "out": "2",
+                         "type": "elbow", "count": "1"})
+    eq = [e for e in tbl.equipment if e.get("op_id") == "a1"][0]["eq_len"]
+    assert eq is not None
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, "t.kfp")
+        emit_design_kfp(tbl, got, out)
+        pd = json.load(open(out, encoding="utf-8"))["pipe_data"]
+    base = [float(r.get("eq_len") or 0.0) for r in tbl.pipes
+            if str(r["label"]) == lab][0]
+    assert pd["P1"]["fittings"] == ["Elbow"], pd["P1"]["fittings"]
+    assert float(pd["P1"]["equivalent_length"]) == pytest.approx(
+        round(base + eq, 3), abs=1e-6), pd["P1"]
+
+
+def test_결합표_기기_목록이_비어_있어도_단_것이_남는다():
+    """★`or []` 는 빈 목록에서 **새 리스트**를 만든다 — 기기 목록은 보통
+    비어 있으므로, 사람이 단 밸브가 「적용했습니다」라고 보고된 채 산출물에서
+    사라졌다."""
+    got = _merged_fixture()
+    assert got["combined"].equipment == []          # 보통의 상태
+    n, missed, _r = ov.apply_ops_to_merge(
+        got, [_op("e1", "add_equip", ("sys", "r1"),
+                  {"lib_id": "VALVE_GATE", "t": 0.5})])
+    assert n == 1, missed
+    # ★결합표 **그 객체**에 남아야 한다 — 어댑터가 들고 있던 사본이 아니라.
+    assert len(got["combined"].equipment) == 1, got["combined"].equipment
+    assert got["combined"].equipment[0]["lib"] == "VALVE_GATE"
+
+
+def test_기기는_담당_헤드_수로_붙을_관을_고른다():
+    """★`tree_loads` 는 kfp 이름 키인데 표 라벨로 찾고 있었다 — 담당 헤드 수가
+    전부 0 이 되어 FX·알람밸브가 「물이 지나는 관」이 아니라 호칭경·이름 순으로
+    붙었다. 두 이름이 같은 글자꼴이라 예외도 빈 값도 안 났다."""
+    from services.cad_import.design.tables import build_design_tables
+
+    got = _got()
+    # N3(표에서 차수 3) 에 알람밸브를 찍는다. 붙을 후보는 P2(상류·담당 많음) ·
+    # P3 · P5(곁가지·담당 0). 담당 헤드 수를 못 읽으면 곁가지에 붙는다.
+    tbl = build_design_tables(
+        got["kfp"], {"heads": [], "loads": {}}, got["edge_ref"], [],
+        bores={"P1": (50, "시"), "P2": (50, "시"), "P3": (25, "시"),
+               "P4": (25, "시"), "P5": (25, "시")},
+        valve_nodes=["N3"],
+        tree_loads={"P1": 3, "P2": 3, "P3": 1, "P4": 1, "P5": 1},
+        default_schedule="KSD 3507")
+    av = [e for e in tbl.equipment if e["desc"] == "A/V"][0]
+    assert av["pipe"] == tbl.pipe_labels["P2"], (av["pipe"], tbl.pipe_labels)

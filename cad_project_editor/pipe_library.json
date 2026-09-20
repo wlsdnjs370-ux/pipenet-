@@ -1,0 +1,584 @@
+{
+  "version": "1.1",
+  "description": "Clean Standard Library (Removed Custom Data)",
+  "pipe_types": [
+    {
+      "standard": "Fire hose",
+      "name": "Fire hose DN40",
+      "nominal_mm": 40,
+      "inner_d_mm": 38.1
+    },
+    {
+      "standard": "Fire hose",
+      "name": "Fire hose DN65",
+      "nominal_mm": 65,
+      "inner_d_mm": 65.0
+    },
+    {
+      "standard": "Hose Reel",
+      "name": "Hose Reel DN25",
+      "nominal_mm": 25,
+      "inner_d_mm": 26.0
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN15",
+      "nominal_mm": 15,
+      "inner_d_mm": 17.0
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN20",
+      "nominal_mm": 20,
+      "inner_d_mm": 21.9
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN25",
+      "nominal_mm": 25,
+      "inner_d_mm": 27.5
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN32",
+      "nominal_mm": 32,
+      "inner_d_mm": 36.2
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN40",
+      "nominal_mm": 40,
+      "inner_d_mm": 42.1
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN50",
+      "nominal_mm": 50,
+      "inner_d_mm": 53.2
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN65",
+      "nominal_mm": 65,
+      "inner_d_mm": 69.0
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN80",
+      "nominal_mm": 80,
+      "inner_d_mm": 81.0
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN100",
+      "nominal_mm": 100,
+      "inner_d_mm": 105.3
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN125",
+      "nominal_mm": 125,
+      "inner_d_mm": 130.1
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN150",
+      "nominal_mm": 150,
+      "inner_d_mm": 155.5
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN200",
+      "nominal_mm": 200,
+      "inner_d_mm": 204.6
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN250",
+      "nominal_mm": 250,
+      "inner_d_mm": 254.6
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN300",
+      "nominal_mm": 300,
+      "inner_d_mm": 304.5
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN350",
+      "nominal_mm": 350,
+      "inner_d_mm": 340.4
+    },
+    {
+      "standard": "KSD3507",
+      "name": "KSD3507 DN400",
+      "nominal_mm": 400,
+      "inner_d_mm": 390.6
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN15",
+      "nominal_mm": 15,
+      "inner_d_mm": 16.1
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN20",
+      "nominal_mm": 20,
+      "inner_d_mm": 21.4
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN25",
+      "nominal_mm": 25,
+      "inner_d_mm": 27.2
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN32",
+      "nominal_mm": 32,
+      "inner_d_mm": 35.5
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN40",
+      "nominal_mm": 40,
+      "inner_d_mm": 41.2
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN50",
+      "nominal_mm": 50,
+      "inner_d_mm": 52.7
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN65",
+      "nominal_mm": 65,
+      "inner_d_mm": 65.9
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN80",
+      "nominal_mm": 80,
+      "inner_d_mm": 78.1
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN100",
+      "nominal_mm": 100,
+      "inner_d_mm": 102.3
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN125",
+      "nominal_mm": 125,
+      "inner_d_mm": 126.6
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN150",
+      "nominal_mm": 150,
+      "inner_d_mm": 151.0
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN200",
+      "nominal_mm": 200,
+      "inner_d_mm": 199.9
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN250",
+      "nominal_mm": 250,
+      "inner_d_mm": 248.8
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN300",
+      "nominal_mm": 300,
+      "inner_d_mm": 297.9
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN350",
+      "nominal_mm": 350,
+      "inner_d_mm": 333.4
+    },
+    {
+      "standard": "KSD3562",
+      "name": "KSD3562 DN400",
+      "nominal_mm": 400,
+      "inner_d_mm": 381.0
+    },
+    {
+      "standard": "KSD3576 STS#10S",
+      "name": "KSD3576 STS#10S DN25",
+      "nominal_mm": 25,
+      "inner_d_mm": 28.4
+    },
+    {
+      "standard": "KSD3576 STS#10S",
+      "name": "KSD3576 STS#10S DN32",
+      "nominal_mm": 32,
+      "inner_d_mm": 37.1
+    },
+    {
+      "standard": "KSD3576 STS#10S",
+      "name": "KSD3576 STS#10S DN40",
+      "nominal_mm": 40,
+      "inner_d_mm": 43.0
+    },
+    {
+      "standard": "KSD3576 STS#10S",
+      "name": "KSD3576 STS#10S DN50",
+      "nominal_mm": 50,
+      "inner_d_mm": 54.9
+    },
+    {
+      "standard": "KSD3576 STS#10S",
+      "name": "KSD3576 STS#10S DN65",
+      "nominal_mm": 65,
+      "inner_d_mm": 70.3
+    },
+    {
+      "standard": "KSD3576 STS#10S",
+      "name": "KSD3576 STS#10S DN80",
+      "nominal_mm": 80,
+      "inner_d_mm": 83.1
+    },
+    {
+      "standard": "KSD3576 STS#10S",
+      "name": "KSD3576 STS#10S DN100",
+      "nominal_mm": 100,
+      "inner_d_mm": 108.3
+    },
+    {
+      "standard": "KSD3576 STS#10S",
+      "name": "KSD3576 STS#10S DN125",
+      "nominal_mm": 125,
+      "inner_d_mm": 133.0
+    },
+    {
+      "standard": "KSD3576 STS#10S",
+      "name": "KSD3576 STS#10S DN150",
+      "nominal_mm": 150,
+      "inner_d_mm": 158.4
+    },
+    {
+      "standard": "KSD3576 STS#10S",
+      "name": "KSD3576 STS#10S DN200",
+      "nominal_mm": 200,
+      "inner_d_mm": 208.3
+    },
+    {
+      "standard": "KSD3619 PFP",
+      "name": "KSD3619 PFP DN80",
+      "nominal_mm": 80,
+      "inner_d_mm": 81.0
+    },
+    {
+      "standard": "KSD3619 PFP",
+      "name": "KSD3619 PFP DN100",
+      "nominal_mm": 100,
+      "inner_d_mm": 105.3
+    },
+    {
+      "standard": "KSD3619 PFP",
+      "name": "KSD3619 PFP DN150",
+      "nominal_mm": 150,
+      "inner_d_mm": 155.5
+    },
+    {
+      "standard": "KSD3619 PFP",
+      "name": "KSD3619 PFP DN200",
+      "nominal_mm": 200,
+      "inner_d_mm": 204.6
+    },
+    {
+      "standard": "KSD3619 PFP",
+      "name": "KSD3619 PFP DN250",
+      "nominal_mm": 250,
+      "inner_d_mm": 254.6
+    },
+    {
+      "standard": "KSD3619 PFP",
+      "name": "KSD3619 PFP DN300",
+      "nominal_mm": 300,
+      "inner_d_mm": 304.5
+    },
+    {
+      "standard": "KSD3619 PFP",
+      "name": "KSD3619 PFP DN350",
+      "nominal_mm": 350,
+      "inner_d_mm": 343.6
+    },
+    {
+      "standard": "KSD3619 PFP",
+      "name": "KSD3619 PFP DN400",
+      "nominal_mm": 400,
+      "inner_d_mm": 394.4
+    },
+    {
+      "standard": "KSD5302 Copper(L)",
+      "name": "KSD5302 Copper(L) DN15",
+      "nominal_mm": 15,
+      "inner_d_mm": 13.84
+    },
+    {
+      "standard": "KSD5302 Copper(L)",
+      "name": "KSD5302 Copper(L) DN20",
+      "nominal_mm": 20,
+      "inner_d_mm": 19.94
+    },
+    {
+      "standard": "KSD5302 Copper(L)",
+      "name": "KSD5302 Copper(L) DN25",
+      "nominal_mm": 25,
+      "inner_d_mm": 26.04
+    },
+    {
+      "standard": "KSD5302 Copper(L)",
+      "name": "KSD5302 Copper(L) DN32",
+      "nominal_mm": 32,
+      "inner_d_mm": 32.12
+    },
+    {
+      "standard": "KSD5302 Copper(L)",
+      "name": "KSD5302 Copper(L) DN40",
+      "nominal_mm": 40,
+      "inner_d_mm": 38.24
+    },
+    {
+      "standard": "KSD5302 Copper(L)",
+      "name": "KSD5302 Copper(L) DN50",
+      "nominal_mm": 50,
+      "inner_d_mm": 50.42
+    },
+    {
+      "standard": "KSD5302 Copper(L)",
+      "name": "KSD5302 Copper(L) DN65",
+      "nominal_mm": 65,
+      "inner_d_mm": 62.62
+    },
+    {
+      "standard": "KSD5302 Copper(L)",
+      "name": "KSD5302 Copper(L) DN80",
+      "nominal_mm": 80,
+      "inner_d_mm": 74.8
+    },
+    {
+      "standard": "KSD5302 Copper(L)",
+      "name": "KSD5302 Copper(L) DN100",
+      "nominal_mm": 100,
+      "inner_d_mm": 99.2
+    },
+    {
+      "standard": "KSD5302 Copper(L)",
+      "name": "KSD5302 Copper(L) DN125",
+      "nominal_mm": 125,
+      "inner_d_mm": 123.8
+    },
+    {
+      "standard": "KSD5302 Copper(L)",
+      "name": "KSD5302 Copper(L) DN150",
+      "nominal_mm": 150,
+      "inner_d_mm": 147.8
+    },
+    {
+      "standard": "KSM3413 CPVC",
+      "name": "KSM3413 CPVC DN15",
+      "nominal_mm": 15,
+      "inner_d_mm": 16.0
+    },
+    {
+      "standard": "KSM3413 CPVC",
+      "name": "KSM3413 CPVC DN20",
+      "nominal_mm": 20,
+      "inner_d_mm": 21.0
+    },
+    {
+      "standard": "KSM3413 CPVC",
+      "name": "KSM3413 CPVC DN25",
+      "nominal_mm": 25,
+      "inner_d_mm": 26.2
+    },
+    {
+      "standard": "KSM3413 CPVC",
+      "name": "KSM3413 CPVC DN32",
+      "nominal_mm": 32,
+      "inner_d_mm": 32.9
+    },
+    {
+      "standard": "KSM3413 CPVC",
+      "name": "KSM3413 CPVC DN40",
+      "nominal_mm": 40,
+      "inner_d_mm": 37.4
+    },
+    {
+      "standard": "KSM3413 CPVC",
+      "name": "KSM3413 CPVC DN50",
+      "nominal_mm": 50,
+      "inner_d_mm": 46.5
+    },
+    {
+      "standard": "KSM3413 CPVC",
+      "name": "KSM3413 CPVC DN65",
+      "nominal_mm": 65,
+      "inner_d_mm": 58.7
+    },
+    {
+      "standard": "KSM3413 CPVC",
+      "name": "KSM3413 CPVC DN80",
+      "nominal_mm": 80,
+      "inner_d_mm": 68.5
+    },
+    {
+      "standard": "KSM3413 CPVC",
+      "name": "KSM3413 CPVC DN100",
+      "nominal_mm": 100,
+      "inner_d_mm": 102.3
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN15",
+      "nominal_mm": 15,
+      "inner_d_mm": 15.8
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN20",
+      "nominal_mm": 20,
+      "inner_d_mm": 21.0
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN25",
+      "nominal_mm": 25,
+      "inner_d_mm": 26.6
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN32",
+      "nominal_mm": 32,
+      "inner_d_mm": 35.1
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN40",
+      "nominal_mm": 40,
+      "inner_d_mm": 40.9
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN50",
+      "nominal_mm": 50,
+      "inner_d_mm": 52.5
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN65",
+      "nominal_mm": 65,
+      "inner_d_mm": 62.7
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN80",
+      "nominal_mm": 80,
+      "inner_d_mm": 77.9
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN100",
+      "nominal_mm": 100,
+      "inner_d_mm": 102.3
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN125",
+      "nominal_mm": 125,
+      "inner_d_mm": 128.2
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN150",
+      "nominal_mm": 150,
+      "inner_d_mm": 154.1
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN200",
+      "nominal_mm": 200,
+      "inner_d_mm": 202.7
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN250",
+      "nominal_mm": 250,
+      "inner_d_mm": 254.5
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN300",
+      "nominal_mm": 300,
+      "inner_d_mm": 303.2
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN350",
+      "nominal_mm": 350,
+      "inner_d_mm": 333.3
+    },
+    {
+      "standard": "NFPA STD#40",
+      "name": "NFPA STD#40 DN400",
+      "nominal_mm": 400,
+      "inner_d_mm": 381.0
+    },
+    {
+      "standard": "SP Joint",
+      "name": "SP Joint DN20",
+      "nominal_mm": 20,
+      "inner_d_mm": 21.6
+    },
+    {
+      "standard": "SP Joint",
+      "name": "SP Joint DN25",
+      "nominal_mm": 25,
+      "inner_d_mm": 28.0
+    }
+  ],
+  "standard_meta": {
+    "KSD5302 Copper(L)": {
+      "source": "SYSTEM"
+    },
+    "KSM3413 CPVC": {
+      "source": "SYSTEM"
+    },
+    "KSD3562": {
+      "source": "SYSTEM"
+    },
+    "KSD3619 PFP": {
+      "source": "SYSTEM"
+    },
+    "NFPA STD#40": {
+      "source": "SYSTEM"
+    },
+    "KSD3576 STS#10S": {
+      "source": "SYSTEM"
+    },
+    "Hose Reel": {
+      "source": "SYSTEM"
+    },
+    "Fire hose": {
+      "source": "SYSTEM"
+    },
+    "KSD3507": {
+      "source": "SYSTEM"
+    },
+    "SP Joint": {
+      "source": "SYSTEM"
+    }
+  }
+}

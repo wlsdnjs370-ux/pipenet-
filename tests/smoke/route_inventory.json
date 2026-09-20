@@ -400,6 +400,14 @@
     "rule": "/api/module-f/design/build"
   },
   {
+    "endpoint": "module_f_design_diagnose",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/design/diagnose"
+  },
+  {
     "endpoint": "module_f_design_emit",
     "methods": [
       "OPTIONS",
@@ -600,6 +608,23 @@
     "rule": "/api/module-f/job"
   },
   {
+    "endpoint": "module_f_job_cancel",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/job/cancel"
+  },
+  {
+    "endpoint": "module_f_cancel_state",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/job/cancel-state"
+  },
+  {
     "endpoint": "module_f_job_stream",
     "methods": [
       "GET",
@@ -675,6 +700,23 @@
       "OPTIONS"
     ],
     "rule": "/api/module-f/merge/state"
+  },
+  {
+    "endpoint": "module_f_network_editor_apply",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/network-editor"
+  },
+  {
+    "endpoint": "module_f_network_editor_state",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/network-editor"
   },
   {
     "endpoint": "module_f_open",

@@ -336,6 +336,14 @@ def build_index(got, board) -> dict:
     for pid, ref in eref.items():
         if str(pid) in pr and str(pid) not in born:
             idx["pipe"][key_pipe(ref[0], ref[1])] = str(pid)
+    # [§3-3-1 ⑤] 사람이 만든 요소 — 그것을 만든 op 의 id 가 주소다.
+    _born = (got or {}).get("ops_added") or {}
+    for op_id, (_kind, nid) in (_born.get("by_id") or {}).items():
+        if str(nid) in nd:
+            idx["node"][key_added(op_id)] = str(nid)
+    for op_id, pid in (_born.get("pipe_by_id") or {}).items():
+        if str(pid) in pr:
+            idx["pipe"][key_added(op_id)] = str(pid)
     for nid, vid in nref.items():
         if str(nid) in nd:
             idx["node"][key_node(vid)] = str(nid)
@@ -822,15 +830,32 @@ def apply_to_merge(got, rows):
     n_ok, missed = 0, []
     for r in rows:
         kind = str(r.get("kind"))
-        want = _MERGE_PART.get(kind)
-        if want is None:
-            continue                      # 회랑 요소 — 설계 표에서 이미 덮였다
         key = key_from_json(r.get("key"))
         field = str(r.get("field"))
+        want = _MERGE_PART.get(kind)
+        # ★«이 화면 것인가» 는 갈래(kind)가 정한다 — 다만 **사람이 만든 요소**는
+        #   갈래가 아니라 **어느 망에서 만들어졌나**가 정한다. 통합에서 만든
+        #   것이면 통합에서 고치고, 회랑에서 만든 것이면 설계 표에서 이미
+        #   고쳐져 흘러든다. 그래서 add 키는 갈래로 거르지 않고 아래에서 본다.
+        _is_add = bool(key) and str(key[0]) == "add"
+        if want is None and not _is_add:
+            continue                      # 회랑 요소 — 설계 표에서 이미 덮였다
         if key is None or len(key) < 2:
             missed.append({**r, "why": "키를 읽지 못했습니다"})
             continue
         lab = str(key[1])
+        if _is_add:
+            # [§3-3-1 ⑤] 사람이 **만든** 요소 — 그것을 만든 op 의 id 가 주소다.
+            #   라벨은 결합할 때마다 새로 매겨지므로 id 로 되짚는다.
+            _born = (got or {}).get("ops_added") or {}
+            src = (_born.get("merge_pipe_by_id") if field in _MERGE_PIPE
+                   else _born.get("merge_by_id")) or {}
+            lab = str(src.get(lab) or "")
+            if not lab:
+                # 통합이 만든 것이 아니다 — 회랑에서 만들어 표로 흘러든
+                # 요소이므로 여기서 손대지 않는다(그쪽이 이미 덮었다).
+                continue
+            want = where["pipe" if field in _MERGE_PIPE else "node"].get(lab)
         if field in _MERGE_PIPE:
             row, got_part = pipe_by.get(lab), where["pipe"].get(lab)
         else:
@@ -1019,7 +1044,7 @@ class _TopoNet:
     def bore(self, pid):
         return None
 
-    def split(self, pid, new_pid, new_nid, xyz, l1, l2, up, dn):
+    def split(self, pid, new_pid, new_nid, xyz, l1, l2, up, dn, op_id):
         raise NotImplementedError
 
     def absorb(self, keep, drop, far_a, far_b, length_m):
@@ -1241,7 +1266,7 @@ def _do_add_node(net, adj, what, name, r, op_id, rep):
     xyz = _lerp_xyz(net.xyz(a), net.xyz(b), t)
     new_nid = net.next_node_name(op_id)
     new_pid = net.next_pipe_name(op_id)
-    net.split(name, new_pid, new_nid, xyz, l1, l2, a, b)
+    net.split(name, new_pid, new_nid, xyz, l1, l2, a, b, op_id)
     rep["added"]["nodes"][str(op_id)] = str(new_nid)
     rep["added"]["pipes"][str(op_id)] = str(new_pid)
     return True, None
@@ -1380,7 +1405,7 @@ class _KfpNet(_TopoNet):
     def next_pipe_name(self, op_id):
         return f"PX{op_id}"
 
-    def split(self, pid, new_pid, new_nid, xyz, l1, l2, up, dn):
+    def split(self, pid, new_pid, new_nid, xyz, l1, l2, up, dn, op_id):
         pr = self.pipes[str(pid)]
         self.nodes[str(new_nid)] = {
             "id": str(new_nid),
@@ -1406,9 +1431,15 @@ class _KfpNet(_TopoNet):
         ref = self.eref.get(str(pid))
         if ref is not None:
             self.eref[str(new_pid)] = ref
-        self.got.setdefault("ops_added", {}).setdefault("pipes", []).append(
-            str(new_pid))
-        self.got["ops_added"].setdefault("nodes", []).append(str(new_nid))
+        born = self.got.setdefault("ops_added", {})
+        born.setdefault("pipes", []).append(str(new_pid))
+        born.setdefault("nodes", []).append(str(new_nid))
+        # ★[§3-3-1 ⑤] 「새 요소의 값 수정」이 서려면 `("add", id)` 도 **주소록에
+        #   있어야** 한다. 만든 이름을 여기 적어 두고 `build_index` 가 싣는다 —
+        #   안 그러면 방금 만든 절점의 표고를 고칠 때 「그 자리가 이번 계산
+        #   범위에 없습니다」가 뜬다(실제로 그랬다).
+        born.setdefault("by_id", {})[str(op_id)] = ("node", str(new_nid))
+        born.setdefault("pipe_by_id", {})[str(op_id)] = str(new_pid)
 
     def absorb(self, keep, drop, far_a, far_b, length_m):
         p1 = self.pipes[str(keep)]
@@ -1538,11 +1569,23 @@ class _MergeNet(_TopoNet):
         self.got = got or {}
         c = self.got.get("combined")
         self.c = c
-        self.nodes = getattr(c, "nodes", None) or []
-        self.pipes = getattr(c, "pipes", None) or []
-        self.nozzles = getattr(c, "nozzles", None) or []
-        self.fittings = getattr(c, "fittings", None) or []
-        self.equipment = getattr(c, "equipment", None) or []
+        # ★`or []` 로 받으면 안 된다. 빈 목록은 falsy 라 **새 리스트**가 생기고,
+        #   거기 담은 것은 결합표에 영영 안 닿는다 — 기기 목록은 보통 비어
+        #   있으므로(자동이 단 것이 없으면) 사람이 단 밸브가 「적용했습니다」
+        #   라고 보고된 채 산출물에서 사라진다. 없으면 **객체에 붙여** 둔다.
+
+        def _lst(name):
+            cur = getattr(c, name, None)
+            if cur is None:
+                cur = []
+                setattr(c, name, cur)
+            return cur
+
+        self.nodes = _lst("nodes")
+        self.pipes = _lst("pipes")
+        self.nozzles = _lst("nozzles")
+        self.fittings = _lst("fittings")
+        self.equipment = _lst("equipment")
         self._n = {str(r.get("label")): r for r in self.nodes}
         self._p = {str(r.get("label")): r for r in self.pipes}
         self._where = merge_parts(self.got)
@@ -1616,7 +1659,7 @@ class _MergeNet(_TopoNet):
         a, b = row.get("in"), row.get("out")
         return round(self.xyz(b)[2] - self.xyz(a)[2], 3)
 
-    def split(self, pid, new_pid, new_nid, xyz, l1, l2, up, dn):
+    def split(self, pid, new_pid, new_nid, xyz, l1, l2, up, dn, op_id):
         row = self._p[str(pid)]
         nrow = {"label": str(new_nid),
                 "x": int(round(xyz[0])), "y": int(round(xyz[1])),
@@ -1632,6 +1675,10 @@ class _MergeNet(_TopoNet):
         row["in"], row["out"] = str(up), str(new_nid)
         row["length"] = float(l1)
         row["elev"], new["elev"] = self._elev(row), self._elev(new)
+        # [§3-3-1 ⑤] 회랑과 **같은 규약** — 만든 이름을 id 로 적어 둔다.
+        born = self.got.setdefault("ops_added", {})
+        born.setdefault("merge_by_id", {})[str(op_id)] = str(new_nid)
+        born.setdefault("merge_pipe_by_id", {})[str(op_id)] = str(new_pid)
         # 기기는 t 를 기준으로 갈라 보내고 위치를 다시 센다(§3-3-3).
         cut = (l1 / (l1 + l2)) if (l1 + l2) > 0 else 0.5
         for e in self.equipment:

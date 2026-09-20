@@ -10,6 +10,7 @@ from flask import jsonify, request, send_file
 from routes.module_f.common import GROUP_DIAGRAM, _boot, _fail
 from routes.module_f.jobs import (_job_running, _job_view, _run_job, route_session)
 from routes.module_f.remote30 import _restrict_to_worst
+from routes.module_f.kfp_export import finish_kfp, send_kfp
 
 
 def register(app, *, UPLOAD_DIR):
@@ -157,7 +158,7 @@ def register(app, *, UPLOAD_DIR):
                     return {"ok": False, "blockers": list(res["blockers"]),
                             "diagnostics":
                             list(res.get("diagnostics") or [])}
-                kfp = res["kfp"]
+                kfp, compatibility = finish_kfp(out_path, res["kfp"])
                 sess["kfp"] = kfp
                 sess["kfp_path"] = str(out_path)
                 stats = dict(res.get("stats") or {})
@@ -166,6 +167,7 @@ def register(app, *, UPLOAD_DIR):
                     "pipes": len(kfp.get("pipe_data") or {}),
                     "bytes": out_path.stat().st_size,
                     "filename": f"{sess['key'] or 'cad'}_변환.kfp",
+                    "compatibility": compatibility,
                 }
                 print(f"[변환] 전체망 완료 · 노드 {summary['full']['nodes']}"
                       f" · 배관 {summary['full']['pipes']} · "
@@ -184,7 +186,7 @@ def register(app, *, UPLOAD_DIR):
                 print(f"[변환] 최불리 K{n_k} — 표의 망으로 .kfp 를 씁니다…")
                 out_path = out_dir / f"{sess['id']}_최불리K{n_k}.kfp"
                 res = emit_design_kfp(d_["tables"], d_["got"], str(out_path))
-                kfp_w = res["kfp"]
+                kfp_w, compatibility = finish_kfp(out_path, res["kfp"])
                 sess["worst_kfp_path"] = str(out_path)
                 summary["worst"] = {
                     "k": n_k,
@@ -192,6 +194,7 @@ def register(app, *, UPLOAD_DIR):
                     "pipes": len(kfp_w.get("pipe_data") or {}),
                     "bytes": out_path.stat().st_size,
                     "filename": f"{sess['key'] or 'cad'}_최불리K{n_k}.kfp",
+                    "compatibility": compatibility,
                 }
                 print(f"[변환] 최불리 완료 · 노드 {summary['worst']['nodes']}"
                       f" · 배관 {summary['worst']['pipes']} · "
@@ -250,6 +253,8 @@ def register(app, *, UPLOAD_DIR):
         def _send(path, name, mime, missing):
             if not path or not os.path.isfile(path):
                 return _fail(missing, 404)
+            if what in ("kfp", "worst-kfp"):
+                return send_kfp(path, name)
             return send_file(path, as_attachment=True,
                              download_name=name, mimetype=mime)
 

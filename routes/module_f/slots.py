@@ -56,6 +56,7 @@ SLOT_LABELS = {
 #     것은 도면별 키가 아니라 **도면에 딸리지 않는다고 이미 정해 둔** 것들
 #     뿐이다 — 늘어나면 그때마다 여기 적어야 한다는 뜻이고, 그것이 옳다.
 _MERGE_KEYS = frozenset({
+    "merge_editor", "editor_merge_iso", "editor_merge_z", "editor_last_scope",
     "supply_mode",      # S710 급수방식 — 세 도면 공통의 결정
     "source_drop_m",    # S730 수원 낙차
     "pump_spec",        # S710 펌프 제원(펌프 가압에서만)

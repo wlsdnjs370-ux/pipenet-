@@ -463,15 +463,15 @@ def test_추출_전에는_안_내린다():
     assert "S.autoDone && S.autoView" in seg
 
 
-def test_추출_뒤_화면이_뽑은_자리로_맞춰진다():
-    """흐리게 내리는 것만으로는 안 드러난다 — 도면 971m 대 설계면적 25m."""
+def test_추출_뒤_화면맞춤은_뽑은망을_쓰되_줌은_자동초기화하지_않는다():
+    """사용자 줌 유지 요구: 자동 갱신은 유지, 명시적인 화면 맞춤은 추출망."""
     html = _script()
     assert "function autoNetBounds()" in html
     i = html.index("function curBounds()")
     seg = html[i:i + 700]
     assert 'S.stage === "auto" && S.autoDone' in seg, "「화면 맞춤」이 도면 전체로 간다"
     j = html.index("await loadAutoView();")
-    assert "autoNetBounds()" in html[j:j + 600]
+    assert "ensureView()" in html[j:j + 600]
 
 
 def test_뽑은_망을_실제로_받아_온다():

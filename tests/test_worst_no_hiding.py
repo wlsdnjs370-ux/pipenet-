@@ -100,7 +100,7 @@ def test_오류에_자료가_실려_온다():
 def test_백필이_꺼져_있다():
     s = _src("routes/module_f/api_design.py")
     assert "BACKFILL_DISABLED = True" in s
-    seg = _between(s, "if wet and short < k_use:", "got = select_and_expand(")
+    seg = _between(s, "if short < k_use:", "got = select_and_expand(")
     assert "if BACKFILL_DISABLED:" in seg
     # 발동하면 **그 자체가 오류** 다 — 조용히 메우지 않는다.
     i = seg.index("if BACKFILL_DISABLED:")
@@ -111,7 +111,7 @@ def test_백필이_꺼져_있다():
 def test_백필_코드를_지우지_않았다():
     """§6 — 「비활성으로 두되 지우지 말 것」. 왜 껐는지 모르면 다시 켠다."""
     s = _src("routes/module_f/api_design.py")
-    seg = _between(s, "if wet and short < k_use:", "got = select_and_expand(")
+    seg = _between(s, "if short < k_use:", "got = select_and_expand(")
     assert "zone_confined_pool(" in seg, "백필 블록을 지웠다"
     assert "only = (set(pool) & wet) if pool else None" in seg
 

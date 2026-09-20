@@ -43,9 +43,75 @@
   // ── 캔버스 기본기 ───────────────────────────────────────────────
   const cv = $("cv");
   const ctx = cv.getContext("2d");
+  let canvasSize = { w: 1, h: 1 };
+  const viewMemory = new Map();
+  let viewKey = null;
+  let drawFrame = 0;
+
+  function nodeBounds(nodes) {
+    if (!nodes || !nodes.length) return null;
+    let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+    for (const n of nodes) {
+      minx = Math.min(minx, n.x); miny = Math.min(miny, n.y);
+      maxx = Math.max(maxx, n.x); maxy = Math.max(maxy, n.y);
+    }
+    return { minx, miny, maxx, maxy };
+  }
+
+  // CAD stages share one camera. Projected drawings have their own cameras;
+  // restoring a CAD camera in normalized/isometric coordinates hides the drawing.
+  function viewportInfo() {
+    const prefix = `${S.sid}|${S.slot}|${S.key}|`;
+    if (S.stage === "merge") {
+      return { key: `${S.sid}|merge|${mergeIsoOn()}`, bounds: nodeBounds((S.mergeView || {}).nodes) };
+    }
+    if (S.stage === "design" && !(S.edit && (planUnderlayOn() || designMarksOn()))) {
+      const cfg = designSettings();
+      return { key: prefix + "design|" + JSON.stringify([cfg.iso, cfg.iso_z_scale,
+        cfg.canvas_units, cfg.lift_ref, cfg.head_stub_pct]),
+        bounds: nodeBounds(((S.design || {}).view || {}).nodes) };
+    }
+    return { key: prefix + "cad", bounds: (S.world || {}).bounds || (S.edit || {}).bounds };
+  }
+
+  function fitCamera(bounds, padding = 0.92) {
+    if (!bounds || !Object.values(bounds).every(Number.isFinite)) return false;
+    const { w, h } = cssSize();
+    const bw = Math.max(1e-6, bounds.maxx - bounds.minx);
+    const bh = Math.max(1e-6, bounds.maxy - bounds.miny);
+    const scale = Math.min(w / bw, h / bh) * padding;
+    S.view = { scale, ox: bounds.minx - (w / scale - bw) / 2,
+                     oy: bounds.miny - (h / scale - bh) / 2 };
+    return true;
+  }
+
+  function syncViewport() {
+    const info = viewportInfo();
+    if (viewKey === info.key) return;
+    if (viewKey) viewMemory.set(viewKey, { ...S.view });
+    viewKey = null;
+    if (viewMemory.has(info.key)) S.view = { ...viewMemory.get(info.key) };
+    else if (!fitCamera(info.bounds)) return;
+    viewKey = info.key;
+  }
+
+  function resetSlotViewport() {
+    const prefix = `${S.sid}|${S.slot}|`;
+    for (const key of viewMemory.keys()) if (key.startsWith(prefix)) viewMemory.delete(key);
+    if (viewKey && viewKey.startsWith(prefix)) viewKey = null;
+  }
+
+  // Automatic refreshes initialize a new coordinate space only once.
+  function ensureView() { draw(); }
 
   function resize() {
     const r = cv.parentElement.getBoundingClientRect();
+    const old = canvasSize;
+    canvasSize = { w: r.width, h: r.height };
+    if (viewKey) {
+      S.view.ox += (old.w - r.width) / (2 * S.view.scale);
+      S.view.oy += (old.h - r.height) / (2 * S.view.scale);
+    }
     const dpr = window.devicePixelRatio || 1;
     cv.width = Math.max(1, Math.floor(r.width * dpr));
     cv.height = Math.max(1, Math.floor(r.height * dpr));
@@ -55,8 +121,7 @@
   window.addEventListener("resize", resize);
 
   function cssSize() {
-    const r = cv.parentElement.getBoundingClientRect();
-    return { w: r.width, h: r.height };
+    return canvasSize;
   }
 
   // 세계좌표 → 화면좌표. DXF 는 y 가 위로 자라므로 뒤집는다.
@@ -66,14 +131,8 @@
   function wy(py) { return (cssSize().h - py) / S.view.scale + S.view.oy; }
 
   function fit(bounds) {
-    if (!bounds) return;
-    const { w, h } = cssSize();
-    const bw = Math.max(1e-6, bounds.maxx - bounds.minx);
-    const bh = Math.max(1e-6, bounds.maxy - bounds.miny);
-    const sc = Math.min(w / bw, h / bh) * 0.92;
-    S.view.scale = sc;
-    S.view.ox = bounds.minx - (w / sc - bw) / 2;
-    S.view.oy = bounds.miny - (h / sc - bh) / 2;
+    syncViewport();
+    fitCamera(bounds);
     draw();
   }
 
@@ -103,7 +162,64 @@
     return null;
   }
 
-  $("btn-fit").onclick = () => fit(curBounds());
+  $("btn-fit").onclick = () => {
+    const info = viewportInfo();
+    fit(info.key.endsWith("|cad") ? curBounds() : info.bounds);
+  };
+
+  let zoomArmed = false, zoomDrag = null, suppressClickUntil = 0;
+  function armZoom(on) {
+    zoomArmed = on;
+    zoomDrag = null;
+    $("zoom-window").classList.add("hidden");
+    for (const id of ["btn-zoom-window", "open-zoom-window"]) {
+      $(id).classList.toggle("on", on);
+      $(id).setAttribute("aria-pressed", String(on));
+    }
+    cv.classList.toggle("zoom-window-armed", on);
+  }
+  function startZoom() {
+    if (!viewportInfo().bounds) { say("도면을 먼저 불러오세요.", "warn"); return; }
+    armZoom(!zoomArmed);
+    if (zoomArmed) say("확대할 영역을 사각형으로 드래그하세요. Esc로 취소합니다.");
+  }
+  $("btn-zoom-window").onclick = startZoom;
+  $("open-zoom-window").onclick = startZoom;
+  window.addEventListener("keydown", e => {
+    if (e.key === "Escape" && zoomArmed) {
+      if (zoomDrag) suppressClickUntil = Infinity;
+      armZoom(false); e.preventDefault();
+    }
+  });
+  function zoomPoint(e) {
+    const rect = cv.getBoundingClientRect();
+    return { x: Math.max(0, Math.min(canvasSize.w, e.clientX - rect.left)),
+             y: Math.max(0, Math.min(canvasSize.h, e.clientY - rect.top)) };
+  }
+  window.addEventListener("mousemove", e => {
+    if (!zoomDrag) return;
+    const p = zoomPoint(e);
+    zoomDrag.x1 = p.x; zoomDrag.y1 = p.y;
+    const box = $("zoom-window");
+    box.style.left = Math.min(zoomDrag.x0, p.x) + "px";
+    box.style.top = Math.min(zoomDrag.y0, p.y) + "px";
+    box.style.width = Math.abs(p.x - zoomDrag.x0) + "px";
+    box.style.height = Math.abs(p.y - zoomDrag.y0) + "px";
+  });
+  window.addEventListener("mouseup", e => {
+    if (suppressClickUntil === Infinity) suppressClickUntil = performance.now() + 250;
+    if (!zoomDrag || e.button !== 0) return;
+    const z = zoomDrag, p = zoomPoint(e);
+    const enough = Math.abs(p.x - z.x0) >= 8 && Math.abs(p.y - z.y0) >= 8;
+    suppressClickUntil = performance.now() + 250;
+    armZoom(false);
+    if (!enough) return;
+    const bounds = { minx: wx(Math.min(z.x0, p.x)), maxx: wx(Math.max(z.x0, p.x)),
+      miny: wy(Math.max(z.y0, p.y)), maxy: wy(Math.min(z.y0, p.y)) };
+    fitCamera(bounds, 0.96);
+    draw();
+    say("선택한 영역으로 확대했습니다. 이 확대 위치는 다음 단계에서도 유지됩니다.");
+  });
 
   let drag = null;
   // 영역 지정 드래그 — 켜져 있을 때만 왼쪽 버튼을 가로챈다(패닝은 그대로).
@@ -116,6 +232,15 @@
   }
 
   cv.addEventListener("mousedown", (e) => {
+    if (zoomArmed && e.button === 0 && !e.shiftKey) {
+      const p = zoomPoint(e);
+      zoomDrag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+      const box = $("zoom-window");
+      Object.assign(box.style, { left: p.x + "px", top: p.y + "px", width: "0px", height: "0px" });
+      box.classList.remove("hidden");
+      e.preventDefault();
+      return;
+    }
     const armed = zoneArmed();
     if (e.button === 0 && !e.shiftKey && armed) {
       zoneDrag = { x0: wx(e.offsetX), y0: wy(e.offsetY),
@@ -129,6 +254,7 @@
     }
   });
   cv.addEventListener("mousemove", (e) => {
+    if (zoomDrag) return;
     $("coord").textContent =
       `x ${wx(e.offsetX).toFixed(0)}  y ${wy(e.offsetY).toFixed(0)}`;
     if (zoneDrag) {
@@ -175,9 +301,13 @@
       else zonesTouched(`영역 ${S.zones.length}곳이 되었습니다`);
     }
   });
-  cv.addEventListener("contextmenu", (e) => e.preventDefault());
+  cv.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    window.moduleFNetworkEditor?.contextMenu(e.offsetX,e.offsetY);
+  });
   cv.addEventListener("wheel", (e) => {
     e.preventDefault();
+    if (zoomDrag || zoneDrag || !e.deltaY) return;
     const k = e.deltaY < 0 ? 1.15 : 1 / 1.15;
     const bx = wx(e.offsetX), by = wy(e.offsetY);
     S.view.scale *= k;
@@ -187,6 +317,7 @@
   }, { passive: false });
 
   cv.addEventListener("click", (e) => {
+    if (zoomArmed || performance.now() < suppressClickUntil) return;
     if (e.shiftKey) return;
     // ★영역 그리기가 켜져 있으면 캔버스는 **영역 도구의 것**이다.
     //
@@ -215,6 +346,8 @@
     //   손질이라는 약속이 이미 서 있다).
     // [§3-5] ＋ 를 눌러 «무장» 한 동안은 이 클릭이 자리를 정한다 — 선택을
     //   바꾸지 않는다(바꾸면 방금 고른 배관을 잃는다).
+    else if ((S.stage === "design" || S.stage === "merge")
+             && window.moduleFNetworkEditor?.canvasClick(x,y,maxD)) { /* 편집 위치 지정 */ }
     else if ((S.stage === "design" || S.stage === "merge")
              && S.opArm && opArmedClick(x, y)) { /* 자리 정함 */ }
     else if (S.stage === "design") designInspect(x, y, maxD);
@@ -274,6 +407,8 @@
   }
 
   async function undoStep() {
+    if ((S.stage === "design" || S.stage === "merge") && window.moduleFNetworkEditor
+        && await window.moduleFNetworkEditor.undo()) return;
     // [§3-5] 위상 수정이 쌓여 있으면 **그것부터** 되돌린다. 방금 지운 배관이
     //   Ctrl+Z 로 안 돌아오면 사람은 지우기를 무서워하게 된다 — 확인 창을
     //   안 띄우는 대신 이 길이 반드시 있어야 한다.
@@ -478,6 +613,16 @@
 
   // ── 그리기 ─────────────────────────────────────────────────────
   function draw() {
+    if (drawFrame) return;
+    drawFrame = requestAnimationFrame(() => {
+      drawFrame = 0;
+      syncViewport();
+      paint();
+      window.moduleFNetworkEditor?.overlay();
+    });
+  }
+
+  function paint() {
     const { w, h } = cssSize();
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "#000";
@@ -565,6 +710,50 @@
   const PICK_HEAD_HL = "#ff2d2d";
   const PICK_PIPE_W = CAD_LINE_W + 1.4;
 
+  // Geometry stays in CAD units. Cache paths once, reject off-screen chunks,
+  // and apply the camera transform in Canvas instead of rebuilding every line.
+  const segmentPaths = new WeakMap();
+  function strokeSegments(segs) {
+    if (!segs || !segs.length) return;
+    let chunks = segmentPaths.get(segs);
+    if (!chunks) {
+      chunks = [];
+      for (let start = 0; start < segs.length; start += 2048) {
+        const path = new Path2D();
+        let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+        for (let i = start; i < Math.min(start + 2048, segs.length); i += 4) {
+          const x = segs[i], y = segs[i + 1], xx = segs[i + 2], yy = segs[i + 3];
+          path.moveTo(x, y); path.lineTo(xx, yy);
+          minx = Math.min(minx, x, xx); miny = Math.min(miny, y, yy);
+          maxx = Math.max(maxx, x, xx); maxy = Math.max(maxy, y, yy);
+        }
+        chunks.push({ path, minx, miny, maxx, maxy });
+      }
+      segmentPaths.set(segs, chunks);
+    }
+    const { scale, ox, oy } = S.view, { w, h } = cssSize();
+    const pad = (ctx.lineWidth + 2) / scale;
+    const right = ox + w / scale, top = oy + h / scale;
+    const visible = new Path2D();
+    for (const chunk of chunks) {
+      if (chunk.maxx < ox - pad || chunk.minx > right + pad ||
+          chunk.maxy < oy - pad || chunk.miny > top + pad) continue;
+      visible.addPath(chunk.path);
+    }
+    ctx.save();
+    ctx.translate(-ox * scale, h + oy * scale);
+    ctx.scale(scale, -scale);
+    ctx.lineWidth /= scale;
+    ctx.setLineDash(ctx.getLineDash().map(n => n / scale));
+    ctx.stroke(visible);
+    ctx.restore();
+  }
+
+  function circleVisible(x, y, radius) {
+    const px = sx(x), py = sy(y), r = radius * S.view.scale + 3;
+    return px + r >= 0 && py + r >= 0 && px - r <= canvasSize.w && py - r <= canvasSize.h;
+  }
+
   function drawWorld(dim, alpha) {
     ctx.lineWidth = CAD_LINE_W;
     if (dim) {
@@ -574,23 +763,19 @@
     for (const b of S.world.bundles) {
       if (S.hidden.has(b.id)) continue;
       ctx.strokeStyle = b.css;
+      strokeSegments(b.segs);
       ctx.beginPath();
-      const sg = b.segs;
-      for (let i = 0; i < sg.length; i += 4) {
-        ctx.moveTo(sx(sg[i]), sy(sg[i + 1]));
-        ctx.lineTo(sx(sg[i + 2]), sy(sg[i + 3]));
-      }
       const cr = b.circles;
       for (let i = 0; i < cr.length; i += 3) {
         const r = cr[i + 2] * S.view.scale;
-        if (r < 0.4) continue;
+        if (r < 0.4 || !circleVisible(cr[i], cr[i + 1], cr[i + 2])) continue;
         ctx.moveTo(sx(cr[i]) + r, sy(cr[i + 1]));
         ctx.arc(sx(cr[i]), sy(cr[i + 1]), r, 0, Math.PI * 2);
       }
       const ar = b.arcs;
       for (let i = 0; i < ar.length; i += 5) {
         const r = ar[i + 2] * S.view.scale;
-        if (r < 0.4) continue;
+        if (r < 0.4 || !circleVisible(ar[i], ar[i + 1], ar[i + 2])) continue;
         // 화면은 y 를 뒤집으므로 각도 방향도 뒤집힌다.
         const a0 = -ar[i + 3] * Math.PI / 180;
         const a1 = a0 - ar[i + 4] * Math.PI / 180;
@@ -706,14 +891,7 @@
       }
       for (const g of e.body_groups) {
         ctx.strokeStyle = g.css;
-        ctx.beginPath();
-        // segs 는 평평한 배열이다 — [x1,y1,x2,y2, x1,y1,x2,y2, …] (찍기 캔버스와 같은 규약)
-        const sg = g.segs;
-        for (let i = 0; i < sg.length; i += 4) {
-          ctx.moveTo(sx(sg[i]), sy(sg[i + 1]));
-          ctx.lineTo(sx(sg[i + 2]), sy(sg[i + 3]));
-        }
-        ctx.stroke();
+        strokeSegments(g.segs);
       }
       ctx.restore();
       ctx.setLineDash([]);
@@ -895,11 +1073,33 @@
   }
 
   // ── 통신 ───────────────────────────────────────────────────────
+  let working = null;
+  let cancellingWork = false;
+  const cancelledError = () => new Error("작업을 중지했습니다.");
   async function api(path, opts) {
-    const r = await fetch(path, opts);
+    const work = working;
+    if (work && work.cancelled) throw cancelledError();
+    const { responseType, ...options } = { ...(opts || {}) };
+    if (work) {
+      options.signal = work.controller.signal;
+      options.headers = { ...(options.headers || {}), "X-Module-F-Operation": work.id };
+    }
+    let r;
+    try { r = await fetch(path, options); }
+    catch (err) { if (work && work.cancelled) throw cancelledError(); throw err; }
+    if (r.ok && responseType === "blob") {
+      const blob = await r.blob();
+      if (work && work.cancelled) throw cancelledError();
+      const cd = r.headers.get("Content-Disposition") || "";
+      const utfName = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+      const plainName = /filename=(?:"([^"]+)"|([^;]+))/i.exec(cd);
+      return { blob, filename: utfName ? decodeURIComponent(utfName[1])
+        : (plainName ? (plainName[1] || plainName[2]).trim() : "배관망_편집용_1cm.kfp") };
+    }
     let d;
     try { d = await r.json(); }
     catch (err) { throw new Error(`서버 응답을 읽지 못했습니다 (HTTP ${r.status}).`); }
+    if (work && work.cancelled) throw cancelledError();
     if (!r.ok || d.ok === false) {
       // ★[복원 §2-3] 문장만 던지면 «어느 헤드가 · 왜 · 뭘 하면 되는지» 가
       //   버려진다. 막은 이유는 자료로 오므로 그대로 붙여 보낸다.
@@ -915,6 +1115,7 @@
   });
 
   function say(msg, cls) {
+    if (cancellingWork) return;
     const el = $("status");
     el.textContent = msg;
     el.className = cls || "";
@@ -925,6 +1126,15 @@
   // (클릭은 여전히 삼킨다 — 겹쳐 도는 작업을 막는 것이 이 막의 일이다)
   // 바탕만 걷어 뒤의 캔버스가 보인다.
   function busy(on, text, opts) {
+    if (cancellingWork) return;
+    if (!on) working = null;
+    if (on && (!working || $("busy").classList.contains("hidden"))) {
+      working = { id: crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "")
+                  : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join(""),
+                  controller: new AbortController(), cancelled: false,
+                  previousSid: S.sid, previousStage: S.stage };
+      $("busy-cancel").disabled = false;
+    }
     const o = opts || {};
     const box = $("busy");
     box.classList.toggle("hidden", !on);
@@ -939,6 +1149,71 @@
     }
   }
   const MB = (n) => `${(n / 1048576).toFixed(1)} MB`;
+
+  $("busy-cancel").onclick = async () => {
+    if (!working || cancellingWork) return;
+    const work = working;
+    cancellingWork = true;
+    work.cancelled = true;
+    $("busy-cancel").disabled = true;
+    $("busy-text").textContent = "중지 중… 실행 중인 작업을 정리하고 있습니다.";
+    stopWatch();
+    work.controller.abort();
+    const control = async (url, options) => {
+      const response = await fetch(url, options);
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.message || "중지 상태를 확인하지 못했습니다.");
+      return data;
+    };
+    let stopped = false;
+    try {
+      const ids = [...new Set([work.id, work.serverOperation].filter(Boolean))];
+      let states = await Promise.all(ids.map(operation => control("/api/module-f/job/cancel", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation, sid: S.sid }),
+      })));
+      while (states.some(state => !state.stopped)) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        states = await Promise.all(ids.map(operation => control(
+          `/api/module-f/job/cancel-state?operation=${encodeURIComponent(operation)}`)));
+      }
+      stopped = true;
+      const rollbackErrors = states.flatMap(state => state.rollback_errors || []);
+      if (rollbackErrors.length) throw new Error("중지했지만 저장된 편집 기록 복원에 실패했습니다: " + rollbackErrors.join(" · "));
+      working = null;
+      cancellingWork = false;
+      busy(false);
+      jobWasRunning = false; jobPeek = false;
+      jobChip("중지됨");
+      // Read confirmed server state again; a cancelled partial result is never
+      // passed to onDone or allowed to start the next automatic stage.
+      if (S.sid) {
+        const j = await api(`/api/module-f/job?sid=${S.sid}`);
+        if (S.stage === "design") await designPreview();
+        else if (S.stage === "merge") await loadMergeView();
+        else if (j.stage === "edit" && S.stage === "edit") await loadEdit();
+        else if (j.stage === "pick") await loadWorldRaw();
+        else if (!j.stage && !work.previousSid) {
+          S.world = null; S.edit = null; S.key = null;
+          setStage("open");
+        }
+        draw();
+      }
+      say("작업을 중지했습니다. 필요한 작업을 다시 실행할 수 있습니다.", "warn");
+    } catch (err) {
+      if (stopped) {
+        working = null;
+        cancellingWork = false;
+        busy(false);
+        say(`작업은 중지됐습니다. 화면 갱신 오류: ${err.message}`, "warn");
+        return;
+      }
+      // Keep the overlay until the server actually acknowledges termination.
+      cancellingWork = false;
+      $("busy-cancel").disabled = false;
+      $("busy-text").textContent = `${err.message} ×를 눌러 중지 상태를 다시 확인하세요.`;
+    }
+  };
 
   // 슬롯마다 «실제로 밟는 단계» 가 다르다. 계통도·기계실은 찍을 재료가 없어
   // 찍기·손질·변환이 통째로 없다 — 두 점을 찍어 경로를 뽑으면 끝이다.
@@ -1066,6 +1341,7 @@
   }
 
   function setStage(name) {
+    if (name !== S.stage) armZoom(false);
     S.stage = name;
     const want = new Set(STAGE_PANELS[name] || []);
     for (const id of ALL_PANELS) {
@@ -1074,9 +1350,10 @@
     // 「이어서 열기」는 평면도만의 개념이다(찍은 스펙 목록) — 계통도·기계실
     // 슬롯에서 띄우면 남의 도면 목록을 이 슬롯에 여는 것처럼 보인다.
     if (name === "open") {
-      $("panel-resume").classList.toggle("hidden", S.slot !== "plan");
+      $("panel-resume").classList.add("hidden");
     }
     renderSteps();
+    window.moduleFNetworkEditor?.render();
     draw();
   }
 
@@ -1102,6 +1379,8 @@
   //   (실측: 진행 자동열림이 SSE 에서만 안 먹었다). 두 경로가 같은 것을 그리면
   //   한쪽만 고쳐지는 날이 반드시 온다.
   function jobStatus(j) {
+    if (cancellingWork || (working && working.cancelled)) return;
+    if (working && j.operation && j.state === "run") working.serverOperation = j.operation;
     $("job-line").textContent =
       `${j.phase} · ${j.state === "run" ? "진행 중" : j.state} · ${j.elapsed}s`
       + (j.queued ? " (다른 작업이 끝나기를 기다리는 중)" : "");
@@ -1144,10 +1423,18 @@
     jobStatus(j);
   }
   function jobFinish(j, onDone) {
+    if (cancellingWork || (working && working.cancelled)) { stopWatch(); return; }
+    const finishedWork = working;
     stopWatch();
     busy(false);
     jobWasRunning = false;
     jobPeek = false;
+    if (j.state === "cancelled") {
+      working = null;
+      jobChip("중지됨");
+      say("작업을 중지했습니다.", "warn");
+      return;
+    }
     if (j.state === "error") {
       jobChip("실패");
       logFold(true);            // 실패는 열어 둔다 — 읽어야 고친다
@@ -1158,13 +1445,14 @@
     logFold(false);
     // onDone 은 async 다. 여기서 잡지 않으면 실패가 조용히 삼켜진다.
     Promise.resolve()
-      .then(() => onDone(j))
+      .then(() => { if (!finishedWork || !finishedWork.cancelled) return onDone(j); })
       .catch((err) => say(err.message || String(err), "err"));
   }
 
   // `onEarly` — 도면이 준비되는 «순간» 한 번. 안 주면 종전과 똑같이 잡이
   // 끝난 뒤에만 그린다(채택·조립·이음 같은 잡은 중간에 그릴 것이 없다).
   function watch(onDone, onEarly) {
+    if (cancellingWork || (working && working.cancelled)) return;
     stopWatch();
     earlyFired = false;
     jobPeek = false;
@@ -1180,12 +1468,14 @@
     S.es = es;
     const lines = [];
     es.addEventListener("line", (ev) => {
+      if (S.es !== es) return;
       lines.push(JSON.parse(ev.data));
       if (lines.length > 400) lines.splice(0, 200);
       $("log").textContent = lines.join("\n");
       $("log").scrollTop = $("log").scrollHeight;
     });
     es.addEventListener("state", (ev) => {
+      if (S.es !== es) return;
       const j = JSON.parse(ev.data);
       jobStatus(j);            // 진행 줄·표·가림막 — 폴링과 같은 한 벌
       if (j.state === "run") { jobEarly(j, onEarly); return; }
@@ -1232,6 +1522,7 @@
   const GZIP_MIN_BYTES = 8 * 1024 * 1024;
 
   async function attachDxf(fd, field, file) {
+    const work = working;
     const US = window.UploadStream;
     if (!US || file.size < GZIP_MIN_BYTES) {
       fd.append(field, file, file.name);
@@ -1240,7 +1531,8 @@
     busy(true, `압축 중… 0% (${MB(file.size)})`, { pct: 0 });
     const gz = await US.gzipBlob(file, (p) =>
       busy(true, `압축 중… ${Math.round(p * 100)}% (${MB(file.size)})`,
-           { pct: p }));
+           { pct: p }), { signal: work && work.controller.signal });
+    if (work && work.cancelled) throw cancelledError();
     // 이미 압축된 파일은 되레 커진다 — 그러면 원본을 보낸다.
     if (gz && gz.size < file.size) {
       fd.append(field, gz, file.name + ".gz");
@@ -1251,6 +1543,8 @@
   }
 
   function sendOpen(url, fd, bytes) {
+    const work = working;
+    if (work && work.cancelled) return Promise.reject(cancelledError());
     const US = window.UploadStream;
     if (!US) return api(url, { method: "POST", body: fd });
     return US.xhrUploadForToken(url, fd, (p) => {
@@ -1259,6 +1553,10 @@
       if (p >= 1) { busy(true, "서버가 도면을 받는 중…", { pct: 1 }); return; }
       busy(true, `업로드 중… ${Math.round(p * 100)}% `
                  + `(${MB(bytes * p)} / ${MB(bytes)})`, { pct: p });
+    }, { signal: work && work.controller.signal,
+         headers: work ? { "X-Module-F-Operation": work.id } : {} }).then(d => {
+      if (work && work.cancelled) throw cancelledError();
+      return d;
     });
   }
 
@@ -1276,6 +1574,7 @@
       // 올리기까지다 — 읽기는 방식이 정해진 뒤(`/slot/read`).
       const d = await sendOpen("/api/module-f/slot/open", fd, sent);
       S.sid = d.sid;
+      resetSlotViewport();
       S.method = null;
       S.zones = []; S.autoAlarm = null; S.autoHeads = []; S.autoDone = false;
       S.world = null; S.edit = null; S.key = null;
@@ -1308,7 +1607,7 @@
         if (drawing) return drawing;
         drawing = (async () => {
           await loadWorldRaw();
-          fit(S.world.bounds);
+          ensureView();
         })();
         drawing.catch(() => { drawing = null; });
         return drawing;
@@ -1502,8 +1801,9 @@
   // 시작 배너 — 무엇으로 시작했는지, 되돌릴 수 있는지 한 줄.
   function startNote(html, warn) {
     const box = $("start-note");
-    box.innerHTML = html;
+    box.innerHTML = warn ? html : "";
     box.classList.toggle("warn", !!warn);
+    $("panel-start").classList.toggle("quiet-hidden", !warn);
   }
 
   // [D-F10-2] 자동 차선은 고급 안 한 줄로 남는다 — 엔드포인트·테스트·특허
@@ -1632,7 +1932,7 @@
   async function loadWorld(reuse) {
     if (!reuse || !S.world) await loadWorldRaw();
     setStage("pick");
-    fit(S.world.bounds);
+    ensureView();
     renderPick();
     loadSlots();
     const c = S.world.counts, dr = S.world.dropped;
@@ -1654,10 +1954,16 @@
     const next = (open === undefined) ? body.classList.contains("hidden") : open;
     body.classList.toggle("hidden", !next);
     h2.classList.toggle("on", next);
+    h2.setAttribute("aria-expanded", String(next));
   }
 
   for (const h2 of document.querySelectorAll("h2.fold")) {
+    h2.setAttribute("role","button");h2.tabIndex=0;
+    h2.setAttribute("aria-controls",h2.dataset.fold);
     h2.onclick = () => toggleFold(h2);
+    h2.onkeydown = (ev) => {
+      if (ev.key==='Enter' || ev.key===' ') { ev.preventDefault();toggleFold(h2); }
+    };
     toggleFold(h2, false);          // 처음엔 접어 둔다
   }
 
@@ -1969,7 +2275,7 @@
         // [F-10a] 읽어는 뒀는데 아직 길이 안 정해진 슬롯. 예전에는 여기서 방식을
         //   다시 물었다 — 이제 묻지 않고 열기 때와 같은 판단으로 흘려보낸다
         //   (새로고침 같은 이유로 흐름이 중간에 끊겼을 때 오는 자리다).
-        if (S.world) fit(S.world.bounds);
+        ensureView();
         const nm = st.dxf_name || cur.key || "";
         $("adv-file").textContent = nm;
         $("adv-file").title = nm;
@@ -2015,6 +2321,7 @@
     $("sub-lab-b").textContent = sp.b;
     $("sub-clean-row").classList.toggle("hidden", !sp.clean);
     $("sub-ceiling-row").classList.toggle("hidden", !sp.ceiling);
+    $("sub-elevation-row").classList.toggle("hidden", S.slot !== "system");
     renderSubPicks();
   }
 
@@ -2196,6 +2503,7 @@
     const sp = subSpec();
     const body = { sid: S.sid,
                    snap_tolerance_mm: Number($("sub-snap").value || 2500) };
+    if (S.slot === "system") body.elevation_mode = $("sub-elevation-mode").value;
     if (clean) {
       body.clean = true;
     } else {
@@ -2478,11 +2786,12 @@
 
   async function loadSub() {
     const d = await api(`/api/module-f/sub/state?sid=${S.sid}`);
+    if (S.slot === "system") $("sub-elevation-mode").value = d.summary?.elevation_mode || "drawing";
     setStage("sub");
     renderSubPanel();
     renderSubSummary(d);
     S.sub.mode = d.mode;
-    if (S.world) fit(S.world.bounds);
+    ensureView();
     await loadSubGraph();          // 선이 따라오게 하는 재료
     // 이미 뽑아 둔 것이 있으면 손보기 표도 채운다 — 돌아왔을 때 빈 표가
     // 뜨면 「손질이 날아갔나」로 읽힌다.
@@ -2595,10 +2904,7 @@
       await loadAutoNetView();   // 검출한 망을 먼저 되살린다(단계 표시가 쓴다)
       renderAuto(d);
       await loadAutoView();
-      // 추출을 끝낸 슬롯으로 돌아오면 그 자리로 다시 맞춘다.
-      const b = autoNetBounds();
-      if (b) fit(b);
-      else if (S.world) fit(S.world.bounds);
+      ensureView();
       draw();
     } catch (err) { say(err.message, "err"); }
   }
@@ -2717,7 +3023,7 @@
       watch(async () => {
         await loadAutoNetView();
         renderAuto(null);
-        if (S.autoNetView) fit(netBounds() || curBounds());
+        ensureView();
         draw();
         const s = S.autoNet;
         if (s) {
@@ -2926,15 +3232,11 @@
         renderSteps();
         // 뽑힌 망을 받아 와야 나머지를 내리고 이것만 살릴 수 있다.
         await loadAutoView();
-        // ★흐리게 내리는 것만으로는 안 드러난다 — 도면이 971 m 인데 설계면적은
-        //   25 m 라, 화면을 도면 전체로 두면 결과가 점 하나로 남는다. 뽑은
-        //   자리로 맞춰 준다(사람이 다시 「화면 맞춤」을 눌러도 여기로 온다).
-        const b = autoNetBounds();
-        if (b) fit(b); else draw();
+        ensureView();
         if (d.summary) {
           say(`자동 추출 완료 — 헤드 ${d.summary.k} · 최원 ${d.summary.far_m} m`
-              + ` · 절점 ${d.summary.nodes}. 뽑은 자리로 화면을 맞추고 나머지`
-              + " 도면은 흐리게 내렸습니다.", "ok");
+              + ` · 절점 ${d.summary.nodes}. 확대 위치를 유지했습니다. `
+              + "화면 맞춤을 누르면 추출한 배관망을 한눈에 볼 수 있습니다.", "ok");
         }
       });
     } catch (err) { busy(false); say(err.message, "err"); }
@@ -3268,6 +3570,7 @@
       + " 둘을 **같은 폴더**에 두어야 PIPENET 이 관경을 찾습니다.", "ok");
   };
   $("mg-dl-kfp").onclick = () => dlFile(mgUrl("kfp" + mgSuffix()));
+  $("mg-dl-kfp-edit").onclick = () => dlEditingKfp(mgUrl("kfp" + mgSuffix()));
   $("mg-dl-has").onclick = () => dlFile(mgUrl("has" + mgSuffix()));
   $("mg-dl-slf").onclick = () => dlFile(mgUrl("slf" + mgSuffix()));
 
@@ -3280,21 +3583,68 @@
   }
   // [§3-4] 통합 밑그림 — 04 의 `dg-under` 와 **같은 규약**이다. 재료(손질 망·
   // 변환) 가 없으면 어림값으로 깔지 않고 사유를 말하며 끈다.
-  if ($("mg-under")) $("mg-under").onchange = async () => {
-    const on = () => $("mg-under").checked;
-    if (on() && !S.edit) {
-      try {
-        const d = await api(`/api/module-f/edit/state?sid=${S.sid}`);
-        setEdit(d.state);
-      } catch (err) { say(err.message, "err"); $("mg-under").checked = false; return; }
+  const mergeUnderCache = new Map();
+  let mergeUnderRequest = 0;
+  function renderMergeUnderOptions() {
+    const notes=[];
+    for (const row of S.mergeView?.underlays || []) {
+      const el=$(`mg-under-${row.kind}`);
+      el.disabled=!row.available;
+      el.title=row.available ? row.source : row.reason;
+      if (!row.available) notes.push(`${row.label}: ${row.reason}`);
+      else if ($("mg-under").checked && el.checked) notes.push(`${row.label}: ${row.note}`);
     }
-    if (on() && !((S.mergeView || {}).underlay)) {
-      $("mg-under").checked = false;
-      say("밑그림 변환을 받지 못했습니다 — 결합을 다시 해 주세요.", "err");
-      return;
-    }
-    draw();
-  };
+    $("mg-under-note").textContent=notes.join(" ");
+  }
+  async function loadMergeUnderlays() {
+    renderMergeUnderOptions();
+    if (!$("mg-under").checked || !S.mergeView) { draw(); return; }
+    const missing=(S.mergeView.underlays || []).some(r=>r.available && !mergeUnderCache.has(r.token));
+    if (!missing) { draw(); return; }
+    const seq=++mergeUnderRequest, sid=S.sid;
+    try {
+      const d=await api(`/api/module-f/merge/preview?sid=${encodeURIComponent(sid)}&iso=${mergeIsoOn()?1:0}&underlays=1`);
+      if (seq!==mergeUnderRequest || sid!==S.sid) return;
+      const valid=new Set((S.mergeView?.underlays || []).map(r=>r.token));
+      for (const key of mergeUnderCache.keys()) if (!valid.has(key)) mergeUnderCache.delete(key);
+      for (const r of d.view?.underlays || []) {
+        if (!r.available || !valid.has(r.token) || !r.groups) continue;
+        const path=new Path2D();
+        for (const g of r.groups) {
+          for (let i=0;i<g.segs.length;i+=4) {
+            path.moveTo(g.segs[i],g.segs[i+1]);path.lineTo(g.segs[i+2],g.segs[i+3]);
+          }
+          for (let i=0;i<g.circles.length;i+=3) {
+            const [x,y,radius]=g.circles.slice(i,i+3);
+            if (radius<=0) continue;
+            path.moveTo(x+radius,y);path.arc(x,y,radius,0,2*Math.PI);
+          }
+          for (let i=0;i<g.arcs.length;i+=5) {
+            const [x,y,radius,start,sweep]=g.arcs.slice(i,i+5),a=start*Math.PI/180;
+            if (radius<=0) continue;
+            path.moveTo(x+radius*Math.cos(a),y+radius*Math.sin(a));
+            path.arc(x,y,radius,a,a+sweep*Math.PI/180,sweep<0);
+          }
+        }
+        // Reuse the source drawing bounds; build once, alongside its geometry.
+        const frame=new Path2D(), b=r.bounds;
+        let corners=[];
+        if (b && [b.minx,b.miny,b.maxx,b.maxy].every(Number.isFinite)
+            && b.maxx>=b.minx && b.maxy>=b.miny) {
+          const pad=Math.max(b.maxx-b.minx,b.maxy-b.miny,100)*.01;
+          frame.rect(b.minx-pad,b.miny-pad,b.maxx-b.minx+2*pad,b.maxy-b.miny+2*pad);
+          corners=[[b.minx-pad,b.miny-pad],[b.maxx+pad,b.miny-pad],
+                   [b.maxx+pad,b.maxy+pad],[b.minx-pad,b.maxy+pad]];
+        }
+        mergeUnderCache.set(r.token,{path,frame,corners});
+      }
+      draw();
+    } catch (err) { say(`밑그림을 불러오지 못했습니다: ${err.message}`,"err"); }
+  }
+  if ($("mg-under")) $("mg-under").onchange=loadMergeUnderlays;
+  for (const kind of ["plan","system","machineroom"]) {
+    $(`mg-under-${kind}`).onchange=()=>{renderMergeUnderOptions();draw();};
+  }
   // 좌표를 바꾸면 그 벌이 났는지에 따라 단추가 갈린다.
   $("mg-dl-coord").onchange = () => renderMergeFiles();
 
@@ -3319,6 +3669,7 @@
     $("mg-dl-sdf").disabled = !f["sdf" + q];
     $("mg-dl-slf").disabled = !f["slf" + q];
     $("mg-dl-kfp").disabled = !f["kfp" + q];
+    $("mg-dl-kfp-edit").disabled = !f["kfp" + q];
     $("mg-dl-has").disabled = !f["has" + q];
     say(f.sdf_iso
         ? "산출 완료 — 아이소 좌표본도 함께 났습니다"
@@ -3347,7 +3698,8 @@
       S.mergeOv = d.overrides || [];
       S.ops = d.ops || [];             // [§3-3] 목록은 두 화면이 한 벌을 본다
       S.mergeMissed = d.ov_missed || [];
-      S.mergeSel = null;               // 새 결합망이다 — 옛 카드를 들고 있지 않는다
+      if (S.mergeSel && !(S.mergeView?.[S.mergeSel.kind==='node'?'nodes':'pipes'] || [])
+          .some(r=>String(r.label)===String(S.mergeSel.label))) S.mergeSel=null;
       if (!S.ovFields) {
         try {
           S.ovFields = (await api(
@@ -3357,11 +3709,9 @@
       }
       renderInspect();
       renderMergeLegend(d);
+      await loadMergeUnderlays();
       if (S.mergeView && S.mergeView.nodes.length) {
-        const xs = S.mergeView.nodes.map((n) => n.x);
-        const ys = S.mergeView.nodes.map((n) => n.y);
-        fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
-              miny: Math.min(...ys), maxy: Math.max(...ys) });
+        ensureView();
       } else if (d.message) {
         say(d.message);
       }
@@ -3464,6 +3814,7 @@
   };
 
   async function loadSaved() {
+    if ($("panel-resume").dataset.retired) return;
     try {
       const d = await api("/api/module-f/saved");
       const sel = $("saved");
@@ -3885,7 +4236,7 @@
     if (!S.emode) setUiMode(ONECLICK);
     loadSlots();
     setStage("edit");
-    fit(S.edit.bounds);
+    ensureView();
     renderEdit();
     say(`${S.key} · 노드 ${S.edit.counts.pts.toLocaleString()}`
       + ` · 간선 ${S.edit.counts.edges.toLocaleString()}`
@@ -4504,6 +4855,7 @@
         || (el && el.isContentEditable)) return;
     if (!insSelLabel()) return;
     e.preventDefault();
+    if (window.moduleFNetworkEditor) { window.moduleFNetworkEditor.deletePreview(); return; }
     opDelete();
   });
 
@@ -4524,7 +4876,7 @@
     catch (err) { say(err.message, "err"); return; }
     const wrap = $("src-wrap");
     const selected = wrap.classList.contains("hidden") ? null : $("conv-src").value;
-    for (const id of ["btn-download", "btn-download-worst",
+    for (const id of ["btn-download", "btn-download-worst", "btn-download-edit", "btn-download-worst-edit",
                       "btn-download-design", "btn-download-has",
                       "btn-download-slf"]) {
       $(id).disabled = true;
@@ -4604,9 +4956,16 @@
         `<span class="ok">${s.design.sdf}</span>`
         + ` · ${(s.design.bytes / 1024).toFixed(0)} KB (+.slf)`);
     }
+    for (const part of [s.full, s.worst]) {
+      for (const warning of (part?.compatibility?.warnings || [])) {
+        html += kv("KFP 편집 안내", esc(warning));
+      }
+    }
     $("conv-info").innerHTML = html + `<table class="rs">${rows}</table>`;
     $("btn-download").disabled = !s.full;
     $("btn-download-worst").disabled = !s.worst;
+    $("btn-download-edit").disabled = !s.full;
+    $("btn-download-worst-edit").disabled = !s.worst;
     $("btn-download-design").disabled = !s.design;
     $("btn-download-slf").disabled = !s.design;
     // .has 는 설계 SDF 에서 변환해 낸다 — SDF 가 있으면 있다.
@@ -4628,6 +4987,39 @@
     a.remove();
   }
 
+  /** Review geometry changes before downloading a distinct legacy editing copy. */
+  async function dlEditingKfp(url) {
+    busy(true, "KFP 편집 호환성 검사 중…");
+    try {
+      const check = await api(url + "&variant=solver-edit&inspect=1");
+      busy(false);
+      const r = check.report;
+      if (!r.ok) {
+        say("편집용 KFP를 만들 수 없습니다: " + r.errors.slice(0, 8).join(" · "), "err");
+        return;
+      }
+      const message = "Solver 편집용 사본을 내려받습니다 (1cm 격자).\n\n"
+        + `위치 변경 노드: ${r.changed_nodes}개 · 축별 최대 ${r.max_coordinate_change_mm.toFixed(3)}mm\n`
+        + `길이 변경 배관: ${r.length_changes.length}개 · 최대 ${r.max_length_change_mm.toFixed(3)}mm\n`
+        + `총 배관 길이 변화: ${r.total_length_change_mm.toFixed(3)}mm\n\n`
+        + "계산용 원본은 유지됩니다. 이 사본은 Solver에서 수리계산을 다시 실행해야 합니다.\n내려받으시겠습니까?";
+      if (!window.confirm(message)) return;
+      busy(true, "편집용 KFP 내려받는 중…");
+      const file = await api(url + "&variant=solver-edit&source_sha256="
+        + encodeURIComponent(check.source_sha256), { responseType: "blob" });
+      const objectUrl = URL.createObjectURL(file.blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = file.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
+      say("편집용 KFP를 내려받았습니다. 편집 후 Solver에서 수리계산을 다시 실행하세요.", "ok");
+    } catch (err) { say(err.message, "err"); }
+    finally { busy(false); }
+  }
+
   const dlUrl = (what) =>
     `/api/module-f/download?sid=${S.sid}&what=${what}`;
 
@@ -4647,6 +5039,8 @@
 
   $("btn-download").onclick = () => dlFile(dlUrl("kfp"));
   $("btn-download-worst").onclick = () => dlFile(dlUrl("worst-kfp"));
+  $("btn-download-edit").onclick = () => dlEditingKfp(dlUrl("kfp"));
+  $("btn-download-worst-edit").onclick = () => dlEditingKfp(dlUrl("worst-kfp"));
   $("btn-download-has").onclick = () => dlFile(dlUrl("design-has"));
   $("btn-download-slf").onclick = () => dlFile(dlUrl("design-slf"));
   $("btn-download-design").onclick =
@@ -4881,6 +5275,13 @@
     renderIsoNote();
     renderSwapWhy();      // [§2-4] 빠진 헤드 사유 — 체크박스 바로 밑에
     renderStale(d.stale); // ★[표가 옛 것] 아이소가 옛 표를 그리고 있으면 말한다
+    const diagnosed = d.diagnostics && d.diagnostics.state === "done";
+    $("dg-diagnose").disabled = !d.tables || !!d.stale || S.method === "auto";
+    $("dg-diagnose-note").textContent = !d.tables ? "표 확정 후 진단할 수 있습니다."
+      : diagnosed ? "전체 도면 진단 완료 — 제외 사유를 확인할 수 있습니다."
+      : "전체 도면 이음 끊김: 미진단. 선택한 헤드의 연결 검사는 완료했습니다.";
+    $("dg-mk-unatt").disabled = !diagnosed;
+    if (!diagnosed) $("dg-mk-unatt").checked = false;
     // ★«아직 확정 안 함» 은 오류가 아니라 상태다(서버가 200 · view:null 로
     //   답한다). 그릴 것이 없으면 여기서 조용히 멈춘다 — 화면은 「표 확정」
     //   단추가 선 채로 남는다.
@@ -5182,9 +5583,72 @@
     paintSel(at, v.pipes, sel);
   }
 
-  /** [§3-4] 통합의 밑그림 — 04 와 **같은 함수**에 통합의 변환을 준다. */
+  /** Intersection of two convex drawing frames in the displayed world plane. */
+  function underlayOverlap(subject, clip) {
+    if (subject.length<3 || clip.length<3) return [];
+    const area=points=>points.reduce((v,p,i)=>{
+      const q=points[(i+1)%points.length],o=points[0];
+      return v+(p[0]-o[0])*(q[1]-o[1])-(q[0]-o[0])*(p[1]-o[1]);
+    },0);
+    const sign=Math.sign(area(clip));
+    if (!sign) return [];
+    let out=subject;
+    for (let i=0;i<clip.length && out.length;i++) {
+      const a=clip[i],b=clip[(i+1)%clip.length],input=out;
+      const side=p=>sign*((b[0]-a[0])*(p[1]-a[1])-(b[1]-a[1])*(p[0]-a[0]));
+      out=[];
+      let prev=input[input.length-1],d0=side(prev);
+      for (const p of input) {
+        const d1=side(p);
+        if ((d0>=0)!==(d1>=0)) {
+          const t=d0/(d0-d1);
+          out.push([prev[0]+t*(p[0]-prev[0]),prev[1]+t*(p[1]-prev[1])]);
+        }
+        if (d1>=0) out.push(p);
+        prev=p;d0=d1;
+      }
+    }
+    return out.length>=3 && Math.abs(area(out))>1e-6 ? out : [];
+  }
+
+  /** Display-only reference drawings and their shared screen-space areas. */
   function drawMergeUnderlay() {
-    drawUnderlay((S.mergeView || {}).underlay);
+    const colors={plan:'#7aa2ff',system:'#d6a4ff',machineroom:'#63d7bd'};
+    const frames=[];
+    for (const r of S.mergeView?.underlays || []) {
+      if (!r.available || !$(`mg-under-${r.kind}`).checked) continue;
+      const cached=mergeUnderCache.get(r.token);
+      if (!cached) continue;
+      const signature=JSON.stringify(r.matrix);
+      if (cached.signature!==signature) {
+        cached.projected=new Path2D();
+        cached.projected.addPath(cached.path,new DOMMatrix(r.matrix));
+        cached.projectedFrame=new Path2D();
+        cached.projectedFrame.addPath(cached.frame,new DOMMatrix(r.matrix));
+        const [a,b,c,d,e,f]=r.matrix;
+        cached.projectedCorners=cached.corners.map(([x,y])=>[a*x+c*y+e,b*x+d*y+f]);
+        cached.signature=signature;
+      }
+      frames.push(cached.projectedCorners);
+      ctx.save();ctx.globalAlpha=.22;ctx.strokeStyle=colors[r.kind];
+      ctx.translate(sx(0),sy(0));ctx.scale(S.view.scale,-S.view.scale);
+      ctx.lineWidth=1/S.view.scale;ctx.stroke(cached.projected);
+      // Project with the drawing, but keep dash length/line width in screen pixels.
+      ctx.globalAlpha=.75;ctx.strokeStyle='#ffffff';
+      ctx.setLineDash([6/S.view.scale,4/S.view.scale]);
+      ctx.stroke(cached.projectedFrame);ctx.restore();
+    }
+    // Only visible layers contribute. No geometry extraction or graph edit.
+    ctx.save();ctx.globalAlpha=.9;ctx.strokeStyle='#9ca3af';ctx.lineWidth=1.2;
+    ctx.setLineDash([5,4]);
+    for (let i=0;i<frames.length;i++) for (let j=i+1;j<frames.length;j++) {
+      const polygon=underlayOverlap(frames[i],frames[j]);
+      if (!polygon.length) continue;
+      ctx.beginPath();
+      polygon.forEach(([x,y],k)=>k?ctx.lineTo(sx(x),sy(y)):ctx.moveTo(sx(x),sy(y)));
+      ctx.closePath();ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function drawDesign() {
@@ -5377,6 +5841,9 @@
    * @param why  키가 없을 때 **왜** 못 고치는지.
    */
   function ovEdit(key, row, why, extra, only) {
+    if (window.moduleFNetworkEditor && (S.stage === "design" || S.stage === "merge")) {
+      return grp("직접 편집") + insNone("아래 배관망 편집 패널에서 미리보기 후 적용하세요. 표와 출력 데이터에 즉시 반영됩니다.");
+    }
     if (!key) {
       // ★자동(A) 차선의 표는 도면 요소와 잇는 주소가 **아예** 없다. 그때
       //   요소마다 「엔진이 만든 자리라…」라고 말하면 거짓이다 — 그 표는
@@ -5671,6 +6138,8 @@
     let h = grp("결합망의 값")
       + kv("어느 도면", esc(MG_PART[p.part] || p.part))
       + kv("호칭경(mm)", esc(p.dia == null ? "—" : p.dia))
+      + kv("재질 / 규격", esc(p.type || "—"))
+      + kv("내경(mm)", esc(p.inner_mm == null ? "—" : p.inner_mm))
       + kv("길이(m)", esc(p.len_m == null ? "—" : p.len_m))
       + kv("C 값", esc(p.c == null ? "—" : p.c))
       + kv("양 끝", `${insLink("mgnode", p.a)} → ${insLink("mgnode", p.b)}`);
@@ -5746,6 +6215,7 @@
   }
 
   function renderInspect() {
+    window.moduleFNetworkEditor?.render();
     const box = $("dg-ins");
     if (!box) return;
     // ★한 상자를 두 화면이 나눠 쓴다 — «지금 어느 화면인가» 로 가른다.
@@ -5790,6 +6260,7 @@
       }
       ovBind($("dg-ins-body"));    // [요소속성 수정카드] 저장·되돌리기
       renderInsOps();              // [§3-5] 위상 수정 단추 셋
+      window.moduleFNetworkEditor?.render();
     } catch (err) {
       $("dg-ins-body").insertAdjacentHTML("afterbegin",
         `<div class="ov-miss">단추를 잇지 못했습니다 — `
@@ -7078,6 +7549,9 @@
                   `${lab} ${s.excluded_detail[k].toLocaleString()}`)
                 .join(" · "))
          : "")
+      + (s.diagnostics_state === "pending"
+         ? kv("전체 도면 진단", "미진단 — 아래 버튼으로 제외 사유를 확인할 수 있습니다.")
+         : "")
       // ★[최불리 인계] 손질 선정을 어떻게 받았는지 — 조용히 다르게 동작하는
       //   갈래를 두지 않는다. 손질에서 안 골랐으면 그 사실을, 고른 것 중
       //   표에 못 온 헤드가 있으면 그 개수와 자리를 말한다.
@@ -7317,16 +7791,7 @@
   };
 
   function fitDesignView() {
-    if (planUnderlayOn() && S.edit && S.edit.bounds) { fit(S.edit.bounds); return; }
-    if (designMarksOn() && S.edit && S.edit.bounds) { fit(S.edit.bounds); return; }
-    // ★`S.design` 은 있는데 `view` 가 없을 수 있다 — 표 요약만 받고 미리보기는
-    //   아직인 상태다(renderDesignSummary 가 먼저 돈다). 그때 `.view.nodes` 를
-    //   읽으면 「Cannot read properties of undefined」로 화면이 멈춘다.
-    if (!S.design || !S.design.view) return;
-    const xs = S.design.view.nodes.map(n => n.x);
-    const ys = S.design.view.nodes.map(n => n.y);
-    fit({ minx: Math.min(...xs), maxx: Math.max(...xs),
-          miny: Math.min(...ys), maxy: Math.max(...ys) });
+    ensureView();
   }
 
   /** 수리계산 화면으로 들어간다 — **평면부터** 보이게.
@@ -7512,9 +7977,24 @@
           S.ovDirty = false;
           renderDesignSummary(sum);
           await designPreview();
-          say("표 확정 — 미리보기와 표는 저장될 값 그대로입니다."
-            + " «평면에서 보기» 를 끄면 30° 아이소매트릭으로 바뀝니다."
-            + " 파일은 다음 단계 «수리계산 입력 변환» 에서 냅니다.", "ok");
+          say(sum.editor_notice || "표를 확정했습니다.", "ok");
+        } catch (err) { say(err.message, "err"); }
+      });
+    } catch (err) { busy(false); say(err.message, "err"); }
+  };
+
+  $("dg-diagnose").onclick = async () => {
+    busy(true, "전체 도면의 제외 사유를 진단하는 중…");
+    try {
+      await post("/api/module-f/design/diagnose", { sid: S.sid });
+      watch(async () => {
+        try {
+          const j = await api(`/api/module-f/convert/result?sid=${S.sid}`);
+          const result = j.result || {};
+          if (!result.ok) throw new Error(result.error || "전체 도면 진단 실패");
+          renderDesignSummary(result.summary);
+          await designPreview();
+          say("전체 도면 진단 완료 — 선택한 헤드와 계산값은 그대로입니다.", "ok");
         } catch (err) { say(err.message, "err"); }
       });
     } catch (err) { busy(false); say(err.message, "err"); }
@@ -7543,6 +8023,19 @@
   // «수리계산 입력 변환» 하나다 — 같은 함수를 두 자리에서 부르던 것을 하나로
   // 모은다(서버 라우트 `/design/emit` 은 그 함수의 다른 입구로 남는다).
 
+  window.moduleFNetworkEditor = window.createModuleFEditor?.({state:S,api,post,busy,say,
+    draw,select:insSelect,reloadDesign:designPreview,reloadMerge:loadMergeView,
+    screen:(x,y)=>[sx(x),sy(y)],world:(x,y)=>[wx(x),wy(y)],
+    inspect:(x,y)=>S.stage==='merge' ? mergeInspect(x,y,PICK_PX/S.view.scale) : designInspect(x,y,PICK_PX/S.view.scale),
+    calculationVisible:()=>S.stage==='merge' || !planUnderlayOn(),
+    editView:() => {
+      if (S.stage === "design") {
+        $("dg-plan").checked = false;
+        for (const id of ["dg-mk-dry","dg-mk-unatt","dg-mk-unpicked","dg-mk-swap"]) $(id).checked = false;
+        renderPlanUnderlay(); fitDesignView();
+      }
+      draw();
+    }});
   setStage("open");
   loadSaved();
   loadRefCounts();

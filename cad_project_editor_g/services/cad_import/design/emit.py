@@ -294,9 +294,13 @@ def emit_design_kfp(tables, got, out_path):
             continue
         labs = []
         for kind in by_pipe.get(lab, ()):
-            lab = fitting_label(kind, "kfp")
-            if lab is not None:
-                labs.append(lab)
+            # ★이름을 `lab` 으로 받지 않는다 — 그러면 **배관 이름**을 덮어쓴다.
+            #   아래 기기 합산이 `lab` 으로 배관을 찾으므로, 부속이 하나라도
+            #   달린 배관에서는 사람이 더한 기기의 등가길이가 통째로 빠진다.
+            #   (부속이 없는 배관에서만 우연히 맞아 시험도 통과했다.)
+            flab = fitting_label(kind, "kfp")
+            if flab is not None:
+                labs.append(flab)
         rec["fittings"] = labs
         n_fit += len(labs)
         if row.get("eq_len") is not None:
@@ -315,7 +319,13 @@ def emit_design_kfp(tables, got, out_path):
         dn = int(row.get("dia") or 0)
         if dn:
             rec["nominal_mm"] = dn
-            if dn in inner:
+            if row.get("inner_mm") is not None:
+                from kfp_sdf_converter import _SLF_TO_KSOLVER_STD
+                rec["diameter"] = float(row["inner_mm"])
+                rec["pipe_type"] = str(row.get("type") or "")
+                rec["type"] = _SLF_TO_KSOLVER_STD.get(rec["pipe_type"], rec["pipe_type"])
+                rec["roughness_mm"] = float(row.get("roughness_mm") or 0)
+            elif dn in inner:
                 rec["diameter"] = inner[dn]
         if row.get("c") is not None:
             rec["C"] = float(row.get("c"))

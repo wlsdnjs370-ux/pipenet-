@@ -13,6 +13,7 @@ from routes.module_f.jobs import (_job_view, _new_session, _run_job, route_sessi
 from routes.module_f.remote30 import _sheet_frames
 from routes.module_f.views import _pick_state
 from routes.module_f.world import _saved_keys, _world_payload
+from routes.module_f.cancellation import OperationCancelled
 
 
 def _open_job(sess: dict, dxf, *, kind: str = "plan"):
@@ -66,6 +67,8 @@ def _recon_into(sess: dict, dxf, payload: dict, t_open: float) -> None:
     print(f"[정찰] 자동 인식 중… — 도면은 이미 화면에 있습니다(+{t_open:.1f}s)")
     try:
         rec = run_recon(dxf, world=payload)
+    except OperationCancelled:
+        raise
     except BaseException as exc:  # noqa: BLE001 — 열기를 죽이지 않는다
         why = f"{type(exc).__name__}: {exc}"
         sess["recon"] = {"error": why}
@@ -217,7 +220,7 @@ def register(app, *, _save_upload):
                     sent += 1
                 yield ("event: state\ndata: "
                        + _json.dumps(view, ensure_ascii=False) + "\n\n")
-                if view.get("state") in ("done", "error"):
+                if view.get("state") in ("done", "error", "cancelled"):
                     return
                 if view.get("state") == "idle":
                     # 잡이 아직 안 붙었을 수 있다 — 몇 박자는 기다려 준다.

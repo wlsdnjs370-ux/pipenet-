@@ -1,0 +1,160 @@
+[  0s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[  3s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[  6s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[  9s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 12s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 15s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 18s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 21s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 24s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 27s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 30s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 33s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 36s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 39s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 42s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 45s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 48s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 51s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 54s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 57s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 60s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 63s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 66s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 69s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 72s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 75s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 78s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 81s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 84s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 87s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 90s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 93s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 96s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[ 99s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[102s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[105s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[108s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[111s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[114s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False
+[117s] 패널 ['panel-open', 'panel-resume', 'panel-log']
+       단계 ['*', '', '', '', '', '']
+       상태 SystemExit: DXF를 못 찾음: B1F 현장조사 소화설비 평면도
+       잡   배관망 열기 · error · 0.1s · busy=False

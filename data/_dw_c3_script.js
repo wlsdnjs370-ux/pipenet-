@@ -1,0 +1,2154 @@
+
+    // 레이어명은 업로드된 DXF 에서 온다 — 속성 보간 탈출을 막으려면 따옴표까지 5자 전부.
+    function escHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    // ====== 상수 (지시서 §12.5) ======
+    const ARCH_COLORS = {
+      WALL: "#94a3b8", DOOR: "#fbbf24", WINDOW: "#67e8f9", COLUMN: "#a1a1aa",
+      STAIR: "#c4b5fd", SHAFT: "#f472b6", ROOM_TEXT: "#22c55e", DIM: "#52525b",
+      FURNITURE: "#3f3f46", GRID: "#3f3f46", BEAM: "#fb923c", OTHER: "#71717a",
+    };
+    const DESIGN_COLORS = {
+      room: "#38bdf8", virtualEdge: "#f87171",   // ★ 경고색 — 검수 우선
+      core: "#f472b6", zone: "#a78bfa", obstacle: "#fb923c", picked: "#fde047",
+      pipeBranch: "#3b82f6", pipeCross: "#2563eb", pipeMain: "#1d4ed8",
+      head: "#ef4444", valve: "#facc15",
+    };
+
+    // 미분류는 12종이 아니다. "아직 안 봤다" 와 "보고 나서 그 밖으로 판정했다(OTHER)" 를
+    // 같은 칸에 넣으면 인식기를 붙였을 때 무엇이 남았는지 셀 수 없다.
+    const UNCLASSIFIED = "__none__";
+    const UNCLASSIFIED_COLOR = "#94a3b8";
+
+    // 뒤 → 앞. 지시서 §12.4 의 배경(0.20) / 주요(0.45) / 문(0.6) 3단 alpha 를 따르고,
+    // 표에 층이 명시되지 않은 BEAM·SHAFT 는 주요 구조로, ROOM_TEXT 는 텍스트라 최상단에 둔다.
+    const ARCH_ORDER = [
+      // 미분류가 출발 상태다. 여기가 어두우면 분류할 도면이 안 보인다.
+      [UNCLASSIFIED, 0.60],
+      ["GRID", 0.20], ["DIM", 0.20], ["FURNITURE", 0.20], ["OTHER", 0.20],
+      ["WALL", 0.45], ["COLUMN", 0.45], ["STAIR", 0.45], ["WINDOW", 0.45],
+      ["BEAM", 0.45], ["SHAFT", 0.45],
+      ["DOOR", 0.60],
+      ["ROOM_TEXT", 0.85],
+    ];
+    const ARCH_CATEGORIES = ARCH_ORDER.map(([c]) => c).filter((c) => c !== UNCLASSIFIED).sort();
+
+    const STAGES = [
+      ["c1", "C1 건축 인식"], ["gate", "GATE 확정"], ["c2", "C2 규범 조건"],
+      ["c3", "C3 밸브·구역"], ["c4", "C4 헤드 배치"], ["c5", "C5 라우팅"],
+      ["emit", "솔버 파일 방출"],
+    ];
+
+    // 설계 오버레이는 자료가 생기는 PR 에서 하나씩 늘린다. 그릴 것이 없는 항목을
+    // 미리 켜 두면 "켰는데 아무것도 없다" 가 인식 실패인지 미구현인지 구분되지 않는다.
+    const OVERLAYS = [
+      ["rooms", "실 폴리곤", DESIGN_COLORS.room, () => state.rooms.length],
+      ["roomLabels", "실 이름", DESIGN_COLORS.room, () => state.rooms.length],
+      ["virtualEdges", "가상 폐합선", DESIGN_COLORS.virtualEdge, () => state.virtualEdges.length],
+      ["cores", "코어(계단·샤프트)", DESIGN_COLORS.core, () => state.cores.length],
+      ["valves", "유수검지장치", DESIGN_COLORS.valve, () => state.c3.drafts.length],
+      ["zones", "방호구역", DESIGN_COLORS.zone, () => state.c3.zones.length],
+    ];
+
+    // ====== 상태 (지시서 §12.3) ======
+    const state = {
+      entities: [], bbox: null, layers: [], layerState: {},
+      view: { zoom: 1, panX: 0, panY: 0 },
+      dpr: window.devicePixelRatio || 1,
+      dxfFile: null, dxfToken: null, drag: null, fitZoom: null,
+
+      // 실 편집(§12.6). `tool` 이 "pan" 이 아니면 캔버스 클릭이 편집 조작이 된다.
+      tool: "pan", splitDraft: null, editBusy: false,
+
+      // 인식기는 mm 로 답한다. 캔버스 좌표는 도면 단위 그대로라, 받는 자리에서
+      // 한 번 되돌리지 않으면 m 단위 도면에서 오버레이가 1000배로 벌어진다.
+      unitToMm: 1,
+      wallLayers: [],
+      sessionId: null,
+      stage: "c1",
+      gatePassed: false,
+      centerlines: [],
+      virtualEdges: [],
+      rooms: [],
+      cores: [],
+      overlayVisible: { rooms: true, roomLabels: true, virtualEdges: true, cores: true,
+                        valves: true, zones: true },
+
+      // 확정 게이트. `values` 는 아직 서버에 보내지 않은 사람의 입력이고, `missing`
+      // 은 서버가 판정한 결손이다. 둘을 섞지 않아야 "화면은 다 찼는데 서버는 422"
+      // 가 생기지 않는다.
+      gate: {
+        fields: [], specByField: {}, missing: {}, suggestion: {},
+        values: {}, facts: {}, selection: new Set(), order: [], loaded: false,
+      },
+
+      // C2 산출물과 103B 판단. `esfrAnswers` 는 아직 서버에 보내지 않은 입력이고
+      // 참·거짓이 아닌 값은 전부 "아직 안 골랐다" 이다 — false 로 접으면 안 물어본
+      // 조건이 '아니다' 로 확정돼 설비 종류가 갈린다. 자리는 ESFR_QUESTIONS 에서
+      // 만든다(아래).
+      c2: null,
+      esfrAnswers: {},
+
+      // C3(§7). `drafts` 는 사람이 화면에서 찍었지만 아직 서버가 확정하지 않은
+      // 밸브다. 서버가 돌려준 `valves` 와 한 통에 담으면 확정된 적 없는 밸브가
+      // 구역의 근거인 것처럼 보인다.
+      c3: {
+        candidates: [], systemTypes: [], requirements: [], loaded: false,
+        drafts: [], valves: [], zones: [], flags: [],
+        unreached: [], isolated: [], distance: {},
+      },
+    };
+
+    const canvas = document.getElementById("dw-canvas");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    const emptyEl = document.getElementById("dw-empty");
+    const overlayInfoEl = document.getElementById("dw-overlay-info");
+    const overlayCursorEl = document.getElementById("dw-overlay-cursor");
+    const dxfInputEl = document.getElementById("dw-dxf");
+    const loadStatusEl = document.getElementById("dw-load-status");
+    const layerListEl = document.getElementById("dw-layer-list");
+    const unclassifiedNoteEl = document.getElementById("dw-unclassified-note");
+    const designListEl = document.getElementById("dw-design-list");
+    const wallFieldEl = document.getElementById("dw-wall-field");
+    const wallSelectEl = document.getElementById("dw-wall-layers");
+    const recognizeBtnEl = document.getElementById("dw-recognize-btn");
+    const recognizeStatusEl = document.getElementById("dw-recognize-status");
+    const recognizeStagesEl = document.getElementById("dw-recognize-stages");
+    const stepperEl = document.getElementById("dw-stepper");
+    const sessionEl = document.getElementById("dw-session");
+    const gateOpenEl = document.getElementById("dw-gate-open");
+    const gateProgressEl = document.getElementById("dw-gate-progress");
+    const runC2El = document.getElementById("dw-run-c2");
+    const gateStatusEl = document.getElementById("dw-gate-status");
+    const c2StatusEl = document.getElementById("dw-c2-status");
+    const c2OpenEl = document.getElementById("dw-c2-open");
+    const c2PanelEl = document.getElementById("dw-c2-panel");
+    const c2CloseEl = document.getElementById("dw-c2-close");
+    const c2ArtifactEl = document.getElementById("dw-c2-artifact");
+    const c2BannerEl = document.getElementById("dw-c2-banner");
+    const c2GridEl = document.getElementById("dw-c2-grid");
+    const c2TraceEl = document.getElementById("dw-c2-trace");
+    const esfrOpenEl = document.getElementById("dw-esfr-open");
+    const esfrStatusEl = document.getElementById("dw-esfr-status");
+    const esfrPanelEl = document.getElementById("dw-esfr-panel");
+    const esfrCloseEl = document.getElementById("dw-esfr-close");
+    const esfrVerdictEl = document.getElementById("dw-esfr-verdict");
+    const esfrQuestionsEl = document.getElementById("dw-esfr-questions");
+    const esfrNoteEl = document.getElementById("dw-esfr-note");
+    const esfrOperatorEl = document.getElementById("dw-esfr-operator");
+    const esfrMsgEl = document.getElementById("dw-esfr-msg");
+    const esfrSubmitEl = document.getElementById("dw-esfr-submit");
+    const c3LoadEl = document.getElementById("dw-c3-load");
+    const c3OpenEl = document.getElementById("dw-c3-open");
+    const c3StatusEl = document.getElementById("dw-c3-status");
+    const c3ZoneNoteEl = document.getElementById("dw-c3-zone-note");
+    const c3PanelEl = document.getElementById("dw-c3-panel");
+    const c3CloseEl = document.getElementById("dw-c3-close");
+    const c3RemainEl = document.getElementById("dw-c3-remain");
+    const c3TheadEl = document.getElementById("dw-c3-thead");
+    const c3TbodyEl = document.getElementById("dw-c3-tbody");
+    const c3EmptyEl = document.getElementById("dw-c3-empty");
+    const c3ZonesSumEl = document.getElementById("dw-c3-zones-sum");
+    const c3FlagsEl = document.getElementById("dw-c3-flags");
+    const c3OperatorEl = document.getElementById("dw-c3-operator");
+    const c3MsgEl = document.getElementById("dw-c3-msg");
+    const c3SubmitEl = document.getElementById("dw-c3-submit");
+    const c3ZonesEl = document.getElementById("dw-c3-zones");
+    const toolValveEl = document.getElementById("dw-tool-valve");
+    const gatePanelEl = document.getElementById("dw-gate-panel");
+    const gateRemainEl = document.getElementById("dw-gate-remain");
+    const gateCloseEl = document.getElementById("dw-gate-close");
+    const gateFactsEl = document.getElementById("dw-gate-facts");
+    const bulkFieldEl = document.getElementById("dw-bulk-field");
+    const bulkValueSlotEl = document.getElementById("dw-bulk-value-slot");
+    const bulkScopeEl = document.getElementById("dw-bulk-scope");
+    const bulkApplyEl = document.getElementById("dw-bulk-apply");
+    const bulkNoteEl = document.getElementById("dw-bulk-note");
+    const gateTheadEl = document.getElementById("dw-gate-thead");
+    const gateTbodyEl = document.getElementById("dw-gate-tbody");
+    const gateOperatorEl = document.getElementById("dw-gate-operator");
+    const gateMsgEl = document.getElementById("dw-gate-msg");
+    const gateConfirmEl = document.getElementById("dw-gate-confirm");
+    const fitBtnEl = document.getElementById("dw-fit-btn");
+    const zoomInBtn = document.getElementById("dw-zoom-in");
+    const zoomOutBtn = document.getElementById("dw-zoom-out");
+    const zoomLevelEl = document.getElementById("dw-zoom-level");
+    const toolPanEl = document.getElementById("dw-tool-pan");
+    const toolSelectEl = document.getElementById("dw-tool-select");
+    const toolSplitEl = document.getElementById("dw-tool-split");
+    const mergeBtnEl = document.getElementById("dw-merge-btn");
+    const deleteBtnEl = document.getElementById("dw-delete-btn");
+    const editNoteEl = document.getElementById("dw-edit-note");
+
+    // ====== Canvas 리사이즈 ======
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      state.dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * state.dpr);
+      canvas.height = Math.round(rect.height * state.dpr);
+      render();
+    }
+    window.addEventListener("resize", resizeCanvas);
+
+    // ====== 뷰 변환 ======
+    function fitToBBox() {
+      if (!state.bbox) return;
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      const bw = state.bbox.x_max - state.bbox.x_min;
+      const bh = state.bbox.y_max - state.bbox.y_min;
+      if (bw <= 0 || bh <= 0) return;
+      const margin = 30;
+      const z = Math.min((w - 2 * margin) / bw, (h - 2 * margin) / bh);
+      state.view.zoom = z;
+      // DXF 좌표계: Y가 위쪽. Canvas 는 Y가 아래쪽. -z 로 뒤집기.
+      state.view.panX = w / 2 - ((state.bbox.x_min + state.bbox.x_max) / 2) * z;
+      state.view.panY = h / 2 + ((state.bbox.y_min + state.bbox.y_max) / 2) * z;
+      state.fitZoom = z;
+      render();
+      updateZoomLevelDisplay();
+    }
+    fitBtnEl.addEventListener("click", fitToBBox);
+
+    function zoomAtPoint(sx, sy, factor) {
+      if (!state.entities.length) return;
+      const [wx, wy] = screenToWorld(sx, sy);
+      state.view.zoom *= factor;
+      const [nsx, nsy] = worldToScreen(wx, wy);
+      state.view.panX += sx - nsx;
+      state.view.panY += sy - nsy;
+      render();
+      updateZoomLevelDisplay();
+    }
+
+    function zoomCenter(factor) {
+      const rect = canvas.getBoundingClientRect();
+      zoomAtPoint(rect.width / 2, rect.height / 2, factor);
+    }
+
+    function updateZoomLevelDisplay() {
+      const ratio = state.fitZoom ? (state.view.zoom / state.fitZoom) : state.view.zoom;
+      zoomLevelEl.textContent = (ratio * 100).toFixed(0) + "%";
+    }
+
+    zoomInBtn.addEventListener("click", () => zoomCenter(1.25));
+    zoomOutBtn.addEventListener("click", () => zoomCenter(1 / 1.25));
+    zoomLevelEl.addEventListener("click", fitToBBox);
+
+    // 키보드 단축키: + 확대 / - 축소 / 0 화면 맞춤
+    window.addEventListener("keydown", (e) => {
+      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable)) return;
+      if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomCenter(1.25); }
+      else if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomCenter(1 / 1.25); }
+      else if (e.key === "0") { e.preventDefault(); fitToBBox(); }
+    });
+
+    function worldToScreen(x, y) {
+      return [x * state.view.zoom + state.view.panX, -y * state.view.zoom + state.view.panY];
+    }
+    function screenToWorld(sx, sy) {
+      return [(sx - state.view.panX) / state.view.zoom, -(sy - state.view.panY) / state.view.zoom];
+    }
+
+    // ====== 렌더링 ======
+    function render() {
+      const w = canvas.width / state.dpr;
+      const h = canvas.height / state.dpr;
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, w, h);
+      if (!state.entities.length) return;
+
+      const groups = {};
+      for (const ent of state.entities) {
+        const ls = state.layerState[ent.l];
+        if (!ls || !ls.visible) continue;
+        (groups[ls.category] || (groups[ls.category] = [])).push(ent);
+      }
+      ctx.lineWidth = 1;
+      for (const [cat, alpha] of ARCH_ORDER) {
+        const arr = groups[cat];
+        if (!arr) continue;
+        const color = cat === UNCLASSIFIED ? UNCLASSIFIED_COLOR : ARCH_COLORS[cat];
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = 0.9;
+        for (const ent of arr) drawEntity(ent);
+      }
+      ctx.globalAlpha = 1;
+
+      drawDesignOverlays();
+    }
+
+    function drawDesignOverlays() {
+      if (state.overlayVisible.rooms && state.rooms.length) {
+        for (const room of state.rooms) {
+          if (!room.polygon || room.polygon.length < 3) continue;
+          const picked = state.gate.selection.has(room.id);
+          ctx.strokeStyle = ctx.fillStyle = picked ? DESIGN_COLORS.picked : DESIGN_COLORS.room;
+          ctx.lineWidth = picked ? 2.4 : 1.2;
+          tracePoly(room.polygon);
+          ctx.closePath();
+          ctx.globalAlpha = picked ? 0.30 : 0.12;
+          ctx.fill();
+          ctx.globalAlpha = 0.9;
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // 아직 서버에 보내지 않은 자르는 선. 실제 경계가 아니므로 점선으로만 둔다.
+      if (state.splitDraft) {
+        const [ax, ay] = worldToScreen(state.splitDraft.p1[0], state.splitDraft.p1[1]);
+        const [bx, by] = worldToScreen(state.splitDraft.p2[0], state.splitDraft.p2[1]);
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = DESIGN_COLORS.picked;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // ★ 가상 폐합선 — 실측이 아니라 알고리즘 추정이다. 점선 + 경고색으로
+      // 실제 벽과 절대 섞이지 않게 그린다(§12.5). 여기가 오류의 최대 발생원이다.
+      if (state.overlayVisible.virtualEdges && state.virtualEdges.length) {
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = DESIGN_COLORS.virtualEdge;
+        ctx.lineWidth = 2.0;
+        for (const edge of state.virtualEdges) {
+          const [ax, ay] = worldToScreen(edge.p1[0], edge.p1[1]);
+          const [bx, by] = worldToScreen(edge.p2[0], edge.p2[1]);
+          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+
+      if (state.overlayVisible.cores && state.cores.length) {
+        ctx.strokeStyle = DESIGN_COLORS.core;
+        ctx.fillStyle = DESIGN_COLORS.core;
+        ctx.lineWidth = 2.4;
+        for (const core of state.cores) {
+          if (!core.polygon || core.polygon.length < 3) continue;
+          tracePoly(core.polygon);
+          ctx.closePath();
+          ctx.globalAlpha = 0.20;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.stroke();
+        }
+      }
+
+      if (state.overlayVisible.roomLabels && state.rooms.length && state.view.zoom > 0.005) {
+        ctx.fillStyle = ARCH_COLORS.ROOM_TEXT;
+        ctx.font = "11px ui-monospace, monospace";
+        for (const room of state.rooms) {
+          if (!room.polygon || !room.polygon.length) continue;
+          let cx = 0, cy = 0;
+          for (const p of room.polygon) { cx += p[0]; cy += p[1]; }
+          const [sx, sy] = worldToScreen(cx / room.polygon.length, cy / room.polygon.length);
+          ctx.fillText(room.name || room.id, sx, sy);
+        }
+      }
+
+      drawC3Overlays();
+    }
+
+    // 구역 색은 밸브 순서로 돈다. 같은 입력이면 같은 색이 나와야 사람이 표의
+    // "Z-1F-03" 과 화면의 색칠을 같은 것으로 읽는다.
+    function zoneColor(i) {
+      return `hsl(${(i * 67) % 360}, 72%, 58%)`;
+    }
+
+    function candidatePoly(cand) {
+      if (!cand._poly) cand._poly = toDrawingUnits(cand.polygon || []);
+      return cand._poly;
+    }
+
+    function drawC3Overlays() {
+      const c3 = state.c3;
+      if (state.overlayVisible.zones && c3.zones.length) {
+        const zoneOf = new Map();
+        c3.zones.forEach((z, i) => { for (const rid of z.rooms) zoneOf.set(rid, i); });
+        const unreached = new Set(c3.unreached);
+        for (const room of state.rooms) {
+          if (!room.polygon || room.polygon.length < 3) continue;
+          const zi = zoneOf.get(room.id);
+          if (zi !== undefined) {
+            ctx.fillStyle = zoneColor(zi);
+            tracePoly(room.polygon);
+            ctx.closePath();
+            ctx.globalAlpha = 0.26;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          } else if (unreached.has(room.id)) {
+            // 어느 밸브에서도 문으로 닿지 않은 실. 색을 비워 두면 "칠할 것이 없는
+            // 실" 과 구분되지 않아 미도달이 조용히 넘어간다(§7.2).
+            hatchPolygon(room.polygon, DESIGN_COLORS.virtualEdge);
+          }
+        }
+      }
+
+      // 후보 코어는 밸브를 찍는 동안에만 밝힌다. 늘 켜 두면 확정된 코어와 구분이 없다.
+      if (state.tool === "valve" && c3.candidates.length) {
+        ctx.setLineDash([7, 4]);
+        ctx.strokeStyle = DESIGN_COLORS.valve;
+        ctx.lineWidth = 2.2;
+        for (const cand of c3.candidates) {
+          const poly = candidatePoly(cand);
+          if (poly.length < 3) continue;
+          tracePoly(poly);
+          ctx.closePath();
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+
+      // 확정 전 밸브는 속을 비운다. 채워 그리면 화면만 보고 확정된 줄 안다.
+      if (state.overlayVisible.valves && c3.drafts.length) {
+        ctx.font = "11px ui-monospace, monospace";
+        ctx.lineWidth = 2;
+        c3.drafts.forEach((draft, i) => {
+          const confirmed = c3.valves[i];
+          const [sx, sy] = worldToScreen(draft.point[0], draft.point[1]);
+          ctx.strokeStyle = DESIGN_COLORS.valve;
+          ctx.fillStyle = confirmed ? DESIGN_COLORS.valve : "#0f172a";
+          ctx.beginPath();
+          ctx.moveTo(sx, sy - 7); ctx.lineTo(sx + 7, sy);
+          ctx.lineTo(sx, sy + 7); ctx.lineTo(sx - 7, sy);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = DESIGN_COLORS.valve;
+          ctx.fillText(confirmed ? confirmed.id : `${draft.core_id} (미확정)`, sx + 10, sy + 4);
+        });
+      }
+    }
+
+    function hatchPolygon(poly, color) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of poly) {
+        const [sx, sy] = worldToScreen(p[0], p[1]);
+        if (sx < minX) minX = sx;
+        if (sx > maxX) maxX = sx;
+        if (sy < minY) minY = sy;
+        if (sy > maxY) maxY = sy;
+      }
+      const h = maxY - minY;
+      if (maxX - minX < 3 || h < 3) return;
+      ctx.save();
+      tracePoly(poly);
+      ctx.closePath();
+      ctx.clip();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.2;
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      for (let x = minX - h; x < maxX; x += 9) {
+        ctx.moveTo(x, maxY);
+        ctx.lineTo(x + h, minY);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function signedArea2(pts) {
+      let s = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        s += a[0] * b[1] - b[0] * a[1];
+      }
+      return s;
+    }
+
+    function tracePoly(pts) {
+      ctx.beginPath();
+      for (let i = 0; i < pts.length; i++) {
+        const [sx, sy] = worldToScreen(pts[i][0], pts[i][1]);
+        if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+      }
+    }
+
+    function drawEntity(ent) {
+      const z = state.view.zoom;
+      if (ent.t === "L") {
+        const [a, b] = worldToScreen(ent.p[0], ent.p[1]);
+        const [c, d] = worldToScreen(ent.p[2], ent.p[3]);
+        ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke();
+      } else if (ent.t === "PL") {
+        tracePoly(ent.p);
+        ctx.stroke();
+      } else if (ent.t === "A") {
+        const [sx, sy] = worldToScreen(ent.c[0], ent.c[1]);
+        const r = ent.r * z;
+        if (r < 0.3) return;
+        // DXF ARC 는 CCW. Canvas 는 CW 가 양수.
+        const sa = ent.a[0] * Math.PI / 180;
+        const ea = ent.a[1] * Math.PI / 180;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, -ea, -sa, false);
+        ctx.stroke();
+      } else if (ent.t === "C") {
+        const [sx, sy] = worldToScreen(ent.c[0], ent.c[1]);
+        const r = ent.r * z;
+        if (r < 0.5) {
+          ctx.fillRect(sx - 1, sy - 1, 2, 2);
+          return;
+        }
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (ent.t === "H") {
+        if (!ent.p || ent.p.length < 3) return;
+        tracePoly(ent.p);
+        ctx.closePath();
+        const prev = ctx.globalAlpha;
+        ctx.globalAlpha = prev * 0.25;
+        ctx.fill();
+        ctx.globalAlpha = prev;
+        ctx.stroke();
+      } else if (ent.t === "S") {
+        if (!ent.p || ent.p.length < 3) return;
+        // DXF SOLID/TRACE 는 정점을 0-1-3-2 나비 순서로 저장하고 3DFACE 는 0-1-2-3 이다.
+        // 서버가 셋을 같은 "S" 로 방출해 구분이 없으므로, 자기교차하지 않는 순서
+        // (= 부호면적 절댓값이 큰 쪽)를 실제 외곽으로 본다. 틀리면 기둥이 모래시계가 된다.
+        let pts = ent.p;
+        if (pts.length === 4) {
+          const alt = [pts[0], pts[1], pts[3], pts[2]];
+          if (Math.abs(signedArea2(pts)) < Math.abs(signedArea2(alt))) pts = alt;
+        }
+        tracePoly(pts);
+        ctx.closePath();
+        ctx.fill();
+      } else if (ent.t === "I") {
+        const [sx, sy] = worldToScreen(ent.p[0], ent.p[1]);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - 3); ctx.lineTo(sx + 3, sy); ctx.lineTo(sx, sy + 3); ctx.lineTo(sx - 3, sy);
+        ctx.closePath();
+        ctx.fill();
+      } else if (ent.t === "T") {
+        if (z < 0.005) return;
+        const [sx, sy] = worldToScreen(ent.p[0], ent.p[1]);
+        ctx.font = "10px ui-monospace, monospace";
+        ctx.fillText(ent.v, sx, sy);
+      }
+    }
+
+    // ====== 인터랙션: zoom + pan ======
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      zoomAtPoint(e.clientX - rect.left, e.clientY - rect.top, e.deltaY < 0 ? 1.15 : 1 / 1.15);
+    }, { passive: false });
+
+    canvas.addEventListener("mousedown", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      if (state.tool === "split" && state.rooms.length) {
+        const at = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        state.splitDraft = { p1: at, p2: at };
+        return;
+      }
+      // 끈 거리를 재 둔다. 선택 도구에서 화면을 옮기려던 손짓과 실을 고르는
+      // 클릭을 나누는 유일한 단서다.
+      state.drag = { x: e.clientX, y: e.clientY, panX: state.view.panX,
+                     panY: state.view.panY, moved: false };
+      canvas.classList.add("is-panning");
+    });
+
+    window.addEventListener("mouseup", (e) => {
+      if (state.splitDraft) {
+        const { p1, p2 } = state.splitDraft;
+        state.splitDraft = null;
+        render();
+        submitSplit(p1, p2);
+        return;
+      }
+      const drag = state.drag;
+      state.drag = null;
+      canvas.classList.remove("is-panning");
+      if (!drag || drag.moved) return;
+      if (state.tool === "select") pickRoomAt(e);
+      else if (state.tool === "valve") placeValveAt(e);
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (state.splitDraft) {
+        state.splitDraft.p2 = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        render();
+      } else if (state.drag) {
+        if (Math.abs(e.clientX - state.drag.x) + Math.abs(e.clientY - state.drag.y) > 3) {
+          state.drag.moved = true;
+        }
+        state.view.panX = state.drag.panX + (e.clientX - state.drag.x);
+        state.view.panY = state.drag.panY + (e.clientY - state.drag.y);
+        render();
+        return;
+      }
+      if (state.entities.length && inside) {
+        const [wx, wy] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        overlayCursorEl.style.display = "inline-block";
+        overlayCursorEl.textContent = `( ${wx.toFixed(0)} , ${wy.toFixed(0)} )`;
+      } else {
+        overlayCursorEl.style.display = "none";
+      }
+    });
+
+    // ====== NDJSON 스트림 ======
+    // inspect(§11.1 기존 형식)와 C1 인식이 같은 형식을 쓴다. 청크 경계가 줄
+    // 한가운데를 자르므로 버퍼링은 한 곳에만 둔다.
+    async function readNdjson(res, onMessage) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buf = "";
+      const feed = (line) => {
+        const s = line.trim();
+        if (!s) return;
+        let msg;
+        try { msg = JSON.parse(s); } catch (_) { return; }
+        onMessage(msg);
+      };
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          feed(buf.slice(0, nl));
+          buf = buf.slice(nl + 1);
+        }
+      }
+      if (buf.trim()) feed(buf);  // 마지막 줄(개행 없을 수 있음)
+    }
+
+    // ====== 세션 ======
+    async function startSession() {
+      try {
+        const res = await fetch("/api/design/session", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+        });
+        const body = await res.json();
+        if (!res.ok || !body.session_id) throw new Error(body.message || `HTTP ${res.status}`);
+        state.sessionId = body.session_id;
+        sessionEl.textContent = "session " + body.session_id;
+      } catch (err) {
+        sessionEl.textContent = "세션 생성 실패 — " + err.message;
+      }
+    }
+
+    function renderStepper() {
+      const at = STAGES.findIndex(([id]) => id === state.stage);
+      stepperEl.innerHTML = STAGES.map(([id, label], i) => {
+        const cls = i < at ? "done" : (i === at ? "current" : "todo");
+        return `<li class="${cls}"><span class="no">${String(i + 1).padStart(2, "0")}</span>${escHtml(label)}</li>`;
+      }).join("");
+    }
+
+    // ====== DXF 업로드 + inspect ======
+    dxfInputEl.addEventListener("change", async () => {
+      const file = dxfInputEl.files[0];
+      if (!file) return;
+      state.dxfFile = file;
+      loadStatusEl.textContent = `업로드 중... (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+
+      const fd = new FormData();
+      fd.append("dxf_file", file);
+      try {
+        const res = await fetch("/api/remote30/inspect", { method: "POST", body: fd });
+        if (!res.ok) {
+          let msg = `HTTP ${res.status}`;
+          try { const j = await res.json(); if (j && j.message) msg = j.message; } catch (_) {}
+          throw new Error(msg);
+        }
+        // NDJSON 스트림: {"type":"progress",...} 다수 + {"type":"result",...} 1개.
+        const entities = [];
+        let result = null;
+        await readNdjson(res, (msg) => {
+          if (msg.type === "progress") {
+            if (Array.isArray(msg.entities)) {
+              for (const e of msg.entities) entities.push(e);
+            }
+            if (msg.bbox) {
+              state.entities = entities;
+              state.bbox = msg.bbox;
+              loadStatusEl.textContent = `로딩 중... entity ${entities.length.toLocaleString()}`;
+              fitToBBox();
+            }
+          } else if (msg.type === "result") {
+            result = msg;
+          } else if (msg.ok === false) {
+            throw new Error(msg.message || "DXF 분석 실패");
+          }
+        });
+        if (!result) throw new Error("스트림에 result 메시지가 없습니다");
+        if (result.ok === false) throw new Error(result.message || "DXF 분석 실패");
+
+        state.entities = entities;
+        state.bbox = result.bbox;
+        state.layers = result.layers || [];
+        state.dxfToken = result.dxf_token;
+        state.layerState = {};
+        for (const layer of state.layers) {
+          // 12종 분류는 C1 인식기(PR-4)가 지문으로 판정한다. 기존 6종 자동분류는
+          // 별개 체계라 그대로 옮기면 근거 없는 주장이 된다 → 미분류로 시작한다.
+          // 표시 여부만 기존 판정(EXCLUDE 는 도면 잡음)을 그대로 쓴다.
+          state.layerState[layer.name] = {
+            visible: layer.auto_category !== "EXCLUDE",
+            category: UNCLASSIFIED,
+          };
+        }
+        const counts = result.counts || {};
+        const totalEnt = counts.total_entities != null ? counts.total_entities : entities.length;
+        const layerN = counts.layers != null ? counts.layers : state.layers.length;
+        loadStatusEl.textContent = `${result.dxf_filename} — entity ${totalEnt}, layer ${layerN}`;
+        overlayInfoEl.textContent = `${totalEnt} entities | ${layerN} layers`;
+        emptyEl.style.display = "none";
+        renderLayerList();
+        renderWallChoices();
+        fitToBBox();
+      } catch (err) {
+        loadStatusEl.textContent = "오류: " + err.message;
+      }
+    });
+
+    // ====== C1 인식 (§11.1) ======
+    // 인식기 좌표는 mm 다. 도면 단위로 되돌려 담아야 캔버스 오버레이가 겹친다.
+    function toDrawingUnits(points) {
+      const k = state.unitToMm || 1;
+      return k === 1 ? points : points.map((p) => [p[0] / k, p[1] / k]);
+    }
+
+    function renderWallChoices(candidates) {
+      // 후보를 주면(=인식이 막혔다) 그것만, 아니면 도면의 모든 레이어를 보여준다.
+      const names = candidates ? candidates.map((c) => c.name) : state.layers.map((l) => l.name);
+      const hint = new Map((candidates || []).map(
+        (c) => [c.name, ` (평행쌍 ${(c.parallel_pair_ratio * 100).toFixed(0)}%)`]));
+      wallSelectEl.innerHTML = names.map((name) => {
+        const keep = state.wallLayers.includes(name) ? " selected" : "";
+        return `<option value="${escHtml(name)}"${keep}>${escHtml(name + (hint.get(name) || ""))}</option>`;
+      }).join("");
+      wallFieldEl.style.display = names.length ? "grid" : "none";
+      recognizeBtnEl.disabled = !state.dxfToken || !state.sessionId;
+    }
+
+    function renderStages(stages) {
+      recognizeStagesEl.innerHTML = (stages || []).map((s) =>
+        `<div class="stage-row"><span>${escHtml(s.name)} — ${escHtml(s.summary)}</span>
+         <span class="secs">${s.seconds.toFixed(2)}s</span></div>`).join("");
+    }
+
+    recognizeBtnEl.addEventListener("click", async () => {
+      if (!state.dxfToken || !state.sessionId) return;
+      state.wallLayers = Array.from(wallSelectEl.selectedOptions).map((o) => o.value);
+      state.rooms = []; state.cores = []; state.virtualEdges = [];
+      renderDesignList();
+      renderStages([]);
+      recognizeBtnEl.disabled = true;
+      recognizeStatusEl.classList.remove("warn");
+      recognizeStatusEl.textContent = "인식 중…";
+      try {
+        const res = await fetch("/api/design/c1/recognize", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: state.sessionId, dxf_token: state.dxfToken,
+            wall_layers: state.wallLayers,
+          }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error((body && body.message) || `HTTP ${res.status}`);
+        }
+        let result = null;
+        await readNdjson(res, (msg) => {
+          if (msg.unit) state.unitToMm = msg.unit.unit_to_mm || 1;
+          if (msg.type === "parse") {
+            recognizeStatusEl.textContent =
+              `도면 읽는 중… ${msg.done.toLocaleString()} / ${msg.total.toLocaleString()}`;
+          } else if (msg.type === "phase") {
+            recognizeStatusEl.textContent = msg.cached ? "이전 인식 결과 재사용" : "인식 중…";
+            if (msg.candidates) renderWallChoices(msg.candidates);
+          } else if (msg.type === "virtual_edges") {
+            state.virtualEdges = (msg.edges || []).map((e) => {
+              const [p1, p2] = toDrawingUnits([e.p1, e.p2]);
+              return { ...e, p1, p2 };
+            });
+          } else if (msg.type === "rooms") {
+            state.rooms = (msg.rooms || []).map(
+              (r) => ({ ...r, polygon: toDrawingUnits(r.polygon || []) }));
+          } else if (msg.type === "cores") {
+            state.cores = (msg.cores || []).map(
+              (c) => ({ ...c, polygon: toDrawingUnits(c.polygon || []) }));
+          } else if (msg.type === "result" || msg.type === "error") {
+            result = msg;
+          }
+        });
+        if (!result) throw new Error("스트림에 result 메시지가 없습니다");
+        renderStages(result.stages);
+        renderDesignList();
+        render();
+        if (!result.ok) throw new Error(result.message || "인식이 끝나지 않았습니다");
+        state.stage = "gate";
+        renderStepper();
+        state.gate.values = {};
+        state.gate.selection = new Set();
+        state.gate.order = [];
+        state.gate.facts = {};
+        await loadGateItems();
+        updateEditTools();
+        setEditNote("실을 눌러 고른 뒤 합치기·자르기·지우기. 편집은 바로 저장됩니다.");
+        const c = result.counts || {};
+        recognizeStatusEl.textContent =
+          `실 ${c.rooms}개 / 코어 ${c.cores}개 / 가상 폐합선 ${c.virtual_edges}개 — `
+          + `${result.seconds.toFixed(1)}s (WALL ${result.wall_layers.join(", ") || "없음"}`
+          + `, ${result.wall_source})`;
+      } catch (err) {
+        recognizeStatusEl.classList.add("warn");
+        recognizeStatusEl.textContent = "오류: " + err.message;
+      } finally {
+        recognizeBtnEl.disabled = false;
+      }
+    });
+
+    // ====== 실 편집 (§12.6) ======
+    // 인식기가 뽑은 face 가 늘 맞지는 않는다. 그 수정은 GATE 안에서만 할 수 있고,
+    // 고친 결과가 그대로 C4 의 헤드 배치 면적이 된다. 그래서 폴리곤 수술은 화면이
+    // 흉내 내지 않는다 — 서버가 고친 실을 돌려주고 화면은 그것만 그린다.
+    function pointInPolygon(x, y, poly) {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i];
+        const [xj, yj] = poly[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
+
+    /** 겹친 실은 작은 쪽을 고른다. 큰 실 안에 든 작은 실은 달리 집을 방법이 없다. */
+    function roomAt(wx, wy) {
+      let best = null;
+      for (const room of state.rooms) {
+        if (!room.polygon || room.polygon.length < 3) continue;
+        if (!pointInPolygon(wx, wy, room.polygon)) continue;
+        if (!best || (room.area_m2 || 0) < (best.area_m2 || 0)) best = room;
+      }
+      return best;
+    }
+
+    function toMm(point) {
+      const k = state.unitToMm || 1;
+      return [point[0] * k, point[1] * k];
+    }
+
+    function setNote(el, text, warn) {
+      el.textContent = text;
+      el.classList.toggle("warn", !!warn);
+    }
+
+    function setEditNote(text, warn) {
+      setNote(editNoteEl, text, warn);
+    }
+
+    function editableNow() {
+      return !!(state.sessionId && state.rooms.length && !state.gatePassed);
+    }
+
+    function updateEditTools() {
+      const ready = editableNow();
+      const n = state.gate.selection.size;
+      toolSelectEl.disabled = !ready;
+      toolSplitEl.disabled = !ready;
+      mergeBtnEl.disabled = !ready || n < 2 || state.editBusy;
+      deleteBtnEl.disabled = !ready || n < 1 || state.editBusy;
+      // 밸브 찍기는 게이트 뒤에 산다. 실 편집이 닫혔다고 같이 끄면 C3 에서 손이 묶인다.
+      if (!ready && (state.tool === "select" || state.tool === "split")) setTool("pan");
+    }
+
+    function setTool(tool) {
+      state.tool = tool;
+      for (const [el, id] of [[toolPanEl, "pan"], [toolSelectEl, "select"],
+                              [toolSplitEl, "split"], [toolValveEl, "valve"]]) {
+        el.classList.toggle("is-on", tool === id);
+      }
+      canvas.classList.toggle("is-picking", tool !== "pan");
+      state.splitDraft = null;
+      render();
+    }
+
+    toolPanEl.addEventListener("click", () => setTool("pan"));
+    toolSelectEl.addEventListener("click", () => setTool("select"));
+    toolSplitEl.addEventListener("click", () => setTool("split"));
+    toolValveEl.addEventListener("click", () => setTool("valve"));
+
+    function pickRoomAt(ev) {
+      const rect = canvas.getBoundingClientRect();
+      const [wx, wy] = screenToWorld(ev.clientX - rect.left, ev.clientY - rect.top);
+      const room = roomAt(wx, wy);
+      if (!room) {
+        if (!ev.shiftKey) state.gate.selection = new Set();
+      } else if (ev.shiftKey) {
+        if (state.gate.selection.has(room.id)) state.gate.selection.delete(room.id);
+        else state.gate.selection.add(room.id);
+      } else {
+        state.gate.selection = new Set([room.id]);
+      }
+      afterSelectionChange();
+      setEditNote(room
+        ? `${room.name || room.id} — ${(room.area_m2 || 0).toFixed(1)}㎡ (선택 ${state.gate.selection.size}개)`
+        : `선택 ${state.gate.selection.size}개`, false);
+    }
+
+    function afterSelectionChange() {
+      updateEditTools();
+      if (gatePanelEl.classList.contains("open")) {
+        renderGateTable();
+        gateSyncControls();
+      }
+      render();
+    }
+
+    const EDIT_FIELD_LABEL = (field) => {
+      const spec = state.gate.specByField[field];
+      return spec ? spec.label : field;
+    };
+
+    function editSummary(rec) {
+      if (rec.op === "merge") {
+        const lost = (rec.cleared || []).map(EDIT_FIELD_LABEL).join(", ");
+        return `${rec.rooms.length}개 실을 ${rec.into} 로 합쳤습니다 — ${rec.area_m2}㎡`
+          + (lost ? `. 값이 달라 비운 항목: ${lost} (다시 확정해야 합니다)` : "");
+      }
+      if (rec.op === "split") {
+        return `${rec.room} 을 ${rec.into.join(" / ")} 로 잘랐습니다 — `
+          + `${rec.area_m2.map((a) => a + "㎡").join(" / ")}`;
+      }
+      return `${rec.room} 을 지웠습니다 — ${rec.area_m2}㎡`;
+    }
+
+    /** 서버가 돌려준 실로 통째로 갈아 끼운다. 사라진 실에 걸려 있던 화면 입력을
+     *  남겨 두면 없는 실을 가리키는 값이 확정에 실린다. */
+    function adoptRooms(rooms) {
+      state.rooms = (rooms || []).map(
+        (r) => ({ ...r, polygon: toDrawingUnits(r.polygon || []) }));
+      const alive = new Set(state.rooms.map((r) => r.id));
+      for (const id of Object.keys(state.gate.values)) {
+        if (!alive.has(id)) delete state.gate.values[id];
+      }
+      state.gate.order = state.gate.order.filter((id) => alive.has(id));
+      return alive;
+    }
+
+    async function postEdit(edit) {
+      if (state.editBusy || !state.sessionId) return false;
+      state.editBusy = true;
+      updateEditTools();
+      setEditNote("반영 중…", false);
+      try {
+        const res = await fetch("/api/design/gate/edit", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: state.sessionId, operator: gateOperatorEl.value.trim(), edit,
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok || !body || !body.ok) {
+          setEditNote((body && body.message) || `HTTP ${res.status}`, true);
+          return false;
+        }
+        const alive = adoptRooms(body.rooms);
+        // 고친 실을 그대로 골라 둔다 — 합친 실의 용도를 바로 다시 정해야 한다.
+        const rec = body.edit;
+        const next = rec.op === "merge" ? [rec.into] : (rec.op === "split" ? rec.into : []);
+        state.gate.selection = new Set(next.filter((id) => alive.has(id)));
+        renderDesignList();
+        await loadGateItems();
+        updateEditTools();
+        render();
+        setEditNote(editSummary(rec), false);
+        return true;
+      } catch (err) {
+        setEditNote("오류: " + err.message, true);
+        return false;
+      } finally {
+        state.editBusy = false;
+        updateEditTools();
+      }
+    }
+
+    function submitSplit(p1, p2) {
+      if (!editableNow()) return;
+      const px = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * state.view.zoom;
+      if (px < 8) return;                       // 클릭에 가깝다 — 자를 뜻이 아니다
+      const room = roomAt((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2);
+      if (!room) {
+        setEditNote("자를 실을 가로질러 선을 그으세요. 선의 가운데가 실 안에 있어야 합니다.", true);
+        return;
+      }
+      postEdit({ op: "split", room: room.id, line: [toMm(p1), toMm(p2)] });
+    }
+
+    mergeBtnEl.addEventListener("click", () => {
+      postEdit({ op: "merge", rooms: [...state.gate.selection] });
+    });
+
+    async function deleteSelected() {
+      for (const id of [...state.gate.selection]) {
+        if (!await postEdit({ op: "delete", room: id })) return;
+      }
+    }
+    deleteBtnEl.addEventListener("click", deleteSelected);
+
+    window.addEventListener("keydown", (e) => {
+      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT"
+        || e.target.tagName === "TEXTAREA" || e.target.isContentEditable)) return;
+      if (e.key !== "Delete" || !state.gate.selection.size || !editableNow()) return;
+      e.preventDefault();
+      deleteSelected();
+    });
+
+    // ====== GATE 인간 확정 (§4 · §12.8) ======
+    // 질의를 한 지점에 모은다. 여기서 결손이 0 이 되면 이후는 사람을 부르지 않는다.
+    // 규칙(무엇이 무엇에 걸리는지, 무엇이 필수인지)은 전부 서버가 준 `fields` 에서
+    // 읽는다 — 화면이 같은 규칙을 다시 구현하면 두 곳이 어긋난다.
+    const GATE_BOOL_LABELS = {
+      "ceiling.has_finish": ["있음", "없음"],
+      "confirmed": ["입상관으로 쓴다", "쓰지 않는다"],
+    };
+    const GATE_FACT_SCOPES = ["building", "obstacles"];
+
+    function gateSpecs(scope) {
+      return state.gate.fields.filter((f) => f.scope === scope);
+    }
+
+    function gateRawValue(obj, path) {
+      return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
+    }
+
+    function gateSetRaw(obj, path, value) {
+      const keys = path.split(".");
+      const last = keys.pop();
+      const target = keys.reduce((o, k) => (o[k] || (o[k] = {})), obj);
+      target[last] = value;
+    }
+
+    function gateLocal(targetId, field) {
+      const row = state.gate.values[targetId];
+      return row ? row[field] : undefined;
+    }
+
+    function gateSetLocal(targetId, field, value) {
+      if (value === undefined) {
+        const row = state.gate.values[targetId];
+        if (!row) return;
+        delete row[field];
+        if (!Object.keys(row).length) delete state.gate.values[targetId];
+        return;
+      }
+      (state.gate.values[targetId] || (state.gate.values[targetId] = {}))[field] = value;
+    }
+
+    function gateMissing(field, targetId) {
+      const set = state.gate.missing[field];
+      return !!set && set.has(targetId);
+    }
+
+    function gateSuggestion(field, targetId) {
+      const byId = state.gate.suggestion[field];
+      return byId ? byId[targetId] : undefined;
+    }
+
+    // 저장값 기준(`useLocal=false`)과 화면 기준(`true`)을 나눠 본다. 반자 유무를
+    // 화면에서 방금 "있음" 으로 바꾼 실은 서버가 아직 반자고를 묻지도 않았으므로
+    // 결손 목록에 없다 — 그걸 채운 것으로 세면 "0건 남음" 인데 422 가 돌아온다.
+    function gateApplies(room, spec, useLocal) {
+      const dep = spec.applies_when;
+      if (!dep) return true;
+      const stored = gateRawValue(room, dep.field);
+      const local = gateLocal(room.id, dep.field);
+      return (useLocal && local !== undefined ? local : stored) === dep.value;
+    }
+
+    function gateNeeds(room, spec) {
+      if (!spec.required || !gateApplies(room, spec, true)) return false;
+      if (gateLocal(room.id, spec.field) !== undefined) return false;
+      if (!gateApplies(room, spec, false)) return true;
+      return gateMissing(spec.field, room.id);
+    }
+
+    function gateFactNeeds(field) {
+      return gateLocal(field, field) === undefined && gateMissing(field, field);
+    }
+
+    function gateCoreNeeds(core) {
+      return gateLocal(core.id, "confirmed") === undefined
+        && gateMissing("confirmed", core.id);
+    }
+
+    /** 칸에 보일 값. 결손 칸은 비워 둔다 — 제안값을 미리 골라 두면 사람이 보지
+     *  않고 확정을 눌러도 근거 없는 값이 통과한다. 제안은 힌트로만 적는다. */
+    function gateDisplay(targetId, spec, stored, missing) {
+      const local = gateLocal(targetId, spec.field);
+      if (local !== undefined) return local;
+      if (missing) return undefined;
+      return stored == null ? undefined : stored;
+    }
+
+    function gateOptionLabel(field, option) {
+      if (option === null) return "없음";
+      if (typeof option === "boolean") {
+        const labels = GATE_BOOL_LABELS[field] || ["예", "아니오"];
+        return option ? labels[0] : labels[1];
+      }
+      return String(option);
+    }
+
+    function gateOptionsHtml(spec) {
+      return `<option value="">— 미정 —</option>` + spec.options.map(
+        (o, i) => `<option value="${i}">${escHtml(gateOptionLabel(spec.field, o))}</option>`
+      ).join("");
+    }
+
+    // 같은 항목의 <option> 문자열은 실 수와 무관하게 한 번만 만든다. 값은 DOM 을
+    // 세운 뒤 한 번에 넣는다(gateSyncControls) — 실이 600개면 문자열 조립 비용이
+    // 그대로 화면 멈춤이 된다.
+    const gateOptionCache = new Map();
+    function gateControl(spec, targetId, cls) {
+      const attrs = `data-gate="1" data-target="${escHtml(targetId)}" `
+        + `data-field="${escHtml(spec.field)}"${cls ? ` class="${cls}"` : ""}`;
+      if (!spec.options) return `<input type="number" step="any" ${attrs}>`;
+      if (!gateOptionCache.has(spec.field)) {
+        gateOptionCache.set(spec.field, gateOptionsHtml(spec));
+      }
+      return `<select ${attrs}>${gateOptionCache.get(spec.field)}</select>`;
+    }
+
+    function gateEncode(spec, value) {
+      if (!spec.options) return value === undefined || value === null ? "" : String(value);
+      if (value === undefined) return "";
+      const index = spec.options.findIndex((o) => o === value);
+      return index < 0 ? "" : String(index);
+    }
+
+    function gateDecode(spec, raw) {
+      if (raw === "") return undefined;
+      if (spec.options) return spec.options[Number(raw)];
+      const num = Number(raw.trim());
+      return Number.isFinite(num) ? num : undefined;
+    }
+
+    function gateStoredFact(field) {
+      return state.gate.facts[field];
+    }
+
+    function gateOrderedRooms() {
+      if (!state.gate.order.length) return state.rooms;
+      const rank = new Map(state.gate.order.map((id, i) => [id, i]));
+      return state.rooms.slice().sort(
+        (a, b) => (rank.has(a.id) ? rank.get(a.id) : 1e9)
+                - (rank.has(b.id) ? rank.get(b.id) : 1e9));
+    }
+
+    function renderGateFacts() {
+      const cells = [];
+      for (const scope of GATE_FACT_SCOPES) {
+        for (const spec of gateSpecs(scope)) {
+          cells.push(`<label class="cell" title="${escHtml(spec.note)}">
+            <span>${escHtml(spec.label)}</span>${gateControl(spec, spec.field, "")}</label>`);
+        }
+      }
+      const coreSpec = gateSpecs("core")[0];
+      if (coreSpec) {
+        for (const core of state.cores) {
+          const sugg = gateSuggestion("confirmed", core.id);
+          const hint = sugg ? ` ${(sugg.confidence * 100).toFixed(0)}%` : "";
+          cells.push(`<label class="cell" title="${escHtml(coreSpec.note)}">
+            <span>${escHtml(`${core.id} ${core.kind}${hint}`)}</span>
+            ${gateControl(coreSpec, core.id, "")}</label>`);
+        }
+      }
+      gateFactsEl.innerHTML = cells.join("");
+    }
+
+    function renderGateTable() {
+      const specs = gateSpecs("room");
+      gateTheadEl.innerHTML = `<tr><th><input type="checkbox" id="dw-gate-all"></th>`
+        + `<th>실</th><th>층</th>`
+        + specs.map((s) => `<th title="${escHtml(s.note)}">${escHtml(s.label)}`
+          + `${s.required ? "" : " (선택)"}</th>`).join("") + `</tr>`;
+
+      const rows = gateOrderedRooms().map((room) => {
+        const checked = state.gate.selection.has(room.id) ? " checked" : "";
+        const cells = specs.map((spec) => {
+          if (!gateApplies(room, spec, true)) return `<td class="na">—</td>`;
+          const sugg = gateSuggestion(spec.field, room.id);
+          const hint = sugg === undefined ? "" : `<span class="sugg">제안 `
+            + `${escHtml(gateOptionLabel(spec.field, sugg.value))} `
+            + `${(sugg.confidence * 100).toFixed(0)}%</span>`;
+          return `<td>${gateControl(spec, room.id, "")}${hint}</td>`;
+        }).join("");
+        return `<tr><td><input type="checkbox" data-select="${escHtml(room.id)}"${checked}></td>`
+          + `<td>${escHtml(room.name || "")}<span class="room-id">${escHtml(room.id)}</span></td>`
+          + `<td>${escHtml(room.floor || "")}</td>${cells}</tr>`;
+      });
+      gateTbodyEl.innerHTML = rows.join("");
+    }
+
+    /** 값과 "아직 미확정" 표시를 한 번에 맞춘다. 마크업을 다시 세우지 않으므로
+     *  입력 중인 칸이 사라지지 않고, 표를 다시 그리지 않아도 붉은 칸이 풀린다. */
+    function gateSyncControls() {
+      const byId = new Map(state.rooms.map((r) => [r.id, r]));
+      const coreById = new Map(state.cores.map((c) => [c.id, c]));
+      for (const el of gatePanelEl.querySelectorAll("[data-gate]")) {
+        const { target, field } = el.dataset;
+        const spec = state.gate.specByField[field];
+        const room = byId.get(target);
+        const core = coreById.get(target);
+        let stored;
+        let missing;
+        if (room) {
+          stored = gateRawValue(room, field);
+          missing = gateNeeds(room, spec);
+        } else if (core) {
+          stored = core.confirmed;
+          missing = gateCoreNeeds(core);
+        } else {
+          stored = gateStoredFact(field);
+          missing = gateFactNeeds(field);
+        }
+        // 지금 사람이 쓰고 있는 칸에는 값을 다시 넣지 않는다. 프로그램이 value 를
+        // 덮으면 브라우저가 그 칸의 change 를 더 이상 내지 않아, 방금 친 숫자가
+        // 다른 칸을 건드린 순간 조용히 사라진다.
+        if (el !== document.activeElement) {
+          el.value = gateEncode(spec, gateDisplay(target, spec, stored, missing));
+        }
+        el.parentElement.classList.toggle("miss", missing);
+      }
+    }
+
+    function gateRemaining() {
+      let need = 0;
+      let total = 0;
+      for (const room of state.rooms) {
+        for (const spec of gateSpecs("room")) {
+          if (!spec.required || !gateApplies(room, spec, true)) continue;
+          total += 1;
+          if (gateNeeds(room, spec)) need += 1;
+        }
+      }
+      for (const scope of GATE_FACT_SCOPES) {
+        for (const spec of gateSpecs(scope)) {
+          if (!spec.required) continue;
+          total += 1;
+          if (gateFactNeeds(spec.field)) need += 1;
+        }
+      }
+      if (gateSpecs("core").length) {
+        total += state.cores.length;
+        need += state.cores.filter(gateCoreNeeds).length;
+      }
+      return { need, total };
+    }
+
+    function renderGateProgress() {
+      const { need, total } = gateRemaining();
+      gateRemainEl.textContent = `${total}건 중 ${need}건 남음`;
+      gateRemainEl.className = `remain ${need ? "pending" : "done"}`;
+      gateProgressEl.textContent = state.gatePassed
+        ? "게이트 통과 — 이후 단계는 사람을 부르지 않는다."
+        : `${total}건 중 ${need}건 남음`;
+      runC2El.disabled = !state.gatePassed;
+      esfrOpenEl.disabled = !state.gatePassed;
+      // 경고가 떠 있으면 건드리지 않는다 — C2 가 결손으로 돌려보낸 안내를
+      // 게이트 재렌더가 "준비가 됐습니다" 로 덮으면 사람이 실패를 못 본다.
+      if (state.gatePassed && !state.c2 && !c2StatusEl.classList.contains("warn")) {
+        setC2Status("기준을 구울 준비가 됐습니다.", false);
+      }
+    }
+
+    function renderGate() {
+      renderGateFacts();
+      renderGateTable();
+      renderBulkBar();
+      gateSyncControls();
+      renderGateProgress();
+    }
+
+    // ── 일괄 적용 (§12.8) — 이게 없으면 실이 200개인 도면에서 사용자가 포기한다.
+    /** 용도별 일괄 적용의 기준. 아직 확정 안 된 실은 제안값이 아니라 화면 입력만 본다. */
+    function gateEffectiveUse(room) {
+      const spec = state.gate.specByField["use"];
+      return spec && gateDisplay(room.id, spec, room.use, gateMissing("use", room.id));
+    }
+
+    function renderBulkBar() {
+      const specs = gateSpecs("room");
+      if (bulkFieldEl.options.length !== specs.length) {
+        bulkFieldEl.innerHTML = specs.map(
+          (s) => `<option value="${escHtml(s.field)}">${escHtml(s.label)}</option>`).join("");
+      }
+      const spec = state.gate.specByField[bulkFieldEl.value] || specs[0];
+      if (!spec) return;
+      bulkFieldEl.value = spec.field;
+
+      const hasSuggestion = !!state.gate.suggestion[spec.field];
+      bulkValueSlotEl.innerHTML = spec.options
+        ? `<select id="dw-bulk-value">${hasSuggestion
+            ? `<option value="sugg">제안값 그대로</option>` : ""}${gateOptionsHtml(spec)}</select>`
+        : `<input id="dw-bulk-value" type="number" step="any" placeholder="값">`;
+
+      const floors = [...new Set(state.rooms.map((r) => r.floor).filter(Boolean))];
+      const uses = [...new Set(state.rooms.map(gateEffectiveUse).filter(Boolean))];
+      bulkScopeEl.innerHTML = [`<option value="all">전체 실</option>`,
+        `<option value="sel">선택한 실</option>`]
+        .concat(spec.bulk_apply.includes("floor")
+          ? floors.map((f) => `<option value="floor:${escHtml(f)}">${escHtml(f)} 전체</option>`) : [])
+        .concat(spec.bulk_apply.includes("use")
+          ? uses.map((u) => `<option value="use:${escHtml(u)}">용도 ${escHtml(u)} 전체</option>`) : [])
+        .join("");
+      bulkNoteEl.textContent = spec.note || "";
+    }
+
+    function bulkTargets(scope) {
+      if (scope === "all") return state.rooms;
+      if (scope === "sel") return state.rooms.filter((r) => state.gate.selection.has(r.id));
+      const [kind, key] = [scope.slice(0, scope.indexOf(":")), scope.slice(scope.indexOf(":") + 1)];
+      if (kind === "floor") return state.rooms.filter((r) => r.floor === key);
+      return state.rooms.filter((r) => gateEffectiveUse(r) === key);
+    }
+
+    bulkFieldEl.addEventListener("change", () => { renderBulkBar(); gateSyncControls(); });
+
+    bulkApplyEl.addEventListener("click", () => {
+      const spec = state.gate.specByField[bulkFieldEl.value];
+      const valueEl = document.getElementById("dw-bulk-value");
+      if (!spec || !valueEl) return;
+      const useSuggestion = valueEl.value === "sugg";
+      const value = useSuggestion ? undefined : gateDecode(spec, valueEl.value);
+      if (!useSuggestion && value === undefined) {
+        bulkNoteEl.textContent = "적용할 값을 먼저 고르세요.";
+        return;
+      }
+      let n = 0;
+      for (const room of bulkTargets(bulkScopeEl.value)) {
+        if (!gateApplies(room, spec, true)) continue;
+        const sugg = useSuggestion ? gateSuggestion(spec.field, room.id) : null;
+        if (useSuggestion && !sugg) continue;
+        gateSetLocal(room.id, spec.field, useSuggestion ? sugg.value : value);
+        n += 1;
+      }
+      renderGate();
+      bulkNoteEl.textContent = `${n}개 실에 적용`;
+    });
+
+    // ── 입력 반영 ────────────────────────────────────────────────────────
+    gatePanelEl.addEventListener("change", (ev) => {
+      const el = ev.target;
+      if (el.dataset && el.dataset.select !== undefined) {
+        if (el.checked) state.gate.selection.add(el.dataset.select);
+        else state.gate.selection.delete(el.dataset.select);
+        updateEditTools();
+        render();
+        return;
+      }
+      if (el.id === "dw-gate-all") {
+        state.gate.selection = new Set(el.checked ? state.rooms.map((r) => r.id) : []);
+        renderGateTable();
+        gateSyncControls();
+        updateEditTools();
+        render();
+        return;
+      }
+      if (!el.dataset || !el.dataset.gate) return;
+      const spec = state.gate.specByField[el.dataset.field];
+      gateSetLocal(el.dataset.target, el.dataset.field, gateDecode(spec, el.value));
+      // 반자 유무를 바꾸면 반자고 칸이 생기거나 사라진다. 표 전체를 다시 그린다.
+      if (state.gate.fields.some((f) => f.applies_when
+          && f.applies_when.field === el.dataset.field)) {
+        renderGateTable();
+      }
+      gateSyncControls();
+      renderGateProgress();
+    });
+
+    // ── 결손 항목 적재 ──────────────────────────────────────────────────
+    async function loadGateItems() {
+      if (!state.sessionId) return;
+      let res;
+      let body;
+      try {
+        res = await fetch(`/api/design/c1/gate_items/${state.sessionId}`);
+        body = await res.json();
+      } catch (err) {
+        body = { message: "결손 항목을 읽지 못했습니다: " + err.message };
+      }
+      if (!res || !res.ok || !body || !body.ok) {
+        state.gate.loaded = false;
+        gateOpenEl.disabled = true;
+        gateProgressEl.textContent = (body && body.message) || "결손 항목을 읽지 못했습니다.";
+        return;
+      }
+      state.gate.fields = body.fields || [];
+      state.gate.specByField = Object.fromEntries(state.gate.fields.map((f) => [f.field, f]));
+      state.gate.missing = {};
+      state.gate.suggestion = {};
+      for (const group of body.groups || []) {
+        state.gate.missing[group.field] = new Set(group.targets || []);
+        if (group.suggestion) state.gate.suggestion[group.field] = group.suggestion;
+      }
+      const useGroup = (body.groups || []).find((g) => g.field === "use");
+      if (!state.gate.order.length && useGroup) state.gate.order = useGroup.targets.slice();
+      state.gate.loaded = true;
+      gateOptionCache.clear();
+      gateOpenEl.disabled = false;
+      renderGate();
+    }
+
+    // ── 확정 ─────────────────────────────────────────────────────────────
+    function gatePayload() {
+      // 화면에서 더 이상 묻지 않는 값(반자를 "없음" 으로 되돌린 실의 반자고)은
+      // 보내지 않는다. 서버는 받으면 그대로 쓰므로 아무도 확정하지 않은 값이 남는다.
+      const byId = new Map(state.rooms.map((r) => [r.id, r]));
+      const out = {};
+      for (const [targetId, fields] of Object.entries(state.gate.values)) {
+        const room = byId.get(targetId);
+        const kept = {};
+        for (const [field, value] of Object.entries(fields)) {
+          if (room && !gateApplies(room, state.gate.specByField[field], true)) continue;
+          kept[field] = value;
+        }
+        if (Object.keys(kept).length) out[targetId] = kept;
+      }
+      return out;
+    }
+
+    function gateCommit(values, defaults) {
+      const byId = new Map(state.rooms.map((r) => [r.id, r]));
+      const coreById = new Map(state.cores.map((c) => [c.id, c]));
+      for (const [targetId, fields] of Object.entries(values)) {
+        const room = byId.get(targetId);
+        const core = coreById.get(targetId);
+        for (const [field, value] of Object.entries(fields)) {
+          if (room) {
+            gateSetRaw(room, field, value);
+            room.provenance[field] = "GATE";
+          } else if (core) {
+            core.confirmed = !!value;
+          } else {
+            state.gate.facts[field] = value;
+          }
+        }
+      }
+      // 서버가 근거를 들어 채운 값(천장고=층고). 화면이 모르면 결손이 아닌데
+      // 비어 있는 칸이 생긴다.
+      for (const applied of defaults || []) {
+        const room = byId.get(applied.room);
+        if (!room) continue;
+        gateSetRaw(room, applied.field, applied.value);
+        room.provenance[applied.field] = "default";
+      }
+      state.gate.values = {};
+    }
+
+    gateConfirmEl.addEventListener("click", async () => {
+      const operator = gateOperatorEl.value.trim();
+      gateMsgEl.classList.remove("warn");
+      if (!operator) {
+        gateMsgEl.classList.add("warn");
+        gateMsgEl.textContent = "확정자 이름을 적어야 합니다 — 감사 기록에 남습니다.";
+        gateOperatorEl.focus();
+        return;
+      }
+      const values = gatePayload();
+      gateConfirmEl.disabled = true;
+      gateMsgEl.textContent = "확정 중…";
+      try {
+        const res = await fetch("/api/design/gate/confirm", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: state.sessionId, operator, values }),
+        });
+        const body = await res.json().catch(() => null);
+        if (res.status === 409) {
+          gateMsgEl.classList.add("warn");
+          gateMsgEl.textContent = (body && body.message) || "다른 곳에서 먼저 저장했습니다.";
+          return;
+        }
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        // 422 여도 서버는 이미 저장했다. 로컬 입력을 안 비우면 다음 확정에서 두 번
+        // 보내고, 결손 판정도 옛 응답 기준으로 남는다.
+        gateCommit(values, body.defaults);
+        await loadGateItems();
+        if (res.ok && body.passed) {
+          state.gatePassed = true;
+          state.stage = "c2";
+          updateEditTools();
+          setEditNote("게이트를 통과해 실을 더 고칠 수 없습니다.");
+          renderStepper();
+          renderGateProgress();
+          gatePanelEl.classList.remove("open");
+          gateMsgEl.textContent = "";
+          gateStatusEl.classList.remove("warn");
+          gateStatusEl.textContent = `게이트 통과 (${operator}, v${body.version})`;
+          return;
+        }
+        gateMsgEl.classList.add("warn");
+        gateMsgEl.textContent = body.code === "GATE_INCOMPLETE"
+          ? `아직 ${body.unresolved.length}건이 확정되지 않았습니다.`
+          : (body.message || "확정하지 못했습니다.");
+      } catch (err) {
+        gateMsgEl.classList.add("warn");
+        gateMsgEl.textContent = "오류: " + err.message;
+      } finally {
+        gateConfirmEl.disabled = false;
+      }
+    });
+
+    gateOpenEl.addEventListener("click", () => {
+      if (!state.gate.loaded) return;
+      gatePanelEl.classList.add("open");
+      renderGate();
+    });
+    function bindModalClose(panelEl, closeEl) {
+      closeEl.addEventListener("click", () => panelEl.classList.remove("open"));
+      panelEl.addEventListener("mousedown", (ev) => {
+        if (ev.target === panelEl) panelEl.classList.remove("open");
+      });
+    }
+
+    bindModalClose(gatePanelEl, gateCloseEl);
+
+    // ====== C2 규범 조건 (§5) ======
+    // 카드에 조문을 붙여 낸다. 값만 보이면 감리 질의("무슨 근거냐")에 화면이 답을
+    // 못 하고, 사람이 constraints.json 을 직접 열어 대조하게 된다.
+    const C2_CARDS = [
+      ["scenario_head_count", "기준개수", "개"],
+      ["water_supply_m3", "수원", "m³"],
+      ["discharge_minutes", "방수 시간", "분"],
+      ["emergency_power_minutes", "비상전원", "분"],
+      ["horizontal_distance_m", "수평거리 R", "m"],
+      ["head_spacing_square_m", "정방형 간격 S", "m"],
+      ["wall_clearance_max_m", "벽 이격 최대", "m"],
+      ["temp_rating_c", "헤드 표시온도", "℃"],
+      ["quick_response_required", "조기반응형 헤드", ""],
+      ["k_factor", "K 계수", ""],
+      ["flow_lpm_min", "헤드 방수량", "L/min"],
+      ["head_to_ceiling_max_m", "헤드-천장 최대", "m"],
+      ["zone_area_max_m2", "방호구역 면적", "m²"],
+      ["zone_floors_max", "방호구역 층수", "층"],
+      ["spray_zone_heads_max", "방수구역 헤드", "개"],
+      ["branch_heads_per_side_max", "가지배관 편측 헤드", "개"],
+      ["cross_main_min_dn", "교차배관 최소 관경", "DN"],
+    ];
+
+    function c2Value(value, unit) {
+      if (typeof value === "boolean") return value ? "필요" : "불필요";
+      // R×√2 같은 유도값은 부동소수 꼬리가 길다. 16자리를 그대로 내면 없는
+      // 정밀도를 주장하게 된다 — 원본은 constraints.json 에 그대로 남고
+      // 화면만 줄인다.
+      const shown = typeof value === "number" && !Number.isInteger(value)
+        ? String(Number(value.toFixed(3))) : String(value);
+      return `${shown}${unit ? " " + unit : ""}`;
+    }
+
+    function renderC2() {
+      const c2 = state.c2;
+      if (!c2) return;
+      const data = c2.constraints;
+      const esfr = data.esfr || null;
+      const voided = new Set((esfr && esfr.voided_fields) || []);
+      const traceBy = {};
+      (data.trace || []).forEach((t) => { traceBy[t.field] = t; });
+
+      c2ArtifactEl.textContent = `${c2.artifact} v${c2.version}`;
+      c2BannerEl.classList.toggle("warn-block", !!(esfr && esfr.active));
+      if (esfr && esfr.active) {
+        c2BannerEl.innerHTML = `<strong>103B 활성</strong> — ${escHtml(esfr.reason)}`
+          + ` (확정 ${escHtml(esfr.operator)}, ${escHtml(esfr.decided_at)}).`
+          + ` NFTC 103 의 ${voided.size}개 항목이 근거를 잃어 비었습니다. 103B 의 K값·간격표는 아직 없어 채우지 않았습니다.`;
+      } else {
+        c2BannerEl.innerHTML = `NFTC 시행일 <strong>${escHtml(data.nftc_effective_date)}</strong> 기준.`
+          + (esfr ? ` 103B 는 켜지 않았습니다 — ${escHtml(esfr.reason)}` : "")
+          + ` 아래 값은 게이트에서 사람이 확정한 사실에서만 나옵니다.`;
+      }
+
+      c2GridEl.innerHTML = C2_CARDS.map(([field, label, unit]) => {
+        const value = data[field];
+        const trace = traceBy[field];
+        if (voided.has(field)) {
+          return `<div class="cn-card void"><span class="k">${escHtml(label)}</span>`
+            + `<span class="v">103B 활성으로 무효</span>`
+            + `<span class="src">NFTC 103 근거가 사라졌습니다. 103B 표는 미구현 — 사람이 값을 대야 합니다.</span></div>`;
+        }
+        if (value === null || value === undefined) {
+          return `<div class="cn-card untraced"><span class="k">${escHtml(label)}</span>`
+            + `<span class="v">—</span><span class="src">값 없음</span></div>`;
+        }
+        const src = trace
+          ? `${escHtml(trace.code)} ${escHtml(trace.article)}${trace.note ? " · " + escHtml(trace.note) : ""}`
+          : "조문 출처 없음 — 사내 기준이거나 유도값";
+        return `<div class="cn-card${trace ? "" : " untraced"}"><span class="k">${escHtml(label)}</span>`
+          + `<span class="v">${escHtml(c2Value(value, unit))}</span>`
+          + `<span class="src">${src}</span></div>`;
+      }).join("");
+
+      c2TraceEl.innerHTML = (data.trace || []).map((t) => `<tr>`
+        + `<td>${escHtml(t.field)}</td><td>${escHtml(t.code)}</td><td>${escHtml(t.article)}</td>`
+        + `<td>${escHtml(t.effective_date)}</td>`
+        + `<td class="room-id">${escHtml(String(t.text_hash).slice(0, 16))}</td>`
+        + `<td>${escHtml(t.note || "")}</td></tr>`).join("");
+    }
+
+    function adoptC2(body) {
+      state.c2 = body;
+      state.stage = "c3";
+      c2OpenEl.disabled = false;
+      updateC3Tools();
+      renderStepper();
+      renderC2();
+    }
+
+    function setC2Status(text, warn) {
+      setNote(c2StatusEl, text, warn);
+    }
+
+    runC2El.addEventListener("click", async () => {
+      runC2El.disabled = true;
+      setC2Status("C2 실행 중…", false);
+      try {
+        const res = await fetch("/api/design/c2/constraints", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: state.sessionId }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          // 422 는 결손이다. 게이트로 돌려보내는 것이 맞는 안내다.
+          setC2Status(body.code === "MISSING_BUILDING_FACT"
+            ? `${body.message} — 게이트에서 확정하세요.` : (body.message || `HTTP ${res.status}`), true);
+          return;
+        }
+        adoptC2(body);
+        setC2Status(body.rebaked
+          ? `기준 생성 — ${body.artifact} v${body.version}`
+          : `기준이 그대로입니다 — ${body.artifact} v${body.version} (다시 굽지 않음)`, false);
+        c2PanelEl.classList.add("open");
+      } catch (err) {
+        setC2Status("오류: " + err.message, true);
+      } finally {
+        runC2El.disabled = !state.gatePassed;
+      }
+    });
+
+    c2OpenEl.addEventListener("click", () => {
+      if (!state.c2) return;
+      renderC2();
+      c2PanelEl.classList.add("open");
+    });
+    bindModalClose(c2PanelEl, c2CloseEl);
+
+    // ====== C2B 103B 판단 (§6) ======
+    // 물음마다 왜 묻는지를 같이 낸다. 이유 없이 체크박스만 세 개 두면 사람이
+    // 습관적으로 전부 켜고, 그 순간 설비 종류가 바뀐다.
+    const ESFR_QUESTIONS = [
+      ["owner_adopts_esfr", "발주자가 103B 를 채택했습니까?",
+       "도면·용도에서 유도하지 않습니다. 발주자 확정이 없으면 기본 트랙은 NFTC 103 입니다."],
+      ["site_conditions_ok", "설치장소 구조 조건을 만족합니까?",
+       "천장 기울기·천장고·보 구조 등 NFTC 103B 의 설치장소 조건. 도면만으로 판정하지 않습니다."],
+      ["commodity_restricted", "저장물이 103B 제한 품목입니까?",
+       "제4류 위험물·타이어·목재·종이·섬유류 등이 있으면 103B 를 쓸 수 없습니다. 하나라도 있으면 '예'."],
+    ];
+
+    // 답의 자리는 물음에서 만든다. 물음만 늘고 자리가 안 늘면 그 답은 `undefined`
+    // 가 되고, `undefined` 는 "안 골랐다" 검사를 빠져나가 '아니오'로 확정된다.
+    state.esfrAnswers = Object.fromEntries(ESFR_QUESTIONS.map(([key]) => [key, null]));
+
+    // "안 골랐다" 와 "아니오" 는 다르다. 둘을 가르는 자리는 한 군데뿐이어야 한다.
+    function answeredYesNo(value) {
+      return value === true || value === false;
+    }
+
+    function esfrVerdict() {
+      const a = state.esfrAnswers;
+      if (!ESFR_QUESTIONS.every(([key]) => answeredYesNo(a[key]))) return null;
+      return a.owner_adopts_esfr && a.site_conditions_ok && !a.commodity_restricted;
+    }
+
+    function renderEsfrVerdict() {
+      const verdict = esfrVerdict();
+      esfrVerdictEl.className = "remain verdict "
+        + (verdict === null ? "unknown" : (verdict ? "on" : "off"));
+      esfrVerdictEl.textContent = verdict === null
+        ? "세 조건을 모두 답해야 판정합니다"
+        : (verdict ? "→ 103B 활성" : "→ 103B 비활성 (NFTC 103 유지)");
+      esfrSubmitEl.disabled = verdict === null || !esfrOperatorEl.value.trim();
+    }
+
+    function renderEsfr() {
+      const answers = state.esfrAnswers;
+      esfrQuestionsEl.innerHTML = ESFR_QUESTIONS.map(([key, question, why]) => {
+        const picked = answers[key];
+        const opt = (val, label) => `<label><input type="radio" name="esfr-${key}"`
+          + ` data-key="${key}" data-val="${val}"${picked === val ? " checked" : ""}>${label}</label>`;
+        return `<div class="esfr-q${answeredYesNo(picked) ? "" : " unanswered"}">`
+          + `<span class="q">${escHtml(question)}</span>`
+          + `<span class="why">${escHtml(why)}</span>`
+          + `<span class="opts">${opt(true, "예")}${opt(false, "아니오")}`
+          + (answeredYesNo(picked) ? "" : `<span class="why" style="color:var(--warn);">아직 답하지 않았습니다</span>`)
+          + `</span></div>`;
+      }).join("");
+      renderEsfrVerdict();
+    }
+
+    function setEsfrStatus(text, warn) {
+      setNote(esfrStatusEl, text, warn);
+    }
+
+    esfrQuestionsEl.addEventListener("change", (ev) => {
+      const { key, val } = ev.target.dataset;
+      // 아는 값만 답으로 받는다. 모르는 문자열을 `=== "true"` 로 접으면 '아니오'가
+      // 되는데, 그 방향이 바로 묻지 않은 조건을 거짓으로 확정하는 쪽이다.
+      if (!key || (val !== "true" && val !== "false")) return;
+      state.esfrAnswers[key] = val === "true";
+      renderEsfr();
+    });
+    esfrOperatorEl.addEventListener("input", renderEsfrVerdict);
+
+    esfrOpenEl.addEventListener("click", () => {
+      renderEsfr();
+      setNote(esfrMsgEl, "", false);
+      esfrPanelEl.classList.add("open");
+    });
+    bindModalClose(esfrPanelEl, esfrCloseEl);
+
+    esfrSubmitEl.addEventListener("click", async () => {
+      const operator = esfrOperatorEl.value.trim();
+      if (esfrVerdict() === null || !operator) {
+        setNote(esfrMsgEl, "세 조건과 확정자를 모두 채워야 합니다 — 감사 기록에 남습니다.", true);
+        return;
+      }
+      esfrSubmitEl.disabled = true;
+      setNote(esfrMsgEl, "확정 중…", false);
+      try {
+        const res = await fetch("/api/design/c2b/esfr", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: state.sessionId, operator,
+            note: esfrNoteEl.value.trim(), ...state.esfrAnswers,
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setNote(esfrMsgEl, body.message || `HTTP ${res.status}`, true);
+          return;
+        }
+        // 기준을 이미 구웠다면 서버가 같이 다시 구워 보낸다. 화면이 옛 기준을
+        // 들고 있으면 무효가 된 수평거리를 계속 보여준다.
+        if (body.constraints) adoptC2(body);
+        esfrPanelEl.classList.remove("open");
+        setNote(esfrMsgEl, "", false);
+        setEsfrStatus(`103B ${body.esfr.active ? "활성" : "비활성"} (${operator}) — ${body.esfr.reason}`,
+                      body.esfr.active);
+        if (body.constraints) {
+          setC2Status(body.rebaked
+            ? `103B 판단을 반영해 다시 구웠습니다 — ${body.artifact} v${body.version}`
+            : `기준이 그대로입니다 — ${body.artifact} v${body.version}`, false);
+        }
+      } catch (err) {
+        setNote(esfrMsgEl, "오류: " + err.message, true);
+      } finally {
+        renderEsfrVerdict();
+      }
+    });
+
+    // ====== C3 밸브·구역 (§7) ======
+    // 밸브 자리는 사람이 캔버스에서 찍는다. 화면이 후보 중심에 자동으로 놓아 주면
+    // 사람은 그 자리를 본 적이 없는데 감사 기록에는 사람이 확정한 것으로 남는다.
+    function c3Ready() {
+      return !!(state.sessionId && state.c2);
+    }
+
+    function setC3Status(text, warn) {
+      setNote(c3StatusEl, text, warn);
+    }
+
+    /** 밸브를 건드리면 이전 확정과 구역은 근거를 잃는다. 서버도 같은 자리에서 지운다. */
+    function c3Invalidate() {
+      const c3 = state.c3;
+      c3.valves = [];
+      c3.zones = [];
+      c3.flags = [];
+      c3.unreached = [];
+      c3.isolated = [];
+      c3.distance = {};
+      setNote(c3ZoneNoteEl, "", false);
+    }
+
+    /** 아직 답하지 않은 칸 수. 0 이어야 확정할 수 있다. */
+    function c3Unanswered() {
+      let n = 0;
+      for (const draft of state.c3.drafts) {
+        if (!draft.system_type) n += 1;
+        for (const req of state.c3.requirements) {
+          if (!answeredYesNo(draft.requirements[req.key])) n += 1;
+        }
+      }
+      return n;
+    }
+
+    function updateC3Tools() {
+      c3LoadEl.disabled = !c3Ready();
+      c3OpenEl.disabled = !state.c3.loaded;
+      toolValveEl.disabled = !state.c3.candidates.length;
+      if (toolValveEl.disabled && state.tool === "valve") setTool("pan");
+    }
+
+    function candidateAt(wx, wy) {
+      let best = null;
+      for (const cand of state.c3.candidates) {
+        const poly = candidatePoly(cand);
+        if (poly.length < 3 || !pointInPolygon(wx, wy, poly)) continue;
+        if (!best || (cand.area_m2 || 0) < (best.area_m2 || 0)) best = cand;
+      }
+      return best;
+    }
+
+    function placeValveAt(ev) {
+      const rect = canvas.getBoundingClientRect();
+      const [wx, wy] = screenToWorld(ev.clientX - rect.left, ev.clientY - rect.top);
+      const cand = candidateAt(wx, wy);
+      if (!cand) {
+        // 가까운 후보로 끌어붙이지 않는다. 코어 밖에 찍힌 밸브는 서버도 거절한다.
+        setC3Status("후보 코어 안을 찍으세요 — 밖에 찍은 자리는 끌어붙이지 않습니다.", true);
+        return;
+      }
+      const found = state.c3.drafts.find((d) => d.core_id === cand.core_id);
+      if (found) {
+        found.point = [wx, wy];
+      } else {
+        state.c3.drafts.push({
+          core_id: cand.core_id, point: [wx, wy], system_type: "",
+          requirements: Object.fromEntries(state.c3.requirements.map((r) => [r.key, null])),
+        });
+      }
+      c3Invalidate();
+      renderC3();
+      renderDesignList();
+      render();
+      setC3Status(`${cand.core_id} ${found ? "자리를 옮겼습니다" : "에 밸브를 찍었습니다"} — `
+        + `밸브 ${state.c3.drafts.length}개, 남은 응답 ${c3Unanswered()}건`, false);
+    }
+
+    function renderC3() {
+      const c3 = state.c3;
+      const reqs = c3.requirements;
+      c3TheadEl.innerHTML = `<tr><th>밸브</th><th>코어</th><th>좌표</th><th>설비 종류</th>`
+        + reqs.map((r) => `<th>${escHtml(r.label)}</th>`).join("") + `<th></th></tr>`;
+      c3TbodyEl.innerHTML = c3.drafts.map((draft, i) => {
+        const confirmed = c3.valves[i];
+        const sys = `<select data-c3="system" data-i="${i}">`
+          + `<option value="">— 고르세요</option>`
+          + c3.systemTypes.map((t) => `<option value="${escHtml(t)}"`
+            + `${draft.system_type === t ? " selected" : ""}>${escHtml(t)}</option>`).join("")
+          + `</select>`;
+        const cells = reqs.map((req) => {
+          const value = draft.requirements[req.key];
+          const opt = (raw, label) => `<option value="${raw}"`
+            + `${String(value) === raw ? " selected" : ""}>${label}</option>`;
+          return `<td class="${answeredYesNo(value) ? "" : "unset"}">`
+            + `<select data-c3="req" data-i="${i}" data-key="${escHtml(req.key)}">`
+            + `<option value="">—</option>${opt("true", "예")}${opt("false", "아니오")}`
+            + `</select></td>`;
+        }).join("");
+        return `<tr><td>${escHtml(confirmed ? confirmed.id : "미확정")}</td>`
+          + `<td class="room-id">${escHtml(draft.core_id)}</td>`
+          + `<td class="room-id">${draft.point[0].toFixed(0)}, ${draft.point[1].toFixed(0)}</td>`
+          + `<td class="${draft.system_type ? "" : "unset"}">${sys}</td>${cells}`
+          + `<td><button class="drop" data-c3="drop" data-i="${i}" type="button">지우기</button></td></tr>`;
+      }).join("");
+
+      c3EmptyEl.style.display = c3.drafts.length ? "none" : "block";
+      c3EmptyEl.textContent = c3.candidates.length
+        ? `밸브 후보 코어 ${c3.candidates.length}개. 이 창을 닫고 [밸브 찍기] 로 코어 안을 누르세요.`
+        : "확정된 샤프트·계단 코어가 없습니다. GATE 에서 코어를 확정해야 후보가 생깁니다.";
+
+      c3ZonesSumEl.innerHTML = c3.zones.map((zone, i) =>
+        `<span class="z"><i style="background:${zoneColor(i)}"></i>${escHtml(zone.id)}`
+        + ` 실 ${zone.rooms.length} · ${zone.area_m2}㎡ · 최원 ${zone.farthest_room_m}m</span>`).join("");
+      c3FlagsEl.innerHTML = c3.flags.map((flag) =>
+        `<div class="flag"><span class="code">${escHtml(flag.code)}</span>`
+        + `${escHtml(flag.message)}</div>`).join("");
+
+      const unanswered = c3Unanswered();
+      c3RemainEl.textContent = c3.drafts.length
+        ? (unanswered ? `${unanswered}건 미응답` : `밸브 ${c3.drafts.length}개 응답 완료`)
+        : "밸브 없음";
+      c3RemainEl.className = `remain ${unanswered || !c3.drafts.length ? "pending" : "done"}`;
+      c3SubmitEl.disabled = !c3.drafts.length || unanswered > 0 || !c3OperatorEl.value.trim();
+      c3ZonesEl.disabled = !c3.valves.length;
+    }
+
+    c3TbodyEl.addEventListener("change", (ev) => {
+      const { c3: kind, i, key } = ev.target.dataset;
+      const draft = state.c3.drafts[Number(i)];
+      if (!draft) return;
+      if (kind === "system") {
+        draft.system_type = state.c3.systemTypes.includes(ev.target.value) ? ev.target.value : "";
+      } else if (kind === "req") {
+        // 아는 값만 답으로 받는다. 빈 값은 '아니오' 가 아니라 아직 안 물어본 것이다.
+        const raw = ev.target.value;
+        draft.requirements[key] = (raw === "true" || raw === "false") ? raw === "true" : null;
+      } else {
+        return;
+      }
+      c3Invalidate();
+      renderC3();
+      render();
+    });
+
+    c3TbodyEl.addEventListener("click", (ev) => {
+      if (ev.target.dataset.c3 !== "drop") return;
+      state.c3.drafts.splice(Number(ev.target.dataset.i), 1);
+      c3Invalidate();
+      renderC3();
+      renderDesignList();
+      render();
+    });
+
+    c3OperatorEl.addEventListener("input", renderC3);
+
+    c3LoadEl.addEventListener("click", async () => {
+      if (!c3Ready()) return;
+      c3LoadEl.disabled = true;
+      setC3Status("밸브 후보를 부르는 중…", false);
+      try {
+        const res = await fetch(`/api/design/c3/candidates/${encodeURIComponent(state.sessionId)}`);
+        const body = await res.json().catch(() => null);
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setC3Status(body.message || `HTTP ${res.status}`, true);
+          return;
+        }
+        const c3 = state.c3;
+        c3.candidates = body.candidates || [];
+        c3.systemTypes = body.system_types || [];
+        c3.requirements = body.requirements || [];
+        c3.loaded = true;
+        // 요건이 늘어난 뒤 옛 밸브를 그대로 두면 새 항목이 `undefined` 로 남고,
+        // `undefined` 는 "안 골랐다" 검사를 빠져나가 미응답인 채 확정된다.
+        for (const draft of c3.drafts) {
+          for (const req of c3.requirements) {
+            if (!(req.key in draft.requirements)) draft.requirements[req.key] = null;
+          }
+        }
+        setC3Status(c3.candidates.length
+          ? `밸브 후보 ${c3.candidates.length}개 — [밸브 찍기] 로 코어 안을 누르세요.`
+          : "확정된 샤프트·계단 코어가 없습니다. GATE 에서 코어를 확정하세요.",
+          !c3.candidates.length);
+        renderC3();
+        render();
+      } catch (err) {
+        setC3Status("오류: " + err.message, true);
+      } finally {
+        updateC3Tools();
+      }
+    });
+
+    c3OpenEl.addEventListener("click", () => {
+      renderC3();
+      setNote(c3MsgEl, "", false);
+      c3PanelEl.classList.add("open");
+    });
+    bindModalClose(c3PanelEl, c3CloseEl);
+
+    c3SubmitEl.addEventListener("click", async () => {
+      const operator = c3OperatorEl.value.trim();
+      if (!state.c3.drafts.length || c3Unanswered() || !operator) {
+        setNote(c3MsgEl, "밸브·설비 종류·설치 요건 4가지·확정자를 모두 채워야 합니다.", true);
+        return;
+      }
+      c3SubmitEl.disabled = true;
+      setNote(c3MsgEl, "확정 중…", false);
+      try {
+        const res = await fetch("/api/design/c3/valves", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: state.sessionId, operator,
+            valves: state.c3.drafts.map((draft) => ({
+              core_id: draft.core_id, point: toMm(draft.point),
+              system_type: draft.system_type,
+              requirements_confirmed: draft.requirements,
+            })),
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setNote(c3MsgEl, body.message || `HTTP ${res.status}`, true);
+          return;
+        }
+        state.c3.valves = body.valves || [];
+        // 요건에 '아니오' 로 답한 밸브도 확정은 된다. 다만 미충족인 채로 남는다는
+        // 사실이 여기서 사라지면 감사 때 처음 알게 된다.
+        const unmet = body.requirements_unmet || [];
+        const line = `밸브 ${state.c3.valves.length}개 확정 (${operator})`
+          + (unmet.length ? ` — 요건 미충족 ${unmet.length}개: `
+            + unmet.map((u) => u.valve_id).join(", ") : "");
+        setNote(c3MsgEl, line, unmet.length > 0);
+        setC3Status(line, unmet.length > 0);
+        render();
+      } catch (err) {
+        setNote(c3MsgEl, "오류: " + err.message, true);
+      } finally {
+        renderC3();
+      }
+    });
+
+    c3ZonesEl.addEventListener("click", async () => {
+      if (!state.c3.valves.length) return;
+      c3ZonesEl.disabled = true;
+      setNote(c3MsgEl, "구역을 나누는 중…", false);
+      try {
+        const res = await fetch("/api/design/c3/zones", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: state.sessionId, operator: c3OperatorEl.value.trim(),
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setNote(c3MsgEl, body.message || `HTTP ${res.status}`, true);
+          return;
+        }
+        const c3 = state.c3;
+        c3.zones = body.zones || [];
+        c3.flags = body.flags || [];
+        c3.unreached = body.unreached || [];
+        c3.isolated = body.isolated_rooms || [];
+        c3.distance = body.room_distance_m || {};
+        const covered = c3.zones.reduce((n, zone) => n + zone.rooms.length, 0);
+        const summary = `구역 ${c3.zones.length}개 / 담당 실 ${covered}개 / `
+          + `미도달 ${c3.unreached.length}개 / 문 없는 실 ${c3.isolated.length}개`;
+        setNote(c3MsgEl, summary, c3.flags.length > 0);
+        setNote(c3ZoneNoteEl, summary, c3.flags.length > 0);
+        // 서버도 같은 규칙으로 단계를 잡아 둔다. 플래그가 남으면 C4 는 열리지 않는다.
+        if (!c3.flags.length) {
+          state.stage = "c4";
+          renderStepper();
+        }
+        setC3Status(c3.flags.length
+          ? `남은 문제 ${c3.flags.length}건 — 해결 전에는 C4 헤드 배치로 넘어가지 않습니다.`
+          : "구역 확정 — C4 헤드 배치로 넘어갑니다.", c3.flags.length > 0);
+        renderDesignList();
+        render();
+      } catch (err) {
+        setNote(c3MsgEl, "오류: " + err.message, true);
+      } finally {
+        renderC3();
+      }
+    });
+
+    // ====== 건축 12종 토글 ======
+    function renderLayerList() {
+      if (!state.layers.length) return;
+      const byCat = {};
+      for (const layer of state.layers) {
+        const cat = state.layerState[layer.name].category;
+        (byCat[cat] || (byCat[cat] = [])).push(layer);
+      }
+      const opts = (sel) => [[UNCLASSIFIED, "미분류"], ...ARCH_CATEGORIES.map((c) => [c, c])]
+        .map(([v, t]) => `<option value="${v}" ${sel === v ? "selected" : ""}>${t}</option>`).join("");
+
+      const blocks = [UNCLASSIFIED, ...ARCH_CATEGORIES].map((cat) => {
+        const layers = byCat[cat] || [];
+        const entN = layers.reduce((s, l) => s + l.count, 0);
+        const allOn = layers.length > 0 && layers.every((l) => state.layerState[l.name].visible);
+        const title = cat === UNCLASSIFIED ? "미분류" : cat;
+        const color = cat === UNCLASSIFIED ? UNCLASSIFIED_COLOR : ARCH_COLORS[cat];
+        const head = `<div class="cat-head ${layers.length ? "" : "empty"}">
+          <input type="checkbox" data-cat="${cat}" ${allOn ? "checked" : ""} ${layers.length ? "" : "disabled"}>
+          <i class="swatch" style="background:${color}"></i>
+          <span>${title}</span>
+          <span class="count">${layers.length} layer / ${entN.toLocaleString()} ent</span>
+        </div>`;
+        const rows = layers.map((l) => {
+          const ls = state.layerState[l.name];
+          const safeName = escHtml(l.name);
+          const key = encodeURIComponent(l.name);
+          return `<div class="layer-row">
+            <input type="checkbox" data-layer="${key}" ${ls.visible ? "checked" : ""}>
+            <div>
+              <div class="name" title="${safeName}">${safeName}</div>
+              <div class="count">${l.count.toLocaleString()} ent.</div>
+            </div>
+            <select data-layer-cat="${key}">${opts(ls.category)}</select>
+          </div>`;
+        }).join("");
+        return head + rows;
+      }).join("");
+      layerListEl.innerHTML = blocks;
+
+      layerListEl.querySelectorAll("input[data-layer]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          state.layerState[decodeURIComponent(cb.dataset.layer)].visible = cb.checked;
+          renderLayerList();
+          render();
+        });
+      });
+      layerListEl.querySelectorAll("input[data-cat]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          for (const l of state.layers) {
+            if (state.layerState[l.name].category === cb.dataset.cat) {
+              state.layerState[l.name].visible = cb.checked;
+            }
+          }
+          renderLayerList();
+          render();
+        });
+      });
+      layerListEl.querySelectorAll("select[data-layer-cat]").forEach((sel) => {
+        sel.addEventListener("change", () => {
+          state.layerState[decodeURIComponent(sel.dataset.layerCat)].category = sel.value;
+          renderLayerList();
+          render();
+        });
+      });
+
+      const left = state.layers.filter((l) => state.layerState[l.name].category === UNCLASSIFIED).length;
+      unclassifiedNoteEl.style.display = left ? "block" : "none";
+      unclassifiedNoteEl.textContent =
+        `미분류 ${left}개 — 자동 판정은 C1 인식기(PR-4)가 붙은 뒤에 채워집니다.`;
+    }
+
+    // ====== 설계 산출물 토글 ======
+    function renderDesignList() {
+      designListEl.innerHTML = OVERLAYS.map(([key, label, color, count]) => {
+        const n = count();
+        return `<label class="overlay-row ${n ? "" : "empty"}">
+          <input type="checkbox" data-overlay="${key}" ${state.overlayVisible[key] ? "checked" : ""} ${n ? "" : "disabled"}>
+          <i class="swatch" style="background:${color}"></i>
+          <span>${label}</span>
+          <span class="count">${n}</span>
+        </label>`;
+      }).join("");
+      designListEl.querySelectorAll("input[data-overlay]").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          state.overlayVisible[cb.dataset.overlay] = cb.checked;
+          render();
+        });
+      });
+    }
+
+    renderStepper();
+    renderDesignList();
+    updateEditTools();
+    updateC3Tools();
+    renderC3();
+    startSession();
+    setTimeout(resizeCanvas, 50);
+  

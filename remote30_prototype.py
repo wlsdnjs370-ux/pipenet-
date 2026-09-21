@@ -7101,7 +7101,8 @@ def _rewrite_slf_fx_schedules(slf_path: Path, fx_geoms: dict) -> None:
     )
 
 
-def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote 30 Prototype") -> Path:
+def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote 30 Prototype",
+             display_scale: float | None = None) -> Path:
     """PIPENET SDF emit — pipenet_converter.sdf_writer 의 template_path 활용.
 
     참조 SDF 를 template 으로 사용하면 Network-spray 의 Nodes/Links 만 우리 데이터로
@@ -7167,6 +7168,13 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
     else:
         _cx = _cy = 0.0
         _scale = 1.0
+
+    # Module F can retain the standalone plan's display scale across an entire
+    # merged view. This is uniform and display-only; all hydraulic values stay.
+    if display_scale is not None:
+        if not math.isfinite(display_scale) or display_scale <= 0:
+            raise ValueError("SDF 표시 배율은 0보다 큰 유한한 값이어야 합니다.")
+        _scale = float(display_scale)
 
     def _xform(x: float, y: float) -> tuple[float, float]:
         return ((x - _cx) * _scale, (y - _cy) * _scale)

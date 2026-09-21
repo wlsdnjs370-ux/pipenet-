@@ -50,7 +50,8 @@ def catalog() -> dict:
                     min_bar=v['min_p_pa']/100000, max_bar=v['max_p_pa']/100000)
                for k,v in lib['nozzles'].items() if v['k_si'] > 0]
     return dict(pipes=pipes,fittings=fittings,nozzles=nozzles,
-                fitting_aliases=FITTING_LIB_ID,
+                fitting_aliases={k:v for k,v in FITTING_LIB_ID.items()
+                                 if k not in ("tee-run", "cross-run", "cross")},
                 sources=[Path(lib['_path']).name, source.name])
 
 

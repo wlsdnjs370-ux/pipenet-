@@ -104,7 +104,7 @@ def _board_path_len(adj, board_pts, vi, vj, cache):
 
 def chain_coords(kfp, *, edge_ref, node_ref, board_pts, origin_mm,
                  declared_pipes=(), root=None, corridor_edges=(),
-                 chain_len_mode="euclid") -> dict:
+                 chain_len_mode="euclid", flow_tree=None) -> dict:
     """회랑 kfp 의 좌표를 사슬로 다시 만든다. **제자리에서** 고친다.
 
     반환 `chain_report` — 화면·프로브가 읽는다. 판정(C1~C4)은 부르는 쪽이
@@ -194,7 +194,13 @@ def chain_coords(kfp, *, edge_ref, node_ref, board_pts, origin_mm,
         #     여기서는 지시서에 적힌 것(직선)을 쓰고 차이를 보고한다.
         #     `chain_len_mode="path"` 로 바꾸면 조각 합이 된다.
         if chain_len_mode == "path":
-            Lp = _board_path_len(cadj, board_pts, vi, vj, plen_cache)
+            if flow_tree is not None:
+                path = flow_tree.between(vi, vj)
+                if not path:
+                    raise ValueError(f"배관 {pid}의 확정 물흐름 경로가 없습니다.")
+                Lp = sum(flow_tree.lengths_mm[e] for e in path) / 1000.0
+            else:
+                Lp = _board_path_len(cadj, board_pts, vi, vj, plen_cache)
             L = math.dist(bi, bj) if Lp is None else Lp
         else:
             L = math.dist(bi, bj)
@@ -397,6 +403,8 @@ def merge_straight_runs(kfp, *, edge_ref=None, node_ref=None,
                  + float(p2.get("length_m") or 0.0))
             p1["start"], p1["end"] = far1, far2
             p1["length_m"] = round(L, 6)
+            if "head_count_all" in p1 or "head_count_all" in p2:
+                p1["head_count_all"] = max(p1.get("head_count_all", 0), p2.get("head_count_all", 0))
             p1["equivalent_length"] = (
                 float(p1.get("equivalent_length") or 0.0)
                 + float(p2.get("equivalent_length") or 0.0))

@@ -1,0 +1,53 @@
+레이어 승격을 버리던 세 곳을 번들 분류로 되돌린다
+
+파서는 마지막에 레이어 승격을 하면서 entity 를 파생 레이어로 옮긴다
+(`_promote_headgap_pipe_layers` → "<원이름> (배관 승격)",
+ `_promote_head_connector_runs` → "<원이름> (연결관 승격)").
+그런데 세 곳이 그 결과를 버리고 레이어 «이름» 으로 분류를 다시 만들고 있었다.
+파생 이름을 이름 사전에 물으면:
+
+    "<원이름> (배관 승격)"    → PIPE     (우연히 살아 있었다)
+    "<원이름> (연결관 승격)"  → OTHER    ★증발
+
+연결관은 헤드를 가지관에 붙이는 선이라, 잃으면 그 헤드가 HEAD_DROP_MAX_MM 에
+걸려 통째로 탈락한다.
+
+  · routes/module_f/auto.py   — 자동 차선 전체의 배관 분류.
+        도크스트링이 "시각화용 파서와 섞으면 레이어 승격이 통째로 빠진다" 고
+        경고해 놓고 바로 아래에서 이름으로 재분류하고 있었다.
+  · routes/module_f/recon.py  — 그 분류가 detect_heads 로 직행한다.
+  · cad_project_editor_g/tests/compare_module_a.py
+        — G 를 «A 가 실제로 내는 값이 아닌» 기준과 대조하고 있었다.
+        주석의 "라우트도 이 값을 넘긴다" 는 사실이 아니다.
+
+옳은 값의 근거: remote30_prototype.py 의 Stage 0 이
+`{ly["name"]: ly["auto_category"] for ly in bundle.layers}` 를 쓴다. 즉 A 의
+라우트가 넘기는 것이 번들 분류다. 셋 다 그것을 쓰도록 고쳤다.
+
+실측 효과:
+                PIPE ent   헤드 검출   뽑힌 헤드   뽑힌 배관
+    B1F            +28        +0        +0         +0
+    대명동          +16        +0        +0         -5
+    LH306        (분류 동일 — 무관)
+
+대명동 180→175 는 회귀가 아니라 F 가 A 값으로 수렴한 것이다 — 자동 차선이
+그동안 같은 도면에서 A 와 다른 망을 만들고 있었다.
+
+정직하게 적어 둔다: B1F 는 결과가 하나도 안 변했다. 분류는 옳아졌지만 조각
+306개는 그대로다. B1F 의 파쇄는 이 수정으로 안 풀린다.
+
+조사 스크립트 동봉:
+  · scripts/_probe_snap_sweep.py     — 이음매 문턱을 1,200mm 까지 넓혀도
+        최대 조각이 8% 에서 안 오른다(무릎 없음 = 끝점끼리가 아니다).
+  · scripts/_probe_linkpred_plan.py  — calibration/linkpred_integrate.py 를
+        평면도에 걸어 본 결과. 안 된다: 탐색 반경이 2.5×med_edge 인데 이
+        평면도의 med_edge 는 배관이 아니라 헤드 기호 획(148.6mm)이라 실제
+        틈(918mm)이 후보로 보이지도 않는다. T분기 제안 3건(거리 0mm).
+        조각을 붙이는 건 무제한 거리 브리지뿐이고 그건 금지된 추정이다.
+        한 장 834초 — 화면에서 못 쓴다.
+  · scripts/_probe_promote_lost.py   — 위 증발을 잰다.
+  · scripts/_verify_promote_fix.py   — 수정 전/후를 나란히 잰다.
+
+테스트 1,447개 통과.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>

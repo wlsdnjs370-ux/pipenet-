@@ -1,0 +1,18 @@
+[계통도] DXF 읽는 중 — 1. 입력도면 대명동 단위세대 계통도.dxf
+[계통도] 완료 1.8s · 도형 13,281 · 선분 13,615
+열기: 200 done
+
+[전체 레이어] 200
+   노드 255 · 간선 254 · 추측연결 0 · 성분 1
+   JSON 11.5 KB
+   레이어 30종 — 상위 5:
+      OTHER      7333 개  FF
+      OTHER      1868 개  0
+      PIPE        918 개  SP
+      OTHER       548 개  SO
+      OTHER       448 개  105-2
+
+[PIPE 로 분류된 레이어만 3종]
+   200 · 노드 238 · 간선 237 · 고른 것 ['HSP', 'LSP', 'SP']
+
+/sub/state: 200 {'extracted': False, 'kind': 'system', 'mode': None, 'ok': True, 'opened': True, 'summary': None}

@@ -890,21 +890,13 @@ def other_fire_bundles(spec):
                                or spec.get("explainers") or [])]
 
 def material_bundles_v2(w, spec, picks=None):
-    """그릇 v2 — 색 전개 + 기타 소방 겸용/별도 가름 [2026-08-04·05 오너 확정].
+    """Select explicit layer/color bundles; color-wide expansion is opt-in.
 
-    유저가 찍는 것은 대표 계통의 **선(들)**이고, spec 에는 그 선의
-    (레이어×색)이 `material_picks` 로 기록된다(찍은 근거 보존). 재료는
-    찍은 **색 전부** — 레이어 무관 · 도장 안팎 무관(§2 확정 · 3F SP×초록
-    도장 1,013획 실증, 도면틀은 물 청소가 안전판). (레이어×색)을 사람이
-    손으로 펴 담던 v1 `material`/`material_stamped` 나열은 폐기(대장 D15
-    — "프로그램이 해야 할 일 셋을 사람이 하고 있다").
+    ``material_scope='color'`` reads legacy color-wide projects explicitly.
+    The default must not introduce SHEET, annotations or equipment outlines
+    simply because their color matches a selected pipe. Block-derived segments
+    retain the same layer/color gate. No project layer names are hard-coded.
 
-    기타 소방배관 픽(§3-C)은 프로그램이 **인식만** 한다:
-      · 픽이 material_picks 와 같은 묶음 → **겸용**(apt 소화전) — 같은
-        묶음이라 기계가 가를 수 없다(오너 확정). 재료 유지 · 끊는 놈 제외.
-      · 색은 대표 색인데 다른 묶음 → **별도 계통** — 그 묶음을 재료에서
-        빼고 끊는 놈으로 쓴다.
-      · 색이 다름 → 재료 아님 · 끊는 놈(v1 그대로).
     반환: (재료 묶음 집합, 별도로 뺀 묶음 집합)
     """
     mp = {tuple(m) for m in (picks if picks is not None
@@ -912,8 +904,12 @@ def material_bundles_v2(w, spec, picks=None):
     colors = {c for _ly, c in mp}
     sep = {of for of in other_fire_bundles(spec)
            if of[1] in colors and of not in mp}
+    scope = spec.get("material_scope", "layer_color")
+    if scope not in ("layer_color", "color"):
+        raise ValueError(f"Unknown material_scope: {scope!r}")
     buckets = {(ly, c) for ly, c, _a, _b in w.segs
-               if c in colors and (ly, c) not in sep}
+               if ((ly, c) in mp or (scope == "color" and c in colors))
+               and (ly, c) not in sep}
     return buckets, sep
 
 def stamped_material(w, spec, bundles=None):

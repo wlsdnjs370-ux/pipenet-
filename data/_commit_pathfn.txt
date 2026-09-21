@@ -1,0 +1,85 @@
+경로 상수 함수화 — import 때 굳는 경로를 없애고 주입점을 하나로
+
+`ModuleF_경로상수_함수화_지시서.md`. 값은 한 곳도 안 바뀐다(§5) — 같은 실행
+조건에서 같은 경로가 나오는지 실서버로 확인했다. 하나만 의도적으로 달라진다(⑦).
+
+■ 무엇이 문제였나 — 오류가 안 나는 종류의 사고
+
+    handoff.py:42   OUT_DIR = pick_out_dir()          ← import 때 굳는다
+    pick/io.py:13   NEW_DIR = handoff.OUT_DIR         ← ★값을 복사한다
+    pick/__init__:10 NEW_DIR 재수출                    ← 복사가 한 번 더
+    disp_cache.py:15 _DISP_CACHE_DIR = import_write_root()
+
+  서버는 부팅 때 `handoff.import_write_root` 를 람다로 갈아끼우고, 그것으로 안
+  따라오는 두 상수를 **따로 덮었다**. 세 줄 중 하나만 빠뜨려도 한 프로세스 안에서
+  모듈마다 다른 폴더를 붙든다 — 예외는 안 나고 파일만 엉뚱한 데 생기거나 안 보인다.
+
+■ 조치
+
+  · `handoff.set_write_root(path)` — 주입점 하나. `import_write_root()` 앞에
+    분기 하나가 붙을 뿐, 기존 세 갈래(override/frozen/소스)의 값은 그대로다.
+  · 상수 6개를 전부 함수로: `OUT_DIR` 삭제(읽는 두 자리 → `pick_out_dir()`) ·
+    `NEW_DIR` → `new_dir()` · `_DISP_CACHE_DIR` 삭제 · `expand.DWG`·`flow.DWG`
+    삭제(쓰는 자리에서 `s1.DWG_DIR` 직접). `disp_cache` 가 밖에서 읽던
+    `expand.DWG` 도 `stage1.DWG_DIR` 로 옮겼다.
+  · ⑦ `STD_DIR` → `std_dir()`. ★이것만 값이 달라진다 — 종전에는 cwd 상대경로
+    `"docs/import/0단계_표준샘플"` 이고 부팅 고정 목록에서 **아예 빠져 있었다**.
+    데스크톱 G(cwd = 편집기 폴더)에서는 두 값이 여전히 같고, 웹서버에서만
+    올바른 쪽으로 바뀐다 — 그게 원래 의도한 동작이다.
+  · `_boot()` 몽키패치 3줄 → `handoff.set_write_root(...)` 1줄.
+    ★E 루트 차단·`services` 가 G 엔진인지 검증은 **그대로 둔다**(§5).
+
+■ 시험 — 조치 «전»에 빨간 줄을 눈으로 보고 고쳤다 (§3-1)
+
+  `tests/test_g_path_late_binding.py` 는 G 모듈을 부팅 «전»에 일부러 먼저
+  import 한 뒤 `set_write_root()` 를 부른다.
+
+    조치 전  5 failed  — AttributeError: module '…handoff' has no attribute
+                        'set_write_root' / 굳은 상수 5건 검출
+    조치 후  5 passed
+
+■ 실서버 확인 (§3-3 · `scripts/_verify_path_binding_live.py`)
+
+  임시 이름으로 도면을 올려 한 바퀴 돌리고 뒷정리까지 했다.
+
+    찍은스펙·찍은클릭  →  docs/import/0단계_새찍기/        (조치 전과 같은 폴더)
+    표시캐시           →  docs/import/_edit_disp_cache_*.json  (같은 폴더)
+    기존 저장본 읽기   →  대명동 평면도 재료 9묶음이 되살아남
+    콘솔 오류 0
+
+  in-process 확인은 `scripts/_probe_path_binding.py` — 네 경로 전부 «같음»,
+  데스크톱 G(주입 없음) 값도 종전 그대로.
+
+■ 함께 옮긴 자리 (밖에서 그 상수를 덮던 곳 — 하나라도 남으면 의미가 없다)
+
+    tests/_workdir_iso.py · tests/test_module_f_unified.py
+    tests/test_module_f_adopt.py(가드 문구) · cad_project_editor_g/tests/test_design_dialog.py
+    scripts/_golden_module_f_kfp.py · _measure_module_f_lanes.py
+    scripts/_probe_module_f_ae_merge.py · _verify_module_e_headless.py
+
+  ★`tests/_workdir_iso.py` 가 남아 있었을 때 `handoff.OUT_DIR` AttributeError 가
+    나면서 격리가 통째로 풀렸고, 그 여파로 옆 시험 둘이 상대경로 폴더를 찾다
+    FileNotFoundError 로 죽었다. 이 헬퍼가 이 작업의 진짜 급소였다.
+
+■ 남은 모듈 레벨 경로 상수 (§3-2 수용 기준)
+
+    stage1.py:105-106  `_APP_ROOT` · `DWG_DIR`  — `__file__` 기준 절대경로.
+                       cwd·부팅 순서에 안 걸린다. 그대로 둔다.
+    planar.py:46       `OUT` (바탕화면)          — 범위 밖. 아래 보고 참조.
+
+■ 범위 밖 보고 — `convert/planar.py:46` 바탕화면 경로
+
+  `OUT = ~/Desktop/MF101_흰색점선범위_유저정리5.kfp` 는 `default_out(key)`
+  하나만 읽고, 그것을 부르는 자리는 둘이다.
+
+    planar.main(key, out=None, write=True)  — 부르는 쪽이 경로를 안 주면 여기로
+    engine.py:945                            — **가드로만** 쓴다("원본 .kfp 는
+                                               수정하지 않습니다")
+
+  모듈 F 는 항상 세션 폴더 아래 경로를 명시해 넘기므로 이 기본값에 안 닿는다.
+  실제로 이 기계 바탕화면에 `*_유저정리*.kfp` 는 **없다**.
+  다만 형제 기본값(`engine.py:950` · `dto.py:79` 의 `~/Desktop/{key}_변환.kfp`)
+  으로 난 파일은 하나 있다 — `B1F 현장조사 소화설비 평면도_변환.kfp`
+  (1,258,141 bytes · 2026-08-25 22:06). 조치는 사용자 판단이라 손대지 않았다.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>

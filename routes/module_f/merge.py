@@ -158,11 +158,14 @@ def to_head_tables(tbl, *, offset: int = LABEL_OFFSET) -> HeadTables:
         row["in"] = sh(row.get("in"))
         nozzles.append(row)
 
+    from src.pipenet_converter.graph.fitting_policy import without_straight_tees
     fittings = []
-    for r in (getattr(tbl, "fittings", None) or ()):
+    for r in without_straight_tees(getattr(tbl, "fittings", None) or ()):
         row = dict(r)
         row["in"] = sh(row.get("in"))
         row["out"] = sh(row.get("out"))
+        if row.get("node") is not None:
+            row["node"] = sh(row["node"])
         fittings.append(row)
 
     equipment = []
@@ -247,8 +250,8 @@ def riser_tables_from(riser: dict):
     """
     from remote30_full_network import RiserTables
     r = riser or {}
-    nodes = list(r.get("nodes") or [])
-    pipes = list(r.get("pipes") or [])
+    nodes = [dict(n) for n in r.get("nodes") or []]
+    pipes = [dict(p) for p in r.get("pipes") or []]
     if not nodes or not pipes:
         raise MergeError("계통도 추출 결과가 비어 있습니다 — 입상관을 만들 수 없습니다.")
     av = str(r.get("av_node_label") or "")
@@ -345,6 +348,8 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
     from remote30_full_network import (
         normalize_pipe_bores, prepend_machine_room_to_riser,
         stitch_riser_and_heads)
+    from routes.module_f.connections import (
+        align_plan_connection, align_new_pump_ports, machine_connection)
 
     mode = check_supply_mode(mode)
     is_pump = mode in PUMP_MODES
@@ -396,12 +401,12 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
     if machineroom:
         mr_labels = [str(n.get("label")) for n in (machineroom.get("nodes") or ())]
         mr_plan_edges = machineroom.get("plan_edges")
-        conn = machineroom.get("conn_xy")
-        if conn and len(conn) >= 2:
+        if mr_labels and machineroom.get("pipes"):
             try:
-                mr_conn_xy = (float(conn[0]), float(conn[1]))
-            except (TypeError, ValueError):
-                mr_conn_xy = None
+                conn = machine_connection(machineroom)
+                mr_conn_xy = (float(conn["x"]), float(conn["y"]))
+            except ValueError as exc:
+                raise MergeError(str(exc)) from exc
         rt, attached = prepend_machine_room_to_riser(
             machineroom, rt, at_bottom=is_pump,
             source_drop_below_lowest_m=float(source_drop_m or 0.0))
@@ -420,13 +425,25 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
         machine_room_at_bottom=is_pump,
         machine_room_conn_xy=mr_conn_xy,
     )
+    # Stitch preserves edge order while making labels globally unique. Track
+    # source edges now: a system pipe ending at the shared AV is still a system
+    # pipe, not a newly invented connector inferred from endpoint ownership.
+    room_pipe_count = len(machineroom.get("pipes") or ()) if attached else 0
+    pipe_kinds = (["machineroom"] * room_pipe_count
+                  + ["system"] * (len(rt.pipes) - room_pipe_count)
+                  + ["plan"] * len(ht.pipes))
+    pipe_parts = {str(p["label"]): kind
+                  for p, kind in zip(combined.pipes, pipe_kinds, strict=True)}
 
     # F's selected DXF path has bearings; the shared template layout must not
     # replace those with one vertical bar. Underlays have their own transforms.
     from routes.module_f.system_layout import layout_selected_system
     try:
+        align_plan_connection(combined, ht.nodes, str(rt.av_node_label))
         physical_system = layout_selected_system(
-            combined, riser, mr_labels, _riser_input_label if attached else None)
+            combined, riser, mr_labels, _riser_input_label if attached else None,
+            machine_room=machineroom if attached else None,
+            source_drop_m=float(source_drop_m or 0.0) if is_pump else 0.0)
     except ValueError as exc:
         raise MergeError(f"계통도 배치: {exc}") from exc
     if physical_system:
@@ -446,6 +463,8 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
                 rated_q_lpm=float(pump.get("rated_q_lpm") or 0.0),
                 rated_h_m=float(pump.get("rated_h_m") or 0.0),
                 count=int(pump.get("count") or 1))
+            if physical_system:
+                align_new_pump_ports(combined, _pre_pump_labels)
             steps.append("펌프 삽입 (수원 직후)")
         except (TypeError, ValueError) as exc:
             raise MergeError(f"펌프 제원이 올바르지 않습니다: {exc}") from None
@@ -480,12 +499,15 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
            # 군집을 어디에 다시 맞출지의 기준이다.
            "pump_junction": (_riser_input_label if attached else None),
            "parts": parts,
+           "pipe_parts": pipe_parts,
            # [E2] 좌표 배치가 제 길로 갔는가 — 폴백이면 그 부위가 DXF 원좌표에
            #      남아 이음매가 찢어진다. 화면까지 그대로 들고 간다.
            "layout_status": dict(getattr(combined, "layout_status", None) or {})}
     for _k, _v in (out["layout_status"] or {}).items():
         if str(_v).startswith(("폴백", "건너뜀")):
             steps.append(f"★좌표 배치 {_k} — {_v}")
+    if riser and riser.get("elevation_notice"):
+        steps.append("★" + riser["elevation_notice"])
     # [D5] 결합 뒤 검사 — 보고만 한다(예외 아님). 이상이 있으면 그 사실을
     #   단계 기록에 남겨 화면이 그대로 읽게 한다.
     out["checks"] = check_combined(out)

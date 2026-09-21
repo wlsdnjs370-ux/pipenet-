@@ -1,0 +1,51 @@
+전체망 변환 942.7초 → 15.0초 — 병목은 알고리즘이 아니라 인덱스 전수 재구축
+
+`cleanup_collinear_intermediate_nodes` 하나가 942.7초 중 **937.3초** 였다
+(B1F · 노드 10,211 · 배관 10,210 · 병합 7,204건). 파 보니 알고리즘이 아니라
+병합 한 건이 O(P) 전수 재계산을 여러 번 밟고 있었다:
+
+  · NetworkGraph — 변경 1건마다 _index_dirty → 다음 조회 때 인덱스 전체 재구축
+  · PipeManager._pipe_key_to_pid — 같은 패턴의 사본 인덱스가 한 겹 더
+  · _check_collision · _check_diagonal_overlap — 검사마다 전 배관 스캔(병합당 3회)
+  · delete_node_via_graph — 연결 배관을 찾으려 또 전 배관 스캔
+
+고친 것:
+
+· 그래프 색인을 **증분 유지**로. ★재구축과 «한 자리도» 달라선 안 된다 —
+  `_node_to_pipes[n][k]` 와 `_adjacency[n][k]` 는 짝이라 list.remove(첫등장)
+  가 아니라 자리(index)로 빼야 평행배관 순서가 재구축과 같고, 키 승자는
+  last-write-wins 를 재현해야 하며, dangling(끝점 노드 부재) 관련은 전부
+  dirty 폴백으로 둔다. «색인이 깨끗하면 dangling 은 없다» 불변식 덕에
+  add_node 가 O(1) 이 된다.
+· `frozen_geometry` 컨텍스트 — 겹침 검사를 2×TOLERANCE 양자화 버킷 + 3×3
+  이웃 조회로. 색인은 superset 필터일 뿐이고 **판정식은 한 글자도 안 바꿨다**
+  — 그래서 결과가 전수 훑기와 같다. 그래프 이벤트로 증분 유지한다.
+  계약은 «구간 동안 노드 좌표 불변» 이고, 노드정리가 정확히 그런 구간이다
+  (삭제·생성뿐). 그래서 cleanup 만 이 컨텍스트를 쓴다.
+
+산출 동등성 — 전후 .kfp 정준 비교 **동일**(노드 5,070 · 배관 5,069).
+실행마다 바이트가 다른 것은 결함이 아니라 set 순회의 해시 난수로 노드
+«번호» 만 달라지는 것이다. 바이트 골든은 애초에 성립하지 않고,
+scripts/_compare_kfp_canonical.py(좌표로 이름을 지운 multiset 비교)가 옳은
+도구다 — 최적화 «전» 두 실행으로 자가검증했다.
+
+검증 4겹:
+  tests/test_g_graph_index_incremental.py 신규 — 무작위 2,000연산으로
+    «증분 = 재구축» 대조 + 색인 답 100문 대조 + 평행배관·겹쳐쓰기·끝점변경
+  전체 스위트 1,582건 · G 수용시험(tests/test_design_input.py, 실도면 B1F)
+  scripts/_verify_module_f.py 전 경로 — 4단이 11.2초로 통과(종전 timeout)
+
+★verify 스크립트의 `wait(limit=600)` 은 한도 초과를 그냥 「변환 잡 실패」로
+  적어 **timeout 과 error 를 뭉갰다** — 실측 872초짜리 정상 변환(ok · 9.1MB)을
+  결함으로 읽었다. 한도를 1800 으로 올리고 「끝남 · 실패 · 아직 도는 중」
+  셋을 갈라 적는다. 4-A 단은 종전에 timeout 이면 조용히 지나가 아래 검사가
+  통째로 안 돌고도 화면에 아무것도 안 남았다.
+★planar.py 마무리 구간이 14분간 한 줄도 안 찍었다 — «실제로 도는» 단계로만
+  번호를 매겨 찍는다. 있는지 없는지 모르는 메서드
+  (`_sync_all_legacy_views_from_graph` — 이 편집기엔 없다)에 번호를 미리
+  박았더니 화면이 「1/3 → 3/3」 으로 건너뛰었다.
+
+이 최적화는 데스크톱 G 도 같은 원시 연산을 쓰므로 편집기 전반이 함께
+빨라진다 — 동등성은 위 시험들이 상시 지킨다.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>

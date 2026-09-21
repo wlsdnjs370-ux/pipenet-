@@ -110,9 +110,10 @@ def detect_head_candidates(entities, layer_cat, rects=None):
                     "kind": str(getattr(h, "kind", "") or ""),
                     "why": str(getattr(h, "block_name", "") or "")})
     if rects:
+        from src.pipenet_converter.graph.regions import ZoneRegion
+        region = ZoneRegion(rects)
         out = [h for h in out
-               if any(x0 <= h["x"] <= x1 and y0 <= h["y"] <= y1
-                      for x0, y0, x1, y1 in rects)]
+               if region.contains((h["x"], h["y"]))]
     return out
 
 
@@ -122,11 +123,11 @@ AUTO_REGION_PAD_MM = 1000.0
 
 
 def head_region_of(rects):
-    """사각형 목록 → A 의 `HeadRegion`."""
+    """사각형/자유곡선 합집합 → A 선정기의 HeadRegion 호환 객체."""
     if not rects:
         raise AutoError("영역이 비었습니다.")
-    from remote30_graph import HeadRegion
-    return HeadRegion.from_rects([tuple(float(v) for v in r) for r in rects])
+    from src.pipenet_converter.graph.regions import ZoneRegion
+    return ZoneRegion(rects)
 
 
 def sheet_of(pts, alarm_xy=None):

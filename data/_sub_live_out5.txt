@@ -1,0 +1,4 @@
+[0] 로그인 · 계통도 슬롯으로 올리기
+   !! console.error: Failed to load resource: the server responded with a status of 500 (INTERNAL SERVER ERROR)
+   !! HTTP 500 http://127.0.0.1:5065/api/module-f/slot/open — {"message":"\ub3c4\uba74\uc744 \uc800\uc7a5\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4: [WinError 5] \uc561\uc138\uc2a4\uac00 \uac70\ubd80\ub418\uc5c8\uc2b5\ub2c8\ub2e4: 'C:\\\\Users\\\\admin\\\\PycharmProjects\\\\JupyterProject\\\\data\\\\uploads\\\\1. \uc785\ub825\ub3c4\uba74 \ub300\uba85\ub3d9 \ub2e8\uc704\uc138\ub300 \uacc4\ud1b5\ub3c4.dxf.6bf8.part' -> 'C:\\\\Users\\\\admin\\\\PycharmProjects
+   상태줄: 도면을 저장하지 못했습니다: [WinError 5] 액세스가 거부되었습니다: 'C:\\Users\\admin\\PycharmProjects\\JupyterProject\\data\\uploads\\1. 입력도면 대명

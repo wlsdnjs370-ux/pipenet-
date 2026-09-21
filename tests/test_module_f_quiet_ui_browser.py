@@ -67,7 +67,7 @@ def test_calculation_details_and_conversion_options_are_collapsed_not_removed(pa
         assert page.locator(selector).is_hidden(),selector
     assert page.locator('#dg-build').is_visible()
     assert page.locator('#dg-to-conv').is_visible()
-    assert page.locator('#dg-bore-color').is_checked()  # Hiding controls does not change rendering rules.
+    assert not page.locator('#dg-bore-color').is_checked()  # Corridor style is the default; evidence colors are opt-in.
     if os.environ.get('MODULE_F_QUIET_UI_SCREENSHOT'):
         page.screenshot(path=os.environ['MODULE_F_QUIET_UI_SCREENSHOT'],full_page=True)
     page.locator('[data-fold="dg-summary-body"]').click()

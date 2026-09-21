@@ -21,6 +21,7 @@ def _pick_state(sess: dict) -> dict:
         "armed": ps.armed,
         "mat_done": bool(ps.mat_done),
         "head_label": ps.head_label,
+        "head_symbol_profile": getattr(ps.board, "head_symbol_profile", ""),
         "materials": [{"layer": ly, "color": c} for ly, c in ps.board.mat],
         "n_heads": len(ps.board.heads),
         "n_clicks": len(ps.board.clicks),
@@ -111,7 +112,7 @@ def _edit_state(sess: dict, full: bool = False) -> dict:
 
     # 물길은 손질이 망을 건드리면 지워지고, 물흐름을 돌려야 다시 생긴다.
     water = sess.get("water_path") or []
-    wet_rev = (len(water), rev)
+    wet_rev = (len(water), rev, (sess.get("flow_report") or {}).get("revision"))
     wet_fresh = full or sess.get("wet_rev") != wet_rev
     if wet_fresh:
         sess["wet_rev"] = wet_rev
@@ -131,7 +132,7 @@ def _edit_state(sess: dict, full: bool = False) -> dict:
     w = sess.get("worst")
     worst_rev = (None if not w else
                  (len(w["heads"]), w["far_m"], w["near_m"],
-                  len(w["edges"]), w.get("sheet")))
+                  len(w["edges"]), w.get("sheet"), w.get("flow_revision")))
     worst_fresh = full or sess.get("worst_rev") != worst_rev
     if worst_fresh:
         sess["worst_rev"] = worst_rev
@@ -143,12 +144,15 @@ def _edit_state(sess: dict, full: bool = False) -> dict:
         kinds[k] = kinds.get(k, 0) + 1
     return {
         "mode": es.mode,
+        "selection_zones": getattr(b, "selection_zones", []),
         "counts": {"pts": len(b.pts), "edges": len(b.edges),
                    "heads": len(b.disks),
                    "bodies": (len(g["body_groups"]) if net_fresh
                               else sess.get("n_bodies", 0)),
                    "joins": len(b.joins), "deletes": len(b.deletes)},
         "kinds": kinds,
+        "head_symbol_report": [dict(r["company_symbol"], xy=list(r["c"]))
+                               for r in getattr(b, "head_kinds", ()) if r.get("company_symbol")],
         # 화면에만 쓰는 좌표다 — 도면 한 장이 수백 m 인데 0.1mm 를 실어 나를
         # 이유가 없다. 평평한 배열(찍기 캔버스가 이미 쓰는 규약) + 정수 mm.
         "body_groups": [
@@ -178,6 +182,7 @@ def _edit_state(sess: dict, full: bool = False) -> dict:
                        for a, c in g["wet_pipes"]] or water),
         "wet_counts": es.wet_kind_counts(),
         "flowed": bool(es._flowed),
+        "flow_report": sess.get("flow_report"),
         "worst": _worst_view(sess) if worst_fresh else None,
         # 아직 «후보» 다 — 캔버스에서 점선·다른 색으로만 그린다. 실측 연결선과
         # 섞어 그리면 사람이 확인한 것과 기계가 고른 것을 구별할 수 없다.

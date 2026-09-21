@@ -436,6 +436,17 @@ def register(app):
         return jsonify({"ok": True, "undone": undone,
                         "state": _pick_state(sess)})
 
+    @app.post("/api/module-f/pick/head-profile")
+    @route_session(_need_pick, post=True, why_code=400)
+    def module_f_pick_head_profile(sess, body):
+        profile = body.get("profile", "")
+        if profile not in ("", "company_260404"):
+            return _fail("지원하지 않는 헤드 감지 규칙입니다.")
+        if _job_running(sess):
+            return _fail("작업이 끝난 뒤 규칙을 바꿔주세요.", 409)
+        sess["pick"].board.head_symbol_profile = profile
+        return jsonify({"ok": True, "state": _pick_state(sess)})
+
     @app.post("/api/module-f/pick/commit")
     @route_session(_need_pick, post=True, why_code=400)
     def module_f_pick_commit(sess, body):
@@ -445,6 +456,10 @@ def register(app):
             return _fail("재료(배관) 선택을 완료해야 다음으로 넘어갈 수 있습니다.")
         if _job_running(sess):
             return _fail("이미 작업이 돌고 있습니다. 끝난 뒤에 다시 눌러 주세요.", 409)
+        profile = body.get("head_symbol_profile", getattr(ps.board, "head_symbol_profile", ""))
+        if profile not in ("", "company_260404"):
+            return _fail("지원하지 않는 헤드 감지 규칙입니다.")
+        ps.board.head_symbol_profile = profile
 
         def job():
             from services.cad_import.edit.session import EditSession
@@ -481,6 +496,8 @@ def register(app):
                       " — 손질에서 「최불리 선정」을 다시 눌러 주세요"
                       " (절점 번호가 새로 매겨져 옛 선정은 다른 헤드를"
                       " 가리킵니다).")
+            sess["flow_report"] = None
+            sess["water_path"] = None
             sess["edit"] = es
             sess["sheets"] = _sheet_frames(es.board)
             print(f"[손질] 완료 {time.perf_counter() - t0:.1f}s · "

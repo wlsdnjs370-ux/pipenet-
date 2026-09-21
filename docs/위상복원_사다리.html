@@ -1,0 +1,1316 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>위상 복원 사다리</title>
+  <meta name="description" content="DXF 도면이 수리계산용 배관망이 되기까지의 단계별 규칙·수식·도해 — 모듈 E/G 파이프라인 복습용">
+  <meta name="color-scheme" content="light dark">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    html { color-scheme: light dark; }
+    img { max-width: 100%; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<title>위상 복원 사다리</title>
+
+<style>
+  :root {
+    color-scheme: light;
+    --ground:    #f2f5f6;
+    --surface:   #ffffff;
+    --surface-2: #e8eef0;
+    --ink:       #0f1a1e;
+    --ink-2:     #4a5c63;
+    --ink-3:     #7d8f96;
+    --rule:      #cbd7da;
+    --rule-2:    #dde6e8;
+    --water:     #00879b;
+    --water-dim: #d3ebef;
+    --alert:     #ab3113;
+    --alert-dim: #f6ddd6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground:    #0e1417;
+      --surface:   #171f23;
+      --surface-2: #202b30;
+      --ink:       #eaf1f2;
+      --ink-2:     #a2b4ba;
+      --ink-3:     #74868d;
+      --rule:      #2e3c42;
+      --rule-2:    #253136;
+      --water:     #17a0b5;
+      --water-dim: #16333a;
+      --alert:     #ef7a60;
+      --alert-dim: #3c211a;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground:    #0e1417;
+    --surface:   #171f23;
+    --surface-2: #202b30;
+    --ink:       #eaf1f2;
+    --ink-2:     #a2b4ba;
+    --ink-3:     #74868d;
+    --rule:      #2e3c42;
+    --rule-2:    #253136;
+    --water:     #17a0b5;
+    --water-dim: #16333a;
+    --alert:     #ef7a60;
+    --alert-dim: #3c211a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px 96px; }
+  .col  { max-width: 660px; }
+
+  .mono, code, pre {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  code { font-size: .9em; color: var(--ink-2); }
+
+  /* ── 머리 ── */
+  .head { padding: 72px 0 40px; border-bottom: 1px solid var(--rule); }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px; font-weight: 500; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--water); margin: 0 0 20px;
+  }
+  h1 {
+    font-size: clamp(30px, 5vw, 46px); font-weight: 600; line-height: 1.28;
+    letter-spacing: -.022em; margin: 0 0 20px; text-wrap: balance; max-width: 17ch;
+  }
+  .lede { font-size: 17px; color: var(--ink-2); margin: 0; max-width: 58ch; font-weight: 300; }
+
+  /* ── 규칙 셋 ── */
+  .axioms {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1px; margin: 36px 0 0; background: var(--rule);
+    border: 1px solid var(--rule); border-radius: 3px; overflow: hidden;
+  }
+  .axiom { background: var(--surface); padding: 18px 20px; }
+  .axiom b { display: block; font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .axiom span { font-size: 13px; color: var(--ink-3); line-height: 1.55; display: block; }
+
+  /* ── 섹션 ── */
+  section { padding: 60px 0 0; }
+  h2 {
+    font-size: clamp(22px, 3.2vw, 29px); font-weight: 600; line-height: 1.35;
+    letter-spacing: -.018em; margin: 0 0 14px; text-wrap: balance; max-width: 24ch;
+  }
+  h3 { font-size: 15.5px; font-weight: 600; margin: 32px 0 10px; letter-spacing: -.005em; }
+  p { margin: 0 0 16px; max-width: 64ch; }
+  strong { font-weight: 600; }
+  em { font-style: normal; font-weight: 500; color: var(--water); }
+  .kicker {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px; font-weight: 500; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0 0 10px;
+  }
+  .divider { height: 1px; background: var(--rule); margin: 64px 0 0; border: 0; }
+
+  /* ── 사다리 (목차) ── */
+  .ladder { margin: 36px 0 0; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); overflow: hidden; }
+  .rung {
+    display: grid; grid-template-columns: 56px 1.1fr 1.6fr 120px;
+    gap: 16px; align-items: baseline;
+    padding: 12px 18px; border-bottom: 1px solid var(--rule-2);
+    text-decoration: none; color: inherit;
+  }
+  .rung:last-child { border-bottom: 0; }
+  .rung:hover { background: var(--surface-2); }
+  .rung .no { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; color: var(--water); font-weight: 600; }
+  .rung .nm { font-weight: 600; font-size: 14.5px; }
+  .rung .rl { font-size: 13px; color: var(--ink-2); }
+  .rung .ch { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11.5px; color: var(--ink-3); text-align: right; }
+  .rung.human .ch { color: var(--water); }
+  @media (max-width: 640px) {
+    .rung { grid-template-columns: 44px 1fr; }
+    .rung .rl, .rung .ch { grid-column: 2; }
+    .rung .ch { text-align: left; }
+  }
+
+  /* ── 단계 카드 ── */
+  .io {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: center;
+    margin: 20px 0 22px; padding: 14px 18px;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 3px;
+    font-size: 13.5px;
+  }
+  .io .lab { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .1em; color: var(--ink-3); display: block; margin-bottom: 2px; }
+  .io .arrow { color: var(--water); font-size: 20px; }
+  @media (max-width: 560px) { .io { grid-template-columns: 1fr; } .io .arrow { display: none; } }
+
+  pre.formula {
+    margin: 14px 0 18px; padding: 16px 20px;
+    background: var(--surface); border: 1px solid var(--rule);
+    border-left: 3px solid var(--water); border-radius: 0 3px 3px 0;
+    font-size: 13.5px; line-height: 1.8; color: var(--ink);
+    overflow-x: auto; white-space: pre;
+  }
+  pre.formula .c { color: var(--ink-3); }
+
+
+  /* ── 수식 + 그림을 한 덩이로 ── */
+  .pair {
+    margin: 14px 0 20px; background: var(--surface);
+    border: 1px solid var(--rule); border-left: 3px solid var(--water);
+    border-radius: 0 3px 3px 0; overflow: hidden;
+  }
+  .pair pre.formula {
+    margin: 0; border: 0; border-radius: 0; background: transparent;
+  }
+  .pair .viz {
+    border-top: 1px solid var(--rule-2); padding: 18px 20px 14px;
+    background: var(--surface-2); overflow-x: auto;
+  }
+  .pair .viz svg {
+    display: block; width: 100%; min-width: 540px; height: auto; color: var(--ink-2);
+  }
+  .pair .viz .cap {
+    margin: 12px 0 0; font-size: 12.5px; line-height: 1.6;
+    color: var(--ink-3); max-width: 72ch;
+  }
+  .pair .viz .cap b { color: var(--ink-2); font-weight: 600; }
+
+  .where {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px; color: var(--ink-3); margin: 6px 0 0;
+  }
+  .where b { color: var(--ink-2); font-weight: 500; }
+
+  .tablewrap { overflow-x: auto; margin: 18px 0 8px; }
+  table {
+    border-collapse: collapse; width: 100%; min-width: 480px;
+    font-size: 13.5px; background: var(--surface); border: 1px solid var(--rule);
+  }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--rule-2); vertical-align: top; }
+  thead th {
+    font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--ink-3); background: var(--surface-2); border-bottom: 1px solid var(--rule);
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.n { font-family: "IBM Plex Mono", ui-monospace, monospace; white-space: nowrap; }
+  td.m { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; color: var(--ink-2); }
+
+  .note {
+    margin: 22px 0 0; padding: 16px 20px; background: var(--surface-2);
+    border-radius: 3px; font-size: 14px; line-height: 1.65; color: var(--ink-2);
+  }
+  .note p { margin: 0 0 10px; max-width: none; }
+  .note p:last-child { margin-bottom: 0; }
+  .caution {
+    margin: 22px 0 0; padding: 16px 20px; background: var(--surface);
+    border: 1px solid var(--rule); border-left: 3px solid var(--alert); border-radius: 0 3px 3px 0;
+  }
+  .caution p { margin: 0 0 10px; }
+  .caution p:last-child { margin-bottom: 0; }
+
+  /* ── 도해 ── */
+  figure {
+    margin: 26px 0 8px; padding: 22px 20px 16px;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; overflow-x: auto;
+  }
+  figure svg { display: block; width: 100%; min-width: 560px; height: auto; color: var(--ink-2); }
+  figcaption {
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule-2);
+    font-size: 13px; line-height: 1.6; color: var(--ink-3); max-width: 70ch;
+  }
+  .s-rule { stroke: var(--rule); }  .s-ink { stroke: var(--ink-2); }
+  .s-water { stroke: var(--water); } .s-alert { stroke: var(--alert); }
+  .f-water { fill: var(--water); }  .f-alert { fill: var(--alert); }
+  .f-ink { fill: var(--ink); }  .f-ink2 { fill: var(--ink-2); }  .f-ink3 { fill: var(--ink-3); }
+  .f-surf { fill: var(--surface); }  .f-surf2 { fill: var(--surface-2); }
+  .f-wdim { fill: var(--water-dim); }  .f-adim { fill: var(--alert-dim); }  .f-none { fill: none; }
+  text { font-family: "IBM Plex Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif; font-size: 12px; }
+  text.mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  text.lbl { font-size: 11px; letter-spacing: .05em; }
+  text.big { font-size: 13.5px; font-weight: 600; }
+
+  footer { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--rule); font-size: 12.5px; line-height: 1.7; color: var(--ink-3); }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+  /* ── 인쇄 — 흰 종이·검은 잉크로 고정하고 도해가 잘리지 않게 ── */
+  @media print {
+    :root {
+      --ground:#fff; --surface:#fff; --surface-2:#f4f6f7;
+      --ink:#000; --ink-2:#333; --ink-3:#555; --rule:#999; --rule-2:#ccc;
+      --water:#00646f; --water-dim:#eaf5f7; --alert:#8a2810; --alert-dim:#faeeea;
+    }
+    body { background:#fff; font-size:10.5pt; line-height:1.6; }
+    .wrap { max-width:none; padding:0; }
+    .head { padding-top:0; }
+    section { padding-top:26pt; }
+    h1 { font-size:24pt; }
+    h2 { font-size:15pt; break-after:avoid; }
+    h3 { font-size:11.5pt; break-after:avoid; }
+    figure, pre.formula, .pair, .io, .note, .caution, .axioms, table, .ladder { break-inside:avoid; }
+    .pair .viz { background:#fff; }
+    figure svg, .pair .viz svg { min-width:0; }
+    .rung:hover { background:none; }
+    .divider { margin-top:20pt; }
+    a { color:inherit; text-decoration:none; }
+    @page { margin:16mm 14mm; }
+  }
+</style>
+
+<div class="wrap">
+
+<header class="head">
+  <p class="eyebrow">모듈 E / G 파이프라인 · 복습용</p>
+  <h1>위상 복원 사다리</h1>
+  <p class="lede">DXF 도면이 수리계산에 넣을 수 있는 배관망이 되기까지, 단계마다
+    무엇이 들어가고 어떤 규칙으로 무엇이 나오는지. 수식은 코드에 적힌 그대로이고
+    눈금은 전부 mm 입니다.</p>
+
+  <div class="axioms">
+    <div class="axiom"><b>찍은 것 밖은 안 본다</b>
+      <span>사람이 재료로 고른 레이어×색 밖의 도형은 쓰지 않는다. 필요해 보이면 조용히 주워 오지 않고 «안 찍으셨습니다»로 알린다.</span></div>
+    <div class="axiom"><b>헤드는 관말이다</b>
+      <span>헤드 원을 티처럼 통과시켜 좌우를 잇지 않는다. 헤드에 팔이 둘로 보이면 도면을 잘못 읽은 것이지 갈림길이 아니다.</span></div>
+    <div class="axiom"><b>도면에 없는 고리를 만들지 않는다</b>
+      <span>이음을 얹을 때 두 끝이 이미 한 덩이면 버린다(union-find). 근거 없는 자리는 추측하지 않고 사람에게 묻는다.</span></div>
+  </div>
+</header>
+
+<!-- ═══════════════ 사다리 목차 ═══════════════ -->
+<section>
+  <p class="kicker">한눈에</p>
+  <h2>선분 더미가 그래프가 되는 순서</h2>
+  <div class="col">
+    <p>위상이란 결국 <em>노드 집합 V</em>와 <em>간선 집합 E</em>입니다. 도면은 선분 더미이지
+      그래프가 아닙니다. 사다리는 «선분 → 그래프»를 한 번에 하지 않고, <strong>근거가 강한 순서로
+      간선을 하나씩 더합니다</strong> — 닿아 있으면(1) → 접속표시가 있으면(2) → 설명자가 있으면(4) →
+      헤드가 덮고 있으면(5). 각 단계는 앞 단계 그래프에 간선을 <em>더하기만</em> 하고,
+      마지막에 물길(6)로 «급수원에서 닿는 것»만 남깁니다.</p>
+  </div>
+
+  <div class="ladder">
+    <a class="rung human" href="#s0"><span class="no">0</span><span class="nm">찍기</span><span class="rl">재료 묶음(레이어×색)과 헤드 반지름을 사람이 고른다</span><span class="ch">사람</span></a>
+    <a class="rung" href="#s1"><span class="no">1</span><span class="nm">날것으로 펼치기</span><span class="rl">선분 → 노드·간선. SNAP 30 · 겹침 합치기 · T 닿음 15</span><span class="ch">V, E 생성</span></a>
+    <a class="rung" href="#s11"><span class="no">1-1</span><span class="nm">헤드 종류 분류</span><span class="rl">상향식 / 하향식 / 상하향식 / 미지정 — 팔 유무와 반호 소유로</span><span class="ch">라벨</span></a>
+    <a class="rung" href="#s2"><span class="no">2</span><span class="nm">접속부에서 배관 연결</span><span class="rl">표시마다 모인 팔을 ① 가로 ② 허브 ③ 나머지 순으로 잇는다</span><span class="ch">+E, +V</span></a>
+    <a class="rung" href="#s3"><span class="no">3</span><span class="nm">헤드 접속</span><span class="rl">비어 있다 — 헤드 경유 이음이 0인지 확인하는 안전핀</span><span class="ch">검사</span></a>
+    <a class="rung" href="#s4"><span class="no">4</span><span class="nm">끊긴 배관 잇기</span><span class="rl">설명자가 있는 직선 틈(≤1,500)만 잇는다 · 고리 금지</span><span class="ch">+E</span></a>
+    <a class="rung" href="#s5"><span class="no">5</span><span class="nm">상향식 헤드 접속</span><span class="rl">헤드 원이 덮은 틈(남는 길이 ≤150) 이음 · 원 밑 통과관 중심 분할</span><span class="ch">+E, +V</span></a>
+    <a class="rung human" href="#s6"><span class="no">6</span><span class="nm">물길 확인 · 손질</span><span class="rl">급수원 BFS · 덩이 · 사람이 잇고 지우고 급수원을 찍는다</span><span class="ch">사람</span></a>
+    <a class="rung" href="#s7"><span class="no">변환</span><span class="nm">평면 그래프</span><span class="rl">부하 0 배관 삭제 · 티 겹침 정규화 · 일직선 노드 병합</span><span class="ch">−E, −V</span></a>
+    <a class="rung" href="#s8"><span class="no">설계</span><span class="nm">최불리 corridor</span><span class="rl">앵커 → 배관거리 K개 → 최단경로 합집합 · 간선마다 담당 헤드 수</span><span class="ch">부분 그래프</span></a>
+  </div>
+
+  <h3>모든 단계가 함께 쓰는 자 — 공용 수식</h3>
+  <div class="col"><p>단계마다 눈금은 다르지만 재는 방법은 넷뿐입니다. 아래가 그 넷이고, 뒤의 모든 규칙은 이 넷의 조합입니다.</p></div>
+<div class="pair">
+<pre class="formula"><span class="c">점 p 에서 선분 ab 까지 — seg_geom / seg_dist</span>
+  t  = ((p − a)·(b − a)) / |b − a|²         <span class="c">투영 위치</span>
+  t̂  = clamp(t, 0, 1)                        <span class="c">선분 «안»으로 자름</span>
+  f  = a + t̂·(b − a)                         <span class="c">발점</span>
+  d  = |p − f|                               <span class="c">거리</span>
+
+<span class="c">두 방향 사이 각 — ang_between</span>
+  θ  = acos( (u·v) / (|u||v|) )              <span class="c">도(°) 로 비교</span>
+
+<span class="c">축 u 에서 벗어난 정도 — 횡이탈(lateral)</span>
+  n  = (−u_y, u_x)                           <span class="c">u 의 법선</span>
+  lat = |(q − a)·n|
+
+<span class="c">격자 — 후보만 줄인다. 판정은 반드시 위 거리식이 한다</span>
+  cell(p) = (⌊p_x / c⌋, ⌊p_y / c⌋)           <span class="c">c = 30 · 100 · 400 · 500 · 1000 …</span></pre>
+<div class="viz">
+<svg role="img" aria-label="점에서 선분까지의 거리, 두 방향 사이 각, 축에서 벗어난 횡이탈, 격자 이웃 아홉 칸 — 네 가지 기본 측정" viewBox="0 0 900 410">
+  <defs><marker id="v1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9z" fill="currentColor"/></marker></defs>
+  <line x1="450" y1="20" x2="450" y2="390" class="s-rule" stroke-width="1" stroke-dasharray="2 5"/>
+  <line x1="20" y1="205" x2="880" y2="205" class="s-rule" stroke-width="1" stroke-dasharray="2 5"/>
+
+  <text x="30" y="40" class="f-ink big">① 점 → 선분 거리</text>
+  <line x1="70" y1="140" x2="340" y2="140" class="s-ink" stroke-width="2.5"/>
+  <circle cx="70" cy="140" r="4" class="f-ink2"/><circle cx="340" cy="140" r="4" class="f-ink2"/>
+  <text x="70" y="160" text-anchor="middle" class="f-ink3 mono lbl">a</text>
+  <text x="340" y="160" text-anchor="middle" class="f-ink3 mono lbl">b</text>
+  <circle cx="190" cy="68" r="4.5" class="f-water"/>
+  <text x="190" y="58" text-anchor="middle" class="f-water mono lbl">p</text>
+  <line x1="190" y1="72" x2="190" y2="136" class="s-water" stroke-width="1.4" stroke-dasharray="4 3"/>
+  <text x="200" y="108" class="f-water lbl">d</text>
+  <circle cx="190" cy="140" r="5.5" class="f-surf s-water" stroke-width="2"/>
+  <text x="190" y="122" text-anchor="middle" class="f-water mono lbl">f</text>
+  <line x1="70" y1="176" x2="190" y2="176" class="s-ink" stroke-width="1"/>
+  <line x1="70" y1="172" x2="70" y2="180" class="s-ink" stroke-width="1"/>
+  <line x1="190" y1="172" x2="190" y2="180" class="s-ink" stroke-width="1"/>
+  <text x="130" y="192" text-anchor="middle" class="f-ink3 mono lbl">t · L</text>
+  <circle cx="400" cy="76" r="4.5" class="f-alert"/>
+  <text x="408" y="70" class="f-alert mono lbl">p′</text>
+  <line x1="398" y1="82" x2="344" y2="134" class="s-alert" stroke-width="1.4" stroke-dasharray="4 3"/>
+  <text x="300" y="178" class="f-alert lbl">t &gt; 1 → b 로 자름</text>
+
+  <text x="490" y="40" class="f-ink big">② 두 방향 사이 각</text>
+  <line x1="560" y1="160" x2="770" y2="160" class="s-ink" stroke-width="2" marker-end="url(#v1)"/>
+  <text x="782" y="164" class="f-ink3 mono lbl">u</text>
+  <line x1="560" y1="160" x2="690" y2="70" class="s-water" stroke-width="2" marker-end="url(#v1)"/>
+  <text x="698" y="64" class="f-water mono lbl">v</text>
+  <path d="M 620 160 A 60 60 0 0 0 609 126" class="f-none s-ink" stroke-width="1.4"/>
+  <text x="632" y="140" class="f-ink mono lbl">θ</text>
+  <circle cx="560" cy="160" r="3.5" class="f-ink2"/>
+  <text x="490" y="192" class="f-ink3 lbl">평행 판정에 쓴다 — 5° · 8° · 15° · 20° · 30° 가 단계마다 다른 문턱</text>
+
+  <text x="30" y="248" class="f-ink big">③ 횡이탈 lat — 축에서 벗어난 정도</text>
+  <line x1="70" y1="340" x2="360" y2="340" class="s-ink" stroke-width="2.5"/>
+  <circle cx="70" cy="340" r="4" class="f-ink2"/>
+  <text x="70" y="360" text-anchor="middle" class="f-ink3 mono lbl">a</text>
+  <line x1="110" y1="326" x2="180" y2="326" class="s-ink" stroke-width="1.4" marker-end="url(#v1)"/>
+  <text x="188" y="330" class="f-ink3 mono lbl">u</text>
+  <line x1="240" y1="340" x2="240" y2="296" class="s-water" stroke-width="1.4" marker-end="url(#v1)"/>
+  <text x="248" y="300" class="f-water mono lbl">n</text>
+  <circle cx="300" cy="300" r="4.5" class="f-water"/>
+  <text x="309" y="296" class="f-water mono lbl">q</text>
+  <line x1="300" y1="304" x2="300" y2="336" class="s-water" stroke-width="1.4" stroke-dasharray="4 3"/>
+  <text x="310" y="326" class="f-water lbl">lat</text>
+  <line x1="70" y1="374" x2="300" y2="374" class="s-ink" stroke-width="1"/>
+  <line x1="70" y1="370" x2="70" y2="378" class="s-ink" stroke-width="1"/>
+  <line x1="300" y1="370" x2="300" y2="378" class="s-ink" stroke-width="1"/>
+  <text x="185" y="390" text-anchor="middle" class="f-ink3 mono lbl">along = (q − a)·u</text>
+
+  <text x="490" y="248" class="f-ink big">④ 격자 — 후보만 줄인다</text>
+  <rect x="610" y="272" width="40" height="40" class="f-surf s-rule" stroke-width="1"/>
+  <rect x="650" y="272" width="40" height="40" class="f-surf s-rule" stroke-width="1"/>
+  <rect x="690" y="272" width="40" height="40" class="f-surf s-rule" stroke-width="1"/>
+  <rect x="610" y="312" width="40" height="40" class="f-surf s-rule" stroke-width="1"/>
+  <rect x="650" y="312" width="40" height="40" class="f-wdim s-water" stroke-width="1.4"/>
+  <rect x="690" y="312" width="40" height="40" class="f-surf s-rule" stroke-width="1"/>
+  <rect x="610" y="352" width="40" height="40" class="f-surf s-rule" stroke-width="1"/>
+  <rect x="650" y="352" width="40" height="40" class="f-surf s-rule" stroke-width="1"/>
+  <rect x="690" y="352" width="40" height="40" class="f-surf s-rule" stroke-width="1"/>
+  <circle cx="670" cy="332" r="4.5" class="f-water"/>
+  <text x="679" y="328" class="f-water mono lbl">p</text>
+  <line x1="610" y1="264" x2="650" y2="264" class="s-ink" stroke-width="1"/>
+  <line x1="610" y1="260" x2="610" y2="268" class="s-ink" stroke-width="1"/>
+  <line x1="650" y1="260" x2="650" y2="268" class="s-ink" stroke-width="1"/>
+  <text x="630" y="256" text-anchor="middle" class="f-ink3 mono lbl">c</text>
+  <text x="748" y="318" class="f-ink lbl">이웃 9칸만 훑는다</text>
+  <text x="748" y="336" class="f-ink3 lbl">최종 판정은 반드시</text>
+  <text x="748" y="352" class="f-ink3 lbl">위 거리식이 한다</text>
+</svg>
+<p class="cap">네 가지 자가 전부입니다. <b>①</b> 는 t 를 0~1 로 자르기 때문에 «선분 밖의 점»도 항상 끝점까지의 거리로 답합니다 — 무한 직선이 아니라 <b>선분</b>이라는 뜻입니다. <b>④</b> 는 판정이 아니라 후보 추리기입니다. 격자 칸 크기(30·100·400·500·1000)는 단계마다 다르지만, 칸에 걸렸다고 이어지는 것이 아니라 그다음 거리식을 통과해야 이어집니다.</p>
+</div>
+</div>
+</section>
+
+<hr class="divider">
+
+<!-- ═══════════════ 0 ═══════════════ -->
+<section id="s0">
+  <p class="kicker">0단계 · 사람</p>
+  <h2>찍기 — 무엇이 배관이고 무엇이 헤드인가</h2>
+  <div class="io">
+    <div><span class="lab">들어감</span>DXF 한 장 (선분·호·원·문자·블록)</div>
+    <div class="arrow">→</div>
+    <div><span class="lab">나옴</span><code>{key}_찍은스펙.json</code> — material_picks · heads(r) · knobs</div>
+  </div>
+  <div class="col">
+    <p>사람이 두 가지를 고릅니다. <strong>재료 묶음</strong> — 레이어×색 단위로 «이 선들이 배관이다».
+      <strong>헤드</strong> — 반지름 자를 하나 두고, 그 자를 통과하는 <em>닫힌 원(CIRCLE)</em>이 헤드입니다.
+      그 외의 작은 호·원·짧은 획은 전부 «접속표시» 후보로 남습니다 — 레이어를 보지 않고 <em>도형 종류</em>로 가릅니다.</p>
+    <p>모듈 F 의 자동 진입은 이 클릭을 모듈 A 의 인식 결과로 대신 누르는 것입니다. 쓰기 경로는
+      사람이 찍을 때와 완전히 같습니다(<code>PickSession.click</code> 하나).</p>
+  </div>
+  <p class="where"><b>pick/board.py</b> · <b>pick/session.py</b> · 스펙 저장 <b>pick/io.py</b></p>
+</section>
+
+<hr class="divider">
+
+<!-- ═══════════════ 1 ═══════════════ -->
+<section id="s1">
+  <p class="kicker">1단계 · V, E 생성</p>
+  <h2>날것으로 펼치기 — 선분이 노드와 간선이 된다</h2>
+  <div class="io">
+    <div><span class="lab">들어감</span>찍은 스펙 + DXF</div>
+    <div class="arrow">→</div>
+    <div><span class="lab">나옴</span>그래프 <code>g</code> (pts, edges) · 간선→묶음 표 <code>ebundle</code></div>
+  </div>
+
+  <h3>1-a 펼치기 · 재료 고르기</h3>
+  <div class="col">
+    <p>블록 참조를 풀어 세계 좌표로 펴고(<code>explode</code>), 폴리라인의 bulge 는 호로 바꿉니다.
+      그다음 찍은 묶음에 든 선분만 재료로 남깁니다.</p>
+  </div>
+<div class="pair">
+<pre class="formula">mat_raw = { (ly, c, a, b) ∈ segs  :  (ly, c) ∈ picks }
+
+<span class="c">헤드 틈 접착 — 다른 색 토막이 «헤드 틈»으로 재료 끝에 붙어 있으면 재료로 승격</span>
+  같은 축      θ(토막, 재료 끝) ≤ 5°
+  틈           |끝 − 끝| ≤ 500
+  틈 안에 헤드  있어야 한다     <span class="c">이것이 진짜 문 — 거리는 상한일 뿐</span>
+  토막 길이    ≥ 200            <span class="c">더 짧으면 기호·범례로 본다</span></pre>
+<div class="viz">
+<svg role="img" aria-label="재료 배관 끝과 다른 색 토막 사이 틈에 헤드 원이 들어 있으면 그 토막을 재료로 승격한다" viewBox="0 0 900 205">
+  <text x="14" y="26" class="f-ink3 lbl">찍은 묶음 밖의 «다른 색 토막»이 재료로 승격되는 유일한 문</text>
+  <line x1="60" y1="100" x2="290" y2="100" class="s-ink" stroke-width="3"/>
+  <circle cx="290" cy="100" r="4" class="f-ink2"/>
+  <text x="60" y="84" class="f-ink lbl">재료 (찍은 묶음)</text>
+  <circle cx="350" cy="100" r="40" class="f-none s-ink" stroke-width="1.5"/>
+  <text x="350" y="50" text-anchor="middle" class="f-ink big">헤드</text>
+  <line x1="410" y1="100" x2="700" y2="100" class="s-water" stroke-width="3"/>
+  <circle cx="410" cy="100" r="4" class="f-water"/>
+  <text x="410" y="84" class="f-water lbl">다른 색 토막</text>
+  <line x1="290" y1="140" x2="410" y2="140" class="s-ink" stroke-width="1"/>
+  <line x1="290" y1="136" x2="290" y2="144" class="s-ink" stroke-width="1"/>
+  <line x1="410" y1="136" x2="410" y2="144" class="s-ink" stroke-width="1"/>
+  <text x="350" y="158" text-anchor="middle" class="f-ink3 mono lbl">틈 ≤ 500</text>
+  <line x1="410" y1="140" x2="700" y2="140" class="s-water" stroke-width="1"/>
+  <line x1="700" y1="136" x2="700" y2="144" class="s-water" stroke-width="1"/>
+  <text x="555" y="158" text-anchor="middle" class="f-ink3 mono lbl">길이 ≥ 200</text>
+  <text x="232" y="122" text-anchor="end" class="f-ink3 mono lbl">θ ≤ 5°</text>
+  <text x="716" y="104" class="f-water lbl">→ 재료로 승격</text>
+  <text x="14" y="190" class="f-alert lbl">★ 진짜 문은 «틈 안에 헤드가 있는가» — 500 은 상한일 뿐이고, 색이 비슷하다는 이유로는 절대 합치지 않는다</text>
+</svg>
+<p class="cap">도면에서 헤드가 배관을 끊고 앉으면 그 너머 연결관이 <b>다른 색으로</b> 그려지는 일이 흔합니다. 색만 보면 남남이지만 «헤드가 낀 틈»이라는 근거가 있을 때만 같은 배관으로 봅니다. 승격된 토막은 이름표를 재료 대표 묶음으로 바꿔 답니다 — 2단계가 «양쪽이 같은 묶음일 것»을 요구하기 때문입니다.</p>
+</div>
+</div>
+
+  <h3>1-b A1 겹침 합치기 — 두 번 그린 선을 하나로</h3>
+<div class="pair">
+<pre class="formula"><span class="c">같은 묶음의 두 선분 i, j (단위방향 u_i, u_j · 긴 쪽을 기준축으로)</span>
+  평행     |u_i × u_j| = |u_ix·u_jy − u_iy·u_jx| ≤ sin 1°
+  횡이탈   lat = max( |(a_j−a_i)·n|, |(b_j−a_i)·n| ) ≤ 50   <span class="c">탐색 띠</span>
+  포개     s₁ = (a_j−a_i)·u_i,  s₂ = (b_j−a_i)·u_i
+           ovl = min(max(s₁,s₂), L_i) − max(min(s₁,s₂), 0) ≥ 1
+  → union-find 로 사슬을 묶고, 사슬마다 축 위 구간의 합집합 하나로 바꾼다</pre>
+<div class="viz">
+<svg role="img" aria-label="거의 평행하고 살짝 어긋나며 구간이 겹치는 두 선분을 하나의 구간으로 합친다" viewBox="0 0 900 245">
+  <text x="14" y="26" class="f-ink3 lbl">같은 배관을 두 번(또는 조각내어) 그린 자리 — 합치지 않으면 노드가 두 벌 생긴다</text>
+  <line x1="80" y1="95" x2="520" y2="95" class="s-ink" stroke-width="3"/>
+  <circle cx="80" cy="95" r="4" class="f-ink2"/><circle cx="520" cy="95" r="4" class="f-ink2"/>
+  <text x="80" y="80" class="f-ink lbl">i — 긴 쪽이 기준축 u</text>
+  <line x1="300" y1="122" x2="660" y2="122" class="s-water" stroke-width="3"/>
+  <circle cx="300" cy="122" r="4" class="f-water"/><circle cx="660" cy="122" r="4" class="f-water"/>
+  <text x="670" y="126" class="f-water lbl">j</text>
+  <line x1="380" y1="95" x2="380" y2="122" class="s-alert" stroke-width="1.4"/>
+  <line x1="374" y1="95" x2="386" y2="95" class="s-alert" stroke-width="1.2"/>
+  <line x1="374" y1="122" x2="386" y2="122" class="s-alert" stroke-width="1.2"/>
+  <text x="392" y="114" class="f-alert mono lbl">lat ≤ 1  (탐색 띠 50)</text>
+  <text x="300" y="146" text-anchor="middle" class="f-ink3 mono lbl">s₁</text>
+  <text x="660" y="146" text-anchor="middle" class="f-ink3 mono lbl">s₂</text>
+  <line x1="300" y1="164" x2="520" y2="164" class="s-water" stroke-width="1.6"/>
+  <line x1="300" y1="159" x2="300" y2="169" class="s-water" stroke-width="1.2"/>
+  <line x1="520" y1="159" x2="520" y2="169" class="s-water" stroke-width="1.2"/>
+  <text x="410" y="182" text-anchor="middle" class="f-ink mono lbl">ovl = 포갠 길이 ≥ 1</text>
+  <text x="540" y="168" class="f-ink3 lbl">맞닿기만 한 것은 포갬이 아니다</text>
+  <line x1="80" y1="212" x2="660" y2="212" class="s-water" stroke-width="4"/>
+  <circle cx="80" cy="212" r="4.5" class="f-water"/><circle cx="660" cy="212" r="4.5" class="f-water"/>
+  <text x="14" y="238" class="f-water lbl">→ 사슬로 묶어 축 위 구간의 합집합 하나로. 평행은 |u_i × u_j| ≤ sin 1° 로만 인정한다</text>
+</svg>
+<p class="cap">둘을 안 합치면 <b>SNAP 30 이 두 벌의 노드를 만들고</b>, 그 위에 서는 팔·닿음 판정이 전부 흔들립니다. 그래서 조립 «전» 전처리로 둡니다. union-find 로 사슬을 묶는 이유는 셋 넷이 연달아 겹쳐 그려진 경우에도 한 번에 하나로 접기 위해서입니다.</p>
+</div>
+</div>
+  <p class="where"><b>pipeline/stage1.py</b> merge_overlaps_a1 · 눈금 a1_lat=1.0 · a1_scan=50</p>
+
+  <h3>1-c SNAP 30 — 끝점이 노드가 된다</h3>
+  <div class="col">
+    <p>여기서 처음 <em>노드</em>가 생깁니다. 규칙은 하나 — 30mm 안에 이미 노드가 있으면 그 노드를 쓴다.</p>
+  </div>
+<pre class="formula">node(p) =  q          if ∃ q ∈ V : |p − q| ≤ 30      <span class="c">격자 30 의 이웃 9칸만 본다</span>
+           새 노드     otherwise
+
+for (a, b) in mat:
+    i, j = node(a), node(b)
+    if i == j and |b − a| > 0:                       <span class="c">★짧은 실배관이 한 점으로 접힘</span>
+        먼 쪽 끝을 force_node 로 억지로 살린다        <span class="c">3F: 헤드↔접속부 L24.5 가 사라졌던 구멍</span>
+    if i ≠ j: E ← E ∪ {(i, j)},  ebundle[(i,j)] = (ly, c)</pre>
+
+  <figure>
+    <svg viewBox="0 0 900 200" role="img" aria-label="30mm 안의 두 끝점은 한 노드로 접히고, 양 끝이 다 접히는 짧은 관은 먼 끝을 억지로 살려 간선을 남긴다">
+      <text x="14" y="24" class="f-ink3 lbl">30mm 안이면 같은 노드</text>
+      <circle cx="250" cy="110" r="36" class="f-wdim s-water" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="60" y1="110" x2="250" y2="110" class="s-ink" stroke-width="2.5"/>
+      <line x1="270" y1="110" x2="440" y2="110" class="s-ink" stroke-width="2.5"/>
+      <circle cx="60" cy="110" r="4" class="f-ink2"/>
+      <circle cx="440" cy="110" r="4" class="f-ink2"/>
+      <circle cx="270" cy="110" r="4" class="f-surf s-ink" stroke-width="1.5"/>
+      <circle cx="250" cy="110" r="5.5" class="f-water"/>
+      <line x1="270" y1="118" x2="256" y2="118" class="s-water" stroke-width="1.2"/>
+      <text x="250" y="160" text-anchor="middle" class="f-ink lbl">|p − q| = 20 ≤ 30 → 노드 하나</text>
+      <text x="250" y="60" text-anchor="middle" class="f-ink3 mono lbl">r = 30</text>
+
+      <text x="560" y="24" class="f-ink3 lbl">짧은 관 — 양 끝이 다 접히면 먼 끝을 살린다</text>
+      <circle cx="680" cy="110" r="36" class="f-wdim s-water" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="560" y1="110" x2="680" y2="110" class="s-ink" stroke-width="2.5"/>
+      <line x1="680" y1="110" x2="710" y2="110" class="s-water" stroke-width="2.5"/>
+      <line x1="710" y1="110" x2="710" y2="60" class="s-ink" stroke-width="2.5"/>
+      <circle cx="680" cy="110" r="5.5" class="f-water"/>
+      <circle cx="710" cy="110" r="5.5" class="f-surf s-water" stroke-width="2"/>
+      <text x="726" y="114" class="f-water lbl">force_node</text>
+      <text x="680" y="160" text-anchor="middle" class="f-ink lbl">L = 25 인데 i == j → 간선이 사라질 뻔</text>
+    </svg>
+    <figcaption>왼쪽: 20mm 떨어진 두 끝점이 한 노드로 접힌다 — 그래서 «맞닿은 꺾임»은 규칙 없이도 이어진다.
+      오른쪽: 관 자체가 30mm 보다 짧으면 양 끝이 같은 노드가 되어 간선이 안 생긴다. 실길이가 있으면 먼 끝을 억지로 살린다.</figcaption>
+  </figure>
+
+  <h3>1-d B1 T 닿음 — 끝이 몸통에 닿아 있으면 갈라진 것</h3>
+  <div class="col">
+    <p>닿음 자체가 그려진 증거입니다. 색이 달라도 잇습니다(2026-08-05 오너 판정 — 색 장벽을 두면 T 의 46% 를 못 봤습니다).
+      단, «너머»로 제 축의 선이 계속되면 그것은 지나가는 관이지 탭이 아니므로 잇지 않습니다.</p>
+  </div>
+<pre class="formula"><span class="c">원시 선분의 끝점 P (축 방향 u) 마다, 그래프 간선 (i, j) 를 찾는다</span>
+  d(P, ij) ≤ 15         0.01 ≤ t ≤ 0.99          <span class="c">몸통 «안»에 닿아야 (끝이 아니라)</span>
+  |P − p_i| > 30  and  |P − p_j| > 30              <span class="c">SNAP 이 이미 처리한 자리는 뺀다</span>
+  → 가장 가까운 간선 하나
+
+<span class="c">너머 검사 — 비공선(20° < θ(u, ij) < 160°) 일 때만</span>
+  for s in (90, 200, 315):
+      P' = P + u·s
+      if ∃ 원시 선 : θ(선, u) ≤ 20° and d(P', 선) ≤ 30  → «통과» · 잇지 않는다
+  <span class="c">공선 닿음은 검사를 건너뛴다 — 너머가 몸통 자신이라 전부 통과로 오판된다</span>
+
+  split_keep(ij at P) → 새 노드 k,  E ← E ∪ {(node(P), k)}</pre>
+
+  <figure>
+    <svg viewBox="0 0 900 230" role="img" aria-label="끝점이 몸통 15mm 안에 닿으면 몸통을 그 자리에서 쪼개 잇고, 끝점 너머로 같은 축의 선이 계속되면 통과로 보고 잇지 않는다">
+      <defs><marker id="arT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9z" fill="currentColor"/></marker></defs>
+      <text x="14" y="24" class="f-ink3 lbl">닿음 → 쪼개서 잇는다</text>
+      <rect x="60" y="112" width="340" height="16" class="f-wdim"/>
+      <line x1="60" y1="120" x2="400" y2="120" class="s-ink" stroke-width="2.5"/>
+      <circle cx="60" cy="120" r="4" class="f-ink2"/><circle cx="400" cy="120" r="4" class="f-ink2"/>
+      <text x="60" y="142" text-anchor="middle" class="f-ink3 mono lbl">i</text>
+      <text x="400" y="142" text-anchor="middle" class="f-ink3 mono lbl">j</text>
+      <line x1="230" y1="40" x2="230" y2="112" class="s-ink" stroke-width="2.5"/>
+      <circle cx="230" cy="112" r="4" class="f-surf s-ink" stroke-width="1.5"/>
+      <text x="242" y="108" class="f-ink mono lbl">P</text>
+      <text x="242" y="94" class="f-ink3 lbl">d = 8 ≤ 15</text>
+      <circle cx="230" cy="120" r="5.5" class="f-water"/>
+      <text x="230" y="170" text-anchor="middle" class="f-water lbl">몸통을 P 에서 쪼갬 → 새 노드 k · 간선 P–k</text>
+      <text x="230" y="188" text-anchor="middle" class="f-ink3 lbl">±15 띠 안 · 끝에서 30 이상 떨어져야</text>
+
+      <text x="520" y="24" class="f-ink3 lbl">너머 검사 — 계속되면 통과</text>
+      <line x1="540" y1="120" x2="880" y2="120" class="s-ink" stroke-width="2.5"/>
+      <line x1="710" y1="40" x2="710" y2="112" class="s-ink" stroke-width="2.5"/>
+      <circle cx="710" cy="112" r="4" class="f-surf s-ink" stroke-width="1.5"/>
+      <line x1="710" y1="128" x2="710" y2="215" class="s-ink" stroke-width="2.5" stroke-dasharray="6 4"/>
+      <circle cx="710" cy="139" r="3" class="f-alert"/>
+      <circle cx="710" cy="172" r="3" class="f-alert"/>
+      <circle cx="710" cy="207" r="3" class="f-alert"/>
+      <text x="722" y="143" class="f-alert mono lbl">s=90</text>
+      <text x="722" y="176" class="f-alert mono lbl">s=200</text>
+      <text x="722" y="211" class="f-alert mono lbl">s=315</text>
+      <text x="695" y="60" text-anchor="end" class="f-ink lbl">P 너머 세 곳에 같은 축 선이 있다</text>
+      <text x="695" y="78" text-anchor="end" class="f-ink3 lbl">→ 지나가는 관. 티가 아니므로 잇지 않는다</text>
+    </svg>
+    <figcaption>왼쪽이 T 탭, 오른쪽이 십자로 지나가는 관. 둘 다 끝점 P 는 몸통에 닿아 있지만
+      너머에 선이 이어지느냐가 가른다. 트림돼 30~450mm 떨어진 T 는 여기가 아니라 2단계(기호 필요)가 맡는다.</figcaption>
+  </figure>
+  <p class="where"><b>pipeline/stage1.py</b> touch_tee_b1 · _cov_axis · 눈금 b1_touch=15 · 조립 진입 <b>pipeline/expand.py</b> stage1_body</p>
+</section>
+
+<hr class="divider">
+
+<!-- ═══════════════ 1-1 ═══════════════ -->
+<section id="s11">
+  <p class="kicker">1-1단계 · 라벨</p>
+  <h2>헤드 종류 분류 — 네 가지 라벨</h2>
+  <div class="col">
+    <p>이음 로직은 아니지만 5단계 후보와 물닿음 잣대가 이 라벨을 소비합니다. 팔이 있는 헤드(접속관이
+      원 테두리에 닿는 것)와 배관 위에 걸터앉은 헤드(관이 원 밑을 지나는 것)를 기하로 가르고, 반호를
+      제 것으로 가진 헤드는 따로 표시합니다. 못 가르면 <strong>미지정</strong>으로 남기고 알립니다 —
+      5단계에서 조용히 빼지 않습니다. 사람이 손질에서 덮어쓴 종류(kind override)는 이음을 다시 돌리지 않고 라벨만 바꿉니다.</p>
+  </div>
+  <p class="where"><b>pipeline/flow.py</b> stage11_classify_heads · classify_head_kind · <b>pipeline/heads.py</b> build_head_arm_index</p>
+</section>
+
+<hr class="divider">
+
+<!-- ═══════════════ 2 ═══════════════ -->
+<section id="s2">
+  <p class="kicker">2단계 · +E, +V</p>
+  <h2>접속부에서 배관 연결 — 표시가 곧 허가다</h2>
+  <div class="io">
+    <div><span class="lab">들어감</span>g + 접속표시 목록 (spots)</div>
+    <div class="arrow">→</div>
+    <div><span class="lab">나옴</span>표시마다 «팔»이 이어진 g · 통과 쪼갬으로 생긴 새 노드</div>
+  </div>
+  <div class="col">
+    <p>이 단계가 위상 복원의 심장입니다. 도면에서 배관은 접속부 기호(반원·원·짧은 획) 앞에서
+      <em>끊겨 그려집니다</em>. 그 기호가 «여기서 이어진다»는 허가이고, 기호에 모인 관 끝을
+      <strong>팔</strong>이라 부릅니다. 팔이 둘 이상이면 잇습니다 — 반경이나 방향을 따로 증명하지 않습니다.</p>
+  </div>
+
+  <h3>2-a 접속표시 — 무엇을 표시로 보나</h3>
+<div class="pair">
+<pre class="formula">표시 s = (kind, c, r)
+  «호»   재료 레이어의 ARC,     0 < r ≤ 300
+  «원»   재료 레이어의 CIRCLE,  0 < r ≤ 300,  헤드 원은 제외
+  «획»   본체가 «모양으로» 재료에서 뺀 짧은 선 (작대기·관말 캡)  — c = 중점, r = L/2
+  «헤드» 반지름 자를 통과한 닫힌 원 — 잇지 않는다. 물닿음 잣대에만 쓴다</pre>
+<div class="viz">
+<svg role="img" aria-label="접속표시 네 종류 — 호, 원, 획, 그리고 아무것도 잇지 않는 헤드" viewBox="0 0 900 165">
+  <path d="M 102 90 A 28 28 0 0 1 158 90" class="f-none s-ink" stroke-width="2.5"/>
+  <circle cx="130" cy="90" r="2.5" class="f-water"/>
+  <text x="130" y="40" text-anchor="middle" class="f-ink big">«호»</text>
+  <text x="130" y="124" text-anchor="middle" class="f-ink3 lbl">재료 레이어 ARC</text>
+  <text x="130" y="140" text-anchor="middle" class="f-ink3 mono lbl">0 &lt; r ≤ 300</text>
+
+  <circle cx="350" cy="90" r="28" class="f-none s-ink" stroke-width="2.5"/>
+  <circle cx="350" cy="90" r="2.5" class="f-water"/>
+  <text x="350" y="40" text-anchor="middle" class="f-ink big">«원»</text>
+  <text x="350" y="124" text-anchor="middle" class="f-ink3 lbl">재료 레이어 CIRCLE</text>
+  <text x="350" y="140" text-anchor="middle" class="f-ink3 mono lbl">헤드 원은 제외</text>
+
+  <line x1="542" y1="90" x2="598" y2="90" class="s-ink" stroke-width="2.5"/>
+  <circle cx="570" cy="90" r="2.5" class="f-water"/>
+  <line x1="570" y1="72" x2="598" y2="72" class="s-water" stroke-width="1.2"/>
+  <text x="584" y="64" text-anchor="middle" class="f-water mono lbl">r = L/2</text>
+  <text x="570" y="40" text-anchor="middle" class="f-ink big">«획»</text>
+  <text x="570" y="124" text-anchor="middle" class="f-ink3 lbl">본체가 «모양으로» 뺀</text>
+  <text x="570" y="140" text-anchor="middle" class="f-ink3 lbl">작대기 · 관말 캡</text>
+
+  <circle cx="790" cy="90" r="28" class="f-none s-alert" stroke-width="2.5"/>
+  <circle cx="790" cy="90" r="3" class="f-alert"/>
+  <text x="790" y="40" text-anchor="middle" class="f-ink big">«헤드»</text>
+  <text x="790" y="124" text-anchor="middle" class="f-alert lbl">아무것도 잇지 않는다</text>
+  <text x="790" y="140" text-anchor="middle" class="f-ink3 lbl">물닿음 잣대에만 쓴다</text>
+</svg>
+<p class="cap">레이어 이름이 아니라 <b>도형 종류</b>로 가릅니다. 3F 도면은 헤드와 접속부가 레이어(SP)·색(3)·반지름(150)까지 똑같고 «원이냐 호냐»만 달랐습니다 — 레이어로 가르던 옛 방식은 접속부 반호 353개에 「헤드」 이름표를 달았고, 그것이 3F 오이음 150곳의 원인이었습니다.</p>
+</div>
+</div>
+
+  <h3>2-b 팔 — 표시에 «앉은» 노드</h3>
+<div class="pair">
+<pre class="formula">노드 n 은 표시 s 의 팔  ⇔   |n − c| ≤ 5          <span class="c">중심에 앉음 (ARM_CTR)</span>
+                         or  | |n − c| − r | ≤ 12   <span class="c">테두리에 앉음 (ARM_RIM)</span>
+                         헤드 표시는 테두리 여유 50   <span class="c">HEAD_RIM — «육안으로 붙은 것»</span></pre>
+<div class="viz">
+<svg role="img" aria-label="표시 중심 5mm 안이나 테두리 ±12mm 안에 앉은 노드만 팔이 되고 그 사이는 팔이 아니다" viewBox="0 0 900 262">
+  <text x="14" y="26" class="f-ink3 lbl">관 끝은 표시의 «중심»이나 «테두리»에 앉지 그 사이에 뜨지 않는다 (7도면 실측)</text>
+  <circle cx="250" cy="132" r="70" class="f-none s-rule" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <circle cx="250" cy="132" r="56" class="f-none s-rule" stroke-width="1" stroke-dasharray="2 4"/>
+  <circle cx="250" cy="132" r="84" class="f-none s-rule" stroke-width="1" stroke-dasharray="2 4"/>
+  <circle cx="250" cy="132" r="12" class="f-wdim s-water" stroke-width="1.2" stroke-dasharray="2 3"/>
+  <circle cx="250" cy="132" r="5.5" class="f-water"/>
+  <line x1="250" y1="146" x2="250" y2="212" class="s-water" stroke-width="1" stroke-dasharray="3 3"/>
+  <text x="250" y="230" text-anchor="middle" class="f-water lbl">중심 ≤ 5 · 팔 ✓</text>
+  <circle cx="320" cy="132" r="5.5" class="f-water"/>
+  <text x="334" y="136" class="f-water lbl">테두리 ±12 · 팔 ✓</text>
+  <circle cx="250" cy="92" r="5" class="f-alert"/>
+  <text x="264" y="88" class="f-alert lbl">그 사이(40) · 팔 아님 ✗</text>
+  <text x="250" y="52" text-anchor="middle" class="f-ink3 mono lbl">r</text>
+  <line x1="250" y1="132" x2="250" y2="62" class="s-rule" stroke-width="1"/>
+
+  <line x1="470" y1="40" x2="470" y2="240" class="s-rule" stroke-width="1" stroke-dasharray="2 5"/>
+
+  <circle cx="660" cy="132" r="50" class="f-none s-ink" stroke-width="2"/>
+  <circle cx="660" cy="132" r="100" class="f-none s-water" stroke-width="1" stroke-dasharray="3 4"/>
+  <text x="660" y="60" text-anchor="middle" class="f-ink big">헤드 — 여유 50</text>
+  <line x1="600" y1="132" x2="710" y2="132" class="s-ink" stroke-width="2.5"/>
+  <circle cx="710" cy="132" r="5.5" class="f-water"/>
+  <text x="722" y="128" class="f-water lbl">d = 60 · |60−50| = 10 ✓</text>
+  <circle cx="760" cy="132" r="5.5" class="f-water"/>
+  <text x="772" y="152" class="f-water lbl">d = 100 ✓</text>
+  <text x="560" y="230" class="f-ink3 lbl">「유저가 헤드에 선을 딱 붙이지 않아도 육안으로는 붙은 것처럼 그린다」</text>
+</svg>
+<p class="cap">여유가 <b>12</b> 인 이유와 헤드만 <b>50</b> 인 이유가 다릅니다. 12 는 «그리기 오차»고, 50 은 «사람이 붙었다고 보는 거리»입니다. 그리고 헤드에 팔이 둘 이상 붙으면 그 헤드는 배관 위에 걸쳐 그려진 것이라, 헤드 때문에 끊긴 관이 여기서 이어집니다.</p>
+</div>
+</div>
+
+  <h3>2-c 통과 팔 — 표시 «안을 지나가는» 관도 팔이다</h3>
+  <div class="col">
+    <p>메인이 끝점 없이 곧게 지나가면 팔이 0개라 가지관과 영원히 안 만납니다 — 도면에는 십자로 그려져
+      있는데도. 그래서 중심을 지나는 관을 그 자리에서 쪼개 새 노드를 팔로 넣습니다. 스치는 관과
+      헷갈리지 않게 문을 두 겹으로 잠급니다.</p>
+  </div>
+<div class="pair">
+<pre class="formula"><span class="c">비헤드 표시 s 와 간선 (i, j), L = |p_j − p_i|</span>
+  t ∈ [0, 1]                    <span class="c">선분이 중심 옆을 지남</span>
+  d(c, ij) ≤ 25                 <span class="c">THRU_OFF — 정중앙을 지나야</span>
+  60 ≤ t·L ≤ L − 60             <span class="c">THRU_IN — 끝에 앉은 것은 이미 팔</span>
+  → 발점 f 에서 쪼갬: V ← V ∪ {f},  (i,j) → (i,f),(f,j),  f 를 s 의 팔에 추가
+
+  L < 120 이면 쪼갤 «안쪽»이 없다 → 중심에 더 가까운 끝을 팔로
+  «획» 표시 + 평행(≤15°) + 중심에서 5 밖 → 스침. 팔 아님   <span class="c">규칙 A</span></pre>
+<div class="viz">
+<svg role="img" aria-label="표시 중심을 지나는 관을 그 자리에서 쪼개 팔로 넣되, 획과 나란히 스치는 관은 제외한다" viewBox="0 0 900 255">
+  <text x="14" y="26" class="f-ink3 lbl">메인이 끝점 없이 곧게 지나가면 팔이 0개다 — 도면에는 십자로 그려져 있는데도</text>
+  <circle cx="250" cy="118" r="55" class="f-none s-rule" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <circle cx="250" cy="118" r="3" class="f-ink2"/>
+  <line x1="60" y1="132" x2="440" y2="132" class="s-ink" stroke-width="2.5"/>
+  <circle cx="60" cy="132" r="4" class="f-ink2"/><circle cx="440" cy="132" r="4" class="f-ink2"/>
+  <line x1="250" y1="118" x2="250" y2="132" class="s-alert" stroke-width="1.4"/>
+  <text x="258" y="116" class="f-alert mono lbl">d ≤ 25</text>
+  <circle cx="250" cy="132" r="6" class="f-water"/>
+  <line x1="60" y1="164" x2="130" y2="164" class="s-ink" stroke-width="1"/>
+  <line x1="60" y1="160" x2="60" y2="168" class="s-ink" stroke-width="1"/>
+  <line x1="130" y1="160" x2="130" y2="168" class="s-ink" stroke-width="1"/>
+  <text x="95" y="180" text-anchor="middle" class="f-ink3 mono lbl">≥ 60</text>
+  <line x1="370" y1="164" x2="440" y2="164" class="s-ink" stroke-width="1"/>
+  <line x1="370" y1="160" x2="370" y2="168" class="s-ink" stroke-width="1"/>
+  <line x1="440" y1="160" x2="440" y2="168" class="s-ink" stroke-width="1"/>
+  <text x="405" y="180" text-anchor="middle" class="f-ink3 mono lbl">≥ 60</text>
+  <text x="250" y="212" text-anchor="middle" class="f-water lbl">→ 발점에서 쪼개 새 노드를 만들고 그것을 팔로 넣는다</text>
+  <text x="250" y="230" text-anchor="middle" class="f-ink3 lbl">끝에 앉은 것은 이미 팔이라 쪼갤 필요가 없다</text>
+
+  <line x1="490" y1="40" x2="490" y2="238" class="s-rule" stroke-width="1" stroke-dasharray="2 5"/>
+
+  <text x="530" y="26" class="f-ink3 lbl">규칙 A — 획과 나란히 스치는 남의 관</text>
+  <circle cx="640" cy="110" r="42" class="f-none s-rule" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <line x1="604" y1="110" x2="676" y2="110" class="s-ink" stroke-width="2.5"/>
+  <circle cx="640" cy="110" r="3" class="f-ink2"/>
+  <text x="640" y="88" text-anchor="middle" class="f-ink3 lbl">«획»</text>
+  <line x1="560" y1="140" x2="800" y2="140" class="s-alert" stroke-width="2.5"/>
+  <line x1="640" y1="110" x2="640" y2="140" class="s-alert" stroke-width="1.2" stroke-dasharray="3 2"/>
+  <text x="650" y="134" class="f-alert mono lbl">30 &gt; 5</text>
+  <text x="530" y="176" class="f-alert lbl">평행(≤15°) + 중심에서 5 밖 → 스침. 팔 아님</text>
+  <text x="530" y="200" class="f-ink3 lbl">MF4 사고: 22.8mm 밖 헤드 팔을 잡아</text>
+  <text x="530" y="216" class="f-ink3 lbl">100A 메인에 이었다</text>
+</svg>
+<p class="cap">«지나간다»와 «스친다»를 가르는 문이 둘입니다. <b>d ≤ 25</b> 는 정중앙을 지날 것, <b>안쪽 60</b> 은 끝에 앉은 것과 구별할 것. 규칙 A 는 세 번째 문인데, 획 표시에만 걸립니다 — 획은 «작대기»라 그 옆을 나란히 지나는 관이 많기 때문입니다.</p>
+</div>
+</div>
+
+  <h3>2-d 잇는 순서 — 가로 먼저, 허브, 나머지</h3>
+  <div class="col">
+    <p>예전에는 첫 팔에 나머지를 전부 붙이는 별 모양이었고, 첫 팔이 짧은 선 끝이면 좌우 메인이
+      그 점으로 45° 끌려 올라갔습니다. 지금은 셋으로 나눕니다.</p>
+  </div>
+<pre class="formula"><span class="c">팔 ≥ 2 인 비헤드 표시 s (팔 집합 A, 중심 c) 마다</span>
+  chord(u, v):  중심이 선분 uv «사이»에 있는가
+      t = ((c − p_u)·(p_v − p_u)) / L²,   e = min(0.45, 5 / L)
+      e ≤ t ≤ 1 − e   and   d(c, uv) ≤ 5    → 값 (d, −L)     <span class="c">가깝고 긴 쌍 우선</span>
+
+  ① 통과 가로   남은 팔 중 chord 값이 최소인 쌍을 뽑아 잇는다. 반복.   <span class="c">티 = 1쌍 · 십자 = 2쌍</span>
+  ② 허브        hub = argmin_{n∈A} |n − c|                              <span class="c">보통 2-c 가 만든 중심 노드</span>
+                 hub 가 ①에 없으면 ①의 노드 중 가장 가까운 것에 잇는다
+  ③ 나머지 팔   ①②에 안 든 팔 → hub 에 잇는다                            <span class="c">헤드로 가는 짧은 선 등</span></pre>
+
+  <figure>
+    <svg viewBox="0 0 900 300" role="img" aria-label="접속표시 하나에서 중심을 지나는 메인은 쪼개져 새 노드가 되고, 테두리에 닿은 관 끝은 팔이 되어 가로·허브·나머지 순으로 이어진다">
+      <text x="14" y="24" class="f-ink3 lbl">통과 메인 + 헤드 스텁 — 팔 2개</text>
+      <circle cx="230" cy="140" r="48" class="f-none s-rule" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="230" y="80" text-anchor="middle" class="f-ink3 mono lbl">접속표시 (c, r)</text>
+      <line x1="60" y1="140" x2="400" y2="140" class="s-ink" stroke-width="2.5"/>
+      <circle cx="230" cy="140" r="6" class="f-water"/>
+      <text x="244" y="132" class="f-water lbl">통과 쪼갬 → 새 노드 (d ≤ 25)</text>
+      <line x1="230" y1="188" x2="230" y2="250" class="s-ink" stroke-width="2.5"/>
+      <circle cx="230" cy="188" r="5" class="f-surf s-water" stroke-width="2"/>
+      <text x="244" y="196" class="f-ink lbl">테두리에 앉은 끝 (| |n−c|−r | ≤ 12)</text>
+      <circle cx="230" cy="262" r="10" class="f-none s-ink" stroke-width="1.5"/>
+      <text x="248" y="266" class="f-ink3 lbl">헤드</text>
+      <line x1="230" y1="146" x2="230" y2="182" class="s-water" stroke-width="2.5"/>
+      <text x="60" y="290" class="f-ink lbl">팔이 둘 → 곧장 잇는다: 중심 노드 — 스텁 끝</text>
+
+      <text x="520" y="24" class="f-ink3 lbl">트림된 티 — 팔 3개</text>
+      <circle cx="700" cy="140" r="48" class="f-none s-rule" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <line x1="540" y1="140" x2="652" y2="140" class="s-ink" stroke-width="2.5"/>
+      <line x1="748" y1="140" x2="870" y2="140" class="s-ink" stroke-width="2.5"/>
+      <line x1="700" y1="30" x2="700" y2="92" class="s-ink" stroke-width="2.5"/>
+      <circle cx="652" cy="140" r="5" class="f-surf s-water" stroke-width="2"/>
+      <circle cx="748" cy="140" r="5" class="f-surf s-water" stroke-width="2"/>
+      <circle cx="700" cy="92" r="5" class="f-surf s-water" stroke-width="2"/>
+      <text x="636" y="162" text-anchor="middle" class="f-ink3 mono lbl">L</text>
+      <text x="764" y="162" text-anchor="middle" class="f-ink3 mono lbl">R</text>
+      <text x="716" y="88" class="f-ink3 mono lbl">C</text>
+      <line x1="657" y1="140" x2="743" y2="140" class="s-water" stroke-width="2.5"/>
+      <text x="700" y="185" text-anchor="middle" class="f-water lbl">① chord(L, R) — 중심이 «사이» · d ≤ 5 → 가로</text>
+      <line x1="700" y1="97" x2="700" y2="140" class="s-water" stroke-width="2.5" stroke-dasharray="5 3"/>
+      <text x="700" y="215" text-anchor="middle" class="f-ink lbl">② 허브 = 중심에 가장 가까운 팔</text>
+      <text x="700" y="235" text-anchor="middle" class="f-ink lbl">③ C → 허브</text>
+      <text x="700" y="270" text-anchor="middle" class="f-ink3 lbl">chord(L, C) 는 중심이 «사이»가 아니라 가로가 못 된다</text>
+    </svg>
+    <figcaption>같은 규칙이 두 모양을 다 처리한다. 헤드 표시는 어느 쪽에서도 아무것도 잇지 않는다 —
+      상향식이라 배관 위에 앉은 경우조차 실제로는 티에서 z 축으로 갈라진 것이라, 평면도에 안 보이는 그 짧은 관 하나가 헤드의 유일한 팔이다.</figcaption>
+  </figure>
+  <p class="where"><b>pipeline/flow.py</b> spots_body · spot_arms · thru_arms · _join_order · join_all</p>
+</section>
+
+<hr class="divider">
+
+<!-- ═══════════════ 3 ═══════════════ -->
+<section id="s3">
+  <p class="kicker">3단계 · 검사</p>
+  <h2>헤드 접속 — 비어 있다</h2>
+  <div class="col">
+    <p>이 단은 이음 목록이 항상 빈 목록입니다(<code>j3 = []</code>). 대신 안전핀이 하나 걸려 있습니다 —
+      2단계 이음 중 «헤드» 표시를 통과한 것이 하나라도 있으면 성적표의 <code>head_joins</code> 가 0 이 아니게 되고,
+      그것은 «배관이 헤드를 경유해 이어졌다»는 뜻이라 수리계산 대형사고로 봅니다.
+      실제 헤드 접속은 6단계의 물닿음 잣대가 «관 끝이 헤드에 앉았는가»로 판정합니다.</p>
+  </div>
+<pre class="formula">head_joins = | { (k, u, v) ∈ j2 : k = «헤드» } |      <span class="c">정상이면 0</span></pre>
+</section>
+
+<hr class="divider">
+
+<!-- ═══════════════ 4 ═══════════════ -->
+<section id="s4">
+  <p class="kicker">4단계 · +E</p>
+  <h2>끊긴 배관 잇기 — 설명이 있는 틈만</h2>
+  <div class="io">
+    <div><span class="lab">들어감</span>g (2단계까지) + 표시·문자</div>
+    <div class="arrow">→</div>
+    <div><span class="lab">나옴</span>고리를 만들지 않는 틈 이음이 얹힌 g</div>
+  </div>
+  <div class="col">
+    <p>기호 없이 글자나 다른 배관에 가려 <em>일부러 끊어 그린</em> 직선 틈입니다. 마주 보는 자유단 둘이
+      한 줄이고, 그 틈에 «왜 끊겼는지»를 설명하는 것이 있어야만 잇습니다. T·엘보·재부착은 하지 않습니다.</p>
+  </div>
+<div class="pair">
+<pre class="formula"><span class="c">자유단 i 의 도착 방향 u — _arr_edge</span>
+  이웃 k 로 들어오는 방향이 u 와 ≤ 8° (공선 도착)
+  u 방향으로 계속되는 간선(≤ 30°)이 있으면 «도착 후 정지»가 아니다 → 제외
+
+<span class="c">자유단 쌍 (i, j)</span>
+  틈        |p_i − p_j| ≤ 1,500        <span class="c">r1_cand — 정당한 이음 최대 1,241 실측</span>
+  횡이탈    lat ≤ 10                   <span class="c">r1_lat_tol</span>
+  틈 안에 같은 축·같은 묶음 재료 없음      <span class="c">가짜 tip-tip 차단</span>
+  틈 자리에 기호·헤드 없음               <span class="c">있으면 2·5단계 몫</span>
+  설명자 하나 이상:
+      (a) 재료 통과선이 틈을 가로지른다
+      (b) 재료 레이어 문자가 틈 축 위에 있다
+      (c) 설명자 배관(소화전 등)이 틈을 가로지른다
+
+<span class="c">고리 금지 — add_no_ring</span>
+  find(i) ≠ find(j) 일 때만 E ← E ∪ {(i, j)}, union(i, j)
+  같으면 «고리»로 세어 버린다</pre>
+<div class="viz">
+<svg role="img" aria-label="공선으로 도착해 멈춘 자유단 쌍 사이의 틈에 통과선·문자·설명자 배관 중 하나가 있으면 잇는다" viewBox="0 0 900 445">
+  <defs><marker id="v2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9z" fill="currentColor"/></marker></defs>
+  <text x="14" y="26" class="f-ink3 lbl">먼저 «자유단인가» — 공선으로 도착하고 거기서 멈추는 끝만 후보다</text>
+
+  <line x1="90" y1="110" x2="230" y2="110" class="s-ink" stroke-width="2.5"/>
+  <circle cx="90" cy="110" r="4" class="f-ink2"/>
+  <text x="90" y="94" text-anchor="middle" class="f-ink3 mono lbl">k</text>
+  <circle cx="230" cy="110" r="5.5" class="f-water"/>
+  <text x="230" y="94" text-anchor="middle" class="f-water mono lbl">i</text>
+  <line x1="238" y1="110" x2="330" y2="110" class="s-water" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#v2)"/>
+  <text x="340" y="114" class="f-water mono lbl">u</text>
+  <text x="90" y="146" class="f-ink lbl">ang(−w, u) ≈ 0° ≤ 8° · 계속되는 간선 없음</text>
+  <text x="90" y="170" class="f-water big">자유단 ✓</text>
+
+  <line x1="500" y1="110" x2="640" y2="110" class="s-ink" stroke-width="2.5"/>
+  <circle cx="640" cy="110" r="5.5" class="f-alert"/>
+  <text x="640" y="94" text-anchor="middle" class="f-alert mono lbl">i</text>
+  <line x1="648" y1="110" x2="740" y2="110" class="s-alert" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#v2)"/>
+  <text x="750" y="114" class="f-alert mono lbl">u</text>
+  <line x1="640" y1="110" x2="775" y2="66" class="s-ink" stroke-width="2.5"/>
+  <text x="700" y="56" class="f-alert mono lbl">θ = 18° ≤ 30°</text>
+  <text x="500" y="146" class="f-ink lbl">u 방향으로 관이 계속된다 — «도착 후 정지»가 아니다</text>
+  <text x="500" y="170" class="f-alert big">자유단 아님 ✗</text>
+
+  <line x1="14" y1="200" x2="886" y2="200" class="s-rule" stroke-width="1"/>
+  <text x="14" y="230" class="f-ink3 lbl">그다음 «왜 끊겼는지 설명하는 것»이 틈 안에 있어야 잇는다 — 셋 중 하나</text>
+
+  <line x1="60" y1="300" x2="150" y2="300" class="s-ink" stroke-width="2.5"/>
+  <circle cx="150" cy="300" r="5" class="f-water"/>
+  <line x1="610" y1="300" x2="760" y2="300" class="s-ink" stroke-width="2.5"/>
+  <circle cx="610" cy="300" r="5" class="f-water"/>
+  <line x1="155" y1="300" x2="605" y2="300" class="s-rule" stroke-width="1.4" stroke-dasharray="6 5"/>
+
+  <line x1="240" y1="255" x2="240" y2="345" class="s-water" stroke-width="2.5"/>
+  <text x="240" y="246" text-anchor="middle" class="f-water lbl">(a) 재료 통과선</text>
+  <rect x="352" y="284" width="76" height="32" rx="3" class="f-surf2 s-rule" stroke-width="1"/>
+  <text x="390" y="305" text-anchor="middle" class="f-ink mono lbl">100A</text>
+  <text x="390" y="270" text-anchor="middle" class="f-water lbl">(b) 재료 레이어 문자</text>
+  <line x1="530" y1="255" x2="530" y2="345" class="s-water" stroke-width="2.5" stroke-dasharray="6 4"/>
+  <text x="530" y="246" text-anchor="middle" class="f-water lbl">(c) 설명자 배관</text>
+
+  <line x1="150" y1="372" x2="610" y2="372" class="s-ink" stroke-width="1"/>
+  <line x1="150" y1="368" x2="150" y2="376" class="s-ink" stroke-width="1"/>
+  <line x1="610" y1="368" x2="610" y2="376" class="s-ink" stroke-width="1"/>
+  <text x="380" y="392" text-anchor="middle" class="f-ink mono lbl">틈 ≤ 1,500 · 횡이탈 ≤ 10</text>
+  <text x="628" y="336" class="f-water lbl">→ 잇는다</text>
+  <text x="14" y="424" class="f-alert lbl">★ 틈 안에 같은 축·같은 묶음 재료가 있으면 안 된다 — 가짜 긴 끝-끝 이음을 막는 문</text>
+</svg>
+<p class="cap">설계자가 글자나 다른 배관에 가려 <b>일부러 끊어 그린</b> 자리입니다. 상한 1,500 은 확인된 정당한 이음의 최대가 1,241mm(MF3 상세도)였기 때문에 정해졌습니다 — 임의로 넉넉히 잡은 값이 아니라 실측이 준 눈금입니다.</p>
+</div>
+</div>
+  <p class="where"><b>pipeline/stage45.py</b> join_by_through_main · _arr_edge · <b>pipeline/flow.py</b> stage4_body · add_no_ring</p>
+</section>
+
+<hr class="divider">
+
+<!-- ═══════════════ 5 ═══════════════ -->
+<section id="s5">
+  <p class="kicker">5단계 · +E, +V</p>
+  <h2>상향식 헤드 접속 — 원이 덮은 자리</h2>
+  <div class="io">
+    <div><span class="lab">들어감</span>g + 헤드 원(c, r) + 1-1 라벨</div>
+    <div class="arrow">→</div>
+    <div><span class="lab">나옴</span>헤드 자리 틈이 이어진 g · 원 밑 통과관의 중심 노드</div>
+  </div>
+  <div class="col">
+    <p>상향식 헤드는 배관 위에 티로 올라앉습니다. 도면에서는 관이 헤드 원을 관통하다가 <em>원 자리만
+      비워져</em> 있습니다. 그 모양만 잇습니다 — 헤드를 통과점으로 쓰지 않고 <strong>메인끼리</strong> 잇습니다.
+      후보는 상향식·미지정·상하향식(비팔)뿐이고 하향식에는 이 문을 열지 않습니다.</p>
+  </div>
+<div class="pair">
+<pre class="formula"><span class="c">① 헤드 덮음 틈 이음 — join_by_head_cover · 자유단 쌍 (p_a, p_b), L, u = (p_b − p_a)/L</span>
+  along = (c − p_a)·u          lat = |(c − p_a) × u|
+  원이 축을 자른다     lat < r
+  half = √(r² − lat²)                                  <span class="c">축 위에서 원이 차지하는 반길이</span>
+  원 밖으로 남는 길이   along − half ≤ 150   and   L − (along + half) ≤ 150
+  → 이음 후보 (a, b).  add_no_ring 으로 얹는다
+
+<span class="c">② 원 밑 통과관 중심 분할 — stage5_split_through_uprights</span>
+  헤드에 중심(≤5)·테두리(±50) 노드가 없고, 간선이 원 안(d(c, ij) ≤ r)을 지나면
+  → 중심 c 에서 쪼갬: V ← V ∪ {c}</pre>
+<div class="viz">
+<svg role="img" aria-label="헤드 원이 틈의 축을 자르고 원 밖으로 남는 길이가 양쪽 다 150mm 이하일 때만 잇는다" viewBox="0 0 900 402">
+  <text x="14" y="26" class="f-ink3 lbl">«관이 헤드 원을 관통하다 원 자리만 비워졌다» — 이 모양만 잇는다</text>
+  <line x1="40" y1="140" x2="120" y2="140" class="s-ink" stroke-width="3"/>
+  <line x1="700" y1="140" x2="800" y2="140" class="s-ink" stroke-width="3"/>
+  <line x1="120" y1="140" x2="700" y2="140" class="s-rule" stroke-width="1.4" stroke-dasharray="6 5"/>
+  <circle cx="120" cy="140" r="5" class="f-water"/><circle cx="700" cy="140" r="5" class="f-water"/>
+  <text x="120" y="124" text-anchor="middle" class="f-water mono lbl">p_a</text>
+  <text x="700" y="124" text-anchor="middle" class="f-water mono lbl">p_b</text>
+  <circle cx="400" cy="118" r="78" class="f-none s-ink" stroke-width="2"/>
+  <circle cx="400" cy="118" r="3" class="f-ink2"/>
+  <line x1="492" y1="58" x2="466" y2="82" class="s-rule" stroke-width="1"/>
+  <text x="498" y="56" class="f-ink big">헤드 원 (c, r)</text>
+  <line x1="400" y1="118" x2="400" y2="140" class="s-alert" stroke-width="1.4"/>
+  <text x="408" y="134" class="f-alert mono lbl">lat &lt; r</text>
+  <circle cx="325" cy="140" r="4" class="f-alert"/><circle cx="475" cy="140" r="4" class="f-alert"/>
+  <line x1="325" y1="140" x2="475" y2="140" class="s-alert" stroke-width="2.5"/>
+  <text x="400" y="170" text-anchor="middle" class="f-alert mono lbl">2 · half</text>
+  <text x="496" y="114" class="f-alert mono lbl">half = √(r² − lat²)</text>
+  <line x1="120" y1="196" x2="325" y2="196" class="s-water" stroke-width="1.6"/>
+  <line x1="120" y1="191" x2="120" y2="201" class="s-water" stroke-width="1.2"/>
+  <line x1="325" y1="191" x2="325" y2="201" class="s-water" stroke-width="1.2"/>
+  <text x="222" y="214" text-anchor="middle" class="f-water mono lbl">along − half ≤ 150</text>
+  <line x1="475" y1="196" x2="700" y2="196" class="s-water" stroke-width="1.6"/>
+  <line x1="475" y1="191" x2="475" y2="201" class="s-water" stroke-width="1.2"/>
+  <line x1="700" y1="191" x2="700" y2="201" class="s-water" stroke-width="1.2"/>
+  <text x="588" y="214" text-anchor="middle" class="f-water mono lbl">L − (along + half) ≤ 150</text>
+  <text x="14" y="248" class="f-water lbl">→ 두 «남는 길이»가 모두 150 이하일 때만 잇는다. 메인끼리 잇지 헤드를 통과점으로 쓰지 않는다</text>
+
+  <line x1="14" y1="268" x2="886" y2="268" class="s-rule" stroke-width="1"/>
+  <text x="14" y="292" class="f-alert lbl">막아야 하는 모양 — 헤드가 틈 한쪽 끝에 붙어 있고 반대쪽이 통째로 빈 자리</text>
+  <line x1="120" y1="344" x2="700" y2="344" class="s-rule" stroke-width="1.4" stroke-dasharray="6 5"/>
+  <circle cx="120" cy="344" r="5" class="f-alert"/><circle cx="700" cy="344" r="5" class="f-alert"/>
+  <circle cx="178" cy="336" r="42" class="f-none s-ink" stroke-width="1.6"/>
+  <line x1="232" y1="344" x2="700" y2="344" class="s-alert" stroke-width="2.5"/>
+  <text x="470" y="334" text-anchor="middle" class="f-alert mono lbl">남는 길이 257 &gt; 150 → 잇지 않는다</text>
+  <text x="14" y="392" class="f-ink3 lbl">이 문이 없으면 서로 다른 두 «가지 끝 헤드»의 접속관을 빈 자리 617mm 를 건너 붙인다 (MF3 네 곳 실측)</text>
+</svg>
+<p class="cap">눈금을 원 크기 비례(틈 ≤ 4r · 남는 길이 ≤ 2r)로 바꿨다가 되돌린 자리입니다. 비례는 남는 길이를 360mm 까지 봐줘서 아래 모양을 통과시켰습니다. 120 → 150 으로 올린 것은 판정에 쓰는 남는 길이가 반지름이 아니라 <b>현(弦)</b> 기준이라, 헤드가 축에서 비껴 있을수록 커지기 때문입니다(MF3 실측 125·134 / 92·119).</p>
+</div>
+</div>
+  <div class="note"><p>150 은 «그리기 여유»입니다. 원 크기에 비례시켰다가(틈 ≤ 4r · 남는 길이 ≤ 2r) 되돌렸습니다 —
+    비례 눈금은 헤드가 틈 한쪽 끝에 붙어 있고 반대쪽 257mm 가 빈 모양까지 통과시켜, 서로 다른 두 헤드의
+    접속관을 617mm 건너 붙였습니다(MF3). 120 → 150 으로 올린 것은 현(弦) 기준이라 헤드가 축에서 비껴 있을수록
+    남는 길이가 커지기 때문입니다.</p></div>
+  <p class="where"><b>pipeline/stage45.py</b> join_by_head_cover · <b>pipeline/flow.py</b> upright_disks · stage5_body · stage5_split_through_uprights</p>
+</section>
+
+<hr class="divider">
+
+<!-- ═══════════════ 6 ═══════════════ -->
+<section id="s6">
+  <p class="kicker">6단계 · 사람</p>
+  <h2>물길 확인 · 손질 — 닿는 것만 남기고, 못 이은 곳은 묻는다</h2>
+  <div class="io">
+    <div><span class="lab">들어감</span>g (5단계까지) + 급수원</div>
+    <div class="arrow">→</div>
+    <div><span class="lab">나옴</span>젖은 간선·젖은 헤드 · 덩이 목록 · 사람이 이을 자리</div>
+  </div>
+  <div class="col">
+    <p>순서가 본체와 정반대입니다. 본체는 «도면 전체를 미리 잇고 물을 흘렸고», 여기는
+      <strong>물을 먼저 흘리고 물이 닿은 끝점에서만 판정</strong>합니다. 물이 끝점에 닿으면 그 자리에
+      접속표시가 있나 봅니다 — 있으면 선이 안 붙어 있어도 통과하고, 없으면 프로그램이 추측하지 않고 «어디와 이을까» 묻습니다.</p>
+  </div>
+<div class="pair">
+<pre class="formula"><span class="c">6-a 헤드 물닿음 노드 — head_nodes</span>
+  keep(h) = { n : |n − c_h| ≤ 5  or  | |n − c_h| − r_h | ≤ 50 }
+  중심(≤5)에 차수 ≥ 1 인 노드가 있으면 그것 하나만            <span class="c">중심 접속 확정 — 스쳐 가는 남의 관을 안 센다</span>
+  상향식이고 keep 이 비면: 원 안(d ≤ r)을 지나는 간선의 양 끝   <span class="c">상향식엔 «관 끝»이 없다</span>
+
+<span class="c">6-b 덩이 — bodies</span>
+  union-find 연결성분. 덩이마다 (연장 m, 노드 수, 헤드 수)
+
+<span class="c">6-c 급수원과 물길 — water</span>
+  급수원 점 s → 가장 가까운 간선 (i, j),  d ≤ 2,500 이어야 스냅   <span class="c">SRC_SNAP</span>
+  seed = {i, j}
+  reach = BFS(seed)          wet = { (i,j) ∈ E : i, j ∈ reach }
+
+<span class="c">6-d 이을 자리 — split_gaps</span>
+  헤드가 든 덩이끼리 «가장 가까운 곳»만 낸다. 한 덩이 안의 끊김은 이어도 변화가 없어 안 보인다</pre>
+<div class="viz">
+<svg role="img" aria-label="헤드 물닿음 판정 — 중심 접속, 테두리 접속, 그리고 상향식의 원 밑 통과" viewBox="0 0 900 250">
+  <text x="14" y="26" class="f-ink3 lbl">«이 헤드에 물이 닿았나» 를 재는 세 가지 모양</text>
+  <line x1="300" y1="46" x2="300" y2="228" class="s-rule" stroke-width="1" stroke-dasharray="2 5"/>
+  <line x1="600" y1="46" x2="600" y2="228" class="s-rule" stroke-width="1" stroke-dasharray="2 5"/>
+
+  <text x="150" y="64" text-anchor="middle" class="f-ink big">① 중심 접속 — 확정</text>
+  <circle cx="150" cy="132" r="45" class="f-none s-ink" stroke-width="2"/>
+  <line x1="150" y1="132" x2="150" y2="196" class="s-ink" stroke-width="2.5"/>
+  <circle cx="150" cy="132" r="6" class="f-water"/>
+  <circle cx="195" cy="132" r="5" class="f-alert"/>
+  <line x1="195" y1="132" x2="270" y2="132" class="s-alert" stroke-width="2"/>
+  <text x="150" y="222" text-anchor="middle" class="f-water lbl">중심 노드 하나만 센다</text>
+  <text x="205" y="112" class="f-alert lbl">스쳐 가는 남의 관은 안 센다</text>
+
+  <text x="450" y="64" text-anchor="middle" class="f-ink big">② 테두리 접속</text>
+  <circle cx="450" cy="132" r="45" class="f-none s-ink" stroke-width="2"/>
+  <line x1="450" y1="177" x2="450" y2="200" class="s-ink" stroke-width="2.5"/>
+  <circle cx="450" cy="177" r="6" class="f-water"/>
+  <circle cx="450" cy="132" r="70" class="f-none s-water" stroke-width="1" stroke-dasharray="3 4"/>
+  <text x="450" y="222" text-anchor="middle" class="f-water lbl">| |n − c| − r | ≤ 50</text>
+
+  <text x="745" y="64" text-anchor="middle" class="f-ink big">③ 상향식 — 관 끝이 없다</text>
+  <circle cx="745" cy="132" r="45" class="f-none s-ink" stroke-width="2"/>
+  <line x1="630" y1="132" x2="860" y2="132" class="s-ink" stroke-width="2.5"/>
+  <circle cx="630" cy="132" r="5" class="f-water"/><circle cx="860" cy="132" r="5" class="f-water"/>
+  <text x="745" y="196" text-anchor="middle" class="f-water lbl">원 안(d ≤ r)을 지나는</text>
+  <text x="745" y="212" text-anchor="middle" class="f-water lbl">간선의 양 끝을 센다</text>
+  <text x="745" y="234" text-anchor="middle" class="f-ink3 lbl">하향식에는 이 문을 열지 않는다</text>
+</svg>
+<p class="cap">①이 ②③보다 <b>세다</b>는 것이 요점입니다. 중심에 차수 1 이상인 노드가 있으면 테두리 띠에 걸친 다른 노드는 무시합니다 — 그래야 «가지관을 끊으면 그 헤드가 마른다»가 성립합니다. ③은 상향식이 배관 위에 티로 올라앉아 평면도에 관 끝이 없기 때문에 여는 문이고, 하향식에 열면 우연히 스쳐 가는 남의 관이 헤드에 달립니다.</p>
+</div>
+</div>
+  <div class="col">
+    <p>사람이 하는 손질은 넷입니다 — 덩이 사이를 잇는다(joins), 잘못 이어진 것을 지운다(deletes),
+      헤드 종류를 덮는다(kind override), 급수원·알람밸브를 찍는다. 저장된 손질은 다음에 같은 도면을
+      열 때 5단계 뒤에 다시 적용됩니다(<code>apply_user_edits</code>). 자동 이음 성적 j2~j5 는 손질로 바뀌지 않습니다.</p>
+  </div>
+  <p class="where"><b>pipeline/flow.py</b> head_nodes · bodies · split_gaps · flow · <b>pipeline/water.py</b> water · <b>pipeline/user_net.py</b> apply_user_edits · 화면 <b>edit/board.py</b></p>
+</section>
+
+<hr class="divider">
+
+<!-- ═══════════════ 변환 ═══════════════ -->
+<section id="s7">
+  <p class="kicker">변환 · −E, −V</p>
+  <h2>평면 그래프 — 표에 넣을 수 있는 모양으로 깎는다</h2>
+  <div class="io">
+    <div><span class="lab">들어감</span>손질된 g + 선택한 급수원 하나</div>
+    <div class="arrow">→</div>
+    <div><span class="lab">나옴</span>평면 그래프 (노드·배관·헤드·펌프) — Z 는 아직 0</div>
+  </div>
+  <div class="col">
+    <p>여기서부터는 간선을 <em>빼는</em> 쪽입니다. 급수원이 여럿이면 어느 하나를 지정해야 합니다
+      (<code>source_selection_required</code>) — 급수원이 둘이면 «가장 먼 헤드»가 달라지기 때문입니다.</p>
+  </div>
+<pre class="formula"><span class="c">7-a 젖은 것만</span>
+  reach = BFS(선택 급수원 seed);  E ← { e : 양 끝 ∈ reach }
+
+<span class="c">7-b 막다른관 삭제 — prune_dead_pipes</span>
+  dist, prev = Dijkstra(seed, 가중치 = |p_u − p_v|)
+  for h in heads:  n = h;  while n in prev:  load[(n, prev[n])] += 1;  n = prev[n]
+  dead = { e : load(e) = 0 }  −  protect
+  protect = 관말 헤드(차수 1)의 유일한 관
+          ∪ 인라인 헤드마다 부하 0 인 인접 간선 중 가장 짧은 것 1개    <span class="c">끝배관 1단 보호</span>
+          ∪ seed 양 끝을 잇는 간선                                  <span class="c">급수원 관</span>
+
+<span class="c">7-c 티 겹침 정규화 — normalize_tee_overlaps</span>
+  관통 배관이 티 허브 위를 지나며 스텁과 겹치는 «확인된 패턴»만 허브에서 쪼갠다 (main—tee—main)
+
+<span class="c">7-d 직선 위치 복원 · 격자</span>
+  공선 10 · 대각 게이트 5° · 격자 0.05 m
+
+<span class="c">7-e 노드정리 (SSOT) — cleanup_collinear_intermediate_nodes</span>
+  일직선 중간 노드를 없을 때까지 병합. 편집 메뉴의 «노드정리»와 같은 함수 하나
+  ★반드시 7-c 다음 — 겹침이 남아 있으면 병합 검증에 걸려 덜 정리된다</pre>
+
+  <figure>
+    <svg viewBox="0 0 900 260" role="img" aria-label="급수원에서 각 헤드까지의 최단경로가 지나는 간선만 부하가 생기고, 부하 0인 간선은 삭제되되 인라인 헤드의 끝배관 한 단은 보호된다">
+      <text x="14" y="24" class="f-ink3 lbl">간선 위 숫자 = 그 관이 물을 나르는 헤드 수 (load)</text>
+      <rect x="40" y="132" width="40" height="36" rx="3" class="f-surf2 s-rule" stroke-width="1"/>
+      <text x="60" y="155" text-anchor="middle" class="f-ink big">S</text>
+      <line x1="80" y1="150" x2="220" y2="150" class="s-water" stroke-width="3"/>
+      <text x="150" y="140" text-anchor="middle" class="f-ink mono lbl">3</text>
+      <line x1="220" y1="150" x2="400" y2="150" class="s-water" stroke-width="3"/>
+      <text x="310" y="140" text-anchor="middle" class="f-ink mono lbl">2</text>
+      <line x1="400" y1="150" x2="580" y2="150" class="s-water" stroke-width="3"/>
+      <text x="490" y="140" text-anchor="middle" class="f-ink mono lbl">1</text>
+      <line x1="220" y1="150" x2="220" y2="70" class="s-water" stroke-width="3"/>
+      <text x="232" y="112" class="f-ink mono lbl">1</text>
+      <circle cx="220" cy="60" r="10" class="f-none s-ink" stroke-width="1.5"/>
+      <text x="220" y="42" text-anchor="middle" class="f-ink3 lbl">H1</text>
+      <line x1="400" y1="150" x2="400" y2="70" class="s-water" stroke-width="3"/>
+      <text x="412" y="112" class="f-ink mono lbl">1</text>
+      <circle cx="400" cy="60" r="10" class="f-none s-ink" stroke-width="1.5"/>
+      <text x="400" y="42" text-anchor="middle" class="f-ink3 lbl">H2</text>
+      <circle cx="580" cy="150" r="10" class="f-none s-ink" stroke-width="1.5"/>
+      <text x="580" y="128" text-anchor="middle" class="f-ink3 lbl">H3 인라인</text>
+      <line x1="590" y1="150" x2="700" y2="150" class="s-ink" stroke-width="2.5"/>
+      <text x="645" y="140" text-anchor="middle" class="f-ink3 mono lbl">0</text>
+      <text x="645" y="172" text-anchor="middle" class="f-water lbl">보호 — 끝배관 1단</text>
+      <line x1="700" y1="150" x2="860" y2="150" class="s-alert" stroke-width="2.5" stroke-dasharray="6 4"/>
+      <text x="780" y="140" text-anchor="middle" class="f-alert mono lbl">0</text>
+      <text x="780" y="172" text-anchor="middle" class="f-alert lbl">삭제</text>
+      <line x1="400" y1="150" x2="400" y2="240" class="s-alert" stroke-width="2.5" stroke-dasharray="6 4"/>
+      <text x="414" y="200" class="f-alert mono lbl">0</text>
+      <text x="414" y="236" class="f-alert lbl">헤드 없는 막다른 관 — 삭제</text>
+      <circle cx="220" cy="150" r="4" class="f-ink2"/><circle cx="400" cy="150" r="4" class="f-ink2"/>
+    </svg>
+    <figcaption>부하는 «최단경로가 지나가느냐»로만 셉니다. 헤드로 물을 나르지 않는 관은 도면에 그려져 있어도
+      수리계산 표에는 없습니다. 인라인 헤드의 막다른 쪽은 한 단만 남깁니다 — 없으면 헤드가 관 끝이 아니게 됩니다.</figcaption>
+  </figure>
+  <div class="caution"><p><strong>7-e 가 B1F 에서 24분을 먹습니다.</strong> 라운드마다 전체 노드를 다시 훑어 후보를 모으고
+    라운드 상한이 «노드 수 × 2» 라, 병합할 노드가 327 → 6,137 로 19배 늘자 시간은 수백 배가 됐습니다.
+    도면이 커서가 아니라 이 함수의 구조 때문이며, 직전에 합쳐진 노드의 이웃만 다시 보면 됩니다.</p></div>
+  <p class="where"><b>convert/planar.py</b> wet_from_sources · prune_dead_pipes · <b>convert/normalize.py</b> · <b>editor_core.py</b> cleanup_collinear_intermediate_nodes · Z 부여는 <b>convert/engine.py</b></p>
+</section>
+
+<hr class="divider">
+
+<!-- ═══════════════ 설계 ═══════════════ -->
+<section id="s8">
+  <p class="kicker">설계 · 부분 그래프</p>
+  <h2>최불리 corridor — 수리계산에 넣는 위상은 이것이다</h2>
+  <div class="io">
+    <div><span class="lab">들어감</span>평면 그래프 + 급수원 + 기준개수 K</div>
+    <div class="arrow">→</div>
+    <div><span class="lab">나옴</span>corridor 부분 그래프 · 간선마다 담당 헤드 수 · 앵커 · 최원 유하거리</div>
+  </div>
+  <div class="col">
+    <p>NFPC 103 의 기준개수 K 는 «하나의 설계구역 안에서 동시에 방수되는 인접 K개»입니다. 급수원에서
+      먼 순서로 K개를 뽑으면 도면 곳곳의 막다른 헤드가 섞입니다(B1F: 대각 95.9m 로 흩어짐). 그래서
+      <strong>앵커</strong>를 먼저 잡고 그 주변으로 뭉칩니다(30.3m).</p>
+  </div>
+<pre class="formula"><span class="c">후보 좁히기 — attachable_heads</span>
+  cand = 전개가 실제로 붙일 수 있는 헤드          <span class="c">빠진 수 dropped 는 반드시 화면에 — 배관이 끊겨 있다는 뜻</span>
+
+<span class="c">① 앵커 — 배관 거리로 가장 먼 헤드</span>
+  dist_S = Dijkstra(S, w(u,v) = |p_u − p_v|)
+  anchor = argmax_{h ∈ cand} dist_S(h)          far_m = dist_S(anchor)    <span class="c">최원 유하거리</span>
+
+<span class="c">② 설계면적 — 앵커에서 «배관 거리로» 가까운 K개 (유클리드 아님)</span>
+  dist_A = Dijkstra(anchor)
+  K = 가장 작은 dist_A 를 가진 헤드 K개  (anchor 포함)
+
+<span class="c">③ corridor 와 부하</span>
+  corridor = ∪_{h ∈ K} path_S(h)                <span class="c">급수원→헤드 최단경로의 합집합</span>
+  load(e)  = | { h ∈ K : e ∈ path_S(h) } |      <span class="c">별표1 이 최소 호칭경을 정하는 그 값</span>
+  max_load → 주배관 관경</pre>
+
+  <figure>
+    <svg viewBox="0 0 900 290" role="img" aria-label="급수원에서 배관 거리로 가장 먼 헤드가 앵커가 되고, 앵커에서 배관 거리로 가까운 K개가 설계면적이며, 그 헤드들을 급수원까지 잇는 최단경로의 합집합이 corridor다">
+      <text x="14" y="24" class="f-ink3 lbl">K = 4 · 굵은 선 = corridor · 숫자 = 담당 헤드 수</text>
+      <rect x="40" y="132" width="40" height="36" rx="3" class="f-surf2 s-rule" stroke-width="1"/>
+      <text x="60" y="155" text-anchor="middle" class="f-ink big">S</text>
+      <!-- 트렁크 -->
+      <line x1="80" y1="150" x2="200" y2="150" class="s-water" stroke-width="4"/>
+      <line x1="200" y1="150" x2="340" y2="150" class="s-water" stroke-width="4"/>
+      <line x1="340" y1="150" x2="480" y2="150" class="s-water" stroke-width="4"/>
+      <line x1="480" y1="150" x2="620" y2="150" class="s-water" stroke-width="4"/>
+      <line x1="620" y1="150" x2="760" y2="150" class="s-water" stroke-width="4"/>
+      <text x="140" y="140" text-anchor="middle" class="f-ink mono lbl">4</text>
+      <text x="270" y="140" text-anchor="middle" class="f-ink mono lbl">4</text>
+      <text x="410" y="140" text-anchor="middle" class="f-ink mono lbl">4</text>
+      <text x="550" y="140" text-anchor="middle" class="f-ink mono lbl">4</text>
+      <text x="690" y="140" text-anchor="middle" class="f-ink mono lbl">2</text>
+      <!-- 가지 (corridor 밖) -->
+      <line x1="200" y1="150" x2="200" y2="70" class="s-rule" stroke-width="2"/>
+      <line x1="200" y1="150" x2="200" y2="230" class="s-rule" stroke-width="2"/>
+      <line x1="340" y1="150" x2="340" y2="70" class="s-rule" stroke-width="2"/>
+      <line x1="340" y1="150" x2="340" y2="230" class="s-rule" stroke-width="2"/>
+      <line x1="480" y1="150" x2="480" y2="70" class="s-rule" stroke-width="2"/>
+      <line x1="480" y1="150" x2="480" y2="230" class="s-rule" stroke-width="2"/>
+      <!-- 가지 (corridor 안) -->
+      <line x1="620" y1="150" x2="620" y2="70" class="s-water" stroke-width="4"/>
+      <line x1="620" y1="150" x2="620" y2="230" class="s-water" stroke-width="4"/>
+      <line x1="760" y1="150" x2="760" y2="70" class="s-water" stroke-width="4"/>
+      <line x1="760" y1="150" x2="760" y2="230" class="s-water" stroke-width="4"/>
+      <text x="632" y="112" class="f-ink mono lbl">1</text>
+      <text x="632" y="196" class="f-ink mono lbl">1</text>
+      <text x="772" y="112" class="f-ink mono lbl">1</text>
+      <text x="772" y="196" class="f-ink mono lbl">1</text>
+      <!-- 헤드 -->
+      <circle cx="200" cy="60" r="9" class="f-none s-rule" stroke-width="1.5"/>
+      <circle cx="200" cy="240" r="9" class="f-none s-rule" stroke-width="1.5"/>
+      <circle cx="340" cy="60" r="9" class="f-none s-rule" stroke-width="1.5"/>
+      <circle cx="340" cy="240" r="9" class="f-none s-rule" stroke-width="1.5"/>
+      <circle cx="480" cy="60" r="9" class="f-none s-rule" stroke-width="1.5"/>
+      <circle cx="480" cy="240" r="9" class="f-none s-rule" stroke-width="1.5"/>
+      <circle cx="620" cy="60" r="9" class="f-water"/>
+      <circle cx="620" cy="240" r="9" class="f-water"/>
+      <circle cx="760" cy="240" r="9" class="f-water"/>
+      <circle cx="760" cy="60" r="11" class="f-water s-ink" stroke-width="2"/>
+      <text x="760" y="40" text-anchor="middle" class="f-ink big">앵커</text>
+      <text x="742" y="44" text-anchor="end" class="f-ink3 lbl">급수원에서 배관 거리로 가장 멂 →</text>
+      <text x="14" y="276" class="f-ink3 lbl">앵커에서 배관 거리로 가까운 순: 760↓ · 620↑ · 620↓ … 그다음은 480 인데 K=4 에서 끊긴다</text>
+    </svg>
+    <figcaption>«먼 순서 K개»와의 차이가 여기 있다. 유클리드로 가까워 보여도 다른 가지에 달린 헤드는 배관 거리로는 멀어 설계면적에 안 든다.
+      corridor 밖의 회색 배관은 표에 실리지 않고, 실린 배관은 부하로 관경이 정해진다.</figcaption>
+  </figure>
+
+  <h3>제한 전개 — corridor 를 표로</h3>
+  <div class="col">
+    <p>corridor 밖을 버리고, 평면에 없는 세로 구간을 규칙으로 얹습니다 — 헤드 접속관·가지 상승관은
+      도면에 그려진 선이 아니라 전개가 만든 선이라 <strong>역참조(<code>edge_ref</code>)가 없습니다</strong>.
+      그래서 관경 직접 입력이 그 배관을 가리킬 수 없고(BLOCKED §19), 관경은 담당 헤드 수로만 정해집니다.
+      도면에서 온 배관은 <code>edge_ref</code> 로 board 간선을 되짚어 관경 텍스트와 맞춥니다.</p>
+    <p>이 뒤는 위상이 아니라 값입니다 — 관경(<code>max(도면 텍스트, 별표1 최소)</code>), 부속, 5개 표, 그리고 .sdf / .kfp / .has 로의 치환.</p>
+  </div>
+  <p class="where"><b>design/worst.py</b> worst_k_heads · <b>design/restrict.py</b> attachable_heads · select_and_expand · expand_worst · 그다음 <b>design/bore.py</b> · fitting.py · tables.py · emit.py</p>
+</section>
+
+<hr class="divider">
+
+<!-- ═══════════════ 눈금 한 장 ═══════════════ -->
+<section>
+  <p class="kicker">눈금 한 장</p>
+  <h2>숫자는 전부 여기 있습니다</h2>
+  <div class="col"><p>«숫자 박제 금지»가 이 저장소의 원칙이라 눈금마다 실측 근거가 코드 주석에 있습니다. 바꿀 일이 생기면 그 주석부터 읽어야 합니다.</p></div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>단계</th><th>눈금</th><th>값</th><th>뜻</th><th>어디</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>SNAP</td><td class="n">30</td><td>이 안의 끝점은 같은 노드</td><td class="m">stage1.py</td></tr>
+        <tr><td>1</td><td>a1 평행 · 횡이탈 · 포개</td><td class="n">1° · 1(띠 50) · 1</td><td>겹쳐 그린 선 합치기</td><td class="m">DEFAULT_KNOBS</td></tr>
+        <tr><td>1</td><td>b1_touch</td><td class="n">15</td><td>끝이 몸통에 닿았다</td><td class="m">DEFAULT_KNOBS</td></tr>
+        <tr><td>1</td><td>너머 검사</td><td class="n">90 · 200 · 315 / 20° / 30</td><td>지나가는 관인지</td><td class="m">touch_tee_b1 · _cov_axis</td></tr>
+        <tr><td>1</td><td>헤드 틈 접착</td><td class="n">5° · 500 · 200</td><td>다른 색 토막 승격</td><td class="m">_HG_*</td></tr>
+        <tr><td>2</td><td>표시 반지름 상한</td><td class="n">300</td><td>접속표시로 볼 작은 호·원</td><td class="m">knobs small_r</td></tr>
+        <tr><td>2</td><td>ARM_CTR · ARM_RIM · HEAD_RIM</td><td class="n">5 · 12 · 50</td><td>팔이 «앉았다»</td><td class="m">flow.py</td></tr>
+        <tr><td>2</td><td>THRU_OFF · THRU_IN</td><td class="n">25 · 60</td><td>중심을 «지나간다»</td><td class="m">flow.py</td></tr>
+        <tr><td>2</td><td>규칙 A</td><td class="n">15° · 5</td><td>획과 평행한 스침 제외</td><td class="m">thru_arms</td></tr>
+        <tr><td>2</td><td>chord 가장자리</td><td class="n">min(0.45, 5/L)</td><td>중심이 «사이»</td><td class="m">_join_order</td></tr>
+        <tr><td>4</td><td>r1_cand · r1_lat_tol</td><td class="n">1,500 · 10</td><td>설명 있는 직선 틈</td><td class="m">DEFAULT_KNOBS</td></tr>
+        <tr><td>4</td><td>도착 · 계속</td><td class="n">8° · 30°</td><td>공선 도착 후 정지</td><td class="m">_arr_edge</td></tr>
+        <tr><td>5</td><td>r1_cover_slack</td><td class="n">150</td><td>원 밖으로 남는 길이</td><td class="m">join_by_head_cover</td></tr>
+        <tr><td>6</td><td>HEAD_TOUCH</td><td class="n">50</td><td>헤드에 «붙었다»</td><td class="m">head_nodes</td></tr>
+        <tr><td>6</td><td>SRC_SNAP</td><td class="n">2,500</td><td>급수원 스냅 한계</td><td class="m">water.py</td></tr>
+        <tr><td>변환</td><td>공선 · 대각 · 격자</td><td class="n">10 · 5° · 0.05 m</td><td>직선 복원</td><td class="m">planar.py</td></tr>
+        <tr><td>설계</td><td>REMOTE_K_DEFAULT</td><td class="n">30</td><td>기준개수</td><td class="m">worst.py</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section>
+  <p class="kicker">다시 한 줄로</p>
+  <h2>위상 복원은 다섯 규칙의 합이다</h2>
+  <div class="col">
+    <p><strong>선분을 그래프로 접는 규칙</strong>(SNAP·닿음) + <strong>표시가 허가한 자리에서만 잇는 규칙</strong>(팔·통과·순서) +
+      <strong>설명이 있는 틈만 잇는 규칙</strong> + <strong>물이 닿는 것만 남기는 규칙</strong> +
+      <strong>최불리 K 를 급수원까지 잇는 최단경로의 합집합</strong>.</p>
+    <p>다섯 어디에도 «추측»이 없습니다. 근거가 없는 자리는 이어 놓고 틀리는 대신 사람에게 묻고,
+      못 한 것은 세어서 보여 줍니다. 그것이 «소방설계의 배관망만큼의 연결관계»를 갖게 하는 방법입니다 —
+      연결이 많아서가 아니라, 연결마다 도면 위의 근거가 하나씩 있어서입니다.</p>
+  </div>
+  <footer>
+    근거 코드 <code>cad_project_editor_g/services/cad_import/</code> — pipeline/stage1.py · expand.py · flow.py · stage45.py · heads.py · water.py · user_net.py ·
+    convert/planar.py · normalize.py · engine.py · design/worst.py · restrict.py · bore.py · tables.py<br>
+    단계 이름과 번호는 <code>flow.py</code> 의 STAGE_NAME(2026-08-08 오너 확정) 그대로입니다. 3단계는 코드에서도 빈 목록입니다.
+  </footer>
+</section>
+
+</div>
+</body>
+</html>

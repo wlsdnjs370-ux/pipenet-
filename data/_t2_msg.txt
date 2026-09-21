@@ -1,0 +1,40 @@
+SLF 에 없는 펌프를 조용히 참조하지 않는다 — 곡선을 주입하거나 미확정으로 올린다
+
+작업 2 (FNCADnet 수정 작업 프롬프트 §2). HSP 펌프 라이저의 <Library-pump> 기본
+이름 "SP_162M_2900LPM" 은 현재 표준 SLF(assets/2. Pipenet_hand_FX28.slf) 의
+Pump-section 에 없다 — 실재하는 이름은 TEST1 / TEST11 / SP PUMP /
+OP_SP_PUMP_NEW 뿐이다. 그런데 _harden_slf_for_combined 는 참조를 못 찾아도
+조용히 continue 했다. 그러면 PIPENET 이 성능곡선 없이 양정을 스스로 선정하고,
+살 수 없는 펌프로 나온 계산서를 출력물만 봐서는 구별할 수 없다.
+
+- core/remote30_constants.py: DEFAULT_PUMP_LIBRARY_NAME 신설. 이름이 SLF 에
+  실재해야 한다는 근거와, 사본마다 달라서 방출 시점에 대조해야 한다는 사실을
+  주석으로 남긴다. 서버·템플릿·JS 폴백의 하드코딩 3곳을 이 상수로 통일.
+
+- ZoneSpec.pump_rated_q_lpm / pump_rated_h_m 추가 (기본값 없음, None).
+  값이 있으면 _harden_slf_for_combined 가 NFPC 3점 곡선(체절 140% / 정격 /
+  150% 에서 65%)으로 Pump-definition 을 만들어 주입한다. 없으면 주입하지
+  않는다 — 곡선을 지어내면 PIPENET 이 임의 선정하는 것과 다를 바 없다.
+
+- _harden_slf_for_combined 가 미해결 참조 목록을 돌려준다. 파일 없음·파싱
+  실패도 빈 리스트가 아니라 "대조 불가" 로 담는다. emit_full_sdf 는 보정 뒤
+  (SLF 사본이 갱신된 뒤) 대조해 ctx.note_emit_issue 로 경고 블록에 올린다.
+  방출은 막지 않는다 — 기존 미확정 관행과 같다.
+
+- ProjectContext.emit_findings: 방출 대조에서 나온 미확정. 입력이 아니라
+  산출물을 대조해 나온 것이라 to_dict 에 직렬화하지 않는다. warning_lines()
+  와 unconfirmed() 의 길이 일치 불변량은 유지.
+
+- 화면: HSP 구역에 정격유량(L/min)·정격양정(m) 입력칸 + 안내 문구. 빈칸은
+  전송하지 않는다 — 0 으로 때우면 곡선이 있는 척하게 된다. 방출 후 갱신된
+  경고 목록을 SSE 로 재송신.
+
+검증
+- tests/test_pump_library.py 7건 신설: 기본 이름이 실제 표준 SLF 에 없음을
+  파싱으로 확인, 곡선 주입, 3점 비율(PUMP_SHUTOFF/OVERLOAD_HEAD_RATIO),
+  정격값 없을 때 미확정 상승, 펌프 2대여도 한 줄만, 폼/JSON 왕복 보존,
+  빈칸은 0 이 아니라 None.
+- 브라우저 런타임(Chromium) 검증: 입력칸 표시, HSP 선택 시 노출, payload
+  조건부 첨부, Jinja 렌더된 펌프 이름/JS 폴백, JS 오류 없음.
+- SDF/SLF 바이트 불변: 정격값이 없으면 _pump_fan 이 rated_* 를 싣지 않고
+  주입도 하지 않는다. 골든 재생성 없음.

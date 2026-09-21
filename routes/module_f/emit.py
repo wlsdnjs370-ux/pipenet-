@@ -33,12 +33,16 @@ from routes.module_f.export_compat import prepare_sdf_export, emit_physical_kfp
 def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
                 stem: str = "module_f_merged",
                 coord_scale: float = 1.0,
-                iso_nodes: list | None = None) -> dict:
+                iso_nodes: list | None = None,
+                display_reference_labels: list[str] | None = None) -> dict:
     """결합망 하나 → {sdf, slf, kfp, has, zip, warnings}. 값은 절대경로.
 
     `combined` 는 `stitch_riser_and_heads` 산출(`CombinedTables`)이다.
 
     `iso_nodes` 를 주면 **아이소매트릭 좌표 한 벌**을 더 낸다(`<stem>_iso.*`).
+    `display_reference_labels`는 평면도 절점이다. 지정하면 평면 단독과 같은
+    표시 배율을 전체 부위에 적용하며 노즐 간격도 그 평면만 기준으로 한다.
+    길이·표고 및 KFP 실제 좌표는 변경하지 않는다.
     사용자 요청(2026-09-08: 「저번처럼 나오던 아이소매트릭 형태 위상으로
     .sdf 파일이 출력되었으면 좋겠는데, 그거 되게 잘 그려졌어서」) — 모듈 A 의
     통합이 `combined_<id>_iso.sdf` 를 함께 내는 것과 같은 규약이다.
@@ -55,10 +59,22 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
     out.mkdir(parents=True, exist_ok=True)
     warnings: list[str] = []
 
+    # Use the plan's unprojected span, exactly as the standalone design writer
+    # does. All three parts share this ONE scale; no independent stretching or
+    # joint-moving is allowed. The iso view gets the same units/mm as the plan.
+    display_options = {}
+    if display_reference_labels is not None:
+        from src.pipenet_converter.render.framing import reference_display_scale
+        at = {str(n['label']): n for n in combined.nodes}
+        if not display_reference_labels or set(display_reference_labels) - at.keys():
+            raise ValueError("통합 표시 배율의 평면도 기준 절점이 없습니다.")
+        display_options['display_scale'] = reference_display_scale(
+            (float(at[k]['x']), float(at[k]['y'])) for k in display_reference_labels)
+
     # ① S750 — 권위 있는 원본.
     sdf = out / f"{stem}.sdf"
-    emit_full_sdf(combined, sdf, ctx=ProjectContext.titled(title))
-    warnings.extend(prepare_sdf_export(sdf))
+    emit_full_sdf(combined, sdf, ctx=ProjectContext.titled(title), **display_options)
+    warnings.extend(prepare_sdf_export(sdf, nozzle_reference_labels=display_reference_labels))
 
     # ② 호칭경 대조 자료 — emit_full_sdf 가 같은 폴더에 함께 낸다.
     #    PIPENET 은 .sdf 와 .slf 가 같은 폴더에 있어야 내경을 찾는다.
@@ -110,8 +126,9 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
         iso_sdf = out / f"{iso_stem}.sdf"
         try:
             emit_full_sdf(iso_tbl, iso_sdf,
-                          ctx=ProjectContext.titled(f"{title} (아이소)"))
-            warnings.extend(prepare_sdf_export(iso_sdf))
+                          ctx=ProjectContext.titled(f"{title} (아이소)"), **display_options)
+            warnings.extend(prepare_sdf_export(iso_sdf,
+                                              nozzle_reference_labels=display_reference_labels))
             out_files["sdf_iso"] = str(iso_sdf)
             iso_slf = out / f"{iso_stem}.slf"
             if iso_slf.is_file():

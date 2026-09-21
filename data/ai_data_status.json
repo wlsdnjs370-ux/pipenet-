@@ -1,0 +1,57 @@
+{
+  "updated_at": "2026-04-28 13:25",
+  "modules": [
+    {
+      "module": "triangle_head_detection",
+      "status": "trained_and_deployed",
+      "local_data": {
+        "train_images": 700,
+        "val_images": 140,
+        "template_images": 5,
+        "dxf_files_available": 17
+      },
+      "weights": "models/triangle_head_yolo_ai/weights/best.pt"
+    },
+    {
+      "module": "valve_detection",
+      "status": "missing_labeled_data",
+      "required_minimum": {
+        "labeled_instances": 1500,
+        "major_classes": 5
+      }
+    },
+    {
+      "module": "ocr_design_labels",
+      "status": "synthetic_closed_vocab_trained",
+      "notes": [
+        "closed vocabulary classifier trained on synthetic dataset",
+        "paddleocr package not installed, so open-vocabulary OCR is still unavailable"
+      ],
+      "local_data": {
+        "vocab_size": 67,
+        "train_per_class": 180,
+        "val_per_class": 40
+      },
+      "weights": "models/closed_vocab_ocr/model.pt"
+    },
+    {
+      "module": "room_zone_segmentation",
+      "status": "missing_mask_dataset",
+      "required_minimum": {
+        "annotated_plans": 200
+      }
+    },
+    {
+      "module": "head_placement_learning",
+      "status": "geometry_inputs_exist_but_targets_missing"
+    },
+    {
+      "module": "pipe_routing_learning",
+      "status": "historical_supervision_missing"
+    },
+    {
+      "module": "anomaly_detection",
+      "status": "feature_source_exists_training_corpus_missing"
+    }
+  ]
+}

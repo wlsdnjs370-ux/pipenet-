@@ -1,0 +1,3 @@
+[1] 손질 열기         0.48s
+[2] convert_payload    0.01s
+[3] ensure_planar + convert_to_kfp — 프로파일 시작

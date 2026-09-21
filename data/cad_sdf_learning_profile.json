@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "updated_at": "2026-04-14 19:02:25",
+  "source_sdf": "data\\uploads\\1-1._201_3F___-RV03_NEW.sdf",
+  "source_cad": "C:\\Users\\admin\\Desktop\\H-100 단위세대 소방평면도_도면하나.dxf",
+  "method": "sample_pair_layer_weighting",
+  "positive_keywords": [
+    "SP",
+    "소화",
+    "배관",
+    "후렉",
+    "SPRINKLER",
+    "FIRE"
+  ],
+  "positive_layers": [
+    "-소화(SP가지관)",
+    "-소화(배관-SP 2차)",
+    "SP 배관  변경",
+    "SP 후렉시블"
+  ],
+  "suppressed_layers": [
+    "0",
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+  ],
+  "layer_stats": {
+    "-소화(SP가지관)": {
+      "entity_count": 174,
+      "total_length": 248820.676,
+      "similar_count": 36
+    },
+    "-소화(배관-SP 2차)": {
+      "entity_count": 24,
+      "total_length": 47274.128,
+      "similar_count": 7
+    },
+    "0": {
+      "entity_count": 198,
+      "total_length": 181288.812,
+      "similar_count": 0
+    },
+    "L1": {
+      "entity_count": 41,
+      "total_length": 235864.43,
+      "similar_count": 0
+    },
+    "L2": {
+      "entity_count": 60,
+      "total_length": 20873.333,
+      "similar_count": 0
+    },
+    "L3": {
+      "entity_count": 15,
+      "total_length": 4157.01,
+      "similar_count": 0
+    },
+    "L4": {
+      "entity_count": 19398,
+      "total_length": 4410126.408,
+      "similar_count": 2
+    },
+    "SP 배관  변경": {
+      "entity_count": 5,
+      "total_length": 668.0,
+      "similar_count": 0
+    },
+    "SP 후렉시블": {
+      "entity_count": 85,
+      "total_length": 57271.255,
+      "similar_count": 7
+    }
+  },
+  "notes": [
+    "H-100 단위세대 소방평면도_도면하나.dxf와 201동 3F SDF 샘플에서 추출한 CAD-SDF 대조 가중치입니다.",
+    "소방/SP/배관/후렉 계열 레이어를 우선 배관 후보로 보고, L 계열 대량 건축선은 배경 잡음으로 낮게 평가합니다.",
+    "일반 AI 모델 학습이 아니라 샘플 기반 휴리스틱 학습 프로필입니다. 여러 라벨링 샘플이 누적되면 세그멘테이션 모델 학습으로 확장할 수 있습니다."
+  ]
+}

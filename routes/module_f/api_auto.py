@@ -23,11 +23,11 @@ from routes.module_f.auto import detect_head_candidates, preview_view, run_auto
 from routes.module_f.common import REMOTE_K_DEFAULT, _check_xy, _fail
 from routes.module_f.jobs import _job_running, _run_job, _sess, route_session
 from routes.module_f.slots import _slot_active
+from src.pipenet_converter.graph.regions import MAX_ZONES, normalize_zones
 
 
 # 영역 개수 상한 — `HeadRegion.contains` 는 사각형마다 훑으므로 헤드 × 영역으로
 # 늘어난다. 손으로 그리는 것이라 실제로는 몇 개면 충분하다.
-MAX_ZONES = 64
 # 화면에 그리는 헤드 후보 상한. 넘으면 «조용히» 자르지 않고 몇 개를 뺐는지 싣는다.
 HEAD_PREVIEW_CAP = 4000
 
@@ -81,7 +81,7 @@ def register(app):
             #   제 상태를 잃는데, 서버는 그대로 들고 있다 — 개수만 주면 «영역
             #   3곳» 이라 적히면서 캔버스에는 아무것도 안 그려져, 지워진 줄 알고
             #   다시 그리게 된다.
-            "zones": [list(z) for z in (sess.get("auto_zones") or ())],
+            "zones": normalize_zones(sess.get("auto_zones") or []),
             # 사람이 「배관으로 취급」이라 찍은 묶음 — 슬롯을 오갔다 와도 되살린다.
             "pipe_layers": list(sess.get("auto_pipe_layers") or ()),
             "k": int(sess.get("auto_k") or REMOTE_K_DEFAULT),
@@ -108,16 +108,10 @@ def register(app):
     @route_session(_need_auto, post=True)
     def module_f_auto_zones(sess, body):
         """헤드 영역 — anchored 선정의 필수 입력(`head_region`)."""
-        raw = body.get("zones") or []
-        if len(raw) > MAX_ZONES:
-            return _fail(f"영역이 너무 많습니다: {len(raw)}곳 "
-                         f"(최대 {MAX_ZONES}). 넓은 사각형 하나로 묶으세요.")
         try:
-            rects = [[float(v) for v in r[:4]] for r in raw]
-        except (TypeError, ValueError, IndexError):
-            return _fail("영역 좌표가 올바르지 않습니다 ([[x0,y0,x1,y1], …]).")
-        if any(len(r) != 4 for r in rects):
-            return _fail("영역은 [x0,y0,x1,y1] 네 값이어야 합니다.")
+            rects = normalize_zones(body.get("zones"))
+        except ValueError as exc:
+            return _fail(str(exc))
         sess["auto_zones"] = rects
         return jsonify({"ok": True, "zones": len(rects)})
 
@@ -266,6 +260,9 @@ def register(app):
                            project_title=f"모듈 F 자동 — {sess.get('key') or ''}",
                            progress_cb=lambda f, m: print(f"[자동] {m}"))
             sess["auto"] = got
+            from src.pipenet_converter.graph.fitting_policy import without_straight_tees
+            got["tables"].fittings = without_straight_tees(got["tables"].fittings)
+            got["summary"]["fittings"] = len(got["tables"].fittings)
             # ★수동 경로와 같은 자리에 놓는다 — 하류가 두 길을 구분하지 않는다.
             #   `got` 은 G 의 제한전개 산출이라 자동 경로엔 없다. 빈 dict 를 두면
             #   미리보기의 담당 헤드 수가 0 으로 떨어질 뿐 나머지는 그대로 돈다.

@@ -137,13 +137,16 @@ def test_기준점을_이음매로_표시한다():
     assert [n["label"] for n in marked] == ["10"]
 
 
-def test_두_도면을_잇는_배관은_이음매로_표시된다():
+def test_공통절점에_닿아도_원본배관의_소속이_유지된다():
     c = _client()
     sid, sess = _sid(c)
     sess["merged"] = _merge()
     v = c.get(f"/api/module-f/merge/preview?sid={sid}").get_json()["view"]
-    seam = [p for p in v["pipes"] if p["part"] == "seam"]
-    assert seam, "이음매가 하나도 없다 — 두 망이 안 붙었다는 뜻이다"
+    boundary = [p for p in v["pipes"] if p["boundary"]]
+    assert boundary
+    assert all(p['part'] in {'plan', 'system', 'machineroom'} for p in boundary)
+    assert all(p['key'] == ['sys', p['label']] for p in boundary if p['part'] == 'system')
+    assert not any(p['part'] == 'seam' for p in v['pipes'])
 
 
 def test_아이소는_보기_전용이고_기본이_아니다():

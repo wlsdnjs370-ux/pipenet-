@@ -124,6 +124,7 @@ def load_existing(key, board, out_dir=None):
         with open(p_spec, encoding="utf-8") as f:
             sp = json.load(f)
         board.mat = [tuple(t) for t in sp.get("material_picks") or []]
+        board.head_symbol_profile = sp.get("head_symbol_profile", "")
         board.heads = heads_from_spec(sp)
         for h in board.heads:
             h.pop("mark_bundle", None)

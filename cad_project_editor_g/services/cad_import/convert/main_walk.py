@@ -36,8 +36,15 @@ def is_open(arcs, ang):
     return drawn
 
 
-def sit_arcs(xy, ho, sit_r):
-    """호 → 노드. 한 점에 여러 호를 모은다."""
+def sit_arcs(xy, ho, sit_r, degree=None, tie_m=0.03):
+    """호 → 노드. 한 점에 여러 호를 모은다.
+
+    ★같은 자리에 노드가 둘 이상 겹치면(교차점의 갈래 노드 + 그 자리의 통과 노드 —
+      B1F 실측: 괄호 호 346자리 중 195자리가 그렇다) 접속이 많은 쪽에 앉힌다.
+      거리로만 고르면 «어느 것이 먼저 나오나» 에 따라 갈래 노드를 놓치고, 그러면
+      walk_main 이 그 호를 「접속 2개 이하 — 통과」로 버려 가지가 안 올라간다.
+      `degree` 를 안 주면 종전대로 거리만 본다.
+    """
     node_arcs = defaultdict(list)
     for sp in ho:
         cx, cy = float(sp["cx"]), float(sp["cy"])
@@ -46,7 +53,17 @@ def sit_arcs(xy, ho, sit_r):
         best = None
         for nid, (x, y) in xy.items():
             d = math.hypot(x - cx, y - cy)
-            if d <= lim and (best is None or d < best[0]):
+            if d > lim:
+                continue
+            if best is None:
+                best = (d, nid)
+                continue
+            if degree is not None and abs(d - best[0]) <= tie_m:
+                # 같은 자리 — 접속이 많은 노드(갈래)가 이긴다. 같으면 가까운 쪽.
+                if (int(degree.get(nid, 0)), -d) > (int(degree.get(best[1], 0)), -best[0]):
+                    best = (d, nid)
+                continue
+            if d < best[0]:
                 best = (d, nid)
         if best is not None:
             node_arcs[best[1]].append(sp)
@@ -76,8 +93,13 @@ def snap_seed(xy, adj, src_xy, snap):
     return (best[1], best[2])
 
 
-def walk_main(xy, adj, node_arcs, seed):
-    """메인 노드·가지 첫 간선. 열린 곳으로 나가지 않는다."""
+def walk_main(xy, adj, node_arcs, seed, degree=None):
+    """메인 노드·가지 첫 간선. 열린 곳으로 나가지 않는다.
+
+    `degree` : {노드: 지우기 전 배관망의 접속 수}. 회랑(최불리 전개)은 갈래를
+    잘라내 교차점이 접속 2개로 보이지만 건물에는 그대로 티가 있다 — 그 노드의
+    호는 「메인 위 기호」가 아니라 갈래 표시다. 없으면 지금 접속 수를 쓴다.
+    """
     main_n, main_e, branch_e = set(), set(), set()
     seen = set()
     todo = [(seed[0], seed[1]), (seed[1], seed[0])]
@@ -96,7 +118,8 @@ def walk_main(xy, adj, node_arcs, seed):
         main_n.add(u)
         nxt = [v for v in adj.get(u, ()) if v != prev]
         arcs = node_arcs.get(u) or ()
-        if len(adj.get(u, ())) <= 2:
+        deg_u = int((degree or {}).get(u, len(adj.get(u, ()))))
+        if max(deg_u, len(adj.get(u, ()))) <= 2:
             # 접속 배관 2 이하면 갈래가 아니라 메인 위 기호 — 통과 [오너 2026-08-19]
             arcs = ()
         ux, uy = xy[u]

@@ -1,14 +1,15 @@
 "use strict";
 (function () {
   const $ = (id) => document.getElementById(id);
+  const Regions = window.ModuleFRegions;
   const PICK_PX = 10;                       // 모듈 E 의 pick.board.PICK_PX 와 같은 눈금
 
   const S = {
     sid: null, key: null, stage: "open",
     slot: "plan",                           // [H-0] 활성 도면 슬롯 (S650)
-    zones: [],                              // 최불리 후보를 가둘 사각형 (A 의 zones)
+    zones: [],                              // 사각형 또는 실제 자유곡선 경계(CAD mm)
     refCounts: [],                          // NFTC 103 표 2.1.1.1 (서버가 준다)
-    boreColor: true,                        // 관경 근거로 배관 색 나누기
+    boreColor: false,                       // 기본은 손질 최불리망과 같은 흰색. 근거 색은 선택 사항
     // [H-2 · H-3] 계통도·기계실이 찍는 두 점 · 무엇을 찍는 중인지
     sub: { picks: [null, null], arm: null, summary: null, preview: null },
     merge: null,                            // [H-5] 통합 상태 한 장
@@ -42,6 +43,7 @@
 
   // ── 캔버스 기본기 ───────────────────────────────────────────────
   const cv = $("cv");
+  cv.tabIndex = 0;
   const ctx = cv.getContext("2d");
   let canvasSize = { w: 1, h: 1 };
   const viewMemory = new Map();
@@ -224,6 +226,16 @@
   let drag = null;
   // 영역 지정 드래그 — 켜져 있을 때만 왼쪽 버튼을 가로챈다(패닝은 그대로).
   let zoneDrag = null;
+  function cancelZoneGesture() { zoneDrag = null; draw(); }
+  window.addEventListener("blur", cancelZoneGesture);
+  window.addEventListener("keydown", e => {
+    if (e.key === "Escape" && zoneDrag) {
+      suppressClickUntil = performance.now() + 250;
+      cancelZoneGesture(); e.preventDefault();
+      say("그리던 영역을 취소했습니다.");
+    }
+  });
+  for (const id of ["ed-zone-shape", "au-zone-shape"]) $(id).onchange = cancelZoneGesture;
 
   /** 지금 캔버스가 «영역 도구» 것인가. 한 곳에서만 판정한다. */
   function zoneArmed() {
@@ -243,8 +255,11 @@
     }
     const armed = zoneArmed();
     if (e.button === 0 && !e.shiftKey && armed) {
+      cv.focus({preventScroll:true});
+      const shape = $(S.stage === "edit" ? "ed-zone-shape" : "au-zone-shape").value;
       zoneDrag = { x0: wx(e.offsetX), y0: wy(e.offsetY),
-                   x1: wx(e.offsetX), y1: wy(e.offsetY) };
+                   x1: wx(e.offsetX), y1: wy(e.offsetY), shape, stage: S.stage,
+                   points: [[wx(e.offsetX), wy(e.offsetY)]] };
       e.preventDefault();
       return;
     }
@@ -260,6 +275,12 @@
     if (zoneDrag) {
       zoneDrag.x1 = wx(e.offsetX);
       zoneDrag.y1 = wy(e.offsetY);
+      if (zoneDrag.shape === "lasso") {
+        const last = zoneDrag.points.at(-1);
+        if (Math.hypot(zoneDrag.x1-last[0],zoneDrag.y1-last[1])*S.view.scale >= 2)
+          zoneDrag.points.push([zoneDrag.x1,zoneDrag.y1]);
+        if (zoneDrag.points.length > 12000) { cancelZoneGesture(); say("영역이 너무 복잡합니다. 다시 그려주세요.", "warn"); }
+      }
       draw();
       return;
     }
@@ -275,11 +296,14 @@
     S.view.oy = drag.oy + (e.offsetY - drag.y) / S.view.scale;
     draw();
   });
-  window.addEventListener("mouseup", () => {
+  window.addEventListener("mouseup", (e) => {
     drag = null;
     if (zoneDrag) {
+      if (e.button !== 0) return;
       const z = zoneDrag;
       zoneDrag = null;
+      suppressClickUntil = performance.now() + 250;
+      if (z.stage !== S.stage || !zoneArmed()) { draw(); return; }
       // 손이 떨려 생긴 점은 영역이 아니다 — 화면에서 8px 넘게 끈 것만 받는다.
       const px = Math.abs(z.x1 - z.x0) * S.view.scale;
       const py = Math.abs(z.y1 - z.y0) * S.view.scale;
@@ -287,14 +311,22 @@
         // 그냥 «톡» 누른 것이다. 영역 도구가 켜져 있으면 그 클릭은 손질로
         // 안 간다(위 click 가지) — 아무 일도 안 일어난 것처럼 보이므로
         // 무엇이 켜져 있는지 한 줄 말해 준다.
-        say("영역 그리기가 켜져 있습니다 — 캔버스를 «끌어» 사각형을 그리세요."
+        if (z.shape === "lasso" && z.points.length >= 3) { /* 닫힌 곡선의 시작·끝은 가까울 수 있다. */ }
+        else {
+        say("영역 그리기가 켜져 있습니다 — 캔버스를 «끌어» 둘레를 그리세요."
             + " (손질 클릭을 하려면 체크를 끄세요)", "warn");
         draw();
         return;
+        }
       }
+      let zone;
+      try {
+        zone = z.shape === "lasso" ? Regions.finish(z.points, S.view.scale)
+          : [Math.min(z.x0,z.x1),Math.min(z.y0,z.y1),Math.max(z.x0,z.x1),Math.max(z.y0,z.y1)];
+        if (S.zones.length >= 64) throw new Error("영역은 최대 64곳까지 그릴 수 있습니다.");
+      } catch (err) { say(err.message, "warn"); draw(); return; }
       markUndo("영역 그리기");
-      S.zones.push([Math.min(z.x0, z.x1), Math.min(z.y0, z.y1),
-                    Math.max(z.x0, z.x1), Math.max(z.y0, z.y1)]);
+      S.zones.push(zone);
       // 자동 경로는 영역이 서버의 필수 입력이라 곧바로 올린다(anchored 의
       // head_region). 수동은 최불리 선정을 누를 때 함께 보낸다.
       if (S.stage === "auto") { pushAutoZones(); draw(); }
@@ -391,7 +423,7 @@
 
   function snapAuto() {
     return { alarm: S.autoAlarm ? S.autoAlarm.slice() : null,
-             zones: S.zones.map((z) => z.slice()) };
+             zones: Regions.clone(S.zones) };
   }
   function snapSub() {
     return { picks: S.sub.picks.map((p) => (p ? p.slice() : null)) };
@@ -418,7 +450,11 @@
     // 엔진이 기록을 들고 있는 단계는 그 단추를 그대로 누른다 — 여기서 API 를
     // 따로 부르면 단추와 단축키의 동작이 갈라진다.
     if (S.stage === "pick") { $("pk-undo").click(); return; }
-    if (S.stage === "edit") { $("ed-undo").click(); return; }
+    if (S.stage === "edit") {
+      if (zoneDrag) { cancelZoneGesture(); return; }
+      if (zoneArmed() && S.zones.length) { $("ed-zone-undo").click(); return; }
+      $("ed-undo").click(); return;
+    }
 
     const i = [...S.undo].reverse().findIndex((u) => u.stage === S.stage);
     if (i < 0) { say("이 단계에는 되돌릴 것이 없습니다.", "warn"); return; }
@@ -426,7 +462,7 @@
 
     if (item.stage === "auto") {
       S.autoAlarm = item.snap.alarm ? item.snap.alarm.slice() : null;
-      S.zones = item.snap.zones.map((z) => z.slice());
+      S.zones = Regions.clone(item.snap.zones);
       S.autoArm = null;
       $("au-anchor").classList.remove("on");
       try {
@@ -651,6 +687,7 @@
       //   설계 좌표를 덧그리면 엉뚱한 데 뜬다 — 설계 뷰를 그릴 때만 그린다.
       if (!(planUnderlayOn() && S.edit) && !(designMarksOn() && S.edit)) {
         drawInspectSel();
+        window.moduleFInspection?.draw();  // All fittings stay visible, even without selection.
       }
       drawFocus();      // [F-10f] 「확인할 것」에서 고른 자리를 마지막에 덧그린다
     }
@@ -659,6 +696,7 @@
       if (($("mg-under") || {}).checked) drawMergeUnderlay();
       withDim(drawMerged);           // [§3-2] 고른 것이 있으면 망을 흐리게
       drawMergeSel();                // 그 위에 빨강 — 종전에는 그리는 줄이 없었다
+      window.moduleFMergeInspection?.draw();
     }
     else if ((S.stage === "edit" || S.stage === "conv") && S.edit) {
       // [§3-1 D5] 격자가 먼저다 — 배경 도면보다도 아래에 깐다.
@@ -875,6 +913,15 @@
     pulseRAF = requestAnimationFrame(step);
   }
 
+  /** 손질·수리계산이 공유하는 최불리 배관의 굵기와 밝기(표시 전용). */
+  function corridorAppearance(load, maxLoad, pulse = 0) {
+    const ratio = Math.max(0, Math.min(1, (load || 1) / (maxLoad || 1)));
+    return {
+      alpha: Math.min(1, 0.5 + 0.5 * ratio + 0.35 * pulse),
+      width: (1.4 + 3.6 * Math.sqrt(ratio)) * (1 + 0.45 * pulse),
+    };
+  }
+
   function drawEdit() {
     const e = S.edit;
     // 최불리를 고른 뒤에는 «그것만» 보고 싶을 때가 있다. 표시만 바꾼다 —
@@ -884,7 +931,7 @@
     ctx.lineWidth = 1.4;
     if (wv !== "only") {
       ctx.save();
-      if (wv === "dim") {
+      if (wv === "dim" || e.flow_report) {
         ctx.globalAlpha = 0.22;
         ctx.lineWidth = 0.6;
         ctx.setLineDash([2, 5]);
@@ -1001,9 +1048,9 @@
       ctx.strokeStyle = "#ffffff";
       ctx.lineCap = "round";
       for (const s of e.worst.corridor) {
-        const load = s[4] || 1;
-        ctx.globalAlpha = Math.min(1, (0.5 + 0.5 * (load / wm)) + 0.35 * p);
-        ctx.lineWidth = (1.4 + 3.6 * Math.sqrt(load / wm)) * (1 + 0.45 * p);
+        const style = corridorAppearance(s[4], wm, p);
+        ctx.globalAlpha = style.alpha;
+        ctx.lineWidth = style.width;
         ctx.beginPath();
         ctx.moveTo(sx(s[0]), sy(s[1]));
         ctx.lineTo(sx(s[2]), sy(s[3]));
@@ -2024,7 +2071,8 @@
   // 그때는 사람이 직접 가두는 수밖에 없다.
   function drawZones() {
     const live = zoneDrag
-      ? [[Math.min(zoneDrag.x0, zoneDrag.x1), Math.min(zoneDrag.y0, zoneDrag.y1),
+      ? [zoneDrag.shape === "lasso" ? {type:"polygon",points:zoneDrag.points}
+        : [Math.min(zoneDrag.x0, zoneDrag.x1), Math.min(zoneDrag.y0, zoneDrag.y1),
           Math.max(zoneDrag.x0, zoneDrag.x1), Math.max(zoneDrag.y0, zoneDrag.y1)]]
       : [];
     const all = S.zones.concat(live);
@@ -2032,15 +2080,16 @@
     ctx.save();
     ctx.lineWidth = 1.5;
     for (let i = 0; i < all.length; i++) {
-      const [x0, y0, x1, y1] = all[i];
-      const px = sx(x0), py = sy(y1);
-      const w = (x1 - x0) * S.view.scale, h = (y1 - y0) * S.view.scale;
+      const ps = Regions.points(all[i]);
+      if (!ps.length) continue;
+      const px = sx(Math.min(...ps.map(p=>p[0]))), py = sy(Math.max(...ps.map(p=>p[1])));
       const live_i = i >= S.zones.length;
       ctx.strokeStyle = live_i ? "#facc15" : "#38bdf8";
       ctx.setLineDash(live_i ? [6, 4] : []);
       ctx.fillStyle = live_i ? "rgba(250,204,21,.10)" : "rgba(56,189,248,.10)";
-      ctx.fillRect(px, py, w, h);
-      ctx.strokeRect(px, py, w, h);
+      ctx.beginPath();
+      ps.forEach((p,j)=>j?ctx.lineTo(sx(p[0]),sy(p[1])):ctx.moveTo(sx(p[0]),sy(p[1])));
+      ctx.closePath(); ctx.fill("evenodd"); ctx.stroke();
       if (!live_i) {
         ctx.fillStyle = "#38bdf8";
         ctx.font = "11px sans-serif";
@@ -2084,7 +2133,7 @@
     let n = 0;
     for (const h of hs) {
       for (const z of S.zones) {
-        if (h[0] >= z[0] && h[0] <= z[2] && h[1] >= z[1] && h[1] <= z[3]) {
+        if (Regions.contains(z,h)) {
           n++;
           break;
         }
@@ -2133,9 +2182,8 @@
     if (!S.zones.length) { box.textContent = "영역 없음 · 도면 전체"; return; }
     let html = "";
     for (let i = 0; i < S.zones.length; i++) {
-      const [x0, y0, x1, y1] = S.zones[i];
       html += kv(`영역 ${i + 1}`,
-        `${(x1 - x0).toFixed(0)} × ${(y1 - y0).toFixed(0)} mm`);
+        `${Array.isArray(S.zones[i]) ? "사각형" : "자유곡선"} · ${(Regions.area(S.zones[i])/1e6).toFixed(2)} ㎡`);
     }
     box.innerHTML = html;
   }
@@ -2153,12 +2201,17 @@
    *  다른 말을 하는 일이 없다. 「자유롭게 영역을 수정하면서 영역에 따라
    *  최불리를 선정」이 그대로 된다.
    */
+  let zoneWrite = Promise.resolve();
   async function zonesTouched(what) {
     renderZones();
     draw();
-    if (!(S.edit && S.edit.worst)) return;
+    const hadWorst = !!S.edit?.worst;
+    const body = {sid:S.sid,zones:Regions.clone(S.zones)};
+    const write = zoneWrite.catch(()=>{}).then(()=>post("/api/module-f/edit/zones",body));
+    zoneWrite = write;
     try {
-      const d = await post("/api/module-f/edit/worst-clear", { sid: S.sid });
+      const d = await write;
+      if (S.sid !== body.sid || S.slot !== "plan") return;
       setEdit(d.state);
       renderEdit();
       renderBlocked(null);
@@ -2166,7 +2219,7 @@
       renderWorstError(null);
       $("cv-worst-kfp").checked = false;
       draw();
-      say(`${what} — 이전 최불리 선정을 지웠습니다.`
+      say(`${what}${hadWorst ? " — 이전 최불리 선정을 지웠습니다." : "."}`
         + ` 지금 영역 ${S.zones.length}곳 · 「최불리 선정」을 다시 누르세요.`,
           "warn");
     } catch (err) { say(err.message, "err"); }
@@ -2322,6 +2375,7 @@
     $("sub-clean-row").classList.toggle("hidden", !sp.clean);
     $("sub-ceiling-row").classList.toggle("hidden", !sp.ceiling);
     $("sub-elevation-row").classList.toggle("hidden", S.slot !== "system");
+    $("sub-floor-height-row").classList.toggle("hidden", S.slot !== "system");
     renderSubPicks();
   }
 
@@ -2503,7 +2557,16 @@
     const sp = subSpec();
     const body = { sid: S.sid,
                    snap_tolerance_mm: Number($("sub-snap").value || 2500) };
-    if (S.slot === "system") body.elevation_mode = $("sub-elevation-mode").value;
+    if (S.slot === "system") {
+      body.elevation_mode = $("sub-elevation-mode").value;
+      if (!clean && body.elevation_mode === "drawing") {
+        const height = Number($("sub-floor-height").value);
+        if (!Number.isFinite(height) || height <= 0) {
+          say("가정 층고(m)를 0보다 큰 수로 입력하세요.", "warn"); return;
+        }
+        body.assumed_floor_height_m = height;
+      }
+    }
     if (clean) {
       body.clean = true;
     } else {
@@ -2552,6 +2615,7 @@
     if (s.av_node_label) html += kv("알람밸브 절점", s.av_node_label);
     if (s.source_node_label) html += kv("수원 절점", s.source_node_label);
     if (s.conn_node_label) html += kv("연결 절점", s.conn_node_label);
+    if (s.elevation_notice) html += kv('<span class="warn">표고 근거</span>', esc(s.elevation_notice));
     if (d.mode) html += kv("방식", d.mode === "clean_network"
                            ? "깨끗한 배관망 통째" : "두 점 최단경로");
     if (s.bridges) html += kv('<span class="warn">추측 연결</span>',
@@ -2787,6 +2851,7 @@
   async function loadSub() {
     const d = await api(`/api/module-f/sub/state?sid=${S.sid}`);
     if (S.slot === "system") $("sub-elevation-mode").value = d.summary?.elevation_mode || "drawing";
+    if (S.slot === "system") $("sub-floor-height").value = d.summary?.assumed_floor_height_m ?? 4;
     setStage("sub");
     renderSubPanel();
     renderSubSummary(d);
@@ -2889,7 +2954,7 @@
       S.autoDone = !!d.done;
       if (d.alarm) S.autoAlarm = d.alarm;
       // 영역은 서버가 들고 있다 — 슬롯을 오갔다 와도 그대로 되살린다.
-      if (Array.isArray(d.zones)) S.zones = d.zones.map((z) => z.slice());
+      if (Array.isArray(d.zones)) S.zones = Regions.clone(d.zones);
       // 「배관으로 취급」 지정도 서버가 들고 있다 — 색·이름은 도면에서 되찾는다.
       if (Array.isArray(d.pipe_layers)) {
         const by = new Map((S.world ? S.world.bundles : [])
@@ -4023,6 +4088,7 @@
   // ── 2. 찍기 ────────────────────────────────────────────────────
   function renderPick() {
     const p = S.pick;
+    $("pk-head-profile").value = p.head_symbol_profile || "";
     // 「상태」 다섯 줄은 뺐다 — 단추가 이미 같은 것을 말한다: 찍기가 켜졌는지는
     // 배관 선택이 눌린 모양으로, 재료가 찼는지는 선택 완료·배관망 구성의
     // 활성 여부로, 무엇을 찍었는지는 캔버스와 아래 상태줄로 보인다.
@@ -4045,6 +4111,14 @@
    *
    *  ★대신 «접기» 다 — 길이와 연결은 그대로 두고 굴곡만 편다. 자동 사전은
    *    도면마다 다른 관례를 반드시 놓치므로 여기서도 «추천» 일 뿐이다(S340). */
+  $("pk-head-profile").onchange = async () => {
+    try {
+      const d = await post("/api/module-f/pick/head-profile", {sid:S.sid,profile:$("pk-head-profile").value});
+      S.pick = d.state; renderPick();
+      say("감지 규칙을 바꿨습니다. 「배관망 구성」을 누르면 적용됩니다.");
+    } catch(err) { say(err.message,"err"); renderPick(); }
+  };
+
   async function loadPickMaterials() {
     const box = $("pk-mats");
     if (!box || !S.sid) return;
@@ -4208,7 +4282,7 @@
   $("pk-next").onclick = async () => {
     busy(true, "배관망 구성 중…");
     try {
-      await post("/api/module-f/pick/commit", { sid: S.sid });
+      await post("/api/module-f/pick/commit", { sid: S.sid, head_symbol_profile: $("pk-head-profile").value });
       watch(loadEdit);
     } catch (err) { busy(false); say(err.message, "err"); }
   };
@@ -4228,8 +4302,10 @@
   }
 
   async function loadEdit() {
+    await zoneWrite.catch(()=>{});
     const d = await api(`/api/module-f/edit/state?sid=${S.sid}`);
     setEdit(d.state); S.key = d.key;
+    S.zones = Regions.clone(d.state.selection_zones || []);
     // [F-10b] 손질에 들어오면 기본은 «알람밸브 원클릭» 이다 — 상무 시연이
     //   28분 내내 요구한 그 한 번이 첫 동작이 되게 한다. 이미 다른 모드를
     //   고른 뒤라면(모드 전환은 서버에 남는다) 그것을 지킨다.
@@ -4245,6 +4321,17 @@
   }
 
   function renderEdit() {
+    const companyRows = S.edit?.head_symbol_report || [];
+    $("ed-company-box").classList.toggle("hidden", !companyRows.length);
+    if (companyRows.length) {
+      const matched = companyRows.filter(r=>r.status === "matched").length;
+      const names = {upright:"상향식",pendent:"하향식",upright_pendent:"상·하향식",sidewall:"측벽식"};
+      $("ed-company-report").innerHTML = `<b>회사 규칙 일치 ${matched}개 · 검토 ${companyRows.length-matched}개</b>`
+        + companyRows.map(r=>`<div>${esc(names[r.orientation] || "검토 필요")}${r.temperature_c != null ? ` ${r.temperature_c}℃` : ""} · (${r.xy.map(v=>Number(v).toFixed(0)).join(", ")})${r.calculation_review ? `<br>${esc(r.calculation_review)}` : ""}</div>`).join("");
+    }
+    const flowSummary = S.edit?.flow_report;
+    $("ed-flow-summary").textContent = flowSummary
+      ? `단일 경로 확정 · ${flowSummary.heads}개 헤드 · 대체 경로 ${flowSummary.excluded.alternate_route || 0}개 제외 (원본 보존)` : "";
     const e = S.edit;
     syncWorstSourceSelect(e);   // [F-1] 급수원 2곳 이상이면 기준 선택을 보인다
     const kinds = Object.entries(e.kinds)
@@ -4268,6 +4355,12 @@
       kv("이음 / 삭제", `${e.counts.joins} / ${e.counts.deletes}`) +
       (e.flowed ? kv("물 닿은 헤드",
         Object.entries(e.wet_counts).map(([k, n]) => `${k} ${n}`).join(" · ")) : "") +
+      (e.flow_report ? kv("확정 물흐름",
+        `${e.flow_report.heads}개 자리 · 경로 ${e.flow_report.edges}구간 · ${e.flow_report.length_m} m`)
+        + kv("계산망에서 제외",
+          `대체 경로 ${e.flow_report.excluded.alternate_route || 0} · 헤드 없는 가지 ${e.flow_report.excluded.no_head || 0}`)
+        + kv("관경 기준 전체 부하", `최대 ${e.flow_report.max_load_all}개 담당 (최불리 개수와 별도)`)
+        + '<div class="muted">밝은 선: 확정 경로 · 흐린 선: 보존된 원본. 실제 환상배관의 유량 해석 결과는 아닙니다.</div>' : "") +
       (e.worst ? kv("최불리망 <span class=\"tag\">설계면적</span>",
         `<span class="ok">${e.worst.k}개</span> · 앵커 ${e.worst.far_m} m`
         + ` · ${e.worst.area_w_m}×${e.worst.area_h_m} m`
@@ -4515,15 +4608,23 @@
     } catch (err) { say(err.message, "err"); }
   };
 
+  $("ed-flow-report").onclick = () => {
+    if (!S.edit?.flow_report) { say("먼저 물흐름 경로를 확정하세요.", "warn"); return; }
+    const a = document.createElement("a");
+    a.href = `/api/module-f/edit/flow/report?sid=${encodeURIComponent(S.sid)}`;
+    a.download = "module-f-flow.json";
+    a.click();
+  };
+
   $("ed-flow").onclick = async () => {
     busy(true, "물흐름 계산 중…");
     try {
-      const d = await post("/api/module-f/edit/flow", { sid: S.sid });
+      const d = await post("/api/module-f/edit/flow", { sid: S.sid, source: $("ed-src").value });
       setEdit(d.state);
       renderEdit();
       const w = d.water;
-      say(`물 닿은 헤드 ${w.wet_heads}/${w.total_heads}`
-        + ` · 젖은 간선 ${w.wet_edges} · 도달 노드 ${w.reach}`, "ok");
+      say(`밸브→헤드 단일 경로 확정: ${w.wet_heads}/${w.total_heads}개`
+        + ` · ${w.wet_edges}구간. 최불리도 이 경로만 따릅니다. 원본은 보존됩니다.`, "ok");
     } catch (err) { say(err.message, "err"); }
     finally { busy(false); }
   };
@@ -4671,7 +4772,8 @@
 
   $("ed-save").onclick = async () => {
     try {
-      const d = await post("/api/module-f/edit/save", { sid: S.sid });
+      await zoneWrite;
+      const d = await post("/api/module-f/edit/save", { sid: S.sid, zones: S.zones });
       say(d.message, "ok");
     } catch (err) { say(err.message, "err"); }
   };
@@ -5659,6 +5761,9 @@
     //   화면이 멈춘다 — 그릴 것이 없으면 조용히 돌아간다.
     const v = S.design && S.design.view;
     if (!v || !v.nodes) return;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     const at = {};
     for (const n of v.nodes) at[n.label] = n;
     const maxLoad = Math.max(1, ...v.pipes.map(p => p.load || 0));
@@ -5669,14 +5774,15 @@
       const a = at[p.a], b = at[p.b];
       if (!a || !b) continue;
       const hot = S.design.hilite.has(p.label);
-      // 관경을 무엇이 정했는지로 가른다. 규약으로만 정한 구간은 점선이다 —
-      // 도면에서 읽은 실측과 규약 추정을 한 모양으로 그리면 구분이 안 된다.
+      // 기본은 손질 최불리망과 같은 흰색·담당 헤드 수 굵기다. 관경 근거
+      // 진단을 직접 켰을 때만 기존 근거 색/점선을 얹는다(계산값은 불변).
       const st = S.boreColor ? BORE_STYLE[p.src] : null;
+      const style = corridorAppearance(p.load, maxLoad);
       // [D4] 표에서 켠 강조는 흐리기에서 뺀다 — 그것도 «지금 보는 것» 이다.
-      ctx.globalAlpha = hot ? 1 : dimK;
-      ctx.strokeStyle = hot ? "#f97316" : (st ? st.color : "#94a3b8");
+      ctx.globalAlpha = hot ? 1 : dimK * (st ? 1 : style.alpha);
+      ctx.strokeStyle = hot ? "#f97316" : (st ? st.color : "#ffffff");
       ctx.setLineDash(hot || !st ? [] : st.dash);
-      ctx.lineWidth = (1 + 4 * (p.load || 0) / maxLoad) + (hot ? 2 : 0);
+      ctx.lineWidth = style.width + (hot ? 2 : 0);
       strokeWithGaps(sx(a.x), sy(a.y), sx(b.x), sy(b.y), gaps.get(pi));
     }
     ctx.setLineDash([]);      // ★되돌린다 — 안 하면 아래 노드 기호까지 점선이 된다
@@ -5685,7 +5791,8 @@
     const dap = v.worst_path || [];
     if (dap.length > 1) {
       ctx.strokeStyle = "#ff3b3b";
-      ctx.lineWidth = 2.4;
+      ctx.globalAlpha = 0.85 * dimK;
+      ctx.lineWidth = 2.2;
       ctx.setLineDash([9, 5]);
       ctx.beginPath();
       let started = false;
@@ -5698,12 +5805,14 @@
       if (started) ctx.stroke();
       ctx.setLineDash([]);
     }
+    ctx.globalAlpha = dimK;
     ctx.lineWidth = 1.2;
     for (const n of v.nodes) {
       const px = sx(n.x), py = sy(n.y);
       if (n.head) {
-        // 상향 △ / 하향 ▽ — 방향 규칙은 베이크와 같다(표고 차 부호).
-        const s = 7;
+        // 종류는 방향만으로: 상향 △ / 하향 ▽. 기준 헤드도 원을 덧대지
+        // 않고 같은 삼각형을 빨갛게 강조한다. up은 서버 판정을 그대로 쓴다.
+        const s = n.worst_head ? 9 : 7;
         ctx.beginPath();
         if (n.up) {
           ctx.moveTo(px, py - s);
@@ -5715,34 +5824,20 @@
           ctx.lineTo(px + s, py - s * 0.6);
         }
         ctx.closePath();
-        ctx.fillStyle = "rgba(248,113,113,.45)";
-        ctx.strokeStyle = "#ef4444";
+        ctx.fillStyle = n.worst_head ? "rgba(255,59,59,.30)" : "rgba(255,255,255,.30)";
+        ctx.strokeStyle = n.worst_head ? "#ff3b3b" : "#ffffff";
+        ctx.lineWidth = n.worst_head ? 2.6 : 1.6;
         ctx.fill();
         ctx.stroke();
       }
       if (n.input) {
-        ctx.beginPath();
-        ctx.arc(px, py, 9, 0, Math.PI * 2);
-        ctx.strokeStyle = "#3b82f6";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.lineWidth = 1.2;
+        drawMergeMarker(px, py, S.edit?.palette?.source || "#ffffff", 7);
       }
       if (n.valve) {
-        ctx.strokeStyle = "#22c55e";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(px - 7, py - 7, 14, 14);
-        ctx.lineWidth = 1.2;
-      }
-      // 앵커 = 기준압을 잡는 지점. 손질 단계와 같은 빨간 겹원.
-      if (n.worst_head) {
-        ctx.strokeStyle = "#ff3b3b";
-        ctx.lineWidth = 2.6;
-        ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath(); ctx.arc(px, py, 14, 0, Math.PI * 2); ctx.stroke();
-        ctx.lineWidth = 1.2;
+        drawMergeMarker(px, py, S.edit?.palette?.valve || "#9b59b6", 6);
       }
     }
+    ctx.restore();
   }
 
   // ── [F-12] 속성 카드 — 클릭한 자리의 «정의된 값» ────────────────
@@ -6047,6 +6142,7 @@
       const d = Math.hypot(x - n.x, y - n.y);
       if (d <= best) { best = d; hit = { kind: "node", label: String(n.label) }; }
     }
+    if (!hit) hit = window.moduleFInspection?.hit(x, y) || null;
     if (!hit) {
       best = maxD;
       for (const p of (v.pipes || [])) {
@@ -6098,6 +6194,7 @@
         if (d <= best) { best = d; hit = { kind: "pipe", label: String(p.label) }; }
       }
     }
+    if (!hit) hit = window.moduleFMergeInspection?.hit(x, y) || null;
     S.mergeSel = hit;
     renderInspect();
     draw();
@@ -6143,6 +6240,7 @@
       + kv("길이(m)", esc(p.len_m == null ? "—" : p.len_m))
       + kv("C 값", esc(p.c == null ? "—" : p.c))
       + kv("양 끝", `${insLink("mgnode", p.a)} → ${insLink("mgnode", p.b)}`);
+    h += window.moduleFMergeInspection?.card("pipe", label) || "";
     h += mgRerunNote(p.key);
     h += ovEdit(p.key, { length: p.len_m, dia: p.dia, c: p.c },
                 p.part === "seam"
@@ -6165,6 +6263,8 @@
     if (n.valve) roles.push("알람밸브");
     if (n.head) roles.push("헤드");
     if (n.anchor) roles.push("기준점(세 도면이 만나는 자리)");
+    const fittingRole = window.moduleFMergeInspection?.role(label);
+    if (fittingRole) roles.push(fittingRole);
     $("dg-ins-kind").textContent = "통합 절점";
     $("dg-ins-title").textContent =
       `${label}  ${MG_PART[n.part] || n.part}`
@@ -6174,6 +6274,8 @@
       + kv("표고(m)", esc(n.e))
       + kv("좌표", esc(`${Math.round(n.x)} , ${Math.round(n.y)}`));
     if (roles.length) h += grp("역할") + kv("이 자리가 무엇인가", esc(roles.join(" · ")));
+
+    h += window.moduleFMergeInspection?.card("node", label) || "";
 
     const pipes = (v.pipes || []).filter(
       (r) => String(r.a) === label || String(r.b) === label);
@@ -6226,7 +6328,10 @@
                         : ((S.design && S.design.sel) || null);
     const v = onMerge ? (S.mergeView || null)
                       : ((S.design && S.design.view) || null);
-    if (!sel || !v) { box.classList.add("hidden"); return; }
+    if (!sel || !v || !["design", "merge"].includes(S.stage)
+        || (!onMerge && ((planUnderlayOn() && S.edit) || (designMarksOn() && S.edit)))) {
+      box.classList.add("hidden"); return;
+    }
     // ★본문을 만들다 튀어도 «옛 내용을 든 채» 열려 있으면 안 된다. 실측으로
     //   그랬다: 제목은 새 배관인데 몸통은 앞서 고른 노드 그대로였다 — 카드가
     //   조용히 거짓말을 한다. 무엇이 잘못됐는지 카드에 적는 편이 낫다.
@@ -6277,7 +6382,11 @@
     $("dg-ins-title").textContent =
       `${label}  ${row ? `${row.in} → ${row.out}` : ""}`;
 
-    let h = "";
+    let h = row ? grp("배관 속성") + kv("재질 / 호칭경", `${esc(row.type || "미지정")} / ${esc(row.dia)}A`)
+      + kv("실제 길이", `${esc(row.length)} m`) + kv("부속 등가길이 합", `${esc(row.eq_len ?? "미확정")} m`) : "";
+    if (row?.head_count_all != null) h += kv("전체 담당 헤드 · 관경 기준", `${esc(row.head_count_all)}개`)
+      + kv("이번 선정 헤드", `${esc(row.head_count_selected ?? "—")}개`);
+    h += window.moduleFInspection?.card("pipe", label) || "";
     if (row) {
       h += grp("표에 정의된 값") + insRowKv(row);
     } else {
@@ -6350,10 +6459,13 @@
       if (n.head) roles.push(n.up ? "헤드(상향)" : "헤드(하향)");
       if (n.worst_head) roles.push("기준 헤드");
     }
+    const fittingRole = window.moduleFInspection?.role(label);
+    if (fittingRole) roles.push(fittingRole);
+    $("dg-ins-kind").textContent = n?.head ? "헤드" : fittingRole ? "부속·노드" : "노드";
     $("dg-ins-title").textContent =
       `${label}${roles.length ? "  " + roles.join(" · ") : ""}`;
 
-    let h = "";
+    let h = window.moduleFInspection?.card("node", label) || "";
     h += grp("표에 정의된 값");
     h += row ? insRowKv(row) : insNone("이 노드는 표에 없습니다.");
     if (roles.length) {
@@ -6377,19 +6489,13 @@
       (r) => String(r.in) === label || String(r.out) === label);
     h += grp(`연결 배관 (${pipes.length})`);
     h += pipes.length
-      ? insTab(["배관", "상대", "호칭경", "길이(m)"], pipes,
+      ? insTab(["배관", "상대", "재질", "호칭경", "길이(m)"], pipes,
                (r) => [insLink("pipe", r.label),
                        insLink("node", String(r.in) === label ? r.out : r.in),
-                       esc(r.dia), esc(r.length)])
+                       esc(r.type), esc(r.dia), esc(r.length)])
       : insNone("이 노드에 붙은 배관이 없습니다.");
 
-    const fits = dgRows("fittings").filter(
-      (r) => String(r.in) === label || String(r.out) === label);
-    if (fits.length) {
-      h += grp(`이 자리의 부속 (${fits.length})`)
-         + insTab(["종류", "개수", "배관"], fits,
-                  (r) => [esc(r.type), esc(r.count), insLink("pipe", r.pipe)]);
-    }
+    // Fitting ownership comes from the inspection data, not both pipe endpoints.
     return h;
   }
 
@@ -8023,6 +8129,9 @@
   // «수리계산 입력 변환» 하나다 — 같은 함수를 두 자리에서 부르던 것을 하나로
   // 모은다(서버 라우트 `/design/emit` 은 그 함수의 다른 입구로 남는다).
 
+  window.moduleFInspection = window.createModuleFInspection?.({state:S,ctx,sx,sy,esc,kv,grp,insLink});
+  window.moduleFMergeInspection = window.createModuleFInspection?.({state:S,ctx,sx,sy,esc,kv,grp,
+    scope:'merge',insLink:(kind,label)=>insLink('mg'+kind,label)});
   window.moduleFNetworkEditor = window.createModuleFEditor?.({state:S,api,post,busy,say,
     draw,select:insSelect,reloadDesign:designPreview,reloadMerge:loadMergeView,
     screen:(x,y)=>[sx(x),sy(y)],world:(x,y)=>[wx(x),wy(y)],

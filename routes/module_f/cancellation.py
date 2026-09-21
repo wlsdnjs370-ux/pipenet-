@@ -38,16 +38,28 @@ _CONTROL_PATHS = {"/api/module-f/job", "/api/module-f/job/stream",
 
 
 def _interruptible(frame) -> bool:
-    """Keep persistence and infrastructure out of computational checkpoints."""
+    """Keep persistence and infrastructure out of computational checkpoints.
+
+    A protected module (persistence) blocks the stop only while the innermost
+    project code is its own — i.e. nothing but protected/infra/third-party
+    frames sit between here and it. Computation that a protected function
+    merely *calls* (open_board → stage1_body → pipeline) stays interruptible:
+    the exception unwinds through the caller before it opens any file, and a
+    file that is already open is caught by the writable-handle scan below.
+    Measured 2026-09-20: treating every ancestor in edit/io.py as protected
+    made 「중지」 during 손질 재구성 undeliverable — see `_line`.
+    """
     path = frame.f_code.co_filename.lower().replace("\\", "/")
     if not (path.startswith(_ROOT) or "/ezdxf/" in path):
         return False
     if path.endswith(_INFRA_MODULES):
         return False
+    computation_below = False  # a plain project frame between here and the ancestor
     while frame is not None:
         filename = frame.f_code.co_filename.lower().replace("\\", "/")
         name = frame.f_code.co_name.lower().lstrip("_")
-        if filename.endswith(_PROTECTED_MODULES):
+        protected = filename.endswith(_PROTECTED_MODULES)
+        if protected and not computation_below:
             return False
         if name.startswith(("write", "save", "dump", "emit", "commit", "backup")):
             return False
@@ -60,26 +72,73 @@ def _interruptible(frame) -> bool:
                             return False
                     except (OSError, ValueError):
                         pass
+            if not protected:
+                computation_below = True
         frame = frame.f_back
     return True
 
 
-def _line(_code, _line_number) -> None:
+# A line that proves non-interruptible must not be re-examined on the very
+# next line. The stack walk (every ancestor's filename, name and f_locals)
+# costs tens of µs, and even the bare per-line callback costs ~0.5 µs; doing
+# either on *every* line of a job that cannot be stopped yet slowed the job
+# 85× and starved every other request of the GIL (measured 2026-09-20:
+# 2.7 s job → 228 s; an unrelated 0.06 ms request → 2 ms). So after a failed
+# check the LINE events are switched off for `_PAUSE_SECONDS` and switched
+# back on by a timer — a stop still lands within that pause once the
+# protected region returns. The per-thread `skip` counter is the same idea
+# for the settrace fallback, where events cannot be paused.
+_PAUSE_SECONDS = 0.05
+_BACKOFF_LINES = 4096
+_PAUSE_TIMER = None
+
+
+def _pause_monitoring() -> None:
+    global _PAUSE_TIMER
+    if _MONITORING is None or _MONITOR_ID is None:
+        return
+    with _LOCK:
+        if _PAUSE_TIMER is not None:
+            return
+        _MONITORING.set_events(_MONITOR_ID, 0)
+        _PAUSE_TIMER = threading.Timer(_PAUSE_SECONDS, _resume_monitoring)
+        _PAUSE_TIMER.daemon = True
+        _PAUSE_TIMER.start()
+
+
+def _resume_monitoring() -> None:
+    global _PAUSE_TIMER
+    with _LOCK:
+        _PAUSE_TIMER = None
+        _monitor_refresh()
+
+
+def _pending_stop(frame) -> bool:
+    """True when this thread's operation is cancelled and `frame` may raise."""
     op = getattr(_LOCAL, "operation", None)
-    if (op is not None and op.cancelled and not getattr(_LOCAL, "delivered", False)
-            and _interruptible(sys._getframe(1))):
+    if op is None or not op.cancelled or getattr(_LOCAL, "delivered", False):
+        return False
+    skip = getattr(_LOCAL, "skip", 0)
+    if skip:
+        _LOCAL.skip = skip - 1
+        return False
+    if _interruptible(frame):
         _LOCAL.delivered = True  # Do not interrupt exception/finally cleanup again.
+        return True
+    _LOCAL.skip = _BACKOFF_LINES
+    _pause_monitoring()
+    return False
+
+
+def _line(_code, _line_number) -> None:
+    if _pending_stop(sys._getframe(1)):
         raise OperationCancelled("작업을 중지했습니다.")
 
 
 def _trace(frame, event, arg):
     # Python 3.11 fallback. Current local server uses 3.13 monitoring instead.
-    if event == "line":
-        op = getattr(_LOCAL, "operation", None)
-        if op is not None and op.cancelled and not getattr(_LOCAL, "delivered", False):
-            if _interruptible(frame):
-                _LOCAL.delivered = True
-                raise OperationCancelled("작업을 중지했습니다.")
+    if event == "line" and _pending_stop(frame):
+        raise OperationCancelled("작업을 중지했습니다.")
     return _trace
 
 
@@ -185,7 +244,8 @@ class Operation:
         previous = current_operation()
         previous_delivered = getattr(_LOCAL, "delivered", False)
         previous_trace = sys.gettrace()
-        _LOCAL.operation, _LOCAL.delivered = self, False
+        previous_skip = getattr(_LOCAL, "skip", 0)
+        _LOCAL.operation, _LOCAL.delivered, _LOCAL.skip = self, False, 0
         use_trace = _MONITOR_ID is None
         if use_trace:
             sys.settrace(_trace)
@@ -195,6 +255,7 @@ class Operation:
             checkpoint()
         finally:
             _LOCAL.operation, _LOCAL.delivered = previous, previous_delivered
+            _LOCAL.skip = previous_skip
             if use_trace:
                 sys.settrace(previous_trace)
             self.release()

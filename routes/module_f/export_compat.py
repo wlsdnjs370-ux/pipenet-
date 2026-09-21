@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+from typing import Collection
 
 
 def _package_path() -> None:
@@ -11,11 +12,12 @@ def _package_path() -> None:
         sys.path.insert(0, source)
 
 
-def prepare_sdf_export(path: str | Path) -> list[str]:
+def prepare_sdf_export(path: str | Path, *,
+                       nozzle_reference_labels: Collection[str] | None = None) -> list[str]:
     """Normalize PIPENET endpoints and return explicit export diagnostics."""
     _package_path()
     from pipenet_converter.sdf_compat import prepare_sdf
-    report = prepare_sdf(path)
+    report = prepare_sdf(path, nozzle_reference_labels=nozzle_reference_labels)
     messages = []
     if report.capped_nodes:
         messages.append("수요가 없는 배관 말단을 0유량 출구로 지정: " + ", ".join(report.capped_nodes))

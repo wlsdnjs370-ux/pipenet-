@@ -1,0 +1,1189 @@
+{
+  "nodes": [
+    {
+      "label": "1",
+      "x": -645098,
+      "y": 180031,
+      "elevation": 43.566,
+      "elev_source": "default",
+      "io_node": "Input",
+      "pressure_pa": 101325.0
+    },
+    {
+      "label": "n2",
+      "x": -645098,
+      "y": 180183,
+      "elevation": 43.719,
+      "elev_source": "default",
+      "io_node": "No"
+    },
+    {
+      "label": "n3",
+      "x": -645098,
+      "y": 178291,
+      "elevation": 39.9,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상49층  SL",
+      "floor_idx": 49
+    },
+    {
+      "label": "n4",
+      "x": -660681,
+      "y": 178291,
+      "elevation": 39.9,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상49층  SL",
+      "floor_idx": 49
+    },
+    {
+      "label": "n5",
+      "x": -660681,
+      "y": 177323,
+      "elevation": 39.9,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상49층  SL",
+      "floor_idx": 49
+    },
+    {
+      "label": "n6",
+      "x": -660681,
+      "y": 174477,
+      "elevation": 37.8,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상48층  SL",
+      "floor_idx": 48
+    },
+    {
+      "label": "n7",
+      "x": -660681,
+      "y": 172377,
+      "elevation": 35.7,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상47층  SL",
+      "floor_idx": 47
+    },
+    {
+      "label": "n8",
+      "x": -660681,
+      "y": 170277,
+      "elevation": 33.6,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상46층  SL",
+      "floor_idx": 46
+    },
+    {
+      "label": "n9",
+      "x": -660681,
+      "y": 168177,
+      "elevation": 31.5,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상45층  SL",
+      "floor_idx": 45
+    },
+    {
+      "label": "n10",
+      "x": -660681,
+      "y": 166077,
+      "elevation": 29.4,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상44층  SL",
+      "floor_idx": 44
+    },
+    {
+      "label": "n11",
+      "x": -660681,
+      "y": 163977,
+      "elevation": 27.3,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상43층  SL",
+      "floor_idx": 43
+    },
+    {
+      "label": "n12",
+      "x": -660681,
+      "y": 161877,
+      "elevation": 25.2,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상42층  SL",
+      "floor_idx": 42
+    },
+    {
+      "label": "n13",
+      "x": -660681,
+      "y": 159777,
+      "elevation": 23.1,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상41층  SL",
+      "floor_idx": 41
+    },
+    {
+      "label": "n14",
+      "x": -660681,
+      "y": 157677,
+      "elevation": 21.0,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상40층  SL",
+      "floor_idx": 40
+    },
+    {
+      "label": "n15",
+      "x": -660681,
+      "y": 155577,
+      "elevation": 18.9,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상39층  SL",
+      "floor_idx": 39
+    },
+    {
+      "label": "n16",
+      "x": -660681,
+      "y": 153477,
+      "elevation": 16.8,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상38층  SL",
+      "floor_idx": 38
+    },
+    {
+      "label": "n17",
+      "x": -660681,
+      "y": 151377,
+      "elevation": 14.7,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상37층  SL",
+      "floor_idx": 37
+    },
+    {
+      "label": "n18",
+      "x": -660681,
+      "y": 149277,
+      "elevation": 12.6,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상36층  SL",
+      "floor_idx": 36
+    },
+    {
+      "label": "n19",
+      "x": -660681,
+      "y": 147177,
+      "elevation": 10.5,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상35층  SL",
+      "floor_idx": 35
+    },
+    {
+      "label": "n20",
+      "x": -660681,
+      "y": 145077,
+      "elevation": 8.4,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상34층  SL",
+      "floor_idx": 34
+    },
+    {
+      "label": "n21",
+      "x": -660681,
+      "y": 142977,
+      "elevation": 6.3,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상33층  SL",
+      "floor_idx": 33
+    },
+    {
+      "label": "n22",
+      "x": -660681,
+      "y": 140877,
+      "elevation": 4.2,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상32층  SL",
+      "floor_idx": 32
+    },
+    {
+      "label": "n23",
+      "x": -660681,
+      "y": 138777,
+      "elevation": 2.1,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상31층  SL",
+      "floor_idx": 31
+    },
+    {
+      "label": "10",
+      "x": -660681,
+      "y": 136464,
+      "elevation": 0.0,
+      "elev_source": "drawing_estimated",
+      "io_node": "No",
+      "floor": "지상30층  SL",
+      "floor_idx": 30
+    }
+  ],
+  "pipes": [
+    {
+      "label": "r1",
+      "in": "1",
+      "out": "n2",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 0.153,
+      "elev": 0.153,
+      "elev_source": "default",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r2",
+      "in": "n2",
+      "out": "n3",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 3.819,
+      "elev": -3.819,
+      "elev_source": "default",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r3",
+      "in": "n3",
+      "out": "n4",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 15.583,
+      "elev": 0.0,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r4",
+      "in": "n4",
+      "out": "n5",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 0.968,
+      "elev": 0.0,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r5",
+      "in": "n5",
+      "out": "n6",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.846,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r6",
+      "in": "n6",
+      "out": "n7",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r7",
+      "in": "n7",
+      "out": "n8",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r8",
+      "in": "n8",
+      "out": "n9",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r9",
+      "in": "n9",
+      "out": "n10",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r10",
+      "in": "n10",
+      "out": "n11",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r11",
+      "in": "n11",
+      "out": "n12",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r12",
+      "in": "n12",
+      "out": "n13",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r13",
+      "in": "n13",
+      "out": "n14",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r14",
+      "in": "n14",
+      "out": "n15",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r15",
+      "in": "n15",
+      "out": "n16",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r16",
+      "in": "n16",
+      "out": "n17",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r17",
+      "in": "n17",
+      "out": "n18",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r18",
+      "in": "n18",
+      "out": "n19",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r19",
+      "in": "n19",
+      "out": "n20",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r20",
+      "in": "n20",
+      "out": "n21",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r21",
+      "in": "n21",
+      "out": "n22",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r22",
+      "in": "n22",
+      "out": "n23",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.1,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    },
+    {
+      "label": "r23",
+      "in": "n23",
+      "out": "10",
+      "type": "KSD 3507",
+      "dia": 150,
+      "length": 2.313,
+      "elev": -2.1,
+      "elev_source": "drawing_estimated",
+      "c": "120",
+      "status": "Normal",
+      "group": "Unset",
+      "dia_source": "default"
+    }
+  ],
+  "pumps": [],
+  "valves": [],
+  "av_node_label": "10",
+  "input_node_label": "1",
+  "title": "SYSTEM_EXTRACT_V1",
+  "zone_kind": "system_path_dxf",
+  "extracted_from": "dxf",
+  "path_node_count": 24,
+  "total_pipe_length_m": 61.38,
+  "pump_snap_dist_mm": 0.0,
+  "av_snap_dist_mm": 0.0,
+  "graph_stats": {
+    "line_entity_count": 65,
+    "all_line_entity_count": 10226,
+    "node_count": 76,
+    "edge_count": 75,
+    "components_before_bridge": 12,
+    "components_after_bridge": 1,
+    "bridges_applied": 11,
+    "forced_bridges": 0,
+    "forced_bridge_edges": [],
+    "tolerance_bridges": 11,
+    "tolerance_bridge_edges": [
+      [
+        [
+          -645098,
+          180031
+        ],
+        [
+          -645098,
+          180183
+        ]
+      ],
+      [
+        [
+          -645098,
+          180183
+        ],
+        [
+          -644264,
+          179391
+        ]
+      ],
+      [
+        [
+          -642740,
+          180031
+        ],
+        [
+          -642740,
+          179769
+        ]
+      ],
+      [
+        [
+          -645098,
+          180183
+        ],
+        [
+          -643291,
+          179391
+        ]
+      ],
+      [
+        [
+          -645098,
+          180183
+        ],
+        [
+          -644264,
+          180128
+        ]
+      ],
+      [
+        [
+          -642740,
+          180031
+        ],
+        [
+          -642470,
+          180280
+        ]
+      ],
+      [
+        [
+          -645098,
+          180183
+        ],
+        [
+          -643291,
+          180128
+        ]
+      ],
+      [
+        [
+          -643291,
+          179099
+        ],
+        [
+          -642740,
+          179159
+        ]
+      ],
+      [
+        [
+          -661061,
+          181448
+        ],
+        [
+          -660592,
+          181448
+        ]
+      ],
+      [
+        [
+          -660681,
+          177110
+        ],
+        [
+          -660681,
+          178291
+        ]
+      ],
+      [
+        [
+          -642740,
+          180031
+        ],
+        [
+          -642740,
+          180128
+        ]
+      ]
+    ],
+    "layer_filter_used": [
+      "HSP"
+    ],
+    "layer_filter_fallback_no_match": false,
+    "scale_ratio": 1.0,
+    "snap_eps_mm": 50.0,
+    "min_edge_mm": 50.0
+  },
+  "diameter_matching": {
+    "matched_pipes": 0,
+    "total_pipes": 23,
+    "text_label_count": 1
+  },
+  "floor_matching": {
+    "label_count": 51,
+    "floor_height_mm": 2100.0,
+    "height_source": "drawing_estimated",
+    "profile_floor_count": 0,
+    "av_floor_idx": 30,
+    "av_floor_name": "지상30층  SL",
+    "nodes_with_floor": 22
+  },
+  "elev_sources": {
+    "nodes": {
+      "user_confirmed": 0,
+      "drawing_estimated": 22,
+      "default": 2,
+      "unresolved": 0
+    },
+    "pipes": {
+      "user_confirmed": 0,
+      "drawing_estimated": 21,
+      "default": 2,
+      "unresolved": 0
+    }
+  },
+  "affine_scale": 1.0,
+  "affine_rotation_deg": 0.0,
+  "network_edges": [
+    [
+      -643291,
+      179099,
+      -642740,
+      179159
+    ],
+    [
+      -643291,
+      179099,
+      -643291,
+      179391
+    ],
+    [
+      -643291,
+      179391,
+      -645098,
+      180183
+    ],
+    [
+      -642740,
+      179409,
+      -642740,
+      180128
+    ],
+    [
+      -642740,
+      180128,
+      -642740,
+      180031
+    ],
+    [
+      -642740,
+      178923,
+      -642740,
+      179159
+    ],
+    [
+      -643291,
+      179704,
+      -643291,
+      180128
+    ],
+    [
+      -643291,
+      180128,
+      -645098,
+      180183
+    ],
+    [
+      -642740,
+      180031,
+      -645098,
+      180031
+    ],
+    [
+      -642740,
+      180031,
+      -642470,
+      180280
+    ],
+    [
+      -642740,
+      180031,
+      -642740,
+      179769
+    ],
+    [
+      -645098,
+      180031,
+      -645098,
+      180183
+    ],
+    [
+      -644264,
+      179099,
+      -644264,
+      179391
+    ],
+    [
+      -644264,
+      179391,
+      -645098,
+      180183
+    ],
+    [
+      -644264,
+      179704,
+      -644264,
+      180128
+    ],
+    [
+      -644264,
+      180128,
+      -645098,
+      180183
+    ],
+    [
+      -642470,
+      179769,
+      -642470,
+      179978
+    ],
+    [
+      -642470,
+      179769,
+      -642740,
+      179769
+    ],
+    [
+      -642470,
+      180280,
+      -642470,
+      180362
+    ],
+    [
+      -642470,
+      180362,
+      -642363,
+      180321
+    ],
+    [
+      -660681,
+      181078,
+      -660681,
+      177110
+    ],
+    [
+      -660681,
+      181078,
+      -660529,
+      181078
+    ],
+    [
+      -660681,
+      177110,
+      -660681,
+      178291
+    ],
+    [
+      -660681,
+      177110,
+      -660681,
+      174264
+    ],
+    [
+      -660681,
+      111264,
+      -660681,
+      109164
+    ],
+    [
+      -660681,
+      111264,
+      -660681,
+      113364
+    ],
+    [
+      -660681,
+      109164,
+      -660681,
+      107064
+    ],
+    [
+      -660681,
+      113364,
+      -660681,
+      115464
+    ],
+    [
+      -660681,
+      81865,
+      -660681,
+      80814
+    ],
+    [
+      -660681,
+      81865,
+      -660681,
+      83964
+    ],
+    [
+      -660681,
+      153264,
+      -660681,
+      155364
+    ],
+    [
+      -660681,
+      153264,
+      -660681,
+      151164
+    ],
+    [
+      -660681,
+      151164,
+      -660681,
+      149064
+    ],
+    [
+      -660681,
+      155364,
+      -660681,
+      157464
+    ],
+    [
+      -660681,
+      157464,
+      -660681,
+      159564
+    ],
+    [
+      -660681,
+      159564,
+      -660681,
+      161664
+    ],
+    [
+      -660681,
+      161664,
+      -660681,
+      163764
+    ],
+    [
+      -660681,
+      163764,
+      -660681,
+      165864
+    ],
+    [
+      -660681,
+      165864,
+      -660681,
+      167964
+    ],
+    [
+      -660681,
+      167964,
+      -660681,
+      170064
+    ],
+    [
+      -660681,
+      170064,
+      -660681,
+      172164
+    ],
+    [
+      -660681,
+      172164,
+      -660681,
+      174264
+    ],
+    [
+      -645098,
+      178291,
+      -660681,
+      178291
+    ],
+    [
+      -645098,
+      178291,
+      -645098,
+      180183
+    ],
+    [
+      -661243,
+      181448,
+      -661061,
+      181448
+    ],
+    [
+      -661061,
+      181448,
+      -660592,
+      181448
+    ],
+    [
+      -660529,
+      181448,
+      -660529,
+      181078
+    ],
+    [
+      -660529,
+      181448,
+      -660592,
+      181448
+    ],
+    [
+      -660681,
+      149064,
+      -660681,
+      146964
+    ],
+    [
+      -660681,
+      146964,
+      -660681,
+      144864
+    ],
+    [
+      -660681,
+      144864,
+      -660681,
+      142764
+    ],
+    [
+      -660681,
+      142764,
+      -660681,
+      140664
+    ],
+    [
+      -660681,
+      140664,
+      -660681,
+      138564
+    ],
+    [
+      -660681,
+      138564,
+      -660681,
+      136464
+    ],
+    [
+      -660681,
+      136464,
+      -660681,
+      134364
+    ],
+    [
+      -660681,
+      134364,
+      -660681,
+      132264
+    ],
+    [
+      -660681,
+      132264,
+      -660681,
+      130164
+    ],
+    [
+      -660681,
+      130164,
+      -660681,
+      128064
+    ],
+    [
+      -660681,
+      128064,
+      -660681,
+      125964
+    ],
+    [
+      -660681,
+      125964,
+      -660681,
+      123864
+    ],
+    [
+      -660681,
+      115464,
+      -660681,
+      117564
+    ],
+    [
+      -660681,
+      123864,
+      -660681,
+      121764
+    ],
+    [
+      -660681,
+      121764,
+      -660681,
+      119664
+    ],
+    [
+      -660681,
+      119664,
+      -660681,
+      117564
+    ],
+    [
+      -660681,
+      107064,
+      -660681,
+      104964
+    ],
+    [
+      -660681,
+      104964,
+      -660681,
+      102864
+    ],
+    [
+      -660681,
+      102864,
+      -660681,
+      100764
+    ],
+    [
+      -660681,
+      100764,
+      -660681,
+      98664
+    ],
+    [
+      -660681,
+      98664,
+      -660681,
+      96564
+    ],
+    [
+      -660681,
+      96564,
+      -660681,
+      94464
+    ],
+    [
+      -660681,
+      94464,
+      -660681,
+      92364
+    ],
+    [
+      -660681,
+      92364,
+      -660681,
+      90264
+    ],
+    [
+      -660681,
+      90264,
+      -660681,
+      88164
+    ],
+    [
+      -660681,
+      88164,
+      -660681,
+      86064
+    ],
+    [
+      -660681,
+      86064,
+      -660681,
+      83964
+    ]
+  ]
+}

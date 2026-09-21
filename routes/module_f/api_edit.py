@@ -43,9 +43,11 @@ def _rank_invariant(b, k, only, src_index, w) -> dict:
         bad = sorted(set(S) - set(only))[:8]
         out["violations"].append(f"③ 후보 밖에서 뽑힘 {bad}")
 
+    from services.cad_import.design.flow import flow_for_board
     nxt = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=int(k) + 1,
                          only_heads=only, source_index=src_index,
-                         head_xy=b.disks)                        # ②
+                         head_xy=b.disks,
+                         flow_tree=flow_for_board(b, index=src_index))  # ②
     extra = [int(h) for h in (nxt.get("heads") or ()) if int(h) not in set(S)]
     if extra and dists:
         nd = {int(h): float(v) for h, v in (nxt.get("dists") or {}).items()}
@@ -74,6 +76,12 @@ def _note_edit(sess: dict) -> None:
       대신 몇 건을 고쳤는지와 다시 계산할 자리를 화면에 남긴다.
     """
     sess["water_path"] = None
+    sess["flow_report"] = None
+    es = sess.get("edit")
+    if es is not None:
+        es._flowed = False
+        es._water = None
+        es._frame = None
     sess["worst"] = None
     # [두 화면 선정일치 §2-1] 손질 원본도 함께 버린다 — 선정이 사라졌는데
     #   그 «원본» 만 남으면 다음 표가 옛 영역·급수원 이름을 물려받는다.
@@ -300,7 +308,12 @@ def register(app):
     @route_session(_edit_session, post=True)
     def module_f_edit_flow(sess, body):
         es = sess["edit"]
-        state = es.flow()
+        from services.cad_import.design.flow import source_index
+        try:
+            idx = source_index(es.board, body.get("source"))
+            state = es.flow(source_index=idx)
+        except ValueError as exc:
+            return _fail(str(exc))
         if state is None:
             return _fail("알람밸브(접속점)를 먼저 찍어야 물흐름을 볼 수 있습니다.")
         # 브라우저에는 연출 프레임을 돌리지 않는다 — 끝까지 돌려 최종 상태로 둔다.
@@ -310,12 +323,17 @@ def register(app):
         sess["water_path"] = [
             [_r1(pts[a][0]), _r1(pts[a][1]), _r1(pts[b][0]), _r1(pts[b][1])]
             for a, b in state["wet_edges"]]
+        report = state["flow_report"]
+        if (sess.get("worst") or {}).get("flow_revision") != report["revision"]:
+            sess["worst"] = None
+            sess["worst_edit"] = None
+        sess["flow_report"] = report
         return jsonify({
             "ok": True,
             "water": {"wet_heads": len(state["wet_heads"]),
                       "total_heads": state["total_heads"],
                       "wet_edges": len(state["wet_edges"]),
-                      "reach": len(state["reach"])},
+                      "reach": len(state["reach"]), "flow_report": report},
             "state": _edit_state(sess)})
 
     @app.post("/api/module-f/edit/worst")
@@ -327,6 +345,32 @@ def register(app):
             return jsonify(fail["payload"]), fail["code"]
         return jsonify({"ok": True, "summary": summary,
                         "state": _edit_state(sess)})
+
+    @app.get("/api/module-f/edit/flow/report")
+    @route_session(_edit_session)
+    def module_f_flow_report(sess, body):
+        """Download auditable source identities, exclusions and fixed head paths."""
+        report = sess.get("flow_report")
+        if not report:
+            return _fail("먼저 물흐름 경로를 확정하세요.")
+        from services.cad_import.design.flow import flow_for_board
+        b = sess["edit"].board
+        try:
+            flow = flow_for_board(b, index=list(b.sources).index(report["roots"][0]))
+        except ValueError as exc:
+            return _fail(str(exc))
+        if flow.revision != report["revision"]:
+            return _fail("손질이 바뀌었습니다. 물흐름을 다시 확정하세요.")
+        response = jsonify({"summary": report, "units": "mm", "points": b.pts,
+            "edges": [{"a": a, "b": z, "length_mm": length,
+                       "head_count_all": flow.loads.get((a, z), 0),
+                       "status": flow.excluded.get((a, z), "active")}
+                      for (a, z), length in sorted(flow.lengths_mm.items())],
+            "heads": [{"disk": hi, "representative": flow.representatives[hi],
+                       "path": flow.path(flow.head_node[flow.representatives[hi]])}
+                      for hi in sorted(flow.head_node)]})
+        response.headers["Content-Disposition"] = 'attachment; filename="module-f-flow.json"'
+        return response
 
     def _compute_worst(sess, body):
         """[Remote 30] 최불리 K 헤드와 경로 — «두 라우트가 나눠 쓰는» 몸통.
@@ -367,7 +411,7 @@ def register(app):
             sheet_no = want
             print(f"[최불리] 도면 {want} 장 안으로 범위를 좁힘 — 헤드 {len(only)}개")
 
-        # ── 영역 지정 (모듈 A 의 zones) — 사람이 사각형으로 후보를 가둔다.
+        # ── 영역 지정 — 사각형/자유곡선의 실제 내부에 후보를 가둔다.
         #
         # 도면 장 나누기는 «자동으로 잰 경계» 라 실무에서 늘 맞지는 않는다.
         # 한 층에 방화구획이 여럿이거나, 계산에서 빼야 할 구역(주차장·기계실)이
@@ -378,27 +422,15 @@ def register(app):
         # «이 장의 이 구역» 이 자연스러운 읽기다.
         zones = body.get("zones")
         if zones:
-            from routes.module_f.api_auto import MAX_ZONES
-            if len(zones) > MAX_ZONES:
-                return None, _wfail(
-                    f"영역이 너무 많습니다: {len(zones)}곳 "
-                    f"(최대 {MAX_ZONES}). 넓은 사각형 하나로 묶으세요.")
+            from src.pipenet_converter.graph.regions import normalize_zones, zone_contains
             try:
-                rects = []
-                for z in zones:
-                    x0, y0, x1, y1 = (float(z[0]), float(z[1]),
-                                      float(z[2]), float(z[3]))
-                    rects.append((min(x0, x1), min(y0, y1),
-                                  max(x0, x1), max(y0, y1)))
-            except (TypeError, ValueError, IndexError):
-                return None, _wfail(
-                    "영역 좌표가 올바르지 않습니다 "
-                    "([[x0,y0,x1,y1], …] 형식).")
+                rects = normalize_zones(zones)
+            except ValueError as exc:
+                return None, _wfail(str(exc))
             if not rects:
                 return None, _wfail("영역이 비었습니다.")
             in_zone = {hi for hi, d in enumerate(b.disks)
-                       if any(x0 <= float(d[0]) <= x1 and y0 <= float(d[1]) <= y1
-                              for x0, y0, x1, y1 in rects)}
+                       if any(zone_contains(z, d) for z in rects)}
             if not in_zone:
                 return None, _wfail(
                     f"영역 {len(rects)}곳 안에 헤드가 없습니다. "
@@ -459,10 +491,24 @@ def register(app):
         #     그것은 수리계산이 «제외 사유» 로 여전히 낸다 — 그쪽은 진행표시가
         #     있는 잡이라 오래 걸려도 화면이 얼지 않는다.
         # 후보 범위는 계속 실어 보낸다 — 수리계산의 안전망이 쓰는 값이다(§2-4).
+        from services.cad_import.design.flow import flow_for_board
+        try:
+            flow = flow_for_board(b, index=src_index)
+        except ValueError as exc:
+            return None, _wfail(str(exc))
+        # Selecting worst heads also establishes the same tree when the user
+        # did not press the flow button separately.
+        state = es.flow(source_index=src_index)
+        while es.flow_tick():
+            pass
+        sess["flow_report"] = flow.report()
+        sess["water_path"] = [[_r1(b.pts[a][0]), _r1(b.pts[a][1]),
+                               _r1(b.pts[z][0]), _r1(b.pts[z][1])]
+                              for a, z in sorted(flow.edges)]
         w = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=k,
                            only_heads=only, source_index=src_index,
                            # 설계면적 직사각형은 헤드의 «제 좌표» 로 잰다.
-                           head_xy=b.disks)
+                           head_xy=b.disks, flow_tree=flow)
         if not w["heads"]:
             sess["worst"] = None
             sess["worst_edit"] = None
@@ -558,7 +604,8 @@ def register(app):
         w["sheet"] = sheet_no
         w["source_tag"] = picked_tag          # 화면이 «어느 급수원 기준» 인지 안다
         w["source_index"] = src_index
-        w["zones"] = [list(r) for r in rects] if zones else []
+        w["zones"] = rects if zones else []
+        b.selection_zones = w["zones"]
         w["candidates"] = len(only) if only is not None else w["reachable"]
         sess["worst"] = w
         # ★[두 화면 선정일치 §2-1] 사람이 다시 고른 것이 **언제나 최신**이다.
@@ -727,10 +774,32 @@ def register(app):
         sess["worst_edits"] = 0
         return jsonify({"ok": True, "state": _edit_state(sess)})
 
+    @app.post("/api/module-f/edit/zones")
+    @route_session(_edit_session, post=True)
+    def module_f_edit_zones(sess, body):
+        from src.pipenet_converter.graph.regions import normalize_zones
+        try:
+            zones = normalize_zones(body.get("zones"))
+        except ValueError as exc:
+            return _fail(str(exc))
+        board = sess["edit"].board
+        if zones != getattr(board, "selection_zones", []):
+            sess["worst"] = None
+            sess["worst_edit"] = None
+        board.selection_zones = zones
+        sess["worst_zones"] = zones
+        return jsonify({"ok": True, "state": _edit_state(sess)})
+
     @app.post("/api/module-f/edit/save")
     @route_session(_edit_session, post=True)
     def module_f_edit_save(sess, body):
         es = sess["edit"]
+        from src.pipenet_converter.graph.regions import normalize_zones
+        if "zones" in body:
+            try:
+                es.board.selection_zones = normalize_zones(body["zones"])
+            except ValueError as exc:
+                return _fail(str(exc))
         path = es.commit()
         # 파일 이름만 돌려준다 — 서버 폴더 구조는 밖으로 나갈 이유가 없다.
         return jsonify({"ok": True, "file": os.path.basename(path),

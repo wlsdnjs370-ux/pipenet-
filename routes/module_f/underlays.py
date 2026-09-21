@@ -94,7 +94,12 @@ def reference_layers(sess: dict, got: dict, *, iso: bool, geometry: bool=False) 
         else:
             source=slot.get('machineroom') or {}
             raw={str(n['label']):_xy(n) for n in source.get('nodes',[])}
-            conn=source.get('conn_xy')
+            from routes.module_f.connections import machine_connection
+            try:
+                connection=machine_connection(source)
+                conn=(float(connection['x']),float(connection['y']))
+            except ValueError:
+                conn=None
             if conn and pj:
                 # Use the very same source bbox and scale as the merge layout.
                 labels=set(map(str,(base.get('parts') or {}).get(kind,[])))
@@ -107,7 +112,7 @@ def reference_layers(sess: dict, got: dict, *, iso: bool, geometry: bool=False) 
                     head=base.get('head_tables')
                     hy=[float(n.get('y',0)) for n in getattr(head,'nodes',[])]
                     span=max(hy)-min(hy) if hy else 0
-                    scale=max(2000,span*.7)/diag
+                    scale=1.0 if physical else max(2000,span*.7)/diag
                     xf=[scale,0,0,scale,pj[0]-scale*float(conn[0]),pj[1]-scale*float(conn[1])]
                     if iso:
                         target_pj = shown[str(base['pump_junction'])] if physical else (a_iso[0]+pj[0]-ax,a_iso[1]+pj[1]-ay)

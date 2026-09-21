@@ -1,0 +1,35 @@
+[G3] 관경 결정 — 혼합 규칙 — 수용기준: PASS
+
+모듈 A 의 `_nfpc_min_bore_mm` · `_pipe_diameter` · `_extract_dia_text_points` 가
+이미 D2 규칙 그대로다. **로직을 고치지 않고** `design/bore.py` 로 옮겼다.
+A 에서는 `build_input_tables` 안의 지역 함수라 import 가 안 돼 옮겨 적었다.
+
+  dia = nfpc_min  (텍스트 없음)        → nfpc_fallback
+      = nfpc_min  (텍스트 < 별표1 최소) → nfpc_min      (안전측)
+      = 텍스트                          → text
+
+■ 치수 텍스트는 DXF 를 다시 읽지 않는다
+  handoff 캐시의 `world.texts`(layer, color, x, y, h, s)에 이미 있다. 모듈 A 는
+  DXF 엔티티 dict 를 받으므로 `extract_dia_text_points()` 가 그 어댑터다.
+  실측 B1F: 텍스트 3,168개 중 **관경으로 읽히는 것 533개**
+  (25A 129 · 40A 105 · 50A 87 · 150A 75 · 100A 69 · 32A 57 …).
+
+■ §T1 좌표 · §T4 담당 헤드 수
+  매칭은 평면 mm 에서 한다 — `edge_ref` 로 kfp 배관에서 원 board 간선을 되짚어
+  그 선분에 붙인다. 전개된 m 좌표로 매칭하지 않는다.
+  담당 헤드 수는 `worst["loads"]` 를 그대로 쓴다(corridor 안 K개 기준).
+  전체망 하류 수를 넣으면 관경이 과대해진다.
+
+■ 수용 기준
+  · 별표1 매핑 8종 : 1→25 · 3→32 · 5→40 · 10→50 · 30→65 · 60→80 · 100→100 · 200→150
+  · 안전측         : 1200mm 거리 "50A" + 별표1 65 → **65 · nfpc_min**
+                     (반대로 텍스트가 크면 text, 1500mm 밖이면 무시 → fallback)
+  · 실도면 text 비율 0% 아님 : text 17 · nfpc_min 4 · fallback 32
+                               관경 분포 [25, 40, 50, 65, 100, 150]
+
+회귀: 전체망 .kfp 비트 동일. 헤드리스: design 전 모듈 Qt 없이 import.
+
+검사 출력 한 줄도 고쳤다 — 통과인데 detail 이 "world None" 으로 찍혀 실패처럼
+읽혔다. 초록불이 거짓말하면 안 된다.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

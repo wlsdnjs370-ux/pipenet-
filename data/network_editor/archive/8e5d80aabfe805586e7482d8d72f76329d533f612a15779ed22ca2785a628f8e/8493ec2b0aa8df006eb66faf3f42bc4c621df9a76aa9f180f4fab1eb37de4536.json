@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "base": "7ff39453b48ef24e194d33e3c3ed52b41064841edf4d3f68d49177fbb9e353c7",
+  "commands": [
+    {
+      "op": "extend",
+      "target": "72",
+      "axis": "+X",
+      "length": "3",
+      "distance": "3",
+      "end": "1",
+      "schedule": "KSD 3507",
+      "dn": "25",
+      "fitting": "ELBOW_45",
+      "count": "1",
+      "position": 0.5,
+      "equipment": "",
+      "nozzle": "SP-HEAD",
+      "flow": "",
+      "note": "",
+      "node": "",
+      "x": "6.819",
+      "y": "5.552",
+      "z": "0.3",
+      "_order": 1000001
+    }
+  ],
+  "library": "89000576ed6769e2add7696d28ab1ced19f52db5bdf6c03edc4d8e421261130b",
+  "cursor": 1,
+  "drawing": "1. 입력도면 대명동 단위세대 평면도",
+  "scope": "design",
+  "saved_at": "2026-09-16T08:28:17.368247+00:00"
+}

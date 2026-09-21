@@ -306,6 +306,8 @@ def register(app, *, UPLOAD_DIR):
         shared = ({str(x) for x in (parts.get("plan") or ())}
                   & ({str(x) for x in (parts.get("system") or ())}
                      | {str(x) for x in (parts.get("machineroom") or ())}))
+        if got.get("attached") and got.get("pump_junction"):
+            shared.add(str(got["pump_junction"]))
 
         nodes = [dict(n) for n in (c.nodes or ())]
         mr_edges = [list(map(float, e)) for e in
@@ -390,20 +392,31 @@ def register(app, *, UPLOAD_DIR):
             # 두 도면을 잇는 배관은 «이음매» 다 — 그 자리가 결합의 핵심이라
             # 화면이 따로 그릴 수 있게 표시해 둔다.
             ka, kb = of.get(a, "plan"), of.get(b, "plan")
-            part = ka if ka == kb else "seam"
+            part = (got.get("pipe_parts") or {}).get(str(r.get("label")))
+            if part is None:  # Legacy snapshots and explicitly edited new edges.
+                part = ka if ka == kb else "seam"
             out_pipes.append({"label": str(r.get("label")), "a": a, "b": b,
                               "dia": r.get("dia"), "len_m": r.get("length"),
                               "c": r.get("c"), "elev": r.get("elev"),
                               "type": r.get("type"), "inner_mm": r.get("inner_mm"),
                               "eq_len": r.get("eq_len"),
                               "part": part,
+                              "boundary": a in shared or b in shared,
                               "key": _key_of_pipe(str(r.get("label")), part)})
 
         from routes.module_f.underlays import reference_layers
         layers = reference_layers(sess,got,iso=iso,geometry=request.args.get('underlays')=='1')
+        from routes.module_f.fitting_inspection import build_merged_inspection
+        inspection = build_merged_inspection(
+            c, _slot_value(sess, "plan", "design") or {}, out_nodes,
+            offset=_off, transform=under,
+            board=getattr(_slot_value(sess, "plan", "edit"), "board", None),
+            plan_editor=_slot_value(sess, "plan", "network_editor"),
+            merge_editor=sess.get("merge_editor"))
         return jsonify({
             "ok": True, "iso": iso,
             "view": {"nodes": out_nodes, "pipes": out_pipes,
+                     "inspection": inspection,
                      # 기계실 평면 배관망 — SDF 에는 없고 «보기» 로만 쓴다.
                      "mr_plan_edges": mr_edges,
                      # [§3-4] 평면도 밑그림 변환 — 04 와 같은 이름·같은 모양.
@@ -457,7 +470,8 @@ def register(app, *, UPLOAD_DIR):
             files = emit_merged(
                 got["combined"], out_dir,
                 title=f"모듈 F 통합 — {sess.get('key') or ''}",
-                iso_nodes=iso_nodes)
+                iso_nodes=iso_nodes,
+                display_reference_labels=list((got.get("parts") or {}).get("plan") or ()))
             sess["merge_files"] = files
             for k, v in files.items():
                 if isinstance(v, str) and v:

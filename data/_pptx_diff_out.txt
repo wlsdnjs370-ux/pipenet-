@@ -1,0 +1,11 @@
+HEAD 77,330B · 작업트리 77,358B (차이 +28B)
+
+항목 수 : HEAD 67 · 작업트리 67
+
+내용이 다른 항목 4개
+  docProps/app.xml  (2,009 → 2,010B)
+  docProps/core.xml  (600 → 600B)
+  ppt/notesSlides/notesSlide5.xml  (2,991 → 2,992B)
+  ppt/viewProps.xml  (846 → 871B)
+
+→ ★내용이 바뀌었다 — 사람이 편집한 파일일 수 있다: ['ppt/notesSlides/notesSlide5.xml', 'ppt/viewProps.xml']

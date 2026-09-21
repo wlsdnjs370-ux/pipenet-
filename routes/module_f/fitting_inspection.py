@@ -1,0 +1,280 @@
+"""Read-only fitting annotations for plan and merged calculation networks.
+
+Types come from the existing fitting table, never from the pruned display degree.
+Display arms/positions are annotations only: no pipe, length or loss is written.
+Library lookup is a reference alongside the actually stored pipe loss; this module
+excludes straight-through tees and never silently resolves missing values.
+"""
+from __future__ import annotations
+
+from collections import defaultdict
+import math
+from typing import Any
+
+from src.pipenet_converter.graph.fitting_policy import without_straight_tees
+
+
+NAMES = {"tee": "분류티", "elbow": "90° 엘보",
+         "elbow-45": "45° 엘보", "alarm_valve": "알람밸브"}
+
+
+def _unit(dx: float, dy: float) -> list[float] | None:
+    length = math.hypot(dx, dy)
+    return [dx / length, dy / length] if length > 1e-9 else None
+
+
+def _shape(kind: str) -> str:
+    if "cross" in kind.lower():
+        return "cross"
+    if "tee" in kind.lower():
+        return "tee"
+    if "elbow" in kind.lower():
+        return "elbow"
+    if "valve" in kind.lower():
+        return "valve"
+    return "other"
+
+
+def build_inspection(tables: Any, got: dict, keys: dict, nodes: list[dict], *,
+                     board: Any = None, transform: dict | None = None,
+                     edited: bool = False, base_got: dict | None = None,
+                     changed_nodes: set[str] | None = None) -> dict:
+    """Return per-fitting cards and projected glyphs using existing identities.
+
+    ``nodes`` are display coordinates; board X/Y are mm. Only unit display
+    directions cross this boundary. ``eq_m`` is m per fitting, while pipe totals
+    are the stored calculation values. Glyph radii use display units, not pixels.
+    Unknown positions stay unplaced; omitted branches are never invented.
+    """
+    from services.cad_import.design.fitting import (
+        FITTING_LIB_ID, load_equivalent_lengths, resolve_eq_len)
+    from services.cad_import.design.restrict import board_port_neighbors
+
+    lib = load_equivalent_lengths()
+    at = {str(n["label"]): n for n in nodes}
+    pipes = {str(p["label"]): p for p in tables.pipes}
+    incident: dict[str, list[str]] = defaultdict(list)
+    upstream: dict[str, list[str]] = defaultdict(list)
+    for lab, p in pipes.items():
+        upstream[str(p["out"])].append(str(p["in"]))
+        for end in (str(p["in"]), str(p["out"])):
+            incident[end].append(lab)
+    pts = list(getattr(board, "pts", None) or [])
+    adj: dict[int, set[int]] = defaultdict(set)
+    for a, b in (getattr(board, "edges", None) or []):
+        a, b = int(a), int(b)
+        if 0 <= a < len(pts) and 0 <= b < len(pts):
+            adj[a].add(b)
+            adj[b].add(a)
+    nref = {str(k): int(v) for k, v in (got.get("node_ref") or {}).items()}
+    # Separate from editor/nozzle identity: the head and its new takeoff share
+    # an original plan point but are different calculation nodes.
+    fref = {**nref, **{str(k): int(v) for k, v in
+                     (got.get("fitting_node_ref") or {}).items()}}
+    phys = {str(k): int(v) for k, v in (got.get("phys") or {}).items()}
+
+    def unchanged(label: str) -> bool:
+        if label in (changed_nodes or ()):
+            return False
+        if not edited:
+            return True
+        nid = str(keys.get("nid", {}).get(label, ""))
+        current = (got.get("kfp") or {}).get("nodes_meta_runtime") or {}
+        before = ((base_got or {}).get("kfp") or {}).get("nodes_meta_runtime") or {}
+        xyz = (current.get(nid) or {}).get("coords")
+        return bool(xyz and xyz == (before.get(nid) or {}).get("coords"))
+
+    def radius(label: str | None, pl: str) -> float:
+        lengths = []
+        for name in incident.get(label, ()) if label else [pl]:
+            p = pipes[name]
+            a, b = at.get(str(p["in"])), at.get(str(p["out"]))
+            if a and b:
+                length = math.hypot(b["x"] - a["x"], b["y"] - a["y"])
+                if length > 1e-9:
+                    lengths.append(length)
+        cap = 200.0 * abs(float((transform or {}).get("k", 1.0)))
+        return min(cap, min(lengths) * .22) if lengths else cap
+
+    def original_arms(vid: int | None) -> list[list[float]]:
+        if vid is None or not transform or not (0 <= vid < len(pts)):
+            return []
+        result = []
+        for other in board_port_neighbors(pts, adj, vid):
+            dx, dy = pts[other][0] - pts[vid][0], pts[other][1] - pts[vid][1]
+            if transform.get("iso"):
+                dx, dy = ((dx - dy) * transform["cos30"],
+                          (dx + dy) * transform["sin30"])
+            u = _unit(dx, dy)
+            if u and not any(sum(a*b for a, b in zip(u, v)) > .98 for v in result):
+                result.append(u)
+        return result
+
+    def node_geometry(label: str) -> tuple[list[list[float]], int | None, str]:
+        n = at.get(label)
+        arms = []
+        if n:
+            for pl in incident[label]:
+                p = pipes[pl]
+                end = str(p["out"]) if str(p["in"]) == label else str(p["in"])
+                o = at.get(end)
+                u = _unit(o["x"] - n["x"], o["y"] - n["y"]) if o else None
+                if u:
+                    arms.append(u)
+        nid = str(keys.get("nid", {}).get(label, ""))
+        vid = fref.get(nid)
+        degree = phys.get(nid)
+        # An edited graph may have moved or split this source node. Retain the
+        # recorded fitting type, but never pretend its old directions are current.
+        stable = unchanged(label) and all(
+            unchanged(str(pipes[pl]["out"] if str(pipes[pl]["in"]) == label
+                          else pipes[pl]["in"])) for pl in incident[label])
+        originals = original_arms(vid) if stable else []
+        omitted = [u for u in originals
+                   if not any(sum(a*b for a, b in zip(u, v)) > .94 for v in arms)]
+        missing = max(0, (degree if degree is not None else len(originals)) - len(arms))
+        # Elevation expansion can replace an existing plan arm with a vertical
+        # arm. It must not be drawn twice. Add omitted directions only when the
+        # source correspondence is unambiguous, never truncate arbitrary arms.
+        if missing and len(omitted) == missing:
+            arms.extend(omitted)
+        basis = ("이 위치의 방향 변경 · 현재 연결 방향만 표시, 생략 방향 재확인" if not stable else
+                 "원본 연결 방향 + 현재 계산망" if originals else
+                 "현재 계산망 · 생략 방향 미확인")
+        return arms, degree, basis
+
+    fits = without_straight_tees(tables.fittings)
+
+    records: list[dict] = []
+    unresolved = getattr(tables, "unresolved", None) or {}
+    for i, row in enumerate(fits):
+        pl, kind = str(row.get("pipe")), str(row.get("type") or "unknown")
+        p = pipes.get(pl)
+        if not p:
+            continue
+        lab = str(row.get("node") or p["in"])
+        anchor = at.get(lab)
+        arms, degree, basis = node_geometry(lab)
+        count = int(row.get("count") or 1)
+        source_node = fref.get(str(keys.get("nid", {}).get(lab, "")))
+        eq, why = resolve_eq_len(kind, p.get("dia"), lib=lib)
+        for ov in unresolved.get("applied", []):
+            if (ov.get("what") == "eq_len" and str(ov.get("pipe_label", ov.get("pipe"))) == pl
+                    and ov.get("kind") == kind and ov.get("dia") == p.get("dia")):
+                eq, why = ov.get("m"), "직접 입력: " + str(ov.get("note") or "사유 미기록")
+        if why == "라이브러리":
+            why = "fittings_library_v3.json / " + str(FITTING_LIB_ID.get(kind, kind))
+        shape = _shape(kind)
+        need = {"tee": 3, "cross": 4, "elbow": 2}.get(shape, 0)
+        symbolic = len(arms) != need if need else True
+        flow = ([upstream[lab][0] if len(upstream[lab]) == 1 else "상류 미확정",
+                 lab, str(p["out"])] if lab else [str(p["in"]), "중간 부속", str(p["out"])])
+        records.append(dict(id=f"f{i}", pipe=pl, node=lab, kind=kind,
+            name=NAMES.get(kind, kind), shape=shape, count=count,
+            x=anchor["x"] if anchor else None, y=anchor["y"] if anchor else None,
+            arms=arms, glyph_radius=radius(lab, pl), symbolic=symbolic, geometry_source=basis,
+            original_degree=degree, source_node=source_node,
+            current_degree=len(incident[lab]) if lab else 2,
+            material=p.get("type"), dia=p.get("dia"), eq_m=eq,
+            eq_total_m=eq*count if eq is not None else None,
+            eq_source=why or "해당 종류·관경의 등가길이 미확정",
+            pipe_eq_m=p.get("eq_len"), origin="부속 입력표", flow_path=flow,
+            note="종류는 원본 정보를 반영한 부속표 기준 · 축약된 선 모양으로 재판정하지 않음"))
+
+    # Explicit point fittings/valves added with the direct editor live in the
+    # equipment table, not the native fitting table. They must be visible too.
+    for i, row in enumerate(tables.equipment):
+        pl = str(row.get("pipe"))
+        p = pipes.get(pl)
+        if not p:
+            continue
+        a, b = at.get(str(p["in"])), at.get(str(p["out"]))
+        if not a or not b:
+            continue
+        t = max(0.0, min(1.0, float(row.get("rel_pos", .5))))
+        kind = str(row.get("editor_library") or row.get("lib") or
+                   ("alarm_valve" if row.get("desc") == "A/V" else "equipment"))
+        count = int(row.get("count") or 1)
+        value = row.get("eq_len")
+        lab = row.get("editor_node") or (str(p["in"]) if t == 0 else str(p["out"]) if t == 1 else None)
+        records.append(dict(id=f"e{i}", pipe=pl, node=lab, kind=kind,
+            name=row.get("desc") or NAMES.get(kind, kind), shape=_shape(kind),
+            count=count, x=a["x"]+(b["x"]-a["x"])*t, y=a["y"]+(b["y"]-a["y"])*t,
+            arms=[], glyph_radius=radius(lab, pl), symbolic=True,
+            geometry_source="기기표 설치 위치 · 연결 포트 형상 미확인",
+            original_degree=None, current_degree=len(incident[str(lab)]) if lab else None,
+            material=p.get("type"), dia=p.get("dia"),
+            eq_m=float(value)/count if value is not None else None, eq_total_m=value,
+            eq_source="기기표 저장값 / " + str(row.get("editor_library") or row.get("lib") or "직접 입력·기존 값"),
+            pipe_eq_m=p.get("eq_len"), origin="기기 입력표", note="배관 실제 길이와 별도로 적용"))
+
+    # Unclassified locations are visible, but never drawn as a guessed elbow/tee.
+    for i, row in enumerate(unresolved.get("kind_items", [])):
+        pl = str(row.get("pipe_label", row.get("pipe")))
+        p = pipes.get(pl)
+        if not p:
+            continue
+        lab = (None if row.get("where") == "구간 내부 다중 접속"
+               else str(row.get("node_label") or p["in"]))
+        n = at.get(lab)
+        if n or lab is None:
+            records.append(dict(id=f"u{i}", pipe=pl, node=lab, kind="unresolved",
+                name="부속 판정 미확정", shape="other", count=row.get("n", 1),
+                x=n["x"] if n else None, y=n["y"] if n else None,
+                arms=[], glyph_radius=radius(lab, pl), symbolic=True,
+                geometry_source="미확정 부속 위치", original_degree=None,
+                current_degree=len(incident[lab]), material=p.get("type"), dia=p.get("dia"),
+                eq_m=None, eq_total_m=None, eq_source="종류 확인 필요", origin="미해결 목록",
+                note=row.get("reason") or "원본 도면과 부속 판정 근거를 확인하세요."))
+    return {"fittings": records, "edited": edited,
+            "note": "표시 전용 · 배관 실제 길이/연결/계산 손실은 변경하지 않음"}
+
+
+def build_merged_inspection(tables: Any, plan: dict, nodes: list[dict], *,
+                            offset: int, board: Any = None,
+                            transform: dict | None = None,
+                            plan_editor: dict | None = None,
+                            merge_editor: dict | None = None) -> dict:
+    """Project authoritative combined fittings, preserving original plan ports.
+
+    Node IDs shift at merge; pipe IDs may be renamed on collision. Neither
+    projected degree nor the shape of a schematic riser reclassifies a fitting.
+    Changed merged nodes use only their confirmed current connection directions.
+    """
+    from copy import copy, deepcopy
+    from routes.module_f.merge import _shift
+
+    keys = plan.get("keys") or {}
+    mapped = {"nid": {_shift(lab, offset): nid
+                      for lab, nid in (keys.get("nid") or {}).items()}}
+    got = plan.get("got") or {}
+    view_tables = copy(tables)
+    source = plan.get("tables")
+    # Match provenance by endpoints, not a reused pipe name (r1/P1 collisions).
+    pipes = {(str(p["in"]), str(p["out"])): str(p["label"])
+             for p in tables.pipes}
+    rename = {str(p["label"]): pipes.get((_shift(p["in"], offset),
+                                          _shift(p["out"], offset)))
+              for p in (getattr(source, "pipes", None) or [])}
+    unresolved = deepcopy(getattr(source, "unresolved", None) or {})
+    for group in ("kind_items", "applied"):
+        kept = []
+        for row in unresolved.get(group, []):
+            name = rename.get(str(row.get("pipe_label", row.get("pipe"))))
+            if name is None:
+                continue
+            row["pipe_label"] = name
+            if row.get("node_label") is not None:
+                row["node_label"] = _shift(row["node_label"], offset)
+            kept.append(row)
+        unresolved[group] = kept
+    view_tables.unresolved = unresolved
+    base = ((merge_editor or {}).get("base_object") or {}).get("combined")
+    before = {str(n["label"]): n for n in (getattr(base, "nodes", None) or [])}
+    changed = {str(n["label"]) for n in tables.nodes
+               if base is not None and any(n.get(k) != before.get(str(n["label"]), {}).get(k)
+                                           for k in ("x", "y", "elevation"))}
+    return build_inspection(view_tables, got, mapped, nodes, board=board,
+                            transform=transform, changed_nodes=changed,
+                            edited=bool(plan.get("editor_modified")),
+                            base_got=((plan_editor or {}).get("base_object") or {}).get("got"))

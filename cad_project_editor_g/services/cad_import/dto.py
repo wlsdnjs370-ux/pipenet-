@@ -1,33 +1,39 @@
-"""변환 폼 ↔ 엔진 계약 SSOT. 입력 값만. Z 계산 없음."""
+"""변환 폼 ↔ 엔진 계약 SSOT. 입력 값만. Z 계산 없음.
+
+기본값은 사내 덱 「z축 및 피팅류」 3장(2026-09-20 오너 확정)을 따른다:
+  가지 상승 0.5 · 상향식 ① 0.5 · 하향식 ① 0.3 / ② 0.5 · 상하향식 ① 0.3 ② 0.2 ③ 0.5 ④ 0.5.
+  가지 상승값은 호(원호) 기호가 말하는 높이차 — 통과 갈래·관말 갈래·우회 구간 세 경우에
+  같은 값 하나를 쓴다(오너: «0.5 는 세 경우 모두 같다»). 화면에서 바꿀 수 있다.
+"""
 import os
 
-BRANCH_DEFAULT_M = 0.3
-UPRIGHT_DEFAULT_M = 0.3
+BRANCH_DEFAULT_M = 0.5
+UPRIGHT_DEFAULT_M = 0.5
 PENDANT_DEFAULT_M = 0.3
-PENDANT_2_DEFAULT_M = 0.3
-COMBO_1_DEFAULT_M = 0.2
-COMBO_2_DEFAULT_M = 0.3
+PENDANT_2_DEFAULT_M = 0.5
+COMBO_1_DEFAULT_M = 0.3
+COMBO_2_DEFAULT_M = 0.5
 COMBO_3_DEFAULT_M = 0.5
-COMBO_UP_DEFAULT_M = 0.3
+COMBO_UP_DEFAULT_M = 0.2
 HEAD_K_DEFAULT = 80.0
 VALVE_1_DEFAULT_M = 2.5
 VALVE_2_DEFAULT_M = 0.5
 
 # (dto 키, 라벨, 칸 기본 문자열, 빈칸일 때 값)
 BRANCH_FIELDS = (
-    ("branch_rise_m", "메인→가지 수직 (m)", "0.3", BRANCH_DEFAULT_M),
+    ("branch_rise_m", "메인→가지 수직 · 호 높이차 (m)", "0.5", BRANCH_DEFAULT_M),
 )
 UPRIGHT_FIELDS = (
-    ("upright_1_m", "① (m)", "0.3", UPRIGHT_DEFAULT_M),
+    ("upright_1_m", "① (m)", "0.5", UPRIGHT_DEFAULT_M),
 )
 PENDANT_FIELDS = (
     ("pendant_1_m", "① (m)", "0.3", PENDANT_DEFAULT_M),
-    ("pendant_2_m", "② (m)", "0.3", PENDANT_2_DEFAULT_M),
+    ("pendant_2_m", "② (m)", "0.5", PENDANT_2_DEFAULT_M),
 )
 COMBO_FIELDS = (
-    ("combo_1_m", "① (m)", "0.2", COMBO_1_DEFAULT_M),
-    ("combo_up_m", "② (m)", "0.3", COMBO_UP_DEFAULT_M),
-    ("combo_2_m", "③ (m)", "0.3", COMBO_2_DEFAULT_M),
+    ("combo_1_m", "① (m)", "0.3", COMBO_1_DEFAULT_M),
+    ("combo_up_m", "② (m)", "0.2", COMBO_UP_DEFAULT_M),
+    ("combo_2_m", "③ (m)", "0.5", COMBO_2_DEFAULT_M),
     ("combo_3_m", "④ (m)", "0.5", COMBO_3_DEFAULT_M),
 )
 FLEX_FIELDS = (

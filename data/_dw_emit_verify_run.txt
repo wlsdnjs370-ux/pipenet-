@@ -1,0 +1,160 @@
+ * Serving Flask app 'daejo_server'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5095
+Press CTRL+C to quit
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /static/vendor/fonts/fonts.css HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /static/vendor/fonts/files/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /static/vendor/fonts/files/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "POST /login HTTP/1.1" 302 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /static/vendor/fonts/fonts.css HTTP/1.1" 304 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /static/styles.css?v=20260714-neural HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /static/app.js?v=20260520-wb1 HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /remote30-prototype?v=20260529-combined-zip-geom HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /api/feedback-posts HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /static/vendor/fonts/fonts.css HTTP/1.1" 304 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /static/vendor/js/three-0.128.0.min.js HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:28] "GET /static/vendor/js/OrbitControls-0.128.0.js HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:29] "GET /design-workbench HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:29] "POST /api/design/session HTTP/1.1" 201 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/remote30/inspect HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/c1/recognize HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "GET /api/design/c1/gate_items/edffcbeb-33f3-4d58-8874-cdae5f1a577f HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:30] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:31] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:32] "POST /api/design/gate/edit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:33] "POST /api/design/gate/confirm HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:33] "GET /api/design/c1/gate_items/edffcbeb-33f3-4d58-8874-cdae5f1a577f HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:33] "POST /api/design/c2/constraints HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:33] "GET /api/design/c3/candidates/edffcbeb-33f3-4d58-8874-cdae5f1a577f HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:34] "POST /api/design/c3/valves HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:34] "POST /api/design/c3/zones HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:34] "POST /api/design/c4/heads HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:34] "GET /api/design/session/edffcbeb-33f3-4d58-8874-cdae5f1a577f HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:34] "POST /api/design/c5/route HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:35] "GET /api/design/session/edffcbeb-33f3-4d58-8874-cdae5f1a577f HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:36] "POST /api/design/emit HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:36] "GET /api/design/emit/edffcbeb-33f3-4d58-8874-cdae5f1a577f/net01_CORE-1F-000.sdf HTTP/1.1" 200 -
+127.0.0.1 - - [06/Aug/2026 15:08:36] "GET /api/design/emit/edffcbeb-33f3-4d58-8874-cdae5f1a577f/meta.json HTTP/1.1" 404 -
+127.0.0.1 - - [06/Aug/2026 15:08:36] "POST /api/design/c4/heads HTTP/1.1" 200 -
+  [OK ] 헤드 전에는 [배관망 라우팅 실행] 잠김
+  [OK ] 라우팅 전에는 [배관망 표 보기] 잠김
+  [OK ] 배관 오버레이 항목은 0 본으로 뜸
+인식: 실 58개 / 코어 11개 / 가상 폐합선 718개 — 2.8s (WALL ARCHI, operator)
+실 정리: {"deleted": 57, "failed": 0, "left": 1}
+  [OK ] 닿지 않는 실을 GATE 지우기로 뺌 — 57개 지움 / 1개 남음
+  [OK ] 게이트 통과
+  [OK ] 후보 코어 조준 — {"x": 720, "y": 490.5, "hits": "CORE-1F-000", "core": "CORE-1F-000", "onCanvas": true}
+구역: 구역 1개 / 담당 실 1개 / 미도달 0개 / 문 없는 실 1개
+  [OK ] 구역 뒤에도 [배관망 라우팅 실행] 은 잠김 — 헤드가 없으면 어디로 물을 보낼지 모른다
+헤드: 헤드 1개 / 실 1개 / 미배치 0개 / 검사 확인 필요 0건 — C5 라우팅으로 넘어갑니다.
+  [OK ] 헤드가 놓임 — 1개
+  [OK ] 헤드가 놓이면 [배관망 라우팅 실행] 열림
+  [OK ] 아직 [배관망 표 보기] 는 잠김
+  C5 상태: 헤드가 놓였습니다 — [배관망 라우팅 실행] 을 누르세요.
+
+[1] 배관망 라우팅
+  0.1s — 망 1개 / 배관 5본 / 연장 4.9 m — 솔버 파일 방출로 넘어갑니다.
+  상태: {"networks": 1, "pipes": 5, "heads": 1, "length": 4.93, "flags": [], "blocking": [], "roles": ["branch", "main"], "dias": [25], "stage": "emit"}
+  [OK ] 망이 나옴 — 1개
+  [OK ] 배관이 놓임 — 5본
+  [OK ] 총연장이 0 이 아님 — 4.9 m
+  [OK ] [배관망 표 보기] 열림
+  [OK ] 급수원에서 헤드까지 주배관·가지배관이 이어짐 — branch, main
+  [NA  ] 교차배관이 나옴 — 헤드 1개 — 분기점이 하나면 교차배관도 관경 차이도 없다
+  [NA  ] 관경이 하나로 뭉개지지 않음 — 헤드 1개 — 분기점이 하나면 교차배관도 관경 차이도 없다
+  [OK ] 미방호 헤드 없음 — 플래그 없음
+  [OK ] 급수원 쪽 관경이 가늘어지지 않음 — 역전 없음
+  [OK ] 화면 단계와 서버 단계가 같음 — 화면=emit 서버=emit
+  [OK ] 막는 문제가 없으면 방출로 넘어감 — emit
+
+[2] 배관망 패널
+  [OK ] 망별 표가 렌더 — 1행
+  [OK ] 호칭경별 연장표가 렌더 — 2행
+  호칭경표:
+    호칭경	역할	연장 m | 25A	가지배관	1.83 | 25A	주배관	3.10
+  [OK ] 배관 본수 배지 — 배관 5본
+
+[3] 배관 오버레이
+  산출물 항목: {"checked": true, "disabled": false, "count": "5"}
+  [OK ] 배관망 항목이 산출물 목록에 있음
+  [OK ] 배관망 항목이 켜져 있고 잠기지 않음
+  [OK ] 배관 본수가 목록에 나옴 — 5 vs 5
+  [OK ] 캔버스에 배관이 실제로 칠해짐 — 179 px
+
+[4] 솔버 파일 방출
+  [OK ] 방출 단계가 되면 [솔버 파일 방출] 열림
+  1.1s — 망 1개 / 파일 4개 — 왕복 검증이 어긋났습니다. 솔버에 넣기 전에 확인하세요.
+  상태: {"bundles": 1, "suffixes": [[".has", ".kfp", ".sdf", ".slf"]], "empty": 0, "rt_ok": false, "flags": ["ROUND_TRIP_MISMATCH"], "links": 4}
+  [OK ] 망 수가 C5 와 같음 — 방출 1 vs 라우팅 1
+  [OK ] 망마다 네 포맷이 나옴 — [[".has", ".kfp", ".sdf", ".slf"]]
+  [OK ] 빈 파일이 없음 — 0개
+  [FAIL] 왕복 검증이 일치 — ROUND_TRIP_MISMATCH
+  [OK ] 파일이 실제로 내려받아짐 — {"status": 200, "bytes": 11640, "sdf": true, "name": "net01_CORE-1F-000.sdf11 KB"}
+  [OK ] 방출물이 아닌 파일은 거절 — 404
+
+[5] 헤드를 다시 놓으면 배관이 무효
+  [OK ] 배관망 무효화 — {"pipes": 0, "ran": false, "nets": 0}
+  [OK ] [배관망 표 보기] 다시 잠김
+  [OK ] [배관망 라우팅 실행] 은 열려 있음 — 헤드를 다시 놓았으니 다시 돌릴 수 있어야 한다
+  [OK ] 방출물도 함께 무효화 — {"bundles": 0, "suffixes": [], "empty": 0, "rt_ok": true, "flags": [], "links": 0}
+
+네트워크 로그(예상됨): ['console.error: Failed to load resource: the server responded with a status of 404 (NOT FOUND)']
+JS 오류: 없음
+실패한 검사: ['왕복 검증이 일치']

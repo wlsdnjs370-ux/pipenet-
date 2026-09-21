@@ -110,6 +110,15 @@ def register(app):
         elevation_mode = body.get("elevation_mode", "drawing")
         if elevation_mode not in {"drawing", "same_level"}:
             return _fail("계통도 표고 기준이 올바르지 않습니다.")
+        assumed_height = body.get("assumed_floor_height_m")
+        if assumed_height is not None and elevation_mode == "drawing":
+            import math
+            try:
+                assumed_height = float(assumed_height)
+            except (TypeError, ValueError):
+                return _fail("가정 층고는 숫자(m)로 입력하세요.")
+            if not math.isfinite(assumed_height) or assumed_height <= 0:
+                return _fail("가정 층고는 0보다 큰 유한한 수(m)여야 합니다.")
         # 조각난 풀 계통도용 폴백 — 두 점 없이 파일의 단일망을 통째로 읽는다.
         if bool(body.get("clean")):
             try:
@@ -140,7 +149,8 @@ def register(app):
                                    snap_tolerance_mm=_snap(body),
                                    waypoints=wps or None,
                                    layer_filter=_layers(sess, body),
-                                   elevation_mode=elevation_mode)
+                                   elevation_mode=elevation_mode,
+                                   assumed_floor_height_m=assumed_height)
         except ValueError as exc:
             # 사용자 입력 문제 — 미도달을 그대로 말한다(S340).
             return jsonify({"ok": False, "message": str(exc),
@@ -185,9 +195,12 @@ def register(app):
         except Exception as exc:  # noqa: BLE001
             return _fail(f"기계실 추출에 실패했습니다: {exc}", 500)
 
-        # 사람이 찍은 연결점을 함께 남긴다 — 결합(S740) 때 기계실 평면을 어디에
-        # 붙일지의 기준이다. 추출 결과 dict 에는 라벨만 있고 좌표는 없다.
-        mr["conn_xy"] = [conn[0], conn[1]]
+        # The click selects a nearby graph node; only that snapped node is the
+        # shared connection. Keep the original click for review, not alignment.
+        from routes.module_f.connections import machine_connection
+        connection = machine_connection(mr)
+        mr["conn_xy"] = [float(connection["x"]), float(connection["y"])]
+        mr["conn_pick_xy"] = [conn[0], conn[1]]
         sess["machineroom"] = mr
         # ★요약을 만들기 **전에** 되붙인다 — 뒤에 하면 화면에 뜨는 연장이
         #   손질 전 값이 되어, 표와 요약이 서로 다른 말을 한다.

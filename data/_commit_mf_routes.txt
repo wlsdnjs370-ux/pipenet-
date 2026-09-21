@@ -1,0 +1,67 @@
+모듈 F 라우트 앞머리를 한 자리로 — 관용구 43곳 → 2곳
+
+라우트 60개가 저마다 같은 네댓 줄을 손으로 적고 있었다(실측 43곳 · 188줄):
+
+    body = request.get_json(silent=True) or {}
+    try:
+        sess, why = _need_auto(body)
+    except ValueError as exc:
+        return _fail(str(exc), 410)
+    if why:
+        return _fail(why, 409)
+
+베끼는 자리는 «빠뜨릴 수 있는 자리» 다. `jobs.route_session` 하나로 모았다:
+
+  · 핸들러는 `(sess, body)` 를 받는다. body 는 POST 면 JSON, GET 이면
+    request.args — 둘 다 `.get()` 이라 쓰는 쪽은 같다.
+  · resolve 를 주면 «(sess, 사유)» 규약으로 본다(_need_auto · _need_pick ·
+    _edit_session · _need_slot).
+  · 사유는 문장 하나 또는 «(문장, 코드)» — 옮겨 오기 전의 상태 코드를
+    그대로 지킨다. 리팩터가 화면이 보는 코드를 바꾸면 안 된다.
+
+파일별 (줄 · 라우트 · 남은 관용구):
+
+    api_auto      438 → 386
+    api_convert   311 → 302
+    api_design    485 → 474
+    api_edit      417 → 357
+    api_merge     226 → 208
+    api_open      243 → 231
+    api_pick      300 → 270
+    api_slot      254 → 244   (1곳 남김)
+    api_sub       181 → 164
+    ────────────────────────
+    합계        5,717 → 5,547  (-170줄)
+    관용구         43 → 2
+    똑같이 되풀이되는 줄 320 → 153
+
+api_slot 에 하나 남긴 것은 `slot/open` 이다 — sid 가 있으면 그 세션, 없으면
+새 세션이라 «세션을 찾는 라우트» 가 아니다. 억지로 맞추지 않았다.
+
+■ 곁들여 정리한 것
+
+  · api_pick 에 `_need_pick` 신설 — 일곱 라우트가 같은 «찍기판 있나» 검사를
+    했다. 400 을 그대로 지킨다.
+  · api_edit 의 `_edit_session` 을 3-튜플 (sess, es, 실패응답) 에서
+    route_session 규약 (sess, 사유) 로. `es` 는 `sess["edit"]` 에서 꺼낸다.
+    같은 블록이 열한 번 나와 손으로 고치면 한 번은 틀리므로
+    scripts/_refactor_edit_routes.py 로 기계가 했다.
+  · jobs.py 의 중복된 구역 주석 두 개 정리(«세션» 두 번 · `_job_running`
+    위의 «도형 직렬화» 는 틀린 이름).
+  · __init__.py 도크스트링이 «라우트 네 묶음» 이라 적혀 있었다 — 실제로는
+    아홉이고 모듈도 여섯 개 더 있다. 구성표를 사실과 맞췄다.
+
+■ 시험도 «어디에 적혀 있는가» 에서 «무엇을 하는가» 로
+
+test_module_f_review.py 세 건이 옛 구현 모양에 결합돼 있었다. 의도는 살렸다 —
+특히 「board 를 바꾸는 모든 라우트가 가드를 탄다」는 불변식은 지킬 값어치가
+있어, 가드가 데코레이터로 옮겨 간 것을 보도록 def 앞뒤를 함께 보게 했다.
+
+검증:
+  · pytest tests            1,447 통과
+  · _verify_module_f_ui.py  PASS — 브라우저 · 콘솔 오류 없음
+
+라우트 처리를 바꿨으므로 구문·단위 시험만으로 끝내지 않고 실제 브라우저로
+화면 전 단계를 다시 돌렸다.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>

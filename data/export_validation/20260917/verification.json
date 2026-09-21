@@ -1,0 +1,20 @@
+{
+  "nodes": 257,
+  "pipes": 256,
+  "heads": 30,
+  "max_length_error_m": 5.800915303666443e-15,
+  "total_pipe_length_m": 269.834,
+  "messages": [
+    "수요가 없는 배관 말단을 0유량 출구로 지정: 11, 15"
+  ],
+  "pipenet_status": "Warnings",
+  "pipenet_converged_iterations": 5,
+  "velocity_warning_pipes": [
+    "P23",
+    "P59",
+    "P75",
+    "P78",
+    "P98",
+    "P99"
+  ]
+}

@@ -1,0 +1,2878 @@
+{
+  "engine": "repository cad_project_editor_g; not installed Solver v5.5",
+  "input_sha256": "07c2a42814baadfa4fa644919d4846911d23d908e6e7f91ffe2d57b1a1890b7f",
+  "node_count": 39,
+  "original": {
+    "counts": {
+      "success": 14,
+      "other_rejection": 6,
+      "axis_error": 214
+    },
+    "results": [
+      {
+        "node": "N3",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N3",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N3",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N3",
+        "axis": "-Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N3",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N3",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N4",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N4 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N4",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N4 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N4",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N4 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N4",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N4 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N4",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N4 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N4",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N4 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N26",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N26 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N26",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N26 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N26",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N26 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N26",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N26 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N26",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N26 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N26",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N26 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N32",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N32 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N32",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N32 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N32",
+        "axis": "+Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N32",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N32",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N32 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N32",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N32 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N33",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N33 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N33",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N33 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N33",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N33 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N33",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N33 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N33",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N33 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N33",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N33 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N41",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N41 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N41",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N41 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N41",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N41 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N41",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N41 -> N159]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N41",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N41 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N41",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N41 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N64",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N64 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N64",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N64 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N64",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N64 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N64",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N64 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N64",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N64 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N64",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N64 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N67",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N67 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N67",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N67 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N67",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N67 -> N159]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N67",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N67 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N67",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N67 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N67",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N67 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N68",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N68 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N68",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N68 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N68",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N68 -> N159]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N68",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N68 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N68",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N68 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N68",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N68 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N71",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N71 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N71",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N71 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N71",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N71 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N71",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N71 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N71",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N71 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N71",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N71 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N72",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N72 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N72",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N72 -> N159]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N72",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N72 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N72",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N72 -> N159]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N72",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N72 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N72",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N72 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N88",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N88 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N88",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N88 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N88",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N88 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N88",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N88 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N88",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N88 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N88",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N88 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N89",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N89 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N89",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N89 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N89",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N89 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N89",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N89 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N89",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N89 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N89",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N89 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N90",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N90 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N90",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N90 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N90",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N90 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N90",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N90 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N90",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N90 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N90",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N90 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N91",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N91 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N91",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N91 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N91",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N91 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N91",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N91 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N91",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N91 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N91",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N91 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N92",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N92 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N92",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N92 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N92",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N92 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N92",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N92 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N92",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N92 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N92",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N92 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N94",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N94 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N94",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N94 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N94",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N94 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N94",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N94 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N94",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N94 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N94",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N94 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N95",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N95 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N95",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N95 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N95",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N95 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N95",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N95 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N95",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N95 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N95",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N95 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N100",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N100 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N100",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N100 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N100",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N100 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N100",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N100 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N100",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N100 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N100",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N100 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N103",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N103 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N103",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N103 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N103",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N103 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N103",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N103 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N103",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N103 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N103",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N103 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N104",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N104 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N104",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N104 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N104",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N104 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N104",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N104 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N104",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N104 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N104",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N104 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N105",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N105 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N105",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N105 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N105",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N105 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N105",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N105 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N105",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N105 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N105",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N105 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N107",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N107 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N107",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N107 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N107",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N107 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N107",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N107 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N107",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N107 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N107",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N107 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N108",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N108 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N108",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N108 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N108",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N108 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N108",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N108 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N108",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N108 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N108",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N108 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N113",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N113 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N113",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N113 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N113",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N113 -> N159]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N113",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N113 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N113",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N113 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N113",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N113 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N114",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N114 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N114",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N114 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N114",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N114 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N114",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N114 -> N159]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N114",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N114 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N114",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N114 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N136",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N136 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N136",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N136 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N136",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N136 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N136",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N136 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N136",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N136 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N136",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N136 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N147",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N147 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N147",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N147 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N147",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N147 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N147",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N147 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N147",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N147 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N147",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N147 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N148",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N148 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N148",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N148 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N148",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N148 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N148",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N148 -> N159]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N148",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N148 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N148",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N148 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N149",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N149 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N149",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N149 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N149",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N149 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N149",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N149 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N149",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N149 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N149",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N149 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N150",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N150 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N150",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N150 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N150",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N150 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N150",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N150 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N150",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N150 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N150",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N150 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N151",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N151 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N151",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N151 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N151",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N151 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N151",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N151 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N151",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N151 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N151",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N151 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N152",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N152",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N152",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N152",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N152",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N152",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N153",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N153 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N153",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N153 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N153",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N153 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N153",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N153 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N153",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N153 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N153",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N153 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N154",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N154 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N154",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N154 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N154",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N154 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N154",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N154 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N154",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N154 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N154",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N154 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N155",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N155 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N155",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N155 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N155",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N155 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N155",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N155 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N155",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N155 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N155",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N155 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N156",
+        "axis": "+X",
+        "outcome": "axis_error",
+        "message": "[N156 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N156",
+        "axis": "-X",
+        "outcome": "axis_error",
+        "message": "[N156 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N156",
+        "axis": "+Y",
+        "outcome": "axis_error",
+        "message": "[N156 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N156",
+        "axis": "-Y",
+        "outcome": "axis_error",
+        "message": "[N156 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N156",
+        "axis": "+Z",
+        "outcome": "axis_error",
+        "message": "[N156 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N156",
+        "axis": "-Z",
+        "outcome": "axis_error",
+        "message": "[N156 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+      },
+      {
+        "node": "N157",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N157",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N157",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N157",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N157",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N157",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N158",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N158",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N158",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N158",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N158",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N158",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      }
+    ]
+  },
+  "precision_grid": {
+    "counts": {
+      "success": 158,
+      "other_rejection": 76
+    },
+    "results": [
+      {
+        "node": "N3",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N3",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N3",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N3",
+        "axis": "-Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N3",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N3",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N4",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N4",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N4",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N4",
+        "axis": "-Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N4",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N4",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N26",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N26",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N26",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N26",
+        "axis": "-Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N26",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N26",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N32",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N32",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N32",
+        "axis": "+Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N32",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N32",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N32",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N33",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N33",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N33",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N33",
+        "axis": "-Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N33",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N33",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N41",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N41",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N41",
+        "axis": "+Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N41",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "경로상에 배관이 감지되었습니다.\n교차점(N159)까지만 연결하고 멈췄습니다."
+      },
+      {
+        "node": "N41",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N41",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N64",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N64",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N64",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N64",
+        "axis": "-Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N64",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N64",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N67",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N67",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N67",
+        "axis": "+Y",
+        "outcome": "other_rejection",
+        "message": "[N67 -> N159]\n기존 배관과 겹치거나 교차합니다."
+      },
+      {
+        "node": "N67",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N67",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N67",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N68",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N68",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N68",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "경로상에 배관이 감지되었습니다.\n교차점(N159)까지만 연결하고 멈췄습니다."
+      },
+      {
+        "node": "N68",
+        "axis": "-Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N68",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N68",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N71",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N71",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N71",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N71",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N71",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N71",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N72",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N72",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "[N72 -> N159]\n기존 배관과 겹치거나 교차합니다."
+      },
+      {
+        "node": "N72",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N72",
+        "axis": "-Y",
+        "outcome": "other_rejection",
+        "message": "[N72 -> N159]\n기존 배관과 겹치거나 교차합니다."
+      },
+      {
+        "node": "N72",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N72",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N88",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N88",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N88",
+        "axis": "+Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N88",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N88",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N88",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N89",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N89",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N89",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N89",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N89",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N89",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N90",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N90",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N90",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N90",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N90",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N90",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N91",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N91",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N91",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N91",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N91",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N91",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N92",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N92",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N92",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N92",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N92",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N92",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N94",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N94",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N94",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N94",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N94",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N94",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N95",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N95",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N95",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N95",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N95",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N95",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N100",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N100",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N100",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N100",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N100",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N100",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N103",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N103",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N103",
+        "axis": "+Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N103",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N103",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N103",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N104",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N104",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N104",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N104",
+        "axis": "-Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N104",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N104",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N105",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N105",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N105",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N105",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N105",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N105",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N107",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N107",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N107",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N107",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N107",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N107",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N108",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N108",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N108",
+        "axis": "+Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N108",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N108",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N108",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N113",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N113",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N113",
+        "axis": "+Y",
+        "outcome": "other_rejection",
+        "message": "[N113 -> N159]\n기존 배관과 겹치거나 교차합니다."
+      },
+      {
+        "node": "N113",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N113",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N113",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N114",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N114",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N114",
+        "axis": "+Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N114",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "경로상에 배관이 감지되었습니다.\n교차점(N159)까지만 연결하고 멈췄습니다."
+      },
+      {
+        "node": "N114",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N114",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N136",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N136",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N136",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N136",
+        "axis": "-Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N136",
+        "axis": "+Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N136",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N147",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N147",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N147",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N147",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N147",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N147",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N148",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N148",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N148",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N148",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "경로상에 배관이 감지되었습니다.\n교차점(N159)까지만 연결하고 멈췄습니다."
+      },
+      {
+        "node": "N148",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N148",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N149",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N149",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N149",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N149",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N149",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N149",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N150",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N150",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N150",
+        "axis": "+Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N150",
+        "axis": "-Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N150",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N150",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N151",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N151",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N151",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N151",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N151",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N151",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N152",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N152",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N152",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N152",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N152",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N152",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N153",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N153",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N153",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N153",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N153",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N153",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N154",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N154",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N154",
+        "axis": "+Y",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N154",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N154",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N154",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N155",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N155",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N155",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N155",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N155",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N155",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N156",
+        "axis": "+X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N156",
+        "axis": "-X",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N156",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N156",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N156",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N156",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N157",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N157",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N157",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N157",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N157",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N157",
+        "axis": "-Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N158",
+        "axis": "+X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N158",
+        "axis": "-X",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N158",
+        "axis": "+Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N158",
+        "axis": "-Y",
+        "outcome": "success",
+        "message": "OK"
+      },
+      {
+        "node": "N158",
+        "axis": "+Z",
+        "outcome": "other_rejection",
+        "message": "해당 경로에 이미 배관이 존재합니다."
+      },
+      {
+        "node": "N158",
+        "axis": "-Z",
+        "outcome": "success",
+        "message": "OK"
+      }
+    ]
+  },
+  "roundtrip": {
+    "serialized_grid_step": null,
+    "loaded_grid_step": 0.01,
+    "N152": {
+      "counts": {
+        "axis_error": 6
+      },
+      "results": [
+        {
+          "node": "N152",
+          "axis": "+X",
+          "outcome": "axis_error",
+          "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+        },
+        {
+          "node": "N152",
+          "axis": "-X",
+          "outcome": "axis_error",
+          "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+        },
+        {
+          "node": "N152",
+          "axis": "+Y",
+          "outcome": "axis_error",
+          "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+        },
+        {
+          "node": "N152",
+          "axis": "-Y",
+          "outcome": "axis_error",
+          "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+        },
+        {
+          "node": "N152",
+          "axis": "+Z",
+          "outcome": "axis_error",
+          "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+        },
+        {
+          "node": "N152",
+          "axis": "-Z",
+          "outcome": "axis_error",
+          "message": "[N152 -> _AUDIT_NEW_NODE_]\n배관이 X, Y, Z 축과 평행하지 않습니다."
+        }
+      ]
+    }
+  },
+  "original_file_unchanged": true
+}

@@ -1,0 +1,16 @@
+PDF 18쪽 / 649행 / 8.50pt
+PIPE CONFIGURATION: 워드 136행 / 내 136행, 대조 불일치 0
+FLOW IN PIPES: 워드 136행 / 내 136행, 대조 불일치 35
+PIPE CONFIGURATION 노드 라벨: 워드 136행 / 내 136행, 불일치 0
+NOZZLE CONFIGURATION: 워드 30행 / 내 30행, 대조 불일치 0
+FLOW THROUGH NOZZLES: 워드 30행 / 내 30행, 대조 불일치 1
+DESIGNED DIAMETERS & FLOWRATES: 워드 136행 / 내 136행, 대조 불일치 0
+DESIGNED DIAMETERS 노드 라벨: 워드 136행 / 내 136행, 불일치 0
+DESIGNED DIAMETERS — Flowrate (참고): 워드 136행 / 내 136행, 대조 불일치 0
+WARNINGS: 유속 초과 2개 / 최소압 미달 18개, 판정 불일치 0
+
+  Pipes-results/Friction loss: 표시 경계까지 최대 0.009687 (XML 정밀도 0.01)
+  Pipes-results/Inlet pressure-Outlet pressure: 표시 경계까지 최대 0.009687 (XML 정밀도 1)
+  Spray-nozzles-results/Calculated flow: 표시 경계까지 최대 1e-11 (XML 정밀도 1e-11)
+
+자릿수 불일치 36 건 / 설명 못 한 불일치 0 건 (관경 결정 단계 유량 참고 대조 별도: 0)

@@ -1,0 +1,13 @@
+User-lib absolute: 729 (nonascii mojibake 729 / true-unicode 0)
+User-lib filename-only: 615 (nonascii true 551 / nonascii mojibake 1)
+
+filename-only + TRUE-unicode examples:
+.\cad_project_editor_g\tests\_out\f2_desktop\B1F 현장조사 소화설비 평면도_수리계산입력.sdf
+.\data\uploads\module_f\008ba7bc70ae4dfa_design\1. 입력도면 대명동 단위세대 평면도_수리계산입력.sdf
+.\data\uploads\module_f\016c71437e8840c6_design\1. 입력도면 대명동 단위세대 평면도_수리계산입력.sdf
+.\data\uploads\module_f\02016b4061564aba_design\LH306동_평면도_수리계산입력.sdf
+.\data\uploads\module_f\027291f28bee4672_design\1. 입력도면 대명동 단위세대 평면도_수리계산입력.sdf
+.\data\uploads\module_f\03111125964147e8_design\대명동201동 단위세대_layer정리_수리계산입력.sdf
+
+filename-only + MOJIBAKE examples:
+.\data\uploads\module_f\34a12e1d0d3543c6_design\1. 입력도면 대명동 단위세대 평면도_수리계산입력.sdf

@@ -113,14 +113,15 @@ def picked_heads_wet(es, picked, *, selected_source=None):
                 "wet": set(), "total": 0, "dropped": 0,
                 "reason": {}, "shared": set()}
     payload = es.convert_payload()
-    lim = restrict_to_worst(payload, es.board, {"heads": order})
+    lim = restrict_to_worst(payload, es.board, {"heads": order}, selected_source=selected_source)
     built = build_planar_graph(
         lim.get("key") or "picked", write=False,
         selected_source=selected_source or lim.get("selected_source"),
         pts=lim.get("pts"), edges=lim.get("edges"), hcov=lim.get("hcov"),
         ups=lim.get("ups"), head_kinds=lim.get("head_kinds"),
         user_sources=lim.get("sources"), ho=lim.get("ho"),
-        edge_len_mm=lim.get("edge_len_mm"))
+        edge_len_mm=lim.get("edge_len_mm"), fixed_head_nodes=lim["flow_head_nodes"],
+        grid_snap=False, keep_head_stub=False)
     if not built.get("ok"):
         return {"ok": False,
                 "error": built.get("error") or "제한 전개가 실패했습니다.",

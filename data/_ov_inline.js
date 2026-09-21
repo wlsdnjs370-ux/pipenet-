@@ -1,0 +1,1339 @@
+
+    const CAT_COLORS = {
+      PIPE: "#3b82f6", HEAD: "#ef4444", TEXT: "#22c55e",
+      ARCH: "#94a3b8", EXCLUDE: "#71717a", OTHER: "#f59e0b",
+      ALARM: "#a855f7",
+      _subgraph: "#fde047", _subgraph_head: "#ef4444", _alarm_valve: "#a855f7",
+    };
+    const state = {
+      // 5종 entity 스냅샷 (0=원본, 1=배관망, 2=헤드bbox, 3=그래프, 4=30 헤드)
+      stage_entities: { 0: [], 1: [], 2: [], 3: [], 4: [] },
+      // 헤드 편집
+      detected_heads: [],  // [{i,pos:[x,y],bbox:[x1,y1,x2,y2],k,c}, ...]
+      user_added_heads: [], // [[x,y], ...]
+      user_deleted_indices: new Set(),
+      zones: [],            // [[x1,y1,x2,y2], ...]
+      edit_mode: "none",    // none|add|delete|zone|alarm_pick
+      zone_drag: null,      // {start_wx, start_wy} 드래그 진행 중일 때
+      alarm_marker: null,   // {x, y, source: 'manual'|'auto'} — 알람밸브 위치 시각 마커
+      current_stage_view: 0,
+      bbox: null,
+      layer_cat: {},
+      view: { zoom: 1, panX: 0, panY: 0, fitZoom: null },
+      dpr: window.devicePixelRatio || 1,
+      drag: null,
+      uploadedFile: null,
+      jobId: null,
+      stageStartTimes: {},
+    };
+
+    const canvas = document.getElementById("wb-canvas");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    const emptyEl = document.getElementById("wb-empty");
+    const overlayInfoEl = document.getElementById("wb-overlay-info");
+    const fitBtnEl = document.getElementById("wb-fit-btn");
+    const stageBadge = document.getElementById("wb-stage-badge");
+    const dxfInputEl = document.getElementById("wb-dxf");
+    const fileStatusEl = document.getElementById("wb-file-status");
+    const runBtn = document.getElementById("wb-run");
+    const stageButtons = [
+      document.getElementById("wb-stage-0"),
+      document.getElementById("wb-stage-1"),
+      document.getElementById("wb-stage-2"),
+      document.getElementById("wb-stage-3"),
+      document.getElementById("wb-stage-4"),
+    ];
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      state.dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * state.dpr);
+      canvas.height = Math.round(rect.height * state.dpr);
+      render();
+    }
+    window.addEventListener("resize", resizeCanvas);
+
+    function worldToScreen(x, y) {
+      return [x * state.view.zoom + state.view.panX, -y * state.view.zoom + state.view.panY];
+    }
+    function fitToBBox() {
+      if (!state.bbox) return;
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      const bw = state.bbox.x_max - state.bbox.x_min;
+      const bh = state.bbox.y_max - state.bbox.y_min;
+      if (bw <= 0 || bh <= 0) return;
+      const margin = 40;
+      const z = Math.min((w - 2 * margin) / bw, (h - 2 * margin) / bh);
+      state.view.zoom = z;
+      state.view.panX = w / 2 - ((state.bbox.x_min + state.bbox.x_max) / 2) * z;
+      state.view.panY = h / 2 + ((state.bbox.y_min + state.bbox.y_max) / 2) * z;
+      state.view.fitZoom = z;
+      render();
+    }
+    fitBtnEl.addEventListener("click", fitToBBox);
+
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const wx = (mx - state.view.panX) / state.view.zoom;
+      const wy = -(my - state.view.panY) / state.view.zoom;
+      state.view.zoom *= factor;
+      const [nsx, nsy] = worldToScreen(wx, wy);
+      state.view.panX += mx - nsx;
+      state.view.panY += my - nsy;
+      render();
+    }, { passive: false });
+    canvas.addEventListener("mousedown", (e) => {
+      state.drag = { x: e.clientX, y: e.clientY, panX: state.view.panX, panY: state.view.panY };
+      canvas.classList.add("is-panning");
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!state.drag) return;
+      state.view.panX = state.drag.panX + (e.clientX - state.drag.x);
+      state.view.panY = state.drag.panY + (e.clientY - state.drag.y);
+      render();
+    });
+    window.addEventListener("mouseup", () => { state.drag = null; canvas.classList.remove("is-panning"); });
+
+    function render() {
+      _renderEntities();
+      drawAlarmMarker();
+    }
+
+    function drawAlarmMarker() {
+      if (!state.alarm_marker) return;
+      const { x, y, source } = state.alarm_marker;
+      const [sx, sy] = worldToScreen(x, y);
+      ctx.save();
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      const R = 9;                         // 외곽 원 반경 (px)
+      const tR = R * 0.88;                 // 내접 삼각형 외접원 반경
+      const SQRT3_2 = Math.sin(Math.PI / 3);
+      // 위 방향 정삼각형 (△) 꼭짓점 — 원에 내접
+      const p1 = [sx, sy - tR];                    // 위 꼭짓점
+      const p2 = [sx - tR * SQRT3_2, sy + tR / 2]; // 좌하
+      const p3 = [sx + tR * SQRT3_2, sy + tR / 2]; // 우하
+      // 1) 흰색 외곽 — 어두운 배경 가시성
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.lineTo(p3[0], p3[1]);
+      ctx.closePath(); ctx.stroke();
+      // 2) 빨간 원 (outline)
+      ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI * 2); ctx.stroke();
+      // 3) 빨간 위 방향 정삼각형 (outline)
+      ctx.beginPath();
+      ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.lineTo(p3[0], p3[1]);
+      ctx.closePath(); ctx.stroke();
+      // 4) 중심점 — 정확한 좌표 표시 (작은 빨간 점)
+      ctx.fillStyle = "#ef4444";
+      ctx.beginPath(); ctx.arc(sx, sy, 1.2, 0, Math.PI * 2); ctx.fill();
+      // 5) auto 표시는 점선 외곽 추가
+      if (source === "auto") {
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(sx, sy, R + 5, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function _renderEntities() {
+      const w = canvas.width / state.dpr;
+      const h = canvas.height / state.dpr;
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, w, h);
+
+      const ents = state.stage_entities[state.current_stage_view] || [];
+      if (!ents.length) return;
+
+      // Stage 2 — 배관망 ghost + 헤드 bbox + 편집 오버레이
+      if (state.current_stage_view === 2) {
+        const ghost = state.stage_entities[1] || [];
+        ctx.globalAlpha = 0.20;
+        ctx.strokeStyle = "#475569"; ctx.fillStyle = "#475569"; ctx.lineWidth = 0.6;
+        for (const en of ghost) drawEntity(en);
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 1.4;
+        // 검출된 헤드 bbox (삭제 마킹된 건 빨간 X)
+        for (const en of ents) {
+          if (en.t !== "B") continue;
+          const deleted = state.user_deleted_indices.has(en.i);
+          const conf = en.c ?? 0.5;
+          if (deleted) ctx.strokeStyle = "#dc2626";
+          else if (conf >= 0.92) ctx.strokeStyle = "#ea580c";
+          else if (conf >= 0.80) ctx.strokeStyle = "#f97316";
+          else ctx.strokeStyle = "#facc15";
+          ctx.setLineDash(deleted ? [4, 4] : []);
+          const [x1, y1] = worldToScreen(en.p[0], en.p[1]);
+          const [x2, y2] = worldToScreen(en.p[2], en.p[3]);
+          ctx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+          if (deleted) {
+            // X 표시
+            ctx.beginPath();
+            ctx.moveTo(Math.min(x1, x2), Math.min(y1, y2)); ctx.lineTo(Math.max(x1, x2), Math.max(y1, y2));
+            ctx.moveTo(Math.max(x1, x2), Math.min(y1, y2)); ctx.lineTo(Math.min(x1, x2), Math.max(y1, y2));
+            ctx.stroke();
+          }
+        }
+        ctx.setLineDash([]);
+        // 사용자 추가 헤드 — 초록 사각형 + 십자
+        ctx.strokeStyle = "#16a34a"; ctx.fillStyle = "#16a34a"; ctx.lineWidth = 2;
+        for (const [wx, wy] of state.user_added_heads) {
+          const [sx, sy] = worldToScreen(wx, wy);
+          const rpx = 100 * state.view.zoom;
+          ctx.strokeRect(sx - rpx, sy - rpx, rpx * 2, rpx * 2);
+          ctx.beginPath();
+          ctx.moveTo(sx - 4, sy); ctx.lineTo(sx + 4, sy);
+          ctx.moveTo(sx, sy - 4); ctx.lineTo(sx, sy + 4);
+          ctx.stroke();
+        }
+        // 영역 (점선 파란 사각형)
+        ctx.setLineDash([8, 4]);
+        ctx.strokeStyle = "#1e40af"; ctx.lineWidth = 1.6;
+        for (const [zx1, zy1, zx2, zy2] of state.zones) {
+          const [sx1, sy1] = worldToScreen(zx1, zy1);
+          const [sx2, sy2] = worldToScreen(zx2, zy2);
+          ctx.strokeRect(Math.min(sx1, sx2), Math.min(sy1, sy2), Math.abs(sx2 - sx1), Math.abs(sy2 - sy1));
+        }
+        // 드래그 중 임시 zone
+        if (state.zone_drag) {
+          const { sx, sy, ex, ey } = state.zone_drag;
+          const [a, b] = worldToScreen(sx, sy);
+          const [c, d] = worldToScreen(ex, ey);
+          ctx.strokeStyle = "#60a5fa"; ctx.lineWidth = 1.4;
+          ctx.strokeRect(Math.min(a, c), Math.min(b, d), Math.abs(c - a), Math.abs(d - b));
+        }
+        ctx.setLineDash([]);
+        return;
+      }
+
+      // Stage 3 — 전체 배관망 그래프 (cyan edges + junction dots) + 알람밸브 source/drop-line
+      if (state.current_stage_view === 3) {
+        const ghost = state.stage_entities[1] || [];
+        ctx.globalAlpha = 0.18;
+        ctx.strokeStyle = "#475569"; ctx.fillStyle = "#475569"; ctx.lineWidth = 0.6;
+        for (const en of ghost) drawEntity(en);
+        ctx.globalAlpha = 1;
+        // 그래프 edges (real + virtual 동일 색)
+        ctx.strokeStyle = "#06b6d4"; ctx.lineWidth = 1.8;
+        for (const en of ents) if (en.l === "_graph_edge") drawEntity(en);
+        // junction (차수≥3) 점
+        ctx.fillStyle = "#0e7490"; ctx.strokeStyle = "#0e7490"; ctx.lineWidth = 1.5;
+        for (const en of ents) if (en.l === "_graph_junction") drawEntity(en);
+        // 알람밸브 drop-line (source ↔ 배관망 nearest) — 빨간 점선
+        ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        for (const en of ents) if (en.l === "_alarm_drop_line") drawEntity(en);
+        ctx.setLineDash([]);
+        // attach point (배관망 측) — 빨간 작은 원
+        ctx.strokeStyle = "#ef4444"; ctx.fillStyle = "#ef4444"; ctx.lineWidth = 1.2;
+        for (const en of ents) if (en.l === "_alarm_attach") drawEntity(en);
+        return;
+      }
+
+      // Stage 4 — 배관망 ghost + 30 헤드 subgraph 오버레이 (기존 view 3)
+      if (state.current_stage_view === 4) {
+        const ghost = state.stage_entities[1] || [];
+        ctx.globalAlpha = 0.18;
+        ctx.strokeStyle = "#475569"; ctx.fillStyle = "#475569"; ctx.lineWidth = 0.6;
+        for (const en of ghost) drawEntity(en);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = CAT_COLORS._subgraph; ctx.fillStyle = CAT_COLORS._subgraph; ctx.lineWidth = 2.2;
+        for (const en of ents) if (en.l === "_subgraph") drawEntity(en);
+        ctx.strokeStyle = CAT_COLORS._subgraph_head; ctx.fillStyle = CAT_COLORS._subgraph_head; ctx.lineWidth = 1.2;
+        for (const en of ents) if (en.l === "_subgraph_head") drawEntity(en);
+        ctx.strokeStyle = CAT_COLORS._alarm_valve; ctx.fillStyle = CAT_COLORS._alarm_valve; ctx.lineWidth = 2.0;
+        for (const en of ents) if (en.l === "_alarm_valve") drawEntity(en);
+        return;
+      }
+
+      // stage 0/1 — 카테고리 색상 그룹
+      const groups = {};
+      for (const en of ents) {
+        const cat = state.layer_cat[en.l] || "OTHER";
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(en);
+      }
+      const order = ["EXCLUDE", "ARCH", "OTHER", "TEXT", "PIPE", "HEAD", "ALARM"];
+      for (const cat of order) {
+        const arr = groups[cat] || [];
+        if (!arr.length) continue;
+        const color = CAT_COLORS[cat] || "#888";
+        ctx.strokeStyle = color; ctx.fillStyle = color;
+        ctx.globalAlpha = (cat === "ARCH" || cat === "EXCLUDE") ? 0.35 : 1.0;
+        ctx.lineWidth = (cat === "PIPE" || cat === "HEAD") ? 1.6 : 0.9;
+        for (const en of arr) drawEntity(en);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawEntity(ent) {
+      if (ent.t === "L") {
+        const [a, b] = worldToScreen(ent.p[0], ent.p[1]);
+        const [c, d] = worldToScreen(ent.p[2], ent.p[3]);
+        ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke();
+      } else if (ent.t === "PL") {
+        ctx.beginPath();
+        for (let i = 0; i < ent.p.length; i++) {
+          const [sx, sy] = worldToScreen(ent.p[i][0], ent.p[i][1]);
+          if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        }
+        ctx.stroke();
+      } else if (ent.t === "A") {
+        const [sx, sy] = worldToScreen(ent.c[0], ent.c[1]);
+        const r = ent.r * state.view.zoom;
+        if (r < 0.3) return;
+        const sa = ent.a[0] * Math.PI / 180;
+        const ea = ent.a[1] * Math.PI / 180;
+        ctx.beginPath(); ctx.arc(sx, sy, r, -ea, -sa, false); ctx.stroke();
+      } else if (ent.t === "C") {
+        const [sx, sy] = worldToScreen(ent.c[0], ent.c[1]);
+        const r = ent.r * state.view.zoom;
+        if (r < 0.5) { ctx.fillRect(sx - 1, sy - 1, 2, 2); return; }
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.stroke();
+      } else if (ent.t === "I") {
+        const [sx, sy] = worldToScreen(ent.p[0], ent.p[1]);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - 3); ctx.lineTo(sx + 3, sy); ctx.lineTo(sx, sy + 3); ctx.lineTo(sx - 3, sy);
+        ctx.closePath(); ctx.fill();
+      } else if (ent.t === "T") {
+        if (state.view.zoom < 0.005) return;
+        const [sx, sy] = worldToScreen(ent.p[0], ent.p[1]);
+        ctx.font = "10px ui-monospace, monospace";
+        ctx.fillText(ent.v, sx, sy);
+      } else if (ent.t === "H" || ent.t === "S") {
+        ctx.beginPath();
+        for (let i = 0; i < ent.p.length; i++) {
+          const [sx, sy] = worldToScreen(ent.p[i][0], ent.p[i][1]);
+          if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+        if (ent.t === "S") ctx.fill(); else ctx.stroke();
+      }
+    }
+
+    // ====== Stage view 토글 ======
+    stageButtons.forEach((btn, idx) => {
+      btn.addEventListener("click", () => {
+        if (!state.stage_entities[idx] || !state.stage_entities[idx].length) return;
+        setStageView(idx);
+      });
+    });
+    function setStageView(idx) {
+      state.current_stage_view = idx;
+      stageButtons.forEach((b, i) => b.classList.toggle("is-active", i === idx));
+      const labels = [
+        "원본 DXF (Stage 0)",
+        "배관망만 (Stage 1)",
+        "헤드 후보 인식 (Stage 2)",
+        "배관망 그래프 (Stage 3)",
+        "30 헤드 + 경로 (Stage 4)",
+      ];
+      const cls = ["s0", "s1", "s2", "s2", "s3"][idx];
+      stageBadge.style.display = "block";
+      stageBadge.className = "stage-badge " + cls;
+      stageBadge.textContent = labels[idx];
+      render();
+    }
+
+    // ====== 파일 업로드 — 즉시 캔버스 프리뷰 ======
+    dxfInputEl.addEventListener("change", async () => {
+      const f = dxfInputEl.files[0];
+      if (!f) return;
+      state.uploadedFile = f;
+      fileStatusEl.textContent = `${f.name} — ${(f.size / 1024 / 1024).toFixed(1)} MB · 캔버스 프리뷰 로딩 중...`;
+      runBtn.disabled = true;  // 프리뷰 완료까지 잠시 비활성
+      try {
+        const fd = new FormData();
+        fd.append("dxf_file", f);
+        const res = await fetch("/api/remote30/inspect", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || `HTTP ${res.status}`);
+        // stage 0 entity 로 캔버스에 띄움 — 첫 업로드 시에만 fit, 이후는 사용자 줌/팬 보존
+        state.stage_entities[0] = data.entities;
+        state.bbox = data.bbox;
+        state.layer_cat = Object.fromEntries((data.layers || []).map(l => [l.name, l.auto_category]));
+        emptyEl.style.display = "none";
+        const firstFit = state.view.fitZoom === null;
+        setStageView(0);
+        if (firstFit) fitToBBox();
+        fileStatusEl.textContent =
+          `${data.dxf_filename} — entity ${data.counts.total_entities.toLocaleString()}, layer ${data.counts.layers}. ` +
+          `알람밸브 좌표 지정 (선택) 후 [배관망 생성] 클릭.`;
+        overlayInfoEl.textContent = `[프리뷰] ${data.counts.total_entities.toLocaleString()} entities`;
+      } catch (err) {
+        fileStatusEl.textContent = `프리뷰 실패: ${err.message || err}. 그래도 [배관망 생성] 으로 실행 가능.`;
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+
+    // ====== 알람밸브 좌표 — 수동 입력 / 캔버스 클릭 ======
+    const alarmXEl = document.getElementById("wb-alarm-x");
+    const alarmYEl = document.getElementById("wb-alarm-y");
+    const pickBtn = document.getElementById("wb-pick-alarm");
+    const clearBtn = document.getElementById("wb-clear-alarm");
+    const alarmStatusEl = document.getElementById("wb-alarm-status");
+    state.pickAlarmMode = false;
+    function setPickMode(on) {
+      state.pickAlarmMode = on;
+      pickBtn.style.background = on ? "#1e40af" : "#fff";
+      pickBtn.style.color = on ? "#fff" : "var(--text)";
+      pickBtn.textContent = on ? "알람밸브 클릭 대기… ✗ 취소" : "알람밸브 클릭 ⊕";
+      canvas.style.cursor = on ? "crosshair" : "grab";
+    }
+    pickBtn.addEventListener("click", () => setPickMode(!state.pickAlarmMode));
+    clearBtn.addEventListener("click", () => {
+      alarmXEl.value = ""; alarmYEl.value = "";
+      alarmStatusEl.textContent = "미지정 — 자동 식별.";
+      state.alarm_marker = null;
+      setPickMode(false);
+      render();
+    });
+    canvas.addEventListener("click", (e) => {
+      if (!state.pickAlarmMode) return;
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const wx = (sx - state.view.panX) / state.view.zoom;
+      const wy = -(sy - state.view.panY) / state.view.zoom;
+      alarmXEl.value = Math.round(wx);
+      alarmYEl.value = Math.round(wy);
+      alarmStatusEl.textContent = `수동: (${Math.round(wx)}, ${Math.round(wy)})`;
+      state.alarm_marker = { x: wx, y: wy, source: "manual" };
+      setPickMode(false);
+      render();
+    });
+    [alarmXEl, alarmYEl].forEach(el => el.addEventListener("input", () => {
+      const x = alarmXEl.value.trim(), y = alarmYEl.value.trim();
+      if (x && y) {
+        alarmStatusEl.textContent = `수동: (${x}, ${y})`;
+        const fx = parseFloat(x), fy = parseFloat(y);
+        if (Number.isFinite(fx) && Number.isFinite(fy)) {
+          state.alarm_marker = { x: fx, y: fy, source: "manual" };
+          render();
+        }
+      } else if (!x && !y) {
+        alarmStatusEl.textContent = "미지정 — 자동 식별.";
+        if (state.alarm_marker && state.alarm_marker.source === "manual") {
+          state.alarm_marker = null;
+          render();
+        }
+      } else {
+        alarmStatusEl.textContent = "X 와 Y 둘 다 입력하세요.";
+      }
+    }));
+
+    // ====== 헤드 객체 수정 (Stage 2 후) ======
+    const headEditSection = document.getElementById("wb-head-edit-section");
+    const editDetectedEl = document.getElementById("wb-edit-detected");
+    const editAddedEl = document.getElementById("wb-edit-added");
+    const editDeletedEl = document.getElementById("wb-edit-deleted");
+    const editZonesEl = document.getElementById("wb-edit-zones");
+    const editFinalEl = document.getElementById("wb-edit-final");
+    const editStatusEl = document.getElementById("wb-edit-status");
+    const finalizeBtn = document.getElementById("wb-finalize");
+    const modeAddBtn = document.getElementById("wb-mode-add");
+    const modeDeleteBtn = document.getElementById("wb-mode-delete");
+    const modeZoneBtn = document.getElementById("wb-mode-zone");
+    const modeCancelBtn = document.getElementById("wb-mode-cancel");
+    const zonesClearBtn = document.getElementById("wb-zones-clear");
+    const modeBtns = { add: modeAddBtn, delete: modeDeleteBtn, zone: modeZoneBtn };
+    const modeColors = { add: "#16a34a", delete: "#dc2626", zone: "#1e40af" };
+
+    function setEditMode(mode) {
+      if (typeof setPickMode === "function") setPickMode(false);
+      state.edit_mode = mode;
+      for (const m in modeBtns) {
+        const btn = modeBtns[m];
+        if (m === mode) { btn.style.background = modeColors[m]; btn.style.color = "#fff"; }
+        else { btn.style.background = "#fff"; btn.style.color = "var(--text)"; }
+      }
+      canvas.style.cursor = mode === "none" ? "grab" : "crosshair";
+      const desc = {
+        add: "캔버스를 클릭하면 200×200mm 헤드가 추가됩니다.",
+        delete: "캔버스에서 헤드 근처(250mm 이내) 클릭으로 삭제 마킹.",
+        zone: "캔버스에 드래그하면 영역(점선 사각형)이 추가됩니다 (여러 개 union).",
+        none: "편집 모드 해제. 캔버스 팬/줌 사용.",
+      };
+      editStatusEl.textContent = desc[mode] || "";
+    }
+    modeAddBtn.addEventListener("click", () => setEditMode(state.edit_mode === "add" ? "none" : "add"));
+    modeDeleteBtn.addEventListener("click", () => setEditMode(state.edit_mode === "delete" ? "none" : "delete"));
+    modeZoneBtn.addEventListener("click", () => setEditMode(state.edit_mode === "zone" ? "none" : "zone"));
+    modeCancelBtn.addEventListener("click", () => setEditMode("none"));
+    zonesClearBtn.addEventListener("click", () => { state.zones = []; updateEditCounts(); render(); });
+
+    function updateEditCounts() {
+      const det = state.detected_heads.length;
+      editDetectedEl.textContent = det;
+      editAddedEl.textContent = state.user_added_heads.length;
+      editDeletedEl.textContent = state.user_deleted_indices.size;
+      editZonesEl.textContent = state.zones.length;
+      let candidates = [];
+      for (let i = 0; i < det; i++) {
+        if (state.user_deleted_indices.has(i)) continue;
+        candidates.push(state.detected_heads[i].pos);
+      }
+      candidates = candidates.concat(state.user_added_heads);
+      if (state.zones.length > 0) {
+        candidates = candidates.filter(([x, y]) =>
+          state.zones.some(([x1, y1, x2, y2]) => {
+            const lox = Math.min(x1, x2), hix = Math.max(x1, x2);
+            const loy = Math.min(y1, y2), hiy = Math.max(y1, y2);
+            return lox <= x && x <= hix && loy <= y && y <= hiy;
+          })
+        );
+      }
+      editFinalEl.textContent = candidates.length;
+      finalizeBtn.disabled = candidates.length === 0;
+    }
+
+    // 캔버스 click — add / delete 모드 처리 (zone 은 mousedown/up)
+    canvas.addEventListener("click", (e) => {
+      if (state.edit_mode === "none" || state.edit_mode === "zone") return;
+      const rect = canvas.getBoundingClientRect();
+      const wx = (e.clientX - rect.left - state.view.panX) / state.view.zoom;
+      const wy = -(e.clientY - rect.top - state.view.panY) / state.view.zoom;
+      if (state.edit_mode === "add") {
+        state.user_added_heads.push([wx, wy]);
+        editStatusEl.textContent = `헤드 추가 (${Math.round(wx)}, ${Math.round(wy)})`;
+        updateEditCounts(); render();
+      } else if (state.edit_mode === "delete") {
+        let bestI = -1, bestD = 250;
+        state.detected_heads.forEach((h, i) => {
+          if (state.user_deleted_indices.has(i)) return;
+          const d = Math.hypot(h.pos[0] - wx, h.pos[1] - wy);
+          if (d < bestD) { bestD = d; bestI = i; }
+        });
+        if (bestI >= 0) {
+          state.user_deleted_indices.add(bestI);
+          editStatusEl.textContent = `검출 헤드 #${bestI} 삭제 마킹.`;
+        } else {
+          let bestJ = -1, bestDJ = 200;
+          state.user_added_heads.forEach((p, j) => {
+            const d = Math.hypot(p[0] - wx, p[1] - wy);
+            if (d < bestDJ) { bestDJ = d; bestJ = j; }
+          });
+          if (bestJ >= 0) { state.user_added_heads.splice(bestJ, 1); editStatusEl.textContent = `추가 헤드 #${bestJ} 제거.`; }
+          else editStatusEl.textContent = "근처에 헤드 없음.";
+        }
+        updateEditCounts(); render();
+      }
+    });
+
+    // zone 드래그 — capture 단계에서 가로채 일반 pan 방지
+    canvas.addEventListener("mousedown", (e) => {
+      if (state.edit_mode !== "zone") return;
+      const rect = canvas.getBoundingClientRect();
+      const wx = (e.clientX - rect.left - state.view.panX) / state.view.zoom;
+      const wy = -(e.clientY - rect.top - state.view.panY) / state.view.zoom;
+      state.zone_drag = { sx: wx, sy: wy, ex: wx, ey: wy };
+      state.drag = null;
+      e.stopPropagation();
+    }, true);
+    window.addEventListener("mousemove", (e) => {
+      if (!state.zone_drag) return;
+      const rect = canvas.getBoundingClientRect();
+      state.zone_drag.ex = (e.clientX - rect.left - state.view.panX) / state.view.zoom;
+      state.zone_drag.ey = -(e.clientY - rect.top - state.view.panY) / state.view.zoom;
+      render();
+    });
+    window.addEventListener("mouseup", () => {
+      if (!state.zone_drag) return;
+      const { sx, sy, ex, ey } = state.zone_drag;
+      if (Math.abs(ex - sx) > 50 && Math.abs(ey - sy) > 50) {
+        state.zones.push([sx, sy, ex, ey]);
+        editStatusEl.textContent = `영역 ${state.zones.length}개 (마지막: ${Math.round(Math.abs(ex-sx))}×${Math.round(Math.abs(ey-sy))}mm).`;
+        updateEditCounts();
+      }
+      state.zone_drag = null;
+      render();
+    });
+
+    // 배관망 완성 — finalize POST + finalize_stream 구독
+    finalizeBtn.addEventListener("click", async () => {
+      if (!state.jobId) return;
+      finalizeBtn.disabled = true;
+      finalizeBtn.textContent = "▶ Stage 3~5 진행 중...";
+      const payload = {
+        added_heads: state.user_added_heads,
+        deleted_indices: Array.from(state.user_deleted_indices),
+        zones: state.zones,
+      };
+      const ax = alarmXEl.value.trim(), ay = alarmYEl.value.trim();
+      if (ax && ay) { payload.alarm_x = ax; payload.alarm_y = ay; }
+      const nfSel = document.getElementById("ov-nf-select");
+      if (nfSel && nfSel.value) payload.context_override = { natural_fall_start_floor: nfSel.value };
+      const r = await fetch(`/api/remote30/overall/finalize/${state.jobId}`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json();
+      if (!j.ok) { alert("finalize 실패: " + j.message); finalizeBtn.disabled = false; finalizeBtn.textContent = "▶ 배관망 완성 (Stage 3~5 진행)"; return; }
+      let finalizeDone = false;
+      const es2 = new EventSource(`/api/remote30/overall/finalize_stream/${state.jobId}`);
+      es2.onmessage = (e) => {
+        let evt; try { evt = JSON.parse(e.data); } catch { return; }
+        handleEvent(evt);
+        // 신축배관 검토 게이트 — finalize_stream 은 stage5_complete 로 종료(라이저/emit 은 fx/finalize_stream 으로 분리).
+        if (evt.type === "stage5_complete") {
+          finalizeDone = true;
+          es2.close();
+          finalizeBtn.textContent = "✓ 테이블 생성 — FX 검토";
+          return;
+        }
+        // 완료/오류 신호로만 stream 마감. overall_result 는 절대 close 트리거 X —
+        // 그 직후에 overall_geometry 가 오기 때문 (서버 순서: ... → result → geometry → done).
+        if (evt.type === "done" || evt.type === "error") {
+          finalizeDone = true;
+          es2.close();
+          finalizeBtn.textContent = (evt.type === "error") ? "✗ 오류 — 콘솔 확인" : "✓ 완료";
+          if (runBtn) { runBtn.disabled = false; runBtn.textContent = "▶ 배관망 생성"; }
+        }
+      };
+      es2.onerror = () => {
+        // SSE 정상 종료 시에도 onerror 발동 가능 — 완료 신호가 아직 없었으면 unknown 상태로 복원
+        es2.close();
+        if (!finalizeDone) {
+          finalizeBtn.textContent = "✓ 완료 (stream 종료)";
+          finalizeBtn.disabled = false;
+          if (runBtn) { runBtn.disabled = false; runBtn.textContent = "▶ 배관망 생성"; }
+        }
+      };
+    });
+
+    // ====== "배관망 생성" — 잡 시작 + SSE 구독 ======
+    runBtn.addEventListener("click", async () => {
+      if (!state.uploadedFile) return;
+      runBtn.disabled = true;
+      runBtn.textContent = "▶ 진행 중...";
+      // reset stage rows
+      for (let i = 0; i <= 6; i++) {
+        const row = document.getElementById("stage-row-" + i);
+        if (!row) continue;
+        row.classList.remove("is-running", "is-done", "is-error");
+        document.getElementById("stage-elapsed-" + i).textContent = "—";
+      }
+      // 헤드 편집 섹션 숨김 + 리셋
+      headEditSection.style.display = "none";
+      state.detected_heads = [];
+      state.user_added_heads = [];
+      state.user_deleted_indices = new Set();
+      state.zones = [];
+      finalizeBtn.disabled = true;
+      finalizeBtn.textContent = "▶ 배관망 완성 (Stage 3~5 진행)";
+      setEditMode("none");
+      // reset downloads
+      for (const id of ["dl-zip", "dl-xlsx", "dl-sdf", "dl-slf", "dl-csv-nodes", "dl-csv-pipes", "dl-csv-nozzles", "dl-csv-fittings", "dl-csv-equipment"]) {
+        const el = document.getElementById(id);
+        el.classList.add("is-disabled"); el.href = "#";
+      }
+      document.getElementById("preview-section").style.display = "none";
+      document.getElementById("fx-review-section").style.display = "none";
+
+      // POST run
+      const fd = new FormData();
+      fd.append("dxf_file", state.uploadedFile);
+      const ax = alarmXEl.value.trim(), ay = alarmYEl.value.trim();
+      if (ax && ay) { fd.append("alarm_x", ax); fd.append("alarm_y", ay); }
+
+      // ── 10번 모듈 — zone_spec FormData 첨부
+      const zoneType = (document.querySelector("input[name=ov_zone_type]:checked") || {}).value || "lsp_1stage";
+      fd.append("zone_type", zoneType);
+      fd.append("target_floor", document.getElementById("ov-target-floor").value.trim() || "16층");
+      const vals = (id) => (document.getElementById(id).value || "").trim();
+      if (vals("ov-prv1-kgf")) fd.append("prv1_target_kgf", vals("ov-prv1-kgf"));
+      if (vals("ov-prv1-m"))   fd.append("prv1_target_m",   vals("ov-prv1-m"));
+      if (vals("ov-prv2-kgf")) fd.append("prv2_target_kgf", vals("ov-prv2-kgf"));
+      if (vals("ov-prv2-m"))   fd.append("prv2_target_m",   vals("ov-prv2-m"));
+      if (zoneType === "hsp_pump") {
+        fd.append("pump_library_name", vals("ov-pump-lib") || "SP_162M_2900LPM");
+        fd.append("pump_count", vals("ov-pump-count") || "2");
+      }
+      // 압력표 JSON (계통도 자동 파싱 또는 직접 입력)
+      const pjs = (document.getElementById("ov-pressure-json").value || "").trim();
+      if (pjs) fd.append("pressure_table_json", pjs);
+
+      // ── 과제 정보 — 빈칸은 보내지 않는다. 서버가 [미확정] 로 잡아야 하기 때문.
+      for (const [id, field] of [["ov-project-title", "project_title"],
+                                 ["ov-zone-name", "zone_name"],
+                                 ["ov-machine-room-h", "machine_room_ceiling_m"],
+                                 ["ov-roof-tank-level", "roof_tank_water_level_m"],
+                                 ["ov-fx-profile", "fx_profile_key"]]) {
+        if (vals(id)) fd.append(field, vals(id));
+      }
+
+      const res = await fetch("/api/remote30/overall/run", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!data.ok) {
+        alert("실행 실패: " + (data.message || "unknown"));
+        runBtn.disabled = false; runBtn.textContent = "▶ 배관망 생성";
+        return;
+      }
+      state.jobId = data.job_id;
+      renderContextReport(data);
+      // SSE 구독
+      const es = new EventSource(`/api/remote30/overall/stream/${data.job_id}`);
+      es.onmessage = (e) => {
+        let evt;
+        try { evt = JSON.parse(e.data); } catch { return; }
+        handleEvent(evt);
+      };
+      es.onerror = (err) => {
+        // SSE 가 stream 종료 시 onerror 가 발생할 수 있음 — done 받았다면 정상 종료
+        es.close();
+        runBtn.disabled = false; runBtn.textContent = "▶ 배관망 생성";
+      };
+    });
+
+    // 자연낙차 후보 + 미확정 경고 렌더. 층 이름은 사용자 압력표에서 온 문자열이라
+    // innerHTML 이 아니라 textContent 로만 넣는다.
+    function renderContextReport(data) {
+      const box = document.getElementById("ov-context-report");
+      const tbody = document.getElementById("ov-nf-tbody");
+      const sel = document.getElementById("ov-nf-select");
+      const warnBox = document.getElementById("ov-context-warnings");
+      if (!box) return;
+      const cands = data.natural_fall_candidates || [];
+      const warns = data.context_warnings || [];
+      if (!cands.length && !warns.length) { box.style.display = "none"; return; }
+
+      tbody.replaceChildren();
+      sel.replaceChildren();
+      const blank = document.createElement("option");
+      blank.value = ""; blank.textContent = "— 미확정 (자연낙차 시작층 미지정) —";
+      sel.appendChild(blank);
+      for (const c of cands) {
+        const tr = document.createElement("tr");
+        for (const [text, align] of [[c.floor_label, "left"],
+                                     [Number(c.head_drop_m).toFixed(2), "right"],
+                                     [Number(c.required_m).toFixed(2), "right"],
+                                     [c.ok ? "○" : "✕", "center"]]) {
+          const td = document.createElement("td");
+          td.textContent = text;
+          td.style.cssText = `padding: 2px 4px; text-align: ${align}; border-top: 1px solid var(--line);`;
+          if (align === "center") td.style.color = c.ok ? "#16a34a" : "#dc2626";
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+        if (!c.ok) continue;
+        const opt = document.createElement("option");
+        opt.value = c.floor_label;
+        opt.textContent = `${c.floor_label} (낙차 ${Number(c.head_drop_m).toFixed(2)} m)`;
+        sel.appendChild(opt);
+      }
+      // 서버 추천은 커서만 올려둔다 — 확정은 사용자가 [배관망 완성] 을 누를 때.
+      sel.value = data.suggested_natural_fall_floor || "";
+
+      warnBox.replaceChildren();
+      for (const line of warns) {
+        const p = document.createElement("div");
+        p.textContent = line;
+        p.style.cssText = "font-size: 0.68rem; color: #9a3412;";
+        warnBox.appendChild(p);
+      }
+      box.style.display = "";
+    }
+
+    function handleEvent(evt) {
+      if (evt.type === "context_warning") {
+        const warnBox = document.getElementById("ov-context-warnings");
+        if (warnBox) {
+          warnBox.replaceChildren();
+          for (const line of evt.lines || []) {
+            const p = document.createElement("div");
+            p.textContent = line;
+            p.style.cssText = "font-size: 0.68rem; color: #9a3412;";
+            warnBox.appendChild(p);
+          }
+          document.getElementById("ov-context-report").style.display = "";
+        }
+        return;
+      }
+      // ── 10번 모듈 — overall_progress / overall_result / error 처리
+      if (evt.type === "overall_progress") {
+        overlayInfoEl.textContent = `[Stage B/C/D] ${evt.phase}`;
+        return;
+      }
+      if (evt.type === "overall_result") {
+        overlayInfoEl.textContent = `✓ 완성 SDF: ${evt.sdf} (Node ${evt.nodes}, Pipe ${evt.pipes}, Pump ${evt.pumps}, Valve ${evt.valves})`;
+        const url = `/api/remote30/overall/result/${evt.job_id}/${encodeURIComponent(evt.sdf)}`;
+        const dl = document.getElementById("dl-sdf");
+        if (dl) {
+          dl.href = url; dl.classList.remove("is-disabled");
+          dl.textContent = `.sdf ✓ (Node ${evt.nodes}, Pipe ${evt.pipes})`;
+        }
+        return;
+      }
+      if (evt.type === "overall_geometry") {
+        // 통합 배관망 (헤드망 + 라이저) 좌표 데이터 저장만. 자동 redraw 안 함 —
+        // 사용자가 캔버스 상단 [2D]/[Z]/[3D] 버튼을 누를 때만 통합 view 로 전환.
+        state.combined_geometry = evt;
+        return;
+      }
+      if (evt.type === "error" && evt.traceback) {
+        overlayInfoEl.textContent = `[ERROR] ${evt.message || ""}`;
+        console.error("traceback:", evt.traceback);
+        return;
+      }
+      if (evt.type === "stage") {
+        // 서버가 보내는 stage 번호가 이 화면의 행 목록보다 많을 수 있다 —
+        // 없는 행을 그냥 참조하면 여기서 예외가 나 이후 이벤트가 전부 끊긴다.
+        const row = document.getElementById("stage-row-" + evt.stage);
+        const elapsedEl = document.getElementById("stage-elapsed-" + evt.stage);
+        if (row && evt.status === "running") {
+          row.classList.add("is-running"); row.classList.remove("is-done");
+        } else if (row && evt.status === "done") {
+          row.classList.remove("is-running");
+          row.classList.add("is-done");
+          if (elapsedEl) elapsedEl.textContent = (evt.elapsed_ms / 1000).toFixed(1) + "s";
+          const descEl = row.querySelector(".stage-desc");
+          if (descEl) descEl.textContent = evt.label;
+        }
+        overlayInfoEl.textContent = `[Stage ${evt.stage}] ${evt.label || ""}`;
+      } else if (evt.type === "entities") {
+        state.stage_entities[evt.stage] = evt.entities;
+        if (evt.layers) state.layer_cat = Object.fromEntries(evt.layers.map(l => [l.name, l.auto_category]));
+        if (evt.bbox) state.bbox = evt.bbox;
+        // Stage 4 (30 헤드 선정, 기존 3) 에서 auto 알람밸브 좌표를 입력 필드 placeholder 로
+        if (evt.stage === 4 && evt.summary && evt.summary.source_pos && !alarmXEl.value && !alarmYEl.value) {
+          const [sx, sy] = evt.summary.source_pos;
+          alarmXEl.placeholder = `auto: ${Math.round(sx)}`;
+          alarmYEl.placeholder = `auto: ${Math.round(sy)}`;
+          alarmStatusEl.textContent = `자동 식별 (${evt.summary.source_kind}): (${Math.round(sx)}, ${Math.round(sy)}). 수정하려면 위 입력 또는 [알람밸브 클릭] 사용.`;
+          state.alarm_marker = { x: sx, y: sy, source: "auto" };
+        }
+        // Stage 3 — 배관망 그래프 + 알람밸브 bridge 거리 안내
+        if (evt.stage === 3 && evt.summary && evt.summary.source_pos) {
+          const [sx, sy] = evt.summary.source_pos;
+          const d = evt.summary.source_bridge_dist_mm;
+          const far = evt.summary.source_far_from_pipes;
+          const isManual = !!(alarmXEl.value && alarmYEl.value);
+          const tag = isManual ? "수동" : `자동(${evt.summary.source_kind})`;
+          let msg = `${tag}: (${Math.round(sx)}, ${Math.round(sy)}). 배관망까지 ${d.toFixed(0)}mm.`;
+          if (far) msg += ` ⚠ 10m 초과 — 30 헤드 계산은 가장 가까운 배관 지점으로 fallback.`;
+          alarmStatusEl.textContent = msg;
+          if (!isManual && !state.alarm_marker) {
+            state.alarm_marker = { x: sx, y: sy, source: "auto" };
+          }
+        }
+        // Stage 0 entity 도착 — 사용자 줌/팬 보존, 다시 그리기만
+        if (evt.stage === 0 && state.stage_entities[0].length) {
+          emptyEl.style.display = "none";
+          render();
+        }
+        // stage 1/2/3/4 entity 도착 시 자동 view 토글 (view 만, 줌 안 건드림)
+        if (evt.stage === 1 && state.stage_entities[1].length) setStageView(1);
+        if (evt.stage === 2 && state.stage_entities[2].length) {
+          setStageView(2);
+          // 헤드 인식 결과 캡처 (편집 UI 준비)
+          state.detected_heads = state.stage_entities[2]
+            .filter(en => en.t === "B" && en.pos)
+            .map(en => ({ i: en.i, pos: en.pos, bbox: en.p, k: en.k, c: en.c }));
+          state.user_added_heads = [];
+          state.user_deleted_indices = new Set();
+          state.zones = [];
+          updateEditCounts();
+          headEditSection.style.display = "block";
+          editStatusEl.textContent = `${state.detected_heads.length}개 헤드 검출됨. 편집 후 [배관망 완성] 클릭.`;
+        }
+        if (evt.stage === 3 && state.stage_entities[3].length) setStageView(3);  // 배관망 그래프
+        if (evt.stage === 4 && state.stage_entities[4].length) setStageView(4);  // 30 헤드
+        // 버튼 활성화
+        const btn = stageButtons[evt.stage];
+        if (btn) btn.disabled = false;
+      } else if (evt.type === "tables_preview") {
+        document.getElementById("preview-section").style.display = "block";
+        renderTablesPreview(evt.tables, evt.counts);
+      } else if (evt.type === "stage5_complete") {
+        FxReview.open(evt.fx_review);
+      } else if (evt.type === "warning") {
+        FxReview.addWarning(evt.message || "");
+      } else if (evt.type === "awaiting_finalize") {
+        overlayInfoEl.textContent = `[Stage 2 완료 — 헤드 ${evt.head_count}개. 편집 후 배관망 완성 클릭]`;
+        runBtn.disabled = false;
+        runBtn.textContent = "▶ 배관망 다시 생성 (재인식)";
+      } else if (evt.type === "done") {
+        // 통합 done 은 outputs 없이 sdf 만 올 수 있음 (overall_result 에서 이미 링크 처리) — guard.
+        if (evt.outputs) {
+          const base = `/api/remote30/overall/result/${state.jobId}/`;
+          const enableLink = (id, fname) => {
+            const el = document.getElementById(id);
+            if (!fname) return;
+            el.href = base + encodeURIComponent(fname);
+            el.classList.remove("is-disabled");
+            el.download = fname;
+          };
+          enableLink("dl-zip", evt.outputs.zip);
+          enableLink("dl-xlsx", evt.outputs.xlsx);
+          enableLink("dl-sdf", evt.outputs.sdf);
+          enableLink("dl-slf", evt.outputs.slf);
+          // CSV 들은 csv/ 하위에 있음
+          const csvBase = base + "csv/";
+          const csvLink = (id, fname) => {
+            const el = document.getElementById(id);
+            if (!fname) return;
+            el.href = csvBase + encodeURIComponent(fname);
+            el.classList.remove("is-disabled"); el.download = fname;
+          };
+          csvLink("dl-csv-nodes", evt.outputs.csv_nodes);
+          csvLink("dl-csv-pipes", evt.outputs.csv_pipes);
+          csvLink("dl-csv-nozzles", evt.outputs.csv_nozzles);
+          csvLink("dl-csv-fittings", evt.outputs.csv_fittings);
+          csvLink("dl-csv-equipment", evt.outputs.csv_equipment);
+        }
+        runBtn.disabled = false; runBtn.textContent = "✓ 완료 — 다시 실행";
+        overlayInfoEl.textContent = "[완료] 결과 다운로드 가능";
+      } else if (evt.type === "error") {
+        alert("파이프라인 오류: " + evt.message);
+      }
+    }
+
+    // ====== 신축배관(FX) 검토 편집기 (통합 플로우) ======
+    const FxReview = (() => {
+      const sec = document.getElementById("fx-review-section");
+      const tableEl = document.getElementById("fx-table");
+      const summaryEl = document.getElementById("fx-summary");
+      const warnEl = document.getElementById("fx-warnings");
+      const applyBtn = document.getElementById("fx-apply-standard");
+      const finBtn = document.getElementById("fx-finalize-btn");
+      const prefix = sec.getAttribute("data-endpoint-prefix");
+      let profiles = {}, defaultProfile = "평균", rows = [];
+
+      const esc = (s) => String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      const isFx = (r) => (r.spec_ref in profiles);
+      const isAv = (r) => (r.spec_ref === "AV_STD" || (r.label && String(r.label).indexOf("A/V") >= 0));
+
+      function open(fxReview) {
+        profiles = (fxReview && fxReview.profiles) || {};
+        defaultProfile = (fxReview && fxReview.default_profile) || "평균";
+        rows = ((fxReview && fxReview.equipment) || []).map(e => Object.assign({}, e, {
+          _base_eq: (e.eq_len != null ? Number(e.eq_len) : null),
+          _base_spec: e.spec_ref,
+        }));
+        warnEl.style.display = "none"; warnEl.innerHTML = "";
+        render();
+        sec.style.display = "block";
+        finBtn.disabled = false;
+        finBtn.textContent = "✓ 확정 후 통합 SDF 생성 (Stage B~D)";
+        sec.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      function specCell(r, idx) {
+        if (!isFx(r) && !isAv(r)) return `<span class="fx-spec-fixed">직접입력</span>`;
+        if (isAv(r)) return `<span class="fx-spec-fixed">A/V(고정)</span>`;
+        const opts = Object.keys(profiles).map(k =>
+          `<option value="${esc(k)}"${k === r.spec_ref ? " selected" : ""}>${esc(k)}</option>`).join("");
+        return `<select class="fx-spec" data-i="${idx}">${opts}<option value="__custom__"${r.spec_ref === "__custom__" ? " selected" : ""}>직접 입력</option></select>`;
+      }
+
+      function render() {
+        let fxN = 0, avN = 0, ovrN = 0;
+        const trs = rows.map((r, i) => {
+          if (isAv(r)) avN++; else fxN++;
+          const ovr = !!r.override_flag;
+          if (ovr) ovrN++;
+          const drawing = (r.drawing_len_mm != null) ? Number(r.drawing_len_mm).toFixed(0) : "—";
+          const srcBadge = { extracted: "도면추출", supplemented: "자동보충", manual: "수동" }[r.source] || esc(r.source || "");
+          const srcColor = { extracted: "#065f46", supplemented: "#92400e", manual: "#b91c1c" }[r.source] || "#334155";
+          return `<tr class="fx-row${ovr ? " fx-ovr" : ""}" data-i="${i}">
+            <td><strong>${esc(r.label || "")}</strong><br><span style="color:#6b7280;font-size:0.68rem;">${esc(r.desc || "")}</span></td>
+            <td style="font-family:ui-monospace,monospace;font-size:0.68rem;">${esc(r.in || "")}→${esc(r.out || "")}<br>${esc(r.pipe || "")}</td>
+            <td><span style="color:${srcColor};font-weight:600;">${srcBadge}</span></td>
+            <td>${specCell(r, i)}</td>
+            <td><input class="fx-eqlen" data-i="${i}" type="number" step="0.1" min="0" value="${r.eq_len != null ? esc(r.eq_len) : ""}" style="width:64px;"></td>
+            <td style="text-align:right;color:#6b7280;">${drawing}</td>
+            <td><input class="fx-note" data-i="${i}" type="text" value="${esc(r.override_note || "")}" placeholder="사유(선택)" style="width:120px;"></td>
+            <td><button class="fx-reset" data-i="${i}" type="button" title="프로파일 값으로 초기화" style="font-size:0.66rem;padding:2px 5px;cursor:pointer;">↺</button></td>
+          </tr>`;
+        }).join("");
+        tableEl.innerHTML = `<table class="fx-tbl"><thead><tr>
+          <th>FX # / Desc</th><th>헤드/파이프</th><th>출처</th><th>규격</th>
+          <th>등가길이(m)</th><th>도면물리(mm)</th><th>비고</th><th></th></tr></thead>
+          <tbody>${trs}</tbody></table>`;
+        summaryEl.textContent = `FX ${fxN}개 · A/V ${avN}개 · 수동수정 ${ovrN}개`;
+        bind();
+      }
+
+      function markOverride(i) {
+        const r = rows[i];
+        const eqChanged = (r._base_eq == null) || (Math.abs(Number(r.eq_len) - r._base_eq) > 1e-6);
+        const specChanged = (r.spec_ref !== r._base_spec);
+        r.override_flag = eqChanged || specChanged;
+        if (r.override_flag) r.source = "manual";
+      }
+
+      function bind() {
+        tableEl.querySelectorAll(".fx-spec").forEach(sel => sel.addEventListener("change", (e) => {
+          const i = +e.target.dataset.i, v = e.target.value;
+          rows[i].spec_ref = v;
+          if (v in profiles) rows[i].eq_len = profiles[v].eq_len_m;
+          markOverride(i); render();
+        }));
+        tableEl.querySelectorAll(".fx-eqlen").forEach(inp => inp.addEventListener("input", (e) => {
+          const i = +e.target.dataset.i;
+          rows[i].eq_len = e.target.value === "" ? "" : Number(e.target.value);
+          markOverride(i);
+          e.target.closest("tr").classList.toggle("fx-ovr", !!rows[i].override_flag);
+        }));
+        tableEl.querySelectorAll(".fx-note").forEach(inp => inp.addEventListener("input", (e) => {
+          rows[+e.target.dataset.i].override_note = e.target.value;
+        }));
+        tableEl.querySelectorAll(".fx-reset").forEach(btn => btn.addEventListener("click", (e) => {
+          const i = +e.target.dataset.i, r = rows[i];
+          r.spec_ref = r._base_spec; r.eq_len = r._base_eq;
+          r.override_flag = false; r.override_note = "";
+          r.source = r.source === "manual" ? "supplemented" : r.source;
+          markOverride(i); render();
+        }));
+      }
+
+      applyBtn.addEventListener("click", () => {
+        const p = profiles[defaultProfile];
+        if (!p) return;
+        rows.forEach((r, i) => {
+          if (isAv(r)) return;
+          r.spec_ref = defaultProfile;
+          r.eq_len = p.eq_len_m;
+          markOverride(i);
+        });
+        render();
+      });
+
+      function validate() {
+        const errs = [];
+        for (const r of rows) {
+          const v = Number(r.eq_len);
+          if (r.eq_len === "" || !Number.isFinite(v) || v <= 0) {
+            errs.push(`${r.label}: 등가길이가 비었거나 0 이하`);
+          }
+        }
+        return errs;
+      }
+
+      function addWarning(msg) {
+        if (!msg) return;
+        warnEl.style.display = "block";
+        const d = document.createElement("div");
+        d.textContent = "⚠ " + msg;
+        warnEl.appendChild(d);
+      }
+
+      finBtn.addEventListener("click", async () => {
+        const errs = validate();
+        if (errs.length) { alert("확정 불가:\n" + errs.join("\n")); return; }
+        warnEl.style.display = "none"; warnEl.innerHTML = "";
+        finBtn.disabled = true; finBtn.textContent = "▶ Stage B~D 생성 중...";
+        const payload = rows.map(r => {
+          const o = Object.assign({}, r); delete o._base_eq; delete o._base_spec; return o;
+        });
+        const jobId = state.jobId;
+        const rr = await fetch(`${prefix}/fx/finalize/${jobId}`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ equipment: payload }),
+        });
+        const jj = await rr.json();
+        if (!jj.ok) { alert("FX finalize 실패: " + jj.message); finBtn.disabled = false; finBtn.textContent = "✓ 확정 후 통합 SDF 생성 (Stage B~D)"; return; }
+        let fxDone = false;
+        const es3 = new EventSource(`${prefix}/fx/finalize_stream/${jobId}`);
+        es3.onmessage = (e) => {
+          let evt; try { evt = JSON.parse(e.data); } catch { return; }
+          handleEvent(evt);
+          if (evt.type === "done") { fxDone = true; es3.close(); finBtn.textContent = "✓ 완료"; if (runBtn) { runBtn.disabled = false; runBtn.textContent = "▶ 배관망 생성"; } }
+          else if (evt.type === "error") { fxDone = true; es3.close(); finBtn.disabled = false; finBtn.textContent = "✓ 확정 후 통합 SDF 생성 (Stage B~D)"; }
+        };
+        es3.onerror = () => { es3.close(); if (!fxDone) { finBtn.disabled = false; finBtn.textContent = "✓ 완료 (stream 종료)"; } };
+      });
+
+      return { open, addWarning };
+    })();
+
+    function renderTablesPreview(tables, counts) {
+      const tabs = document.querySelectorAll("#preview-tabs .tab-btn");
+      const target = document.getElementById("preview-table");
+      function show(key) {
+        tabs.forEach(t => t.classList.toggle("is-active", t.dataset.tab === key));
+        const rows = tables[key] || [];
+        if (!rows.length) { target.innerHTML = "<p style='padding:8px; color:var(--muted); font-size:0.75rem;'>(비어있음)</p>"; return; }
+        const cols = Object.keys(rows[0]);
+        let h = "<table><thead><tr>";
+        for (const c of cols) h += `<th>${c}</th>`;
+        h += "</tr></thead><tbody>";
+        for (const r of rows) {
+          h += "<tr>";
+          for (const c of cols) h += `<td>${String(r[c] ?? "")}</td>`;
+          h += "</tr>";
+        }
+        h += `</tbody></table><div style="padding:4px 8px; color:var(--muted); font-size:0.7rem;">전체 ${counts[key]} 행 중 ${rows.length} 행 표시</div>`;
+        target.innerHTML = h;
+      }
+      tabs.forEach(t => t.addEventListener("click", () => show(t.dataset.tab)));
+      show("nodes");
+    }
+
+    resizeCanvas();
+
+    // ── 10번 모듈 — 통합 배관망 (헤드망 + 라이저) 시각화: 2D / Z 측면도 / 3D 아이소메트릭
+    // view_mode 가 null 이면 기존 stage view (prototype 원본 render) 사용.
+    // 사용자가 [2D]/[Z]/[3D] 버튼을 누를 때만 통합 view 모드 활성화.
+    state.view_mode = null;
+    state.combined_geometry = null;
+
+    // Z scale — z 가 m 단위, x/y 가 DXF mm 단위라 비례 일치시키기 위해 1000 배 확대.
+    // 라이저 elevation 차이 (예: 100m) → 화면 거리 100,000 (헤드망 X 범위 ~30,000 와 어울리는 스케일)
+    const Z_SCALE = 1000;
+
+    function projectXYZ(x, y, z, mode) {
+      if (mode === "z") {
+        // 측면도: X 가로축, Z 세로축 (위가 양수 elev). elev 가 음수라 -z 로 뒤집어 위쪽 = 옥상.
+        return [x, -z * Z_SCALE];
+      }
+      if (mode === "3d") {
+        // 표준 아이소메트릭 30°: world(x,y,z) → screen(X,Y)
+        //   X = (x - y) * cos30°
+        //   Y = (x + y) * sin30° - z * Z_SCALE
+        // 라이저 노드의 (x, y) 는 AV 와 동일하게 re-anchor 되므로 (x-y), (x+y) 가 고정 →
+        // (x, y) 항이 고정 + z 만 변화 ⇒ 라이저는 화면에서 수직선으로 그려짐.
+        const c = Math.cos(Math.PI / 6);
+        const s = Math.sin(Math.PI / 6);
+        return [(x - y) * c, (x + y) * s - z * Z_SCALE];
+      }
+      // 기본 2D — X-Y 평면
+      return [x, y];
+    }
+
+    function _renderOverallGeometry() {
+      if (!state.combined_geometry) return;
+      const g = state.combined_geometry;
+      const riserSet = new Set(g.riser_labels || []);
+      const nodeMap = new Map();
+      for (const n of g.nodes) nodeMap.set(n.label, n);
+
+      // ── 라이저 노드의 (x, y) 를 AV (x, y) 로 강제 동일화 (re-anchor).
+      // 이유:
+      //   - 백엔드의 라이저 logical 좌표 (0~-3300) 와 헤드망 DXF 좌표 (245000~278000) 가
+      //     스케일이 천차만별이라 시각화 시 라이저가 헤드망에서 멀리 떨어져 보임.
+      //   - 3D 아이소메트릭에서 펌프 → AV 가 수직 진행하려면 라이저 (x, y) 가 일정해야 함.
+      const avNode = nodeMap.get(g.av_node_label);
+      const avX = avNode ? avNode.x : 0;
+      const avY = avNode ? avNode.y : 0;
+      // 효과적 (x, y) 반환 — 라이저 노드면 AV 좌표, 그 외엔 원래 좌표
+      function effXY(n) {
+        if (riserSet.has(n.label)) return [avX, avY];
+        return [n.x, n.y];
+      }
+
+      // 모든 노드의 view-projected 좌표를 모아 bbox 자동 계산 (캔버스 안에 fit)
+      const projected = g.nodes.map(n => {
+        const [ex, ey] = effXY(n);
+        return projectXYZ(ex, ey, n.z, state.view_mode);
+      });
+      if (projected.length === 0) return;
+      const minX = Math.min(...projected.map(p => p[0]));
+      const maxX = Math.max(...projected.map(p => p[0]));
+      const minY = Math.min(...projected.map(p => p[1]));
+      const maxY = Math.max(...projected.map(p => p[1]));
+      const w = canvas.width / state.dpr;
+      const h = canvas.height / state.dpr;
+      const margin = 50;
+      const bw = (maxX - minX) || 1;
+      const bh = (maxY - minY) || 1;
+      const z = Math.min((w - 2 * margin) / bw, (h - 2 * margin) / bh);
+      const ox = w / 2 - (minX + maxX) / 2 * z;
+      const oy = h / 2 - (minY + maxY) / 2 * z;
+      const toScreen = (px, py) => [px * z + ox, py * z + oy];
+
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      // 배경 클리어 + 어두운 layer
+      ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+      ctx.fillRect(0, 0, w, h);
+
+      // 파이프 렌더링 — 라이저(노란) vs 헤드망(시안)
+      for (const p of g.pipes) {
+        const ni = nodeMap.get(p.in), no = nodeMap.get(p.out);
+        if (!ni || !no) continue;
+        const isRiser = riserSet.has(p.in) || riserSet.has(p.out);
+        const [exa, eya] = effXY(ni);
+        const [exb, eyb] = effXY(no);
+        const [px1, py1] = projectXYZ(exa, eya, ni.z, state.view_mode);
+        const [px2, py2] = projectXYZ(exb, eyb, no.z, state.view_mode);
+        const [sx1, sy1] = toScreen(px1, py1);
+        const [sx2, sy2] = toScreen(px2, py2);
+        ctx.strokeStyle = isRiser ? "#fde047" : "#06b6d4";  // riser=노란, head=시안
+        ctx.lineWidth = isRiser ? 2.4 : 1.6;
+        ctx.beginPath(); ctx.moveTo(sx1, sy1); ctx.lineTo(sx2, sy2); ctx.stroke();
+      }
+
+      // 노드 렌더링
+      for (const n of g.nodes) {
+        const [ex, ey] = effXY(n);
+        const [px, py] = projectXYZ(ex, ey, n.z, state.view_mode);
+        const [sx, sy] = toScreen(px, py);
+        const isRiser = riserSet.has(n.label);
+        if (n.io === "Input") {
+          ctx.fillStyle = "#a855f7";  // Input(수원) — 보라
+          ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.fillStyle = isRiser ? "#fde047" : "#06b6d4";
+          ctx.beginPath(); ctx.arc(sx, sy, isRiser ? 3 : 2, 0, Math.PI * 2); ctx.fill();
+        }
+        if (n.label === g.av_node_label) {
+          // 알람밸브 노드 — 빨간 외곽 원
+          ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2); ctx.stroke();
+        }
+      }
+
+      // 펌프 / 밸브 표시 — in→out 위치에 심볼
+      for (const pump of g.pumps || []) {
+        const ni = nodeMap.get(pump.in), no = nodeMap.get(pump.out);
+        if (!ni || !no) continue;
+        const [exa, eya] = effXY(ni);
+        const [exb, eyb] = effXY(no);
+        const [px1, py1] = projectXYZ(exa, eya, ni.z, state.view_mode);
+        const [px2, py2] = projectXYZ(exb, eyb, no.z, state.view_mode);
+        const mx = (px1 + px2) / 2, my = (py1 + py2) / 2;
+        const [sx, sy] = toScreen(mx, my);
+        ctx.strokeStyle = "#10b981"; ctx.fillStyle = "#10b981"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(sx, sy, 7, 0, Math.PI * 2); ctx.stroke();
+        ctx.font = "9px ui-monospace, monospace";
+        ctx.fillText("P", sx - 3, sy + 3);
+      }
+      for (const v of g.valves || []) {
+        const ni = nodeMap.get(v.in), no = nodeMap.get(v.out);
+        if (!ni || !no) continue;
+        const [exa, eya] = effXY(ni);
+        const [exb, eyb] = effXY(no);
+        const [px1, py1] = projectXYZ(exa, eya, ni.z, state.view_mode);
+        const [px2, py2] = projectXYZ(exb, eyb, no.z, state.view_mode);
+        const mx = (px1 + px2) / 2, my = (py1 + py2) / 2;
+        const [sx, sy] = toScreen(mx, my);
+        ctx.strokeStyle = "#f59e0b"; ctx.fillStyle = "#f59e0b"; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sx - 6, sy - 6); ctx.lineTo(sx + 6, sy + 6);
+        ctx.moveTo(sx + 6, sy - 6); ctx.lineTo(sx - 6, sy + 6);
+        ctx.stroke();
+      }
+
+      // 모드 라벨 (좌하단)
+      ctx.fillStyle = "#e2e8f0";
+      ctx.font = "bold 12px ui-monospace, monospace";
+      const modeLabels = {"2d": "2D 평면도 (X-Y)", "z": "Z 측면도", "3d": "3D 아이소메트릭 (30°)"};
+      ctx.fillText(`■ ${modeLabels[state.view_mode]} — 라이저(노랑) + 헤드망(시안) + Input(보라) + Pump(P) + Valve(✕)`, 12, h - 14);
+    }
+
+    // render() override — view_mode 가 명시적으로 set 됐고 combined_geometry 가 있을 때만 통합 view.
+    // 그 외엔 prototype 원본 render() 그대로 (stage 0~4 view 정상 동작).
+    const _origRender = render;
+    window.render = render = function() {
+      if (state.view_mode && state.combined_geometry) {
+        _renderOverallGeometry();
+        drawAlarmMarker();
+      } else {
+        _origRender();
+      }
+    };
+
+    // View 버튼 핸들러 — 통합 view 활성화
+    function setViewMode(mode) {
+      if (!state.combined_geometry) {
+        // 진단: jobId 와 SSE 상태 함께 표시 — caching 인지 진짜 데이터 부재인지 구분 가능
+        const diag = state.jobId
+          ? `잡 ${state.jobId} 의 overall_geometry 이벤트를 아직 못 받음 — 브라우저 캐시이거나 stream 중단. (콘솔에 추가 정보)`
+          : `[▶ 배관망 완성] 을 먼저 누르세요.`;
+        console.warn("[setViewMode] combined_geometry is null", {
+          jobId: state.jobId,
+          view_buttons_loaded: !!document.getElementById("wb-view-2d"),
+          handleEvent_has_overall_geometry: typeof handleEvent !== "undefined",
+        });
+        alert(diag);
+        return;
+      }
+      state.view_mode = mode;
+      ["wb-view-2d", "wb-view-z", "wb-view-3d"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle("is-active", id === `wb-view-${mode}`);
+      });
+      // stage view 버튼 비활성화 표시
+      ["wb-stage-0","wb-stage-1","wb-stage-2","wb-stage-3","wb-stage-4"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove("is-active");
+      });
+      render();
+    }
+    document.getElementById("wb-view-2d").addEventListener("click", () => setViewMode("2d"));
+    document.getElementById("wb-view-z").addEventListener("click",  () => setViewMode("z"));
+    document.getElementById("wb-view-3d").addEventListener("click", () => setViewMode("3d"));
+
+    // stage view 버튼 누르면 view_mode 해제 (capture phase 로 prototype 핸들러 전에 실행)
+    ["wb-stage-0","wb-stage-1","wb-stage-2","wb-stage-3","wb-stage-4"].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("click", () => {
+        state.view_mode = null;
+        ["wb-view-2d","wb-view-z","wb-view-3d"].forEach(vid => {
+          const v = document.getElementById(vid);
+          if (v) v.classList.remove("is-active");
+        });
+      }, true);  // capture: prototype 의 click 핸들러 전에
+    });
+
+    // ── 10번 모듈 — 계통도 자동 파싱 핸들러
+    document.getElementById("ov-sysdg-parse").addEventListener("click", async () => {
+      const fileEl = document.getElementById("ov-sysdg-file");
+      const statusEl = document.getElementById("ov-sysdg-status");
+      const jsonEl = document.getElementById("ov-pressure-json");
+      if (!fileEl.files[0]) { statusEl.textContent = "❌ 계통도 DXF 를 먼저 선택하세요."; return; }
+      statusEl.textContent = "⏳ 파싱 중...";
+      const fd = new FormData();
+      fd.append("system_diagram_file", fileEl.files[0]);
+      fd.append("default_height_m", document.getElementById("ov-sysdg-default-h").value || "2.9");
+      fd.append("roof_height_m", document.getElementById("ov-sysdg-roof-h").value || "6.0");
+      try {
+        const res = await fetch("/api/remote30/overall/parse-system-diagram", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!data.ok) { statusEl.textContent = `❌ 파싱 실패: ${data.message}`; return; }
+        // floors 를 JSON 텍스트로 채움 (사용자가 검토/수정 가능)
+        jsonEl.value = JSON.stringify(data.floors, null, 2);
+        statusEl.textContent = `✓ ${data.n_floors} 층 자동 추출 — 검토 후 [▶ 배관망 생성] 클릭. 옥상층/지하층 등 누락 시 textarea 에서 직접 추가.`;
+      } catch (err) {
+        statusEl.textContent = `❌ 네트워크 오류: ${err.message}`;
+      }
+    });
+
+    // ── 10번 모듈 — Zone radio toggle (PRV/Pump 섹션 동적 표시)
+    (function setupZoneRadio() {
+      const radios = document.querySelectorAll("input[name=ov_zone_type]");
+      const prvSection = document.getElementById("ov-prv-section");
+      const prv2Row = document.getElementById("ov-prv2-row");
+      const pumpSection = document.getElementById("ov-pump-section");
+      function update() {
+        const sel = document.querySelector("input[name=ov_zone_type]:checked");
+        // label 강조 (선택된 것만 accent 배경)
+        document.querySelectorAll("#ov-zone-radio label").forEach(l => {
+          const inp = l.querySelector("input");
+          if (inp && inp.checked) {
+            l.style.background = "var(--accent)"; l.style.color = "#fff";
+            l.style.borderColor = "var(--accent)";
+          } else {
+            l.style.background = "#fff"; l.style.color = "var(--text)";
+            l.style.borderColor = "var(--line)";
+          }
+        });
+        const z = sel ? sel.value : "lsp_1stage";
+        prvSection.style.display = (z === "lsp_gravity") ? "none" : "";
+        prv2Row.style.display = (z === "llsp_2stage") ? "grid" : "none";
+        pumpSection.style.display = (z === "hsp_pump") ? "" : "none";
+      }
+      radios.forEach(r => r.addEventListener("change", update));
+      update();
+    })();
+  

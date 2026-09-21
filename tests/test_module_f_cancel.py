@@ -1,10 +1,12 @@
 """Real worker/request cancellation, state rollback and persistence boundaries."""
 from __future__ import annotations
 
+import os
 import sys
 import threading
 import time
 import uuid
+from pathlib import Path
 
 import pytest
 from flask import Flask, jsonify
@@ -219,3 +221,78 @@ def test_cancel_rejects_invalid_operation_ids(value):
     with app.test_client() as client:
         response = client.post('/api/module-f/job/cancel', json={'operation':value})
         assert response.status_code == 400
+
+
+# ── 2026-09-20 실측 회귀 — 「중지」가 서버 전체를 잠그던 자리 ─────────────────
+#
+# 손질 재구성은 edit/io.py(open_board) → stage1_body → pipeline 로 내려간다.
+# 종전 규칙은 «보호 모듈이 조상에 하나라도 있으면 중지 불가» 였고, 그러면
+# 중지 요청 뒤 매 줄마다 스택 전체를 훑는 검사가 돌아 0.9 s 작업이 수십 분이
+# 됐다(측정: 2.7 s → 228 s). 그 스레드가 _HEAVY_LOCK 을 쥔 채 GIL 을 독점해
+# 다른 모든 업로드가 «대기» 로 굳었다.
+
+_PERSISTENCE_SRC = """
+def open_board(fn):
+    # 보호 모듈(edit/io.py)의 함수가 계산을 '부르기만' 하는 자리
+    return fn()
+"""
+
+
+def _persistence_caller():
+    """co_filename 이 edit/io.py 로 끝나는 함수 — 보호 모듈의 조상 역할."""
+    root = str(Path(cancel.__file__).resolve().parents[2])
+    fake = os.path.join(root, "services", "cad_import", "edit", "io.py")
+    namespace = {}
+    exec(compile(_PERSISTENCE_SRC, fake, "exec"), namespace)
+    return namespace["open_board"]
+
+
+def _spin(n):
+    acc = 0
+    for i in range(n):
+        acc += i % 7
+    return acc
+
+
+def test_stop_lands_inside_computation_called_from_persistence(session):
+    entered = threading.Event()
+    open_board = _persistence_caller()
+    def rebuild():
+        entered.set()
+        while True:
+            pass
+    job = jobs._run_job(session, "손질", lambda: open_board(rebuild))
+    assert entered.wait(3)
+    started = time.monotonic()
+    cancel.operation(job["operation"]).cancel()
+    wait_until(lambda: job["state"] != "run", timeout=4)
+    assert job["state"] == "cancelled"
+    assert time.monotonic() - started < 2
+
+
+def save_result(n):
+    """이름 규칙(save*)으로 정당하게 보호되는 구간 — 끝난 뒤에만 중지된다."""
+    return _spin(n)
+
+
+def test_stop_under_persistence_does_not_slow_the_job(session):
+    n = 300_000
+    t = time.perf_counter()
+    _spin(n)
+    baseline = time.perf_counter() - t
+    entered = threading.Event()
+    def protected_work():
+        entered.set()
+        return save_result(n * 3)
+    job = jobs._run_job(session, "저장", protected_work)
+    assert entered.wait(3)
+    cancel.operation(job["operation"]).cancel()
+    t = time.perf_counter()
+    wait_until(lambda: job["state"] != "run", timeout=30)
+    elapsed = time.perf_counter() - t
+    assert job["state"] == "cancelled"          # 보호 구간이 끝난 뒤 중지된다
+    # 종전: 13~85 배. 검사를 쉬는 동안(0.05 s) 은 원래 속도로 돈다.
+    assert elapsed < baseline * 3 * 4 + 1.0, (elapsed, baseline)
+    if cancel._MONITOR_ID is not None:
+        wait_until(lambda: cancel._PAUSE_TIMER is None, timeout=2)
+        assert sys.monitoring.get_events(cancel._MONITOR_ID) == 0

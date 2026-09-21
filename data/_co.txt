@@ -1,0 +1,539 @@
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestModel::test_var_value_with_decrement
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestExpression::test_add
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestExpression::test_chain_rule
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestExpression::test_divide
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestExpression::test_exp
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestExpression::test_log
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestExpression::test_multiply
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestExpression::test_power
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestExpression::test_subtract
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestConstraint::test_basic_constraints
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestConstraint::test_if_then_constraints
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestCSRJacobian::test_register_and_remove_constraint
+K-Fire_Solver/_internal/wntr/tests/test_aml.py::TestExceptions::test_structure_exception
+K-Fire_Solver/_internal/wntr/tests/test_epanet_exceptions.py::TestEpanetExceptions::test_bad_values
+K-Fire_Solver/_internal/wntr/tests/test_epanet_exceptions.py::TestEpanetExceptions::test_broken_syntax
+K-Fire_Solver/_internal/wntr/tests/test_epanet_exceptions.py::TestEpanetExceptions::test_broken_time_string
+K-Fire_Solver/_internal/wntr/tests/test_epanet_exceptions.py::TestEpanetExceptions::test_epanet_exception
+K-Fire_Solver/_internal/wntr/tests/test_epanet_exceptions.py::TestEpanetExceptions::test_epanet_key_error
+K-Fire_Solver/_internal/wntr/tests/test_epanet_exceptions.py::TestEpanetExceptions::test_epanet_syntax_error
+K-Fire_Solver/_internal/wntr/tests/test_epanet_exceptions.py::TestEpanetExceptions::test_epanet_value_error
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestWriter::test_all
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestWriter::test_controls
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestWriter::test_demands
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestWriter::test_pipe_minor_loss
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestWriter::test_pump
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestWriter::test_tcv_valve
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestWriter::test_valve_setting_control
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_controls
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_curves
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_demands
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_junctions
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_options
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_pipes
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_pumps
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_reservoirs
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_sources
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_tanks
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_valves
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpFileWriter::test_wn
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpRules::test_convert_controls_to_rules
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInpRules::test_convert_single_line_rules
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestInp22FileWriter::test_pda
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestNet3InpWriterResults::test_link_flowrate
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestNet3InpWriterResults::test_node_demand
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestNet3InpWriterResults::test_node_head
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestNet3InpWriterResults::test_node_pressure
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestNet3InpUnitsResults::test_headloss_formula_roughness_units
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestNet3InpUnitsResults::test_link_headloss_units
+K-Fire_Solver/_internal/wntr/tests/test_epanet_io.py::TestNet3InpUnitsResults::test_units_convert
+K-Fire_Solver/_internal/wntr/tests/test_epanet_msx_io.py::Test::test_msx_io
+K-Fire_Solver/_internal/wntr/tests/test_epanet_msx_sim.py::TestEpanetMSXSim::test_msx_sim
+K-Fire_Solver/_internal/wntr/tests/test_epanet_msx_tooklit.py::Test::test_msx_io
+K-Fire_Solver/_internal/wntr/tests/test_epanet_toolkit.py::TestEpanetToolkit::test_EN_timeparam
+K-Fire_Solver/_internal/wntr/tests/test_epanet_toolkit.py::TestEpanetToolkit::test_ENgetcount
+K-Fire_Solver/_internal/wntr/tests/test_epanet_toolkit.py::TestEpanetToolkit::test_ENgetflowunits
+K-Fire_Solver/_internal/wntr/tests/test_epanet_toolkit.py::TestEpanetToolkit::test_ENgetindex_ENgetvalue
+K-Fire_Solver/_internal/wntr/tests/test_epanet_toolkit.py::TestEpanetToolkit::test_ENsaveinpfile
+K-Fire_Solver/_internal/wntr/tests/test_epanet_toolkit.py::TestEpanetToolkit::test_isOpen
+K-Fire_Solver/_internal/wntr/tests/test_epanet_toolkit.py::TestEpanetToolkit::test_runepanet
+K-Fire_Solver/_internal/wntr/tests/test_epanet_toolkit.py::TestEpanetToolkit::test_runepanet_step
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Concentration
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Demand
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Emitter_Coeff
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Energy
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Length
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Pipe_Diameter
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Power
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Pressure
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Source_Mass_Injection
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Velocity
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Volume
+K-Fire_Solver/_internal/wntr/tests/test_epanet_units.py::TestEpanetUnits::test_Water_Age
+K-Fire_Solver/_internal/wntr/tests/test_examples.py::TestExamples::test_that_examples_run
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_add_attributes_and_write
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_gis_index
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_gis_to_wn
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_intersect_lines_with_polygons
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_intersect_points_with_polygons
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_intersect_polygons_with_lines
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_intersect_polygons_with_lines_zero_length
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_set_crs_to_crs
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_snap_points_to_lines
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_snap_points_to_points
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_wn_to_gis
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestGIS::test_write_geojson
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestConnectLines::test_connect_lines
+K-Fire_Solver/_internal/wntr/tests/test_gis.py::TestRaster::test_sample_raster
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_custom_colormap
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_network_animation1
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_fragility_curve1
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_interactive_network1
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_leaflet_network1
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_network1
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_network2
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_network3
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_network4
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_network5
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_network6
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_network_options
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_pump_curve1
+K-Fire_Solver/_internal/wntr/tests/test_graphics.py::TestGraphics::test_plot_tank_curve
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_add_combined_pattern_overlap
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_add_combined_pattern_sequential
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_add_gaussian_pattern
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_add_pattern
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_add_pulse_pattern
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_add_to_wn
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_add_triangular_pattern
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_binary_pattern
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_copy_pattern
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_filter_by_category
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_normalize
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_pattern_name_list
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_plot_pattern
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_read_write
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_remove_pattern
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_resample_add_noise
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_to_Pattern
+K-Fire_Solver/_internal/wntr/tests/test_library_demand.py::TestDemandPatternLibrary::test_to_Series
+K-Fire_Solver/_internal/wntr/tests/test_library_model.py::TestModelLibrary::test_add_directory
+K-Fire_Solver/_internal/wntr/tests/test_library_model.py::TestModelLibrary::test_get_model
+K-Fire_Solver/_internal/wntr/tests/test_library_model.py::TestModelLibrary::test_model_construction
+K-Fire_Solver/_internal/wntr/tests/test_library_model.py::TestModelLibrary::test_model_name_list
+K-Fire_Solver/_internal/wntr/tests/test_metrics_demand.py::TestMetricsDemand::test_expected_demand_category
+K-Fire_Solver/_internal/wntr/tests/test_metrics_demand.py::TestMetricsDemand::test_expected_demand_net3_node101
+K-Fire_Solver/_internal/wntr/tests/test_metrics_demand.py::TestMetricsDemand::test_wsa
+K-Fire_Solver/_internal/wntr/tests/test_metrics_demand.py::TestTankCapacity::test_tank_capacity
+K-Fire_Solver/_internal/wntr/tests/test_metrics_economic.py::TestEconomicMetrics::test_annual_ghg_emissions
+K-Fire_Solver/_internal/wntr/tests/test_metrics_economic.py::TestEconomicMetrics::test_annual_network_cost1
+K-Fire_Solver/_internal/wntr/tests/test_metrics_economic.py::TestEconomicMetrics::test_annual_network_cost2
+K-Fire_Solver/_internal/wntr/tests/test_metrics_entropy.py::TestEntropyMetric::test_layout1
+K-Fire_Solver/_internal/wntr/tests/test_metrics_entropy.py::TestEntropyMetric::test_layout8
+K-Fire_Solver/_internal/wntr/tests/test_metrics_healthimpacts.py::TestHealthImpactsMetric::test_extent_contaminated
+K-Fire_Solver/_internal/wntr/tests/test_metrics_healthimpacts.py::TestHealthImpactsMetric::test_mass_consumed
+K-Fire_Solver/_internal/wntr/tests/test_metrics_healthimpacts.py::TestHealthImpactsMetric::test_volume_consumed
+K-Fire_Solver/_internal/wntr/tests/test_metrics_population.py::TestPopulationMetrics::test_population_impacted
+K-Fire_Solver/_internal/wntr/tests/test_metrics_population.py::TestPopulationMetrics::test_population_net3
+K-Fire_Solver/_internal/wntr/tests/test_metrics_population.py::TestPopulationMetrics::test_population_net6
+K-Fire_Solver/_internal/wntr/tests/test_metrics_pump_cost.py::TestPumpNet3::test_energy_report
+K-Fire_Solver/_internal/wntr/tests/test_metrics_segments.py::TestSegmentation::test_compare_segmentations
+K-Fire_Solver/_internal/wntr/tests/test_metrics_segments.py::TestSegmentation::test_segmentation_random
+K-Fire_Solver/_internal/wntr/tests/test_metrics_segments.py::TestSegmentation::test_segmentation_small
+K-Fire_Solver/_internal/wntr/tests/test_metrics_segments.py::TestSegmentation::test_segmentation_strategic
+K-Fire_Solver/_internal/wntr/tests/test_metrics_todini.py::TestTodiniMetrics::test_Todini_Fig2_optCost_CMH
+K-Fire_Solver/_internal/wntr/tests/test_metrics_todini.py::TestTodiniMetrics::test_Todini_Fig2_optCost_GPM
+K-Fire_Solver/_internal/wntr/tests/test_metrics_todini.py::TestTodiniMetrics::test_Todini_Fig2_solA_CMH
+K-Fire_Solver/_internal/wntr/tests/test_metrics_todini.py::TestTodiniMetrics::test_Todini_Fig2_solA_GPM
+K-Fire_Solver/_internal/wntr/tests/test_metrics_todini.py::TestMRIMetric::test_MRI
+K-Fire_Solver/_internal/wntr/tests/test_metrics_valve_criticality.py::TestSegmentation::test_valve_criticality
+K-Fire_Solver/_internal/wntr/tests/test_metrics_valve_criticality.py::TestSegmentation::test_valve_criticality_demand
+K-Fire_Solver/_internal/wntr/tests/test_metrics_valve_criticality.py::TestSegmentation::test_valve_criticality_length
+K-Fire_Solver/_internal/wntr/tests/test_models.py::TestHeadloss::test_HW_headloss
+K-Fire_Solver/_internal/wntr/tests/test_models.py::TestHeadloss::test_head_pump_headloss
+K-Fire_Solver/_internal/wntr/tests/test_models.py::TestHeadloss::test_power_pump_headloss
+K-Fire_Solver/_internal/wntr/tests/test_models.py::TestPDD::test_pdd
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_UTM_to_longlat_to_UTM
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_break_pipe
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_convert_node_coordinates_to_longlat
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_parallel_merge_properties
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_reverse_pipes
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_rotate_node_coordinates
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_scale_node_coordinates
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_series_merge_properties
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_skeletonize
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_skeletonize_Net3
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_skeletonize_with_controls
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_skeletonize_with_excluding_nodes_and_pipes
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_split_break_pipe_vertices
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_split_pipe
+K-Fire_Solver/_internal/wntr/tests/test_morph.py::TestMorph::test_translate_node_coordinates
+K-Fire_Solver/_internal/wntr/tests/test_msx_elements.py::Test::test_BulkSpecies_creation
+K-Fire_Solver/_internal/wntr/tests/test_msx_elements.py::Test::test_Constant_creation
+K-Fire_Solver/_internal/wntr/tests/test_msx_elements.py::Test::test_MsxModel_creation_specific_everything
+K-Fire_Solver/_internal/wntr/tests/test_msx_elements.py::Test::test_Parameter_creation
+K-Fire_Solver/_internal/wntr/tests/test_msx_elements.py::Test::test_Reaction
+K-Fire_Solver/_internal/wntr/tests/test_msx_elements.py::Test::test_ReactionVariable_reserved_name_exception
+K-Fire_Solver/_internal/wntr/tests/test_msx_elements.py::Test::test_RxnTerm_creation
+K-Fire_Solver/_internal/wntr/tests/test_msx_elements.py::Test::test_RxnVariable_string_functions
+K-Fire_Solver/_internal/wntr/tests/test_msx_elements.py::Test::test_RxnVariable_values
+K-Fire_Solver/_internal/wntr/tests/test_msx_elements.py::Test::test_Species_tolerances
+K-Fire_Solver/_internal/wntr/tests/test_msx_elements.py::Test::test_WallSpecies_creation
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestResetInitialValues::test_link_flowrate
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestResetInitialValues::test_link_velocity
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestResetInitialValues::test_node_demand
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestResetInitialValues::test_node_head
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestResetInitialValues::test_node_pressure
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestStopStartSim::test_link_flowrate
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestStopStartSim::test_link_velocity
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestStopStartSim::test_node_demand
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestStopStartSim::test_node_head
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestStopStartSim::test_node_pressure
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestPickle::test_link_flowrate
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestPickle::test_link_velocity
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestPickle::test_node_demand
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestPickle::test_node_head
+K-Fire_Solver/_internal/wntr/tests/test_multiple_simulations.py::TestPickle::test_node_pressure
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkCreation::test_junction_attr
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkCreation::test_num_junctions
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkCreation::test_num_links
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkCreation::test_num_nodes
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkCreation::test_num_pipes
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkCreation::test_num_pumps
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkCreation::test_num_reservoirs
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkCreation::test_num_tanks
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkCreation::test_num_valves
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkCreation::test_reservoir_attr
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_1_pt_head_curve
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_2_pt_head_curve
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_3_pt_head_curve
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_add_junction
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_add_pattern
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_add_pipe
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_add_pipe_with_cv
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_add_reservoir
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_add_source
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_add_tank
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_get_links_for_node_all
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_get_links_for_node_in
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_get_links_for_node_out
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_links
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_multi_pt_head_curve
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_multi_pt_head_curve_expected_error
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_nodes
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_remove_controls_for_removing_link
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_remove_node
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkMethods::test_remove_pipe
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestCase::test_Net1
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestCase::test_add_get_remove_num
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestCase::test_assign_demand
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestCase::test_convert_controls_to_rules
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestCase::test_describe
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestCase::test_name_list
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestCase::test_nzd_nodes
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestCase::test_query_node_attribute
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestCase::test_query_pipe_attribute
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_Dict::test_dict_roundtrip
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_Dict::test_dict_with_leak
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_Dict::test_json_pattern_dump
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_Dict::test_json_roundtrip
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_Dict::test_pump_efficiencey_curve
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_GIS::test_geojson_roundtrip
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_GIS::test_gis_additional_attributes
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_GIS::test_gis_append_roundtrip
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_GIS::test_gis_point_roundtrip
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_GIS::test_gis_roundtrip
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_GIS::test_shapefile_roundtrip
+K-Fire_Solver/_internal/wntr/tests/test_network.py::TestNetworkIO_GIS::test_valid_gis_names
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestValveSettingControls::test_initial_setting
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestValveSettingControls::test_initial_status
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestValveSettingControls::test_status_open_when_setting_changes
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestPumpSettingControls::test_status_open_when_setting_changes
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestTimeControls::test_time_control_open_vs_closed
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestConditionalControls::test_close_link_by_tank_level
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestConditionalControls::test_open_link_by_tank_level
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestConditionalControls::test_update_conditions
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestConditionalControls::test_update_else_actions
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestConditionalControls::test_update_priority
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestConditionalControls::test_update_then_actions
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestTankControls::test_pipe_closed_for_low_level
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestTankControls::test_reopen_pipe_after_tank_fills_back_up
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestValveControls::test_check_valve_closed
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestValveControls::test_check_valve_opened
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlCombinations::test_close_by_condition_open_by_time_reclose
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlCombinations::test_close_by_condition_open_by_time_stay
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlCombinations::test_open_by_time_close_by_condition
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_comment_line
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_controls_format_link_status_clocktime
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_controls_format_link_status_conditional
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_controls_format_link_status_time
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_controls_format_pump_setting
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_empty_line
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_existing_control_from_file
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_invalid_rule
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_line_with_comment
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_node_status_control
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_operator_aliases
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_rules_format_clocktime_condition
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_rules_format_junction_pressure_condition
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_rules_format_tank_level_condition
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_rules_format_time_condition
+K-Fire_Solver/_internal/wntr/tests/test_network_controls.py::TestControlParsing::test_time_format_hours_minutes
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::TestElements::test_Curve
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::TestElements::test_Demands
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::TestElements::test_Pattern
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::TestElements::test_TimeSeries
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::TestElements::test_fire_fighting_demand
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::TestElements::test_pattern_interpolation
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_non_zero_float[1.0]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_non_zero_float[1]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_non_zero_float[400]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_non_zero_float[2.71828]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_non_zero_float_bad_value[0_0]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_non_zero_float_bad_value[0_1]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_non_zero_float_bad_value[0.0]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_non_zero_float_bad_value[not_a_number]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_non_zero_float_bad_value[-1]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_non_zero_float_bad_value[-2.71828]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_non_zero_float_bad_value[value6]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float[0.0]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float[0_0]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float[0_1]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float[1.0]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float[1]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float[500]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float[0_2]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float[2.71828]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float_bad_value[not_a_number]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float_bad_value[-1]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float_bad_value[-2.71828]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_positive_or_zero_float_bad_value[value3]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_float_or_none_with_float[1.0]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_float_or_none_with_float[1]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_float_or_none_with_float[400]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_float_or_none_with_float[2.71828]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_float_or_none_with_float[0.0]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_float_or_none_with_float[0]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_float_or_none_with_float[-1]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_float_or_none_with_float[-2.71828]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_float_or_none_with_none
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_float_or_none_bad_value[not_a_number]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_float_or_none_bad_value[value1]
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_pump_power_on_add_float
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_pump_power_on_add_int
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_pump_power_set_property_float
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_pump_power_set_property_int
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_pump_power_set_property_string
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_pump_power_set_property_negative
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_pump_power_set_property_zero
+K-Fire_Solver/_internal/wntr/tests/test_network_elements.py::test_pump_power_set_property_invalid_string
+K-Fire_Solver/_internal/wntr/tests/test_network_graph.py::TestNetworkGraphs::test_Net1_MultiDiGraph
+K-Fire_Solver/_internal/wntr/tests/test_network_graph.py::TestNetworkGraphs::test_algebraic_connectivity
+K-Fire_Solver/_internal/wntr/tests/test_network_graph.py::TestNetworkGraphs::test_bridges
+K-Fire_Solver/_internal/wntr/tests/test_network_graph.py::TestNetworkGraphs::test_central_point_dominance
+K-Fire_Solver/_internal/wntr/tests/test_network_graph.py::TestNetworkGraphs::test_crit_ratio_defrag
+K-Fire_Solver/_internal/wntr/tests/test_network_graph.py::TestNetworkGraphs::test_diameter
+K-Fire_Solver/_internal/wntr/tests/test_network_graph.py::TestNetworkGraphs::test_spectral_gap
+K-Fire_Solver/_internal/wntr/tests/test_network_graph.py::TestNetworkGraphs::test_terminal_nodes
+K-Fire_Solver/_internal/wntr/tests/test_network_graph.py::TestNetworkGraphs::test_weight_graph
+K-Fire_Solver/_internal/wntr/tests/test_network_graph.py::TestNetworkGraphs::test_weighted_graph_modify_direction
+K-Fire_Solver/_internal/wntr/tests/test_network_layers.py::TestValveLayer::test_valve_layer_random
+K-Fire_Solver/_internal/wntr/tests/test_network_layers.py::TestValveLayer::test_valve_layer_strategic
+K-Fire_Solver/_internal/wntr/tests/test_network_leaks.py::TestLeakResults::test_leak_against_epanet
+K-Fire_Solver/_internal/wntr/tests/test_network_leaks.py::TestLeakResults::test_leak_demand
+K-Fire_Solver/_internal/wntr/tests/test_network_minor_loss.py::TestMinorLosses::test_pipe_minor_loss
+K-Fire_Solver/_internal/wntr/tests/test_network_pump_outage.py::TestOutageResults::test_outage
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestTCVs::test_pipe_minor_loss
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestPSVs::test_active
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestPSVs::test_active_to_open
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestPSVs::test_active_to_open_to_close
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestPSVs::test_close
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestPSVs::test_close_to_open_to_active
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestPSVs::test_open
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestFCVs::test_active_FCV
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestFCVs::test_open_FCV
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestFCVs::test_open_to_active_FCV
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestValveIsolation::test_fcv_open_no_downstream_sources
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestValveIsolation::test_fcv_open_no_upstream_sources
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestValveIsolation::test_prv_closed
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestValveIsolation::test_prv_open
+K-Fire_Solver/_internal/wntr/tests/test_network_valves.py::TestValveIsolation::test_psv_open
+K-Fire_Solver/_internal/wntr/tests/test_sceanrio_earthquake.py::TestScenario::test_correction_factor
+K-Fire_Solver/_internal/wntr/tests/test_sceanrio_earthquake.py::TestScenario::test_distance_to_epicenter
+K-Fire_Solver/_internal/wntr/tests/test_sceanrio_earthquake.py::TestScenario::test_pga_attenuation
+K-Fire_Solver/_internal/wntr/tests/test_sceanrio_earthquake.py::TestScenario::test_pgv_attenuation
+K-Fire_Solver/_internal/wntr/tests/test_sceanrio_earthquake.py::TestScenario::test_repair_rate
+K-Fire_Solver/_internal/wntr/tests/test_scenario_fragility_curve.py::TestFragilityCurveScenario::test_cdf_probability
+K-Fire_Solver/_internal/wntr/tests/test_scenario_fragility_curve.py::TestFragilityCurveScenario::test_get_priority_map
+K-Fire_Solver/_internal/wntr/tests/test_scenario_fragility_curve.py::TestFragilityCurveScenario::test_sample_damage_state
+K-Fire_Solver/_internal/wntr/tests/test_sim_PDD.py::TestPDD::test_pdd_with_wntr
+K-Fire_Solver/_internal/wntr/tests/test_sim_benchmark.py::Test_Benchmarks::test_wntr_vs_ode_const_diam
+K-Fire_Solver/_internal/wntr/tests/test_sim_benchmark.py::Test_Benchmarks::test_wntr_vs_ode_tank_control
+K-Fire_Solver/_internal/wntr/tests/test_sim_benchmark.py::Test_Benchmarks::test_wntr_vs_ode_vcurve
+K-Fire_Solver/_internal/wntr/tests/test_sim_demand_multiplier.py::TestPatternStart::test_pattern_start
+K-Fire_Solver/_internal/wntr/tests/test_sim_demand_multiplier.py::TestDemandMultiplier::test_demand_multiplier
+K-Fire_Solver/_internal/wntr/tests/test_sim_performance.py::TestPerformance::test_Anytown_multipointcurves_performance
+K-Fire_Solver/_internal/wntr/tests/test_sim_performance.py::TestPerformance::test_Net1_charset
+K-Fire_Solver/_internal/wntr/tests/test_sim_performance.py::TestPerformance::test_Net1_float64
+K-Fire_Solver/_internal/wntr/tests/test_sim_performance.py::TestPerformance::test_Net1_performance
+K-Fire_Solver/_internal/wntr/tests/test_sim_performance.py::TestPerformance::test_Net3_performance
+K-Fire_Solver/_internal/wntr/tests/test_sim_performance.py::TestPerformance::test_Net3_performance_PDA
+K-Fire_Solver/_internal/wntr/tests/test_sim_performance.py::TestPerformance::test_Net6_mod_performance
+K-Fire_Solver/_internal/wntr/tests/test_sim_performance.py::TestPerformance::test_Net6_thread_performance
+K-Fire_Solver/_internal/wntr/tests/test_sim_reset_conditions.py::Test_Reset_Conditions::test_epanetsim_continue
+K-Fire_Solver/_internal/wntr/tests/test_sim_reset_conditions.py::Test_Reset_Conditions::test_epanetsim_reset
+K-Fire_Solver/_internal/wntr/tests/test_sim_reset_conditions.py::Test_Reset_Conditions::test_wntrsim_continue
+K-Fire_Solver/_internal/wntr/tests/test_sim_reset_conditions.py::Test_Reset_Conditions::test_wntrsim_reset
+K-Fire_Solver/_internal/wntr/tests/test_sim_waterquality.py::TestWaterQualitySimulations::test_age_waterquality_simulation
+K-Fire_Solver/_internal/wntr/tests/test_sim_waterquality.py::TestWaterQualitySimulations::test_conc_waterquality_simulation
+K-Fire_Solver/_internal/wntr/tests/test_sim_waterquality.py::TestWaterQualitySimulations::test_flowpaced_waterquality_simulation
+K-Fire_Solver/_internal/wntr/tests/test_sim_waterquality.py::TestWaterQualitySimulations::test_mass_waterquality_simulation
+K-Fire_Solver/_internal/wntr/tests/test_sim_waterquality.py::TestWaterQualitySimulations::test_setpoint_waterquality_simulation
+K-Fire_Solver/_internal/wntr/tests/test_sim_waterquality.py::TestWaterQualitySimulations::test_trace_waterquality_simulation
+K-Fire_Solver/_internal/wntr/tests/test_times.py::TestNetworkTimeBehavior::test_duration
+K-Fire_Solver/_internal/wntr/tests/test_times.py::TestNetworkTimeBehavior::test_pattern_timestep
+K-Fire_Solver/_internal/wntr/tests/test_times.py::TestNetworkTimeBehavior::test_report_timestep
+pipenet_converter/tests/test_cli.py::test_cli_help_works
+pipenet_converter/tests/test_cli.py::test_parse_sdf_command_creates_csv_outputs
+pipenet_converter/tests/test_cli.py::test_extract_dxf_command_creates_raw_csv_outputs
+pipenet_converter/tests/test_cli.py::test_write_sdf_command_creates_output_file
+pipenet_converter/tests/test_cli.py::test_build_network_command_runs_on_generated_dxf_fixture
+pipenet_converter/tests/test_cli.py::test_render_iso_and_validate_commands_run
+pipenet_converter/tests/test_cli.py::test_strict_mode_fails_on_validation_errors
+pipenet_converter/tests/test_cli.py::test_merge_system_command_runs
+pipenet_converter/tests/test_cli.py::test_compare_sdf_command_creates_report
+pipenet_converter/tests/test_cli.py::test_run_pipeline_completes_and_writes_expected_outputs
+pipenet_converter/tests/test_cli.py::test_run_config_command_runs_pipeline_from_yaml
+pipenet_converter/tests/test_comparator.py::test_length_mismatch_detected
+pipenet_converter/tests/test_comparator.py::test_diameter_mismatch_detected
+pipenet_converter/tests/test_comparator.py::test_missing_nozzle_detected
+pipenet_converter/tests/test_comparator.py::test_fitting_mismatch_detected
+pipenet_converter/tests/test_comparator.py::test_elevation_and_nozzle_status_mismatches_detected
+pipenet_converter/tests/test_comparator.py::test_write_comparison_report_creates_csv
+pipenet_converter/tests/test_config.py::test_load_pipeline_config_resolves_relative_paths
+pipenet_converter/tests/test_config.py::test_load_pipeline_config_reports_missing_required_fields
+pipenet_converter/tests/test_dxf_extractor.py::test_extract_dxf_reads_pipe_segments_blocks_and_diameter_text
+pipenet_converter/tests/test_dxf_extractor.py::test_mapping_loaders_and_diameter_text_helpers
+pipenet_converter/tests/test_dxf_extractor.py::test_missing_csv_column_raises_clear_error
+pipenet_converter/tests/test_dxf_extractor.py::test_write_dxf_extraction_tables_creates_human_review_csvs
+pipenet_converter/tests/test_dxf_extractor.py::test_unknown_layer_warning_works
+pipenet_converter/tests/test_dxf_extractor.py::test_empty_extraction_warns
+pipenet_converter/tests/test_dxf_extractor.py::test_unknown_block_warning_works
+pipenet_converter/tests/test_elevation.py::test_load_elevation_rules_sorts_by_priority
+pipenet_converter/tests/test_elevation.py::test_invalid_elevation_rule_raises_clear_error
+pipenet_converter/tests/test_elevation.py::test_apply_elevation_rules_sets_head_branch_and_default_zTraceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\admin\anaconda3\Lib\site-packages\pytest\__main__.py", line 9, in <module>
+    raise SystemExit(pytest.console_main())
+                     ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\admin\anaconda3\Lib\site-packages\_pytest\config\__init__.py", line 201, in console_main
+    code = main()
+  File "C:\Users\admin\anaconda3\Lib\site-packages\_pytest\config\__init__.py", line 175, in main
+    ret: ExitCode | int = config.hook.pytest_cmdline_main(config=config)
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "C:\Users\admin\anaconda3\Lib\site-packages\pluggy\_hooks.py", line 513, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\anaconda3\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\anaconda3\Lib\site-packages\pluggy\_callers.py", line 139, in _multicall
+    raise exception.with_traceback(exception.__traceback__)
+  File "C:\Users\admin\anaconda3\Lib\site-packages\pluggy\_callers.py", line 103, in _multicall
+    res = hook_impl.function(*args)
+  File "C:\Users\admin\anaconda3\Lib\site-packages\_pytest\main.py", line 336, in pytest_cmdline_main
+    return wrap_session(config, _main)
+  File "C:\Users\admin\anaconda3\Lib\site-packages\_pytest\main.py", line 331, in wrap_session
+    config._ensure_unconfigure()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\admin\anaconda3\Lib\site-packages\_pytest\config\__init__.py", line 1131, in _ensure_unconfigure
+    self._cleanup_stack.close()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\admin\anaconda3\Lib\contextlib.py", line 627, in close
+    self.__exit__(None, None, None)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\admin\anaconda3\Lib\contextlib.py", line 619, in __exit__
+    raise exc
+  File "C:\Users\admin\anaconda3\Lib\contextlib.py", line 604, in __exit__
+    if cb(*exc_details):
+       ~~^^^^^^^^^^^^^^
+  File "C:\Users\admin\anaconda3\Lib\contextlib.py", line 482, in _exit_wrapper
+    callback(*args, **kwds)
+    ~~~~~~~~^^^^^^^^^^^^^^^
+  File "C:\Users\admin\anaconda3\Lib\site-packages\_pytest\capture.py", line 778, in stop_global_capturing
+    self._global_capturing.pop_outerr_to_orig()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\admin\anaconda3\Lib\site-packages\_pytest\capture.py", line 659, in pop_outerr_to_orig
+    out, err = self.readouterr()
+               ~~~~~~~~~~~~~~~^^
+  File "C:\Users\admin\anaconda3\Lib\site-packages\_pytest\capture.py", line 706, in readouterr
+    out = self.out.snap() if self.out else ""
+          ~~~~~~~~~~~~~^^
+  File "C:\Users\admin\anaconda3\Lib\site-packages\_pytest\capture.py", line 591, in snap
+    self.tmpfile.seek(0)
+    ~~~~~~~~~~~~~~~~~^^^
+ValueError: I/O operation on closed file.
+
+pipenet_converter/tests/test_elevation.py::test_metadata_match_rule_can_assign_elevation
+pipenet_converter/tests/test_elevation.py::test_recompute_pipe_rise_and_length_in_orthogonal_mode
+pipenet_converter/tests/test_export_tables.py::test_write_network_tables_creates_all_csv_files
+pipenet_converter/tests/test_export_tables.py::test_exported_csv_files_have_expected_columns_and_row_counts
+pipenet_converter/tests/test_graph_builder.py::test_nearly_touching_endpoints_snap_together
+pipenet_converter/tests/test_graph_builder.py::test_simple_t_shape_creates_degree_three_node
+pipenet_converter/tests/test_graph_builder.py::test_head_block_attaches_to_nearest_pipe_node
+pipenet_converter/tests/test_graph_builder.py::test_far_head_block_creates_connected_head_node
+pipenet_converter/tests/test_graph_builder.py::test_diameter_text_assigns_diameter_to_edges
+pipenet_converter/tests/test_graph_builder.py::test_invalid_diameter_label_raises_clear_error
+pipenet_converter/tests/test_graph_builder.py::test_graph_to_pipenetwork_2d_creates_pipes_and_nozzles
+pipenet_converter/tests/test_isometric.py::test_project_iso_projects_coordinates
+pipenet_converter/tests/test_isometric.py::test_render_isometric_png_creates_non_empty_file
+pipenet_converter/tests/test_isometric.py::test_render_isometric_png_accepts_validation_issues
+pipenet_converter/tests/test_mapping_review.py::test_prepare_daiso_mapping_review_handles_missing_inputs
+pipenet_converter/tests/test_mapping_review.py::test_prepare_daiso_mapping_review_drafts_maps_from_dxf
+pipenet_converter/tests/test_models.py::test_diameter_label_to_m_converts_supported_labels
+pipenet_converter/tests/test_models.py::test_diameter_m_to_label_converts_supported_diameters
+pipenet_converter/tests/test_models.py::test_unsupported_diameter_values_raise_value_error
+pipenet_converter/tests/test_models.py::test_pipe_network_adds_and_retrieves_objects
+pipenet_converter/tests/test_models.py::test_pipe_network_rejects_duplicate_node_and_pipe_ids
+pipenet_converter/tests/test_models.py::test_pipe_network_exports_dataframes
+pipenet_converter/tests/test_real_sdf_regression.py::test_real_daiso_sdf_parse_export_write_round_trip
+pipenet_converter/tests/test_redline.py::test_pipe_midpoint_redline_works
+pipenet_converter/tests/test_redline.py::test_nozzle_redline_works
+pipenet_converter/tests/test_redline.py::test_write_redline_items_creates_csv_and_json
+pipenet_converter/tests/test_redline.py::test_render_isometric_png_accepts_redline_items
+pipenet_converter/tests/test_remote_path.py::test_farthest_head_is_in_longest_branch
+pipenet_converter/tests/test_remote_path.py::test_remote_selection_keeps_neighbouring_heads
+pipenet_converter/tests/test_remote_path.py::test_extract_remote_path_renames_nodes_and_pipes
+pipenet_converter/tests/test_remote_path.py::test_extract_remote_path_subtree_connects_valve_to_each_head
+pipenet_converter/tests/test_remote_path.py::test_extract_remote_path_rejects_unknown_alarm_valve
+pipenet_converter/tests/test_remote_path.py::test_extract_remote_path_requires_positive_head_count
+pipenet_converter/tests/test_remote_path.py::test_render_remote_path_png_writes_file
+pipenet_converter/tests/test_remote_path.py::test_write_remote_path_xlsx_has_two_sheets
+pipenet_converter/tests/test_remote_path.py::test_write_remote_path_artifacts_writes_both_files
+pipenet_converter/tests/test_remote_path.py::test_find_nearest_node_returns_closest_node
+pipenet_converter/tests/test_sdf_parser.py::test_parse_sdf_text_parses_title_nodes_pipes_and_links
+pipenet_converter/tests/test_sdf_parser.py::test_parse_sdf_reads_file
+pipenet_converter/tests/test_sdf_writer.py::test_network_to_sdf_text_round_trips_through_parser
+pipenet_converter/tests/test_sdf_writer.py::test_nozzle_flow_survives_the_lmin_round_trip
+pipenet_converter/tests/test_sdf_writer.py::test_write_sdf_writes_file
+pipenet_converter/tests/test_sdf_writer.py::test_write_sdf_template_mode_replaces_nodes_and_links
+pipenet_converter/tests/test_system_graph.py::test_parse_system_edges_csv_creates_nodes_pipes_fittings_and_equipment
+pipenet_converter/tests/test_system_graph.py::test_merge_networks_connects_system_to_plan_network
+pipenet_converter/tests/test_system_graph.py::test_active_nozzles_are_reachable_from_input_after_merge
+pipenet_converter/tests/test_system_graph.py::test_merge_prefixes_conflicting_system_node_ids
+pipenet_converter/tests/test_validator.py::test_missing_pipe_node_is_error
+pipenet_converter/tests/test_validator.py::test_zero_length_pipe_is_error
+pipenet_converter/tests/test_validator.py::test_invalid_diameter_and_c_factor_are_errors
+pipenet_converter/tests/test_validator.py::test_disconnected_active_nozzle_is_error
+pipenet_converter/tests/test_validator.py::test_tee_candidate_is_detected
+pipenet_converter/tests/test_validator.py::test_elbow_candidate_and_diameter_change_are_detected
+pipenet_converter/tests/test_validator.py::test_write_validation_report_creates_csv
+pipenet_converter/tests/test_validator.py::test_t_shape_gets_tee_fitting
+pipenet_converter/tests/test_validator.py::test_l_shape_gets_elbow_fitting
+pipenet_converter/tests/test_validator.py::test_straight_line_does_not_get_elbow
+pipenet_converter/tests/test_validator.py::test_diameter_change_nodes_are_detected_and_marked
+pipenet_converter/tests/test_validator.py::test_fitting_assignment_is_deterministic_without_root
+pipenet_converter/tests/test_validator.py::test_orient_network_from_input_flips_upstream_pipes
+
+484 tests collected, 11 errors in 23.70s

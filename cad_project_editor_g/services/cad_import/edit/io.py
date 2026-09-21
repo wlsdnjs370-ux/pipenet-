@@ -5,6 +5,7 @@
 """
 import json
 import os
+from src.pipenet_converter.graph.regions import normalize_zones
 
 from services.cad_import.edit.board import EditBoard
 from services.cad_import.kinds import require_head_kinds, resolve_head_kinds
@@ -60,9 +61,11 @@ def open_board(key, use_cache=True):
 def write_edits(board, out_dir=None):
     """payload 를 *_유저손질.json 에 쓴다. 찍기·disp_cache 경로는 안 쓴다."""
     path = user_edits_path(board.key, out_dir or default_edits_dir())
+    payload = board.payload()
+    payload["selection_zones"] = normalize_zones(getattr(board, "selection_zones", []))
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(board.payload(), f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
     return path
 
 
@@ -72,6 +75,7 @@ def load_edits(board, out_dir=None):
     if not os.path.exists(path):
         return False
     raw = json.load(open(path, encoding="utf-8"))
+    board.selection_zones = normalize_zones(raw.get("selection_zones"))
     board._invalidate_source_cache()
     for rec in raw.get("joins") or []:
         bridges = [(tuple(x[0]), tuple(x[1])) for x in rec.get("bridges") or []]

@@ -1,0 +1,215 @@
+{
+  "basis": "층고 4m 가정 — 층 사이·최상층 밖 연결점은 도면 위치 비례 환산; 실제 설치높이 미확인",
+  "source_elevation_m": 80.213,
+  "av_elevation_m": 0.0,
+  "total_length_m": 96.224,
+  "pipes": [
+    {
+      "label": "r1",
+      "in": "1",
+      "out": "n2",
+      "inferred_length": 0.153,
+      "inferred_elev": 0.153,
+      "length": 0.214,
+      "elev": 0.214
+    },
+    {
+      "label": "r2",
+      "in": "n2",
+      "out": "n3",
+      "inferred_length": 3.819,
+      "inferred_elev": -3.819,
+      "length": 2.66,
+      "elev": -2.66
+    },
+    {
+      "label": "r3",
+      "in": "n3",
+      "out": "n4",
+      "inferred_length": 15.583,
+      "inferred_elev": 0.0,
+      "length": 15.583,
+      "elev": 0.0
+    },
+    {
+      "label": "r4",
+      "in": "n4",
+      "out": "n5",
+      "inferred_length": 0.968,
+      "inferred_elev": 0.0,
+      "length": 1.361,
+      "elev": -1.361
+    },
+    {
+      "label": "r5",
+      "in": "n5",
+      "out": "n6",
+      "inferred_length": 2.846,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r6",
+      "in": "n6",
+      "out": "n7",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r7",
+      "in": "n7",
+      "out": "n8",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r8",
+      "in": "n8",
+      "out": "n9",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r9",
+      "in": "n9",
+      "out": "n10",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r10",
+      "in": "n10",
+      "out": "n11",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r11",
+      "in": "n11",
+      "out": "n12",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r12",
+      "in": "n12",
+      "out": "n13",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r13",
+      "in": "n13",
+      "out": "n14",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r14",
+      "in": "n14",
+      "out": "n15",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r15",
+      "in": "n15",
+      "out": "n16",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r16",
+      "in": "n16",
+      "out": "n17",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r17",
+      "in": "n17",
+      "out": "n18",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r18",
+      "in": "n18",
+      "out": "n19",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r19",
+      "in": "n19",
+      "out": "n20",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r20",
+      "in": "n20",
+      "out": "n21",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r21",
+      "in": "n21",
+      "out": "n22",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r22",
+      "in": "n22",
+      "out": "n23",
+      "inferred_length": 2.1,
+      "inferred_elev": -2.1,
+      "length": 4.0,
+      "elev": -4.0
+    },
+    {
+      "label": "r23",
+      "in": "n23",
+      "out": "10",
+      "inferred_length": 2.313,
+      "inferred_elev": -2.1,
+      "length": 4.406,
+      "elev": -4.406
+    }
+  ]
+}

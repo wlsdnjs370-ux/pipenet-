@@ -1,0 +1,31 @@
+{
+ "dxf": "1. 입력도면 대명동 단위세대 평면도.dxf",
+ "mb": 13.3,
+ "k": 10,
+ "conf_min": 0.75,
+ "혼합": {
+  "sid": "3e91f2f8a2aa451e",
+  "human": 3,
+  "clicks": 195,
+  "sec": 18.7,
+  "detected": 119,
+  "wet": {
+   "wet": 120,
+   "board": 120
+  },
+  "k": 10,
+  "far_m": 54.51,
+  "nodes": null,
+  "pipes": null,
+  "excluded": {
+   "dry": 0,
+   "unattached": 0
+  },
+  "adopt": {
+   "mat": 9,
+   "head": 4,
+   "already": 95,
+   "ghost": 2
+  }
+ }
+}

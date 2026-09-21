@@ -439,6 +439,8 @@ class Board:
         sp = {"format": "v2",
               "material_picks": [list(t) for t in self.mat],
               "heads": []}
+        if getattr(self, "head_symbol_profile", ""):
+            sp["head_symbol_profile"] = self.head_symbol_profile
         if self.heads:
             clean = []
             for h in self.heads:

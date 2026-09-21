@@ -1,0 +1,20 @@
+total sdf/slf files: 2853
+ascii-only:1196  mojibake(latin1-range only):1047  true-unicode:610  non-utf8:0
+
+-- mojibake-style files (PIPENET convention) --
+.\assets\3-1형_자연낙차_LSP_4F_OA_지하층포함_120m~200m미만_6.6K로 감압_알람밸브.sdf
+.\data\d_output_runs\0e248461fde34cae\2. Pipenet_hand.sdf
+.\data\feedback_uploads\20260414180813595773_1-1._201_3F___-RV03_NEW.sdf
+.\data\reference_library\1. 저수조_아성다이소 양주허브센터\수리계산 원본\물류동\1-1. 빌딩랙 상부헤드 펌프가압구간_REMOTE.sdf
+.\data\reference_library\1. 저수조_아성다이소 양주허브센터\수리계산 원본\물류동\1-1. 빌딩랙 상부헤드 펌프가압구간_USER.sdf
+.\data\reference_library\1. 저수조_아성다이소 양주허브센터\수리계산 원본\물류동\1-1. 빌딩랙 상부헤드 펌프가압구간_USER_체절감압.sdf
+.\data\reference_library\1. 저수조_아성다이소 양주허브센터\수리계산 원본\물류동\1-1. 빌딩랙 인랙헤드 펌프가압구간_REMOTE.sdf
+.\data\reference_library\1. 저수조_아성다이소 양주허브센터\수리계산 원본\물류동\1-1. 빌딩랙 인랙헤드 펌프가압구간_USER.sdf
+
+-- true-unicode files --
+.\cad_project_editor_g\tests\_out\g13_module_a.sdf
+.\cad_project_editor_g\tests\_out\g13_module_g.sdf
+.\cad_project_editor_g\tests\_out\g13_preG9.sdf
+.\cad_project_editor_g\tests\_out\g14_synth.sdf
+.\cad_project_editor_g\tests\_out\g16_preview.sdf
+.\cad_project_editor_g\tests\_out\g7_dialog.sdf

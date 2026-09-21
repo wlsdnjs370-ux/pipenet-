@@ -1,0 +1,12 @@
+﻿ * Serving Flask app 'daejo_server'
+ * Debug mode: off
+session: session b79a5e97-4dd6-4425-998e-6df4e6b1646a
+stepper: 01 | C1 건축 인식 | 02 | GATE 확정 | 03 | C2 규범 조건 | 04 | C3 밸브·구역 | 05 | C4 헤드 배치 | 06 | C5 라우팅 | 07 | 솔버 파일 방출
+design list rows: 4
+load status: LH_306.dxf — entity 1855, layer 15
+layer rows: 15
+unclassified note: 미분류 15개 — 자동 판정은 C1 인식기(PR-4)가 붙은 뒤에 채워집니다.
+WALL 그룹: ['WALL 1 layer / 75 ent']
+WALL 끈 뒤 체크된 레이어: 14
+
+JS 오류: 없음

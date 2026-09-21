@@ -1,0 +1,4892 @@
+{
+  "bore_reductions": [
+    {
+      "from_bore_mm": 125.0,
+      "from_pipe": "18",
+      "node": "20",
+      "to_bore_mm": 80.0,
+      "to_pipe": "16"
+    },
+    {
+      "from_bore_mm": 125.0,
+      "from_pipe": "15",
+      "node": "19",
+      "to_bore_mm": 80.0,
+      "to_pipe": "25"
+    },
+    {
+      "from_bore_mm": 80.0,
+      "from_pipe": "16",
+      "node": "17",
+      "to_bore_mm": 50.0,
+      "to_pipe": "27"
+    },
+    {
+      "from_bore_mm": 80.0,
+      "from_pipe": "16",
+      "node": "17",
+      "to_bore_mm": 65.0,
+      "to_pipe": "19"
+    },
+    {
+      "from_bore_mm": 80.0,
+      "from_pipe": "25",
+      "node": "80",
+      "to_bore_mm": 65.0,
+      "to_pipe": "71"
+    },
+    {
+      "from_bore_mm": 80.0,
+      "from_pipe": "25",
+      "node": "80",
+      "to_bore_mm": 50.0,
+      "to_pipe": "77"
+    },
+    {
+      "from_bore_mm": 65.0,
+      "from_pipe": "29",
+      "node": "86",
+      "to_bore_mm": 50.0,
+      "to_pipe": "49"
+    },
+    {
+      "from_bore_mm": 65.0,
+      "from_pipe": "30",
+      "node": "33",
+      "to_bore_mm": 32.0,
+      "to_pipe": "47"
+    },
+    {
+      "from_bore_mm": 65.0,
+      "from_pipe": "32",
+      "node": "35",
+      "to_bore_mm": 25.0,
+      "to_pipe": "46"
+    },
+    {
+      "from_bore_mm": 65.0,
+      "from_pipe": "35",
+      "node": "37",
+      "to_bore_mm": 32.0,
+      "to_pipe": "42"
+    },
+    {
+      "from_bore_mm": 65.0,
+      "from_pipe": "36",
+      "node": "38",
+      "to_bore_mm": 20.0,
+      "to_pipe": "56"
+    },
+    {
+      "from_bore_mm": 65.0,
+      "from_pipe": "36",
+      "node": "38",
+      "to_bore_mm": 50.0,
+      "to_pipe": "37"
+    },
+    {
+      "from_bore_mm": 50.0,
+      "from_pipe": "37",
+      "node": "39",
+      "to_bore_mm": 40.0,
+      "to_pipe": "38"
+    },
+    {
+      "from_bore_mm": 50.0,
+      "from_pipe": "37",
+      "node": "39",
+      "to_bore_mm": 32.0,
+      "to_pipe": "40"
+    },
+    {
+      "from_bore_mm": 40.0,
+      "from_pipe": "38",
+      "node": "40",
+      "to_bore_mm": 20.0,
+      "to_pipe": "53"
+    },
+    {
+      "from_bore_mm": 40.0,
+      "from_pipe": "39",
+      "node": "41",
+      "to_bore_mm": 20.0,
+      "to_pipe": "52"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "40",
+      "node": "42",
+      "to_bore_mm": 20.0,
+      "to_pipe": "54"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "40",
+      "node": "42",
+      "to_bore_mm": 25.0,
+      "to_pipe": "41"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "41",
+      "node": "43",
+      "to_bore_mm": 20.0,
+      "to_pipe": "55"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "42",
+      "node": "44",
+      "to_bore_mm": 25.0,
+      "to_pipe": "43"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "42",
+      "node": "44",
+      "to_bore_mm": 25.0,
+      "to_pipe": "58"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "43",
+      "node": "31",
+      "to_bore_mm": 20.0,
+      "to_pipe": "72"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "45",
+      "node": "47",
+      "to_bore_mm": 20.0,
+      "to_pipe": "60"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "46",
+      "node": "48",
+      "to_bore_mm": 20.0,
+      "to_pipe": "62"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "47",
+      "node": "49",
+      "to_bore_mm": 20.0,
+      "to_pipe": "64"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "47",
+      "node": "49",
+      "to_bore_mm": 25.0,
+      "to_pipe": "48"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "48",
+      "node": "50",
+      "to_bore_mm": 20.0,
+      "to_pipe": "65"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "50",
+      "node": "52",
+      "to_bore_mm": 20.0,
+      "to_pipe": "67"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "50",
+      "node": "52",
+      "to_bore_mm": 25.0,
+      "to_pipe": "51"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "51",
+      "node": "53",
+      "to_bore_mm": 20.0,
+      "to_pipe": "68"
+    },
+    {
+      "from_bore_mm": 50.0,
+      "from_pipe": "49",
+      "node": "6",
+      "to_bore_mm": 40.0,
+      "to_pipe": "20"
+    },
+    {
+      "from_bore_mm": 50.0,
+      "from_pipe": "49",
+      "node": "6",
+      "to_bore_mm": 25.0,
+      "to_pipe": "24"
+    },
+    {
+      "from_bore_mm": 65.0,
+      "from_pipe": "34",
+      "node": "36",
+      "to_bore_mm": 32.0,
+      "to_pipe": "26"
+    },
+    {
+      "from_bore_mm": 50.0,
+      "from_pipe": "31",
+      "node": "28",
+      "to_bore_mm": 20.0,
+      "to_pipe": "63"
+    },
+    {
+      "from_bore_mm": 50.0,
+      "from_pipe": "31",
+      "node": "28",
+      "to_bore_mm": 40.0,
+      "to_pipe": "33"
+    },
+    {
+      "from_bore_mm": 40.0,
+      "from_pipe": "33",
+      "node": "32",
+      "to_bore_mm": 20.0,
+      "to_pipe": "70"
+    },
+    {
+      "from_bore_mm": 40.0,
+      "from_pipe": "33",
+      "node": "32",
+      "to_bore_mm": 32.0,
+      "to_pipe": "44"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "44",
+      "node": "34",
+      "to_bore_mm": 20.0,
+      "to_pipe": "61"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "44",
+      "node": "34",
+      "to_bore_mm": 25.0,
+      "to_pipe": "45"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "93",
+      "node": "94",
+      "to_bore_mm": 20.0,
+      "to_pipe": "113"
+    },
+    {
+      "from_bore_mm": 40.0,
+      "from_pipe": "89",
+      "node": "97",
+      "to_bore_mm": 20.0,
+      "to_pipe": "107"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "84",
+      "node": "77",
+      "to_bore_mm": 20.0,
+      "to_pipe": "90"
+    },
+    {
+      "from_bore_mm": 65.0,
+      "from_pipe": "79",
+      "node": "110",
+      "to_bore_mm": 20.0,
+      "to_pipe": "112"
+    },
+    {
+      "from_bore_mm": 65.0,
+      "from_pipe": "79",
+      "node": "110",
+      "to_bore_mm": 50.0,
+      "to_pipe": "80"
+    },
+    {
+      "from_bore_mm": 50.0,
+      "from_pipe": "80",
+      "node": "109",
+      "to_bore_mm": 40.0,
+      "to_pipe": "89"
+    },
+    {
+      "from_bore_mm": 50.0,
+      "from_pipe": "80",
+      "node": "109",
+      "to_bore_mm": 32.0,
+      "to_pipe": "87"
+    },
+    {
+      "from_bore_mm": 65.0,
+      "from_pipe": "75",
+      "node": "108",
+      "to_bore_mm": 32.0,
+      "to_pipe": "95"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "88",
+      "node": "104",
+      "to_bore_mm": 20.0,
+      "to_pipe": "23"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "87",
+      "node": "103",
+      "to_bore_mm": 20.0,
+      "to_pipe": "110"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "87",
+      "node": "103",
+      "to_bore_mm": 25.0,
+      "to_pipe": "88"
+    },
+    {
+      "from_bore_mm": 40.0,
+      "from_pipe": "92",
+      "node": "105",
+      "to_bore_mm": 20.0,
+      "to_pipe": "105"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "95",
+      "node": "106",
+      "to_bore_mm": 25.0,
+      "to_pipe": "84"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "95",
+      "node": "106",
+      "to_bore_mm": 25.0,
+      "to_pipe": "111"
+    },
+    {
+      "from_bore_mm": 65.0,
+      "from_pipe": "74",
+      "node": "107",
+      "to_bore_mm": 32.0,
+      "to_pipe": "86"
+    },
+    {
+      "from_bore_mm": 50.0,
+      "from_pipe": "94",
+      "node": "85",
+      "to_bore_mm": 40.0,
+      "to_pipe": "96"
+    },
+    {
+      "from_bore_mm": 40.0,
+      "from_pipe": "96",
+      "node": "88",
+      "to_bore_mm": 32.0,
+      "to_pipe": "97"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "97",
+      "node": "112",
+      "to_bore_mm": 20.0,
+      "to_pipe": "114"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "97",
+      "node": "112",
+      "to_bore_mm": 25.0,
+      "to_pipe": "93"
+    },
+    {
+      "from_bore_mm": 40.0,
+      "from_pipe": "20",
+      "node": "51",
+      "to_bore_mm": 20.0,
+      "to_pipe": "66"
+    },
+    {
+      "from_bore_mm": 40.0,
+      "from_pipe": "20",
+      "node": "51",
+      "to_bore_mm": 32.0,
+      "to_pipe": "50"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "24",
+      "node": "92",
+      "to_bore_mm": 20.0,
+      "to_pipe": "69"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "59",
+      "node": "29",
+      "to_bore_mm": 20.0,
+      "to_pipe": "83"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "59",
+      "node": "29",
+      "to_bore_mm": 25.0,
+      "to_pipe": "82"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "82",
+      "node": "93",
+      "to_bore_mm": 20.0,
+      "to_pipe": "85"
+    },
+    {
+      "from_bore_mm": 32.0,
+      "from_pipe": "91",
+      "node": "65",
+      "to_bore_mm": 20.0,
+      "to_pipe": "98"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "58",
+      "node": "98",
+      "to_bore_mm": 20.0,
+      "to_pipe": "7"
+    },
+    {
+      "from_bore_mm": 25.0,
+      "from_pipe": "111",
+      "node": "99",
+      "to_bore_mm": 20.0,
+      "to_pipe": "99"
+    }
+  ],
+  "branch_nodes": [
+    {
+      "degree": 3,
+      "id": "103",
+      "node": "103",
+      "x": -13200.0,
+      "y": -1270.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "106",
+      "node": "106",
+      "x": -12900.0,
+      "y": -1010.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "107",
+      "node": "107",
+      "x": -12850.0,
+      "y": -1385.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "108",
+      "node": "108",
+      "x": -12900.0,
+      "y": -1385.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "109",
+      "node": "109",
+      "x": -13200.0,
+      "y": -1385.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "110",
+      "node": "110",
+      "x": -13050.0,
+      "y": -1385.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "112",
+      "node": "112",
+      "x": -12550.0,
+      "y": -1847.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "17",
+      "node": "17",
+      "x": -12525.0,
+      "y": -2006.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "19",
+      "node": "19",
+      "x": -12125.0,
+      "y": -2352.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "28",
+      "node": "28",
+      "x": -12650.0,
+      "y": -2150.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "29",
+      "node": "29",
+      "x": -13050.0,
+      "y": -2713.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "32",
+      "node": "32",
+      "x": -12650.0,
+      "y": -2300.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "33",
+      "node": "33",
+      "x": -13150.0,
+      "y": -2424.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "34",
+      "node": "34",
+      "x": -12650.0,
+      "y": -2511.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "35",
+      "node": "35",
+      "x": -13150.0,
+      "y": -2569.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "36",
+      "node": "36",
+      "x": -13150.0,
+      "y": -2829.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "37",
+      "node": "37",
+      "x": -13150.0,
+      "y": -2886.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "38",
+      "node": "38",
+      "x": -13150.0,
+      "y": -3059.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "39",
+      "node": "39",
+      "x": -13150.0,
+      "y": -3204.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "40",
+      "node": "40",
+      "x": -12850.0,
+      "y": -3262.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "42",
+      "node": "42",
+      "x": -13300.0,
+      "y": -3204.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "44",
+      "node": "44",
+      "x": -13550.0,
+      "y": -2886.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "49",
+      "node": "49",
+      "x": -13300.0,
+      "y": -2338.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "51",
+      "node": "51",
+      "x": -13150.0,
+      "y": -2049.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "52",
+      "node": "52",
+      "x": -13300.0,
+      "y": -2049.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "6",
+      "node": "6",
+      "x": -13050.0,
+      "y": -2251.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "80",
+      "node": "80",
+      "x": -11975.0,
+      "y": -2266.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "86",
+      "node": "86",
+      "x": -13050.0,
+      "y": -2350.0,
+      "z": 2.8
+    },
+    {
+      "degree": 3,
+      "id": "97",
+      "node": "97",
+      "x": -13250.0,
+      "y": -1703.0,
+      "z": 2.8
+    }
+  ],
+  "checklist": [
+    "CAD 도면의 알람밸브 위치가 SDF A/V 추정 노드와 일치하는지 확인",
+    "SDF 최원단 헤드 30개가 CAD 평면도상 검토 영역의 헤드 30개와 1:1 매칭되는지 확인",
+    "배관 길이 불일치 후보는 CAD 실측 길이와 SDF length 값을 대조",
+    "구경 축소 지점은 CAD 라벨의 관경 표기와 SDF bore 값을 대조",
+    "엘보/티 집중 구간은 도면상 굴곡/분기 개수와 SDF Fittings count를 대조",
+    "수직 배관은 건축 단면/층고와 SDF rise 및 length를 대조"
+  ],
+  "equipment": [
+    {
+      "description": "A/V",
+      "equivalent_length_m": 12.9,
+      "label": "1",
+      "pipe_label": "9",
+      "rel_position": 0.514
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "22",
+      "pipe_label": "72",
+      "rel_position": 0.449
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "27",
+      "pipe_label": "90",
+      "rel_position": 0.431
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "25",
+      "pipe_label": "23",
+      "rel_position": 0.368
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "21",
+      "pipe_label": "55",
+      "rel_position": 0.374
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "2",
+      "pipe_label": "52",
+      "rel_position": 0.46
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "3",
+      "pipe_label": "53",
+      "rel_position": 0.897
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "4",
+      "pipe_label": "54",
+      "rel_position": 0.332
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "5",
+      "pipe_label": "56",
+      "rel_position": 0.56
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "8",
+      "pipe_label": "60",
+      "rel_position": 0.321
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "9",
+      "pipe_label": "61",
+      "rel_position": 0.303
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "10",
+      "pipe_label": "62",
+      "rel_position": 0.351
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "13",
+      "pipe_label": "64",
+      "rel_position": 0.312
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "12",
+      "pipe_label": "65",
+      "rel_position": 0.339
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "14",
+      "pipe_label": "66",
+      "rel_position": 0.276
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "15",
+      "pipe_label": "67",
+      "rel_position": 0.345
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "16",
+      "pipe_label": "68",
+      "rel_position": 0.311
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "17",
+      "pipe_label": "69",
+      "rel_position": 0.318
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "18",
+      "pipe_label": "63",
+      "rel_position": 0.32
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "19",
+      "pipe_label": "70",
+      "rel_position": 0.316
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "31",
+      "pipe_label": "113",
+      "rel_position": 0.339
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "30",
+      "pipe_label": "112",
+      "rel_position": 0.349
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "26",
+      "pipe_label": "107",
+      "rel_position": 0.342
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "24",
+      "pipe_label": "105",
+      "rel_position": 0.312
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "28",
+      "pipe_label": "110",
+      "rel_position": 0.303
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "32",
+      "pipe_label": "114",
+      "rel_position": 0.38
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "7",
+      "pipe_label": "83",
+      "rel_position": 0.256
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "11",
+      "pipe_label": "85",
+      "rel_position": 0.726
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "23",
+      "pipe_label": "98",
+      "rel_position": 0.222
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "6",
+      "pipe_label": "7",
+      "rel_position": 0.464
+    },
+    {
+      "description": "FX",
+      "equivalent_length_m": 15.6,
+      "label": "20",
+      "pipe_label": "99",
+      "rel_position": 0.655
+    }
+  ],
+  "farthest_heads": [
+    {
+      "distance_from_av_m": 43.1,
+      "input_node": "54",
+      "label": "1",
+      "x": -12700.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 42.79,
+      "input_node": "57",
+      "label": "4",
+      "x": -13600.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 42.15,
+      "input_node": "55",
+      "label": "2",
+      "x": -12850.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 41.41,
+      "input_node": "56",
+      "label": "3",
+      "x": -13300.0,
+      "y": -3262.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 40.11,
+      "input_node": "59",
+      "label": "6",
+      "x": -13600.0,
+      "y": -3002.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 40.02,
+      "input_node": "60",
+      "label": "7",
+      "x": -13650.0,
+      "y": -2886.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 39.95,
+      "input_node": "96",
+      "label": "12",
+      "x": -13100.0,
+      "y": -2511.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 39.4,
+      "input_node": "70",
+      "label": "15",
+      "x": -13550.0,
+      "y": -1991.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 39.04,
+      "input_node": "58",
+      "label": "5",
+      "x": -13200.0,
+      "y": -3059.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 38.56,
+      "input_node": "95",
+      "label": "8",
+      "x": -13100.0,
+      "y": -2742.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 37.51,
+      "input_node": "69",
+      "label": "16",
+      "x": -13300.0,
+      "y": -1991.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 37.4,
+      "input_node": "64",
+      "label": "11",
+      "x": -13550.0,
+      "y": -2626.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 37.02,
+      "input_node": "67",
+      "label": "14",
+      "x": -13550.0,
+      "y": -2280.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 36.8,
+      "input_node": "68",
+      "label": "17",
+      "x": -13150.0,
+      "y": -2107.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 35.61,
+      "input_node": "66",
+      "label": "13",
+      "x": -13300.0,
+      "y": -2280.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 34.81,
+      "input_node": "71",
+      "label": "20",
+      "x": -12950.0,
+      "y": -2251.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 33.69,
+      "input_node": "78",
+      "label": "21",
+      "x": -13200.0,
+      "y": -1876.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 33.38,
+      "input_node": "79",
+      "label": "24",
+      "x": -13200.0,
+      "y": -981.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 32.74,
+      "input_node": "83",
+      "label": "22",
+      "x": -13200.0,
+      "y": -1703.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 32.72,
+      "input_node": "62",
+      "label": "9",
+      "x": -12700.0,
+      "y": -2684.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 32.0,
+      "input_node": "87",
+      "label": "23",
+      "x": -13250.0,
+      "y": -1270.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 31.02,
+      "input_node": "63",
+      "label": "10",
+      "x": -12700.0,
+      "y": -2511.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 30.7,
+      "input_node": "24",
+      "label": "26",
+      "x": -13000.0,
+      "y": -952.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 30.61,
+      "input_node": "74",
+      "label": "27",
+      "x": -12900.0,
+      "y": -894.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 29.65,
+      "input_node": "72",
+      "label": "19",
+      "x": -12700.0,
+      "y": -2300.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 29.63,
+      "input_node": "73",
+      "label": "25",
+      "x": -13050.0,
+      "y": -1327.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 28.61,
+      "input_node": "46",
+      "label": "18",
+      "x": -12700.0,
+      "y": -2150.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 28.14,
+      "input_node": "75",
+      "label": "28",
+      "x": -12700.0,
+      "y": -1443.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 23.05,
+      "input_node": "25",
+      "label": "29",
+      "x": -12700.0,
+      "y": -1789.0,
+      "z": 2.7
+    },
+    {
+      "distance_from_av_m": 21.35,
+      "input_node": "81",
+      "label": "30",
+      "x": -12550.0,
+      "y": -1789.0,
+      "z": 2.7
+    }
+  ],
+  "filename": "3-1형_자연낙차_LSP_4F_OA_지하층포함_120m~200m미만_6.6K로 감압_알람밸브.sdf",
+  "fitting_hotspots": [
+    {
+      "fitting_count": 2,
+      "fittings": "elbow(2)",
+      "pipe_label": "14",
+      "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다."
+    },
+    {
+      "fitting_count": 3,
+      "fittings": "elbow(2), tee(1)",
+      "pipe_label": "16",
+      "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다."
+    },
+    {
+      "fitting_count": 2,
+      "fittings": "elbow(1), tee(1)",
+      "pipe_label": "30",
+      "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다."
+    },
+    {
+      "fitting_count": 2,
+      "fittings": "elbow(1), tee(1)",
+      "pipe_label": "38",
+      "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다."
+    },
+    {
+      "fitting_count": 2,
+      "fittings": "elbow(1), tee(1)",
+      "pipe_label": "39",
+      "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다."
+    },
+    {
+      "fitting_count": 3,
+      "fittings": "elbow(2), tee(1)",
+      "pipe_label": "47",
+      "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다."
+    },
+    {
+      "fitting_count": 2,
+      "fittings": "elbow(1), tee(1)",
+      "pipe_label": "31",
+      "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다."
+    },
+    {
+      "fitting_count": 2,
+      "fittings": "elbow(1), tee(1)",
+      "pipe_label": "89",
+      "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다."
+    },
+    {
+      "fitting_count": 2,
+      "fittings": "elbow(1), tee(1)",
+      "pipe_label": "92",
+      "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다."
+    },
+    {
+      "fitting_count": 4,
+      "fittings": "elbow(3), tee(1)",
+      "pipe_label": "74",
+      "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다."
+    },
+    {
+      "fitting_count": 2,
+      "fittings": "elbow(1), tee(1)",
+      "pipe_label": "20",
+      "reason": "엘보/티 등 부속 집중 구간입니다. CAD 도면의 굴곡/분기 위치와 대조가 필요합니다."
+    }
+  ],
+  "fitting_summary": [
+    {
+      "count": 30,
+      "type": "elbow"
+    },
+    {
+      "count": 1,
+      "type": "elbow-45"
+    },
+    {
+      "count": 33,
+      "type": "tee"
+    }
+  ],
+  "length_checks": [
+    {
+      "diff_m": 0.809,
+      "pipe_label": "10",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.04,
+      "xy_length_m": 0.231
+    },
+    {
+      "diff_m": 1.809,
+      "pipe_label": "11",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 2.04,
+      "xy_length_m": 0.231
+    },
+    {
+      "diff_m": 2.507,
+      "pipe_label": "12",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 2.68,
+      "xy_length_m": 0.173
+    },
+    {
+      "diff_m": 0.564,
+      "pipe_label": "13",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.65,
+      "xy_length_m": 0.086
+    },
+    {
+      "diff_m": 0.933,
+      "pipe_label": "18",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.08,
+      "xy_length_m": 0.147
+    },
+    {
+      "diff_m": 1.474,
+      "pipe_label": "21",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.59,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 4.25,
+      "pipe_label": "14",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 5.0,
+      "xy_length_m": 0.75
+    },
+    {
+      "diff_m": 8.194,
+      "pipe_label": "16",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 8.74,
+      "xy_length_m": 0.546
+    },
+    {
+      "diff_m": 2.121,
+      "pipe_label": "27",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 2.29,
+      "xy_length_m": 0.169
+    },
+    {
+      "diff_m": 0.533,
+      "pipe_label": "71",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.62,
+      "xy_length_m": 0.087
+    },
+    {
+      "diff_m": 1.589,
+      "pipe_label": "77",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.82,
+      "xy_length_m": 0.231
+    },
+    {
+      "diff_m": 0.94,
+      "pipe_label": "19",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.09,
+      "xy_length_m": 0.15
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "72",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "90",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.585,
+      "pipe_label": "23",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.115
+    },
+    {
+      "diff_m": 0.588,
+      "pipe_label": "55",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.112
+    },
+    {
+      "diff_m": 0.588,
+      "pipe_label": "52",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.112
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "53",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "54",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.588,
+      "pipe_label": "56",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.112
+    },
+    {
+      "diff_m": 0.588,
+      "pipe_label": "60",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.112
+    },
+    {
+      "diff_m": 0.588,
+      "pipe_label": "61",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.112
+    },
+    {
+      "diff_m": 0.585,
+      "pipe_label": "62",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.115
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "64",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "65",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "66",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "67",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "68",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.588,
+      "pipe_label": "69",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.112
+    },
+    {
+      "diff_m": 0.588,
+      "pipe_label": "63",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.112
+    },
+    {
+      "diff_m": 0.588,
+      "pipe_label": "70",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.112
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "113",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "112",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.588,
+      "pipe_label": "107",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.112
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "105",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.588,
+      "pipe_label": "110",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.112
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "114",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 0.573,
+      "pipe_label": "83",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.127
+    },
+    {
+      "diff_m": 0.553,
+      "pipe_label": "85",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.147
+    },
+    {
+      "diff_m": 0.553,
+      "pipe_label": "98",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.147
+    },
+    {
+      "diff_m": 0.588,
+      "pipe_label": "7",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.112
+    },
+    {
+      "diff_m": 0.584,
+      "pipe_label": "99",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.7,
+      "xy_length_m": 0.116
+    },
+    {
+      "diff_m": 1.86,
+      "pipe_label": "81",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.96,
+      "xy_length_m": 0.1
+    },
+    {
+      "diff_m": 0.715,
+      "pipe_label": "28",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.79,
+      "xy_length_m": 0.075
+    },
+    {
+      "diff_m": 1.14,
+      "pipe_label": "29",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.24,
+      "xy_length_m": 0.1
+    },
+    {
+      "diff_m": 0.585,
+      "pipe_label": "32",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.73,
+      "xy_length_m": 0.145
+    },
+    {
+      "diff_m": 1.397,
+      "pipe_label": "36",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.57,
+      "xy_length_m": 0.173
+    },
+    {
+      "diff_m": 1.405,
+      "pipe_label": "37",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.55,
+      "xy_length_m": 0.145
+    },
+    {
+      "diff_m": 1.202,
+      "pipe_label": "38",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.56,
+      "xy_length_m": 0.358
+    },
+    {
+      "diff_m": 0.792,
+      "pipe_label": "39",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.95,
+      "xy_length_m": 0.158
+    },
+    {
+      "diff_m": 0.67,
+      "pipe_label": "40",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.82,
+      "xy_length_m": 0.15
+    },
+    {
+      "diff_m": 0.76,
+      "pipe_label": "41",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.96,
+      "xy_length_m": 0.2
+    },
+    {
+      "diff_m": 1.5,
+      "pipe_label": "42",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.9,
+      "xy_length_m": 0.4
+    },
+    {
+      "diff_m": 1.527,
+      "pipe_label": "45",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.7,
+      "xy_length_m": 0.173
+    },
+    {
+      "diff_m": 2.36,
+      "pipe_label": "46",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 2.76,
+      "xy_length_m": 0.4
+    },
+    {
+      "diff_m": 1.464,
+      "pipe_label": "47",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.7,
+      "xy_length_m": 0.236
+    },
+    {
+      "diff_m": 1.16,
+      "pipe_label": "48",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.41,
+      "xy_length_m": 0.25
+    },
+    {
+      "diff_m": 0.56,
+      "pipe_label": "50",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.71,
+      "xy_length_m": 0.15
+    },
+    {
+      "diff_m": 1.64,
+      "pipe_label": "51",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.89,
+      "xy_length_m": 0.25
+    },
+    {
+      "diff_m": 0.891,
+      "pipe_label": "49",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.99,
+      "xy_length_m": 0.099
+    },
+    {
+      "diff_m": 2.18,
+      "pipe_label": "34",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 2.44,
+      "xy_length_m": 0.26
+    },
+    {
+      "diff_m": 1.94,
+      "pipe_label": "31",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 2.04,
+      "xy_length_m": 0.1
+    },
+    {
+      "diff_m": 0.89,
+      "pipe_label": "33",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.04,
+      "xy_length_m": 0.15
+    },
+    {
+      "diff_m": 1.159,
+      "pipe_label": "44",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.37,
+      "xy_length_m": 0.211
+    },
+    {
+      "diff_m": 1.55,
+      "pipe_label": "93",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.7,
+      "xy_length_m": 0.15
+    },
+    {
+      "diff_m": 1.192,
+      "pipe_label": "89",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.56,
+      "xy_length_m": 0.368
+    },
+    {
+      "diff_m": 1.42,
+      "pipe_label": "79",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.57,
+      "xy_length_m": 0.15
+    },
+    {
+      "diff_m": 1.4,
+      "pipe_label": "80",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.55,
+      "xy_length_m": 0.15
+    },
+    {
+      "diff_m": 1.28,
+      "pipe_label": "75",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.33,
+      "xy_length_m": 0.05
+    },
+    {
+      "diff_m": 0.786,
+      "pipe_label": "88",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.96,
+      "xy_length_m": 0.174
+    },
+    {
+      "diff_m": 0.705,
+      "pipe_label": "87",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.82,
+      "xy_length_m": 0.115
+    },
+    {
+      "diff_m": 0.787,
+      "pipe_label": "92",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 0.95,
+      "xy_length_m": 0.163
+    },
+    {
+      "diff_m": 1.525,
+      "pipe_label": "95",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.9,
+      "xy_length_m": 0.375
+    },
+    {
+      "diff_m": 8.848,
+      "pipe_label": "74",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 11.03,
+      "xy_length_m": 2.182
+    },
+    {
+      "diff_m": 1.838,
+      "pipe_label": "94",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 2.04,
+      "xy_length_m": 0.202
+    },
+    {
+      "diff_m": 0.867,
+      "pipe_label": "96",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.04,
+      "xy_length_m": 0.173
+    },
+    {
+      "diff_m": 0.889,
+      "pipe_label": "97",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.37,
+      "xy_length_m": 0.481
+    },
+    {
+      "diff_m": 3.524,
+      "pipe_label": "5",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 3.97,
+      "xy_length_m": 0.446
+    },
+    {
+      "diff_m": 2.178,
+      "pipe_label": "20",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 2.48,
+      "xy_length_m": 0.302
+    },
+    {
+      "diff_m": 0.904,
+      "pipe_label": "59",
+      "reason": "SDF length와 XY 좌표거리 차이가 허용오차(5% 또는 0.5m)를 초과합니다.",
+      "sdf_length_m": 1.02,
+      "xy_length_m": 0.116
+    }
+  ],
+  "nodes": [
+    {
+      "id": "11",
+      "x": -11400.0,
+      "y": -3233.0,
+      "z": 2.8
+    },
+    {
+      "id": "12",
+      "x": -11500.0,
+      "y": -3059.0,
+      "z": 2.8
+    },
+    {
+      "id": "13",
+      "x": -11550.0,
+      "y": -2944.0,
+      "z": 2.8
+    },
+    {
+      "id": "14",
+      "x": -11700.0,
+      "y": -2857.0,
+      "z": 2.8
+    },
+    {
+      "id": "15",
+      "x": -11775.0,
+      "y": -2814.0,
+      "z": 2.8
+    },
+    {
+      "id": "18",
+      "x": -11975.0,
+      "y": -2439.0,
+      "z": 2.8
+    },
+    {
+      "id": "19",
+      "x": -12125.0,
+      "y": -2352.0,
+      "z": 2.8
+    },
+    {
+      "id": "20",
+      "x": -12250.0,
+      "y": -2275.0,
+      "z": 2.8
+    },
+    {
+      "id": "30",
+      "x": -12950.0,
+      "y": -2350.0,
+      "z": 2.8
+    },
+    {
+      "id": "33",
+      "x": -13150.0,
+      "y": -2424.0,
+      "z": 2.8
+    },
+    {
+      "id": "36",
+      "x": -13150.0,
+      "y": -2829.0,
+      "z": 2.8
+    },
+    {
+      "id": "37",
+      "x": -13150.0,
+      "y": -2886.0,
+      "z": 2.8
+    },
+    {
+      "id": "38",
+      "x": -13150.0,
+      "y": -3059.0,
+      "z": 2.8
+    },
+    {
+      "id": "39",
+      "x": -13150.0,
+      "y": -3204.0,
+      "z": 2.8
+    },
+    {
+      "id": "40",
+      "x": -12850.0,
+      "y": -3262.0,
+      "z": 2.8
+    },
+    {
+      "id": "41",
+      "x": -12750.0,
+      "y": -3204.0,
+      "z": 2.8
+    },
+    {
+      "id": "42",
+      "x": -13300.0,
+      "y": -3204.0,
+      "z": 2.8
+    },
+    {
+      "id": "43",
+      "x": -13500.0,
+      "y": -3204.0,
+      "z": 2.8
+    },
+    {
+      "id": "44",
+      "x": -13550.0,
+      "y": -2886.0,
+      "z": 2.8
+    },
+    {
+      "id": "45",
+      "x": -13600.0,
+      "y": -2973.0,
+      "z": 2.7
+    },
+    {
+      "id": "47",
+      "x": -12650.0,
+      "y": -2684.0,
+      "z": 2.8
+    },
+    {
+      "id": "48",
+      "x": -13550.0,
+      "y": -2569.0,
+      "z": 2.8
+    },
+    {
+      "id": "49",
+      "x": -13300.0,
+      "y": -2338.0,
+      "z": 2.8
+    },
+    {
+      "id": "50",
+      "x": -13550.0,
+      "y": -2338.0,
+      "z": 2.8
+    },
+    {
+      "id": "51",
+      "x": -13150.0,
+      "y": -2049.0,
+      "z": 2.8
+    },
+    {
+      "id": "52",
+      "x": -13300.0,
+      "y": -2049.0,
+      "z": 2.8
+    },
+    {
+      "id": "53",
+      "x": -13550.0,
+      "y": -2049.0,
+      "z": 2.8
+    },
+    {
+      "id": "54",
+      "x": -12700.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "id": "55",
+      "x": -12850.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "id": "56",
+      "x": -13300.0,
+      "y": -3262.0,
+      "z": 2.7
+    },
+    {
+      "id": "57",
+      "x": -13600.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "id": "58",
+      "x": -13200.0,
+      "y": -3059.0,
+      "z": 2.7
+    },
+    {
+      "id": "59",
+      "x": -13600.0,
+      "y": -3002.0,
+      "z": 2.7
+    },
+    {
+      "id": "60",
+      "x": -13650.0,
+      "y": -2886.0,
+      "z": 2.7
+    },
+    {
+      "id": "62",
+      "x": -12700.0,
+      "y": -2684.0,
+      "z": 2.7
+    },
+    {
+      "id": "63",
+      "x": -12700.0,
+      "y": -2511.0,
+      "z": 2.7
+    },
+    {
+      "id": "64",
+      "x": -13550.0,
+      "y": -2626.0,
+      "z": 2.7
+    },
+    {
+      "id": "66",
+      "x": -13300.0,
+      "y": -2280.0,
+      "z": 2.7
+    },
+    {
+      "id": "67",
+      "x": -13550.0,
+      "y": -2280.0,
+      "z": 2.7
+    },
+    {
+      "id": "68",
+      "x": -13150.0,
+      "y": -2107.0,
+      "z": 2.7
+    },
+    {
+      "id": "69",
+      "x": -13300.0,
+      "y": -1991.0,
+      "z": 2.7
+    },
+    {
+      "id": "70",
+      "x": -13550.0,
+      "y": -1991.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/1",
+      "x": -12700.0,
+      "y": -3146.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/2",
+      "x": -12800.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/3",
+      "x": -13250.0,
+      "y": -3262.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/4",
+      "x": -13650.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/5",
+      "x": -13200.0,
+      "y": -3002.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/6",
+      "x": -13600.0,
+      "y": -3059.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/7",
+      "x": -13650.0,
+      "y": -2829.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/9",
+      "x": -12750.0,
+      "y": -2684.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/10",
+      "x": -12700.0,
+      "y": -2569.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/11",
+      "x": -13550.0,
+      "y": -2684.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/13",
+      "x": -13300.0,
+      "y": -2251.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/14",
+      "x": -13550.0,
+      "y": -2222.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/15",
+      "x": -13550.0,
+      "y": -1934.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/16",
+      "x": -13300.0,
+      "y": -1934.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/17",
+      "x": -13150.0,
+      "y": -2165.0,
+      "z": 2.7
+    },
+    {
+      "id": "71",
+      "x": -12950.0,
+      "y": -2251.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/20",
+      "x": -12900.0,
+      "y": -2251.0,
+      "z": 2.7
+    },
+    {
+      "id": "86",
+      "x": -13050.0,
+      "y": -2350.0,
+      "z": 2.8
+    },
+    {
+      "id": "23",
+      "x": -11600.0,
+      "y": -3117.0,
+      "z": 2.8
+    },
+    {
+      "id": "27",
+      "x": -13550.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "id": "31",
+      "x": -13600.0,
+      "y": -2915.0,
+      "z": 2.8
+    },
+    {
+      "id": "16",
+      "x": -12050.0,
+      "y": -2396.0,
+      "z": 2.8
+    },
+    {
+      "id": "17",
+      "x": -12525.0,
+      "y": -2006.0,
+      "z": 2.8
+    },
+    {
+      "id": "35",
+      "x": -13150.0,
+      "y": -2569.0,
+      "z": 2.8
+    },
+    {
+      "id": "92",
+      "x": -13000.0,
+      "y": -2251.0,
+      "z": 2.8
+    },
+    {
+      "id": "22",
+      "x": -12600.0,
+      "y": -2100.0,
+      "z": 2.8
+    },
+    {
+      "id": "28",
+      "x": -12650.0,
+      "y": -2150.0,
+      "z": 2.8
+    },
+    {
+      "id": "32",
+      "x": -12650.0,
+      "y": -2300.0,
+      "z": 2.8
+    },
+    {
+      "id": "34",
+      "x": -12650.0,
+      "y": -2511.0,
+      "z": 2.8
+    },
+    {
+      "id": "46",
+      "x": -12700.0,
+      "y": -2150.0,
+      "z": 2.7
+    },
+    {
+      "id": "72",
+      "x": -12700.0,
+      "y": -2300.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/18",
+      "x": -12700.0,
+      "y": -2107.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/19",
+      "x": -12700.0,
+      "y": -2251.0,
+      "z": 2.7
+    },
+    {
+      "id": "80",
+      "x": -11975.0,
+      "y": -2266.0,
+      "z": 2.8
+    },
+    {
+      "id": "82",
+      "x": -11900.0,
+      "y": -2222.0,
+      "z": 2.8
+    },
+    {
+      "id": "25",
+      "x": -12700.0,
+      "y": -1789.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/29",
+      "x": -12700.0,
+      "y": -1732.0,
+      "z": 2.7
+    },
+    {
+      "id": "81",
+      "x": -12550.0,
+      "y": -1789.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/30",
+      "x": -12550.0,
+      "y": -1732.0,
+      "z": 2.7
+    },
+    {
+      "id": "75",
+      "x": -12700.0,
+      "y": -1443.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/28",
+      "x": -12750.0,
+      "y": -1443.0,
+      "z": 2.7
+    },
+    {
+      "id": "74",
+      "x": -12900.0,
+      "y": -894.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/27",
+      "x": -12900.0,
+      "y": -837.0,
+      "z": 2.7
+    },
+    {
+      "id": "73",
+      "x": -13050.0,
+      "y": -1327.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/25",
+      "x": -13050.0,
+      "y": -1270.0,
+      "z": 2.7
+    },
+    {
+      "id": "87",
+      "x": -13250.0,
+      "y": -1270.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/23",
+      "x": -13300.0,
+      "y": -1270.0,
+      "z": 2.7
+    },
+    {
+      "id": "83",
+      "x": -13200.0,
+      "y": -1703.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/22",
+      "x": -13150.0,
+      "y": -1703.0,
+      "z": 2.7
+    },
+    {
+      "id": "78",
+      "x": -13200.0,
+      "y": -1876.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/21",
+      "x": -13150.0,
+      "y": -1876.0,
+      "z": 2.7
+    },
+    {
+      "id": "79",
+      "x": -13200.0,
+      "y": -981.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/24",
+      "x": -13200.0,
+      "y": -923.0,
+      "z": 2.7
+    },
+    {
+      "id": "24",
+      "x": -13000.0,
+      "y": -952.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/26",
+      "x": -13050.0,
+      "y": -952.0,
+      "z": 2.7
+    },
+    {
+      "id": "112",
+      "x": -12550.0,
+      "y": -1847.0,
+      "z": 2.8
+    },
+    {
+      "id": "94",
+      "x": -12700.0,
+      "y": -1847.0,
+      "z": 2.8
+    },
+    {
+      "id": "109",
+      "x": -13200.0,
+      "y": -1385.0,
+      "z": 2.8
+    },
+    {
+      "id": "97",
+      "x": -13250.0,
+      "y": -1703.0,
+      "z": 2.8
+    },
+    {
+      "id": "106",
+      "x": -12900.0,
+      "y": -1010.0,
+      "z": 2.8
+    },
+    {
+      "id": "77",
+      "x": -12950.0,
+      "y": -1010.0,
+      "z": 2.8
+    },
+    {
+      "id": "108",
+      "x": -12900.0,
+      "y": -1385.0,
+      "z": 2.8
+    },
+    {
+      "id": "110",
+      "x": -13050.0,
+      "y": -1385.0,
+      "z": 2.8
+    },
+    {
+      "id": "107",
+      "x": -12850.0,
+      "y": -1385.0,
+      "z": 2.8
+    },
+    {
+      "id": "103",
+      "x": -13200.0,
+      "y": -1270.0,
+      "z": 2.8
+    },
+    {
+      "id": "104",
+      "x": -13200.0,
+      "y": -1096.0,
+      "z": 2.8
+    },
+    {
+      "id": "105",
+      "x": -13200.0,
+      "y": -1818.0,
+      "z": 2.8
+    },
+    {
+      "id": "111",
+      "x": -12950.0,
+      "y": -952.0,
+      "z": 2.7
+    },
+    {
+      "id": "76",
+      "x": -13200.0,
+      "y": -1039.0,
+      "z": 2.7
+    },
+    {
+      "id": "84",
+      "x": -12025.0,
+      "y": -2150.0,
+      "z": 2.8
+    },
+    {
+      "id": "85",
+      "x": -11950.0,
+      "y": -2049.0,
+      "z": 2.8
+    },
+    {
+      "id": "88",
+      "x": -12100.0,
+      "y": -1962.0,
+      "z": 2.8
+    },
+    {
+      "id": "26",
+      "x": -12775.0,
+      "y": -2006.0,
+      "z": 2.8
+    },
+    {
+      "id": "91",
+      "x": -12675.0,
+      "y": -2006.0,
+      "z": 2.8
+    },
+    {
+      "id": "21",
+      "x": -12875.0,
+      "y": -2352.0,
+      "z": 2.8
+    },
+    {
+      "id": "6",
+      "x": -13050.0,
+      "y": -2251.0,
+      "z": 2.8
+    },
+    {
+      "id": "9",
+      "x": -13050.0,
+      "y": -2829.0,
+      "z": 2.8
+    },
+    {
+      "id": "29",
+      "x": -13050.0,
+      "y": -2713.0,
+      "z": 2.8
+    },
+    {
+      "id": "93",
+      "x": -13050.0,
+      "y": -2569.0,
+      "z": 2.8
+    },
+    {
+      "id": "95",
+      "x": -13100.0,
+      "y": -2742.0,
+      "z": 2.7
+    },
+    {
+      "id": "96",
+      "x": -13100.0,
+      "y": -2511.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/8",
+      "x": -13100.0,
+      "y": -2771.0,
+      "z": 2.7
+    },
+    {
+      "id": "@/12",
+      "x": -13100.0,
+      "y": -2569.0,
+      "z": 2.7
+    },
+    {
+      "id": "61",
+      "x": -12850.0,
+      "y": -1501.0,
+      "z": 2.8
+    },
+    {
+      "id": "65",
+      "x": -12650.0,
+      "y": -1501.0,
+      "z": 2.8
+    },
+    {
+      "id": "98",
+      "x": -13600.0,
+      "y": -2886.0,
+      "z": 2.8
+    },
+    {
+      "id": "99",
+      "x": -12900.0,
+      "y": -952.0,
+      "z": 2.8
+    },
+    {
+      "id": "10",
+      "x": -11400.0,
+      "y": -3492.0,
+      "z": 0.0
+    }
+  ],
+  "nozzles": [
+    {
+      "input_node": "54",
+      "label": "1",
+      "x": -12700.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "55",
+      "label": "2",
+      "x": -12850.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "56",
+      "label": "3",
+      "x": -13300.0,
+      "y": -3262.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "57",
+      "label": "4",
+      "x": -13600.0,
+      "y": -3204.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "58",
+      "label": "5",
+      "x": -13200.0,
+      "y": -3059.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "59",
+      "label": "6",
+      "x": -13600.0,
+      "y": -3002.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "60",
+      "label": "7",
+      "x": -13650.0,
+      "y": -2886.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "62",
+      "label": "9",
+      "x": -12700.0,
+      "y": -2684.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "63",
+      "label": "10",
+      "x": -12700.0,
+      "y": -2511.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "64",
+      "label": "11",
+      "x": -13550.0,
+      "y": -2626.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "66",
+      "label": "13",
+      "x": -13300.0,
+      "y": -2280.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "67",
+      "label": "14",
+      "x": -13550.0,
+      "y": -2280.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "70",
+      "label": "15",
+      "x": -13550.0,
+      "y": -1991.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "69",
+      "label": "16",
+      "x": -13300.0,
+      "y": -1991.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "68",
+      "label": "17",
+      "x": -13150.0,
+      "y": -2107.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "71",
+      "label": "20",
+      "x": -12950.0,
+      "y": -2251.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "46",
+      "label": "18",
+      "x": -12700.0,
+      "y": -2150.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "72",
+      "label": "19",
+      "x": -12700.0,
+      "y": -2300.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "25",
+      "label": "29",
+      "x": -12700.0,
+      "y": -1789.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "81",
+      "label": "30",
+      "x": -12550.0,
+      "y": -1789.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "75",
+      "label": "28",
+      "x": -12700.0,
+      "y": -1443.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "74",
+      "label": "27",
+      "x": -12900.0,
+      "y": -894.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "73",
+      "label": "25",
+      "x": -13050.0,
+      "y": -1327.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "87",
+      "label": "23",
+      "x": -13250.0,
+      "y": -1270.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "83",
+      "label": "22",
+      "x": -13200.0,
+      "y": -1703.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "78",
+      "label": "21",
+      "x": -13200.0,
+      "y": -1876.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "79",
+      "label": "24",
+      "x": -13200.0,
+      "y": -981.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "24",
+      "label": "26",
+      "x": -13000.0,
+      "y": -952.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "95",
+      "label": "8",
+      "x": -13100.0,
+      "y": -2742.0,
+      "z": 2.7
+    },
+    {
+      "input_node": "96",
+      "label": "12",
+      "x": -13100.0,
+      "y": -2511.0,
+      "z": 2.7
+    }
+  ],
+  "pipes": [
+    {
+      "bore_mm": 125.0,
+      "input_node": "11",
+      "label": "10",
+      "length_m": 1.04,
+      "material": "KSD 3507",
+      "output_node": "23",
+      "path": [
+        [
+          -11400.0,
+          -3233.0
+        ],
+        [
+          -11475.0,
+          -3189.0
+        ],
+        [
+          -11600.0,
+          -3117.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 125.0,
+      "input_node": "12",
+      "label": "11",
+      "length_m": 2.04,
+      "material": "KSD 3507",
+      "output_node": "13",
+      "path": [
+        [
+          -11500.0,
+          -3059.0
+        ],
+        [
+          -11425.0,
+          -3016.0
+        ],
+        [
+          -11550.0,
+          -2944.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 125.0,
+      "input_node": "13",
+      "label": "12",
+      "length_m": 2.68,
+      "material": "KSD 3507",
+      "output_node": "14",
+      "path": [
+        [
+          -11550.0,
+          -2944.0
+        ],
+        [
+          -11700.0,
+          -2857.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 125.0,
+      "input_node": "14",
+      "label": "13",
+      "length_m": 0.65,
+      "material": "KSD 3507",
+      "output_node": "15",
+      "path": [
+        [
+          -11700.0,
+          -2857.0
+        ],
+        [
+          -11725.0,
+          -2843.0
+        ],
+        [
+          -11775.0,
+          -2814.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 125.0,
+      "input_node": "18",
+      "label": "17",
+      "length_m": 0.36,
+      "material": "KSD 3507",
+      "output_node": "16",
+      "path": [
+        [
+          -11975.0,
+          -2439.0
+        ],
+        [
+          -12050.0,
+          -2396.0
+        ]
+      ],
+      "status": "normal"
+    },
+    {
+      "bore_mm": 125.0,
+      "input_node": "19",
+      "label": "18",
+      "length_m": 1.08,
+      "material": "KSD 3507",
+      "output_node": "20",
+      "path": [
+        [
+          -12125.0,
+          -2352.0
+        ],
+        [
+          -12250.0,
+          -2275.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 125.0,
+      "input_node": "23",
+      "label": "21",
+      "length_m": 1.59,
+      "material": "KSD 3507",
+      "output_node": "12",
+      "path": [
+        [
+          -11600.0,
+          -3117.0
+        ],
+        [
+          -11500.0,
+          -3059.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 125.0,
+      "input_node": "15",
+      "label": "14",
+      "length_m": 5.0,
+      "material": "KSD 3507",
+      "output_node": "18",
+      "path": [
+        [
+          -11775.0,
+          -2814.0
+        ],
+        [
+          -11900.0,
+          -2742.0
+        ],
+        [
+          -11675.0,
+          -2612.0
+        ],
+        [
+          -11975.0,
+          -2439.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 125.0,
+      "input_node": "16",
+      "label": "15",
+      "length_m": 0.4,
+      "material": "KSD 3507",
+      "output_node": "19",
+      "path": [
+        [
+          -12050.0,
+          -2396.0
+        ],
+        [
+          -12050.0,
+          -2396.0
+        ],
+        [
+          -12125.0,
+          -2352.0
+        ]
+      ],
+      "status": "orange"
+    },
+    {
+      "bore_mm": 80.0,
+      "input_node": "20",
+      "label": "16",
+      "length_m": 8.74,
+      "material": "KSD 3507",
+      "output_node": "17",
+      "path": [
+        [
+          -12250.0,
+          -2275.0
+        ],
+        [
+          -12325.0,
+          -2237.0
+        ],
+        [
+          -12225.0,
+          -2179.0
+        ],
+        [
+          -12525.0,
+          -2006.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 50.0,
+      "input_node": "17",
+      "label": "27",
+      "length_m": 2.29,
+      "material": "KSD 3507",
+      "output_node": "22",
+      "path": [
+        [
+          -12525.0,
+          -2006.0
+        ],
+        [
+          -12525.0,
+          -2100.0
+        ],
+        [
+          -12600.0,
+          -2100.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 80.0,
+      "input_node": "19",
+      "label": "25",
+      "length_m": 0.62,
+      "material": "KSD 3507",
+      "output_node": "80",
+      "path": [
+        [
+          -12125.0,
+          -2352.0
+        ],
+        [
+          -11975.0,
+          -2266.0
+        ]
+      ],
+      "status": "orange"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "80",
+      "label": "71",
+      "length_m": 0.62,
+      "material": "KSD 3507",
+      "output_node": "82",
+      "path": [
+        [
+          -11975.0,
+          -2266.0
+        ],
+        [
+          -11900.0,
+          -2222.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 50.0,
+      "input_node": "80",
+      "label": "77",
+      "length_m": 1.82,
+      "material": "KSD 3507",
+      "output_node": "84",
+      "path": [
+        [
+          -11975.0,
+          -2266.0
+        ],
+        [
+          -12100.0,
+          -2193.0
+        ],
+        [
+          -12025.0,
+          -2150.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "17",
+      "label": "19",
+      "length_m": 1.09,
+      "material": "KSD 3507",
+      "output_node": "91",
+      "path": [
+        [
+          -12525.0,
+          -2006.0
+        ],
+        [
+          -12675.0,
+          -2006.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 125.0,
+      "input_node": "10",
+      "label": "9",
+      "length_m": 2.8,
+      "material": "KSD 3507",
+      "output_node": "11",
+      "path": [
+        [
+          -11400.0,
+          -3492.0
+        ],
+        [
+          -11400.0,
+          -3435.0
+        ],
+        [
+          -11400.0,
+          -3406.0
+        ],
+        [
+          -11400.0,
+          -3318.0
+        ],
+        [
+          -11400.0,
+          -3233.0
+        ]
+      ],
+      "status": "normal"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "31",
+      "label": "72",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "45",
+      "path": [
+        [
+          -13600.0,
+          -2915.0
+        ],
+        [
+          -13600.0,
+          -2944.0
+        ],
+        [
+          -13600.0,
+          -2973.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "77",
+      "label": "90",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "111",
+      "path": [
+        [
+          -12950.0,
+          -1010.0
+        ],
+        [
+          -12950.0,
+          -952.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "104",
+      "label": "23",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "76",
+      "path": [
+        [
+          -13200.0,
+          -1096.0
+        ],
+        [
+          -13200.0,
+          -1039.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "43",
+      "label": "55",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "27",
+      "path": [
+        [
+          -13500.0,
+          -3204.0
+        ],
+        [
+          -13550.0,
+          -3204.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "41",
+      "label": "52",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "54",
+      "path": [
+        [
+          -12750.0,
+          -3204.0
+        ],
+        [
+          -12700.0,
+          -3204.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "40",
+      "label": "53",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "55",
+      "path": [
+        [
+          -12850.0,
+          -3262.0
+        ],
+        [
+          -12850.0,
+          -3204.0
+        ],
+        [
+          -12850.0,
+          -3204.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "42",
+      "label": "54",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "56",
+      "path": [
+        [
+          -13300.0,
+          -3204.0
+        ],
+        [
+          -13300.0,
+          -3262.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "38",
+      "label": "56",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "58",
+      "path": [
+        [
+          -13150.0,
+          -3059.0
+        ],
+        [
+          -13200.0,
+          -3059.0
+        ],
+        [
+          -13200.0,
+          -3059.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "47",
+      "label": "60",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "62",
+      "path": [
+        [
+          -12650.0,
+          -2684.0
+        ],
+        [
+          -12700.0,
+          -2684.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "34",
+      "label": "61",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "63",
+      "path": [
+        [
+          -12650.0,
+          -2511.0
+        ],
+        [
+          -12700.0,
+          -2511.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "48",
+      "label": "62",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "64",
+      "path": [
+        [
+          -13550.0,
+          -2569.0
+        ],
+        [
+          -13550.0,
+          -2626.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "49",
+      "label": "64",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "66",
+      "path": [
+        [
+          -13300.0,
+          -2338.0
+        ],
+        [
+          -13300.0,
+          -2280.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "50",
+      "label": "65",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "67",
+      "path": [
+        [
+          -13550.0,
+          -2338.0
+        ],
+        [
+          -13550.0,
+          -2280.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "51",
+      "label": "66",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "68",
+      "path": [
+        [
+          -13150.0,
+          -2049.0
+        ],
+        [
+          -13150.0,
+          -2107.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "52",
+      "label": "67",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "69",
+      "path": [
+        [
+          -13300.0,
+          -2049.0
+        ],
+        [
+          -13300.0,
+          -1991.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "53",
+      "label": "68",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "70",
+      "path": [
+        [
+          -13550.0,
+          -2049.0
+        ],
+        [
+          -13550.0,
+          -1991.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "92",
+      "label": "69",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "71",
+      "path": [
+        [
+          -13000.0,
+          -2251.0
+        ],
+        [
+          -12950.0,
+          -2251.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "28",
+      "label": "63",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "46",
+      "path": [
+        [
+          -12650.0,
+          -2150.0
+        ],
+        [
+          -12700.0,
+          -2150.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "32",
+      "label": "70",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "72",
+      "path": [
+        [
+          -12650.0,
+          -2300.0
+        ],
+        [
+          -12700.0,
+          -2300.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "94",
+      "label": "113",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "25",
+      "path": [
+        [
+          -12700.0,
+          -1847.0
+        ],
+        [
+          -12700.0,
+          -1789.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "110",
+      "label": "112",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "73",
+      "path": [
+        [
+          -13050.0,
+          -1385.0
+        ],
+        [
+          -13050.0,
+          -1327.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "97",
+      "label": "107",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "83",
+      "path": [
+        [
+          -13250.0,
+          -1703.0
+        ],
+        [
+          -13200.0,
+          -1703.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "105",
+      "label": "105",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "78",
+      "path": [
+        [
+          -13200.0,
+          -1818.0
+        ],
+        [
+          -13200.0,
+          -1876.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "103",
+      "label": "110",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "87",
+      "path": [
+        [
+          -13200.0,
+          -1270.0
+        ],
+        [
+          -13250.0,
+          -1270.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "112",
+      "label": "114",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "81",
+      "path": [
+        [
+          -12550.0,
+          -1847.0
+        ],
+        [
+          -12550.0,
+          -1789.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "29",
+      "label": "83",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "95",
+      "path": [
+        [
+          -13050.0,
+          -2713.0
+        ],
+        [
+          -13100.0,
+          -2713.0
+        ],
+        [
+          -13100.0,
+          -2742.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "93",
+      "label": "85",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "96",
+      "path": [
+        [
+          -13050.0,
+          -2569.0
+        ],
+        [
+          -13050.0,
+          -2511.0
+        ],
+        [
+          -13100.0,
+          -2511.0
+        ],
+        [
+          -13100.0,
+          -2511.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "65",
+      "label": "98",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "75",
+      "path": [
+        [
+          -12650.0,
+          -1501.0
+        ],
+        [
+          -12650.0,
+          -1443.0
+        ],
+        [
+          -12700.0,
+          -1443.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "98",
+      "label": "7",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "60",
+      "path": [
+        [
+          -13600.0,
+          -2886.0
+        ],
+        [
+          -13650.0,
+          -2886.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 20.0,
+      "input_node": "99",
+      "label": "99",
+      "length_m": 0.7,
+      "material": "FX",
+      "output_node": "74",
+      "path": [
+        [
+          -12900.0,
+          -952.0
+        ],
+        [
+          -12900.0,
+          -894.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "91",
+      "label": "81",
+      "length_m": 1.96,
+      "material": "CPVC",
+      "output_node": "26",
+      "path": [
+        [
+          -12675.0,
+          -2006.0
+        ],
+        [
+          -12775.0,
+          -2006.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "21",
+      "label": "28",
+      "length_m": 0.79,
+      "material": "CPVC",
+      "output_node": "30",
+      "path": [
+        [
+          -12875.0,
+          -2352.0
+        ],
+        [
+          -12900.0,
+          -2350.0
+        ],
+        [
+          -12950.0,
+          -2350.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "30",
+      "label": "29",
+      "length_m": 1.24,
+      "material": "CPVC",
+      "output_node": "86",
+      "path": [
+        [
+          -12950.0,
+          -2350.0
+        ],
+        [
+          -13050.0,
+          -2350.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "86",
+      "label": "30",
+      "length_m": 0.58,
+      "material": "CPVC",
+      "output_node": "33",
+      "path": [
+        [
+          -13050.0,
+          -2350.0
+        ],
+        [
+          -13150.0,
+          -2350.0
+        ],
+        [
+          -13150.0,
+          -2424.0
+        ]
+      ],
+      "status": "orange"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "33",
+      "label": "32",
+      "length_m": 0.73,
+      "material": "CPVC",
+      "output_node": "35",
+      "path": [
+        [
+          -13150.0,
+          -2424.0
+        ],
+        [
+          -13150.0,
+          -2569.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "36",
+      "label": "35",
+      "length_m": 0.39,
+      "material": "CPVC",
+      "output_node": "37",
+      "path": [
+        [
+          -13150.0,
+          -2829.0
+        ],
+        [
+          -13150.0,
+          -2886.0
+        ]
+      ],
+      "status": "orange"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "37",
+      "label": "36",
+      "length_m": 1.57,
+      "material": "CPVC",
+      "output_node": "38",
+      "path": [
+        [
+          -13150.0,
+          -2886.0
+        ],
+        [
+          -13150.0,
+          -3059.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 50.0,
+      "input_node": "38",
+      "label": "37",
+      "length_m": 1.55,
+      "material": "CPVC",
+      "output_node": "39",
+      "path": [
+        [
+          -13150.0,
+          -3059.0
+        ],
+        [
+          -13150.0,
+          -3204.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 40.0,
+      "input_node": "39",
+      "label": "38",
+      "length_m": 1.56,
+      "material": "CPVC",
+      "output_node": "40",
+      "path": [
+        [
+          -13150.0,
+          -3204.0
+        ],
+        [
+          -13150.0,
+          -3262.0
+        ],
+        [
+          -12850.0,
+          -3262.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 40.0,
+      "input_node": "40",
+      "label": "39",
+      "length_m": 0.95,
+      "material": "CPVC",
+      "output_node": "41",
+      "path": [
+        [
+          -12850.0,
+          -3262.0
+        ],
+        [
+          -12750.0,
+          -3262.0
+        ],
+        [
+          -12750.0,
+          -3204.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "39",
+      "label": "40",
+      "length_m": 0.82,
+      "material": "CPVC",
+      "output_node": "42",
+      "path": [
+        [
+          -13150.0,
+          -3204.0
+        ],
+        [
+          -13300.0,
+          -3204.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "42",
+      "label": "41",
+      "length_m": 0.96,
+      "material": "CPVC",
+      "output_node": "43",
+      "path": [
+        [
+          -13300.0,
+          -3204.0
+        ],
+        [
+          -13500.0,
+          -3204.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "37",
+      "label": "42",
+      "length_m": 1.9,
+      "material": "CPVC",
+      "output_node": "44",
+      "path": [
+        [
+          -13150.0,
+          -2886.0
+        ],
+        [
+          -13550.0,
+          -2886.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "44",
+      "label": "43",
+      "length_m": 0.32,
+      "material": "CPVC",
+      "output_node": "31",
+      "path": [
+        [
+          -13550.0,
+          -2886.0
+        ],
+        [
+          -13550.0,
+          -2915.0
+        ],
+        [
+          -13600.0,
+          -2915.0
+        ]
+      ],
+      "status": "orange"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "34",
+      "label": "45",
+      "length_m": 1.7,
+      "material": "CPVC",
+      "output_node": "47",
+      "path": [
+        [
+          -12650.0,
+          -2511.0
+        ],
+        [
+          -12650.0,
+          -2684.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "35",
+      "label": "46",
+      "length_m": 2.76,
+      "material": "CPVC",
+      "output_node": "48",
+      "path": [
+        [
+          -13150.0,
+          -2569.0
+        ],
+        [
+          -13500.0,
+          -2569.0
+        ],
+        [
+          -13550.0,
+          -2569.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "33",
+      "label": "47",
+      "length_m": 1.7,
+      "material": "CPVC",
+      "output_node": "49",
+      "path": [
+        [
+          -13150.0,
+          -2424.0
+        ],
+        [
+          -13200.0,
+          -2424.0
+        ],
+        [
+          -13200.0,
+          -2338.0
+        ],
+        [
+          -13300.0,
+          -2338.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "49",
+      "label": "48",
+      "length_m": 1.41,
+      "material": "CPVC",
+      "output_node": "50",
+      "path": [
+        [
+          -13300.0,
+          -2338.0
+        ],
+        [
+          -13550.0,
+          -2338.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "51",
+      "label": "50",
+      "length_m": 0.71,
+      "material": "CPVC",
+      "output_node": "52",
+      "path": [
+        [
+          -13150.0,
+          -2049.0
+        ],
+        [
+          -13300.0,
+          -2049.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "52",
+      "label": "51",
+      "length_m": 1.89,
+      "material": "CPVC",
+      "output_node": "53",
+      "path": [
+        [
+          -13300.0,
+          -2049.0
+        ],
+        [
+          -13550.0,
+          -2049.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 50.0,
+      "input_node": "86",
+      "label": "49",
+      "length_m": 0.99,
+      "material": "CPVC",
+      "output_node": "6",
+      "path": [
+        [
+          -13050.0,
+          -2350.0
+        ],
+        [
+          -13050.0,
+          -2251.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "35",
+      "label": "34",
+      "length_m": 2.44,
+      "material": "CPVC",
+      "output_node": "36",
+      "path": [
+        [
+          -13150.0,
+          -2569.0
+        ],
+        [
+          -13150.0,
+          -2713.0
+        ],
+        [
+          -13150.0,
+          -2829.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 50.0,
+      "input_node": "22",
+      "label": "31",
+      "length_m": 2.04,
+      "material": "CPVC",
+      "output_node": "28",
+      "path": [
+        [
+          -12600.0,
+          -2100.0
+        ],
+        [
+          -12650.0,
+          -2100.0
+        ],
+        [
+          -12650.0,
+          -2150.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 40.0,
+      "input_node": "28",
+      "label": "33",
+      "length_m": 1.04,
+      "material": "CPVC",
+      "output_node": "32",
+      "path": [
+        [
+          -12650.0,
+          -2150.0
+        ],
+        [
+          -12650.0,
+          -2300.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "32",
+      "label": "44",
+      "length_m": 1.37,
+      "material": "CPVC",
+      "output_node": "34",
+      "path": [
+        [
+          -12650.0,
+          -2300.0
+        ],
+        [
+          -12650.0,
+          -2511.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "112",
+      "label": "93",
+      "length_m": 1.7,
+      "material": "CPVC",
+      "output_node": "94",
+      "path": [
+        [
+          -12550.0,
+          -1847.0
+        ],
+        [
+          -12700.0,
+          -1847.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 40.0,
+      "input_node": "109",
+      "label": "89",
+      "length_m": 1.56,
+      "material": "CPVC",
+      "output_node": "97",
+      "path": [
+        [
+          -13200.0,
+          -1385.0
+        ],
+        [
+          -13250.0,
+          -1385.0
+        ],
+        [
+          -13250.0,
+          -1703.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "106",
+      "label": "84",
+      "length_m": 0.32,
+      "material": "CPVC",
+      "output_node": "77",
+      "path": [
+        [
+          -12900.0,
+          -1010.0
+        ],
+        [
+          -12950.0,
+          -1010.0
+        ]
+      ],
+      "status": "orange"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "108",
+      "label": "79",
+      "length_m": 1.57,
+      "material": "CPVC",
+      "output_node": "110",
+      "path": [
+        [
+          -12900.0,
+          -1385.0
+        ],
+        [
+          -13050.0,
+          -1385.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 50.0,
+      "input_node": "110",
+      "label": "80",
+      "length_m": 1.55,
+      "material": "CPVC",
+      "output_node": "109",
+      "path": [
+        [
+          -13050.0,
+          -1385.0
+        ],
+        [
+          -13200.0,
+          -1385.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "107",
+      "label": "75",
+      "length_m": 1.33,
+      "material": "CPVC",
+      "output_node": "108",
+      "path": [
+        [
+          -12850.0,
+          -1385.0
+        ],
+        [
+          -12900.0,
+          -1385.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "103",
+      "label": "88",
+      "length_m": 0.96,
+      "material": "CPVC",
+      "output_node": "104",
+      "path": [
+        [
+          -13200.0,
+          -1270.0
+        ],
+        [
+          -13200.0,
+          -1096.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "109",
+      "label": "87",
+      "length_m": 0.82,
+      "material": "CPVC",
+      "output_node": "103",
+      "path": [
+        [
+          -13200.0,
+          -1385.0
+        ],
+        [
+          -13200.0,
+          -1270.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 40.0,
+      "input_node": "97",
+      "label": "92",
+      "length_m": 0.95,
+      "material": "CPVC",
+      "output_node": "105",
+      "path": [
+        [
+          -13250.0,
+          -1703.0
+        ],
+        [
+          -13249.0,
+          -1817.0
+        ],
+        [
+          -13200.0,
+          -1818.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "108",
+      "label": "95",
+      "length_m": 1.9,
+      "material": "CPVC",
+      "output_node": "106",
+      "path": [
+        [
+          -12900.0,
+          -1385.0
+        ],
+        [
+          -12900.0,
+          -1010.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "82",
+      "label": "74",
+      "length_m": 11.03,
+      "material": "CPVC",
+      "output_node": "107",
+      "path": [
+        [
+          -11900.0,
+          -2222.0
+        ],
+        [
+          -11825.0,
+          -2179.0
+        ],
+        [
+          -11700.0,
+          -2107.0
+        ],
+        [
+          -12100.0,
+          -1876.0
+        ],
+        [
+          -11800.0,
+          -1674.0
+        ],
+        [
+          -12300.0,
+          -1385.0
+        ],
+        [
+          -12850.0,
+          -1385.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 50.0,
+      "input_node": "84",
+      "label": "94",
+      "length_m": 2.04,
+      "material": "CPVC",
+      "output_node": "85",
+      "path": [
+        [
+          -12025.0,
+          -2150.0
+        ],
+        [
+          -11900.0,
+          -2078.0
+        ],
+        [
+          -11950.0,
+          -2049.0
+        ],
+        [
+          -11950.0,
+          -2049.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 40.0,
+      "input_node": "85",
+      "label": "96",
+      "length_m": 1.04,
+      "material": "CPVC",
+      "output_node": "88",
+      "path": [
+        [
+          -11950.0,
+          -2049.0
+        ],
+        [
+          -12100.0,
+          -1962.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "88",
+      "label": "97",
+      "length_m": 1.37,
+      "material": "CPVC",
+      "output_node": "112",
+      "path": [
+        [
+          -12100.0,
+          -1962.0
+        ],
+        [
+          -12300.0,
+          -1847.0
+        ],
+        [
+          -12550.0,
+          -1847.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 65.0,
+      "input_node": "26",
+      "label": "5",
+      "length_m": 3.97,
+      "material": "CPVC",
+      "output_node": "21",
+      "path": [
+        [
+          -12775.0,
+          -2006.0
+        ],
+        [
+          -12775.0,
+          -2179.0
+        ],
+        [
+          -12775.0,
+          -2208.0
+        ],
+        [
+          -12775.0,
+          -2352.0
+        ],
+        [
+          -12875.0,
+          -2352.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 40.0,
+      "input_node": "6",
+      "label": "20",
+      "length_m": 2.48,
+      "material": "CPVC",
+      "output_node": "51",
+      "path": [
+        [
+          -13050.0,
+          -2251.0
+        ],
+        [
+          -13050.0,
+          -2049.0
+        ],
+        [
+          -13150.0,
+          -2049.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "6",
+      "label": "24",
+      "length_m": 0.49,
+      "material": "CPVC",
+      "output_node": "92",
+      "path": [
+        [
+          -13050.0,
+          -2251.0
+        ],
+        [
+          -13000.0,
+          -2251.0
+        ]
+      ],
+      "status": "orange"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "36",
+      "label": "26",
+      "length_m": 0.46,
+      "material": "CPVC",
+      "output_node": "9",
+      "path": [
+        [
+          -13150.0,
+          -2829.0
+        ],
+        [
+          -13050.0,
+          -2829.0
+        ]
+      ],
+      "status": "orange"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "9",
+      "label": "59",
+      "length_m": 1.02,
+      "material": "CPVC",
+      "output_node": "29",
+      "path": [
+        [
+          -13050.0,
+          -2829.0
+        ],
+        [
+          -13050.0,
+          -2713.0
+        ],
+        [
+          -13050.0,
+          -2713.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "29",
+      "label": "82",
+      "length_m": 1.39,
+      "material": "CPVC",
+      "output_node": "93",
+      "path": [
+        [
+          -13050.0,
+          -2713.0
+        ],
+        [
+          -13050.0,
+          -2569.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "107",
+      "label": "86",
+      "length_m": 0.39,
+      "material": "CPVC",
+      "output_node": "61",
+      "path": [
+        [
+          -12850.0,
+          -1385.0
+        ],
+        [
+          -12850.0,
+          -1501.0
+        ]
+      ],
+      "status": "orange"
+    },
+    {
+      "bore_mm": 32.0,
+      "input_node": "61",
+      "label": "91",
+      "length_m": 1.02,
+      "material": "CPVC",
+      "output_node": "65",
+      "path": [
+        [
+          -12850.0,
+          -1501.0
+        ],
+        [
+          -12650.0,
+          -1501.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "44",
+      "label": "58",
+      "length_m": 0.65,
+      "material": "CPVC",
+      "output_node": "98",
+      "path": [
+        [
+          -13550.0,
+          -2886.0
+        ],
+        [
+          -13600.0,
+          -2886.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "106",
+      "label": "111",
+      "length_m": 0.65,
+      "material": "CPVC",
+      "output_node": "99",
+      "path": [
+        [
+          -12900.0,
+          -1010.0
+        ],
+        [
+          -12900.0,
+          -952.0
+        ]
+      ],
+      "status": "red"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "27",
+      "label": "22",
+      "length_m": 0.42,
+      "material": "DP",
+      "output_node": "57",
+      "path": [
+        [
+          -13550.0,
+          -3204.0
+        ],
+        [
+          -13600.0,
+          -3204.0
+        ]
+      ],
+      "status": "normal"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "45",
+      "label": "57",
+      "length_m": 0.42,
+      "material": "DP",
+      "output_node": "59",
+      "path": [
+        [
+          -13600.0,
+          -2973.0
+        ],
+        [
+          -13600.0,
+          -3002.0
+        ]
+      ],
+      "status": "normal"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "111",
+      "label": "109",
+      "length_m": 0.42,
+      "material": "DP",
+      "output_node": "24",
+      "path": [
+        [
+          -12950.0,
+          -952.0
+        ],
+        [
+          -13000.0,
+          -952.0
+        ]
+      ],
+      "status": "normal"
+    },
+    {
+      "bore_mm": 25.0,
+      "input_node": "76",
+      "label": "73",
+      "length_m": 0.42,
+      "material": "DP",
+      "output_node": "79",
+      "path": [
+        [
+          -13200.0,
+          -1039.0
+        ],
+        [
+          -13200.0,
+          -981.0
+        ]
+      ],
+      "status": "normal"
+    }
+  ],
+  "summary": {
+    "av_node": "11",
+    "av_pipe_label": "9",
+    "bore_reduction_count": 67,
+    "branch_node_count": 29,
+    "equipment_count": 31,
+    "length_issue_count": 84,
+    "node_count": 130,
+    "nozzle_count": 30,
+    "pipe_count": 99,
+    "vertical_pipe_count": 0
+  },
+  "title": "Officetell / WATER TANK_PH2F / 3-1 type_LSP_4F",
+  "vertical_pipes": []
+}

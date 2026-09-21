@@ -595,7 +595,8 @@ def _arm_shape_map(pts, remap, snap_edges, head_vid, used, xform,
 
 def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
          ups=None, head_kinds=None, user_sources=None, selected_source=None,
-         ho=None, edge_len_mm=None, grid_snap=True, keep_head_stub=True):
+         ho=None, edge_len_mm=None, grid_snap=True, keep_head_stub=True,
+         fixed_head_nodes=None):
     if write and out is None:
         out = default_out(key)
     if not write:
@@ -669,6 +670,12 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         # require→apply — 뒤집으면 레코드 없던 헤드에 찍은 결정이 사라진다.
         head_kinds = resolve_head_kinds(hcov, head_kinds, kind_ovs)
     kind_n = {}
+    pending_sidewall = [r for r in head_kinds
+                       if (r.get("company_symbol") or {}).get("calculation_review")
+                       and r.get("kind") == "미지정"]
+    if pending_sidewall:
+        return _empty_planar("회사 기호에서 측벽식 헤드가 감지되었습니다. 연결 높이/방향을 확인한 뒤 계산해주세요.",
+                             "sidewall_connection_review_required")
     for rec in head_kinds:
         k = fw.normalize_head_kind(rec.get("kind"))
         kind_n[k] = kind_n.get(k, 0) + 1
@@ -687,8 +694,15 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
     # [§2-4] `attach_why` 는 «못 이은 사유» 를 받아 오는 빈 그릇이다. 판정은
     #   그대로고, 이미 갈린 자리에서 이름표만 딴다(flow.attach_heads_center).
     attach_why: dict = {}
-    pts, edges, head_centers, n_wire, multi_arm = fw.attach_heads_center(
-        pts, edges, hcov, why=attach_why)
+    if fixed_head_nodes is None:
+        pts, edges, head_centers, n_wire, multi_arm = fw.attach_heads_center(
+            pts, edges, hcov, why=attach_why)
+    else:
+        # A calculation tree is already attached and routed. Do not create a
+        # second connection by searching the restricted geometry again.
+        if len(fixed_head_nodes) != len(hcov):
+            return _empty_planar("확정 물흐름 헤드 참조 개수가 맞지 않습니다.")
+        head_centers, n_wire, multi_arm = list(fixed_head_nodes), 0, []
     if n_wire or multi_arm:
         print(f"헤드 중심접속 완성: 새 연결 {n_wire}"
               f" · 팔 박빙 {len(multi_arm)}곳")
@@ -786,8 +800,11 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
               + (" …" if len(shared_head_idx) > 6 else ""))
 
     before_m = fw.mlen(pts, edges)
-    edges, dead, terminal, kept_sole, n_path, kept_stub = prune_dead_pipes(
-        pts, edges, set(head_vid), seed, keep_head_stub=keep_head_stub)
+    if fixed_head_nodes is None:
+        edges, dead, terminal, kept_sole, n_path, kept_stub = prune_dead_pipes(
+            pts, edges, set(head_vid), seed, keep_head_stub=keep_head_stub)
+    else:
+        dead, terminal, kept_sole, n_path, kept_stub = set(), set(), 0, len(head_vid), 0
     print(f"막다른관 삭제: {len(dead)}개 · {fw.mlen(pts, dead):.1f}m"
           f" (남김 {len(edges)} · {fw.mlen(pts, edges):.1f}m"
           f" / 직전 {before_m:.1f}m)"
@@ -831,9 +848,24 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         return fold_key(x_mm, y_mm)
 
     pos_vid, remap = {}, {}
+    zero_parent = {v: v for v in used}
+
+    def zero_root(v):
+        while zero_parent[v] != v:
+            zero_parent[v] = zero_parent[zero_parent[v]]
+            v = zero_parent[v]
+        return v
+
+    if fixed_head_nodes is not None:
+        # Only contract an EXISTING zero-length connection. Coincident but
+        # disconnected vertices must never turn into a tee or a loop.
+        for a, b in sorted(edges):
+            if math.dist(pts[a][:2], pts[b][:2]) < 1e-6 and declared.get(tuple(sorted((a, b))), 0) == 0:
+                ra, rb = zero_root(a), zero_root(b)
+                zero_parent[max(ra, rb)] = min(ra, rb)
     folded: list = []            # [손질정본 §3] 한 칸으로 접힌 절점
     for vid in sorted(used, key=lambda v: (v not in head_vid, v)):
-        p = fold_key(*pts[vid])        # ★묶기는 언제나 스냅 키로
+        p = zero_root(vid) if fixed_head_nodes is not None else fold_key(*pts[vid])
         if p in pos_vid:
             remap[vid] = pos_vid[p]
             folded.append((vid, pos_vid[p]))
@@ -891,7 +923,10 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
             continue
         _snap_origin.setdefault(tuple(sorted((remap[i], remap[j]))), (i, j))
     snap_pos = {v: xform(*pts[v]) for e in snap_edges for v in e}
-    snap_edges, n_tee_split = normalize_tee_overlaps(snap_pos, snap_edges)
+    if fixed_head_nodes is None:
+        snap_edges, n_tee_split = normalize_tee_overlaps(snap_pos, snap_edges)
+    else:
+        n_tee_split = 0
     print(f"티 겹침 정규화: 관통 쪼갬 {n_tee_split}곳 · 간선 {len(snap_edges)}")
 
     # ---- X자 교차 **검출** (세기만 · 지시서 A-1단계)
@@ -963,9 +998,9 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         "required_pressure_bar": 0.0,
     }
 
-    def make_node(x, y, z, node_type="기본", meta=None):
+    def make_node(x, y, z, node_type="기본", meta=None, identity=None):
         nonlocal node_seq, n_head_upgrade
-        key = (round(x, 3), round(y, 3), round(z, 3))
+        key = identity if fixed_head_nodes is not None else (round(x, 3), round(y, 3), round(z, 3))
         cached_nid = node_cache.get(key)
         if cached_nid is not None:
             if node_type == "Head":
@@ -990,7 +1025,7 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         if tgt in node_id:
             continue
         x, y = final_xy(tgt)
-        node_id[tgt] = make_node(x, y, OPT_BASE_Z)
+        node_id[tgt] = make_node(x, y, OPT_BASE_Z, identity=tgt)
         node_ref.setdefault(node_id[tgt], vid)
 
     head_nids = set()
@@ -999,7 +1034,7 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         tgt = remap[vid]
         nid = node_id[tgt]
         x, y = final_xy(tgt)
-        make_node(x, y, OPT_BASE_Z, "Head", dict(head_meta))
+        make_node(x, y, OPT_BASE_Z, "Head", dict(head_meta), identity=tgt)
         head_nids.add(nid)
         kind = head_kind_by_vid.get(vid)
         prev = node_head_kinds.get(nid)
@@ -1018,7 +1053,7 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
             continue
         na = editor.graph.get_node(a_id).coords
         nb = editor.graph.get_node(b_id).coords
-        if sum(abs(na[k] - nb[k]) for k in range(3)) < GRID_M / 2:
+        if fixed_head_nodes is None and sum(abs(na[k] - nb[k]) for k in range(3)) < GRID_M / 2:
             continue
         seen_pairs.add(key)
         pipe_seq += 1

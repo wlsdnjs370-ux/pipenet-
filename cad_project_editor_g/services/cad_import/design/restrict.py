@@ -3,8 +3,8 @@
 
 두 번 전개 원칙(지시서 §0.3)::
 
-    EditBoard ─┬─ 전체망 전개 ─────────────→ .kfp   (기존 경로 · 손대지 않는다)
-               └─ 최불리 제한 → 제한 전개 → 5표 → .sdf   (이쪽)
+    EditBoard → 물흐름 정본 ─┬─ 전체 헤드 → .kfp
+                            └─ 최불리 경로 제한 → 5표 → .sdf
 
 같은 손질 결과·같은 치수 입력에서 두 산출이 나오므로 설계 내용이 어긋나지 않는다.
 """
@@ -15,28 +15,44 @@ import math
 from services.cad_import.design.anchor import require_anchor
 
 
-def restrict_to_worst(payload: dict, board, worst: dict) -> dict:
-    """변환 대상을 최불리 K 헤드로 좁힌다 — 헤드만 지우고 배관은 안 자른다.
+def restrict_to_worst(payload: dict, board, worst: dict, *, selected_source=None) -> dict:
+    """Copy the selected heads AND their paths from the canonical flow tree.
 
-    간선을 직접 잘라내고 싶은 유혹이 있지만 그러면 안 된다. 모듈 E 의
-    `build_planar_graph` 는 이미 «급수원에서 물 닿는 간선만 남기고, 헤드로
-    가지 않는 막다른관을 쳐내는» 단계를 갖고 있다(실측 로그: 물길 필터 →
-    막다른관 삭제). 그러니 남길 헤드만 남겨 두면 그 배관은 E 가 제 규칙으로
-    정리한다. 손으로 자르면 E 가 지키는 불변식(티 겹침·노드정리)을 깬다.
-
-    hcov / disk_kinds / head_kinds 는 같은 디스크 집합을 가리키므로 함께 건다.
-    ups 는 좌표 집합으로만 쓰여 남아 있어도 해가 없다.
+    Source board/payload are never mutated. Physical ports are read separately
+    from the full payload by ``corridor_topology``. Node identities stay intact.
     """
     from services.cad_import.kinds import disk_key
 
     keep_idx = {int(i) for i in (worst or {}).get("heads") or ()}
     disks = list(board.disks)
+    if any(i < 0 or i >= len(disks) for i in keep_idx):
+        raise ValueError("최불리 헤드 참조가 현재 손질판과 다릅니다. 다시 선정하세요.")
     kept = [disks[i] for i in sorted(keep_idx) if 0 <= i < len(disks)]
     if not kept:
-        return payload
+        raise ValueError("확정 물흐름에서 변환할 헤드가 없습니다.")
 
     keys = {disk_key(d[0], d[1], d[2]) for d in kept}
     out = dict(payload)
+    from services.cad_import.design.flow import flow_for_board
+    flow = flow_for_board(board, selected_source=selected_source)
+    if worst.get("flow_revision") not in (None, flow.revision):
+        raise ValueError("손질 후 물흐름 경로가 바뀌었습니다. 최불리를 다시 선정하세요.")
+    active = set(flow.selected_loads(keep_idx))
+    if "edges" in worst and set(worst["edges"]) != active:
+        raise ValueError("최불리 경로가 물흐름 정본과 다릅니다. 다시 선정하세요.")
+    out["edges"] = [list(e) for e in sorted(active)]
+    centers = getattr(board, "head_centers", ()) or ()
+    kinds = getattr(board, "disk_kinds", ()) or ()
+    def selected_node(i):
+        return flow.head_node.get(flow.representatives.get(i, i))
+
+    out["flow_head_nodes"] = [
+        selected_node(i) if (i < len(centers) and centers[i] is not None
+                                  or i < len(kinds) and kinds[i] == "상향식"
+                                  or i in flow.head_node and math.dist(
+                                      board.pts[selected_node(i)][:2], disks[i][:2]) < 1e-6) else None
+        for i in sorted(keep_idx)]
+    out["_flow_tree"] = flow
     out["hcov"] = [list(d) for d in kept]
     dk = payload.get("disk_kinds") or []
     out["disk_kinds"] = [dk[i] for i in sorted(keep_idx) if 0 <= i < len(dk)]
@@ -187,10 +203,49 @@ def apply_vertical(payload, built, *, convert_kwargs=None):
             sub[k] = built[k]
     if built.get("sources"):
         sub["sources"] = built["sources"]
-    r = convert_to_kfp(sub, None, **kw)
+    # The calculation root already denotes this picked AV connection. The
+    # table builder places its loss on the flowing main pipe. Generating a
+    # second 2.5m + 0.5m blind branch here duplicates only its drawing geometry.
+    # Other valve picks and standalone/full-network conversion are untouched.
+    from src.pipenet_converter.graph.boundaries import separate_valve_picks
+    picks = list(sub.get("valve_picks") or ())
+    def pick_xy(record):
+        xy = record.get("xy") if isinstance(record, dict) else record
+        return (float(xy[0]), float(xy[1]))
+    independent, shared = separate_valve_picks(
+        [pick_xy(p) for p in picks],
+        [pick_xy(p) for p in sub.get("sources") or ()])
+    sub["valve_picks"] = [picks[i] for i in independent]
+    if shared:
+        print(f"[G19] 알람밸브 공통 절점 {len(shared)}곳 — 손실은 본관에 유지, 막다른 접속관 생략")
+    # [덱 3장 · 호 기호] 회랑은 갈래를 잘라 교차점이 접속 2개로 보인다 — 호가 앉은 자리가
+    #   갈래(T·E)인지 우회(U)인지는 «지우기 전 배관망» 의 포트 수로 가른다(corridor_topology
+    #   가 부속에 넘기는 것과 같은 자). 전체망 변환은 node_ref 가 없어 지금 접속 수를 쓴다.
+    phys_degree = {}
+    node_ref = {str(k): int(v) for k, v in (built.get("node_ref") or {}).items()}
+    pts_G = payload.get("pts") or []
+    if node_ref and pts_G:
+        adj_G: dict = {}
+        for e in (payload.get("edges") or ()):
+            a, b = int(e[0]), int(e[1])
+            if a == b:
+                continue
+            adj_G.setdefault(a, set()).add(b)
+            adj_G.setdefault(b, set()).add(a)
+        for nid, vid in node_ref.items():
+            if vid in adj_G:
+                phys_degree[nid] = len(board_port_neighbors(pts_G, adj_G, vid))
+    r = convert_to_kfp(sub, None, phys_degree=phys_degree, **kw)
     if not r.get("ok"):
         codes = [b.get("code") for b in (r.get("blockers") or [])]
         return None, f"세로 처리 실패: {codes}"
+    # [덱 3장 · 호 기호] 무엇을 읽었는지 그 자리에서 말한다 — 지어내지 않은 것(짝 없는 호)까지.
+    rep = (r["kfp"].get("arc_report") or {})
+    if rep:
+        n_u = int(rep.get("jog_pairs") or 0)
+        print(f"[G19] 호 판독 · 통과 갈래 T {rep.get('junction_T', 0)} · 관말 갈래 E "
+              f"{rep.get('junction_E', 0)} · 우회 U {n_u}쌍(세로 {2 * n_u} · 엘보 {4 * n_u}) · "
+              f"짝 없는 호 {rep.get('jog_unpaired', 0)} · 높이차 {rep.get('rise_m')} m")
     return r["kfp"], None
 
 
@@ -238,31 +293,51 @@ def board_cover(pts, adj_G, bi, bj, *, tol_deg=25.0, limit=64):
     return None
 
 
-def corridor_topology(limited, built, kfp):
+def board_port_neighbors(pts: list, adjacency: dict, vid: int) -> list[int]:
+    """Return distinct outward pipe ports, not duplicate CAD vertex identities.
+
+    Collinear overlapping segments leaving the same point share one port.
+    Opposite directions are separate ports. This does not join crossing pipes.
+    """
+    ports: list[int] = []
+    directions: list[tuple[float, float]] = []
+    for other in sorted(adjacency.get(vid, ())):
+        if not (0 <= vid < len(pts) and 0 <= other < len(pts)):
+            ports.append(other)
+            continue
+        dx, dy = pts[other][0] - pts[vid][0], pts[other][1] - pts[vid][1]
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            continue
+        u = (dx / length, dy / length)
+        if any(u[0]*v[0] + u[1]*v[1] > 1 - 1e-8 for v in directions):
+            continue
+        directions.append(u)
+        ports.append(other)
+    return ports
+
+
+def corridor_topology(limited: dict, built: dict, kfp: dict, *, flow_tree=None) -> dict:
     """[§3-2] 부속 판정이 쓸 **물리 차수**와 **덮인 갈래 수**를 세어 넘긴다.
 
     ★여기서 종류를 정하지 않는다(§5 금지) — 세어서 넘길 뿐이고, 어느 부속인지는
       `build_fittings` 한 곳이 정한다.
 
     `phys[nid]` = 지우기 **전** 배관망 G 에서 그 자리에 배관이 몇 개 붙어
-    있었나 + 전개가 만든 세로 토막 수. 지시서 §1-3 의 식이되 `deg_G` 를
-    **격자 칸 전체**로 센다:
-
-    ★`node_ref` 는 한 칸(격자 50mm)당 board 절점 **하나**만 적어 둔다
-      (`node_ref.setdefault(...)` · `used` 가 set 이라 어느 vid 가 적힐지도
-      임의다). 그 한 점의 차수는 «칸 전체» 의 차수가 아니다 — 티 둘이 한 칸에
-      들면 크로스 하나가 되는 그 자리다. 한 점으로만 세면 차수가 과소평가된다
-      (실측 대명동 K=30: 33개 노드에서 차수가 늘고 phys ≥ 4 가 14 → 20).
+    있었나와 현재 실제 연결 수 중 큰 값. 전개가 평면의 기존 가지를 세로로
+    옮긴 것은 포트 추가가 아니므로 세로 토막 수를 덧셈하지 않는다.
+    격자 위치가 같다는 이유로 다른
+    절점의 포트를 합치지 않는다. 현재 망에 4방향 이상이 실제 남아 있으면
+    build_fittings가 자동 크로스가 아닌 검토 대상으로 처리한다.
 
     `interior_junctions[pid]` = 그 배관이 덮는 board 조각의 **내부** 노드 중
-    갈래가 있었던 것(deg_G ≥ 3)의 수 — 노드정리가 지운 분기점(D6).
+    3방향 갈래의 수. 4방향 이상은 interior_unresolved로 별도 전달한다.
 
     반환 `{"phys", "interior_junctions", "cover_fail"}`.
     """
-    from services.cad_import.convert.planar import GRID_M
-
     pts = limited.get("pts") or []
-    edges_G = [(int(e[0]), int(e[1])) for e in (limited.get("edges") or ())]
+    edges_G = sorted({tuple(sorted((int(e[0]), int(e[1]))))
+                      for e in (limited.get("edges") or ()) if e[0] != e[1]})
     adj_G: dict = {}
     deg_G: dict = {}
     for a, b in edges_G:
@@ -270,40 +345,7 @@ def corridor_topology(limited, built, kfp):
         adj_G.setdefault(b, set()).add(a)
         deg_G[a] = deg_G.get(a, 0) + 1
         deg_G[b] = deg_G.get(b, 0) + 1
-
-    o = built.get("origin_mm") or (0.0, 0.0)
-    minx, miny = float(o[0]), float(o[1])
-
-    def cell(vid):
-        try:
-            x, y = float(pts[vid][0]), float(pts[vid][1])
-        except (IndexError, TypeError, ValueError):
-            return None
-        mx = (x - minx) / 1000.0 + 1.0
-        my = (y - miny) / 1000.0 + 1.0
-        return (round(round(mx / GRID_M) * GRID_M, 3),
-                round(round(my / GRID_M) * GRID_M, 3))
-
-    of_cell: dict = {}
-    cell_of: dict = {}
-    for vid in set(deg_G):
-        c = cell(vid)
-        if c is None:
-            continue
-        cell_of[vid] = c
-        of_cell.setdefault(c, set()).add(vid)
-    # Each edge contributes once to each distinct endpoint cell. Edges inside
-    # one cell contribute zero, exactly matching the former XOR membership
-    # test without rescanning all edges for every cell.
-    deg_cell = dict.fromkeys(of_cell, 0)
-    for a, b in edges_G:
-        ca, cb = cell_of.get(a), cell_of.get(b)
-        if ca == cb:
-            continue
-        if ca is not None:
-            deg_cell[ca] += 1
-        if cb is not None:
-            deg_cell[cb] += 1
+    deg_G = {vid: len(board_port_neighbors(pts, adj_G, vid)) for vid in adj_G}
 
     node_ref = {str(k): int(v) for k, v in (built.get("node_ref") or {}).items()}
     eref = {str(k): v for k, v in (built.get("edge_ref") or {}).items()
@@ -311,7 +353,6 @@ def corridor_topology(limited, built, kfp):
     pipes = (kfp or {}).get("pipe_data") or {}
 
     deg_kfp: dict = {}
-    n_vert: dict = {}
     for pid, p in pipes.items():
         s = p.get("start") or p.get("from")
         e = p.get("end") or p.get("to")
@@ -319,36 +360,56 @@ def corridor_topology(limited, built, kfp):
             continue
         for x in (str(s), str(e)):
             deg_kfp[x] = deg_kfp.get(x, 0) + 1
-            if str(pid) not in eref:
-                n_vert[x] = n_vert.get(x, 0) + 1
 
+    from src.pipenet_converter.graph.fittings import fitting_origins
+
+    origins = fitting_origins(node_ref, (kfp or {}).get("head_takeoffs") or {},
+                              (kfp or {}).get("nodes_meta_runtime") or {})
     phys: dict = {}
     for nid in ((kfp or {}).get("nodes_meta_runtime") or {}):
         nid = str(nid)
-        vid = node_ref.get(nid)
-        if vid is None:
+        origin = origins.get(nid)
+        if origin is None:
             continue          # 전개가 만든 노드 — 종전 규칙(len(links))에 맡긴다
-        c = cell_of.get(vid)
-        dg = deg_cell.get(c, deg_G.get(vid, 0)) if c is not None \
-            else deg_G.get(vid, 0)
-        phys[nid] = max(dg + n_vert.get(nid, 0), deg_kfp.get(nid, 0))
+        # A display/grid cell is not a physical fitting. In particular nearby
+        # disconnected elbows and adjacent tees must never pool their ports.
+        # A head peeled off a through-pipe introduces ONE new physical port.
+        # This is distinct from raising an existing plan branch (no new port).
+        dg = deg_G.get(origin.source_vertex, 0) + origin.added_ports
+        phys[nid] = max(dg, deg_kfp.get(nid, 0))
 
     interior: dict = {}
+    interior_unresolved: dict = {}
+    source_paths: dict = {}
     cover_fail = 0
     for pid, ref in eref.items():
         try:
             bi, bj = int(ref[0]), int(ref[1])
         except (TypeError, ValueError, IndexError):
             continue
-        path = board_cover(pts, adj_G, bi, bj)
+        if flow_tree is None:
+            path = board_cover(pts, adj_G, bi, bj)
+        else:
+            route = flow_tree.between(bi, bj)
+            path = [bi] if route else None
+            for a, b in route:
+                path.append(b if path[-1] == a else a)
         if path is None:
             cover_fail += 1
             continue
+        source_paths[str(pid)] = list(path)
         n = sum(1 for v in path[1:-1]
-                if deg_cell.get(cell_of.get(v), deg_G.get(v, 0)) >= 3)
+                if deg_G.get(v, 0) == 3)
         if n:
             interior[str(pid)] = n
-    return {"phys": phys, "interior_junctions": interior,
+        ambiguous = sum(1 for v in path[1:-1] if deg_G.get(v, 0) >= 4)
+        if ambiguous:
+            interior_unresolved[str(pid)] = ambiguous
+    return {"phys": phys,
+            "fitting_node_ref": {nid: origin.source_vertex for nid, origin in origins.items()},
+            "interior_junctions": interior,
+            "interior_unresolved": interior_unresolved,
+            "source_paths": source_paths,
             "cover_fail": cover_fail}
 
 
@@ -370,7 +431,11 @@ def expand_worst(payload: dict, board, worst: dict, *,
     """
     from services.cad_import.convert.planar import build_planar_graph
 
-    limited = restrict_to_worst(payload, board, worst)
+    try:
+        limited = restrict_to_worst(payload, board, worst, selected_source=selected_source)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    flow = limited["_flow_tree"]
 
     def _plan(snap):
         return build_planar_graph(
@@ -400,6 +465,7 @@ def expand_worst(payload: dict, board, worst: dict, *,
             #   `attachable_heads`·`ensure_planar`·`convert_to_kfp` 는 기본값
             #   그대로라 전체망은 종전과 같다(§3-1).
             keep_head_stub=False,
+            fixed_head_nodes=limited["flow_head_nodes"],
         )
 
     def _corridor_ok(b, want_heads):
@@ -430,7 +496,7 @@ def expand_worst(payload: dict, board, worst: dict, *,
                 if nx not in seen:
                     seen.add(nx)
                     stack.append(nx)
-        return len(seen) >= len(nd)
+        return len(seen) == len(nd) and len(pp) == len(nd) - 1
 
     # ★[회랑 사슬좌표 · 오너 2026-09-14] 회랑은 격자 스냅의 **반올림**을 끈다 —
     #   좌표는 뒤에서 사슬이 다시 만들고, 반올림은 서로 다른 board 절점을 한
@@ -443,10 +509,8 @@ def expand_worst(payload: dict, board, worst: dict, *,
     n_heads = len({int(i) for i in (worst or {}).get("heads") or ()})
     built = _plan(False)
     if not _corridor_ok(built, n_heads):
-        print("[G20] ★격자 스냅을 끄니 회랑이 쪼개집니다"
-              " (조사 도면처럼 이음이 벌어진 판) — 스냅을 켠 채로 갑니다."
-              " 좌표는 사슬이 다시 만들고, 한 칸에 눌린 절점이 남을 수 있습니다.")
-        built = _plan(True)
+        return {"ok": False, "error": "확정 물흐름의 헤드/단일 경로를 전개가 보존하지 못했습니다. "
+                "손질의 헤드 접속을 확인하세요. 격자 이음으로 경로를 바꾸지 않습니다."}
     if not built.get("ok") or built.get("kfp") is None:
         return {"ok": False,
                 "error": built.get("error") or "제한 전개가 .kfp 를 내지 못했습니다.",
@@ -456,6 +520,13 @@ def expand_worst(payload: dict, board, worst: dict, *,
     #   `.kfp` 는 이 처리를 거치는데 `.sdf` 만 안 거쳐서, 같은 도면인데 두 산출물이
     #   다른 망이었다. 여기서 같은 처리를 얹는다.
     flat = built["kfp"]
+    # Transfer all-head capacity BEFORE adding risers or deleting straight-run
+    # nodes. A merged pipe covers a source path, not necessarily one source edge.
+    from services.cad_import.design.flow import stamp_planar_flow
+    try:
+        stamp_planar_flow(built, flow)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
     loads_by_pipe = {}
     if vertical:
         raised, verr = apply_vertical(payload, built,
@@ -482,7 +553,8 @@ def expand_worst(payload: dict, board, worst: dict, *,
             board_pts=board.pts,
             origin_mm=built.get("origin_mm"),
             declared_pipes=built.get("declared_pipes") or (),
-            corridor_edges=(worst or {}).get("edges") or ())
+            corridor_edges=(worst or {}).get("edges") or (),
+            chain_len_mode="path", flow_tree=flow)
         if chain.get("ok"):
             kk = chain["kinds"]
             print(f"[G20] 사슬 좌표 · 노드 {chain['nodes']}"
@@ -539,9 +611,9 @@ def expand_worst(payload: dict, board, worst: dict, *,
     # [가지치기·부속판정 §3-2] 부속 «종류» 의 주인은 손질 정본 G 다 — 여기서는
     #   차수를 **세어 넘길 뿐** 이고, 종류를 정하는 곳은 `build_fittings` 하나다.
     topo = corridor_topology(
-        {"pts": limited.get("pts"), "edges": limited.get("edges")},
+        {"pts": payload.get("pts"), "edges": payload.get("edges")},
         {"node_ref": built.get("node_ref") or {}, "edge_ref": edge_ref,
-         "origin_mm": built.get("origin_mm")}, kfp)
+         "origin_mm": built.get("origin_mm")}, kfp, flow_tree=flow)
     if topo["cover_fail"]:
         print(f"[G2] 덮음 경로를 못 되짚은 배관 {topo['cover_fail']}개 — "
               f"그 자리의 «지워진 갈래» 라벨(D6)만 빠집니다(판정은 그대로).")
@@ -555,16 +627,28 @@ def expand_worst(payload: dict, board, worst: dict, *,
                   if p >= 3 and _deg.get(nid, 0) == 2)
     print(f"[G2] 물리 차수 · phys {len(topo['phys'])}개 · 갈래가 지워진 분기점 "
           f"{_n_lost}개 · 덮인 분기점 {sum(topo['interior_junctions'].values())}건")
+    from services.cad_import.design.flow import physical_pipe_loads
+    try:
+        full_loads = physical_pipe_loads(kfp)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    kfp["physical_pipe_loads"] = full_loads
+    kfp["flow_report"] = flow.report()
     return {
         "ok": True,
         "kfp": kfp,
         "edge_ref": edge_ref,
         # [가지치기·부속판정 §3-2] 순수 추가 — 기존 키는 그대로다.
         "phys": topo["phys"],
+        "fitting_node_ref": topo["fitting_node_ref"],
         "interior_junctions": topo["interior_junctions"],
+        "interior_unresolved": topo["interior_unresolved"],
+        "source_paths": topo["source_paths"],
         "node_ref": built.get("node_ref") or {},
         "uncovered_pipes": uncovered,
         "tree_loads": loads_by_pipe,
+        "physical_pipe_loads": full_loads,
+        "flow_report": flow.report(),
         "hcov": built.get("hcov"),
         "head_kinds": built.get("head_kinds"),
         "node_head_kinds": built.get("node_head_kinds"),
@@ -620,13 +704,20 @@ def select_and_expand(payload: dict, board, *, k=None, only_heads=None,
                           "손질 단계에서 배관을 먼저 이어 주세요.")}
 
     b = board
+    from services.cad_import.design.flow import flow_for_board, source_index
+    try:
+        idx = source_index(b, selected_source)
+        flow = flow_for_board(b, index=idx)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
     # ★`head_xy` 를 반드시 넘긴다 — 손질이 넘기는 것과 **같은 자**여야 한다.
     #   이것이 없으면 «같은 자리» 판정이 좌표가 아니라 부착 절점으로 떨어져,
     #   손질과 수리계산이 서로 다른 K개를 고른다(실측: corridor 총연장
     #   75.78 대 74.02 m). 두 화면이 다른 말을 하는 그 자리다.
     worst = worst_k_heads(b.pts, b.edges, b.hnodes, b.sources,
                           k=k, only_heads=cand,
-                          head_xy=getattr(b, "disks", None))
+                          head_xy=getattr(b, "disks", None),
+                          source_index=idx, flow_tree=flow)
     if not worst.get("heads"):
         return {"ok": False, "error": "급수원에서 닿는 헤드가 없습니다."}
 

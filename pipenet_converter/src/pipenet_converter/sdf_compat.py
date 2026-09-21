@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+import math
 from pathlib import Path
 import xml.etree.ElementTree as ET
+from typing import Collection
 
 
 @dataclass
@@ -21,13 +23,29 @@ class CompatibilityReport:
     unresolved_nozzles: list[str] = field(default_factory=list)
 
 
-def prepare_sdf(path: str | Path) -> CompatibilityReport:
+NOZZLE_DISPLAY_GAP_RATIO = 0.02
+
+
+def prepare_sdf(path: str | Path, *,
+                nozzle_gap_ratio: float = NOZZLE_DISPLAY_GAP_RATIO,
+                nozzle_reference_labels: Collection[str] | None = None) -> CompatibilityReport:
     """Write explicit capped ends and noncoincident nozzle display endpoints.
 
     Vertical direction comes from the real elevation of a terminal head relative
     to its only adjacent pipe node, independent of pipe input/output orientation.
     Horizontal or nonterminal nozzles keep their supplied display direction.
+
+    The atmospheric outlet is a display endpoint, not an extra pipe. Its gap is
+    2% of the physical-node drawing span (excluding atmospheric outlets). The
+    former 0.25% gap let PIPENET's triangle cover the terminal node. Measuring
+    only real nodes also makes this pass idempotent: repeated exports cannot
+    extend their own bounding box and keep pushing symbols farther away.
+    For merged views, ``nozzle_reference_labels`` selects the plan subnetwork
+    so a taller riser cannot enlarge nozzle glyph gaps. Default callers retain
+    the existing whole-network rule.
     """
+    if not math.isfinite(nozzle_gap_ratio) or nozzle_gap_ratio <= 0:
+        raise ValueError("노즐 표시 간격 비율은 0보다 큰 유한한 값이어야 합니다.")
     path = Path(path)
     tree = ET.parse(path)
     root = tree.getroot()
@@ -47,13 +65,17 @@ def prepare_sdf(path: str | Path) -> CompatibilityReport:
         if link.tag == "Pipe":
             pipes[a].append(b)
             pipes[b].append(a)
+    reference = set(nozzle_reference_labels) if nozzle_reference_labels is not None else None
+    if reference is not None and (not reference or reference - nodes.keys()):
+        raise ValueError("노즐 간격의 기준 절점이 SDF에 없습니다.")
     coords = [n.find("Position") for label, n in nodes.items()
-              if label and not label.startswith("@/")]
+              if label and not label.startswith("@/")
+              and (reference is None or label in reference)]
     xs = [float(p.get("x", 0)) for p in coords if p is not None]
     ys = [float(p.get("y", 0)) for p in coords if p is not None]
     span = max(max(xs, default=0) - min(xs, default=0),
                max(ys, default=0) - min(ys, default=0))
-    gap = max(1.0, span * 0.0025)  # display units only, never metres of pipe
+    gap = max(1.0, span * nozzle_gap_ratio)  # display units only, never metres of pipe
     report = CompatibilityReport()
     for nozzle in links.iter("Nozzle"):
         label = nozzle.get("label", "")

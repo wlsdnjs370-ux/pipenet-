@@ -204,7 +204,8 @@ def _is_vertical(a, b) -> bool:
 
 def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
                    node_z=None, overrides=None,
-                   phys=None, interior_junctions=None) -> dict:
+                   phys=None, interior_junctions=None, interior_unresolved=None,
+                   allowed_kinds=None) -> dict:
     """배관마다 부속 목록과 등가길이 합.
 
     `net`     : 제한 전개 kfp dict
@@ -213,6 +214,8 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
     `parents` : {node_id: 상류 node_id} — 급수원 BFS 의 부모. 없으면 티 판정이
                 「상류를 모름」이 되어 전부 티로 두고 판정 불가로 센다.
     `node_z`  : {node_id: 표고} — 없으면 전부 0 으로 본다.
+    `allowed_kinds`: 계산에 포함할 부속 종류. None 은 기존 G 규칙을 유지한다.
+                     F 는 분류티·45°/90° 엘보만 포함한다(원본 차수는 보존).
     `overrides`: 사람이 손으로 채운 값. 규칙이 못 가린 자리에만 쓴다 —
                  **판정을 덮어쓰지 않는다.** 자동이 답을 낸 자리는 건드리지
                  않으므로, 이 인자를 줘도 «규칙이 옳게 판정한 값» 은 안 바뀐다::
@@ -253,6 +256,21 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
     #   `phys` 없이 불렀는데 `tee-run` 32건이 생기고 `tee` 가 34 → 36 이 됐다.
     #   문이 하나여야 한다.
     _new_rule = bool(_phys)
+    # ★[호 갈래 · 덱 3장 그림 2·3] 호가 앉은 갈래의 주배관 접속점은 평면에서 4방향
+    #   (통과 갈래)이어도 실제로는 «주배관 층의 티 + 세로관 + 가지 층의 티» 다 — 세로
+    #   처리가 표시해 준 자리(`arc_junctions`)는 지금 접속(주배관 둘 + 세로관)으로
+    #   판정한다. 표시가 없는 4방향은 종전대로 미해결로 남긴다(추측하지 않는다).
+    _arc_raw = (net or {}).get("arc_junctions") or {}
+    # 주배관 접속점: 그 층에는 언제나 포트 셋(주배관 둘 + 세로관) — 회랑이 주배관 한쪽을
+    #   잘랐어도 건물의 티는 그대로다. 꼭대기: T 는 셋(세로관 + 팔 둘), E 는 둘(세로관 + 팔).
+    _arc_j = {str(k): 3 for k in _arc_raw}
+    for _v in _arc_raw.values():
+        if isinstance(_v, dict) and _v.get("top") is not None:
+            _arc_j[str(_v["top"])] = int(_v.get("top_ports") or 2)
+    # 세로관을 타고 올라온 물이 가지 양쪽으로 갈리는 꼭대기 — 물리적으로 티 하나다.
+    #   팔 둘에 분류티를 하나씩 달면 한 자리에 둘이 실린다(덱 라벨은 하나). 한 번만
+    #   세고 어느 팔에 실었는지 남긴다(오너 2026-09-21 「저 인식 규칙이면 충분」).
+    tee_once: list = []
 
     # 사람이 채운 값 — 찾기 쉬운 표로 바꿔 둔다. 값이 숫자가 아니거나 칸이
     # 비면 «없는 것» 으로 본다: 잘못 넣은 값을 조용히 계산에 넣지 않는다.
@@ -260,7 +278,7 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
     ov_kind: dict = {}
     for r in (ov.get("kind") or ()):
         k = str((r or {}).get("kind") or "").strip()
-        if k:
+        if k and (allowed_kinds is None or k in allowed_kinds or k == "none"):
             ov_kind[(str(r.get("node")), str(r.get("pipe")))] = (k, r.get("note"))
     # ★「직선 — 부속 없음」도 사람이 낼 수 있는 정답이다. 22.5° 미만은 45° 엘보
     #   보다 직선에 가깝지만, collinear merge 가 흡수를 거부한 각이라 프로그램이
@@ -311,6 +329,23 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
         #   그대로 있다(그림 16). `phys` 가 없으면 종전과 **한 글자도 같게**
         #   동작한다(전체망·다른 호출자 보호 · §3-4 1).
         p_here = int(_phys.get(nid, len(links))) if _phys else len(links)
+        if str(nid) in _arc_j:
+            p_here = max(len(links), int(_arc_j[str(nid)]))
+
+        if p_here >= 4:
+            # Four graph edges do not establish an installed cross, nor the
+            # number/order of tees. Keep the ambiguity visible, not a guessed
+            # tee count or a silently complete zero-loss result.
+            downs = [(pid, o) for pid, o in links if o != up]
+            if downs:
+                rep = str(downs[0][0])
+                unresolved_kind += 1
+                unresolved_kind_items.append({
+                    "pipe": rep, "node": str(nid), "where": "다중 접속",
+                    "n": 1, "ports": p_here,
+                    "reason": "4방향 이상: 티의 실제 개수·연결 또는 비접속 교차 확인 필요",
+                    "branches": [str(pid) for pid, _ in downs]})
+            continue
 
         if p_here == 2 and len(links) == 2 and up3 is not None                 and here3 is not None:
             # 관통 — 꺾였으면 엘보 1개. 어느 배관에 달아도 손실은 같으므로
@@ -359,6 +394,47 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
         if p_here >= 3:
             # 분기 — 꺾인 갈래는 분류티, 직진 갈래는 **직류티**(종전에는 버렸다).
             downs = [(pid, o) for pid, o in links if o != up]
+            if up3 is None or here3 is None:
+                if downs:
+                    unresolved_kind += 1
+                    unresolved_kind_items.append({
+                        "pipe": str(downs[0][0]), "node": str(nid),
+                        "where": "분기", "n": 1,
+                        "reason": "상류 방향 미확정: 직류/분류를 추측하지 않음"})
+                continue
+            if _new_rule:
+                # Flow mode is a 3-D relation, independent of which arm is
+                # vertical or how the isometric is drawn. Retain the existing
+                # 0/45/90 snapping convention, but never atan2(0, 0).
+                u = _dir3(up3, here3)
+                # 세로관 꼭대기에서 가로 팔 둘로 갈리는 자리 = 티 하나 (아래 주석).
+                dv = {}
+                for pid, other in downs:
+                    other3 = at(other)
+                    dv[pid] = _dir3(here3, other3) if other3 is not None else None
+                once_skip = None
+                if (u is not None and abs(u[2]) > 0.9 and len(downs) == 2
+                        and all(v is not None and abs(v[2]) < 0.1 for v in dv.values())):
+                    (pa, va), (pb, vb) = sorted(dv.items(), key=lambda kv: str(kv[0]))
+                    if va[0] * vb[0] + va[1] * vb[1] < -0.9:      # 마주 보는 두 팔
+                        once_skip = pb
+                        tee_once.append({"node": str(nid), "pipe": str(pa),
+                                         "skipped": str(pb)})
+                for pid, other in downs:
+                    v = dv[pid]
+                    if u is None or v is None:
+                        unresolved_kind += 1
+                        unresolved_kind_items.append({
+                            "pipe": str(pid), "node": str(nid), "where": "분기",
+                            "n": 1, "reason": "3차원 연결 방향 미확정"})
+                        continue
+                    if pid == once_skip:
+                        continue
+                    kind = (fr.TEE_RUN if fr.snap_turn_deg(_deflect3_deg(u, v)) <= 45
+                            else fr.TEE)
+                    per_pipe[pid]["fittings"].append(kind)
+                    counts[kind] = counts.get(kind, 0) + 1
+                continue
             # ★위아래로 갈라지는 갈래는 평면에서 «같은 점» 이라 방위를 잴 수
             #   없다. 그러나 가로 본관에서 세로로 빠지는 것은 언제나 분류티다 —
             #   따로 세고, 평면 규칙에는 가로 갈래만 넘긴다.
@@ -369,9 +445,7 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
                     vert.append(pid)
                 elif node_xy.get(o) is not None:
                     flat_downs.append((pid, node_xy.get(o)))
-            # 십자(phys ≥ 4)는 이름만 다르고 규칙은 티와 같다(D1).
-            _TEE = fr.CROSS if (_new_rule and p_here >= 4) else fr.TEE
-            _RUN = fr.CROSS_RUN if (_new_rule and p_here >= 4) else fr.TEE_RUN
+            _TEE, _RUN = fr.TEE, fr.TEE_RUN
             for pid in vert:
                 per_pipe[pid]["fittings"].append(_TEE)
                 counts[_TEE] = counts.get(_TEE, 0) + 1
@@ -425,6 +499,25 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
             per_pipe[pid]["fittings"].append(fr.TEE_RUN)
             counts[fr.TEE_RUN] = counts.get(fr.TEE_RUN, 0) + 1
 
+    for pid, n in (interior_unresolved or {}).items():
+        if pid in per_pipe and int(n) > 0:
+            unresolved_kind += int(n)
+            unresolved_kind_items.append({
+                "pipe": str(pid), "where": "구간 내부 다중 접속", "n": int(n),
+                "reason": "원본 구간 내부의 4방향 이상 접속: 티 개수·비접속 교차 확인 필요"})
+
+    # Caller policy is applied after physical classification but before loss
+    # summation. The original degree/branch evidence must never be pruned here.
+    # None preserves the shared Module G contract.
+    if allowed_kinds is not None:
+        counts = {}
+        for rec in per_pipe.values():
+            rec["fittings"] = [k for k in rec["fittings"] if k in allowed_kinds]
+            for kind in rec["fittings"]:
+                counts[kind] = counts.get(kind, 0) + 1
+        applied_overrides = [r for r in applied_overrides
+                             if r.get("kind") in allowed_kinds or r.get("kind") == "none"]
+
     # 등가길이 — 라이브러리에 없으면 0 으로 메우지 않고 센다.
     unresolved_length = 0
     # 세는 자리에서 «어느 배관의 어느 부속·어느 호칭경» 인지 함께 남긴다.
@@ -476,6 +569,8 @@ def build_fittings(net, node_xy, bores, *, parents=None, lib=None,
             "unresolved_length_items": unresolved_length_items,
             # 사람이 넣은 값을 쓴 자리 — 자동이 낸 값과 같은 얼굴로 두지 않는다.
             "applied_overrides": applied_overrides,
+            # 세로관 꼭대기 티를 한 번만 센 자리 — 어느 팔에 실었고 어느 팔을 비웠나.
+            "tee_once": tee_once,
             "unresolved_pairs": [{"kind": k, "dia": (d if d >= 0 else None),
                                   "n": n}
                                  for (k, d), n in sorted(unresolved_pairs.items())]}

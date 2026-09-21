@@ -1,0 +1,6597 @@
+{
+  "pipe_data": {
+    "P348": {
+      "start": "N11",
+      "end": "N204",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 2.5,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P69": {
+      "start": "N11",
+      "end": "N23",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.622,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P71": {
+      "start": "N11",
+      "end": "N26",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.083,
+      "equivalent_length": 3.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P349": {
+      "start": "N204",
+      "end": "N205",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.5,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": []
+    },
+    "P70": {
+      "start": "N26",
+      "end": "N28",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 1.336,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P72": {
+      "start": "N28",
+      "end": "N10",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.206,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P86": {
+      "start": "N10",
+      "end": "N9",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.688,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P311": {
+      "start": "N9",
+      "end": "N27",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.112,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P101": {
+      "start": "N27",
+      "end": "N12",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.042,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P98": {
+      "start": "N12",
+      "end": "N69",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 1.342,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P97": {
+      "start": "N69",
+      "end": "N73",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.083,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P284": {
+      "start": "N73",
+      "end": "N74",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.624,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P285": {
+      "start": "N74",
+      "end": "N38",
+      "type": "KSD3507",
+      "diameter": 36.2,
+      "nominal_mm": 32,
+      "length_m": 14.994,
+      "equivalent_length": 0.9,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P325": {
+      "start": "N38",
+      "end": "N58",
+      "type": "KSD3507",
+      "diameter": 42.1,
+      "nominal_mm": 40,
+      "length_m": 24.4,
+      "equivalent_length": 2.4,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P267": {
+      "start": "N58",
+      "end": "N48",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 4.6,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P283": {
+      "start": "N48",
+      "end": "N52",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.944,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)",
+        "Tee(Run)"
+      ]
+    },
+    "P93": {
+      "start": "N52",
+      "end": "N16",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.032,
+      "equivalent_length": 3.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P75": {
+      "start": "N16",
+      "end": "N30",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.465,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P74": {
+      "start": "N30",
+      "end": "N60",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.072,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P73": {
+      "start": "N60",
+      "end": "N59",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.152,
+      "equivalent_length": 3.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P9": {
+      "start": "N59",
+      "end": "N148",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.206,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P8": {
+      "start": "N148",
+      "end": "N149",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.921,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P10": {
+      "start": "N149",
+      "end": "N151",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.083,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P288": {
+      "start": "N151",
+      "end": "N142",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 12.8,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P316": {
+      "start": "N142",
+      "end": "N145",
+      "type": "KSD3507",
+      "diameter": 155.5,
+      "nominal_mm": 150,
+      "length_m": 21.231,
+      "equivalent_length": 4.3,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow",
+        "Tee(Run)"
+      ]
+    },
+    "P333": {
+      "start": "N145",
+      "end": "NE60",
+      "type": "KSD3507",
+      "diameter": 42.1,
+      "nominal_mm": 40,
+      "length_m": 15.75,
+      "equivalent_length": 1.2,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P337": {
+      "start": "N93",
+      "end": "N193",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P51": {
+      "start": "N93",
+      "end": "N81",
+      "type": "KSD3507",
+      "diameter": 53.2,
+      "nominal_mm": 50,
+      "length_m": 0.45,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P309": {
+      "start": "N193",
+      "end": "N72",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 7.35,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P320": {
+      "start": "N81",
+      "end": "N82",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 2.3,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)",
+        "Tee(Run)"
+      ]
+    },
+    "P336": {
+      "start": "N81",
+      "end": "N192",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P234": {
+      "start": "N72",
+      "end": "N194",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 2.75,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P210": {
+      "start": "N82",
+      "end": "N87",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 2.75,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)",
+        "Tee(Run)"
+      ]
+    },
+    "P334": {
+      "start": "N82",
+      "end": "N190",
+      "type": "KSD3507",
+      "diameter": 36.2,
+      "nominal_mm": 32,
+      "length_m": 0.3,
+      "equivalent_length": 1.8,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P317": {
+      "start": "N192",
+      "end": "N197",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 7.4,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P229": {
+      "start": "N194",
+      "end": "N195",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 1.4,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P338": {
+      "start": "N194",
+      "end": "N25",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P335": {
+      "start": "N87",
+      "end": "N191",
+      "type": "KSD3507",
+      "diameter": 42.1,
+      "nominal_mm": 40,
+      "length_m": 0.3,
+      "equivalent_length": 2.4,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P326": {
+      "start": "N190",
+      "end": "N202",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 3.9,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P327": {
+      "start": "N190",
+      "end": "N200",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 4.4,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P341": {
+      "start": "N197",
+      "end": "N40",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P339": {
+      "start": "N195",
+      "end": "N34",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P322": {
+      "start": "N191",
+      "end": "N201",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 3.9,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P328": {
+      "start": "N191",
+      "end": "N203",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 1.7,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P346": {
+      "start": "N202",
+      "end": "N147",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P307": {
+      "start": "N200",
+      "end": "N45",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.963,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P344": {
+      "start": "N200",
+      "end": "N136",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P345": {
+      "start": "N201",
+      "end": "N146",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P305": {
+      "start": "N203",
+      "end": "N199",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 2.7,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P347": {
+      "start": "N203",
+      "end": "N164",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P55": {
+      "start": "N45",
+      "end": "N80",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 1.15,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P312": {
+      "start": "N199",
+      "end": "N57",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.963,
+      "equivalent_length": 0.0,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Run)"
+      ]
+    },
+    "P343": {
+      "start": "N199",
+      "end": "N129",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 1.5,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Tee(Branch)"
+      ]
+    },
+    "P300": {
+      "start": "N80",
+      "end": "N198",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 2.037,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P60": {
+      "start": "N57",
+      "end": "N55",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P342": {
+      "start": "N198",
+      "end": "N41",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P323": {
+      "start": "N55",
+      "end": "N196",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 2.037,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "P340": {
+      "start": "N196",
+      "end": "N39",
+      "type": "KSD3507",
+      "diameter": 27.5,
+      "nominal_mm": 25,
+      "length_m": 0.3,
+      "equivalent_length": 0.6,
+      "C": 120.0,
+      "roughness_mm": 0.1,
+      "fittings": [
+        "Elbow"
+      ]
+    },
+    "EP1": {
+      "start": "NE60",
+      "end": "N93",
+      "length_m": 15.75,
+      "nominal_mm": 40,
+      "C": 120.0,
+      "diameter": 42.1,
+      "pipe_type": "KSD 3507",
+      "type": "KSD3507 (SPP)",
+      "roughness_mm": 0.04572,
+      "fittings": [],
+      "equivalent_length": 0.0
+    },
+    "EP2": {
+      "start": "NE60",
+      "end": "NE61",
+      "length_m": 0.75,
+      "nominal_mm": 25,
+      "C": 150.0,
+      "diameter": 28.02,
+      "pipe_type": "CPVC2",
+      "type": "CPVC (KS M 3413)",
+      "roughness_mm": 0.065,
+      "fittings": [],
+      "equivalent_length": 0.6
+    }
+  },
+  "pipe_id_counter": 349,
+  "node_counter": {
+    "N": 205
+  },
+  "nodes_meta_runtime": {
+    "N11": {
+      "id": "N11",
+      "coords": [
+        26.6,
+        27.65,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "Pump",
+      "type_id": "pump",
+      "category_id": "pump",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 1000.0,
+      "rated_p": 10.0,
+      "shutoff_p": 12.0,
+      "peak_q": 1500.0,
+      "peak_p": 6.5,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N204": {
+      "id": "N204",
+      "coords": [
+        26.6,
+        27.65,
+        -2.5
+      ],
+      "elevation_m": -2.5,
+      "type": "Alarm Valve",
+      "type_id": "valve",
+      "category_id": "alarm_valve",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": "VALVE_ALARM",
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N23": {
+      "id": "N23",
+      "coords": [
+        26.6,
+        27.027864308389773,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N26": {
+      "id": "N26",
+      "coords": [
+        26.517399999993856,
+        27.65,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N205": {
+      "id": "N205",
+      "coords": [
+        26.6,
+        27.65,
+        -3.0
+      ],
+      "elevation_m": -3.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N28": {
+      "id": "N28",
+      "coords": [
+        26.517399999993856,
+        28.98613309710621,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N10": {
+      "id": "N10",
+      "coords": [
+        26.37139999999241,
+        29.13213309710766,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N9": {
+      "id": "N9",
+      "coords": [
+        25.683303764978238,
+        29.13213309710766,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N27": {
+      "id": "N27",
+      "coords": [
+        25.683303764978238,
+        29.020327959568135,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N12": {
+      "id": "N12",
+      "coords": [
+        25.71290334789325,
+        28.990728376653124,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N69": {
+      "id": "N69",
+      "coords": [
+        25.71290334789325,
+        27.648760718970408,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N73": {
+      "id": "N73",
+      "coords": [
+        25.63030334790049,
+        27.648760718970408,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N74": {
+      "id": "N74",
+      "coords": [
+        25.63030334790049,
+        27.024947968475395,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N38": {
+      "id": "N38",
+      "coords": [
+        10.636711278664162,
+        27.024947968475395,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N58": {
+      "id": "N58",
+      "coords": [
+        10.636711278664162,
+        2.6249479684753965,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N48": {
+      "id": "N48",
+      "coords": [
+        15.23670551583693,
+        2.6249479684753965,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N52": {
+      "id": "N52",
+      "coords": [
+        15.23670551583693,
+        1.6807804182995092,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N16": {
+      "id": "N16",
+      "coords": [
+        15.214301031383254,
+        1.7031849027531845,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N30": {
+      "id": "N30",
+      "coords": [
+        14.885843962366568,
+        1.3747278337365,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N60": {
+      "id": "N60",
+      "coords": [
+        14.81368641292782,
+        1.3747278337365,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N59": {
+      "id": "N59",
+      "coords": [
+        14.81368641292782,
+        1.2223278337366223,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N148": {
+      "id": "N148",
+      "coords": [
+        14.667686412928555,
+        1.0763278337373579,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N149": {
+      "id": "N149",
+      "coords": [
+        13.746288515936165,
+        1.0763278337373579,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N151": {
+      "id": "N151",
+      "coords": [
+        13.746288515936165,
+        0.9937278337363624,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N142": {
+      "id": "N142",
+      "coords": [
+        0.9462849462816258,
+        0.9937278337363624,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N145": {
+      "id": "N145",
+      "coords": [
+        0.9462849462816258,
+        22.225057955143154,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N93": {
+      "id": "N93",
+      "coords": [
+        32.44628291141828,
+        22.225057955143154,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N193": {
+      "id": "N193",
+      "coords": [
+        32.44628291141828,
+        22.225057955143154,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N81": {
+      "id": "N81",
+      "coords": [
+        32.89628871064404,
+        22.225057955143154,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N72": {
+      "id": "N72",
+      "coords": [
+        32.44628291141828,
+        29.575060209511452,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N82": {
+      "id": "N82",
+      "coords": [
+        35.1962829114184,
+        22.225057955143154,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N192": {
+      "id": "N192",
+      "coords": [
+        32.89628871064404,
+        22.225057955143154,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N194": {
+      "id": "N194",
+      "coords": [
+        29.69628468017133,
+        29.575060209511452,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N87": {
+      "id": "N87",
+      "coords": [
+        37.9462829114184,
+        22.225057955143154,
+        0.0
+      ],
+      "elevation_m": 0.0,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N190": {
+      "id": "N190",
+      "coords": [
+        35.1962829114184,
+        22.225057955143154,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N197": {
+      "id": "N197",
+      "coords": [
+        32.89628871064404,
+        29.625057955143152,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N195": {
+      "id": "N195",
+      "coords": [
+        28.296284680171333,
+        29.575060209511452,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N25": {
+      "id": "N25",
+      "coords": [
+        29.69628468017133,
+        29.575060209511452,
+        0.6
+      ],
+      "elevation_m": 0.6,
+      "type": "Head",
+      "type_id": "head",
+      "category_id": "",
+      "is_active": false,
+      "is_closed": false,
+      "k_factor_si": 80.0,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": "80(5.6)",
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": [],
+      "k_factor": 80.0
+    },
+    "N191": {
+      "id": "N191",
+      "coords": [
+        37.9462829114184,
+        22.225057955143154,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N202": {
+      "id": "N202",
+      "coords": [
+        35.1962829114184,
+        18.325057955144548,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N200": {
+      "id": "N200",
+      "coords": [
+        35.1962829114184,
+        26.625057955144957,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N40": {
+      "id": "N40",
+      "coords": [
+        32.89628871064404,
+        29.625057955143152,
+        0.6
+      ],
+      "elevation_m": 0.6,
+      "type": "Head",
+      "type_id": "head",
+      "category_id": "",
+      "is_active": false,
+      "is_closed": false,
+      "k_factor_si": 80.0,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": "80(5.6)",
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": [],
+      "k_factor": 80.0
+    },
+    "N34": {
+      "id": "N34",
+      "coords": [
+        28.296284680171333,
+        29.575060209511452,
+        0.6
+      ],
+      "elevation_m": 0.6,
+      "type": "Head",
+      "type_id": "head",
+      "category_id": "",
+      "is_active": false,
+      "is_closed": false,
+      "k_factor_si": 80.0,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": "80(5.6)",
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": [],
+      "k_factor": 80.0
+    },
+    "N201": {
+      "id": "N201",
+      "coords": [
+        37.9462829114184,
+        18.325057955144548,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N203": {
+      "id": "N203",
+      "coords": [
+        37.9462829114184,
+        23.925057955144958,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N147": {
+      "id": "N147",
+      "coords": [
+        35.1962829114184,
+        18.325057955144548,
+        0.6
+      ],
+      "elevation_m": 0.6,
+      "type": "Head",
+      "type_id": "head",
+      "category_id": "",
+      "is_active": false,
+      "is_closed": false,
+      "k_factor_si": 80.0,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": "80(5.6)",
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": [],
+      "k_factor": 80.0
+    },
+    "N45": {
+      "id": "N45",
+      "coords": [
+        35.1962829114184,
+        27.58782119417807,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N136": {
+      "id": "N136",
+      "coords": [
+        35.1962829114184,
+        26.625057955144957,
+        0.6
+      ],
+      "elevation_m": 0.6,
+      "type": "Head",
+      "type_id": "head",
+      "category_id": "",
+      "is_active": false,
+      "is_closed": false,
+      "k_factor_si": 80.0,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": "80(5.6)",
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": [],
+      "k_factor": 80.0
+    },
+    "N146": {
+      "id": "N146",
+      "coords": [
+        37.9462829114184,
+        18.325057955144548,
+        0.6
+      ],
+      "elevation_m": 0.6,
+      "type": "Head",
+      "type_id": "head",
+      "category_id": "",
+      "is_active": false,
+      "is_closed": false,
+      "k_factor_si": 80.0,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": "80(5.6)",
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": [],
+      "k_factor": 80.0
+    },
+    "N199": {
+      "id": "N199",
+      "coords": [
+        37.9462829114184,
+        26.625057955144957,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N164": {
+      "id": "N164",
+      "coords": [
+        37.9462829114184,
+        23.925057955144958,
+        0.6
+      ],
+      "elevation_m": 0.6,
+      "type": "Head",
+      "type_id": "head",
+      "category_id": "",
+      "is_active": false,
+      "is_closed": false,
+      "k_factor_si": 80.0,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": "80(5.6)",
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": [],
+      "k_factor": 80.0
+    },
+    "N80": {
+      "id": "N80",
+      "coords": [
+        36.34628871064381,
+        27.58782119417807,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N57": {
+      "id": "N57",
+      "coords": [
+        37.9462829114184,
+        27.58782119417807,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N129": {
+      "id": "N129",
+      "coords": [
+        37.9462829114184,
+        26.625057955144957,
+        0.6
+      ],
+      "elevation_m": 0.6,
+      "type": "Head",
+      "type_id": "head",
+      "category_id": "",
+      "is_active": false,
+      "is_closed": false,
+      "k_factor_si": 80.0,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": "80(5.6)",
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": [],
+      "k_factor": 80.0
+    },
+    "N198": {
+      "id": "N198",
+      "coords": [
+        36.34628871064381,
+        29.625057955143152,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N55": {
+      "id": "N55",
+      "coords": [
+        38.24628871064381,
+        27.58782119417807,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N41": {
+      "id": "N41",
+      "coords": [
+        36.34628871064381,
+        29.625057955143152,
+        0.6
+      ],
+      "elevation_m": 0.6,
+      "type": "Head",
+      "type_id": "head",
+      "category_id": "",
+      "is_active": false,
+      "is_closed": false,
+      "k_factor_si": 80.0,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": "80(5.6)",
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": [],
+      "k_factor": 80.0
+    },
+    "N196": {
+      "id": "N196",
+      "coords": [
+        38.24628871064381,
+        29.625057955143152,
+        0.3
+      ],
+      "elevation_m": 0.3,
+      "type": "기본",
+      "type_id": "base",
+      "category_id": "",
+      "is_active": true,
+      "is_closed": false,
+      "k_factor_si": null,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": null,
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": []
+    },
+    "N39": {
+      "id": "N39",
+      "coords": [
+        38.24628871064381,
+        29.625057955143152,
+        0.6
+      ],
+      "elevation_m": 0.6,
+      "type": "Head",
+      "type_id": "head",
+      "category_id": "",
+      "is_active": false,
+      "is_closed": false,
+      "k_factor_si": 80.0,
+      "required_pressure_bar": 0.0,
+      "base_demand_lps": 0.0,
+      "fitting_id": null,
+      "head_spec_name": "80(5.6)",
+      "nozzle_name": null,
+      "pump_library_id": null,
+      "rated_q": 0.0,
+      "rated_p": 0.0,
+      "shutoff_p": 0.0,
+      "peak_q": 0.0,
+      "peak_p": 0.0,
+      "water_level": 0.0,
+      "pressure_setting_bar": null,
+      "loss_coefficient": 0.0,
+      "hole_diameter": 0.0,
+      "orifice_discharge_coeff": 0.65,
+      "is_check_valve": false,
+      "hose_stream_flow_lps": 6.666666666666667,
+      "pipe_dn": 0.0,
+      "check_valve_direction": "",
+      "has_check_valve": true,
+      "pump_curve_data": [],
+      "fdt_differential_ratio": 5.5,
+      "fdt_primary_water_gauge_bar": 5.0,
+      "fdt_p_initial_gauge_bar": 2.4,
+      "fdt_gas": "air",
+      "fdt_temp_c": 20.0,
+      "fdt_trip_pressure_gauge_bar": 0.0,
+      "fdt_interlock_mode": "single",
+      "fdt_accel_installed": true,
+      "fdt_accel_kind": "mechanical",
+      "fdt_accel_drop_bar": 0.3,
+      "fdt_accel_trip_time_s": 3.0,
+      "fdt_selected_head_ids": [],
+      "k_factor": 80.0
+    },
+    "NE60": {
+      "type_id": "base",
+      "type": "기본",
+      "category_id": "",
+      "id": "NE60",
+      "coords": [
+        16.69628392884995,
+        22.225057955143154,
+        0.0
+      ],
+      "elevation_m": 0.0
+    },
+    "NE61": {
+      "type_id": "head",
+      "type": "헤드",
+      "category_id": "",
+      "id": "NE61",
+      "coords": [
+        16.69628392884995,
+        22.225057955143154,
+        0.75
+      ],
+      "elevation_m": 0.75,
+      "k_factor_si": 80.78479913949035,
+      "head_spec_name": "SP-HEAD",
+      "required_pressure_bar": 2.206496246974332
+    }
+  },
+  "design_settings": {
+    "min_required_pressure_bar": 1.0,
+    "calculation_method": "H-W",
+    "roughness_mm": 0.1
+  },
+  "report_common": {
+    "design_area": "",
+    "company": "",
+    "project": "",
+    "date": "",
+    "notes": ""
+  },
+  "pipe_library": {
+    "version": "slf-authoritative",
+    "description": "Generated from 2. Pipenet_hand_FX28.slf",
+    "pipe_types": [
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 15,
+        "inner_d_mm": 16.4,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 20,
+        "inner_d_mm": 21.9,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 25,
+        "inner_d_mm": 27.5,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 32,
+        "inner_d_mm": 36.2,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 40,
+        "inner_d_mm": 42.1,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 50,
+        "inner_d_mm": 53.2,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 65,
+        "inner_d_mm": 69.0,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 80,
+        "inner_d_mm": 81.0,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 90,
+        "inner_d_mm": 93.5,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 100,
+        "inner_d_mm": 105.3,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 125,
+        "inner_d_mm": 130.1,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 150,
+        "inner_d_mm": 155.5,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 200,
+        "inner_d_mm": 204.6,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 250,
+        "inner_d_mm": 254.6,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3507 (SPP)",
+        "nominal_mm": 300,
+        "inner_d_mm": 304.5,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 20,
+        "inner_d_mm": 21.4,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 25,
+        "inner_d_mm": 27.2,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 32,
+        "inner_d_mm": 35.5,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 40,
+        "inner_d_mm": 41.2,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 50,
+        "inner_d_mm": 52.7,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 65,
+        "inner_d_mm": 65.9,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 80,
+        "inner_d_mm": 78.1,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 90,
+        "inner_d_mm": 90.2,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 100,
+        "inner_d_mm": 102.3,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 125,
+        "inner_d_mm": 126.6,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 150,
+        "inner_d_mm": 151.0,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 200,
+        "inner_d_mm": 199.9,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 250,
+        "inner_d_mm": 248.8,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "KSD3562 (SPPS)",
+        "nominal_mm": 300,
+        "inner_d_mm": 297.9,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 15,
+        "inner_d_mm": 17.5,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 20,
+        "inner_d_mm": 23.0,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 25,
+        "inner_d_mm": 28.4,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 32,
+        "inner_d_mm": 37.1,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 40,
+        "inner_d_mm": 43.0,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 50,
+        "inner_d_mm": 54.9,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 65,
+        "inner_d_mm": 70.3,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 80,
+        "inner_d_mm": 83.1,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 90,
+        "inner_d_mm": 95.6,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 100,
+        "inner_d_mm": 108.3,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 125,
+        "inner_d_mm": 133.0,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 150,
+        "inner_d_mm": 158.4,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 200,
+        "inner_d_mm": 208.3,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 250,
+        "inner_d_mm": 259.4,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "STS Sch10S (KS D 3576)",
+        "nominal_mm": 300,
+        "inner_d_mm": 309.5,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "DP",
+        "nominal_mm": 25,
+        "inner_d_mm": 25.0,
+        "roughness_mm": 0.04572,
+        "C": 120.0
+      },
+      {
+        "standard": "CPVC (KS M 3413)",
+        "nominal_mm": 25,
+        "inner_d_mm": 28.02,
+        "roughness_mm": 0.065,
+        "C": 150.0
+      },
+      {
+        "standard": "CPVC (KS M 3413)",
+        "nominal_mm": 32,
+        "inner_d_mm": 35.5,
+        "roughness_mm": 0.065,
+        "C": 150.0
+      },
+      {
+        "standard": "CPVC (KS M 3413)",
+        "nominal_mm": 40,
+        "inner_d_mm": 40.63,
+        "roughness_mm": 0.065,
+        "C": 150.0
+      },
+      {
+        "standard": "CPVC (KS M 3413)",
+        "nominal_mm": 50,
+        "inner_d_mm": 50.88,
+        "roughness_mm": 0.065,
+        "C": 150.0
+      },
+      {
+        "standard": "CPVC (KS M 3413)",
+        "nominal_mm": 65,
+        "inner_d_mm": 64.0,
+        "roughness_mm": 0.065,
+        "C": 150.0
+      },
+      {
+        "standard": "CPVC (KS M 3413)",
+        "nominal_mm": 80,
+        "inner_d_mm": 75.1,
+        "roughness_mm": 0.065,
+        "C": 150.0
+      },
+      {
+        "standard": "FX",
+        "nominal_mm": 25,
+        "inner_d_mm": 28.0,
+        "roughness_mm": 0.065,
+        "C": 120.0
+      }
+    ]
+  },
+  "nozzle_library": {
+    "schema_version": "2.0",
+    "categories": [
+      {
+        "category_id": "head",
+        "display_name": "Head",
+        "is_system_protected": true,
+        "type_id": "head",
+        "items": [
+          {
+            "id": "HEAD_20",
+            "display_name": "20(1.4)",
+            "K_SI": 20.0,
+            "K_US": 1.4,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_27",
+            "display_name": "27(1.9)",
+            "K_SI": 27.0,
+            "K_US": 1.9,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_40",
+            "display_name": "40(2.8)",
+            "K_SI": 40.0,
+            "K_US": 2.8,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_60",
+            "display_name": "60(4.2)",
+            "K_SI": 60.0,
+            "K_US": 4.2,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_80",
+            "display_name": "80(5.6)",
+            "K_SI": 80.0,
+            "K_US": 5.6,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_115",
+            "display_name": "115(8.0)",
+            "K_SI": 115.0,
+            "K_US": 8.0,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_160",
+            "display_name": "160(11.2)",
+            "K_SI": 160.0,
+            "K_US": 11.2,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_200",
+            "display_name": "200(14.0)",
+            "K_SI": 200.0,
+            "K_US": 14.0,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_240",
+            "display_name": "240(16.8)",
+            "K_SI": 240.0,
+            "K_US": 16.8,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_280",
+            "display_name": "280(19.6)",
+            "K_SI": 280.0,
+            "K_US": 19.6,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_320",
+            "display_name": "320(22.4)",
+            "K_SI": 320.0,
+            "K_US": 22.4,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_360",
+            "display_name": "360(25.2)",
+            "K_SI": 360.0,
+            "K_US": 25.2,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_400",
+            "display_name": "400(28.0)",
+            "K_SI": 400.0,
+            "K_US": 28.0,
+            "is_system_protected": true
+          },
+          {
+            "id": "HEAD_480",
+            "display_name": "480(33.6)",
+            "K_SI": 480.0,
+            "K_US": 33.6,
+            "is_system_protected": true
+          }
+        ]
+      },
+      {
+        "category_id": "water_spray",
+        "display_name": "Water Spray",
+        "is_system_protected": true,
+        "type_id": "nozzle",
+        "items": [
+          {
+            "id": "USER_NOZZLE_7AE4",
+            "display_name": "70L/min",
+            "K_val": 37.4,
+            "Q_lpm": 70.0,
+            "P_bar": 0.0,
+            "min_p": 2.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_NOZZLE_2D9C",
+            "display_name": "26L/min",
+            "K_val": 13.9,
+            "Q_lpm": 26.0,
+            "P_bar": 0.0,
+            "min_p": 2.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_NOZZLE_2193",
+            "display_name": "45L/min",
+            "K_val": 24.1,
+            "Q_lpm": 45.0,
+            "P_bar": 0.0,
+            "min_p": 2.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_NOZZLE_C761",
+            "display_name": "60L/min",
+            "K_val": 32.1,
+            "Q_lpm": 60.0,
+            "P_bar": 0.0,
+            "min_p": 2.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_NOZZLE_03AF",
+            "display_name": "85L/min",
+            "K_val": 45.4,
+            "Q_lpm": 85.0,
+            "P_bar": 0.0,
+            "min_p": 2.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_NOZZLE_65E5",
+            "display_name": "90L/min",
+            "K_val": 48.1,
+            "Q_lpm": 90.0,
+            "P_bar": 0.0,
+            "min_p": 2.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_NOZZLE_9C96",
+            "display_name": "102L/min",
+            "K_val": 54.5,
+            "Q_lpm": 102.0,
+            "P_bar": 0.0,
+            "min_p": 2.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_NOZZLE_A7C1",
+            "display_name": "120L/min",
+            "K_val": 64.1,
+            "Q_lpm": 120.0,
+            "P_bar": 0.0,
+            "min_p": 2.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_NOZZLE_2477",
+            "display_name": "140L/min",
+            "K_val": 74.8,
+            "Q_lpm": 140.0,
+            "P_bar": 0.0,
+            "min_p": 2.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_NOZZLE_3115",
+            "display_name": "180L/min",
+            "K_val": 96.2,
+            "Q_lpm": 180.0,
+            "P_bar": 0.0,
+            "min_p": 2.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_NOZZLE_3953",
+            "display_name": "127L/min",
+            "K_val": 67.9,
+            "Q_lpm": 127.0,
+            "P_bar": 0.0,
+            "min_p": 2.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          }
+        ]
+      },
+      {
+        "category_id": "hose_nozzle",
+        "display_name": "Hose Nozzle",
+        "is_system_protected": true,
+        "type_id": "nozzle",
+        "items": [
+          {
+            "id": "USER_HOSENOZZ_7BA4",
+            "display_name": "40A Y",
+            "K_val": 103.9,
+            "Q_lpm": 135.5,
+            "P_bar": 0.0,
+            "min_p": 1.7,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_HOSENOZZ_ECFC",
+            "display_name": "40A SL10S",
+            "K_val": 118.3,
+            "Q_lpm": 154.2,
+            "P_bar": 0.0,
+            "min_p": 1.7,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_HOSENOZZ_00EC",
+            "display_name": "65A SL11A",
+            "K_val": 219.2,
+            "Q_lpm": 410.0,
+            "P_bar": 0.0,
+            "min_p": 3.5,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_HOSENOZZ_35F7",
+            "display_name": "65A Y",
+            "K_val": 248.3,
+            "Q_lpm": 465.5,
+            "P_bar": 0.0,
+            "min_p": 3.5,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_HOSENOZZ_C452",
+            "display_name": "65A SL11S",
+            "K_val": 236.2,
+            "Q_lpm": 441.9,
+            "P_bar": 0.0,
+            "min_p": 3.5,
+            "type": "FIXED",
+            "is_system_protected": false
+          },
+          {
+            "id": "USER_HOSENOZZ_3267",
+            "display_name": "Monitor a",
+            "K_val": 718.0,
+            "Q_lpm": 1900.0,
+            "P_bar": 0.0,
+            "min_p": 7.0,
+            "type": "FIXED",
+            "is_system_protected": false
+          }
+        ]
+      },
+      {
+        "category_id": "etc",
+        "display_name": "Etc",
+        "is_system_protected": false,
+        "type_id": "nozzle",
+        "color_rgb": [
+          255,
+          20,
+          147
+        ],
+        "items": []
+      }
+    ]
+  },
+  "pump_library": {
+    "pumps": []
+  },
+  "pipe_sizing_library": {},
+  "fittings_library_v3": [
+    {
+      "id": "ELBOW_45",
+      "name_ko": "45도 엘보",
+      "name_en": "45deg Elbow",
+      "category": "elbow_45",
+      "source": {
+        "kind": "NFPA13",
+        "edition": "2025",
+        "table": "28.2.4.4.1"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": 0.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": 0.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": 0.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": 0.6,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 0.6,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 0.9,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 0.9,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 1.2,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 1.5,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 2.1,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 2.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 3.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "300": {
+          "value": 4.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-04T00:00:00+00:00",
+        "updated_by": "system",
+        "revision": 1
+      }
+    },
+    {
+      "id": "ELBOW_90_STD",
+      "name_ko": "90도 표준 엘보",
+      "name_en": "90deg Standard Elbow",
+      "category": "elbow_90_standard",
+      "source": {
+        "kind": "NFPA13",
+        "edition": "2025",
+        "table": "28.2.4.4.1"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": 0.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": 0.6,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": 0.6,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": 0.9,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": 1.2,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 1.5,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 1.8,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 2.1,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 3.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 3.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 4.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 5.5,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 6.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "300": {
+          "value": 8.2,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": 9.0,
+          "origin": "USER_OVERRIDE",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:15:01+00:00",
+          "updated_by": "local"
+        },
+        "400": {
+          "value": 10.3,
+          "origin": "USER_OVERRIDE",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:15:04+00:00",
+          "updated_by": "local"
+        }
+      },
+      "notes": "",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-08T09:15:04+00:00",
+        "updated_by": "local",
+        "revision": 3
+      }
+    },
+    {
+      "id": "ELBOW_90_LONG",
+      "name_ko": "90도 롱턴 엘보",
+      "name_en": "90deg Long-Turn Elbow",
+      "category": "elbow_90_long",
+      "source": {
+        "kind": "NFPA13",
+        "edition": "2025",
+        "table": "28.2.4.4.1"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": 0.2,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": 0.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": 0.6,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": 0.6,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": 0.6,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 0.9,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 1.2,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 1.5,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 1.8,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 2.4,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 2.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 4.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 4.9,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "300": {
+          "value": 5.5,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-07T10:48:03+00:00",
+        "updated_by": "local",
+        "revision": 2
+      }
+    },
+    {
+      "id": "TEE_BRANCH",
+      "name_ko": "티 분기 (90도)",
+      "name_en": "Tee or Cross (Flow Turned 90deg)",
+      "category": "tee_branch_90",
+      "source": {
+        "kind": "NFPA13",
+        "edition": "2025",
+        "table": "28.2.4.4.1"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": 0.9,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": 1.2,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": 1.5,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": 1.8,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": 2.4,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 3.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 3.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 4.6,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 6.1,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 7.6,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 9.1,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 10.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 15.2,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "300": {
+          "value": 18.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": 20.1,
+          "origin": "USER_OVERRIDE",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:15:59+00:00",
+          "updated_by": "local"
+        },
+        "400": {
+          "value": 23.0,
+          "origin": "USER_OVERRIDE",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:16:03+00:00",
+          "updated_by": "local"
+        }
+      },
+      "notes": "",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-08T09:16:03+00:00",
+        "updated_by": "local",
+        "revision": 4
+      }
+    },
+    {
+      "id": "VALVE_BUTTERFLY",
+      "name_ko": "버터플라이 밸브",
+      "name_en": "Butterfly Valve",
+      "category": "butterfly_valve",
+      "source": {
+        "kind": "NFPA13",
+        "edition": "2025",
+        "table": "28.2.4.4.1"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 1.8,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 2.1,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 3.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 3.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 2.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 3.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 3.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 5.8,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "300": {
+          "value": 6.4,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-04T00:00:00+00:00",
+        "updated_by": "system",
+        "revision": 1
+      }
+    },
+    {
+      "id": "VALVE_GATE",
+      "name_ko": "게이트 밸브",
+      "name_en": "Gate Valve",
+      "category": "gate_valve",
+      "source": {
+        "kind": "NFPA13",
+        "edition": "2025",
+        "table": "28.2.4.4.1"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 0.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 0.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 0.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 0.6,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 0.6,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 0.9,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 1.2,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 1.5,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "300": {
+          "value": 1.8,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-07T10:48:00+00:00",
+        "updated_by": "local",
+        "revision": 2
+      }
+    },
+    {
+      "id": "VALVE_FLOW_SWITCH",
+      "name_ko": "베인형 유수검지장치",
+      "name_en": "Vane-Type Flow Switch",
+      "category": "flow_switch_vane",
+      "source": {
+        "kind": "NFPA13",
+        "edition": "2025",
+        "table": "28.2.4.4.1"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": 1.8,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": 2.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": 3.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 4.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 5.2,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 6.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 9.1,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "125": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 4.9,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 6.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 8.8,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "300": {
+          "value": 11.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-04T00:00:00+00:00",
+        "updated_by": "system",
+        "revision": 1
+      }
+    },
+    {
+      "id": "VALVE_SWING_CHECK",
+      "name_ko": "스윙 체크 밸브",
+      "name_en": "Swing Check Valve",
+      "category": "swing_check",
+      "source": {
+        "kind": "NFPA13",
+        "edition": "2025",
+        "table": "28.2.4.4.1"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": 1.5,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": 2.1,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": 2.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 3.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 4.3,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 4.9,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 6.7,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 8.2,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 10.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 14.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 17.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "300": {
+          "value": 20.0,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "NFPA_ORIGINAL",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-07T10:40:03+00:00",
+        "updated_by": "local",
+        "revision": 2
+      }
+    },
+    {
+      "id": "VALVE_ALARM",
+      "name_ko": "알람 밸브",
+      "name_en": "Alarm Valve",
+      "category": "alarm_valve",
+      "source": {
+        "kind": "USER",
+        "note": "사용자 직접 입력 필요"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 4.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:43:27+00:00",
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 6.8,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:43:41+00:00",
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 9.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:43:52+00:00",
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 13.0,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:44:08+00:00",
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 16.6,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:44:18+00:00",
+          "updated_by": "local"
+        },
+        "200": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "250": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "300": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-07T10:44:18+00:00",
+        "updated_by": "local",
+        "revision": 6
+      }
+    },
+    {
+      "id": "VALVE_PREACTION",
+      "name_ko": "준비작동식 밸브",
+      "name_en": "Preaction Valve",
+      "category": "preaction_valve",
+      "source": {
+        "kind": "USER",
+        "note": "사용자 직접 입력 필요"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 4.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:52:02+00:00",
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 6.8,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:52:41+00:00",
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 9.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:52:46+00:00",
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 13.0,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:52:49+00:00",
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 16.6,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:52:54+00:00",
+          "updated_by": "local"
+        },
+        "200": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:04:15+00:00",
+          "updated_by": "local"
+        },
+        "250": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:05:11+00:00",
+          "updated_by": "local"
+        },
+        "300": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-08T09:05:11+00:00",
+        "updated_by": "local",
+        "revision": 10
+      }
+    },
+    {
+      "id": "VALVE_DRY",
+      "name_ko": "건식 밸브",
+      "name_en": "Dry Pipe Valve",
+      "category": "dry_pipe_valve",
+      "source": {
+        "kind": "USER",
+        "note": "사용자 직접 입력 필요"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 4.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:52:00+00:00",
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 6.8,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:52:22+00:00",
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 9.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:52:28+00:00",
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 13.0,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:52:32+00:00",
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 16.6,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:52:36+00:00",
+          "updated_by": "local"
+        },
+        "200": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "250": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "300": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-07T10:52:36+00:00",
+        "updated_by": "local",
+        "revision": 6
+      }
+    },
+    {
+      "id": "VALVE_SMOLENSKY_CHECK",
+      "name_ko": "스모렌스키 체크밸브",
+      "name_en": "Smolensky Check Valve",
+      "category": "smolensky_check",
+      "source": {
+        "kind": "USER",
+        "note": "사용자 직접 입력 필요"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": 24.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:00:39+00:00",
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 31.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T08:57:29+00:00",
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 37.6,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T08:58:06+00:00",
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 46.8,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T08:58:17+00:00",
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 61.4,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T08:58:27+00:00",
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 76.9,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T08:58:40+00:00",
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 92.4,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T08:58:52+00:00",
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 121.6,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T08:59:04+00:00",
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 152.7,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T08:59:15+00:00",
+          "updated_by": "local"
+        },
+        "300": {
+          "value": 181.9,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T08:59:27+00:00",
+          "updated_by": "local"
+        },
+        "350": {
+          "value": 201.9,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T08:59:38+00:00",
+          "updated_by": "local"
+        },
+        "400": {
+          "value": 232.4,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T08:59:51+00:00",
+          "updated_by": "local"
+        }
+      },
+      "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-08T09:00:39+00:00",
+        "updated_by": "local",
+        "revision": 13
+      }
+    },
+    {
+      "id": "VALVE_GLOBE",
+      "name_ko": "글로브 밸브",
+      "name_en": "Globe Valve",
+      "category": "globe_valve",
+      "source": {
+        "kind": "USER",
+        "note": "사용자 직접 입력 필요"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": 5.4,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:01:03+00:00",
+          "updated_by": "local"
+        },
+        "20": {
+          "value": 7.1,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:01:13+00:00",
+          "updated_by": "local"
+        },
+        "25": {
+          "value": 9.1,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:01:23+00:00",
+          "updated_by": "local"
+        },
+        "32": {
+          "value": 11.9,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:01:37+00:00",
+          "updated_by": "local"
+        },
+        "40": {
+          "value": 13.9,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:01:45+00:00",
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 17.9,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:01:54+00:00",
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 21.3,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:02:05+00:00",
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 26.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:02:18+00:00",
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 34.8,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:02:28+00:00",
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 43.6,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:02:38+00:00",
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 52.4,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:04:10+00:00",
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 68.9,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:05:04+00:00",
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 86.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:06:00+00:00",
+          "updated_by": "local"
+        },
+        "300": {
+          "value": 103.1,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:06:12+00:00",
+          "updated_by": "local"
+        },
+        "350": {
+          "value": 114.4,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:06:32+00:00",
+          "updated_by": "local"
+        },
+        "400": {
+          "value": 131.7,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-08T09:06:43+00:00",
+          "updated_by": "local"
+        }
+      },
+      "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-08T09:06:43+00:00",
+        "updated_by": "local",
+        "revision": 18
+      }
+    },
+    {
+      "id": "VALVE_ANGLE",
+      "name_ko": "앵글 밸브",
+      "name_en": "Angle Valve",
+      "category": "angle_valve",
+      "source": {
+        "kind": "USER",
+        "note": "사용자 직접 입력 필요"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": 4.0,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:42:18+00:00",
+          "updated_by": "local"
+        },
+        "32": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": 6.1,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:42:41+00:00",
+          "updated_by": "local"
+        },
+        "50": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 9.4,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:42:57+00:00",
+          "updated_by": "local"
+        },
+        "80": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:43:38+00:00",
+          "updated_by": "local"
+        },
+        "100": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "125": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "150": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "200": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "250": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "300": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-07T10:43:38+00:00",
+        "updated_by": "local",
+        "revision": 5
+      }
+    },
+    {
+      "id": "VALVE_BALL",
+      "name_ko": "볼 밸브",
+      "name_en": "Ball Valve",
+      "category": "ball_valve",
+      "source": {
+        "kind": "USER",
+        "note": "사용자 직접 입력 필요"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "32": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "40": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 0.3,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T11:25:00+00:00",
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 0.3,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T11:25:05+00:00",
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 0.3,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T11:25:08+00:00",
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 0.6,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T11:25:13+00:00",
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 0.6,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T11:25:18+00:00",
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 0.9,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T11:25:21+00:00",
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 1.2,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T11:25:25+00:00",
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 1.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T11:25:28+00:00",
+          "updated_by": "local"
+        },
+        "300": {
+          "value": 1.8,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T11:25:31+00:00",
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "NFPA 13 표 외 항목. 모든 DN 등가길이를 직접 입력하십시오.",
+      "audit": {
+        "created_at": "2026-05-04T00:00:00+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-07T11:25:31+00:00",
+        "updated_by": "local",
+        "revision": 10
+      }
+    },
+    {
+      "id": "bc507eb488a846c7ae08d1754d257594",
+      "name_ko": "스트레이너",
+      "name_en": "Strainer",
+      "category": "strainer",
+      "source": {
+        "kind": "USER",
+        "note": "user-added"
+      },
+      "equivalent_lengths": {
+        "15": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "20": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "25": {
+          "value": 8.3,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:45:57+00:00",
+          "updated_by": "local"
+        },
+        "32": {
+          "value": 8.8,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:46:07+00:00",
+          "updated_by": "local"
+        },
+        "40": {
+          "value": 10.0,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:46:16+00:00",
+          "updated_by": "local"
+        },
+        "50": {
+          "value": 13.7,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:48:06+00:00",
+          "updated_by": "local"
+        },
+        "65": {
+          "value": 13.2,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:46:59+00:00",
+          "updated_by": "local"
+        },
+        "80": {
+          "value": 23.4,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:47:04+00:00",
+          "updated_by": "local"
+        },
+        "100": {
+          "value": 29.7,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:47:12+00:00",
+          "updated_by": "local"
+        },
+        "125": {
+          "value": 36.5,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:47:20+00:00",
+          "updated_by": "local"
+        },
+        "150": {
+          "value": 46.7,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:47:28+00:00",
+          "updated_by": "local"
+        },
+        "200": {
+          "value": 84.2,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:47:58+00:00",
+          "updated_by": "local"
+        },
+        "250": {
+          "value": 147.4,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": "2026-05-07T10:47:54+00:00",
+          "updated_by": "local"
+        },
+        "300": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "350": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        },
+        "400": {
+          "value": null,
+          "origin": "USER_FILLED",
+          "original_value": null,
+          "updated_at": null,
+          "updated_by": "local"
+        }
+      },
+      "notes": "",
+      "audit": {
+        "created_at": "2026-05-07T10:45:45+00:00",
+        "created_by": "system",
+        "updated_at": "2026-05-07T10:48:06+00:00",
+        "updated_by": "local",
+        "revision": 16
+      }
+    }
+  ],
+  "version": "4.0-NFPA13-EQL",
+  "grid_step": 1e-06
+}

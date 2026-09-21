@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "base": "f37e1739c5ba7d3d490d82efcb1f97cd2d77187de82662b68f850c7b11651806",
+  "commands": [],
+  "library": "89000576ed6769e2add7696d28ab1ced19f52db5bdf6c03edc4d8e421261130b",
+  "cursor": 0,
+  "drawing": "1. 입력도면 대명동 단위세대 평면도",
+  "scope": "design",
+  "saved_at": "2026-09-20T06:00:11.959449+00:00"
+}

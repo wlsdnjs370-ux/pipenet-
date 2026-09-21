@@ -1,0 +1,1356 @@
+{
+  "source": "소방시스템 4월1주차(260404).pptx",
+  "sha256": "bc2f8f485714af45e08c7b2165e7a83c4e5b19a6fe2a139aebef5fc65d246f58",
+  "slides": [
+    {
+      "slide": 26,
+      "text": [
+        "심볼  ",
+        "SYMBOL",
+        " ",
+        "스프링클러 헤드 종류",
+        "Sprinkler head ",
+        "type  ",
+        "이미지 ",
+        "IMAGE",
+        "상향식 헤드 ",
+        "72",
+        "℃",
+        "UPRIGHT SPRINKLER HEAD ",
+        "72",
+        "℃",
+        "상 ",
+        "· ",
+        "하향식 헤드 ",
+        "72",
+        "℃",
+        "UPRIGHT · PENDENT SPRINKLER HEAD ",
+        "72℃",
+        "하향식 헤드 ",
+        "72",
+        "℃",
+        "PENDENT SPRINKLER HEAD 72",
+        "℃",
+        " ",
+        "하향식 헤드 ",
+        "103",
+        "℃",
+        "PENDENT SPRINKLER HEAD 103",
+        "℃",
+        " ",
+        "상 ",
+        "· ",
+        "하향식 헤드 ",
+        "72",
+        "℃",
+        "UPRIGHT · PENDENT SPRINKLER HEAD ",
+        "72℃",
+        "측벽식",
+        " 헤드 ",
+        "72",
+        "℃",
+        "HORIZONTAL SIDE WALL HEAD ",
+        "72",
+        "℃",
+        "■ 스프링클러 헤드 종류 ",
+        "Sprinkler head ",
+        "type  "
+      ],
+      "pictures": [
+        {
+          "media": "image37.png",
+          "crop_percent_1000": {
+            "l": "8272",
+            "t": "69717",
+            "r": "10009",
+            "b": "19662"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"1582375\" y=\"5940261\" /><ns0:ext cx=\"1273620\" cy=\"587484\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image37.png",
+          "crop_percent_1000": {
+            "l": "8849",
+            "t": "51661",
+            "r": "9432",
+            "b": "35780"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"1582964\" y=\"5228264\" /><ns0:ext cx=\"1273620\" cy=\"521082\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image37.png",
+          "crop_percent_1000": {
+            "l": "8296",
+            "t": "19158",
+            "r": "9148",
+            "b": "73476"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"1536175\" y=\"3057994\" /><ns0:ext cx=\"1320408\" cy=\"476555\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image37.png",
+          "crop_percent_1000": {
+            "l": "8107",
+            "t": "3180",
+            "r": "9757",
+            "b": "89750"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"1551115\" y=\"2335656\" /><ns0:ext cx=\"1238418\" cy=\"431186\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image42.png",
+          "crop_percent_1000": {
+            "l": "10431",
+            "t": "5251",
+            "r": "6051",
+            "b": "8114"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9194346\" y=\"3773468\" /><ns0:ext cx=\"432348\" cy=\"493212\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image43.jpeg",
+          "crop_percent_1000": {
+            "l": "9685",
+            "t": "996",
+            "r": "6584",
+            "b": "3671"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9218308\" y=\"3005107\" /><ns0:ext cx=\"424139\" cy=\"565671\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image43.jpeg",
+          "crop_percent_1000": {
+            "l": "9685",
+            "t": "996",
+            "r": "6584",
+            "b": "3671"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9626146\" y=\"2251694\" /><ns0:ext cx=\"424139\" cy=\"565671\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image44.png",
+          "crop_percent_1000": {
+            "l": "7457",
+            "r": "4473",
+            "b": "4170"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10083496\" y=\"3794822\" /><ns0:ext cx=\"432348\" cy=\"493213\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image42.png",
+          "crop_percent_1000": {
+            "l": "10431",
+            "t": "5251",
+            "r": "6051",
+            "b": "8114"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10082340\" y=\"3032948\" /><ns0:ext cx=\"432348\" cy=\"493212\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image45.jpeg",
+          "crop_percent_1000": {
+            "l": "8004",
+            "r": "9302",
+            "b": "2558"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\" rot=\"10800000\"><ns0:off x=\"9626694\" y=\"4450297\" /><ns0:ext cx=\"423591\" cy=\"565671\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image46.PNG",
+          "crop_percent_1000": {
+            "l": "9999",
+            "t": "7517",
+            "r": "4927",
+            "b": "18794"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\" rot=\"10800000\" flipH=\"1\" flipV=\"1\"><ns0:off x=\"9430377\" y=\"5991259\" /><ns0:ext cx=\"845643\" cy=\"397628\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image43.jpeg",
+          "crop_percent_1000": {
+            "l": "9685",
+            "t": "996",
+            "r": "6584",
+            "b": "3671"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9214204\" y=\"5180274\" /><ns0:ext cx=\"424139\" cy=\"565671\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image42.png",
+          "crop_percent_1000": {
+            "l": "10431",
+            "t": "5251",
+            "r": "6051",
+            "b": "8114"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10078236\" y=\"5208115\" /><ns0:ext cx=\"432348\" cy=\"493212\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image37.png",
+          "crop_percent_1000": {
+            "l": "9293",
+            "t": "35432",
+            "r": "8989",
+            "b": "52009"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"1582374\" y=\"3709609\" /><ns0:ext cx=\"1265819\" cy=\"596525\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image37.png",
+          "crop_percent_1000": {
+            "l": "10169",
+            "t": "84445",
+            "r": "8988",
+            "b": "2996"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"1599153\" y=\"4434701\" /><ns0:ext cx=\"1249041\" cy=\"657976\" /></ns0:xfrm>"
+        }
+      ],
+      "native_shapes": [
+        {
+          "id": "5",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"0\" y=\"0\" /><ns0:ext cx=\"12192000\" cy=\"457200\" /></ns0:xfrm>"
+        },
+        {
+          "id": "31",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242474\" y=\"861313\" /><ns0:ext cx=\"10849420\" cy=\"461665\" /></ns0:xfrm>"
+        }
+      ]
+    },
+    {
+      "slide": 27,
+      "text": [
+        "■ 천장이 없을 경우",
+        "-1",
+        "  ",
+        "No ceiling-1",
+        "상향식 헤드",
+        "UPRIGHT ",
+        "SPRINKLER HEAD",
+        "콘크리트 ",
+        "슬래브",
+        " ",
+        " ",
+        "Concrete slab",
+        "바닥",
+        " ",
+        "Floor",
+        "스프링클러헤드 설치방법"
+      ],
+      "pictures": [
+        {
+          "media": "image47.PNG",
+          "crop_percent_1000": {},
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"780603\" y=\"1896548\" /><ns0:ext cx=\"10268534\" cy=\"4342091\" /></ns0:xfrm>"
+        }
+      ],
+      "native_shapes": [
+        {
+          "id": "5",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"0\" y=\"0\" /><ns0:ext cx=\"12192000\" cy=\"457200\" /></ns0:xfrm>"
+        },
+        {
+          "id": "12",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242474\" y=\"861313\" /><ns0:ext cx=\"10849420\" cy=\"461665\" /></ns0:xfrm>"
+        },
+        {
+          "id": "17",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"2146580\" y=\"3184370\" /><ns0:ext cx=\"3332438\" cy=\"900000\" /></ns0:xfrm>"
+        },
+        {
+          "id": "18",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5739078\" y=\"2068562\" /><ns0:ext cx=\"5310059\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "19",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5739077\" y=\"5733002\" /><ns0:ext cx=\"2482133\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "15",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4295667\" y=\"457685\" /><ns0:ext cx=\"3600665\" cy=\"461665\" /></ns0:xfrm>"
+        }
+      ]
+    },
+    {
+      "slide": 28,
+      "text": [
+        "■ 천장이 없을 경우",
+        "-2",
+        "  ",
+        "No ceiling-2",
+        "   ",
+        ": ",
+        "기계실 ",
+        "Machine ",
+        "room ",
+        ", ",
+        "휀룸",
+        "(",
+        "팬룸",
+        ") ",
+        "Fan room",
+        "콘크리트 ",
+        "슬래브",
+        " ",
+        " ",
+        "Concrete slab",
+        "바닥",
+        " ",
+        "Floor",
+        " ",
+        "상향식 헤드",
+        "UPRIGHT ",
+        "SPRINKLER HEAD",
+        "하향식 헤드",
+        "PENDENT ",
+        "SPRINKLER HEAD",
+        "스프링클러헤드 설치방법"
+      ],
+      "pictures": [
+        {
+          "media": "image48.png",
+          "crop_percent_1000": {
+            "l": "1970",
+            "t": "2323",
+            "b": "8247"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"780604\" y=\"2298583\" /><ns0:ext cx=\"10630792\" cy=\"3896000\" /></ns0:xfrm>"
+        }
+      ],
+      "native_shapes": [
+        {
+          "id": "17",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242474\" y=\"861313\" /><ns0:ext cx=\"10849420\" cy=\"1061829\" /></ns0:xfrm>"
+        },
+        {
+          "id": "22",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"6881942\" y=\"2344762\" /><ns0:ext cx=\"4711644\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "24",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"6881942\" y=\"5827410\" /><ns0:ext cx=\"2482133\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "27",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"410059\" y=\"3913840\" /><ns0:ext cx=\"3332438\" cy=\"900000\" /></ns0:xfrm>"
+        },
+        {
+          "id": "29",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"6031637\" y=\"4159021\" /><ns0:ext cx=\"3332438\" cy=\"900000\" /></ns0:xfrm>"
+        },
+        {
+          "id": "21",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4295667\" y=\"457685\" /><ns0:ext cx=\"3600665\" cy=\"461665\" /></ns0:xfrm>"
+        }
+      ]
+    },
+    {
+      "slide": 29,
+      "text": [
+        "■ 천장이 있을 ",
+        "경우  ",
+        "Ceiling",
+        "콘크리트 ",
+        "슬래브",
+        " ",
+        " ",
+        "Concrete slab",
+        "바닥",
+        " ",
+        "Floor",
+        " ",
+        "하향식 헤드",
+        "PENDENT ",
+        "SPRINKLER HEAD",
+        "천장",
+        "(",
+        "반자",
+        ")",
+        " ",
+        " ",
+        "Ceiling",
+        " ",
+        "스프링클러헤드 설치방법"
+      ],
+      "pictures": [
+        {
+          "media": "image49.PNG",
+          "crop_percent_1000": {
+            "l": "937",
+            "t": "5840",
+            "b": "5840"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"780603\" y=\"1922344\" /><ns0:ext cx=\"10494198\" cy=\"4271470\" /></ns0:xfrm>"
+        }
+      ],
+      "native_shapes": [
+        {
+          "id": "12",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242474\" y=\"861313\" /><ns0:ext cx=\"10849420\" cy=\"461665\" /></ns0:xfrm>"
+        },
+        {
+          "id": "27",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"6750839\" y=\"1084144\" /><ns0:ext cx=\"736600\" cy=\"838200\" /></ns0:xfrm>"
+        },
+        {
+          "id": "18",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5767185\" y=\"1967984\" /><ns0:ext cx=\"5507615\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "20",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5878072\" y=\"5819021\" /><ns0:ext cx=\"2482133\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "21",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4790569\" y=\"3906201\" /><ns0:ext cx=\"3850091\" cy=\"900000\" /></ns0:xfrm>"
+        },
+        {
+          "id": "22",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5822289\" y=\"3098738\" /><ns0:ext cx=\"3506269\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "16",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4295667\" y=\"457685\" /><ns0:ext cx=\"3600665\" cy=\"461665\" /></ns0:xfrm>"
+        }
+      ]
+    },
+    {
+      "slide": 30,
+      "text": [
+        "■ ",
+        "천장속",
+        " ",
+        "2M",
+        " 넘을 경우  ",
+        "Inside the ceiling ",
+        "over 2M",
+        "Đầu hướng lên",
+        "콘크리트 ",
+        "슬래브",
+        " ",
+        " ",
+        "Concrete ",
+        "slab ",
+        "바닥",
+        " ",
+        "Floor",
+        " ",
+        "천장",
+        "(",
+        "반자",
+        ")",
+        " ",
+        " ",
+        "Ceiling",
+        " ",
+        "하향식 헤드",
+        "PENDENT ",
+        "SPRINKLER HEAD",
+        "상향식 헤드",
+        "UPRIGHT ",
+        "SPRINKLER HEAD",
+        "천장속",
+        " ",
+        " ",
+        "Inside the ",
+        "ceiling",
+        " ",
+        "천장 속 ",
+        "2M ",
+        "이상",
+        "Inside the ceiling ",
+        "over 2M",
+        "스프링클러헤드 설치방법"
+      ],
+      "pictures": [
+        {
+          "media": "image50.PNG",
+          "crop_percent_1000": {
+            "l": "833",
+            "t": "9965",
+            "b": "7575"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"780604\" y=\"1845092\" /><ns0:ext cx=\"10494197\" cy=\"4342087\" /></ns0:xfrm>"
+        }
+      ],
+      "native_shapes": [
+        {
+          "id": "18",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242474\" y=\"861313\" /><ns0:ext cx=\"10849420\" cy=\"461665\" /></ns0:xfrm>"
+        },
+        {
+          "id": "27",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"2986695\" y=\"4312980\" /><ns0:ext cx=\"2285302\" cy=\"369332\" /></ns0:xfrm>"
+        },
+        {
+          "id": "43",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7193314\" y=\"1988237\" /><ns0:ext cx=\"4551273\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "44",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7193314\" y=\"5743520\" /><ns0:ext cx=\"2482133\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "46",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7119138\" y=\"3090446\" /><ns0:ext cx=\"3506269\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "47",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"6509334\" y=\"3905503\" /><ns0:ext cx=\"3850091\" cy=\"900000\" /></ns0:xfrm>"
+        },
+        {
+          "id": "48",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"1320476\" y=\"3697138\" /><ns0:ext cx=\"3332438\" cy=\"1060675\" /></ns0:xfrm>"
+        },
+        {
+          "id": "49",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7316825\" y=\"2556389\" /><ns0:ext cx=\"4551273\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "50",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"187306\" y=\"2267772\" /><ns0:ext cx=\"3145131\" cy=\"1060675\" /></ns0:xfrm>"
+        },
+        {
+          "id": "25",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4295667\" y=\"457685\" /><ns0:ext cx=\"3600665\" cy=\"461665\" /></ns0:xfrm>"
+        }
+      ]
+    },
+    {
+      "slide": 31,
+      "text": [
+        "상향식 헤드",
+        "UPRIGHT ",
+        "SPRINKLER HE",
+        "AD",
+        "기둥",
+        "(",
+        "보",
+        ")",
+        "Pillar",
+        "A",
+        "A",
+        "■ 천장이 없을 경우",
+        "-1",
+        "  ",
+        "No ceiling-1",
+        "스프링클러헤드 설치방법"
+      ],
+      "pictures": [
+        {
+          "media": "image51.png",
+          "crop_percent_1000": {
+            "l": "6716",
+            "t": "3147",
+            "r": "5057",
+            "b": "7115"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"866771\" y=\"1988190\" /><ns0:ext cx=\"3772431\" cy=\"4127385\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image52.PNG",
+          "crop_percent_1000": {
+            "l": "8585",
+            "t": "5546",
+            "r": "12608",
+            "b": "4066"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7366000\" y=\"1302974\" /><ns0:ext cx=\"4248595\" cy=\"3015025\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image53.jpeg",
+          "crop_percent_1000": {
+            "l": "8642",
+            "t": "8666",
+            "r": "14063",
+            "b": "17440"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"8648348\" y=\"4407239\" /><ns0:ext cx=\"2127251\" cy=\"2033693\" /></ns0:xfrm>"
+        }
+      ],
+      "native_shapes": [
+        {
+          "id": "5",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"0\" y=\"0\" /><ns0:ext cx=\"12192000\" cy=\"457200\" /></ns0:xfrm>"
+        },
+        {
+          "id": "35",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9233906\" y=\"1604941\" /><ns0:ext cx=\"812046\" cy=\"1003245\" /></ns0:xfrm>"
+        },
+        {
+          "id": "36",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10775599\" y=\"3297868\" /><ns0:ext cx=\"689678\" cy=\"1059911\" /></ns0:xfrm>"
+        },
+        {
+          "id": "37",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9546671\" y=\"3753051\" /><ns0:ext cx=\"1415261\" cy=\"320859\" /></ns0:xfrm>"
+        },
+        {
+          "id": "19",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"2380608\" y=\"3692751\" /><ns0:ext cx=\"711200\" cy=\"698500\" /></ns0:xfrm>"
+        },
+        {
+          "id": "39",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4667025\" y=\"3083382\" /><ns0:ext cx=\"2916160\" cy=\"861774\" /></ns0:xfrm>"
+        },
+        {
+          "id": "43",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"3968749\" y=\"5414208\" /><ns0:ext cx=\"672875\" cy=\"714067\" /></ns0:xfrm>"
+        },
+        {
+          "id": "44",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5102575\" y=\"5360242\" /><ns0:ext cx=\"1012475\" cy=\"584775\" /></ns0:xfrm>"
+        },
+        {
+          "id": "47",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7197763\" y=\"2928481\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "48",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7478538\" y=\"2902713\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "49",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9153194\" y=\"4500640\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "50",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9433969\" y=\"4474872\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "40",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242474\" y=\"861313\" /><ns0:ext cx=\"10849420\" cy=\"461665\" /></ns0:xfrm>"
+        },
+        {
+          "id": "41",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4295667\" y=\"457685\" /><ns0:ext cx=\"3600665\" cy=\"461665\" /></ns0:xfrm>"
+        }
+      ]
+    },
+    {
+      "slide": 32,
+      "text": [
+        "`",
+        "상",
+        ".",
+        "하향식 헤드",
+        "UPRIGHT.PENDENT ",
+        "SPRINKLER HEAD",
+        "기둥",
+        "(",
+        "보",
+        ")",
+        "Pillar",
+        "A",
+        "A",
+        "B",
+        "B",
+        "■ 천장이 없을 경우",
+        "-2",
+        "  ",
+        "No ceiling-2",
+        "스프링클러헤드 설치방법"
+      ],
+      "pictures": [
+        {
+          "media": "image54.png",
+          "crop_percent_1000": {
+            "l": "8083",
+            "t": "5740",
+            "r": "13869",
+            "b": "6271"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"866771\" y=\"1988190\" /><ns0:ext cx=\"3772431\" cy=\"4127385\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image55.PNG",
+          "crop_percent_1000": {
+            "l": "3509",
+            "r": "30471",
+            "b": "7075"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7994605\" y=\"1206500\" /><ns0:ext cx=\"4018014\" cy=\"2790320\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image56.jpg",
+          "crop_percent_1000": {
+            "l": "1299",
+            "t": "5238",
+            "r": "28794",
+            "b": "6036"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9252356\" y=\"4407239\" /><ns0:ext cx=\"2127251\" cy=\"2030967\" /></ns0:xfrm>"
+        }
+      ],
+      "native_shapes": [
+        {
+          "id": "5",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"0\" y=\"0\" /><ns0:ext cx=\"12192000\" cy=\"457200\" /></ns0:xfrm>"
+        },
+        {
+          "id": "37",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7505499\" y=\"1084144\" /><ns0:ext cx=\"736600\" cy=\"838200\" /></ns0:xfrm>"
+        },
+        {
+          "id": "38",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"11582400\" y=\"2900244\" /><ns0:ext cx=\"506420\" cy=\"838200\" /></ns0:xfrm>"
+        },
+        {
+          "id": "39",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10987914\" y=\"3141544\" /><ns0:ext cx=\"506420\" cy=\"838200\" /></ns0:xfrm>"
+        },
+        {
+          "id": "40",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9754150\" y=\"1548387\" /><ns0:ext cx=\"903445\" cy=\"1053273\" /></ns0:xfrm>"
+        },
+        {
+          "id": "27",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"2380608\" y=\"3703109\" /><ns0:ext cx=\"711200\" cy=\"698500\" /></ns0:xfrm>"
+        },
+        {
+          "id": "29",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4449354\" y=\"3072117\" /><ns0:ext cx=\"3747868\" cy=\"830997\" /></ns0:xfrm>"
+        },
+        {
+          "id": "52",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"3981449\" y=\"5414208\" /><ns0:ext cx=\"672875\" cy=\"714067\" /></ns0:xfrm>"
+        },
+        {
+          "id": "53",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5115275\" y=\"5360242\" /><ns0:ext cx=\"1012475\" cy=\"584775\" /></ns0:xfrm>"
+        },
+        {
+          "id": "43",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10704905\" y=\"4039967\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "50",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10550401\" y=\"4332297\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "51",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"8373506\" y=\"2171819\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "55",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"8219002\" y=\"2464149\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "56",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9474660\" y=\"5621852\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "57",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9603833\" y=\"5863204\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "58",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"8784443\" y=\"3648704\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "59",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9045712\" y=\"3530480\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "60",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242474\" y=\"861313\" /><ns0:ext cx=\"10849420\" cy=\"461665\" /></ns0:xfrm>"
+        },
+        {
+          "id": "61",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4295667\" y=\"457685\" /><ns0:ext cx=\"3600665\" cy=\"461665\" /></ns0:xfrm>"
+        }
+      ]
+    },
+    {
+      "slide": 33,
+      "text": [
+        "하향식 헤드",
+        "PENDENT ",
+        "SPRINKLER HEAD",
+        "기둥",
+        "(",
+        "보",
+        ")",
+        "Pillar",
+        "`",
+        "A",
+        "A",
+        "■ 천장이 있을 경우 ",
+        " ",
+        "Ceiling",
+        "  ",
+        "스프링클러헤드 설치방법"
+      ],
+      "pictures": [
+        {
+          "media": "image57.png",
+          "crop_percent_1000": {
+            "l": "8164",
+            "t": "6008",
+            "r": "7356",
+            "b": "6008"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"780129\" y=\"1988189\" /><ns0:ext cx=\"3859073\" cy=\"4127386\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image58.PNG",
+          "crop_percent_1000": {
+            "l": "1386",
+            "t": "431",
+            "r": "35806",
+            "b": "4015"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7442198\" y=\"1097694\" /><ns0:ext cx=\"4331855\" cy=\"3009415\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image59.jpg",
+          "crop_percent_1000": {
+            "l": "14014",
+            "t": "15367",
+            "r": "17333",
+            "b": "5775"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"8832906\" y=\"4401608\" /><ns0:ext cx=\"2127251\" cy=\"2036597\" /></ns0:xfrm>"
+        }
+      ],
+      "native_shapes": [
+        {
+          "id": "16",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"11709400\" y=\"2057400\" /><ns0:ext cx=\"180532\" cy=\"838200\" /></ns0:xfrm>"
+        },
+        {
+          "id": "24",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10651858\" y=\"3107300\" /><ns0:ext cx=\"1276498\" cy=\"1169220\" /></ns0:xfrm>"
+        },
+        {
+          "id": "25",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10180379\" y=\"3840982\" /><ns0:ext cx=\"736600\" cy=\"229927\" /></ns0:xfrm>"
+        },
+        {
+          "id": "27",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7351719\" y=\"1064612\" /><ns0:ext cx=\"665572\" cy=\"720436\" /></ns0:xfrm>"
+        },
+        {
+          "id": "28",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7109412\" y=\"3970876\" /><ns0:ext cx=\"665572\" cy=\"720436\" /></ns0:xfrm>"
+        },
+        {
+          "id": "41",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"2466905\" y=\"3598077\" /><ns0:ext cx=\"816488\" cy=\"861773\" /></ns0:xfrm>"
+        },
+        {
+          "id": "43",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4480799\" y=\"2982724\" /><ns0:ext cx=\"2916160\" cy=\"584775\" /></ns0:xfrm>"
+        },
+        {
+          "id": "44",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4006849\" y=\"5426908\" /><ns0:ext cx=\"672875\" cy=\"714067\" /></ns0:xfrm>"
+        },
+        {
+          "id": "45",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5140675\" y=\"5372942\" /><ns0:ext cx=\"1012475\" cy=\"584775\" /></ns0:xfrm>"
+        },
+        {
+          "id": "40",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9116586\" y=\"1649055\" /><ns0:ext cx=\"903445\" cy=\"1053273\" /></ns0:xfrm>"
+        },
+        {
+          "id": "49",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7064173\" y=\"3816799\" /><ns0:ext cx=\"665572\" cy=\"720436\" /></ns0:xfrm>"
+        },
+        {
+          "id": "52",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7348765\" y=\"3230485\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "53",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9136024\" y=\"5323420\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "54",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7629540\" y=\"3204717\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "55",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9275758\" y=\"5030886\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "50",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242474\" y=\"861313\" /><ns0:ext cx=\"10849420\" cy=\"461665\" /></ns0:xfrm>"
+        },
+        {
+          "id": "51",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4295667\" y=\"457685\" /><ns0:ext cx=\"3600665\" cy=\"461665\" /></ns0:xfrm>"
+        }
+      ]
+    },
+    {
+      "slide": 34,
+      "text": [
+        "상",
+        ".",
+        "하향식 헤드",
+        "UPRIGHT.PENDENT ",
+        "SPRINKLER HEAD",
+        "기둥",
+        "(",
+        "보",
+        ")",
+        "Pillar",
+        "`",
+        "A",
+        "A",
+        "B",
+        "B",
+        "천장 ",
+        "Ceiling",
+        "■ ",
+        "천장속",
+        " ",
+        "2M",
+        " 넘을 경우  ",
+        "Inside the ceiling ",
+        "over 2M",
+        "스프링클러헤드 설치방법"
+      ],
+      "pictures": [
+        {
+          "media": "image60.png",
+          "crop_percent_1000": {
+            "l": "8524",
+            "t": "5609",
+            "r": "9551",
+            "b": "5609"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"780606\" y=\"1988188\" /><ns0:ext cx=\"3858596\" cy=\"4127387\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image55.PNG",
+          "crop_percent_1000": {
+            "l": "3509",
+            "r": "30471",
+            "b": "7075"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7847233\" y=\"1206500\" /><ns0:ext cx=\"4178087\" cy=\"2790320\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image56.jpg",
+          "crop_percent_1000": {
+            "l": "1299",
+            "t": "5238",
+            "r": "28794",
+            "b": "6036"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9252356\" y=\"4407239\" /><ns0:ext cx=\"2127251\" cy=\"2030967\" /></ns0:xfrm>"
+        }
+      ],
+      "native_shapes": [
+        {
+          "id": "48",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"11404600\" y=\"2900244\" /><ns0:ext cx=\"620720\" cy=\"838200\" /></ns0:xfrm>"
+        },
+        {
+          "id": "49",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10911714\" y=\"3141544\" /><ns0:ext cx=\"506420\" cy=\"838200\" /></ns0:xfrm>"
+        },
+        {
+          "id": "29",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7683497\" y=\"1166872\" /><ns0:ext cx=\"506420\" cy=\"187594\" /></ns0:xfrm>"
+        },
+        {
+          "id": "30",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"2466905\" y=\"3612949\" /><ns0:ext cx=\"816488\" cy=\"861773\" /></ns0:xfrm>"
+        },
+        {
+          "id": "31",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4451567\" y=\"3092803\" /><ns0:ext cx=\"3950700\" cy=\"584775\" /></ns0:xfrm>"
+        },
+        {
+          "id": "35",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4025899\" y=\"5445958\" /><ns0:ext cx=\"672875\" cy=\"714067\" /></ns0:xfrm>"
+        },
+        {
+          "id": "36",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5159725\" y=\"5391992\" /><ns0:ext cx=\"1012475\" cy=\"584775\" /></ns0:xfrm>"
+        },
+        {
+          "id": "39",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9754150\" y=\"1548387\" /><ns0:ext cx=\"903445\" cy=\"1053273\" /></ns0:xfrm>"
+        },
+        {
+          "id": "43",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10704905\" y=\"4039967\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "44",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"10550401\" y=\"4332297\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "45",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"8222504\" y=\"2171819\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "47",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"8068000\" y=\"2464149\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "53",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9474660\" y=\"5621852\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "54",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9603833\" y=\"5863204\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "55",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"8683775\" y=\"3648704\" /><ns0:ext cx=\"298958\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "56",
+          "shape": "ellipse",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"8945044\" y=\"3530480\" /><ns0:ext cx=\"578427\" cy=\"575002\" /></ns0:xfrm>"
+        },
+        {
+          "id": "50",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7614491\" y=\"5663375\" /><ns0:ext cx=\"1256118\" cy=\"584775\" /></ns0:xfrm>"
+        },
+        {
+          "id": "52",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242474\" y=\"861313\" /><ns0:ext cx=\"10849420\" cy=\"461665\" /></ns0:xfrm>"
+        },
+        {
+          "id": "57",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"4295667\" y=\"457685\" /><ns0:ext cx=\"3600665\" cy=\"461665\" /></ns0:xfrm>"
+        }
+      ]
+    },
+    {
+      "slide": 35,
+      "text": [
+        "■ ",
+        "측벽식",
+        " 헤드 설치",
+        "(",
+        "단위세대",
+        ")",
+        " ",
+        "Install sidewall sprinkler head (household unit) ",
+        ": ",
+        "베란다",
+        "·",
+        "발코니  ",
+        "Balcony  ",
+        ",  ",
+        "실외기실 ",
+        "Outdoor unit ",
+        ", ",
+        "보일러실 ",
+        "Boiler room  ",
+        ", ",
+        "세탁실 ",
+        "Laundry room",
+        "동파방지 ",
+        "- ",
+        "드라이펜던트형",
+        " 헤드",
+        "prevention of freezing – dry ",
+        "pendent head",
+        "반사판",
+        "Reflector"
+      ],
+      "pictures": [
+        {
+          "media": "image61.png",
+          "crop_percent_1000": {
+            "l": "1857",
+            "t": "1112",
+            "r": "1558",
+            "b": "1573"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5340692\" y=\"1962352\" /><ns0:ext cx=\"6605652\" cy=\"4429125\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image61.png",
+          "crop_percent_1000": {
+            "l": "1858",
+            "t": "12573",
+            "r": "85330",
+            "b": "74287"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"-1638540\" y=\"3171824\" /><ns0:ext cx=\"1955993\" cy=\"1334915\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image46.PNG",
+          "crop_percent_1000": {
+            "l": "9999",
+            "t": "7517",
+            "r": "4927",
+            "b": "18794"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\" rot=\"10800000\" flipH=\"1\" flipV=\"1\"><ns0:off x=\"1294939\" y=\"3987756\" /><ns0:ext cx=\"1894020\" cy=\"890583\" /></ns0:xfrm>"
+        }
+      ],
+      "native_shapes": [
+        {
+          "id": "9",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9303537\" y=\"2009977\" /><ns0:ext cx=\"876300\" cy=\"1076325\" /></ns0:xfrm>"
+        },
+        {
+          "id": "26",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5455437\" y=\"2610053\" /><ns0:ext cx=\"676274\" cy=\"438151\" /></ns0:xfrm>"
+        },
+        {
+          "id": "27",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"5455437\" y=\"5867603\" /><ns0:ext cx=\"2133599\" cy=\"438151\" /></ns0:xfrm>"
+        },
+        {
+          "id": "24",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242474\" y=\"861313\" /><ns0:ext cx=\"10849420\" cy=\"830997\" /></ns0:xfrm>"
+        },
+        {
+          "id": "25",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242697\" y=\"5174401\" /><ns0:ext cx=\"4879257\" cy=\"584775\" /></ns0:xfrm>"
+        },
+        {
+          "id": "31",
+          "shape": "triangle",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"6648276\" y=\"1867879\" /><ns0:ext cx=\"152247\" cy=\"114890\" /></ns0:xfrm>"
+        },
+        {
+          "id": "36",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"1222065\" y=\"2161671\" /><ns0:ext cx=\"3804560\" cy=\"2832735\" /></ns0:xfrm>"
+        },
+        {
+          "id": "53",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"3412898\" y=\"3587444\" /><ns0:ext cx=\"1780102\" cy=\"584775\" /></ns0:xfrm>"
+        },
+        {
+          "id": "54",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"2378652\" y=\"3987756\" /><ns0:ext cx=\"810307\" cy=\"489570\" /></ns0:xfrm>"
+        }
+      ]
+    },
+    {
+      "slide": 36,
+      "text": [
+        "■ 고온형 헤드 설치",
+        "  ",
+        "Install ",
+        "high-temperature head",
+        "일반 건축물",
+        "(",
+        "실",
+        ")",
+        " ",
+        ":",
+        " ",
+        "72",
+        "℃  ",
+        "-  ",
+        "주방",
+        "(",
+        "화기",
+        ")",
+        " ",
+        ": 103",
+        "℃",
+        "General building",
+        "(room)",
+        " ",
+        ":",
+        " ",
+        "72",
+        "℃ ",
+        " -",
+        " ",
+        " Kitchen(fire)",
+        " ",
+        ":",
+        " 103",
+        "℃",
+        "반사판",
+        "Reflector"
+      ],
+      "pictures": [
+        {
+          "media": "image62.png",
+          "crop_percent_1000": {},
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"588363\" y=\"1730349\" /><ns0:ext cx=\"5131339\" cy=\"3574067\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image45.jpeg",
+          "crop_percent_1000": {
+            "l": "8004",
+            "r": "9302",
+            "b": "2558"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\" rot=\"10800000\"><ns0:off x=\"7693377\" y=\"2563826\" /><ns0:ext cx=\"961093\" cy=\"1283461\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image63.PNG",
+          "crop_percent_1000": {
+            "l": "13488",
+            "t": "81620",
+            "r": "10312",
+            "b": "5224"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9709057\" y=\"5424118\" /><ns0:ext cx=\"1231850\" cy=\"565671\" /></ns0:xfrm>"
+        },
+        {
+          "media": "image63.PNG",
+          "crop_percent_1000": {
+            "l": "12694",
+            "t": "42864",
+            "r": "9525",
+            "b": "42513"
+          },
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7426994\" y=\"5370858\" /><ns0:ext cx=\"1244500\" cy=\"618931\" /></ns0:xfrm>"
+        }
+      ],
+      "native_shapes": [
+        {
+          "id": "26",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\" rot=\"16200000\"><ns0:off x=\"4309847\" y=\"3122806\" /><ns0:ext cx=\"346969\" cy=\"346233\" /></ns0:xfrm>"
+        },
+        {
+          "id": "24",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"242474\" y=\"861313\" /><ns0:ext cx=\"10849420\" cy=\"461665\" /></ns0:xfrm>"
+        },
+        {
+          "id": "25",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"6555642\" y=\"4557374\" /><ns0:ext cx=\"4965969\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "36",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7136347\" y=\"2200053\" /><ns0:ext cx=\"3804560\" cy=\"2191254\" /></ns0:xfrm>"
+        },
+        {
+          "id": "54",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"7645751\" y=\"3543377\" /><ns0:ext cx=\"1062663\" cy=\"337649\" /></ns0:xfrm>"
+        },
+        {
+          "id": "27",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"6014426\" y=\"4923195\" /><ns0:ext cx=\"5481361\" cy=\"338554\" /></ns0:xfrm>"
+        },
+        {
+          "id": "35",
+          "shape": "rect",
+          "transform": "<ns0:xfrm xmlns:ns0=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ns0:off x=\"9038626\" y=\"2790057\" /><ns0:ext cx=\"1780102\" cy=\"584775\" /></ns0:xfrm>"
+        }
+      ]
+    }
+  ]
+}

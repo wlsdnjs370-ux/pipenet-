@@ -1,0 +1,29 @@
+일곱 번째 카드를 붙인다 — 모듈 E 를 트리째 복제한 모듈 G
+
+초기화면 카드가 A~F 여섯 장이었다. E 를 복제한 일곱 번째를 붙인다.
+
+■ 왜 카드만이 아니라 소스까지 복제했나
+  E 라우트는 `cad_project_editor/main.py` 를 subprocess 로 띄운다. 카드만
+  하나 더 만들어 같은 트리를 가리키면 둘 중 하나다 —
+    · 프로세스 핸들을 나눠 쓰면 G 는 «이미 실행 중» 만 뱉는 장식 단추가 되고,
+    · 핸들을 따로 두면 같은 트리를 두 프로세스가 띄워 `docs/import` 의
+      찍은스펙·표시캐시를 함께 헤집는다.
+  편집기는 작업 폴더를 제 위치(_APP_ROOT/docs/import)에서 잡으므로, 트리를
+  가르면 캐시도 저절로 갈라진다. 그래서 복제 단위는 트리다.
+
+■ 복제 범위
+  소스 76개 .py 전부(1.3MB). docs/(캐시·산출물 49MB)·__pycache__ 는 뺐다 —
+  G 는 제 작업 폴더를 처음부터 새로 만든다. 편집기 안에 절대경로가 없어
+  (`_ROOT = Path(__file__).parent`) 복제본은 그대로 자립한다.
+
+■ 붙인 것
+  routes/pages.py : CAD_EDITOR_G_ROOT/MAIN 상수, _cad_editor_g_proc(제 핸들),
+                    GET /module-g-cad-editor (E 라우트와 같은 모양)
+  templates/index.html : 일곱 번째 카드
+  tests/smoke/route_inventory.json : 새 라우트 1건 반영
+
+검증(scripts/_verify_module_g.py): 트리가 E 와 다르고 76개가 온전히 복제됐는지,
+카드가 7장이고 G 카드가 G 라우트로 가는지, 실제로 편집기 프로세스가 뜨는지,
+그때 **E 의 핸들이 그대로인지**. 띄운 창은 검사 끝에 닫는다.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

@@ -1,0 +1,40 @@
+{
+  "key": "B1F 현장조사 소화설비 평면도_컨셉2",
+  "seconds": {
+    "selection": 1.6094,
+    "confirm_selected": 7.2063
+  },
+  "edited": {
+    "split": "60",
+    "end": "61",
+    "pipe": "EP2",
+    "axis": "+Z",
+    "kfp_pipe": {
+      "start": "NE60",
+      "end": "NE61",
+      "length_m": 0.75,
+      "nominal_mm": 25,
+      "C": 150.0,
+      "diameter": 28.02,
+      "pipe_type": "CPVC2",
+      "type": "CPVC (KS M 3413)",
+      "roughness_mm": 0.065,
+      "fittings": [],
+      "equivalent_length": 0.6
+    },
+    "counts": {
+      "nodes": 61,
+      "pipes": 60,
+      "nozzles": 11,
+      "equipment": 2
+    },
+    "source_counts": {
+      "nodes": 59,
+      "pipes": 58,
+      "nozzles": 10,
+      "fittings": 61,
+      "equipment": 1
+    },
+    "normal_rejections": []
+  }
+}

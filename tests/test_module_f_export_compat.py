@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+import shutil
 import sys
 import xml.etree.ElementTree as ET
 
@@ -13,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "pipenet_converter" / "src"))
 sys.path.insert(0, str(ROOT / "core"))
 from pipenet_converter.physical_layout import LayoutEdge, physical_layout
-from pipenet_converter.sdf_compat import prepare_sdf
+from pipenet_converter.sdf_compat import prepare_sdf, NOZZLE_DISPLAY_GAP_RATIO
 from routes.module_f.export_compat import emit_physical_kfp
 
 
@@ -68,6 +69,7 @@ def test_head_direction_and_calculation_preservation(tmp_path, upright, reverse,
     assert float(a.get("x")) == float(b.get("x"))
     assert (float(b.get("y")) > float(a.get("y"))) == upright
     assert float(b.get("y")) != float(a.get("y"))
+    assert abs(float(b.get("y")) - float(a.get("y"))) == pytest.approx(55 * NOZZLE_DISPLAY_GAP_RATIO)
     assert report.capped_nodes == ["4"]
     assert nodes["4"].get("io-node") == "Output"
     assert nodes["4"].find("Calculation-spec").get("flow") == "0"
@@ -76,6 +78,99 @@ def test_head_direction_and_calculation_preservation(tmp_path, upright, reverse,
     once = p.read_bytes()
     prepare_sdf(p)
     assert p.read_bytes() == once
+
+
+@pytest.mark.parametrize("upright", [False, True])
+def test_nozzle_clearance_changes_only_atmospheric_display_position(tmp_path, upright):
+    """Iso screen direction must not come from its slanted planar pipe bearing."""
+    p = _sdf(tmp_path, upright=upright)
+    tree = ET.parse(p)
+    # Typical exported iso canvas: 3000 display units across. Give the head's
+    # parent an intentionally slanted display position, independent of real Z.
+    tree.find(".//Node[@label='4']/Position").set("x", "3000")
+    head = tree.find(".//Node[@label='3']/Position")
+    head.set("x", "800")
+    head.set("y", "900")
+    tree.write(p)
+    prepare_sdf(p, nozzle_gap_ratio=0.0025)  # old export, including cap pass
+    before = ET.parse(p).getroot()
+    old = before.find(".//Node[@label='@/1']/Position")
+    assert abs(float(old.get("y")) - 900) == 7.5
+    prepare_sdf(p)
+    after = ET.parse(p).getroot()
+    tip = after.find(".//Node[@label='@/1']/Position")
+    assert float(tip.get("x")) == 800
+    assert float(tip.get("y")) == 900 + (60 if upright else -60)
+    # Compare the ENTIRE XML after masking the only intended display change.
+    tip.attrib.clear()
+    tip.attrib.update(old.attrib)
+    assert ET.tostring(after) == ET.tostring(before)
+
+
+@pytest.mark.parametrize("kind", ["horizontal", "nonterminal", "shared", "named"])
+def test_unknown_or_shared_nozzle_outlet_is_not_moved(tmp_path, kind):
+    p = _sdf(tmp_path)
+    tree = ET.parse(p)
+    links = tree.find(".//Links")
+    if kind == "horizontal":
+        tree.find(".//Node[@label='3']").set("elevation", "10")
+    elif kind == "nonterminal":
+        ET.SubElement(links.find("Pipe-set"), "Pipe", input="3", output="4", length="1")
+    elif kind == "shared":
+        ET.SubElement(links, "Nozzle", input="2", output="@/1", label="other")
+    else:
+        tree.find(".//Node[@label='@/1']").set("label", "named-outlet")
+        tree.find(".//Nozzle").set("output", "named-outlet")
+    outlet_label = "named-outlet" if kind == "named" else "@/1"
+    pos = tree.find(f".//Node[@label='{outlet_label}']/Position")
+    pos.set("x", "123")
+    pos.set("y", "456")
+    tree.write(p)
+    report = prepare_sdf(p)
+    assert "1" in report.unresolved_nozzles
+    assert ET.parse(p).find(f".//Node[@label='{outlet_label}']/Position").attrib == {"x": "123", "y": "456"}
+
+
+@pytest.mark.parametrize("ratio", [0, -1, float("nan"), float("inf")])
+def test_invalid_nozzle_gap_rejected_before_writing(tmp_path, ratio):
+    p = _sdf(tmp_path)
+    original = p.read_bytes()
+    with pytest.raises(ValueError):
+        prepare_sdf(p, nozzle_gap_ratio=ratio)
+    assert p.read_bytes() == original
+
+
+@pytest.mark.parametrize("session", ["cbf1b2df66f540d4", "698e0f100c264a61"])
+def test_saved_drawing_nozzle_clearance_preserves_entire_calculation(tmp_path, session):
+    files = list((ROOT / "data/uploads/module_f" / f"{session}_design").glob("*.sdf"))
+    if not files:
+        pytest.skip("Optional exported drawing fixture is absent")
+    original = files[0].read_bytes()
+    copy = tmp_path / "drawing.sdf"
+    shutil.copyfile(files[0], copy)
+    prepare_sdf(copy, nozzle_gap_ratio=0.0025)
+    before = ET.parse(copy).getroot()
+    report = prepare_sdf(copy)
+    after = ET.parse(copy).getroot()
+    assert len(report.directed_nozzles) >= 28
+    assert not report.unresolved_nozzles
+    assert _calculation(after) == _calculation(before)
+    old_nodes = {n.get("label"): n for n in before.findall(".//Nodes/Node")}
+    new_nodes = {n.get("label"): n for n in after.findall(".//Nodes/Node")}
+    assert old_nodes.keys() == new_nodes.keys()
+    for nozzle in after.iter("Nozzle"):
+        a, b = nozzle.get("input"), nozzle.get("output")
+        pos = new_nodes[a].find("Position")
+        old = old_nodes[b].find("Position")
+        end = new_nodes[b].find("Position")
+        old_gap = float(old.get("y")) - float(pos.get("y"))
+        new_gap = float(end.get("y")) - float(pos.get("y"))
+        assert new_gap == pytest.approx(old_gap * 8, abs=1e-7)
+        assert end.get("x") == pos.get("x")
+        end.attrib.clear()
+        end.attrib.update(old.attrib)
+    assert ET.tostring(after) == ET.tostring(before)
+    assert files[0].read_bytes() == original
 
 
 def test_existing_boundary_and_component_outlet_are_not_capped(tmp_path):

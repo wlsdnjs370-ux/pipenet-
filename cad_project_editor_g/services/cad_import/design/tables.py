@@ -155,7 +155,8 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
                         #   정본 G 다 — 그 차수를 그대로 흘려보낸다. 안 주면
                         #   종전과 동일하게 동작한다(다른 호출자 보호).
                         phys=None,
-                        interior_junctions=None) -> PipeTablesG:
+                        interior_junctions=None, interior_unresolved=None,
+                        fitting_kinds=None) -> PipeTablesG:
     """제한 전개 망 → 5개 테이블. 지시서 §1 공개 시그니처.
 
     `bores` / `fittings` 는 G3 · G4 결과를 받는다. 없으면 여기서 만들지 않고
@@ -208,7 +209,7 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
 
     # ── 관경·부속 (없으면 지금 만든다)
     if bores is None:
-        bores = decide_bores(net, edge_ref, (worst or {}).get("loads") or {},
+        bores = decide_bores(net, edge_ref, (worst or {}).get("physical_loads") or (worst or {}).get("loads") or {},
                              dia_text_pts, pts=board_pts,
                              tree_loads=tree_loads,
                              overrides=bore_overrides)
@@ -219,7 +220,8 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         fittings = build_fittings(net, node_xy, bores, parents=parent,
                                   node_z=node_z,
                                   overrides=fitting_overrides,
-                                  phys=phys,
+                                  allowed_kinds=fitting_kinds,
+                                  phys=phys, interior_unresolved=interior_unresolved,
                                   interior_junctions=interior_junctions)
 
     # ── ① 노드표 — BFS 순서대로 번호. 뿌리가 Input.
@@ -279,6 +281,9 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
             # SDF 방출은 이름 붙인 칸만 읽으므로 이 칸이 파일을 바꾸지 않는다.
             "dia_src": src,
         }
+        if "physical_pipe_loads" in net:
+            row["head_count_all"] = net["physical_pipe_loads"][pid]
+            row["head_count_selected"] = (tree_loads or {}).get(pid)
         # [신축배관 접기] 길이가 «좌표» 에서 왔는지 «선언» 에서 왔는지. 접은
         #   배관은 좌표 거리와 표 length 가 다른 것이 정상이라, 검사가 그
         #   부류를 알아보려면 행에 남아 있어야 한다. `dia_src` 와 같은 성격이라

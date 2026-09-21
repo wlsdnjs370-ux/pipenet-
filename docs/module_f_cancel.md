@@ -45,3 +45,19 @@
 | 브라우저 JavaScript 오류 | 0건 |
 
 압축·업로드 취소 후 재업로드도 통과했다. 시험 결과는 `cad_project_editor_g/docs/benchmarks/cancel_live.json`, 실행 로그는 `cad_project_editor_g/docs/cancel_browser_5051.log`에 보관한다. 임시 5065 서버는 종료했으며 시험용 도면 복사본과 해당 캐시만 정리했다. 원본 도면은 유지했다.
+
+
+## 2026-09-20 실측 — 「중지」 한 번이 서버 전체를 잠갔다
+
+증상: 20:21 KST 대명동 평면도 업로드 → 자동 채택 → 손질 재구성이 `[0 찍기] DXF 준비 handoff HIT` 뒤에 멈췄고, 그 뒤의 모든 업로드·다시 열기가 «대기» 로 굳었다(별도 세션에서 `reopen` 을 걸어 60초 넘게 `queued: true` 확인, 단순 GET 도 2.3초). 같은 도면·같은 스펙·같은 코드가 19:19 에는 0.9초에 끝났다.
+
+원인: 손질 재구성은 `edit/io.py::open_board → stage1_body → pipeline` 로 내려간다. `_interruptible` 이 «보호 모듈이 조상에 하나라도 있으면 중지 불가» 로 판정해 재구성 중의 중지 요청은 어디서도 전달되지 못했다. 그런데 전달되지 못한 중지 요청은 LINE 검사를 켠 채로 두고, 그 스레드는 **매 줄마다** 스택 전체(조상의 파일명·함수명·f_locals)를 훑는다. 재현(Python 3.13, 2.7초짜리 순수 계산): 중지 요청 뒤 **228초**(85배), 같은 프로세스의 무관한 0.06 ms 작업이 2 ms. 그 스레드가 `_HEAVY_LOCK` 을 쥔 채 GIL 을 독점하므로 다른 사용자의 업로드까지 함께 굳는다.
+
+조치 (`routes/module_f/cancellation.py`):
+
+- 보호 모듈은 «자기 코드가 가장 안쪽» 일 때만 막는다 — 보호 함수가 계산을 부르기만 하는 자리(open_board → pipeline)는 중지된다. 열려 있는 쓰기 파일(f_locals 검사)과 `write*/save*/dump*/emit*/commit*/backup*` 이름 규칙은 그대로다.
+- 중지 불가로 판정된 뒤에는 LINE 검사를 0.05초 쉬고 타이머로 다시 켠다(trace fallback 은 4096줄 건너뛰기). 보호 구간이 끝나면 그 안에 중지가 전달된다.
+
+재현 결과(같은 계산): 보호 조상 밑 중지 → **즉시 중지**(0.5초), 이름 규칙으로 정당하게 보호된 구간 → 원래 속도(2.87초 vs 기준 2.79초)로 끝난 뒤 중지, 무관한 작업 지연 0.06 ms 유지. 회귀 검사 `tests/test_module_f_cancel.py` 의 `test_stop_lands_inside_computation_called_from_persistence` · `test_stop_under_persistence_does_not_slow_the_job` (종전 코드에서는 둘 다 실패).
+
+남은 것: 요청 래퍼의 `token.snapshot(sess)` 는 POST 마다 세션 전체를 깊은 복사한다 — 세션이 커질수록 모든 클릭이 느려지는 별개의 자리라 여기서는 손대지 않았다.

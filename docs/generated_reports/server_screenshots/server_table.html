@@ -1,0 +1,43 @@
+<!doctype html><meta charset='utf-8'><style>
+html,body{margin:0;background:#e8edf3;font-family:'Malgun Gothic','Noto Sans KR',sans-serif;color:#172033}
+.shell{width:1280px;height:820px;padding:24px;box-sizing:border-box;background:linear-gradient(135deg,#eef3f8,#dbe5ef)}
+.layout{display:grid;grid-template-columns:210px 1fr;gap:18px;height:100%}
+.side{background:#fff;border:1px solid #cfd7e3;border-radius:0;padding:16px;box-shadow:0 8px 22px rgba(15,23,42,.08)}
+.side h3{margin:0 0 14px;font-size:15px;color:#0f172a}
+.menu{display:block;width:100%;text-align:left;margin:7px 0;padding:12px;border:1px solid #d7dee8;background:#f8fafc;border-radius:0;font-weight:700;color:#334155}
+.menu.active{background:#12345a;color:white;border-color:#12345a}
+.main{display:flex;flex-direction:column;gap:14px;min-width:0}
+.header{background:#fff;border:1px solid #cfd7e3;border-radius:0;padding:18px 22px;box-shadow:0 8px 22px rgba(15,23,42,.08)}
+.kicker{font-size:12px;letter-spacing:.16em;color:#2563eb;font-weight:900;margin:0 0 4px}
+h1{margin:0;font-size:28px}
+.card{background:#fff;border:1px solid #cfd7e3;border-radius:0;padding:18px;box-shadow:0 8px 22px rgba(15,23,42,.08)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.pill{display:inline-block;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:900}
+.pass{background:#dcfce7;color:#166534}.fail{background:#fee2e2;color:#991b1b}.eng{background:#dbeafe;color:#1d4ed8}.econ{background:#dcfce7;color:#15803d}
+table{width:100%;border-collapse:collapse;font-size:13px;background:#fff}th{background:#18233a;color:white;padding:9px;border:1px solid #334155}td{padding:8px;border:1px solid #cbd5e1}
+.network{height:330px;background:#f8fafc;border:1px solid #cbd5e1;position:relative;overflow:hidden}
+.pipe{position:absolute;height:3px;background:#64748b;transform-origin:left center}.pipe.red{background:#ef4444;height:5px}.pipe.green{background:#16a34a;height:5px}
+.node{position:absolute;width:8px;height:8px;border-radius:50%;background:#0f172a}
+.maptitle{position:absolute;left:14px;top:12px;background:white;border:1px solid #cbd5e1;padding:6px 10px;font-weight:800}
+.chart{height:210px;background:linear-gradient(180deg,#f8fafc,#fff);border:1px solid #cbd5e1;position:relative}
+.bar{position:absolute;bottom:28px;width:22px;background:#2563eb}.bar.red{background:#ef4444}.axis{position:absolute;left:38px;right:20px;bottom:28px;height:1px;background:#94a3b8}
+.note{font-size:13px;color:#475569;line-height:1.55}
+</style>
+    <div class='shell'><div class='layout'>
+      <aside class='side'><h3>PIPENET 메뉴</h3><button class='menu '>1. 검증결과</button><button class='menu '>2. 설계 최적화 가이드</button><button class='menu active'>3. 결과 데이터 테이블</button><button class='menu '>4. 검진 통계</button><button class='menu '>5. 상세리포트</button><button class='menu '>6. CAD-아이소매트릭 대조</button></aside>
+      <main class='main'>
+        <section class='header'><p class='kicker'>PIPE CALC VALIDATION</p><h1>PIPENET 수리계산 검증</h1></section>
+        
+        <section class='card'><h2>결과 데이터 테이블</h2>
+          <div style='margin-bottom:10px'><span class='pill fail'>빨강: 기준 위반</span> <span class='pill eng'>파랑: 공학 후보</span> <span class='pill econ'>초록: 경제성 후보</span></div>
+          <table><tr><th>Pipe</th><th>배관 역할</th><th>유속</th><th>HW 재계산</th><th>공학 후보</th><th>경제 후보</th><th>판정 사유</th></tr>
+          <tr><td>5</td><td>other</td><td>9.574 / 10.0</td><td>PASS</td><td>유속여유 부족</td><td>-</td><td>그 밖의 배관 기준 10 m/s 이내</td></tr>
+          <tr><td>97</td><td>branch</td><td>5.948 / 6.0</td><td>PASS</td><td>유속여유 부족</td><td>-</td><td>하류 교차분기 없음</td></tr>
+          <tr><td>114</td><td>branch</td><td>6.044 / 6.0</td><td>PASS</td><td>-</td><td>-</td><td>기준 초과로 수정 대상</td></tr>
+          </table>
+        </section>
+        
+      </main>
+    </div></div>
+    

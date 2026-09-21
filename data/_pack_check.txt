@@ -1,0 +1,13 @@
+무결성(CRC) : 이상 없음
+묶음 루트   : 모듈F_소스_20260902_01d1cd8
+  (루트)                          5
+  cad_project_editor_g         85
+  core                          6
+  routes                       23
+  scripts                      16
+  static                        3
+  templates                     1
+  tests                        20
+원본 대조   : 전부 일치
+핵심 파일   : 전부 있음
+README      : 86줄

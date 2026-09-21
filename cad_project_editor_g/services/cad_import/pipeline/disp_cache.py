@@ -10,8 +10,10 @@ import os
 from services.cad_import import kinds
 from services.cad_import.pipeline import expand, flow, heads, stage1, stage45
 from services.cad_import.pipeline.handoff import import_write_root
+from src.pipenet_converter.graph import junctions
+from src.pipenet_converter.dxf import head_symbols, head_symbol_adapter
 
-_DISP_CACHE_VER = 5
+_DISP_CACHE_VER = 6  # source junctions are normalized before water-flow selection
 
 
 def _disp_cache_dir():
@@ -46,12 +48,14 @@ def _file_stamp(path, content_hash=False):
 def _disp_cache_inputs(key):
     spec = expand._spec_path(key)
     dxf = expand.dxf_path_for(key) or os.path.join(stage1.DWG_DIR, f"{key}.dxf")
-    pipeline_modules = (expand, flow, stage1, heads, stage45, kinds)
+    pipeline_modules = (expand, flow, stage1, heads, stage45, kinds, junctions, head_symbols, head_symbol_adapter)
     return {
         "ver": _DISP_CACHE_VER,
         "key": key,
         "dxf": _file_stamp(dxf, content_hash=False),
         "spec": _file_stamp(spec, content_hash=True),
+        "head_symbol_rules": _file_stamp(os.path.join(os.path.dirname(head_symbols.__file__),
+            "..", "..", "..", "configs", "head_symbols", "company_260404.json"), content_hash=True),
         "code": [_file_stamp(module.__file__, content_hash=True)
                  for module in pipeline_modules],
     }

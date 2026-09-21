@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from routes.module_f.common import REMOTE_K_DEFAULT, _r1
+from src.pipenet_converter.graph.regions import normalize_zones
 
 
 def _worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
-                   only_heads=None, source_index=None, head_xy=None) -> dict:
+                   only_heads=None, source_index=None, head_xy=None, flow_tree=None) -> dict:
     """[F-0·D1] 엔진(G design/worst.py)으로 위임 — 구현은 한 벌만 둔다.
 
     이 파일에 있던 원본 구현이 G1 때 엔진으로 옮겨 갔고, 여기 남아 있던
@@ -17,7 +18,7 @@ def _worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
     from services.cad_import.design.worst import worst_k_heads
     return worst_k_heads(pts, edges, hnodes, sources, k=k,
                          only_heads=only_heads, source_index=source_index,
-                         head_xy=head_xy)
+                         head_xy=head_xy, flow_tree=flow_tree)
 
 
 def _worst_view(sess: dict) -> dict | None:
@@ -55,7 +56,7 @@ def _worst_view(sess: dict) -> dict | None:
         # [F-1] 어느 급수원 기준의 최불리인지 — 화면이 이것을 그대로 보여 준다.
         "source": w.get("source_tag"),
         # 사람이 가둔 영역 — 다시 그릴 수 있게 그대로 돌려준다.
-        "zones": [[_r1(v) for v in z] for z in (w.get("zones") or ())],
+        "zones": normalize_zones(w.get("zones") or []),
         "candidates": w.get("candidates", w["reachable"]),
         "heads": [[_r1(disks[hi][0]), _r1(disks[hi][1]), _r1(disks[hi][2])]
                   for hi in w["heads"] if hi < len(disks)],

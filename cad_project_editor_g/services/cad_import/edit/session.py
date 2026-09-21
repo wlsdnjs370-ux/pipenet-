@@ -163,11 +163,12 @@ class EditSession:
             return None
         return self.board.set_head_kind(self.selected_head, kind)
 
-    def flow(self):
+    def flow(self, source_index=None):
         """급수가 있을 때만 water_state 를 그리고 20프레임 홉을 시작한다."""
         if not self.board.sources:
             return None
-        state = self.board.water_state()
+        from services.cad_import.design.flow import water_state
+        state = water_state(self.board, index=source_index)
         self._flowed = True
         self._water = state
         self._wet_keys = wet_disk_keys(self.board.disks, state["wet_heads"])

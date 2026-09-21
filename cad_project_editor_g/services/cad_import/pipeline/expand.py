@@ -111,6 +111,7 @@ def stage1_body(key):
     else:
         print("  [0 찍기] DXF 준비 handoff HIT")
     knobs = dict(s1.DEFAULT_KNOBS)
+    w._source_path = source_path
     knobs.update(spec.get("knobs", {}))
     # report 를 받아 «기호 획»(작대기·관말 캡) 명단을 챙긴다 [2026-08-07].
     # 본체가 이미 모양으로 골라 재료에서 뺀 것들이다 — 시제품이 그것을

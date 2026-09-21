@@ -1,0 +1,64 @@
+{
+ "dxf": "B1F 현장조사 소화설비 평면도.dxf",
+ "mb": 110.6,
+ "k": 30,
+ "conf_min": 0.75,
+ "자동": {
+  "sid": "6f8089ad96964856",
+  "human": 3,
+  "clicks": 1,
+  "sec": 36.3,
+  "detected": 3338,
+  "wet": null,
+  "k": 30,
+  "far_m": 597.42,
+  "nodes": 109,
+  "pipes": 108,
+  "excluded": null,
+  "note": "물닿음은 A 경로에 없다(E 의 물길 판정을 안 탄다)"
+ },
+ "혼합": {
+  "sid": "56a0b9418b4c42ce",
+  "human": 3,
+  "clicks": 6460,
+  "sec": 1683.3,
+  "detected": 3338,
+  "wet": {
+   "wet": 1724,
+   "board": 3235
+  },
+  "k": 30,
+  "far_m": 394.19,
+  "nodes": null,
+  "pipes": null,
+  "excluded": {
+   "dry": 1511,
+   "unattached": 0
+  },
+  "adopt": {
+   "mat": 7,
+   "head": 11,
+   "already": 3224,
+   "ghost": 0
+  }
+ },
+ "수동": {
+  "sid": "04a8f80ee0ca4510",
+  "human": 7,
+  "clicks": 6596,
+  "sec": 1457.8,
+  "detected": 3338,
+  "wet": {
+   "wet": 1263,
+   "board": 3453
+  },
+  "k": 30,
+  "far_m": 310.83,
+  "nodes": null,
+  "pipes": null,
+  "excluded": {
+   "dry": 2190,
+   "unattached": 27
+  }
+ }
+}

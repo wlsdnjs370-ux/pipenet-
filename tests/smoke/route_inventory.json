@@ -525,6 +525,15 @@
     "rule": "/api/module-f/edit/flow"
   },
   {
+    "endpoint": "module_f_flow_report",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rule": "/api/module-f/edit/flow/report"
+  },
+  {
     "endpoint": "module_f_edit_kind",
     "methods": [
       "OPTIONS",
@@ -580,6 +589,14 @@
       "POST"
     ],
     "rule": "/api/module-f/edit/worst-clear"
+  },
+  {
+    "endpoint": "module_f_edit_zones",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/edit/zones"
   },
   {
     "endpoint": "module_f_element_op",
@@ -765,6 +782,14 @@
       "POST"
     ],
     "rule": "/api/module-f/pick/fold-layer"
+  },
+  {
+    "endpoint": "module_f_pick_head_profile",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/pick/head-profile"
   },
   {
     "endpoint": "module_f_pick_materials",

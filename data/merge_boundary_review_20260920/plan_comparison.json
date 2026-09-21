@@ -1,0 +1,59 @@
+{
+  "before": {
+    "nodes": 230,
+    "pipes": 229,
+    "heads": 30,
+    "blind_pipes": [
+      {
+        "id": "P767",
+        "start": "N520",
+        "end": "N521",
+        "type": "KSD3507",
+        "diameter": 27.5,
+        "nominal_mm": 25,
+        "length_m": 0.5,
+        "equivalent_length": 0.0,
+        "C": 120.0,
+        "roughness_mm": 0.1,
+        "fittings": [],
+        "flow_lpm": 0.0,
+        "velocity_mps": 0.0,
+        "headloss_m": 0.0
+      },
+      {
+        "id": "P766",
+        "start": "N92",
+        "end": "N520",
+        "type": "KSD3507",
+        "diameter": 27.5,
+        "nominal_mm": 25,
+        "length_m": 2.5,
+        "equivalent_length": 0.0,
+        "C": 120.0,
+        "roughness_mm": 0.1,
+        "fittings": [],
+        "flow_lpm": 0.0,
+        "velocity_mps": 0.0,
+        "headloss_m": 0.0
+      }
+    ]
+  },
+  "after": {
+    "nodes": 228,
+    "pipes": 227,
+    "heads": 30,
+    "blind_pipes": []
+  },
+  "alarm_valve_equipment": [
+    {
+      "pipe": "P1",
+      "in": "1",
+      "out": "2",
+      "label": "1",
+      "desc": "A/V",
+      "eq_len": 9.5,
+      "rel_pos": 0.5,
+      "eq_len_src": "라이브러리"
+    }
+  ]
+}

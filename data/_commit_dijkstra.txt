@@ -1,0 +1,52 @@
+최단경로 나무를 한 번만 세운다 — 배관망 검출 41.7초 → 24.9초
+
+모듈 F 자동 차선의 시간이 어디로 가나 재 봤다(scripts/_probe_module_f_hot.py):
+
+    B1F     열기 360ms · 헤드 검출 63ms · 배관 지정 21ms · 망 검출 41,670ms
+    대명동   열기 210ms · 헤드 검출  8ms · 배관 지정 12ms · 망 검출    756ms
+
+망 검출 하나가 나머지 전부의 90배였다. cProfile 로 열어 보니:
+
+    _finalize_selection            54.1s (66%)
+      └ _shortest_path × 2,206     40.5s (50%)   ★헤드마다 한 번
+      └ _nearest_graph_node × 9,810 11.0s
+    auto_snap_eps                  15.1s (18%)
+
+원인은 단순했다. `_finalize_selection` 은 5247행에서 `_dijkstra_from` 으로 이미
+**전체** 거리 맵을 만든다. 그런데 5285행에서 헤드마다 `_shortest_path` 를 불러
+경로를 되찾는데, 그건 같은 src 에서 같은 나무를 처음부터 다시 세우는 일이다.
+급수원이 하나인데 2,206번 다시 세운 셈이다.
+
+  · core/remote30_graph.py
+      `_dijkstra_from(..., prev_out=None)` — 주면 최단경로 나무를 채운다.
+      안 주면 예전과 똑같아 기존 호출자는 영향이 없다(순수 추가).
+      `_path_from_prev(prev, src, tgt)` — 나무를 되돌아 걷는다. 반환 규약은
+      `_shortest_path` 와 똑같이 맞췄다(빈 목록 · src==tgt → [src]).
+  · remote30_prototype.py
+      5247 에서 나무를 같이 받고, 5285 는 그 나무를 되돌아 걷는다.
+
+이 발상은 이 저장소에 이미 있다 — `_shortest_path_parents`(3547행). 그 관례를
+따랐을 뿐 새 규칙이 아니다.
+
+■ 「빠르다」로 끝내지 않고 «같은 답» 인지 쟀다
+
+빨라졌는데 값이 달라지면 최적화가 아니다. 무승부(같은 길이의 다른 경로)가
+갈리면 합집합 간선이 달라질 수 있어서, 옛 방식(`_shortest_path`)을 그대로
+재현해 경로를 하나하나 대조했다 — scripts/_verify_dijkstra_tree.py.
+
+    대명동   대조 400경로 · 다름 0 · 한쪽만 0   [OK]
+    B1F      대조 400경로 · 다름 0 · 한쪽만 0   [OK]
+
+산출도 그대로다: B1F 헤드 2,206 · 간선 4,987 (바꾸기 전과 동일).
+
+■ 효과
+
+    B1F     망 검출  41,670 → 24,923 ms  (-40%, 16.7초)
+    대명동   망 검출     756 →    644 ms  (-15%)
+
+테스트 1,447개 통과.
+
+남은 자리는 auto_snap_eps(후보 14개마다 그래프 재구축)와 _nearest_graph_node
+(선형 탐색 9,810회)다. 다음에 잰다.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>

@@ -92,6 +92,11 @@ def register(app, *, UPLOAD_DIR):
                            "에서 「표 확정」을 먼저 누르세요."})
         if _job_running(sess):
             return _fail("이미 작업이 돌고 있습니다. 끝난 뒤에 다시 눌러 주세요.", 409)
+        if outputs["worst_sdf"] or outputs["worst_kfp"]:
+            from routes.module_f.selection import _design_stale
+            stale = _design_stale(sess)
+            if stale:
+                return _fail(" · ".join(stale["why"]), 409)
 
         def job():
             from services.cad_import.convert.engine import (
@@ -112,9 +117,15 @@ def register(app, *, UPLOAD_DIR):
             def convert_one(restrict_worst):
                 """한 판 변환 준비 — 전체망이든 최불리든 같은 경로를 탄다."""
                 payload = es.convert_payload()
-                if restrict_worst is not None:
-                    payload = _restrict_to_worst(payload, es.board,
-                                                 restrict_worst)
+                from services.cad_import.design.flow import flow_for_board
+                from services.cad_import.design.restrict import restrict_to_worst
+                try:
+                    flow = flow_for_board(es.board, selected_source=selected)
+                    route_selection = restrict_worst or {"heads": sorted(set(flow.representatives.values()))}
+                    payload = restrict_to_worst(payload, es.board, route_selection,
+                                                selected_source=selected)
+                except ValueError as exc:
+                    return None, {"ok": False, "blockers": [{"code": "flow_basis_required", "message": str(exc)}]}
                 if selected is not None:
                     payload["selected_source"] = selected
                 srcs = payload.get("sources") or ()
@@ -135,6 +146,7 @@ def register(app, *, UPLOAD_DIR):
                                   list(pf.get("diagnostics") or [])}
                 print("[변환] 평면 그래프를 만드는 중…")
                 payload = ensure_planar(payload)
+                payload.pop("_flow_tree", None)
                 if payload.get("kfp") is None and not payload.get("kfp_path"):
                     return None, {"ok": False, "blockers": [{
                         "code": payload.get("_planar_code")

@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "url": "http://192.168.0.105:5051/module-f",
+  "assets_match": {
+    "module_f.js": true,
+    "module_f_editor.js": true,
+    "module_f.css": true
+  },
+  "editor_controls": true,
+  "route_status": 410,
+  "page_errors": [],
+  "collapsed_panels": [
+    "ed-status-body",
+    "dg-summary-body",
+    "dg-evidence-body",
+    "conv-options-body"
+  ],
+  "resume_hidden": true
+}

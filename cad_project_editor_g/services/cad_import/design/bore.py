@@ -161,7 +161,8 @@ def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None,
 
     `net`  : 제한 전개 결과 kfp dict (`pipe_data` 를 쓴다)
     `edge_ref` : {pipe_id: (board_i, board_j)}  — §T1 의 역참조
-    `loads`    : {(i,j): 담당 헤드 수}          — worst["loads"] 그대로(§T4)
+    `loads`    : {(i,j): 전체 담당 헤드 수}. 확정 물흐름이 있으면
+        net.physical_pipe_loads(병합/생성 구간까지 보존한 전체 부하)가 우선한다.
     `dia_text_pts` : [(x, y, dia_mm)] — `extract_dia_text_points` 결과
     `pts`      : board 노드 좌표(mm). 없으면 텍스트 매칭을 건너뛴다.
     `tree_loads` : {pipe_id: 담당 헤드 수} — 역참조가 **없는** 배관용.
@@ -203,6 +204,10 @@ def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None,
             n_head = int(loads.get((min(i, j), max(i, j)), 0))
         elif tree_loads:
             n_head = int(tree_loads.get(pid, 0))
+        if "physical_pipe_loads" in net:
+            if pid not in net["physical_pipe_loads"]:
+                raise ValueError(f"배관 {pid}의 전체 담당 헤드 수가 없습니다.")
+            n_head = int(net["physical_pipe_loads"][pid])
         nfpc_min = nfpc_min_bore_mm(n_head)
 
         text = None

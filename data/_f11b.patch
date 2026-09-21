@@ -1,0 +1,86 @@
+diff --git a/static/module_f.js b/static/module_f.js
+index 0bcac94..b0249ff 100644
+--- a/static/module_f.js
++++ b/static/module_f.js
+@@ -3472,6 +3500,11 @@
+                    : `${a.kind} ${a.dia}A · ${a.m} m`)
+               + (a.note ? ` — ${a.note}` : ""),
+             x: mx, y: my, frame: "iso",
++            // [F-11b-4] 지우는 길 — 지우면 그 자리는 다시 미해결로 돌아간다.
++            //   막다른 길을 만들지 않는 것이 «완결성» 이다(지시서 §0.1).
++            del: (a.what === "kind"
++                  ? { type: "kind", node: String(a.node), pipe: String(a.pipe) }
++                  : { type: "eq_len", kind: String(a.kind), dia: Number(a.dia) }),
+           };
+         }),
+       });
+@@ -3509,6 +3542,11 @@
+       const rows = g.items.map((it, ii) => {
+         const line = `<div class="issue" data-g="${gi}" data-i="${ii}">`
+           + `${it.text}</div>`;
++        // [F-11b-4] 채운 자리에는 지우는 단추를 단다.
++        if (it.del) {
++          return line + `<div class="ovrow"><button class="ovdel"`
++            + ` data-id="${gi}-${ii}">직접 입력 지우기</button></div>`;
++        }
+         if (!it.ov) return line;
+         // 채울 수 있는 자리에는 그 자리에서 바로 넣는 칸을 붙인다.
+         const id = `${gi}-${ii}`;
+@@ -3550,8 +3588,18 @@
+     const fillable = groups.some((g) => g.items.some((it) => it.ov));
+     $("dg-ov-row").classList.toggle("hidden", !fillable);
+     $("dg-ov-why").classList.toggle("hidden", !fillable);
++    // [F-11b-2] 「표를 다시 확정해야 값이 들어간다」를 배지로 — F-10d 의
++    //   «다시 계산» 배지와 같은 자리·같은 문법이다. 저장 뒤 재확정까지 자동으로
++    //   이어 주지만, 그 재확정이 실패하면 이 배지가 남아 사실을 말한다.
++    const dirtyRow = $("dg-ov-row");
++    if (S.ovDirty) dirtyRow.classList.remove("hidden");
++    if (fillable || S.ovDirty) {
++      $("dg-ov-n").textContent = S.ovDirty
++        ? "표 확정 필요 — 저장한 직접 입력이 아직 산출에 안 들어갔습니다"
++        : "채운 칸 0";
++      $("dg-ov-n").classList.toggle("warn", !!S.ovDirty);
++    }
+     if (fillable) {
+-      $("dg-ov-n").textContent = "채운 칸 0";
+       $("dg-ov-why").innerHTML =
+         "규칙이 <b>못 가린 자리에만</b> 쓰입니다 — 자동이 옳게 판정한 값은 "
+         + "바뀌지 않습니다. 저장한 뒤 <b>「표 확정」을 다시</b> 눌러야 "
+@@ -3562,6 +3610,37 @@
+       }
+       countFilled();
+     }
++    for (const el of box.querySelectorAll(".ovdel")) {
++      el.onclick = () => {
++        const [gi, ii] = el.dataset.id.split("-").map(Number);
++        const d = S.issues[gi].items[ii].del;
++        if (d) dropOverride(d);
++      };
++    }
++  }
++
++  // [F-11b-4] 직접 입력 하나를 지운다 — 지운 자리는 다시 미해결로 돌아가
++  // 목록에 재등장한다. 잘못 채운 값에 갇히지 않는 것이 «완결성» 이다.
++  async function dropOverride(d) {
++    const prev = S.fitOverrides || {};
++    const keep = (rows, key, gone) =>
++      (rows || []).filter((r) => key(r) !== gone);
++    const body = { sid: S.sid };
++    if (d.type === "kind") {
++      body.kind = keep(prev.kind, (r) => `${r.node}|${r.pipe}`,
++                       `${d.node}|${d.pipe}`);
++    } else {
++      body.eq_len = keep(prev.eq_len, (r) => `${r.kind}|${r.dia}`,
++                         `${d.kind}|${d.dia}`);
++    }
++    busy(true, "직접 입력을 지우는 중…");
++    try {
++      const r = await post("/api/module-f/design/fitting-override", body);
++      S.fitOverrides = r.overrides || {};
++      busy(false);
++      say("직접 입력을 지웠습니다 — 표를 다시 확정합니다.", "ok");
++      $("dg-build").click();     // 값이 바뀌는 일이라 재확정까지 이어 준다
++    } catch (err) { busy(false); say(err.message, "err"); }
+   }
+ 
+   /** 지금 몇 칸이 채워졌나 — 저장 전에 사람이 보고 안다. */

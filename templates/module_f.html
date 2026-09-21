@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260917-underlay-frame">
+<link rel="stylesheet" href="/static/module_f.css?v=20260920-merged-branch-elbow">
 </head>
 <body>
 <header>
@@ -99,9 +99,13 @@
       <div id="sub-picks" class="hint">—</div>
       <label class="f" id="sub-elevation-row"><span>계통도 표고 기준</span>
         <select id="sub-elevation-mode">
-          <option value="drawing">층간 계통도 · 도면에서 추정</option>
+          <option value="drawing">층간 계통도 · 층고 환산</option>
           <option value="same_level">같은 층 · 표고차 0으로 시작</option>
         </select>
+      </label>
+      <label class="f" id="sub-floor-height-row"><span>자료 없을 때 가정 층고 (m)</span>
+        <input type="number" id="sub-floor-height" value="4" min="0.1" step="0.1"
+               title="실제 층고 확인값이 아닙니다. 층 사이 연결점은 도면 위치 비례로 환산합니다.">
       </label>
       <label class="f"><span>클릭 허용 거리 (mm)</span>
         <input type="number" id="sub-snap" value="2500" min="1" max="50000"
@@ -219,9 +223,10 @@
            보여야 한다. (논리 문서의 S315) -->
       <div class="step" id="au-s4">
         <div class="step-h"><b>4</b>범위 지정 <i id="au-s4-mark"></i></div>
-        <p class="step-p">뽑을 구역을 사각형으로 그립니다. 안 그리면 도면
+        <p class="step-p">뽑을 구역을 사각형 또는 자유곡선으로 그립니다. 안 그리면 도면
           전체에서 가장 불리한 헤드군을 찾습니다.</p>
         <div class="row">
+          <select id="au-zone-shape" aria-label="자동 추출 영역 모양"><option value="rect">사각형</option><option value="lasso">자유곡선 (펜)</option></select>
           <button id="au-zone-draw">영역 그리기</button>
           <button id="au-zone-undo">마지막 지우기</button>
           <button id="au-zone-clear">전부 지우기</button>
@@ -297,6 +302,10 @@
         <button id="pk-undo" title="한 박자 되돌리기 (Ctrl+Z)">되돌리기</button>
       </div>
       <h2 style="margin-top:16px">헤드 칸</h2>
+      <label class="f"><span>헤드 감지 규칙</span><select id="pk-head-profile">
+        <option value="">기존 도면 규칙</option><option value="company_260404">회사 표준 (PPT 26~36쪽)</option>
+      </select></label>
+      <div class="hint">회사 표준을 고르고 「배관망 구성」을 누르면 선택한 헤드 묶음에 적용합니다. 다른 범례·미확정 기호는 검토 대상으로 표시합니다.</div>
       <div class="row">
         <button class="slot" data-slot="상향하향">상향 / 하향</button>
         <button class="slot" data-slot="상하향">상하향</button>
@@ -327,6 +336,7 @@
     </section>
 
     <section class="card hidden" id="panel-edit">
+      <details id="ed-company-box" class="hidden"><summary>회사 헤드 감지 결과</summary><div id="ed-company-report" class="hint"></div></details>
       <!-- [F-8d] 자동에서 이어받았을 때만 — 자동이 알던 자리를 «제안» 으로
            넘긴다. 반영은 아래 손질 모드와 같은 클릭 경로로만 들어간다. -->
       <div class="hidden" id="ed-handoff-box">
@@ -393,7 +403,9 @@
       </div>
       <h2 style="margin-top:16px">작업</h2>
       <div class="row">
-        <button id="ed-flow">물흐름</button>
+        <button id="ed-flow">물흐름 · 경로 확정</button>
+        <button id="ed-flow-report" title="확정 경로·제외 이유·전체 담당 헤드 수를 내려받습니다">경로 기록</button>
+        <span id="ed-flow-summary" class="muted" aria-live="polite"></span>
         <button id="ed-undo" title="한 박자 되돌리기 (Ctrl+Z)">되돌리기</button>
         <button id="ed-save">손질 저장</button>
       </div>
@@ -428,6 +440,10 @@
       <h2 style="margin-top:12px">② 영역 지정 <span class="tag">선택</span></h2>
       <label class="chk"><input type="checkbox" id="ed-zone-arm">
         <span>영역으로 후보 가두기</span></label>
+      <label class="f"><span>영역 모양</span><select id="ed-zone-shape">
+        <option value="rect">사각형</option><option value="lasso">자유곡선 (펜)</option>
+      </select></label>
+      <div class="hint">자유곡선: 누른 채 둘레를 그린 뒤 놓으세요. 끝점은 시작점과 자동으로 이어집니다. Esc 취소 · Shift+드래그 화면 이동.</div>
       <div id="ed-zones" class="hint">영역 없음 · 도면 전체</div>
       <div class="row">
         <button id="ed-zone-undo">마지막 영역 지우기</button>
@@ -621,6 +637,8 @@
            그대로 받아 쓴다(view.underlay) — 별도 수학 없음. -->
       <label class="chk"><input type="checkbox" id="dg-under">
         <span>배관 밑그림 깔기 — 아이소 «아래» 에 평면을 겹쳐 본다</span></label>
+      <p class="hint">아이소 헤드: △ 상향식 · ▽ 하향식 · 빨간 삼각형은 기준 헤드</p>
+      <p class="hint">빨간 짧은 점선: 확인된 부속 연결 방향 · 줌과 함께 확대/축소 · 클릭하면 속성/등가길이 근거 · 형상 미확인은 작은 마름모</p>
       <!-- [통합 격자 §3-1] 한 칸 = 실제 1 m. 검은 바탕에 망만 뜨면 «잴 자» 가
            없다(그림 18 ①). 배율을 못 받은 판(자동 차선 등)은 표에서 유추한다
            — 그 사실과 어긋남을 눈금 안내가 말한다. -->
@@ -715,7 +733,7 @@
       <h2 class="fold" data-fold="dg-evidence-body" style="margin-top:12px"><span class="caret">▶</span>관경 근거·제외 사유</h2>
       <div class="foldbody hidden" id="dg-evidence-body">
       <h2 style="margin-top:12px">관경 근거 보기</h2>
-      <label class="chk"><input type="checkbox" id="dg-bore-color" checked>
+      <label class="chk"><input type="checkbox" id="dg-bore-color">
         <span>관경 근거로 색 나누기</span></label>
       <div id="dg-bore-legend" class="hint">—</div>
 
@@ -865,7 +883,7 @@
          «정의된 값» 을 그대로 펼친다. 값은 이미 화면에 다 있다(5표 + view)
          므로 서버에 더 물을 것이 없다. 표를 열어 라벨로 훑는 대신, 클릭한
          자리에서 바로 읽히게 하는 것이 이 카드의 전부다. -->
-    <div class="inspect hidden" id="dg-ins">
+    <div class="inspect hidden" id="dg-ins" role="region" aria-label="선택 요소 속성 카드">
       <header>
         <span class="tag" id="dg-ins-kind">—</span>
         <span id="dg-ins-title" class="ins-title">—</span>
@@ -977,7 +995,9 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f_editor.js?v=20260917-underlay-frame"></script>
-<script src="/static/module_f.js?v=20260917-system-path"></script>
+<script src="/static/module_f_editor.js?v=20260920-fitting-properties"></script>
+<script src="/static/module_f_inspection.js?v=20260920-merged-branch-elbow"></script>
+<script src="/static/module_f_regions.js?v=20260920-lasso"></script>
+<script src="/static/module_f.js?v=20260920-merged-branch-elbow"></script>
 </body>
 </html>

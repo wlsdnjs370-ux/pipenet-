@@ -1,0 +1,23 @@
+[리팩터링 6/n] 좌표계 계약을 시험으로 — 세 공간과 그 사이의 «유일한 문»
+
+«논리회로가 꼬인 것 같다» 의 세 번째 갈래. 코드가 아니라 **암묵지**가
+꼬여 있었다 — 세 좌표공간(판 mm · kfp m · 표시)이 어디서 갈라지고 어떻게
+돌아오는지가 어느 한 곳에도 적혀 있지 않아, 나부터가 두 번 틀렸다
+(origin_mm 을 (0,0) 으로 가정 · 표의 x,y 를 캔버스 좌표로 오독).
+
+tests/test_module_f_coord_contract.py 신규 6건 — 문서이자 강제다:
+
+  A→B  왼쪽아래(minx,miny) ↦ (1m,1m) · 배율 1/1000 하나
+       역변환은 origin_mm 로만 — (0,0) 가정은 도면 밖 허공에 떨어진다는
+       것까지 시험이 보여준다(40만 mm 이상 어긋남을 단언)
+       ho 는 중심·반지름 모두 m 로, 좌표 아닌 칸은 불변
+       origin=None 은 «이미 kfp 단위» 라는 스모크 전용 모드 — mm 를 m 인 척
+       섞는 것이 아니라 «변환 없음» 이 계약임을 못박음
+  B→C  정규화 = 중심→(0,0) · 최장축→canvas_units · 비율 보존 ·
+       ★elevation 불변(표시가 아니라 수리계산 입력이다, §G12)
+       display_tables 는 사본 — 원본 표 불변 · 평면 보기는 stood 없음
+
+검증: 6건 통과 + scripts/_verify_module_f.py 실도면(B1F) 전 경로 통과 —
+  리팩터링 5/n(종류 SSOT) 이후의 엔진으로 최불리 K30 · 노드 111 · 배관 110.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>

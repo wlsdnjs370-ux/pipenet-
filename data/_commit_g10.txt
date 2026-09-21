@@ -1,0 +1,40 @@
+[G10·G12] 관종 선택을 표까지 · 아이소매트릭 조절 — 수용기준: PASS
+
+■ G10 — 관종이 하드코딩이었다
+  `tables.py` 가 전량 "KSD 3507" 을 박아 넣고 있었다. 인자로 받게 열었다:
+  `build_design_tables(default_schedule=, schedule_by_pipe=)`.
+  실측 — 기본값을 CPVC2 로 바꾸면 표가 따라오고, 배관별 지정도 먹는다.
+
+  ★오타를 조용히 넘기지 않는다. "KSD3507"(공백 빠짐)처럼 SLF 의 Item-name 과
+    다른 이름이 오면 `UnknownSchedule` 로 세우고 **파일을 만들지 않는다**.
+    조용히 기본값으로 떨어지면 PIPENET 에서 다시 "None defined" 가 되고,
+    그때는 원인을 도면 탓으로 오해하게 된다.
+
+  관종의 권위는 `sdf_post.SCHEDULE_DEFS` 하나다 — `tables.py` 의
+  `DEFAULT_PIPE_TYPE` 상수를 지웠다. 두 곳에 적어 두면 갈라진다.
+  meta 에 「배관 규격(기본)」을 남겨 산출물이 무엇으로 나갔는지 문서에 남는다.
+
+■ G12 — 아이소매트릭 베이크와 조절
+  공식은 `routes/r30_combined.py:_bake_isometric_node_coords` 와 **동일**하다 —
+  다른 공식을 쓰면 같은 망이 SDF·KFP·HAS 에서 다르게 보인다.
+  호출 순서는 **정규화 → 베이크**. 바꾸면 lift 배율이 어긋난다.
+  lift 영점은 알람밸브를 기본으로 — bbox 중앙으로 두면 이음매에서 두 망이
+  찢어진다(모듈 A 실측 대명동 약 11.6 m).
+
+  창에 네 칸(보기 켜기·고도 펼침 배율·캔버스 크기·lift 영점)을 붙이고,
+  묶음 제목에 **「표시 전용 · 수리계산 결과는 바뀌지 않습니다」**를 적었다.
+
+■ 수용 기준
+  · 평면 전용 망에서 lift=0 (예외 없음) · ref_label/no_lift 노드에서 lift=0
+  · iso_z_scale 1.0 → 2.0 은 세로 분리만 키우고 평면 배치는 그대로
+  · 회귀: 아이소 켬/끔 · 캔버스 3000/8000 세 산출의 length·rise·elevation·
+    bore·부속·노즐 유량이 **완전히 동일**(배관 61·노즐 30). Position 만 다르다.
+  · 기존 검사 전부 통과 — .kfp 구조 동일 · G1~G6 OK 89 FAIL 0 · G7 FAIL 0
+
+■ BLOCKED
+  B8 배관별 관종을 어디서 지정할지(손질에서 구간 찍기 vs 변환 창 매핑) — 인자는
+     이미 동작하고 채울 사람만 정하면 된다. 화면엔 전체 기본값만 노출(§G10 지시).
+  B9 아이소매트릭 설정의 저장 위치 — 지금은 매번 입력. 표시 전용이라 잘못 둬도
+     수리계산은 안 바뀐다.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

@@ -1,0 +1,40 @@
+{
+  "input_sha256": "07c2a42814baadfa4fa644919d4846911d23d908e6e7f91ffe2d57b1a1890b7f",
+  "node_count": 39,
+  "pipe_count": 38,
+  "grid_step_m": 1e-06,
+  "unchanged_coordinates": true,
+  "unchanged_pipes": true,
+  "branches": {
+    "+X": {
+      "ok": false,
+      "message": "해당 경로에 이미 배관이 존재합니다."
+    },
+    "-X": {
+      "ok": true,
+      "message": "OK"
+    },
+    "+Y": {
+      "ok": true,
+      "message": "OK"
+    },
+    "-Y": {
+      "ok": true,
+      "message": "OK"
+    },
+    "+Z": {
+      "ok": false,
+      "message": "해당 경로에 이미 배관이 존재합니다."
+    },
+    "-Z": {
+      "ok": true,
+      "message": "OK"
+    }
+  },
+  "resave_keeps_grid": false,
+  "cm_rounding": {
+    "changed_pipe_count": 22,
+    "max_length_change_mm": 8.389058011573525,
+    "total_length_change_mm": -19.92273498551245
+  }
+}

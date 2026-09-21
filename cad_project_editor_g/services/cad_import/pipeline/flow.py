@@ -890,7 +890,11 @@ def join_all(pts, edges0, spots, arms):
             continue
         passed[spots[si]["k"]] += 1
         sp = spots[si]
-        for u, v in _join_order(pts, a, sp["cx"], sp["cy"]):
+        pairs = _join_order(pts, a, sp["cx"], sp["cy"])
+        if sp["k"] == "호":
+            from src.pipenet_converter.graph.junctions import arc_connection_pairs
+            pairs = arc_connection_pairs(pts, a, edges, pairs)
+        for u, v in pairs:
             k = (min(u, v), max(u, v))
             if k not in edges:
                 edges.add(k)
@@ -1332,6 +1336,16 @@ def stage11_classify_heads(st, arm_index=None, owned_half_arc_keys=None):
     if owned_half_arc_keys is None:
         owned_half_arc_keys = _owned_half_arc_keys_from_stage1(st)
     out = []
+    company_adapter = None
+    if spec.get("head_symbol_profile"):
+        from pathlib import Path
+        from src.pipenet_converter.dxf.head_symbols import load_profile
+        from src.pipenet_converter.dxf.head_symbol_adapter import WorldSymbolAdapter
+        if spec["head_symbol_profile"] != "company_260404":
+            raise ValueError("지원하지 않는 회사 헤드 감지 규칙입니다.")
+        import src.pipenet_converter.dxf.head_symbols as _symbols
+        profile_path = Path(_symbols.__file__).resolve().parents[3] / "configs/head_symbols/company_260404.json"
+        company_adapter = WorldSymbolAdapter(w, spec, load_profile(profile_path))
     for h in head_cls:
         hkey = (_disk_key(h["c"][0], h["c"][1], h["head_r"])
                 if "head_r" in h else None)
@@ -1361,6 +1375,12 @@ def stage11_classify_heads(st, arm_index=None, owned_half_arc_keys=None):
             rec["head_r"] = float(h["head_r"])
         if "tri_side" in h:
             rec["tri_side"] = float(h["tri_side"])
+        if company_adapter is not None:
+            from src.pipenet_converter.dxf.head_symbol_adapter import apply_company_detection
+            explicit = ("upright_pendent" if _geo == "상하향식" else
+                        {"상향식":"upright", "하향식":"pendent", "상하향식":"upright_pendent"}.get(
+                            head_kind((h.get("bundle") or ("",))[0], None)))
+            rec = apply_company_detection(rec, company_adapter.classify(h, explicit_orientation=explicit))
         out.append(rec)
     counts = Counter(r["kind"] for r in out)
     label = STAGE_NAME.get("1-1", "헤드 종류 분류")
@@ -1753,6 +1773,11 @@ def pipeline(st, outside=False, stage4=True, stage5=True, key=None):
         if n_up_split:
             print(f"    [5 통과관분할] 중심 노드 {n_up_split}개"
                   f" (상향식 원 밑 통과 → 헤드 중심 접속)")
+    # Resolve explicit zero aliases and through-link overlaps BEFORE water flow.
+    # Once a tree prunes one of those duplicate routes, the true tee is lost.
+    from src.pipenet_converter.graph.junctions import normalize_junctions
+    junctions = normalize_junctions(pts, edges)
+    edges = junctions.edges
     # 6 입구 손질 — key 를 아는 호출측만. UI(build_board)는 key=None.
     # kind_overrides 는 이음5/ups 뒤 · 색·집계용 head_kinds 만 덮는다(이음 재계산 없음).
     user_sources = []
@@ -1783,6 +1808,8 @@ def pipeline(st, outside=False, stage4=True, stage5=True, key=None):
     n_tail = sum(1 for n, vs in _adj(edges).items()
                  if len(vs) == 1 and n in hspot)
     return dict(pts=pts, edges1=e1, edges=edges, spots=spots, arms=arms,
+                junction_normalization={"aliases": junctions.aliases,
+                                        "splits": list(junctions.splits)},
                 node_spots=node_spots, hcov=hcov, hnodes=hnodes, hspot=hspot,
                 head_kinds=head_kinds,
                 j2=j2, j3=j3, passed=passed,

@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
-"""[G1] 최불리 K 선정 — 앵커 방식(지시서 D1).
+"""Select the farthest K heads on the fixed supply-to-head calculation tree.
 
-`routes/module_f/remote30.py` 에서 **로직 변경 없이** 옮겨 왔다. 순수 그래프
-함수라 Qt·Flask 의존이 없다. 모듈 F 의 결과와 앵커·헤드 집합·far_m·max_load 가
-완전히 일치해야 이식이 성공한 것이다(§G1 수용 기준).
-
-「먼 순서 K개」가 아니라 앵커 방식인 이유는 worst_k_heads 의 docstring 에 있다.
+Selected loads describe this calculation area. ``physical_loads`` retain the
+all-head capacity used for sizing, before K or zone filtering.
 """
 from __future__ import annotations
 
-import heapq
 import math
 import sys
 from pathlib import Path
@@ -19,7 +15,7 @@ REMOTE_K_DEFAULT = 30
 
 def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
                    only_heads=None, source_index: int | None = None,
-                   head_xy=None) -> dict:
+                   head_xy=None, flow_tree=None) -> dict:
     """«가장 불리한 헤드 K개» — 수리계산의 설계면적 그 자체.
 
     ─ 규칙은 두 줄이다 (2026-09-07 · 사용자 확정) ────────────────────
@@ -44,9 +40,8 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
       그것이 1순위인 이유다. 프로그램이 대신 «구역» 을 지어내지 않는다.
 
     ─ 그리고 corridor ───────────────────────────────────────────────
-    뽑은 K 개를 급수원까지 잇는 최단경로의 합집합. 각 간선의 **담당 헤드
-    수(load)** 를 함께 낸다 — NFPC 별표1 이 최소 호칭경을 정할 때 쓰는 바로
-    그 값이라, 이 최대값이 주배관 관경을 결정한다.
+    뽑은 K 개의 확정 경로 합집합. loads는 선정 헤드 수(표시용)이며,
+    관경에는 K/영역 제한 전 전체 담당 수인 physical_loads를 쓴다.
 
     `only_heads` : 1순위 «영역» 이 여기로 들어온다(도면 장 나누기도 같은 자리).
     `head_xy` : 헤드의 제 좌표(board 의 disks). 뽑힌 무리가 **얼마나 넓게
@@ -56,7 +51,7 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
         전체망 `.kfp` 변환의 `source_selection_required` 와 같은 규약이다.
         급수원이 둘이면 앵커·최원 유하거리가 달라지므로, «어느 급수원에서든
         가장 먼 헤드» 는 수리계산 입력이 못 된다(BLOCKED B2 — 이것으로 해소).
-        `None` 이면 종전 그대로 전부 seed(하위호환 — 산출 비트 동일).
+        `None`이면 진단용 다중 seed를 허용한다. 실제 계산 어댑터는 하나를 지정한다.
     """
     if source_index is not None:
         src_list = list(sources)
@@ -66,43 +61,21 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
                 f"(급수원 {len(src_list)}곳)")
         sources = [src_list[int(source_index)]]
 
-    adj: dict[int, list[int]] = {}
-    for a, b in edges:
-        adj.setdefault(a, []).append(b)
-        adj.setdefault(b, []).append(a)
-
-    def dijkstra(seeds):
-        INF = float("inf")
-        dist: dict[int, float] = {}
-        prev: dict[int, int] = {}
-        pq: list[tuple[float, int]] = []
-        for s in seeds:
-            if isinstance(s, int) and 0 <= s < len(pts):
-                dist[s] = 0.0
-                heapq.heappush(pq, (0.0, s))
-        while pq:
-            d, u = heapq.heappop(pq)
-            if d > dist.get(u, INF):
-                continue
-            for v in adj.get(u, ()):
-                nd = d + math.dist(pts[u], pts[v])
-                if nd < dist.get(v, INF):
-                    dist[v] = nd
-                    prev[v] = u
-                    heapq.heappush(pq, (nd, v))
-        return dist, prev
-
-    # ① 급수원 기점 — 헤드마다 부착 노드·유하거리
-    src_dist, prev = dijkstra(list(sources))
+    from src.pipenet_converter.graph.flow import build_flow_tree
+    # A zone or K change must not change any head's supply route. Build/count
+    # the FULL tree first; all later stages consume this exact parent map.
+    flow_tree = flow_tree or build_flow_tree(pts, edges, hnodes, list(sources), head_xy=head_xy)
+    if set(flow_tree.roots) != set(sources):
+        raise ValueError("물흐름과 최불리의 알람밸브 기준이 다릅니다. 다시 확정하세요.")
+    src_dist, prev = flow_tree.distance_mm, flow_tree.parent
     head_node: dict[int, int] = {}
     head_far: dict[int, float] = {}
     for hi, nodes in enumerate(hnodes):
         if only_heads is not None and hi not in only_heads:
             continue
-        reach = [n for n in nodes if n in src_dist]
-        if not reach:
+        node = flow_tree.head_node.get(flow_tree.representatives.get(hi, hi))
+        if node is None:
             continue
-        node = min(reach, key=lambda n: src_dist[n])
         head_node[hi] = node
         head_far[hi] = src_dist[node]
 
@@ -193,7 +166,7 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
             keep_nodes.add(nxt)
             cur = nxt
 
-    total = sum(math.dist(pts[a], pts[b]) for a, b in loads)
+    total = sum(flow_tree.lengths_mm[e] for e in loads)
 
     # ④ 최원 유하거리 «경로» — 급수원 → 앵커. corridor 전체가 아니라 그 한 줄이다.
     #
@@ -213,7 +186,7 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
         cur = prev.get(cur)
     worst_path.reverse()          # 접속점 → 기준 헤드 방향
     worst_path_m = round(
-        sum(math.dist(pts[worst_path[i]], pts[worst_path[i + 1]])
+        sum(flow_tree.lengths_mm[tuple(sorted((worst_path[i], worst_path[i + 1])))]
             for i in range(len(worst_path) - 1)) / 1000.0, 2)
 
     return {
@@ -225,6 +198,9 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
         "dists": {hi: head_far[hi] for hi in picked},
         "edges": set(loads),
         "loads": loads,
+        "physical_loads": dict(flow_tree.loads),
+        "flow_revision": flow_tree.revision,
+        "flow_report": flow_tree.report(),
         "nodes": keep_nodes,
         "reachable": reachable,
         "unreachable": 0,          # picked 는 전부 도달 헤드 중에서 골랐다
@@ -237,7 +213,7 @@ def worst_k_heads(pts, edges, hnodes, sources, k=REMOTE_K_DEFAULT,
         "area_h_m": round(box_h / 1000.0, 2),
         "area_m2": round(box_w * box_h / 1e6, 1),
         "total_m": round(total / 1000.0, 2),            # corridor 총연장
-        "max_load": max(loads.values(), default=0),     # 주배관 관경 결정값
+        "max_load": max(loads.values(), default=0),     # 선정 부하 (관경은 전체 부하)
         # ★겹쳐 그려 «같은 자리» 라 하나로 센 헤드 — 조용히 넘기지 않는다.
         #   `merged` 는 도면 전체에서 접힌 수, `merged_xy` 는 **뽑힌 K개 중**
         #   접힌 자리다([x, y, 그 자리의 헤드 수]).

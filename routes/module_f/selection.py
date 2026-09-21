@@ -18,6 +18,7 @@ import 해 쓴다.
   도구가 깨지면 안 된다(패키지 분리 때의 `__init__.py` 재수출과 같은 규약).
 """
 from __future__ import annotations
+from src.pipenet_converter.graph.regions import normalize_zones, zone_contains, zones_signature
 
 
 def _load_map(got: dict) -> dict:
@@ -83,8 +84,7 @@ def _head_row(i, board, reasons=None) -> dict:
 
 
 def _in_rect(p, r) -> bool:
-    return (float(r[0]) <= float(p[0]) <= float(r[2])
-            and float(r[1]) <= float(p[1]) <= float(r[3]))
+    return zone_contains(r, p)
 
 
 def zone_confined_pool(pool, picked, zones, disks):
@@ -124,7 +124,7 @@ def zone_confined_pool(pool, picked, zones, disks):
 
     반환: 가둔 후보 목록. 가둘 근거가 없으면 받은 것을 그대로 돌려준다.
     """
-    rects = [r for r in (zones or ()) if r and len(r) >= 4]
+    rects = normalize_zones(zones)
     if not rects or not pool:
         return pool
     disks = list(disks or ())
@@ -172,12 +172,14 @@ def _selection_sig(sess: dict) -> tuple:
         tuple(getattr(b, "sources", None) or ()),
         tuple(getattr(b, "valves", None) or ()),
         tuple(getattr(b, "disk_kinds", None) or ()),
+        w.get("flow_revision"),
+        (sess.get("flow_report") or {}).get("revision"),
     )
     return (
         tuple(sorted(int(i) for i in (w.get("heads") or ()))),
         str(w.get("source_tag") or ""),
         w.get("sheet"),
-        tuple(tuple(round(float(v), 1) for v in r) for r in (w.get("zones") or ())),
+        zones_signature(w.get("zones") or []),
         board_rev,
     )
 
@@ -189,6 +191,17 @@ def _design_stale(sess: dict) -> dict | None:
     다른데 화면이 말하지 않으면, 그 그림을 믿고 다음 결정을 한다.
     """
     d = sess.get("design")
+    basis = ((d or {}).get("got") or {}).get("flow_report")
+    b = getattr(sess.get("edit"), "board", None)
+    if basis and b is not None:
+        from services.cad_import.design.flow import flow_for_board
+        try:
+            idx = list(b.sources).index(basis["roots"][0])
+            current = flow_for_board(b, index=idx)
+            if current.revision != basis["revision"]:
+                return {"why": ["물흐름 경로가 바뀌었습니다. 최불리와 표를 다시 확정하세요."]}
+        except ValueError:
+            return {"why": ["물흐름의 알람밸브 기준이 바뀌었습니다. 다시 확정하세요."]}
     if not d or d.get("sig") is None:
         return None
     old, now = d["sig"], _selection_sig(sess)

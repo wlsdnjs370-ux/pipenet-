@@ -66,25 +66,17 @@ def test_separated_metre_segments_do_not_trigger_all_pairs():
     assert len(calls) < 400  # Old 2000-m grid performs 319,200 side calls.
 
 
-def test_cell_degrees_equal_exhaustive_boundary_edge_count():
+def test_physical_degrees_equal_exact_unique_edge_count():
     from services.cad_import.design.restrict import corridor_topology
-    from services.cad_import.convert.planar import GRID_M
     rng=random.Random(829)
-    pts=[(rng.randrange(-5,6)*25.0,rng.randrange(-5,6)*25.0) for _ in range(100)]
+    pts=[(rng.uniform(-125,125),rng.uniform(-125,125)) for _ in range(100)]
     edges=[(rng.randrange(100),rng.randrange(100)) for _ in range(250)]
     edges += [(0,0),(0,1),(0,1),(1,1000)]  # Internal, duplicate and missing-coordinate nodes.
     origin=(-115.0,125.0)
-    groups={}
-    for vid,(x,y) in enumerate(pts):
-        group=(round(round(((x-origin[0])/1000+1)/GRID_M)*GRID_M,3),
-               round(round(((y-origin[1])/1000+1)/GRID_M)*GRID_M,3))
-        groups.setdefault(group,set()).add(vid)
-    expected={str(vid):sum((a in group)!=(b in group) for a,b in edges)
-              for group in groups.values() for vid in group}
-    # Unused nodes have no graph degree, even when they share a populated cell.
+    # Nearness/display snapping is not evidence of one physical junction.
+    unique={tuple(sorted((a,b))) for a,b in edges if a!=b}
     used={n for edge in edges for n in edge}
-    expected={key:value for key,value in expected.items() if int(key) in used}
-    expected['1000']=1
+    expected={str(vid):sum(vid in edge for edge in unique) for vid in used}
     refs={str(vid):vid for vid in used}
     got=corridor_topology({'pts':pts,'edges':edges},
                          {'origin_mm':origin,'node_ref':refs},

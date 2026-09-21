@@ -1,0 +1,28 @@
+[G1] 최불리 K 선정 이식 — 수용기준: PASS
+
+모듈 F 의 `_worst_k_heads` 와 `_sheet_frames` 를 `design/worst.py` 로 옮겼다.
+둘 다 순수 그래프 함수라 Qt·Flask 의존이 없다. 지시서 §5 대로 **로직은 한 줄도
+고치지 않고** 이름만 공개 계약(§1)에 맞췄다.
+
+이식이 성공했는지는 «모듈 F 와 결과가 같은가» 로만 판정된다:
+  앵커 1922 = 1922 · 헤드 집합 차집합 0 · far_m 154.17 = 154.17 · max_load 30 = 30
+
+한 곳만 손봤다 — 로직이 아니라 경로다. `sheet_frames` 는 모듈 A 를 import 하는데,
+G 는 제 트리를 cwd 로 도는 별개 프로세스라 저장소 루트가 sys.path 에 없어
+ModuleNotFoundError 가 났다. G 트리 기준으로 루트를 찾아 붙였고, 저장소 밖으로
+G 를 떼어 내면 기존 예외 경로가 그대로 받아 장 나누기만 꺼진다.
+
+회귀(§4): 전체망 .kfp 비트 동일 — sha256 c8dde8f4… 노드 1445 배관 1444.
+기준선은 `tests/_kfp_baseline.py` 가 작업 전에 떠 두었다.
+헤드리스: Qt 없이 design 전 모듈 import (PySide6 미로드 확인).
+
+시험 데이터: G 트리는 제 작업 폴더를 쓰므로 비어 있었다. B1F 찍은스펙·손질
+저장본·stage1 world 를 G 의 docs/import 로 들여왔다(§T6 — G 트리 안). 다만
+커밋하지는 않는다 — 도면에서 다시 만들어지는 파생물이고, E 트리의 docs/ 도
+git 에 없다(추적 0). .gitignore 에 G 의 docs/ 와 tests/_out/ 을 넣었다.
+
+BLOCKED.md: B1(corridor 뿌리 = 급수 시작 위치 vs 알람밸브),
+B2(급수원 2곳일 때 무엇을 고르나 — worst 는 전부 seed, kfp 는 Z1 못박음),
+B3(기준개수 K 기본값 노출 위치). 셋 다 §7 대로 구현하지 않고 기록만 했다.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

@@ -1,0 +1,64 @@
+{
+ "dxf": "1. 입력도면 대명동 단위세대 평면도.dxf",
+ "mb": 13.3,
+ "k": 10,
+ "conf_min": 0.9,
+ "자동": {
+  "sid": "551716ebbe1546fb",
+  "human": 3,
+  "clicks": 1,
+  "sec": 4.6,
+  "detected": 119,
+  "wet": null,
+  "k": 10,
+  "far_m": 33.16,
+  "nodes": 80,
+  "pipes": 79,
+  "excluded": null,
+  "note": "물닿음은 A 경로에 없다(E 의 물길 판정을 안 탄다)"
+ },
+ "혼합": {
+  "sid": "01593523ea7d40af",
+  "human": 3,
+  "clicks": 168,
+  "sec": 16.6,
+  "detected": 119,
+  "wet": {
+   "wet": 111,
+   "board": 111
+  },
+  "k": 10,
+  "far_m": 54.51,
+  "nodes": null,
+  "pipes": null,
+  "excluded": {
+   "dry": 0,
+   "unattached": 0
+  },
+  "adopt": {
+   "mat": 9,
+   "head": 3,
+   "already": 82,
+   "ghost": 2
+  }
+ },
+ "수동": {
+  "sid": "ff531b0b94014daa",
+  "human": 7,
+  "clicks": 226,
+  "sec": 31.8,
+  "detected": 119,
+  "wet": {
+   "wet": 131,
+   "board": 133
+  },
+  "k": 10,
+  "far_m": 52.72,
+  "nodes": null,
+  "pipes": null,
+  "excluded": {
+   "dry": 2,
+   "unattached": 10
+  }
+ }
+}

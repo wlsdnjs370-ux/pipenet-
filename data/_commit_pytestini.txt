@@ -1,0 +1,39 @@
+뿌리에서 친 `pytest` 가 «우리 시험» 에 닿지도 못하고 있었다
+
+■ 실측 (2026-09-03)
+
+  `python -m pytest` (인자 없이, 저장소 뿌리에서)
+    → 484건 수집 · 11건 수집 실패 · 끝에 pytest 자체가 터짐
+      (ValueError: I/O operation on closed file)
+    → 그 484건 안에 **우리 시험 1,608건이 한 건도 없었다.**
+      동봉된 남의 솔버(K-Fire_Solver/_internal/wntr — PyInstaller 번들)의
+      자체 시험과 pipenet_converter 만 긁다 끝났다.
+
+  시험이 안 도는 것보다, **안 돈 줄 모르는 것**이 나쁘다. 「초록불」 을 보고
+  우리 것이 돌았다고 믿을 수 있는 상태였다.
+
+■ 수집 실패 11건의 정체
+
+  · 2건 — 동봉 솔버의 시험. 우리 코드가 아니다.
+  · 1건 — data/ 의 일회용 탐침.
+  · 8건 — 은퇴한 E 트리(cad_project_editor)와 현역 G 트리를 **한 판에 같이**
+    긁어서 난 것. 두 트리는 `services`/`domain` 패키지 이름이 같아 한
+    프로세스에 둘 다 올리면 어느 쪽이 import 되는지가 순서 우연에 걸린다 —
+    routes/module_f/common.py 의 F-0·D1 이 같은 이유로 sys.path 를 G 하나로
+    고정한다. 애초에 같이 올리지 않는 것이 답이다.
+
+■ 고침
+
+  pytest.ini 신설. 이 저장소에는 pytest 설정도 conftest.py 도 **아예 없었다** —
+  그래서 뿌리에서 친 pytest 가 아무 데나 갔다.
+    testpaths     = tests · pipenet_converter/tests
+    norecursedirs = 동봉 솔버 · 은퇴한 E 트리 · data · 빌드 산출물
+
+  pipenet_converter 는 남의 것이 아니라 우리 것이고(추적 중·커밋 이력 있음)
+  88건이 통과하므로 함께 돈다.
+
+검증
+  종전 : 484건 수집 · 실패 11건 · 우리 시험 0건
+  이후 : **1,696건 통과 · 1건 skip · 수집 실패 0건** (3분 55초)
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>

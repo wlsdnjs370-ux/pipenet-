@@ -1,0 +1,40 @@
+모듈 F 화면 자산을 정적 파일로 떼어낸다 — 템플릿 87% 감소
+
+실측: templates/module_f.html 171,704자 중
+    <script>  127,785자 (74%)
+    <style>    21,045자 (12%)
+= 87%가 인라인 자산이었다. 이건 매 페이지 로드마다 다시 내려가고 브라우저가
+캐시할 수 없다. 함수 121개가 한 파일에 들어 있어 읽기도 어려웠다.
+
+두 블록 다 Jinja 표현이 **0개** 라 글자 그대로 옮길 수 있었다(치환 없음).
+
+    templates/module_f.html   159,946자 → 21,399자 (87% 감소)
+    static/module_f.css        19,549자  (신규)
+    static/module_f.js        119,084자  (신규)
+
+실행 시점은 바꾸지 않았다 — <script> 는 </body> 바로 앞에 있었고 외부 파일도
+같은 자리에 둔다. `defer` 를 붙이지 않은 이유가 그것이다(붙이면 DOM 준비
+시점이 달라진다). 캐시 무효화는 저장소 관례대로 ?v=<날짜> 로 건다.
+
+■ 인라인 구현에 결합돼 있던 검증·시험 네 곳을 출처 비의존으로 고쳤다
+
+자산을 쪼개자 «동작은 멀쩡한데 시험이 깨지는» 것이 45건 나왔다. 전부 같은
+원인이다 — 「이 문자열이 화면 소스에 있는가」를 보면서 인라인 <script> 만
+훑고 있었다. 보는 것은 «어디에 적혀 있는가» 가 아니므로 셋을 합쳐 읽게 했다.
+
+  · tests/test_module_f_adopt.py::_script      — 마크업+CSS+JS 를 합쳐 돌려준다
+  · tests/test_module_f_readcost.py::_script   — 인라인 없으면 정적 JS 를 읽는다
+  · scripts/_verify_module_f_js.py             — 위와 같음. 출처를 찍어 준다
+  · scripts/_verify_module_f_ui.py             — 브라우저 안에서 script[src] 를
+        fetch 해 합친다. 이 한 건이 분리 직후 유일한 FAIL 이었고, 원본
+        템플릿으로 되돌려 돌려 보고 «내 변경 탓» 임을 가른 뒤 고쳤다.
+
+검증:
+  · pytest tests            1,447 통과
+  · _verify_module_f_js.py  PASS — 구문·스코프 모두 통과
+  · _verify_module_f_ui.py  PASS — 브라우저 · 콘솔 오류 없음
+
+구문 검사만으로 끝내지 않았다. 자산 분리는 스코프를 바꿀 수 있어 런타임까지
+봐야 한다.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>

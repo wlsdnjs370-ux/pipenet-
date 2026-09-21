@@ -1,0 +1,4 @@
+  File "C:\Users\admin\PycharmProjects\JupyterProject\scripts\_verify_module_f_sub_live.py", line 73
+    bad(f"HTTP {r.status} {r.url[-60:]}
+        ^
+SyntaxError: unterminated f-string literal (detected at line 73)

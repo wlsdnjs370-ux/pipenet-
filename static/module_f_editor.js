@@ -349,6 +349,24 @@ window.createModuleFEditor = function (h) {
     b.onclick=()=>openAction('extend',axis);$('ne-arrows').append(b);}
   function overlay(){
     const sel=current(),v=view(),n=v?.nodes?.find(n=>String(n.label)===String(sel?.label));
+    // Keep the read-only property card beside, not over, the XYZ handles.
+    const inspector=$('dg-ins');
+    if(scope()==='design' && !inspector.classList.contains('hidden')){
+      const pipe=v?.pipes?.find(p=>String(p.label)===String(sel?.label));
+      const ends=pipe?[pipe.a,pipe.b].map(l=>v.nodes.find(n=>String(n.label)===String(l))):[];
+      const point=sel?.kind==='node'?n:ends.every(Boolean)&&ends.length===2
+        ? {x:(ends[0].x+ends[1].x)/2,y:(ends[0].y+ends[1].y)/2}:null;
+      const w=inspector.offsetWidth,ht=inspector.offsetHeight;
+      const points=(v?.nodes || []).map(n=>h.screen(n.x,n.y));
+      const focus=point?h.screen(point.x,point.y):null;
+      const corners=[[stage.clientWidth-w-12,12],[stage.clientWidth-w-12,stage.clientHeight-ht-35],
+        [12,12],[12,stage.clientHeight-ht-35]];
+      const score=([a,b])=>points.filter(([x,y])=>x>a-24&&x<a+w+24&&y>b-24&&y<b+ht+24).length
+        +(focus&&focus[0]>a-110&&focus[0]<a+w+110&&focus[1]>b-110&&focus[1]<b+ht+110?100:0);
+      corners.sort((a,b)=>score(a)-score(b));
+      inspector.style.left=Math.max(12,corners[0][0])+'px';inspector.style.right='auto';
+      inspector.style.top=Math.max(12,corners[0][1])+'px';inspector.style.bottom='auto';
+    }else{inspector.style.left='';inspector.style.right='';inspector.style.top='';inspector.style.bottom='';}
     const on=active()&&sel?.kind==='node'&&!!n&&h.calculationVisible();
     show('ne-gizmo',on);if(!on)return;
     const [x,y]=h.screen(n.x,n.y);
@@ -376,7 +394,7 @@ window.createModuleFEditor = function (h) {
       b.disabled=pending || selectedNode()?.head || !data;
       b.title=selectedNode()?.head?'먼저 우클릭 → 노드속성 변경 → 일반 노드로 변경하세요.':`${axes[i]} 방향으로 배관과 노드를 추가`;
       const len=Math.hypot(bx,by)||1,ux=bx/len,uy=by/len,ex=bx-ux*23,ey=by-uy*23;
-      lines+=`<path d="M ${110+ux*13} ${110+uy*13} L ${110+ex} ${110+ey} m ${-ux*7-uy*4} ${-uy*7+ux*4} l ${ux*7+uy*4} ${uy*7-ux*4} l ${-ux*7+uy*4} ${-uy*7-ux*4}" fill="none" stroke="${colors[i]}" stroke-width="2"/>`;
+      lines+=`<path d="M ${110+ux*28} ${110+uy*28} L ${110+ex} ${110+ey} m ${-ux*7-uy*4} ${-uy*7+ux*4} l ${ux*7+uy*4} ${uy*7-ux*4} l ${-ux*7+uy*4} ${-uy*7-ux*4}" fill="none" stroke="${colors[i]}" stroke-width="2"/>`;
     });
     $('ne-gizmo-lines').innerHTML=lines;
   }

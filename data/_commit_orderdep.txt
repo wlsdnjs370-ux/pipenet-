@@ -1,0 +1,47 @@
+시험이 쓰기 루트를 비워 놓고 나가 옆 시험 넷을 깼다 — 되돌릴 값은 «폴더»다
+
+앞 커밋(`경로 상수 함수화`)이 넣은 `test_g_path_late_binding.py` 가 제 뒷정리를
+`set_write_root(None)` 으로 했다. 그런데 `_boot()` 는 `_booted` 로 **한 번만**
+돈다 — 비워 두면 다시는 안 채워진다. 그 자리에서 재현한 값:
+
+    부팅 뒤              …\cad_project_editor_g\docs\import\0단계_새찍기
+    None 으로 되돌린 뒤   docs\import\0단계_새찍기        ← cwd 상대경로
+    _boot() 재호출 뒤     docs\import\0단계_새찍기        ← `_booted` 라 그대로
+
+그 뒤의 모듈 F 시험들이 찍은스펙을 **상대경로 폴더에 쓰고**, 라우트는
+`pick_store_dir()`(엔진 없이도 답해야 해서 실작업 폴더에 고정돼 있다)에서
+**읽었다**. 「만든 저장본이 목록에 없다」가 그 결과다.
+
+이 지시서가 없애려던 «부팅 순서에 따라 경로가 갈리는» 사고를, 그것을 지키려고
+만든 시험이 저지른 셈이다.
+
+■ 어떻게 좁혔나
+
+    전체 스위트          1888 passed · 4 failed · 3 skipped
+    outputs + resume_gone 만   7 passed (743초)   ← 두 시험은 무죄
+    late_binding + resume_gone  조치 전 실패 → 조치 후 11 passed
+
+  단독으로는 넷 다 통과해 «순서 의존» 으로만 보였다. 앞에서부터 파일을 넣어
+  보는 대신, 알파벳 순으로 그 넷보다 **앞서 도는** 파일 중 쓰기 루트를 건드리는
+  것을 추려 한 번에 짚었다.
+
+■ 조치 — 되돌릴 값은 override 가 아니라 «그때 가리키던 폴더»
+
+  세 자리 모두 `import_write_root()` 의 **결과**를 담았다가 그대로 되돌린다.
+  override 자체(None 일 수 있다)를 담으면 위의 사고가 난다.
+
+    tests/test_g_path_late_binding.py   autouse 픽스처 신설
+    tests/test_module_f_unified.py      `_client(tmp_path)` 가 갈아 끼우고
+                                        **되돌리지 않았다**(옛 방식에서도 그랬다)
+    tests/_workdir_iso.py               같은 함정을 미리 막는다
+
+■ 결과
+
+    1895 passed · 0 failed · 0 skipped (960초)
+
+  ★건너뛰던 3건도 되살아났다 — 상대경로를 보던 탓에 「저장소에 없는 파일」로
+    오인하던 것들이다. 그리고 `test_module_f_outputs` 는 종전에 「B1F reopen」
+    에서 곧장 실패하고 빠져나가느라 349초에 끝나던 스위트가, 이제 그 시험이
+    8조합을 다 돌아 960초가 됐다 — **안 돌던 것이 도는 값**이다.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>

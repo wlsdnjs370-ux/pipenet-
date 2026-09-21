@@ -1,0 +1,49 @@
+<!doctype html><meta charset='utf-8'><style>
+html,body{margin:0;background:#e8edf3;font-family:'Malgun Gothic','Noto Sans KR',sans-serif;color:#172033}
+.shell{width:1280px;height:820px;padding:24px;box-sizing:border-box;background:linear-gradient(135deg,#eef3f8,#dbe5ef)}
+.layout{display:grid;grid-template-columns:210px 1fr;gap:18px;height:100%}
+.side{background:#fff;border:1px solid #cfd7e3;border-radius:0;padding:16px;box-shadow:0 8px 22px rgba(15,23,42,.08)}
+.side h3{margin:0 0 14px;font-size:15px;color:#0f172a}
+.menu{display:block;width:100%;text-align:left;margin:7px 0;padding:12px;border:1px solid #d7dee8;background:#f8fafc;border-radius:0;font-weight:700;color:#334155}
+.menu.active{background:#12345a;color:white;border-color:#12345a}
+.main{display:flex;flex-direction:column;gap:14px;min-width:0}
+.header{background:#fff;border:1px solid #cfd7e3;border-radius:0;padding:18px 22px;box-shadow:0 8px 22px rgba(15,23,42,.08)}
+.kicker{font-size:12px;letter-spacing:.16em;color:#2563eb;font-weight:900;margin:0 0 4px}
+h1{margin:0;font-size:28px}
+.card{background:#fff;border:1px solid #cfd7e3;border-radius:0;padding:18px;box-shadow:0 8px 22px rgba(15,23,42,.08)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.pill{display:inline-block;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:900}
+.pass{background:#dcfce7;color:#166534}.fail{background:#fee2e2;color:#991b1b}.eng{background:#dbeafe;color:#1d4ed8}.econ{background:#dcfce7;color:#15803d}
+table{width:100%;border-collapse:collapse;font-size:13px;background:#fff}th{background:#18233a;color:white;padding:9px;border:1px solid #334155}td{padding:8px;border:1px solid #cbd5e1}
+.network{height:330px;background:#f8fafc;border:1px solid #cbd5e1;position:relative;overflow:hidden}
+.pipe{position:absolute;height:3px;background:#64748b;transform-origin:left center}.pipe.red{background:#ef4444;height:5px}.pipe.green{background:#16a34a;height:5px}
+.node{position:absolute;width:8px;height:8px;border-radius:50%;background:#0f172a}
+.maptitle{position:absolute;left:14px;top:12px;background:white;border:1px solid #cbd5e1;padding:6px 10px;font-weight:800}
+.chart{height:210px;background:linear-gradient(180deg,#f8fafc,#fff);border:1px solid #cbd5e1;position:relative}
+.bar{position:absolute;bottom:28px;width:22px;background:#2563eb}.bar.red{background:#ef4444}.axis{position:absolute;left:38px;right:20px;bottom:28px;height:1px;background:#94a3b8}
+.note{font-size:13px;color:#475569;line-height:1.55}
+</style>
+    <div class='shell'><div class='layout'>
+      <aside class='side'><h3>PIPENET 메뉴</h3><button class='menu '>1. 검증결과</button><button class='menu active'>2. 설계 최적화 가이드</button><button class='menu '>3. 결과 데이터 테이블</button><button class='menu '>4. 검진 통계</button><button class='menu '>5. 상세리포트</button><button class='menu '>6. CAD-아이소매트릭 대조</button></aside>
+      <main class='main'>
+        <section class='header'><p class='kicker'>PIPE CALC VALIDATION</p><h1>PIPENET 수리계산 검증</h1></section>
+        
+        <section class='grid2'>
+          <div class='card'><h2>공학적 마찰손실 최적화 조치</h2><div class='network'>
+            <div class='maptitle'>Friction Loss Spike Map</div>
+            <div class='pipe' style='left:90px;top:210px;width:210px;transform:rotate(-8deg)'></div>
+            <div class='pipe red' style='left:298px;top:181px;width:160px;transform:rotate(22deg)'></div>
+            <div class='pipe' style='left:445px;top:240px;width:180px;transform:rotate(-18deg)'></div>
+          </div><p class='note'>m당 마찰손실 &gt; 1.0 kg/cm²/m 구간만 빨간색으로 표시합니다.</p></div>
+          <div class='card'><h2>시공사 경제성 확보 방안</h2><div class='network'>
+            <div class='maptitle'>Economy Optimization Candidate Map</div>
+            <div class='pipe green' style='left:100px;top:190px;width:180px;transform:rotate(8deg)'></div>
+            <div class='pipe green' style='left:275px;top:220px;width:210px;transform:rotate(-20deg)'></div>
+            <div class='pipe' style='left:480px;top:145px;width:150px;transform:rotate(30deg)'></div>
+          </div><p class='note'>저유속, 압력여유 과다, 대구경 밸브, CPVC 대구경 후보를 구분합니다.</p></div>
+        </section>
+        
+      </main>
+    </div></div>
+    

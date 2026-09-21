@@ -1,0 +1,63 @@
+{
+  "b1f": {
+    "board": {
+      "pts": 19040,
+      "edges": 18918,
+      "heads": 3105
+    },
+    "worst": {
+      "far_m": 154.25,
+      "span_m": 40.21,
+      "total_m": 207.95,
+      "max_load": 30
+    },
+    "full": {
+      "nodes": 604,
+      "pipes": 603
+    },
+    "worst_kfp": {
+      "k": 30,
+      "nodes": 99,
+      "pipes": 98
+    },
+    "sdf": {
+      "pipe_set_names": [
+        "KSD 3507",
+        "KSD 3562",
+        "KSD 3576",
+        "DP",
+        "CPVC2",
+        "FX"
+      ],
+      "placeholder_first": true,
+      "nodes": 99,
+      "pipes": 98,
+      "nozzles": 30
+    }
+  },
+  "daemyeong": {
+    "board": {
+      "pts": 2769,
+      "edges": 3139,
+      "heads": 133
+    },
+    "worst": {
+      "far_m": 52.72,
+      "span_m": 10.48,
+      "total_m": 66.53,
+      "max_load": 10
+    },
+    "full": {
+      "nodes": 700,
+      "pipes": 699
+    },
+    "worst_kfp": {
+      "k": 10,
+      "nodes": 57,
+      "pipes": 56
+    },
+    "design": {
+      "sdf": "1. 입력도면 대명동 단위세대 평면도_수리계산입력.sdf"
+    }
+  }
+}

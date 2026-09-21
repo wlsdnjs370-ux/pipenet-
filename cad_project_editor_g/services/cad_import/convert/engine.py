@@ -4,13 +4,15 @@
 수직 규칙 (2026-08-13 오너):
   메인 = 급수에서 따라감. 호의 열린 곳으로 안 감 (1곳=엘보, 2곳=크로스).
   호가 없으면 갈래를 다 메인. 가지 상승 없음.
-  가지면 = 메인 Z + branch_rise (기본 0.3). 호로 열린 갈래만.
-  상향식 = 가지면 + ① (기본 0.3)
-  하향식 = ①↑(0 이면 안 만듦) · 중간=도면 XY(없거나 ≤0.15m → 0.15m)
-            · ②↓ (후렉시블 C·거칠기는 ②만, 체크 시에만)
+  가지면 = 메인 Z + branch_rise (기본 0.5 · 덱 「z축 및 피팅류」 2026-09-20). 호로 열린 갈래만.
+  상향식 = 가지면 + ① (기본 0.5)
+  하향식 = ①↑(0 이면 안 만듦 · 기본 0.3) · 중간=도면 XY(없거나 ≤0.15m → 0.15m)
+            · ②↓ (기본 0.5 · 후렉시블 C·거칠기는 ②만, 체크 시에만)
             ① 위치 = 가지에서 팔이 갈라지는 티. 꺾인 팔 엘보가 아님.
-  상하향식 = ①↑0.2 · ②위헤드 0.3(①에 붙음) · ③+X 0.3 · ④↓0.5(후렉시블)
+  상하향식 = ①↑0.3 · ②위헤드 0.2(①에 붙음) · ③가지 따라 0.5 · ④↓0.5(후렉시블)
             평면 원 하나 → 헤드 둘. 종류는 편집 head_kinds. 펌프 Z 그대로.
+  호 우회   = 접속 2개 노드 위의 호 짝(⊂ … ⊃) 사이를 branch_rise 만큼 올렸다 내린다
+            (덱 3장 그림 1 · convert/arc_jog.py). 꺾이는 넷은 엘보. 짝 없는 호는 센다.
   알람밸브 = 찍은 점에서 아래 ①(기본 2.5) → 알람밸브 → ②(기본 0.5).
             ①=0 이면 안 그림. 찍기 없으면 안 그림.
 원본 평면 그래프는 수정하지 않는다. 새 .kfp 만 쓴다.
@@ -43,6 +45,7 @@ from services.cad_import.dto import (
     VALVE_2_DEFAULT_M as VALVE_2_M,
 )
 from services.cad_import.kinds import normalize_head_kind, resolve_head_kinds
+from services.cad_import.convert.arc_jog import apply_arc_jogs
 from services.cad_import.convert.main_walk import (
     ho_to_kfp_units, sit_arcs, snap_seed, walk_main, xf_mm_to_m)
 from services.cad_import.convert.preflight import preflight_kfp_convert
@@ -107,7 +110,11 @@ def ensure_planar(payload):
             head_kinds=_resolved_kinds(payload),
             user_sources=payload.get("sources"),
             ho=payload.get("ho"),
+            edge_len_mm=payload.get("edge_len_mm"),
         )
+        if payload.get("flow_head_nodes") is not None:
+            kwargs.update(fixed_head_nodes=payload["flow_head_nodes"],
+                          grid_snap=False, keep_head_stub=False)
     built = build_planar_graph(
         key or "out", write=False,
         selected_source=payload.get("selected_source"), **kwargs)
@@ -116,6 +123,19 @@ def ensure_planar(payload):
             built.get("error") or "평면 그래프 .kfp 가 없습니다.")
         payload["_planar_code"] = built.get("code")
         return payload
+    if payload.get("flow_head_nodes") is not None:
+        from services.cad_import.design.flow import physical_pipe_loads, stamp_planar_flow
+        try:
+            if payload.get("_flow_tree") is not None:
+                stamp_planar_flow(built, payload["_flow_tree"])
+            physical_pipe_loads(built["kfp"])
+            actual = sum(n.get("type_id") == "head" for n in built["kfp"]["nodes_meta_runtime"].values())
+            if actual != len(payload.get("hcov") or []):
+                raise ValueError("확정 물흐름의 헤드가 전체망 전개에서 누락되었습니다. 손질 접속을 확인하세요.")
+        except ValueError as exc:
+            payload["_planar_error"] = str(exc)
+            payload["_planar_code"] = "flow_tree_mismatch"
+            return payload
     payload["kfp"] = built["kfp"]
     if "sources" in built:
         payload["sources"] = list(built.get("sources") or [])
@@ -262,7 +282,7 @@ def _xy_on_seg_2d(px, py, ax, ay, bx, by):
     return qx, qy, t, d2
 
 
-def _walk_main_kfp(kfp, ho, source_xy):
+def _walk_main_kfp(kfp, ho, source_xy, phys_degree=None):
     nodes = kfp["nodes_meta_runtime"]
     pipes = kfp["pipe_data"]
     xy = {nid: (float(n["coords"][0]), float(n["coords"][1]))
@@ -272,13 +292,18 @@ def _walk_main_kfp(kfp, ho, source_xy):
         adj[p["start"]].add(p["end"])
         adj[p["end"]].add(p["start"])
     sit_r = max((float(s.get("r") or 0.0) for s in ho), default=0.0)
-    node_arcs = sit_arcs(xy, ho, sit_r)
+    # 같은 자리에 노드가 겹치면 갈래 노드에 앉힌다 (main_walk.sit_arcs 주석).
+    #   회랑은 갈래를 잘라 접속 2개로 보이므로 «지우기 전 접속 수»(phys_degree)가
+    #   있으면 그것을 함께 본다.
+    degree = {nid: max(len(adj.get(nid, ())), int((phys_degree or {}).get(nid, 0)))
+              for nid in xy}
+    node_arcs = sit_arcs(xy, ho, sit_r, degree=degree)
     if not node_arcs:
         return None, "no_arc_seated"
     seed = snap_seed(xy, adj, source_xy, snap=2.5)
     if seed is None:
         return None, "seed_snap_fail"
-    return walk_main(xy, adj, node_arcs, seed), None
+    return walk_main(xy, adj, node_arcs, seed, degree=degree), None
 
 
 def _pipe_between(pipes, a, b):
@@ -389,8 +414,14 @@ def _apply_vertical(kfp, kind_by_nid, branch_rise, upright_m, pendant_1_m,
                     flex_c, flex_roughness_mm, head_k, required_pressure_bar,
                     ho=None, source_xy=None,
                     valve_xy=None, valve_1_m=VALVE_1_M, valve_2_m=VALVE_2_M,
-                    valve_lib=None, head_active=False, head_spec_name=None):
-    """메인→가지 수직 + 헤드 종류별 ①②③④ + 알람밸브 아래 ①②."""
+                    valve_lib=None, head_active=False, head_spec_name=None,
+                    phys_degree=None):
+    """메인→가지 수직 + 헤드 종류별 ①②③④ + 알람밸브 아래 ①②.
+
+    `phys_degree` : {노드: 지우기 전 배관망 접속 수} — 회랑 전개가 넘긴다. 호가
+    앉은 자리가 갈래인지 우회인지는 «지우기 전» 접속 수로 가른다.
+    """
+    phys_degree = {str(k): int(v) for k, v in (phys_degree or {}).items()}
     nodes = kfp["nodes_meta_runtime"]
     pipes = kfp["pipe_data"]
     kfp.setdefault("node_counter", {"N": 0})
@@ -473,6 +504,10 @@ def _apply_vertical(kfp, kind_by_nid, branch_rise, upright_m, pendant_1_m,
             return None, None, None
         line_id = next_node_id()
         nodes[line_id] = clone_base(base_tmpl, line_id, hc)
+        # The template supplies defaults, NOT physical identity. Keep the
+        # original head's plan junction so pruned continuation ports survive
+        # fitting classification. Other generated bends must not inherit it.
+        kfp.setdefault("head_takeoffs", {})[line_id] = hid
         for pid in h_pipes:
             if pipes[pid]["start"] == hid:
                 pipes[pid]["start"] = line_id
@@ -640,7 +675,7 @@ def _apply_vertical(kfp, kind_by_nid, branch_rise, upright_m, pendant_1_m,
     walked = None
     walk_reason = None
     if ho and source_xy is not None:
-        walked, walk_reason = _walk_main_kfp(kfp, ho, source_xy)
+        walked, walk_reason = _walk_main_kfp(kfp, ho, source_xy, phys_degree)
     main_nodes = set()
     junctions = []
     if walked is not None:
@@ -713,6 +748,50 @@ def _apply_vertical(kfp, kind_by_nid, branch_rise, upright_m, pendant_1_m,
             raise RuntimeError(f"junction pipe {pid} not attached to main {m}")
 
     adj = build_adj()
+    # ── 호가 앉은 갈래 — 부속 판정이 «평면 4방향» 을 미해결로 넘기지 않게 표시해 둔다.
+    #    통과 갈래(T · 꼭대기에 팔 둘) 와 관말 갈래(E · 꼭대기에 팔 하나): 덱 3장 그림 2·3.
+    #    회랑은 팔을 잘라 냈을 수 있으므로 «지우기 전 접속 수» 로 가른다: 평면 4방향(괄호 쌍)
+    #    이면 T(꼭대기 포트 3), 3방향(사발·C)이면 E(꼭대기 포트 2).
+    arc_junctions = {}
+    moved = {}
+    for m, _pid, _o in junctions:          # m 에서 세로 꼭대기로 옮겨 간 가지 포트 수
+        moved[m] = moved.get(m, 0) + 1
+    for m, rid in rise_at.items():
+        # 접속점의 평면 포트 수 = (지금 접속 − 세로관) + 옮겨 간 가지 포트, 또는 지우기 전 접속 수
+        p_m = max(int(phys_degree.get(str(m), 0)),
+                  len(adj.get(m, ())) - 1 + int(moved.get(m, 0)))
+        kind = "T" if (p_m >= 4 or len(adj.get(rid, ())) >= 3) else "E"
+        arc_junctions[str(m)] = {"kind": kind, "top": str(rid),
+                                 "top_ports": 3 if kind == "T" else 2}
+    kfp["arc_junctions"] = arc_junctions
+
+    # ── [호 우회 · 덱 3장 그림 1] 접속 2개 노드 위의 호 짝 → 그 사이를 올렸다 내린다.
+    #    갈래 처리에 쓰인 노드(주배관 접속점·세로 꼭대기)는 후보에서 뺀다.
+    jog = {"pairs": [], "unpaired": [], "skipped": {}, "n_vert": 0, "n_raised": 0}
+    if ho:
+        xy_now = {nid: (float(n["coords"][0]), float(n["coords"][1]))
+                  for nid, n in nodes.items()}
+        deg_now = {nid: max(len(adj.get(nid, ())), int(phys_degree.get(str(nid), 0)))
+                   for nid in nodes}
+        seats = sit_arcs(xy_now, ho,
+                         max((float(s.get("r") or 0.0) for s in ho), default=0.0),
+                         degree=deg_now)
+        # 주배관 위의 호도 우회일 수 있다(그림 1 은 주배관 위 호 짝이다) — 갈래 처리에
+        # 쓰인 자리(주배관 접속점 · 세로 꼭대기)만 뺀다.
+        exclude = set(rise_at) | set(rise_at.values())
+        jog = apply_arc_jogs(
+            kfp, seats, branch_rise, protected=protected, exclude=exclude,
+            degree=deg_now,
+            next_node_id=next_node_id, next_pipe_id=next_pipe_id,
+            clone_base=clone_base, make_vert_pipe=make_vert_pipe)
+        adj = build_adj()
+    kfp["arc_report"] = {
+        "junction_T": sum(1 for v in arc_junctions.values() if v["kind"] == "T"),
+        "junction_E": sum(1 for v in arc_junctions.values() if v["kind"] == "E"),
+        "jog_pairs": len(jog["pairs"]), "jog_unpaired": len(jog["unpaired"]),
+        "jog_skipped": dict(jog["skipped"]), "rise_m": float(branch_rise),
+        "jogs": list(jog["pairs"]), "unpaired_nodes": list(jog["unpaired"]),
+    }
     heads = _head_nids(nodes)
     n_heads_peeled = 0
     n_vert_head = 0
@@ -829,6 +908,10 @@ def _apply_vertical(kfp, kind_by_nid, branch_rise, upright_m, pendant_1_m,
         "n_combo": n_combo,
         "n_vert_branch": n_vert_branch,
         "n_vert_head": n_vert_head,
+        "n_jog_pairs": len(jog["pairs"]),
+        "n_jog_unpaired": len(jog["unpaired"]),
+        "n_vert_jog": int(jog["n_vert"]),
+        "arc_junctions": dict(kfp.get("arc_report") or {}),
         "n_valve": n_valve,
         "n_heads": len(_head_nids(nodes)),
         "n_heads_in": len(heads),
@@ -848,7 +931,7 @@ def convert_to_kfp(payload, out_path=None, *,
                    head_k=None, required_pressure_bar=None,
                    min_pressure_bar=None,
                    valve_1_m=None, valve_2_m=None,
-                   head_active=False, head_spec_name=None):
+                   head_active=False, head_spec_name=None, phys_degree=None):
     """편집 그래프 payload → Z 있는 .kfp. preflight 실패면 변환하지 않는다.
 
     payload: head_kinds, kind_overrides, hcov|disks,
@@ -925,7 +1008,8 @@ def convert_to_kfp(payload, out_path=None, *,
         flex_c, flex_roughness_mm, head_k, required_pressure_bar,
         ho=ho, source_xy=src_xy,
         valve_xy=valve_xy, valve_1_m=v1, valve_2_m=v2, valve_lib=valve_lib,
-        head_active=head_active, head_spec_name=head_spec_name)
+        head_active=head_active, head_spec_name=head_spec_name,
+        phys_degree=phys_degree)
     if out_path:
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(kfp, f, ensure_ascii=False, indent=2)
@@ -1105,11 +1189,11 @@ def smoke():
     assert abs(float(n2["B"]["coords"][2])) < 1e-9
     assert abs(float(n2["C"]["coords"][2])) < 1e-9
     assert abs(float(n2["HB"]["coords"][2])) < 1e-9
-    assert abs(float(n2["H1"]["coords"][2]) - 0.3) < 1e-9
-    assert abs(float(n2["H7"]["coords"][2]) - 0.3) < 1e-9
+    assert abs(float(n2["H1"]["coords"][2]) - 0.5) < 1e-9   # 상향식 ① 기본 0.5
+    assert abs(float(n2["H7"]["coords"][2]) - 0.5) < 1e-9
     h8 = n2["H8"]["coords"]
     assert abs(float(h8[0]) - 4.0) < 1e-9
-    assert abs(float(h8[2])) < 1e-9
+    assert abs(float(h8[2]) + 0.2) < 1e-9   # 하향식 ①0.3 ↑ 뒤 ②0.5 ↓ → 가지면 −0.2
     assert out["stats"]["missing_offsets"] == []
     assert out["stats"]["n_heads_peeled"] == 8
     assert out["stats"]["n_combo"] == 0
@@ -1119,12 +1203,12 @@ def smoke():
     flex_drop = [p for p in out["kfp"]["pipe_data"].values()
                  if p.get("C") == 140.0]
     assert len(flex_drop) == 1
-    assert abs(float(flex_drop[0]["length_m"]) - 0.3) < 1e-9
+    assert abs(float(flex_drop[0]["length_m"]) - 0.5) < 1e-9   # 하향식 ② 기본 0.5
 
     p0 = convert_to_kfp(
         {"kfp": planar, "head_kinds": heads_xy}, pendant_1_m=0.0)
     assert abs(float(p0["kfp"]["nodes_meta_runtime"]["H8"]["coords"][2])
-               + 0.3) < 1e-9
+               + 0.5) < 1e-9
 
     def _n(i, x, y, tid="base"):
         rec = {"id": i, "coords": [float(x), float(y), 0.0], "elevation_m": 0.0,
@@ -1249,12 +1333,14 @@ def smoke():
     assert combo_out["stats"]["n_heads"] == 9
     cn = combo_out["kfp"]["nodes_meta_runtime"]
     h8c = cn["H8"]["coords"]
-    assert abs(float(h8c[0]) - 4.3) < 1e-9
+    assert abs(float(h8c[0]) - 4.5) < 1e-9   # ③ 팔 기본 0.5 (가지 따라)
     assert abs(float(h8c[1]) + 2.0) < 1e-9
-    assert abs(float(h8c[2]) + 0.3) < 1e-9
+    assert abs(float(h8c[2]) + 0.2) < 1e-9   # ①0.3 ↑ · ④0.5 ↓
     ups = [n for n in cn.values()
            if n.get("type_id") == "head"
-           and abs(float(n["coords"][2]) - 0.5) < 1e-9]
+           and abs(float(n["coords"][2]) - 0.5) < 1e-9        # ①0.3 + ②0.2
+           and abs(float(n["coords"][0]) - 4.0) < 1e-9
+           and abs(float(n["coords"][1]) + 2.0) < 1e-9]
     assert len(ups) == 1
     uc = ups[0]["coords"]
     assert abs(float(uc[0]) - 4.0) < 1e-9
@@ -1294,7 +1380,7 @@ def smoke():
     wn = walked["kfp"]["nodes_meta_runtime"]
     assert abs(float(wn["A"]["coords"][2])) < 1e-9
     assert abs(float(wn["C"]["coords"][2])) < 1e-9
-    assert abs(float(wn["D"]["coords"][2]) - 0.3) < 1e-9
+    assert abs(float(wn["D"]["coords"][2]) - BRANCH_RISE_M) < 1e-9
 
     ho_cross = [
         {"cx": 1.0, "cy": 0.0, "r": 0.2, "sa": 315.0, "sweep": 90.0},
@@ -1337,8 +1423,8 @@ def smoke():
     xn = crossed["kfp"]["nodes_meta_runtime"]
     xp = crossed["kfp"]["pipe_data"]
     assert abs(float(xn["B"]["coords"][2])) < 1e-9
-    assert abs(float(xn["D"]["coords"][2]) - 0.3) < 1e-9
-    assert abs(float(xn["E"]["coords"][2]) - 0.3) < 1e-9
+    assert abs(float(xn["D"]["coords"][2]) - BRANCH_RISE_M) < 1e-9
+    assert abs(float(xn["E"]["coords"][2]) - BRANCH_RISE_M) < 1e-9
     b_nbrs = set()
     for p in xp.values():
         if p["start"] == "B":
@@ -1350,7 +1436,7 @@ def smoke():
     rise = [n for n in b_nbrs if n not in ("A", "C")]
     assert len(rise) == 1
     rid = rise[0]
-    assert abs(float(xn[rid]["coords"][2]) - 0.3) < 1e-9
+    assert abs(float(xn[rid]["coords"][2]) - BRANCH_RISE_M) < 1e-9
     r_nbrs = set()
     for p in xp.values():
         if p["start"] == rid:
@@ -1445,7 +1531,7 @@ def smoke():
 
     print("gate: convert preflight_block=미지정 "
           "planar_missing=no_kfp ensure_passthrough "
-          "no_ho_branch_z=0 upright=0.3 pendant=0 "
+          f"no_ho_branch_z=0 upright={UPRIGHT_1_M} pendant=0 "
           "pendant_1_zero combo_two_heads=9 flex_pendant2·combo4 "
           "arm_min=0.15 pump_valve_unchanged source_unmodified "
           "arc_walk_elbow same_m_vert=1 ho_mm_origin no_key_dxf "

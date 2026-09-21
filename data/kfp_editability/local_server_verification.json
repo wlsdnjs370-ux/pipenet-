@@ -1,0 +1,12 @@
+{
+  "url": "http://192.168.0.105:5051/module-f",
+  "asset": "/static/module_f.js?v=20260916-kfp-edit",
+  "buttons": [
+    "btn-download-edit",
+    "btn-download-worst-edit",
+    "mg-dl-kfp-edit"
+  ],
+  "js_sha256": "ff74e2b1fff98e7efc20d5b724463f1fc379b08cf3cff14351fa28c9ad646a48",
+  "convert_fields_ok": true,
+  "page_errors": []
+}

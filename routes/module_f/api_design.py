@@ -291,6 +291,9 @@ def emit_design_files(sess: dict, UPLOAD_DIR, cfg: dict | None = None):
     d = sess.get("design")
     if not d:
         return None, "먼저 수리계산 입력에서 표를 확정하세요."
+    stale = _design_stale(sess)
+    if stale:
+        return None, " · ".join(stale["why"])
     cfg = cfg or dict(sess.get("design_settings") or _DEFAULT_SETTINGS)
 
     from services.cad_import.design.emit import AssetMissing, emit_design_sdf
@@ -610,9 +613,7 @@ def register(app, *, UPLOAD_DIR):
 
             payload = es.convert_payload()
             srcs = payload.get("sources") or ()
-            sel = source if source is not None else (
-                srcs[0].get("tag") if len(srcs) > 1 and isinstance(srcs[0], dict)
-                else None)
+            sel = source if source is not None else (sess.get("worst") or {}).get("source_tag")
             # ★[최불리 인계] 손질이 고른 K개를 **그대로 받는다.**
             #
             #   종전에는 `only_heads` 를 안 넘겨 `select_and_expand` 가
@@ -625,6 +626,13 @@ def register(app, *, UPLOAD_DIR):
             #   **K 는 맞췄는데 선정 결과를 빠뜨린 것**이다.
             w_sel = sess.get("worst") or {}
             picked = [int(i) for i in (w_sel.get("heads") or ())]
+            from services.cad_import.design.flow import flow_for_board
+            try:
+                basis = flow_for_board(es.board, selected_source=sel)
+            except ValueError as exc:
+                return {"ok": False, "error": str(exc)}
+            if w_sel.get("flow_revision") and w_sel["flow_revision"] != basis.revision:
+                return {"ok": False, "error": "물흐름 경로 또는 알람밸브 기준이 바뀌었습니다. 손질에서 최불리를 다시 선정하세요."}
             # ★★그 선정이 **지금 손질판** 의 것인가.
             #
             #   `w["heads"]` 는 `board.disks` **인덱스** 다. 찍기를 다시 하거나
@@ -738,6 +746,9 @@ def register(app, *, UPLOAD_DIR):
             #   `handoff["filled"]` 한 곳에만 담는다(두 벌이면 언젠가 갈린다).
             if not got.get("ok"):
                 return {"ok": False, "error": got.get("error")}
+            if w_sel.get("flow_revision") and (got["worst"]["edges"] != w_sel["edges"]
+                                                or set(got["worst"]["heads"]) != set(picked)):
+                return {"ok": False, "error": "수리계산 경로가 손질에서 확정한 경로와 다릅니다. 최불리를 다시 선정하세요."}
             print(f"[설계 시간] 선정망 전개 {time.perf_counter() - expanded_at:.2f}s")
             got["diagnostics_scope"] = probe.get("scope", "all")
             got["total_heads"] = n_disk
@@ -815,6 +826,7 @@ def register(app, *, UPLOAD_DIR):
                 _n5, _m5, add_rep = ov.apply_to_kfp(got, es.board, add_rows)
                 el_missed.extend(_m5)
             try:
+                from src.pipenet_converter.graph.fitting_policy import CALCULATION_FITTINGS
                 tbl = build_design_tables(
                     got["kfp"], got["worst"], got["edge_ref"], texts,
                     board_pts=es.board.pts,
@@ -830,6 +842,7 @@ def register(app, *, UPLOAD_DIR):
                     #   쓰인다(엔진이 그렇게 판단한다). 세션에 남아 있으므로
                     #   「다시 계산」·「표 확정」을 다시 눌러도 그대로 간다.
                     fitting_overrides=fit_ov,
+                    fitting_kinds=CALCULATION_FITTINGS,
                     # [F-11c] 관경 덮기 — 부속과 달리 «규칙 값도» 덮는다
                     #   (D-F11-3). 키는 board 노드쌍이라 corridor 가 다시
                     #   계산돼도 같은 자리를 가리킨다(D-F11-4).
@@ -843,6 +856,7 @@ def register(app, *, UPLOAD_DIR):
                     #   1.5 m 가 실린다(50A 기준).
                     phys=got.get("phys"),
                     interior_junctions=got.get("interior_junctions"),
+                    interior_unresolved=got.get("interior_unresolved"),
                     # 기준 헤드(최원단)를 kfp 노드로 되짚는 데 쓴다 — board mm
                     # 를 kfp m 로 옮기려면 이 값이 있어야 한다. 없으면 표는
                     # 종전처럼 「기준 헤드 노드 = ?」로 남는다(추측하지 않는다).
@@ -1074,6 +1088,9 @@ def register(app, *, UPLOAD_DIR):
                 if any(str(r.get(n) or "").strip() == "" for n in need):
                     return _fail(f"{key} 항목에 {', '.join(need)} 가 다 있어야 합니다.")
                 row = {n: r.get(n) for n in need}
+                from src.pipenet_converter.graph.fitting_policy import STRAIGHT_TEE_KINDS
+                if row["kind"] in STRAIGHT_TEE_KINDS:
+                    return _fail("직류티는 부속·등가길이 입력 대상이 아닙니다. 분류티 또는 엘보를 선택하세요.")
                 if key == "eq_len":
                     try:
                         row["dia"] = int(r["dia"])
@@ -1144,7 +1161,7 @@ def register(app, *, UPLOAD_DIR):
             kinds += [
                 {"value": fr.ELBOW_45, "label": "45° 엘보"},
                 {"value": fr.ELBOW_90, "label": "90° 엘보"},
-                {"value": fr.TEE, "label": "티"},
+                {"value": fr.TEE, "label": "분류티"},
             ]
         except Exception as exc:  # noqa: BLE001 — 목록을 못 읽어도 조회는 된다
             print(f"[설계] 부속 종류 목록을 못 읽었습니다: {exc}")
@@ -1616,16 +1633,25 @@ def register(app, *, UPLOAD_DIR):
                                        .get("equivalent_length"),
                   "load": load_of.get(_kp(r.get("label")), 0)}
                  for r in view.pipes]
+        # Read-only annotations retain the fitting table's physical identity.
+        # In particular a pruned tee is not reclassified from display degree.
+        from routes.module_f.fitting_inspection import build_inspection
+        underlay = _underlay_xf(sess, view, stood, cfg)
+        inspection = build_inspection(
+            tbl, got, lk, nodes, board=getattr(sess.get("edit"), "board", None),
+            transform=underlay, edited=bool(d.get("editor_modified")),
+            base_got=((sess.get("network_editor") or {}).get("base_object") or {}).get("got"))
         return jsonify({
             "ok": True, "settings": cfg,
             "stood": stood,
             "view": {"nodes": nodes, "pipes": pipes,
+                     "inspection": inspection,
                      # 최원 유하거리 경로 — far_m 이 «어느 줄» 인지.
                      "worst_head": worst_head_lab,
                      "worst_path": worst_path,
                      "worst_path_m": round(worst_path_m, 2),
                      # [F-10e] 밑그림 변환 — board mm 를 이 화면에 얹는 식.
-                     "underlay": _underlay_xf(sess, view, stood, cfg)},
+                     "underlay": underlay},
             # ★[§3-6] 화면이 쓰는 이름으로 **한 번** 바꿔서 보낸다.
             #   `bore_overrides` 의 키는 kfp 배관 이름(P36)이고 화면이 아는
             #   것은 표 이름(P7)이다 — 그대로 보내면 「직접 입력 80A」가

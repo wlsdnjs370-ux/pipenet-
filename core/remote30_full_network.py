@@ -1895,7 +1895,7 @@ def _harden_slf_for_combined(
 
 
 def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
-                  ctx: ProjectContext) -> Path:
+                  ctx: ProjectContext, display_scale: float | None = None) -> Path:
     """완성 SDF 직렬화.
 
     1단계: ``remote30_prototype.emit_sdf`` 호출 — PIPENET-native 후처리
@@ -1917,7 +1917,8 @@ def emit_full_sdf(combined: CombinedTables, out_path: Path, *,
         equipment=list(combined.equipment),
         meta=list(combined.meta),
     )
-    emit_sdf(tables, out_path, project_title=ctx.report_title())
+    emit_sdf(tables, out_path, project_title=ctx.report_title(),
+             **({"display_scale": display_scale} if display_scale is not None else {}))
 
     # 2단계: SDF 재오픈 → Pump-fan / Elastomeric-valve / Calculation-spec 추가
     import xml.etree.ElementTree as ET

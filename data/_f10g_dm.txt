@@ -1,0 +1,20 @@
+﻿임시 서버 :52025 · 도면 1. 입력도면 대명동 단위세대 평면도.dxf (14.0 MB)
+
+  [ 1] ① 업로드 → 손질 진입                누적클릭   1 ·    5.5s  도착 손질 · 자동 인식 결과로 시작했습니다 — 채택 3개 · 유령 2개 · 단계바의 「찍기」
+  [ 2] ② 알람밸브 원클릭 → corridor        누적클릭   2 ·    0.7s  최불리 30개 · 최원 50.71 m · 찍은 횟수 1
+  [ 3] ③ 흐린 배관 살리기                  누적클릭   8 ·    3.3s  이은 곳 2건 · 후보 97곳 · 급수 1 · 밸브 1 · 클릭별 급수/밸브 1/1 1/1 1/1 1/1
+  [ 4] ④ 최불리 다시 계산                  누적클릭   9 ·    0.5s  마지막 계산 후 수정 4건 → 수정 0건 · 최불리 30개 · 급수 1
+  [ 5] ⑤ 표 확정 → 아이소                 누적클릭  11 ·   14.7s  확인할 것 66건 · 설계면적 30개 · 앵커 50.71 m 폭 / corridor 41.4 
+  [ 6] ⑥ 평면 밑그림에서 살리기               누적클릭  15 ·    1.6s  이은 곳 1건
+  [ 7] ⑦ 다시 계산 → 아이소 갱신             누적클릭  16 ·   11.8s  66건
+  [ 8] ⑧ 산출 (.sdf + .slf)           누적클릭  17 ·    0.3s  저장 — 1. 입력도면 대명동 단위세대 평면도_수리계산입력.sdf (78,151B) + 1
+
+■ 완주 — 사람 클릭 **17회** · 0.8분
+  캡처 C:\Users\admin\PycharmProjects\JupyterProject\data\_f10g_shots
+
+★문제
+  - 콘솔 오류 1건
+  -   · Failed to load resource: the server responded with a status of 404 (NOT FOUND)
+  - 400 이상 응답 1건
+  -   · 404 module-f/design/preview?sid=ba9717c5915947c6&iso=1&iso_z_scale=1&canva
+  기록 C:\Users\admin\PycharmProjects\JupyterProject\data\_f10g_shots\_기록.json

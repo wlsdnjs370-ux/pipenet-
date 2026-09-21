@@ -190,8 +190,8 @@ def test_F2_판정이_가지치기의_결과에_안_기댄다():
     assert with_branch["counts"] != without["counts"]
 
 
-def test_십자는_이름만_다르고_규칙은_티와_같다():
-    """phys ≥ 4 — 직진 갈래는 `cross-run`, 꺾인 갈래는 `cross`."""
+def test_십자형_위상은_설치_크로스로_자동_확정하지_않는다():
+    """2026-09-20: four graph ports are not proof of an installed cross."""
     pipes = dict(_LINE)
     pipes["P5"] = ("C", "S")                  # C 에서 남쪽으로 하나 더
     pipes["P6"] = ("C", "X")                  # C 에서 동쪽(직진)
@@ -201,9 +201,11 @@ def test_십자는_이름만_다르고_규칙은_티와_같다():
     parents["X"] = "C"
     res = build_fittings(net, _XYD, dict(_BORES, P6=(50, "시험")),
                          parents=parents, phys={"C": 4})
-    assert _kinds(res, "P6") == ["cross-run"], res["per_pipe"]["P6"]
-    assert _kinds(res, "P4") == ["cross"]
-    assert _kinds(res, "P5") == ["cross"]
+    assert _kinds(res, "P6") == []
+    assert _kinds(res, "P4") == []
+    assert _kinds(res, "P5") == []
+    assert res["unresolved_kind"] == 1
+    assert res["unresolved_kind_items"][0]["ports"] == 4
     # 등가길이는 티와 같다(D1) — `cross` 는 TEE_BRANCH 를 본다.
     assert resolve_eq_len("cross", 50)[0] == resolve_eq_len("tee", 50)[0]
 
@@ -336,6 +338,7 @@ def test_실도면에서_F3_F4_F6_가_선다():
             assert wait(c, sid).get("state") == "done"
             from routes.module_f.jobs import _sess
             sess = _sess(sid)
+            assert sess.get("design"), buf.getvalue() + repr(sess.get("job"))
             tbl = sess["design"]["tables"]
             sdf_p, kfp_p = sess["design_sdf_path"], sess["worst_kfp_path"]
 
@@ -348,8 +351,7 @@ def test_실도면에서_F3_F4_F6_가_선다():
 
         pd = (json.load(open(kfp_p, encoding="utf-8")).get("pipe_data") or {})
         kfp_types = {x for p in pd.values() for x in (p.get("fittings") or ())}
-        assert kfp_types <= {"Elbow", "Elbow 45", "Tee(Branch)",
-                             "Tee(Run)"}, kfp_types
+        assert kfp_types <= {"Elbow", "Elbow 45", "Tee(Branch)"}, kfp_types
 
         # F6 · F4 — 관경과 등가길이가 표와 같다 (D5)
         #
@@ -368,6 +370,6 @@ def test_실도면에서_F3_F4_F6_가_선다():
             assert abs(float(rec.get("equivalent_length") or 0)
                        - eq[k2]) <= 0.001, pid
 
-        # 새 어휘가 실제로 나왔다 — 「아무것도 안 바뀐 통과」를 막는다
+        # F now excludes straight-through tees from both tables and KFP.
         kinds = {str(r["type"]) for r in tbl.fittings}
-        assert "tee-run" in kinds, kinds
+        assert kinds <= {"tee", "elbow", "elbow-45"} and "tee" in kinds, kinds

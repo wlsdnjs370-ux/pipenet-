@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "profile_id": "company_260404",
+  "description": "회사 스프링클러 헤드 기호 — PPT 26~36쪽",
+  "activation": "explicit_profile_and_selected_layers_only",
+  "source": {
+    "file": "소방시스템 4월1주차(260404).pptx",
+    "sha256": "bc2f8f485714af45e08c7b2165e7a83c4e5b19a6fe2a139aebef5fc65d246f58",
+    "slides": [26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+  },
+  "tolerances": {
+    "position_radius_ratio": 0.25,
+    "parallel_cosine": 0.94,
+    "offset_min_radius_ratio": 1.8,
+    "offset_max_radius_ratio": 5.0,
+    "arc_min_sweep_degrees": 155,
+    "arc_max_sweep_degrees": 205
+  },
+  "rules": [
+    {
+      "id": "plan_upright_open_inline",
+      "view": "plan", "body": "circle", "decoration": "empty", "attachment": "inline",
+      "orientation": "upright", "label": "상향식 72℃", "head_count": 1, "temperature_c": 72,
+      "source_slides": [26, 31], "legend_image_row": 1,
+      "notes": "배관 중심의 빈 원. 내부 X가 없어야 한다."
+    },
+    {
+      "id": "plan_pair_cross_inline",
+      "view": "plan", "body": "circle", "decoration": "cross", "attachment": "inline",
+      "orientation": "upright_pendent", "label": "상·하향식 72℃", "head_count": 2, "temperature_c": 72,
+      "source_slides": [26, 32], "legend_image_row": 2,
+      "notes": "원 안 X는 상·하향식 한 쌍. X를 배관 교차점으로 만들지 않는다."
+    },
+    {
+      "id": "plan_pendent_open_offset",
+      "view": "plan", "body": "circle", "decoration": "empty", "attachment": "offset_arch",
+      "orientation": "pendent", "label": "하향식 72℃", "head_count": 1, "temperature_c": 72,
+      "source_slides": [26, 33, 36], "legend_image_row": 3,
+      "notes": "분리된 빈 원 + 목선/횡선 + 배관 쪽 반원 및 양옆 표시선."
+    },
+    {
+      "id": "plan_pair_cross_offset",
+      "view": "plan", "body": "circle", "decoration": "cross", "attachment": "offset_arch",
+      "orientation": "upright_pendent", "label": "상·하향식 72℃", "head_count": 2, "temperature_c": 72,
+      "source_slides": [26, 34], "legend_image_row": 4,
+      "notes": "분리된 원 안 X. 범례 표의 다섯째 행에 해당한다."
+    },
+    {
+      "id": "plan_sidewall_triangle_offset",
+      "view": "plan", "body": "triangle", "decoration": "empty", "attachment": "offset_ticks",
+      "orientation": "sidewall", "label": "측벽식 72℃", "head_count": 1, "temperature_c": 72,
+      "source_slides": [26, 35], "legend_image_row": 5,
+      "notes": "평면도 삼각형은 하향식이 아닌 측벽식. 건식 여부는 기호만으로 추정하지 않는다."
+    },
+    {
+      "id": "plan_pendent_solid_offset",
+      "view": "plan", "body": "circle", "decoration": "solid", "attachment": "offset_arch",
+      "orientation": "pendent", "label": "하향식 고온형 103℃", "head_count": 1, "temperature_c": 103,
+      "source_slides": [26, 36], "legend_image_row": 6,
+      "notes": "꽉 찬 원의 실제 면 채움 근거 필요. 검정/초록 선색이나 굵은 외곽선만으로 판단 금지."
+    },
+    {
+      "id": "section_upright_triangle",
+      "view": "section", "body": "triangle", "decoration": "solid", "attachment": "stem_up",
+      "orientation": "upright", "label": "단면도 상향식", "head_count": 1, "temperature_c": null,
+      "source_slides": [27, 28, 30],
+      "notes": "단면의 위 방향과 배관 연결 목선을 확인. 단면 초록 채움으로 온도를 판단하지 않는다."
+    },
+    {
+      "id": "section_pendent_triangle",
+      "view": "section", "body": "triangle", "decoration": "solid", "attachment": "stem_down",
+      "orientation": "pendent", "label": "단면도 하향식", "head_count": 1, "temperature_c": null,
+      "source_slides": [28, 29, 30],
+      "notes": "상·하향 병기는 각각의 헤드로 판정. 같은 위치처럼 보여도 평면도 헤드에 추가 합산 금지."
+    }
+  ],
+  "interpretation_limits": [
+    "PPT 기반 결정론적 기하 규칙이며 학습된 신경망 가중치가 아니다.",
+    "프로필 선택·헤드 레이어·배관 연결 근거·완전한 국소 도형이 필요하다.",
+    "PPT 화소 치수를 CAD 실측 치수나 배관 길이로 사용하지 않는다.",
+    "천장 속 2M, 주방, 발코니 등의 설명은 설치 예시이며 자동 설계/법규 판정 규칙이 아니다.",
+    "온도, 방향, 건식 여부, 조기반응 여부, K값은 별도 속성이다. 자료에 없는 속성은 미지정.",
+    "서버 자동 적용 전 실제 회사 DXF 범례와 대조하고 기존 명시적 수동 지정을 우선한다."
+  ]
+}

@@ -149,7 +149,7 @@ def test_두_화면이_같은_규약을_부른다():
 def test_표에서_켠_주황_강조는_흐리기에서_뺀다():
     """D4 — 그것도 «지금 보는 것» 이다."""
     body = _fn("  function drawDesign(")
-    assert "ctx.globalAlpha = hot ? 1 : dimK;" in body, body[:400]
+    assert "ctx.globalAlpha = hot ? 1 : dimK * (st ? 1 : style.alpha);" in body, body[:400]
 
 
 def test_카드를_닫으면_원상으로_돌아온다():

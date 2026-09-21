@@ -1,0 +1,100 @@
+{
+  "flow_match_pct": 78.7469,
+  "manual": {
+    "source": "수작업",
+    "pipe_count": 103,
+    "materials": [
+      "CPVC",
+      "DP",
+      "FX",
+      "KSD 3507"
+    ],
+    "pipes_by_material": {
+      "CPVC": 49,
+      "FX": 30,
+      "KSD 3507": 20,
+      "DP": 4
+    },
+    "elevation_nonzero_pipes": 34,
+    "elevation_total_drop_m": -78.0,
+    "elevation_major_drop_m": -75.0,
+    "fitting_count": 73,
+    "fittings_by_type": {
+      "45° 엘보": 1,
+      "90° 표준 엘보": 33,
+      "티/크로스(90° 전환)": 36,
+      "게이트 밸브": 1,
+      "스윙 체크 밸브": 1,
+      "버터플라이 밸브": 1
+    },
+    "fitting_eq_length_m": 253.54,
+    "special_eq_count": 31,
+    "special_eq_length_m": 480.9,
+    "special_eq_by_desc": {
+      "AV": 1,
+      "FX": 30
+    },
+    "bore_histogram": {
+      "150": 3,
+      "125": 11,
+      "80": 2,
+      "65": 14,
+      "50": 7,
+      "40": 7,
+      "32": 12,
+      "25": 17,
+      "20": 30
+    },
+    "nozzle_count": 30,
+    "total_flow_lpm": 2903.1,
+    "deviation_min_pct": 0.05,
+    "deviation_max_pct": 49.97,
+    "nozzles_under_min_pressure": 0,
+    "unresolved": []
+  },
+  "auto": {
+    "source": "자동화",
+    "pipe_count": 136,
+    "materials": [
+      "KSD 3507"
+    ],
+    "pipes_by_material": {
+      "KSD 3507": 136
+    },
+    "elevation_nonzero_pipes": 2,
+    "elevation_total_drop_m": -53.38,
+    "elevation_major_drop_m": -53.19,
+    "fitting_count": 62,
+    "fittings_by_type": {
+      "45° 엘보": 11,
+      "90° 표준 엘보": 15,
+      "티/크로스(90° 전환)": 33,
+      "게이트 밸브": 1,
+      "스윙 체크 밸브": 1,
+      "버터플라이 밸브": 1
+    },
+    "fitting_eq_length_m": 132.59,
+    "special_eq_count": 31,
+    "special_eq_length_m": 481.5,
+    "special_eq_by_desc": {
+      "AV": 1,
+      "FX": 30
+    },
+    "bore_histogram": {
+      "150": 21,
+      "125": 3,
+      "80": 6,
+      "65": 34,
+      "50": 20,
+      "40": 14,
+      "32": 3,
+      "25": 35
+    },
+    "nozzle_count": 30,
+    "total_flow_lpm": 2286.1,
+    "deviation_min_pct": -26.83,
+    "deviation_max_pct": 23.97,
+    "nozzles_under_min_pressure": 18,
+    "unresolved": []
+  }
+}

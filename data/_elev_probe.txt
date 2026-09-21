@@ -1,0 +1,3 @@
+﻿5052 PID : 4040
+taskkill : 성공: 프로세스(PID 4040)가 종료되었습니다.
+alive    : False

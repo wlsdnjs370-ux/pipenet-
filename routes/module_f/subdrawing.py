@@ -385,7 +385,8 @@ def _forced_penalty_mm() -> float:
 
 def extract_system(entities, pump_xy, av_xy, *, snap_tolerance_mm=2500.0,
                    waypoints=None, floor_profile_rows=None,
-                   layer_filter=None, elevation_mode="drawing") -> dict:
+                   layer_filter=None, elevation_mode="drawing",
+                   assumed_floor_height_m=None) -> dict:
     """S720 — 계통도에서 펌프 → 알람밸브 경로(입상관)를 뽑는다.
 
     실패(클릭이 배관에서 너무 멀다 · 두 점이 안 이어진다)는 `ValueError` 로
@@ -409,7 +410,15 @@ def extract_system(entities, pump_xy, av_xy, *, snap_tolerance_mm=2500.0,
         for (a, b), length in edge_len.items():
             pa, pb = tuple(round(v) for v in a), tuple(round(v) for v in b)
             measured[(min(pa, pb), max(pa, pb))] = length
-    return set_elevation_mode(result, elevation_mode, measured)
+    result = set_elevation_mode(result, elevation_mode, measured)
+    if elevation_mode == "drawing" and assumed_floor_height_m is not None:
+        if floor_profile_rows:
+            raise ValueError("확정 층별 표고와 가정 층고를 동시에 적용할 수 없습니다.")
+        from remote30_prototype import _extract_floor_labels
+        from routes.module_f.floor_elevation import apply_assumed_floor_height
+        result = apply_assumed_floor_height(
+            result, _extract_floor_labels(entities), float(assumed_floor_height_m))
+    return result
 
 
 def extract_system_clean(dxf_path, *, scale_mm_per_unit: float = 1.0) -> dict:
@@ -459,6 +468,8 @@ def riser_summary(riser: dict) -> dict:
         "total_m": round(total_m, 2),
         "av_node_label": r.get("av_node_label"),
         "elevation_mode": r.get("elevation_mode", "drawing"),
+        "assumed_floor_height_m": r.get("assumed_floor_height_m"),
+        "elevation_notice": r.get("elevation_notice"),
         "source_node_label": r.get("source_node_label"),
         "conn_node_label": r.get("conn_node_label"),
         # 추측으로 이은 자리 — 화면이 점선으로 갈라 그려야 한다.

@@ -1,0 +1,43 @@
+[리팩터링 5/n] 헤드 종류의 원천을 하나로 — 화면이 하향식일 때 엔진이 미지정을 읽던 갈림
+
+«논리회로가 꼬인 것 같다» 의 두 번째 갈래다(첫 번째=저장본·원본 수명, e3b4963).
+
+■ 무엇이 갈라져 있었나 (탐침 실측)
+
+  분류가 레코드를 못 만든 헤드에 사람이 종류를 찍으면:
+    화면(disk_kinds)  = 하향식   ← set_head_kind 의 «덧댐 블록» 이 칠했다
+    엔진(head_kinds)  = 미지정   ← apply_kind_overrides 는 «갱신만» 한다
+    재열기 후         = 미지정   ← 화면까지 되돌아감. 사람의 결정이 하룻밤을 못 넘겼다
+
+  뿌리는 순서다: apply(갱신만) → require(미지정 삽입) 로 서 있으면, 레코드
+  없던 헤드에 찍은 결정을 apply 가 지나치고 require 가 미지정을 끼워 넣는다.
+  ★같은 뒤집힘이 여섯 자리에 똑같이 서 있었다 — board.set_head_kind ·
+    edit/io(재열기) · convert/engine · convert/preflight(변환 게이트) ·
+    convert/planar · pipeline/flow(6단계 손질). 변환 게이트에서는 사람이
+    확정한 헤드를 «미지정 헤드가 있습니다» 라며 막기까지 했다.
+
+■ 고침 — 순서를 한 함수에 못박는다
+
+  kinds.resolve_head_kinds(hcov, head_kinds, overrides) 신설:
+    require(디스크마다 레코드를 세운다) → apply(사람의 결정을 덮는다).
+  종류를 읽는 여섯 자리가 전부 이 함수를 거친다.
+
+  · apply 를 «삽입하는 apply» 로 만들지 않은 이유: override 는 지워진 헤드를
+    가리킬 수 있다(찍고 나서 헤드를 지운 경우). 끼워 넣으면 유령 레코드가
+    종류 집계·미확정 게이트에 낀다. 살아 있는 디스크 목록은 require 만 안다.
+  · set_head_kind 의 덧댐 블록(화면만 직접 칠하기)은 삭제 — 갈림을 숨기던
+    장본인이다. disk_kinds 는 이제 어느 시점에서든 순수 파생 캐시다.
+  · apply_kind_overrides 본문을 user_net → kinds.py 로 이동(쓰는 것이 전부
+    kinds 것이었다). user_net 에는 import 호환 재수출만 남긴다.
+
+시험 (tests/test_g_head_kind_ssot.py 신규 5건)
+  · 레코드 없던 헤드에 찍은 종류를 엔진도 읽는다 (+안 찍은 것은 여전히 미지정)
+  · disk_kinds == disk_kind_list(disks, head_kinds) 불변량 — undo 뒤에도
+  · 저장→재열기(write_edits/load_edits 실경로)에도 결정이 남는다
+  · 지워진 헤드의 override 는 유령 레코드를 만들지 않는다
+  · 변환 게이트가 확정한 헤드를 미확정이라며 막지 않는다
+
+검증: 탐침 세 다리(화면·엔진·재열기) 모두 하향식 일치. 전체 1,701건 통과.
+  신규 린트 0건(잔여 16건은 HEAD 에 원래 있던 것 — git show 로 대조).
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>

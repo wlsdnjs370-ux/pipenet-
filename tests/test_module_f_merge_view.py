@@ -150,7 +150,12 @@ def test_공통절점에_닿아도_원본배관의_소속이_유지된다():
 
 
 def test_아이소는_보기_전용이고_기본이_아니다():
-    """저장되는 좌표는 평면이다 — 기본이 아이소면 «보이는 것 ≠ 저장되는 것»."""
+    """저장되는 좌표는 평면이다 — 기본이 아이소면 «보이는 것 ≠ 저장되는 것».
+
+    ★[오너 2026-09-21] 이것은 **API** 의 기본(iso 인자 없음 = 평면)이다. 화면의
+      기본은 아이소로 바뀌었다 — 아래 test_결합망은_아이소로_뜬다. 그때 등식은
+      산출 「좌표」 칸이 스위치를 따라가는 것으로 지킨다.
+    """
     c = _client()
     sid, sess = _sid(c)
     sess["merged"] = _merge()
@@ -403,3 +408,24 @@ def test_마커는_손질_화면의_사각형이다():
     i = js.index("  function drawMergeMarker(")
     src = js[i:js.index(chr(10) + "  }" + chr(10), i) + 4]
     assert "ctx.rect(" in src and '"#000"' in src, src
+
+# ─────────────────────────────── 결합망은 아이소로 뜬다 [오너 2026-09-21]
+def test_결합망은_아이소로_뜬다():
+    """「통합에서 결합하면 결합망이 30° 아이소로 나오게」 — 종전 기본은 평면이었다.
+
+    화면 기본이 아이소가 되면 «보이는 것 = 저장되는 것» 이 깨질 수 있다. 그래서
+    산출 「좌표」 칸도 아이소가 기본이고, 스위치를 끄고 켤 때 칸이 따라간다.
+    """
+    html = open(os.path.join(_ROOT, "templates", "module_f.html"),
+                encoding="utf-8").read()
+    assert 'id="mg-iso" checked' in html, "결합망 아이소 스위치가 기본으로 켜져 있지 않다"
+    assert '<option value="_iso" selected>' in html, "산출 좌표 칸의 기본이 아이소가 아니다"
+    js = open(os.path.join(_ROOT, "static", "module_f.js"),
+              encoding="utf-8").read()
+    i = js.index('$("mg-iso").onchange')
+    src = js[i:js.index("\n", i)]
+    assert "syncMergeCoord()" in src and "loadMergeView()" in src, src
+    j = js.index("  function syncMergeCoord()")
+    body = js[j:js.index("\n  }\n", j) + 4]
+    assert 'sel.value = mergeIsoOn() ? "_iso" : ""' in body, body
+    assert "renderMergeFiles()" in body, body

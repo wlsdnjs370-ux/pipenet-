@@ -3639,8 +3639,17 @@
   $("mg-dl-has").onclick = () => dlFile(mgUrl("has" + mgSuffix()));
   $("mg-dl-slf").onclick = () => dlFile(mgUrl("slf" + mgSuffix()));
 
-  // 보기 전환 — 저장 좌표는 안 바뀐다(평면). 아이소는 눈으로 보는 용도다.
-  $("mg-iso").onchange = () => { loadMergeView(); };
+  // 보기 전환 — [오너 2026-09-21] 결합망은 **아이소가 기본**이다. 종전에는 평면이
+  // 기본이고 아이소는 눈으로만 보는 것이었는데, 그때 지키던 «보이는 것 = 저장되는
+  // 것» 은 이제 산출 「좌표」 칸이 이 스위치를 **따라가는** 것으로 지킨다. 칸을
+  // 손으로 바꾸는 것은 여전히 된다(둘이 갈리면 범례가 그 사실을 말한다).
+  function syncMergeCoord() {
+    const sel = $("mg-dl-coord");
+    if (!sel) return;
+    sel.value = mergeIsoOn() ? "_iso" : "";
+    renderMergeFiles();
+  }
+  $("mg-iso").onchange = () => { syncMergeCoord(); loadMergeView(); };
   // [§3-1] 격자는 **그리기만** 바뀐다 — 서버에 다시 묻지 않는다.
   for (const id of ("mg-grid dg-gridline ed-gridline").split(" ")) {
     const el = $(id);
@@ -3806,7 +3815,13 @@
       + (c.anchor && c.anchor.length
          ? ` · <span style="color:${MERGE_COLOR.seam}">✛</span> 기준점`
            + ` ${c.anchor.join("·")}` : "")
-      + (d.iso ? " · <b>30° 아이소(보기 전용)</b>" : " · 평면 좌표(저장되는 그 좌표)");
+      + (d.iso
+         ? (mgSuffix() === "_iso"
+            ? " · <b>30° 아이소</b> — 내려받는 좌표도 아이소"
+            : " · <b>30° 아이소(보기 전용)</b> — 내려받는 좌표는 평면")
+         : (mgSuffix() === "_iso"
+            ? " · 평면 좌표 — 내려받는 좌표는 아이소"
+            : " · 평면 좌표(저장되는 그 좌표)"));
   }
 
   async function loadMerge() {

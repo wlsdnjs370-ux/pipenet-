@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260920-merged-branch-elbow">
+<link rel="stylesheet" href="/static/module_f.css?v=20260921-merge-iso-default">
 </head>
 <body>
 <header>
@@ -801,14 +801,18 @@
           좌표
           <select id="mg-dl-coord">
             <option value="">평면</option>
-            <option value="_iso">아이소</option>
+            <option value="_iso" selected>아이소</option>
           </select></label>
       </div>
       <!-- 결합망 보기 — 결합해 놓고 안 보여 주면 사람은 무엇이 합쳐졌는지
            알 수 없다. 세 도면을 색으로 갈라 한 그림으로 보인다. -->
       <h2 style="margin-top:12px">결합망 보기</h2>
-      <label class="chk"><input type="checkbox" id="mg-iso">
-        <span>30° 아이소매트릭으로 보기 <b>(보기 전용)</b></span></label>
+      <!-- ★[오너 2026-09-21] 결합하면 **30° 아이소로 뜬다** — 종전 기본은 평면이었다
+           («보이는 것 = 저장되는 것» 을 지키려고). 아이소가 기본이 되면서 그 등식은
+           아래 「좌표」 칸이 이 스위치를 **따라가는** 것으로 지킨다(module_f.js
+           `syncMergeCoord`). 산출 파일은 평면본·아이소본이 늘 함께 난다. -->
+      <label class="chk"><input type="checkbox" id="mg-iso" checked>
+        <span>30° 아이소매트릭으로 보기 <b>(산출 「좌표」 칸도 따라갑니다)</b></span></label>
       <!-- [통합 격자·밑그림 §3-1·3-4] 04 가 가진 둘을 통합에도.
            결합망 좌표는 mm 이고 1 m = 1000 이다(1-B ①) — 배율을 유추할 필요가
            없다. 밑그림은 04 가 서버에서 받아 쓰는 그 변환을 그대로 쓴다. -->
@@ -823,8 +827,9 @@
       </div>
       <div id="mg-under-note" class="hint"></div>
       <div id="mg-grid-note" class="hint"></div>
-      <p class="hint">끄면 <b>저장되는 그 좌표</b>(평면)입니다 —
-        산출 파일은 이 좌표로 나갑니다.</p>
+      <p class="hint">켜져 있으면 결합망이 30° 아이소로 뜨고 산출도 <b>아이소 좌표본</b>이
+        기본입니다. 끄면 <b>평면 좌표</b>(저장되는 그 좌표)로 보고, 산출도 평면본이
+        기본이 됩니다. 「좌표」 칸에서 따로 골라도 됩니다.</p>
       <!-- [§3-3-1] 어느 산출이 옛 것인지 화면이 늘 말해야 한다 — 04 의
            `dg-stale` 과 같은 규약. -->
       <div id="mg-stale" class="banner hidden"></div>
@@ -998,6 +1003,6 @@
 <script src="/static/module_f_editor.js?v=20260920-fitting-properties"></script>
 <script src="/static/module_f_inspection.js?v=20260920-merged-branch-elbow"></script>
 <script src="/static/module_f_regions.js?v=20260920-lasso"></script>
-<script src="/static/module_f.js?v=20260920-merged-branch-elbow"></script>
+<script src="/static/module_f.js?v=20260921-merge-iso-default"></script>
 </body>
 </html>

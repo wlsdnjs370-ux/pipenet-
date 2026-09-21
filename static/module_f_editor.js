@@ -170,13 +170,13 @@ window.createModuleFEditor = function (h) {
     if(result.kind==="node" && at[result.label]){ctx.fillStyle="#ffd36e";ctx.beginPath();ctx.arc(...at[result.label],6,0,Math.PI*2);ctx.fill();}
     show("ne-preview-canvas",true);
   }
-  async function run(action) {
+  async function run(action, explicit=null) {
     if(pending || !active() || !$("busy").classList.contains("hidden")) return false;
     if(!data){await load(true);if(!data)return false;}
     if(action==="undo" && !data.undo || action==="redo" && !data.redo) return false;
     if(action==="reset" && !confirm("이 배관망의 직접 편집을 모두 되돌리고 추출 직후 상태로 복원할까요?"))return false;
     if(action==="apply" && !preview)return false;
-    const cmd=action==="apply" ? preview.command : selection ? command() : {};
+    const cmd=action==="apply" ? preview.command : explicit || (selection ? command() : {});
     pending=true;h.busy(true,action==="preview" ? "배관 편집 미리보기" : "배관망 편집 반영");
     try {
       const result=await h.post('/api/module-f/network-editor',{sid:S.sid,scope:scope(),action,
@@ -187,9 +187,14 @@ window.createModuleFEditor = function (h) {
         $("ne-apply").disabled=false;
       }else{
         const camera={...S.view},stage=S.stage;
+        // [오너 2026-09-21] 세로관을 붙이면(예) 평면도 쪽 표고가 바뀐다. 급수원(기계실)이
+        //   화면에서 제자리에 있게 맞춘다 — 다른 편집에서는 급수원이 안 움직여 그대로다.
+        const pin=stage==="merge" ? S.mergeView?.nodes?.find(n=>n.input) : null;
         clearPreview();stamp="";
         if(stage==="merge")await h.reloadMerge();else await h.reloadDesign();
         Object.assign(S.view,camera);
+        const moved=pin && S.mergeView?.nodes?.find(n=>String(n.label)===String(pin.label));
+        if(moved){S.view.ox+=moved.x-pin.x;S.view.oy+=moved.y-pin.y;}
         if(result.selection)h.select(stage==="merge" ? "mg"+result.selection.kind : result.selection.kind,result.selection.label);
         if(action==='apply' && ['extend','paste','split'].includes(cmd.op))revealSelection();
         close();h.draw();await load(true);
@@ -210,6 +215,7 @@ window.createModuleFEditor = function (h) {
   $("ne-apply").textContent='확정';
   $("ne-focus").onclick=()=>{h.editView();render(true);h.say("계산망의 노드나 배관을 클릭해 편집하세요.");};
   $("ne-cancel").onclick=close;$("ne-close").onclick=close;
+  $("ne-join-yes").onclick=()=>riserDelete(true);$("ne-join-no").onclick=()=>riserDelete(false);
   $("ne-undo").onclick=()=>run("undo");$("ne-redo").onclick=()=>run("redo");
   $("ne-pick-end").onclick=()=>beginPick('end');
   $("ne-pick-split").onclick=()=>beginPick('split');
@@ -246,9 +252,47 @@ window.createModuleFEditor = function (h) {
     }
     return true;
   }
-  function deletePreview() {
+  async function deletePreview() {
     if(!selection)return;
+    await load();
+    if(!selection)return;
+    if(riserPipe()){openJoin();return;}
     openAction(selection.kind==='pipe' ? 'delete' : 'delete_node');
+  }
+  // [오너 2026-09-21] 통합망 계통도의 세로관(높이차가 있는 배관) — 지울 때 위·아래를 붙일지 묻는다.
+  function riserPipe(){
+    if(scope()!=='merge'||selection?.kind!=='pipe'||!data)return null;
+    const label=String(selection.label);
+    const shown=S.mergeView?.pipes?.find(p=>String(p.label)===label);
+    const pipe=data.pipes.find(p=>String(p.label)===label);
+    const at=l=>data.nodes.find(n=>String(n.label)===String(l));
+    const a=at(pipe?.in),b=at(pipe?.out);
+    return shown?.part==='system' && a && b && Math.abs(a.xyz[2]-b.xyz[2])>1e-6 ? {pipe,a,b} : null;
+  }
+  async function openJoin(){
+    await load();if(!active()||!selection||!data)return;
+    const r=riserPipe();
+    if(!r){openAction('delete');return;}
+    show('ne-context',false);show('ne-panel',true);clearPreview();
+    panel.classList.add('ne-join-mode');
+    $("ne-title").textContent='배관 삭제';
+    const [hi,lo]=r.a.xyz[2]>=r.b.xyz[2]?[r.a,r.b]:[r.b,r.a];
+    const m=z=>`${(+z).toFixed(2)} m`;
+    $("ne-selected").textContent=`배관 ${selection.label} · ${r.pipe.length} m · 계통도 세로관 · 위 ${hi.label} (${m(hi.xyz[2])}) → 아래 ${lo.label} (${m(lo.xyz[2])})`;
+    const v=view(),ends=[r.pipe.in,r.pipe.out].map(l=>v?.nodes?.find(n=>String(n.label)===String(l)));
+    if(ends.every(Boolean))popupAt=h.screen((ends[0].x+ends[1].x)/2,(ends[0].y+ends[1].y)/2);
+    const px=popupAt[0]+110+panel.offsetWidth < stage.clientWidth ? popupAt[0]+110 : popupAt[0]-panel.offsetWidth-110;
+    place(panel,px,popupAt[1]+12);
+    $("ne-join-yes").focus();
+  }
+  // 예 → 지우고 위·아래를 붙인다(기계실 표고 고정, 평면도 쪽이 옮겨진다).
+  // 아니오 → 배관만 지운다. 통합망이 끊겨 산출할 수 없다는 문구가 하단에 남는다.
+  async function riserDelete(join){
+    if(pending||!riserPipe())return;
+    const cmd={op:join?'delete_join':'delete_cut',target:String(selection.label),note:$("ne-note").value};
+    if(!await run('preview',cmd))return;
+    if(!await run('apply'))return;
+    if(!join)h.say(S.mergeView?.split || '통합 배관망이 완전히 연결되지 않아 아직 산출할 수 없습니다.','warn');
   }
   function removalOptions(){
     options('ne-remove',(data?.equipment || []).filter(e=>e.editor_library && String(e.pipe)===String(selectedPipe()?.label))
@@ -256,6 +300,7 @@ window.createModuleFEditor = function (h) {
   }
   function close(){
     menuSequence++;pick=null;show('ne-context',false);show('ne-panel',false);show('ne-pick-note',false);clearPreview();
+    panel.classList.remove('ne-join-mode');
   }
   function place(el,x,y){
     el.style.left=Math.max(8,Math.min(x,stage.clientWidth-el.offsetWidth-8))+'px';
@@ -271,7 +316,7 @@ window.createModuleFEditor = function (h) {
   }
   async function openAction(op,axisValue){
     await load();if(!active()||!selection||!data)return;
-    show('ne-context',false);show('ne-panel',true);
+    show('ne-context',false);show('ne-panel',true);panel.classList.remove('ne-join-mode');
     $("ne-op").value=op;fields();
     if(axisValue)$("ne-axis").value=axisValue;
     $("ne-title").textContent=$('ne-op').selectedOptions[0]?.textContent || '속성 변경';
@@ -319,7 +364,9 @@ window.createModuleFEditor = function (h) {
       menuButton('배관 분할',()=>openAction('split'));line();
       menuButton('부속 / 밸브 추가',()=>openAction('fitting'));
       menuButton('추가한 부속 제거',()=>openAction('remove_fitting'),!data.equipment.some(e=>e.editor_library&&String(e.pipe)===String(p?.label)));line();
-      menuButton('배관 삭제',()=>openAction('delete'),String(end?.terminal_pipe)!==String(selection.label),'연결을 보존할 수 있는 관말 배관에서 사용합니다.');
+      const riser=riserPipe();
+      menuButton('배관 삭제',()=>riser?openJoin():openAction('delete'),!riser && String(end?.terminal_pipe)!==String(selection.label),
+        riser?'지운 뒤 위·아래 배관을 붙일지 묻습니다.':'연결을 보존할 수 있는 관말 배관에서 사용합니다.');
     }else{
       const n=selectedNode();
       menuButton('노드속성 변경 ›',()=>buildMenu(true));

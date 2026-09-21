@@ -663,6 +663,12 @@
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
+    // [오너 2026-09-21] 세로관을 「아니오」로 지워 통합망이 끊겼으면 화면 하단에
+    //   알린다. 문장은 서버가 준 그대로다(산출 거절 사유와 같은 문장).
+    const splitNote = $("mg-split");
+    const splitMsg = (S.stage === "merge" && S.mergeView && S.mergeView.split) || "";
+    if (splitNote.textContent !== splitMsg) splitNote.textContent = splitMsg;
+    splitNote.classList.toggle("hidden", !splitMsg);
     // 변환 단계에서도 손질한 망을 계속 보여준다 — 값만 채우는 동안 화면이
     // 검게 비면 무엇을 변환하는지 알 수 없다.
     // [§3-1] 격자는 망보다 **먼저** 그린다 — 뒤에 그리면 배관을 덮는다.
@@ -5563,6 +5569,9 @@
     machineroom: "#ff2d2d", // 기계실 추출 경로 — 같은 규약
     seam: "#ff3b3b",        // 이음매 — 기준압을 잡는 자리의 빨강
   };
+  // [오너 2026-09-21] 계통도·기계실 노드 점의 반지름 — 화면 픽셀이 아니라 실제
+  //   길이(mm)다. 지름 0.5 m 라 줌 인하면 커지고 줌 아웃하면 작아진다.
+  const MERGE_NODE_R_MM = 250;
 
   /** 급수원·밸브 마커 — 손질 화면의 `markers()` 와 같은 사각형이다. */
   function drawMergeMarker(px, py, color, size) {
@@ -5613,6 +5622,23 @@
       ctx.lineTo(sx(b.x), sy(b.y));
     }
     ctx.stroke();
+
+    // ②-1 [오너 2026-09-21] 계통도 층마다·기계실 배관마다 잇는 노드 — 실제 크기로
+    //   그린다(줌 고정 아님). 헤드·기준점·급수원·밸브·펌프는 제 마커가 있어 뺀다.
+    const nodeR = MERGE_NODE_R_MM * S.view.scale;
+    if (nodeR >= 0.6) {
+      ctx.fillStyle = "#000";
+      ctx.strokeStyle = MERGE_COLOR.system;
+      ctx.lineWidth = Math.max(0.6, nodeR * 0.34);
+      for (const n of v.nodes) {
+        if ((n.part !== "system" && n.part !== "machineroom")
+            || n.head || n.anchor || n.input || n.valve || n.pump) continue;
+        ctx.beginPath();
+        ctx.arc(sx(n.x), sy(n.y), nodeR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
 
     // ③ 평면도 최불리망 — 손질 화면처럼 흰 선. 굵기는 담당 헤드 수에 비례하고,
     //    없으면(결합표에는 그 수가 없다) 관경으로 대신한다. 둘 다 없으면 균일.

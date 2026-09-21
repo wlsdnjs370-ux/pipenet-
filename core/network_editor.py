@@ -191,8 +191,12 @@ def _segment_contact(a: tuple, b: tuple, c: tuple, d: tuple) -> bool:
         tuple(a[i]+s*u[i] for i in range(3)), tuple(c[i]+t*v[i] for i in range(3))) < EPS
 
 
-def validate_changes(before: Network, after: Network) -> None:
-    """Reject new contacts/overlaps, orphaned heads and disconnected fragments."""
+def validate_changes(before: Network, after: Network, *, allow_split: bool = False) -> None:
+    """Reject new contacts/overlaps, orphaned heads and disconnected fragments.
+
+    `allow_split` is only for the riser cut the owner confirms with 「아니오」:
+    the pipe goes, and the merged view says the network cannot be output yet.
+    """
     changed = {pid for pid, p in after.pipes.items() if pid not in before.pipes
                or (p.a, p.b) != (before.pipes[pid].a, before.pipes[pid].b)
                or any(after.nodes[n].xyz != before.nodes[n].xyz
@@ -226,8 +230,12 @@ def validate_changes(before: Network, after: Network) -> None:
                     before.nodes[other_old.a].xyz,before.nodes[other_old.b].xyz):
                     continue
                 raise EditError(f'배관 {pid}와 {other}가 같은 높이에서 교차합니다. 분할 후 연결하세요.')
-    if after.nodes and after.protected:
-        root = next(n for n in after.protected if n in after.nodes)
+    roots = sorted(n for n in after.protected if n in after.nodes)
+    if roots and not allow_split:
+        # Judge from the water source. After a riser cut the graph is already in
+        # two pieces, and a root in the other piece would judge the wrong one.
+        root = next((n for n in roots if str(after.nodes[n].row.get('io_node', '')).lower() == 'input'),
+                    roots[0])
         reached = after.component(root)
         # Do not hide pre-existing disconnected pieces; only reject new ones.
         old_reached = before.component(root)
@@ -245,6 +253,7 @@ def apply_edit(network: Network, command: dict, catalog: dict) -> tuple[Network,
     n = deepcopy(network)
     op, target = command.get('op'), str(command.get('target', ''))
     result = {'kind': 'pipe' if target in n.pipes else 'node', 'label': target}
+    check_from, allow_split = network, False
 
     def spec() -> dict:
         schedule = str(command.get('schedule', ''))
@@ -256,7 +265,8 @@ def apply_edit(network: Network, command: dict, catalog: dict) -> tuple[Network,
 
     if op in ('extend', 'connect', 'head', 'node', 'move_node', 'delete_node', 'merge_node', 'paste') and target not in n.nodes:
         raise EditError('선택한 노드가 없어졌습니다. 다시 선택하세요.')
-    if op in ('split', 'resize', 'pipe', 'fitting', 'remove_fitting', 'delete') and target not in n.pipes:
+    if op in ('split', 'resize', 'pipe', 'fitting', 'remove_fitting', 'delete',
+              'delete_join', 'delete_cut') and target not in n.pipes:
         raise EditError('선택한 배관이 없어졌습니다. 다시 선택하세요.')
     if op == 'paste':
         source = str(command.get('source', ''))
@@ -459,9 +469,26 @@ def apply_edit(network: Network, command: dict, catalog: dict) -> tuple[Network,
         for attr in ('equipment','fittings'):
             setattr(n.tables,attr,[r for r in getattr(n.tables,attr) if str(r.get('pipe')) != target])
         result = {'kind':'node','label':p.a}
+    elif op in ('delete_join', 'delete_cut'):
+        # [오너 2026-09-21] 통합망 계통도의 세로관(층고 배관) 삭제.
+        #   예(delete_join) — 위·아래 노드를 붙인다. 급수원(기계실) 쪽 표고는 그대로
+        #     두고, 반대쪽(평면도 쪽)을 지운 배관의 높이만큼 옮긴다.
+        #   아니오(delete_cut) — 배관만 지운다. 망이 끊긴 채 남고 산출은 막힌다.
+        p = n.pipes[target]
+        if abs(n.nodes[p.a].xyz[2]-n.nodes[p.b].xyz[2]) <= EPS:
+            raise EditError('높이차가 없는 배관은 이 방법으로 지울 수 없습니다.')
+        n.pipes.pop(target)
+        for attr in ('equipment','fittings'):
+            setattr(n.tables,attr,[r for r in getattr(n.tables,attr) if str(r.get('pipe')) != target])
+        if op == 'delete_cut':
+            allow_split = True
+            result = {'kind':'node','label':p.a}
+        else:
+            check_from, survivor = _join_riser_gap(n, p, {str(k) for k in command.get('keep') or ()})
+            result = {'kind':'node','label':survivor}
     else:
         raise EditError('지원하지 않는 편집 동작입니다.')
-    validate_changes(network,n)
+    validate_changes(check_from,n,allow_split=allow_split)
     n.to_tables()
     result['counts'] = dict(nodes=len(n.nodes),pipes=len(n.pipes),heads=len(n.tables.nozzles))
     return n,result
@@ -487,6 +514,78 @@ def _delete_terminal(network: Network, node: str) -> str:
     for attr in ('equipment', 'fittings'):
         setattr(network.tables, attr, [r for r in getattr(network.tables, attr) if str(r.get('pipe')) != pid])
     return parent
+
+
+def _join_riser_gap(network: Network, pipe: Pipe, keep: set) -> tuple[Network, str]:
+    """Close the gap a removed riser pipe leaves; the water-source side keeps its Z.
+
+    The piece without the water source moves by the removed pipe's height, then
+    its end node and the other end node become one. Returns the moved-but-not-yet
+    joined graph (the validation baseline) and the surviving label.
+    """
+    side_a = network.component(pipe.a)
+    if pipe.b in side_a:
+        raise EditError('이 배관을 지워도 위·아래가 다른 길로 이어져 있어 붙일 수 없습니다. 「아니오」로 지우세요.')
+    side_b = network.component(pipe.b)
+    supply = {k for k, nd in network.nodes.items() if str(nd.row.get('io_node', '')).lower() == 'input'}
+    if (side_a & supply) and not (side_b & supply):
+        fixed_end, moving_end, moving = pipe.a, pipe.b, side_b
+    elif (side_b & supply) and not (side_a & supply):
+        fixed_end, moving_end, moving = pipe.b, pipe.a, side_a
+    else:
+        raise EditError('급수원(기계실) 쪽을 정할 수 없어 붙일 수 없습니다. 「아니오」로 지우세요.')
+    keep = set(keep) | network.protected | network.heads()
+    if fixed_end in keep and moving_end in keep:
+        raise EditError('위·아래 노드가 모두 급수원·기준점·펌프 노드라 붙일 수 없습니다. 「아니오」로 지우세요.')
+    z_fixed = network.nodes[fixed_end].xyz[2]
+    dz = z_fixed-network.nodes[moving_end].xyz[2]
+    for nid in moving:
+        x, y, z = network.nodes[nid].xyz
+        network.nodes[nid].xyz = (x, y, round(z+dz, 9))
+    x, y, _ = network.nodes[moving_end].xyz
+    network.nodes[moving_end].xyz = (x, y, z_fixed)
+    _shift_contacts(network, moving, fixed_end, moving_end)
+    moved = deepcopy(network)
+    survivor, victim = (moving_end, fixed_end) if moving_end in keep else (fixed_end, moving_end)
+    for q in network.pipes.values():
+        if q.a == victim:
+            q.a = survivor
+        if q.b == victim:
+            q.b = survivor
+    for attr in ('pumps', 'valves'):
+        for row in getattr(network.tables, attr, []):
+            for key in ('in', 'out'):
+                if str(row.get(key)) == victim:
+                    row[key] = survivor
+    for row in network.tables.equipment:
+        if str(row.get('editor_node')) == victim:
+            row['editor_node'] = survivor
+    for nd in network.nodes.values():
+        if str(nd.row.get('editor_parent', '')) == victim:
+            nd.row['editor_parent'] = survivor
+        between = nd.row.get('editor_between')
+        if between and victim in [str(k) for k in between[:2]]:
+            nd.row['editor_between'] = [survivor if str(k) == victim else k for k in between[:2]] + list(between[2:])
+    network.nodes.pop(victim)
+    return moved, survivor
+
+
+def _shift_contacts(network: Network, moving: set, fixed_end: str, moving_end: str) -> None:
+    """A rigid shift keeps contacts inside the moved piece; check it against the rest."""
+    def apart(a, b, c, d):
+        return any(max(a[i], b[i]) < min(c[i], d[i])-EPS or max(c[i], d[i]) < min(a[i], b[i])-EPS
+                   for i in range(3))
+    inside = [(k, q) for k, q in network.pipes.items() if q.a in moving]
+    outside = [(k, q) for k, q in network.pipes.items() if q.a not in moving]
+    for k, q in inside:
+        a, b = network.nodes[q.a].xyz, network.nodes[q.b].xyz
+        at_joint = moving_end in (q.a, q.b)
+        for m, r in outside:
+            if at_joint and fixed_end in (r.a, r.b):
+                continue  # They meet at the joint by design; overlaps are checked after joining.
+            c, d = network.nodes[r.a].xyz, network.nodes[r.b].xyz
+            if not apart(a, b, c, d) and _segment_contact(a, b, c, d):
+                raise EditError(f'붙이면 배관 {k}와 {m}가 닿습니다. 「아니오」로 지운 뒤 따로 이으세요.')
 
 
 def merge_reason(network: Network, node: str) -> str:

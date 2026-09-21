@@ -540,3 +540,14 @@
 .ne-context .ne-menu-heading{padding:5px 9px;color:#92b4c5;font-size:11px;border-bottom:1px solid #344757;}
 .ne-context hr{border:0;border-top:1px solid #344757;margin:5px;}
 #ne-pick-note{position:absolute;top:10px;left:12px;z-index:44;max-width:calc(100% - 24px);padding:9px 12px;background:#123b46;color:#d8ffff;border:1px solid #44878c;font-size:12px;pointer-events:none;}
+/* [오너 2026-09-21] 통합망 계통도 세로관 삭제 카드 — 질문과 예/아니오만 보인다. */
+.ne-join{display:none;}
+.ne-panel.ne-join-mode>*:not(.ne-pop-head):not(#ne-selected):not(.ne-join):not(#ne-message){display:none!important;}
+.ne-panel.ne-join-mode .ne-join{display:block;}
+.ne-join-q{margin:12px 0 2px;font-size:13px;font-weight:600;color:var(--ink);}
+.ne-join .ne-actions button{min-width:76px;}
+#ne-join-yes{background:#226f60;}
+/* 끊긴 통합망 경고 — 화면 하단, 편집 도구줄 바로 위. 클릭을 가로채지 않는다. */
+.mg-split{position:absolute;left:12px;bottom:calc(var(--h-bar) + 52px);z-index:42;
+  max-width:min(620px,calc(100% - 24px));padding:8px 14px;background:#3a1618ee;color:#ffc9c2;
+  border:1px solid #a4453d;border-radius:6px;font-size:12px;line-height:1.5;pointer-events:none;}

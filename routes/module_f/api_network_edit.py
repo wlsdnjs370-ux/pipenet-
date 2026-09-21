@@ -67,6 +67,33 @@ def _target_scope(sess: dict, scope: str, command: dict) -> tuple[str, dict, int
     return 'design',command,offset
 
 
+RISER_OPS = ('delete_join', 'delete_cut')
+
+
+def _riser_command(sess: dict, scope: str, command: dict) -> dict:
+    """[오너 2026-09-21] 세로관 삭제 카드(예/아니오)는 통합망의 계통도 배관에만 쓴다.
+
+    예(delete_join)가 붙일 때 남겨야 할 노드 — 기준점 10 과 기계실이 붙는
+    노드 — 를 명령에 적어 둔다. 편집 기록을 다시 돌려도 같은 노드가 남는다.
+    """
+    if command.get('op') not in RISER_OPS:
+        return command
+    if scope != 'merge':
+        raise EditError('세로관 삭제(위·아래 연결)는 통합 배관망의 계통도 배관에서만 할 수 있습니다.')
+    from routes.module_f.merge import ANCHOR_LABEL
+    got = sess['merged']
+    target = str(command.get('target'))
+    part = (got.get('pipe_parts') or {}).get(target)
+    if part is None:
+        system = {str(x) for x in (got.get('parts') or {}).get('system', ())}
+        row = next((r for r in got['combined'].pipes if str(r['label']) == target), None)
+        part = 'system' if row and {str(row['in']), str(row['out'])} <= system else None
+    if part != 'system':
+        raise EditError('계통도 세로관만 이 방법으로 지울 수 있습니다.')
+    keep = {ANCHOR_LABEL} | ({str(got['pump_junction'])} if got.get('pump_junction') else set())
+    return dict(command, keep=sorted(keep))
+
+
 def _revision(editor: dict) -> str:
     return hashlib.sha256(json.dumps(dict(graph=ne.fingerprint(editor['current']),
                           commands=editor['commands'],cursor=editor['cursor']),
@@ -254,6 +281,7 @@ def register(app) -> None:
                 offset = 0
                 if action in ('preview','apply'):
                     scope,command,offset = _target_scope(sess,scope,command)
+                    command = _riser_command(sess,scope,command)
                 elif scope=='merge' and action in ('undo','redo'):
                     scope = _history_scope(sess,action)
                 elif scope=='merge' and action=='reset' and not shown['commands']:

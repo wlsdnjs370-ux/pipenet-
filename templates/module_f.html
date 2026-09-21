@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260921-merge-iso-default">
+<link rel="stylesheet" href="/static/module_f.css?v=20260921-riser-delete">
 </head>
 <body>
 <header>
@@ -876,6 +876,8 @@
   <div class="stage" id="stage">
     <canvas id="cv"></canvas>
     <div id="zoom-window" class="hidden" aria-hidden="true"></div>
+    <!-- [오너 2026-09-21] 세로관을 「아니오」로 지워 통합망이 끊겼을 때의 하단 경고 -->
+    <div id="mg-split" class="mg-split hidden" role="alert"></div>
     <div class="bar">
       <span id="status">도면을 여세요.</span>
       <span class="grow"></span>
@@ -899,6 +901,15 @@
       <section id="ne-panel" class="ne-panel hidden" aria-label="배관망 직접 편집">
         <div class="ne-pop-head"><h3 id="ne-title">배관망 직접 편집</h3><button id="ne-close" aria-label="편집 창 닫기">×</button></div>
         <p id="ne-selected" class="hint"></p>
+        <!-- [오너 2026-09-21] 통합망 계통도 세로관 삭제 — 예/아니오 카드 -->
+        <div class="ne-join">
+          <p class="ne-join-q">제거 후 상단과 하단 배관을 연결할까요?</p>
+          <div class="ne-actions"><button id="ne-join-yes" type="button">예</button>
+            <button id="ne-join-no" type="button">아니오</button></div>
+          <p class="hint">예 — 위·아래 노드를 붙입니다. 기계실 표고는 그대로 두고, 평면도 쪽 표고가 지운 배관 높이만큼 바뀝니다.<br>
+            아니오 — 배관만 지웁니다. 통합망이 끊겨 다시 이을 때까지 산출할 수 없습니다.<br>
+            둘 다 Ctrl+Z 로 되돌립니다.</p>
+        </div>
         <label>작업 <select id="ne-op"></select></label>
         <label id="ne-attached-wrap">접속 배관 <select id="ne-attached"></select></label>
         <div id="ne-coordinates" class="hidden">
@@ -999,10 +1010,10 @@
 
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
-<script src="/static/upload_stream.js?v=20260903-sub"></script>
-<script src="/static/module_f_editor.js?v=20260920-fitting-properties"></script>
-<script src="/static/module_f_inspection.js?v=20260920-merged-branch-elbow"></script>
-<script src="/static/module_f_regions.js?v=20260920-lasso"></script>
-<script src="/static/module_f.js?v=20260921-merge-iso-default"></script>
+<script src="/static/upload_stream.js?v=20260921-sub"></script>
+<script src="/static/module_f_editor.js?v=20260921-riser-delete"></script>
+<script src="/static/module_f_inspection.js?v=20260921-merged-branch-elbow"></script>
+<script src="/static/module_f_regions.js?v=20260921-lasso"></script>
+<script src="/static/module_f.js?v=20260921-riser-delete"></script>
 </body>
 </html>

@@ -42,6 +42,22 @@ def _slot_value(sess: dict, kind: str, key: str):
     return ((sess.get("slots") or {}).get(kind) or {}).get(key)
 
 
+def _split_note(sess: dict):
+    """[오너 2026-09-21] 편집으로 통합망이 끊겼으면 그 사실을 한 문장으로 준다.
+
+    결합 직후(편집 전)보다 덩어리가 늘었을 때만 말한다 — 결합 때부터 따로
+    떨어진 조각이 있던 도면은 종전과 똑같이 산출된다.
+    """
+    from routes.module_f.merge import SPLIT_MESSAGE, network_pieces
+    got = sess.get("merged") or {}
+    editor = sess.get("merge_editor")
+    if got.get("combined") is None or not editor or editor.get("base") is None:
+        return None
+    if network_pieces(got["combined"]) > network_pieces(editor["base"].tables):
+        return SPLIT_MESSAGE
+    return None
+
+
 def _merge_underlay(sess: dict, got: dict, nodes, iso: bool, zs: float):
     """[§3-4] 통합 밑그림 변환 — board mm 한 점을 **이 화면** 의 자리로.
 
@@ -425,7 +441,9 @@ def register(app, *, UPLOAD_DIR):
                      # 기계실 평면 배관망 — SDF 에는 없고 «보기» 로만 쓴다.
                      "mr_plan_edges": mr_edges,
                      # [§3-4] 평면도 밑그림 변환 — 04 와 같은 이름·같은 모양.
-                     "underlay": under, "underlays": layers},
+                     "underlay": under, "underlays": layers,
+                     # [오너 2026-09-21] 세로관을 「아니오」로 지워 끊겼으면 화면 하단 경고 문구.
+                     "split": _split_note(sess)},
             # [요소속성 수정카드] 카드가 원값·사유·시각을 나란히 보인다(규칙 5)
             #   와 「적용 못 한 수정」(규칙 4).
             "overrides": ov.ensure_loaded(sess),
@@ -461,6 +479,11 @@ def register(app, *, UPLOAD_DIR):
         if got.get("combined") is None:
             return _fail("계통도가 없어 결합망이 없습니다 — 평면도 산출은 "
                          "수리계산 단계의 «.sdf + .slf 저장» 을 쓰세요.", 400)
+
+        # [오너 2026-09-21] 세로관을 「아니오」로 지워 끊긴 통합망은 산출하지 않는다.
+        split = _split_note(sess)
+        if split:
+            return _fail(split, 409)
 
         from pathlib import Path
 

@@ -925,6 +925,31 @@ def combined_summary(got: dict) -> dict:
     }
 
 
+# [오너 2026-09-21] 세로관 삭제 카드에서 「아니오」를 고르면 배관만 지운다 — 그
+#   뒤로는 통합망이 끊긴 채 남으므로 화면 하단에 이 문구를 띄우고 산출을 막는다.
+SPLIT_MESSAGE = ("통합 배관망이 완전히 연결되지 않아 아직 산출할 수 없습니다 — "
+                 "끊긴 배관을 다시 잇거나(노드 → 노드 연결) 되돌리기(Ctrl+Z)로 복원하세요.")
+
+
+def network_pieces(tables) -> int:
+    """이어진 덩어리 수 — 배관·펌프·밸브가 두 노드를 잇는다(헤드 끝 `@/…` 은 노드가 아니다)."""
+    labels = [str(n.get("label")) for n in (getattr(tables, "nodes", None) or ())]
+    root = {lab: lab for lab in labels}
+
+    def find(x):
+        while root[x] != x:
+            root[x] = root[root[x]]
+            x = root[x]
+        return x
+
+    for attr in ("pipes", "pumps", "valves"):
+        for r in (getattr(tables, attr, None) or ()):
+            a, b = str(r.get("in")), str(r.get("out"))
+            if a in root and b in root:
+                root[find(a)] = find(b)
+    return len({find(x) for x in labels})
+
+
 # [정리 2026-08-31] `build_riser_for(mode, ctx)` 를 지웠다 — S720 입상관 생성의
 #   얇은 어댑터였는데 **저장소 어디에서도 안 불렸다**(비추적 파일까지 훑었다).
 #   짝인 `zone_type_of` 는 시험이 직접 쓰므로 그대로 둔다.

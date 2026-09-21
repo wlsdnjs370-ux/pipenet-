@@ -719,6 +719,57 @@ def bake_combined_iso(got: dict, *, iso_z_scale: float = 1.0,
     return nodes, edges
 
 
+def bake_combined_plan(got: dict):
+    """결합망의 «평면 보기» 좌표 — 화면(iso=0)과 평면 .sdf 가 쓰는 그 한 식.
+
+    [오너 2026-09-21] physical_xy 배치는 계통도를 «위에서 내려다본 실제 자리»에
+    둔다(B1F 같은 층 경로를 도면 방향대로 살리려고, 9/20). 위에서 보면 세로관은
+    길이가 0 이라 입상관이 한 점으로 접히고 맨 위 가로관만 선으로 남아 «계통도가
+    누운» 것처럼 보였다(대명동 실측: 세로관 26개·길이 합 91.8 m 가 점 두 개로,
+    화면의 가로선은 맨 위 가로관 r3 15.6 m). 평면 보기에서만 계통도 노드를
+    (표고 − 기준점 표고) × 1000 mm 만큼 화면 세로(+y)로 올린다:
+      · 높이차가 있는 배관 → 세로로, 길이 = 그 높이차(1 m = 1 m)
+      · 높이차가 없는 배관 → 지금처럼 가로로, 도면 방향 그대로
+    그래서 B1F 같은 층(계통도 표고가 전부 기준점과 같다)은 좌표가 하나도 안
+    바뀐다. 기계실은 위에서 본 모양 그대로 접속 노드(pump_junction)를 따라
+    평행이동하고, 평면도는 그대로다.
+
+    ★보기 전용 좌표다 — `combined.nodes` 는 건드리지 않는다. .kfp(실제 XYZ)와
+    아이소(`bake_combined_iso`)는 여전히 실제 좌표에서 나온다.
+    template 배치(종전 세로 막대)는 이미 세로로 그려지므로 그대로 돌려준다.
+    돌려주는 것: (절점 사본, 기계실 평면 edge 사본) — `bake_combined_iso` 와 같은 모양.
+    """
+    c = (got or {}).get("combined")
+    if c is None:
+        return [], []
+    nodes = [dict(n) for n in (getattr(c, "nodes", None) or ())]
+    edges = [list(map(float, e))
+             for e in (getattr(c, "machine_room_plan_edges", None) or ())]
+    if got.get("system_layout") != "physical_xy":
+        return nodes, edges
+    parts = got.get("parts") or {}
+    system = {str(x) for x in (parts.get("system") or ())}
+    room = {str(x) for x in (parts.get("machineroom") or ())}
+    at = {str(n.get("label")): n for n in nodes}
+    ref = float(at.get(ANCHOR_LABEL, {}).get("elevation", 0) or 0)
+    pj = at.get(str(got.get("pump_junction")))
+    room_lift = ((float(pj.get("elevation", 0) or 0) - ref) * 1000.0
+                 if pj is not None else 0.0)
+    for n in nodes:
+        lab = str(n.get("label"))
+        if lab in system:
+            lift = (float(n.get("elevation", 0) or 0) - ref) * 1000.0
+        elif lab in room:
+            lift = room_lift
+        else:
+            continue
+        if lift:
+            n["y"] = float(n.get("y", 0) or 0) + lift
+    if room_lift:
+        edges = [[e[0], e[1] + room_lift, e[2], e[3] + room_lift] for e in edges]
+    return nodes, edges
+
+
 def check_combined(got: dict) -> dict:
     """[D5] 결합 **뒤** 검사 — 전부 «보고» 다. 예외로 올리지 않는다.
 

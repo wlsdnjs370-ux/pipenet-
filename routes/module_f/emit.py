@@ -30,11 +30,21 @@ from routes.module_f.kfp_export import finish_kfp
 from routes.module_f.export_compat import prepare_sdf_export, emit_physical_kfp
 
 
+def _positions_moved(nodes: list, shown: list) -> bool:
+    """두 절점 목록의 XY 가 하나라도 다른가 — 같으면 평면 .sdf 를 다시 쓰지 않는다."""
+    before = {str(n.get("label")): (float(n.get("x", 0) or 0), float(n.get("y", 0) or 0))
+              for n in nodes}
+    after = {str(n.get("label")): (float(n.get("x", 0) or 0), float(n.get("y", 0) or 0))
+             for n in shown}
+    return before != after
+
+
 def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
                 stem: str = "module_f_merged",
                 coord_scale: float = 1.0,
                 iso_nodes: list | None = None,
-                display_reference_labels: list[str] | None = None) -> dict:
+                display_reference_labels: list[str] | None = None,
+                plan_nodes: list | None = None) -> dict:
     """결합망 하나 → {sdf, slf, kfp, has, zip, warnings}. 값은 절대경로.
 
     `combined` 는 `stitch_riser_and_heads` 산출(`CombinedTables`)이다.
@@ -52,6 +62,11 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
       좌표가 선언 길이를 덮지 못하게 하는 잠금은 `parse_sdf` 에 서 있다).
       절점 좌표는 화면 미리보기가 쓰는 그 함수(`merge.bake_combined_iso`)가
       만든 것을 그대로 받는다 — 여기서 다시 셈하면 화면과 파일이 갈린다.
+
+    `plan_nodes` 는 평면 .sdf 의 «그림 자리»다(`merge.bake_combined_plan` —
+    평면 보기 화면과 같은 함수). [오너 2026-09-21] 계통도 세로관을 세로로
+    세운 좌표라, KFP 는 그 전에 **실제 좌표 SDF** 로 만든다(아래 ③-2).
+    실제 좌표와 같으면(template·같은 층) 다시 쓰지 않는다 — 산출이 종전과 같다.
     """
     from remote30_full_network import ProjectContext, emit_full_sdf
 
@@ -93,6 +108,21 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
         kfp_ok = True
     except Exception as exc:  # noqa: BLE001 — SDF 출력을 막지 않는다
         warnings.append(f"KFP 변환 실패: {type(exc).__name__}: {exc}")
+
+    # ③-2 [오너 2026-09-21] 평면 .sdf 의 «그림 자리» — 계통도 세로관을 세운다.
+    #   KFP 는 바로 위에서 실제 좌표 SDF 로 이미 만들었다. emit_physical_kfp 는
+    #   SDF 의 배관 방향을 실제 방위로 읽으므로 세운 좌표로 만들면 안 된다(아이소
+    #   SDF 를 넣으면 안 되는 것과 같은 까닭). 그 뒤에 같은 표·같은 배율로 평면
+    #   .sdf 를 한 번 더 쓴다 — 길이·rise·표고·관경은 한 글자도 안 바뀌고
+    #   Position 만 다르다. HAS 는 이 평면 .sdf 에서 나온다(표시 좌표는 HAS 도 보기용).
+    if plan_nodes is not None and _positions_moved(combined.nodes, plan_nodes):
+        import copy as _copy
+        plan_tbl = _copy.copy(combined)
+        plan_tbl.nodes = list(plan_nodes)
+        emit_full_sdf(plan_tbl, sdf, ctx=ProjectContext.titled(title), **display_options)
+        for message in prepare_sdf_export(sdf, nozzle_reference_labels=display_reference_labels):
+            if message not in warnings:
+                warnings.append(message)
 
     has = out / f"{stem}.has"
     try:

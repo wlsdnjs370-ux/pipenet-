@@ -61,6 +61,11 @@ def reference_layers(sess: dict, got: dict, *, iso: bool, geometry: bool=False) 
     if physical and iso:
         from routes.module_f.merge import bake_combined_iso
         shown = {str(n['label']): _xy(n) for n in bake_combined_iso(base)[0]}
+    elif physical:
+        # [오너 2026-09-21] 평면 보기는 계통도 세로관을 세운 자리에 그린다 —
+        # 밑그림도 화면에 보이는 그 자리(`bake_combined_plan`)에 맞춘다.
+        from routes.module_f.merge import bake_combined_plan
+        shown = {str(n['label']): _xy(n) for n in bake_combined_plan(base)[0]}
     result=[]
     for kind in SLOT_KINDS:
         slot=_slot(sess,kind)
@@ -119,6 +124,10 @@ def reference_layers(sess: dict, got: dict, *, iso: bool, geometry: bool=False) 
                         sx=target_pj[0]-c*(pj[0]-pj[1])
                         sy=target_pj[1]-s*(pj[0]+pj[1])
                         xf=_compose([c,s,-c,s,sx,sy],xf)
+                    elif physical:
+                        # 평면 보기 — 기계실은 접속 노드를 따라 평행이동한 자리에 있다.
+                        tp=shown.get(str(base['pump_junction']),pj)
+                        xf=[scale,0,0,scale,tp[0]-scale*float(conn[0]),tp[1]-scale*float(conn[1])]
             row['note']='기계실 접속점을 기준으로 결합망과 같은 배율로 겹칩니다.'
         if not groups:
             row['reason']='참조 도면이 열리지 않았습니다.'

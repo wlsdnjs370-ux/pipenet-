@@ -23,7 +23,7 @@ from routes.module_f import overrides as ov
 from routes.module_f.common import _fail
 from routes.module_f.jobs import _job_running, _run_job, route_session
 from routes.module_f.merge import (
-    ANCHOR_LABEL, SUPPLY_MODES, MergeError, bake_combined_iso,
+    ANCHOR_LABEL, SUPPLY_MODES, MergeError, bake_combined_iso, bake_combined_plan,
     check_supply_mode, combined_summary, merge_network)
 from routes.module_f.slots import SLOT_KINDS, _slot_active, _slot_capture
 
@@ -325,6 +325,11 @@ def register(app, *, UPLOAD_DIR):
             # 굽는 식은 `merge.bake_combined_iso` 하나뿐이다 — 산출(.sdf)도
             # 같은 함수를 쓴다. 두 자리가 각자 셈하면 화면과 파일이 갈린다.
             nodes, mr_edges = bake_combined_iso(got, iso_z_scale=zs)
+        else:
+            # [오너 2026-09-21] 평면 보기 — 계통도 세로관을 세로로 세운다(높이차
+            #   없는 배관은 그대로). 식은 `merge.bake_combined_plan` 하나뿐이고
+            #   평면 .sdf 도 같은 함수를 쓴다(보이는 것 = 저장되는 것).
+            nodes, mr_edges = bake_combined_plan(got)
 
         heads = {str(r.get("in")) for r in (c.nozzles or ())}
         pumps = {str(r.get("in")) for r in (c.pumps or ())}
@@ -471,6 +476,8 @@ def register(app, *, UPLOAD_DIR):
                 got["combined"], out_dir,
                 title=f"모듈 F 통합 — {sess.get('key') or ''}",
                 iso_nodes=iso_nodes,
+                # 평면 .sdf 의 그림 자리 — 평면 보기 화면과 같은 함수(bake_combined_plan).
+                plan_nodes=bake_combined_plan(got)[0],
                 display_reference_labels=list((got.get("parts") or {}).get("plan") or ()))
             sess["merge_files"] = files
             for k, v in files.items():

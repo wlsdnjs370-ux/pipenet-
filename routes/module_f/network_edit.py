@@ -361,12 +361,13 @@ def project(sess: dict, scope: str, net: Network) -> dict:
     """The preview uses the same projection as saved SDF and the main canvas."""
     tables = net.to_tables()
     if scope == 'merge':
-        from routes.module_f.merge import bake_combined_iso, adopt_late_nodes
+        from routes.module_f.merge import bake_combined_iso, bake_combined_plan, adopt_late_nodes
         obj = deepcopy(sess['merged'])
         known = {str(n['label']) for n in obj['combined'].nodes}
         obj['combined'] = tables
         adopt_late_nodes(tables,obj.setdefault('parts',{}),known)
-        nodes = bake_combined_iso(obj,iso_z_scale=float(sess.get('editor_merge_z',1)))[0] if sess.get('editor_merge_iso') else tables.nodes
+        # [오너 2026-09-21] 평면 미리보기도 본 화면과 같은 식 — 계통도 세로관을 세운 자리.
+        nodes = bake_combined_iso(obj,iso_z_scale=float(sess.get('editor_merge_z',1)))[0] if sess.get('editor_merge_iso') else bake_combined_plan(obj)[0]
     else:
         from services.cad_import.design.emit import display_tables
         from routes.module_f.api_design import _DEFAULT_SETTINGS, _view_opts, _valve_label

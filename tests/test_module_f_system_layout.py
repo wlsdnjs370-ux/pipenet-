@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 for path in (ROOT, ROOT / 'core'):
     sys.path.insert(0, str(path))
 
-from routes.module_f.merge import bake_combined_iso, merge_network
+from routes.module_f.merge import bake_combined_iso, bake_combined_plan, merge_network
 from routes.module_f.system_layout import set_elevation_mode
 
 
@@ -131,7 +131,9 @@ def test_machine_reference_stays_attached_after_system_layout(session,iso):
     session['slots']['system']['riser']=system(True)
     rebuild_merged(session,persist_overrides=False)
     got=session['merged']
-    nodes=bake_combined_iso(got)[0] if iso else got['combined'].nodes
+    # 평면 보기는 계통도 세로관을 세운 자리에 그린다(오너 2026-09-21) — 밑그림은
+    # 화면에 보이는 그 자리에 붙어야 한다.
+    nodes=bake_combined_iso(got)[0] if iso else bake_combined_plan(got)[0]
     at={str(n['label']):(n['x'],n['y']) for n in nodes}
     refs={r['kind']:r for r in reference_layers(session,got,iso=iso)}
     assert transform(refs['machineroom']['matrix'],(7000,6000))==pytest.approx(at['1'])
@@ -141,3 +143,80 @@ def test_machine_reference_stays_attached_after_system_layout(session,iso):
 
 # Reuse the existing isolated edit-session fixture; no live session is touched.
 from test_module_f_network_editor import session
+
+
+# ── [오너 2026-09-21] 통합 평면 보기 — 계통도 세로관을 세로로 ─────────────────────
+#
+# physical_xy 는 계통도를 위에서 내려다본 실제 자리에 둔다. 위에서 보면 세로관은
+# 길이가 0 이라 평면 보기에서 입상관이 한 점으로 접혔다(대명동 실측: 세로관 26개).
+# 평면 보기만 (표고 − 기준점 표고)×1000 을 화면 세로로 더한다. 실제 표·KFP·아이소는
+# 그대로다.
+
+def test_plan_view_stands_vertical_pipes_up_and_keeps_level_pipes():
+    got=merge_network(heads(),riser=system(True),mode='hsp_pump')
+    before=deepcopy(vars(got['combined']))
+    real={n['label']:n for n in got['combined'].nodes}
+    plan={n['label']:n for n in bake_combined_plan(got)[0]}
+    assert real['n2']['x']==real['n3']['x'] and real['n2']['y']==real['n3']['y']  # 위에서 보면 한 점
+    # 세로관 n2→n3 (높이차 2 m) → 화면 세로 2000 mm
+    assert plan['n3']['x']==pytest.approx(plan['n2']['x'])
+    assert plan['n3']['y']-plan['n2']['y']==pytest.approx(2000)
+    # 높이차 없는 배관은 도면 방향 그대로
+    assert plan['n2']['x']-plan['1']['x']==pytest.approx(3000)
+    assert plan['n2']['y']==pytest.approx(plan['1']['y'])
+    assert plan['10']['x']-plan['n3']['x']==pytest.approx(2000)
+    # 평면도와 기준점 10 은 한 치도 안 움직인다
+    for label in got['parts']['plan']:
+        assert (plan[label]['x'],plan[label]['y'])==(real[label]['x'],real[label]['y'])
+    assert vars(got['combined'])==before
+
+
+def test_plan_view_is_unchanged_for_same_level_and_template_layouts():
+    measured={((0,0),(3000,0)):3000,((3000,0),(3000,4000)):4000,((3000,4000),(5000,4000)):2000}
+    same=set_elevation_mode(system(True),'same_level',measured)
+    sys.path.insert(0,str(ROOT/'tests'))
+    from test_module_f_merge import _riser
+    for got in (merge_network(heads(),riser=same,mode='hsp_pump'),
+                merge_network(heads(),riser=_riser(),mode='lsp_gravity')):
+        nodes,edges=bake_combined_plan(got)
+        assert [(n['label'],n['x'],n['y']) for n in nodes]==[
+            (n['label'],n['x'],n['y']) for n in got['combined'].nodes]
+        assert edges==[list(map(float,e)) for e in got['combined'].machine_room_plan_edges or []]
+
+
+def test_plan_sdf_stands_riser_while_kfp_and_iso_stay_byte_identical(tmp_path):
+    import re
+    from routes.module_f.emit import emit_merged
+    got=merge_network(heads(),riser=system(True),mode='hsp_pump')
+    iso=bake_combined_iso(got)[0]
+    plain=emit_merged(got['combined'],tmp_path/'plain',iso_nodes=iso)
+    shown=emit_merged(got['combined'],tmp_path/'shown',iso_nodes=iso,
+                      plan_nodes=bake_combined_plan(got)[0])
+    for key in ('kfp','kfp_iso','sdf_iso','slf','slf_iso'):
+        assert Path(plain[key]).read_bytes()==Path(shown[key]).read_bytes(),key
+    def read(path):
+        text=Path(path).read_text(encoding='utf-8')
+        pos={k:(float(x),float(y)) for k,x,y in re.findall(
+            r'label="([^"]+)">\s*<Position x="([^"]+)" y="([^"]+)"',text)}
+        return text,pos
+    a,pa=read(plain['sdf']); b,pb=read(shown['sdf'])
+    # 수리계산 값(배관 길이·rise·관경, 노드 표고·경계)은 한 글자도 안 바뀐다
+    assert re.findall(r'<Pipe [^>]*>',a)==re.findall(r'<Pipe [^>]*>',b)
+    assert re.findall(r'<Node [^>]*>',a)==re.findall(r'<Node [^>]*>',b)
+    assert pa['n2']==pa['n3']                                  # 종전: 한 점으로 접힘
+    assert pb['n2'][0]==pb['n3'][0] and pb['n3'][1]>pb['n2'][1]  # 이제 세로로 선다
+
+
+def test_merge_preview_plan_view_uses_the_same_plan_function():
+    from test_module_f_merge_view import _client,_sid
+    c=_client(); sid,sess=_sid(c)
+    sess['merged']=merge_network(heads(),riser=system(True),mode='hsp_pump')
+    sess['supply_mode']='hsp_pump'
+    plan=c.get(f'/api/module-f/merge/preview?sid={sid}').get_json()
+    iso=c.get(f'/api/module-f/merge/preview?sid={sid}&iso=1').get_json()
+    at={n['label']:(n['x'],n['y']) for n in plan['view']['nodes']}
+    expect={n['label']:(n['x'],n['y']) for n in bake_combined_plan(sess['merged'])[0]}
+    assert at==pytest.approx(expect)
+    assert at['n3'][1]-at['n2'][1]==pytest.approx(2000)
+    iso_at={n['label']:(n['x'],n['y']) for n in iso['view']['nodes']}
+    assert iso_at==pytest.approx({n['label']:(n['x'],n['y']) for n in bake_combined_iso(sess['merged'])[0]})

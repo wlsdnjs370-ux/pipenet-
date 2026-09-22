@@ -425,6 +425,23 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
         machine_room_at_bottom=is_pump,
         machine_room_conn_xy=mr_conn_xy,
     )
+    # [오너 2026-09-22] «같은 층» 계통도 경로의 부속(엘보 · 분류티 · 호 우회).
+    #   라이저 빌더는 부속을 만들지 않아(엔진 주석 «라이저 빌더는 fitting 을
+    #   생성하지 않아») 계통도 쪽 손실이 0 이었다. 같은 층 추출이 평면도와 같은
+    #   함수(`build_fittings`)로 판정해 둔 행을 그대로 싣는다. 라이저 배관이
+    #   표에서 먼저라 라벨이 안 바뀐다 — 그래도 표에 있는 배관만 싣는다.
+    #   «도면» 기준(세로 계통도)은 행이 없으므로 종전과 한 글자도 같다.
+    _sys_fit = [dict(f) for f in (riser.get("fittings") or ())]
+    if _sys_fit:
+        _have = {str(p.get("label")) for p in combined.pipes}
+        _rows = [f for f in _sys_fit if str(f.get("pipe")) in _have]
+        combined.fittings.extend(_rows)
+        _cnt: dict = {}
+        for f in _rows:
+            _cnt[f["type"]] = _cnt.get(f["type"], 0) + 1
+        steps.append("계통도 부속 (같은 층 판정) · "
+                     + " · ".join(f"{k} {v}" for k, v in sorted(_cnt.items())))
+
     # Stitch preserves edge order while making labels globally unique. Track
     # source edges now: a system pipe ending at the shared AV is still a system
     # pipe, not a newly invented connector inferred from endpoint ownership.

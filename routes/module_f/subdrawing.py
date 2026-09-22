@@ -194,7 +194,8 @@ def path_graph(entities, *, layer_filter=None):
                               force_connect=True)
 
 
-def pick_system_layer(entities, a_xy, b_xy, *, snap_tolerance_mm=2500.0):
+def pick_system_layer(entities, a_xy, b_xy, *, snap_tolerance_mm=2500.0,
+                      candidates=None, tie_mm=None):
     """찍은 두 점이 **어느 계통(레이어)** 에 있는지 골라 준다.
 
     ★이것이 「경로가 꼬인다」의 알맹이다. 필터를 안 걸면 엔진의 이름 사전이
@@ -231,9 +232,16 @@ def pick_system_layer(entities, a_xy, b_xy, *, snap_tolerance_mm=2500.0):
 
     from remote30_prototype import (_nearest_graph_node, _shortest_path,
                                     build_system_graph)
-    _g, _el, stats = build_system_graph(entities, layer_filter=None,
-                                        force_connect=False)
-    cands = sorted(stats.get("layer_filter_used") or ())
+    if candidates is not None:
+        # [오너 2026-09-22] 계통도 칸 ★추적 레이어 — 좁힐 후보는 그 레이어뿐이다.
+        #   전체 자동 레이어로 그래프를 한 번 더 세울 까닭이 없다(B1F 15.5 → 9.3초).
+        #   동점 자는 ★그래프의 «같은 점» 자를 그대로 받는다.
+        cands = sorted(candidates)
+        stats = {"snap_eps_mm": tie_mm}
+    else:
+        _g, _el, stats = build_system_graph(entities, layer_filter=None,
+                                            force_connect=False)
+        cands = sorted(stats.get("layer_filter_used") or ())
     if len(cands) < 2:
         return None, {"candidates": [], "reason": "섞인 레이어가 없습니다"}
     rows = []
@@ -313,7 +321,7 @@ def pick_system_layer(entities, a_xy, b_xy, *, snap_tolerance_mm=2500.0):
     return ta["layer"], diag
 
 
-def graph_payload(entities, *, layer_filter=None) -> dict:
+def graph_payload(entities, *, layer_filter=None, prebuilt=None) -> dict:
     """경로 그래프를 화면이 읽을 모양으로.
 
     실측(계통도·기계실 4장): 노드 132~382 · 간선 131~411 · JSON 3~8KB.
@@ -323,7 +331,10 @@ def graph_payload(entities, *, layer_filter=None) -> dict:
     ★추측 연결(force_connect 가 이은 직선)은 «따로» 실어 보낸다. 실측 배관과
       한 모양으로 그리면 사람이 확인한 것과 기계가 고른 것을 구별할 수 없다.
     """
-    graph, edge_len, stats = path_graph(entities, layer_filter=layer_filter)
+    # `prebuilt` — 올릴 때 ★추적 레이어로 이미 세운 그 그래프(`sub_trace.plan_trace`).
+    #   `path_graph` 와 같은 인자로 세운 것이라 다시 세워도 같다 — 시간만 든다.
+    graph, edge_len, stats = (prebuilt if prebuilt is not None
+                              else path_graph(entities, layer_filter=layer_filter))
     # ★자동으로 «배관» 이라고 고른 레이어들. 계통도는 고층·저층 입상관이
     #   서로 다른 레이어에 있어서(HSP·LSP·감압밸브), 그 셋을 한 그래프에
     #   섞으면 경로가 계통 사이를 오갈 수 있다 — 사람 눈에는 «꼬인» 길이다.
@@ -386,7 +397,7 @@ def _forced_penalty_mm() -> float:
 def extract_system(entities, pump_xy, av_xy, *, snap_tolerance_mm=2500.0,
                    waypoints=None, floor_profile_rows=None,
                    layer_filter=None, elevation_mode="drawing",
-                   assumed_floor_height_m=None) -> dict:
+                   assumed_floor_height_m=None, graph=None) -> dict:
     """S720 — 계통도에서 펌프 → 알람밸브 경로(입상관)를 뽑는다.
 
     실패(클릭이 배관에서 너무 멀다 · 두 점이 안 이어진다)는 `ValueError` 로
@@ -405,12 +416,21 @@ def extract_system(entities, pump_xy, av_xy, *, snap_tolerance_mm=2500.0,
     from routes.module_f.system_layout import set_elevation_mode
     measured = None
     if elevation_mode == "same_level":
-        _, edge_len, _ = path_graph(entities, layer_filter=layer_filter or None)
-        measured = {}
-        for (a, b), length in edge_len.items():
-            pa, pb = tuple(round(v) for v in a), tuple(round(v) for v in b)
-            measured[(min(pa, pb), max(pa, pb))] = length
+        # [오너 2026-09-22] 합친 배관·층 경계에서 쪼갠 배관도 실측 길이를 찾는다
+        #   (`sub_same_level.measured_lengths` — 틈 없이 덮일 때만, 지어내지 않는다).
+        from routes.module_f.sub_same_level import measured_lengths
+        # `graph` — 호출자가 같은 도형·같은 레이어로 이미 세운 그 그래프(★추적).
+        #   다시 세워도 같다 — 시간만 든다(B1F 6초).
+        graph, edge_len, g_stats = (graph if graph is not None else
+                                    path_graph(entities, layer_filter=layer_filter or None))
+        measured = measured_lengths(result, edge_len, g_stats)
     result = set_elevation_mode(result, elevation_mode, measured)
+    if elevation_mode == "same_level":
+        # 평면도로 그린 계통도를 평면 그대로 다듬는다 — 층 조각 되잇기 · 알람밸브
+        #   꼬리 · 호 기호 우회(0.5 m) · 부속. «도면» 기준은 여기를 안 지난다.
+        from routes.module_f.sub_same_level import tidy_same_level
+        result = tidy_same_level(result, entities=entities, graph=graph,
+                                 stats=g_stats, layers=layer_filter)
     if elevation_mode == "drawing" and assumed_floor_height_m is not None:
         if floor_profile_rows:
             raise ValueError("확정 층별 표고와 가정 층고를 동시에 적용할 수 없습니다.")
@@ -474,4 +494,14 @@ def riser_summary(riser: dict) -> dict:
         "conn_node_label": r.get("conn_node_label"),
         # 추측으로 이은 자리 — 화면이 점선으로 갈라 그려야 한다.
         "bridges": r.get("bridge_count") or r.get("bridges") or 0,
+        # [오너 2026-09-22] «같은 층» 뒤처리 — 부속 · 호 우회 · 알람밸브 꼬리.
+        #   «도면» 기준이면 None 이다(종전과 같다).
+        "same_level": _same_level_brief(r.get("same_level")),
     }
+
+
+def _same_level_brief(rep):
+    if not rep:
+        return None
+    return {k: rep.get(k) for k in ("merged_nodes", "av_tail", "hops", "fittings",
+                                    "unresolved_kind", "skipped")}

@@ -23,6 +23,7 @@ from routes.module_f.sub_fix import (
 from routes.module_f.subdrawing import (
     extract_machineroom, extract_system, extract_system_clean, graph_payload,
     layer_options, pick_system_layer, riser_summary)
+from routes.module_f.sub_trace import public_trace
 
 # 클릭 ↔ 그래프 절점 허용 거리. A 의 기본값과 같다.
 SNAP_DEFAULT_MM = 2500.0
@@ -65,6 +66,38 @@ def _layers(sess, body):
         # 목록이 아니면 조용히 무시하지 않고 그대로 둔다(옛 값 유지).
     got = sess.get("sub_layers")
     return set(got) if got else None
+
+
+def _trace(sess, body):
+    """추적에 쓸 (도형, 레이어, ★) — 미리보기 · 좁히기 · 추출이 같은 것을 쓴다.
+
+    [오너 2026-09-22] 계통도 칸에 ★추적 레이어가 서 있으면(`sub_trace.plan_trace`
+    가 «pipe» 로 정한 도면) 아무것도 안 골랐을 때 그 레이어로, T 접속을 이은
+    도형으로 추적한다. 사람이 고른 것이 ★ 안이면 같은 도형을 쓰고, ★ 밖의
+    레이어를 섞어 고르면 종전 그대로(원래 도형) 간다 — 사람 결정이 먼저다.
+    ★«지금 방식 그대로» 로 정한 도면(대명동 · MF-004)은 여기서 한 글자도 안 바뀐다.
+    """
+    lf = _layers(sess, body)
+    tr = sess.get("sub_trace") if _slot_active(sess) == "system" else None
+    if not tr or tr.get("mode") != "pipe" or not tr.get("entities"):
+        return sess["entities"], lf, None
+    star = set(tr.get("layers") or ())
+    if lf is None:
+        return tr["entities"], star, tr
+    if lf <= star:
+        return tr["entities"], lf, tr
+    return sess["entities"], lf, None
+
+
+def _graph_for(ents, lf, tr) -> dict:
+    """경로 그래프 — ★ 그대로면 올릴 때 세운 그래프를 한 번만 펴서 다시 쓴다."""
+    if tr and lf == set(tr.get("layers") or ()):
+        got = tr.get("payload")
+        if got is None:
+            got = graph_payload(ents, layer_filter=lf, prebuilt=tr.get("graph"))
+            tr["payload"] = got
+        return dict(got)
+    return graph_payload(ents, layer_filter=lf)
 
 
 def _fixes(sess, kind: str) -> list:
@@ -144,13 +177,16 @@ def register(app):
             except (TypeError, ValueError, IndexError):
                 return _fail(f"경유점 좌표가 잘못되었습니다: {p!r}")
 
+        ents, lf, tr = _trace(sess, body)
         try:
-            riser = extract_system(sess["entities"], pump, av,
+            riser = extract_system(ents, pump, av,
                                    snap_tolerance_mm=_snap(body),
                                    waypoints=wps or None,
-                                   layer_filter=_layers(sess, body),
+                                   layer_filter=lf,
                                    elevation_mode=elevation_mode,
-                                   assumed_floor_height_m=assumed_height)
+                                   assumed_floor_height_m=assumed_height,
+                                   graph=(tr.get("graph") if tr and lf == set(tr.get("layers") or ())
+                                          else None))
         except ValueError as exc:
             # 사용자 입력 문제 — 미도달을 그대로 말한다(S340).
             return jsonify({"ok": False, "message": str(exc),
@@ -232,7 +268,7 @@ def register(app):
         """
         if not sess.get("entities"):
             return _fail("도면이 아직 준비되지 않았습니다.", 409)
-        lf = _layers(sess, body)
+        ents, lf, tr = _trace(sess, body)
         # ★두 점을 다 찍었으면 «그 두 점이 있는 계통» 하나로 좁힌다.
         #   섞은 채로 두면 최단경로가 고층↔저층을 넘나든다(실측 4회). 좁히기는
         #   미리보기 그래프 자체를 바꾸므로 추출과 어긋나지 않는다 — 세션에
@@ -246,9 +282,13 @@ def register(app):
         if auto_ok and pa and pb:
             try:
                 nm, diag = pick_system_layer(
-                    sess["entities"], (float(pa[0]), float(pa[1])),
+                    ents, (float(pa[0]), float(pa[1])),
                     (float(pb[0]), float(pb[1])),
-                    snap_tolerance_mm=_snap(body))
+                    snap_tolerance_mm=_snap(body),
+                    # ★추적이면 좁힐 후보도 ★ 레이어뿐이다.
+                    candidates=(tr.get("layers") if tr else None),
+                    tie_mm=(((tr.get("graph") or (None, None, {}))[2] or {})
+                            .get("snap_eps_mm") if tr else None))
             except Exception as exc:  # noqa: BLE001 — 좁히기 실패는 치명이 아니다
                 nm, diag = None, {"reason": f"계통을 못 골랐습니다: {exc}"}
             if nm:
@@ -257,12 +297,13 @@ def register(app):
             else:
                 # 못 좁혔으면 **지난번 자동 선택도 푼다** — 점을 옮겼는데 옛
                 # 계통에 갇힌 채로 뽑으면 그게 더 나쁜 거짓말이다.
+                # (★추적이면 «푼다» 는 ★ 레이어 전체로 돌아가는 것이다.)
                 sess["sub_layers"] = None
-                lf = None
+                lf = set(tr.get("layers") or ()) if tr else None
             sess["sub_layers_auto"] = True
             narrowed = {"layer": nm, **diag}
         try:
-            got = graph_payload(sess["entities"], layer_filter=lf)
+            got = _graph_for(ents, lf, tr)
         except Exception as exc:  # noqa: BLE001 — 못 만들면 사유를 말한다
             return _fail(f"경로 그래프를 만들지 못했습니다: {exc}", 400)
         got.update({
@@ -274,6 +315,10 @@ def register(app):
             "chosen_auto": bool(narrowed and narrowed.get("layer")),
             "narrowed": narrowed,
             "snap_default_mm": SNAP_DEFAULT_MM,
+            # [오너 2026-09-22] ★추적 레이어 — 화면이 «무엇으로 추적하나» 를 말한다.
+            "trace": public_trace(sess.get("sub_trace")
+                                  if _slot_active(sess) == "system" else None),
+            "trace_on": bool(tr),
         })
         return jsonify(got)
 

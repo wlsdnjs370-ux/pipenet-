@@ -93,6 +93,8 @@ def _sub_open_job(sess: dict, dxf, kind: str):
         # 색이라야 사람이 둘을 맞대 볼 수 있다.
         sess["layer_colors"] = colors
         payload = _world_payload(entities_to_world(entities, colors))
+        if kind == "system":
+            _system_layers(sess, entities, parsed, payload, label)
         sess["world"] = payload
         skipped = parsed.get("skipped") or {}
         print(f"[{label}] 완료 {time.perf_counter() - t0:.1f}s · "
@@ -104,6 +106,35 @@ def _sub_open_job(sess: dict, dxf, kind: str):
                   + ", ".join(f"{k}×{v}" for k, v in sorted(skipped.items())))
         return {"key": sess["key"], "entities": len(entities)}
     return job
+
+
+def _system_layers(sess: dict, entities, parsed, payload: dict, label: str) -> None:
+    """[오너 2026-09-22] 계통도 칸 — 레이어 세 묶음과 경로 추적 레이어(★).
+
+    화면(`payload["sub_layers"]`)은 묶음 표로 레이어를 켜고 끄고, 기본값은
+    배관망 + 건축만 보인다. 추적은 `sess["sub_trace"]` 를 쓴다(api_sub `_trace`).
+    ★실패해도 도면 열기는 막지 않는다 — 종전 화면·종전 추적으로 떨어지고,
+      그 사실을 로그에 남긴다(조용히 넘기지 않는다).
+    """
+    import time
+
+    from routes.module_f.sub_trace import (
+        GROUP_LABELS, layer_rows, plan_trace, public_rows, public_trace)
+    t0 = time.perf_counter()
+    try:
+        rows = layer_rows(entities, parsed)
+        tr = plan_trace(entities, rows)
+    except Exception as exc:  # noqa: BLE001
+        sess["sub_trace"] = None
+        print(f"[{label}] 레이어 묶음을 못 만들었습니다 — 종전 화면으로 엽니다: {exc}")
+        return
+    sess["sub_trace"] = tr
+    payload["sub_layers"] = {"rows": public_rows(rows), "trace": public_trace(tr),
+                             "groups": GROUP_LABELS}
+    n = {g: sum(1 for r in rows if r["group"] == g) for g in GROUP_LABELS}
+    print(f"[{label}] 레이어 묶음 — 배관망 {n['net']} · 건축 {n['arch']} · "
+          f"숨김 {n['etc']} ({time.perf_counter() - t0:.1f}s)")
+    print(f"[{label}] 경로 추적 — {tr['reason']}")
 
 
 def register(app, *, _save_upload):
@@ -197,7 +228,10 @@ def register(app, *, _save_upload):
                   "design", "worst", "water_path",
                   # [F-8a] 정찰·제안은 «그 도면» 의 것이다. 남겨 두면 새 도면을
                   # 올렸는데 카드가 앞 도면의 후보 수를 그린다.
-                  "recon", "suggest"):
+                  "recon", "suggest",
+                  # [오너 2026-09-22] 계통도 칸의 추적 레이어·고른 배관 레이어도
+                  # 그 도면의 것이다 — 남기면 새 도면을 옛 레이어로 추적한다.
+                  "sub_trace", "sub_layers", "sub_layers_auto"):
             sess.pop(k, None)
 
         # 읽어서 화면에 띄우는 것까지가 공통이다.

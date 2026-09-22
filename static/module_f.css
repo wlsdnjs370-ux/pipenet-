@@ -347,6 +347,28 @@
   .layers .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .layers .cnt{margin-left:auto;color:var(--faint);flex:none;
                font:400 10px/1 var(--mono);font-variant-numeric:tabular-nums;}
+  /* [오너 2026-09-22] 계통도 칸 레이어 표 — 배관망 · 건축 · 숨긴 레이어 세 묶음.
+     체크는 화면 표시만 바꾼다. ★추적 은 경로 추적에 쓰는 레이어다. */
+  .layers .grp{display:flex;align-items:center;gap:8px;padding:6px 8px;
+               background:#141922;border-bottom:1px solid var(--line);
+               position:sticky;top:0;z-index:1;font-size:11px;}
+  .layers .grp .caret{background:none;border:0;color:var(--faint);cursor:pointer;
+                      font:400 10px/1 var(--mono);padding:0 2px;width:14px;}
+  .layers .grp .gname{font-weight:600;}
+  .layers .grp.net .gname{color:#38d66b;}
+  .layers .grp.arch .gname{color:var(--accent);}
+  .layers .grp.etc .gname{color:var(--warn);}
+  .layers .grp .cnt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+                    max-width:62%;}
+  .layers label.sub{padding-left:26px;}
+  .layers .tag{flex:none;font:600 9px/1 var(--mono);padding:2px 4px;
+               border:1px solid var(--line-2);color:var(--faint);}
+  .layers .tag.trace{color:#38d66b;border-color:#1f5a33;}
+  .layers .tag.why{color:var(--warn);border-color:#6b5320;}
+  .layers .lynote{padding:7px 10px;font-size:10.5px;line-height:1.5;
+                  color:var(--dim);border-top:1px solid var(--line);}
+  .layers .lynote b{color:#38d66b;font-weight:600;}
+  .layers .lynote .dim{color:var(--faint);}
 
   /* ── 캔버스 하단 바 ───────────────────────────────────── */
   .bar{position:absolute;left:0;right:0;bottom:0;height:var(--h-bar);

@@ -2430,7 +2430,9 @@
                      forced_penalty_mm: d.forced_penalty_mm,
                      auto_layers: d.auto_layers || [],
                      chosen_auto: !!d.chosen_auto, narrowed: d.narrowed || null,
-                     layers: d.layers, chosen: d.chosen };
+                     layers: d.layers, chosen: d.chosen,
+                     // [오너 2026-09-22] ★추적 레이어 — 무엇으로 추적하는지 말한다.
+                     trace: d.trace || null, trace_on: !!d.trace_on };
     } catch (err) {
       S.subGraph = null;
       say(`경로 미리보기를 못 켰습니다 — ${err.message}`, "warn");
@@ -2475,11 +2477,47 @@
     const prev = new Int32Array(n).fill(-1);
     const done = new Uint8Array(n);
     dist[a] = 0;
-    // 절점이 수백 개라 단순 선형 탐색으로 충분하다 — 힙을 두면 코드만 는다.
+    // [오너 2026-09-22] 이진 힙. 종전 주석은 «절점이 수백 개라 선형 탐색으로
+    //   충분» 이었는데, 평면도를 올린 계통도(B1F)는 3만 개라 마우스를 움직일
+    //   때마다 1.2초 멈췄다. ★답은 종전과 한 글자도 같다 — 거리가 같으면 번호가
+    //   작은 절점을 먼저 꺼낸다. 선형 탐색이 앞에서부터 «더 작을 때만» 바꾸어
+    //   같은 거리에서는 앞 번호가 남았기 때문이다. 꺼내는 순서가 같으니 이전
+    //   절점(prev)도 같다.
+    const hd = [], hv = [];
+    const hless = (i, j) => hd[i] < hd[j] || (hd[i] === hd[j] && hv[i] < hv[j]);
+    const hswap = (i, j) => {
+      const td = hd[i]; hd[i] = hd[j]; hd[j] = td;
+      const tv = hv[i]; hv[i] = hv[j]; hv[j] = tv;
+    };
+    const hpush = (d, v) => {
+      hd.push(d); hv.push(v);
+      let i = hd.length - 1;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (!hless(i, p)) break;
+        hswap(i, p); i = p;
+      }
+    };
+    const hpop = () => {
+      const top = hv[0], last = hd.length - 1;
+      hswap(0, last); hd.pop(); hv.pop();
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < hd.length && hless(l, m)) m = l;
+        if (r < hd.length && hless(r, m)) m = r;
+        if (m === i) break;
+        hswap(i, m); i = m;
+      }
+      return top;
+    };
+    hpush(0, a);
     for (;;) {
-      let u = -1, bd = Infinity;
-      for (let i = 0; i < n; i++) {
-        if (!done[i] && dist[i] < bd) { bd = dist[i]; u = i; }
+      let u = -1;
+      while (hd.length) {
+        const d0 = hd[0], v0 = hpop();
+        if (!done[v0] && d0 === dist[v0]) { u = v0; break; }
       }
       if (u < 0 || u === b) break;
       done[u] = 1;
@@ -2490,7 +2528,9 @@
         //   실어 보낸다(`forced_penalty_mm`) — 종전에는 화면 1e6 · 서버 1e9 로
         //   1000배 달라, 큰 도면에서 미리보기와 추출이 다른 길을 고를 수 있었다.
         const w = (len || 0) + (forced ? pen : 0);
-        if (dist[u] + w < dist[v]) { dist[v] = dist[u] + w; prev[v] = u; }
+        if (dist[u] + w < dist[v]) {
+          dist[v] = dist[u] + w; prev[v] = u; hpush(dist[v], v);
+        }
       }
     }
     if (!isFinite(dist[b])) return null;
@@ -2628,6 +2668,23 @@
                               `${s.bridges}곳 — 실측이 아닙니다`);
     if (s.elevation_unresolved) html += kv('<span class="warn">표고</span>',
                                            "천장고 미입력 — 첫 구간 미확정");
+    // [오너 2026-09-22] «같은 층» 추출 — 부속 · 호 우회 · 알람밸브 꼬리.
+    const sl = s.same_level;
+    if (sl) {
+      const KIND = { "tee": "분류티", "elbow": "90° 엘보", "elbow-45": "45° 엘보" };
+      const fit = Object.entries(sl.fittings || {})
+        .map(([k, v]) => `${KIND[k] || k} ${v}`).join(" · ");
+      html += kv("부속 (같은 층)", fit || "없음");
+      const hp = sl.hops || {};
+      html += kv("호 우회 (0.5 m)", `${hp.pairs || 0}곳`
+        + (hp.unpaired ? ` · <span class="warn">짝 없는 호 ${hp.unpaired}</span>` : ""));
+      if (sl.av_tail) html += kv("알람밸브 꼬리",
+        `이중선 ${sl.av_tail.removed_m} m → 곧장 ${sl.av_tail.straight_m} m`);
+      if (sl.merged_nodes) html += kv("곧은 조각 되잇기", `${sl.merged_nodes}곳`);
+      if (sl.unresolved_kind) html += kv('<span class="warn">부속 판정 불가</span>',
+                                         `${sl.unresolved_kind}곳`);
+      if (sl.skipped) html += kv('<span class="warn">다듬기</span>', esc(sl.skipped));
+    }
     $("sub-summary").innerHTML = html;
   }
 
@@ -2803,6 +2860,13 @@
     //   (HSP)·저층(LSP)·감압밸브가 서로 다른 계통인데 한 그래프에 섞이면
     //   최단경로가 계통 사이를 오갈 수 있다 — 사람 눈에는 길이 꼬인 것이다.
     //   실측(대명동 계통도): HSP 76 · LSP 162 · 감압밸브 17 → 섞으면 255절점.
+    // [오너 2026-09-22] ★추적 — 켜진 배관 레이어만으로 추적하는 도면이면 그렇게 말한다.
+    const tr = g.trace || null;
+    if (g.trace_on && tr && tr.mode === "pipe" && !g.chosen_auto) {
+      html += `<div class="hint">★ <b>배관 레이어 ${(tr.layers || []).length}개</b>`
+        + `로만 추적합니다 — ${esc(tr.reason || "")}.`
+        + ` 아래에서 <b>직접 고르면</b> 그 결정이 우선합니다.</div>`;
+    }
     if (g.chosen_auto && chosen) {
       const nr = g.narrowed || {};
       html += `<div class="hint">찍은 두 점이 있는 <b>${[...chosen]
@@ -3965,6 +4029,13 @@
   function buildLayers() {
     const box = $("layers");
     box.innerHTML = "";
+    // [오너 2026-09-22] 계통도 칸 — 배관망 · 건축 · 숨긴 레이어 세 묶음 표.
+    //   서버가 묶어 준 표(`world.sub_layers`)가 있을 때만 이 모양이다 — 평면도·
+    //   기계실 칸은 종전 목록 그대로다.
+    const grouped = !!(S.world && S.world.sub_layers && S.slot === "system");
+    const dflt = $("ly-default");
+    if (dflt) dflt.classList.toggle("hidden", !grouped);
+    if (grouped) { buildLayerGroups(box); return; }
     for (const b of S.world.bundles) {
       const lb = document.createElement("label");
       const cb = document.createElement("input");
@@ -4034,6 +4105,190 @@
       box.appendChild(lb);
     }
   }
+  // ── [오너 2026-09-22] 계통도 칸 레이어 표 ───────────────────────────
+  //
+  // 계통도 칸은 CAD 에서 꺼 둔 레이어까지 읽는다(꺼 둔 레이어에 배관이 그려진
+  // 계통도가 있어서). 평면도를 올리면 헤드 반경 원 · 소화전 반경 · 문자 · 구역선이
+  // 한 화면에 섞인다 — 그래서 기본은 «배관망 + 건축» 만 그리고, 나머지는 숨긴
+  // 채로 이 표에 남겨 켜고 끌 수 있게 한다.
+  //   ★체크는 «화면에 보이기» 만 바꾼다. 경로 추적은 ★ 표시 레이어만 쓴다 —
+  //     표에서 켠다고 추적에 들어가지 않는다(추적 레이어는 «배관 레이어 고르기»).
+  const _grpOpen = { net: true, arch: true, etc: false };
+  const _sysHidden = new Map();          // 도면 이름 → 사람이 고친 숨김 묶음
+
+  function sysLayerIndex() {
+    const sl = S.world.sub_layers || {};
+    const rowOf = new Map((sl.rows || []).map((r) => [r.layer, r]));
+    const bundlesOf = new Map();
+    for (const b of S.world.bundles || []) {
+      if (!bundlesOf.has(b.layer)) bundlesOf.set(b.layer, []);
+      bundlesOf.get(b.layer).push(b);
+    }
+    return { sl, rowOf, bundlesOf };
+  }
+
+  /** 기본값 — 숨긴 레이어 묶음(표에 없는 레이어 포함)을 안 그린다. */
+  function sysDefaultHidden() {
+    const { rowOf } = sysLayerIndex();
+    return new Set((S.world.bundles || [])
+      .filter((b) => ((rowOf.get(b.layer) || {}).group || "etc") === "etc")
+      .map((b) => b.id));
+  }
+
+  function sysTraceSet(sl) {
+    const tr = sl.trace || {};
+    if (tr.mode === "pipe") return new Set(tr.layers || []);
+    return new Set((sl.rows || []).filter((r) => r.auto).map((r) => r.layer));
+  }
+
+  function buildLayerGroups(box) {
+    const { sl, rowOf, bundlesOf } = sysLayerIndex();
+    // 이 도면을 처음 그릴 때만 기본값을 건다 — 사람이 켜고 끈 것은 도면 이름
+    // 단위로 기억해 슬롯을 오가도 그대로 둔다.
+    if (!S.world._grpInit) {
+      S.world._grpInit = true;
+      const kept = _sysHidden.get(S.key);
+      S.hidden = kept ? new Set(kept) : sysDefaultHidden();
+      _soloId = null;
+    }
+    const star = sysTraceSet(sl);
+    const names = sl.groups || { net: "배관망", arch: "건축", etc: "숨긴 레이어" };
+    const layersOf = { net: [], arch: [], etc: [] };
+    for (const [layer] of bundlesOf) {
+      const g = (rowOf.get(layer) || {}).group || "etc";
+      layersOf[g].push(layer);
+    }
+    const nOf = (layer) => (rowOf.get(layer) || {}).n
+      || (bundlesOf.get(layer) || []).reduce((t, b) => t + (b.n_all || b.n_seg || 0), 0);
+    const onOf = (layer) => (bundlesOf.get(layer) || []).some((b) => !S.hidden.has(b.id));
+    const setLayer = (layer, on) => {
+      for (const b of bundlesOf.get(layer) || []) {
+        if (on) S.hidden.delete(b.id); else S.hidden.add(b.id);
+      }
+    };
+    const remember = () => { if (S.key) _sysHidden.set(S.key, new Set(S.hidden)); };
+    for (const g of ["net", "arch", "etc"]) {
+      const list = layersOf[g].sort((a, b) =>
+        (star.has(b) - star.has(a)) || (nOf(b) - nOf(a)) || a.localeCompare(b));
+      if (!list.length) continue;
+      const nOn = list.filter(onOf).length;
+      const head = document.createElement("div");
+      head.className = `grp ${g}`;
+      const caret = document.createElement("button");
+      caret.type = "button"; caret.className = "caret";
+      caret.textContent = _grpOpen[g] ? "▾" : "▸";
+      caret.title = _grpOpen[g] ? "접기" : "펼치기";
+      caret.onclick = (ev) => {
+        ev.preventDefault();
+        _grpOpen[g] = !_grpOpen[g];
+        buildLayers();
+      };
+      const gcb = document.createElement("input");
+      gcb.type = "checkbox";
+      gcb.checked = nOn === list.length;
+      gcb.indeterminate = nOn > 0 && nOn < list.length;
+      gcb.title = "이 묶음 전부 켜기 / 끄기 (화면 표시만)";
+      gcb.onchange = () => {
+        for (const layer of list) setLayer(layer, gcb.checked);
+        if (_soloId !== null) { _soloId = null; }
+        remember(); buildLayers(); draw();
+      };
+      const gname = document.createElement("span");
+      gname.className = "gname";
+      gname.textContent = names[g] || g;
+      const gcnt = document.createElement("span");
+      gcnt.className = "cnt";
+      let why = "";
+      if (g === "etc") {
+        const tally = new Map();
+        for (const layer of list) {
+          const w = (rowOf.get(layer) || {}).why || "분류 안 됨";
+          tally.set(w, (tally.get(w) || 0) + 1);
+        }
+        why = " · " + [...tally].map(([w, n]) => `${w} ${n}`).join(" · ");
+      }
+      gcnt.textContent = `${list.length}개 · 켜짐 ${nOn}${why}`;
+      head.append(caret, gcb, gname, gcnt);
+      box.appendChild(head);
+      if (!_grpOpen[g]) continue;
+      for (const layer of list) {
+        const row = rowOf.get(layer) || {};
+        const bs = bundlesOf.get(layer) || [];
+        const lb = document.createElement("label");
+        lb.className = "sub";
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.dataset.layer = layer;
+        cb.checked = onOf(layer);
+        cb.onchange = () => {
+          setLayer(layer, cb.checked);
+          if (_soloId !== null) { _soloId = null; }
+          remember(); buildLayers(); draw();
+        };
+        const sw = document.createElement("span");
+        sw.className = "sw"; sw.style.background = (bs[0] || {}).css || "#888";
+        const tx = document.createElement("span");
+        tx.className = "nm"; tx.textContent = layer; tx.title = layer;
+        lb.append(cb, sw, tx);
+        if (star.has(layer)) {
+          const t = document.createElement("span");
+          t.className = "tag trace"; t.textContent = "★추적";
+          t.title = "경로 추적에 쓰는 레이어 — 화면에서 꺼도 추적에는 씁니다";
+          lb.append(t);
+        } else if (g === "etc") {
+          const t = document.createElement("span");
+          t.className = "tag why"; t.textContent = row.why || "분류 안 됨";
+          lb.append(t);
+        }
+        const cn = document.createElement("span");
+        cn.className = "cnt"; cn.textContent = nOf(layer).toLocaleString();
+        const solo = document.createElement("button");
+        solo.className = _soloId === `L:${layer}` ? "solo on" : "solo";
+        solo.type = "button"; solo.textContent = "◉";
+        solo.title = "이 레이어만 크게 보기 (다시 누르면 되돌립니다)";
+        solo.onclick = (ev) => {
+          ev.preventDefault(); ev.stopPropagation();
+          soloLayer(layer);
+        };
+        lb.append(cn, solo);
+        box.appendChild(lb);
+      }
+    }
+    const note = document.createElement("div");
+    note.className = "lynote";
+    const tr = sl.trace || {};
+    note.innerHTML = "체크는 <b>화면에 보이기</b>만 바꿉니다. "
+      + "경로 추적은 <b>★추적</b> 레이어만 씁니다(체크와 무관)."
+      + (tr.reason ? `<br><span class="dim">${esc(tr.reason)}</span>` : "");
+    box.appendChild(note);
+  }
+
+  /** 계통도 칸 — 레이어 하나만 남기고 그 범위로 확대(같은 단추로 되돌린다). */
+  function soloLayer(layer) {
+    const { bundlesOf } = sysLayerIndex();
+    const ids = new Set((bundlesOf.get(layer) || []).map((b) => b.id));
+    if (_soloId === `L:${layer}`) {
+      _soloId = null;
+      const kept = _sysHidden.get(S.key);
+      S.hidden = kept ? new Set(kept) : sysDefaultHidden();
+      buildLayers(); draw();
+      say("레이어 표시를 되돌렸습니다.", "ok");
+      return;
+    }
+    _soloId = `L:${layer}`;
+    S.hidden = new Set((S.world.bundles || []).map((b) => b.id).filter((id) => !ids.has(id)));
+    buildLayers();
+    let bb = null;
+    for (const id of ids) {
+      const x = bundleBounds(id);
+      if (!x) continue;
+      bb = bb ? { minx: Math.min(bb.minx, x.minx), miny: Math.min(bb.miny, x.miny),
+                  maxx: Math.max(bb.maxx, x.maxx), maxy: Math.max(bb.maxy, x.maxy) } : x;
+    }
+    if (bb) fit(bb);
+    draw();
+    say(`«${layer}» 만 봅니다 — 다시 누르면 되돌립니다.`, "ok");
+  }
+
   // [§27] 묶음 하나만 남기고 그 범위로 확대한다 — 되돌리기는 같은 단추.
   //
   // 판정을 안 한다: 무엇이 배관인지 «말하지» 않고, 사람이 볼 수 있게만 한다.
@@ -4096,14 +4351,33 @@
     _soloId = null; markSolo();
     S.hidden.clear();
     box_all(true); draw();
+    if (S.world && S.world.sub_layers && S.slot === "system") sysLayersChanged();
   };
   $("ly-none").onclick = () => {
     _soloId = null; markSolo();
     S.hidden = new Set(S.world.bundles.map((b) => b.id));
     box_all(false); draw();
+    if (S.world && S.world.sub_layers && S.slot === "system") sysLayersChanged();
   };
   function box_all(v) {
     for (const cb of $("layers").querySelectorAll("input")) cb.checked = v;
+  }
+  // [오너 2026-09-22] 계통도 칸 묶음 표 — 전체·해제 뒤에 묶음 칸(일부만 켜짐)까지
+  //   다시 그리고, 사람이 고친 표시를 도면 이름 단위로 기억한다.
+  function sysLayersChanged() {
+    if (S.key) _sysHidden.set(S.key, new Set(S.hidden));
+    buildLayers();
+  }
+  // [오너 2026-09-22] 계통도 칸 — 배관망 + 건축만 보이는 기본값으로 되돌린다.
+  if ($("ly-default")) {
+    $("ly-default").onclick = () => {
+      if (!(S.world && S.world.sub_layers)) return;
+      _soloId = null;
+      S.hidden = sysDefaultHidden();
+      if (S.key) _sysHidden.delete(S.key);
+      buildLayers(); draw();
+      say("레이어 표시를 기본값(배관망 + 건축)으로 되돌렸습니다.", "ok");
+    };
   }
 
   // ── 2. 찍기 ────────────────────────────────────────────────────

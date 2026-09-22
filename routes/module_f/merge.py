@@ -371,6 +371,11 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
 
     rt = riser_tables_from(riser)
     steps.append(f"S720 입상관 ({SUPPLY_MODES[mode]}) · 절점 {len(rt.nodes)}")
+    # [오너 2026-09-22] 계통도 여러 장 — 결합 앞에서 이미 한 줄로 이었다
+    #   (`system_chain.chain_risers`). 어디서 이었는지를 단계 기록에 남긴다.
+    _chain = riser.get("chain") or {}
+    if _chain.get("step"):
+        steps.append(_chain["step"])
 
     # ★[D1] 기계실 평면이 «붙는 자리» = 라이저의 Input 노드. **prepend 전에**
     #   잡아 둔다.
@@ -515,6 +520,8 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
            # 기계실 평면이 라이저에 붙는 그 노드 — 아이소로 굽을 때 기계실
            # 군집을 어디에 다시 맞출지의 기준이다.
            "pump_junction": (_riser_input_label if attached else None),
+           # [오너 2026-09-22] 계통도끼리 만나는 공통 노드 — 통합 화면이 이음매로 그린다.
+           "chain_joints": list(_chain.get("joints") or ()),
            "parts": parts,
            "pipe_parts": pipe_parts,
            # [E2] 좌표 배치가 제 길로 갔는가 — 폴백이면 그 부위가 DXF 원좌표에

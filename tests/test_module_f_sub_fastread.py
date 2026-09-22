@@ -195,6 +195,8 @@ def test_trace_memory_roundtrip(tmp_path, monkeypatch):
 
 def test_system_open_draws_before_trace_then_fills(tmp_path, monkeypatch):
     from routes.module_f import api_slot, jobs, sub_trace
+    from routes.module_f.common import _boot
+    _boot()          # 도면 색 표(`services.cad_import`)를 찾는 경로 — 단독 실행에서도
     monkeypatch.setattr(sf, "CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(sf, "_CACHE_ON", True)
     monkeypatch.setattr(sf, "CACHE_MIN_PARSE_S", 0.0)

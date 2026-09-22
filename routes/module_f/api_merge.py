@@ -25,7 +25,8 @@ from routes.module_f.jobs import _job_running, _run_job, route_session
 from routes.module_f.merge import (
     ANCHOR_LABEL, PUMP_MODES, SUPPLY_MODES, MergeError, bake_combined_iso, bake_combined_plan,
     check_supply_mode, combined_summary, merge_network)
-from routes.module_f.slots import SLOT_KINDS, _slot_active, _slot_capture
+from routes.module_f.slots import (
+    SLOT_KINDS, _slot_active, _slot_capture, slot_label, system_kinds)
 
 # 결합에 쓸 재료가 어느 슬롯에 있는가 — 활성 슬롯이 아니어도 꺼내 온다.
 _SLOT_PICK = {
@@ -119,7 +120,21 @@ def _materials(sess: dict) -> dict:
             val = val.get("tables")
         out[kind] = val
     out.setdefault("plan_method", "manual")
+    # [오너 2026-09-22 · 그림 43] 계통도 여러 장 — 계통도 1 은 위의 `system` 그대로,
+    #   더한 칸이 있으면 평면도 쪽부터 순서대로 함께 싣는다(잇기는 `rebuild_merged`).
+    kinds = system_kinds(sess)
+    if len(kinds) > 1:
+        out["system_chain"] = [_slot_value(sess, k, "riser") for k in kinds]
+        out["system_names"] = [slot_label(sess, k) for k in kinds]
+        out["system_kinds"] = kinds
     return out
+
+
+def _system_missing(mats: dict) -> list:
+    """[오너 2026-09-22] 계통도를 여러 장 올렸는데 경로가 아직 없는 칸 — 결합 전에 말한다."""
+    return [name for name, riser in zip(mats.get("system_names") or (),
+                                        mats.get("system_chain") or ())
+            if not riser]
 
 
 
@@ -134,8 +149,14 @@ def rebuild_merged(sess: dict, *, persist_overrides: bool = True) -> dict:
     for kind in SLOT_KINDS:
         print(f"[결합]   {_SLOT_PICK[kind][1]}: "
               + ("있음" if mats[kind] else "없음"))
+    riser = mats["system"]
+    if mats.get("system_chain"):
+        # [오너 2026-09-22 · 그림 44 ②] 계통도들을 먼저 한 줄로 잇는다 — 그 뒤는 지금 길.
+        from routes.module_f.system_chain import chain_risers
+        riser = chain_risers(mats["system_chain"], mats.get("system_names"))
+        print(f"[결합]   {riser['chain']['step']}")
     got = merge_network(
-        mats["plan"], riser=mats["system"],
+        mats["plan"], riser=riser,
         machineroom=mats["machineroom"], mode=mode,
         source_drop_m=sess.get("source_drop_m", 0.0),
         pump=sess.get("pump_spec"),
@@ -239,13 +260,25 @@ def register(app, *, UPLOAD_DIR):
     def module_f_merge_state(sess, body):
         """재료가 갖춰졌나 · 무엇이 비었나 — S650 이 «남은 도면» 을 묻는 자리."""
         mats = _materials(sess)
+        ready = {kind: bool(mats.get(kind)) for kind in SLOT_KINDS}
+        labels = {kind: _SLOT_PICK[kind][1] for kind in SLOT_KINDS}
+        order = list(SLOT_KINDS)
+        # [오너 2026-09-22] 계통도 여러 장 — 칸마다 «있음/없음» 을 따로 말한다.
+        if mats.get("system_chain"):
+            for kind, name, riser in zip(mats["system_kinds"], mats["system_names"],
+                                         mats["system_chain"]):
+                ready[kind] = bool(riser)
+                labels[kind] = f"{name} 입상관"
+            order = ["plan", *mats["system_kinds"], "machineroom"]
         return jsonify({
             "ok": True,
             "mode": sess.get("supply_mode"),
             "mode_label": SUPPLY_MODES.get(sess.get("supply_mode") or ""),
             "source_drop_m": sess.get("source_drop_m", 0.0),
-            "ready": {kind: bool(v) for kind, v in mats.items()},
-            "labels": {kind: _SLOT_PICK[kind][1] for kind in SLOT_KINDS},
+            "ready": ready,
+            "labels": labels,
+            "order": order,
+            "system_missing": _system_missing(mats),
             # 평면도만 있으면 결합 없이 지나간다 — 그것도 정상이다.
             "can_build": bool(mats["plan"]) and bool(sess.get("supply_mode")),
             "merged": bool(sess.get("merged")),
@@ -271,6 +304,11 @@ def register(app, *, UPLOAD_DIR):
         if not mats["plan"]:
             return _fail("평면도의 설계 표를 먼저 확정하세요 "
                          "(수리계산 단계의 «표 확정»).", 400)
+        missing = _system_missing(mats)
+        if missing:
+            # [오너 2026-09-22 · 그림 44 ⑤] 비어 있는 계통도 칸이 있으면 잇지 않고 말한다.
+            return _fail(f"{' · '.join(missing)} 의 경로가 아직 없습니다 — 그 칸에서 두 점을 "
+                         "찍어 «경로 추출» 을 하거나, 쓰지 않을 칸이면 × 로 지우세요.", 400)
 
         def job():
             summary = rebuild_merged(sess)
@@ -324,6 +362,8 @@ def register(app, *, UPLOAD_DIR):
                      | {str(x) for x in (parts.get("machineroom") or ())}))
         if got.get("attached") and got.get("pump_junction"):
             shared.add(str(got["pump_junction"]))
+        # [오너 2026-09-22] 계통도끼리 만나는 공통 노드도 이음매다.
+        shared |= {str(x) for x in (got.get("chain_joints") or ())}
 
         nodes = [dict(n) for n in (c.nodes or ())]
         mr_edges = [list(map(float, e)) for e in

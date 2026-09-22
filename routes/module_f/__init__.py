@@ -56,9 +56,11 @@ from routes.module_f.jobs import (  # noqa: F401
 from routes.module_f.remote30 import (  # noqa: F401
     _restrict_to_worst, _sheet_frames, _worst_k_heads, _worst_view)
 from routes.module_f.slots import (  # noqa: F401
-    SESSION_KEYS, SLOT_KINDS, SLOT_LABELS, _check_slot_kind, _slot_active,
-    _slot_blank, _slot_capture, _slot_init, _slot_progress, _slot_restore,
-    _slot_state, _slot_switch)
+    SESSION_KEYS, SLOT_KINDS, SLOT_LABELS, SYSTEM_MAX, _check_slot_kind,
+    _slot_active, _slot_add_system, _slot_blank, _slot_capture, _slot_init,
+    _slot_progress, _slot_remove_system, _slot_restore, _slot_state,
+    _slot_switch, is_system_kind, slot_kinds, slot_label, slot_role,
+    system_kinds)
 from routes.module_f.views import (  # noqa: F401
     _autojoin_view, _edit_state, _net_rev, _pick_state)
 from routes.module_f.world import (  # noqa: F401

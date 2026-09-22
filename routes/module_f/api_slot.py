@@ -19,7 +19,8 @@ from routes.module_f.common import _boot, _fail
 from routes.module_f.jobs import (_job_running, _new_session, _run_job, _sess,
                                   route_session)
 from routes.module_f.slots import (
-    SLOT_LABELS, _check_slot_kind, _slot_active, _slot_state, _slot_switch)
+    _check_slot_kind, _slot_active, _slot_add_system, _slot_remove_system,
+    _slot_state, _slot_switch, slot_label, slot_role)
 # [오너 2026-09-22 · 그림 38] 계통도·기계실 읽기 — 서버가 뜰 때 불러 둔다. 그래야
 #   «같은 도면 기억» 의 코드 판번호가 지금 돌고 있는 코드를 가리킨다.
 from routes.module_f import sub_fastread  # noqa: F401
@@ -82,9 +83,11 @@ def _sub_open_job(sess: dict, dxf, kind: str):
     from routes.module_f.sub_fastread import describe, read_view
     from routes.module_f.subdrawing import entities_to_world, layer_colors
 
+    # [오너 2026-09-22] 더한 계통도 칸은 «계통도 2» 처럼 제 자리 이름으로 말한다.
+    label = slot_label(sess, kind)
+
     def job():
         t0 = time.perf_counter()
-        label = SLOT_LABELS[kind]
         print(f"[{label}] DXF 읽는 중 — {os.path.basename(str(dxf))}")
         # [오너 2026-09-22 · 그림 38 ①③] 도면에 안 쓰이는 블록 정의는 속을 비운
         # 사본으로 읽고, 같은 도면은 기억해 둔 것을 쓴다. 결과는 A 의 파서로
@@ -103,7 +106,7 @@ def _sub_open_job(sess: dict, dxf, kind: str):
         # 색이라야 사람이 둘을 맞대 볼 수 있다.
         sess["layer_colors"] = colors
         payload = _world_payload(entities_to_world(entities, colors))
-        if kind == "system":
+        if slot_role(kind) == "system":
             # ②: 도면을 먼저 띄우고 ★추적은 이어서 — world 는 그 안에서 앉는다.
             _system_layers(sess, entities, parsed, payload, label,
                            key=view.get("key"), t_open=t0)
@@ -222,6 +225,46 @@ def register(app, *, _save_upload):
         out["switched"] = kind
         return jsonify(out)
 
+    @app.post("/api/module-f/slot/add-system")
+    @route_session(post=True)
+    def module_f_slot_add_system(sess, body):
+        """[오너 2026-09-22 · 그림 42] «＋ 계통도 추가» — 빈 계통도 칸 하나를 더한다.
+
+        기계실 쪽 끝에 붙는다(연결 축: 평면도 — 계통도 1 — … — 계통도 n — 기계실).
+        그 칸으로 넘어가는 것은 화면이 `/slot/switch` 로 한다 — 넘어갈 때
+        화면이 갈아 끼울 것(도면·경로 그래프·찍은 점)이 그 길에 모여 있다.
+        """
+        if _job_running(sess):
+            return _fail("작업이 끝난 뒤에 계통도를 더할 수 있습니다.", 409)
+        try:
+            kind = _slot_add_system(sess)
+        except ValueError as exc:
+            return _fail(str(exc))
+        out = _slot_state(sess)
+        out["ok"] = True
+        out["added"] = kind
+        out["added_label"] = slot_label(sess, kind)
+        return jsonify(out)
+
+    @app.post("/api/module-f/slot/remove-system")
+    @route_session(post=True)
+    def module_f_slot_remove_system(sess, body):
+        """[오너 2026-09-22] 더한 계통도 칸 지우기(× 단추) — 계통도 1 은 못 지운다."""
+        if _job_running(sess):
+            return _fail("작업이 끝난 뒤에 지울 수 있습니다.", 409)
+        kind = body.get("kind")
+        kind = kind.strip() if isinstance(kind, str) else ""
+        try:
+            gone = slot_label(sess, kind)
+            _slot_remove_system(sess, kind)
+        except (ValueError, KeyError):
+            return _fail(f"지울 수 있는 계통도 칸이 아닙니다: {body.get('kind')!r}")
+        out = _slot_state(sess)
+        out["ok"] = True
+        out["removed"] = kind
+        out["removed_label"] = gone
+        return jsonify(out)
+
     @app.post("/api/module-f/slot/open")
     def module_f_slot_open():
         """도면을 올려 **읽고 화면에 띄운다** — 방식과 무관한 공통 단계.
@@ -244,11 +287,6 @@ def register(app, *, _save_upload):
         `sid` 가 있으면 그 세션의 해당 슬롯으로, 없으면 새 세션을 그 슬롯으로
         시작한다.
         """
-        try:
-            kind = _check_slot_kind(request.form.get("kind"))
-        except ValueError as exc:
-            return _fail(str(exc))
-
         sid = (request.form.get("sid") or "").strip()
         sess = None
         if sid:
@@ -256,8 +294,13 @@ def register(app, *, _save_upload):
                 sess = _sess(sid)
             except ValueError as exc:
                 return _fail(str(exc), 410)
-            if _job_running(sess):
-                return _fail("작업이 끝난 뒤에 도면을 열 수 있습니다.", 409)
+        # [오너 2026-09-22] 더한 계통도 칸(`system2` …)은 그 칸을 가진 세션에서만 통한다.
+        try:
+            kind = _check_slot_kind(request.form.get("kind"), sess)
+        except ValueError as exc:
+            return _fail(str(exc))
+        if sess is not None and _job_running(sess):
+            return _fail("작업이 끝난 뒤에 도면을 열 수 있습니다.", 409)
 
         try:
             _boot()
@@ -294,7 +337,7 @@ def register(app, *, _save_upload):
         # [D-F8-2] 정찰은 평면도만 — `_open_job` 이 종류를 보고 가른다.
         job = (_open_job(sess, dxf, kind=kind) if kind == "plan"
                else _sub_open_job(sess, dxf, kind))
-        _run_job(sess, f"{SLOT_LABELS[kind]} 읽기", job)
+        _run_job(sess, f"{slot_label(sess, kind)} 읽기", job)
         return jsonify({"ok": True, "sid": sess["id"], "kind": kind,
                         "filename": os.path.basename(str(dxf)),
                         # 평면도만 방식을 물어야 한다 — 계통도·기계실은 두 점

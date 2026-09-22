@@ -69,6 +69,13 @@
   .slots button.has .dot{background:var(--ok);}
   .slots .note{display:flex;align-items:center;padding:0 16px;
                color:var(--faint);font-size:11px;}
+  /* [오너 2026-09-22 · 그림 42] 계통도 칸 옆을 쪼갠 «＋ 계통도 추가» · 더한 칸의 × */
+  .slots button.slot-add{padding:0 14px;color:var(--accent);
+                         border-right:1px dashed var(--line);}
+  .slots button.slot-add:hover{color:var(--ink);}
+  .slots button .slot-x{margin-left:4px;padding:0 3px;border-radius:3px;
+                        color:var(--faint);font-size:13px;line-height:1;}
+  .slots button .slot-x:hover{color:var(--ink);background:var(--line);}
 
   /* ── 판 ───────────────────────────────────────────────── */
   .wrap{display:grid;grid-template-columns:352px 1fr;

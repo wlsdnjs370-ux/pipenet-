@@ -17,7 +17,7 @@ from flask import jsonify
 
 from routes.module_f.common import _check_xy, _fail
 from routes.module_f.jobs import _job_running, _sess, route_session
-from routes.module_f.slots import _slot_active
+from routes.module_f.slots import _slot_active, slot_role
 from routes.module_f.sub_fix import (
     SLOT_KEY, apply_overrides, parse_rows, rows_for_view)
 from routes.module_f.subdrawing import (
@@ -78,7 +78,8 @@ def _trace(sess, body):
     ★«지금 방식 그대로» 로 정한 도면(대명동 · MF-004)은 여기서 한 글자도 안 바뀐다.
     """
     lf = _layers(sess, body)
-    tr = sess.get("sub_trace") if _slot_active(sess) == "system" else None
+    # [오너 2026-09-22] 더한 계통도 칸(`system2` …)도 계통도 칸이다.
+    tr = sess.get("sub_trace") if slot_role(_slot_active(sess)) == "system" else None
     if not tr or tr.get("mode") != "pipe" or not tr.get("entities"):
         return sess["entities"], lf, None
     star = set(tr.get("layers") or ())
@@ -123,7 +124,7 @@ def _need_slot(body, kind: str):
     sess = _sess(body.get("sid"))
     if _job_running(sess):
         return sess, "작업이 끝난 뒤에 추출할 수 있습니다."
-    if _slot_active(sess) != kind:
+    if slot_role(_slot_active(sess)) != kind:
         return sess, f"«{kind}» 슬롯으로 먼저 바꾸세요."
     if not sess.get("entities"):
         return sess, "도면이 아직 준비되지 않았습니다."
@@ -317,7 +318,7 @@ def register(app):
             "snap_default_mm": SNAP_DEFAULT_MM,
             # [오너 2026-09-22] ★추적 레이어 — 화면이 «무엇으로 추적하나» 를 말한다.
             "trace": public_trace(sess.get("sub_trace")
-                                  if _slot_active(sess) == "system" else None),
+                                  if slot_role(_slot_active(sess)) == "system" else None),
             "trace_on": bool(tr),
         })
         return jsonify(got)
@@ -332,7 +333,7 @@ def register(app):
           **전부 «추측 150A»** 다(도면 치수 텍스트 매치 0건). 그 값이 그대로
           최종 SDF 의 입상관이 되는데 사람이 볼 길이 없었다.
         """
-        kind = _slot_active(sess)
+        kind = slot_role(_slot_active(sess))
         if kind not in SLOT_KEY:
             return _fail("계통도·기계실 슬롯에서만 볼 수 있습니다.")
         got = sess.get(SLOT_KEY[kind])
@@ -354,7 +355,7 @@ def register(app):
         body: {sid, rows: [{a:[x,y], b:[x,y], dia?, length?, note?}]}
               빈 배열이면 전부 지우고 원래 값으로 돌아간다.
         """
-        kind = _slot_active(sess)
+        kind = slot_role(_slot_active(sess))
         if kind not in SLOT_KEY:
             return _fail("계통도·기계실 슬롯에서만 고칠 수 있습니다.")
         got = sess.get(SLOT_KEY[kind])
@@ -382,7 +383,8 @@ def register(app):
     def module_f_sub_state(sess, body):
         """지금 슬롯의 추출 결과 요약 — 없으면 빈 것으로 답한다."""
         kind = _slot_active(sess)
-        got = sess.get("riser") if kind == "system" else sess.get("machineroom")
+        got = (sess.get("riser") if slot_role(kind) == "system"
+               else sess.get("machineroom"))
         return jsonify({
             "ok": True, "kind": kind,
             "opened": bool(sess.get("entities")),

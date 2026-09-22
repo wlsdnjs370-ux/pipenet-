@@ -1322,7 +1322,7 @@
     //   도면을 아직 안 읽었으면 「도면 열기」 하나만 보인다 — 갈 수 있는
     //   곳이 그것뿐이라서다. (자동 차선을 고급에서 고르면 그때 갈린다.)
     if (S.slot === "plan" && !S.method) return ["open"];
-    const key = (S.slot === "plan" && S.method === "auto") ? "plan_auto" : S.slot;
+    const key = (S.slot === "plan" && S.method === "auto") ? "plan_auto" : slotRole(S.slot);
     // 통합은 붙이지 않는다 — 세 슬롯이 모두 같은 곳으로 가므로 «단계» 가
     // 아니라 목적지다. 머리말의 「통합 · 결합」 단추 하나가 그 자리다.
     return (STAGE_FLOW[key] || STAGE_FLOW.plan).slice();
@@ -2248,6 +2248,13 @@
   // ── 도면 슬롯 [H-0] 특허 S650 ──────────────────────────────────
   // 평면도 하나로 끝나지 않는다 — 계통도·기계실에 같은 절차를 반복하고
   // S700 이 셋을 결합한다. 여기서는 슬롯을 켜고 바꾸는 것까지가 전부다.
+  // [오너 2026-09-22 · 그림 42] 계통도 여러 장 — 더한 칸은 `system2` · `system3` …
+  //   이름(계통도 1 · 2 …)은 서버가 칸의 자리로 매겨 보낸다(`label`).
+  function slotRole(kind) { return /^system\d*$/.test(kind || "") ? "system" : kind; }
+  function isSystemSlot(kind) { return slotRole(kind) === "system"; }
+  // 「계통도 2와 · 계통도 3과」 — 숫자의 끝소리에 맞춘 조사.
+  function withAnd(n) { return `${n}${"과과와과와와과과과와"[n % 10]}`; }
+
   function renderSlots(d) {
     const box = $("slots");
     box.innerHTML = "";
@@ -2262,6 +2269,9 @@
     const changed = S.slot !== d.active;
     S.slot = d.active;
     if (changed) renderSteps();
+    S.slotInfo = d.slots;
+    const systems = d.slots.filter((s) => isSystemSlot(s.kind));
+    const lastSys = systems.length ? systems[systems.length - 1].kind : null;
     for (const it of d.slots) {
       const b = document.createElement("button");
       b.className = (it.active ? "on " : "") + (it.opened ? "has" : "");
@@ -2271,13 +2281,64 @@
       b.appendChild(document.createTextNode(
         it.key ? `${it.label} · ${it.key}` : it.label));
       b.onclick = () => switchSlot(it.kind);
+      // [오너 2026-09-22] 더한 계통도 칸만 지울 수 있다(계통도 1 은 그대로).
+      if (it.removable) {
+        const x = document.createElement("span");
+        x.className = "slot-x";
+        x.textContent = "×";
+        x.title = `${it.label} 칸 지우기`;
+        x.onclick = (ev) => { ev.stopPropagation(); removeSystemSlot(it); };
+        b.appendChild(x);
+      }
       box.appendChild(b);
+      // 계통도 칸의 한쪽을 쪼갠 «＋ 계통도 추가» — 늘 맨 끝 계통도 옆에 붙는다.
+      if (it.kind === lastSys && d.can_add_system !== false) {
+        const add = document.createElement("button");
+        add.className = "slot-add";
+        add.id = "slot-add-system";
+        add.textContent = "＋ 계통도 추가";
+        add.title = "계통도 한 장으로 기계실까지 경로가 이어지지 않을 때 — "
+          + "기계실 쪽으로 이어지는 계통도를 한 장 더 올립니다";
+        add.onclick = addSystemSlot;
+        box.appendChild(add);
+      }
     }
     const note = document.createElement("span");
     note.className = "note";
     const n = d.slots.filter((s) => s.opened).length;
-    note.textContent = `${n}/3 열림 — 계통도·기계실은 선택입니다`;
+    note.textContent = `${n}/${d.slots.length} 열림 — 계통도·기계실은 선택입니다`;
     box.appendChild(note);
+  }
+
+  /** [오너 2026-09-22 · 그림 42] «＋ 계통도 추가» — 빈 칸을 더하고 그 화면으로 간다. */
+  async function addSystemSlot() {
+    if (!S.sid) return;
+    let d;
+    try { d = await post("/api/module-f/slot/add-system", { sid: S.sid }); }
+    catch (err) { say(err.message, "err"); return; }
+    renderSlots(d);
+    await switchSlot(d.added);
+    say(`${d.added_label} 칸을 더했습니다 — DXF 를 열고 ① 기계실 쪽 끝 · `
+      + `② 앞 계통도와 만나는 점을 찍어 경로를 뽑으세요.`, "ok");
+  }
+
+  /** 더한 계통도 칸 지우기 — 그 칸의 도면·뽑은 경로도 함께 사라진다. */
+  async function removeSystemSlot(it) {
+    if (!S.sid) return;
+    if (!confirm(`${it.label} 칸을 지울까요?\n그 칸에 올린 도면과 뽑은 경로가 함께 지워집니다.`)) return;
+    // 보고 있는 칸을 지우면 바로 앞 계통도 칸으로 먼저 옮긴다 — 화면 상태를
+    //   갈아 끼우는 일은 `switchSlot` 한 곳에 모여 있다.
+    if (it.active) {
+      const sys = (S.slotInfo || []).filter((s) => isSystemSlot(s.kind));
+      const i = sys.findIndex((s) => s.kind === it.kind);
+      if (i > 0) await switchSlot(sys[i - 1].kind);
+      if (S.slot === it.kind) return;          // 못 옮겼다 — 지우지 않는다
+    }
+    try {
+      const d = await post("/api/module-f/slot/remove-system", { sid: S.sid, kind: it.kind });
+      renderSlots(d);
+      say(`${d.removed_label} 칸을 지웠습니다. 결합한 적이 있으면 «통합 · 결합» 에서 다시 결합하세요.`, "ok");
+    } catch (err) { say(err.message, "err"); }
   }
 
   async function loadSlots() {
@@ -2371,7 +2432,21 @@
     },
   };
 
-  function subSpec() { return SUB_SPEC[S.slot] || SUB_SPEC.system; }
+  function subSpec() {
+    const sp = { ...(SUB_SPEC[slotRole(S.slot)] || SUB_SPEC.system) };
+    // [오너 2026-09-22 · 그림 42] 계통도가 여러 장이면 두 점의 이름이 칸의 자리를 따른다.
+    //   ① 기계실 쪽 끝 · ② 평면도 쪽 끝 — 계통도 k 의 ① 과 계통도 k+1 의 ② 는 같은 노드다.
+    if (isSystemSlot(S.slot)) {
+      const sys = (S.slotInfo || []).filter((s) => isSystemSlot(s.kind));
+      const n = sys.length, k = sys.findIndex((s) => s.kind === S.slot) + 1;
+      if (n >= 2 && k >= 1) {
+        sp.title = `계통도 ${k}`;
+        sp.a = k === n ? "펌프 (기계실과 만나는 점)" : `계통도 ${withAnd(k + 1)} 만나는 점`;
+        sp.b = k === 1 ? "알람밸브 (평면도와 만나는 점)" : `계통도 ${withAnd(k - 1)} 만나는 점`;
+      }
+    }
+    return sp;
+  }
 
   function renderSubPanel() {
     const sp = subSpec();
@@ -2380,8 +2455,8 @@
     $("sub-lab-b").textContent = sp.b;
     $("sub-clean-row").classList.toggle("hidden", !sp.clean);
     $("sub-ceiling-row").classList.toggle("hidden", !sp.ceiling);
-    $("sub-elevation-row").classList.toggle("hidden", S.slot !== "system");
-    $("sub-floor-height-row").classList.toggle("hidden", S.slot !== "system");
+    $("sub-elevation-row").classList.toggle("hidden", !isSystemSlot(S.slot));
+    $("sub-floor-height-row").classList.toggle("hidden", !isSystemSlot(S.slot));
     renderSubPicks();
   }
 
@@ -2438,7 +2513,7 @@
       //   상태는 그대로다 · `_grpInit`).
       //   ★를 못 고른 도면(서버가 null)은 자동 레이어 표시로 돌아간다.
       const sl = S.world && S.world.sub_layers;
-      if (sl && S.slot === "system" && "trace" in d
+      if (sl && isSystemSlot(S.slot) && "trace" in d
           && JSON.stringify(sl.trace || null) !== JSON.stringify(d.trace || null)) {
         sl.trace = d.trace || null;
         buildLayers();
@@ -2613,7 +2688,7 @@
     const sp = subSpec();
     const body = { sid: S.sid,
                    snap_tolerance_mm: Number($("sub-snap").value || 2500) };
-    if (S.slot === "system") {
+    if (isSystemSlot(S.slot)) {
       body.elevation_mode = $("sub-elevation-mode").value;
       if (!clean && body.elevation_mode === "drawing") {
         const height = Number($("sub-floor-height").value);
@@ -2930,8 +3005,8 @@
 
   async function loadSub() {
     const d = await api(`/api/module-f/sub/state?sid=${S.sid}`);
-    if (S.slot === "system") $("sub-elevation-mode").value = d.summary?.elevation_mode || "drawing";
-    if (S.slot === "system") $("sub-floor-height").value = d.summary?.assumed_floor_height_m ?? 4;
+    if (isSystemSlot(S.slot)) $("sub-elevation-mode").value = d.summary?.elevation_mode || "drawing";
+    if (isSystemSlot(S.slot)) $("sub-floor-height").value = d.summary?.assumed_floor_height_m ?? 4;
     setStage("sub");
     renderSubPanel();
     renderSubSummary(d);
@@ -3481,9 +3556,10 @@
     const d = await api(`/api/module-f/merge/state?sid=${S.sid}`);
     S.merge = d;
     let html = "";
-    for (const k of ["plan", "system", "machineroom"]) {
+    // [오너 2026-09-22] 계통도가 여러 장이면 칸마다 따로 — 서버가 순서를 준다.
+    for (const k of (d.order || ["plan", "system", "machineroom"])) {
       const ok = d.ready[k];
-      const need = k === "plan";
+      const need = k === "plan" || (d.system_missing || []).length > 0 && isSystemSlot(k);
       html += kv(d.labels[k],
         ok ? '<span class="ok">있음</span>'
            : (need ? '<span class="err">없음 — 필요</span>'
@@ -3645,6 +3721,8 @@
       out.push("평면도의 «수리계산 → 표 확정»");
     }
     if (!d || !d.mode) out.push("급수방식 고르기");
+    // [오너 2026-09-22 · 그림 44 ⑤] 계통도를 여러 장 올렸으면 칸마다 경로가 있어야 잇는다.
+    for (const name of ((d && d.system_missing) || [])) out.push(`${name} 의 «경로 추출»`);
     return out;
   }
 
@@ -4042,7 +4120,7 @@
     // [오너 2026-09-22] 계통도 칸 — 배관망 · 건축 · 숨긴 레이어 세 묶음 표.
     //   서버가 묶어 준 표(`world.sub_layers`)가 있을 때만 이 모양이다 — 평면도·
     //   기계실 칸은 종전 목록 그대로다.
-    const grouped = !!(S.world && S.world.sub_layers && S.slot === "system");
+    const grouped = !!(S.world && S.world.sub_layers && isSystemSlot(S.slot));
     const dflt = $("ly-default");
     if (dflt) dflt.classList.toggle("hidden", !grouped);
     if (grouped) { buildLayerGroups(box); return; }
@@ -4364,13 +4442,13 @@
     _soloId = null; markSolo();
     S.hidden.clear();
     box_all(true); draw();
-    if (S.world && S.world.sub_layers && S.slot === "system") sysLayersChanged();
+    if (S.world && S.world.sub_layers && isSystemSlot(S.slot)) sysLayersChanged();
   };
   $("ly-none").onclick = () => {
     _soloId = null; markSolo();
     S.hidden = new Set(S.world.bundles.map((b) => b.id));
     box_all(false); draw();
-    if (S.world && S.world.sub_layers && S.slot === "system") sysLayersChanged();
+    if (S.world && S.world.sub_layers && isSystemSlot(S.slot)) sysLayersChanged();
   };
   function box_all(v) {
     for (const cb of $("layers").querySelectorAll("input")) cb.checked = v;

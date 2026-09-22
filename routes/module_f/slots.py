@@ -24,6 +24,7 @@ S700 이 그 셋을 하나의 배관망으로 결합한다. 그런데 F 의 세�
 """
 from __future__ import annotations
 
+import re
 import threading
 
 # 슬롯 전환은 평면 dict 를 «순회하며 지우고 다시 채운다». waitress 는 멀티스레드라
@@ -39,6 +40,46 @@ SLOT_LABELS = {
     "system": "계통도",
     "machineroom": "기계실",
 }
+
+# [오너 2026-09-22 · 그림 42~44] 계통도 여러 장 — «＋ 계통도 추가».
+#   연결 축은 평면도 — 계통도 1 — 계통도 2 — … — 계통도 n — 기계실 이다.
+#   «system» 이 계통도 1 이고(종전 그대로), 더한 칸은 `system2` · `system3` … 이다.
+#   더한 칸의 목록은 세션 전역(`system_extra`)에 둔다 — 도면별 상태가 아니다.
+#   칸 이름(계통도 1 · 2 …)은 목록 안의 **자리**로 매긴다(지운 칸 뒤는 당겨진다).
+SYSTEM_MAX = 10
+_SYSTEM_EXTRA = re.compile(r"system([2-9]|[1-9][0-9])")
+
+
+def is_system_kind(kind) -> bool:
+    """계통도 칸인가 — 계통도 1(`system`) 또는 더한 칸(`system2` …)."""
+    k = str(kind or "")
+    return k == "system" or bool(_SYSTEM_EXTRA.fullmatch(k))
+
+
+def slot_role(kind) -> str:
+    """칸이 하는 일 — 더한 계통도 칸도 계통도(`system`)와 같은 일을 한다."""
+    return "system" if is_system_kind(kind) else str(kind or "")
+
+
+def system_kinds(sess: dict) -> list:
+    """계통도 칸들 — 평면도 쪽(계통도 1)부터 기계실 쪽으로."""
+    return ["system", *[k for k in (sess.get("system_extra") or ())
+                        if _SYSTEM_EXTRA.fullmatch(str(k))]]
+
+
+def slot_kinds(sess: dict) -> list:
+    """이 세션의 칸 전부 — 평면도 · 계통도 1 … n · 기계실."""
+    return ["plan", *system_kinds(sess), "machineroom"]
+
+
+def slot_label(sess: dict, kind) -> str:
+    """칸 이름. 계통도가 한 장뿐이면 종전 그대로 «계통도» 다."""
+    if not is_system_kind(kind):
+        return SLOT_LABELS[kind]
+    kinds = system_kinds(sess)
+    if len(kinds) == 1:
+        return SLOT_LABELS["system"]
+    return f"계통도 {kinds.index(kind) + 1}"
 
 # 슬롯이 바뀌어도 그 자리에 남는 것 — 세션 정체와 «한 번에 하나» 인 잡.
 # 잡이 세션 전역인 것은 의도다: _HEAVY_LOCK 이 프로세스 하나짜리라
@@ -65,15 +106,19 @@ _MERGE_KEYS = frozenset({
     "merge_files",      # S750 산출 파일 목록
 })
 SESSION_KEYS = frozenset({"id", "created", "touched", "job", "log",
-                          "slots", "active"}) | _MERGE_KEYS
+                          "slots", "active",
+                          # [오너 2026-09-22] 더한 계통도 칸 목록 — 칸의 짜임이지 도면이 아니다.
+                          "system_extra"}) | _MERGE_KEYS
 
 
-def _check_slot_kind(kind) -> str:
+def _check_slot_kind(kind, sess: dict | None = None) -> str:
+    """칸 이름 검사. 더한 계통도 칸은 그 칸을 가진 세션(`sess`)에서만 통한다."""
     k = str(kind or "").strip()
-    if k not in SLOT_KINDS:
+    known = slot_kinds(sess) if sess is not None else list(SLOT_KINDS)
+    if k not in known:
         raise ValueError(
             f"그런 도면 종류가 없습니다: {kind!r} "
-            f"(쓸 수 있는 것: {', '.join(SLOT_KINDS)})")
+            f"(쓸 수 있는 것: {', '.join(known)})")
     return k
 
 
@@ -97,7 +142,7 @@ def _slot_init(sess: dict, active: str = "plan") -> None:
 def _slot_active(sess: dict) -> str:
     """활성 슬롯. 슬롯을 모르는 옛 세션도 평면도로 보고 넘어간다."""
     kind = sess.get("active")
-    return kind if kind in SLOT_KINDS else "plan"
+    return kind if kind in slot_kinds(sess) else "plan"
 
 
 def _slot_capture(sess: dict) -> dict:
@@ -123,7 +168,7 @@ def _slot_switch(sess: dict, kind) -> str:
     전환은 직렬화한다(모듈 머리말의 `_SWITCH_LOCK`). 잡 실행 중 409 는 워커와의
     경쟁만 막는다 — 같은 sid 의 전환 요청 «둘» 이 겹치는 것은 여기서 막는다.
     """
-    target = _check_slot_kind(kind)
+    target = _check_slot_kind(kind, sess)
     with _SWITCH_LOCK:
         active = _slot_active(sess)
         if target == active:
@@ -168,12 +213,55 @@ def _slot_state(sess: dict) -> dict:
     store = sess.get("slots") or {}
     live = _slot_capture(sess)
     items = []
-    for kind in SLOT_KINDS:
+    systems = system_kinds(sess)
+    for kind in slot_kinds(sess):
         state = live if kind == active else (store.get(kind) or _slot_blank())
         items.append({
             "kind": kind,
-            "label": SLOT_LABELS[kind],
+            "label": slot_label(sess, kind),
             "active": kind == active,
+            # [오너 2026-09-22] 더한 계통도 칸 — 화면이 이름·× 단추를 이것으로 그린다.
+            "role": slot_role(kind),
+            "removable": kind in systems[1:],
             **_slot_progress(state),
         })
-    return {"active": active, "slots": items}
+    return {"active": active, "slots": items,
+            "can_add_system": len(systems) < SYSTEM_MAX}
+
+
+def _slot_add_system(sess: dict) -> str:
+    """[오너 2026-09-22] «＋ 계통도 추가» — 기계실 쪽 끝에 빈 계통도 칸 하나.
+
+    칸 이름표(id)는 비어 있는 가장 작은 번호다. 새 칸은 빈 도면 상태로
+    저장소에 들어간다 — 활성으로 바꾸는 것은 `_slot_switch` 의 일이다.
+    """
+    with _SWITCH_LOCK:
+        extra = list(sess.get("system_extra") or ())
+        if len(extra) + 1 >= SYSTEM_MAX:
+            raise ValueError(f"계통도는 {SYSTEM_MAX}장까지 올릴 수 있습니다.")
+        used = set(extra)
+        n = 2
+        while f"system{n}" in used:
+            n += 1
+        kind = f"system{n}"
+        sess["system_extra"] = extra + [kind]
+        sess.setdefault("slots", {})[kind] = _slot_blank()
+    return kind
+
+
+def _slot_remove_system(sess: dict, kind) -> str:
+    """[오너 2026-09-22] 더한 계통도 칸을 지운다(× 단추) — 계통도 1 은 못 지운다.
+
+    지우는 칸이 활성이면 바로 앞(평면도 쪽) 계통도 칸으로 먼저 옮긴다.
+    그 칸에 올린 도면·뽑은 경로도 함께 사라진다. 돌려주는 값은 활성 칸이다.
+    """
+    k = str(kind or "").strip()
+    kinds = system_kinds(sess)
+    if k not in kinds[1:]:
+        raise ValueError(f"지울 수 있는 계통도 칸이 아닙니다: {kind!r}")
+    if _slot_active(sess) == k:
+        _slot_switch(sess, kinds[kinds.index(k) - 1])
+    with _SWITCH_LOCK:
+        sess["system_extra"] = [x for x in (sess.get("system_extra") or ()) if x != k]
+        (sess.get("slots") or {}).pop(k, None)
+    return _slot_active(sess)

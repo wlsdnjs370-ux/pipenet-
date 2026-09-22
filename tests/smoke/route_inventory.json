@@ -851,6 +851,14 @@
     "rule": "/api/module-f/saved"
   },
   {
+    "endpoint": "module_f_slot_add_system",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/slot/add-system"
+  },
+  {
     "endpoint": "module_f_slot_open",
     "methods": [
       "OPTIONS",
@@ -865,6 +873,14 @@
       "POST"
     ],
     "rule": "/api/module-f/slot/read"
+  },
+  {
+    "endpoint": "module_f_slot_remove_system",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "rule": "/api/module-f/slot/remove-system"
   },
   {
     "endpoint": "module_f_slot_state",

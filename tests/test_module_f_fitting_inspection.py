@@ -111,3 +111,65 @@ def test_api_annotations_do_not_change_calculation_tables(tmp_path,iso):
         assert (asdict(t),g)==before
     finally:
         jobs._SESSIONS.pop(sess['id'],None)
+
+
+def bracket_top_fixture(partner_mm=0.04):
+    """괄호 교차 꼭대기(오너 2026-09-22) — 겹친 노드가 0.5 m 세로관으로 선 자리.
+
+    board: 주배관 M0─Mm─M2, Mm 에서 ``partner_mm`` 떨어진 가지 노드 O 가 북쪽(N)·
+    남쪽(S) 반쪽을 잇는다. 계산망은 남쪽 반쪽을 가지치기로 잘랐다 — 꼭대기 3 에는
+    세로관 P2 와 북쪽 팔 P3 만 남는다. 부속표는 둘 다 분류티다.
+    """
+    import math
+    _boot()
+    from services.cad_import.design.tables import PipeTablesG
+    ang = math.radians(167.0)
+    pts = [(0.0, 0.0), (1000.0, 0.0), (2000.0, 0.0),
+           (1000.0 + partner_mm * math.cos(ang), partner_mm * math.sin(ang)),
+           (1000.0, 1000.0), (1000.0, -1000.0)]
+    board = SimpleNamespace(pts=pts, edges=[(0, 1), (1, 2), (1, 3), (3, 4), (3, 5)])
+    plan = {"1": (0, 0, 0.0), "2": (1000, 0, 0.0), "3": (1000, 0, 0.5),
+            "4": (1000, 1000, 0.5), "5": (2000, 0, 0.0)}
+    c30, s30, lift = math.cos(math.radians(30)), 0.5, 1000.0
+    nodes = [dict(label=l, x=x, y=y, elevation=e, io_node="Input" if l == "1" else "No")
+             for l, (x, y, e) in plan.items()]
+    shown = [dict(label=l, x=(x - y) * c30, y=(x + y) * s30 + e * lift)
+             for l, (x, y, e) in plan.items()]
+    pipes = [dict(label=pl, length=ln, dia=40, type="KSD 3507", c=120, eq_len=eq, **{"in": a, "out": b})
+             for pl, a, b, ln, eq in (("P1", "1", "2", 1.0, 0.0), ("P2", "2", "3", 0.5, 2.4),
+                                      ("P3", "3", "4", 1.0, 2.4), ("P4", "2", "5", 1.0, 0.0))]
+    tbl = PipeTablesG(nodes=nodes, pipes=pipes,
+        fittings=[dict(pipe="P2", type="tee", count="1", **{"in": "2", "out": "3"}),
+                  dict(pipe="P3", type="tee", count="1", **{"in": "3", "out": "4"}),
+                  dict(pipe="P4", type="tee-run", count="1", **{"in": "2", "out": "5"})],
+        pipe_labels={f"KP{i}": f"P{i}" for i in (1, 2, 3, 4)})
+    got = dict(node_ref={"N1": 0, "N2": 1, "N3": 3, "N4": 4, "N5": 2},
+               phys={"N1": 1, "N2": 3, "N3": 3, "N4": 1, "N5": 1})
+    keys = dict(nid={l: f"N{l}" for l in plan}, node={}, pipe={})
+    xf = {"iso": True, "cos30": c30, "sin30": s30, "k": 1.0}
+    return tbl, got, keys, board, shown, xf
+
+
+def test_bracket_top_tee_draws_the_pruned_half_not_the_stood_up_joint():
+    t, g, k, b, shown, xf = bracket_top_fixture()
+    before = deepcopy((asdict(t), g, k))
+    rows = build_inspection(t, g, k, shown, board=b, transform=xf)["fittings"]
+    top = next(r for r in rows if r["node"] == "3")
+    bottom = next(r for r in rows if r["node"] == "2")
+    # 부속 종류·등가길이는 부속표 그대로 — 기호의 팔만 셋이 된다(ㄱ자 → T자).
+    assert (top["kind"], top["name"], top["pipe"]) == ("tee", "분류티", "P3")
+    assert (top["original_degree"], top["current_degree"]) == (3, 2)
+    assert len(top["arms"]) == 3 and top["symbolic"] is False
+    down = [u for u in top["arms"] if u[1] < -0.99]
+    south = [u for u in top["arms"] if u[0] > 0.8 and -0.6 < u[1] < -0.4]
+    assert len(down) == 1 and len(south) == 1          # 세로관 한 번 + 잘린 남쪽 반쪽
+    assert len(bottom["arms"]) == 3 and bottom["symbolic"] is False
+    assert (asdict(t), g, k) == before
+
+
+def test_bracket_rule_needs_an_overlapping_joint():
+    """겹친 노드가 아니면(50 mm) 종전 규칙 그대로 — 모호하면 그리지 않는다."""
+    t, g, k, b, shown, xf = bracket_top_fixture(partner_mm=50.0)
+    rows = build_inspection(t, g, k, shown, board=b, transform=xf)["fittings"]
+    top = next(r for r in rows if r["node"] == "3")
+    assert top["kind"] == "tee" and len(top["arms"]) == 2 and top["symbolic"] is True

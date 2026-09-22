@@ -14,6 +14,10 @@ from typing import Any
 from src.pipenet_converter.graph.fitting_policy import without_straight_tees
 
 
+# 겹친 노드 판정 — convert.main_walk.JOINT_M(0.01 m)과 같은 값을 board mm 로.
+#   화면 표시용이라 엔진을 import 하지 않고 수만 맞춘다.
+JOINT_MM = 10.0
+
 NAMES = {"tee": "분류티", "elbow": "90° 엘보",
          "elbow-45": "45° 엘보", "alarm_valve": "알람밸브"}
 
@@ -72,6 +76,10 @@ def build_inspection(tables: Any, got: dict, keys: dict, nodes: list[dict], *,
     fref = {**nref, **{str(k): int(v) for k, v in
                      (got.get("fitting_node_ref") or {}).items()}}
     phys = {str(k): int(v) for k, v in (got.get("phys") or {}).items()}
+    # 계산 표의 평면 좌표·표고 — 세로관(같은 평면 자리, 다른 표고)을 알아보는 데 쓴다.
+    plan_xyz = {str(n["label"]): (float(n.get("x") or 0.0), float(n.get("y") or 0.0),
+                                  float(n.get("elevation") or 0.0))
+                for n in (getattr(tables, "nodes", None) or [])}
 
     def unchanged(label: str) -> bool:
         if label in (changed_nodes or ()):
@@ -96,11 +104,11 @@ def build_inspection(tables: Any, got: dict, keys: dict, nodes: list[dict], *,
         cap = 200.0 * abs(float((transform or {}).get("k", 1.0)))
         return min(cap, min(lengths) * .22) if lengths else cap
 
-    def original_arms(vid: int | None) -> list[list[float]]:
+    def original_arms(vid: int | None, skip=frozenset()) -> list[list[float]]:
         if vid is None or not transform or not (0 <= vid < len(pts)):
             return []
         result = []
-        for other in board_port_neighbors(pts, adj, vid):
+        for other in board_port_neighbors(pts, {vid: adj.get(vid, set()) - set(skip)}, vid):
             dx, dy = pts[other][0] - pts[vid][0], pts[other][1] - pts[vid][1]
             if transform.get("iso"):
                 dx, dy = ((dx - dy) * transform["cos30"],
@@ -129,7 +137,29 @@ def build_inspection(tables: Any, got: dict, keys: dict, nodes: list[dict], *,
         stable = unchanged(label) and all(
             unchanged(str(pipes[pl]["out"] if str(pipes[pl]["in"]) == label
                           else pipes[pl]["in"])) for pl in incident[label])
-        originals = original_arms(vid) if stable else []
+        # ★[괄호 교차 꼭대기 · 오너 2026-09-22] 겹친 노드(≤ JOINT_M) 사이의 평면
+        #   연결을 전개가 이 노드의 세로관으로 세웠으면, 그 팔은 **세로 팔로 이미
+        #   그려져 있다** — «빠진 방향» 후보가 아니다. 이것을 후보에 두면 빠진 팔
+        #   1개(가지치기로 잘린 가지 반쪽)에 후보가 2개가 되어 아래 «모호하면 안
+        #   그린다» 에 걸리고, 분류티가 ㄱ자(팔 2)로 그려져 엘보처럼 보였다.
+        #   부속 종류·등가길이는 부속표 그대로다 — 기호의 팔만 바뀐다.
+        stood_up = set()
+        here3 = plan_xyz.get(label)
+        for pl in incident[label]:
+            p = pipes[pl]
+            end = str(p["out"]) if str(p["in"]) == label else str(p["in"])
+            there3 = plan_xyz.get(end)
+            if not here3 or not there3 or vid is None:
+                continue
+            if (math.hypot(here3[0] - there3[0], here3[1] - there3[1]) > 1e-6
+                    or abs(here3[2] - there3[2]) <= 1e-9):
+                continue                                  # 세로관이 아니다
+            v_end = fref.get(str(keys.get("nid", {}).get(end, "")))
+            if (v_end is not None and 0 <= int(v_end) < len(pts) and 0 <= vid < len(pts)
+                    and int(v_end) in adj.get(vid, ())
+                    and math.dist(pts[vid][:2], pts[int(v_end)][:2]) <= JOINT_MM):
+                stood_up.add(int(v_end))
+        originals = original_arms(vid, stood_up) if stable else []
         omitted = [u for u in originals
                    if not any(sum(a*b for a, b in zip(u, v)) > .94 for v in arms)]
         missing = max(0, (degree if degree is not None else len(originals)) - len(arms))

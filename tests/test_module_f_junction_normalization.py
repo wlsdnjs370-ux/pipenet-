@@ -149,8 +149,11 @@ def test_b1f_keeps_geometry_and_reads_arc_marked_four_port_site_as_pass_through_
     # 호 없는 4방향은 여전히 미해결이다(tests/test_module_f_arc_symbols.py).
     kfp = after["got"]["kfp"]
     arcs = kfp["arc_junctions"]
-    assert len(arcs) == 1 and all(v["kind"] == "T" for v in arcs.values()), arcs
-    main_id, top_id = next(iter(arcs)), next(iter(arcs.values()))["top"]
+    # [오너 2026-09-22] 회랑의 괄호 자리 8곳이 전부 통과 갈래다. 그중 7곳은 교차점에
+    #   노드가 둘 겹친 자리(주배관 노드 + 가지관 노드, 0.04 mm 연결관)라 2026-09-21 판은
+    #   연결관 방향 잡음 때문에 1곳만 읽었다 — 이제 그 연결관이 0.5 m 세로관이 된다.
+    assert len(arcs) == 8 and all(v["kind"] == "T" for v in arcs.values()), arcs
+    assert sum(1 for v in arcs.values() if v.get("joint")) == 7, arcs
 
     def label_of(nid):
         x, y, z = (float(v) for v in kfp["nodes_meta_runtime"][nid]["coords"][:3])
@@ -159,17 +162,22 @@ def test_b1f_keeps_geometry_and_reads_arc_marked_four_port_site_as_pass_through_
         assert len(hits) == 1, (nid, hits)
         return str(hits[0]["label"])
 
-    main_label, top_label = label_of(main_id), label_of(top_id)
     unresolved = new.as_dict()["unresolved"]["kind_items"]
-    assert not any(str(i.get("node_label")) == main_label for i in unresolved), unresolved
     assert not any(i.get("ports") == 4 for i in unresolved), unresolved
     fits = {}
     for f in new.fittings:
         fits.setdefault(f["pipe"], []).append(f["type"])
-    riser = [p for p in new.pipes if {p["in"], p["out"]} == {main_label, top_label}]
-    assert len(riser) == 1 and fits.get(riser[0]["label"]) == ["tee"], riser
-    run = [p for p in new.pipes if p["in"] == main_label and p["out"] != top_label]
-    assert all(fits.get(p["label"]) == ["tee-run"] for p in run), run
-    tops = [p for p in new.pipes if p["in"] == top_label]
-    assert tops and sum((fits.get(p["label"], []) for p in tops), []) == ["tee"], tops
+    for main_id, site in arcs.items():
+        main_label, top_label = label_of(main_id), label_of(site["top"])
+        assert not any(str(i.get("node_label")) == main_label for i in unresolved), unresolved
+        riser = [p for p in new.pipes if {p["in"], p["out"]} == {main_label, top_label}]
+        assert len(riser) == 1 and fits.get(riser[0]["label"]) == ["tee"], riser     # 분류티 ①
+        assert abs(float(riser[0]["length"]) - 0.5) < 1e-9, riser                   # 세로 0.5 m
+        run = [p for p in new.pipes if p["in"] == main_label and p["out"] != top_label]
+        # 주배관 직진은 직류티. (마지막 자리 앞 P45 는 원본 구간 안쪽 갈래 하나를 더 센다 —
+        #  이 수정 전과 같은 값이다. 여기서는 «분류티가 주배관에 안 실렸나» 만 본다.)
+        assert all((fits.get(p["label"]) or [None])[0] == "tee-run"
+                   and "tee" not in fits.get(p["label"], []) for p in run), run
+        tops = [p for p in new.pipes if p["in"] == top_label]
+        assert tops and sum((fits.get(p["label"], []) for p in tops), []) == ["tee"], tops  # 분류티 ②
     assert not any(f["type"].startswith("cross") for f in new.fittings)

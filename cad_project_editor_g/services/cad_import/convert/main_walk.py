@@ -36,6 +36,32 @@ def is_open(arcs, ang):
     return drawn
 
 
+#: 교차점에 **노드가 둘 겹친** 자리 — 주배관 노드와 가지관 노드가 한 점에 있고 길이
+#  0 에 가까운 연결관으로 이어져 있다(B1F 실측: 괄호 자리 연결관 0.04 mm · 회랑 괄호
+#  8곳 중 7곳). 그 연결관의 «방향» 은 좌표 잡음이라(실측 167°) 호가 덮은 쪽에 떨어지면
+#  가지가 «주배관 계속» 으로 읽혀 안 올라갔다 [오너 2026-09-22]. 이 거리 안의 이웃은
+#  «같은 자리» 로 보고, 방향은 그 너머 실제 배관으로 잰다.
+JOINT_M = 0.01
+
+
+def _joint(xy, u, v):
+    ux, uy = xy[u]
+    vx, vy = xy[v]
+    return math.hypot(vx - ux, vy - uy) <= JOINT_M
+
+
+def _through_angles(xy, adj, u, v):
+    """u 에서 겹친 노드 v 를 지나 **실제로 뻗는** 배관들의 방향(도)."""
+    ux, uy = xy[u]
+    out = []
+    for w in adj.get(v, ()):
+        if w == u or _joint(xy, u, w):
+            continue
+        wx, wy = xy[w]
+        out.append(math.degrees(math.atan2(wy - uy, wx - ux)))
+    return out
+
+
 def sit_arcs(xy, ho, sit_r, degree=None, tie_m=0.03):
     """호 → 노드. 한 점에 여러 호를 모은다.
 
@@ -118,6 +144,11 @@ def walk_main(xy, adj, node_arcs, seed, degree=None):
         main_n.add(u)
         nxt = [v for v in adj.get(u, ()) if v != prev]
         arcs = node_arcs.get(u) or ()
+        # 겹친 노드(JOINT_M) 는 한 자리다 — 거기 앉은 호도 이 자리의 호다.
+        joint = {v for v in adj.get(u, ()) if _joint(xy, u, v)}
+        if joint:
+            arcs = list(arcs) + [a for v in sorted(joint, key=str)
+                                 for a in (node_arcs.get(v) or ())]
         deg_u = int((degree or {}).get(u, len(adj.get(u, ()))))
         if max(deg_u, len(adj.get(u, ()))) <= 2:
             # 접속 배관 2 이하면 갈래가 아니라 메인 위 기호 — 통과 [오너 2026-08-19]
@@ -126,7 +157,14 @@ def walk_main(xy, adj, node_arcs, seed, degree=None):
         for v in nxt:
             vx, vy = xy[v]
             e = ek(u, v)
-            if arcs and is_open(arcs, math.degrees(math.atan2(vy - uy, vx - ux))):
+            if arcs and v in joint:
+                # 0 길이 연결관 — 그 너머 배관이 **전부** 열린 쪽이면 가지의 첫 간선.
+                #   하나라도 덮인 쪽이면 종전대로 메인으로 걷는다(추측하지 않는다).
+                angs = _through_angles(xy, adj, u, v)
+                if angs and all(is_open(arcs, a) for a in angs):
+                    branch_e.add((u, v))
+                    continue
+            elif arcs and is_open(arcs, math.degrees(math.atan2(vy - uy, vx - ux))):
                 branch_e.add((u, v))
                 continue
             main_e.add(e)

@@ -47,7 +47,7 @@ from services.cad_import.dto import (
 from services.cad_import.kinds import normalize_head_kind, resolve_head_kinds
 from services.cad_import.convert.arc_jog import apply_arc_jogs
 from services.cad_import.convert.main_walk import (
-    ho_to_kfp_units, sit_arcs, snap_seed, walk_main, xf_mm_to_m)
+    JOINT_M, ho_to_kfp_units, sit_arcs, snap_seed, walk_main, xf_mm_to_m)
 from services.cad_import.convert.preflight import preflight_kfp_convert
 from services.cad_import.pipeline.user_net import apply_kind_overrides
 
@@ -716,11 +716,32 @@ def _apply_vertical(kfp, kind_by_nid, branch_rise, upright_m, pendant_1_m,
 
     n_vert_branch = 0
     rise_at = {}
+    joint_top = {}          # m → 세로관으로 세운 겹친 가지관 노드
     for m, pid, o, bn in branch_comps:
         mc = nodes[m]["coords"]
         mz = float(mc[2])
         rise_z = mz + branch_rise
         rise_id = rise_at.get(m)
+        oc = nodes[o]["coords"]
+        if (rise_id is None and o in bn
+                and math.hypot(float(oc[0]) - float(mc[0]),
+                               float(oc[1]) - float(mc[1])) <= JOINT_M):
+            # ★[오너 2026-09-22] 교차점에 노드가 둘 겹친 자리(주배관 노드 m + 가지관
+            #   노드 o, 0 길이 연결관) — 그 연결관을 **그대로 세로관** 으로 세운다.
+            #   새 노드를 만들면 꼭대기에 0 길이 관이 남아 방향이 다시 잡음이 된다.
+            #   m = 주배관 분류티, o = 가지관 분류티(0.5 m 위). 노드 하나인 자리와 같은 모양.
+            rise_at[m] = o
+            joint_top[m] = o
+            vp = pipes[pid]
+            vp["start"], vp["end"] = m, o
+            vp["length_m"] = float(branch_rise)
+            n_vert_branch += 1
+            for nid in bn:
+                c = list(nodes[nid]["coords"])
+                c[2] = float(c[2]) + branch_rise
+                nodes[nid]["coords"] = c
+                nodes[nid]["elevation_m"] = float(c[2])
+            continue
         if rise_id is None:
             rise_id = next_node_id()
             tmpl = o if nodes[o]["type_id"] == "base" else next(iter(bn))
@@ -760,9 +781,17 @@ def _apply_vertical(kfp, kind_by_nid, branch_rise, upright_m, pendant_1_m,
         # 접속점의 평면 포트 수 = (지금 접속 − 세로관) + 옮겨 간 가지 포트, 또는 지우기 전 접속 수
         p_m = max(int(phys_degree.get(str(m), 0)),
                   len(adj.get(m, ())) - 1 + int(moved.get(m, 0)))
+        if m in joint_top:
+            # 겹친 두 노드가 한 교차다 — 평면 포트 = 주배관 노드의 팔 + 가지관 노드의 팔
+            #   (둘을 잇던 연결관은 빼고 센다). 괄호 교차(가지관 관통)는 2 + 2 = 4 → T.
+            p_m = max(p_m,
+                      max(int(phys_degree.get(str(m), 0)), len(adj.get(m, ()))) - 1
+                      + max(int(phys_degree.get(str(rid), 0)), len(adj.get(rid, ()))) - 1)
         kind = "T" if (p_m >= 4 or len(adj.get(rid, ())) >= 3) else "E"
         arc_junctions[str(m)] = {"kind": kind, "top": str(rid),
                                  "top_ports": 3 if kind == "T" else 2}
+        if m in joint_top:
+            arc_junctions[str(m)]["joint"] = True     # 연결관을 세운 세로관(restrict 가 역참조를 뗀다)
     kfp["arc_junctions"] = arc_junctions
 
     # ── [호 우회 · 덱 3장 그림 1] 접속 2개 노드 위의 호 짝 → 그 사이를 올렸다 내린다.

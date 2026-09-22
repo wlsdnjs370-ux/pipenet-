@@ -161,3 +161,101 @@ def test_four_way_without_arc_stays_unresolved():
     result = build_fittings(net, {"s": (-1, 0), "n": (0, 0), "h": (0, 1)},
                             {"b": (25, "test")}, parents={"n": "s"}, phys={"n": 4})
     assert result["unresolved_kind"] == 1
+
+
+# ── [오너 2026-09-22] 괄호 교차에 노드가 둘 겹친 자리 — B1F 실측: 주배관 노드와 가지관
+#    노드가 0.04 mm 연결관으로 이어져 있고, 그 연결관의 방향(잡음 167°)이 괄호가 덮은
+#    쪽에 떨어져 가지가 안 올라갔다. 이제 그 너머 실제 배관 방향으로 재고, 연결관을
+#    그대로 0.5 m 세로관으로 세운다: 주배관 분류티 + 세로 0.5 + 가지관 분류티.
+JOINT = (1.000043, 0.000010)          # 가지관 노드 — 주배관 노드 M(1, 0) 과 0.04 mm
+
+
+def _cross_kfp(joint=JOINT, main_dup=False):
+    """주배관 A–M–B(가로), 가지관 L–T–R(세로)이 M/T 에서 겹친다. 끝마다 상향 헤드.
+
+    main_dup=True 면 겹친 노드가 **주배관** 쪽이다: A–M–T–B 로 주배관이 T 를 지나고,
+    가지 L·R 은 M 에서 바로 갈라진다(겹친 노드 너머가 괄호 덮인 쪽 → 메인).
+    """
+    pts = {"A": (0, 0), "M": (1, 0), "B": (2, 0), "T": joint, "L": (1, -1), "R": (1, 1),
+           "HB": (3, 0), "HL": (1, -2), "HR": (1, 2)}
+    nodes = {k: _node(k, x, y, "head" if k.startswith("H") else "base") for k, (x, y) in pts.items()}
+    if main_dup:
+        pipes = {"AM": _pipe("A", "M", 1.0), "MT": _pipe("M", "T", 0.00004), "TB": _pipe("T", "B", 1.0),
+                 "ML": _pipe("M", "L", 1.0), "MR": _pipe("M", "R", 1.0)}
+    else:
+        pipes = {"AM": _pipe("A", "M", 1.0), "MB": _pipe("M", "B", 1.0), "MT": _pipe("M", "T", 0.00004),
+                 "TL": _pipe("T", "L", 1.0), "TR": _pipe("T", "R", 1.0)}
+    pipes.update({"BH": _pipe("B", "HB", 1.0), "LH": _pipe("L", "HL", 1.0), "RH": _pipe("R", "HR", 1.0)})
+    return {"nodes_meta_runtime": nodes, "pipe_data": pipes,
+            "node_counter": {"N": 0}, "pipe_id_counter": 0}
+
+
+def _brackets(cx, cy):
+    # 괄호 쌍 — 가로(주배관) 양쪽을 덮는다(B1F 실측 각: 134°+92° · 314°+92°)
+    return [{"cx": cx, "cy": cy, "r": 0.18, "sa": 134.0, "sweep": 92.0},
+            {"cx": cx, "cy": cy, "r": 0.18, "sa": 314.0, "sweep": 92.0}]
+
+
+CROSS_KINDS = {"node_head_kinds": {"HB": "상향식", "HL": "상향식", "HR": "상향식"},
+               "head_kinds": [{"c": [3.0, 0.0], "kind": "상향식"}, {"c": [1.0, -2.0], "kind": "상향식"},
+                              {"c": [1.0, 2.0], "kind": "상향식"}],
+               "sources": [{"xy": [0.0, 0.0]}]}
+
+
+def _z(out, k):
+    return float(out["kfp"]["nodes_meta_runtime"][k]["coords"][2])
+
+
+def test_overlapping_nodes_at_bracket_crossing_rise_through_the_joint():
+    for ho in (_brackets(1.0, 0.0), _brackets(*JOINT)):     # 호가 주배관 노드에 앉든 가지관 노드에 앉든
+        out = convert_to_kfp({"kfp": _cross_kfp(), "ho": ho, **CROSS_KINDS})
+        assert out["ok"] is True, out["blockers"]
+        aj = out["kfp"]["arc_junctions"]
+        assert aj == {"M": {"kind": "T", "top": "T", "top_ports": 3, "joint": True}}, aj
+        # 주배관은 그대로, 가지관(T·L·R)은 0.5 위로
+        assert _z(out, "A") == 0.0 and _z(out, "M") == 0.0 and _z(out, "B") == 0.0
+        assert all(abs(_z(out, k) - 0.5) < 1e-9 for k in ("T", "L", "R"))
+        # 0 길이 연결관이 그대로 세로관이 됐다 — 새 노드·꼭대기 0 길이 관이 없다
+        mt = out["kfp"]["pipe_data"]["MT"]
+        assert (mt["start"], mt["end"]) == ("M", "T") and abs(float(mt["length_m"]) - 0.5) < 1e-9
+        n = out["kfp"]["nodes_meta_runtime"]
+        at_top = [k for k, v in n.items() if v["type_id"] == "base"
+                  and abs(float(v["coords"][0]) - 1.0) < 0.01 and abs(float(v["coords"][1])) < 0.01
+                  and abs(float(v["coords"][2]) - 0.5) < 1e-9]
+        assert at_top == ["T"], at_top
+
+
+def test_overlapping_bracket_crossing_reads_two_tees():
+    out = convert_to_kfp({"kfp": _cross_kfp(), "ho": _brackets(1.0, 0.0), **CROSS_KINDS})
+    kfp = out["kfp"]
+    n, p = kfp["nodes_meta_runtime"], kfp["pipe_data"]
+    node_xy = {k: (float(v["coords"][0]), float(v["coords"][1])) for k, v in n.items()}
+    node_z = {k: float(v["coords"][2]) for k, v in n.items()}
+    adj = {}
+    for pid, q in p.items():
+        adj.setdefault(q["start"], []).append(q["end"])
+        adj.setdefault(q["end"], []).append(q["start"])
+    parents, order = {}, ["A"]
+    for cur in order:
+        for nxt in adj.get(cur, ()):
+            if nxt not in parents and nxt != "A":
+                parents[nxt] = cur
+                order.append(nxt)
+    fits = build_fittings(kfp, node_xy, {pid: (25, "test") for pid in p}, parents=parents,
+                          node_z=node_z, phys={"A": 1, "M": 3, "B": 2, "T": 3, "L": 2, "R": 2})
+    assert fits["unresolved_kind"] == 0
+    assert fits["per_pipe"]["MB"]["fittings"] == ["tee-run"]       # 주배관 직진 = 직류티
+    assert fits["per_pipe"]["MT"]["fittings"] == ["tee"]           # 분류티 ① (주배관 → 세로관)
+    top = fits["per_pipe"]["TL"]["fittings"] + fits["per_pipe"]["TR"]["fittings"]
+    assert top == ["tee"], top                                      # 분류티 ② (꼭대기, 한 번)
+
+
+def test_overlapping_node_on_the_main_is_not_lifted():
+    # 겹친 노드 너머가 괄호가 덮은 쪽(주배관 계속)이면 종전대로 메인 — 올리지 않는다.
+    out = convert_to_kfp({"kfp": _cross_kfp(main_dup=True), "ho": _brackets(1.0, 0.0), **CROSS_KINDS})
+    assert out["ok"] is True, out["blockers"]
+    aj = out["kfp"]["arc_junctions"]
+    assert list(aj) == ["M"] and aj["M"]["kind"] == "T" and "joint" not in aj["M"], aj
+    assert aj["M"]["top"] != "T"                                      # 새 꼭대기 노드
+    assert _z(out, "T") == 0.0 and _z(out, "B") == 0.0               # 주배관 쪽은 그대로
+    assert abs(_z(out, "L") - 0.5) < 1e-9 and abs(_z(out, "R") - 0.5) < 1e-9

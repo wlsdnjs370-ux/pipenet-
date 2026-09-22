@@ -240,6 +240,20 @@ def apply_vertical(payload, built, *, convert_kwargs=None):
         codes = [b.get("code") for b in (r.get("blockers") or [])]
         return None, f"세로 처리 실패: {codes}"
     # [덱 3장 · 호 기호] 무엇을 읽었는지 그 자리에서 말한다 — 지어내지 않은 것(짝 없는 호)까지.
+    # [오너 2026-09-22] 겹친 노드(주배관 노드 + 가지관 노드) 사이 0 길이 연결관을 세운
+    #   세로관은 도면 선이 아니다 — 그 연결관의 역참조를 떼어, 다른 세로관처럼 담당 헤드
+    #   수로 관경을 정한다(교차점 주배관의 치수 글자를 물려받지 않게).
+    er = built.get("edge_ref")
+    if er:
+        pp = r["kfp"].get("pipe_data") or {}
+        for m, v in (r["kfp"].get("arc_junctions") or {}).items():
+            if not (isinstance(v, dict) and v.get("joint")):
+                continue
+            ends = {str(m), str(v.get("top"))}
+            for pid, p in pp.items():
+                if {str(p.get("start")), str(p.get("end"))} == ends:
+                    er.pop(pid, None)
+                    er.pop(str(pid), None)
     rep = (r["kfp"].get("arc_report") or {})
     if rep:
         n_u = int(rep.get("jog_pairs") or 0)

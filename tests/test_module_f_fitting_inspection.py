@@ -173,3 +173,65 @@ def test_bracket_rule_needs_an_overlapping_joint():
     rows = build_inspection(t, g, k, shown, board=b, transform=xf)["fittings"]
     top = next(r for r in rows if r["node"] == "3")
     assert top["kind"] == "tee" and len(top["arms"]) == 2 and top["symbolic"] is True
+
+
+def arc_end_fixture(through=True):
+    """주배관 끝 쪽 호 갈래(B1F N231 모양 · 오너 2026-09-22) — 꼭대기를 엔진이 새로 만든 자리.
+
+    board: 주배관 서쪽 W─m, m 에서 0.04 mm 옆 노드 P 를 건너 동쪽으로 계속(가지치기로 잘림),
+    가지관 북쪽은 m 에서 바로(꼭대기로 올라감), 남쪽은 짧은 토막 68 mm. ``through=False`` 면
+    동쪽 계속·남쪽 토막이 없다(맞은편에 원본 배관이 없는 자리). 계산망: 1─2(주배관) ·
+    2─3(세로관, 3 은 원본 짝이 없는 꼭대기) · 3─4(북쪽 팔). 부속표는 2·3 모두 분류티.
+    """
+    import math
+    _boot()
+    from services.cad_import.design.tables import PipeTablesG
+    pts = [(0.0, 0.0), (1000.0, 0.0), (1000.0, 1000.0)]
+    edges = [(0, 1), (1, 2)]
+    if through:
+        pts += [(1000.04, 0.0), (2000.0, 0.0), (1000.0, -68.0)]
+        edges += [(1, 3), (3, 4), (1, 5)]
+    board = SimpleNamespace(pts=pts, edges=edges)
+    plan = {"1": (0, 0, 0.0), "2": (1000, 0, 0.0), "3": (1000, 0, 0.5), "4": (1000, 1000, 0.5)}
+    c30, s30, lift = math.cos(math.radians(30)), 0.5, 1000.0
+    nodes = [dict(label=l, x=x, y=y, elevation=e, io_node="Input" if l == "1" else "No")
+             for l, (x, y, e) in plan.items()]
+    shown = [dict(label=l, x=(x - y) * c30, y=(x + y) * s30 + e * lift)
+             for l, (x, y, e) in plan.items()]
+    pipes = [dict(label=pl, length=ln, dia=65, type="KSD 3507", c=120, eq_len=eq, **{"in": a, "out": b})
+             for pl, a, b, ln, eq in (("P1", "1", "2", 1.0, 0.0), ("P2", "2", "3", 0.5, 3.7),
+                                      ("P3", "3", "4", 1.0, 3.7))]
+    tbl = PipeTablesG(nodes=nodes, pipes=pipes,
+        fittings=[dict(pipe="P2", type="tee", count="1", **{"in": "2", "out": "3"}),
+                  dict(pipe="P3", type="tee", count="1", **{"in": "3", "out": "4"})],
+        pipe_labels={f"KP{i}": f"P{i}" for i in (1, 2, 3)})
+    got = dict(node_ref={"N1": 0, "N2": 1, "N4": 2},
+               phys={"N1": 1, "N2": 4 if through else 2, "N4": 1},
+               kfp=dict(arc_junctions={"N2": {"kind": "T", "top": "N3", "top_ports": 3}}))
+    keys = dict(nid={l: f"N{l}" for l in plan}, node={}, pipe={})
+    xf = {"iso": True, "cos30": c30, "sin30": s30, "k": 1.0}
+    return tbl, got, keys, board, shown, xf
+
+
+def test_arc_end_tees_draw_the_straight_opposite_found_in_the_drawing():
+    t, g, k, b, shown, xf = arc_end_fixture()
+    before = deepcopy((asdict(t), g, k))
+    rows = build_inspection(t, g, k, shown, board=b, transform=xf)["fittings"]
+    bottom = next(r for r in rows if r["node"] == "2")
+    top = next(r for r in rows if r["node"] == "3")
+    for r in (bottom, top):
+        assert (r["kind"], r["name"]) == ("tee", "분류티")
+        assert len(r["arms"]) == 3 and r["symbolic"] is False
+    # 아래: 주배관 서쪽 + 세로관 + 동쪽(겹친 노드 너머 실제 배관 방향) = T
+    assert any(u[0] > 0.8 and 0.4 < u[1] < 0.6 for u in bottom["arms"])
+    # 꼭대기: 세로관 + 북쪽 팔 + 남쪽(아래 주배관 접속점의 원본 토막으로 확인) = ㅗ
+    assert any(u[0] > 0.8 and -0.6 < u[1] < -0.4 for u in top["arms"])
+    assert (asdict(t), g, k) == before
+
+
+def test_arc_tee_opposite_is_not_invented_without_a_drawn_pipe():
+    t, g, k, b, shown, xf = arc_end_fixture(through=False)
+    rows = build_inspection(t, g, k, shown, board=b, transform=xf)["fittings"]
+    for lab in ("2", "3"):
+        r = next(r for r in rows if r["node"] == lab)
+        assert r["kind"] == "tee" and len(r["arms"]) == 2 and r["symbolic"] is True

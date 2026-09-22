@@ -80,6 +80,14 @@ def build_inspection(tables: Any, got: dict, keys: dict, nodes: list[dict], *,
     plan_xyz = {str(n["label"]): (float(n.get("x") or 0.0), float(n.get("y") or 0.0),
                                   float(n.get("elevation") or 0.0))
                 for n in (getattr(tables, "nodes", None) or [])}
+    # 호 갈래(`arc_junctions`)의 주배관 접속점·꼭대기 — 그 자리 티의 옆구멍은 세로관이다.
+    lab_of_nid = {str(v): str(k) for k, v in (keys.get("nid") or {}).items()}
+    arc_tee: set[str] = set()
+    for m_nid, rec in (((got.get("kfp") or {}).get("arc_junctions")) or {}).items():
+        top_nid = rec.get("top") if isinstance(rec, dict) else None
+        for nid in (m_nid, top_nid):
+            if nid is not None and str(nid) in lab_of_nid:
+                arc_tee.add(lab_of_nid[str(nid)])
 
     def unchanged(label: str) -> bool:
         if label in (changed_nodes or ()):
@@ -115,6 +123,50 @@ def build_inspection(tables: Any, got: dict, keys: dict, nodes: list[dict], *,
                           (dx + dy) * transform["sin30"])
             u = _unit(dx, dy)
             if u and not any(sum(a*b for a, b in zip(u, v)) > .98 for v in result):
+                result.append(u)
+        return result
+
+    def arc_run_arm(label: str) -> tuple[list[float] | None, str | None]:
+        """호 갈래 티의 직선(가로) 팔 방향과 세로관 반대 끝 — 세로관 하나 + 가로 하나일 때만."""
+        n, here3 = at.get(label), plan_xyz.get(label)
+        if not n or not here3:
+            return None, None
+        riser_end, run = None, []
+        for pl in incident[label]:
+            p = pipes[pl]
+            end = str(p["out"]) if str(p["in"]) == label else str(p["in"])
+            there3, o = plan_xyz.get(end), at.get(end)
+            if not there3 or not o:
+                return None, None
+            if (math.hypot(here3[0] - there3[0], here3[1] - there3[1]) <= 1e-6
+                    and abs(here3[2] - there3[2]) > 1e-9):
+                if riser_end is not None:
+                    return None, None
+                riser_end = end
+            else:
+                run.append(_unit(o["x"] - n["x"], o["y"] - n["y"]))
+        if riser_end is None or len(run) != 1 or not run[0]:
+            return None, None
+        return run[0], riser_end
+
+    def plan_dirs(vid: int | None) -> list[list[float]]:
+        """원본 도면에서 이 자리가 실제로 뻗는 방향(표시 단위벡터). 겹친 노드(≤ JOINT_MM)는
+        건너가 그 너머 배관의 방향으로 잰다 — 0.04 mm 연결관의 방향은 잡음이다."""
+        if vid is None or not transform or not (0 <= vid < len(pts)):
+            return []
+        near = {o for o in adj.get(vid, ()) if 0 <= o < len(pts)
+                and math.dist(pts[vid][:2], pts[o][:2]) <= JOINT_MM}
+        far = {o for o in adj.get(vid, ()) if o not in near and 0 <= o < len(pts)}
+        for q in near:
+            far |= {o for o in adj.get(q, ()) if o != vid and o not in near and 0 <= o < len(pts)
+                    and math.dist(pts[vid][:2], pts[o][:2]) > JOINT_MM}
+        result = []
+        for other in sorted(far):
+            dx, dy = pts[other][0] - pts[vid][0], pts[other][1] - pts[vid][1]
+            if transform.get("iso"):
+                dx, dy = ((dx - dy) * transform["cos30"], (dx + dy) * transform["sin30"])
+            u = _unit(dx, dy)
+            if u:
                 result.append(u)
         return result
 
@@ -195,6 +247,24 @@ def build_inspection(tables: Any, got: dict, keys: dict, nodes: list[dict], *,
         if why == "라이브러리":
             why = "fittings_library_v3.json / " + str(FITTING_LIB_ID.get(kind, kind))
         shape = _shape(kind)
+        # ★[호 갈래 티 · 오너 2026-09-22] 호 갈래의 주배관 접속점·꼭대기 티는 세로관이
+        #   옆구멍이고 나머지 두 팔이 한 직선이다(주배관 양쪽 / 가지관 양쪽). 위의 원본
+        #   연결 되찾기가 모호하거나(겹친 노드·짧은 토막) 꼭대기를 엔진이 새로 만들어
+        #   원본 짝이 없으면 팔이 둘뿐이라 ㄱ자(엘보처럼)로 그려졌다. 직선 팔의 맞은편에
+        #   **원본 도면 배관이 실제로 있을 때만** 셋째 팔로 그린다 — 꼭대기에 원본 짝이
+        #   없으면 세로관 아래 주배관 접속점의 원본 연결로 확인한다. 추측으로 긋지 않는다.
+        #   부속 종류·등가길이는 부속표 그대로다.
+        if shape == "tee" and len(arms) == 2 and lab in arc_tee:
+            run_u, riser_end = arc_run_arm(lab)
+            if run_u is not None and unchanged(lab) and unchanged(riser_end):
+                opp = [-run_u[0], -run_u[1]]
+                v_here = fref.get(str(keys.get("nid", {}).get(lab, "")))
+                v_base = (v_here if v_here is not None else
+                          fref.get(str(keys.get("nid", {}).get(riser_end, ""))))
+                if (not any(sum(a*b for a, b in zip(opp, v)) > .94 for v in arms)
+                        and any(sum(a*b for a, b in zip(opp, v)) > .94 for v in plan_dirs(v_base))):
+                    arms = arms + [opp]
+                    basis = "현재 계산망 + 호 갈래 티의 직선 맞은편 (원본 도면 배관으로 확인)"
         need = {"tee": 3, "cross": 4, "elbow": 2}.get(shape, 0)
         symbolic = len(arms) != need if need else True
         flow = ([upstream[lab][0] if len(upstream[lab]) == 1 else "상류 미확정",

@@ -133,10 +133,14 @@ def parse_subdrawing(dxf_path):
 
     `include_hidden_layers=True` 다. 계통도는 꺼둔 레이어에 배관이 있는 일이
     흔해서(A 의 주석), 숨긴 것을 빼면 경로가 끊긴다.
+
+    [오너 2026-09-22 · 그림 38] 읽는 길은 `sub_fastread.read_view` 다 — 도면에
+    안 쓰이는 블록 정의는 속을 비운 사본으로 읽고, 같은 도면은 기억해 둔다.
+    결과는 A 의 파서로 원본을 읽은 것과 **같다**(도면 75장 비교 · 다름 0).
     """
-    from remote30_prototype import parse_dxf_for_view
-    parsed = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
-    return parsed.get("entities") or [], parsed
+    from routes.module_f.sub_fastread import read_view
+    got = read_view(dxf_path)
+    return got["entities"], got["parsed"]
 
 
 def layer_options(entities, colors=None) -> list[dict]:

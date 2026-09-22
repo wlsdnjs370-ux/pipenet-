@@ -20,6 +20,9 @@ from routes.module_f.jobs import (_job_running, _new_session, _run_job, _sess,
                                   route_session)
 from routes.module_f.slots import (
     SLOT_LABELS, _check_slot_kind, _slot_active, _slot_state, _slot_switch)
+# [오너 2026-09-22 · 그림 38] 계통도·기계실 읽기 — 서버가 뜰 때 불러 둔다. 그래야
+#   «같은 도면 기억» 의 코드 판번호가 지금 돌고 있는 코드를 가리킨다.
+from routes.module_f import sub_fastread  # noqa: F401
 from routes.module_f.world import _world_payload
 
 
@@ -76,14 +79,21 @@ def _sub_open_job(sess: dict, dxf, kind: str):
     import os
     import time
 
-    from routes.module_f.subdrawing import (
-        entities_to_world, layer_colors, parse_subdrawing)
+    from routes.module_f.sub_fastread import describe, read_view
+    from routes.module_f.subdrawing import entities_to_world, layer_colors
 
     def job():
         t0 = time.perf_counter()
         label = SLOT_LABELS[kind]
         print(f"[{label}] DXF 읽는 중 — {os.path.basename(str(dxf))}")
-        entities, parsed = parse_subdrawing(dxf)
+        # [오너 2026-09-22 · 그림 38 ①③] 도면에 안 쓰이는 블록 정의는 속을 비운
+        # 사본으로 읽고, 같은 도면은 기억해 둔 것을 쓴다. 결과는 A 의 파서로
+        # 원본을 읽은 것과 같다(`parse_subdrawing` 과 같은 길 · sub_fastread).
+        view = read_view(dxf)
+        entities, parsed = view["entities"], view["parsed"]
+        note = describe(view)
+        if note:
+            print(f"[{label}]   {note}")
         sess["entities"] = entities
         sess["key"] = os.path.splitext(os.path.basename(str(dxf)))[0]
         # 도면 색 그대로 그린다 — 계통도·기계실도 평면도와 같은 규칙이다.
@@ -94,7 +104,9 @@ def _sub_open_job(sess: dict, dxf, kind: str):
         sess["layer_colors"] = colors
         payload = _world_payload(entities_to_world(entities, colors))
         if kind == "system":
-            _system_layers(sess, entities, parsed, payload, label)
+            # ②: 도면을 먼저 띄우고 ★추적은 이어서 — world 는 그 안에서 앉는다.
+            _system_layers(sess, entities, parsed, payload, label,
+                           key=view.get("key"), t_open=t0)
         sess["world"] = payload
         skipped = parsed.get("skipped") or {}
         print(f"[{label}] 완료 {time.perf_counter() - t0:.1f}s · "
@@ -108,33 +120,77 @@ def _sub_open_job(sess: dict, dxf, kind: str):
     return job
 
 
-def _system_layers(sess: dict, entities, parsed, payload: dict, label: str) -> None:
+# ★추적을 아직 고르는 중인 동안 표가 받는 자리 — 끝나면 서버가 정한 것으로 바뀐다
+#   (화면은 `/sub/graph` 응답의 `trace` 로 표를 다시 그린다).
+_TRACE_PENDING = {"mode": "pending", "layers": None, "junk": [], "candidates": [],
+                  "forced": None, "split": None,
+                  "reason": "경로 추적 레이어(★)를 고르는 중입니다 — 잠시 뒤 채워집니다."}
+
+
+def _system_layers(sess: dict, entities, parsed, payload: dict, label: str, *,
+                   key: str | None = None, t_open: float | None = None) -> None:
     """[오너 2026-09-22] 계통도 칸 — 레이어 세 묶음과 경로 추적 레이어(★).
 
     화면(`payload["sub_layers"]`)은 묶음 표로 레이어를 켜고 끄고, 기본값은
     배관망 + 건축만 보인다. 추적은 `sess["sub_trace"]` 를 쓴다(api_sub `_trace`).
     ★실패해도 도면 열기는 막지 않는다 — 종전 화면·종전 추적으로 떨어지고,
       그 사실을 로그에 남긴다(조용히 넘기지 않는다).
+
+    [오너 2026-09-22 · 그림 38 ②③]
+    ★도면을 먼저 띄운다. 표(묶음)까지 만든 뒤 `sess["world"]` 를 앉히고, ★추적
+      그래프(B1F 6~7초)는 그 뒤에 만든다 — 두 점을 찍을 때 쓰는 것이지 도면을
+      보는 데는 필요 없다. 그 사이 표의 ★칸은 «고르는 중» 이다.
+    ★같은 도면이면 전에 고른 표 · ★추적을 그대로 쓴다(`sub_fastread` 기억 —
+      열쇠는 파일 내용 + 코드 판번호라 코드가 바뀌면 다시 고른다).
     """
     import time
 
+    from routes.module_f.sub_fastread import load_trace, store_trace
     from routes.module_f.sub_trace import (
         GROUP_LABELS, layer_rows, plan_trace, public_rows, public_trace)
     t0 = time.perf_counter()
+
+    def say_groups(rows) -> None:
+        n = {g: sum(1 for r in rows if r["group"] == g) for g in GROUP_LABELS}
+        print(f"[{label}] 레이어 묶음 — 배관망 {n['net']} · 건축 {n['arch']} · "
+              f"숨김 {n['etc']} ({time.perf_counter() - t0:.1f}s)")
+
+    got = load_trace(key)
+    if got is not None:
+        rows, tr = got
+        sess["sub_trace"] = tr
+        payload["sub_layers"] = {"rows": public_rows(rows),
+                                 "trace": public_trace(tr), "groups": GROUP_LABELS}
+        sess["world"] = payload
+        say_groups(rows)
+        print(f"[{label}] 경로 추적 — {tr['reason']} (전에 골라 둔 것)")
+        return
     try:
         rows = layer_rows(entities, parsed)
-        tr = plan_trace(entities, rows)
     except Exception as exc:  # noqa: BLE001
         sess["sub_trace"] = None
         print(f"[{label}] 레이어 묶음을 못 만들었습니다 — 종전 화면으로 엽니다: {exc}")
         return
-    sess["sub_trace"] = tr
-    payload["sub_layers"] = {"rows": public_rows(rows), "trace": public_trace(tr),
+    payload["sub_layers"] = {"rows": public_rows(rows), "trace": dict(_TRACE_PENDING),
                              "groups": GROUP_LABELS}
-    n = {g: sum(1 for r in rows if r["group"] == g) for g in GROUP_LABELS}
-    print(f"[{label}] 레이어 묶음 — 배관망 {n['net']} · 건축 {n['arch']} · "
-          f"숨김 {n['etc']} ({time.perf_counter() - t0:.1f}s)")
-    print(f"[{label}] 경로 추적 — {tr['reason']}")
+    sess["world"] = payload
+    say_groups(rows)
+    if t_open is not None:
+        print(f"[{label}] 도면을 먼저 띄웁니다 ({time.perf_counter() - t_open:.1f}s) "
+              f"— 경로 추적 레이어(★)는 이어서 고릅니다")
+    t1 = time.perf_counter()
+    try:
+        tr = plan_trace(entities, rows)
+    except Exception as exc:  # noqa: BLE001
+        sess["sub_trace"] = None
+        payload["sub_layers"]["trace"] = None
+        print(f"[{label}] 경로 추적 레이어를 못 골랐습니다 — 자동 레이어로 추적합니다: {exc}")
+        return
+    dt = time.perf_counter() - t1
+    sess["sub_trace"] = tr
+    payload["sub_layers"]["trace"] = public_trace(tr)
+    store_trace(key, rows, tr, dt)
+    print(f"[{label}] 경로 추적 — {tr['reason']} ({dt:.1f}s)")
 
 
 def register(app, *, _save_upload):

@@ -2433,6 +2433,16 @@
                      layers: d.layers, chosen: d.chosen,
                      // [오너 2026-09-22] ★추적 레이어 — 무엇으로 추적하는지 말한다.
                      trace: d.trace || null, trace_on: !!d.trace_on };
+      // [오너 2026-09-22 · 그림 38 ②] 도면을 먼저 띄웠으면 표의 ★칸은 «고르는
+      //   중» 으로 그려져 있다 — 서버가 고른 것으로 표를 다시 그린다(켜고 끈
+      //   상태는 그대로다 · `_grpInit`).
+      //   ★를 못 고른 도면(서버가 null)은 자동 레이어 표시로 돌아간다.
+      const sl = S.world && S.world.sub_layers;
+      if (sl && S.slot === "system" && "trace" in d
+          && JSON.stringify(sl.trace || null) !== JSON.stringify(d.trace || null)) {
+        sl.trace = d.trace || null;
+        buildLayers();
+      }
     } catch (err) {
       S.subGraph = null;
       say(`경로 미리보기를 못 켰습니다 — ${err.message}`, "warn");
@@ -4138,6 +4148,9 @@
   function sysTraceSet(sl) {
     const tr = sl.trace || {};
     if (tr.mode === "pipe") return new Set(tr.layers || []);
+    // [오너 2026-09-22 · 그림 38 ②] 도면을 먼저 띄운 동안 서버가 아직 ★를
+    //   고르는 중이다 — 끝나면 `/sub/graph` 응답으로 표가 다시 그려진다.
+    if (tr.mode === "pending") return new Set();
     return new Set((sl.rows || []).filter((r) => r.auto).map((r) => r.layer));
   }
 

@@ -23,7 +23,7 @@ from routes.module_f import overrides as ov
 from routes.module_f.common import _fail
 from routes.module_f.jobs import _job_running, _run_job, route_session
 from routes.module_f.merge import (
-    ANCHOR_LABEL, SUPPLY_MODES, MergeError, bake_combined_iso, bake_combined_plan,
+    ANCHOR_LABEL, PUMP_MODES, SUPPLY_MODES, MergeError, bake_combined_iso, bake_combined_plan,
     check_supply_mode, combined_summary, merge_network)
 from routes.module_f.slots import SLOT_KINDS, _slot_active, _slot_capture
 
@@ -490,7 +490,7 @@ def register(app, *, UPLOAD_DIR):
         out_dir = Path(UPLOAD_DIR).parent / "module_f_merged" / sess["id"]
 
         def job():
-            from routes.module_f.emit import emit_merged
+            from routes.module_f.emit import ISO_SPREAD, emit_merged
             print("[결합] S750 입력파일 생성")
             # 아이소 좌표 한 벌을 함께 낸다 — 화면 미리보기가 쓰는 **그 함수**로
             # 구운 절점을 넘긴다(두 자리가 각자 셈하면 화면과 파일이 갈린다).
@@ -501,7 +501,14 @@ def register(app, *, UPLOAD_DIR):
                 iso_nodes=iso_nodes,
                 # 평면 .sdf 의 그림 자리 — 평면 보기 화면과 같은 함수(bake_combined_plan).
                 plan_nodes=bake_combined_plan(got)[0],
-                display_reference_labels=list((got.get("parts") or {}).get("plan") or ()))
+                display_reference_labels=list((got.get("parts") or {}).get("plan") or ()),
+                # [오너 2026-09-22] 아이소 노드가 너무 커 보인다 — 아이소 좌표만 넓힌다.
+                iso_spread=ISO_SPREAD,
+                # [오너 2026-09-22] 펌프 가압인데 펌프 제원(곡선)이 없으면 수원에 0 g 만
+                #   걸려 PIPENET 이 헤드→펌프로 거꾸로 흐른다고 계산했다 — 그때만
+                #   «가장 먼 헤드» 방식으로 저장한다(펌프가 들어간 망·고가수조는 종전 그대로).
+                remote_nozzle=(got.get("mode") in PUMP_MODES
+                               and not (got["combined"].pumps or ())))
             sess["merge_files"] = files
             for k, v in files.items():
                 if isinstance(v, str) and v:

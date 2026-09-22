@@ -27,7 +27,17 @@ import zipfile
 from pathlib import Path
 
 from routes.module_f.kfp_export import finish_kfp
-from routes.module_f.export_compat import prepare_sdf_export, emit_physical_kfp
+from routes.module_f.export_compat import (
+    prepare_sdf_export, emit_physical_kfp, use_remote_nozzle_export)
+
+# [오너 2026-09-22] 「파이프넷 아이소매트릭의 노드의 크기가 너무 커서 보기가
+#   안좋아. 좀 더 작은 크기로 출력되었으면 좋겠어.」 — PIPENET 은 노드 점·노즐
+#   삼각형·유량 화살표를 **도면 좌표 단위의 고정 크기**로 그린다. 그래서 기호를
+#   줄이는 길은 좌표를 넓히는 것뿐이다. 통합 아이소 배관은 그림 위에서 32~54
+#   단위(B1F 32~41)라 수작업 모델(중앙값 약 116)보다 3배쯤 짧았다 — 3배로 넓히면
+#   노드·기호가 1/3 크기로 보이고, 노즐 꼬리는 종전 길이(B1F 43 · 수작업 약 57)를
+#   그대로 둔다. 모양(방향·비율)은 한 점도 안 바뀌고 그림 크기만 커진다.
+ISO_SPREAD = 3.0
 
 
 def _positions_moved(nodes: list, shown: list) -> bool:
@@ -44,7 +54,9 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
                 coord_scale: float = 1.0,
                 iso_nodes: list | None = None,
                 display_reference_labels: list[str] | None = None,
-                plan_nodes: list | None = None) -> dict:
+                plan_nodes: list | None = None,
+                iso_spread: float = 1.0,
+                remote_nozzle: bool = False) -> dict:
     """결합망 하나 → {sdf, slf, kfp, has, zip, warnings}. 값은 절대경로.
 
     `combined` 는 `stitch_riser_and_heads` 산출(`CombinedTables`)이다.
@@ -67,6 +79,15 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
     평면 보기 화면과 같은 함수). [오너 2026-09-21] 계통도 세로관을 세로로
     세운 좌표라, KFP 는 그 전에 **실제 좌표 SDF** 로 만든다(아래 ③-2).
     실제 좌표와 같으면(template·같은 층) 다시 쓰지 않는다 — 산출이 종전과 같다.
+
+    `iso_spread` [오너 2026-09-22] 는 아이소 .sdf 의 좌표만 몇 배로 넓히는가다
+    (기본 1 = 종전 그대로, 통합 산출 API 는 `ISO_SPREAD`). 노즐 꼬리 길이는
+    그대로 둔다. 아이소 .has 는 넓히기 전 좌표로 만든다(바뀌는 것은 .sdf 뿐).
+
+    `remote_nozzle` [오너 2026-09-22] 이 참이면 평면·아이소 .sdf 두 벌을
+    PIPENET «가장 먼 헤드» 계산 방식으로 저장한다 — 펌프 가압인데 펌프 제원이
+    없어 수원(맨 아래)에 0 g 만 걸린 망이 헤드→수원으로 거꾸로 흐르던 문제.
+    KFP·HAS 는 바꾸기 **전** 파일로 이미 만들었으므로 한 글자도 안 바뀐다.
     """
     from remote30_full_network import ProjectContext, emit_full_sdf
 
@@ -78,6 +99,9 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
     # does. All three parts share this ONE scale; no independent stretching or
     # joint-moving is allowed. The iso view gets the same units/mm as the plan.
     display_options = {}
+    if iso_spread != 1.0 and not (display_reference_labels and iso_spread > 1.0
+                                  and iso_spread != float("inf")):
+        raise ValueError("아이소 좌표 배수는 1보다 큰 유한한 값이어야 하며 평면 기준 절점이 필요합니다.")
     if display_reference_labels is not None:
         from src.pipenet_converter.render.framing import reference_display_scale
         at = {str(n['label']): n for n in combined.nodes}
@@ -131,6 +155,11 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"HAS 변환 실패: {type(exc).__name__}: {exc}")
 
+    # ③-3 [오너 2026-09-22] 펌프 제원 없는 펌프 가압 — «가장 먼 헤드» 방식.
+    #   KFP·HAS 를 다 만든 **뒤** 에 .sdf 만 바꾼다(그 둘은 종전 그대로).
+    if remote_nozzle:
+        warnings.extend(use_remote_nozzle_export(sdf))
+
     # ④ S770 — 형식별 파일 + 대조 자료를 하나로.
     zip_path = out / f"{stem}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -181,6 +210,19 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
                 out_files["has_iso"] = str(iso_has)
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"아이소 HAS 변환 실패: {type(exc).__name__}: {exc}")
+            # [오너 2026-09-22] 아이소 .sdf 만 좌표를 넓혀 다시 쓴다 — 같은 표 · 같은
+            #   함수 · 배율만 `iso_spread` 배. HAS 는 위에서 종전 좌표로 이미 났다.
+            if iso_spread != 1.0:
+                emit_full_sdf(iso_tbl, iso_sdf,
+                              ctx=ProjectContext.titled(f"{title} (아이소)"),
+                              display_scale=display_options["display_scale"] * iso_spread)
+                for message in prepare_sdf_export(
+                        iso_sdf, nozzle_reference_labels=display_reference_labels,
+                        display_spread=iso_spread):
+                    if message not in warnings:
+                        warnings.append(message)
+            if remote_nozzle:
+                warnings.extend(use_remote_nozzle_export(iso_sdf))
             with zipfile.ZipFile(zip_path, "a", zipfile.ZIP_DEFLATED) as zf:
                 for p in (iso_sdf, iso_slf, *([iso_kfp] if out_files.get("kfp_iso") else []), iso_has):
                     if p.is_file():

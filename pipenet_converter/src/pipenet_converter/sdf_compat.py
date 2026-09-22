@@ -122,3 +122,44 @@ def prepare_sdf(path: str | Path, *,
                      b'<!DOCTYPE Project SYSTEM "spray.dtd">\n' +
                      ET.tostring(root, encoding="utf-8"))
     return report
+
+
+def use_most_remote_nozzle(path: str | Path) -> None:
+    """Let PIPENET solve the supply pressure from its most remote nozzle.
+
+    A pumped network exported without a pump element used to keep a fixed
+    atmospheric pressure (0 g) at its low source. Nothing then pushes water up
+    to the heads, and PIPENET reports reversed flows (heads toward the source).
+    PIPENET's "Most Remote Nozzle" calculation type instead adds one flow
+    specification -- the hydraulically most remote nozzle at its required
+    flow -- so the single input node must carry no specification, and PIPENET
+    calculates the pressure the pump must deliver there. The company's manual
+    pump-zone models (``*_REMOTE.sdf``) use exactly this form.
+
+    Only the calculation type and the input node's own specification change.
+    Pipes, nozzles, elevations, positions and zero-flow caps stay as written.
+    """
+    path = Path(path)
+    tree = ET.parse(path)
+    root = tree.getroot()
+    options = root.find(".//Network-spray/Attributes/Design-options")
+    container = root.find(".//Network-spray/Nodes")
+    links = root.find(".//Network-spray/Links")
+    if options is None or container is None or links is None:
+        raise ValueError("SDF에 Design-options, Nodes 또는 Links가 없습니다.")
+    inputs = [n for n in container.findall("Node") if n.get("io-node") == "Input"]
+    if len(inputs) != 1:
+        raise ValueError(f"급수원(Input) 절점이 {len(inputs)}개입니다 — 정확히 1개여야 합니다.")
+    if links.find(".//Pump-fan") is not None:
+        raise ValueError("펌프 요소가 있는 망은 펌프 곡선으로 계산합니다.")
+    if links.find(".//Nozzle") is None:
+        raise ValueError("노즐이 없어 가장 먼 헤드를 정할 수 없습니다.")
+    options.set("specification-type", "remote-nozzle")
+    for child in options.findall("Nozzle-specification"):
+        options.remove(child)
+    for spec in inputs[0].findall("Calculation-spec"):
+        inputs[0].remove(spec)
+    ET.indent(root, space="  ")
+    path.write_bytes(b'<?xml version="1.0" encoding="UTF-8"?>\n'
+                     b'<!DOCTYPE Project SYSTEM "spray.dtd">\n' +
+                     ET.tostring(root, encoding="utf-8"))

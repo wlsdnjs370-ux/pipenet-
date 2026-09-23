@@ -6102,8 +6102,9 @@
       ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = MERGE_COLOR.seam;
-      ctx.font = "11px sans-serif";
-      ctx.fillText(n.joint ? `공통노드 : ${n.joint}` : "공통노드", px + 14, py + 4);
+      // [오너 2026-09-23] 한 치수 크게 — 다른 글자(11px)보다 한 칸 키우고 굵게.
+      ctx.font = "bold 12px sans-serif";
+      ctx.fillText(n.joint ? `공통노드 : ${n.joint}` : "공통노드", px + 15, py + 4);
     }
 
     // ⑦ 급수원·밸브·펌프 — 손질 화면의 사각 마커 규약 그대로.

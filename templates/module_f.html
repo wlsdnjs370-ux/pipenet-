@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · CAD 임포트 워크벤치</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260922-multi-system">
+<link rel="stylesheet" href="/static/module_f.css?v=20260923-common-node">
 </head>
 <body>
 <header>
@@ -820,10 +820,13 @@
         <span>격자 — 한 칸 1 m</span></label>
       <label class="chk"><input type="checkbox" id="mg-under">
         <span>배관 밑그림 깔기 — 아이소 «아래» 에 도면을 겹쳐 본다</span></label>
+      <!-- [오너 2026-09-22 · 그림 45] 계통도 칸을 더하면 밑그림 칸도 늘어난다 —
+           이름과 «계통도 2 · 3 …» 칸은 서버가 보낸 줄에 맞춰 module_f.js 의
+           `syncMergeUnderBoxes` 가 짓는다(여기 셋은 늘 있는 칸이다). -->
       <div class="mg-under-options">
-        <label class="chk"><input type="checkbox" id="mg-under-plan" checked><span>평면도</span></label>
-        <label class="chk"><input type="checkbox" id="mg-under-system" checked><span>계통도</span></label>
-        <label class="chk"><input type="checkbox" id="mg-under-machineroom" checked><span>기계실</span></label>
+        <label class="chk" data-kind="plan"><input type="checkbox" id="mg-under-plan" checked><span>평면도</span></label>
+        <label class="chk" data-kind="system"><input type="checkbox" id="mg-under-system" checked><span>계통도</span></label>
+        <label class="chk" data-kind="machineroom"><input type="checkbox" id="mg-under-machineroom" checked><span>기계실</span></label>
       </div>
       <div id="mg-under-note" class="hint"></div>
       <div id="mg-grid-note" class="hint"></div>
@@ -1016,6 +1019,6 @@
 <script src="/static/module_f_editor.js?v=20260921-riser-delete"></script>
 <script src="/static/module_f_inspection.js?v=20260921-merged-branch-elbow"></script>
 <script src="/static/module_f_regions.js?v=20260921-lasso"></script>
-<script src="/static/module_f.js?v=20260922-multi-system"></script>
+<script src="/static/module_f.js?v=20260923-common-node"></script>
 </body>
 </html>

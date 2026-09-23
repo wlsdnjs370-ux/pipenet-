@@ -31,6 +31,7 @@ from routes.module_f.slots import (
 from routes.module_f.system_chain import chain_label, chain_risers
 from test_module_f_system_layout import heads, system
 from test_module_f_shared_nodes import machine_room
+from test_module_f_network_editor import session
 
 PIPENET_LABEL = re.compile(r"[A-Za-z][A-Za-z0-9]*|[0-9]+")
 
@@ -311,3 +312,108 @@ def test_단면_계통도와_섞이면_단면_쪽_y_를_펴서_잇는다():
     kept = chain_risers([base, both])
     assert kept['system_coordinate_mode'] == 'section_xz'
     assert {n['label']: n for n in kept['nodes']}['n3']['y'] == 4000
+
+
+# ─────────────────────────────────────────────── 5. 통합 화면 — 밑그림 · 공통 노드
+#   [오너 2026-09-22 · 그림 45·46] 계통도 칸 수만큼 밑그림 줄이 나고, 공통 노드는
+#   번호가 아니라 «어느 두 도면이 만나는 자리인지» 로 부른다.
+def _world(edges):
+    points = [point for edge in edges for point in (edge[:2], edge[2:])]
+    xs, ys = zip(*points)
+    return dict(bounds=dict(minx=min(xs), miny=min(ys), maxx=max(xs), maxy=max(ys)),
+                bundles=[dict(segs=[v for edge in edges for v in edge], circles=[], arcs=[])])
+
+
+def _two_system_session(sess):
+    """평면도 · 계통도 1 · 계통도 2 · 기계실 — 밑그림(원도면 도형)까지 갖춘 세션."""
+    from routes.module_f.api_merge import rebuild_merged
+    from test_module_f_merge_underlays import drawings
+    drawings(sess)                                   # 평면도 · 계통도 · 기계실 밑그림
+    sess['slots']['system']['riser'] = system(True)  # 두 점으로 뽑은 경로라야 잇는다
+    kind = _slot_add_system(sess)
+    sess['slots'][kind].update(
+        key='system2-source', riser=second(),
+        world=_world([[100000, 50000, 102000, 50000], [102000, 50000, 102000, 53000]]))
+    sess['supply_mode'] = 'hsp_pump'
+    rebuild_merged(sess, persist_overrides=False)
+    return kind
+
+
+def test_공통_노드는_어느_두_도면이_만나는지로_부른다():
+    from routes.module_f.system_chain import joint_names
+    chained = chain_risers([system(True), second()], ['계통도 1', '계통도 2'])
+    got = merge_network(heads(), riser=chained, machineroom=machine_room(), mode='hsp_pump')
+    assert joint_names(got) == {'10': '평면도-계통도1', '1': '계통도1-계통도2',
+                                's21': '계통도2-기계실'}
+    one = merge_network(heads(), riser=system(True), machineroom=machine_room(),
+                        mode='hsp_pump')
+    assert joint_names(one) == {'10': '평면도-계통도', '1': '계통도-기계실'}  # 한 장이면 칸 이름 그대로
+    alone = merge_network(heads(), riser=system(True), mode='lsp_gravity')
+    assert joint_names(alone) == {'10': '평면도-계통도'}          # 기계실이 없으면 그 자리도 없다
+
+
+@pytest.mark.parametrize('iso', [False, True])
+def test_계통도마다_밑그림_줄이_나고_앞뒤_공통_노드에_맞춘다(session, iso):
+    from routes.module_f.merge import bake_combined_plan
+    from routes.module_f.underlays import reference_layers
+    from test_module_f_merge_underlays import transform
+    kind = _two_system_session(session)
+    got = session['merged']
+    before = deepcopy(vars(got['combined']))
+    rows = reference_layers(session, got, iso=iso, geometry=True)
+    assert [r['kind'] for r in rows] == ['plan', 'system', kind, 'machineroom']
+    assert [r['label'] for r in rows] == ['평면도', '계통도 1', '계통도 2', '기계실']
+    assert all(r['available'] and r['groups'] for r in rows), [r['reason'] for r in rows]
+    assert rows[2]['bounds'] == session['slots'][kind]['world']['bounds']
+    assert got['system_layout'] == 'physical_xy'
+    nodes = bake_combined_iso(got)[0] if iso else bake_combined_plan(got)[0]
+    at = {str(n['label']): (n['x'], n['y']) for n in nodes}
+    for row, (av, inp, av_to, inp_to) in zip(
+            rows[1:3], [((5000, 4000), (0, 0), '10', '1'),
+                        ((102000, 53000), (100000, 50000), '1', 's21')]):
+        a, b, c, d, _, _ = row['matrix']
+        assert b == c == 0 and a == d and a != 0          # 기울이지도 찌그러뜨리지도 않는다
+        # ② 점은 앞 공통 노드에 그대로 앉고, ① 점은 뒤 공통 노드 «높이» 에 맞는다.
+        assert transform(row['matrix'], av) == pytest.approx(at[av_to], abs=1e-6)
+        assert transform(row['matrix'], inp)[1] == pytest.approx(at[inp_to][1], abs=1e-6)
+    assert '계통도1-계통도2' in rows[1]['note'] and '계통도2-기계실' in rows[2]['note']
+    assert vars(got['combined']) == before                # 밑그림은 배관망을 건드리지 않는다
+
+
+def test_결합_뒤에_더한_계통도_칸은_다시_결합하라고_말한다(session):
+    from routes.module_f.underlays import reference_layers
+    _two_system_session(session)
+    third = _slot_add_system(session)                     # 결합은 그대로 두고 칸만 더한다
+    session['slots'][third].update(key='system3-source', riser=second(),
+                                   world=_world([[0, 0, 1000, 0]]))
+    rows = {r['kind']: r for r in reference_layers(session, session['merged'], iso=True)}
+    assert rows[third]['available'] is False
+    assert '다시 결합' in rows[third]['reason']
+    assert rows['system']['available'] and rows['machineroom']['available']
+
+
+def test_화면이_공통_노드_이름을_받아_그린다(monkeypatch, tmp_path):
+    from routes.module_f import network_edit as ne
+    from routes.module_f.api_merge import rebuild_merged
+    from test_module_f_network_editor import design
+    monkeypatch.setattr(ne, 'HISTORY_DIR', tmp_path / 'history')
+    c = _client()
+    s = jobs._new_session(key='chain-joint-names')
+    try:
+        s['design'] = design()
+        s['supply_mode'] = 'hsp_pump'
+        s['slots']['system']['riser'] = system(True)
+        kind = _slot_add_system(s)
+        s['slots'][kind]['riser'] = second()
+        rebuild_merged(s, persist_overrides=False)
+        d = c.get(f"/api/module-f/merge/preview?sid={s['id']}").get_json()
+        at = {n['label']: n for n in d['view']['nodes']}
+        assert at['10']['joint'] == '평면도-계통도1'
+        assert at['1']['joint'] == '계통도1-계통도2'
+        assert d['counts']['joints'] == ['평면도-계통도1', '계통도1-계통도2']
+        assert all('joint' not in n for n in d['view']['nodes'] if not n.get('anchor'))
+        # 검사줄도 같은 이름으로 말한다(«기준점 10» 대신).
+        st = c.get(f"/api/module-f/merge/state?sid={s['id']}").get_json()
+        assert st['checks']['anchor_joint'] == '평면도-계통도1'
+    finally:
+        jobs._SESSIONS.pop(s['id'], None)

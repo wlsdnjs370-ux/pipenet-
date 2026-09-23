@@ -3592,7 +3592,10 @@
   function mergeSeamLines(ck) {
     if (!ck || !ck.combined) return "";
     let html = "";
-    if (ck.anchor_gap) html += kv("기준점 10 벌어짐", ck.anchor_gap);
+    if (ck.anchor_gap) {
+      html += kv(`공통노드 : ${ck.anchor_joint || "평면도-계통도"}`,
+                 `벌어짐 ${ck.anchor_gap}`);
+    }
     const ps = ck.pump_seam;
     if (ps) {
       html += kv("기계실 이음매",
@@ -3817,10 +3820,44 @@
   // 변환) 가 없으면 어림값으로 깔지 않고 사유를 말하며 끈다.
   const mergeUnderCache = new Map();
   let mergeUnderRequest = 0;
+  /** [오너 2026-09-22 · 그림 45] 밑그림 칸을 **줄 수만큼** 짓는다.
+   *
+   *  ★칸이 셋(평면도·계통도·기계실)으로 박혀 있으면 계통도를 더해도 그 도면은
+   *    깔 수가 없다 — 서버가 계통도 칸마다 한 줄씩 보내므로, 없는 칸은 만들고
+   *    없어진 칸은 지운다. 세 칸의 이름(id)은 그대로라 종전 규약이 그대로 선다.
+   */
+  function syncMergeUnderBoxes() {
+    const box=document.querySelector(".mg-under-options");
+    const rows=S.mergeView?.underlays || [];
+    if (!box || !rows.length) return;
+    const want=new Set(rows.map((r) => r.kind));
+    for (const el of box.querySelectorAll("label[data-kind]")) {
+      if (!want.has(el.dataset.kind)) el.remove();
+    }
+    let after=null;
+    for (const r of rows) {
+      let input=$(`mg-under-${r.kind}`);
+      if (!input) {
+        const label=document.createElement("label");
+        label.className="chk";
+        label.dataset.kind=r.kind;
+        label.innerHTML=`<input type="checkbox" id="mg-under-${r.kind}" checked><span></span>`;
+        input=label.querySelector("input");
+        input.onchange=()=>{renderMergeUnderOptions();draw();};
+        if (after) after.after(label); else box.appendChild(label);
+      }
+      const label=input.closest("label");
+      label.querySelector("span").textContent=r.label;
+      after=label;
+    }
+  }
+
   function renderMergeUnderOptions() {
+    syncMergeUnderBoxes();
     const notes=[];
     for (const row of S.mergeView?.underlays || []) {
       const el=$(`mg-under-${row.kind}`);
+      if (!el) continue;
       el.disabled=!row.available;
       el.title=row.available ? row.source : row.reason;
       if (!row.available) notes.push(`${row.label}: ${row.reason}`);
@@ -3874,8 +3911,8 @@
     } catch (err) { say(`밑그림을 불러오지 못했습니다: ${err.message}`,"err"); }
   }
   if ($("mg-under")) $("mg-under").onchange=loadMergeUnderlays;
-  for (const kind of ["plan","system","machineroom"]) {
-    $(`mg-under-${kind}`).onchange=()=>{renderMergeUnderOptions();draw();};
+  for (const el of document.querySelectorAll(".mg-under-options input")) {
+    el.onchange=()=>{renderMergeUnderOptions();draw();};
   }
   // 좌표를 바꾸면 그 벌이 났는지에 따라 단추가 갈린다.
   $("mg-dl-coord").onchange = () => renderMergeFiles();
@@ -3970,9 +4007,12 @@
       + ` · 기계실 ${c.machineroom}`
       + ` · <span style="color:${MERGE_COLOR.seam}">■</span> 이음매 배관`
       + ` ${c.seam}`
-      + (c.anchor && c.anchor.length
-         ? ` · <span style="color:${MERGE_COLOR.seam}">✛</span> 기준점`
-           + ` ${c.anchor.join("·")}` : "")
+      + (c.joints && c.joints.length
+         ? ` · <span style="color:${MERGE_COLOR.seam}">✛</span> 공통노드 : `
+           + `${c.joints.join(", ")}`
+         : (c.anchor && c.anchor.length
+            ? ` · <span style="color:${MERGE_COLOR.seam}">✛</span> 공통노드`
+              + ` ${c.anchor.length}곳` : ""))
       + (d.iso
          ? (mgSuffix() === "_iso"
             ? " · <b>30° 아이소</b> — 내려받는 좌표도 아이소"
@@ -6051,7 +6091,9 @@
       ctx.stroke();
     }
 
-    // ⑥ 기준점 — 앵커 규약(빨간 겹원). 세 도면이 만나는 그 한 점이다.
+    // ⑥ 공통 노드 — 앵커 규약(빨간 겹원). 두 도면이 만나는 그 한 점이다.
+    //   [오너 2026-09-22 · 그림 46] 번호(10 · 1 · s21)가 아니라 «어느 두 도면이
+    //   만나는 자리인지» 를 적는다 — 번호는 .sdf · .kfp 안 라벨이라 그대로 둔다.
     for (const n of v.nodes) {
       if (!n.anchor) continue;
       const px = sx(n.x), py = sy(n.y);
@@ -6061,7 +6103,7 @@
       ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = MERGE_COLOR.seam;
       ctx.font = "11px sans-serif";
-      ctx.fillText(`기준점 ${n.label}`, px + 14, py + 4);
+      ctx.fillText(n.joint ? `공통노드 : ${n.joint}` : "공통노드", px + 14, py + 4);
     }
 
     // ⑦ 급수원·밸브·펌프 — 손질 화면의 사각 마커 규약 그대로.
@@ -6124,7 +6166,8 @@
     const colors={plan:'#7aa2ff',system:'#d6a4ff',machineroom:'#63d7bd'};
     const frames=[];
     for (const r of S.mergeView?.underlays || []) {
-      if (!r.available || !$(`mg-under-${r.kind}`).checked) continue;
+      const on=$(`mg-under-${r.kind}`);
+      if (!r.available || !(on && on.checked)) continue;
       const cached=mergeUnderCache.get(r.token);
       if (!cached) continue;
       const signature=JSON.stringify(r.matrix);
@@ -6138,7 +6181,7 @@
         cached.signature=signature;
       }
       frames.push(cached.projectedCorners);
-      ctx.save();ctx.globalAlpha=.22;ctx.strokeStyle=colors[r.kind];
+      ctx.save();ctx.globalAlpha=.22;ctx.strokeStyle=colors[slotRole(r.kind)] || colors.system;
       ctx.translate(sx(0),sy(0));ctx.scale(S.view.scale,-S.view.scale);
       ctx.lineWidth=1/S.view.scale;ctx.stroke(cached.projected);
       // Project with the drawing, but keep dash length/line width in screen pixels.
@@ -6668,7 +6711,7 @@
     if (n.pump) roles.push("펌프");
     if (n.valve) roles.push("알람밸브");
     if (n.head) roles.push("헤드");
-    if (n.anchor) roles.push("기준점(세 도면이 만나는 자리)");
+    if (n.anchor) roles.push(n.joint ? `공통노드 : ${n.joint}` : "공통노드");
     const fittingRole = window.moduleFMergeInspection?.role(label);
     if (fittingRole) roles.push(fittingRole);
     $("dg-ins-kind").textContent = "통합 절점";

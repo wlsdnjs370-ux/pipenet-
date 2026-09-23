@@ -265,6 +265,8 @@ def _js_fn(name):
 def test_화면이_이음매_숫자를_보인다():
     body = _js_fn("mergeSeamLines")
     ck = {"combined": True, "anchor_gap": "0.0 mm · 표고차 0.000 m",
+          # [오너 2026-09-22 · 그림 46] 공통 노드는 번호가 아니라 두 도면 이름으로 부른다.
+          "anchor_joint": "평면도-계통도1",
           "pump_seam": {"pipe": "m11", "coord_mm": 1988.6, "table_m": 1.88,
                         "ratio": 1.058},
           "part_bbox": {"plan": {"ratio_to_plan": 1.0},
@@ -275,7 +277,8 @@ def test_화면이_이음매_숫자를_보인다():
           "layout_status": {"machineroom": "ok", "riser": "ok"}}
     out = _run_js(body, f"mergeSeamLines({__import__('json').dumps(ck)})")
     # 좌표 1988.6 mm → 1.989 m 와 표 1.88 m 를 **나란히** 보인다.
-    for want in ("기준점 10 벌어짐", "m11", "1.989", "1.88", "0.393", "1.086"):
+    for want in ("공통노드 : 평면도-계통도1", "벌어짐 0.0 mm", "m11", "1.989",
+                 "1.88", "0.393", "1.086"):
         assert want in out, (want, out)
     # 정상이면 경고를 띄우지 않는다 — 늑대 소년이 되면 아무도 안 본다.
     assert "warn" not in out, out

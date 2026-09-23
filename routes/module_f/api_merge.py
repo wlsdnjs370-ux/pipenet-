@@ -130,6 +130,24 @@ def _materials(sess: dict) -> dict:
     return out
 
 
+def _checks_view(got) -> dict | None:
+    """[오너 2026-09-22 · 그림 46] 결합 검사 그대로 + 공통 노드 이름 한 줄.
+
+    화면의 이음매 줄이 «기준점 10» 대신 «공통노드 : 평면도-계통도1» 로 말하려면
+    그 이름이 필요하다. 검사 자체는 한 글자도 바꾸지 않는다(사본에 한 칸만 더한다).
+    """
+    if not isinstance(got, dict):
+        return None
+    ck = got.get("checks")
+    if not isinstance(ck, dict):
+        return ck
+    from routes.module_f.merge import ANCHOR_LABEL
+    from routes.module_f.system_chain import joint_names
+    out = dict(ck)
+    out["anchor_joint"] = joint_names(got).get(str(ANCHOR_LABEL))
+    return out
+
+
 def _system_missing(mats: dict) -> list:
     """[오너 2026-09-22] 계통도를 여러 장 올렸는데 경로가 아직 없는 칸 — 결합 전에 말한다."""
     return [name for name, riser in zip(mats.get("system_names") or (),
@@ -284,8 +302,7 @@ def register(app, *, UPLOAD_DIR):
             "merged": bool(sess.get("merged")),
             "summary": sess.get("merge_summary"),
             # [D5] 결합 뒤 검사 — 화면이 «성립했는가» 를 볼 수 있게 그대로.
-            "checks": ((sess.get("merged") or {}).get("checks")
-                       if isinstance(sess.get("merged"), dict) else None),
+            "checks": _checks_view(sess.get("merged")),
         })
 
     # ─────────────────────────────────── S720~S740
@@ -364,6 +381,10 @@ def register(app, *, UPLOAD_DIR):
             shared.add(str(got["pump_junction"]))
         # [오너 2026-09-22] 계통도끼리 만나는 공통 노드도 이음매다.
         shared |= {str(x) for x in (got.get("chain_joints") or ())}
+        # [오너 2026-09-22 · 그림 46] 공통 노드는 번호가 아니라 «어느 두 도면이 만나는
+        #   자리인지» 로 부른다 — 화면의 글자·범례·카드가 이 이름을 그대로 쓴다.
+        from routes.module_f.system_chain import joint_names
+        joints = joint_names(got)
 
         nodes = [dict(n) for n in (c.nodes or ())]
         mr_edges = [list(map(float, e)) for e in
@@ -445,6 +466,8 @@ def register(app, *, UPLOAD_DIR):
                 rec["input"] = True
             if lab in shared:
                 rec["anchor"] = True
+                if joints.get(lab):
+                    rec["joint"] = joints[lab]
             out_nodes.append(rec)
 
         out_pipes = []
@@ -498,7 +521,10 @@ def register(app, *, UPLOAD_DIR):
                                           if n["part"] == "machineroom"),
                        "seam": sum(1 for p in out_pipes
                                    if p["part"] == "seam"),
-                       "anchor": sorted(shared)},
+                       "anchor": sorted(shared),
+                       # 연결 축 차례대로 — 평면도-계통도1 · … · 계통도n-기계실.
+                       "joints": [name for lab, name in joints.items()
+                                  if lab in shared]},
         })
 
     # ─────────────────────────────────── S750 · S760 · S770

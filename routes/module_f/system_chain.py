@@ -158,3 +158,52 @@ def chain_risers(risers, names=None) -> dict:
     out["chain"] = {"count": len(risers), "names": names, "joints": joints,
                     "shifts": shifts, "step": step}
     return out
+
+
+def system_names(got: dict) -> list:
+    """결합망이 쓴 계통도 이름들 — 평면도 쪽부터. 한 장이면 칸 이름 그대로 «계통도».
+
+    이름은 칸 이름에서 띄어쓰기만 뺀 것이다(오너 표기 «공통노드 : 평면도-계통도1»).
+    장 수는 이은 자리(`chain_joints`) 수 + 1 이라 결합할 때의 장 수가 그대로 나온다 —
+    결합 뒤에 칸을 더해도 «지금 화면에 있는 그 결합망» 의 이름이 어긋나지 않는다.
+    """
+    n = len(got.get("chain_joints") or ()) + 1
+    return ["계통도"] if n == 1 else [f"계통도{i}" for i in range(1, n + 1)]
+
+
+def joint_names(got: dict) -> dict:
+    """[오너 2026-09-22] 공통 노드마다 «어느 두 도면이 만나는 자리인가».
+
+    평면도 쪽부터 차례로 넣는다(넣은 차례가 곧 연결 축이다):
+        평면도 ∩ 계통도 1            → 평면도-계통도1
+        계통도 k 의 ① = 계통도 k+1 의 ②  → 계통도k-계통도k+1
+        기계실이 붙은 자리             → 계통도n-기계실
+    번호(10 · 1 · s21)는 파일 안 라벨이라 여기서 쓰지 않는다 — 화면 글자만 이 이름을 쓴다.
+    """
+    parts = got.get("parts") or {}
+    plan = {str(x) for x in (parts.get("plan") or ())}
+    system = {str(x) for x in (parts.get("system") or ())}
+    room = {str(x) for x in (parts.get("machineroom") or ())}
+    names = system_names(got)
+    out: dict = {}
+
+    def put(label, name):
+        label = str(label)
+        if not label:
+            return
+        if label in out:
+            if name not in out[label].split(" · "):
+                out[label] += f" · {name}"
+        else:
+            out[label] = name
+
+    for lab in sorted(plan & system):
+        put(lab, f"평면도-{names[0]}")
+    for lab in sorted(plan & room):
+        put(lab, "평면도-기계실")
+    for i, lab in enumerate(got.get("chain_joints") or ()):
+        if i + 1 < len(names):
+            put(lab, f"{names[i]}-{names[i + 1]}")
+    if got.get("attached") and got.get("pump_junction"):
+        put(got["pump_junction"], f"{names[-1]}-기계실")
+    return out

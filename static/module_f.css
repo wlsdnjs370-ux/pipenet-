@@ -540,6 +540,20 @@
 #ne-history-dialog{max-width:680px;background:#101923;color:#dbe9ec;border:1px solid #527278;}
 #ne-history-text{white-space:pre-wrap;max-height:60vh;overflow:auto;}
 .ne-direct .inspect:not(.hidden){display:flex;max-width:calc(100% - 24px);max-height:55%;border-radius:8px;}
+.bore-overlay{position:absolute;top:10px;left:12px;right:12px;z-index:35;display:flex;align-items:center;flex-wrap:wrap;gap:6px 15px;width:fit-content;max-width:calc(100% - 24px);padding:8px 11px;border:1px solid #293c48;border-radius:6px;background:#091119ee;font-size:12px;color:#d7e6ef;}
+.bore-overlay label{display:flex;gap:6px;align-items:center;white-space:nowrap;}
+#bore-legend{display:flex;gap:6px 14px;flex-wrap:wrap;}
+#bore-legend i{font-style:normal;text-shadow:0 0 5px currentColor;}
+.bore-help{color:#99b0be;font-size:11px;}
+.bore-card{padding:10px 0 12px;border-bottom:1px solid #30414d;margin-bottom:9px;}
+.bore-card-head{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:7px;}
+.bore-user{font-size:11px;color:#edf7ff;}
+.bore-kv{display:flex;gap:12px;justify-content:space-between;padding:5px 0;font-size:12px;}
+.bore-kv>span{color:#97adbd;flex-shrink:0;}
+.bore-kv>b{font-weight:400;overflow-wrap:anywhere;text-align:right;}
+.bore-note,.bore-warning{font-size:11px;line-height:1.6;margin:7px 0;color:#a7bccb;}
+.bore-warning{color:#e7a1ff;}
+.bore-edit{width:100%;margin-top:7px;border-color:#55758c!important;background:#183448!important;}
 .fit-property{padding:10px 0;border-bottom:1px solid var(--line);}
 .fit-heading{display:flex;justify-content:space-between;color:#ff9ca4;font-weight:600;margin-bottom:6px;}
 .fit-source,.fit-evidence{font-size:12px;line-height:1.6;margin-top:7px;overflow-wrap:anywhere;}
@@ -580,3 +594,14 @@
 .mg-split{position:absolute;left:12px;bottom:calc(var(--h-bar) + 52px);z-index:42;
   max-width:min(620px,calc(100% - 24px));padding:8px 14px;background:#3a1618ee;color:#ffc9c2;
   border:1px solid #a4453d;border-radius:6px;font-size:12px;line-height:1.5;pointer-events:none;}
+/* Optional sizing editor stays scoped to the merge sidebar. */
+.sizing-panel { margin:14px 0; padding:10px; border:1px solid #355766; border-radius:5px; }
+.sizing-panel summary { color:#66e1d4; cursor:pointer; line-height:1.6; }
+.sizing-panel select, .sizing-panel input[type=text] { max-width:100%; }
+.sizing-panel input[type=number] { width:100%; background:var(--sunk); color:var(--ink); border:1px solid var(--line-2); padding:6px 8px; font:12px var(--mono); }
+.sizing-panel .hint { line-height:1.6; overflow-wrap:anywhere; }
+.sizing-panel ul { padding-left:18px; max-height:220px; overflow:auto; }
+.sizing-panel details { margin:8px 0; }
+.sizing-table { max-height:340px; overflow:auto; }
+.sizing-table table { font-size:11px; white-space:nowrap; border-collapse:collapse; }
+.sizing-table td, .sizing-table th { padding:5px; border-bottom:1px solid #26333b; }

@@ -22,7 +22,7 @@ from services.cad_import.pipeline.user_net import (
 
 
 def _board_from_data(key, data):
-    return EditBoard(
+    board = EditBoard(
         key, data["pts"], {tuple(e) for e in data["edges"]},
         data["hcov"],
         original_edges={tuple(e) for e in data["edges1"]},
@@ -31,6 +31,9 @@ def _board_from_data(key, data):
         head_kinds=require_head_kinds(
             data["hcov"], data.get("head_kinds") or ()),
         ho=data.get("ho") or ())
+    board.cycle_candidates = list(data.get("cycle_candidates") or ())
+    board.head_junctions = list(data.get("head_junctions") or ())
+    return board
 
 
 def open_board(key, use_cache=True):
@@ -54,6 +57,8 @@ def open_board(key, use_cache=True):
         "ups": result.get("ups") or (),
         "head_kinds": result.get("head_kinds") or (),
         "ho": ho_from_spots(result.get("spots")),
+        "cycle_candidates": list(result.get("cycle_candidates") or ()),
+        "head_junctions": list(result.get("head_junctions") or ()),
     }
     return _board_from_data(key, data)
 
@@ -75,6 +80,8 @@ def load_edits(board, out_dir=None):
     if not os.path.exists(path):
         return False
     raw = json.load(open(path, encoding="utf-8"))
+    from src.pipenet_converter.graph.network import network_mode
+    board.network_mode = network_mode(raw.get("network_mode", "tree"))
     board.selection_zones = normalize_zones(raw.get("selection_zones"))
     board._invalidate_source_cache()
     for rec in raw.get("joins") or []:

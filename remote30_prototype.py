@@ -274,33 +274,16 @@ class ParsedDxfBundle:
 
 
 def _insert_matrix(insert_entity) -> Matrix44:
-    """AutoCAD 표준 INSERT 변환 매트릭스 — M·local = world."""
-    ix = float(insert_entity.dxf.insert.x)
-    iy = float(insert_entity.dxf.insert.y)
-    try:
-        iz = float(insert_entity.dxf.insert.z)
-    except Exception:
-        iz = 0.0
-    sx = float(getattr(insert_entity.dxf, "xscale", 1.0) or 1.0)
-    sy = float(getattr(insert_entity.dxf, "yscale", 1.0) or 1.0)
-    sz = float(getattr(insert_entity.dxf, "zscale", 1.0) or 1.0)
-    rot_rad = math.radians(float(getattr(insert_entity.dxf, "rotation", 0.0) or 0.0))
-    block = insert_entity.doc.blocks.get(insert_entity.dxf.name) if insert_entity.doc else None
-    if block is not None:
-        try:
-            bx = float(block.base_point.x)
-            by = float(block.base_point.y)
-            bz = float(block.base_point.z) if hasattr(block.base_point, "z") else 0.0
-        except Exception:
-            bx = by = bz = 0.0
-    else:
-        bx = by = bz = 0.0
-    return Matrix44.chain(
-        Matrix44.translate(-bx, -by, -bz),
-        Matrix44.scale(sx, sy, sz),
-        Matrix44.z_rotate(rot_rad),
-        Matrix44.translate(ix, iy, iz),
-    )
+    """Resolve block base, scale, rotation AND extrusion using DXF's transform."""
+    return insert_entity.matrix44()
+
+
+def _insert_point(entity, parent=None) -> tuple[float, float]:
+    """Insertion point is OCS; compose it with the enclosing block only once."""
+    point = entity.ocs().to_wcs(entity.dxf.insert)
+    if parent is not None:
+        point = parent.transform(point)
+    return float(point.x), float(point.y)
 
 
 def _t(matrix: Matrix44 | None, x: float, y: float) -> tuple[float, float]:
@@ -513,6 +496,27 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
                 bundle.entities.append({"t": "C", "l": layer, "c": [cx, cy], "r": r})
                 _upd(cx - r, cy - r); _upd(cx + r, cy + r)
             elif etype == "LWPOLYLINE":
+                from src.pipenet_converter.dxf.symbol_geometry import two_arc_circle
+                vertices = list(e.get_points('xyb'))
+                circle = two_arc_circle(vertices, [p[2] for p in vertices], e.closed)
+                if circle is not None:
+                    (cx, cy), radius = circle
+                    point = e.ocs().to_wcs(Vec3(cx, cy, e.dxf.elevation))
+                    if matrix is not None:
+                        point = matrix.transform(point)
+                    # A nonuniform block makes an ellipse, not a nozzle body.
+                    origin = matrix.transform(Vec3(0, 0, 0)) if matrix is not None else Vec3()
+                    vx = matrix.transform(Vec3(1, 0, 0))-origin if matrix is not None else Vec3(1, 0, 0)
+                    vy = matrix.transform(Vec3(0, 1, 0))-origin if matrix is not None else Vec3(0, 1, 0)
+                    sx, sy = vx.magnitude, vy.magnitude
+                    if (sx > 0 and math.isclose(sx, sy, rel_tol=1e-8) and
+                            abs(vx.dot(vy)) <= sx*sy*1e-8 and
+                            max(abs(vx.z), abs(vy.z)) <= sx*1e-8):
+                        r = radius * sx
+                        bundle.entities.append({"t": "C", "l": layer,
+                                                "c": [point.x, point.y], "r": r})
+                        _upd(point.x-r, point.y-r); _upd(point.x+r, point.y+r)
+                        return
                 pts = [list(_t(matrix, p[0], p[1])) for p in e.get_points()]
                 if pts:
                     for x, y in pts:
@@ -525,7 +529,7 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
                         _upd(x, y)
                     bundle.entities.append({"t": "PL", "l": layer, "p": pts})
             elif etype == "INSERT":
-                ix_w, iy_w = _t(matrix, e.dxf.insert.x, e.dxf.insert.y)
+                ix_w, iy_w = _insert_point(e, matrix)
                 if depth == 0:
                     bundle.entities.append({"t": "I", "l": layer, "p": [ix_w, iy_w],
                                            "n": str(e.dxf.name)})
@@ -646,7 +650,7 @@ def parse_dxf_bundle(dxf_path: Path) -> ParsedDxfBundle:
 # 경로·mtime 키는 무의미 → 파일 내용 해시로 dedup. 파싱 로직이 바뀌면
 # _PARSE_CACHE_VERSION 을 올려 기존 캐시를 무효화한다. 캐시 실패는 전부 조용히 무시
 # (기능/정확도엔 영향 없음, 속도만 손해). 저장 위치는 gitignore 된 data/ 하위.
-_PARSE_CACHE_VERSION = 6  # 6: 외부참조(XREF) 시트 진단 필드 추가
+_PARSE_CACHE_VERSION = 7  # OCS INSERT coordinates and closed two-arc head bodies
 _PARSE_CACHE_DIR = _Path(__file__).resolve().parent / "data" / "parse_cache"
 
 
@@ -686,7 +690,7 @@ def parse_dxf_bundle_cached(dxf_path: Path) -> ParsedDxfBundle:
 
 
 def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
-                        keep_nested_insert_markers: bool = False) -> dict:
+                        keep_nested_insert_markers: bool = False, document=None) -> dict:
     """계통도 등 '시각화 우선' 용 파싱 — parse_dxf_bundle 의 보강 버전.
 
     parse_dxf_bundle 과 차이:
@@ -709,7 +713,7 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
             "total_msp_entities": int,        # modelspace 최상위 entity 수
         }
     """
-    doc = ezdxf.readfile(str(dxf_path))
+    doc = document if document is not None else ezdxf.readfile(str(dxf_path))
     msp = doc.modelspace()
 
     entities: list[dict] = []
@@ -789,7 +793,7 @@ def parse_dxf_for_view(dxf_path: Path, *, include_hidden_layers: bool = True,
                 entities.append({"t": "I", "l": layer, "p": [px, py], "n": "POINT"})
                 _upd(px, py)
             elif etype == "INSERT":
-                ix_w, iy_w = _t(matrix, e.dxf.insert.x, e.dxf.insert.y)
+                ix_w, iy_w = _insert_point(e, matrix)
                 if depth == 0 or keep_nested_insert_markers:
                     entities.append({"t": "I", "l": layer, "p": [ix_w, iy_w],
                                       "n": str(e.dxf.name)})
@@ -7449,6 +7453,8 @@ def emit_sdf(tables: PipeTables, out_path: Path, *, project_title: str = "Remote
         break
 
     write_sdf_tree(_tree, out_path)
+    from src.pipenet_converter.sdf.nozzle_overrides import apply_nozzle_overrides
+    apply_nozzle_overrides(out_path,slf_dst,tables.nozzles)
     return out_path
 
 

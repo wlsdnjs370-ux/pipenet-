@@ -12,6 +12,7 @@ import math
 from typing import Any
 
 from src.pipenet_converter.graph.fitting_policy import without_straight_tees
+from src.pipenet_converter.graph.fitting_review import fitting_review
 
 
 # 겹친 노드 판정 — convert.main_walk.JOINT_M(0.01 m)과 같은 값을 board mm 로.
@@ -189,6 +190,16 @@ def build_inspection(tables: Any, got: dict, keys: dict, nodes: list[dict], *,
         stable = unchanged(label) and all(
             unchanged(str(pipes[pl]["out"] if str(pipes[pl]["in"]) == label
                           else pipes[pl]["in"])) for pl in incident[label])
+        confirmed_ports = (got.get('kfp') or {}).get('arc_ports',{}).get(nid)
+        if stable and confirmed_ports and transform:
+            projected=[]
+            for vx,vy,vz in confirmed_ports:
+                dx,dy=vx*1000*float(transform.get('k',1)),vy*1000*float(transform.get('k',1))
+                if transform.get('iso'):
+                    dx,dy=(dx-dy)*transform['cos30'],(dx+dy)*transform['sin30']+vz*float(transform.get('lift',1000))
+                u=_unit(dx,dy)
+                if u: projected.append(u)
+            return projected,len(confirmed_ports),'원본 호의 포트 분리 + 검증된 입체 접속'
         # ★[괄호 교차 꼭대기 · 오너 2026-09-22] 겹친 노드(≤ JOINT_M) 사이의 평면
         #   연결을 전개가 이 노드의 세로관으로 세웠으면, 그 팔은 **세로 팔로 이미
         #   그려져 있다** — «빠진 방향» 후보가 아니다. 이것을 후보에 두면 빠진 팔
@@ -267,7 +278,9 @@ def build_inspection(tables: Any, got: dict, keys: dict, nodes: list[dict], *,
                     basis = "현재 계산망 + 호 갈래 티의 직선 맞은편 (원본 도면 배관으로 확인)"
         need = {"tee": 3, "cross": 4, "elbow": 2}.get(shape, 0)
         symbolic = len(arms) != need if need else True
-        flow = ([upstream[lab][0] if len(upstream[lab]) == 1 else "상류 미확정",
+        review = row.get('flow_direction') == 'solver_reference'
+        flow = ([str(p['in']), str(p['out'])] if review else
+                [upstream[lab][0] if len(upstream[lab]) == 1 else "상류 미확정",
                  lab, str(p["out"])] if lab else [str(p["in"]), "중간 부속", str(p["out"])])
         records.append(dict(id=f"f{i}", pipe=pl, node=lab, kind=kind,
             name=NAMES.get(kind, kind), shape=shape, count=count,
@@ -279,7 +292,10 @@ def build_inspection(tables: Any, got: dict, keys: dict, nodes: list[dict], *,
             eq_total_m=eq*count if eq is not None else None,
             eq_source=why or "해당 종류·관경의 등가길이 미확정",
             pipe_eq_m=p.get("eq_len"), origin="부속 입력표", flow_path=flow,
-            note="종류는 원본 정보를 반영한 부속표 기준 · 축약된 선 모양으로 재판정하지 않음"))
+            flow_label="손실 귀속 배관 · 유향 미확정" if review else "계산 경로",
+            loss_status=row.get('loss_status'),
+            note=("실제 접속점에 표시 · 티 손실은 가지 포트의 검토용 값이며 실제 유향·손실은 수리계산 확인 필요"
+                  if review else "종류는 원본 정보를 반영한 부속표 기준 · 축약된 선 모양으로 재판정하지 않음")))
 
     # Explicit point fittings/valves added with the direct editor live in the
     # equipment table, not the native fitting table. They must be visible too.
@@ -309,7 +325,7 @@ def build_inspection(tables: Any, got: dict, keys: dict, nodes: list[dict], *,
             pipe_eq_m=p.get("eq_len"), origin="기기 입력표", note="배관 실제 길이와 별도로 적용"))
 
     # Unclassified locations are visible, but never drawn as a guessed elbow/tee.
-    for i, row in enumerate(unresolved.get("kind_items", [])):
+    for i, row in enumerate(fitting_review(tables).pending):
         pl = str(row.get("pipe_label", row.get("pipe")))
         p = pipes.get(pl)
         if not p:
@@ -368,7 +384,9 @@ def build_merged_inspection(tables: Any, plan: dict, nodes: list[dict], *,
                 row["node_label"] = _shift(row["node_label"], offset)
             kept.append(row)
         unresolved[group] = kept
-    view_tables.unresolved = unresolved
+    # New combined tables carry the exact source issues through renaming. Keep
+    # the mapped fallback for legacy tables that predate this metadata.
+    view_tables.unresolved = deepcopy(getattr(tables, 'unresolved', None) or unresolved)
     base = ((merge_editor or {}).get("base_object") or {}).get("combined")
     before = {str(n["label"]): n for n in (getattr(base, "nodes", None) or [])}
     changed = {str(n["label"]) for n in tables.nodes

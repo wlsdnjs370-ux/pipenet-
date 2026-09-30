@@ -132,7 +132,8 @@ def _sess(sid: str) -> dict:
     if found is None:
         raise ValueError("작업이 만료되었습니다. 도면을 다시 여세요.")
     found["touched"] = time.time()
-    return found
+    token = current_operation()
+    return token.resolve(found) if token is not None else found
 
 
 def route_session(resolve=None, *, post: bool = False, why_code: int = 409):
@@ -182,14 +183,20 @@ def route_session(resolve=None, *, post: bool = False, why_code: int = 409):
                     return _fail(why, why_code)
             else:
                 sess = got
-            return fn(sess, body, *a, **kw)
+            from routes.module_f.performance import measure
+            with measure('handler_and_json',sid=sess.get('id',''),handler=fn.__name__):
+                return fn(sess, body, *a, **kw)
         return wrapper
     return deco
 
 
 def _run_job(sess: dict, phase: str, fn) -> dict:
     """무거운 단계 하나를 백그라운드로 돌린다. 진행은 실제 출력 줄로만 보고."""
+    from src.pipenet_converter.progress import current_reporter, reporting
+    reporter = current_reporter()
     token = current_operation() or operation()
+    if token.workspaces:
+        raise RuntimeError('Draft route must not start a file-producing background job.')
     token.reserve()  # Include queued workers before the HTTP request completes.
     job = {"id": uuid.uuid4().hex, "operation": token.id,
            "state": "run", "phase": phase, "started": time.time(),
@@ -206,10 +213,13 @@ def _run_job(sess: dict, phase: str, fn) -> dict:
     def worker() -> None:
         me = threading.current_thread()
         try:
-            with token.scope(reserved=True):
+            with reporting(reporter), token.scope(reserved=True):
                 # A queued job must stop without waiting for somebody else's job.
-                while not _HEAVY_LOCK.acquire(timeout=0.1):
-                    checkpoint()
+                from routes.module_f.performance import measure
+                with measure('job_wait',sid=sess.get('id','')) as wait_time:
+                    while not _HEAVY_LOCK.acquire(timeout=0.1):
+                        checkpoint()
+                job['wait_ms'] = wait_time['elapsed_ms']
                 try:
                     checkpoint()
                     job["queued"] = False
@@ -218,7 +228,9 @@ def _run_job(sess: dict, phase: str, fn) -> dict:
                     sys.stdout = _Tee(old_out, sink, me)
                     sys.stderr = _Tee(old_err, sink, me)
                     try:
-                        result = fn()
+                        with measure('job_compute',sid=sess.get('id',''),phase_name=phase) as compute_time:
+                            result = fn()
+                        job['compute_ms'] = compute_time['elapsed_ms']
                         checkpoint()
                     finally:
                         sys.stdout, sys.stderr = old_out, old_err

@@ -43,11 +43,13 @@ def _rank_invariant(b, k, only, src_index, w) -> dict:
         bad = sorted(set(S) - set(only))[:8]
         out["violations"].append(f"③ 후보 밖에서 뽑힘 {bad}")
 
-    from services.cad_import.design.flow import flow_for_board
+    from services.cad_import.design.flow import flow_for_board, network_for_board
     nxt = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=int(k) + 1,
                          only_heads=only, source_index=src_index,
                          head_xy=b.disks,
-                         flow_tree=flow_for_board(b, index=src_index))  # ②
+                         flow_tree=(network_for_board(b, index=src_index).reference
+                                    if getattr(b, "network_mode", "tree") != "tree"
+                                    else flow_for_board(b, index=src_index)))  # ②
     extra = [int(h) for h in (nxt.get("heads") or ()) if int(h) not in set(S)]
     if extra and dists:
         nd = {int(h): float(v) for h, v in (nxt.get("dists") or {}).items()}
@@ -304,6 +306,21 @@ def register(app):
         sess["aj_seq"] = sess.get("aj_seq", 0) + 1
         return jsonify({"ok": True, "state": _edit_state(sess)})
 
+    @app.post("/api/module-f/edit/network-mode")
+    @route_session(_edit_session, post=True)
+    def module_f_network_mode(sess, body):
+        """Explicit opt-in, persisted by normal edit saving; geometry is untouched."""
+        from src.pipenet_converter.graph.network import network_mode
+        try:
+            mode = network_mode(body.get("network_mode"))
+        except ValueError as exc:
+            return _fail(str(exc))
+        b = sess["edit"].board
+        if getattr(b, "network_mode", "tree") != mode:
+            b.network_mode = mode
+            _note_edit(sess)
+        return jsonify({"ok": True, "state": _edit_state(sess)})
+
     @app.post("/api/module-f/edit/flow")
     @route_session(_edit_session, post=True)
     def module_f_edit_flow(sess, body):
@@ -353,14 +370,37 @@ def register(app):
         report = sess.get("flow_report")
         if not report:
             return _fail("먼저 물흐름 경로를 확정하세요.")
-        from services.cad_import.design.flow import flow_for_board
+        from services.cad_import.design.flow import flow_for_board, network_for_board
         b = sess["edit"].board
         try:
-            flow = flow_for_board(b, index=list(b.sources).index(report["roots"][0]))
+            idx = list(b.sources).index(report["roots"][0])
+            preserved = getattr(b, "network_mode", "tree") != "tree"
+            flow = (network_for_board(b, index=idx) if preserved else flow_for_board(b, index=idx))
         except ValueError as exc:
             return _fail(str(exc))
         if flow.revision != report["revision"]:
             return _fail("손질이 바뀌었습니다. 물흐름을 다시 확정하세요.")
+        if preserved:
+            from services.cad_import.design.cycle_source import cycle_source
+            worst = sess.get("worst")
+            if worst and worst.get("flow_revision") != flow.revision:
+                return _fail("선정이 바뀌었습니다. 작동 헤드 후보를 다시 선정하세요.")
+            scoped_edges = None
+            if worst and worst.get("selection_mode") == "area_all":
+                from routes.module_f.area_selection import validate_area_selection
+                try:
+                    validate_area_selection(sess)
+                except ValueError as exc:
+                    return _fail(str(exc))
+                scoped_edges = worst["edges"]
+            response = jsonify({"summary": report, "network": flow.extraction(b.pts),
+                "cycle_recovery": list(cycle_source(b).records),
+                "scenario": flow.extraction(b.pts, selected_heads=worst["heads"], source_edges=scoped_edges) if worst else None,
+                "area_scope": worst.get("area_scope") if worst else None,
+                "excluded": [{"a": a, "b": z, "reason": reason}
+                             for (a, z), reason in sorted(flow.excluded.items())]})
+            response.headers["Content-Disposition"] = 'attachment; filename="module-f-network.json"'
+            return response
         response = jsonify({"summary": report, "units": "mm", "points": b.pts,
             "edges": [{"a": a, "b": z, "length_mm": length,
                        "head_count_all": flow.loads.get((a, z), 0),
@@ -383,6 +423,13 @@ def register(app):
         돌려주면 되는 Flask 응답이다 — 상태 코드가 자리마다 다르므로
         문장만 넘기지 않는다.
         """
+        mode = body.get("selection_mode", "ranked_k")
+        if mode == "area_all":
+            from routes.module_f.area_selection import compute_area_selection
+            return compute_area_selection(sess, body)
+        if mode != "ranked_k":
+            return None, _wfail("알 수 없는 헤드 선정 방식입니다.")
+        sess["selection_mode"] = "ranked_k"
         es = sess["edit"]
         b = es.board
         if not b.sources:
@@ -491,9 +538,11 @@ def register(app):
         #     그것은 수리계산이 «제외 사유» 로 여전히 낸다 — 그쪽은 진행표시가
         #     있는 잡이라 오래 걸려도 화면이 얼지 않는다.
         # 후보 범위는 계속 실어 보낸다 — 수리계산의 안전망이 쓰는 값이다(§2-4).
-        from services.cad_import.design.flow import flow_for_board
+        from services.cad_import.design.flow import flow_for_board, network_for_board
         try:
-            flow = flow_for_board(b, index=src_index)
+            flow = (network_for_board(b, index=src_index).reference
+                    if getattr(b, "network_mode", "tree") != "tree"
+                    else flow_for_board(b, index=src_index))
         except ValueError as exc:
             return None, _wfail(str(exc))
         # Selecting worst heads also establishes the same tree when the user
@@ -501,14 +550,27 @@ def register(app):
         state = es.flow(source_index=src_index)
         while es.flow_tick():
             pass
-        sess["flow_report"] = flow.report()
+        sess["flow_report"] = state["flow_report"]
         sess["water_path"] = [[_r1(b.pts[a][0]), _r1(b.pts[a][1]),
                                _r1(b.pts[z][0]), _r1(b.pts[z][1])]
-                              for a, z in sorted(flow.edges)]
+                              for a, z in sorted(state["wet_edges"])]
         w = _worst_k_heads(b.pts, b.edges, b.hnodes, b.sources, k=k,
                            only_heads=only, source_index=src_index,
                            # 설계면적 직사각형은 헤드의 «제 좌표» 로 잰다.
                            head_xy=b.disks, flow_tree=flow)
+        preserved = getattr(b, "network_mode", "tree") != "tree"
+        if preserved:
+            from services.cad_import.design.flow import network_for_board
+            network = network_for_board(b, index=src_index)
+            w["edges"] = set(network.selected_edges(w["heads"]))
+            w["nodes"] = {n for edge in w["edges"] for n in edge} | set(flow.roots)
+            # No fake loads: one reference path is NOT the physical flow split.
+            w.update(loads={}, physical_loads={}, max_load=None,
+                     network_mode=network.mode, selection_basis="reference_distance_candidate",
+                     attachment_validation="source_graph_only",
+                     hydraulically_verified=False, flow_revision=network.revision,
+                     flow_report=network.report(),
+                     total_m=round(sum(flow.lengths_mm[e] for e in w["edges"]) / 1000, 2))
         if not w["heads"]:
             sess["worst"] = None
             sess["worst_edit"] = None
@@ -568,7 +630,7 @@ def register(app):
         #   `shared` 는 §2-4 가 «한 자리» 로 세므로 여기서 막지 않는다.
         # ★고른 **뒤에** 그 K 개만 전개해 「붙는가」를 잰다 (B1F 154s → 1.1s).
         from routes.module_f.attach import picked_heads_wet
-        probe = picked_heads_wet(
+        probe = {"ok": False} if preserved else picked_heads_wet(
             es, w["heads"],
             selected_source=(picked_tag if len(b.sources) > 1 else None))
         if probe.get("ok"):
@@ -632,6 +694,8 @@ def register(app):
                               "source": picked_tag,
                               "zones": w["zones"]}
         return {"k": len(w["heads"]), "reachable": w["reachable"],
+                "network_mode": getattr(b, "network_mode", "tree"),
+                "hydraulically_verified": False,
                 "far_m": w["far_m"], "near_m": w["near_m"],
                 "span_m": w.get("span_m", 0.0),
                 # 설계면적은 규정이 ㎡ 로 말하는 값이다 — 직사각형이 됐으니

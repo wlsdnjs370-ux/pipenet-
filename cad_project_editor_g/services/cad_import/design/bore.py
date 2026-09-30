@@ -2,7 +2,8 @@
 """[G3] 관경 결정 — 혼합 규칙(지시서 D2).
 
     nfpc_min = 별표1('가'칸)[담당 헤드 수]
-    text     = 선분에서 수직거리 ≤ 1500 mm 인 가장 가까운 치수 텍스트
+    text     = Module F: 전체 원본 관로·문자 방향으로 대응한 치수 텍스트
+               (context 없는 기존 호출자만 최근접 문자 매칭)
     dia      = nfpc_min      (text 없음)          → source "nfpc_fallback"
              = nfpc_min      (text < nfpc_min)    → source "nfpc_min"   (안전측)
              = text          (그 외)              → source "text"
@@ -15,9 +16,9 @@ A 에서는 `build_input_tables` 안의 지역 함수라 그대로 import 할 �
 여러 배관으로 쪼개지거나 병합되므로, `edge_ref`(kfp 배관 → 원 board 간선)로
 되짚어 그 선분에 매칭한다. 전개된 m 좌표로 매칭하면 안 된다.
 
-★담당 헤드 수(§T4) — `worst["loads"][(i,j)]` 를 그대로 쓴다. corridor 안에서 그
-간선이 책임지는 «선정된 K개 중의 수» 다. 전체망 하류 헤드 수를 넣으면 관경이
-과대해진다.
+★담당 헤드 수 — 확정 물흐름의 physical_pipe_loads가 있으면 최불리 선정 전
+전체 담당 헤드 수를 쓴다. 문자 대응의 오류를 규약 최소값으로 숨기지 않도록
+원문자·제외 후보·충돌 사유는 bore_provenance에 별도로 남긴다.
 """
 from __future__ import annotations
 
@@ -106,11 +107,19 @@ def _point_seg_dist(px, py, ax, ay, bx, by) -> float:
 def match_diameter_for_segment(a, b, dia_text_pts,
                                limit_mm: float = DIA_RANGE_LIMIT_MM):
     """선분 (a,b) 에 가장 가까운 치수 텍스트 값. 없으면 None. 좌표는 mm."""
+    match = match_diameter_evidence(a, b, dia_text_pts, limit_mm)
+    return match["text_mm"] if match else None
+
+
+def match_diameter_evidence(a, b, dia_text_pts,
+                           limit_mm: float = DIA_RANGE_LIMIT_MM) -> dict | None:
+    """Return the existing nearest-match decision and its CAD-mm evidence."""
     best, best_d = None, float(limit_mm)
     for tx, ty, dia in dia_text_pts:
         d = _point_seg_dist(tx, ty, a[0], a[1], b[0], b[1])
         if d < best_d:
-            best_d, best = d, dia
+            best_d = d
+            best = {"text_mm": dia, "text_xy_mm": [tx, ty], "distance_mm": d}
     return best
 
 
@@ -147,16 +156,17 @@ class Bores(dict):
       그래서 원값을 «곁에» 붙인다. 평범한 dict 로 오해해도 안 깨진다.
     """
 
-    __slots__ = ("overridden",)
+    __slots__ = ("overridden", "evidence")
 
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
         # {pipe_id: {dia, note, orig_dia, orig_src, a, b}}
         self.overridden: dict = {}
+        self.evidence: dict = {}
 
 
 def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None,
-                 tree_loads=None, overrides=None) -> dict:
+                 tree_loads=None, overrides=None, context=None) -> dict:
     """kfp 배관마다 (호칭경 mm, 근거). 지시서 §1 공개 시그니처.
 
     `net`  : 제한 전개 결과 kfp dict (`pipe_data` 를 쓴다)
@@ -187,6 +197,17 @@ def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None,
           source ∈ {text, nfpc_min, nfpc_fallback, user}
     """
     pipes = (net or {}).get("pipe_data") or {}
+    if context is not None and context.summary.get('policy') == 'drawing_first_v1':
+        from src.pipenet_converter.graph.diameter_definition import resolve_pipe_definitions
+        if tree_loads is None:
+            from services.cad_import.design.restrict import tree_loads as _loads
+            tree_loads = _loads(net)
+        values, evidence, changed = resolve_pipe_definitions(
+            net, edge_ref, context, tree_loads, tree=True,
+            rule=nfpc_min_bore_mm, overrides=overrides)
+        out = Bores(values)
+        out.evidence, out.overridden = evidence, changed
+        return out
     if tree_loads is None and any(pid not in edge_ref for pid in pipes):
         from services.cad_import.design.restrict import tree_loads as _tl
         tree_loads = _tl(net)
@@ -211,10 +232,19 @@ def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None,
         nfpc_min = nfpc_min_bore_mm(n_head)
 
         text = None
-        if ref is not None and pts is not None:
+        match = None
+        searched = False
+        topology = context.for_path(ref) if context is not None and ref is not None else None
+        if topology is not None:
+            searched = True
+            match = topology
+            text = topology.get('text_mm')
+        elif context is None and ref is not None and pts is not None:
             i, j = ref
             if 0 <= i < len(pts) and 0 <= j < len(pts):
-                text = match_diameter_for_segment(pts[i], pts[j], dia_text_pts)
+                searched = True
+                match = match_diameter_evidence(pts[i], pts[j], dia_text_pts)
+                text = match["text_mm"] if match else None
 
         if text is None:
             dia, src = nfpc_min, "nfpc_fallback"
@@ -223,6 +253,13 @@ def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None,
             dia, src = nfpc_min, "nfpc_min"
         else:
             dia, src = text, "text"
+
+        rec = {"version": 2 if context is not None else 1, "source": src, "auto_mm": dia,
+               "rule_mm": nfpc_min, "head_count": n_head,
+               "reason": ("no_source_edge" if ref is None else "no_coordinates" if not searched
+                          else "no_match" if text is None else "matched"),
+               **(match or {})}
+        out.evidence[pid] = rec
 
         key = (min(ref), max(ref)) if ref is not None else None
         ov = ov_map.get(key) if key is not None else None
@@ -235,6 +272,9 @@ def decide_bores(net, edge_ref, loads, dia_text_pts, *, pts=None,
             out[pid] = (dia, src)       # 못 읽는 값은 «덮지 않는다»
             continue
         out[pid] = (new_dia, SRC_USER)
+        rec["manual"] = {"previous_mm": dia, "value_mm": new_dia,
+                         "note": str(ov[1] if len(ov) > 1 else "") or "수정 메모 없음"}
+        rec['block_export'] = False
         out.overridden[pid] = {
             "dia": new_dia, "note": str(ov[1] if len(ov) > 1 else "") or "",
             "orig_dia": dia, "orig_src": src, "a": key[0], "b": key[1]}

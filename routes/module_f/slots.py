@@ -104,8 +104,9 @@ _MERGE_KEYS = frozenset({
     "merged",           # S740 결합 결과
     "merge_summary",    # 그 요약
     "merge_files",      # S750 산출 파일 목록
+    "sizing_report", "sizing_files",  # optional integrated hydraulic proposals
 })
-SESSION_KEYS = frozenset({"id", "created", "touched", "job", "log",
+SESSION_KEYS = frozenset({"id", "created", "touched", "job", "log", "_state_revision",
                           "slots", "active",
                           # [오너 2026-09-22] 더한 계통도 칸 목록 — 칸의 짜임이지 도면이 아니다.
                           "system_extra"}) | _MERGE_KEYS

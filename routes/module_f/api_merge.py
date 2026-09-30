@@ -178,16 +178,23 @@ def rebuild_merged(sess: dict, *, persist_overrides: bool = True) -> dict:
         machineroom=mats["machineroom"], mode=mode,
         source_drop_m=sess.get("source_drop_m", 0.0),
         pump=sess.get("pump_spec"),
-        method=mats["plan_method"])
+        method=mats["plan_method"],
+        preserve_defined_bores=(
+            (_slot_value(sess, "plan", "design_settings") or {}).get("diameter_policy")
+            == "drawing_first_v1"))
     # Library choices made in the live editor must survive the merge's default
     # bore normalization. Otherwise the displayed DN and saved inner bore split.
     chosen = {str(p['label']):p for p in mats['plan'].pipes if p.get('inner_mm') is not None}
     if got.get('combined') is not None:
         for row in got['combined'].pipes:
-            spec = chosen.get(str(row.get('label')))
+            spec = chosen.get((got.get('plan_pipe_sources') or {}).get(str(row.get('label'))))
             if spec:
                 for field in ('type','dia','inner_mm','c','roughness_mm'):
-                    row[field] = spec[field]
+                    if field in spec:
+                        row[field] = spec[field]
+                if 'bore_provenance' in spec:
+                    from copy import deepcopy
+                    row['bore_provenance'] = deepcopy(spec['bore_provenance'])
     sess["merged"] = got
     # ★[요소속성 수정카드] 적용 ④ — 계통도·기계실 요소(§4).
     #
@@ -237,6 +244,8 @@ def rebuild_merged(sess: dict, *, persist_overrides: bool = True) -> dict:
     return summary
 
 def register(app, *, UPLOAD_DIR):
+    from routes.module_f.api_sizing import register as register_sizing
+    register_sizing(app, UPLOAD_DIR=UPLOAD_DIR)
     # ─────────────────────────────────── S710
     @app.get("/api/module-f/merge/modes")
     def module_f_merge_modes():
@@ -310,6 +319,9 @@ def register(app, *, UPLOAD_DIR):
     @route_session(post=True)
     def module_f_merge_build(sess, body):
         """세 도면을 한 배관망으로. 무거우므로 잡으로 돌린다."""
+        from routes.module_f.topology import calculation_block
+        if message := calculation_block(sess, all_slots=True):
+            return _fail(message, 409)
         if _job_running(sess):
             return _fail("작업이 끝난 뒤에 결합할 수 있습니다.", 409)
 
@@ -470,6 +482,7 @@ def register(app, *, UPLOAD_DIR):
                     rec["joint"] = joints[lab]
             out_nodes.append(rec)
 
+        from src.pipenet_converter.graph.bore_provenance import describe_bore
         out_pipes = []
         for r in (c.pipes or ()):
             a, b = str(r.get("in")), str(r.get("out"))
@@ -484,6 +497,8 @@ def register(app, *, UPLOAD_DIR):
                               "c": r.get("c"), "elev": r.get("elev"),
                               "type": r.get("type"), "inner_mm": r.get("inner_mm"),
                               "eq_len": r.get("eq_len"),
+                              "src": r.get("dia_src") or r.get("dia_source"),
+                              "bore_info": describe_bore(r),
                               "part": part,
                               "boundary": a in shared or b in shared,
                               "key": _key_of_pipe(str(r.get("label")), part)})
@@ -497,8 +512,9 @@ def register(app, *, UPLOAD_DIR):
             board=getattr(_slot_value(sess, "plan", "edit"), "board", None),
             plan_editor=_slot_value(sess, "plan", "network_editor"),
             merge_editor=sess.get("merge_editor"))
+        from routes.module_f.hydraulic_sizing import fingerprint
         return jsonify({
-            "ok": True, "iso": iso,
+            "ok": True, "iso": iso, "fingerprint": fingerprint(c),
             "view": {"nodes": out_nodes, "pipes": out_pipes,
                      "inspection": inspection,
                      # 기계실 평면 배관망 — SDF 에는 없고 «보기» 로만 쓴다.
@@ -537,6 +553,9 @@ def register(app, *, UPLOAD_DIR):
         (특허 도 9 주석). 그래서 SDF 를 먼저 쓰고 그 파일에서 나머지를 만든다 —
         형식마다 따로 뽑으면 같은 배관망을 가리킨다는 보장이 사라진다.
         """
+        from routes.module_f.topology import calculation_block
+        if message := calculation_block(sess, all_slots=True):
+            return _fail(message, 409)
         if _job_running(sess):
             return _fail("작업이 끝난 뒤에 저장할 수 있습니다.", 409)
         got = sess.get("merged")
@@ -550,6 +569,12 @@ def register(app, *, UPLOAD_DIR):
         split = _split_note(sess)
         if split:
             return _fail(split, 409)
+
+        from src.pipenet_converter.validate.diameter_evidence import require_resolved_diameters
+        try:
+            require_resolved_diameters(got['combined'].pipes)
+        except ValueError as exc:
+            return _fail(str(exc), 409)
 
         from pathlib import Path
 
@@ -570,6 +595,8 @@ def register(app, *, UPLOAD_DIR):
                 display_reference_labels=list((got.get("parts") or {}).get("plan") or ()),
                 # [오너 2026-09-22] 아이소 노드가 너무 커 보인다 — 아이소 좌표만 넓힌다.
                 iso_spread=ISO_SPREAD,
+                keep_nodes=(tuple(str(n['label']) for n in got['combined'].nodes) if got.get('editor_canonical') else
+                            tuple(str(k) for k in (ANCHOR_LABEL, got.get('pump_junction')) if k)),
                 # [오너 2026-09-22] 펌프 가압인데 펌프 제원(곡선)이 없으면 수원에 0 g 만
                 #   걸려 PIPENET 이 헤드→펌프로 거꾸로 흐른다고 계산했다 — 그때만
                 #   «가장 먼 헤드» 방식으로 저장한다(펌프가 들어간 망·고가수조는 종전 그대로).
@@ -598,6 +625,9 @@ def register(app, *, UPLOAD_DIR):
           화면이 두 번 부른다(묶어 주면 압축을 푸는 손이 한 번 더 든다).
           `zip` 도 여전히 받긴 하지만 화면에 단추는 없다.
         """
+        from routes.module_f.topology import calculation_block
+        if message := calculation_block(sess, all_slots=True):
+            return _fail(message, 409)
         what = str(request.args.get("what") or "sdf")
         files = sess.get("merge_files") or {}
         path = files.get(what)

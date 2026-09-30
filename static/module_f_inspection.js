@@ -59,7 +59,7 @@ window.createModuleFInspection = function (h) {
     for(const f of rows) {
       html+=`<section class="fit-property" data-fitting-id="${esc(f.id)}"><div class="fit-heading">${esc(f.name)} <span>× ${esc(f.count)}</span></div>`;
       html+=kv("물리 부속",esc(physical(f)))+kv("계산 통과 / 종류",esc(f.name));
-      if(f.flow_path)html+=kv("계산 경로",esc(f.flow_path.join(' → ')));
+      if(f.flow_path)html+=kv(f.flow_label||"계산 경로",esc(f.flow_path.join(f.loss_status?' — ':' → ')));
       html+=kv("재질 / 호칭경",`${esc(f.material || "미지정")} / ${esc(f.dia ?? "미지정")}A`);
       if(f.original_degree!=null)html+=kv("원본 → 계산 연결",`${esc(f.original_degree)} → ${esc(f.current_degree)} 포트`);
       html+=kv("소속 배관",insLink("pipe",f.pipe));

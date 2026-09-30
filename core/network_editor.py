@@ -83,6 +83,8 @@ class Network:
                 p = self.pipes.get(str(row.get('pipe')))
                 if p:
                     row.update({'in': p.a, 'out': p.b})
+        from src.pipenet_converter.graph.fitting_review import sync_fitting_review
+        sync_fitting_review(self.tables)
         return self.tables
 
     def incident(self, node: str) -> list[str]:
@@ -250,7 +252,31 @@ def validate_changes(before: Network, after: Network, *, allow_split: bool = Fal
 
 def apply_edit(network: Network, command: dict, catalog: dict) -> tuple[Network, dict]:
     """Preview/apply one deterministic command on an isolated graph copy."""
-    n = deepcopy(network)
+    if command.get('op') == 'batch_properties':
+        commands = command.get('commands')
+        allowed = {'pipe', 'pipe_c', 'head', 'fitting_properties'}
+        if (not isinstance(commands, list) or not 1 <= len(commands) <= 5000
+                or any(not isinstance(c, dict) or c.get('op') not in allowed for c in commands)):
+            raise EditError('일괄 수정은 배관·헤드·부속 속성 1~5000건만 지원합니다.')
+        candidate = deepcopy(network)
+        for index, child in enumerate(commands):
+            try:
+                candidate, result = _apply_edit(candidate, child, catalog, isolated=True)
+            except (EditError, KeyError) as exc:
+                raise EditError(f'일괄 수정 {index+1}번 ({child.get("target", "")}): {exc}') from exc
+        validate_changes(network, candidate)
+        candidate.to_tables()
+        result['counts'] = dict(nodes=len(candidate.nodes), pipes=len(candidate.pipes),
+                                heads=len(candidate.tables.nozzles))
+        return candidate, result
+    return _apply_edit(network, command, catalog)
+
+
+def _apply_edit(network: Network, command: dict, catalog: dict, *, isolated: bool = False) -> tuple[Network, dict]:
+    """Apply a command; property batches own one isolated copy and final validation."""
+    if command.get('op') == 'compact_runs':
+        return _compact_runs(network, command)
+    n = network if isolated else deepcopy(network)
     op, target = command.get('op'), str(command.get('target', ''))
     result = {'kind': 'pipe' if target in n.pipes else 'node', 'label': target}
     check_from, allow_split = network, False
@@ -265,8 +291,8 @@ def apply_edit(network: Network, command: dict, catalog: dict) -> tuple[Network,
 
     if op in ('extend', 'connect', 'head', 'node', 'move_node', 'delete_node', 'merge_node', 'paste') and target not in n.nodes:
         raise EditError('선택한 노드가 없어졌습니다. 다시 선택하세요.')
-    if op in ('split', 'resize', 'pipe', 'fitting', 'remove_fitting', 'delete',
-              'delete_join', 'delete_cut') and target not in n.pipes:
+    if op in ('split', 'resize', 'pipe', 'pipe_reference', 'pipe_c', 'fitting', 'remove_fitting', 'delete',
+              'delete_join', 'delete_cut', 'fitting_properties') and target not in n.pipes:
         raise EditError('선택한 배관이 없어졌습니다. 다시 선택하세요.')
     if op == 'paste':
         source = str(command.get('source', ''))
@@ -392,10 +418,23 @@ def apply_edit(network: Network, command: dict, catalog: dict) -> tuple[Network,
             xyz[i] += delta
             n.nodes[nid].xyz = tuple(xyz)
         p.row['length'] = length
-    elif op == 'pipe':
+    elif op == 'pipe_c':
+        n.pipes[target].row['c'] = number(command.get('c'), 'C', 1, 200)
+    elif op in ('pipe', 'pipe_reference'):
+        annotation = None
+        if op == 'pipe_reference':
+            from src.pipenet_converter.graph.drawing_reference import annotation_from_snapshot
+            annotation = annotation_from_snapshot(command.get('annotation') or {})
+            command = dict(command, dn=annotation.nominal_mm, schedule=n.pipes[target].row['type'])
         new = spec()
         old_dn = n.pipes[target].row.get('dia')
+        from src.pipenet_converter.graph.bore_provenance import record_manual
+        record_manual(n.pipes[target].row, new['dia'], str(command.get('note') or ''))
+        if annotation is not None:
+            from src.pipenet_converter.graph.drawing_reference import record_drawing_reference
+            record_drawing_reference(n.pipes[target].row, annotation)
         n.pipes[target].row.update(new)
+        n.pipes[target].row['dia_src'] = 'user'
         # Never retain a valve/fitting loss for the old bore.
         for e in n.tables.equipment:
             if str(e.get('pipe')) == target and e.get('editor_library'):
@@ -416,6 +455,9 @@ def apply_edit(network: Network, command: dict, catalog: dict) -> tuple[Network,
                     item = e.get('lib') or ('VALVE_ALARM' if e.get('desc')=='A/V' else None)
                     if item:
                         e['eq_len'] = fitting_value(catalog,item,new['dia'])
+    elif op == 'fitting_properties':
+        from core.network_property_fittings import update_fitting
+        update_fitting(n, command, catalog)
     elif op == 'fitting':
         p = n.pipes[target]
         item = str(command.get('fitting'))
@@ -440,21 +482,35 @@ def apply_edit(network: Network, command: dict, catalog: dict) -> tuple[Network,
             raise EditError('이 편집기에서 추가한 부속을 선택하세요.')
         n.tables.equipment = [e for e in n.tables.equipment if e not in hit]
     elif op == 'head':
-        if target in n.protected or len(n.incident(target)) != 1:
+        if target in n.protected or (len(n.incident(target)) != 1 and target not in n.heads()):
             raise EditError('헤드는 급수원·이음매가 아닌 관말 노드에만 설치할 수 있습니다.')
         lib = str(command.get('nozzle'))
         nozzle = next((r for r in catalog['nozzles'] if r['id']==lib),None)
         if nozzle is None:
             raise EditError('헤드 라이브러리를 선택하세요.')
         flow = number(command.get('flow'), '방수량(L/min)', .001, 100000)
+        prior = next((r for r in n.tables.nozzles if str(r['in']) == target), {})
+        custom = {k:prior[k] for k in ('definition_policy','k_factor_si','required_pressure_bar')
+                  if k in prior and prior.get('lib') == lib}
+        if command.get('k_factor_si') is not None:
+            custom.update(definition_policy='drawing_first_v1',
+                          k_factor_si=number(command['k_factor_si'],'헤드 K',.001,100000))
+        if command.get('required_pressure_bar') is not None:
+            custom.update(definition_policy='drawing_first_v1',
+                          required_pressure_bar=number(command['required_pressure_bar'],'최소 압력(bar)',0,1000))
         n.tables.nozzles = [r for r in n.tables.nozzles if str(r['in']) != target]
         used = {str(r['label']) for r in n.tables.nozzles}
         i = 1
         while f'EN{i}' in used:
             i += 1
-        n.tables.nozzles.append(dict(label=f'EN{i}', **{'in':target, 'out':f'@/EN{i}'},
-            status='1',lib=lib,flow_lmin=flow,flow_m3s=flow/60000))
-        n.nodes[target].row['editor_head'] = dict(nozzle, flow_lmin=flow)
+        row = dict(prior)
+        for field in ('definition_policy','k_factor_si','required_pressure_bar'):
+            row.pop(field, None)
+        row.update(label=prior.get('label',f'EN{i}'),
+                   **{'in':target,'out':prior.get('out',f'@/EN{i}')},
+                   status=prior.get('status','1'),lib=lib,flow_lmin=flow,flow_m3s=flow/60000,**custom)
+        n.tables.nozzles.append(row)
+        n.nodes[target].row['editor_head'] = dict(nozzle, flow_lmin=flow,**custom)
     elif op == 'node':
         n.tables.nozzles = [r for r in n.tables.nozzles if str(r['in']) != target]
         n.tables.equipment = [r for r in n.tables.equipment if str(r.get('editor_node')) != target]
@@ -488,10 +544,36 @@ def apply_edit(network: Network, command: dict, catalog: dict) -> tuple[Network,
             result = {'kind':'node','label':survivor}
     else:
         raise EditError('지원하지 않는 편집 동작입니다.')
-    validate_changes(check_from,n,allow_split=allow_split)
-    n.to_tables()
+    if not isolated:
+        validate_changes(check_from,n,allow_split=allow_split)
+        n.to_tables()
     result['counts'] = dict(nodes=len(n.nodes),pipes=len(n.pipes),heads=len(n.tables.nozzles))
     return n,result
+
+
+def _compact_runs(network: Network, command: dict) -> tuple[Network, dict]:
+    """Replayable contraction; do not reinterpret existing CAD crossings as joins."""
+    from src.pipenet_converter.graph.continuous_runs import compact_continuous
+    if command.get('version') not in (1, 2):
+        raise EditError('지원하지 않는 연속관 정리 버전입니다.')
+    tables = deepcopy(network).to_tables()
+    compact, audit = compact_continuous(tables,
+        keep_nodes=network.protected | set(map(str, command.get('keep', ()))),
+        allow_unassigned=command.get('version') == 2)
+    after = Network.from_tables(compact, protected=network.protected)
+    # Only straight degree-two nodes disappear. Each removed node must remove
+    # exactly one edge, preserving the cycle rank; retained connections survive.
+    if len(network.nodes)-len(after.nodes) != len(network.pipes)-len(after.pipes):
+        raise EditError('연속관 정리 전후 루프 연결 수가 다릅니다.')
+    target = str(command.get('target', ''))
+    label = next((key for key, rows in audit.source_pipes.items()
+                  if any(str(row['label'])==target for row in rows)), next(iter(after.pipes), ''))
+    result = dict(kind='pipe', label=label,
+        counts=dict(nodes=len(after.nodes), pipes=len(after.pipes), heads=len(after.tables.nozzles)),
+        compaction=dict(nodes_before=audit.nodes_before, nodes_after=audit.nodes_after,
+                        pipes_before=audit.pipes_before, pipes_after=audit.pipes_after,
+                        removed_nodes=list(audit.removed_nodes)))
+    return after, result
 
 
 def terminal_pipe(network: Network, node: str) -> str | None:

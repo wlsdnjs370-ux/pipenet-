@@ -3,7 +3,7 @@
 ① 펌프 가압인데 펌프 제원이 없으면 PIPENET «가장 먼 헤드» 방식으로 저장한다.
    수원(맨 아래)에 0 g 만 걸려 PIPENET 이 헤드→펌프로 거꾸로 흐른다고 계산하던
    문제. 급수원 지정 한 줄과 계산 방식만 바뀌고 나머지는 한 글자도 같다.
-② 아이소 .sdf 는 좌표만 3배로 넓혀 노드·기호가 작아 보이게 한다. 노즐 꼬리
+② 아이소 .sdf 는 좌표만 4배로 넓혀 노드·기호가 작아 보이게 한다. 노즐 꼬리
    길이와 모양(방향·비율)은 그대로, KFP·HAS·평면 .sdf 는 바이트까지 같다.
 """
 from pathlib import Path
@@ -112,7 +112,7 @@ def test_most_remote_nozzle_refuses_pumped_or_ambiguous_networks(tmp_path):
 
 
 def test_iso_spread_enlarges_only_iso_positions(tmp_path):
-    assert ISO_SPREAD == 3
+    assert ISO_SPREAD == 4
     got = merge_network(heads(), riser=system(True), mode='lsp_gravity')
     old = _emit(tmp_path / 'old', got)
     new = _emit(tmp_path / 'new', got, iso_spread=ISO_SPREAD)
@@ -123,8 +123,8 @@ def test_iso_spread_enlarges_only_iso_positions(tmp_path):
         if label in stubs:
             continue
         # .sdf 좌표는 유효숫자 6자리로 적힌다 — 그 반올림만큼만 허용한다.
-        assert b[label] == pytest.approx((a[label][0] * 3, a[label][1] * 3), rel=1e-5, abs=.02)
-    # 노즐 꼬리는 종전 길이 그대로 — 배관만 3배라 기호가 1/3 로 보인다.
+        assert b[label] == pytest.approx((a[label][0] * ISO_SPREAD, a[label][1] * ISO_SPREAD), rel=1e-5, abs=.02)
+    # 노즐 꼬리는 종전 길이 그대로 — 배관만 넓혀 상대적 기호 크기를 줄인다.
     for outlet, head in stubs.items():
         assert math.dist(b[head], b[outlet]) == pytest.approx(math.dist(a[head], a[outlet]), abs=.1)
     assert _signature(new['sdf_iso']) == _signature(old['sdf_iso'])

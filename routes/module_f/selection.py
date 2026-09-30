@@ -174,6 +174,9 @@ def _selection_sig(sess: dict) -> tuple:
         tuple(getattr(b, "disk_kinds", None) or ()),
         w.get("flow_revision"),
         (sess.get("flow_report") or {}).get("revision"),
+        w.get("selection_mode"),
+        (w.get("area_scope") or {}).get("policy"),
+        tuple(sorted(w.get("edges") or ())) if w.get("area_scope") else (),
     )
     return (
         tuple(sorted(int(i) for i in (w.get("heads") or ()))),
@@ -190,7 +193,21 @@ def _design_stale(sess: dict) -> dict | None:
     None 이면 최신이다. 조용히 두지 않는다 — 사람이 보는 그림이 제 결정과
     다른데 화면이 말하지 않으면, 그 그림을 믿고 다음 결정을 한다.
     """
+    from routes.module_f.topology import calculation_block
+    if message := calculation_block(sess):
+        return {"why": [message]}
     d = sess.get("design")
+    if ((sess.get('design_settings') or {}).get('diameter_policy')=='drawing_first_v1'
+            and (sess.get('network_editor') or {}).get('conflict')):
+        return {"why": [sess['network_editor']['conflict']]}
+    if (d or {}).get('h_attributes_dirty'):
+        return {"why": ["관경·헤드 속성 수정이 아직 입력값에 반영되지 않았습니다."]}
+    if sess.get("selection_mode") == "area_all":
+        from routes.module_f.area_selection import validate_area_selection
+        try:
+            validate_area_selection(sess)
+        except ValueError as exc:
+            return {"why": [str(exc)]}
     basis = ((d or {}).get("got") or {}).get("flow_report")
     b = getattr(sess.get("edit"), "board", None)
     if basis and b is not None:
@@ -198,6 +215,9 @@ def _design_stale(sess: dict) -> dict | None:
         try:
             idx = list(b.sources).index(basis["roots"][0])
             current = flow_for_board(b, index=idx)
+            if getattr(b, 'network_mode', 'tree') != 'tree':
+                from services.cad_import.design.flow import network_for_board
+                current = network_for_board(b, index=idx)
             if current.revision != basis["revision"]:
                 return {"why": ["물흐름 경로가 바뀌었습니다. 최불리와 표를 다시 확정하세요."]}
         except ValueError:

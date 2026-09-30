@@ -87,6 +87,7 @@ class Board:
         self._head_match_cache = {}
         self._tri_seg_cache = {}
         self._tri_geometry_cache = {}
+        self._symbol_tri_cache = {}
 
     def complete_materials(self):
         """재료 찍기 완료 → 헤드 모드 해금. 재료 0개면 거부."""
@@ -246,6 +247,57 @@ class Board:
                 return d, (ly, c, side), seg
         return None
 
+    def _symbol_body_at(self, x: float, y: float):
+        """Hit a validated small triangle as one body, including its interior.
+
+        A unique circle enclosed by the triangle is its canonical body. Picking
+        the triangle rim and the inner disk must not register two nozzles.
+        Unknown blocks, large triangles and non-equilateral shapes remain under
+        the existing geometric gate; a bounding box alone never creates a head.
+        """
+        from src.pipenet_converter.dxf.symbol_geometry import triangle_contains
+        cell = (int(x//CELL), int(y//CELL))
+        geometry = self._symbol_tri_cache.get(cell)
+        if geometry is None:
+            nearby = defaultdict(list)
+            seen = set()
+            for ring in (0, 1):
+                for i in self._ring(self._sgrid, x, y, ring):
+                    if i in seen:
+                        continue
+                    seen.add(i)
+                    ly, c, a, b = self.w.segs[i]
+                    if math.dist(a, b) <= self.kn['small_len']:
+                        nearby[ly, c].append((a, b))
+            geometry = []
+            for bundle, strokes in nearby.items():
+                for tri in flow_heads.closed_tris(strokes, self.kn.get('a1_lat', 1.)):
+                    side = round(max(tri['sides']), 1)
+                    cl = {'tri_rulers': [(side, None)]}
+                    if flow_heads.tri_head_of(cl, self.kn, triangles=[tri]) is not None:
+                        geometry.append((bundle, side, tri))
+            self._symbol_tri_cache[cell] = geometry
+        hits = []
+        for (ly, c), side, tri in geometry:
+            if not triangle_contains((x, y), tri['verts']):
+                continue
+            body = {}
+            for i in s1._grid_near(self._cgrid, CELL, x, y):
+                clayer, color, cx, cy, r = self._csmall[i]
+                if (clayer, color) != (ly, c):
+                    continue
+                if (triangle_contains((cx, cy), tri['verts']) and
+                        all(s1.seg_geom(a, b, cx, cy)[0] >= r-1e-6
+                            for a, b in tri['segs'])):
+                    body[round(cx, 6), round(cy, 6), round(r, 6)] = (
+                        0., (ly, c, round(r, 1)), (cx, cy, r))
+            if len(body) == 1:
+                hits.append(('circle', next(iter(body.values()))))
+            elif not body:
+                hits.append(('triangle', (0., (ly, c, side), tri['segs'][0])))
+        # Overlapping unrelated symbols are ambiguous; keep the old rim picker.
+        return hits[0] if len(hits) == 1 else None
+
     def apply_click(self, mode, x, y, cluster_gap=None, max_d=None,
                     label=None, mark_bundle=None):  # noqa: ARG002
         """찍기 한 번 — 성공하면 보고 dict, 못/안 찍으면 None."""
@@ -367,6 +419,16 @@ class Board:
         cand_t = None
         if got_s is not None and (cand_c is None or got_s[0] < cand_c[0]):
             cand_t = self.tri_at(x, y)
+        body = self._symbol_body_at(x, y)
+        if body is not None:
+            cand_c, cand_t = ((body[1], None) if body[0] == 'circle'
+                              else (None, body[1]))
+        elif cand_c is not None and cand_t is None:
+            # A filled disk is clickable at its centre too. Preserve the old
+            # nearest-rim ordering (important for concentric head symbols).
+            d, signature, (cx, cy, radius) = cand_c
+            if math.hypot(x-cx, y-cy) <= radius:
+                cand_c = (0., signature, (cx, cy, radius))
         if cand_c is None and cand_t is None:
             return None
         use_tri = cand_t is not None and \
@@ -439,6 +501,8 @@ class Board:
         sp = {"format": "v2",
               "material_picks": [list(t) for t in self.mat],
               "heads": []}
+        if getattr(self.w, "_work_regions", None):
+            sp["work_regions"] = self.w._work_regions
         if getattr(self, "head_symbol_profile", ""):
             sp["head_symbol_profile"] = self.head_symbol_profile
         if self.heads:

@@ -178,7 +178,7 @@ class EditSession:
         hop = state["hop"]
         wet_edges = state["wet_edges"]
         ranked = []
-        for a, b in self.board.edges:
+        for a, b in state["wet_edges"]:
             if (min(a, b), max(a, b)) not in wet_edges:
                 continue
             ranked.append((max(hop[a], hop[b]),
@@ -248,6 +248,12 @@ class EditSession:
     def display_geom(self, net=True):
         """화면용. 판정 없음. 연출 중에만 wet_pipes. net=False 는 망 재계산 생략."""
         b = self.board
+        display_edges, recovery = b.edges, None
+        if getattr(b, "network_mode", "tree") != "tree":
+            from services.cad_import.design.cycle_source import cycle_source
+            result = cycle_source(b)
+            display_edges, recovery = result.edges, result.report()
+        from services.cad_import.pipeline.user_net import recompute_bodies
         wet_set = None
         if self._flowed:
             if self._frame is not None:
@@ -266,8 +272,9 @@ class EditSession:
             if isinstance(n, int) and 0 <= n < npts:
                 valves.append(tuple(b.pts[n]))
         return {
-            "body_groups": (body_seg_groups(b.pts, b.edges, b.bodies())
+            "body_groups": (body_seg_groups(b.pts, display_edges, recompute_bodies(b.pts, display_edges))
                             if net else []),
+            "effective_edge_count": len(display_edges), "cycle_recovery": recovery,
             "heads": list(zip(b.disks, colors)),
             "multi_heads": [b.disks[di] for di in b.multi_arm_heads],
             "pending": b.pending,

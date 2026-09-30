@@ -1,0 +1,9 @@
+{
+  "water_duration_minutes": 20,
+  "scope": "일반 스프링클러 수리계산 검토 기본값 · 대상 건물 적용 확인 필요",
+  "source": "NFTC 103 2.1.1 (2026-07-01 시행)",
+  "url": "https://www.law.go.kr/LSW/admRulInfoP.do?admRulSeq=2100000281674&chrClsCd=010201",
+  "alternatives": [40, 60],
+  "special_source": "NFPC 604 제6조 · 고층건축물 별도 수원 기준 검토",
+  "special_url": "https://law.go.kr/LSW/admRulLsInfoP.do?admRulId=42497&efYd=0"
+}

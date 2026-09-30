@@ -133,6 +133,9 @@ class EditBoard:
         self._refresh_kind_views()
 
     def segments(self):
+        if getattr(self, "network_mode", "tree") != "tree":
+            from services.cad_import.design.cycle_source import cycle_source
+            return _edge_segments(self.pts, cycle_source(self).edges)
         return _edge_segments(self.pts, self.edges)
 
     def _kind(self, seg):
@@ -225,11 +228,18 @@ class EditBoard:
         """원본·자동 이음·유저 이음 모두 현재 망에서 지운다."""
         before = self._snapshot()
         kind = self._kind(seg)
+        projected_before = None
+        if getattr(self, "network_mode", "tree") != "tree":
+            from services.cad_import.design.cycle_source import cycle_source
+            projected_before = cycle_source(self).edges
         n0 = len(self.edges)
         self.edges = apply_deletes(self.pts, self.edges, [seg])
         n = n0 - len(self.edges)
         self.deletes.append({"a": list(seg[0]), "b": list(seg[1]), "kind": kind,
                              "n": n})
+        if projected_before is not None:
+            n = len(projected_before) - len(cycle_source(self).edges)
+            self.deletes[-1]["n"] = n
         self.history.append(before)
         self._invalidate_source_cache()
         return kind, n
@@ -485,6 +495,7 @@ class EditBoard:
 
     def payload(self):
         return {"version": 1, "joins": self.joins, "deletes": self.deletes,
+                "network_mode": getattr(self, "network_mode", "tree"),
                 "sources": [{"tag": f"Z{i + 1}", "xy": list(self.pts[n])}
                             for i, n in enumerate(self.sources)],
                 "valve_picks": [{"xy": list(self.pts[n])}

@@ -90,6 +90,29 @@ def test_source_change_and_edit_invalidate_visible_tree(flow_client):
     assert not state["flowed"] and state["flow_report"] is None and not state["wet_pipes"]
 
 
+def test_design_build_uses_native_rotation_and_full_topology(flow_client,tmp_path,monkeypatch):
+    import ezdxf
+    c,sess=flow_client
+    doc=ezdxf.new()
+    doc.modelspace().add_text('65',dxfattribs=dict(insert=(500,100),height=30,rotation=0))
+    doc.modelspace().add_text('25',dxfattribs=dict(insert=(2050,200),height=30,rotation=90))
+    path=tmp_path/'rotation.dxf';doc.saveas(path)
+    sess['dxf']=str(path)
+    monkeypatch.setattr(api_design,'_dia_texts',lambda sess:[(500,100,65),(2050,200,25)])
+    c.post('/api/module-f/edit/flow',json={'sid':sess['id']})
+    c.post('/api/module-f/edit/worst',json={'sid':sess['id'],'k':1})
+    c.post('/api/module-f/design/build',json={'sid':sess['id'],'k':1})
+    assert sess['job']['result']['ok'],sess['job']['result']
+    context=sess['design']['bore_inference']
+    assert context['rotations']==2 and context['full_heads']==2
+    rows=sess['design']['tables'].pipes
+    evidence=[p.get('bore_provenance',{}) for p in rows]
+    assert all(e.get('version')==2 for e in evidence)
+    mains=[r for r in rows if r['bore_provenance'].get('text_mm')==65]
+    assert mains and all(r['dia']==65 for r in mains)
+    assert any(r['bore_provenance'].get('excluded_nearest',{}).get('text_mm')==25 for r in mains)
+
+
 def test_full_conversion_uses_same_tree(flow_client):
     from services.cad_import.convert.engine import ensure_planar
     c, sess = flow_client
@@ -102,6 +125,24 @@ def test_full_conversion_uses_same_tree(flow_client):
     assert len(net["pipe_data"]) == len(net["nodes_meta_runtime"]) - 1
     assert sum(p["length_m"] for p in net["pipe_data"].values()) == pytest.approx(
         sum(tree.lengths_mm[e] for e in tree.edges) / 1000)
+
+
+def test_flow_and_worst_publish_isolated_drafts(flow_client):
+    from routes.module_f.cancellation import install
+    c, sess = flow_client
+    install(c.application)
+    original = sess['edit']
+    geometry = copy.deepcopy((original.board.pts, original.board.edges))
+    flow = c.post('/api/module-f/edit/flow', json={'sid': sess['id']})
+    assert flow.status_code == 200, flow.json
+    assert sess['edit'] is not original
+    confirmed = sess['edit']
+    selected = c.post('/api/module-f/edit/worst', json={'sid': sess['id'], 'k': 1})
+    assert selected.status_code == 200, selected.json
+    assert sess['edit'] is not confirmed
+    assert len(sess['worst']['heads']) == 1
+    assert (sess['edit'].board.pts, sess['edit'].board.edges) == geometry
+    assert sess['worst']['flow_revision'] == sess['flow_report']['revision']
 
 
 def test_full_conversion_retains_declared_length_after_straight_merge(flow_client):
@@ -155,6 +196,7 @@ def test_browser_flow_button_report_and_dimmed_original(flow_client, tmp_path):
         assert any(s["alpha"] == pytest.approx(.22) for s in strokes)
         assert any(s["alpha"] == 1 and s["width"] == pytest.approx(2.6) for s in strokes), strokes
         assert not errors, errors
+        page.locator('#mf-advanced-edit > summary').click()
         page.click('[data-fold="ed-status-body"]')
         page.screenshot(path=str(ROOT / "data/module_f_flow_tree_ui.png"))
         browser.close()

@@ -9,7 +9,7 @@
     slot: "plan",                           // [H-0] 활성 도면 슬롯 (S650)
     zones: [],                              // 사각형 또는 실제 자유곡선 경계(CAD mm)
     refCounts: [],                          // NFTC 103 표 2.1.1.1 (서버가 준다)
-    boreColor: false,                       // 기본은 손질 최불리망과 같은 흰색. 근거 색은 선택 사항
+    boreColor: true,                        // 관경의 출처를 기본 표시; 끄면 기존 최불리망 스타일
     // [H-2 · H-3] 계통도·기계실이 찍는 두 점 · 무엇을 찍는 중인지
     sub: { picks: [null, null], arm: null, summary: null, preview: null },
     merge: null,                            // [H-5] 통합 상태 한 장
@@ -73,7 +73,7 @@
         cfg.canvas_units, cfg.lift_ref, cfg.head_stub_pct]),
         bounds: nodeBounds(((S.design || {}).view || {}).nodes) };
     }
-    return { key: prefix + "cad", bounds: (S.world || {}).bounds || (S.edit || {}).bounds };
+    return { key: prefix + "cad", bounds: (S.world || {}).source_view_bounds || sourceVisibleBounds() || (S.world || {}).bounds || (S.edit || {}).bounds };
   }
 
   function fitCamera(bounds, padding = 0.92) {
@@ -160,14 +160,31 @@
       const b = autoNetBounds();
       if (b) return b;
     }
-    if (S.world) return S.world.bounds;
+    if (S.world) return sourceVisibleBounds() || S.world.bounds;
     return null;
+  }
+
+  // Source visibility is a camera/display concern, never a graph filter.
+  function sourceVisibleBounds() {
+    if(!document.body.classList.contains('module-h') || !S.world?.source_visibility)return null;
+    if(!S.world._grpInit)return S.world.bounds;
+    let out=null;
+    for(const b of S.world.bundles||[]){
+      if(S.hidden.has(b.id)||!b.bounds)continue;
+      const a=b.bounds;
+      out=out?{minx:Math.min(out.minx,a.minx),miny:Math.min(out.miny,a.miny),
+        maxx:Math.max(out.maxx,a.maxx),maxy:Math.max(out.maxy,a.maxy)}:{...a};
+    }
+    return out;
   }
 
   $("btn-fit").onclick = () => {
     const info = viewportInfo();
     fit(info.key.endsWith("|cad") ? curBounds() : info.bounds);
   };
+  if(document.body.classList.contains('module-h'))window.ModuleHSourceView={restore:()=>{
+    const bounds=S.world?.source_view_bounds;if(bounds)fit(bounds);
+  }};
 
   let zoomArmed = false, zoomDrag = null, suppressClickUntil = 0;
   function armZoom(on) {
@@ -226,6 +243,7 @@
   let drag = null;
   // 영역 지정 드래그 — 켜져 있을 때만 왼쪽 버튼을 가로챈다(패닝은 그대로).
   let zoneDrag = null;
+  let cropArmed = false, cropZone = null;
   function cancelZoneGesture() { zoneDrag = null; draw(); }
   window.addEventListener("blur", cancelZoneGesture);
   window.addEventListener("keydown", e => {
@@ -240,7 +258,8 @@
   /** 지금 캔버스가 «영역 도구» 것인가. 한 곳에서만 판정한다. */
   function zoneArmed() {
     return (S.stage === "edit" && $("ed-zone-arm").checked)
-        || (S.stage === "auto" && $("au-zone-arm").checked);
+        || (S.stage === "auto" && $("au-zone-arm").checked)
+        || (S.stage === "pick" && cropArmed);
   }
 
   cv.addEventListener("mousedown", (e) => {
@@ -256,7 +275,7 @@
     const armed = zoneArmed();
     if (e.button === 0 && !e.shiftKey && armed) {
       cv.focus({preventScroll:true});
-      const shape = $(S.stage === "edit" ? "ed-zone-shape" : "au-zone-shape").value;
+      const shape = S.stage === "pick" ? "lasso" : $(S.stage === "edit" ? "ed-zone-shape" : "au-zone-shape").value;
       zoneDrag = { x0: wx(e.offsetX), y0: wy(e.offsetY),
                    x1: wx(e.offsetX), y1: wy(e.offsetY), shape, stage: S.stage,
                    points: [[wx(e.offsetX), wy(e.offsetY)]] };
@@ -321,10 +340,15 @@
       }
       let zone;
       try {
-        zone = z.shape === "lasso" ? Regions.finish(z.points, S.view.scale)
+        zone = z.shape === "lasso" ? Regions.finish(z.points, S.view.scale, {enclose:S.stage==='pick'})
           : [Math.min(z.x0,z.x1),Math.min(z.y0,z.y1),Math.max(z.x0,z.x1),Math.max(z.y0,z.y1)];
         if (S.zones.length >= 64) throw new Error("영역은 최대 64곳까지 그릴 수 있습니다.");
       } catch (err) { say(err.message, "warn"); draw(); return; }
+      if (S.stage === "pick") {
+        cropZone = zone; $("pk-crop-apply").disabled = false;
+        say("남길 영역을 표시했습니다. 「영역 밖 제외」를 누르면 적용합니다. 다시 그리면 범위를 바꿀 수 있습니다.");
+        draw(); return;
+      }
       markUndo("영역 그리기");
       S.zones.push(zone);
       // 자동 경로는 영역이 서버의 필수 입력이라 곧바로 올린다(anchored 의
@@ -659,6 +683,7 @@
   }
 
   function paint() {
+    renderBoreLegend();
     const { w, h } = cssSize();
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "#000";
@@ -682,10 +707,10 @@
       // [F-10e] «평면에서 보기» — 밑그림(배경 도면)까지 깔아 손질 화면과 같은
       //   그림을 만든다. 여기서는 밑그림과 최불리망이 같은 세계 좌표라
       //   어긋날 수가 없다(아이소 아래에 깔지 않는 이유는 BLOCKED §17).
+      window.ModuleHView?.drawOriginal(ctx, S, sx, sy);
       if (planUnderlayOn() && S.edit) {
-        if (editBgOn() && S.world) drawWorld(true, EDIT_BG_ALPHA);
-        drawEdit();
-        drawDesignMarks();
+        if (!window.ModuleHView?.ownsOriginal() && editBgOn() && S.world) drawWorld(true, EDIT_BG_ALPHA);
+        if(!window.ModuleHView?.drawPlanNetwork(ctx,S,sx,sy)){drawEdit();drawDesignMarks();}
       }
       else if (designMarksOn() && S.edit) { drawEdit(); drawDesignMarks(); }
       else withDim(drawDesign);      // [§3-2] 고른 것이 있으면 망을 흐리게
@@ -722,6 +747,7 @@
       const focus = S.stage === "auto" && S.autoDone && S.autoView;
       drawWorld(focus);
       if (S.stage === "pick" && S.suggest) drawSuggest();
+      if (S.stage === "pick") drawZones();
       // [H-2 · H-3] 찍은 두 점을 도면 위에 남긴다 — 어디를 찍었는지 안 보이면
       // 추출이 틀렸을 때 클릭이 문제인지 도면이 문제인지 가릴 수 없다.
       if (S.stage === "sub") drawSubPicks();
@@ -798,6 +824,27 @@
     return px + r >= 0 && py + r >= 0 && px - r <= canvasSize.w && py - r <= canvasSize.h;
   }
 
+  function drawSourceLabels() {
+    if(!document.body.classList.contains('module-h') || !S.world.h_source_display)return;
+    // Display-only native labels. They never become selectable graph edges.
+    ctx.save();ctx.setLineDash([]);
+    for(const t of S.world.texts||[]){
+      if(S.hidden.has(t.bundle_id))continue;
+      const x=sx(t.x),y=sy(t.y),size=t.height*S.view.scale,lines=t.text.split(/\r?\n/);
+      // Subpixel labels stay in the source; zooming reveals them at native size.
+      // Enlarging every tiny label made overview drawings unreadable blobs.
+      if(!Number.isFinite(size)||size<0.75)continue;
+      const reach=size*Math.max(...lines.map(s=>s.length),lines.length);
+      if(x+reach<0||y+reach<0||x-reach>canvasSize.w||y-reach>canvasSize.h)continue;
+      ctx.save();ctx.translate(x,y);ctx.rotate(-t.rotation*Math.PI/180);
+      if(Number.isFinite(t.width_factor)&&t.width_factor>0)ctx.scale(t.width_factor,1);
+      ctx.font=`${size}px "Noto Sans KR", sans-serif`;ctx.textAlign=t.align||'left';ctx.textBaseline='alphabetic';ctx.fillStyle=t.css;
+      const h=(lines.length-1)*size*1.25,dy=t.vertical==='top'?size*.8:t.vertical==='middle'?(size*.8-h)/2:t.vertical==='bottom'?-h:0;
+      lines.forEach((line,i)=>ctx.fillText(line,0,dy+i*size*1.25));ctx.restore();
+    }
+    ctx.restore();
+  }
+
   function drawWorld(dim, alpha) {
     ctx.lineWidth = CAD_LINE_W;
     if (dim) {
@@ -824,10 +871,11 @@
         const a0 = -ar[i + 3] * Math.PI / 180;
         const a1 = a0 - ar[i + 4] * Math.PI / 180;
         ctx.moveTo(sx(ar[i]) + Math.cos(a0) * r, sy(ar[i + 1]) + Math.sin(a0) * r);
-        ctx.arc(sx(ar[i]), sy(ar[i + 1]), r, a0, a1, true);
+        ctx.arc(sx(ar[i]), sy(ar[i + 1]), r, a0, a1, ar[i + 4] >= 0);
       }
       ctx.stroke();
     }
+    drawSourceLabels();
     if (dim) { ctx.globalAlpha = 1; ctx.setLineDash([]); return; }
     if (!S.pick) return;
     const hl = S.pick.highlight;
@@ -933,7 +981,7 @@
     // 최불리를 고른 뒤에는 «그것만» 보고 싶을 때가 있다. 표시만 바꾼다 —
     // 망은 그대로고, 산출물 범위는 「변환」 단계의 체크박스가 정한다.
     // (선정 전에는 걸지 않는다: 아무것도 안 보이는 화면이 되어 버린다.)
-    const wv = e.worst ? $("ed-worst-view").value : "all";
+    const wv = window.ModuleHView?.ownsOriginal() ? 'only' : e.worst ? $("ed-worst-view").value : "all";
     ctx.lineWidth = 1.4;
     if (wv !== "only") {
       ctx.save();
@@ -1162,13 +1210,35 @@
     }
     return d;
   }
-  const post = (path, body) => api(path, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const areaAll = document.body.classList.contains("module-h");
+  function selectionBody(path, body) {
+    if (!areaAll) return body;
+    if (path === "/api/module-f/auto/run") throw new Error("영역 전체 추출은 배관 네트워크 정의에서 실행하세요.");
+    if (["/api/module-f/edit/worst", "/api/module-f/design/build"].includes(path)) {
+      const result = {...body, selection_mode:"area_all", zones:Regions.clone(S.zones)};
+      delete result.k; delete result.sheet;
+      return result;
+    }
+    return body;
+  }
+  const post = async (path, body) => {
+    if (areaAll && ["/api/module-f/edit/worst", "/api/module-f/design/build"].includes(path)) {
+      let policy;
+      try {policy=await api("/api/module-h/selection-policy");} catch (_) { /* no old-server fallback */ }
+      if (policy?.selection_mode!=="area_all" || policy?.version!==1)
+        throw new Error("영역 전체 추출을 적용하려면 서버 재시작이 필요합니다. 기존 기준개수 방식으로 실행하지 않습니다.");
+    }
+    return api(path, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(selectionBody(path, body)),
+    });
+  };
 
   function say(msg, cls) {
     if (cancellingWork) return;
+    // H's exact, revision-checked history conflict is a review gate, not a
+    // failed calculation. Do not downgrade unrelated/server errors or F errors.
+    if (cls === 'err' && window.ModuleHAttributes?.historyConflict()?.conflict === msg) cls = 'warn';
     const el = $("status");
     el.textContent = msg;
     el.className = cls || "";
@@ -1321,7 +1391,11 @@
     // [F-10a] 방식을 묻지 않으므로 기본 흐름은 처음부터 정해져 있다. 다만
     //   도면을 아직 안 읽었으면 「도면 열기」 하나만 보인다 — 갈 수 있는
     //   곳이 그것뿐이라서다. (자동 차선을 고급에서 고르면 그때 갈린다.)
-    if (S.slot === "plan" && !S.method) return ["open"];
+    if (S.slot === "plan" && !S.method) {
+      // F exposes the existing five destinations, still guarded by stageReachable.
+      // H keeps its separate navigation contract. No stage is entered here.
+      return document.body.classList.contains("module-h") ? ["open"] : STAGE_FLOW.plan.slice();
+    }
     const key = (S.slot === "plan" && S.method === "auto") ? "plan_auto" : slotRole(S.slot);
     // 통합은 붙이지 않는다 — 세 슬롯이 모두 같은 곳으로 가므로 «단계» 가
     // 아니라 목적지다. 머리말의 「통합 · 결합」 단추 하나가 그 자리다.
@@ -1620,6 +1694,7 @@
     // [H-0] 활성 슬롯으로 넣는다. 세션이 이미 있으면 그 세션의 슬롯을 채운다
     // (S650 회귀 한 바퀴) — 없으면 새 세션이 이 종류로 시작한다.
     fd.append("kind", S.slot);
+    if (document.body.classList.contains("module-h")) fd.append("h_access", "1");
     if (S.sid) fd.append("sid", S.sid);
     busy(true, `업로드 준비 중… (${MB(f.size)})`);
     try {
@@ -1974,6 +2049,10 @@
   async function loadWorldRaw() {
     const d = await api(`/api/module-f/world?sid=${S.sid}`);
     S.world = d.world; S.key = d.key; S.pick = d.state;
+    cropZone = null; cropArmed = false;
+    $("pk-crop-apply").disabled = true;
+    $("pk-crop-pen").setAttribute("aria-pressed","false");
+    $("pk-crop-pen").classList.remove("on");
     buildLayers();
     renderCats();
     return d;
@@ -1993,7 +2072,8 @@
             + ` · 호 ${c.arcs.toLocaleString()}`;
     if (dr.segs || dr.circles || dr.arcs) {
       msg += ` — 화면에는 선분 ${dr.segs.toLocaleString()}·원 ${dr.circles.toLocaleString()}`
-           + `·호 ${dr.arcs.toLocaleString()} 개를 뺐습니다(표시 상한). 찍기 판정은 전량 대상입니다.`;
+           + `·호 ${dr.arcs.toLocaleString()} 개를 뺐습니다(표시 상한). 찍기 판정은 전량 대상입니다.`
+           + ' 레이어 목록의 「일부 표시 · 전체 보기」로 해당 묶음을 전량 표시할 수 있습니다.';
       say(msg, "warn");
     } else { say(msg); }
   }
@@ -2031,6 +2111,7 @@
   ];
 
   async function loadRefCounts() {
+    if (areaAll) return; // H has no reference-count selection rule.
     let rows = [];
     try {
       const d = await api("/api/module-f/worst/reference-counts");
@@ -2081,7 +2162,8 @@
         : [Math.min(zoneDrag.x0, zoneDrag.x1), Math.min(zoneDrag.y0, zoneDrag.y1),
           Math.max(zoneDrag.x0, zoneDrag.x1), Math.max(zoneDrag.y0, zoneDrag.y1)]]
       : [];
-    const all = S.zones.concat(live);
+    const savedZones = S.stage === "pick" ? (cropZone ? [cropZone] : (S.pick?.work_regions || [])) : S.zones;
+    const all = savedZones.concat(live);
     if (!all.length) return;
     ctx.save();
     ctx.lineWidth = 1.5;
@@ -2089,13 +2171,19 @@
       const ps = Regions.points(all[i]);
       if (!ps.length) continue;
       const px = sx(Math.min(...ps.map(p=>p[0]))), py = sy(Math.max(...ps.map(p=>p[1])));
-      const live_i = i >= S.zones.length;
+      const live_i = i >= savedZones.length;
       ctx.strokeStyle = live_i ? "#facc15" : "#38bdf8";
       ctx.setLineDash(live_i ? [6, 4] : []);
       ctx.fillStyle = live_i ? "rgba(250,204,21,.10)" : "rgba(56,189,248,.10)";
+      const enclosed=all[i].fill_rule==='enclosed'?Regions.enclosed(all[i]):null;
       ctx.beginPath();
-      ps.forEach((p,j)=>j?ctx.lineTo(sx(p[0]),sy(p[1])):ctx.moveTo(sx(p[0]),sy(p[1])));
-      ctx.closePath(); ctx.fill("evenodd"); ctx.stroke();
+      for(const ring of enclosed?.faces||[ps]){
+        ring.forEach((p,j)=>j?ctx.lineTo(sx(p[0]),sy(p[1])):ctx.moveTo(sx(p[0]),sy(p[1])));
+        ctx.closePath();
+      }
+      ctx.fill(enclosed?'nonzero':'evenodd');
+      if(enclosed){ctx.beginPath();for(const [a,b] of enclosed.boundary){ctx.moveTo(sx(a[0]),sy(a[1]));ctx.lineTo(sx(b[0]),sy(b[1]));}}
+      ctx.stroke();
       if (!live_i) {
         ctx.fillStyle = "#38bdf8";
         ctx.font = "11px sans-serif";
@@ -2159,6 +2247,13 @@
     }
     // ★모자라면 **누르기 전에** 말한다. 종전에는 눌러야 400 이 왔고 그
     //   문장이 맨 아래 상태줄에만 떠서 「동작을 안 한다」로 읽혔다.
+    if (areaAll) {
+      why.classList.toggle("warn", !S.zones.length);
+      why.textContent = S.zones.length
+        ? `영역 ${S.zones.length}곳 · 헤드 기호 ${zoneHeadCount().toLocaleString()}개 전체`
+        : "영역을 먼저 지정하세요";
+      return;
+    }
     const k = edK();
     const inZone = zoneHeadCount();
     const short = inZone < k;
@@ -2179,13 +2274,13 @@
     if (!box) return;
     if (!msg) { box.classList.add("hidden"); box.innerHTML = ""; return; }
     box.classList.remove("hidden");
-    box.innerHTML = `<b>최불리를 뽑지 못했습니다</b><br>${esc(msg)}`;
+    box.innerHTML = `<b>${areaAll ? "영역 배관망을 추출하지 못했습니다" : "최불리를 뽑지 못했습니다"}</b><br>${esc(msg)}`;
   }
 
   function renderZones() {
     renderWorstReady();
     const box = $("ed-zones");
-    if (!S.zones.length) { box.textContent = "영역 없음 · 도면 전체"; return; }
+    if (!S.zones.length) { box.textContent = areaAll ? "영역을 지정하세요" : "영역 없음 · 도면 전체"; return; }
     let html = "";
     for (let i = 0; i < S.zones.length; i++) {
       html += kv(`영역 ${i + 1}`,
@@ -2225,6 +2320,10 @@
       renderWorstError(null);
       $("cv-worst-kfp").checked = false;
       draw();
+      if (areaAll) {
+        say(`${what} · 영역 배관망을 다시 추출하세요.`, "warn");
+        return;
+      }
       say(`${what}${hadWorst ? " — 이전 최불리 선정을 지웠습니다." : "."}`
         + ` 지금 영역 ${S.zones.length}곳 · 「최불리 선정」을 다시 누르세요.`,
           "warn");
@@ -2480,7 +2579,19 @@
   // ★서버가 주는 그래프는 **추출이 쓰는 바로 그것** 이다(`subdrawing.path_graph`).
   //   미리보기와 결과가 다른 그래프를 쓰면 화면이 거짓말을 한다.
 
-  async function loadSubGraph(layers) {
+  let subGraphQueue = Promise.resolve();
+  function loadSubGraph(layers) {
+    // A point/layer change and Extract must share one ordered session writer.
+    // Capture the requested slot; discard obsolete work after switching sheets.
+    const sid=S.sid, slot=S.slot;
+    subGraphQueue=subGraphQueue.catch(()=>{}).then(()=>{
+      if(S.sid!==sid || S.slot!==slot)return;
+      return loadSubGraphNow(layers);
+    });
+    return subGraphQueue;
+  }
+  async function loadSubGraphNow(layers) {
+    const requestedSid=S.sid, requestedSlot=S.slot;
     const body = { sid: S.sid };
     if (layers !== undefined) body.layers = layers;
     // ★두 점을 함께 보낸다 — 서버가 «그 두 점이 있는 계통» 하나로 좁힌다.
@@ -2490,6 +2601,7 @@
     if (pk[0] && pk[1]) { body.a = pk[0]; body.b = pk[1]; }
     try {
       const d = await post("/api/module-f/sub/graph", body);
+      if(S.sid!==requestedSid || S.slot!==requestedSlot)return;
       const adj = d.nodes.map(() => []);
       for (const [a, b, len, forced] of d.edges) {
         adj[a].push([b, len, forced]);
@@ -2519,6 +2631,7 @@
         buildLayers();
       }
     } catch (err) {
+      if(S.sid!==requestedSid || S.slot!==requestedSlot)return;
       S.subGraph = null;
       say(`경로 미리보기를 못 켰습니다 — ${err.message}`, "warn");
     }
@@ -2685,6 +2798,7 @@
   }
 
   async function subExtract(clean) {
+    const requestedSid=S.sid, requestedSlot=S.slot;
     const sp = subSpec();
     const body = { sid: S.sid,
                    snap_tolerance_mm: Number($("sub-snap").value || 2500) };
@@ -2716,7 +2830,10 @@
     }
     busy(true, `${sp.title} 경로 추출 중…`);
     try {
+      await subGraphQueue;
+      if(S.sid!==requestedSid || S.slot!==requestedSlot)return;
       const d = await post(sp.path, body);
+      if(S.sid!==requestedSid || S.slot!==requestedSlot)return;
       S.sub.summary = d.summary;
       S.sub.mode = d.mode;
       renderSubSummary(d);
@@ -3017,6 +3134,9 @@
     // 뜨면 「손질이 날아갔나」로 읽힌다.
     await loadSubFix();
     draw();
+    if(S.world?.source_all_hidden)say('원본 CAD에서 모든 레이어가 꺼져 있습니다. 레이어 목록에서 필요한 항목을 켜 주세요.','warn');
+    else if(Object.keys(S.world?.source_unsupported||{}).length)
+      say('일부 원본 객체는 표시를 지원하지 않습니다: '+Object.entries(S.world.source_unsupported).map(([k,n])=>`${k} ${n}개`).join(' · '),'warn');
   }
 
   // ── [A 방식] 자동 추출 — 알람밸브 한 점 + 헤드 영역 ────────────────
@@ -3763,6 +3883,10 @@
   };
 
   $("mg-emit").onclick = async () => {
+    if(document.body.classList.contains('module-h') && $('h-output-basis')?.value==='proposal') {
+      if($('sz-emit').disabled){say('역산 조건이 변경되었습니다. 다시 역산한 뒤 출력하세요.','err');return;}
+      $('sz-emit').click();return;
+    }
     busy(true, "산출물 생성 중…");
     try {
       await post("/api/module-f/merge/emit", { sid: S.sid });
@@ -3788,6 +3912,10 @@
   const mgSuffix = () => ($("mg-dl-coord") || {}).value || "";
 
   $("mg-dl-sdf").onclick = () => {
+    if(document.body.classList.contains('module-h') && $('h-output-basis')?.value==='proposal') {
+      if($('sz-download').disabled){say('현재 역산 검토안 SDF를 먼저 생성하세요.','warn');return;}
+      $('sz-download').click();return;
+    }
     const q = mgSuffix();
     dlFile(mgUrl("sdf" + q));
     setTimeout(() => dlFile(mgUrl("slf" + q)), 400);
@@ -3961,6 +4089,10 @@
     try {
       const d = await api(`/api/module-f/merge/preview?sid=${S.sid}&iso=${iso}`);
       S.mergeView = d.view || null;
+      if(document.body.classList.contains('module-h')){
+        S.mergeFingerprint=d.fingerprint;
+        if(sizingReport && sizingReport.fingerprint!==d.fingerprint)dirtySizing();
+      }
       // [요소속성 수정카드 §4] 통합 화면의 카드가 읽을 것 — 덮은 값과
       //   「적용 못 한 수정」. 저장소는 하나지만 **못 옮긴 사유는 화면마다**
       //   다르다(회랑은 표에서, 계통도·기계실은 결합에서 옮겨진다).
@@ -3991,6 +4123,135 @@
     draw();
   }
 
+  // Optional hydraulic proposals never replace S.mergeView or confirmed tables.
+  let sizingBasis = null, sizingReport = null, sizingEdits = {}, sizingSid = null;
+  let sizingClean = false;
+  const sizingFields = {
+    supply_pressure_bar:"sz-pressure",max_supply_pressure_bar:"sz-ceiling",
+    suction_total_head_m:"sz-suction",discharge_velocity_head_m:"sz-vhead",min_flow_lpm:"sz-flow",min_pressure_bar:"sz-min",
+    max_head_pressure_bar:"sz-max",branch_velocity_mps:"sz-branch",other_velocity_mps:"sz-other",
+    max_dn:"sz-dn",max_iterations:"sz-iterations"
+  };
+  function dirtySizing() {
+    sizingClean = false;
+    $("sz-emit").disabled = true; $("sz-download").disabled = true;
+    if (sizingReport) $("sz-result").textContent = "입력 조건이 바뀌었습니다. 다시 계산하세요. 이전 결과는 진단 JSON에서 확인할 수 있습니다.";
+    if(document.body.classList.contains('module-h'))window.dispatchEvent(new Event('module-h-sizing-dirty'));
+  }
+  function sizingOptions() {
+    const opts = {mode:$("sz-mode").value,source:$("sz-source").value.trim(),pipes:sizingEdits,
+      active_nozzles:$("sz-heads").value.split(",").map(x=>x.trim()).filter(Boolean)};
+    if (document.body.classList.contains('module-h') && $('ha-sizing-scope')) opts.diameter_scope = $('ha-sizing-scope').value;
+    if(document.body.classList.contains('module-h') && $('hh-duration')){
+      const value=$('hh-duration').value.trim();
+      if(!value || !Number.isFinite(Number(value)) || Number(value)<=0)throw new Error('방수 지속시간(분)을 확인하세요.');
+      opts.duration_minutes=Number(value);
+    }
+    for (const [key,id] of Object.entries(sizingFields)) {
+      if ($(id).value.trim()==="" || !Number.isFinite(Number($(id).value))) throw new Error("역산 숫자 입력값을 확인하세요.");
+      opts[key] = Number($(id).value);
+    }
+    return opts;
+  }
+  function renderSizingPipe() {
+    const label = $("sz-pipe").value, row = sizingEdits[label] || {};
+    $("sz-role").value = row.role || sizingBasis?.pipes.find(p=>p.label===label)?.role || "unknown";
+    $("sz-lock").checked = !!row.locked;
+    $("sz-loss").value = row.equivalent_m ?? "";
+  }
+  function renderSizingResult(report, stale, files=[]) {
+    sizingReport = report;
+    if(document.body.classList.contains('module-h'))window.dispatchEvent(new CustomEvent('module-h-sizing-result',{detail:{proposal:report?.proposal_id,feasible:!!report?.feasible,stale,report}}));
+    sizingClean = !!report && !stale;
+    $("sz-report").disabled = !report || stale;
+    $("sz-emit").disabled = !sizingClean || !report?.feasible;
+    $("sz-download").disabled = !sizingClean || !files.includes("sdf_iso");
+    const box = $("sz-result");
+    if (!report) { box.textContent="아직 계산하지 않았습니다."; return; }
+    if (stale) { box.textContent="결합망이 바뀌어 이전 검토안이 만료되었습니다. 다시 불러온 뒤 계산하세요."; return; }
+    const names={feasible_review:"현재 모델의 조건 충족 · 미확정 검토안",nonconverged:"계산 미수렴",
+      constraints_unmet:"설계 조건 미달",bounds_exhausted:"허용 관경/잠금/압력 상한으로 조건 충족 불가",iteration_limit:"반복 상한 도달"};
+    const fmt=(v,n=2)=>Number.isFinite(v)?Number(v).toFixed(n):"—";
+    const changed=report.pipes.filter(p=>p.before_dn!==p.after_dn);
+    const shown=report.pipes.slice(0,150);
+    box.innerHTML=`<h3>${esc(names[report.status]||report.status)}</h3>`
+      +`<p>작동 헤드 ${report.nozzles.length}개 · 변경 제안 ${changed.length}개 / ${report.pipes.length}개</p>`
+      +`<p>${report.feasible?"필요 성능 검토값":"마지막 시험값 — 설계값으로 사용 금지"}<br>유량 <b>${fmt(report.pump.flow_lpm)} L/min</b><br>차압 양정 <b>${fmt(report.pump.differential_head_m)} m</b><br>`
+      +`토출 ${fmt(report.pump.discharge_pressure_bar,3)} bar · 수동력 ${fmt(report.pump.hydraulic_power_kw)} kW (모터 정격 아님)</p>`
+      +`<p>질량 잔차 ${Number(report.solution.mass_error_lps).toExponential(2)} L/s · 에너지 잔차 ${Number(report.solution.energy_error_m).toExponential(2)} m</p>`
+      +`<p>현재 아이소매트릭은 원본입니다. 아래 제안 및 별도 SDF만 변경값을 사용합니다.</p>`
+      +`<details open><summary>검토 사항 ${report.warnings.length}건 / 미달 ${report.violations.length}건</summary><ul>`
+      +report.warnings.map(w=>`<li>${esc(w)}</li>`).join("")
+      +report.violations.slice(0,50).map(v=>`<li>${esc(v.message || `${v.kind} · ${v.label || ""}`)}</li>`).join("")+`</ul></details>`
+      +`<details><summary>배관별 결과 (앞 ${shown.length}개 · 전체는 JSON)</summary><div class="sizing-table"><table><thead><tr><th>배관</th><th>호칭경 전→후</th><th>내경 mm</th><th>유량 L/min</th><th>유속 m/s</th></tr></thead><tbody>`
+      +shown.map(p=>`<tr><td><button data-sizing-pipe="${esc(p.label)}">${esc(p.label)}</button></td><td>${p.before_dn}→${p.after_dn}${p.locked?" 🔒":""}</td><td>${fmt(p.inner_mm)}</td><td>${fmt(p.flow_lpm)}</td><td>${fmt(p.velocity_mps)}</td></tr>`).join("")
+      +`</tbody></table></div></details>`;
+    for (const btn of box.querySelectorAll("[data-sizing-pipe]")) btn.onclick=()=>insSelect("mgpipe",btn.dataset.sizingPipe);
+  }
+  async function refreshSizing(reset=false) {
+    if (!S.sid) throw new Error("먼저 도면을 여세요.");
+    const d=await api(`/api/module-f/merge/sizing/state?sid=${encodeURIComponent(S.sid)}`);
+    if(document.body.classList.contains('module-h'))window.dispatchEvent(new CustomEvent('module-h-sizing-basis',{detail:d}));
+    if (reset) {
+      sizingBasis=d.basis;sizingSid=S.sid;sizingEdits={};
+      $("sz-source").value=d.basis.source;
+      $("sz-heads").value=d.basis.nozzles.filter(h=>h.active).map(h=>h.label).join(", ");
+      $("sz-pipe").innerHTML=d.basis.pipes.map(p=>`<option value="${esc(p.label)}">${esc(p.label)} · ${esc(p.a)}→${esc(p.b)} · ${p.dia}A</option>`).join("");
+      $("sz-basis").textContent=`배관 ${d.basis.pipes.length}개 · 노즐 ${d.basis.nozzles.length}개 · 원본 보존`;
+      const review=d.basis.fitting_review;
+      if (review) $("sz-basis").textContent+=` · 부속 미확정 ${review.pending_count}건 / 직접 지정 해소 ${review.resolved.length}건`;
+      $("sz-confirm").checked=false;renderSizingPipe();
+    }
+    renderSizingResult(d.report,d.stale,d.files);
+    if (reset && d.report) dirtySizing();
+  }
+  $("sz-load").onclick=async()=>{try{await refreshSizing(true);}catch(e){say(e.message,"err");}};
+  $("sz-pipe").onchange=renderSizingPipe;
+  function saveSizingPipe() {
+    const label=$("sz-pipe").value;
+    if (!label) throw new Error("결합망을 먼저 불러오세요.");
+    const row={role:$("sz-role").value,locked:$("sz-lock").checked};
+    if ($("sz-loss").value!=="") {
+      const v=Number($("sz-loss").value);
+      if (!Number.isFinite(v)||v<0) throw new Error("등가길이는 0 이상의 숫자여야 합니다.");
+      row.equivalent_m=v;
+    }
+    sizingEdits[label]=row;dirtySizing();
+    $("sz-pipe-note").textContent=`${label} 설정 저장 완료 · ${Object.keys(sizingEdits).length}개 배관 개별 설정`;
+  }
+  $("sz-pipe-save").onclick=()=>{try{saveSizingPipe();}catch(e){say(e.message,"err");}};
+  for (const id of ["sz-role","sz-lock","sz-loss"]) $(id).addEventListener("input",dirtySizing);
+  for (const id of [...Object.values(sizingFields),"sz-mode","sz-source","sz-heads"]) $(id).addEventListener("input",dirtySizing);
+  $("sz-run").onclick=async()=>{
+    try {
+      if (!sizingBasis||sizingSid!==S.sid) throw new Error("현재 결합망을 먼저 불러오세요.");
+      if (!$("sz-confirm").checked) throw new Error("길이·표고·작동 헤드·공급 조건 확인에 체크하세요.");
+      saveSizingPipe();
+      const opts=sizingOptions();dirtySizing();busy(true,"전체 배관망 관경·펌프 역산 중…");
+      await post("/api/module-f/merge/sizing/run",{sid:S.sid,fingerprint:sizingBasis.fingerprint,options:opts});
+      watch(async()=>{await refreshSizing();say("역산 검토안 계산이 끝났습니다. 조건 충족 여부와 검토 사항을 확인하세요.","ok");});
+    } catch(e){
+      busy(false);dirtySizing();
+      $("sz-result").textContent=`역산을 시작하지 못했습니다. ${e.message}`;
+      if(document.body.classList.contains('module-h'))window.dispatchEvent(new CustomEvent('module-h-sizing-error',{detail:{message:e.message}}));
+      say(e.message,"err");
+    }
+  };
+  $("sz-emit").onclick=async()=>{
+    try {
+      if (!sizingClean||!sizingReport?.feasible) throw new Error("유효한 조건 충족 검토안이 필요합니다.");
+      busy(true,"원본과 별도의 검토안 SDF 생성 중…");
+      await post("/api/module-f/merge/sizing/emit",{sid:S.sid,proposal_id:sizingReport.proposal_id});
+      watch(async()=>{await refreshSizing();say("검토안 SDF·SLF가 생성되었습니다. PIPENET 대조가 필요합니다.","ok");});
+    } catch(e){busy(false);say(e.message,"err");}
+  };
+  const sizingUrl=what=>`/api/module-f/merge/sizing/download?sid=${encodeURIComponent(S.sid)}&what=${what}`;
+  $("sz-report").onclick=()=>dlFile(sizingUrl("report"));
+  $("sz-download").onclick=()=>{
+    const suffix=mgSuffix();dlFile(sizingUrl("sdf"+suffix));
+    setTimeout(()=>dlFile(sizingUrl("slf"+suffix)),400);
+  };
+
   const mergeIsoOn = () => !!($("mg-iso") || {}).checked;
 
   function renderMergeLegend(d) {
@@ -4001,7 +4262,8 @@
     // 세 화면의 규약을 그대로 쓰므로 범례도 그 말로 적는다 — 평면도는 흰
     // 최불리망, 계통도·기계실은 추출 화면의 빨간 경로다.
     box.innerHTML =
-      `<span style="color:${MERGE_COLOR.plan}">■</span> 평면도 최불리망`
+      `도면별 구성 (근거 표시를 끈 경우의 색상)<br>`
+      + `<span style="color:${MERGE_COLOR.plan}">■</span> 평면도 최불리망`
       + ` ${c.plan}`
       + ` · <span style="color:${MERGE_COLOR.system}">■</span> 계통도 ${c.system}`
       + ` · 기계실 ${c.machineroom}`
@@ -4154,7 +4416,31 @@
   };
 
   // ── 레이어 목록 ────────────────────────────────────────────────
+  async function loadCompleteBundle(id) {
+    const world = S.world, sid = S.sid;
+    const d = await api(`/api/module-f/world/bundle?sid=${encodeURIComponent(sid)}&bundle_id=${encodeURIComponent(id)}`);
+    // A crop, slot switch or new upload must not receive an old request's geometry.
+    if (S.sid !== sid || S.world !== world) return;
+    const at = world.bundles.findIndex(b => b.id === id);
+    if (at < 0) return;
+    const old = world.bundles[at], full = d.bundle;
+    for (const [name,field] of [['segs','n_seg'],['circles','n_circle'],['arcs','n_arc']]) {
+      const extra = num(full[field])-num(old[field]);
+      if (world.shown) world.shown[name] += extra;
+      if (world.dropped) world.dropped[name] = Math.max(0,world.dropped[name]-extra);
+    }
+    world.bundles[at] = full;
+    S.hidden.delete(id);
+    buildLayers(); draw();
+    say(`${full.layer} × ${full.name} — 해당 묶음을 전량 표시했습니다. 배관 선정은 변경하지 않았습니다.`,'ok');
+  }
+
   function buildLayers() {
+    if(document.body.classList.contains('module-h')&&S.world?.source_visibility&&!S.world._grpInit){
+      S.world._grpInit=true;
+      const kept=_sysHidden.get(S.key);
+      S.hidden=kept?new Set(kept):sysDefaultHidden();
+    }
     const box = $("layers");
     box.innerHTML = "";
     // [오너 2026-09-22] 계통도 칸 — 배관망 · 건축 · 숨긴 레이어 세 묶음 표.
@@ -4230,6 +4516,18 @@
         soloBundle(b.id);
       };
       lb.append(cb, sw, ct, tx, cn, solo);
+      if (b.display_partial && S.slot === 'plan') {
+        const more = document.createElement('button');
+        more.type = 'button'; more.className = 'layer-complete'; more.dataset.id = b.id;
+        more.textContent = '일부 표시 · 전체 보기';
+        more.title = '표시 상한으로 생략된 도형까지 불러옵니다. 배관 선정·추출에는 영향을 주지 않습니다.';
+        more.onclick = async ev => {
+          ev.preventDefault(); ev.stopPropagation(); more.disabled = true;
+          try { await loadCompleteBundle(b.id); }
+          catch (err) { more.disabled = false; say(err.message,'err'); }
+        };
+        lb.appendChild(more);
+      }
       box.appendChild(lb);
     }
   }
@@ -4257,6 +4555,9 @@
 
   /** 기본값 — 숨긴 레이어 묶음(표에 없는 레이어 포함)을 안 그린다. */
   function sysDefaultHidden() {
+    // Native OFF/FROZEN and hidden parent INSERT states affect display only.
+    if(document.body.classList.contains('module-h')&&S.world.h_source_display)
+      return new Set((S.world.bundles||[]).filter(b=>b.source_hidden).map(b=>b.id));
     const { rowOf } = sysLayerIndex();
     return new Set((S.world.bundles || [])
       .filter((b) => ((rowOf.get(b.layer) || {}).group || "etc") === "etc")
@@ -4507,13 +4808,52 @@
       S.hidden = sysDefaultHidden();
       if (S.key) _sysHidden.delete(S.key);
       buildLayers(); draw();
-      say("레이어 표시를 기본값(배관망 + 건축)으로 되돌렸습니다.", "ok");
+      say(document.body.classList.contains('module-h')&&S.world.h_source_display
+        ? "원본 CAD의 레이어 표시 상태로 되돌렸습니다."
+        : "레이어 표시를 기본값(배관망 + 건축)으로 되돌렸습니다.", "ok");
     };
   }
 
   // ── 2. 찍기 ────────────────────────────────────────────────────
+  function stopPickRegion() {
+    // Keep the drawn boundary, but give the canvas back to object selection.
+    cropArmed = false;
+    $("pk-crop-pen").setAttribute("aria-pressed", "false");
+    $("pk-crop-pen").classList.remove("on");
+    cancelZoneGesture();
+  }
+  $("pk-crop-pen").onclick = () => {
+    cropArmed = !cropArmed; cancelZoneGesture();
+    $("pk-crop-pen").setAttribute("aria-pressed", String(cropArmed));
+    $("pk-crop-pen").classList.toggle("on", cropArmed);
+    say(cropArmed ? "마우스 왼쪽 버튼을 누른 채 남길 도면의 둘레를 그리세요. Shift+드래그는 화면 이동입니다." : "펜 영역 그리기를 껐습니다.");
+  };
+  async function applyWorkCrop(reset) {
+    if (!reset && !cropZone) return;
+    busy(true, reset ? "원본 영역 복원 중…" : "영역 밖 도형 제외 중…");
+    try {
+      await post("/api/module-f/pick/crop", {sid:S.sid, reset, zone:cropZone});
+      watch(async () => {
+      try {
+      const status = await api(`/api/module-f/convert/result?sid=${S.sid}`);
+      if (!status.result?.ok) throw new Error(status.result?.error || "영역 변경 실패");
+      cropZone = null; cropArmed = false; S.suggest = null; S.edit = null; S.zones = [];
+      S.design = null; S.merged = null;
+      $("pk-crop-pen").setAttribute("aria-pressed", "false");
+      $("pk-crop-pen").classList.remove("on");
+      $("pk-crop-apply").disabled = true;
+      await loadWorld(false);
+      const r = S.pick.crop_report;
+      say(r ? `영역 밖 제외 완료 · 선분 ${r.before.segs.toLocaleString()} → ${r.after.segs.toLocaleString()} · 영역 내부와 경계 중심의 원·호 보존. 배관망을 다시 구성하세요.` : "원본 영역을 복원했습니다. 배관망을 다시 구성하세요.", "ok");
+      } catch(err) { say(err.message,"err"); }
+      });
+    } catch(err) { busy(false); say(err.message,"err"); }
+  }
+  $("pk-crop-apply").onclick = () => applyWorkCrop(false);
+  $("pk-crop-reset").onclick = () => applyWorkCrop(true);
   function renderPick() {
     const p = S.pick;
+    $("pk-crop-reset").disabled = !(p.work_regions || []).length;
     $("pk-head-profile").value = p.head_symbol_profile || "";
     // 「상태」 다섯 줄은 뺐다 — 단추가 이미 같은 것을 말한다: 찍기가 켜졌는지는
     // 배관 선택이 눌린 모양으로, 재료가 찼는지는 선택 완료·배관망 구성의
@@ -4641,6 +4981,7 @@
     try {
       const d = await post("/api/module-f/pick/auto", { sid: S.sid, cat });
       S.pick = d.state;
+      stopPickRegion();
       renderPick();
       say(d.message + (d.applied.length ? ` — ${d.applied.join(", ")}` : ""),
           d.applied.length ? "ok" : "warn");
@@ -4653,6 +4994,7 @@
     try {
       const d = await post("/api/module-f/pick/mode", { sid: S.sid, action, slot });
       S.pick = d.state;
+      if (d.applied) stopPickRegion();
       renderPick();
       say(d.message, d.applied ? "" : "warn");
     } catch (err) { say(err.message, "err"); }
@@ -4756,8 +5098,20 @@
         + companyRows.map(r=>`<div>${esc(names[r.orientation] || "검토 필요")}${r.temperature_c != null ? ` ${r.temperature_c}℃` : ""} · (${r.xy.map(v=>Number(v).toFixed(0)).join(", ")})${r.calculation_review ? `<br>${esc(r.calculation_review)}` : ""}</div>`).join("");
     }
     const flowSummary = S.edit?.flow_report;
+    const preservedNetwork = (S.edit?.network_mode || "tree") !== "tree";
+    const restored = S.edit?.cycle_recovery;
+    $("ed-network-mode").value = S.edit?.network_mode || "tree";
+    $("ed-network-note").classList.toggle("hidden", !preservedNetwork);
+    $("ed-flow").textContent = preservedNetwork ? "물흐름 · 연결 보존 추출" : "물흐름 · 경로 확정";
+    $("ed-worst").textContent = areaAll ? "영역 배관망 추출" : preservedNetwork ? "작동 헤드 후보 선정" : "최불리 선정";
     $("ed-flow-summary").textContent = flowSummary
-      ? `단일 경로 확정 · ${flowSummary.heads}개 헤드 · 대체 경로 ${flowSummary.excluded.alternate_route || 0}개 제외 (원본 보존)` : "";
+      ? (preservedNetwork
+        ? `연결 보존 · ${flowSummary.heads}개 헤드 · ${flowSummary.edges}구간 · 독립 고리 ${flowSummary.cycle_rank}개 · 계산 검증 전`
+        : `단일 경로 확정 · ${flowSummary.heads}개 헤드 · 대체 경로 ${flowSummary.excluded.alternate_route || 0}개 제외 (원본 보존)`) : "";
+    if (preservedNetwork && restored) {
+      $("ed-flow-summary").textContent += ` · 헤드 기호·접속부 이음 복원 ${restored.restored}곳`
+        + (restored.review ? ` · 미복원·검토 ${restored.review}곳 (경로 기록 참조)` : "");
+    }
     const e = S.edit;
     syncWorstSourceSelect(e);   // [F-1] 급수원 2곳 이상이면 기준 선택을 보인다
     const kinds = Object.entries(e.kinds)
@@ -4773,6 +5127,7 @@
       : kv("가장 큰 덩이 헤드", `${bs.biggest_heads || 0} / ${bs.total_heads || 0}`);
     $("ed-info").innerHTML =
       kv("모드", e.mode) +
+      kv("배관망 방식", {tree:"트리 · 단일 경로",loop:"루프 · 복수 공급 경로 보존",grid:"그리드 · 양단 연결 보존"}[e.network_mode || "tree"]) +
       kv("노드 / 간선", `${e.counts.pts} / ${e.counts.edges}`) +
       kv("덩이", `${e.counts.bodies}개`) +
       reachRow +
@@ -4785,20 +5140,23 @@
         `${e.flow_report.heads}개 자리 · 경로 ${e.flow_report.edges}구간 · ${e.flow_report.length_m} m`)
         + kv("계산망에서 제외",
           `대체 경로 ${e.flow_report.excluded.alternate_route || 0} · 헤드 없는 가지 ${e.flow_report.excluded.no_head || 0}`)
-        + kv("관경 기준 전체 부하", `최대 ${e.flow_report.max_load_all}개 담당 (최불리 개수와 별도)`)
+        + (preservedNetwork ? kv("관경·유량 분배", "미산정 — 트리 담당 헤드 수를 적용하지 않음")
+          + kv("보존망에서 제외", `헤드 공급과 무관 ${e.flow_report.excluded.no_head_path || 0} · 미연결 ${e.flow_report.excluded.unreachable || 0}`)
+          : kv("관경 기준 전체 부하", `최대 ${e.flow_report.max_load_all}개 담당 (최불리 개수와 별도)`))
         + '<div class="muted">밝은 선: 확정 경로 · 흐린 선: 보존된 원본. 실제 환상배관의 유량 해석 결과는 아닙니다.</div>' : "") +
-      (e.worst ? kv("최불리망 <span class=\"tag\">설계면적</span>",
+      (e.worst ? kv(preservedNetwork ? "작동 헤드 후보망 · 수리검증 전" : "최불리망 <span class=\"tag\">설계면적</span>",
         `<span class="ok">${e.worst.k}개</span> · 앵커 ${e.worst.far_m} m`
         + ` · ${e.worst.area_w_m}×${e.worst.area_h_m} m`
         + (e.worst.area_m2 ? ` (${e.worst.area_m2} ㎡)` : "")
         + (e.worst.zones && e.worst.zones.length
            ? ` · 영역 ${e.worst.zones.length}곳` : "")
         + (e.worst.source ? ` · <b class="tag">${e.worst.source}</b> 기준` : ""))
-      + kv('최원 유하거리 <span class="tag">경로</span>',
+      + kv(preservedNetwork ? '선정용 기준 경로 거리 · 실제 유량 방향 아님' : '최원 유하거리 <span class="tag">경로</span>',
            `<span style="color:#ff3b3b">┈┈</span> ${e.worst.far_m} m`
            + ` · 절점 ${(e.worst.worst_path || []).length}개`)
-        + kv("배관 연장 / 주배관 부하",
-          `${e.worst.total_m} m · <span class="ok">${e.worst.max_load}</span>개 담당`)
+        + kv(preservedNetwork ? "보존 경로 연장" : "배관 연장 / 주배관 부하",
+          preservedNetwork ? `${e.worst.total_m} m · 부하 미산정`
+            : `${e.worst.total_m} m · <span class="ok">${e.worst.max_load}</span>개 담당`)
         : "") +
       (undef ? `<div class="kv"><b>변환 가능</b><span class="err">미지정 ${undef}개 — 막힘</span></div>`
              : `<div class="kv"><b>변환 가능</b><span class="ok">헤드 종류 확정</span></div>`);
@@ -5034,11 +5392,24 @@
     } catch (err) { say(err.message, "err"); }
   };
 
+  $("ed-network-mode").onchange = async () => {
+    const mode = $("ed-network-mode").value;
+    busy(true, "배관망 방식 변경 중…");
+    try {
+      const d = await post("/api/module-f/edit/network-mode", {sid:S.sid, network_mode:mode});
+      setEdit(d.state); renderEdit();
+      say("배관망 방식을 변경했습니다. 물흐름과 헤드 선정을 다시 실행하세요. 원본 연결은 유지됩니다.", "ok");
+    } catch (err) {
+      $("ed-network-mode").value = S.edit?.network_mode || "tree";
+      say(err.message, "err");
+    } finally { busy(false); }
+  };
+
   $("ed-flow-report").onclick = () => {
     if (!S.edit?.flow_report) { say("먼저 물흐름 경로를 확정하세요.", "warn"); return; }
     const a = document.createElement("a");
     a.href = `/api/module-f/edit/flow/report?sid=${encodeURIComponent(S.sid)}`;
-    a.download = "module-f-flow.json";
+    a.download = (S.edit?.network_mode || "tree") === "tree" ? "module-f-flow.json" : "module-f-network.json";
     a.click();
   };
 
@@ -5049,8 +5420,10 @@
       setEdit(d.state);
       renderEdit();
       const w = d.water;
-      say(`밸브→헤드 단일 경로 확정: ${w.wet_heads}/${w.total_heads}개`
-        + ` · ${w.wet_edges}구간. 최불리도 이 경로만 따릅니다. 원본은 보존됩니다.`, "ok");
+      say((S.edit?.network_mode || "tree") !== "tree"
+        ? `복수 공급 경로 보존: ${w.wet_heads}/${w.total_heads}개 헤드 · ${w.wet_edges}구간. 유량 해석 전 연결 검토 결과입니다.`
+        : `밸브→헤드 단일 경로 확정: ${w.wet_heads}/${w.total_heads}개`
+          + ` · ${w.wet_edges}구간. 최불리도 이 경로만 따릅니다. 원본은 보존됩니다.`, "ok");
     } catch (err) { say(err.message, "err"); }
     finally { busy(false); }
   };
@@ -5080,8 +5453,16 @@
       $("ed-anchor-note").scrollIntoView({ block: "nearest" });
       return;
     }
-    busy(true, label);
+    if (areaAll && !S.zones.length) {
+      $("ed-zone-arm").checked = true;
+      renderWorstError("영역을 먼저 지정하세요.");
+      say("사각형 또는 펜으로 영역을 지정하세요.", "warn");
+      return;
+    }
+    busy(true, areaAll ? "영역 안 모든 헤드의 배관망 추출 중…" : label);
     try {
+      // Pending region writes must finish before selecting this same region.
+      if (areaAll) await zoneWrite;
       const sheet = Number(($("ed-sheet") || {}).value || 0);
       const k = edK();
       const body = { sid: S.sid, k, sheet };
@@ -5091,13 +5472,17 @@
       const d = await post("/api/module-f/edit/worst", body);
       setEdit(d.state);
       renderEdit();
+      if (areaAll) renderZones();
       startPulse();              // [F-10c] 원클릭과 같은 연출 — 길만 다르다
       // 수리계산 단계도 같은 K 로 돈다 — 이제 «맞춰 주는» 것이 아니라 칸이
       // 하나뿐이라 갈릴 수가 없다. 화면 표시만 새로 적는다.
       renderDesignK();
       const s = d.summary;
-      say(`최불리 ${s.k} 헤드 — 후보 ${s.candidates}개 중 · `
-        + `최원 유하거리 ${s.far_m} m (경로 ${s.worst_path_m} m)`
+      if (areaAll) say(`영역 ${s.zones}곳 · 헤드 ${s.k}개 전체 추출`
+        + (s.merged ? ` · 같은 위치의 중복 기호 ${s.merged}개 통합` : ""), "ok");
+      else say(((s.network_mode || "tree") !== "tree" ? "수리검증 전 작동 후보 · " : "")
+        + `${(s.network_mode || "tree") !== "tree" ? "기준 거리 선정" : "최불리"} ${s.k} 헤드 — 후보 ${s.candidates}개 중 · `
+        + `${(s.network_mode || "tree") !== "tree" ? "선정용 기준 거리" : "최원 유하거리"} ${s.far_m} m (경로 ${s.worst_path_m} m)`
         + ` · ${s.k}번째 ${s.near_m} m`
         + (s.source ? ` · 급수원 ${s.source} 기준` : "")
         + (s.zones ? ` · 영역 ${s.zones}곳 안` : "")
@@ -5113,7 +5498,7 @@
       renderBlocked(null);                    // 지난번 막음 자국을 지운다
       renderWorstError(null);
       renderRankBroken(s.rank_invariant);
-      $("cv-worst-kfp").checked = true;
+      $("cv-worst-kfp").checked = !document.body.classList.contains('module-h');
     } catch (err) {
       say(err.message, "err");
       // ★[복원 §2-3] 막았으면 «어느 헤드가 · 왜 · 뭘 하면 되는지» 를 낸다.
@@ -5187,6 +5572,7 @@
       $("ed-zone-arm").checked = true;      // 바로 영역을 고칠 수 있게
       renderZones();
       draw();
+      if (areaAll) {say("추출을 해제했습니다. 영역을 수정한 뒤 다시 추출하세요.");return;}
       say("최불리 선정을 해제했습니다 — 영역 그리기를 켰습니다."
         + ` 지금 영역 ${S.zones.length}곳`
         + (S.zones.length
@@ -5226,7 +5612,12 @@
 
   // ★손질 다음은 «수리계산» 이다(변환이 아니다). 변환은 그 표를 파일로 내는
   //   마지막 단계라, 여기서 곧장 변환으로 보내면 재료가 없는 화면에 떨어진다.
-  $("ed-next").onclick = () => gotoStage("design");
+  $("ed-next").onclick = () => {
+    if (areaAll && (S.edit?.worst?.selection_mode !== "area_all" || S.edit?.edits_since_worst > 0)) {
+      say("영역 배관망을 먼저 추출하세요.", "warn"); return;
+    }
+    gotoStage("design");
+  };
 
   $("btn-back-design").onclick = () => gotoStage("design");
 
@@ -5495,6 +5886,7 @@
     $("btn-download-edit").disabled = !s.full;
     $("btn-download-worst-edit").disabled = !s.worst;
     $("btn-download-design").disabled = !s.design;
+    $("btn-download-review").disabled = !s.design || !s.review_only;
     $("btn-download-slf").disabled = !s.design;
     // .has 는 설계 SDF 에서 변환해 낸다 — SDF 가 있으면 있다.
     $("btn-download-has").disabled = !s.design;
@@ -5571,6 +5963,7 @@
   $("btn-download-worst-edit").onclick = () => dlEditingKfp(dlUrl("worst-kfp"));
   $("btn-download-has").onclick = () => dlFile(dlUrl("design-has"));
   $("btn-download-slf").onclick = () => dlFile(dlUrl("design-slf"));
+  $("btn-download-review").onclick = () => dlFile(dlUrl("design-review"));
   $("btn-download-design").onclick =
     () => dlSdfPair("design", "design-slf", "수리계산 SDF");
 
@@ -5584,6 +5977,21 @@
   // 상태와 좌표 환산을 밖으로 낸다 — 브라우저 검증 스크립트가 실제 화면 좌표로
   // 클릭해 보려면 세계↔화면 환산이 밖에서도 보여야 한다. 읽기 전용으로만 쓴다.
   window.__mf = S;
+  // H's circuit delegates to the existing slot engine. F exposes no adapter
+  // and retains its original slot buttons, landing and optional merge flow.
+  if (document.body.classList.contains("module-h")) window.ModuleHNative = {
+    async selectSlot(kind) {
+      if (!S.sid) {
+        if (!["plan", "system", "machineroom"].includes(kind)) return false;
+        S.slot = kind; S.method = null; setStage("open");
+      } else if (kind !== S.slot) await switchSlot(kind);
+      else if (S.stage === "merge") await gotoStage(!S.world ? "open" : kind === "plan" ? "design" : "sub");
+      return S.slot === kind;
+    },
+    addSystem: addSystemSlot, removeSystem: removeSystemSlot, navigate: gotoStage,
+  };
+  // Read-only observer access. H subscribes; F has no preview consumer.
+  Object.defineProperty(S,"activityOperation",{get:()=>working?.id || null});
   S.toScreenX = sx;
   S.toScreenY = sy;
   S.toWorldX = wx;
@@ -5618,13 +6026,20 @@
   function renderDesignK() {
     const box = $("dg-k-note");
     if (!box) return;
+    if (areaAll) {box.textContent = `영역 내 전체 헤드 ${S.edit?.worst?.k ?? "—"}개`;return;}
     const where = S.method === "auto" ? "자동 추출" : "손질";
-    box.innerHTML = `설계면적 기준개수 <b>K = ${designK()}</b>`
+    box.innerHTML = `설계면적 기준개수 <b>K = ${designK() ?? "—"}</b>`
       + ` · <span class="dim">${where} 단계에서 정합니다</span>`;
   }
 
   function designSettings() {
     return {
+      diameter_policy: document.body.classList.contains('module-h') ? 'drawing_first_v1' : 'legacy',
+      ...((S.edit?.network_mode || 'tree') !== 'tree' ? {
+        review_default_mm: $("dg-review-dia").value ? Number($("dg-review-dia").value) : null,
+        review_datum_m: Number($("dg-review-datum").value || 0),
+        review_dto: FIELDS ? readDto() : {},
+      } : {}),
       k: designK(),
       schedule: $("dg-sched").value,
       iso: $("dg-iso").checked,
@@ -5643,6 +6058,7 @@
   // 나와 있어 그 단추가 「손질 세션이 없습니다」로 막히기만 한다.
   function syncDesignForMethod() {
     const auto = S.method === "auto";
+    $("dg-review-inputs").classList.toggle("hidden", (S.edit?.network_mode || 'tree') === 'tree');
     $("dg-build-inputs").classList.toggle("hidden", auto);
     $("dg-build-row").classList.toggle("hidden", auto);
     $("dg-back-auto-row").classList.toggle("hidden", !auto);
@@ -5651,6 +6067,7 @@
   }
 
   $("dg-back-auto").onclick = () => loadAuto();
+  $("dg-review-heads").onclick = () => openConvModal();
 
   // ── [F-8d] 탈출로 — 자동 결과를 손질로 이어받는다 ────────────────
   // 자동이 마음에 안 든다고 처음부터 다시 시작하게 두지 않는다. 같은 세션의
@@ -5750,7 +6167,22 @@
       iso_z_scale: cfg.iso_z_scale, canvas_units: cfg.canvas_units,
       lift_ref: cfg.lift_ref, head_stub_pct: cfg.head_stub_pct,
     });
-    const d = await api(`/api/module-f/design/preview?${q}`);
+    let d;
+    try { d = await api(`/api/module-f/design/preview?${q}`); }
+    catch (err) {
+      // A history conflict blocks this preview. H must still load its recovery
+      // control when no property table has been opened (or loaded) yet.
+      if(window.ModuleHAttributes){
+        await window.moduleFNetworkEditor?.refresh();
+        window.ModuleHAttributes.showHistoryConflict();
+      }
+      throw err;
+    }
+    const reviewNotice = (d.tables?.meta || []).find(m => m[0] === '출력 상태')?.[1];
+    $("dg-review-notice").textContent = reviewNotice || '';
+    $("dg-review-notice").classList.toggle('hidden', !reviewNotice);
+    if (!$("dg-review-dia").value && d.settings?.review_default_mm) $("dg-review-dia").value = d.settings.review_default_mm;
+    if (d.settings?.review_datum_m != null) $("dg-review-datum").value = d.settings.review_datum_m;
     // [요소속성 수정카드] 고칠 수 있는 속성 목록은 **서버가 주인**이다(§18 의
     //   부속 종류와 같은 규약). 화면이 따로 들고 있으면 둘이 갈린다. 한 번만
     //   받아 둔다 — 카드를 열 때마다 되물으면 클릭이 느려진다.
@@ -5804,7 +6236,7 @@
     renderSwapWhy();      // [§2-4] 빠진 헤드 사유 — 체크박스 바로 밑에
     renderStale(d.stale); // ★[표가 옛 것] 아이소가 옛 표를 그리고 있으면 말한다
     const diagnosed = d.diagnostics && d.diagnostics.state === "done";
-    $("dg-diagnose").disabled = !d.tables || !!d.stale || S.method === "auto";
+    $("dg-diagnose").disabled = !d.tables || !!d.stale || S.method === "auto" || !!reviewNotice;
     $("dg-diagnose-note").textContent = !d.tables ? "표 확정 후 진단할 수 있습니다."
       : diagnosed ? "전체 도면 진단 완료 — 제외 사유를 확인할 수 있습니다."
       : "전체 도면 이음 끊김: 미진단. 선택한 헤드의 연결 검사는 완료했습니다.";
@@ -6020,7 +6452,7 @@
     ctx.lineCap = "round";
     ctx.beginPath();
     for (const p of v.pipes) {
-      if (p.part !== "system" && p.part !== "machineroom") continue;
+      if (S.boreColor || (p.part !== "system" && p.part !== "machineroom")) continue;
       const a = at[p.a], b = at[p.b];
       if (!a || !b) continue;
       ctx.moveTo(sx(a.x), sy(a.y));
@@ -6052,7 +6484,7 @@
     for (const p of v.pipes) if (p.part === "plan") wm = Math.max(wm, load(p));
     ctx.strokeStyle = MERGE_COLOR.plan;
     for (const p of v.pipes) {
-      if (p.part !== "plan") continue;
+      if (S.boreColor || p.part !== "plan") continue;
       const a = at[p.a], b = at[p.b];
       if (!a || !b) continue;
       const t = wm > 0 ? Math.sqrt(load(p) / wm) : 0.5;
@@ -6070,7 +6502,7 @@
     ctx.lineWidth = 3.6;
     ctx.beginPath();
     for (const p of v.pipes) {
-      if (p.part !== "seam") continue;
+      if (S.boreColor || p.part !== "seam") continue;
       const a = at[p.a], b = at[p.b];
       if (!a || !b) continue;
       ctx.moveTo(sx(a.x), sy(a.y));
@@ -6078,6 +6510,15 @@
     }
     ctx.stroke();
     ctx.lineCap = "butt";
+
+    // Provenance is shared with the plan view; unknown sources stay unknown.
+    if (S.boreColor) {
+      for (const p of v.pipes) {
+        const a=at[p.a],b=at[p.b];if(!a||!b)continue;
+        const width=p.part==='plan'?1.4+3*Math.sqrt(wm>0?load(p)/wm:.5):3;
+        window.ModuleFBore?.paint(ctx,p,sx(a.x),sy(a.y),sx(b.x),sy(b.y),width);
+      }
+    }
 
     // ⑤ 헤드 — 손질 화면과 같은 흰 원(속을 옅게 채운다).
     ctx.strokeStyle = "#ffffff";
@@ -6205,7 +6646,7 @@
 
   function drawDesign() {
     // 밑그림이 먼저다 — 나중에 그리면 망을 덮는다.
-    if (underlayOn()) drawUnderlay(((S.design || {}).view || {}).underlay);
+    if (!window.ModuleHView?.ownsOriginal() && underlayOn()) drawUnderlay(((S.design || {}).view || {}).underlay);
     // ★표 요약만 받고 미리보기는 아직인 상태가 있다(renderDesignSummary 가
     //   먼저 돈다). 그때 그리려 들면 「Cannot read properties of undefined」로
     //   화면이 멈춘다 — 그릴 것이 없으면 조용히 돌아간다.
@@ -6218,28 +6659,30 @@
     for (const n of v.nodes) at[n.label] = n;
     const maxLoad = Math.max(1, ...v.pipes.map(p => p.load || 0));
     const gaps = (S.design && S.design.gaps) || new Map();
+    const boreColor = S.boreColor && !window.ModuleHView?.plainNetwork();
     let pi = -1;
     for (const p of v.pipes) {
       pi += 1;
       const a = at[p.a], b = at[p.b];
       if (!a || !b) continue;
       const hot = S.design.hilite.has(p.label);
-      // 기본은 손질 최불리망과 같은 흰색·담당 헤드 수 굵기다. 관경 근거
-      // 진단을 직접 켰을 때만 기존 근거 색/점선을 얹는다(계산값은 불변).
-      const st = S.boreColor ? BORE_STYLE[p.src] : null;
+      // 관경 근거를 기본 표시한다. 끄면 손질 최불리망의 흰색·부하 굵기로 복귀한다.
+      const st = boreColor ? window.ModuleFBore?.style(p) : null;
       const style = corridorAppearance(p.load, maxLoad);
       // [D4] 표에서 켠 강조는 흐리기에서 뺀다 — 그것도 «지금 보는 것» 이다.
       ctx.globalAlpha = hot ? 1 : dimK * (st ? 1 : style.alpha);
       ctx.strokeStyle = hot ? "#f97316" : (st ? st.color : "#ffffff");
       ctx.setLineDash(hot || !st ? [] : st.dash);
       ctx.lineWidth = style.width + (hot ? 2 : 0);
-      strokeWithGaps(sx(a.x), sy(a.y), sx(b.x), sy(b.y), gaps.get(pi));
+      const stroke=()=>strokeWithGaps(sx(a.x), sy(a.y), sx(b.x), sy(b.y), gaps.get(pi));
+      if(st) window.ModuleFBore.paint(ctx,p,sx(a.x),sy(a.y),sx(b.x),sy(b.y),style.width+(hot?2:0),stroke);
+      else stroke();
     }
     ctx.setLineDash([]);      // ★되돌린다 — 안 하면 아래 노드 기호까지 점선이 된다
     // 최원 유하거리 경로 — 손질 단계와 같은 빨간 점선. 두 단계가 같은 줄을
     // 가리켜야 «이 관을 키우면 그 압이 오른다» 가 이어진다.
     const dap = v.worst_path || [];
-    if (dap.length > 1) {
+    if (dap.length > 1 && !boreColor) {
       ctx.strokeStyle = "#ff3b3b";
       ctx.globalAlpha = 0.85 * dimK;
       ctx.lineWidth = 2.2;
@@ -6386,6 +6829,9 @@
    * @param why  키가 없을 때 **왜** 못 고치는지.
    */
   function ovEdit(key, row, why, extra, only) {
+    if (S.stage === "conv" && document.body.classList.contains("mf-table-open")) {
+      return grp("값 수정") + insNone("04 수리계산에서 수정한 뒤 파일을 다시 생성하세요.");
+    }
     if (window.moduleFNetworkEditor && (S.stage === "design" || S.stage === "merge")) {
       return grp("직접 편집") + insNone("아래 배관망 편집 패널에서 미리보기 후 적용하세요. 표와 출력 데이터에 즉시 반영됩니다.");
     }
@@ -6550,6 +6996,7 @@
   function insRowKv(row, skip, names) {
     let h = "";
     for (const k of Object.keys(row)) {
+      if (k === "bore_provenance") continue;
       if (skip && skip.includes(k)) continue;
       let v = row[k];
       if (k === "dia_src" || k === "orig_src") v = DG_SRC[v] || v;
@@ -6682,7 +7129,7 @@
     $("dg-ins-kind").textContent = "통합 배관";
     $("dg-ins-title").textContent =
       `${label}  ${p.a} → ${p.b}  · ${MG_PART[p.part] || p.part}`;
-    let h = grp("결합망의 값")
+    let h = (window.ModuleFBore?.card(p) || "") + grp("결합망의 값")
       + kv("어느 도면", esc(MG_PART[p.part] || p.part))
       + kv("호칭경(mm)", esc(p.dia == null ? "—" : p.dia))
       + kv("재질 / 규격", esc(p.type || "—"))
@@ -6774,12 +7221,13 @@
     //   단계가 바뀌었는데 앞 화면의 카드가 그대로 떠 있으면, 제목은 통합인데
     //   몸통은 수리계산이 되어 카드가 조용히 거짓말을 한다.
     const onMerge = S.stage === "merge";
+    const onTable = document.body.classList.contains("mf-table-open");
     const sel = onMerge ? (S.mergeSel || null)
                         : ((S.design && S.design.sel) || null);
     const v = onMerge ? (S.mergeView || null)
                       : ((S.design && S.design.view) || null);
-    if (!sel || !v || !["design", "merge"].includes(S.stage)
-        || (!onMerge && ((planUnderlayOn() && S.edit) || (designMarksOn() && S.edit)))) {
+    if (!sel || !v || !(["design", "merge"].includes(S.stage) || (onTable && S.stage === "conv"))
+        || (!onMerge && !onTable && ((planUnderlayOn() && S.edit) || (designMarksOn() && S.edit)))) {
       box.classList.add("hidden"); return;
     }
     // ★본문을 만들다 튀어도 «옛 내용을 든 채» 열려 있으면 안 된다. 실측으로
@@ -6814,6 +7262,11 @@
         el.onclick = () => insSelect(el.dataset.insKind, el.dataset.insLabel);
       }
       ovBind($("dg-ins-body"));    // [요소속성 수정카드] 저장·되돌리기
+      for(const button of $("dg-ins-body").querySelectorAll('.bore-edit')) {
+        button.disabled = onTable && S.stage === "conv";
+        if (button.disabled) button.textContent = "관경 수정은 04 수리계산에서";
+        button.onclick=()=>window.moduleFNetworkEditor?.openAction('pipe');
+      }
       renderInsOps();              // [§3-5] 위상 수정 단추 셋
       window.moduleFNetworkEditor?.render();
     } catch (err) {
@@ -6832,7 +7285,8 @@
     $("dg-ins-title").textContent =
       `${label}  ${row ? `${row.in} → ${row.out}` : ""}`;
 
-    let h = row ? grp("배관 속성") + kv("재질 / 호칭경", `${esc(row.type || "미지정")} / ${esc(row.dia)}A`)
+    let h = window.ModuleFBore?.card(p || row) || "";
+    h += row ? grp("배관 속성") + kv("재질 / 호칭경", `${esc(row.type || "미지정")} / ${esc(row.dia)}A`)
       + kv("실제 길이", `${esc(row.length)} m`) + kv("부속 등가길이 합", `${esc(row.eq_len ?? "미확정")} m`) : "";
     if (row?.head_count_all != null) h += kv("전체 담당 헤드 · 관경 기준", `${esc(row.head_count_all)}개`)
       + kv("이번 선정 헤드", `${esc(row.head_count_selected ?? "—")}개`);
@@ -6850,11 +7304,6 @@
                 + "가지 상승 같은 엔진 생성분) — 다음 계산에서 같은 자리를 "
                 + "가리킬 안정 키가 없어 고칠 수 없습니다.", p);
 
-    // 관경을 «무엇이» 정했나 — 캔버스 색·점선의 근거와 같은 문장.
-    const st = p && BORE_STYLE[p.src];
-    if (st) {
-      h += grp("관경 근거") + kv(DG_SRC[p.src] || p.src, esc(st.tip));
-    }
     // 담당 헤드 수 — 간선 굵기의 근거. 표에는 없고 view 만 안다.
     if (p && p.load != null) {
       h += grp("계산 맥락")
@@ -6996,6 +7445,12 @@
       const a = p && at[String(p.a !== undefined ? p.a : p.in)];
       const b = p && at[String(p.b !== undefined ? p.b : p.out)];
       if (a && b) {
+        if(S.boreColor && !window.ModuleHView?.plainNetwork() && window.ModuleFBore){
+          ctx.strokeStyle='#e1efff';ctx.globalAlpha=.38;ctx.lineWidth=10;
+          ctx.beginPath();ctx.moveTo(sx(a.x),sy(a.y));ctx.lineTo(sx(b.x),sy(b.y));ctx.stroke();
+          ctx.globalAlpha=1;window.ModuleFBore.paint(ctx,p,sx(a.x),sy(a.y),sx(b.x),sy(b.y),3.8);
+          ctx.restore();return;
+        }
         ctx.lineWidth = 6.4;            // 그 부위 색 위에 굵기 +3 으로 덧그린다
         ctx.beginPath();
         ctx.moveTo(sx(a.x), sy(a.y));
@@ -7138,6 +7593,7 @@
   /** 지금 기준개수 K — 표 meta 가 권위다(세는 자를 새로 만들지 않는다). */
   function designK() {
     const meta = ((S.design || {}).tables || {}).meta || [];
+    if (areaAll) return S.edit?.worst?.selection_mode === "area_all" ? S.edit.worst.k : null;
     for (const m of meta) {
       if (String(m[0]) === "기준개수 K") {
         const n = Number(m[1]);
@@ -7274,6 +7730,8 @@
   }
 
   $("dg-ins-close").onclick = insClose;
+  // Presentation-only table changes must also re-evaluate the inspector's visibility.
+  window.addEventListener("module-f-table-visibility", renderInspect);
 
   // 표 4종 — 저장될 값 그대로. 배관 표에는 관경 근거를 사람 말로 잇는다.
   const DG_COLS = { label: "이름", in: "시작", out: "끝", type: "관종",
@@ -7284,51 +7742,20 @@
     flow_m3s: "유량(m³/s)", lib: "라이브러리", eq_len: "등가길이(m)",
     rel_pos: "위치", desc: "설명", off_tree: "루프 잔여",
     eq_len_src: "등가길이 근거", spec_ref: "규격" };
-  const DG_SRC = { text: "도면 텍스트", nfpc_min: "별표1 보강",
-                   nfpc_fallback: "별표1 폴백" };
-  // 관경 근거별 캔버스 표시. 규약으로만 정한 것(별표1 폴백)은 점선 — 도면에서
-  // 읽은 실측과 한 모양으로 그리지 않는다는 이 저장소의 규약을 따른다.
-  const BORE_STYLE = {
-    text:          { color: "#38bdf8", dash: [],     tip: "도면 치수 텍스트에서 읽음" },
-    nfpc_min:      { color: "#facc15", dash: [],     tip: "도면 값이 별표1 최소보다 작아 안전측으로 올림" },
-    nfpc_fallback: { color: "#64748b", dash: [6, 4], tip: "가까운 치수 텍스트가 없어 담당 헤드 수로 정함" },
-  };
+  const DG_SRC = { text: "도면 표기 참조", nfpc_min: "규약 상향 · 검토 필요",
+                   nfpc_fallback: "규약 보완", review_default: "검토용 기본 관경 · 미확정", user: "사용자 수정" };
 
   function renderBoreLegend() {
-    const box = $("dg-bore-legend");
-    if (!S.design || !S.design.view) {
-      box.textContent = "—";
-      return;
+    const view=S.stage==='merge'?S.mergeView:S.design?.view;
+    const on=!!view && !window.ModuleHView?.plainNetwork() && (S.stage==='merge' || S.stage==='design' &&
+      !(planUnderlayOn() && S.edit) && !(designMarksOn() && S.edit));
+    $("bore-overlay").classList.toggle('hidden',!on);
+    $("bore-color").checked=S.boreColor;
+    $("dg-bore-color").checked=S.boreColor;
+    const html=window.ModuleFBore?.legend(view?.pipes || []) || '';
+    for(const id of ['bore-legend','dg-bore-legend']) {
+      const box=$(id);if(box.innerHTML!==html)box.innerHTML=html;
     }
-    // ★자동(A) 경로의 배관 행에는 관경 «근거» 칸이 없다(A 의 build_input_tables
-    //   는 dia_src 를 남기지 않는다). 규칙은 수동과 같지만 배관별 근거를 기록
-    //   하지 않을 뿐이다. 없는 것을 「전부 근거 없음」으로 그리면 도면에 치수가
-    //   없다는 뜻으로 읽힌다 — 사실이 아니다. 그래서 비운다고 말한다.
-    if (S.method === "auto") {
-      box.innerHTML = kv("관경 근거",
-        "자동 경로는 배관별 근거를 남기지 않습니다");
-      $("dg-bore-color").disabled = true;
-      $("dg-bore-color").checked = false;
-      S.boreColor = false;
-      return;
-    }
-    $("dg-bore-color").disabled = false;
-    const pipes = S.design.view.pipes || [];
-    const n = {};
-    for (const p of pipes) n[p.src] = (n[p.src] || 0) + 1;
-    const total = pipes.length || 1;
-    let html = "";
-    for (const k of ["text", "nfpc_min", "nfpc_fallback"]) {
-      const st = BORE_STYLE[k];
-      const c = n[k] || 0;
-      const mark = `<span style="color:${st.color}" title="${st.tip}">`
-        + `${st.dash.length ? "┈┈" : "━━"}</span>`;
-      html += kv(`${mark} ${DG_SRC[k]}`,
-                 `${c}개 · ${(c / total * 100).toFixed(1)}%`);
-    }
-    const unknown = pipes.filter(p => !BORE_STYLE[p.src]).length;
-    if (unknown) html += kv("근거 없음", `${unknown}개`);
-    box.innerHTML = html;
   }
 
   // [F-11b-3] 사람이 채운 자리는 표에서도 «다른 얼굴» 이어야 한다 — 자동이 낸
@@ -7377,7 +7804,7 @@
     const rows = (S.design.tables[which] || []);
     const cols = [];
     for (const r of rows) {
-      for (const k in r) if (!cols.includes(k)) cols.push(k);
+      for (const k in r) if (k !== "bore_provenance" && !cols.includes(k)) cols.push(k);
     }
     // 채운 자리가 있을 때만 «근거» 칸을 덧붙인다 — 없으면 표를 안 건드린다.
     const notes = rows.map((r) => overrideNoteOf(r, which));
@@ -8311,8 +8738,8 @@
     box.innerHTML =
       "<b>지금 보이는 표·아이소는 옛 것입니다.</b> "
       + esc((st.why || []).join(" · "))
-      + `<br>표에 실린 헤드 <b>${st.heads_in_table}</b>개 · 지금 선정 `
-      + `<b>${st.heads_now}</b>개 — 「표 확정」을 다시 눌러야 아이소에 반영됩니다.`;
+      + `<br>표에 실린 헤드 <b>${st.heads_in_table ?? "—"}</b>개 · 지금 선정 `
+      + `<b>${st.heads_now ?? "—"}</b>개 — 「표 확정」을 다시 눌러야 아이소에 반영됩니다.`;
   }
 
   /** [§2-4] 빠진 헤드마다 «왜» 를 한 줄로 — 갈래마다 고칠 자리가 다르다. */
@@ -8473,7 +8900,7 @@
   // 다시 계산 → 표 확정 → 아이소 갱신. 셋이 한 단추다 — 「고쳤으니 다시」가
   // 사람 머릿속에서는 한 동작이기 때문이다. 자동 재실행은 여전히 없다(D-F10-5).
   $("dg-recalc").onclick = async () => {
-    busy(true, "고친 망으로 최불리를 다시 계산 중…");
+    busy(true, areaAll ? "영역 배관망 다시 추출 중…" : "고친 망으로 최불리를 다시 계산 중…");
     try {
       // K 는 한 곳에서만 온다(designK) — 칸이 둘이던 시절의 «어느 쪽이
       // 설계면적인가» 문제가 여기서 나던 자리다.
@@ -8518,7 +8945,7 @@
   $("dg-to-conv").onclick = () => gotoStage("conv");
 
   $("dg-build").onclick = async () => {
-    busy(true, "최불리 선정과 표 확정 중…");
+    busy(true, areaAll ? "영역 배관망 입력값 반영 중…" : "최불리 선정과 표 확정 중…");
     try {
       const d = await post("/api/module-f/design/build",
                            { sid: S.sid, ...designSettings() });
@@ -8537,6 +8964,10 @@
         } catch (err) { say(err.message, "err"); }
       });
     } catch (err) { busy(false); say(err.message, "err"); }
+  };
+  $("bore-color").onchange = () => {
+    S.boreColor = $("bore-color").checked;
+    draw();
   };
 
   $("dg-diagnose").onclick = async () => {
@@ -8566,9 +8997,9 @@
         renderPlanUnderlay();
       }
       if (S.design) {
-        designPreview()
+        return designPreview()
           .then(() => { fitDesignView(); draw(); })
-          .catch(err => say(err.message, "err"));
+          .catch(err => { say(err.message, "err"); return false; });
       }
     };
   }
@@ -8583,10 +9014,11 @@
   window.moduleFMergeInspection = window.createModuleFInspection?.({state:S,ctx,sx,sy,esc,kv,grp,
     scope:'merge',insLink:(kind,label)=>insLink('mg'+kind,label)});
   window.moduleFNetworkEditor = window.createModuleFEditor?.({state:S,api,post,busy,say,
-    draw,select:insSelect,reloadDesign:designPreview,reloadMerge:loadMergeView,
+    draw,select:insSelect,clearSelection:insClose,reloadDesign:designPreview,reloadMerge:loadMergeView,
     screen:(x,y)=>[sx(x),sy(y)],world:(x,y)=>[wx(x),wy(y)],
-    inspect:(x,y)=>S.stage==='merge' ? mergeInspect(x,y,PICK_PX/S.view.scale) : designInspect(x,y,PICK_PX/S.view.scale),
-    calculationVisible:()=>S.stage==='merge' || !planUnderlayOn(),
+    inspect:(x,y)=>S.stage==='merge' ? mergeInspect(x,y,PICK_PX/S.view.scale) :
+      window.ModuleHSourceSelection?.active() ? window.ModuleHSourceSelection.inspect(x,y) : designInspect(x,y,PICK_PX/S.view.scale),
+    calculationVisible:()=>S.stage==='merge' || !!window.ModuleHSourceSelection?.active() || !planUnderlayOn(),
     editView:() => {
       if (S.stage === "design") {
         $("dg-plan").checked = false;

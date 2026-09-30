@@ -67,7 +67,7 @@ def _auto_augment_job(sess: dict, dxf):
     return job
 
 
-def _sub_open_job(sess: dict, dxf, kind: str):
+def _sub_open_job(sess: dict, dxf, kind: str, *, h_display: bool = False):
     """[H-2 · H-3] 계통도·기계실을 여는 잡 — 평면도와 다른 제1국면.
 
     평면도는 사람이 재료를 찍어야 하므로 E 의 `PickSession` 으로 간다. 계통도·
@@ -92,7 +92,7 @@ def _sub_open_job(sess: dict, dxf, kind: str):
         # [오너 2026-09-22 · 그림 38 ①③] 도면에 안 쓰이는 블록 정의는 속을 비운
         # 사본으로 읽고, 같은 도면은 기억해 둔 것을 쓴다. 결과는 A 의 파서로
         # 원본을 읽은 것과 같다(`parse_subdrawing` 과 같은 길 · sub_fastread).
-        view = read_view(dxf)
+        view = read_view(dxf, source_display=True) if h_display else read_view(dxf)
         entities, parsed = view["entities"], view["parsed"]
         note = describe(view)
         if note:
@@ -105,7 +105,11 @@ def _sub_open_job(sess: dict, dxf, kind: str):
         # 레이어 색은 «배관 레이어 고르기» 목록도 쓴다 — 목록과 도면이 같은
         # 색이라야 사람이 둘을 맞대 볼 수 있다.
         sess["layer_colors"] = colors
-        payload = _world_payload(entities_to_world(entities, colors))
+        if h_display:
+            from routes.module_h_subdrawing import display_payload
+            payload = display_payload(entities, colors, dxf, source=parsed["source_display"])
+        else:
+            payload = _world_payload(entities_to_world(entities, colors))
         if slot_role(kind) == "system":
             # ②: 도면을 먼저 띄우고 ★추적은 이어서 — world 는 그 안에서 앉는다.
             _system_layers(sess, entities, parsed, payload, label,
@@ -119,6 +123,11 @@ def _sub_open_job(sess: dict, dxf, kind: str):
             # 조용히 넘기지 않는다 — 못 그린 것이 배관이면 경로가 끊긴다.
             print(f"[{label}] 못 읽은 종류: "
                   + ", ".join(f"{k}×{v}" for k, v in sorted(skipped.items())))
+        if h_display:
+            unsupported = payload.get("source_unsupported") or {}
+            if unsupported:
+                print(f"[{label}] 원본 표시 미지원: " + ", ".join(
+                    f"{k}×{v}" for k, v in sorted(unsupported.items())))
         return {"key": sess["key"], "entities": len(entities)}
     return job
 
@@ -318,6 +327,11 @@ def register(app, *, _save_upload):
         # 새 도면이다 — 앞서 이 슬롯에 있던 것은 지운다. 남겨 두면 새 도면을
         # 올렸는데 옛 결과가 그대로 뜬다.
         sess["method"] = None
+        if request.form.get("h_access") == "1":
+            # H's completed cards must never inherit a previous drawing's path.
+            # The original F upload contract is unchanged.
+            for key in ("riser", "riser_mode", "machineroom", "sub_fixes"):
+                sess.pop(key, None)
         for k in ("world", "pick", "edit", "entities", "layer_cat", "auto",
                   "auto_diag", "auto_heads", "auto_alarm", "auto_zones",
                   # [S270·S310] 검출한 망도 «그 도면» 의 것이다.
@@ -335,8 +349,10 @@ def register(app, *, _save_upload):
 
         # 읽어서 화면에 띄우는 것까지가 공통이다.
         # [D-F8-2] 정찰은 평면도만 — `_open_job` 이 종류를 보고 가른다.
-        job = (_open_job(sess, dxf, kind=kind) if kind == "plan"
+        job = (_open_job(sess, dxf, kind=kind, h_display=request.form.get('h_access') == '1') if kind == "plan"
                else _sub_open_job(sess, dxf, kind))
+        if kind != 'plan' and request.form.get('h_access') == '1':
+            job = _sub_open_job(sess, dxf, kind, h_display=True)
         _run_job(sess, f"{slot_label(sess, kind)} 읽기", job)
         return jsonify({"ok": True, "sid": sess["id"], "kind": kind,
                         "filename": os.path.basename(str(dxf)),

@@ -114,7 +114,93 @@ def _apply_chamfer(sess, es) -> dict:
     return got
 
 
+def _postprocess_with_crop_guard(sess: dict, ps, es) -> None:
+    """Do not let optional geometry cleanup reintroduce a removed region."""
+    regions = getattr(ps.world, '_work_regions', ())
+    if regions:
+        from copy import deepcopy
+        from src.pipenet_converter.dxf.work_region import WorkRegion
+        before = deepcopy(es.board)
+        masks = [WorkRegion(z) for z in regions]
+    _apply_fold(sess, ps, es)
+    _apply_chamfer(sess, es)
+    if regions and any(not m.whole_segment(es.board.pts[a], es.board.pts[b])
+                       for a,b in es.board.edges for m in masks):
+        es.board = before
+        sess.pop('fold', None)
+        sess.pop('chamfer', None)
+        print('[자르기] 영역 밖으로 나가는 접기·모서리 정리를 취소했습니다. 자른 배관망은 유지합니다.')
+
+
 def register(app):
+    @app.post("/api/module-f/pick/crop")
+    @route_session(_need_pick, post=True, why_code=400)
+    def module_f_pick_crop(sess, body):
+        """Crop the working drawing before recognition, never the uploaded DXF."""
+        from src.pipenet_converter.dxf.work_region import WorkRegion, crop_world
+        if _job_running(sess):
+            return _fail("작업이 끝난 뒤 영역을 변경해 주세요.", 409)
+        reset = body.get("reset") is True
+        ps = sess["pick"]
+        try:
+            requested = body.get('zone')
+            # New pen crops include every enclosed part even if the stroke
+            # crosses/retraces itself. Persist the policy for exact replay.
+            if isinstance(requested, dict):
+                requested = dict(requested, fill_rule='enclosed')
+            zone = None if reset else WorkRegion(requested).zone
+            if not reset and len(getattr(ps.world, "_work_regions", ())) >= 8:
+                raise ValueError("영역 자르기는 최대 8번입니다. 원본 복원 후 다시 지정하세요.")
+        except (ValueError, TypeError) as exc:
+            return _fail(str(exc))
+
+        def job():
+            import copy
+            from services.cad_import.pick.session import PickSession
+            from routes.module_f.world import _world_payload
+            if reset:
+                path = getattr(ps.world, "_source_path", None) or sess.get("dxf")
+                if not path:
+                    return {"ok": False, "error": "원본 DXF 경로가 없습니다. 도면을 다시 열어 주세요."}
+                fresh = PickSession.open(path, knobs=ps.knobs)
+                report = None
+            else:
+                world, report = crop_world(ps.world, zone)
+                if not world.segs:
+                    return {"ok": False, "error": "영역 안에 선분이 없습니다. 기존 작업은 유지했습니다."}
+                fresh = PickSession(world, ps.key, ps.knobs)
+            fresh.key = ps.key
+            for attr in ('mat', 'heads', 'head_label', 'mat_done', 'head_symbol_profile'):
+                if hasattr(ps.board, attr):
+                    setattr(fresh.board, attr, copy.deepcopy(getattr(ps.board, attr)))
+            fresh.mode, fresh.armed = ps.mode, ps.armed
+            # Click undo refers to the old full drawing. Selections themselves
+            # survive, but caches/history/results must not resurrect outside data.
+            sess['pick'] = fresh
+            sess['world'] = _world_payload(fresh.world,
+                source_display=bool((sess.get('world') or {}).get('h_source_display')))
+            sess['crop_report'] = report
+            old_recon=sess.get('recon')
+            for key in ('edit', 'worst', 'worst_edit', 'water_path', 'flow_report', 'design',
+                        'kfp', 'kfp_path', 'worst_kfp_path', 'design_sdf_path', 'design_slf_path',
+                        'design_has_path', 'suggest', 'recon', 'adopt', 'merged', 'merge_files',
+                        'merge_editor', 'merge_summary', 'network_editor', 'design_review_path',
+                        'worst_zones', 'sheets', 'fold', 'chamfer',
+                        '_wet_probe', '_diameter_annotations', 'net_rev', 'worst_rev'):
+                sess.pop(key, None)
+            if not reset and old_recon and not old_recon.get('error'):
+                from routes.module_f.recon import count_bands, bundle_counts
+                regions=[WorkRegion(z) for z in fresh.world._work_regions]
+                candidates=[h for h in old_recon.get('heads',[]) if all(r.contains((h['x'],h['y'])) for r in regions)]
+                sess['recon']=dict(old_recon,heads=candidates,bands=count_bands(candidates),
+                                   bundles=bundle_counts(sess['world']))
+            print("[작업 영역] 원본 DXF 보존 · " + ("전체 복원" if reset else
+                  f"선분 {report['before']['segs']} → {report['after']['segs']} · 영역 밖 처리 제외"))
+            return {"ok": True, "report": report}
+
+        _run_job(sess, "작업 영역 복원" if reset else "펜 영역 밖 제외", job)
+        return jsonify({"ok": True})
+
     # ─────────────────────────────────────────── 1. 찍기
     @app.post("/api/module-f/pick/mode")
     @route_session(_need_pick, post=True, why_code=400)
@@ -216,7 +302,12 @@ def register(app):
             # 같은 것을 쓴다. 둘이 각자 A 를 부르면 언젠가 한쪽만 고쳐져 카드와
             # 찍기 화면이 서로 다른 후보 수를 말하게 된다.
             from routes.module_f.recon import run_recon
-            rec = run_recon(dxf, world=sess.get("world"), tag="제안")
+            if getattr(sess['pick'].world,'_work_regions',None):
+                rec=sess.get('recon')
+                if not rec:
+                    return {'ok':False,'error':'잘라낸 작업 영역은 원본 전체 후보 인식을 다시 실행하지 않습니다. 현재 도면에서 헤드 기호를 직접 찍어 주세요.'}
+            else:
+                rec = run_recon(dxf, world=sess.get("world"), tag="제안")
             cands = rec["heads"]
             sess["suggest"] = cands
             # 정찰을 안 돌린 세션(옛 흐름)이라면 이 결과를 그대로 정찰로도 쓴다.
@@ -467,13 +558,14 @@ def register(app):
             spec_path = ps.commit()
             print(f"[찍기] 스펙 저장 — {spec_path}")
             print("[손질] 찍은 스펙으로 배관망을 다시 구성하는 중…")
-            es = EditSession.open(ps.key, out_dir=None, load_saved=False,
-                                  use_cache=False)
+            from services.cad_import.pipeline.handoff import using_world
+            with using_world(ps.key, ps.world):
+                es = EditSession.open(ps.key, out_dir=None, load_saved=False,
+                                      use_cache=False)
             # ★[신축배관 접기] 여기가 두 판이 **동시에** 있는 유일한 자리다.
             #   레이어는 찍기 판에만 살고(손질판은 pts/edges 뿐), 접을 간선은
             #   손질판에만 있다. 그래서 접기는 반드시 이 자리에서 끝난다.
-            _apply_fold(sess, ps, es)
-            _apply_chamfer(sess, es)
+            _postprocess_with_crop_guard(sess, ps, es)
             # ★★찍기를 다시 하면 손질판이 **통째로 새로 만들어진다** — 절점도
             #   헤드 disk 도 번호가 다시 매겨진다. 그런데 세션의 최불리 선정은
             #   «옛 disk 번호» 로 남아 있다.

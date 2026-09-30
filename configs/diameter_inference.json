@@ -1,0 +1,8 @@
+{
+  "search_radius_mm": 1500.0,
+  "parallel_tolerance_deg": 20.0,
+  "continuation_tolerance_deg": 10.0,
+  "ownership_margin_mm": 100.0,
+  "max_propagation_mm": 12000.0,
+  "leader_snap_mm": 25.0
+}

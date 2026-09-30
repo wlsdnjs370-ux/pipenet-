@@ -27,9 +27,31 @@ def rebase_commands(old: Network, new: Network, commands: list[dict], cursor: in
     translated = []
     for index, source in enumerate(commands):
         command = deepcopy(source)
+        if command.get('op') == 'batch_properties':
+            # Property-only batches introduce no graph identities. Translate each
+            # child with the same mapping and keep the entire history unit atomic.
+            children = command['commands']
+            try:
+                for child in children:
+                    namespace = 'node' if child.get('op') in NODE_OPS else 'pipe'
+                    child['target'] = maps[namespace][str(child['target'])]
+                old_next, _ = apply_edit(old, source, catalog)
+                new_next, _ = apply_edit(new, command, catalog)
+                old, new = old_next, new_next
+                translated.append(command)
+                if index < cursor:
+                    accepted = new
+                continue
+            except (EditError, KeyError) as exc:
+                if index < cursor:
+                    raise EditError(f'통합 일괄 편집 {index+1}번을 유지할 수 없습니다: {exc}') from exc
+                translated.extend(deepcopy(commands[index:]))
+                break
         kind = 'node' if command.get('op') in NODE_OPS else 'pipe'
         try:
-            fields = [('target',kind)]
+            fields = [] if command['op']=='compact_runs' else [('target',kind)]
+            if command['op']=='compact_runs':
+                command['keep'] = [maps['node'].get(str(k),str(k)) for k in command.get('keep',())]
             if command['op']=='connect': fields.append(('end','node'))
             if command['op']=='paste': fields.extend((('source','node'),('source_pipe','pipe')))
             if command['op']=='fitting' and command.get('node'): fields.append(('node','node'))

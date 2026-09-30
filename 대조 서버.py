@@ -1193,6 +1193,10 @@ _routes_cad_compare.register(
 import routes.module_f as _routes_module_f
 _routes_module_f.register(app, _save_upload=_save_upload, UPLOAD_DIR=UPLOAD_DIR)
 
+# Module H shares the validated engine, but opts into its own presentation only.
+import routes.module_h as _routes_module_h
+_routes_module_h.register(app)
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5050, debug=False)

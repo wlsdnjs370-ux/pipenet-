@@ -5,18 +5,28 @@ from copy import deepcopy
 import functools
 import hashlib
 import json
+from dataclasses import asdict
 
 from flask import jsonify, request
 
 from core.network_editor import EditError, apply_edit
 from core.network_edit_replay import NODE_OPS, rebase_commands
 from routes.module_f import network_edit as ne
+from routes.module_f import editor_history
 from routes.module_f.common import _fail
 from routes.module_f.jobs import _job_running, route_session
 
 
 def _target_scope(sess: dict, scope: str, command: dict) -> tuple[str, dict, int]:
     """Plan objects in the merged view edit the original plan, then re-merge."""
+    if command.get('op') == 'batch_properties' and scope == 'merge':
+        children = command.get('commands')
+        if not isinstance(children, list) or not children or any(not isinstance(c, dict) or c.get('op') == 'batch_properties' for c in children):
+            raise EditError('일괄 수정 대상을 확인하세요.')
+        mapped = [_target_scope(sess, scope, c) for c in children]
+        if len({(s, offset) for s, _, offset in mapped}) != 1:
+            raise EditError('평면도와 계통도·기계실 대상은 나누어 수정하세요. 변경은 저장되지 않았습니다.')
+        return mapped[0][0], dict(command, commands=[c for _, c, _ in mapped]), mapped[0][2]
     if scope != 'merge':
         return scope,command,0
     from routes.module_f.merge import label_offset_for
@@ -24,9 +34,18 @@ def _target_scope(sess: dict, scope: str, command: dict) -> tuple[str, dict, int
     nodes = set(map(str,(obj.get('parts') or {}).get('plan',())))
     target = str(command.get('target'))
     kind = command.get('op')
+    if kind == 'compact_runs':
+        # A merged plan is not a second editable copy. Normalize it at its
+        # owner first and rebuild the integrated view through the same history.
+        plan = ne.ensure(sess,'design')
+        _, preview = apply_edit(plan['current'],ne.compaction_command(sess,'design'),ne.catalog())
+        if preview['compaction']['removed_nodes']:
+            return 'design',command,0
+        return scope,command,0
     is_node = kind in NODE_OPS
     row = next((r for r in obj['combined'].pipes if str(r['label'])==target),None)
     in_plan = target in nodes if is_node else bool(row and str(row['in']) in nodes and str(row['out']) in nodes)
+    source_target = (obj.get('plan_pipe_sources') or {}).get(target, target)
     if kind == 'connect' and str(command.get('end')) not in nodes:
         in_plan = False
     if kind == 'paste' and str(command.get('source')) not in nodes:
@@ -40,13 +59,15 @@ def _target_scope(sess: dict, scope: str, command: dict) -> tuple[str, dict, int
     if is_node:
         if not target.isdigit() or str(int(target)-offset) not in original_net.nodes:
             return scope,command,0
-    elif target not in original_net.pipes:
+    elif source_target not in original_net.pipes:
         return scope,command,0
     for field in (('end',) if kind=='connect' else ('source',) if kind=='paste' else ()):
         label=str(command.get(field,''))
         if not label.isdigit() or str(int(label)-offset) not in original_net.nodes:
             return scope,command,0
     command = deepcopy(command)
+    if not is_node:
+        command['target'] = source_target
     if is_node:
         try:
             command['target'] = str(int(target)-offset)
@@ -68,6 +89,16 @@ def _target_scope(sess: dict, scope: str, command: dict) -> tuple[str, dict, int
 
 
 RISER_OPS = ('delete_join', 'delete_cut')
+
+
+def _merged_selection(selection: dict, merged: dict, offset: int) -> dict:
+    """Translate an edited source selection back to its displayed merged identity."""
+    if selection['kind'] == 'node':
+        return dict(selection, label=str(int(selection['label']) + offset))
+    sources = merged.get('plan_pipe_sources') or {}
+    label = next((shown for shown, original in sources.items()
+                  if original == str(selection['label'])), selection['label'])
+    return dict(selection, label=label)
 
 
 def _riser_command(sess: dict, scope: str, command: dict) -> dict:
@@ -114,6 +145,8 @@ def _rebuild_merge(sess: dict) -> None:
                                        previous['cursor'],ne.catalog())
     fresh = dict(previous,object=obj,base_object=deepcopy(obj),base=base,
                  base_hash=ne.fingerprint(base),current=current,commands=commands,conflict=None)
+    # Rebased commands/geometry cannot reuse checkpoints from the old merge.
+    fresh.pop('_replay_cache', None)
     fresh['revision'] = _revision(fresh)
     ne.sync_object(sess,'merge',obj,current)
     sess['merge_editor'] = fresh
@@ -147,9 +180,10 @@ def _next_order(sess: dict) -> int:
 
 
 def commit_edit(sess: dict, scope: str, editor: dict, candidate, commands: list,
-                cursor: int, *, branch: bool = False) -> None:
+                cursor: int, *, branch: bool = False, propagate: bool = True) -> None:
     """Persist and accept together. Protected from cancellation mid-commit."""
     fresh = dict(editor,current=candidate,commands=commands,cursor=cursor,conflict=None)
+    editor_history.remember(fresh)
     fresh['revision'] = _revision(fresh)
     # Work on a copy first: a failed merge cannot leave the plan half edited.
     state,key,obj = ne._container(sess,scope)
@@ -173,16 +207,17 @@ def commit_edit(sess: dict, scope: str, editor: dict, candidate, commands: list,
                 other = ne.ensure(sess,other_scope)
                 other_state,other_key,_ = ne._container(sess,other_scope)
                 other = dict(other,commands=other['commands'][:other['cursor']])
+                editor_history.remember(other)
                 other['revision'] = _revision(other)
                 other_state[other_key] = other
         obj.clear()
         obj.update(deepcopy(editor['base_object']))
         ne.sync_object(sess,scope,obj,candidate)
-        if scope == 'design':
+        if scope == 'design' and propagate:
             _rebuild_merge(sess)
         fresh['revision'] = _revision(fresh)
         pending = {scope:fresh}
-        if (sess.get('merged') or {}).get('combined'):
+        if propagate and (sess.get('merged') or {}).get('combined'):
             other_scope = 'merge' if scope=='design' else 'design'
             pending[other_scope] = dict(ne.ensure(sess,other_scope))
         for save_scope,e in pending.items():
@@ -236,6 +271,11 @@ def register(app) -> None:
                 editor = ne.ensure(sess,scope)
                 result = ne.public_state(editor)
                 result['notice'] = editor.get('notice')
+                basis_stale = None
+                if scope == 'design' and editor['conflict']:
+                    from routes.module_f.selection import _design_stale
+                    plan = ne.plan_state(sess)
+                    basis_stale = _design_stale(dict(plan, network_editor=dict(editor, conflict=None)))
                 result['archived'] = ne.archived_histories(sess,scope) if body.get('history')=='1' else []
                 # Plan undo is available in the integrated view as well.
                 if scope=='merge':
@@ -246,7 +286,10 @@ def register(app) -> None:
                     result['redo'] += len(plan['commands'])-plan['cursor']
                     result['history'] = sorted(plan['commands']+editor['commands'],key=lambda c:c.get('_order',0))
                     result['history_scope'] = _history_scope(sess,'undo')
-                return jsonify(ok=True,scope=scope,catalog=ne.catalog(),**result)
+                return jsonify(ok=True,sid=sess['id'],scope=scope,
+                               can_accept_basis=bool(scope=='design' and editor['conflict'] and not basis_stale),
+                               basis_stale=basis_stale,
+                               catalog=ne.catalog(),**result)
         except (ValueError,OSError) as exc:
             return _fail(str(exc),409)
 
@@ -264,6 +307,33 @@ def register(app) -> None:
                     return _fail('배관망이 바뀌었습니다. 다시 선택하고 미리보기를 확인하세요.',409)
                 action = body.get('action','preview')
                 design = ne.plan_state(sess).get('design') or {}
+                if action == 'accept_basis':
+                    # This is a user-confirmed recovery, never an implicit reset
+                    # on field entry/rebuild. Old labels cannot target a new graph.
+                    if scope != 'design' or not shown['conflict']:
+                        raise EditError('새 기준망으로 전환할 편집 충돌이 없습니다.')
+                    from routes.module_f.selection import _design_stale
+                    plan = ne.plan_state(sess)
+                    probe = dict(plan, network_editor=dict(shown, conflict=None))
+                    if _design_stale(probe):
+                        raise EditError('도면 선정이 다시 바뀌었습니다. 입력값을 먼저 반영한 뒤 계속하세요.')
+                    from routes.module_f.cancellation import checkpoint
+                    checkpoint()
+                    ne.backup_history(sess,scope,shown.get('disk_hash'))
+                    # No rejected command is replayed. commit_edit is atomic and
+                    # invalidates generated outputs. The old integrated view is
+                    # not silently rebuilt from a newly accepted plan.
+                    candidate = deepcopy(shown['base'])
+                    commands = []
+                    command = ne.compaction_command(sess, scope)
+                    candidate, normalized = apply_edit(candidate, command, ne.catalog())
+                    if normalized['compaction']['removed_nodes']:
+                        command.update(_order=_next_order(sess), note='표 확정 후 연속 동일관 자동 정리')
+                        commands.append(command)
+                    commit_edit(sess,scope,shown,candidate,commands,len(commands),propagate=False)
+                    fresh = ne.ensure(sess,scope)
+                    fresh['notice'] = '이전 편집 기록을 별도 보관하고 새 기준 배관망으로 전환했습니다.'
+                    return jsonify(ok=True,scope=scope,selection=None,notice=fresh['notice'])
                 if action != 'reset' and design.get('sig') is not None:
                     from routes.module_f.selection import _design_stale
                     if _design_stale(ne.plan_state(sess)):
@@ -281,7 +351,22 @@ def register(app) -> None:
                 offset = 0
                 if action in ('preview','apply'):
                     scope,command,offset = _target_scope(sess,scope,command)
+                    if command.get('op') == 'pipe_reference':
+                        # Resolve identity against this drawing, never trust client
+                        # text/coordinates/DN. Store the validated snapshot for undo/replay.
+                        plan = ne.plan_state(sess)
+                        if scope != 'design' or (plan.get('design_settings') or {}).get('diameter_policy') != 'drawing_first_v1':
+                            raise EditError('평면도 입력값 정의에서 원본 표기를 선택하세요.')
+                        annotation = next((a for a in plan.get('_h_diameter_annotations', [])
+                                           if a.identity == command.get('annotation_id') and a.raw_text.strip()), None)
+                        if annotation is None:
+                            raise EditError('현재 도면에 없는 원본 관경 표기입니다. 다시 선택하세요.')
+                        command = dict(op='pipe_reference', target=str(command.get('target', '')),
+                                       annotation_id=annotation.identity, annotation=asdict(annotation),
+                                       note='원본 도면 참조 내경 변경')
                     command = _riser_command(sess,scope,command)
+                    if command.get('op') == 'compact_runs':
+                        command = ne.compaction_command(sess,scope,target=str(command.get('target','')))
                 elif scope=='merge' and action in ('undo','redo'):
                     scope = _history_scope(sess,action)
                 elif scope=='merge' and action=='reset' and not shown['commands']:
@@ -303,9 +388,8 @@ def register(app) -> None:
                         commands,cursor = [],0
                     else:
                         cursor = max(0,min(len(commands),cursor+(-1 if action=='undo' else 1)))
-                    candidate = deepcopy(editor['base'])
-                    for cmd in commands[:cursor]:
-                        candidate,selection = apply_edit(candidate,cmd,ne.catalog())
+                    candidate,selection = editor_history.replay(
+                        editor, commands, cursor, ne.catalog(), sid=sess.get('id',''))
                 else:
                     raise EditError('지원하지 않는 편집 요청입니다.')
                 if action=='preview':
@@ -328,8 +412,7 @@ def register(app) -> None:
                         ne.sync_object(clone,'design',ne.plan_state(clone)['design'],candidate)
                         _rebuild_merge(clone)
                         view = ne.project(clone,'merge',clone['merge_editor']['current'])
-                        if selection['kind']=='node':
-                            selection = dict(selection,label=str(int(selection['label'])+offset))
+                        selection = _merged_selection(selection, clone['merged'], offset)
                         selection['counts'] = dict(nodes=len(view['nodes']),pipes=len(view['pipes']),
                             heads=len(clone['merged']['combined'].nozzles))
                     return jsonify(ok=True,preview=view,selection=selection,
@@ -337,8 +420,29 @@ def register(app) -> None:
                 from routes.module_f.cancellation import checkpoint
                 checkpoint()
                 commit_edit(sess,scope,editor,candidate,commands,cursor,branch=action=='apply')
-                if selection and offset and selection['kind']=='node':
-                    selection = dict(selection,label=str(int(selection['label'])+offset))
+                if (body.get('response_mode') == 'reference_patch' and action == 'apply'
+                        and command.get('op') == 'pipe_reference' and requested_scope == scope == 'design'):
+                    # Reference changes do not alter geometry. Return the committed
+                    # row instead of requiring projection + full inspector reloads.
+                    fresh = ne.plan_state(sess)['network_editor']
+                    pipe = candidate.pipes[command['target']]
+                    attribute_patch = None
+                    plan = ne.plan_state(sess)
+                    if plan.get('_h_diameter_context') and plan.get('edit'):
+                        from routes.module_h_attributes import state as attribute_state
+                        snapshot = attribute_state(plan)
+                        attribute_patch = dict(revision=snapshot['revision'], pending=snapshot['pending'],
+                            can_undo=snapshot['can_undo'], record=next(r for r in snapshot['records']
+                                if r['kind'] == 'pipe' and r['label'] == command['target']))
+                    return jsonify(ok=True, scope=scope, selection=selection,
+                        reference_patch=dict(revision=fresh['revision'], undo=fresh['cursor'],
+                            redo=len(fresh['commands'])-fresh['cursor'], history=fresh['commands'],
+                            pipe=dict(pipe.row, **{'in':pipe.a, 'out':pipe.b}),
+                            equipment=candidate.tables.equipment,
+                            nodes=[dict(label=k,merge_reason=ne.merge_reason(candidate,k)) for k in (pipe.a,pipe.b)],
+                            attributes=attribute_patch))
+                if selection and requested_scope=='merge' and scope=='design':
+                    selection = _merged_selection(selection, sess['merged'], offset)
                 return jsonify(ok=True,selection=selection,scope=scope,
                                counts=dict(nodes=len(candidate.nodes),pipes=len(candidate.pipes),heads=len(candidate.tables.nozzles)))
         except (ValueError,OSError,KeyError) as exc:

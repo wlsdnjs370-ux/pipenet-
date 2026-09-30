@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Module F · 배관 네트워크 위상 복원</title>
 <link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
-<link rel="stylesheet" href="/static/module_f.css?v=20260923-topology-name">
+<link rel="stylesheet" href="/static/module_f.css?v=20260923-provenance">
+<link rel="stylesheet" href="/static/module_f_layout.css?v=20260928-five-step-1">
 </head>
 <body>
 <header>
@@ -272,6 +273,13 @@
     <!-- 2. 찍기 — 자동 추천 두 갈래(레이어 사전 · 헤드 인식)를 한 카드에 둔다.
          둘 다 모듈 A 것이라 카드를 나누면 MODULE A 표가 두 번 뜬다. -->
     <section class="card hidden" id="panel-pick">
+      <h2>처리할 도면 영역</h2>
+      <div class="row">
+        <button id="pk-crop-pen" type="button" aria-pressed="false">펜으로 영역 그리기</button>
+        <button id="pk-crop-apply" type="button" disabled>영역 밖 제외</button>
+        <button id="pk-crop-reset" type="button" disabled>원본 영역 복원</button>
+      </div>
+      <p class="hint" id="pk-crop-info">펜으로 둘레를 그린 뒤 「영역 밖 제외」를 누르세요. 선이 겹치거나 교차해도 둘러싼 내부는 모두 포함합니다. 중심이 영역 안이나 경계에 있는 원·호 기호는 통째로 보존하며, 원본 파일은 변경하지 않습니다.</p>
       <h2 class="fold" data-fold="pk-auto-body"><span class="caret">▶</span>자동 추천
         <span class="tag">MODULE A</span></h2>
       <div class="foldbody hidden" id="pk-auto-body">
@@ -402,6 +410,23 @@
         <span class="cnt">0</span>
       </div>
       <h2 style="margin-top:16px">작업</h2>
+      <label class="f"><span>배관망 방식</span>
+        <select id="ed-network-mode">
+          <option value="tree">트리 — 기존 단일 경로 계산</option>
+          <option value="loop">루프 — 복수 공급 경로 보존</option>
+          <option value="grid">그리드 — 양단 연결 가지관 보존</option>
+        </select>
+        </label>
+        <div id="ed-network-note" class="hint hidden" role="status">
+        연결 보존 추출·검토 단계입니다. 방식은 사용자가 지정하며 자동 판정이 아닙니다.
+        후보 헤드는 기준 경로 거리 순으로 선정하며 수리적 최불리 확정은 아닙니다.
+        물흐름 → 작동 헤드 후보 선정 → 경로 기록(JSON) 순서로 검토하세요.
+        수리계산에서 검토용 기본 관경을 직접 지정하면 미확정 SDF를 출력할 수 있습니다. 규약 관경은 적용하지 않으며 유량·압력·티 손실은 별도 검토가 필요합니다.
+          같은 재료·일직선 양팔·헤드 기호로 확인되는 이음과, 원본 헤드 원에 닿는 세 방향 배관 접속부를 별도로 보존합니다.
+          단순 교차·다른 재료·네 방향 접속은 임의로 연결하거나 크로스 부속으로 확정하지 않습니다.
+          복원선도 삭제·되돌리기할 수 있으며, 트리 방식으로 돌아가면 기존 망을 그대로 사용합니다.
+          선택한 배관망 방식은 「손질 저장」해야 다시 열 때 유지됩니다.
+      </div>
       <div class="row">
         <button id="ed-flow">물흐름 · 경로 확정</button>
         <button id="ed-flow-report" title="확정 경로·제외 이유·전체 담당 헤드 수를 내려받습니다">경로 기록</button>
@@ -544,6 +569,7 @@
            관경을 찾는다(없으면 Unset). -->
       <div class="row">
         <button id="btn-download-design" disabled>수리계산 SDF (.sdf + .slf)</button>
+        <button id="btn-download-review" disabled>검토 근거 (.review.json)</button>
         <button id="btn-download-worst" disabled>수리계산 .kfp</button>
         <button id="btn-download-has" disabled>수리계산 .has</button>
       </div>
@@ -564,6 +590,14 @@
     <!-- 5. 수리계산 입력 (설계) — G16 의 웹판 -->
     <section class="card hidden" id="panel-design">
       <h2>수리계산 입력</h2>
+      <div id="dg-review-inputs" class="hidden">
+        <p class="hint">루프·그리드 검토용 출력 · 규약 관경 미적용. 미확정 관경은 보라색으로 표시하며 SDF 출력 후에도 미확정입니다.</p>
+        <label class="f"><span>검토용 기본 호칭경 (mm)</span><input id="dg-review-dia" type="number" min="1" step="1" placeholder="직접 지정 (예: 65)"></label>
+        <label class="f"><span>공통 배관 기준표고 (m)</span><input id="dg-review-datum" type="number" step="0.1" value="0"></label>
+        <button id="dg-review-heads" type="button">헤드 접속관 치수…</button>
+        <p class="hint">공통 표고와 헤드 접속관 치수로 검토망을 만듭니다. 원호 기호의 가지 상승·우회 높이는 자동 추정하지 않습니다. 실제 높이차·티 손실·최불리 여부는 별도 확인이 필요합니다.</p>
+      </div>
+      <div id="dg-review-notice" class="banner hidden" role="status"></div>
       <!-- ★[표가 옛 것] 최불리를 다시 고르거나 손질을 고친 뒤 「표 확정」을 안
            누르면, 「평면에서 보기」는 새 망인데 아이소는 **옛 표**를 그린다.
            실측(2026-09-11): 영역을 왼쪽→오른쪽으로 다시 고르자 두 그림이
@@ -733,7 +767,7 @@
       <h2 class="fold" data-fold="dg-evidence-body" style="margin-top:12px"><span class="caret">▶</span>관경 근거·제외 사유</h2>
       <div class="foldbody hidden" id="dg-evidence-body">
       <h2 style="margin-top:12px">관경 근거 보기</h2>
-      <label class="chk"><input type="checkbox" id="dg-bore-color">
+      <label class="chk"><input type="checkbox" id="dg-bore-color" checked>
         <span>관경 근거로 색 나누기</span></label>
       <div id="dg-bore-legend" class="hint">—</div>
 
@@ -795,6 +829,46 @@
            단추를 disabled 로 두었더니, 눌러도 아무 일이 없고 아무 말도 없어
            사람에게는 «고장» 으로 읽혔다. 죽은 컨트롤보다 말하는 컨트롤이 낫다. -->
       <div class="hint" id="mg-why"></div>
+      <details id="mg-sizing" class="sizing-panel">
+        <summary>배관 내경 역산 · 필요 펌프 성능 (검토용)</summary>
+        <p class="hint">트리·루프·그리드 전체 연결을 함께 계산합니다. 원본 관경은 바뀌지 않습니다.
+          현재 선정된 작동 헤드에 대한 검토이며, 다른 작동 구역·정지압·흡입조건·펌프 곡선 검증은 별도입니다.</p>
+        <button id="sz-load">현재 결합망 불러오기 (배관별 설정 초기화)</button>
+        <div id="sz-basis" class="hint">결합 후 불러오세요.</div>
+        <label class="f"><span>계산 방식</span><select id="sz-mode">
+          <option value="joint">관경 확대 + 필요 펌프 유량·양정</option>
+          <option value="fixed_supply">공급압력 고정 → 관경 확대</option>
+          <option value="pump_only">관경 고정 → 필요 펌프 유량·양정</option>
+        </select></label>
+        <label class="f"><span>공급 절점</span><input id="sz-source" type="text"></label>
+        <label class="f"><span>고정 공급압력 (bar, 게이지)</span><input id="sz-pressure" type="number" value="8" min="0.01" step="0.1"></label>
+        <label class="f"><span>역산 공급압력 상한 (bar)</span><input id="sz-ceiling" type="number" value="20" min="0.01" step="0.1"></label>
+        <label class="f"><span>펌프 흡입측 전수두 (m)</span><input id="sz-suction" type="number" value="0" step="0.1"></label>
+        <label class="f"><span>펌프 토출 속도수두 v²/2g (m)</span><input id="sz-vhead" type="number" value="0" min="0" step="0.01"></label>
+        <p class="hint">흡입 전수두 = 공통 기준면 표고 + 흡입 게이지압 수두 + 속도수두. 대기 개방 수조 기준이면 수면 표고에서 흡입 손실을 빼세요. 입력값은 현장 확인이 필요합니다.</p>
+        <label class="f"><span>헤드 최소 유량 (L/min)</span><input id="sz-flow" type="number" value="80" min="0.1" step="1"></label>
+        <label class="f"><span>헤드 최소 압력 (bar)</span><input id="sz-min" type="number" value="1" min="0.01" step="0.1"></label>
+        <label class="f"><span>헤드 최대 압력 (bar)</span><input id="sz-max" type="number" value="12" min="0.01" step="0.1"></label>
+        <label class="f"><span>가지배관 유속 상한 (m/s)</span><input id="sz-branch" type="number" value="6" min="0.1" step="0.1"></label>
+        <label class="f"><span>그 밖 배관 유속 상한 (m/s)</span><input id="sz-other" type="number" value="10" min="0.1" step="0.1"></label>
+        <label class="f"><span>확대 후보 최대 호칭경 (A)</span><input id="sz-dn" type="number" value="200" min="15" step="1"></label>
+        <label class="f"><span>관경 반복 상한</span><input id="sz-iterations" type="number" value="40" min="1" max="100"></label>
+        <label class="f"><span>작동 노즐 라벨 (쉼표 구분)</span><input id="sz-heads" type="text"></label>
+        <p class="hint">K 값·실제 내경은 SLF 라이브러리를 사용합니다. 최소압력은 노즐 라이브러리 조건도 만족해야 합니다. 역할 미지정 배관에는 가지배관 유속 제한값을 적용합니다.</p>
+        <details><summary>배관별 역할 · 관경 잠금 · 손실 확인</summary>
+          <select id="sz-pipe" aria-label="역산 설정 배관"></select>
+          <label class="f"><span>역할</span><select id="sz-role"><option value="unknown">미지정 (가지배관 제한)</option><option value="branch">가지배관</option><option value="other">그 밖의 배관</option></select></label>
+          <label class="chk"><input id="sz-lock" type="checkbox">현재 관경 잠금</label>
+          <label class="f"><span>전체 등가길이 직접 지정 (m)</span><input id="sz-loss" type="number" min="0" step="0.1" placeholder="비우면 부속·기기 합산"></label>
+          <p class="hint">직접 지정은 이 배관의 모든 부속·기기 손실 합계를 대체하고 관경을 잠급니다. 미확정 손실을 무조건 0으로 처리하지 마세요.</p>
+          <button id="sz-pipe-save">이 배관 설정 저장</button><div id="sz-pipe-note" class="hint"></div>
+        </details>
+        <label class="chk"><input id="sz-confirm" type="checkbox">실제 길이·표고, 작동 헤드, 공급 조건을 확인했습니다.</label>
+        <div class="row"><button id="sz-run" class="go">역산 검토안 계산</button><button id="sz-report" disabled>진단 JSON</button></div>
+        <div id="sz-result" class="hint" aria-live="polite">아직 계산하지 않았습니다.</div>
+        <div class="row"><button id="sz-emit" disabled>검토안 SDF 생성</button><button id="sz-download" disabled>검토안 SDF + SLF</button></div>
+        <p class="hint">검토안 SDF는 펌프를 계산된 토출압력 경계로 대체하며, 부속·기기 손실을 배관별 총 등가길이로 출력합니다. 원래 「산출」은 기존 망을 그대로 출력합니다. 제조사 곡선·PIPENET 대조 전에는 미확정입니다.</p>
+      </details>
       <div class="row">
         <button id="mg-emit" disabled>산출</button>
         <label class="chk" title="어느 좌표본을 받을지 — 수리계산 값은 같습니다">
@@ -880,6 +954,11 @@
 
   <div class="stage" id="stage">
     <canvas id="cv"></canvas>
+    <div id="bore-overlay" class="bore-overlay hidden" aria-label="관경 산정 근거">
+      <label><input type="checkbox" id="bore-color" checked> 관경 근거 표시</label>
+      <div id="bore-legend"></div>
+      <span class="bore-help">색은 값의 출처 · 배관 클릭 후 근거 확인·수정</span>
+    </div>
     <div id="zoom-window" class="hidden" aria-hidden="true"></div>
     <!-- [오너 2026-09-21] 세로관을 「아니오」로 지워 통합망이 끊겼을 때의 하단 경고 -->
     <div id="mg-split" class="mg-split hidden" role="alert"></div>
@@ -980,6 +1059,7 @@
     <div id="ne-toolbar" class="ne-toolbar hidden">
       <button id="ne-focus">배관망 편집 시작</button><span id="ne-count-note"></span><button id="ne-undo" title="Ctrl+Z">↶ 되돌리기</button>
       <button id="ne-redo" title="Ctrl+Shift+Z">↷ 다시 실행</button>
+      <button id="ne-compact" title="같은 재질·내경·C값의 연속 직선관을 망·표·SDF에서 하나로 통합">연속관 정리</button>
       <button id="ne-history">편집 기록</button><button id="ne-reset">편집 초기화</button>
     </div>
     <div id="ne-gizmo" class="hidden" aria-label="선택 노드에서 배관 추가 방향">
@@ -1016,9 +1096,11 @@
 <!-- 큰 DXF 를 올리는 공용 헬퍼 — 압축(gzip)과 «실제로 센» 업로드 진행률.
      모듈 A(remote30)가 쓰던 것 그대로다. 서버는 이미 ".gz" 를 알아서 푼다. -->
 <script src="/static/upload_stream.js?v=20260921-sub"></script>
-<script src="/static/module_f_editor.js?v=20260921-riser-delete"></script>
+<script src="/static/module_f_editor.js?v=20260928-continuous-runs"></script>
+<script src="/static/module_f_bore.js?v=20260928-continuous-runs"></script>
 <script src="/static/module_f_inspection.js?v=20260921-merged-branch-elbow"></script>
-<script src="/static/module_f_regions.js?v=20260921-lasso"></script>
-<script src="/static/module_f.js?v=20260923-topology-name"></script>
+<script src="/static/module_f_regions.js?v=20260929-enclosed-1"></script>
+<script src="/static/module_f.js?v=20260929-enclosed-1"></script>
+<script src="/static/module_f_layout.js?v=20260928-five-step-1"></script>
 </body>
 </html>

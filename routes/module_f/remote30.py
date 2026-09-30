@@ -42,6 +42,10 @@ def _worst_view(sess: dict) -> dict | None:
     path = [n for n in (w.get("worst_path") or ()) if 0 <= n < len(pts)]
     return {
         "k": len(w["heads"]),
+        "selection_mode": w.get("selection_mode", "ranked_k"),
+        "network_mode": w.get("network_mode", "tree"),
+        "selection_basis": w.get("selection_basis", "tree_distance"),
+        "area_scope": w.get("area_scope"),
         "reachable": w["reachable"],
         "far_m": w["far_m"],
         "near_m": w["near_m"],
@@ -67,7 +71,9 @@ def _worst_view(sess: dict) -> dict | None:
         "worst_path_m": w.get("worst_path_m", 0.0),
         "corridor": [[_r1(pts[a][0]), _r1(pts[a][1]),
                       _r1(pts[c][0]), _r1(pts[c][1]), int(load)]
-                     for (a, c), load in w.get("loads", {}).items()],
+                     for (a, c), load in (w.get("loads", {}).items()
+                         if w.get("network_mode", "tree") == "tree"
+                         else ((e, 1) for e in sorted(w["edges"])))],
     }
 
 

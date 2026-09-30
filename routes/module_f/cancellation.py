@@ -18,6 +18,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from flask import jsonify, request
+from routes.module_f.session_workspace import SessionConflict
 
 
 class OperationCancelled(BaseException):
@@ -26,15 +27,20 @@ class OperationCancelled(BaseException):
 
 _LOCAL = threading.local()
 _LOCK = threading.RLock()
+_READ_CONDITION = threading.Condition(_LOCK)
 _OPERATIONS: dict[str, "Operation"] = {}
 _ROOT = str(Path(__file__).resolve().parents[2]).lower().replace("\\", "/") + "/"
 _MONITOR_ID = None
 _MONITORING = getattr(sys, "monitoring", None)
 _PROTECTED_MODULES = ("/pick/io.py", "/edit/io.py", "/pipeline/handoff.py",
                       "/pipeline/disp_cache.py")
-_INFRA_MODULES = ("/module_f/cancellation.py", "/module_f/jobs.py")
+_INFRA_MODULES = ("/module_f/cancellation.py", "/module_f/jobs.py",
+                  "/module_f/session_workspace.py", "/module_f/performance.py")
 _CONTROL_PATHS = {"/api/module-f/job", "/api/module-f/job/stream",
-                  "/api/module-f/job/cancel", "/api/module-f/job/cancel-state"}
+                  "/api/module-f/job/cancel", "/api/module-f/job/cancel-state",
+                  "/api/module-f/performance"}
+_SESSION_OWNERS: dict[int, "Operation"] = {}
+_SESSION_READERS: dict[int, int] = {}
 
 
 def _interruptible(frame) -> bool:
@@ -171,10 +177,12 @@ def checkpoint() -> None:
         raise OperationCancelled("작업을 중지했습니다.")
 
 
-def _session_copy(sess: dict) -> dict:
+def _session_copy(sess: dict, fields: frozenset[str] | None = None) -> dict:
     """Copy editable state; retain immutable DXF geometry and spatial indexes."""
     memo = {}
-    states = [sess, *(sess.get("slots") or {}).values()]
+    states = [sess]
+    if fields is None or 'slots' in fields:
+        states.extend((sess.get("slots") or {}).values())
     for state in states:
         for name in ("world", "entities", "recon"):
             value = state.get(name)
@@ -187,8 +195,11 @@ def _session_copy(sess: dict) -> dict:
                 value = getattr(pick.board, name, None)
                 if value is not None:
                     memo[id(value)] = value
-    return copy.deepcopy({k: v for k, v in sess.items()
-                          if k not in {"job", "log", "touched"}}, memo)
+    from routes.module_f.performance import measure
+    state = {k: v for k, v in sess.items() if k not in {"job", "log", "touched"}
+             and (fields is None or k in fields)}
+    with measure('session_snapshot', sid=sess.get('id',''), keys=len(state), shared=len(memo)):
+        return copy.deepcopy(state, memo)
 
 
 class Operation:
@@ -199,42 +210,92 @@ class Operation:
         self.cancelled = False
         self.active = 0
         self.touched = time.monotonic()
-        self.snapshots: dict[int, tuple[dict, dict]] = {}
+        self.snapshots: dict[int, tuple[dict, dict, frozenset[str] | None]] = {}
         self.rollback_callbacks: list = []
         self.rollback_errors: list[str] = []
+        self.workspaces: dict[int, object] = {}
+        self.sessions: dict[int, dict] = {}
+        self.failed = False
+        self.draft_pending = False
 
     def reserve(self) -> None:
         with _LOCK:
             if self.cancelled:
                 raise OperationCancelled("작업을 중지했습니다.")
+            if self.active == 0:
+                self.failed = False
             self.active += 1
             self.touched = time.monotonic()
             _monitor_refresh()
 
-    def snapshot(self, sess: dict) -> None:
+    def snapshot(self, sess: dict, fields: frozenset[str] | None = None) -> None:
         if id(sess) not in self.snapshots:
-            self.snapshots[id(sess)] = (sess, _session_copy(sess))
+            self.snapshots[id(sess)] = (sess, _session_copy(sess, fields), fields)
+
+    def claim(self, sess: dict, *, draft: bool = False, wait_readers: float = 0) -> None:
+        """One writer per session, including requests without a UI token."""
+        from routes.module_f.session_workspace import SessionConflict
+        with _LOCK:
+            deadline = time.monotonic() + wait_readers
+            while _SESSION_READERS.get(id(sess)) and id(sess) not in _SESSION_OWNERS and time.monotonic() < deadline:
+                if self.cancelled:
+                    raise OperationCancelled('작업을 중지했습니다.')
+                _READ_CONDITION.wait(min(.05, max(0, deadline-time.monotonic())))
+            if id(sess) in _SESSION_OWNERS or _SESSION_READERS.get(id(sess)):
+                raise SessionConflict('이 도면의 작업이 진행 중입니다. 완료 후 다시 실행하세요.')
+            _SESSION_OWNERS[id(sess)] = self
+            self.sessions[id(sess)] = sess
+            self.draft_pending = draft
+
+    def draft(self, sess: dict, fields: frozenset[str]) -> None:
+        from routes.module_f.session_workspace import SessionWorkspace
+        self.workspaces[id(sess)] = SessionWorkspace(sess, fields)
+
+    def resolve(self, sess: dict) -> dict:
+        """Only the owning request sees its draft; polling sees confirmed data."""
+        workspace = self.workspaces.get(id(sess))
+        return workspace.working if workspace is not None else sess
 
     def release(self) -> None:
         with _LOCK:
             self.active -= 1
             self.touched = time.monotonic()
             if self.active == 0:
-                if self.cancelled:
-                    for rollback in reversed(self.rollback_callbacks):
-                        try:
-                            rollback()
-                        except OSError as exc:
-                            self.rollback_errors.append(str(exc))
-                    for sess, before in self.snapshots.values():
-                        runtime = {k: sess[k] for k in ("job", "log", "touched") if k in sess}
-                        sess.update(before)
-                        for key in set(sess) - set(before) - set(runtime):
-                            sess.pop(key, None)
-                        sess.update(runtime)
-                self.snapshots.clear()
-                self.rollback_callbacks.clear()
+                try:
+                    self._finish()
+                finally:
+                    for identity in self.sessions:
+                        _SESSION_OWNERS.pop(identity, None)
+                    self.sessions.clear()
+                    self.workspaces.clear()
+                    self.draft_pending = False
+                    self.snapshots.clear()
+                    self.rollback_callbacks.clear()
+                    _monitor_refresh()
             _monitor_refresh()
+
+    def _finish(self) -> None:
+        """Finalize with the lock held; draft failures never restore over live data."""
+        if not self.cancelled and not self.failed:
+            for workspace in self.workspaces.values():
+                workspace.validate()
+            for workspace in self.workspaces.values():
+                workspace.commit()
+        if not self.cancelled:
+            for sess in self.sessions.values():
+                sess['_state_revision'] = sess.get('_state_revision', 0) + 1
+        if self.cancelled:
+            for rollback in reversed(self.rollback_callbacks):
+                try:
+                    rollback()
+                except OSError as exc:
+                    self.rollback_errors.append(str(exc))
+            for sess, before, fields in self.snapshots.values():
+                runtime = {k: sess[k] for k in ("job", "log", "touched") if k in sess}
+                sess.update(before)
+                for key in (set(sess) if fields is None else fields) - set(before) - set(runtime):
+                    sess.pop(key, None)
+                sess.update(runtime)
 
     @contextmanager
     def scope(self, *, reserved: bool = False):
@@ -253,6 +314,9 @@ class Operation:
             checkpoint()
             yield self
             checkpoint()
+        except BaseException:
+            self.failed = True
+            raise
         finally:
             _LOCAL.operation, _LOCAL.delivered = previous, previous_delivered
             _LOCAL.skip = previous_skip
@@ -286,9 +350,19 @@ def operation(identifier: str | None = None) -> Operation:
         return _OPERATIONS.setdefault(identifier, Operation(identifier))
 
 
-def install(app) -> None:
+def install(app, *, register_controls: bool = True, endpoint_prefix: str | None = None) -> None:
     """Wrap every F request carrying the UI operation id, including uploads."""
-    @app.post("/api/module-f/job/cancel")
+    @(app.get("/api/module-f/performance") if register_controls else lambda fn: fn)
+    def module_f_performance():
+        from routes.module_f.jobs import _sess
+        from routes.module_f.performance import report
+        try:
+            sess = _sess(request.args.get('sid'))
+        except ValueError as exc:
+            return jsonify(ok=False, message=str(exc)), 410
+        return jsonify(ok=True, timings=report(sess['id']))
+
+    @(app.post("/api/module-f/job/cancel") if register_controls else lambda fn: fn)
     def module_f_job_cancel():
         body = request.get_json(silent=True) or {}
         identifier = body.get("operation")
@@ -308,7 +382,7 @@ def install(app) -> None:
         except ValueError as exc:
             return jsonify(ok=False, message=str(exc)), 400
 
-    @app.get("/api/module-f/job/cancel-state")
+    @(app.get("/api/module-f/job/cancel-state") if register_controls else lambda fn: fn)
     def module_f_cancel_state():
         identifier = request.args.get("operation", "")
         try:
@@ -316,15 +390,47 @@ def install(app) -> None:
         except ValueError as exc:
             return jsonify(ok=False, message=str(exc)), 400
 
-    def wrap(fn):
-        @functools.wraps(fn)
-        def guarded(*args, **kwargs):
-            identifier = request.headers.get("X-Module-F-Operation")
-            if not identifier:
-                return fn(*args, **kwargs)
+    @contextmanager
+    def reading():
+        """Lazy GET caches must not overlap a draft's capture/publication."""
+        sess = None
+        if request.method != 'POST' and request.args.get('sid'):
+            from routes.module_f.jobs import _sess
             try:
+                sess = _sess(request.args['sid'])
+            except ValueError:
+                pass
+        if sess is not None:
+            with _LOCK:
+                owner = _SESSION_OWNERS.get(id(sess))
+                if owner and (owner.draft_pending or owner.workspaces):
+                    raise SessionConflict('계산 중입니다. 확정 결과가 나온 뒤 다시 조회하세요.')
+                _SESSION_READERS[id(sess)] = _SESSION_READERS.get(id(sess), 0) + 1
+        try:
+            yield
+        finally:
+            if sess is not None:
+                with _LOCK:
+                    count = _SESSION_READERS[id(sess)] - 1
+                    if count:
+                        _SESSION_READERS[id(sess)] = count
+                    else:
+                        _SESSION_READERS.pop(id(sess), None)
+                    _READ_CONDITION.notify_all()
+
+    def wrap(fn):
+        def run(*args, **kwargs):
+            identifier = request.headers.get("X-Module-F-Operation")
+            try:
+                if request.method != 'POST':
+                    if not identifier:
+                        return fn(*args, **kwargs)
                 token = operation(identifier)
-                with token.scope():
+                with _LOCK:
+                    if request.method == 'POST' and token.active:
+                        raise SessionConflict('같은 작업의 요청이 이미 진행 중입니다. 완료 후 다시 실행하세요.')
+                    token.reserve()
+                with token.scope(reserved=True):
                     # Bodies are read inside the scope so uploads can be stopped
                     # before parsing/starting a worker, including late arrivals.
                     if request.method == "POST":
@@ -334,20 +440,48 @@ def install(app) -> None:
                             if sid:
                                 from routes.module_f.jobs import _sess
                                 try:
-                                    token.snapshot(_sess(sid))
+                                    from routes.module_f.session_policy import snapshot_fields, background_snapshot_fields
+                                    sess = _sess(sid)
+                                    fields = snapshot_fields(request.path,sess)
+                                    token.claim(sess, draft=fields is not None,
+                                        wait_readers=2 if request.path in ('/api/module-f/sub/graph',
+                                            '/api/module-f/system/extract','/api/module-f/machineroom/extract') else 0)
+                                    if fields is not None:
+                                        token.draft(sess, fields)
+                                    else:
+                                        token.snapshot(sess, background_snapshot_fields(request.path))
                                 except ValueError:
                                     pass  # Original endpoint returns its usual 410.
                     checkpoint()
-                    return fn(*args, **kwargs)
+                    result = fn(*args, **kwargs)
+                    if token.workspaces:
+                        response = app.make_response(result)
+                        payload = response.get_json(silent=True) if response.is_json else None
+                        if response.status_code >= 400 or (isinstance(payload, dict) and payload.get('ok') is False):
+                            token.failed = True
+                        return response
+                    return result
             except OperationCancelled:
                 return jsonify(ok=False, cancelled=True, message="작업을 중지했습니다."), 499
             except ValueError as exc:
-                if not re.fullmatch(r"[a-zA-Z0-9_-]{16,80}", identifier):
+                if identifier is not None and not re.fullmatch(r"[a-zA-Z0-9_-]{16,80}", identifier):
                     return jsonify(ok=False, message=str(exc)), 400
                 raise
+            except SessionConflict as exc:
+                return jsonify(ok=False, message=str(exc)), 409
+
+        @functools.wraps(fn)
+        def guarded(*args, **kwargs):
+            try:
+                with reading():
+                    return run(*args, **kwargs)
+            except SessionConflict as exc:
+                return jsonify(ok=False, message=str(exc)), 409
         return guarded
 
     for rule in list(app.url_map.iter_rules()):
+        if endpoint_prefix and not rule.endpoint.startswith(endpoint_prefix):
+            continue
         if rule.rule.startswith("/api/module-f/") and rule.rule not in _CONTROL_PATHS:
             fn = app.view_functions[rule.endpoint]
             if not getattr(fn, "_f_cancellable", False):

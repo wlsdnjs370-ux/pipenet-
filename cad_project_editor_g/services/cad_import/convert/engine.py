@@ -93,6 +93,8 @@ def ensure_planar(payload):
     원본 유저정리 .kfp 는 쓰지 않는다. 그래프가 이미 있으면 그대로.
     """
     payload = dict(payload or {})
+    from src.pipenet_converter.graph.network import require_tree_calculation
+    require_tree_calculation(payload.get("network_mode", "tree"))
     if payload.get("kfp") is not None or payload.get("kfp_path"):
         return payload
     has_graph = payload.get("pts") is not None and payload.get("edges") is not None
@@ -152,6 +154,8 @@ def ensure_planar(payload):
     if built_ho and not any(h.get("sa") is not None
                             and h.get("sweep") is not None for h in got_ho):
         payload["ho"] = built["ho"]
+    elif any("connection_node" in h for h in built_ho):
+        payload["ho"] = built_ho  # source identity survived planar snapping
     return payload
 
 

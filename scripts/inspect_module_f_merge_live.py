@@ -30,6 +30,8 @@ def main() -> None:
         "merge_preview": ("merge/preview", {"iso": "0"}),
         "merge_editor": ("network-editor", {"scope": "merge"}),
         "design_editor": ("network-editor", {"scope": "design"}),
+        "design_preview": ("design/preview", {}),
+        "sizing_state": ("merge/sizing/state", {}),
         "slots": ("slot/state", {}),
         "sub_pipes": ("sub/pipes", {}),
     }

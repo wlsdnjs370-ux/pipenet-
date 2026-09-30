@@ -93,9 +93,10 @@ def strokes(calls):
     return [c for c in calls if c["op"] == "stroke"]
 
 
-def test_default_pipes_match_edit_corridor(page):
-    assert not page.locator("#dg-bore-color").is_checked()
-    assert page.evaluate("__mf.boreColor") is False
+def test_disabling_provenance_restores_edit_corridor(page):
+    assert page.locator("#dg-bore-color").is_checked()
+    assert page.evaluate("__mf.boreColor") is True
+    page.uncheck('#bore-color')
     expected = strokes(capture(page, "drawEdit"))[:len(VIEW["pipes"])]
     actual = strokes(capture(page))[:len(VIEW["pipes"])]
     for a, e in zip(actual, expected):
@@ -117,12 +118,13 @@ def test_heads_use_only_directional_triangles_and_red_anchor(page):
 
 def test_diagnostic_colors_remain_optional_and_do_not_change_data(page):
     before = page.evaluate("JSON.stringify([__mf.design.view,__mf.design.tables])")
+    page.locator('#mf-advanced-design > summary').click()
     page.locator('[data-fold="dg-evidence-body"]').click()
     page.check("#dg-bore-color")
     settle(page)
     pipes = strokes(capture(page))[:len(VIEW["pipes"])]
-    assert [p["color"] for p in pipes[:3]] == ["#38bdf8", "#facc15", "#64748b"]
-    assert pipes[2]["dash"] == [6, 4]
+    assert [p["color"] for p in pipes[:3]] == ["#42ffe0", "#e7a1ff", "#ffb347"]
+    assert pipes[2]["dash"] == [7, 4]
     page.uncheck("#dg-bore-color")
     settle(page)
     assert all(p["color"] == "#ffffff" for p in strokes(capture(page))[:5])
@@ -130,6 +132,7 @@ def test_diagnostic_colors_remain_optional_and_do_not_change_data(page):
 
 
 def test_selection_dimming_keeps_table_highlight_and_path_hierarchy(page):
+    page.uncheck('#bore-color')
     page.evaluate("__mf.design.sel={kind:'pipe',label:'P2'};__mf.design.hilite.add('P1')")
     calls = strokes(capture(page, dim=True))
     assert calls[0]["color"] == "#f97316" and calls[0]["alpha"] == 1

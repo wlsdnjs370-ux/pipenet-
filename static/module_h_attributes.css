@@ -1,0 +1,47 @@
+/* H drawing-first workbench; native F controls and styles are untouched. */
+body.module-h #dg-review-dia,body.module-h label:has(> #dg-review-dia){display:none!important}
+#h-attributes-bar{position:absolute;left:12px;top:58px;z-index:25;display:flex;flex-direction:column;gap:8px;align-items:stretch;background:#10171de8;border:1px solid #293b4a;padding:8px;max-width:calc(100% - 24px);box-sizing:border-box}
+#h-attributes-bar .ha-summary,#h-attributes-bar .ha-view-options{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#h-attributes-bar .ha-view-options{border-top:1px solid #293b4a;padding-top:8px;gap:20px}
+#h-attributes-bar label{display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
+#h-attributes-bar input[type=checkbox]{accent-color:#5b8def;margin:0;width:13px;height:13px}
+#h-attributes-bar label:has(input:disabled){opacity:.5;cursor:default}
+#h-attributes-bar[hidden],#h-attributes-panel[hidden]{display:none}
+#ha-history-conflict{position:fixed;left:calc(50% - min(220px,50vw - 12px));top:100px;z-index:180;display:flex;flex-direction:column;gap:10px;width:min(440px,calc(100vw - 24px));max-height:calc(100dvh - 180px);overflow:auto;box-sizing:border-box;border:1px solid #6e5428;background:#10171df5;box-shadow:0 12px 36px #0009;padding:14px;color:#e7c58b;font-size:12px;line-height:1.6}
+#ha-history-conflict header{cursor:move;touch-action:none}
+#ha-history-conflict .ha-row{display:flex;gap:8px;flex-wrap:wrap}
+#ha-history-conflict button{padding:8px;border:1px solid #6e5428;background:#20251f;color:inherit;font:inherit}
+#ha-history-conflict button:disabled{opacity:.5}
+#ha-history-conflict[hidden]{display:none}
+.module-h #h-alert{z-index:26}
+.module-h.h-drawer-open #h-attributes-bar{visibility:hidden}
+#h-attributes-panel{position:fixed;right:18px;top:110px;z-index:70;width:382px;max-width:calc(100vw - 28px);max-height:calc(100vh - 160px);overflow:auto;background:#0e1319;border:1px solid #344656;box-shadow:0 16px 48px #0009;color:#d8e0e7;font-size:12px}
+#h-attributes-panel header{display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid #293b4a;cursor:move;touch-action:none}
+#h-attributes-panel section{padding:12px;border-bottom:1px solid #25313b}
+#h-attributes-panel .ha-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0}
+#h-attributes-panel button,#h-attributes-panel select,#h-attributes-panel input{font:inherit;color:inherit;background:#131d27;border:1px solid #304454;padding:7px;max-width:100%}
+#h-attributes-panel input[type=number]{width:110px}
+#h-attributes-panel button:disabled{opacity:.45}
+#h-attributes-panel button[aria-pressed=true]{background:#27466e;border-color:#5b8def}
+#h-attributes-panel .ha-primary{background:#315892}
+#ha-message{white-space:pre-wrap;line-height:1.6;color:#b5c4d0;margin-top:8px}
+#ha-message[data-error=true]{color:#ffb184}
+#ha-evidence{line-height:1.8;overflow-wrap:anywhere;max-height:180px;overflow:auto}
+#ha-copy-rows{max-height:220px;overflow:auto}
+#ha-copy-rows label{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 0;border-bottom:1px solid #25313b}
+#ha-copy-rows select{width:160px}
+#ha-generated{max-height:170px;overflow:auto}
+#ha-generated label{display:block;padding:5px 0}
+#ha-generated input{width:auto}
+#ha-legend{font-size:11px;display:flex;gap:9px;flex-wrap:wrap}
+#ha-legend span::before{content:'●';margin-right:4px;color:var(--ink)}
+#h-attributes-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:24}
+#h-source-text-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:24}
+#h-source-text-canvas[hidden]{display:none}
+#h-reference-picker{position:absolute;inset:0;width:100%;height:100%;z-index:25;cursor:crosshair}
+#h-reference-picker[hidden],#h-reference-prompt[hidden]{display:none}
+#h-reference-prompt{position:absolute;left:12px;bottom:62px;z-index:45;display:flex;gap:12px;align-items:center;max-width:calc(100% - 24px);padding:8px 12px;border:1px solid #5b8def;background:#101820;color:#e4eaf1}
+#h-reference-prompt span{overflow-wrap:anywhere}
+#h-reference-prompt button{flex-shrink:0}
+#h-attributes-canvas.ha-selecting{pointer-events:auto;touch-action:none;cursor:crosshair}
+#h-attributes-panel summary{cursor:pointer;color:#98abc0;margin-bottom:6px}

@@ -5,6 +5,8 @@ import json
 import math
 from typing import Any
 
+from .freehand import enclosed_geometry
+
 MAX_ZONES = 64
 MAX_ZONE_POINTS = 512
 COORD_LIMIT = 1e9
@@ -43,9 +45,13 @@ def normalize_zones(raw: Any) -> list:
                     clean.append(point)
             if len(clean) > 1 and clean[0] == clean[-1]:
                 clean.pop()
-            if len(clean) < 3 or polygon_area(clean) <= 1e-8:
+            enclosed = zone.get('fill_rule') == 'enclosed'
+            if zone.get('fill_rule') not in (None, 'enclosed'):
+                raise ValueError('알 수 없는 영역 채우기 방식입니다.')
+            area = enclosed_geometry(tuple(map(tuple, clean))).area if enclosed else polygon_area(clean)
+            if len(clean) < 3 or area <= 1e-8:
                 raise ValueError("영역의 면적이 없습니다. 둘레를 넓게 그려주세요.")
-            out.append({"type": "polygon", "points": clean})
+            out.append({"type": "polygon", "points": clean, **({'fill_rule':'enclosed'} if enclosed else {})})
         elif isinstance(zone, (list, tuple)) and len(zone) == 4:
             a, b, c, d = map(number, zone)
             if a == c or b == d:
@@ -86,6 +92,9 @@ def zone_contains(zone: list | dict, point: tuple | list, margin_mm: float = 0) 
     if not isinstance(zone, dict):
         a, b, c, d = zone
         return a-margin_mm <= x <= c+margin_mm and b-margin_mm <= y <= d+margin_mm
+    if zone.get('fill_rule') == 'enclosed':
+        return any(zone_contains({'points': ring}, point, margin_mm)
+                   for ring in enclosed_geometry(tuple(map(tuple, zone['points']))).faces)
     pts = zone["points"]
     inside = False
     for a, b in zip(pts, pts[1:] + pts[:1]):

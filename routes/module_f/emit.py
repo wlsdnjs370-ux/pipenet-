@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import zipfile
 from pathlib import Path
+from dataclasses import asdict
+import json
 
 from routes.module_f.kfp_export import finish_kfp
 from routes.module_f.export_compat import (
@@ -34,10 +36,13 @@ from routes.module_f.export_compat import (
 #   안좋아. 좀 더 작은 크기로 출력되었으면 좋겠어.」 — PIPENET 은 노드 점·노즐
 #   삼각형·유량 화살표를 **도면 좌표 단위의 고정 크기**로 그린다. 그래서 기호를
 #   줄이는 길은 좌표를 넓히는 것뿐이다. 통합 아이소 배관은 그림 위에서 32~54
-#   단위(B1F 32~41)라 수작업 모델(중앙값 약 116)보다 3배쯤 짧았다 — 3배로 넓히면
-#   노드·기호가 1/3 크기로 보이고, 노즐 꼬리는 종전 길이(B1F 43 · 수작업 약 57)를
+#   단위(B1F 32~41)라 수작업 모델(중앙값 약 116)보다 3배쯤 짧았다.
+#   2026-09-27: 공통 4배로 확대 — 기존 통합 3배보다 기호가 25% 더 작게 보인다.
+#   노즐 꼬리는 종전 길이(B1F 43 · 수작업 약 57)를
 #   그대로 둔다. 모양(방향·비율)은 한 점도 안 바뀌고 그림 크기만 커진다.
-ISO_SPREAD = 3.0
+from src.pipenet_converter.render.export_style import EXPORT_SYMBOL_SPREAD
+
+ISO_SPREAD = EXPORT_SYMBOL_SPREAD
 
 
 def _positions_moved(nodes: list, shown: list) -> bool:
@@ -56,7 +61,9 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
                 display_reference_labels: list[str] | None = None,
                 plan_nodes: list | None = None,
                 iso_spread: float = 1.0,
-                remote_nozzle: bool = False) -> dict:
+                remote_nozzle: bool = False,
+                compact: bool = True,
+                keep_nodes: tuple[str, ...] = ()) -> dict:
     """결합망 하나 → {sdf, slf, kfp, has, zip, warnings}. 값은 절대경로.
 
     `combined` 는 `stitch_riser_and_heads` 산출(`CombinedTables`)이다.
@@ -89,11 +96,25 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
     없어 수원(맨 아래)에 0 g 만 걸린 망이 헤드→수원으로 거꾸로 흐르던 문제.
     KFP·HAS 는 바꾸기 **전** 파일로 이미 만들었으므로 한 글자도 안 바뀐다.
     """
+    from src.pipenet_converter.validate.diameter_evidence import require_resolved_diameters
+
+    require_resolved_diameters(combined.pipes)
     from remote30_full_network import ProjectContext, emit_full_sdf
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     warnings: list[str] = []
+    review_only = any(p.get('review_only') or (p.get('bore_provenance') or {}).get('review_only')
+                      for p in combined.pipes)
+    review_path = None
+    if review_only:
+        title = f'{title} / NOT VALIDATED'
+        stem = f'{stem}_검토용_미확정'
+        warnings.append('루프·그리드 검토 입력을 포함한 통합망입니다. 규약 관경 미적용·수리계산 미확정 상태입니다. '
+                        'PIPENET에서 공급 조건·노즐 설정·실제 표고·티 손실을 확인하세요.')
+        review_path = out / f'{stem}.review.json'
+        review_path.write_text(json.dumps({'review_only':True,'hydraulics_solved':False,
+            'notice':warnings[-1],'pipes':combined.pipes},ensure_ascii=False,indent=2),encoding='utf-8')
 
     # Use the plan's unprojected span, exactly as the standalone design writer
     # does. All three parts share this ONE scale; no independent stretching or
@@ -109,6 +130,24 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
             raise ValueError("통합 표시 배율의 평면도 기준 절점이 없습니다.")
         display_options['display_scale'] = reference_display_scale(
             (float(at[k]['x']), float(at[k]['y'])) for k in display_reference_labels)
+
+    # Export-only serial reduction. Compute framing from the ORIGINAL reference
+    # first; then filter every drawing to the same surviving physical nodes.
+    compaction_path = None
+    if compact:
+        from src.pipenet_converter.graph.export_compaction import compact_export
+        combined, audit = compact_export(combined, keep_nodes=keep_nodes,
+            display_views=[v for v in (plan_nodes, iso_nodes) if v])
+        surviving = {str(n['label']) for n in combined.nodes}
+        if plan_nodes is not None:
+            plan_nodes = [n for n in plan_nodes if str(n['label']) in surviving]
+        if iso_nodes is not None:
+            iso_nodes = [n for n in iso_nodes if str(n['label']) in surviving]
+        if display_reference_labels is not None:
+            display_reference_labels = [k for k in display_reference_labels if k in surviving]
+        compaction_path = out / f'{stem}.compaction.json'
+        compaction_path.write_text(json.dumps(asdict(audit),ensure_ascii=False,indent=2),encoding='utf-8')
+        warnings.append(audit.message)
 
     # ① S750 — 권위 있는 원본.
     sdf = out / f"{stem}.sdf"
@@ -163,7 +202,8 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
     # ④ S770 — 형식별 파일 + 대조 자료를 하나로.
     zip_path = out / f"{stem}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for p in (sdf, slf, *([kfp] if kfp_ok else []), has):
+        for p in (sdf, slf, *([kfp] if kfp_ok else []), has, *([review_path] if review_path else []),
+                  *([compaction_path] if compaction_path else [])):
             if p.is_file():
                 zf.write(p, arcname=p.name)
 
@@ -175,6 +215,11 @@ def emit_merged(combined, out_dir, *, title: str = "모듈 F 통합",
         "zip": str(zip_path),
         "warnings": warnings,
     }
+    if review_only:
+        out_files['review_only'] = True
+        out_files['review'] = str(review_path)
+    if compaction_path:
+        out_files['compaction'] = str(compaction_path)
 
     # ⑤ 아이소매트릭 한 벌 — 좌표만 갈아 끼운 사본으로 같은 길을 한 번 더 탄다.
     if iso_nodes:

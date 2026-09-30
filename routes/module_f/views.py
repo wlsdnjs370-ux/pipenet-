@@ -22,6 +22,8 @@ def _pick_state(sess: dict) -> dict:
         "mat_done": bool(ps.mat_done),
         "head_label": ps.head_label,
         "head_symbol_profile": getattr(ps.board, "head_symbol_profile", ""),
+        "work_regions": getattr(ps.world, "_work_regions", []),
+        "crop_report": sess.get("crop_report"),
         "materials": [{"layer": ly, "color": c} for ly, c in ps.board.mat],
         "n_heads": len(ps.board.heads),
         "n_clicks": len(ps.board.clicks),
@@ -61,7 +63,7 @@ def _net_rev(board) -> tuple:
     변화는 전부 잡힌다 — 좌표만 바뀌는 연산은 이 판에 없다.
     """
     return (len(board.pts), len(board.edges),
-            len(board.joins), len(board.deletes))
+            len(board.joins), len(board.deletes), getattr(board, "network_mode", "tree"))
 
 
 def _edit_state(sess: dict, full: bool = False) -> dict:
@@ -98,7 +100,11 @@ def _edit_state(sess: dict, full: bool = False) -> dict:
     stat_rev = rev + (len(b.sources), len(b.valves))
     if full or sess.get("stat_rev") != stat_rev or not sess.get("body_stat"):
         sess["stat_rev"] = stat_rev
-        sess["body_stat"] = _body_stat(b)
+        if getattr(b, "network_mode", "tree") != "tree":
+            from services.cad_import.design.cycle_source import projected_board
+            sess["body_stat"] = _body_stat(projected_board(b))
+        else:
+            sess["body_stat"] = _body_stat(b)
 
     # 헤드 색은 종류·젖음으로만 바뀐다. 지문은 «정확히» 잡는다 — 개수만 세면
     # 이미 지정된 헤드를 다른 종류로 덮을 때 색이 낡은 채로 남는다.
@@ -132,7 +138,8 @@ def _edit_state(sess: dict, full: bool = False) -> dict:
     w = sess.get("worst")
     worst_rev = (None if not w else
                  (len(w["heads"]), w["far_m"], w["near_m"],
-                  len(w["edges"]), w.get("sheet"), w.get("flow_revision")))
+                  len(w["edges"]), w.get("sheet"), w.get("flow_revision"),
+                  w.get("selection_mode"), tuple(w["heads"]), repr(w.get("zones"))))
     worst_fresh = full or sess.get("worst_rev") != worst_rev
     if worst_fresh:
         sess["worst_rev"] = worst_rev
@@ -144,8 +151,10 @@ def _edit_state(sess: dict, full: bool = False) -> dict:
         kinds[k] = kinds.get(k, 0) + 1
     return {
         "mode": es.mode,
+        "network_mode": getattr(b, "network_mode", "tree"),
+        "cycle_recovery": g.get("cycle_recovery"),
         "selection_zones": getattr(b, "selection_zones", []),
-        "counts": {"pts": len(b.pts), "edges": len(b.edges),
+        "counts": {"pts": len(b.pts), "edges": g["effective_edge_count"],
                    "heads": len(b.disks),
                    "bodies": (len(g["body_groups"]) if net_fresh
                               else sess.get("n_bodies", 0)),

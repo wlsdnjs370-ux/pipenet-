@@ -12,9 +12,43 @@ import re
 import sqlite3
 import sys
 import time
+import copy
+from contextlib import contextmanager
+from contextvars import ContextVar
+from collections.abc import Iterator, Sequence
+from typing import Any
 
 
 FORMAT = "stage1-world-sqlite-v2"
+_PREPARED_WORLD: ContextVar[tuple[str, Any] | None] = ContextVar('cad_prepared_world', default=None)
+
+
+def source_signature(path: str | os.PathLike) -> tuple[str, int, int]:
+    """Identity of the bytes already decoded in the current pick session."""
+    stat = os.stat(path)
+    return (os.path.normcase(os.path.abspath(path)), stat.st_size, stat.st_mtime_ns)
+
+
+@contextmanager
+def using_world(key: str, world: Any) -> Iterator[None]:
+    """Explicit, request-local handoff; never publish a cropped world as full DXF."""
+    token = _PREPARED_WORLD.set((key, world))
+    try:
+        yield
+    finally:
+        _PREPARED_WORLD.reset(token)
+
+
+def prepared_world(key: str, source_path: str | os.PathLike, regions: Sequence | None) -> Any | None:
+    """Return a shallow read-only geometry snapshot only for the exact source/crop."""
+    value = _PREPARED_WORLD.get()
+    if value is None or value[0] != key:
+        return None
+    world = value[1]
+    if (getattr(world, '_source_signature', None) != source_signature(source_path)
+            or list(getattr(world, '_work_regions', ())) != list(regions or ())):
+        return None
+    return copy.copy(world)
 
 
 # 바깥에서 못박은 쓰기 루트. ★None 이면 아래 기본 규칙이 그대로 산다 —
@@ -80,6 +114,8 @@ def _prep_digest(module_name):
     for name in _PREP_NAMES:
         h.update(inspect.getsource(getattr(mod, name)).encode("utf-8"))
         h.update(b"\0")
+    from src.pipenet_converter.dxf import planar_ocs
+    h.update(inspect.getsource(planar_ocs).encode('utf-8'))
     return h.hexdigest()
 
 

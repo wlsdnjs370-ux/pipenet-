@@ -103,6 +103,7 @@ class HeadTables:
     #   갔다. 지금 예외로 승격하면 돌던 실행이 통째로 실패하므로, 건수만
     #   보고하고 승격 여부는 사람이 정한다(지시서 D2).
     dangling: list = field(default_factory=list)
+    unresolved: dict = field(default_factory=dict)
 
 
 def _shift(label, offset: int = LABEL_OFFSET):
@@ -180,6 +181,10 @@ def to_head_tables(tbl, *, offset: int = LABEL_OFFSET) -> HeadTables:
     out = HeadTables(nodes=nodes, pipes=pipes, nozzles=nozzles,
                      fittings=fittings, equipment=equipment,
                      meta=list(getattr(tbl, "meta", None) or ()))
+    from src.pipenet_converter.graph.fitting_review import remap_fitting_review, sync_fitting_review
+    out.unresolved = remap_fitting_review(getattr(tbl, 'unresolved', None),
+        node_labels={str(r['label']): sh(r['label']) for r in tbl.nodes}, pipe_labels={})
+    sync_fitting_review(out)
     out.dangling = _check_anchor(out)["dangling"]
     return out
 
@@ -334,7 +339,8 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
                   source_drop_m: float = 0.0, pump=None,
                   method: str = "manual",
                   head_orientation: str = "pendent",
-                  head_stub_pct: float = 2.5):
+                  head_stub_pct: float = 2.5,
+                  preserve_defined_bores: bool = False):
     """S720 → S730 → S740 — 세 도면을 한 배관망으로.
 
     `head_tbl` 은 G 의 설계 표(`PipeTablesG`) 그대로 받는다 — 라벨 옮기기는
@@ -456,6 +462,11 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
                   + ["plan"] * len(ht.pipes))
     pipe_parts = {str(p["label"]): kind
                   for p, kind in zip(combined.pipes, pipe_kinds, strict=True)}
+    # Stitch can rename colliding labels. Keep identity by its preserved order,
+    # never by a coincidentally equal label from another drawing.
+    plan_pipe_sources = {str(row["label"]): str(source["label"])
+                         for row, source in zip(combined.pipes[len(rt.pipes):],
+                                                ht.pipes, strict=True)}
 
     # F's selected DXF path has bearings; the shared template layout must not
     # replace those with one vertical bar. Underlays have their own transforms.
@@ -494,8 +505,14 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
     # 관경 꼬임 정규화 — 상류(입상관)가 하류(가지)보다 얇아지는 것을 편다.
     # 결합 전에는 두 망이 각자 관경을 정했으므로 이음매에서 꼬이기 쉽다.
     try:
-        fixed = normalize_pipe_bores(combined.nodes, combined.pipes)
-        steps.append(f"관경 정규화 · 고친 배관 {fixed}")
+        from src.pipenet_converter.graph.bore_provenance import record_adjustment
+        prior_bores = {str(p.get("label")): p.get("dia") for p in combined.pipes}
+        fixed = (0 if preserve_defined_bores else
+                 normalize_pipe_bores(combined.nodes, combined.pipes))
+        for p in combined.pipes:
+            record_adjustment(p, prior_bores[str(p.get("label"))], "통합 상·하류 관경 정규화")
+        steps.append("도면 관경·미지정 상태 유지" if preserve_defined_bores else
+                     f"관경 정규화 · 고친 배관 {fixed}")
     except Exception as exc:  # noqa: BLE001 — 정규화 실패로 결합을 버리지 않는다
         steps.append(f"관경 정규화 건너뜀 ({type(exc).__name__}: {exc})")
 
@@ -524,6 +541,7 @@ def merge_network(head_tbl, *, riser=None, machineroom=None, mode: str,
            "chain_joints": list(_chain.get("joints") or ()),
            "parts": parts,
            "pipe_parts": pipe_parts,
+           "plan_pipe_sources": plan_pipe_sources,
            # [E2] 좌표 배치가 제 길로 갔는가 — 폴백이면 그 부위가 DXF 원좌표에
            #      남아 이음매가 찢어진다. 화면까지 그대로 들고 간다.
            "layout_status": dict(getattr(combined, "layout_status", None) or {})}

@@ -258,7 +258,7 @@ def read_dxf(path):
                 cur[str(code)] = int(val)
             except ValueError:
                 pass
-        elif code in (10, 20, 11, 21, 40, 41, 42, 50, 51):
+        elif code in (10, 20, 11, 21, 40, 41, 42, 50, 51, 210, 220, 230):
             try:
                 f = float(val)
             except ValueError:
@@ -366,6 +366,14 @@ def explode(ltab, ents, bdefs):
             return
         if ent.get("67") == 1:
             return                                  # 페이퍼스페이스 제외
+        # OCS coordinates must be resolved before the enclosing block transform.
+        # Mirrored ARC/CIRCLE inserts otherwise land on the opposite side of X=0.
+        if (t in ('ARC', 'CIRCLE', 'LWPOLYLINE', 'TEXT', 'INSERT')
+                or (t == 'POLYLINE' and not (ent.get('70', 0) & (8 | 16)))):
+            normal = (ent.get('210', 0.0), ent.get('220', 0.0), ent.get('230', 1.0))
+            if normal != (0.0, 0.0, 1.0):
+                from src.pipenet_converter.dxf.planar_ocs import planar_ocs
+                xf = planar_ocs(xf, normal)
         if t == "LINE":
             if all(k in ent for k in ("10", "20", "11", "21")):
                 a = xf(ent["10"], ent["20"])
@@ -468,8 +476,14 @@ def explode(ltab, ents, bdefs):
         def __call__(x, y):
             return (x, y)
 
-    for e in ents:
+    from src.pipenet_converter.progress import current_reporter, WorldPreview
+    preview = WorldPreview() if current_reporter() is not None else None
+    for index, e in enumerate(ents):
         emit(e, ID(), None, None, 0)
+        if preview is not None and index % 128 == 0:
+            preview.flush(w)
+    if preview is not None:
+        preview.flush(w)
     return w, hid_cnt[0]
 
 def _grid_put(g, cell, x, y, v):

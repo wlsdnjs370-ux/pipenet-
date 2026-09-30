@@ -63,7 +63,7 @@ def _synthetic(path: Path, *, region: bool = False, fmt: str = "asc") -> Path:
     ml.build(insert=Vec2(2000, 2000))
     doc.saveas(path, fmt=fmt)
     if region:                             # ezdxf 는 빈 3D 도형을 안 써서 글자로 끼운다
-        raw = path.read_bytes()
+        raw = path.read_bytes().replace(b"\r\n", b"\n")
         i = raw.find(b"\nENTITIES\n") + len(b"\nENTITIES\n")
         path.write_bytes(raw[:i] + b"  0\nREGION\n  5\nFFF1\n100\nAcDbEntity\n  8\n"
                          b"SOLID\n100\nAcDbModelerGeometry\n 70\n1\n" + raw[i:])

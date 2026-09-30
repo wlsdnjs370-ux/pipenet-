@@ -745,6 +745,9 @@ def apply_to_tables(tbl, got, board, rows, report=None):
                     r["old"] = o["orig_dia"]     # 규칙이 낸 값 — 권위 있다
                 else:
                     _keep_old(r, row.get("dia"), new)
+                from src.pipenet_converter.graph.bore_provenance import record_manual
+                record_manual(row, new, r.get("note") or r.get("reason") or "",
+                              previous_mm=r.get("old"))
                 row["dia"] = new
                 # 관경은 «무엇이 정했나» 가 행에 남는다 — 집계만으로는
                 # 도면 텍스트에서 온 것인지 사람이 넣은 것인지 모른다.
@@ -876,6 +879,9 @@ def apply_to_merge(got, rows):
             missed.append({**r, "why": f"통합에서 고칠 수 없는 속성입니다: {field}"})
             continue
         _keep_old(r, row.get(col), r.get("new"))
+        if col == "dia":
+            from src.pipenet_converter.graph.bore_provenance import record_manual
+            record_manual(row, r.get("new"), r.get("note") or "")
         row[col] = r.get("new")
         n_ok += 1
     if n_ok or missed:

@@ -257,6 +257,9 @@ def emit_design_kfp(tables, got, out_path):
     kfp = _copy.deepcopy((got or {}).get("kfp") or {})
     pipes = kfp.get("pipe_data") or {}
 
+    from src.pipenet_converter.validate.diameter_evidence import require_resolved_diameters
+    require_resolved_diameters(tables.pipes)
+
     # 배관별 부속 목록 — 판정은 이미 났다. 여기서는 «표기» 만 한다.
     by_pipe: dict = {}
     for f in (getattr(tables, "fittings", None) or ()):
@@ -345,7 +348,7 @@ def emit_design_sdf(tables, out_path, *,
                     iso: bool = False, iso_z_scale: float = 1.0,
                     canvas_units: float = 3000.0,
                     iso_ref_label=None, iso_no_lift_labels=None,
-                    head_stub_ratio: float = 0.025) -> Path:
+                    head_stub_ratio: float = 0.025, plan_review: bool = False) -> Path:
     """SDF + SLF 를 **한 쌍으로** 저장한다. 자산이 없으면 아무것도 안 만든다.
 
     `iso` / `iso_z_scale` / `canvas_units` 는 **표시 전용**이다(§G12). 수리계산은
@@ -354,6 +357,14 @@ def emit_design_sdf(tables, out_path, *,
 
     반환: 쓴 .sdf 경로. .slf 는 같은 stem 으로 옆에 놓인다.
     """
+    from src.pipenet_converter.validate.diameter_evidence import require_resolved_diameters
+    original_tables = tables
+    if plan_review:
+        from src.pipenet_converter.sdf.plan_review import review_tables
+        tables = review_tables(tables)
+    else:
+        require_resolved_diameters(tables.pipes)
+
     # ★자산 확인이 먼저다. 파일을 반쯤 써 놓고 실패하면 안 된다(§T5).
     template = resolve_template_sdf()
     slf_src = resolve_standard_slf()
@@ -390,6 +401,11 @@ def emit_design_sdf(tables, out_path, *,
 
     # 템플릿에서 묻어온 남의 경로·제목을 지우고 라이브러리를 옆의 SLF 로 돌린다(§G14).
     cleaned = sanitize_template(out, slf_dst.name)
+    from src.pipenet_converter.sdf.nozzle_overrides import apply_nozzle_overrides
+    apply_nozzle_overrides(out,slf_dst,tables.nozzles)
+    if plan_review:
+        from src.pipenet_converter.sdf.plan_review import mark_plan_review
+        mark_plan_review(out, original_tables)
 
     print(f"[G6] SDF {out.name} · {out.stat().st_size:,} bytes "
           f"(노드 {len(net.nodes)} · 배관 {len(net.pipes)} · "

@@ -339,6 +339,10 @@ def _fingerprint(sources) -> str:
 # 가리키게 하려는 것이다(api_slot 이 서버 시작 때 이 모듈을 부른다).
 FP_VIEW = _fingerprint(_VIEW_SOURCES)
 FP_TRACE = _fingerprint(_TRACE_SOURCES)
+FP_H_VIEW = _fingerprint(_VIEW_SOURCES + (
+    "src/pipenet_converter/render/dxf_source.py",
+    "src/pipenet_converter/render/dxf_text.py",
+))
 _cache_lock = threading.Lock()
 
 
@@ -408,7 +412,7 @@ def _prune(kind: str, key: str, keep: Path) -> None:
 
 # ───────────────────────────────────────────── 읽기
 
-def read_view(dxf_path) -> dict:
+def read_view(dxf_path, *, source_display: bool = False) -> dict:
     """계통도 · 기계실 도면 한 장 → A 의 `parse_dxf_for_view` 와 **같은** 결과.
 
     반환::
@@ -421,6 +425,19 @@ def read_view(dxf_path) -> dict:
          "t_plan": 훑기 초, "seconds": 전체 초}
     """
     from remote30_prototype import parse_dxf_for_view
+    cache_kind, fingerprint = ("hview", FP_H_VIEW) if source_display else ("view", FP_VIEW)
+
+    def parse(path):
+        if not source_display:
+            return parse_dxf_for_view(path, include_hidden_layers=True)
+        import ezdxf
+        from src.pipenet_converter.render.dxf_source import source_display as display
+        document = ezdxf.readfile(path)
+        # Keep calculation entities equivalent. H display is a separate
+        # projection of the SAME loaded document, never a graph input.
+        parsed = parse_dxf_for_view(path, include_hidden_layers=True, document=document)
+        parsed["source_display"] = display(document)
+        return parsed
     t0 = time.perf_counter()
     info: dict = {"key": None, "how": "plain", "why": None, "keep": 0, "drop": 0,
                   "drop_mb": 0.0, "t_plan": 0.0}
@@ -430,7 +447,7 @@ def read_view(dxf_path) -> dict:
         raw = None                         # 원본 파서가 같은 오류를 그대로 낸다
     if raw is not None:
         info["key"] = content_key(raw)
-        got = _cache_load("view", info["key"], FP_VIEW)
+        got = _cache_load(cache_kind, info["key"], fingerprint)
         if got is not None:
             entities, meta = got
             parsed = dict(meta)
@@ -468,7 +485,7 @@ def read_view(dxf_path) -> dict:
     parsed = None
     if tmp is not None:
         try:
-            parsed = parse_dxf_for_view(tmp, include_hidden_layers=True)
+            parsed = parse(tmp)
             info["how"] = "strip"
         except Exception as exc:  # noqa: BLE001 — 사본이 안 되면 원본으로
             info["why"] = f"사본 읽기 실패 {exc}"
@@ -477,13 +494,13 @@ def read_view(dxf_path) -> dict:
         finally:
             _unlink(tmp)
     if parsed is None:
-        parsed = parse_dxf_for_view(dxf_path, include_hidden_layers=True)
+        parsed = parse(dxf_path)
         info["how"] = "plain"
     t_parse = time.perf_counter() - t
     entities = parsed.get("entities") or []
     if t_parse >= CACHE_MIN_PARSE_S:
         meta = {k: v for k, v in parsed.items() if k != "entities"}
-        _cache_store("view", info["key"], FP_VIEW, (entities, meta))
+        _cache_store(cache_kind, info["key"], fingerprint, (entities, meta))
     info.update(entities=entities, parsed=parsed,
                 seconds=time.perf_counter() - t0)
     return info

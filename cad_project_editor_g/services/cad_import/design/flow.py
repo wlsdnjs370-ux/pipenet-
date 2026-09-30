@@ -6,6 +6,7 @@ from src.pipenet_converter.graph.flow import FlowTree, build_flow_tree
 
 if TYPE_CHECKING:
     from services.cad_import.edit.board import EditBoard
+    from src.pipenet_converter.graph.network import FlowNetwork
 
 
 def source_index(board: EditBoard, selected_source: str | None = None) -> int:
@@ -54,13 +55,39 @@ def flow_for_board(board: EditBoard, *, selected_source: str | None = None,
     return flow
 
 
+def network_for_board(board: EditBoard, *, index: int | None = None) -> FlowNetwork:
+    """Cycle-preserving extraction; cache separately from the legacy tree."""
+    from src.pipenet_converter.graph.network import FlowNetwork, network_mode
+    from services.cad_import.design.cycle_source import cycle_source, projected_board
+    original_tree = flow_for_board(board, index=index)
+    recovery = cycle_source(board)
+    mode = network_mode(getattr(board, "network_mode", "tree"))
+    cached = getattr(board, "_preserved_network", None)
+    stamp = (mode, original_tree.revision, recovery)
+    if cached is None or cached[0] != stamp:
+        projected = projected_board(board)
+        tree = flow_for_board(projected, index=index)
+        result = FlowNetwork.build(tree, mode, inferred_edges=projected.inferred_edges)
+        board._preserved_network = (stamp, result)
+    return board._preserved_network[1]
+
+
 def water_state(board: EditBoard, *, index: int | None = None) -> dict:
     """Compatible animation state, restricted to the head-carrying tree."""
     tree = flow_for_board(board, index=index)
-    active = {n for e in tree.edges for n in e} | set(tree.roots)
+    from src.pipenet_converter.graph.network import network_mode
+    mode = network_mode(getattr(board, "network_mode", "tree"))
+    network = network_for_board(board, index=index) if mode != "tree" else tree
+    if mode != "tree":
+        tree = network.reference
+        from services.cad_import.design.cycle_source import cycle_source
+        report = dict(network.report(), cycle_recovery=cycle_source(board).report())
+    else:
+        report = tree.report()
+    active = {n for e in network.edges for n in e} | set(tree.roots)
     return {"reach": active, "hop": {n: tree.hop[n] for n in active},
-            "wet_edges": tree.edges, "wet_heads": set(tree.head_node),
-            "total_heads": len(board.disks), "flow_report": tree.report()}
+            "wet_edges": network.edges, "wet_heads": set(tree.head_node),
+            "total_heads": len(board.disks), "flow_report": report}
 
 
 def stamp_planar_flow(built: dict, flow: FlowTree) -> None:

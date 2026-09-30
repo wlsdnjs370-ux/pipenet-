@@ -223,6 +223,9 @@ def ho_from_spots(spots):
         if s.get("sa") is not None and s.get("sweep") is not None:
             rec["sa"] = float(s["sa"])
             rec["sweep"] = float(s["sweep"])
+        for field in ("connection_xy", "connection_offset_mm", "connection_evidence"):
+            if field in s:
+                rec[field] = copy.deepcopy(s[field])
         out.append(rec)
     return out
 
@@ -329,7 +332,7 @@ THRU_STROKE_D = 5.0  # 규칙 A — 획 중심에서 이 거리 밖이면 스침
 THRU_STROKE_COS = math.cos(math.radians(15.0))  # 규칙 A — 평행 판정 (각도차 ≤ 15°)
 
 
-def thru_arms(pts, edges, spots, arms, off=THRU_OFF, inside=THRU_IN):
+def thru_arms(pts, edges, spots, arms, off=THRU_OFF, inside=THRU_IN, *, evidence=None):
     """★표시 «안을 지나가는 관»도 팔이다 [오너 2026-08-07].
 
     오너: "메인과 가지관이 만나는 접속부인데 왜 잇지 않은건가?
@@ -361,13 +364,23 @@ def thru_arms(pts, edges, spots, arms, off=THRU_OFF, inside=THRU_IN):
             gput(eg, cell, a[0] + (b[0] - a[0]) * t,
                     a[1] + (b[1] - a[1]) * t, (i, j))
 
+    from src.pipenet_converter.graph.arc_contacts import offset_arc_contact
+    adjacency = _adj(edges)
     want = defaultdict(list)          # 변 → [(t, 표시번호)]
     short_arm = defaultdict(list)     # 표시 → 짧은 관의 가까운 끝
     for si, sp in enumerate(spots):
         if sp["k"] == "헤드":
             continue                  # ★헤드는 관을 쪼개지 않는다 — 관말이다
         cx, cy = sp["cx"], sp["cy"]
-        for (i, j) in set(gnear(eg, cell, cx, cy, rings=1)):
+        nearby = set(gnear(eg, cell, cx, cy, rings=1))
+        contact = offset_arc_contact(pts, list(nearby), adjacency, sp, arms[si],
+                                     legacy_offset_mm=off)
+        if contact is not None:
+            if evidence is not None:
+                evidence[si] = dict(connection_xy=list(contact.xy),
+                    connection_offset_mm=contact.offset_mm,
+                    connection_evidence="arc_open_branch_unique_through")
+        for (i, j) in nearby:
             ax, ay = pts[i]
             bx, by = pts[j]
             L = math.hypot(bx - ax, by - ay)
@@ -378,7 +391,8 @@ def thru_arms(pts, edges, spots, arms, off=THRU_OFF, inside=THRU_IN):
                 continue              # 선분이 중심 옆을 안 지남
             px, py = ax + (bx - ax) * t, ay + (by - ay) * t
             d = math.hypot(px - cx, py - cy)
-            if d > off:
+            if d > off and (contact is None or
+                            tuple(sorted((i, j))) != contact.edge):
                 continue
             # ★규칙 A [2026-08-17 오너] — 획과 평행하게 스치는 남의 관은 팔이
             #   아니다. 획 spot · 평행(각도차 ≤15°) · 중심에서 5mm 밖이면 건너뛴다.
@@ -1519,7 +1533,7 @@ def upright_disks(st, hcov, head_kinds, arm_index=None):
     return out
 
 
-def stage5_body(st, ups):
+def stage5_body(st, ups, *, evidence=None):
     """5단계 상향식 헤드 접속 — ① 양쪽 틈 이음(`join_by_head_cover`).
 
     조건 둘을 다 만족해야 잇는다 — ① 헤드 원이 틈 축을 자를 것 ② 원 테두리
@@ -1540,6 +1554,8 @@ def stage5_body(st, ups):
         uv = j.get("_nodes")
         if uv:
             out.append((int(uv[0]), int(uv[1])))
+            if evidence is not None:
+                evidence[tuple(sorted((int(uv[0]), int(uv[1]))))] = dict(j)
     return out
 
 
@@ -1731,8 +1747,9 @@ def pipeline(st, outside=False, stage4=True, stage5=True, key=None):
     spots, hcov = spots_body(st, owner=True, outside=outside)
     g_kind = _kind_graph(st)
     arms_k, _ns_k = spot_arms(g_kind, spots)
+    contact_evidence = {}
     _pts_k, e1_k, arms_k, _n_k = thru_arms(
-        g_kind.pts, frozenset(g_kind.edges), spots, arms_k)
+        g_kind.pts, frozenset(g_kind.edges), spots, arms_k, evidence=contact_evidence)
     owned_half_arc_keys = _owned_half_arc_head_keys(
         _pts_k, e1_k, spots, arms_k)
     st["_owned_half_arc_head_keys"] = owned_half_arc_keys
@@ -1740,9 +1757,12 @@ def pipeline(st, outside=False, stage4=True, stage5=True, key=None):
         arms, _ns = arms_k, _ns_k
         pts, e1, n_thru = _pts_k, e1_k, _n_k
     else:
+        contact_evidence = {}
         arms, _ns = spot_arms(g, spots)
         pts, e1, arms, n_thru = thru_arms(
-            g.pts, frozenset(g.edges), spots, arms)
+            g.pts, frozenset(g.edges), spots, arms, evidence=contact_evidence)
+    for si, proof in contact_evidence.items():
+        spots[si].update(proof)
     node_spots = defaultdict(list)
     for si, a in enumerate(arms):
         for n in a:
@@ -1766,9 +1786,10 @@ def pipeline(st, outside=False, stage4=True, stage5=True, key=None):
     ups = upright_disks(
         st, hcov, head_kinds, arm_index=arm_index) if stage5 else []
     j5, ring5 = [], []
+    evidence5 = {}
     n_up_split = 0
     if stage5:
-        edges, j5, ring5 = add_no_ring(edges, stage5_body(st, ups))
+        edges, j5, ring5 = add_no_ring(edges, stage5_body(st, ups, evidence=evidence5))
         pts, edges, n_up_split = stage5_split_through_uprights(pts, edges, ups)
         if n_up_split:
             print(f"    [5 통과관분할] 중심 노드 {n_up_split}개"
@@ -1778,6 +1799,30 @@ def pipeline(st, outside=False, stage4=True, stage5=True, key=None):
     from src.pipenet_converter.graph.junctions import normalize_junctions
     junctions = normalize_junctions(pts, edges)
     edges = junctions.edges
+    # Preserve the legacy graph byte-for-byte. Carry only matcher-approved,
+    # no-cycle-rejected head gaps as evidence for the opt-in loop/grid view.
+    cycle_candidates = []
+    for a, b in ring5:
+        proof = evidence5.get(tuple(sorted((a, b))))
+        if not proof:
+            continue
+        a, b = junctions.aliases.get(a, a), junctions.aliases.get(b, b)
+        if a != b:
+            cycle_candidates.append({"a": a, "b": b,
+                "xy_a": list(pts[a]), "xy_b": list(pts[b]),
+                "head_xy": list(proof["head"]), "head_radius_mm": proof["sym_r"],
+                "evidence": "same_material_head_cover"})
+    # Capture physical head ports from the picked DXF graph, not from its tree
+    # or completed one-arm nozzle. This sidecar never changes legacy geometry.
+    from dataclasses import asdict, replace
+    from src.pipenet_converter.graph.head_junctions import collect_head_junctions
+    head_junctions = []
+    for candidate in collect_head_junctions(g.pts, g.edges, hcov, st["ebundle"]):
+        ports = tuple(replace(port, node=junctions.aliases.get(port.node, port.node),
+                              xy=tuple(pts[junctions.aliases.get(port.node, port.node)]))
+                      for port in candidate.ports)
+        if len({p.node for p in ports}) == len(ports):
+            head_junctions.append(asdict(replace(candidate, ports=ports)))
     # 6 입구 손질 — key 를 아는 호출측만. UI(build_board)는 key=None.
     # kind_overrides 는 이음5/ups 뒤 · 색·집계용 head_kinds 만 덮는다(이음 재계산 없음).
     user_sources = []
@@ -1795,6 +1840,15 @@ def pipeline(st, outside=False, stage4=True, stage5=True, key=None):
             print(f"[6 입구 손질] 헤드 종류 override {len(kind_ovs)}개 적용"
                   f" · 헤드 {len(head_kinds)}개"
                   + (f" · {parts}" if parts else ""))
+    if st['spec'].get('work_regions'):
+        from src.pipenet_converter.dxf.work_region import WorkRegion
+        regions=[WorkRegion(z) for z in st['spec']['work_regions']]
+        def inside(a,b):
+            return all(r.whole_segment(a,b) for r in regions)
+        edges={e for e in edges if inside(pts[e[0]],pts[e[1]])}
+        e1={e for e in e1 if inside(pts[e[0]],pts[e[1]])}
+        cycle_candidates=[c for c in cycle_candidates if inside(pts[c['a']],pts[c['b']])]
+        head_junctions=[c for c in head_junctions if all(inside(c['head_xy'],p['xy']) for p in c['ports'])]
     head_kinds = require_head_kinds(hcov, head_kinds)
     # 젖음 잣대의 upright 집합 = 5단계 후보와 동일
     hnodes = head_nodes(pts, hcov, edges=edges, upright=ups)
@@ -1808,6 +1862,7 @@ def pipeline(st, outside=False, stage4=True, stage5=True, key=None):
     n_tail = sum(1 for n, vs in _adj(edges).items()
                  if len(vs) == 1 and n in hspot)
     return dict(pts=pts, edges1=e1, edges=edges, spots=spots, arms=arms,
+                cycle_candidates=cycle_candidates, head_junctions=head_junctions,
                 junction_normalization={"aliases": junctions.aliases,
                                         "splits": list(junctions.splits)},
                 node_spots=node_spots, hcov=hcov, hnodes=hnodes, hspot=hspot,

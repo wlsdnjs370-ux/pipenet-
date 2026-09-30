@@ -5,18 +5,34 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections import Counter
 
 from routes.module_f.common import (
     IMPORT_WORK_ROOT, MAX_ARCS, MAX_CIRCLES, MAX_SEGS, _layer_category, _r1)
 
 
-def _world_payload(world) -> dict:
+def _world_payload(world, *, complete: bool = False, source_display: bool = False) -> dict:
     """DXF 세계 → 캔버스가 그릴 수 있는 묶음별 좌표 다발.
 
     레이어×색(bundle) 단위로 접는다. 찍기가 재료를 그 단위로 고르므로
     화면 토글·강조도 같은 단위여야 손으로 맞출 필요가 없다.
     """
     from services.cad_import.colors import cname, rgb_dark
+    from src.pipenet_converter.render.display_budget import bundle_quotas, display_index
+
+    # A global prefix drops layers added late in the DXF (B1F ALT-1).
+    # Allocate independently of entity order; small bundles remain intact.
+    counts = {name:Counter((row[0],row[1]) for row in getattr(world,name))
+              for name in ('segs','circles','arcs')}
+    quotas = {name:bundle_quotas(counts[name], sum(counts[name].values()) if complete else limit)
+              for name,limit in (('segs',MAX_SEGS),('circles',MAX_CIRCLES),('arcs',MAX_ARCS))}
+    seen = {name:Counter() for name in counts}
+
+    def include(name, ly, c):
+        key = (ly,c)
+        index = seen[name][key]
+        seen[name][key] += 1
+        return display_index(index,counts[name][key],quotas[name][key])
 
     bundles: dict[tuple, dict] = {}
     cat_cache: dict[str, str] = {}
@@ -88,9 +104,9 @@ def _world_payload(world) -> dict:
         grow(a[0], a[1])
         grow(b[0], b[1])
         bump(ly, c, seg_mm=_math.hypot(b[0] - a[0], b[1] - a[1]))
-        if shown_seg >= MAX_SEGS:
-            continue
         s = slot(ly, c)
+        if not include('segs',ly,c):
+            continue
         s["segs"] += [_r1(a[0]), _r1(a[1]), _r1(b[0]), _r1(b[1])]
         s["n_seg"] += 1
         shown_seg += 1
@@ -100,9 +116,9 @@ def _world_payload(world) -> dict:
         grow(cx - r, cy - r)
         grow(cx + r, cy + r)
         bump(ly, c, circle=True)
-        if shown_cir >= MAX_CIRCLES:
-            continue
         s = slot(ly, c)
+        if not include('circles',ly,c):
+            continue
         s["circles"] += [_r1(cx), _r1(cy), _r1(r)]
         s["n_circle"] += 1
         shown_cir += 1
@@ -113,11 +129,11 @@ def _world_payload(world) -> dict:
         grow(cx - r, cy - r)
         grow(cx + r, cy + r)
         bump(ly, c, arc=True)
-        if shown_arc >= MAX_ARCS:
+        s = slot(ly, c)
+        if not include('arcs',ly,c):
             continue
         ang = angs[i] if i < len(angs) else None
         sa, sweep = (float(ang[0]), float(ang[1])) if ang else (0.0, 360.0)
-        s = slot(ly, c)
         s["arcs"] += [_r1(cx), _r1(cy), _r1(r), round(sa, 2), round(sweep, 2)]
         s["n_arc"] += 1
         shown_arc += 1
@@ -135,6 +151,8 @@ def _world_payload(world) -> dict:
         b["len_mid"] = int(round(_median(st["lens"]))) if st["lens"] else 0
         b["n_circle_all"] = st["cir"]
         b["n_arc_all"] = st["arc"]
+        b['display_partial'] = (b['n_seg'] < b['n_all'] or b['n_circle'] < b['n_circle_all']
+                                or b['n_arc'] < b['n_arc_all'])
 
     # 순서는 종전 뜻(«덩치 큰 것부터»)을 지키되 **잘리지 않은 수**로 센다.
     #
@@ -147,17 +165,32 @@ def _world_payload(world) -> dict:
     ordered = sorted(bundles.items(),
                      key=lambda kv: -(kv[1]["n_all"] + kv[1]["n_circle_all"]))
     out = []
+    from src.pipenet_converter.progress import current_reporter, report
+    observing = current_reporter() is not None
+    if observing:
+        report("reset", "레이어 표시 준비", mode="world")
     for i, ((ly, c), b) in enumerate(ordered):
         b = dict(b)
         b["i"] = i
         b["id"] = f"{ly}{c}"
         out.append(b)
+        if observing:
+            items = []
+            for kind, stride in (("segs", 4), ("circles", 3), ("arcs", 5)):
+                for offset in range(0, len(b[kind]), stride):
+                    items.append({"layer": str(ly), "kind": kind, "css": b["css"],
+                                  "xy": b[kind][offset:offset + stride]})
+                    if len(items) == 256:
+                        report("world", "레이어 표시 준비", items=items, layer=str(ly), layers=i + 1)
+                        items = []
+            if items:
+                report("world", "레이어 표시 준비", items=items, layer=str(ly), layers=i + 1)
 
     cats: dict[str, int] = {}
     for b in out:
         cats[b["cat"]] = cats.get(b["cat"], 0) + 1
 
-    return {
+    payload = {
         "bounds": {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy},
         "bundles": out,
         "cats": cats,
@@ -166,6 +199,10 @@ def _world_payload(world) -> dict:
         "dropped": {"segs": n_seg - shown_seg, "circles": n_cir - shown_cir,
                     "arcs": n_arc - shown_arc},
     }
+    if source_display:
+        from routes.module_h_plan_display import add_plan_display
+        return add_plan_display(payload, world)
+    return payload
 
 
 def _pts_bounds(pts) -> dict:

@@ -5,9 +5,10 @@ window.createModuleFEditor = function (h) {
   let data = null, selection = null, stamp = "", sequence = 0, preview = null, pending = false;
   let pick = null;
   let inflight = null, clipboard = null, diagonal = false, popupAt = [20,20], menuSequence = 0;
+  let loadedView=null;
   const panel=$("ne-panel"), stage=$("stage"), context=$("ne-context");
   stage.append(panel); panel.classList.add("ne-popover");
-  const view = () => scope()==="merge" ? S.mergeView : S.design?.view;
+  const view = () => scope()==="merge" ? S.mergeView : window.ModuleHView?.planView() || S.design?.view;
   const selectedNode = () => data?.nodes.find(n=>String(n.label)===String(selection?.label));
   const attached = () => data?.pipes.filter(p=>[String(p.in),String(p.out)].includes(String(selection?.label))) || [];
   const selectedPipe = () => data?.pipes.find(p=>String(p.label)===String(selection?.kind==='node' ? $("ne-attached").value : selection?.label));
@@ -37,11 +38,16 @@ window.createModuleFEditor = function (h) {
     stamp = key; const seq = ++sequence;
     selection = sel ? {...sel} : null;
     clearPreview();
+    // H selections inspect the same canonical snapshot. Writes remain revision
+    // checked; switching the selected pipe does not download the entire graph.
+    if(!force && document.body.classList.contains('module-h') && data?.sid===S.sid && data.scope===scope() && loadedView===view()){
+      if(selection)form();return Promise.resolve();
+    }
     inflight=(async()=>{
     try {
       const d = await h.api(`/api/module-f/network-editor?sid=${encodeURIComponent(S.sid)}&scope=${scope()}${history?'&history=1':''}`);
       if (seq !== sequence || !active()) return;
-      data = d; selection = sel ? {...sel} : null;
+      data = d; loadedView=view();selection = sel ? {...sel} : null;
       if (d.nodes && d.pipes) $("ne-count-note").textContent = `노드 ${d.nodes.length} · 배관 ${d.pipes.length} · 헤드 ${d.nodes.filter(n=>n.head).length}`;
       $("ne-undo").disabled = !d.undo; $("ne-redo").disabled = !d.redo;
       $("ne-source").textContent = (d.catalog?.sources || []).join(" · ");
@@ -174,6 +180,13 @@ window.createModuleFEditor = function (h) {
     if(pending || !active() || !$("busy").classList.contains("hidden")) return false;
     if(!data){await load(true);if(!data)return false;}
     if(action==="undo" && !data.undo || action==="redo" && !data.redo) return false;
+    if(action==="accept_basis") {
+      // Refresh before asking: the recovery must apply to the shown conflict,
+      // not a cached history from another drawing or an older base graph.
+      await load(true);
+      if(!data?.conflict || !data.can_accept_basis)return false;
+      if(!confirm(`기준 배관망이 달라 이전 편집 ${data.undo || 0}건을 자동 적용할 수 없습니다.\n이전 기록은 별도로 보관하며, 새 배관망에는 적용하지 않습니다.\n새 기준 배관망으로 계속할까요?`))return false;
+    }
     if(action==="reset" && !confirm("이 배관망의 직접 편집을 모두 되돌리고 추출 직후 상태로 복원할까요?"))return false;
     if(action==="apply" && !preview)return false;
     const cmd=action==="apply" ? preview.command : explicit || (selection ? command() : {});
@@ -182,7 +195,7 @@ window.createModuleFEditor = function (h) {
       const result=await h.post('/api/module-f/network-editor',{sid:S.sid,scope:scope(),action,
         revision:data.revision,command:cmd,iso:!!$("mg-iso")?.checked,iso_z_scale:1});
       if(action==="preview"){
-        preview={command:cmd};drawPreview(result.preview,result.selection);
+        preview={command:cmd,counts:result.counts};drawPreview(result.preview,result.selection);
         message(`적용 후 노드 ${result.counts.nodes} · 배관 ${result.counts.pipes} · 헤드 ${result.counts.heads}`);
         $("ne-apply").disabled=false;
       }else{
@@ -198,11 +211,41 @@ window.createModuleFEditor = function (h) {
         if(result.selection)h.select(stage==="merge" ? "mg"+result.selection.kind : result.selection.kind,result.selection.label);
         if(action==='apply' && ['extend','paste','split'].includes(cmd.op))revealSelection();
         close();h.draw();await load(true);
-        h.say(action==="undo"?"한 단계 되돌렸습니다.":action==="redo"?"다시 적용했습니다.":"배관망·표·출력 데이터에 반영했습니다.");
+        h.say(result.notice || (action==="undo"?"한 단계 되돌렸습니다.":action==="redo"?"다시 적용했습니다.":"배관망·표·출력 데이터에 반영했습니다."));
       }
       return true;
     }catch(err){clearPreview();$("ne-apply").disabled=true;message(err.message,true);h.say(err.message,"err");return ['undo','redo'].includes(action);}
     finally{pending=false;h.busy(false);}
+  }
+  async function applyReference(command){
+    if(!document.body.classList.contains('module-h')||scope()!=='design'||S.slot!=='plan'||command.op!=='pipe_reference'||pending||!active()||!$('busy').classList.contains('hidden'))return false;
+    if(inflight)await inflight;
+    if(!data||data.sid!==S.sid||data.scope!==scope()){await load(true);if(!data)return false;}
+    const sid=S.sid,design=S.design;pending=true;const seq=++sequence;
+    try{
+      const result=await h.post('/api/module-f/network-editor',{sid,scope:'design',action:'apply',revision:data.revision,command,response_mode:'reference_patch'});
+      if(sid!==S.sid||S.design!==design||scope()!=='design')return true;
+      const p=result.reference_patch;
+      if(!p)throw Error('서버 업데이트가 필요합니다. 저장한 참조를 다시 불러오세요.');
+      const replace=rows=>rows?.map(r=>String(r.label)===String(p.pipe.label)?{...r,...p.pipe}:r);
+      data={...data,revision:p.revision,undo:p.undo,redo:p.redo,history:p.history,pipes:replace(data.pipes),
+        nodes:data.nodes.map(n=>({...n,...p.nodes.find(r=>String(r.label)===String(n.label))})),equipment:p.equipment,attributesRevision:p.attributes?.revision};
+      design.tables.pipes=replace(design.tables.pipes);
+      design.tables.equipment=p.equipment;
+      // Update display metadata only; retain camera, geometry, fit and selection.
+      const displayed=design.view?.pipes.find(r=>String(r.label)===String(p.pipe.label));
+      if(displayed)for(const key of ['dia','inner_mm','type','lib','c','dia_src','bore_provenance','review_only'])displayed[key]=p.pipe[key];
+      if(p.attributes)window.ModuleHAttributes?.applyReferencePatch(p.attributes);
+      else await window.ModuleHAttributes?.refresh();
+      clearPreview();$('ne-undo').disabled=!p.undo;$('ne-redo').disabled=!p.redo;
+      h.draw();h.say('참조 내경을 반영했습니다.');return true;
+    }catch(err){message(err.message,true);return false;}
+    finally{pending=false;if(seq===sequence)overlay();}
+  }
+  function clearSelection(){
+    if(!document.body.classList.contains('module-h'))return;
+    close();h.clearSelection?.();
+    window.dispatchEvent(new CustomEvent('module-h-evidence-select',{detail:{ids:[],keepView:true}}));
   }
   $("ne-op").onchange=fields;
   $("ne-material").onchange=()=>{materialSizes();clearPreview();};
@@ -221,8 +264,18 @@ window.createModuleFEditor = function (h) {
   $("ne-pick-split").onclick=()=>beginPick('split');
   $("ne-attached").onchange=()=>{removalOptions();loss();clearPreview();};
   $("ne-reset").onclick=()=>run("reset");
+  $("ne-compact").onclick=async()=>{
+    await load(true);
+    if(!data || pending)return;
+    const before={nodes:data.nodes.length,pipes:data.pipes.length};
+    if(!await run('preview',{op:'compact_runs'}))return;
+    const after=preview?.counts;if(!after)return;
+    if(after.nodes===before.nodes){clearPreview();h.say('더 합칠 수 있는 일반 중간점이 없습니다. 분기·부속·굴곡·관경 변경점과 직접 만든 노드는 보존합니다.');return;}
+    if(!confirm(`연속관 정리: 노드 ${before.nodes} → ${after.nodes}, 배관 ${before.pipes} → ${after.pipes}\n같은 재질·내경·C값의 직선 구간을 합칩니다. 길이·부속·루프 연결은 보존합니다.\n화면·표·일반 SDF에 함께 반영하고 편집 기록으로 되돌릴 수 있습니다. 적용할까요?`)){clearPreview();return;}
+    await run('apply');
+  };
   $("ne-history").onclick=async()=>{await load(true,true);$("ne-history-text").textContent=data?.conflict || data?.notice || "";
-    $("ne-history-text").textContent+="\n"+(data?.history || []).map((c,i)=>`${i+1}. ${c.op} · ${c.target} ${c.note || ""}`).join("\n") || "편집 기록 없음";
+    $("ne-history-text").textContent+="\n"+(data?.history || []).map((c,i)=>`${i+1}. ${c.op==='compact_runs'?'연속관 정리':c.op} · ${c.target || ''} ${c.note || ""}`).join("\n") || "편집 기록 없음";
     for (const row of data?.archived || []) {
       $("ne-history-text").textContent+=`\n\n[이전 기준망 · ${row.cursor}건 보관]\n${row.file}\n`
         +(row.commands || []).map((c,i)=>`${i+1}. ${c.op} · ${c.target} ${c.note || ''}`).join('\n');
@@ -237,7 +290,7 @@ window.createModuleFEditor = function (h) {
   });
   function canvasClick(x,y,maxD) {
     if(!pick || !active() || !selection)return false;
-    const v=scope()==="merge" ? S.mergeView : S.design?.view;
+    const v=view();
     if(!v)return true;
     if(pick==="end"){
       let best=maxD,hit=null;
@@ -360,6 +413,8 @@ window.createModuleFEditor = function (h) {
     }else if(selection.kind==='pipe'){
       const p=selectedPipe(),end=data.nodes.find(n=>String(n.label)===String(p?.out));
       menuButton('배관속성 변경',()=>openAction('pipe'));
+      if(scope()==='design'&&window.ModuleHReferences?.available())
+        menuButton('참조 내경 변경',()=>{show('ne-context',false);window.ModuleHReferences.begin(selection.label);});
       menuButton('배관길이 변경',()=>openAction('resize'));
       menuButton('배관 분할',()=>openAction('split'));line();
       menuButton('부속 / 밸브 추가',()=>openAction('fitting'));
@@ -420,7 +475,7 @@ window.createModuleFEditor = function (h) {
     if(x<0||y<0||x>stage.clientWidth||y>stage.clientHeight-32){show('ne-gizmo',false);return;}
     Object.assign($('ne-gizmo').style,{left:x+'px',top:y+'px'});
     if(panel.classList.contains('hidden')&&context.classList.contains('hidden'))popupAt=[x,y];
-    const iso=scope()==='merge'?$('mg-iso').checked:$('dg-iso').checked;
+    const iso=scope()==='merge'?$('mg-iso').checked:!window.ModuleHView?.planView()&&$('dg-iso').checked;
     const c=diagonal?Math.SQRT1_2:Math.sqrt(3)/2,s=diagonal?Math.SQRT1_2:.5;
     const basis=iso?[[c,-s],[-c,s],[-c,-s],[c,s],[0,-1],[0,1]]:
       [[1,0],[-1,0],[0,-1],[0,1],[-Math.SQRT1_2,-Math.SQRT1_2],[Math.SQRT1_2,Math.SQRT1_2]];
@@ -451,8 +506,10 @@ window.createModuleFEditor = function (h) {
   window.addEventListener('keydown',e=>{
     if(!active())return;
     if(e.key==='Escape' && (!panel.classList.contains('hidden')||!context.classList.contains('hidden')||pick)){
-      e.preventDefault();e.stopImmediatePropagation();close();return;
+      e.preventDefault();e.stopImmediatePropagation();close();clearSelection();return;
     }
+    if(e.key==='Escape'&&document.body.classList.contains('module-h')&&!window.ModuleHReferences?.isPicking()
+      &&!document.querySelector('dialog[open]'))clearSelection();
     if(e.key==='Enter' && !panel.classList.contains('hidden') && e.target.tagName==='INPUT'){
       e.preventDefault();$('ne-apply').click();
     }
@@ -463,5 +520,8 @@ window.createModuleFEditor = function (h) {
       }
     }
   },true);
-  return {render,overlay,contextMenu,openAction,canvasClick,deletePreview,undo:()=>run("undo"),refresh:()=>load(true)};
+  return {render,overlay,contextMenu,openAction,canvasClick,deletePreview,isPicking:()=>!!pick,undo:()=>run("undo"),refresh:()=>load(true),
+    getState:()=>data,getSelection:()=>current(),select:(kind,label)=>h.select(scope()==='merge'?'mg'+kind:kind,label),clearSelection,applyReference,
+    applyCommand:async command=>{if(!await run('preview',command))return false;return run('apply');},
+    redo:()=>run('redo'),resolveConflict:()=>run('accept_basis')};
 };

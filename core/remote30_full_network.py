@@ -1102,6 +1102,7 @@ class CombinedTables:
     #   DXF 원좌표에 남아 이음매가 찢어지는데, 종전에는 그 사실이 아무 데도
     #   안 남았다. 값: "ok" · "폴백:<이유>" · "건너뜀:<이유>".
     layout_status: dict = field(default_factory=dict)
+    unresolved: dict = field(default_factory=dict)
 
 
 def _layout_riser_as_schematic(
@@ -1547,7 +1548,8 @@ def stitch_riser_and_heads(
         if str(_v).startswith(("폴백", "건너뜀")):
             meta.append((f"★좌표 배치 {_k}", str(_v)))
 
-    return CombinedTables(
+    from src.pipenet_converter.graph.fitting_review import remap_fitting_review, sync_fitting_review
+    combined = CombinedTables(
         nodes=combined_nodes,
         pipes=combined_pipes,
         nozzles=list(head_tables.nozzles),
@@ -1558,7 +1560,11 @@ def stitch_riser_and_heads(
         meta=meta,
         machine_room_plan_edges=plan_laid,
         layout_status=layout_status,
+        unresolved=remap_fitting_review(getattr(head_tables, 'unresolved', None),
+                                       node_labels={}, pipe_labels=renamed),
     )
+    sync_fitting_review(combined)
+    return combined
 
 
 def prepend_machine_room_to_riser(

@@ -97,21 +97,49 @@ BACKFILL_DISABLED = True
 
 def _settings(sess: dict, body: dict) -> dict:
     """설정 — 준 것만 덮고 세션에 기억한다."""
+    area_all = (body.get("selection_mode") == "area_all" or sess.get("selection_mode") == "area_all")
     cur = dict(sess.get("design_settings") or _DEFAULT_SETTINGS)
+    if 'diameter_policy' in body:
+        if body['diameter_policy'] not in ('drawing_first_v1', 'legacy'):
+            raise ValueError('알 수 없는 관경 정의 정책입니다.')
+        cur['diameter_policy'] = body['diameter_policy']
+        if body['diameter_policy'] == 'drawing_first_v1':
+            cur.pop('review_default_mm', None)
     # 옛 세션에는 새 칸이 없다 — 기본값으로 채운다(없으면 KeyError 로 죽는다).
     for key, val in _DEFAULT_SETTINGS.items():
         cur.setdefault(key, val)
     for key, cast in (("k", int), ("schedule", str), ("iso", bool),
                       ("iso_z_scale", float), ("canvas_units", float),
                       ("lift_ref", str), ("head_stub_pct", float),
-                      ("fx_profile", str), ("fill_short", bool)):
+                      ("fx_profile", str), ("fill_short", bool),
+                      ("review_default_mm", int), ("review_datum_m", float)):
+        if key == "k" and area_all:
+            continue
         if key in body and body[key] is not None:
             try:
                 cur[key] = cast(body[key])
             except (TypeError, ValueError):
                 return_fail = f"설정 값이 올바르지 않습니다: {key}={body[key]!r}"
                 raise ValueError(return_fail)
-    cur["k"] = max(1, min(int(cur["k"]), 200))
+    if area_all:
+        cur.update(k=len((sess.get("worst") or {}).get("heads") or []),
+                   selection_mode="area_all", fill_short=False)
+    else:
+        cur.pop("selection_mode", None)
+        cur["k"] = max(1, min(int(cur["k"]), 200))
+    if 'review_default_mm' in body and body['review_default_mm'] is None:
+        cur.pop('review_default_mm',None)
+    if cur.get('diameter_policy') == 'drawing_first_v1':
+        cur.pop('review_default_mm', None)
+    if body.get('review_dto') is not None:
+        if not isinstance(body['review_dto'],dict):
+            raise ValueError('헤드 접속관 치수는 항목별 숫자로 입력하세요.')
+        from services.cad_import.dto import default_dto
+        dto = default_dto()
+        for k, v in body['review_dto'].items():
+            if k in dto and v is not None:
+                dto[k] = v
+        cur['review_dto'] = dto
     sess["design_settings"] = cur
     return cur
 
@@ -133,23 +161,54 @@ def _dia_texts(sess: dict) -> list:
         import json
         from services.cad_import.design.bore import extract_dia_text_points
         from services.cad_import.pipeline import handoff, stage1 as s1
+        h_policy=(sess.get('design_settings') or {}).get('diameter_policy')=='drawing_first_v1'
+        if h_policy:
+            from src.pipenet_converter.dxf.diameter_labels import DiameterLabelConfig, extract_mapped_diameter_points
+            with (Path(__file__).resolve().parents[2]/'configs'/'h_diameter_labels.json').open(encoding='utf-8') as stream:
+                label_config=DiameterLabelConfig(**json.load(stream))
+            extract_dia_text_points=lambda rows:extract_mapped_diameter_points(rows,label_config)
         spec = os.path.join(handoff.pick_out_dir(), f"{key}_찍은스펙.json")
+        ps = sess.get('pick')
+        if ps is not None:
+            return extract_dia_text_points(ps.world.texts)
         with open(spec, encoding="utf-8") as f:
-            src = json.load(f).get("source_dxf")
+            spec_data = json.load(f)
+        src = spec_data.get("source_dxf")
+        stamp=(src,os.stat(src).st_mtime_ns,os.stat(src).st_size,os.stat(spec).st_mtime_ns,
+               tuple(label_config.nominal_sizes_mm),tuple(label_config.prefixes),'segment_reference_v2') if h_policy else None
+        cached=sess.get('_h_diameter_text_points')
+        if h_policy and cached and cached['stamp']==stamp:
+            return cached['points']
         w = handoff.load_world(key, src, s1.World)
+        if w is None and h_policy:
+            from src.pipenet_converter.progress import report
+            report('diameter','원본 DXF 관경 문자 다시 읽기',reset=True)
+            from src.pipenet_converter.dxf.diameter_annotations import read_native_texts
+            native = read_native_texts(src,extended=True)
+            sess['_h_native_texts'] = {'stamp':(str(Path(src).resolve()),os.stat(src).st_mtime_ns,os.stat(src).st_size),'texts':native,'extended':True}
+            w=s1.World()
+            w.texts=[(t.layer,7,t.x,t.y,t.height,t.text) for t in native]
         if w is None:
             print(f"[설계] ★치수 텍스트 없음 — handoff 캐시를 쓸 수 없습니다"
                   f" (원본: {src}). 관경은 전부 별표1 로 정해집니다.")
             return []
+        from src.pipenet_converter.dxf.work_region import crop_world
+        for region in spec_data.get('work_regions', []):
+            w, _ = crop_world(w, region)
         pts = extract_dia_text_points(w.texts)
+        if h_policy:
+            sess['_h_diameter_text_points']={'stamp':stamp,'points':pts}
         if not pts:
             print(f"[설계] ★도면 문자 {len(w.texts):,}개 중 치수로 읽힌 것이"
-                  f" 0개입니다 — 관경은 전부 별표1 로 정해집니다.")
+                  + (" 0개입니다 — 관경은 미지정으로 남깁니다." if h_policy else
+                     " 0개입니다 — 관경은 전부 별표1 로 정해집니다."))
         else:
             print(f"[설계] 치수 텍스트 {len(pts):,}개"
                   f" (도면 문자 {len(w.texts):,}개 중)")
         return pts
     except Exception as exc:  # noqa: BLE001
+        if (sess.get('design_settings') or {}).get('diameter_policy')=='drawing_first_v1':
+            raise ValueError(f'도면 관경 문자를 읽지 못했습니다. 원본 DXF와 객체 정의를 확인하세요: {exc}') from exc
         print(f"[설계] ★치수 텍스트를 읽지 못했습니다 — 관경은 별표1 로만: {exc}")
         return []
 
@@ -279,6 +338,9 @@ def _summary(got: dict, tbl) -> dict:
         # [최불리 인계] 손질 선정을 어떻게 받았는지 — 조용히 다르게 동작하는
         #   갈래를 두지 않는다(§2-3·§2-4·§2-5).
         "handoff": got.get("handoff") or {},
+        "review_only": bool(got.get('review_only')),
+        "review_notice": got.get('review_notice'),
+        "review_default_mm": got.get('review_default_mm'),
     }
 
 
@@ -302,17 +364,37 @@ def emit_design_files(sess: dict, UPLOAD_DIR, cfg: dict | None = None):
     #   G 데스크톱과 같은 이름이라야 산출이 같다. 세션끼리 안 섞이게 폴더를 가른다.
     out_dir = Path(UPLOAD_DIR) / "module_f" / f"{sess['id']}_design"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{key}_수리계산입력.sdf"
+    plan_review = cfg.get('diameter_policy') == 'drawing_first_v1'
+    review = (d.get('got') or {}).get('review_only',False) or plan_review
+    suffix = '_검토용_미확정' if review else ''
+    out_path = out_dir / f"{key}_수리계산입력{suffix}.sdf"
     tbl = d["tables"]
     try:
+        from dataclasses import asdict
+        import json
+        from src.pipenet_converter.graph.export_compaction import compact_export
+        from src.pipenet_converter.render.export_style import EXPORT_SYMBOL_SPREAD
+        from src.pipenet_converter.validate.diameter_evidence import require_resolved_diameters
+        from services.cad_import.design.emit import display_tables
+        if not plan_review:
+            require_resolved_diameters(tbl.pipes)
+        reference = _valve_label(tbl) if cfg["lift_ref"] == "valve" else None
+        options = _view_opts(cfg)
+        displayed, _ = display_tables(tbl, **options, iso_ref_label=reference)
+        export_tbl, audit = compact_export(tbl,
+            keep_nodes=([str(n['label']) for n in tbl.nodes] if d.get('editor_canonical') else
+                        [reference] if reference else []), display_views=[displayed.nodes])
+        options['canvas_units'] *= EXPORT_SYMBOL_SPREAD
+        options['head_stub_ratio'] /= EXPORT_SYMBOL_SPREAD
         out = emit_design_sdf(
-            tbl, out_path,
-            project_title=f"{key} 수리계산 입력",
-            **_view_opts(cfg),
-            iso_ref_label=(_valve_label(tbl)
-                           if cfg["lift_ref"] == "valve" else None))
+            export_tbl, out_path,
+            project_title=f"{key} 수리계산 입력" + (' — 검토용 미확정 / NOT VALIDATED' if review else ''),
+            **options, iso_ref_label=reference, plan_review=plan_review)
+        out.with_suffix('.compaction.json').write_text(
+            json.dumps(asdict(audit),ensure_ascii=False,indent=2),encoding='utf-8')
+        print(f'[F SDF] {audit.message}')
         from routes.module_f.export_compat import prepare_sdf_export
-        for message in prepare_sdf_export(out):
+        for message in prepare_sdf_export(out, display_spread=EXPORT_SYMBOL_SPREAD):
             print(f"[F SDF] {message}")
     except AssetMissing as exc:
         return None, str(exc)
@@ -320,6 +402,18 @@ def emit_design_files(sess: dict, UPLOAD_DIR, cfg: dict | None = None):
         return None, f"{type(exc).__name__}: {exc}"
     sess["design_sdf_path"] = str(out)
     sess["design_slf_path"] = str(out.with_suffix(".slf"))
+    if plan_review:
+        sess['design_review_path'] = str(out.with_suffix('.review.json'))
+    elif review:
+        import json
+        record = out.with_suffix('.review.json')
+        record.write_text(json.dumps({'schema':'module-f-review-input-v1',
+            'hydraulics_solved':False,'notice':d['got']['review_notice'],
+            'network_mode':d['got']['network_mode'],'cycle_rank':d['got']['cycle_rank'],
+            'arc_report':d['got']['kfp'].get('arc_report',{}),
+            'flow_report':d['got'].get('flow_report',{}),
+            'tables':tbl.as_dict()},ensure_ascii=False,indent=2),encoding='utf-8')
+        sess['design_review_path']=str(record)
 
     # ★[산출물 세 형태 · 오너 2026-09-14] HASS(.has) 도 함께 낸다.
     #
@@ -562,6 +656,15 @@ def _tables_for_screen(tbl) -> dict:
     들고 있어야 하기 때문이다(`apply_to_tables` 가 그것으로 원값을 찾는다).
     """
     d = tbl.as_dict()
+    # The source issues are retained for undo/audit, but the review form must
+    # list only outstanding spots, just like the isometric and sizing guard.
+    if 'kind_items' in (d.get('unresolved') or {}):
+        from src.pipenet_converter.graph.fitting_review import fitting_review
+        review = fitting_review(tbl)
+        d['unresolved'] = dict(d['unresolved'],kind_items=list(review.pending),
+                               editor_resolved=list(review.resolved))
+        d['meta'] = [[k, str(review.count) if k == '부속 판정 불가' else v]
+                     for k, v in d.get('meta', [])]
     lab = {str(k): str(v) for k, v
            in (getattr(tbl, "pipe_labels", None) or {}).items()}
     if lab and d.get("bore_overrides"):
@@ -586,10 +689,18 @@ def register(app, *, UPLOAD_DIR):
                 return _fail("자동 경로는 «자동 추출» 이 이미 표를 냈습니다 — "
                              "여기서 다시 확정하지 않습니다.", 409)
             return _fail("손질 세션이 없습니다.")
+        area_all = (body.get("selection_mode") == "area_all" or sess.get("selection_mode") == "area_all")
+        if area_all:
+            from routes.module_f.area_selection import validate_area_selection
+            try:
+                validate_area_selection(sess, body.get("zones"))
+            except ValueError as exc:
+                return _fail(str(exc), 409)
         if not getattr(es.board, "sources", None):
             return _fail("알람밸브(접속점)를 먼저 찍어야 설계면적을 고를 수 있습니다.")
-        undecided = sum(1 for kk in getattr(es.board, "disk_kinds", []) or []
-                        if kk == "미지정")
+        selected_heads = set((sess.get("worst") or {}).get("heads") or [])
+        undecided = sum(1 for hi, kk in enumerate(getattr(es.board, "disk_kinds", []) or [])
+                        if kk == "미지정" and (not area_all or hi in selected_heads))
         if undecided:
             return _fail(f"헤드 종류가 미지정인 것이 {undecided}개 있습니다. "
                          "손질에서 종류를 정한 뒤 다시 시도하세요.")
@@ -606,6 +717,14 @@ def register(app, *, UPLOAD_DIR):
         def job():
             import time
             started = time.perf_counter()
+            if area_all:
+                try:
+                    validate_area_selection(sess)
+                except ValueError as exc:
+                    return {"ok": False, "error": str(exc)}
+            if getattr(es.board, 'network_mode', 'tree') != 'tree':
+                from routes.module_f.preserved_design import build_review_design
+                return build_review_design(sess, es, cfg, source)
             from services.cad_import.design.anchor import valve_kfp_nodes
             from services.cad_import.design.restrict import select_and_expand
             from services.cad_import.design.tables import build_design_tables
@@ -738,9 +857,17 @@ def register(app, *, UPLOAD_DIR):
                           f" **다음 순위**를 채웁니다"
                           f" (후보 {len(only) if only else '도면 전체'}).")
             expanded_at = time.perf_counter()
-            got = select_and_expand(payload, es.board, k=k_use,
-                                    selected_source=sel, only_heads=only,
-                                    probe=probe)
+            if area_all:
+                # The approved identity set is authoritative. No second ranking,
+                # candidate filtering, quota, or head substitution at table build.
+                from services.cad_import.design.restrict import expand_worst
+                got = expand_worst(payload, es.board, w_sel, selected_source=sel)
+                got.update(worst=dict(w_sel), candidate_heads=len(picked),
+                           total_heads=n_disk, excluded_heads=None)
+            else:
+                got = select_and_expand(payload, es.board, k=k_use,
+                                        selected_source=sel, only_heads=only,
+                                        probe=probe)
             # [§2-2] 종전의 `got["_filled"]` 는 **읽는 곳이 0곳**인 죽은 값이었다
             #   — 채워 놓고 아무도 말하지 않은 그 침묵의 증거다. 이제 이 값은
             #   `handoff["filled"]` 한 곳에만 담는다(두 벌이면 언젠가 갈린다).
@@ -766,6 +893,8 @@ def register(app, *, UPLOAD_DIR):
                 got["handoff"].setdefault("messages", []).append(zone_short)
             got["_picked"] = picked      # 표를 보고 다시 셀 때 쓴다(§2-3)
             texts = _dia_texts(sess)
+            from routes.module_f.bore_context import build_bore_context
+            bore_context = build_bore_context(sess, es.board, basis, texts)
             # [F-11d] 직접 입력을 **이번 계산의 이름으로 번역**한다. 세션에는
             #   corridor 가 바뀌어도 같은 자리를 가리키는 안정 키로 담겨 있다
             #   (BLOCKED §22). 못 옮긴 것은 버리지 않고 세어 화면에 올린다.
@@ -830,6 +959,7 @@ def register(app, *, UPLOAD_DIR):
                 tbl = build_design_tables(
                     got["kfp"], got["worst"], got["edge_ref"], texts,
                     board_pts=es.board.pts,
+                    bore_context=bore_context,
                     excluded_heads=("미진단 — 전체 도면 진단에서 확인"
                                     if got.get("excluded_heads") is None
                                     else got["excluded_heads"]),
@@ -924,6 +1054,11 @@ def register(app, *, UPLOAD_DIR):
                     tbl.meta.append(("고리 덕분에 통과한 삭제",
                                      str(ops_rep["loop_pass"])))
             el_keys = ov.label_keys(got, es.board, tbl)
+            if cfg.get('diameter_policy') == 'drawing_first_v1':
+                from routes.module_h_attributes import apply_head_properties
+                apply_head_properties(tbl,el_keys,ov.ensure_loaded(sess))
+                for pipe in tbl.pipes:
+                    pipe.setdefault('bore_provenance',{})['stable_key']=el_keys['pipe'].get(str(pipe['label']))
             for _rows, _rep in ((base_rows, el_rep), (add_rows, add_rep)):
                 if not _rows:
                     continue
@@ -968,7 +1103,17 @@ def register(app, *, UPLOAD_DIR):
             # ★표는 «이 순간의 선정·손질판» 으로 만든 사진이다. 그 순간의
             #   지문을 함께 박아 둔다 — 뒤에 최불리를 다시 고르거나 손질을
             #   고치면 화면이 「이 표는 옛 것」이라고 말할 수 있어야 한다.
+            if area_all:
+                from routes.module_f.area_selection import validate_area_nozzles
+                try:
+                    validate_area_nozzles(es.board, w_sel, tbl)
+                except ValueError as exc:
+                    return {"ok": False, "error": str(exc)}
+                tbl.meta = [("영역 내 전체 헤드 수" if name == "기준개수 K" else name, value)
+                            for name, value in tbl.meta]
+                tbl.meta.append(("헤드 선정 방식", "지정 영역 전체 · 기준개수 제한 없음"))
             sess["design"] = {"got": got, "tables": tbl, "k": cfg["k"],
+                              "bore_inference": bore_context.summary,
                               "source": sel,
                               "schedule": cfg["schedule"], "marks": marks,
                               # [요소속성 수정카드] 수리계산 화면과 통합 화면이
@@ -1012,6 +1157,8 @@ def register(app, *, UPLOAD_DIR):
         es = sess.get("edit")
         if not design or es is None or design.get("method") == "auto":
             return _fail("먼저 수리계산 입력표를 확정하세요.", 409)
+        if design['got'].get('review_only'):
+            return _fail('루프·그리드 연결 진단은 손질의 물흐름 보고서를 확인하세요. 트리 전용 전체 전개 진단은 실행하지 않습니다.',409)
         if _job_running(sess):
             return _fail("이미 작업이 돌고 있습니다. 끝난 뒤에 다시 눌러 주세요.", 409)
         if _design_stale(sess):
@@ -1451,6 +1598,12 @@ def register(app, *, UPLOAD_DIR):
         보기 설정만 바뀌면 build 를 다시 돌지 않는다 — 캐시한 표에 표시 변환만
         다시 얹는다(G16 의 «최불리 재계산 없이 다시 그리기» 그대로).
         """
+        from routes.module_f.topology import calculation_block
+        if message := calculation_block(sess):
+            return jsonify({"ok": True, "view": None, "tables": None,
+                            "marks": {}, "stood": None,
+                            "settings": dict(sess.get("design_settings") or _DEFAULT_SETTINGS),
+                            "stale": {"why": [message]}, "message": message})
         d = sess.get("design")
         if not d:
             job = sess.get("job") or {}
@@ -1557,6 +1710,8 @@ def register(app, *, UPLOAD_DIR):
                 worst_path.reverse()
 
         nodes = []
+        original_nodes = {str(row['label']): row for row in tbl.nodes}
+        origin_mm = d.get('got', {}).get('origin_mm')
         for lab, n in at.items():
             # ★반올림하지 않는다 — writer 는 좌표를 `.6g`(유효 6자리)로 찍는데
             #   소수 3자리 반올림은 그보다 거칠어(실측: -75.9731 → -75.973)
@@ -1569,6 +1724,10 @@ def register(app, *, UPLOAD_DIR):
             rec = {"label": lab, "x": float(n.get("x", 0)),
                    "y": float(n.get("y", 0)),
                    "e": round(float(n.get("elevation", 0) or 0), 3)}
+            if origin_mm and lab in original_nodes:
+                original = original_nodes[lab]
+                rec['plan_xy'] = [float(original['x']) + float(origin_mm[0]) - 1000.0,
+                                  float(original['y']) + float(origin_mm[1]) - 1000.0]
             if lab in heads:
                 rec["head"] = True
                 rec["up"] = (elev.get(lab, 0.0)
@@ -1620,10 +1779,12 @@ def register(app, *, UPLOAD_DIR):
         def _kp(lab):
             return _pid_of.get(str(lab), str(lab))
 
+        from src.pipenet_converter.graph.bore_provenance import describe_bore
         pipes = [{"label": str(r.get("label")),
                   "a": str(r.get("in")), "b": str(r.get("out")),
                   "dia": r.get("dia"), "len_m": r.get("length"),
                   "src": r.get("dia_src"),
+                  "bore_info": describe_bore(r),
                   "ref": ref_of.get(_kp(r.get("label"))),
                   "key": key_of_pipe.get(str(r.get("label"))),
                   # 표에 칸이 없는 kfp 메타 — 카드가 지금 값으로 보인다.
@@ -1687,6 +1848,9 @@ def register(app, *, UPLOAD_DIR):
     @route_session(post=True)
     def module_f_design_emit(sess, body):
         """.sdf + .slf 한 쌍을 쓴다. 자산이 없으면 실패(G 정책 그대로)."""
+        from routes.module_f.topology import calculation_block
+        if message := calculation_block(sess):
+            return _fail(message, 409)
         # ★「표 확정」 잡이 도는 동안 저장하면 — 새 표가 나오기 직전의 «옛 표» 로
         #   파일이 써진다. 사용자는 방금 누른 확정이 반영됐다고 읽는다.
         if _job_running(sess):
@@ -1694,6 +1858,12 @@ def register(app, *, UPLOAD_DIR):
         d = sess.get("design")
         if not d:
             return _fail("먼저 design/build 로 표를 확정하세요.", 404)
+        from src.pipenet_converter.validate.diameter_evidence import require_resolved_diameters
+        try:
+            if (sess.get('design_settings') or {}).get('diameter_policy') != 'drawing_first_v1':
+                require_resolved_diameters(d['tables'].pipes)
+        except ValueError as exc:
+            return _fail(str(exc), 409)
         try:
             cfg = _settings(sess, body)
         except ValueError as exc:

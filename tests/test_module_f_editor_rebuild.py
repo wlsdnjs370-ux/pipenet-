@@ -38,6 +38,18 @@ def test_identical_table_reconfirmation_preserves_edits_and_undo(client,session)
     assert len(session['design']['tables'].pipes)==2
 
 
+def test_h_auto_attributes_do_not_silently_archive_manual_edits(client,session):
+    from routes.module_f.selection import _design_stale
+    assert post(client,session,cmd()).status_code==200
+    path=ne._path(session,'design');old=path.read_bytes()
+    session['design_settings']={'diameter_policy':'drawing_first_v1'}
+    session['design']=design();session['design']['tables'].pipes[0]['dia']=80
+    editor=ne.accept_rebuilt(session)
+    assert editor['conflict'] and editor['notice']
+    assert path.read_bytes()==old
+    assert _design_stale(session)['why']==[editor['conflict']]
+
+
 def test_reopen_conflicting_v1_history_then_confirm_without_reset(client,session):
     assert post(client,session,cmd()).status_code==200
     session.pop('network_editor');session['design']=design()

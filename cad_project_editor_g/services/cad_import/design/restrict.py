@@ -21,6 +21,9 @@ def restrict_to_worst(payload: dict, board, worst: dict, *, selected_source=None
     Source board/payload are never mutated. Physical ports are read separately
     from the full payload by ``corridor_topology``. Node identities stay intact.
     """
+    from src.pipenet_converter.graph.network import require_tree_calculation
+    require_tree_calculation(getattr(board, "network_mode", "tree"))
+    require_tree_calculation(payload.get("network_mode", "tree"))
     from services.cad_import.kinds import disk_key
 
     keep_idx = {int(i) for i in (worst or {}).get("heads") or ()}

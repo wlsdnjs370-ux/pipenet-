@@ -86,6 +86,17 @@ def test_all_fittings_visible_without_click_and_remain_visible_when_selected(ui)
     assert json.dumps(sess['design']['tables'].as_dict(),sort_keys=True)==before
 
 
+def test_loop_card_uses_explicit_anchor_and_does_not_claim_solved_flow(ui):
+    page,sess=ui
+    row=sess['design']['tables'].fittings[0]
+    row.update(node='3',flow_direction='solver_reference',loss_status='provisional_branch_port')
+    page.evaluate('async()=>{await __fitTest.preview();__fitTest.select("node","2");}')
+    assert '분류티' not in page.locator('#dg-ins-body').inner_text()
+    page.evaluate('__fitTest.select("node","3")')
+    text=page.locator('#dg-ins-body').inner_text()
+    assert '분류티' in text and '손실 귀속 배관 · 유향 미확정' in text
+
+
 def test_omitted_tee_arm_is_clickable_and_pipe_head_cards_show_values(ui):
     page,_=ui
     # Hit the end of the omitted original arm, outside the node's pick radius.

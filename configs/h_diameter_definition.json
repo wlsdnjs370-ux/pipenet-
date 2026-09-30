@@ -1,0 +1,6 @@
+{
+  "straight_tolerance_deg": 10.0,
+  "repeat_length_tolerance": 0.15,
+  "repeat_shape_tolerance": 0.08,
+  "max_branch_edges": 500
+}

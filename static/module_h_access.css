@@ -1,0 +1,75 @@
+/* H-only input circuit. Native F layout and controls are unchanged. */
+.module-h #h-access {
+  position:fixed; z-index:165; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:min(820px,calc(100vw - 32px)); max-height:calc(100dvh - 130px); overflow:auto;
+  box-sizing:border-box; padding:24px 28px 18px; color:#d7e4f5;
+  background:linear-gradient(115deg,#101a29f5,#080d14fa 65%);
+  border:1px solid #4a6285; box-shadow:0 22px 100px #000c, inset 0 0 45px #263f5b20;
+  scrollbar-width:thin; scrollbar-color:#35465c #0c1119;
+}
+.module-h .h-access-head {display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:22px;}
+.module-h .h-access-eyebrow {font:10px var(--mono); letter-spacing:2px; color:#7faae9;}
+.module-h #h-access-size {flex:none; background:transparent; min-height:32px;}
+.module-h .h-access-cards {display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px;}
+.module-h .h-access-card {border:1px solid #33465e; background:#0b111bea; display:flex; flex-direction:column; min-width:0; transition:border-color .25s, background .25s;}
+.module-h .h-access-select {border:0; background:transparent; padding:17px 16px 10px; display:flex; align-items:flex-start; flex-direction:column; width:100%; text-align:left; min-width:0; flex:1; color:inherit;}
+.module-h .h-access-select:hover {background:#162a4480;}
+.module-h .h-access-number {font:10px var(--mono); color:#859bb7; letter-spacing:1px;}
+.module-h .h-access-select svg {width:112px; height:54px; margin:12px 0; fill:none; stroke:#789dcf; stroke-width:1.2;}
+.module-h .h-access-select strong {font-size:21px; font-weight:500; letter-spacing:-.5px;}
+.module-h .h-access-description {font-size:11px; color:#8fa0b5; margin:7px 0 13px;}
+.module-h .h-access-status {font-size:11px; color:#94a2b6;}
+.module-h .h-access-file,.module-h #h-access-add {font-size:11px; min-height:33px; padding:8px 12px; box-sizing:border-box; color:#a0b2c9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:0; border-top:1px solid #27364b; background:transparent; width:100%; text-align:left;}
+.module-h .h-access-card.is-active {border-color:#79acff; box-shadow:inset 0 2px #79acff; background:#122039;}
+.module-h .h-access-card.is-active .h-access-status {color:#98beff;}
+.module-h .h-access-card.is-ready {border-color:#409f88; background:#0b211f;}
+.module-h .h-access-card.is-ready .h-access-status,.module-h .h-access-card.is-ready svg {color:#69d6b8; stroke:#69d6b8;}
+.module-h .h-access-wires {display:block; width:100%; height:46px; fill:none; stroke:#354863; stroke-width:1.2;}
+.module-h .h-access-wires .is-ready {stroke:#5ac9ad;}
+.module-h #h-access-merge {display:flex; justify-content:center; align-items:center; gap:20px; margin:auto; min-width:206px; min-height:43px; background:#15243b; border-color:#6c9be5; color:#dceaff; font-size:15px;}
+.module-h #h-access-merge span {font-size:10px; color:#93aecf;}
+.module-h #h-access-merge:disabled {background:#101620; border-color:#2c384a; color:#778598; opacity:1; cursor:not-allowed;}
+.module-h #h-access-note {font-size:11px; color:#91a2b9; text-align:center; margin:12px 0 0; line-height:1.5;}
+.module-h #h-access-note.is-error {color:#ff9292;}
+.module-h #h-access-systems {display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; max-height:106px; overflow:auto;}
+.module-h #h-access-upload {display:block; margin:12px auto 0; font-size:11px;}
+.module-h #h-access[data-mode=docked] #h-access-upload {display:none;}
+.module-h .h-access-system-item {display:flex; border:1px solid #354760; min-width:0;}
+.module-h .h-access-system-item button {border:0; padding:7px 9px; font-size:11px;}
+.module-h .h-access-system-item button.is-ready {color:#69d6b8;}
+.module-h .h-access-system-item button[aria-current=true] {background:#1c3558;}
+.module-h #h-access button:focus-visible {outline:2px solid #a3c9ff; outline-offset:3px;}
+.module-h .h-access-blocked {opacity:.45; cursor:not-allowed;}
+.module-h #h-access[data-mode=docked] {z-index:35; left:auto; top:auto; right:12px; bottom:12px; transform:none; width:360px; max-width:calc(100vw - 24px); max-height:calc(100dvh - 100px); padding:12px; box-shadow:0 8px 30px #0009;}
+.module-h #h-access[data-mode=docked] .h-access-head {margin-bottom:10px; align-items:center;}
+.module-h #h-access[data-mode=docked] .h-access-description,.module-h #h-access[data-mode=docked] .h-access-file,.module-h #h-access[data-mode=docked] .h-access-number {display:none;}
+.module-h #h-access[data-mode=docked] .h-access-eyebrow {font-size:9px; letter-spacing:1px;}
+.module-h #h-access[data-mode=docked] .h-access-cards {gap:8px;}
+.module-h #h-access[data-mode=docked] .h-access-select {padding:8px; align-items:center;}
+.module-h #h-access[data-mode=docked] .h-access-select svg {width:65px; height:26px; margin:0 0 4px;}
+.module-h #h-access[data-mode=docked] .h-access-select strong {font-size:13px;}
+.module-h #h-access[data-mode=docked] .h-access-status {font-size:10px; margin-top:6px;}
+.module-h #h-access[data-mode=docked] #h-access-add {font-size:10px; padding:5px 3px; text-align:center; min-height:24px;}
+.module-h #h-access[data-mode=docked] .h-access-wires {height:24px;}
+.module-h #h-access[data-mode=docked] #h-access-merge {min-height:33px; min-width:152px; font-size:12px;}
+.module-h #h-access[data-mode=docked] #h-access-note {margin-top:8px; font-size:10px;}
+@media (max-width:760px) {
+  .module-h #h-access {padding:18px; max-height:calc(100dvh - 154px);}
+  .module-h #h-access .h-access-cards {gap:8px;}
+  .module-h .h-access-select {padding:12px 8px;}
+  .module-h .h-access-select strong {font-size:16px;}
+  .module-h .h-access-select svg {width:80px; max-width:100%;}
+  .module-h .h-access-description {line-height:1.6; min-height:35px;}
+  .module-h .h-access-number {font-size:9px; letter-spacing:0;}
+  .module-h #h-access[data-mode=docked] {bottom:calc(var(--h-actions-height,48px) + 24px);}
+}
+@media (max-width:420px) {
+  .module-h #h-access:not([data-mode=docked]) .h-access-cards {grid-template-columns:1fr;}
+  .module-h #h-access:not([data-mode=docked]) .h-access-select {display:grid; grid-template-columns:64px 1fr; gap:5px 12px;}
+  .module-h #h-access:not([data-mode=docked]) .h-access-select svg {grid-column:1; grid-row:1/4; margin:0; width:64px;}
+  .module-h #h-access:not([data-mode=docked]) .h-access-number {display:none;}
+  .module-h #h-access:not([data-mode=docked]) .h-access-description {min-height:0; margin:0;}
+  .module-h #h-access:not([data-mode=docked]) .h-access-status {grid-column:2;}
+  .module-h #h-access:not([data-mode=docked]) .h-access-file {display:none;}
+}
+@media (prefers-reduced-motion:reduce) {.module-h .h-access-card {transition:none;}}

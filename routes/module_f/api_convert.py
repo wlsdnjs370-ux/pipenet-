@@ -52,10 +52,19 @@ def register(app, *, UPLOAD_DIR):
     @app.post("/api/module-f/convert/run")
     @route_session(post=True)
     def module_f_convert_run(sess, body):
+        from routes.module_f.topology import calculation_block
+        if message := calculation_block(sess):
+            return _fail(message, 409)
         es = sess.get("edit")
         if es is None:
             return _fail("손질 세션이 없습니다.")
         dto = body.get("dto") or {}
+        if getattr(es.board,'network_mode','tree') != 'tree' and dto:
+            from services.cad_import.dto import default_dto
+            configured=default_dto()
+            configured.update((sess.get('design_settings') or {}).get('review_dto') or {})
+            if any(v is not None and k in configured and v != configured[k] for k,v in dto.items()):
+                return _fail('헤드 치수 설정이 확정된 검토표와 다릅니다. 수리계산에서 치수를 설정하고 표를 다시 확정하세요.',409)
         selected = body.get("selected_source")
         # [F-4 · D3] 산출 3종 체크 — 전체망 .kfp / 최불리 .kfp / 최불리 .sdf.
         # 옛 호출부(remote_only)는 그 뜻대로 옮겨 읽는다. 전체망을 PIPENET 문법
@@ -99,6 +108,9 @@ def register(app, *, UPLOAD_DIR):
                 return _fail(" · ".join(stale["why"]), 409)
 
         def job():
+            if getattr(es.board, 'network_mode', 'tree') != 'tree':
+                from routes.module_f.preserved_design import emit_review_outputs
+                return emit_review_outputs(sess, outputs, UPLOAD_DIR)
             from services.cad_import.convert.engine import (
                 convert_to_kfp, ensure_planar)
             from services.cad_import.convert.planar import pick_convert_sources
@@ -258,7 +270,14 @@ def register(app, *, UPLOAD_DIR):
                    design-slf 설계 .slf   ← .sdf 와 한 쌍
                    design-has 설계 .has
         """
+        from routes.module_f.topology import calculation_block
+        if message := calculation_block(sess):
+            return _fail(message, 409)
         what = (request.args.get("what") or "kfp").lower()
+        if ((sess.get('design') or {}).get('got') or {}).get('review_only'):
+            from routes.module_f.selection import _design_stale
+            if _design_stale(sess):
+                return _fail('도면·선정이 변경되었습니다. 검토표와 파일을 다시 생성하세요.',409)
         stem = sess.get("key") or "cad"
         kfp = sess.get("kfp_path")
 
@@ -276,13 +295,18 @@ def register(app, *, UPLOAD_DIR):
                               if wk else ""), "application/json",
                          "아직 변환된 최불리 .kfp 가 없습니다.")
         if what == "kfp":
-            return _send(kfp, f"{stem}_변환.kfp", "application/json",
+            review=((sess.get('design') or {}).get('got') or {}).get('review_only')
+            return _send(kfp, f"{stem}_"+('검토용_미확정.kfp' if review else '변환.kfp'), "application/json",
                          "아직 변환된 .kfp 가 없습니다.")
         if what == "design":
             dsdf = sess.get("design_sdf_path")
             return _send(dsdf, (os.path.basename(dsdf) if dsdf else ""),
                          "application/xml",
                          "아직 만든 수리계산 입력이 없습니다.")
+        if what == "design-review":
+            path = sess.get('design_review_path')
+            return _send(path, os.path.basename(path) if path else '', 'application/json',
+                         '아직 만든 검토 기록이 없습니다.')
         if what == "design-slf":
             dslf = sess.get("design_slf_path")
             return _send(dslf, (os.path.basename(dslf) if dslf else ""),

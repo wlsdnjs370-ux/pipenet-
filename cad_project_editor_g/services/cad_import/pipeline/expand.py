@@ -101,17 +101,30 @@ def stage1_body(key):
     if not source_path or not os.path.isfile(source_path):
         raise SystemExit(f"DXF를 못 찾음: {key}")
     fname = os.path.basename(source_path)
-    w = handoff.load_world(key, source_path, s1.World)
+    w = handoff.prepared_world(key, source_path, spec.get('work_regions'))
+    prepared = w is not None
+    if w is None:
+        w = handoff.load_world(key, source_path, s1.World)
     if w is not None and len(getattr(w, "arc_ang", ())) != len(w.arcs):
         print("  [0 찍기] handoff 각 없음 — DXF 다시 펼침")
         w = None
     if w is None:
         ltab, ents, bdefs = s1.read_dxf(source_path)
         w, _hid = s1.explode(ltab, ents, bdefs)
+        # Refresh an invalidated preparation cache before any region filtering.
+        # Otherwise every subsequent extraction reparses the same large DXF.
+        try:
+            handoff.save_world(key, source_path, w)
+        except OSError as exc:
+            print(f"[handoff] 캐시 갱신 생략: {exc}")
     else:
         print("  [0 찍기] DXF 준비 handoff HIT")
     knobs = dict(s1.DEFAULT_KNOBS)
     w._source_path = source_path
+    if spec.get("work_regions") and not prepared:
+        from src.pipenet_converter.dxf.work_region import crop_world
+        for region in spec["work_regions"]:
+            w, _crop_report = crop_world(w, region)
     knobs.update(spec.get("knobs", {}))
     # report 를 받아 «기호 획»(작대기·관말 캡) 명단을 챙긴다 [2026-08-07].
     # 본체가 이미 모양으로 골라 재료에서 뺀 것들이다 — 시제품이 그것을

@@ -116,16 +116,34 @@ def build_flow_tree(
     queue = [(0, 0.0, 0, r) for r in roots]
     heapq.heapify(queue)
     parent: dict[int, int] = {}
+    from ..progress import current_reporter, report
+    observing = current_reporter() is not None
+    preview = []
+    visited = set()
+    if observing:
+        report("reset", "연결 탐색", mode="graph", roots=[list(points[r][:2]) for r in roots])
     while queue:
         cost, dist, hop, u = heapq.heappop(queue)
         if best[u] != (cost, dist, hop):
             continue
+        if observing:
+            for v in adj[u]:
+                edge = edge_key(u, v)
+                if edge not in visited:
+                    visited.add(edge)
+                    preview.append([*points[u][:2], *points[v][:2]])
+            if len(preview) >= 128 or not queue:
+                report("graph", "연결 탐색", segments=preview[:256], count=len(visited), cursor=list(points[u][:2]))
+                preview = preview[256:]
         for v in adj[u]:
             e = edge_key(u, v)
             candidate = (cost + int(e in inferred), dist + weights[e], hop + 1)
             if v not in best or candidate < best[v]:
                 best[v], parent[v] = candidate, u
                 heapq.heappush(queue, (*candidate, v))
+    if observing and preview:
+        for start in range(0, len(preview), 256):
+            report("graph", "연결 탐색", segments=preview[start:start+256], count=len(visited))
     head_node = {}
     reps = {}
     places = {}

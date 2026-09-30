@@ -58,7 +58,10 @@ def catalog() -> dict:
 def fingerprint(network: Network) -> str:
     """All hydraulic values and identities belong to the revision."""
     body = dict(nodes={k:dict(xyz=n.xyz,row=n.row) for k,n in network.nodes.items()},
-                pipes={k:dict(a=p.a,b=p.b,row=p.row) for k,p in network.pipes.items()},
+                # Evidence is display/audit metadata, not graph identity. Adding
+                # it must not orphan histories saved before evidence existed.
+                pipes={k:dict(a=p.a,b=p.b,row={f:v for f,v in p.row.items()
+                           if f != 'bore_provenance'}) for k,p in network.pipes.items()},
                 nozzles=network.tables.nozzles,fittings=network.tables.fittings,
                 equipment=network.tables.equipment,
                 pumps=getattr(network.tables,'pumps',[]), valves=getattr(network.tables,'valves',[]))
@@ -191,8 +194,14 @@ def ensure(sess: dict, scope: str, *, rebuilt: bool = False) -> dict:
     disk_hash = (hashlib.sha256(_path(sess,scope).read_bytes()).hexdigest()
                  if _path(sess,scope).is_file() else None)
     changed = bool(saved and (saved['base'] != base_hash or saved.get('library',lib_hash) != lib_hash))
+    # H enters attributes automatically. It cannot implicitly accept a new base
+    # over the user's fitting/geometry edits like F's explicit confirmation did.
+    h_manual_conflict = bool(changed and scope=='design' and
+        (state.get('design_settings') or {}).get('diameter_policy')=='drawing_first_v1' and
+        any(c.get('note')!='표 확정 후 연속 동일관 자동 정리'
+            for c in (saved or {}).get('commands',[])[:(saved or {}).get('cursor',0)]))
     notice = None
-    if rebuilt and changed:
+    if rebuilt and changed and not h_manual_conflict:
         # Explicit table confirmation starts a new calculation basis. Identical
         # histories are replayed; unrelated labels are never guessed or applied.
         backup_history(sess,scope,existing.get('disk_hash') if existing else disk_hash)
@@ -211,26 +220,99 @@ def ensure(sess: dict, scope: str, *, rebuilt: bool = False) -> dict:
                   commands=commands,cursor=cursor,revision=base_hash,conflict=None)
     if cursor and (saved['base'] != base_hash or saved.get('library',lib_hash) != lib_hash):
         editor['conflict'] = '기준 배관망이 바뀌어 저장된 편집을 적용하지 않았습니다. 기존 편집 기록을 확인하고 편집 초기화를 선택하세요.'
+        if h_manual_conflict:
+            editor['conflict'] = ('기준 배관망이 바뀌어 이전 편집을 보류했습니다. '
+                                  '화면의 「이전 편집 보관 후 계속」에서 새 기준망으로 전환할 수 있습니다.')
+            editor['notice']=editor['conflict']
     else:
-        for command in commands[:cursor]:
-            base,_ = apply_edit(base,command,catalog())
+        from routes.module_f.editor_history import replay
+        base,_ = replay(editor, commands, cursor, catalog(), sid=sess.get('id',''), warm=True)
         editor['current'] = base
         editor['revision'] = fingerprint(base)
         if cursor:
             sync_object(sess,scope,obj,base)
-    if rebuilt and changed:
+    if rebuilt and changed and not h_manual_conflict:
         save_history(sess,scope,editor)
     state[key] = editor
     return editor
 
 
 def accept_rebuilt(sess: dict, scope: str = 'design') -> dict:
-    """Attach the appropriate history after a successful, explicit table build."""
+    """Replay old edits FIRST, then canonicalize on the explicit build boundary."""
     with EDIT_LOCK:
         editor = ensure(sess,scope,rebuilt=True)
+        if not editor.get('conflict'):
+            if editor['cursor'] < len(editor['commands']):
+                # Do not discard or move redo commands targeting old segment IDs.
+                editor['notice'] = (editor.get('notice') or '') + ' 다시 실행할 편집이 남아 자동 정리는 보류했습니다. 필요하면 「연속관 정리」를 사용하세요.'
+            else:
+                command = compaction_command(sess, scope)
+                candidate, result = apply_edit(editor['current'], command, catalog())
+                if result['compaction']['removed_nodes']:
+                    from routes.module_f.api_network_edit import commit_edit
+                    orders = [c.get('_order',1000000) for e in
+                              (editor, sess.get('merge_editor') or {}, plan_state(sess).get('network_editor') or {})
+                              for c in e.get('commands',())]
+                    command['_order'] = max([1000000, *orders])+1
+                    command['note'] = '표 확정 후 연속 동일관 자동 정리'
+                    commit_edit(sess,scope,editor,candidate,editor['commands']+[command],
+                                editor['cursor']+1,propagate=False)
+                    state,key,_ = _container(sess,scope)
+                    editor = state[key]
+                    counts = result['compaction']
+                    editor['notice'] = ((editor.get('notice') or '') +
+                        f" 연속관 정리: 노드 {counts['nodes_before']} → {counts['nodes_after']}, "
+                        f"배관 {counts['pipes_before']} → {counts['pipes_after']}. 분기·부속·루프 연결 보존.")
+            _container(sess,scope)[2]['editor_canonical'] = True
         if editor.get('notice'):
             print('[편집 기록] '+editor['notice'])
         return editor
+
+
+def compaction_command(sess: dict, scope: str, *, target: str = '') -> dict:
+    """Record protected labels, not a second graph, for deterministic replay."""
+    from src.pipenet_converter.graph.export_compaction import _straight
+    editor = ensure(sess,scope)
+    net = editor['current']
+    keep = set(net.protected)
+    if scope == 'merge':
+        from routes.module_f.merge import bake_combined_iso, bake_combined_plan, ANCHOR_LABEL
+        obj = deepcopy(sess['merged'])
+        obj['combined'] = deepcopy(net).to_tables()
+        # Plan IDs must remain identical to 04: merged plan edits are forwarded
+        # to that canonical graph. Never merge across drawing/part boundaries.
+        parts = {kind:set(map(str,labels)) for kind,labels in obj.get('parts',{}).items()}
+        keep.update(parts.get('plan',()))
+        for node in net.nodes:
+            if sum(node in labels for labels in parts.values())>1:
+                keep.add(node)
+        keep.add(ANCHOR_LABEL)
+        if obj.get('pump_junction') is not None:
+            keep.add(str(obj['pump_junction']))
+        views = [bake_combined_iso(obj)[0], bake_combined_plan(obj)[0]]
+        adjacency = {label:[] for label in net.nodes}
+        incident_parts = {label:set() for label in net.nodes}
+        for label,pipe in net.pipes.items():
+            adjacency[pipe.a].append(pipe.b)
+            adjacency[pipe.b].append(pipe.a)
+            part = (obj.get('pipe_parts') or {}).get(label,
+                next((kind for kind,labels in parts.items() if {pipe.a,pipe.b} <= labels),'seam'))
+            incident_parts[pipe.a].add(part)
+            incident_parts[pipe.b].add(part)
+        keep.update(node for node,kinds in incident_parts.items() if len(kinds)>1 or 'seam' in kinds)
+        for rows in views:
+            xy = {str(r['label']):(float(r['x']),float(r['y'])) for r in rows}
+            for node,ends in adjacency.items():
+                if len(ends)!=2:
+                    continue
+                a,b = ends
+                if not all(k in xy for k in (a,node,b)) or not (
+                        _straight(xy[a],xy[node],xy[b]) or xy[a]==xy[node]==xy[b]):
+                    keep.add(node)
+    # Versioned commands keep legacy F/history replay unchanged. H alone may
+    # contract unassigned source spans without inventing their missing bore.
+    version = 2 if (plan_state(sess).get('design_settings') or {}).get('diameter_policy') == 'drawing_first_v1' else 1
+    return dict(op='compact_runs',version=version,keep=sorted(keep),target=str(target))
 
 
 def archived_histories(sess: dict, scope: str) -> list[dict]:
@@ -250,6 +332,12 @@ def sync_object(sess: dict, scope: str, obj: dict, net: Network) -> None:
         adopt_late_nodes(tables,obj.setdefault('parts',{}),known)
         for kind, labels in obj['parts'].items():
             obj['parts'][kind] = [x for x in labels if str(x) in net.nodes]
+        previous_parts = obj.get('pipe_parts') or {}
+        part_sets = {kind:set(map(str,labels)) for kind,labels in obj['parts'].items()}
+        obj['pipe_parts'] = {str(p['label']):previous_parts.get(str(p['label']),
+            next((kind for kind,labels in part_sets.items()
+                  if str(p['in']) in labels and str(p['out']) in labels),'seam')) for p in tables.pipes}
+        obj['editor_canonical'] = True
         sess['merge_summary'] = combined_summary(obj)
         sess.pop('merge_files',None)
         return
@@ -296,12 +384,18 @@ def sync_object(sess: dict, scope: str, obj: dict, net: Network) -> None:
             rec.update(type_id='head' if head else 'base',type='헤드' if head else '기본')
             if head:
                 rec.update(k_factor_si=head['k_factor_si'],head_spec_name=head['id'],
-                           required_pressure_bar=(head['flow_lmin']/head['k_factor_si'])**2)
+                           required_pressure_bar=max((head['flow_lmin']/head['k_factor_si'])**2,
+                                                     head.get('required_pressure_bar',0)))
             else:
                 rec.update(k_factor_si=None,head_spec_name=None,required_pressure_bar=0)
         nodes[nid] = rec
     kfp['nodes_meta_runtime'] = {nid_of[lab]:nodes[nid_of[lab]] for lab in net.nodes}
     new_pipes, labels = {}, {}
+    equipment_loss = {}
+    for row in tables.equipment:
+        label = str(row.get('pipe'))
+        previous, value = equipment_loss.get(label,0), row.get('eq_len')
+        equipment_loss[label] = None if previous is None or value is None else previous + float(value)
     for lab,p in net.pipes.items():
         pid = pid_of.get(lab,lab)
         if lab not in pid_of:
@@ -310,6 +404,14 @@ def sync_object(sess: dict, scope: str, obj: dict, net: Network) -> None:
         rec = deepcopy(pipes.get(pid) or {})
         rec.update(start=nid_of[p.a],end=nid_of[p.b],length_m=float(p.row['length']),
                    nominal_mm=p.row.get('dia'),C=p.row.get('c',120))
+        if 'eq_len' in p.row:
+            extra = equipment_loss.get(lab,0)
+            rec['equivalent_length'] = (float(p.row['eq_len']) + extra
+                                        if p.row['eq_len'] is not None and extra is not None else None)
+        if (p.row.get('bore_provenance') or {}).get('continuous_sources'):
+            # A single old CAD edge key must not masquerade as the whole run.
+            keys.get('pipe',{}).pop(lab,None)
+            got.get('edge_ref',{}).pop(pid,None)
         # Explicit editor library choice overrides legacy default-standard sizing.
         chosen = p.row if p.row.get('inner_mm') is not None else None
         if chosen is None and pid not in pipes:
@@ -330,7 +432,7 @@ def sync_object(sess: dict, scope: str, obj: dict, net: Network) -> None:
     keys['nid'] = {lab:nid for lab,nid in nid_of.items() if lab in net.nodes}
     keys['node'] = {lab:k for lab,k in keys.get('node',{}).items() if lab in net.nodes}
     keys['pipe'] = {lab:k for lab,k in keys.get('pipe',{}).items() if lab in net.pipes}
-    obj.update(tables=tables,got=got,keys=keys,editor_modified=True)
+    obj.update(tables=tables,got=got,keys=keys,editor_modified=True,editor_canonical=True)
     if state.get('auto'):
         state['auto']['tables'] = tables
     for field in ('design_sdf_path','design_slf_path','design_has_path','worst_kfp_path'):
@@ -339,6 +441,7 @@ def sync_object(sess: dict, scope: str, obj: dict, net: Network) -> None:
 
 def public_state(editor: dict) -> dict:
     """Small edit state including loss/source information for the inspector."""
+    from core.network_property_fittings import fitting_rows
     net = editor['current']
     head_specs = {}
     libraries = {r['id']: r for r in catalog()['nozzles']}
@@ -346,6 +449,9 @@ def public_state(editor: dict) -> dict:
         if row.get('lib') in libraries:
             head_specs[str(row['in'])] = dict(libraries[row['lib']],
                 flow_lmin=row.get('flow_lmin') or float(row.get('flow_m3s',0))*60000)
+            for source, target in (('k_factor_si','k_factor_si'),('required_pressure_bar','min_bar')):
+                if row.get(source) is not None:
+                    head_specs[str(row['in'])][target] = row[source]
     return dict(revision=editor['revision'],undo=editor['cursor'],
                 redo=len(editor['commands'])-editor['cursor'],conflict=editor['conflict'],
                 history=editor['commands'],
@@ -354,7 +460,8 @@ def public_state(editor: dict) -> dict:
                             **({'head_spec':head_specs[k]} if k in head_specs else {}))
                        for k,n in net.nodes.items()],
                 pipes=[dict(p.row,**{'in':p.a,'out':p.b}) for p in net.pipes.values()],
-                equipment=net.tables.equipment)
+                equipment=net.tables.equipment,
+                property_fittings=fitting_rows(net, catalog()), property_batch_version=1)
 
 
 def project(sess: dict, scope: str, net: Network) -> dict:

@@ -251,6 +251,7 @@ def test_merge_property_card_and_three_independent_underlays(editor_ui):
     before=page.locator('#cv').screenshot()
     calls=[]
     page.on('request',lambda r:calls.append(r.url) if 'underlays=1' in r.url else None)
+    page.locator('#mf-advanced-merge > summary').click()
     page.check('#mg-under')
     page.wait_for_function("document.querySelector('#mg-under-note').textContent.includes('펌프')")
     settle(page)
@@ -292,6 +293,7 @@ def test_merge_underlay_frames_follow_visibility_and_keep_screen_dash_size(edito
         return stroke.apply(this,args);
       };
     }''')
+    page.locator('#mf-advanced-merge > summary').click()
     page.check('#mg-under');settle(page)
     def frames():
         return page.evaluate('''()=>{__frames=[];__viewTest.paint();return __frames;}''')
@@ -347,6 +349,7 @@ def test_underlay_overlap_geometry_and_visible_gray_boundaries(editor_ui):
         slot['world']={'bounds':dict(minx=0,miny=0,maxx=100,maxy=100),
                        'bundles':[dict(segs=[0,0,100,0,100,0,100,100],circles=[],arcs=[])]}
     page.evaluate("async()=>{__viewTest.setStage('merge');await __editUi.merged();}")
+    page.locator('#mf-advanced-merge > summary').click()
     page.check('#mg-under');settle(page)
     page.wait_for_function("document.querySelector('#mg-under-note').textContent.includes('펌프')")
     page.evaluate('''()=>{

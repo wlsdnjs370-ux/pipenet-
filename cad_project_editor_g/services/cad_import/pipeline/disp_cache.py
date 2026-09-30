@@ -10,10 +10,10 @@ import os
 from services.cad_import import kinds
 from services.cad_import.pipeline import expand, flow, heads, stage1, stage45
 from services.cad_import.pipeline.handoff import import_write_root
-from src.pipenet_converter.graph import junctions
-from src.pipenet_converter.dxf import head_symbols, head_symbol_adapter
+from src.pipenet_converter.graph import junctions, head_junctions, arc_contacts
+from src.pipenet_converter.dxf import head_symbols, head_symbol_adapter, work_region, planar_ocs
 
-_DISP_CACHE_VER = 6  # source junctions are normalized before water-flow selection
+_DISP_CACHE_VER = 8  # preserve DXF head tee ports before tree-only filtering
 
 
 def _disp_cache_dir():
@@ -48,7 +48,7 @@ def _file_stamp(path, content_hash=False):
 def _disp_cache_inputs(key):
     spec = expand._spec_path(key)
     dxf = expand.dxf_path_for(key) or os.path.join(stage1.DWG_DIR, f"{key}.dxf")
-    pipeline_modules = (expand, flow, stage1, heads, stage45, kinds, junctions, head_symbols, head_symbol_adapter)
+    pipeline_modules = (expand, flow, stage1, heads, stage45, kinds, junctions, head_symbols, head_symbol_adapter, head_junctions, work_region, planar_ocs, arc_contacts)
     return {
         "ver": _DISP_CACHE_VER,
         "key": key,
@@ -78,7 +78,7 @@ def _disp_cache_load(key):
         return None
     data = blob.get("data") or {}
     need = ("pts", "edges", "edges1", "hcov", "hnodes", "ups", "head_kinds",
-            "ho")
+            "ho", "cycle_candidates", "head_junctions")
     if any(k not in data for k in need):
         return None
     return data
@@ -98,6 +98,8 @@ def _disp_cache_save(key, result):
         "ups": [list(u) for u in (result.get("ups") or ())],
         "head_kinds": list(result.get("head_kinds") or ()),
         "ho": flow.ho_from_spots(result.get("spots")),
+        "cycle_candidates": list(result.get("cycle_candidates") or ()),
+        "head_junctions": list(result.get("head_junctions") or ()),
     }
     path = _disp_cache_path(key)
     try:

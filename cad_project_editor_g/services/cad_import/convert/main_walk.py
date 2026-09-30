@@ -73,9 +73,19 @@ def sit_arcs(xy, ho, sit_r, degree=None, tie_m=0.03):
     """
     node_arcs = defaultdict(list)
     for sp in ho:
+        if "connection_node" in sp:
+            nid = sp["connection_node"]
+            if nid in xy:
+                node_arcs[nid].append(sp)
+            continue  # an absent/removed proven tee is not a proximity match
         cx, cy = float(sp["cx"]), float(sp["cy"])
         r = float(sp.get("r") or 0.0)
         lim = max(sit_r, r)
+        if sp.get("connection_evidence") == "arc_open_branch_unique_through":
+            # The source symbol centre is retained. Seat the fitting at the
+            # explicitly restored tee, not at the nearby straight branch tip.
+            cx, cy = map(float, sp["connection_xy"])
+            lim = 1e-6
         best = None
         for nid, (x, y) in xy.items():
             d = math.hypot(x - cx, y - cy)
@@ -184,5 +194,7 @@ def ho_to_kfp_units(ho, minx, miny):
         row = dict(sp)
         row["cx"], row["cy"] = cx, cy
         row["r"] = float(sp.get("r") or 0.0) / 1000.0
+        if sp.get("connection_xy") is not None:
+            row["connection_xy"] = list(xf_mm_to_m(*sp["connection_xy"], minx, miny))
         out.append(row)
     return out

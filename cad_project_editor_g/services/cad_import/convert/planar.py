@@ -1246,6 +1246,18 @@ def main(key=KEY, out=None, *, write=True, pts=None, edges=None, hcov=None,
         print(f"파일크기 {os.path.getsize(out) / 1024:.0f} KB")
 
     nodes = kfp.get("nodes_meta_runtime") or {}
+    # The legacy planar adapter snaps/compacts coordinates. Carry the proven
+    # source tee's identity across that operation instead of re-snapping the
+    # fitting by proximity (its original symbol is intentionally offset).
+    ho = [dict(h) for h in ho]
+    for h in ho:
+        if h.get("connection_evidence") != "arc_open_branch_unique_through":
+            continue
+        contact_xy = h["connection_xy"]
+        matches = {node_id.get(remap[v]) for v in remap
+                   if math.dist(pts[v][:2], contact_xy) <= 1e-3}
+        matches = {n for n in matches if n in nodes}
+        h["connection_node"] = next(iter(matches)) if len(matches) == 1 else None
     node_head_kinds = {
         nid: kind for nid, kind in node_head_kinds.items()
         if nid in nodes

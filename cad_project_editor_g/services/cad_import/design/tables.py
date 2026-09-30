@@ -147,6 +147,7 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
                         tree_loads=None,
                         fitting_overrides=None,
                         bore_overrides=None,
+                        bore_context=None,
                         origin_mm=None,
                         fx_profile=None,
                         node_head_kinds=None,
@@ -212,7 +213,7 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         bores = decide_bores(net, edge_ref, (worst or {}).get("physical_loads") or (worst or {}).get("loads") or {},
                              dia_text_pts, pts=board_pts,
                              tree_loads=tree_loads,
-                             overrides=bore_overrides)
+                             overrides=bore_overrides, context=bore_context)
     node_xy = {n: xy(n) for n in meta_nodes}
     node_z = {n: z(n) for n in meta_nodes}
     if fittings is None:
@@ -281,6 +282,9 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
             # SDF 방출은 이름 붙인 칸만 읽으므로 이 칸이 파일을 바꾸지 않는다.
             "dia_src": src,
         }
+        if pid in (getattr(bores, "evidence", None) or {}):
+            from copy import deepcopy
+            row["bore_provenance"] = deepcopy(bores.evidence[pid])
         if "physical_pipe_loads" in net:
             row["head_count_all"] = net["physical_pipe_loads"][pid]
             row["head_count_selected"] = (tree_loads or {}).get(pid)
@@ -395,11 +399,19 @@ def build_design_tables(net, worst, edge_ref, dia_text_pts, *,
         prow = pipe_by_label.get(pid)
         if prow is None:
             continue
-        for kind in rec.get("fittings") or ():
-            tbl.fittings.append({
+        instances = rec.get("instances")
+        for item in (instances if instances is not None else
+                     ({"type": kind} for kind in rec.get("fittings") or ())):
+            row = {
                 "pipe": prow["label"], "in": prow["in"], "out": prow["out"],
-                "type": kind, "count": "1",
-            })
+                "type": item['type'], "count": "1",
+            }
+            if item.get('node') is not None:
+                row['node'] = label_of[item['node']]
+            for key in ('flow_direction', 'loss_status'):
+                if key in item:
+                    row[key] = item[key]
+            tbl.fittings.append(row)
 
     # ── ⑤ 기기표 — 알람밸브. 찍은 것이 없으면 행을 만들지 않는다.
     #

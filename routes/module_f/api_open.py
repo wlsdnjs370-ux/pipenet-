@@ -16,7 +16,7 @@ from routes.module_f.world import _saved_keys, _world_payload
 from routes.module_f.cancellation import OperationCancelled
 
 
-def _open_job(sess: dict, dxf, *, kind: str = "plan"):
+def _open_job(sess: dict, dxf, *, kind: str = "plan", h_display: bool = False):
     """DXF 한 장을 찍기 세션으로 여는 잡을 만든다.
 
     [H-0] 슬롯 열기(`/api/module-f/slot/open`)와 같은 것을 쓴다 — 계통도·기계실도
@@ -39,7 +39,7 @@ def _open_job(sess: dict, dxf, *, kind: str = "plan"):
         ps.select_pipe()
         sess["pick"] = ps
         sess["key"] = ps.key
-        payload = _world_payload(ps.world)
+        payload = _world_payload(ps.world, source_display=h_display)
         sess["world"] = payload
         t_open = time.perf_counter() - t0
         print(f"[찍기] 완료 {t_open:.1f}s · "
@@ -123,7 +123,8 @@ def register(app, *, _save_upload):
 
         sess = _new_session(dxf=str(dxf))
         # 이 문은 평면도 전용이다 — 계통도·기계실은 `/slot/open` 으로 들어온다.
-        _run_job(sess, "도면 읽기", _open_job(sess, dxf, kind="plan"))
+        _run_job(sess, "도면 읽기", _open_job(sess, dxf, kind="plan",
+                                           h_display=request.form.get('h_access') == '1'))
         return jsonify({"ok": True, "sid": sess["id"],
                         "filename": os.path.basename(str(dxf))})
 
@@ -248,6 +249,33 @@ def register(app, *, _save_upload):
         if request.args.get("heads") in ("1", "true", "yes"):
             out["heads"] = (rec or {}).get("heads") or []
         return jsonify(out)
+
+    @app.get("/api/module-f/world/bundle")
+    @route_session()
+    def module_f_world_bundle(sess, body):
+        """Read a complete display bundle from the active, possibly cropped world."""
+        from types import SimpleNamespace
+        ps = sess.get('pick')
+        if ps is None:
+            return _fail('찍기 도면이 준비되지 않았습니다.',409)
+        bundle = next((b for b in (sess.get('world') or {}).get('bundles',())
+                       if b['id'] == body.get('bundle_id')),None)
+        if bundle is None:
+            return _fail('현재 도면에 없는 묶음입니다.',404)
+        key = (bundle['layer'],bundle['color'])
+        world = ps.world
+        rows = {name:[r for r in getattr(world,name) if (r[0],r[1])==key]
+                for name in ('segs','circles')}
+        indexes = [i for i,r in enumerate(world.arcs) if (r[0],r[1])==key]
+        angles = getattr(world,'arc_ang',())
+        rows.update(arcs=[world.arcs[i] for i in indexes],
+                    arc_ang=[angles[i] if i<len(angles) else None for i in indexes])
+        full = _world_payload(SimpleNamespace(**rows),complete=True)['bundles']
+        if not full:
+            return _fail('묶음의 원본 표시 데이터를 찾지 못했습니다.',409)
+        full[0]['i'] = bundle['i']
+        full[0]['css'] = bundle['css']
+        return jsonify(ok=True,bundle=full[0])
 
     @app.get("/api/module-f/world")
     @route_session()

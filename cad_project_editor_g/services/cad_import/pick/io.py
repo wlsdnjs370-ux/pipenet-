@@ -65,8 +65,12 @@ def open_dxf(source_path, knobs=None):
         raise ValueError("dxf_path")
     key = display_key_for(source_path)
     t0 = time.perf_counter()
+    signature = handoff.source_signature(source_path)
     ltab, ents, bdefs = s1.read_dxf(source_path)
     w, _hid = s1.explode(ltab, ents, bdefs)
+    if handoff.source_signature(source_path) != signature:
+        raise ValueError('DXF를 읽는 동안 파일이 변경되었습니다. 다시 업로드하세요.')
+    w._source_signature = signature
     w._source_path = source_path
     w._prep_seconds = time.perf_counter() - t0
     kn = dict(s1.DEFAULT_KNOBS)
@@ -94,7 +98,7 @@ def write_pick(key, world, board, out_dir=None):
     with open(p_spec, "w", encoding="utf-8") as f:
         json.dump(sp, f, ensure_ascii=False, indent=1)
     prep_seconds = getattr(world, "_prep_seconds", 0.0)
-    if prep_seconds >= MIN_PREP_SECONDS:
+    if prep_seconds >= MIN_PREP_SECONDS and not getattr(world, "_work_regions", None):
         try:
             save_world(key, world._source_path, world)
         except Exception:

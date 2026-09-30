@@ -52,7 +52,7 @@ Log ("ps1 start  repo: " + $repo + "  elevated: " + $isAdmin + "  holders: " + (
 if (-not (Stop-Server)) {
     if (-not $isAdmin) {
         Log 'could not stop the old server without elevation - relaunching elevated (UAC prompt)'
-        Start-Process powershell.exe -Verb RunAs -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-File', ('"' + $me + '"'))
+        Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $me + '"'))
         exit 0
     }
     Log 'could not stop the old server even elevated - inspect it by hand'
@@ -60,7 +60,7 @@ if (-not (Stop-Server)) {
 }
 
 $env:PORT = "$port"
-Start-Process -FilePath 'cmd.exe' -ArgumentList @('/k', 'start_server.bat') -WorkingDirectory $repo
+Start-Process -FilePath 'cmd.exe' -WindowStyle Hidden -ArgumentList @('/c', 'start_server.bat') -WorkingDirectory $repo
 $new = @()
 for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep -Seconds 1

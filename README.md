@@ -2,6 +2,10 @@
 
 스프링클러 도면(`.dxf`)에서 가장 먼/가까운 헤드 30개를 자동 선정하고, 추출된 배관망을 PIPENET 의 SDF/SLF 포맷으로 직렬화하는 모듈입니다.
 
+## 모듈 작업 문서
+
+모듈 A·F·G의 작업 지시서와 변경 기록은 [모듈 작업 문서](docs/module-work-notes/)에서 볼 수 있습니다.
+
 ## 사전 요구사항
 
 - **Python 3.10+** (dataclass / `from __future__ import annotations` / `|` union type 사용)
